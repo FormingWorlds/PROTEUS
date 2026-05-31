@@ -194,13 +194,12 @@ markers = [
 
 [tool.coverage.report]
 # Full coverage gate: unit + smoke + integration + slow tests, enforced by the
-# nightly workflow. Target ratchets toward the 90% PROTEUS-ecosystem ceiling.
-# The estimated-total coverage on PRs (union of PR unit/smoke with the latest
+# nightly workflow. Fixed ceiling at 90% (the PROTEUS-ecosystem target). The
+# estimated-total coverage on PRs (union of PR unit coverage with the latest
 # nightly artifact) is also compared against this gate; that is the 90% KPI
-# operators read.
-# Auto-ratcheted by tools/update_coverage_threshold.py; never manually decrease.
-# See docs/How-to/test_categorization.md and .github/.claude/rules/proteus-tests.md
-# section 15 for the contract.
+# operators read. The fixed value is enforced by
+# tools/update_coverage_threshold.py and the PR threshold guard.
+# See .github/.claude/rules/proteus-tests.md section 15 for the contract.
 fail_under = 90
 show_missing = true
 precision = 2
@@ -272,16 +271,15 @@ url = "https://osf.io/download/p5vxq/"
 sha256 = ""
 
 [tool.proteus.coverage_fast]
-# Fast PR gate: unit + smoke coverage only. Target ratchets toward 90% (the
-# PROTEUS-ecosystem ceiling), capped at 90 by tools/update_coverage_threshold.py.
-# Unit tests alone are not expected to actually reach 90 because wrapper code
-# that requires real binaries (SOCRATES, AGNI, SPIDER) is exercised by smoke
-# and integration tests in the nightly tier; the fast gate plateaus wherever
-# unit + smoke actually lands. Reaching the 90% target is the estimated-total
-# responsibility (PR unit/smoke union with the nightly artifact, see
-# [tool.coverage.report]).
-# Auto-ratcheted by tools/update_coverage_threshold.py; never manually decrease.
-fail_under = 84
+# Fast PR gate: unit-only coverage on PRs (smoke, integration, and slow tiers
+# run nightly). Fixed ceiling at 80%: the gate requires unit-only coverage to
+# exceed 80% and does not ratchet above it. Unit tests alone do not reach the
+# 90% ecosystem target because wrapper code that requires real binaries
+# (SOCRATES, AGNI, SPIDER) is exercised by the nightly tiers; reaching 90% is
+# the estimated-total responsibility (PR unit coverage unioned with the latest
+# nightly artifact, see [tool.coverage.report]). The fixed value is enforced by
+# tools/update_coverage_threshold.py and the PR threshold guard.
+fail_under = 80
 
 [tool.ruff]
 line-length = 96

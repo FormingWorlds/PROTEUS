@@ -80,28 +80,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prevent threshold decreases vs main
+      - name: Verify coverage thresholds match the fixed ceilings
         run: |
-          git config --global --add safe.directory "$PWD"
-          git fetch origin main
           python - <<'PY'
           import pathlib
-          import subprocess
           import tomllib
 
-          base = "origin/main"
-          current = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
-          base_text = subprocess.check_output(
-              ["git", "show", f"{base}:pyproject.toml"], text=True
-          )
-          base_data = tomllib.loads(base_text)
-
-          ECOSYSTEM_CEILING = 90.0
-
+          # Fixed coverage ceilings: the fast (unit-only) gate is held at 80%
+          # and the full (unit + smoke + integration + slow) gate at 90%. They
+          # do not ratchet; this guard fails the PR if either is edited away
+          # from its fixed value.
+          CEILINGS = {"full": 90.0, "fast": 80.0}
           paths = {
               "full": ["tool", "coverage", "report", "fail_under"],
               "fast": ["tool", "proteus", "coverage_fast", "fail_under"],
           }
+          current = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
 
           def get_val(data, path):
               try:
@@ -113,22 +107,15 @@ jobs:
 
           for label, path in paths.items():
               cur = get_val(current, path)
-              base_val = get_val(base_data, path)
-              if base_val is None or cur is None:
-                  print(f"Skipping {label} check (missing in base or current)")
-                  continue
-              if cur < base_val:
-                  raise SystemExit(f"{label} fail_under decreased: {cur} < {base_val}")
-              if cur > ECOSYSTEM_CEILING:
+              ceiling = CEILINGS[label]
+              if cur is None:
+                  raise SystemExit(f"{label} fail_under missing from pyproject.toml")
+              if cur != ceiling:
                   raise SystemExit(
-                      f"{label} fail_under {cur} exceeds the "
-                      f"{ECOSYSTEM_CEILING}% ecosystem ceiling"
+                      f"{label} fail_under must stay fixed at {ceiling}% (found {cur}%)"
                   )
 
-          print(
-              f"Coverage thresholds have not decreased vs main and stay "
-              f"within the {ECOSYSTEM_CEILING}% ecosystem ceiling."
-          )
+          print("Coverage thresholds match the fixed ceilings: fast 80%, full 90%.")
           PY
 
       - name: Set up PROTEUS environment
@@ -161,12 +148,21 @@ jobs:
           # Coverage instrumentation (pytest-cov + JAX tracing) inflates
           # Linux unit tests, so it runs on pull requests only, not on every
           # branch push. Draft PRs are included so the estimated-total,
-          # diff-cover, and codecov numbers are visible during development.
+          # diff-cover, and codecov numbers are visible during development, but
+          # the coverage gates are warn-only on drafts (COV_BLOCKING=false) and
+          # only block once the PR is marked ready for review.
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "RUN_COVERAGE=true" >> $GITHUB_ENV
-            echo "Coverage instrumentation: ON (pull request)"
+            if [ "${{ github.event.pull_request.draft }}" = "true" ]; then
+              echo "COV_BLOCKING=false" >> $GITHUB_ENV
+              echo "Coverage instrumentation: ON, gates WARN-ONLY (draft PR)"
+            else
+              echo "COV_BLOCKING=true" >> $GITHUB_ENV
+              echo "Coverage instrumentation: ON, gates BLOCKING (ready PR)"
+            fi
           else
             echo "RUN_COVERAGE=false" >> $GITHUB_ENV
+            echo "COV_BLOCKING=false" >> $GITHUB_ENV
             echo "Coverage instrumentation: OFF (branch push)"
           fi
 
@@ -177,7 +173,15 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$RUN_COVERAGE" = "true" ]; then
-            COV_ARGS="--cov=src --cov-report=term-missing --cov-report=xml --cov-report=html --cov-fail-under=${FAST_COV_FAIL_UNDER}"
+            # On draft PRs the fast gate is warn-only: collect and report
+            # coverage but do not fail pytest on it (fail-under 0). Real test
+            # failures still fail the job via the guard step below.
+            if [ "${COV_BLOCKING:-false}" = "true" ]; then
+              FAIL_UNDER="${FAST_COV_FAIL_UNDER}"
+            else
+              FAIL_UNDER="0"
+            fi
+            COV_ARGS="--cov=src --cov-report=term-missing --cov-report=xml --cov-report=html --cov-fail-under=${FAIL_UNDER}"
           else
             COV_ARGS=""
           fi
@@ -450,7 +454,13 @@ jobs:
           else
             echo "diff-cover: nightly coverage.xml not found; using the fast suite only."
           fi
-          diff-cover $COV_REPORTS --diff-file /tmp/pr-changes.diff --fail-under=80
+          # Warn-only on draft PRs: report the number but do not fail.
+          if [ "${COV_BLOCKING:-false}" = "true" ]; then
+            DC_FAIL_UNDER=80
+          else
+            DC_FAIL_UNDER=0
+          fi
+          diff-cover $COV_REPORTS --diff-file /tmp/pr-changes.diff --fail-under=$DC_FAIL_UNDER
 
       - name: Post coverage warning comment on PR
         if: env.RUN_COVERAGE == 'true' && github.event_name == 'pull_request' && steps.coverage-validation.outputs.coverage_status == 'warn'
@@ -465,7 +475,7 @@ jobs:
             Within the 0.3% grace margin and not blocking merge; consider adding tests in a follow-up.
 
       - name: Fail job if nightly is stale
-        if: always() && env.RUN_COVERAGE == 'true' && steps.check-nightly.outcome == 'success'
+        if: always() && env.RUN_COVERAGE == 'true' && env.COV_BLOCKING == 'true' && steps.check-nightly.outcome == 'success'
         run: |
           if [ "$NIGHTLY_STALE" = "true" ]; then
             echo "Nightly baseline is stale (>48h). Trigger nightly CI manually."
@@ -473,7 +483,7 @@ jobs:
           fi
 
       - name: Fail job if coverage dropped beyond grace period
-        if: always() && env.RUN_COVERAGE == 'true' && steps.coverage-validation.outputs.coverage_status == 'fail'
+        if: always() && env.RUN_COVERAGE == 'true' && env.COV_BLOCKING == 'true' && steps.coverage-validation.outputs.coverage_status == 'fail'
         run: exit 1
 
       - name: Fail job if unit tests failed

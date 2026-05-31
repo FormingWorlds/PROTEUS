@@ -357,12 +357,12 @@ PROTEUS uses two coverage gates with explicit sub-targets. The fast gate is for 
 
 | Gate | Tests | Target | When |
 |---|---|---|---|
-| Fast gate (`tool.proteus.coverage_fast`) | unit + smoke | ratcheting toward **90%** (expected plateau around 60-75% because wrapper code requires real binaries) | Every PR |
-| Estimated total (PR union with nightly artifact) | unit + smoke + integration | **90%** (PROTEUS-ecosystem ceiling) | Every PR |
-| Full gate (`tool.coverage.report`) | unit + smoke + integration + slow | **90%** | Nightly |
-| Diff-cover | changed lines | 80% (hard-coded) | Every PR |
+| Fast gate (`tool.proteus.coverage_fast`) | unit-only (PR) | fixed **80%** | Every PR (warn-only on drafts) |
+| Estimated total (PR union with nightly artifact) | unit + smoke + integration | **90%** (PROTEUS-ecosystem ceiling) | Every PR (warn-only on drafts) |
+| Full gate (`tool.coverage.report`) | unit + smoke + integration + slow | fixed **90%** | Nightly |
+| Diff-cover | changed lines (fast + nightly union) | 80% (hard-coded; warn-only on drafts) | Every PR |
 
-Unit tests alone are not expected to reach 90%. Wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is covered by smoke / integration / slow tests in nightly; the nightly artifact is downloaded into PR runs and unioned with the PR's own coverage to estimate the total.
+Unit tests alone are not expected to reach 90%. Wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is covered by smoke / integration / slow tests in nightly; the nightly artifact is downloaded into PR runs and unioned with the PR's own coverage both for the estimated total and for the diff-cover gate. That is why the fast (unit-only) gate is held at a fixed 80% rather than chasing 90%.
 
 What this means for adding tests:
 
@@ -370,7 +370,7 @@ What this means for adding tests:
 - A new closed-form helper in a utility module: a unit test is sufficient.
 - A new orchestration function in `proteus.py` or `cli.py`: a unit test for argument parsing and dispatch, plus an integration test for the actual call path.
 
-The ratchet is one-way (`tools/update_coverage_threshold.py`), capped at 90%. Never manually decrease the threshold.
+The coverage ceilings are fixed, not ratcheting: `tools/update_coverage_threshold.py` holds `CEILINGS = {'fast': 80.0, 'full': 90.0}` and the PR threshold guard fails if either `fail_under` is edited away from its fixed value. Coverage gates run on draft PRs for visibility but are warn-only there; they block once the PR is marked ready for review.
 
 ---
 

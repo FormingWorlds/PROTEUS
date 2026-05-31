@@ -206,11 +206,11 @@ coverage report
 coverage html
 ```
 
-**Coverage thresholds** (in `pyproject.toml`; auto-ratcheting, never manually decreased):
+**Coverage thresholds** (in `pyproject.toml`; fixed ceilings, never lowered):
 
-- Fast gate (`[tool.proteus.coverage_fast]`, unit + smoke, every PR): ratcheting toward **90%** (the PROTEUS-ecosystem ceiling). Expected to plateau in the 60-75% band; unit tests alone cannot exercise wrapper paths that require real binaries.
-- Full gate (`[tool.coverage.report]`, unit + smoke + integration + slow, nightly): ratcheting toward **90%**.
-- Estimated total (PR unit/smoke union with nightly artifact, every PR): compared against the full gate. This is the 90% KPI; unit tests alone cannot reach it, the nightly tier fills the wrapper / binary code paths.
+- Fast gate (`[tool.proteus.coverage_fast]`, unit-only on PR, every PR): fixed at **80%**. Unit tests alone cannot exercise wrapper paths that require real binaries, so the fast gate is held at 80 rather than chasing 90. Warn-only on draft PRs; blocking once the PR is ready for review.
+- Full gate (`[tool.coverage.report]`, unit + smoke + integration + slow, nightly): fixed at **90%**.
+- Estimated total (PR unit coverage union with the latest nightly artifact, every PR): compared against the 90% full gate. This is the 90% KPI; the nightly tier fills the wrapper / binary code paths.
 
 See the `Coverage architecture` block in the Testing Standards section below for the contract.
 
@@ -246,13 +246,13 @@ pre-commit install -f
 
 **CI runs on PRs** (`.github/workflows/ci-pr-checks.yml`):
 
-1. **Unit tests**: `pytest -m "unit and not skip" --cov=src --cov-fail-under=$FAST_COV_FAIL_UNDER` (CI reads the current fast threshold from `pyproject.toml` `[tool.proteus.coverage_fast]`; auto-ratcheted, capped at 90%)
+1. **Unit tests**: `pytest -m "unit and not skip" --cov=src --cov-fail-under=$FAST_COV_FAIL_UNDER` (CI reads the fast threshold from `pyproject.toml` `[tool.proteus.coverage_fast]`; fixed at 80%, warn-only on draft PRs)
 2. **Smoke tests**: `pytest -m "smoke and not skip"`
 3. **Lint**: `ruff check src/ tests/` and `ruff format --check src/ tests/`
 4. **Diff-cover**: 80% on changed lines, fast-suite coverage unioned with the latest nightly coverage (enforced)
 5. **Test structure**: `bash tools/validate_test_structure.sh`
 
-**All must pass** before merge. Coverage thresholds auto-ratchet upward (never decrease).
+**All must pass** before merge. Coverage gates are warn-only on draft PRs and block once the PR is ready for review. Coverage ceilings are fixed (fast 80%, full 90%) and never lowered.
 
 ## Project Layout
 
@@ -437,12 +437,12 @@ PROTEUS uses two gates with explicit sub-targets:
 
 | Gate | Tests included | Target | Enforced |
 |---|---|---|---|
-| Fast gate (`tool.proteus.coverage_fast.fail_under`) | unit + smoke | Ratcheting toward **90%** (expected plateau ~60-75%) | Every PR |
-| Estimated total (PR unit/smoke union with latest nightly artifact) | unit + smoke + integration | **90%** (the PROTEUS-ecosystem ceiling) | Every PR |
-| Full gate (`tool.coverage.report.fail_under`) | unit + smoke + integration + slow | **90%** | Nightly only |
-| Diff-cover | changed lines (fast + nightly union) | 80% (hard-coded) | Every PR |
+| Fast gate (`tool.proteus.coverage_fast.fail_under`) | unit-only (PR) | Fixed **80%** | Every PR (warn-only on drafts) |
+| Estimated total (PR unit coverage union with latest nightly artifact) | unit + smoke + integration | **90%** (the PROTEUS-ecosystem ceiling) | Every PR (warn-only on drafts) |
+| Full gate (`tool.coverage.report.fail_under`) | unit + smoke + integration + slow | Fixed **90%** | Nightly only |
+| Diff-cover | changed lines (fast + nightly union) | 80% (hard-coded; warn-only on drafts) | Every PR |
 
-**What this means for contributors**: 90% is the PROTEUS-ecosystem coverage ceiling and it applies EVERYWHERE. Both gates ratchet toward 90, capped at 90 (`tools/update_coverage_threshold.py` enforces `ECOSYSTEM_CEILING = 90.0`); neither gate ratchets above the ceiling and neither may be manually decreased. Unit tests alone are not expected to actually REACH 90 because wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is exercised by smoke + integration tests in nightly; the fast gate will plateau wherever unit + smoke coverage actually lands (typically 60-75%). The 90% target is reached via the estimated-total: the PR's unit/smoke coverage is unioned with the latest nightly artifact and compared against the full gate.
+**What this means for contributors**: the coverage ceilings are fixed, not ratcheting: the fast (unit-only) gate is held at **80%** and the full gate at the **90%** PROTEUS-ecosystem target (`tools/update_coverage_threshold.py` enforces `CEILINGS = {'fast': 80.0, 'full': 90.0}` and the PR threshold guard fails if either is edited away from its fixed value). Unit tests alone are not expected to reach 90% because wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is exercised only by the nightly tiers; that is why the fast gate sits at 80, not 90. The 90% target is reached via the estimated-total: the PR's unit coverage is unioned with the latest nightly artifact and compared against the full gate, and the diff-cover gate unions the fast and nightly reports the same way. Coverage gates run on draft PRs for visibility but are warn-only there; they block once the PR is marked ready for review.
 
 Reports: `pytest --cov=src --cov-report=html` and open `htmlcov/index.html`. Module-level analysis: `bash tools/coverage_analysis.sh`. Diff-cover reasoning is documented in `docs/How-to/test_infrastructure.md`.
 
@@ -537,7 +537,7 @@ pytest --pdb                        # Drop into debugger on failure
 ## Important Notes
 
 - **CI caching**: ubuntu-latest + macos-latest runners with `actions/cache` for SOCRATES build, Julia depot, FWL_DATA, AGNI clone, pip wheels. Composite action `.github/actions/setup-proteus` handles platform-aware setup. Cache keys derive from `[tool.proteus.modules]` in pyproject.toml plus `.github/data-manifest.yaml`.
-- **Coverage ratcheting**: Thresholds auto-increase when coverage improves (committed by `github-actions[bot]`), capped at the 90% PROTEUS-ecosystem ceiling. Never manually decrease.
+- **Coverage ceilings**: Fixed at 80% (fast, unit-only) and 90% (full); enforced by `tools/update_coverage_threshold.py` and the PR threshold guard. Gates are warn-only on draft PRs and block once the PR is ready for review.
 - **Test placeholders**: Some tests marked `@pytest.mark.skip` are placeholders. Excluded from CI.
 - **Windows**: Not supported. Linux/macOS only.
 - **Python version**: Must be 3.12 (PETSc/SPIDER require Python <= 3.12).

@@ -222,3 +222,84 @@ def test_valid_aerosols_enabled_no_op_when_disabled():
     result = valid_aerosols_enabled(instance, SimpleNamespace(name='aerosols_enabled'), False)
     assert result is None  # contract: validator returns None silently on the pass path
     assert instance.module == 'dummy'  # validator must not mutate the input instance
+
+
+# ============================================================================
+# valid_agni: pressure-ordering and surface-state guards
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_valid_agni_rejects_p_top_above_psurf_thresh():
+    """`p_top` must sit below AGNI's `psurf_thresh`, otherwise the top-of-
+    atmosphere pressure is above the surface threshold and the column is
+    ill-posed; the validator raises."""
+    instance = _make_agni_instance(p_top=2.0)  # psurf_thresh defaults to 1.0
+    with pytest.raises(ValueError, match='p_top'):
+        valid_agni(instance, attribute=None, value=None)
+    # Discrimination: a p_top safely below psurf_thresh passes, so the guard
+    # is the ordering, not any non-default p_top.
+    instance.p_top = 1e-4
+    assert valid_agni(instance, attribute=None, value=None) is None
+
+
+@pytest.mark.unit
+def test_valid_agni_rejects_p_top_above_p_obs():
+    """`p_top` must also sit below the observation pressure `p_obs`; a p_top
+    below psurf_thresh but above p_obs is still rejected."""
+    # p_top=1e-2 is below psurf_thresh (1.0) but above p_obs (1e-3).
+    instance = _make_agni_instance(p_top=1e-2)
+    with pytest.raises(ValueError, match='p_obs'):
+        valid_agni(instance, attribute=None, value=None)
+    # Discrimination: lowering p_top below p_obs on the same instance passes,
+    # so the rejection is the p_top/p_obs ordering specifically.
+    instance.p_top = 1e-5
+    assert valid_agni(instance, attribute=None, value=None) is None
+
+
+@pytest.mark.unit
+def test_valid_agni_rejects_mixed_layer_surf_state():
+    """AGNI has no mixed-layer surface boundary condition; selecting it raises
+    rather than silently falling back to a different state."""
+    instance = _make_agni_instance(surf_state='mixed_layer')
+    with pytest.raises(ValueError, match='mixed_layer'):
+        valid_agni(instance, attribute=None, value=None)
+    # Discrimination: a supported surf_state on the same instance passes, so
+    # the rejection is mixed_layer specifically, not any non-default state.
+    instance.surf_state = 'skin'
+    assert valid_agni(instance, attribute=None, value=None) is None
+
+
+# ============================================================================
+# AtmosClim properties: surf_state_int and albedo_from_file
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_surf_state_int_maps_skin_and_rejects_unknown():
+    """`surf_state_int` maps the AGNI surface state to the integer code the
+    Julia side expects: 'skin' -> 2, with an unknown state raising."""
+    from proteus.config._atmos_clim import AtmosClim
+
+    assert AtmosClim.surf_state_int.fget(SimpleNamespace(surf_state='skin')) == 2
+    # Discrimination: 'fixed' maps to a different code (1), so the property is
+    # a real mapping, not a constant.
+    assert AtmosClim.surf_state_int.fget(SimpleNamespace(surf_state='fixed')) == 1
+    # Error contract: an unsupported state raises rather than returning a
+    # silent default integer.
+    with pytest.raises(ValueError, match='surf_state'):
+        AtmosClim.surf_state_int.fget(SimpleNamespace(surf_state='mixed_layer'))
+
+
+@pytest.mark.unit
+def test_albedo_from_file_distinguishes_str_and_float():
+    """`albedo_from_file` is True for a lookup-table path (str), False for a
+    fixed float, and raises for anything else."""
+    from proteus.config._atmos_clim import AtmosClim
+
+    assert AtmosClim.albedo_from_file.fget(SimpleNamespace(albedo_pl='table.csv')) is True
+    # Discrimination: a float albedo is a fixed value, not a file.
+    assert AtmosClim.albedo_from_file.fget(SimpleNamespace(albedo_pl=0.3)) is False
+    # Error contract: a type that is neither str nor float is rejected.
+    with pytest.raises(ValueError, match='albedo_pl'):
+        AtmosClim.albedo_from_file.fget(SimpleNamespace(albedo_pl=None))

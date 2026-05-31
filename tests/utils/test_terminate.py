@@ -305,3 +305,38 @@ def test_check_termination_strict_resets_if_condition_lost(monkeypatch, patch_st
     assert h.finished_prev is False
     # No new statusfile entries added beyond initial attempt
     assert patch_statusfile[-1][1] == 13
+
+
+class TestPrintTerminationCriteria:
+    """print_termination_criteria: summary logging of active stop conditions."""
+
+    def test_logs_active_criteria_and_warns_on_prevent_warming(self, caplog):
+        """The summary lists every stop criterion and, when
+        planet.prevent_warming is set, re-emits the monotonic-cooling advisory
+        into the run log (where the config-load advisory would otherwise be
+        missed)."""
+        import logging
+
+        cfg = _cfg()
+        cfg.planet.prevent_warming = True
+        with caplog.at_level(logging.INFO, logger='fwl.proteus.utils.terminate'):
+            terminate.print_termination_criteria(cfg)
+        text = caplog.text
+        assert 'Active termination criteria' in text
+        # Each configured criterion is named in the summary.
+        assert 'Solidification' in text and 'Maximum loops' in text
+        # prevent_warming=True must surface the advisory.
+        assert 'prevent_warming = true' in text
+
+    def test_no_prevent_warming_advisory_when_disabled(self, caplog):
+        """With prevent_warming False (the default), the advisory is suppressed
+        while the criteria summary is still emitted."""
+        import logging
+
+        cfg = _cfg()  # planet.prevent_warming defaults to False
+        with caplog.at_level(logging.INFO, logger='fwl.proteus.utils.terminate'):
+            terminate.print_termination_criteria(cfg)
+        text = caplog.text
+        assert 'Active termination criteria' in text
+        # Discrimination: the advisory is gated on the flag, not always emitted.
+        assert 'prevent_warming = true' not in text

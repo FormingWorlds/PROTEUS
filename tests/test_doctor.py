@@ -10,6 +10,7 @@ Testing standards:
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from unittest.mock import Mock, patch
@@ -24,11 +25,16 @@ from proteus.doctor import (
     _editable_checkout_path,
     _git_dirty,
     _git_head,
+    _git_short_head,
+    _imported_package_dir,
+    _julia_version,
     check_env_var,
     check_fwl_data,
     check_julia,
     check_python_package,
+    doctor_entry,
     run_all_checks,
+    update_entry,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -380,3 +386,268 @@ class TestRunAllChecks:
         for r in results:
             assert isinstance(r, CheckResult)
             assert r.status in (PASS, WARN, FAIL)
+
+
+def _mixed_results() -> list[CheckResult]:
+    """A pass + a fixable fail + a fixable warn, mirroring a real diagnose run."""
+    return [
+        CheckResult('FWL_DATA', 'environment', PASS, '/data', None),
+        CheckResult('Julia', 'environment', FAIL, 'not found', 'curl -fsSL https://x | sh'),
+        CheckResult('fwl-mors', 'versions', WARN, 'outdated', 'pip install -U fwl-mors'),
+    ]
+
+
+class TestDoctorEntry:
+    """`proteus doctor` reporting (doctor_entry)."""
+
+    def test_json_output_serialises_every_result(self, capsys):
+        """`--json` prints a parseable array carrying each check's status and
+        fix command, not a human-readable summary."""
+        with patch('proteus.doctor.run_all_checks', return_value=_mixed_results()):
+            doctor_entry(output_json=True)
+        parsed = json.loads(capsys.readouterr().out)
+        assert len(parsed) == 3
+        assert {r['name'] for r in parsed} == {'FWL_DATA', 'Julia', 'fwl-mors'}
+        # Discrimination: the failing check carries its fix command through to
+        # JSON; a regression that dropped fix_cmd would surface here.
+        julia = next(r for r in parsed if r['name'] == 'Julia')
+        assert julia['status'] == FAIL and julia['fix_cmd']
+
+    def test_human_output_counts_failures_and_points_to_update(self, capsys):
+        """Human output tallies failures and warnings and suggests `proteus
+        update` when fixable issues remain."""
+        with patch('proteus.doctor.run_all_checks', return_value=_mixed_results()):
+            doctor_entry()
+        out = capsys.readouterr().out
+        assert '1 failed' in out and '1 warnings' in out
+        assert 'proteus update' in out
+        # Discrimination: the all-clear line must be absent when checks fail.
+        assert 'All checks passed.' not in out
+
+    def test_all_pass_reports_clear_and_no_update_hint(self, capsys):
+        """With every check passing, the summary is the all-clear line and the
+        update hint is suppressed."""
+        with patch(
+            'proteus.doctor.run_all_checks',
+            return_value=[CheckResult('FWL_DATA', 'environment', PASS, '/data', None)],
+        ):
+            doctor_entry()
+        out = capsys.readouterr().out
+        assert 'All checks passed.' in out
+        # Discrimination: no failure tally and no fix suggestion on a clean run.
+        assert 'failed' not in out and 'proteus update' not in out
+
+
+class TestUpdateEntry:
+    """`proteus update` fix execution (update_entry)."""
+
+    def test_nothing_to_fix_returns_early(self, capsys):
+        """When no check is both failing and fixable, update reports nothing to
+        do and does not enter the dry-run/fix path."""
+        with patch(
+            'proteus.doctor.run_all_checks',
+            return_value=[CheckResult('FWL_DATA', 'environment', PASS, '/data', None)],
+        ):
+            update_entry(dry_run=True)
+        out = capsys.readouterr().out
+        assert 'Nothing to update' in out
+        # Discrimination: early return means the dry-run banner never prints.
+        assert 'Dry run' not in out
+
+    def test_dry_run_lists_fixes_without_executing(self, capsys):
+        """Dry run lists the fixable commands but executes none of them."""
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=_mixed_results()),
+            patch('proteus.doctor.subprocess.run') as mock_run,
+        ):
+            update_entry(dry_run=True)
+        out = capsys.readouterr().out
+        assert 'Dry run' in out
+        assert 'pip install -U fwl-mors' in out
+        # Error contract: dry run must not execute any fix command.
+        assert mock_run.call_count == 0
+
+    def test_executes_each_fix_from_repo_root_then_rechecks(self, tmp_path):
+        """A real update runs one command per fixable check from the repo root
+        and re-runs the diagnostics afterwards."""
+        (tmp_path / 'tools').mkdir()
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=_mixed_results()),
+            patch('proteus.doctor._repo_root', return_value=tmp_path),
+            patch('proteus.doctor.subprocess.run') as mock_run,
+            patch('proteus.doctor.doctor_entry') as mock_recheck,
+        ):
+            update_entry(dry_run=False)
+        # Two fixable checks (Julia + mors) -> two commands.
+        assert mock_run.call_count == 2
+        # Commands run from the repo root, not the process cwd.
+        assert all(c.kwargs.get('cwd') == str(tmp_path) for c in mock_run.call_args_list)
+        # Diagnostics re-run exactly once after the fixes.
+        assert mock_recheck.call_count == 1
+
+    def test_refuses_to_fix_without_tools_directory(self, capsys, tmp_path):
+        """A wheel install (no tools/ directory) cannot run fix commands; update
+        refuses rather than executing anything."""
+        # tmp_path deliberately has no tools/ subdirectory.
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=_mixed_results()),
+            patch('proteus.doctor._repo_root', return_value=tmp_path),
+            patch('proteus.doctor.subprocess.run') as mock_run,
+        ):
+            update_entry(dry_run=False)
+        out = capsys.readouterr().out
+        # The refusal is reported to the user with the reason.
+        assert 'Cannot run fix commands' in out
+        # Error contract: nothing executed when the source tree is absent.
+        assert mock_run.call_count == 0
+
+    def test_reports_command_failure_and_continues_batch(self, capsys, tmp_path):
+        """A fix command that exits non-zero is reported with its return code,
+        and the remaining fixes still run (one failure does not abort the run)."""
+        (tmp_path / 'tools').mkdir()
+        boom = subprocess.CalledProcessError(returncode=2, cmd='boom')
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=_mixed_results()),
+            patch('proteus.doctor._repo_root', return_value=tmp_path),
+            patch('proteus.doctor.subprocess.run', side_effect=[boom, Mock()]) as mock_run,
+            patch('proteus.doctor.doctor_entry'),
+        ):
+            update_entry(dry_run=False)
+        out = capsys.readouterr().out
+        assert 'command failed' in out
+        # Discrimination: the exit code is surfaced, and the second fix still ran.
+        assert 'exit 2' in out
+        assert mock_run.call_count == 2
+
+
+class TestGitAndJuliaHelpers:
+    """Subprocess-backed version/SCM helpers (mocked subprocess)."""
+
+    def test_git_short_head_returns_hash(self):
+        """A successful `git rev-parse --short HEAD` is stripped and returned."""
+        with patch('proteus.doctor.subprocess.check_output', return_value='a1b2c3d\n'):
+            head = _git_short_head('/some/repo')
+        assert head == 'a1b2c3d'
+        # Discrimination: the trailing newline is stripped, not returned raw.
+        assert '\n' not in head
+
+    def test_git_short_head_none_on_error(self):
+        """A non-git path (CalledProcessError) yields None, not an exception."""
+        err = subprocess.CalledProcessError(returncode=128, cmd='git')
+        with patch('proteus.doctor.subprocess.check_output', side_effect=err):
+            assert _git_short_head('/not/a/repo') is None
+        # Error contract: a missing git binary is also swallowed to None.
+        with patch('proteus.doctor.subprocess.check_output', side_effect=FileNotFoundError):
+            assert _git_short_head('/not/a/repo') is None
+
+    def test_julia_version_parses_last_token(self):
+        """`julia --version` output is parsed to its trailing version token."""
+        with patch(
+            'proteus.doctor.subprocess.check_output',
+            return_value='julia version 1.11.2\n',
+        ):
+            assert _julia_version() == '1.11.2'
+        # Discrimination: the word 'version' is not returned; only the number.
+        with patch(
+            'proteus.doctor.subprocess.check_output',
+            return_value='julia version 1.10.0\n',
+        ):
+            assert _julia_version() == '1.10.0'
+
+    def test_julia_version_none_when_missing(self):
+        """A missing or erroring julia binary yields None rather than raising;
+        a working julia returns its parsed version."""
+        with patch('proteus.doctor.subprocess.check_output', side_effect=FileNotFoundError):
+            assert _julia_version() is None
+        # A non-zero exit (CalledProcessError) is also swallowed to None.
+        err = subprocess.CalledProcessError(returncode=1, cmd='julia')
+        with patch('proteus.doctor.subprocess.check_output', side_effect=err):
+            assert _julia_version() is None
+        # Discrimination: a working julia returns the version string, so None
+        # is the error signal rather than a constant return.
+        with patch(
+            'proteus.doctor.subprocess.check_output',
+            return_value='julia version 1.11.2\n',
+        ):
+            assert _julia_version() == '1.11.2'
+
+
+class TestEditableAndImportedPaths:
+    """Editable-install resolution and the import-path cross-check."""
+
+    def test_editable_checkout_returns_file_path(self):
+        """An editable install with a file:// direct_url returns its on-disk
+        path, with URL-encoding decoded."""
+        dist = Mock()
+        dist.read_text.return_value = json.dumps(
+            {'url': 'file:///home/me/my%20pkg', 'dir_info': {'editable': True}}
+        )
+        with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
+            path = _editable_checkout_path('fwl-aragog')
+        assert path == '/home/me/my pkg'  # %20 decoded to a space
+        # Discrimination: a non-file URL on an otherwise-editable dist is not
+        # treated as a local checkout.
+        dist.read_text.return_value = json.dumps(
+            {'url': 'https://x/y', 'dir_info': {'editable': True}}
+        )
+        with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
+            assert _editable_checkout_path('fwl-aragog') is None
+
+    def test_editable_checkout_none_for_non_editable(self):
+        """A regular (non-editable) install returns None even though it has a
+        direct_url, so the editable annotation is not falsely shown."""
+        dist = Mock()
+        dist.read_text.return_value = json.dumps(
+            {'url': 'file:///opt/pkg', 'dir_info': {'editable': False}}
+        )
+        with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
+            assert _editable_checkout_path('fwl-aragog') is None
+        # Error contract: malformed direct_url.json is swallowed to None.
+        dist.read_text.return_value = '{not valid json'
+        with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
+            assert _editable_checkout_path('fwl-aragog') is None
+
+    def test_imported_package_dir_from_top_level(self):
+        """The import path is resolved via top_level.txt and find_spec, returning
+        the directory of the module that ``import`` would actually load."""
+        dist = Mock()
+        dist.read_text.return_value = 'aragog\n'
+        spec = Mock()
+        spec.origin = '/env/site-packages/aragog/__init__.py'
+        with (
+            patch('proteus.doctor.importlib.metadata.distribution', return_value=dist),
+            patch('proteus.doctor.importlib.util.find_spec', return_value=spec),
+        ):
+            path = _imported_package_dir('fwl-aragog')
+        assert path == '/env/site-packages/aragog'
+        # Discrimination: the file name is stripped to its directory.
+        assert not path.endswith('__init__.py')
+
+    def test_imported_package_dir_none_when_unresolvable(self):
+        """When find_spec cannot locate the module (or the spec has no origin),
+        the helper returns None instead of raising; a resolvable spec returns
+        its directory."""
+        dist = Mock()
+        dist.read_text.return_value = 'aragog\n'
+        with (
+            patch('proteus.doctor.importlib.metadata.distribution', return_value=dist),
+            patch('proteus.doctor.importlib.util.find_spec', return_value=None),
+        ):
+            assert _imported_package_dir('fwl-aragog') is None
+        # A namespace-style spec with no origin is also unresolvable.
+        spec_no_origin = Mock()
+        spec_no_origin.origin = None
+        with (
+            patch('proteus.doctor.importlib.metadata.distribution', return_value=dist),
+            patch('proteus.doctor.importlib.util.find_spec', return_value=spec_no_origin),
+        ):
+            assert _imported_package_dir('fwl-aragog') is None
+        # Discrimination: a spec with an origin returns its directory, so None
+        # is the unresolvable signal rather than a constant.
+        spec_ok = Mock()
+        spec_ok.origin = '/x/aragog/__init__.py'
+        with (
+            patch('proteus.doctor.importlib.metadata.distribution', return_value=dist),
+            patch('proteus.doctor.importlib.util.find_spec', return_value=spec_ok),
+        ):
+            assert _imported_package_dir('fwl-aragog') == '/x/aragog'
