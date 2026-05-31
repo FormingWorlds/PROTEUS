@@ -22,6 +22,28 @@ def test_calliope_defaults():
     assert c.include_CO2 is True
     assert c.include_N2 is True
     assert c.solubility is True
+    # The cold-start pressure ceiling defaults to CALLIOPE's own 1e5 bar, so
+    # the default PROTEUS config leaves the solver guess range unchanged.
+    assert c.p_guess_max == pytest.approx(1.0e5)
+
+
+@pytest.mark.unit
+def test_calliope_p_guess_max_validator_and_override():
+    """p_guess_max accepts a raised positive value (sub-Neptune use) and
+    rejects a non-positive ceiling, which would invert the log-uniform draw
+    range and make every cold-start guess invalid."""
+    from proteus.config._outgas import Calliope
+
+    # A raised ceiling is accepted and stored verbatim.
+    c = Calliope(p_guess_max=1.0e8)
+    assert c.p_guess_max == pytest.approx(1.0e8)
+    # Discrimination: the override is honoured, not silently reset to the default.
+    assert c.p_guess_max != pytest.approx(1.0e5)
+
+    # Non-positive ceilings are rejected by the gt(0) validator.
+    for bad in (0.0, -1.0e5):
+        with pytest.raises(ValueError):
+            Calliope(p_guess_max=bad)
 
 
 @pytest.mark.unit

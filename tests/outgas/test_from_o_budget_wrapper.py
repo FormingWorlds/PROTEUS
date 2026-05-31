@@ -108,6 +108,7 @@ def _make_from_o_budget_config(fO2_shift_IW: float = 4.0):
     config.outgas.solver_rtol = 1e-5
     config.outgas.calliope.nguess = 100
     config.outgas.calliope.nsolve = 500
+    config.outgas.calliope.p_guess_max = 5.0e6  # distinctive (non-default) for forwarding test
     config.outgas.calliope.solubility = True
     for s in vol_list:
         setattr(config.outgas.calliope, f'include_{s}', True)
@@ -269,6 +270,46 @@ def test_legacy_dispatches_to_legacy_entry_point():
         for e in ('H', 'C', 'N', 'S'):
             assert e in target_arg, f'target missing required element {e!r}'
         assert 'O' not in target_arg, "legacy path must not pass 'O' as a target"
+
+
+@pytest.mark.unit
+def test_p_guess_max_forwarded_to_calliope_both_dispatch_branches():
+    """The wrapper forwards ``config.outgas.calliope.p_guess_max`` to CALLIOPE's
+    cold-start pressure draw, on both dispatch branches, so a sub-Neptune run can
+    widen the guess from the config. The builder sets a distinctive 5e6 bar, so
+    the assertion discriminates a wrapper that forwards the config value from one
+    that drops it or hard-codes CALLIOPE's 1e5 default."""
+    dirs = {'output': '/tmp/test'}
+    expected_p_max = 5.0e6  # matches the distinctive value in the config builder
+
+    # from_O_budget -> authoritative-O entry point
+    config = _make_from_o_budget_config()
+    assert config.outgas.calliope.p_guess_max == pytest.approx(expected_p_max)
+    with (
+        patch(
+            'proteus.outgas.calliope.equilibrium_atmosphere_authoritative_O',
+            return_value=_make_solvevol_result(fO2_derived=2.5, O_res=1.0),
+        ) as mock_new,
+        patch('proteus.outgas.calliope.equilibrium_atmosphere'),
+    ):
+        calc_surface_pressures(dirs, config, _earth_hf_row())
+        assert mock_new.call_args.kwargs['p_max'] == pytest.approx(expected_p_max)
+        # Discrimination: not CALLIOPE's 1e5 default (a dropped forward).
+        assert mock_new.call_args.kwargs['p_max'] != pytest.approx(1.0e5)
+
+    # user_constant -> legacy entry point
+    config = _make_from_o_budget_config()
+    config.planet.fO2_source = 'user_constant'
+    with (
+        patch(
+            'proteus.outgas.calliope.equilibrium_atmosphere',
+            return_value=_make_solvevol_result(),
+        ) as mock_legacy,
+        patch('proteus.outgas.calliope.equilibrium_atmosphere_authoritative_O'),
+    ):
+        calc_surface_pressures(dirs, config, _earth_hf_row())
+        assert mock_legacy.call_args.kwargs['p_max'] == pytest.approx(expected_p_max)
+        assert mock_legacy.call_args.kwargs['p_max'] != pytest.approx(1.0e5)
 
 
 # ---------------------------------------------------------------------------

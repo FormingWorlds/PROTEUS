@@ -39,6 +39,11 @@ class Calliope:
     nsolve: int
         Maximum number of iterations of the CALLIOPE equilibrium
         solver per call. Default 3000.
+    p_guess_max: float
+        Upper bound [bar] of the CALLIOPE Monte-Carlo cold-start surface-
+        pressure draw. Raise it above the default for high-pressure (e.g.
+        sub-Neptune) cases whose surface pressure can exceed the default; the
+        CALLIOPE solver box is unchanged. Default 1e5.
     """
 
     include_H2O: bool = field(default=True)
@@ -54,6 +59,7 @@ class Calliope:
     solubility: bool = field(default=True)
     nguess: int = field(default=int(1e3), validator=validators.gt(0))
     nsolve: int = field(default=int(3e3), validator=validators.gt(0))
+    p_guess_max: float = field(default=1.0e5, validator=validators.gt(0))
 
     def is_included(self, vol: str) -> bool:
         """Helper method for getting flag if `vol` is included in outgassing."""
