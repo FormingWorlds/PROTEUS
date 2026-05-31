@@ -6,7 +6,7 @@ name: CI - Fast PR Checks
 #   2. actions/cache restores SOCRATES build, Julia depot, FWL_DATA between runs
 #   3. Run @pytest.mark.unit tests with mocked physics
 #   4. Linux job also computes estimated total coverage by union with the
-#      latest nightly artifact, runs diff-cover, ratchets the fast threshold.
+#      latest nightly artifact and runs diff-cover against the fixed ceilings.
 #   5. macOS job runs unit tier only (parity at the level that catches
 #      Apple Silicon / dyld / brew issues; the heavier tiers run nightly).
 #
@@ -39,7 +39,8 @@ defaults:
     shell: bash -el {0}
 
 permissions:
-  contents: write  # Allow auto-commit of ratcheted coverage thresholds
+  contents: read
+  pull-requests: write  # Post the coverage notice comment
   packages: read
   actions: read    # Required to download artifact from last nightly run
 
@@ -422,6 +423,19 @@ jobs:
           else:
               status = "fail"
 
+          # When the nightly artifact is genuinely unavailable (download
+          # failure, retention expiry, never run on a fork, or an empty-report
+          # fallback with no per-file data), the union collapses to unit-only
+          # coverage, which cannot reach the full-gate target. That is a
+          # missing input, not a real regression, so it must not block: report
+          # it as a warning instead of a hard failure.
+          nightly_unavailable = (
+              os.environ.get("NIGHTLY_MISSING", "false") == "true"
+              or not i_data.get("files")
+          )
+          if nightly_unavailable and status == "fail":
+              status = "warn"
+
           out = pathlib.Path(os.environ["GITHUB_OUTPUT"])
           with out.open("a") as f:
               f.write(f"unit_pct={u_pct}\n")
@@ -434,6 +448,7 @@ jobs:
               f.write(f"threshold={full_threshold}\n")
               f.write(f"coverage_status={status}\n")
               f.write(f"coverage_drop={drop:.2f}\n")
+              f.write(f"nightly_unavailable={'true' if nightly_unavailable else 'false'}\n")
 
           print(f"Unit: {u_pct:.2f}% ({u_covered}/{u_total})")
           print(f"Nightly combined: {nightly_pct:.2f}%")
@@ -470,17 +485,19 @@ jobs:
           fi
           diff-cover $COV_REPORTS --diff-file /tmp/pr-changes.diff --fail-under=$DC_FAIL_UNDER
 
-      - name: Post coverage warning comment on PR
-        if: env.RUN_COVERAGE == 'true' && github.event_name == 'pull_request' && steps.coverage-validation.outputs.coverage_status == 'warn'
+      - name: Post coverage notice comment on PR
+        if: env.RUN_COVERAGE == 'true' && github.event_name == 'pull_request' && steps.coverage-validation.outputs.coverage_status != 'ok'
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            ## Coverage Warning
+            ## Coverage Notice
 
-            This PR reduces test coverage by **${{ steps.coverage-validation.outputs.coverage_drop }}%** (from ${{ steps.coverage-validation.outputs.threshold }}% to ${{ steps.coverage-validation.outputs.estimated_total }}%).
+            Estimated total coverage (PR unit tests unioned with the latest nightly artifact): **${{ steps.coverage-validation.outputs.estimated_total }}%** against the **${{ steps.coverage-validation.outputs.threshold }}%** target.
 
-            Within the 0.3% grace margin and not blocking merge; consider adding tests in a follow-up.
+            Coverage gates are warn-only on draft PRs and block once the PR is marked ready for review, so a gap that is visible here while drafting will block on undraft. Add tests to close it before then.
+
+            If the nightly artifact was unavailable for this run (`nightly_unavailable=${{ steps.coverage-validation.outputs.nightly_unavailable }}`), this number reflects unit-only coverage and understates the real total.
 
       - name: Fail job if nightly is stale
         if: always() && env.RUN_COVERAGE == 'true' && env.COV_BLOCKING == 'true' && steps.check-nightly.outcome == 'success'
@@ -497,28 +514,6 @@ jobs:
       - name: Fail job if unit tests failed
         if: always() && steps.unit-tests.outcome == 'failure'
         run: exit 1
-
-      - name: Ratchet fast coverage threshold
-        if: env.RUN_COVERAGE == 'true'
-        run: |
-          python tools/update_coverage_threshold.py \
-            --coverage-file coverage-unit.json \
-            --target fast || [ $? -eq 1 ]
-
-      - name: Commit ratcheted threshold (if changed)
-        if: env.RUN_COVERAGE == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        continue-on-error: true
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet pyproject.toml; then
-            echo "No threshold changes to commit"
-          else
-            git add pyproject.toml
-            COVERAGE=$(grep -A5 '\[tool.proteus.coverage_fast\]' pyproject.toml | grep 'fail_under' | awk '{print $3}')
-            git commit -m "ratchet: Auto-update fast coverage threshold to ${COVERAGE}% [skip ci]"
-            git push
-          fi
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v6
