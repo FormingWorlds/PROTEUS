@@ -15,9 +15,6 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 # Constants
-LBAVG = 3  # Number of steps to average over
-SFINC = 1.6  # Scale factor for step size increase
-SFDEC = 0.8  # Scale factor for step size decrease
 SMALL = 1e-8  # Small number
 
 
@@ -157,14 +154,14 @@ def next_step(
         dtswitch = 1.0
         log.info('Time-stepping intent: static')
 
-    elif LBAVG + 5 >= len(hf_all['Time']):
+    elif config.params.dt.adaptive.window + 5 >= len(hf_all['Time']):
         dtswitch = config.params.dt.initial
         log.info('Time-stepping intent: initial')
 
     else:
         i2 = -1
         i1 = -2
-        i0 = i1 - LBAVG
+        i0 = i1 - config.params.dt.adaptive.window
 
         # Proportional time-step calculation
         if config.params.dt.method == 'proportional':
@@ -194,14 +191,14 @@ def next_step(
             dt_rtol = config.params.dt.adaptive.rtol
             dt_atol = config.params.dt.adaptive.atol
             speed_up = True
-            speed_up = speed_up and (F_atm_12 < dt_rtol * abs(F_atm_2) + dt_atol)
-            speed_up = speed_up and (phi_12 < dt_rtol * abs(phi_2) + dt_atol)
+            speed_up = speed_up and (F_atm_12 < dt_rtol * abs(F_atm_1) + dt_atol)
+            speed_up = speed_up and (phi_12 < dt_rtol * abs(phi_1) + dt_atol)
 
             if speed_up:
-                dtswitch = dtprev * SFINC
+                dtswitch = dtprev * config.params.dt.adaptive.scale_incr
                 log.info('Time-stepping intent: speed up')
             else:
-                dtswitch = dtprev * SFDEC
+                dtswitch = dtprev * config.params.dt.adaptive.scale_decr
                 log.info('Time-stepping intent: slow down')
 
             # Do not allow step size to exceed predicted point of termination
@@ -225,13 +222,20 @@ def next_step(
         # Step scale factor (is always <= 1.0)
         dtswitch *= step_sf
 
-        # Max step size
-        dtswitch = min(dtswitch, config.params.dt.maximum)
-
         # Min step size
         dtminimum = config.params.dt.minimum  # absolute
         dtminimum += config.params.dt.minimum_rel * hf_row['Time']  # allow small steps
         dtswitch = max(dtswitch, dtminimum)
+
+        # Max step size
+        #   tolerances
+        dtmaximum = config.params.dt.maximum  # absolute
+        dtmaximum += config.params.dt.maximum_rel * hf_row['Time']  # allow large
+        #   prevent overshooting
+        if config.params.stop.time.enabled:
+            maxtime = config.params.stop.time.maximum
+            dtmaximum = min(dtmaximum, max(1, maxtime - hf_row['Time']))
+        dtswitch = min(dtswitch, dtmaximum)
 
     log.info('New time-step target is %.2e years' % dtswitch)
     return dtswitch

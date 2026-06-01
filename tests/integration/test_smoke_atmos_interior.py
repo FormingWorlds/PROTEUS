@@ -123,6 +123,46 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
 
 
 @pytest.mark.smoke
+def test_smoke_dummy_atmos_dummy_interior_prevent_warming_bounds():
+    """prevent_warming keeps interior fields bounded in a coupled smoke run."""
+    import uuid
+
+    unique_id = str(uuid.uuid4())[:8]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+        runner = Proteus(config_path=config_path)
+
+        runner.config.params.out.path = str(Path(tmpdir) / f'smoke_pw_{unique_id}')
+        runner.init_directories()
+
+        runner.config.atmos_clim.prevent_warming = True
+        runner.config.interior.dummy.ini_tmagma = 2000.0
+        runner.config.params.stop.time.minimum = 1e2
+        runner.config.params.stop.time.maximum = 1e3
+        runner.config.params.out.plot_mod = 0
+        runner.config.params.out.write_mod = 0
+        runner.config.params.out.archive_mod = 'none'
+
+        runner.start(resume=False, offline=True)
+
+        assert runner.hf_all is not None
+        assert len(runner.hf_all) > 0
+
+        final_row = runner.hf_all.iloc[-1]
+        assert np.isfinite(final_row['T_magma'])
+        assert np.isfinite(final_row['T_surf'])
+        assert np.isfinite(final_row['F_int'])
+        assert final_row['F_int'] >= 1.0e-8
+
+        # check that T_magma and T_surf did not increase beyond
+        #   previous values (should be clamped), since prevent_warming=True
+        if len(runner.hf_all) > 1:
+            prev_row = runner.hf_all.iloc[-2]
+            assert final_row['T_magma'] <= prev_row['T_magma'] + 1.0e-9
+            assert final_row['T_surf'] <= prev_row['T_surf'] + 1.0e-9
+
+
+@pytest.mark.smoke
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
     reason='JANUS integration smoke test requires compiled SOCRATES binaries (nightly only)',
