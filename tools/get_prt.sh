@@ -3,6 +3,9 @@
 
 echo "Installing petitRADTRANS into Python environment..."
 
+# Installing meson first
+python -m pip install numpy meson-python ninja
+
 # Make room
 workpath="prt/"
 rm -rf $workpath
@@ -20,7 +23,7 @@ git clone "$uri" "$workpath"
 # Change dir and install
 olddir=$(pwd)
 cd $workpath
-python -m pip install -U -e .
+python -m pip install -U -e . --no-build-isolation
 cd $olddir
 
 echo "Done!!"
