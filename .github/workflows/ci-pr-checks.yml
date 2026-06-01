@@ -478,10 +478,19 @@ jobs:
             echo "diff-cover: nightly coverage.xml not found; using the fast suite only."
           fi
           # Warn-only on draft PRs: report the number but do not fail.
-          if [ "${COV_BLOCKING:-false}" = "true" ]; then
+          # Also warn-only when the nightly artifact is missing: the union
+          # then collapses to the fast suite, which cannot exercise the
+          # binary-dependent wrapper lines, so a hard fail would punish a
+          # missing input rather than a real coverage regression. This
+          # mirrors the estimated-total gate, which also warns when the
+          # nightly artifact is absent.
+          if [ "${COV_BLOCKING:-false}" = "true" ] && [ "${NIGHTLY_MISSING:-false}" != "true" ]; then
             DC_FAIL_UNDER=80
           else
             DC_FAIL_UNDER=0
+          fi
+          if [ "${NIGHTLY_MISSING:-false}" = "true" ]; then
+            echo "::warning::Nightly coverage artifact missing; diff-cover runs against the fast suite only and is informational this run (not gating)."
           fi
           diff-cover $COV_REPORTS --diff-file /tmp/pr-changes.diff --fail-under=$DC_FAIL_UNDER
 
