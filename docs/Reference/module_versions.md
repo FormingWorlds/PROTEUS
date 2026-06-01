@@ -20,7 +20,7 @@ in `[project] dependencies`. Click a badge to view the pinned release.
 |--------|------|-----|------|
 | fwl-janus | 1D convective atmosphere | [![fwl-janus](https://img.shields.io/badge/fwl--janus-%3E%3D24.11.05-blue)](https://pypi.org/project/fwl-janus/24.11.05/) | [Docs](https://proteus-framework.org/JANUS/) |
 | fwl-mors | Stellar evolution | [![fwl-mors](https://img.shields.io/badge/fwl--mors-%3E%3D26.01.02-blue)](https://pypi.org/project/fwl-mors/26.01.02/) | [Docs](https://proteus-framework.org/MORS/) |
-| fwl-calliope | Volatile outgassing | [![fwl-calliope](https://img.shields.io/badge/fwl--calliope-branch%3A%20tl%2Ffo2--source--framework-orange)](https://github.com/FormingWorlds/CALLIOPE/tree/tl/fo2-source-framework) | [Docs](https://proteus-framework.org/CALLIOPE/) |
+| fwl-calliope | Volatile outgassing | [![fwl-calliope](https://img.shields.io/badge/fwl--calliope-%3E%3D26.06.01-blue)](https://pypi.org/project/fwl-calliope/26.06.01/) | [Docs](https://proteus-framework.org/CALLIOPE/) |
 | fwl-zephyrus | Atmospheric escape | [![fwl-zephyrus](https://img.shields.io/badge/fwl--zephyrus-%3E%3D25.03.11-blue)](https://pypi.org/project/fwl-zephyrus/25.03.11/) | [GitHub](https://github.com/FormingWorlds/ZEPHYRUS) |
 | fwl-aragog | Interior thermal evolution | [![fwl-aragog](https://img.shields.io/badge/fwl--aragog-%3E%3D26.05.13-blue)](https://pypi.org/project/fwl-aragog/26.05.13/) | [Docs](https://proteus-framework.org/aragog/) |
 | fwl-zalmoxis | Interior structure | [![fwl-zalmoxis](https://img.shields.io/badge/fwl--zalmoxis-%3E%3D26.05.13-blue)](https://pypi.org/project/fwl-zalmoxis/26.05.13/) | [Docs](https://proteus-framework.org/Zalmoxis/) |

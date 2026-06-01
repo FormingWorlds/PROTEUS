@@ -48,20 +48,15 @@ dependencies = [
     "cattrs",
     "fwl-janus>=24.11.05",
     "fwl-mors>=26.01.02",
-    # Temporary git pin to the CALLIOPE branch that adds
-    # equilibrium_atmosphere_authoritative_O (the authoritative-O entry
-    # point that src/proteus/outgas/calliope.py imports). Revert to a normal
-    # 'fwl-calliope>=26.05.14' pin once the CALLIOPE PR merges and the
-    # next release is published to PyPI.
-    "fwl-calliope @ git+https://github.com/FormingWorlds/CALLIOPE.git@tl/fo2-source-framework",
+    "fwl-calliope>=26.06.01",
     "fwl-zephyrus>=25.03.11",
     "fwl-aragog>=26.05.13",
     "fwl-zalmoxis>=26.05.13",
     "fwl-vulcan>=26.04.22",
     # atmodeller is the JAX-based alternative outgas backend to CALLIOPE
     # (Bower+2025, ApJ 995:59). Selected via outgas.module = "atmodeller".
-    # Pulls JAX and equinox transitively; CALLIOPE PR #20 wires up the
-    # authoritative-O entry point that lets the two backends share a closure.
+    # Pulls JAX and equinox transitively; CALLIOPE's authoritative-O entry
+    # point lets the two backends share a closure.
     "atmodeller>=1.0.0",
     # JAX 0.10 removed jax.core.mapped_aval; equinox 0.13.2 (atmodeller's
     # pinned version) still calls it. Hold jax to the 0.9.x line until

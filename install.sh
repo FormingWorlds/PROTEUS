@@ -536,10 +536,7 @@ clone_and_install() {
 
 clone_and_install "MORS"     "FormingWorlds" "MORS"
 clone_and_install "JANUS"    "FormingWorlds" "JANUS"
-# CALLIOPE: pyproject.toml pins the tl/fo2-source-framework branch until
-# PR #20 merges and a PyPI release is cut. The editable install from this
-# branch provides equilibrium_atmosphere_authoritative_O which PROTEUS imports.
-clone_and_install "CALLIOPE" "FormingWorlds" "CALLIOPE" "tl/fo2-source-framework"
+clone_and_install "CALLIOPE" "FormingWorlds" "CALLIOPE"
 clone_and_install "ZEPHYRUS" "FormingWorlds" "ZEPHYRUS"
 
 # Aragog and Zalmoxis use dedicated setup scripts
