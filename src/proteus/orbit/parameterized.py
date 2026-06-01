@@ -40,7 +40,6 @@ def instant_migration(t: float, sma_init: float, sma_final: float, time_migratio
     else:
         return sma_final
 
-
 def sigmoid_migration(t: float, sma_init: float, sma_final: float, time_migration: float, tau_mig: float) -> float:
     """
     Sigmoid function for orbital migration with a time transition.
@@ -150,7 +149,7 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config, dt: float)
 
     # Evaluate migration regime
     if migration is None:
-        raise ValueError(f'Unknown migration option: {migration}. Expected None, "instant", or "sigmoid"')
+        raise ValueError(f'Unknown migration option: {migration}. Expected None, "instant", "sigmoid", or "high_ecc".')
     elif migration == "none": # no migration
         hf_row['semimajorax'] = sma_i
         hf_row['eccentricity'] = eccentricity
