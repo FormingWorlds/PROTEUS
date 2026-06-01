@@ -30,6 +30,8 @@ def calc_synthetic_spectra(hf_row: dict, outdir: str, config: Config):
 
     if config.observe.synthesis == 'platon':
         from proteus.observe.platon import eclipse_depth, transit_depth
+    elif config.observe.synthesis == 'petitRADTRANS':
+        from proteus.observe.petitRADTRANS import eclipse_depth, transit_depth
     else:
         raise ValueError(f"Unknown synthesis module '{config.observe.synthesis}'")
 
