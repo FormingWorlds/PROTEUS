@@ -1,5 +1,9 @@
 # Test framework
 
+[![tests](https://img.shields.io/endpoint?url=https://proteus-framework.org/PROTEUS/badges/tests-total.json)](../How-to/testing.md)
+[![unit tests](https://img.shields.io/endpoint?url=https://proteus-framework.org/PROTEUS/badges/tests-unit.json)](../How-to/testing.md)
+[![integration tests](https://img.shields.io/endpoint?url=https://proteus-framework.org/PROTEUS/badges/tests-integration.json)](../How-to/testing.md)
+
 PROTEUS is scientific simulation software where incorrect results can
 propagate silently through coupled modules. The testing framework is
 designed to catch real bugs, not just verify that code runs without
@@ -34,6 +38,8 @@ coupled system converges.
 validate against published benchmarks and cross-implementation checks (e.g.
 SPIDER vs Aragog for the same initial conditions). These are the most
 expensive tests and run only in the nightly CI.
+
+The badges at the top of this page report how many tests the suite collects in each category: the total, the unit tier, and the combined smoke, integration, and slow tiers. `tools/generate_test_badges.py` regenerates the counts from `pytest --collect-only` during the documentation deploy and writes them into the published site under `badges/`, so they refresh on every documentation build.
 
 ## Functional tests vs physics tests
 
