@@ -497,7 +497,7 @@ else
         warn "Cleaning up partial FastChem clone from a previous failed attempt"
         rm -rf "$AGNI_REAL/fastchem"
     fi
-    bash src/get_fastchem.sh 2>&1
+    bash src/get_fastchem.sh -y 2>&1
     cd "$SCRIPT_DIR"
     if [ ! -d "$AGNI_REAL/fastchem" ]; then
         warn "FastChem installation failed. AGNI chemistry features will not work."
@@ -508,6 +508,7 @@ else
 fi
 
 # FC_DIR (use resolved AGNI path so the env var survives symlink changes)
+#   note: get_fastchem.sh also sets FC_DIR; we keep it here for consistency and for the rerun environment variable export message
 if [ -d "$AGNI_REAL/fastchem" ]; then
     export FC_DIR="$AGNI_REAL/fastchem"
     append_export_to_rc "FC_DIR" "$AGNI_REAL/fastchem" "$RC_FILE"
