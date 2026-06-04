@@ -521,13 +521,16 @@ CURRENT_PHASE=6
 phase 6 "Python submodules"
 
 # Detect SSH access to GitHub (exit code 1 = authenticated, other = no SSH)
-ssh -T git@github.com 2>/dev/null
-if [ $? -eq 1 ]; then
-    GH_PREFIX="git@github.com:"
-    info "GitHub SSH access: OK"
-else
+if ssh -T git@github.com; then
     GH_PREFIX="https://github.com/"
     info "GitHub SSH access: not available, using HTTPS"
+else
+    if [ $? -eq 1 ]; then
+        GH_PREFIX="git@github.com:"
+        info "GitHub SSH access: OK"
+    else
+        die "Unexpected SSH exit code $? when testing GitHub access."
+    fi
 fi
 
 # Clone and install a submodule as editable if not already present.
