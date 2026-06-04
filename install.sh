@@ -81,6 +81,18 @@ read_with_default() {
 
 command_exists() { command -v "$1" &>/dev/null; }
 
+exit_export_message=""
+
+print_exit_export_message() {
+    if [ -n "$exit_export_message" ]; then
+        echo ""
+        echo "--- NOTE: Run the following export commands manually before restarting this install script if you want it to skip steps that were successful (or source your shell rc file now if it was modified):"
+        printf "%s" "$exit_export_message"
+    fi
+}
+
+trap print_exit_export_message EXIT
+
 # Detect the shell rc file for the current user
 detect_shell_rc() {
     local shell_name
@@ -107,6 +119,8 @@ append_export_to_rc() {
         mv "${rc_file}.tmp" "$rc_file"
     fi
     echo "$line" >> "$rc_file"
+    exit_export_message+="$line"
+    exit_export_message+=$'\n'
     info "Set in $rc_file: export ${var_name}=${var_value}"
 }
 
