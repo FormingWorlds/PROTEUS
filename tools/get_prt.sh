@@ -24,6 +24,7 @@ git clone "$uri" "$workpath"
 olddir=$(pwd)
 cd $workpath
 python -m pip install -U -e . --no-build-isolation
+sed -i "s|^prt_input_data_path = .*|prt_input_data_path = $(pwd)/input_data|" ~/.petitradtrans/petitradtrans_config_file.ini
 cd $olddir
 
 echo "Done!!"
