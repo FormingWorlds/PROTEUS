@@ -31,7 +31,7 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "grid_9Mearth_-3IW_0.032AU_9Hocean_1CH_True"
+        path        = "grid_9Mearth_tmax1e5_tmin1e2_1IW_0.016AU_Earthcomp"
         logging     = "INFO"
         plot_mod    = 3     # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -41,7 +41,7 @@ version = "2.0"
 
     # time-stepping
     [params.dt]
-        minimum      = 1e4    # absolute minimum time-step [years]
+        minimum      = 1e2    # 1e4 O.G. absolute minimum time-step [years]
         minimum_rel  = 1e-5   # relative minimum time-step [dimensionless]
         maximum      = 1e5    # maximum time-step [yr] OG: 1e7
         initial      = 3e1    # inital step size [yr]
@@ -131,7 +131,7 @@ version = "2.0"
 [orbit]
     instellation_method = 'sma' # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
     instellationflux = 1.0      # instellation flux received from the planet in [Earth units]
-    semimajoraxis = 0.032         # initial semi-major axis of planet's orbit [AU]
+    semimajoraxis = 0.016         # initial semi-major axis of planet's orbit [AU]
     eccentricity = 0.0          # initial eccentricity of planet's orbit [dimensionless]
     zenith_angle = 48.19        # characteristic zenith angle [degrees]
     s0_factor = 0.375           # instellation scale factor [dimensionless]
@@ -218,7 +218,7 @@ version = "2.0"
         conduction      = true          # include conductive heat transport, with Fourier's law
         sens_heat       = true          # include sensible heat flux near surface, with TKE scheme
         real_gas        = false         # use real-gas equations of state
-        psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode
+        psurf_thresh    = 0.001           # bar, surface pressure where we switch to 'transparent' mode OG: 0.1
         dx_max_ini      = 300.0         # initial maximum temperature step [kelvin] allowed by solver
         dx_max          = 35.0          # maximum temperature step [kelvin] allowed by solver
         max_steps       = 70            # max steps allowed by solver during each iteration
@@ -272,7 +272,7 @@ version = "2.0"
     melting_dir     = "Monteux-600" # Name of folder constaining melting curves
 
 
-    module = "spider"       # Which interior module to use
+    module = "dummy"       # Which interior module to use
 
     [interior.spider]
         num_levels               = 100       # Number of SPIDER grid levels
@@ -321,7 +321,7 @@ version = "2.0"
 
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = -3.0         # atmosphere/interior boundary oxidation state [log10(ΔIW)]
+    fO2_shift_IW    = 1.0         # atmosphere/interior boundary oxidation state [log10(ΔIW)]
 
     silicates = true
     fastchempath = '/data3/leoni/LavAtmos/FastChem/fastchem3/'
@@ -370,23 +370,22 @@ version = "2.0"
         use_metallicity = false	 # whether or not to specify the elemental abundances in terms of solar metallicity
         metallicity = 1000	 # metallicity relative to solar metallicity
 
-        H_oceans    = 9.0       # Hydrogen inventory in units of equivalent Earth oceans
-        # H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
+        #H_oceans    = 0       # Hydrogen inventory in units of equivalent Earth oceans
+        H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
         # H_kg       = 1e20       # Hydrogen inventory in kg
 
-        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        # C_ppmw     = 0.0        # Carbon inventory in ppmw relative to mantle mass
+        #CH_ratio    = 0       # C/H mass ratio in mantle/atmosphere system
+        C_ppmw     = 109.0        # Carbon inventory in ppmw relative to mantle mass
         # C_kg       = 1e20       # Carbon inventory in kg
 
-        NH_ratio    = 0.5       # N/H mass ratio in mantle/atmosphere system
-        # N_ppmw      = 0.5       # Nitrogen inventory in ppmw relative to mantle mass
+        #NH_ratio    = 0.5       # N/H mass ratio in mantle/atmosphere system
+        N_ppmw      = 2.0       # Nitrogen inventory in ppmw relative to mantle mass
         # N_kg       = 1e20       # Nitrogen inventory in kg
 
-        SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
-        # S_ppmw      = 2.0       # Sulfur inventory in ppmw relative to mantle mass
+        #SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
+        S_ppmw      = 200.0       # Sulfur inventory in ppmw relative to mantle mass
         # S_kg       = 1e20       # Sulfur inventory in kg
 
-    # Set initial volatile inventory by partial pressures in atmosphere if [initial = 'volatiles']
     [delivery.volatiles]
         H2O  = 20.0             # partial pressure of H2O
         CO2  = 30.0             # partial pressure of CO2

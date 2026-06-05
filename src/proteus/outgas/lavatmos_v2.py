@@ -54,6 +54,7 @@ class paths_importer:
         self.fastchem3_input = self.wkdir+'input/fastchem3/'
         self.fastchem3_config_template = self.fastchem3_input+'config_template.input'
         self.element_abundances3 = self.fastchem3_input+'element_abundances/'
+        self.janafdata=self.wkdir+'data/'
 
 
 class set_magmaproperties:
@@ -334,7 +335,7 @@ def run_lavatmos(config: Config, hf_row: dict, volatile_fracs):
     melt_comp_df = pd.read_csv(melt_comp_fname,names=['spec','abund'])
     melt_comp = {}
     for i in melt_comp_df.index:
-        melt_comp[melt_comp_df['spec'].loc[i]] = melt_comp_df['abund'].loc[i]
+        melt_comp[melt_comp_df['spec'].loc[i]] = float(melt_comp_df['abund'].loc[i])
 
     volatile_comp_fname = paths.input_dir+'volatile_comp.csv'
     print(f'Volatile composition read from: {volatile_comp_fname}')
@@ -345,7 +346,7 @@ def run_lavatmos(config: Config, hf_row: dict, volatile_fracs):
             volatile_comp[row['']] = float(row['mole_fraction'])
 
     system = lavatmos3.melt_vapor_system(paths)
-    lavatmos_output = system.vaporise(Magma.T_surf, Magma.P_volatile, Magma.melt_comp, volatile_comp, Magma.elementfile, Magma.melt_fraction)
+    lavatmos_output = system.vaporise(Magma.T_surf, Magma.P_volatile, melt_comp, volatile_comp, Magma.elementfile, Magma.melt_fraction)
 
     # Save results
     output_name = f'{Magma.run_name}.csv'

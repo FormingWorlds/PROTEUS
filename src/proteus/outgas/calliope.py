@@ -342,7 +342,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
                 H_total_vmr+=solvevol_result[k]
             log.info('    %s = %.4e' % (k, solvevol_result[k]))
     log.info('    total H in VMRs = %.4e' % H_total_vmr)
-    if H_total_vmr < 1e-15:
-        hf_row['H2_vmr']=1e-15
-        log.info('    No hydrogen in atmosphere, setting H2_vmr to 1e-15 to avoid issues with AGNI')
-        log.info('    %s = %.4e' % ('H2_vmr', hf_row['H2_vmr']))
+    #if H_total_vmr < 1e-15:
+       # hf_row['H2_vmr']=1e-15
+        #log.info('    No hydrogen in atmosphere, setting H2_vmr to 1e-15 to avoid issues with AGNI')
+        #log.info('    %s = %.4e' % ('H2_vmr', hf_row['H2_vmr']))

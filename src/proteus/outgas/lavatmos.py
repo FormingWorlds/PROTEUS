@@ -552,18 +552,16 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
 
     # update outgassed preessure
 
-    log.info('pressure of outgassed species before updating, i.e. from last iteration: %.4f'%hf_row['P_silicates'])
+    log.info('pressure of outgassed species before updating, i.e. from last iteration: %.4e'%hf_row['P_silicates'])
     hf_row['P_silicates'] = Poutgas
-    #update volatile surface pressure as well:
-    #hf_row['P_surf'] = new_atmos_abundances['Pbar'][0] don't update P_surf !!!
 
-
-    log.info('volatile surface pressure should stay the same: %.4f'%hf_row['P_surf'])
-    log.info('new pressure of outgassed species after updating :%.4f'%hf_row['P_silicates'])
+    log.info('surface pressure after outgassing by lavatmos: %.4e'%hf_row['P_surf'])
+    log.info('make sure that the surface pressure of volatiles in  the next time step is not taken from this value!!')
+    #log.info('volatile surface pressure should stay the same: %.4e'%hf_row['P_surf'])
+    #log.info('new pressure of outgassed species after updating :%.4e'%hf_row['P_silicates'])
 
 
     rho_new = kg_pp_new * P_new_kPa / (kB * hf_row['T_magma']) # convert pressure in cgs to kg !
-    #log.debug('new atmospheric density:%.4f'%rho_new)
 
     if (M_atmo_old > 0.0):
         M_atmo_new = (M_atmo_old / rho_old) * rho_new  # kg assuming volume does not change but only pressure
@@ -574,12 +572,6 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
 
     gas_list = vol_list + config.outgas.vaplist
 
-
-    H_budget=0.0
-    Hlist=['H2','H2S','H2O','CH4','NH3','SiH','HS','OH']
-    log.info('old CO abundance before lavamos :%.4f'%hf_row['CO_vmr'])
-    log.info('old H2 abundance before lavamos :%.4f'%hf_row['H2_vmr'])
-
     for vol in gas_list:
         new_pp = new_atmos_abundances[vol][0] * new_atmos_abundances['Pbar'][0]
         hf_row[vol + '_bar'] = new_pp
@@ -589,13 +581,6 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
 
         hf_row[vol + '_mol_atm'] = hf_row[vol + '_kg_atm']/hf_row['atm_kg_per_mol']
         hf_row[vol + '_mol_total'] = hf_row[vol + '_mol_atm'] + hf_row[vol + '_mol_solid'] + hf_row[vol + '_mol_liquid']
-
-        if vol in Hlist:
-            H_budget += hf_row[vol + '_vmr']
-
-    #if H_budget<1e-15:
-        #hf_row['H2_vmr']=1e-15
-        #log.info('small H2 abundance!!! Needs to be adapted for agni')
 
     log.info('H2 abundance now:%.3e', hf_row['H2_vmr'])
 
@@ -626,5 +611,3 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     hf_row['fO2_shift_LavAtmos'] = fO2_shift(hf_row['T_magma'], log10_fO2)
 
     log.debug('shift compared to iron wustite buffer: %.6f'%hf_row['fO2_shift_LavAtmos'])
-
-    #update  hf_row['atm_kg_per_mol']

@@ -199,7 +199,10 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             raise FileNotFoundError(surface_material)
 
     # Boundary pressures
-    p_surf = hf_row['P_surf']
+    if config.outgas.siicates:
+        p_surf=hf_row['P_surf'] + hf_row['P_silicates']
+    else:
+        p_surf = hf_row['P_surf']
     p_top = config.atmos_clim.agni.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
