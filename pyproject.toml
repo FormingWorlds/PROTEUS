@@ -52,15 +52,10 @@ dependencies = [
     "fwl-zephyrus>=25.03.11",
     "fwl-aragog>=26.05.13",
     "fwl-zalmoxis>=26.05.13",
-    "fwl-vulcan>=26.04.22",
-    # atmodeller is the JAX-based alternative outgas backend to CALLIOPE
-    # (Bower+2025, ApJ 995:59). Selected via outgas.module = "atmodeller".
-    # Pulls JAX and equinox transitively; CALLIOPE's authoritative-O entry
-    # point lets the two backends share a closure.
-    "atmodeller>=1.0.0",
-    # JAX 0.10 removed jax.core.mapped_aval; equinox 0.13.2 (atmodeller's
-    # pinned version) still calls it. Hold jax to the 0.9.x line until
-    # equinox migrates to jax.extend.core.mapped_aval.
+    # JAX powers the Aragog interior solver (default backend). The 0.10
+    # ceiling is held for the optional atmodeller backend, whose pinned
+    # equinox 0.13.2 still calls jax.core.mapped_aval (removed in JAX
+    # 0.10); lift it once equinox migrates to jax.extend.core.mapped_aval.
     "jax<0.10",
     "jaxlib<0.10",
     "cmcrameri",
@@ -96,6 +91,20 @@ documentation = "https://proteus-framework.org/proteus/"
 changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 
 [project.optional-dependencies]
+# Optional physics backends. These are not pulled in by a default
+# `pip install fwl-proteus`; a standard run uses CALLIOPE (outgassing)
+# and needs neither. Install on demand, e.g. `pip install
+# "fwl-proteus[atmodeller]"`. Both are licensed GPL-3.0, unlike the
+# Apache-2.0 PROTEUS core.
+#
+# atmodeller: alternative outgassing backend (Bower+2025, ApJ 995:59),
+# selected via outgas.module = "atmodeller". Pulls JAX + equinox.
+atmodeller = ["atmodeller>=1.0.0"]
+# vulcan: atmospheric photochemistry backend, selected via
+# atmos_chem.module = "vulcan". Also installable editable via
+# tools/get_vulcan.sh.
+vulcan = ["fwl-vulcan>=26.04.22"]
+
 develop = [
     # coverage[toml] enables standalone coverage tool with TOML config support (used by ratcheting script)
     # pytest-cov provides pytest integration for "pytest --cov" convenience (slightly different from CI)

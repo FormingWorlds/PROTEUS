@@ -566,3 +566,41 @@ def test_pyproject_keeps_boreas_out_of_mandatory_dependencies():
     assert re.fullmatch(r'[0-9a-f]{40}', spec['ref']), (
         f'boreas ref must be a full commit SHA, got {spec["ref"]!r}'
     )
+
+
+@pytest.mark.unit
+def test_optional_backends_vulcan_atmodeller_are_extras_not_mandatory():
+    """VULCAN and atmodeller are optional backends, installed on demand.
+
+    A standard PROTEUS run uses CALLIOPE for outgassing and no atmospheric
+    chemistry, so neither package should be a mandatory dependency. Each
+    must instead live in ``[project.optional-dependencies]`` under its own
+    extra, keeping the published version pins so the optional install is
+    reproducible. Re-adding either to ``[project] dependencies`` would force
+    every PROTEUS user to pull a GPL-3.0 package the core does not need.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
+
+    deps = data['project']['dependencies']
+    mandatory = [d for d in deps if 'vulcan' in d.lower() or 'atmodeller' in d.lower()]
+    assert mandatory == [], (
+        f'vulcan/atmodeller must not be mandatory dependencies: {mandatory!r}'
+    )
+    # Discrimination: an empty or truncated dependency list would also pass
+    # the check above; confirm a known-mandatory backend is still present.
+    assert any('fwl-calliope' in d for d in deps), 'mandatory dependency list is intact'
+
+    extras = data['project']['optional-dependencies']
+    assert extras.get('atmodeller') == ['atmodeller>=1.0.0'], (
+        f'atmodeller extra must keep its pin, got {extras.get("atmodeller")!r}'
+    )
+    assert extras.get('vulcan') == ['fwl-vulcan>=26.04.22'], (
+        f'vulcan extra must keep its pin, got {extras.get("vulcan")!r}'
+    )
+    # JAX must stay mandatory: it powers the default Aragog interior solver,
+    # not only the optional atmodeller backend. Removing it with atmodeller
+    # would break a standard run.
+    assert any(d.startswith('jax') for d in deps), (
+        'jax must remain a mandatory dependency (Aragog interior solver needs it)'
+    )

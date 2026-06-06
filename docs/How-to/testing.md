@@ -128,8 +128,8 @@ Shared fixtures live in `tests/conftest.py`:
 Tests importing optional packages must call `pytest.importorskip`:
 
 ```python
-pytest.importorskip('zephyrus')
-pytest.importorskip('lovepy')
+pytest.importorskip('atmodeller')
+pytest.importorskip('vulcan')
 ```
 
 This prevents collection failures on CI runners without the optional package.

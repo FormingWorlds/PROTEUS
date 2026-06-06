@@ -302,7 +302,10 @@ runs:
       run: |
         set -euo pipefail
         python -m pip install --upgrade pip
-        pip install -e ".[develop]"
+        # Install the optional vulcan + atmodeller backends alongside the
+        # develop extras so their tests run in CI rather than skip. They
+        # are optional for end users (a standard run uses calliope).
+        pip install -e ".[develop,vulcan,atmodeller]"
 
     # BOREAS is an optional dependency: users opt in via
     # tools/get_boreas.sh. CI installs it explicitly (at the ref pinned

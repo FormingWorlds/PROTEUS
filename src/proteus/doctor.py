@@ -471,13 +471,16 @@ ENVIRONMENT_VARS = [
     ('PYTHON_JULIAPKG_EXE', False, None),
 ]
 
+# Mandatory Python packages checked by `proteus doctor`. The optional
+# backends (fwl-vulcan, atmodeller) are deliberately excluded: they are
+# not required for a standard run, so doctor must not report them as
+# missing when a user has not installed them.
 PYTHON_PACKAGES = [
     'fwl-proteus',
     'fwl-aragog',
     'fwl-calliope',
     'fwl-janus',
     'fwl-mors',
-    'fwl-vulcan',
     'fwl-zephyrus',
     'fwl-zalmoxis',
 ]

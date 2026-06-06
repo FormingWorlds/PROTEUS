@@ -94,7 +94,6 @@ HARD_DEP_BACKENDS = {
     ('atmos_clim.module', 'agni'),
     ('atmos_clim.module', 'janus'),
     ('atmos_chem.module', None),
-    ('atmos_chem.module', 'vulcan'),
     ('atmos_chem.module', 'dummy'),
     ('escape.module', None),
     ('escape.module', 'dummy'),
@@ -222,6 +221,7 @@ def _make_config_instance(**overrides):
     base = SimpleNamespace(
         outgas=SimpleNamespace(module='calliope', fO2_shift_IW=0.0),
         escape=SimpleNamespace(module='zephyrus'),
+        atmos_chem=SimpleNamespace(module=None),
         atmos_clim=SimpleNamespace(module='agni', surf_state='fixed'),
         interior_energetics=SimpleNamespace(module='aragog'),
         interior_struct=SimpleNamespace(module='zalmoxis'),
@@ -275,14 +275,45 @@ def test_check_module_dependencies_raises_when_atmodeller_missing():
         return real_import(name)
 
     with patch('importlib.import_module', side_effect=_fake_import):
-        with pytest.raises(ImportError, match=r'pip install atmodeller') as excinfo:
+        with pytest.raises(ImportError, match=r'fwl-proteus\[atmodeller\]') as excinfo:
             check_module_dependencies(instance, None, None)
+    # The hint must name the GPL-3.0 license of the optional backend, since the
+    # PROTEUS core is Apache-2.0 and the licensing difference matters to users.
+    msg = str(excinfo.value)
+    assert 'GPL-3.0' in msg and 'outgas.module' in msg
     # Discrimination: the original ImportError must be chained as __cause__ so
     # users see the "No module named 'atmodeller'" detail. A regression that
     # re-raised a bare ImportError without `raise ... from e` would lose the
     # chain and trip this check.
     assert excinfo.value.__cause__ is not None
     assert 'atmodeller' in str(excinfo.value.__cause__)
+
+
+@pytest.mark.unit
+def test_check_module_dependencies_raises_when_vulcan_missing():
+    """If atmos_chem.module = vulcan and the package is unavailable, raise
+    ImportError naming the GPL-3.0 license and the install hint.
+    """
+    instance = _make_config_instance(**{'atmos_chem.module': 'vulcan'})
+
+    real_import = importlib.import_module
+
+    def _fake_import(name):
+        if name == 'vulcan':
+            raise ImportError("No module named 'vulcan'")
+        return real_import(name)
+
+    with patch('importlib.import_module', side_effect=_fake_import):
+        with pytest.raises(ImportError, match=r'fwl-proteus\[vulcan\]') as excinfo:
+            check_module_dependencies(instance, None, None)
+    # The message must name atmos_chem.module (not, e.g., outgas) so the vulcan
+    # branch is the one that fired, and must carry the GPL-3.0 license notice.
+    msg = str(excinfo.value)
+    assert 'atmos_chem.module' in msg and 'vulcan' in msg
+    assert 'GPL-3.0' in msg
+    # The chained cause preserves the underlying import failure detail.
+    assert excinfo.value.__cause__ is not None
+    assert 'vulcan' in str(excinfo.value.__cause__)
 
 
 @pytest.mark.unit

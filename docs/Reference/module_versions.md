@@ -24,7 +24,6 @@ in `[project] dependencies`. Click a badge to view the pinned release.
 | fwl-zephyrus | Atmospheric escape | [![fwl-zephyrus](https://img.shields.io/badge/fwl--zephyrus-%3E%3D25.03.11-blue)](https://pypi.org/project/fwl-zephyrus/25.03.11/) | [GitHub](https://github.com/FormingWorlds/ZEPHYRUS) |
 | fwl-aragog | Interior thermal evolution | [![fwl-aragog](https://img.shields.io/badge/fwl--aragog-%3E%3D26.05.13-blue)](https://pypi.org/project/fwl-aragog/26.05.13/) | [Docs](https://proteus-framework.org/aragog/) |
 | fwl-zalmoxis | Interior structure | [![fwl-zalmoxis](https://img.shields.io/badge/fwl--zalmoxis-%3E%3D26.05.13-blue)](https://pypi.org/project/fwl-zalmoxis/26.05.13/) | [Docs](https://proteus-framework.org/Zalmoxis/) |
-| fwl-vulcan | Atmospheric chemistry | [![fwl-vulcan](https://img.shields.io/badge/fwl--vulcan-%3E%3D26.04.22-blue)](https://pypi.org/project/fwl-vulcan/26.04.22/) | [GitHub](https://github.com/FormingWorlds/VULCAN) |
 <!-- END PYPI_TABLE -->
 
 ### Git-pinned modules (non-PyPI)
@@ -47,7 +46,8 @@ pinned commit.
 | Module | Role | Pin | Docs |
 |--------|------|-----|------|
 | LovePy | Multi-phase tidal heating (Julia) | [![LovePy](https://img.shields.io/badge/LovePy-main-lightgrey)](https://github.com/nichollsh/LovePy) | [GitHub](https://github.com/nichollsh/LovePy) |
-| atmodeller | Alternative outgassing backend | [![atmodeller](https://img.shields.io/badge/atmodeller-%3E%3D1.0.0-blue)](https://pypi.org/project/atmodeller/) | [GitHub](https://github.com/djbower/atmodeller) |
+| atmodeller | Alternative outgassing backend (GPL-3.0) | [![atmodeller](https://img.shields.io/badge/atmodeller-%3E%3D1.0.0-blue)](https://pypi.org/project/atmodeller/) | [GitHub](https://github.com/djbower/atmodeller) |
+| fwl-vulcan | Atmospheric chemistry (GPL-3.0) | [![fwl-vulcan](https://img.shields.io/badge/fwl--vulcan-%3E%3D26.04.22-blue)](https://pypi.org/project/fwl-vulcan/26.04.22/) | [GitHub](https://github.com/FormingWorlds/VULCAN) |
 | Obliqua | Orbital evolution and tides (Julia) | n/a | [GitHub](https://github.com/FormingWorlds/Obliqua) |
 | PLATON | Synthetic observations | n/a | [Docs](https://platon.readthedocs.io/) |
 <!-- END OPTIONAL_TABLE -->

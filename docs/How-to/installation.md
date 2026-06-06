@@ -350,11 +350,10 @@ bash tools/get_zalmoxis.sh
 ```
 
 !!! info "Editable checkouts override PyPI versions"
-    `fwl-aragog`, `fwl-zalmoxis`, and `fwl-vulcan` are listed as PyPI
-    dependencies in `pyproject.toml` as a fallback for users who install
-    PROTEUS without cloning submodules. The editable sibling checkouts take
-    precedence on `sys.path`. Run `proteus doctor` to confirm which versions
-    are active.
+    `fwl-aragog` and `fwl-zalmoxis` are listed as PyPI dependencies in
+    `pyproject.toml` as a fallback for users who install PROTEUS without
+    cloning submodules. The editable sibling checkouts take precedence on
+    `sys.path`. Run `proteus doctor` to confirm which versions are active.
 
 ### 8. Install PROTEUS
 
@@ -452,11 +451,36 @@ bash tools/get_platon.sh
 !!! note
     PLATON downloads ~10 GB of opacity data on first use.
 
+### Alternative outgassing (atmodeller)
+
+[atmodeller](https://github.com/djbower/atmodeller) is an optional
+alternative to CALLIOPE, selected with `outgas.module = "atmodeller"`. It is
+not installed with PROTEUS by default; a standard run uses CALLIOPE.
+
+```console
+pip install "fwl-proteus[atmodeller]"
+```
+
+!!! warning "License"
+    atmodeller is distributed under the GPL-3.0 license, unlike the
+    Apache-2.0 PROTEUS core. Installing it is your choice.
+
 ### Atmospheric chemistry (VULCAN)
 
-VULCAN is available on PyPI as `fwl-vulcan` (installed automatically with
-PROTEUS). For local development, install as an editable checkout:
+VULCAN is an optional atmospheric-photochemistry backend, selected with
+`atmos_chem.module = "vulcan"`. It is not required for a standard PROTEUS
+run. Install it from PyPI:
+
+```console
+pip install "fwl-proteus[vulcan]"
+```
+
+For local development, install as an editable checkout instead:
 
 ```console
 bash tools/get_vulcan.sh
 ```
+
+!!! warning "License"
+    VULCAN is distributed under the GPL-3.0 license, unlike the Apache-2.0
+    PROTEUS core. Installing it is your choice.

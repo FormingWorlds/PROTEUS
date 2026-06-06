@@ -1,5 +1,14 @@
 #!/bin/bash
-# Download and setup BOREAS (optional hydrodynamic escape module)
+# Download and setup BOREAS (optional hydrodynamic escape module) as an
+# editable sibling checkout.
+#
+# Clones ExoInteriors/BOREAS into ./BOREAS/ inside the PROTEUS root,
+# checks out the commit pinned in pyproject.toml
+# ([tool.proteus.modules.boreas]), and installs it editable into the
+# active Python environment. BOREAS is not on PyPI under a usable name,
+# so the pin is resolved from pyproject.toml rather than a version floor.
+
+set -euo pipefail
 
 echo "Set up BOREAS..."
 
@@ -12,15 +21,17 @@ portable_realpath() {
 }
 
 # Path to PROTEUS folder
-root=$(dirname $(portable_realpath $0))
+root=$(dirname "$(portable_realpath "$0")")
 root=$(portable_realpath "$root/..")
 
 # Make room
-workpath=$root/BOREAS/
-rm -rf $workpath
+workpath="$root/BOREAS/"
+rm -rf "$workpath"
 
-# Check SSH access to GitHub (exit code 1 = authenticated). The command
-# sits inside the if so a future `set -e` cannot abort the script here.
+# Detect SSH access to GitHub. `ssh -T git@github.com` exits 1 when
+# authentication succeeds (GitHub refuses the shell), so a plain call
+# would trip `set -e`; keeping it as the `if` condition keeps it in
+# scope where a non-zero exit is expected rather than fatal.
 if ssh -T git@github.com; then
     use_ssh=false
 else
@@ -34,6 +45,10 @@ fi
 # Resolve the pinned URL + ref from pyproject.toml.
 b_url=$(python "$root/tools/_module_pins.py" boreas url)
 b_ref=$(python "$root/tools/_module_pins.py" boreas ref)
+if [ -z "$b_url" ] || [ -z "$b_ref" ]; then
+    echo "ERROR: could not resolve boreas url/ref from pyproject.toml" >&2
+    exit 1
+fi
 
 echo "Cloning from GitHub"
 if [ "$use_ssh" = true ]; then
@@ -43,11 +58,12 @@ else
     uri="$b_url"
 fi
 echo "    $uri @ $b_ref -> $workpath"
-git clone "$uri" "$workpath"
-git -C "$workpath" checkout --quiet "$b_ref"
+git clone "$uri" "$workpath" || { echo "ERROR: git clone failed" >&2; exit 1; }
+git -C "$workpath" checkout --quiet "$b_ref" \
+    || { echo "ERROR: cannot checkout $b_ref" >&2; exit 1; }
 
-# Install boreas package
-pip install -U -e "$workpath"
+# Install boreas package as editable
+pip install -U -e "$workpath" || { echo "ERROR: editable install failed" >&2; exit 1; }
 
 # Done
 echo "Done!"
