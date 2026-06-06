@@ -114,8 +114,9 @@ def check_module_dependencies(instance, attribute, value):
         'boreas': (
             instance.escape.module == 'boreas',
             'boreas',
-            'escape.module = "boreas" requires the boreas package. '
-            'Install with: pip install boreas',
+            'escape.module = "boreas" requires the optional boreas package. '
+            'Install with: bash tools/get_boreas.sh '
+            '(or pip install "boreas @ git+https://github.com/ExoInteriors/BOREAS")',
         ),
     }
 

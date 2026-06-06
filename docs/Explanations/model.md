@@ -41,7 +41,7 @@ model intercomparison.</figcaption>
 | Atmosphere (climate) | [AGNI](https://www.h-nicholls.space/AGNI/), [JANUS](https://proteus-framework.org/JANUS/), dummy | Radiative-convective profile |
 | Atmosphere (chemistry) | [VULCAN](https://github.com/FormingWorlds/VULCAN), dummy | Chemical kinetics |
 | Star | [MORS](https://proteus-framework.org/MORS/), dummy | Stellar evolution and spectrum |
-| Escape | [ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS), [BOREAS](https://github.com/FormingWorlds/BOREAS), dummy | Atmospheric escape |
+| Escape | [ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS), dummy | Atmospheric escape |
 | Outgassing | [CALLIOPE](https://proteus-framework.org/CALLIOPE/), [atmodeller](https://github.com/djbower/atmodeller), dummy | Volatile exchange between interior and atmosphere |
 | Orbit | [Obliqua](https://github.com/FormingWorlds/Obliqua), dummy | Orbital evolution and tidal heating |
 

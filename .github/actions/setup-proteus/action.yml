@@ -304,6 +304,18 @@ runs:
         python -m pip install --upgrade pip
         pip install -e ".[develop]"
 
+    # BOREAS is an optional dependency: users opt in via
+    # tools/get_boreas.sh. CI installs it explicitly (at the ref pinned
+    # in [tool.proteus.modules.boreas]) so the BOREAS escape tests run
+    # rather than skip.
+    - name: Install BOREAS (optional escape module)
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        b_url="$(python tools/_module_pins.py boreas url)"
+        b_ref="$(python tools/_module_pins.py boreas ref)"
+        pip install "boreas @ git+${b_url}@${b_ref}"
+
     # ------------------------------------------------------------------
     # 9. FWL_DATA cache + smoke / full data download
     # ------------------------------------------------------------------

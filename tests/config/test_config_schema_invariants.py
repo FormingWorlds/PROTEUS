@@ -300,7 +300,7 @@ def test_check_module_dependencies_raises_when_boreas_missing():
         return real_import(name)
 
     with patch('importlib.import_module', side_effect=_fake_import):
-        with pytest.raises(ImportError, match=r'pip install boreas') as excinfo:
+        with pytest.raises(ImportError, match=r'tools/get_boreas\.sh') as excinfo:
             check_module_dependencies(instance, None, None)
     # Discrimination: the message must name escape.module (not outgas.module) to
     # confirm the boreas branch fired and not, e.g., an accidental atmodeller

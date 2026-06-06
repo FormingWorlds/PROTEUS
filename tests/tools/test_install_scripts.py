@@ -478,6 +478,7 @@ def test_spider_lib_check_fails_on_empty_dir(tmp_path):
 
 
 import re  # noqa: E402
+import tomllib  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import pytest  # noqa: E402
@@ -525,3 +526,43 @@ def test_pyproject_pins_aragog_and_zalmoxis_pypi_packages():
     text = (repo_root / 'pyproject.toml').read_text(encoding='utf-8')
     assert 'fwl-aragog' in text, 'pyproject.toml must pin fwl-aragog'
     assert 'fwl-zalmoxis' in text, 'pyproject.toml must pin fwl-zalmoxis'
+
+
+@pytest.mark.unit
+def test_pyproject_keeps_boreas_out_of_mandatory_dependencies():
+    """BOREAS is installed only explicitly, via ``bash tools/get_boreas.sh``.
+
+    Two clauses:
+    1. ``[project] dependencies`` must not list boreas. Re-adding the
+       direct git URL there would make BOREAS mandatory again and would
+       also block PyPI uploads of fwl-proteus, since PyPI rejects
+       packages whose dependency metadata contains direct references.
+       The PyPI name ``boreas`` belongs to an unrelated project, so a
+       plain ``boreas`` version pin would resolve to the wrong package.
+    2. The pin lives in ``[tool.proteus.modules.boreas]`` with the
+       ExoInteriors GitHub URL and a full 40-character commit SHA, which
+       tools/get_boreas.sh and the CI setup action resolve through
+       tools/_module_pins.py.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
+
+    deps = data['project']['dependencies']
+    boreas_deps = [d for d in deps if 'boreas' in d.lower()]
+    assert boreas_deps == [], (
+        f'boreas must not be a mandatory dependency of fwl-proteus: {boreas_deps!r}'
+    )
+    # Discrimination: an empty dependencies list would also pass the
+    # check above; pin a known-mandatory package as evidence the list
+    # is intact.
+    assert any('fwl-calliope' in d for d in deps), 'mandatory dependency list is intact'
+
+    spec = data['tool']['proteus']['modules']['boreas']
+    assert spec['url'].startswith('https://github.com/ExoInteriors/BOREAS'), (
+        f'boreas pin must point at the ExoInteriors repo, got {spec["url"]!r}'
+    )
+    # Full-SHA pin: reproducible clone, short refs are ambiguous and
+    # mutable upstream.
+    assert re.fullmatch(r'[0-9a-f]{40}', spec['ref']), (
+        f'boreas ref must be a full commit SHA, got {spec["ref"]!r}'
+    )

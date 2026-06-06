@@ -129,7 +129,7 @@ Tests importing optional packages must call `pytest.importorskip`:
 
 ```python
 pytest.importorskip('zephyrus')
-pytest.importorskip('boreas')
+pytest.importorskip('lovepy')
 ```
 
 This prevents collection failures on CI runners without the optional package.

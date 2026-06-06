@@ -63,7 +63,6 @@ dependencies = [
     # equinox migrates to jax.extend.core.mapped_aval.
     "jax<0.10",
     "jaxlib<0.10",
-    "boreas@git+https://github.com/ExoInteriors/BOREAS@0174edb",
     "cmcrameri",
     # juliacall 0.9.33 mis-resolves the PythonCall.jl dev-path on conda
     # envs (passes `<env>/lib/python3.12` to Pkg.develop, which has no
@@ -252,6 +251,14 @@ ref = "c9a3fd4301c7008291d4f4921506d36b6288f8ca"
 # installed by tools/get_vulcan.sh. Optional submodule.
 url = "https://github.com/FormingWorlds/VULCAN.git"
 ref = "6ff377b7fb12a75a5c9ffba2c03baad9d3dd4d53"
+
+[tool.proteus.modules.boreas]
+# Hydrodynamic escape module (Python). Optional: installed explicitly by
+# tools/get_boreas.sh, not pulled in by `pip install fwl-proteus`. The
+# package is not on PyPI (the PyPI name "boreas" belongs to an unrelated
+# project), so the pin lives here rather than in [project] dependencies.
+url = "https://github.com/ExoInteriors/BOREAS.git"
+ref = "0174edb04558a92a8f0b47cbd994964787f495aa"
 
 [tool.proteus.modules.lovepy]
 # Multi-phase tidal heating module (Julia). Installed via Julia

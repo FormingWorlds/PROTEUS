@@ -10,7 +10,7 @@ coupled planetary evolution simulation:
 - [`interior_struct/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/interior_struct): hydrostatic structure and planet radius (Zalmoxis, dummy)
 - [`atmos_clim/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/atmos_clim): radiative-convective atmosphere (AGNI, JANUS, dummy)
 - [`atmos_chem/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/atmos_chem): atmospheric photochemistry (VULCAN, dummy)
-- [`escape/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/escape): atmospheric mass loss (ZEPHYRUS, BOREAS, dummy)
+- [`escape/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/escape): atmospheric mass loss (ZEPHYRUS, dummy)
 - [`outgas/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/outgas): volatile partitioning (CALLIOPE, atmodeller, dummy)
 - [`orbit/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/orbit): orbital evolution and tides (Obliqua/LovePy, dummy)
 - [`star/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/star): stellar evolution and spectra (MORS, dummy)

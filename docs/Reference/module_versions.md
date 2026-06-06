@@ -48,7 +48,6 @@ pinned commit.
 |--------|------|-----|------|
 | LovePy | Multi-phase tidal heating (Julia) | [![LovePy](https://img.shields.io/badge/LovePy-main-lightgrey)](https://github.com/nichollsh/LovePy) | [GitHub](https://github.com/nichollsh/LovePy) |
 | atmodeller | Alternative outgassing backend | [![atmodeller](https://img.shields.io/badge/atmodeller-%3E%3D1.0.0-blue)](https://pypi.org/project/atmodeller/) | [GitHub](https://github.com/djbower/atmodeller) |
-| BOREAS | Hydrodynamic escape | [![BOREAS](https://img.shields.io/badge/BOREAS-0174edb-green)](https://github.com/ExoInteriors/BOREAS/commit/0174edb) | [GitHub](https://github.com/ExoInteriors/BOREAS) |
 | Obliqua | Orbital evolution and tides (Julia) | n/a | [GitHub](https://github.com/FormingWorlds/Obliqua) |
 | PLATON | Synthetic observations | n/a | [Docs](https://platon.readthedocs.io/) |
 <!-- END OPTIONAL_TABLE -->
