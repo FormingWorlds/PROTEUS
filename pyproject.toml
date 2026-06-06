@@ -263,11 +263,10 @@ ref = "e7133ff7388847c7939b38572c6e91cd05d5b755"
 url = "https://github.com/FormingWorlds/SPIDER.git"
 ref = "c9a3fd4301c7008291d4f4921506d36b6288f8ca"
 
-[tool.proteus.modules.vulcan]
-# Photochemistry module (Python, FormingWorlds fork). Cloned and
-# installed by tools/get_vulcan.sh. Optional submodule.
-url = "https://github.com/FormingWorlds/VULCAN.git"
-ref = "6ff377b7fb12a75a5c9ffba2c03baad9d3dd4d53"
+# VULCAN has no entry here on purpose: like fwl-aragog and fwl-zalmoxis,
+# it is a single-source PyPI package. tools/get_vulcan.sh checks out the
+# git tag matching the fwl-vulcan floor in [project.optional-dependencies],
+# so the editable checkout and the PyPI release cannot diverge.
 
 [tool.proteus.modules.boreas]
 # Hydrodynamic escape module (Python). Optional: installed explicitly by

@@ -1,7 +1,14 @@
 #!/bin/bash
 # Download and setup VULCAN (optional atmospheric chemistry module) as an
-# editable sibling checkout. Clones the pinned commit
-# ([tool.proteus.modules.vulcan]), builds fastchem, and installs editable.
+# editable sibling checkout.
+#
+# Clones FormingWorlds/VULCAN into ./VULCAN/ inside the PROTEUS root,
+# checks out the git tag matching the fwl-vulcan version floor pinned in
+# pyproject.toml ([project.optional-dependencies].vulcan), builds fastchem,
+# and installs it editable. Pinning to the floor tag keeps the editable
+# checkout and the PyPI fwl-vulcan release in lock-step instead of tracking
+# whatever the default branch points at. To develop against the latest
+# VULCAN, run `git checkout main` inside ./VULCAN and reinstall.
 
 set -euo pipefail
 
@@ -37,25 +44,27 @@ else
     fi
 fi
 
-# Resolve the pinned URL + ref from pyproject.toml.
-vc_url=$(python "$root/tools/_module_pins.py" vulcan url)
-vc_ref=$(python "$root/tools/_module_pins.py" vulcan ref)
-if [ -z "$vc_url" ] || [ -z "$vc_ref" ]; then
-    echo "ERROR: could not resolve vulcan url/ref from pyproject.toml" >&2
-    exit 1
-fi
-
+# Download
 echo "Cloning from GitHub"
 if [ "$use_ssh" = true ]; then
-    # Rewrite https://github.com/ -> git@github.com: for SSH transport.
-    uri=${vc_url/https:\/\/github.com\//git@github.com:}
+    uri="git@github.com:FormingWorlds/VULCAN.git"
 else
-    uri="$vc_url"
+    uri="https://github.com/FormingWorlds/VULCAN.git"
 fi
-echo "    $uri @ $vc_ref -> $workpath"
+echo "    $uri -> $workpath"
 git clone "$uri" "$workpath" || { echo "ERROR: git clone failed" >&2; exit 1; }
-git -C "$workpath" checkout --quiet "$vc_ref" \
-    || { echo "ERROR: cannot checkout $vc_ref" >&2; exit 1; }
+
+# Pin the checkout to the fwl-vulcan version floor declared in PROTEUS's
+# pyproject.toml, so the editable install matches the PyPI release across
+# machines and CI instead of tracking whatever the default branch points at.
+floor=$(grep -oE 'fwl-vulcan>=[0-9][0-9.]*' "$root/pyproject.toml" | head -1 | sed 's/.*>=//')
+cd "$workpath" || { echo "ERROR: cannot enter $workpath" >&2; exit 1; }
+if [ -n "$floor" ]; then
+    echo "Pinning to fwl-vulcan floor: $floor"
+    git checkout "tags/$floor" || { echo "ERROR: cannot checkout tag $floor" >&2; exit 1; }
+else
+    echo "WARNING: could not read fwl-vulcan floor from pyproject.toml; using HEAD" >&2
+fi
 
 # Compile fastchem
 cd "$workpath/fastchem_vulcan/" || { echo "ERROR: fastchem dir missing" >&2; exit 1; }

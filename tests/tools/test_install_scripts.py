@@ -613,6 +613,17 @@ def test_optional_backends_vulcan_atmodeller_are_extras_not_mandatory():
         'it was previously pulled only transitively via atmodeller'
     )
 
+    # VULCAN is a single-source PyPI package like fwl-aragog/fwl-zalmoxis: its
+    # only pin is the extra above, and tools/get_vulcan.sh checks out the git
+    # tag matching that floor. It must NOT also carry a [tool.proteus.modules]
+    # SHA pin, which could drift from the PyPI release (the dual-pin trap).
+    git_modules = data['tool']['proteus']['modules']
+    assert 'vulcan' not in git_modules, (
+        'vulcan must not have a [tool.proteus.modules] git pin; it is pinned '
+        'once via the fwl-vulcan extra and the matching git tag, like '
+        f'fwl-aragog/fwl-zalmoxis. Found: {sorted(git_modules)}'
+    )
+
 
 @pytest.mark.unit
 def test_ci_setup_installs_every_declared_extra():
