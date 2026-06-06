@@ -20,6 +20,7 @@ import pytest
 from proteus.doctor import (
     FAIL,
     PASS,
+    PYTHON_PACKAGES,
     WARN,
     CheckResult,
     _editable_checkout_path,
@@ -38,6 +39,30 @@ from proteus.doctor import (
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+@pytest.mark.unit
+def test_python_packages_excludes_optional_backends():
+    """`proteus doctor` must check only mandatory packages.
+
+    The optional GPL backends (fwl-vulcan, atmodeller) are not pulled by a
+    default install, so listing them in PYTHON_PACKAGES would make doctor
+    report a missing package and update-all try to install software a standard
+    run does not need. The mandatory framework packages must stay so their
+    versions are still verified.
+    """
+    optional = {'fwl-vulcan', 'atmodeller'}
+    assert optional.isdisjoint(PYTHON_PACKAGES), (
+        f'doctor must not check optional backends as mandatory: '
+        f'{optional & set(PYTHON_PACKAGES)}'
+    )
+    # Discrimination: an empty list would also pass the disjointness check
+    # while silently disabling all version verification; pin the mandatory
+    # framework packages that must remain.
+    mandatory = {'fwl-proteus', 'fwl-aragog', 'fwl-calliope', 'fwl-zalmoxis'}
+    assert mandatory <= set(PYTHON_PACKAGES), (
+        f'doctor lost mandatory package checks: {mandatory - set(PYTHON_PACKAGES)}'
+    )
 
 
 class TestCheckResult:

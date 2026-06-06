@@ -860,7 +860,7 @@ def test_satellite_evolve_passes_without_satellite():
 HYPOTHESIS_OUTGAS = ('calliope', 'dummy')  # atmodeller mocked separately
 HYPOTHESIS_INTERIOR_ENERGETICS = ('aragog', 'spider', 'dummy', 'boundary')
 HYPOTHESIS_ATMOS_CLIM = ('agni', 'janus', 'dummy')
-HYPOTHESIS_ATMOS_CHEM = (None, 'dummy', 'vulcan')
+HYPOTHESIS_ATMOS_CHEM = (None, 'dummy')  # vulcan excluded (optional)
 HYPOTHESIS_ESCAPE = (None, 'dummy', 'zephyrus')  # boreas excluded (optional)
 HYPOTHESIS_STAR = (None, 'mors', 'dummy')
 HYPOTHESIS_ORBIT = (None, 'dummy', 'lovepy')

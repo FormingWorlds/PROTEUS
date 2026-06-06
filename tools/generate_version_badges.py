@@ -28,7 +28,8 @@ PYPI_META = {
     'fwl-janus': ('1D convective atmosphere', 'https://proteus-framework.org/JANUS/', 'Docs'),
     'fwl-mors': ('Stellar evolution', 'https://proteus-framework.org/MORS/', 'Docs'),
     'fwl-zephyrus': ('Atmospheric escape', 'https://github.com/FormingWorlds/ZEPHYRUS', 'GitHub'),
-    'fwl-vulcan': ('Atmospheric chemistry', 'https://github.com/FormingWorlds/VULCAN', 'GitHub'),
+    # fwl-vulcan is an optional backend (see OPTIONAL below), not a mandatory
+    # PyPI dependency, so it is intentionally absent from this table.
 }
 
 GIT_META = {
@@ -43,25 +44,28 @@ GIT_META = {
                'https://proteus-framework.org/SPIDER/', 'Docs'),
 }
 
+# Each entry: (label, role, pin_val, color, pin_link, doc_url, doc_label, extra).
+# When `extra` is set to (extra_key, dist_name), the version badge is derived
+# from pyproject's [project.optional-dependencies] so the pin lives in one
+# place; pin_val/pin_link are then ignored. Otherwise pin_val/pin_link are
+# used as-is (git refs, docs-only entries).
 OPTIONAL = [
     ('LovePy', 'Multi-phase tidal heating (Julia)',
      'main', 'lightgrey',
      'https://github.com/nichollsh/LovePy',
-     'https://github.com/nichollsh/LovePy', 'GitHub'),
+     'https://github.com/nichollsh/LovePy', 'GitHub', None),
     ('atmodeller', 'Alternative outgassing backend (GPL-3.0)',
-     '>=1.0.0', 'blue',
-     'https://pypi.org/project/atmodeller/',
-     'https://github.com/djbower/atmodeller', 'GitHub'),
-    ('fwl-vulcan', 'Atmospheric chemistry (GPL-3.0)',
-     '>=26.04.22', 'blue',
-     'https://pypi.org/project/fwl-vulcan/26.04.22/',
-     'https://github.com/FormingWorlds/VULCAN', 'GitHub'),
+     None, 'blue', None,
+     'https://github.com/djbower/atmodeller', 'GitHub', ('atmodeller', 'atmodeller')),
+    ('VULCAN', 'Atmospheric chemistry (GPL-3.0)',
+     None, 'blue', None,
+     'https://github.com/FormingWorlds/VULCAN', 'GitHub', ('vulcan', 'fwl-vulcan')),
     ('Obliqua', 'Orbital evolution and tides (Julia)',
      None, None, None,
-     'https://github.com/FormingWorlds/Obliqua', 'GitHub'),
+     'https://github.com/FormingWorlds/Obliqua', 'GitHub', None),
     ('PLATON', 'Synthetic observations',
      None, None, None,
-     'https://platon.readthedocs.io/', 'Docs'),
+     'https://platon.readthedocs.io/', 'Docs', None),
 ]
 
 
@@ -107,9 +111,31 @@ def _build_git_table(modules: dict) -> str:
     return '| Module | Role | Pin | Docs |\n|--------|------|-----|------|\n' + '\n'.join(rows)
 
 
-def _build_optional_table() -> str:
+def _optional_pin_from_extra(extras: dict, extra_key: str, dist_name: str):
+    """Return (pin_label, pypi_link) derived from a pyproject extra.
+
+    Reads the requirement for ``dist_name`` from
+    ``[project.optional-dependencies].<extra_key>`` and turns its ``>=X``
+    floor into a shields.io badge value and a PyPI release link, so the
+    optional badge tracks the single pyproject pin. Returns ``(None, None)``
+    if the extra or floor cannot be resolved.
+    """
+    for req in extras.get(extra_key, []):
+        if req.split('>')[0].split('=')[0].split('[')[0].strip() != dist_name:
+            continue
+        match = re.search(r'>=([0-9.]+)', req)
+        if match:
+            ver = match.group(1)
+            return f'>={ver}', f'https://pypi.org/project/{dist_name}/{ver}/'
+        return 'any', f'https://pypi.org/project/{dist_name}/'
+    return None, None
+
+
+def _build_optional_table(extras: dict) -> str:
     rows = []
-    for name, role, pin_val, color, pin_link, doc_url, doc_label in OPTIONAL:
+    for name, role, pin_val, color, pin_link, doc_url, doc_label, extra in OPTIONAL:
+        if extra is not None:
+            pin_val, pin_link = _optional_pin_from_extra(extras, *extra)
         if pin_val and color and pin_link:
             badge = _badge(name, pin_val, color, pin_link)
         else:
@@ -127,10 +153,11 @@ def main():
     cfg = tomllib.loads(PYPROJECT.read_text())
     deps = cfg['project']['dependencies']
     modules = cfg.get('tool', {}).get('proteus', {}).get('modules', {})
+    extras = cfg['project'].get('optional-dependencies', {})
 
     pypi_table = _build_pypi_table(deps)
     git_table = _build_git_table(modules)
-    optional_table = _build_optional_table()
+    optional_table = _build_optional_table(extras)
 
     content = TARGET.read_text()
     content = _replace_between_markers(content, 'PYPI_TABLE', pypi_table)

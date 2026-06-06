@@ -462,8 +462,8 @@ pip install "fwl-proteus[atmodeller]"
 ```
 
 !!! warning "License"
-    atmodeller is distributed under the GPL-3.0 license, unlike the
-    Apache-2.0 PROTEUS core. Installing it is your choice.
+    atmodeller is distributed under the GPL-3.0 license; review its terms
+    before installing.
 
 ### Atmospheric chemistry (VULCAN)
 
@@ -482,5 +482,5 @@ bash tools/get_vulcan.sh
 ```
 
 !!! warning "License"
-    VULCAN is distributed under the GPL-3.0 license, unlike the Apache-2.0
-    PROTEUS core. Installing it is your choice.
+    VULCAN is distributed under the GPL-3.0 license; review its terms
+    before installing.

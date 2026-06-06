@@ -90,10 +90,11 @@ An alternative outgassing solver with configurable solubility laws and
 real-gas equations of state.
 
 !!! note
-    atmodeller is an optional backend (GPL-3.0 licensed) and is not
-    installed with PROTEUS by default; the standard outgassing module is
-    `calliope`. Install it with `pip install "fwl-proteus[atmodeller]"`
-    before setting `outgas.module = "atmodeller"`. See
+    atmodeller is an optional backend and is not installed with PROTEUS by
+    default; the standard outgassing module is `calliope`. Install it with
+    `pip install "fwl-proteus[atmodeller]"` before setting
+    `outgas.module = "atmodeller"`. atmodeller is GPL-3.0 licensed; review
+    its terms before installing. See
     [Installation: optional modules](../../How-to/installation.md#optional-modules).
 
 | Parameter | Type | Default | Description |

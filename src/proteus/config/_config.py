@@ -109,8 +109,8 @@ def check_module_dependencies(instance, attribute, value):
             instance.outgas.module == 'atmodeller',
             'atmodeller',
             'outgas.module = "atmodeller" requires the optional atmodeller package '
-            '(GPL-3.0 licensed; the PROTEUS core is Apache-2.0). The standard '
-            'outgassing backend is calliope and needs no extra install. '
+            '(GPL-3.0 licensed). The standard outgassing backend is calliope and '
+            'needs no extra install. '
             'Install atmodeller with: pip install "fwl-proteus[atmodeller]" '
             '(or pip install "atmodeller>=1.0.0").',
         ),
@@ -118,8 +118,7 @@ def check_module_dependencies(instance, attribute, value):
             instance.atmos_chem.module == 'vulcan',
             'vulcan',
             'atmos_chem.module = "vulcan" requires the optional VULCAN package '
-            '(GPL-3.0 licensed; the PROTEUS core is Apache-2.0). VULCAN is not '
-            'needed for a standard PROTEUS run. '
+            '(GPL-3.0 licensed). VULCAN is not needed for a standard PROTEUS run. '
             'Install it with: pip install "fwl-proteus[vulcan]" '
             '(or bash tools/get_vulcan.sh for an editable checkout).',
         ),

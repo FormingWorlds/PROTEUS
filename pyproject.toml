@@ -52,12 +52,17 @@ dependencies = [
     "fwl-zephyrus>=25.03.11",
     "fwl-aragog>=26.05.13",
     "fwl-zalmoxis>=26.05.13",
-    # JAX powers the Aragog interior solver (default backend). The 0.10
-    # ceiling is held for the optional atmodeller backend, whose pinned
-    # equinox 0.13.2 still calls jax.core.mapped_aval (removed in JAX
-    # 0.10); lift it once equinox migrates to jax.extend.core.mapped_aval.
+    # The default Aragog interior solver runs on JAX: its eos/phase/solver
+    # modules are equinox Modules, so jax, jaxlib, and equinox are needed by
+    # a standard run, not only by the optional atmodeller backend. The stack
+    # is pinned to the tested combination: equinox 0.13.2 calls
+    # jax.core.mapped_aval, which JAX removed in 0.10, so jax and jaxlib are
+    # held below 0.10. Lifting any of these bounds requires revalidating the
+    # default Aragog numerics (atmodeller pins the same equinox==0.13.2, so
+    # the optional backend stays consistent).
     "jax<0.10",
     "jaxlib<0.10",
+    "equinox==0.13.2",
     "cmcrameri",
     # juliacall 0.9.33 mis-resolves the PythonCall.jl dev-path on conda
     # envs (passes `<env>/lib/python3.12` to Pkg.develop, which has no
@@ -94,8 +99,11 @@ changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 # Optional physics backends. These are not pulled in by a default
 # `pip install fwl-proteus`; a standard run uses CALLIOPE (outgassing)
 # and needs neither. Install on demand, e.g. `pip install
-# "fwl-proteus[atmodeller]"`. Both are licensed GPL-3.0, unlike the
-# Apache-2.0 PROTEUS core.
+# "fwl-proteus[atmodeller]"`. Both are licensed GPL-3.0; review their
+# terms before installing. (PROTEUS's own code is Apache-2.0, but the
+# default install already includes other GPL dependencies such as
+# fwl-aragog, so opting out of these two does not yield a GPL-free
+# environment.)
 #
 # atmodeller: alternative outgassing backend (Bower+2025, ApJ 995:59),
 # selected via outgas.module = "atmodeller". Pulls JAX + equinox.

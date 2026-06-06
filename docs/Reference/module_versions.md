@@ -46,8 +46,8 @@ pinned commit.
 | Module | Role | Pin | Docs |
 |--------|------|-----|------|
 | LovePy | Multi-phase tidal heating (Julia) | [![LovePy](https://img.shields.io/badge/LovePy-main-lightgrey)](https://github.com/nichollsh/LovePy) | [GitHub](https://github.com/nichollsh/LovePy) |
-| atmodeller | Alternative outgassing backend (GPL-3.0) | [![atmodeller](https://img.shields.io/badge/atmodeller-%3E%3D1.0.0-blue)](https://pypi.org/project/atmodeller/) | [GitHub](https://github.com/djbower/atmodeller) |
-| fwl-vulcan | Atmospheric chemistry (GPL-3.0) | [![fwl-vulcan](https://img.shields.io/badge/fwl--vulcan-%3E%3D26.04.22-blue)](https://pypi.org/project/fwl-vulcan/26.04.22/) | [GitHub](https://github.com/FormingWorlds/VULCAN) |
+| atmodeller | Alternative outgassing backend (GPL-3.0) | [![atmodeller](https://img.shields.io/badge/atmodeller-%3E%3D1.0.0-blue)](https://pypi.org/project/atmodeller/1.0.0/) | [GitHub](https://github.com/djbower/atmodeller) |
+| VULCAN | Atmospheric chemistry (GPL-3.0) | [![VULCAN](https://img.shields.io/badge/VULCAN-%3E%3D26.04.22-blue)](https://pypi.org/project/fwl-vulcan/26.04.22/) | [GitHub](https://github.com/FormingWorlds/VULCAN) |
 | Obliqua | Orbital evolution and tides (Julia) | n/a | [GitHub](https://github.com/FormingWorlds/Obliqua) |
 | PLATON | Synthetic observations | n/a | [Docs](https://platon.readthedocs.io/) |
 <!-- END OPTIONAL_TABLE -->

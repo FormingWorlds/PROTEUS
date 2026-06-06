@@ -592,15 +592,63 @@ def test_optional_backends_vulcan_atmodeller_are_extras_not_mandatory():
     assert any('fwl-calliope' in d for d in deps), 'mandatory dependency list is intact'
 
     extras = data['project']['optional-dependencies']
-    assert extras.get('atmodeller') == ['atmodeller>=1.0.0'], (
+    # Membership, not exact-list: an extra may gain a second requirement
+    # later (e.g. a transitive pin) without this guard going stale.
+    assert any(r.startswith('atmodeller>=1.0.0') for r in extras.get('atmodeller', [])), (
         f'atmodeller extra must keep its pin, got {extras.get("atmodeller")!r}'
     )
-    assert extras.get('vulcan') == ['fwl-vulcan>=26.04.22'], (
+    assert any(r.startswith('fwl-vulcan>=26.04.22') for r in extras.get('vulcan', [])), (
         f'vulcan extra must keep its pin, got {extras.get("vulcan")!r}'
     )
-    # JAX must stay mandatory: it powers the default Aragog interior solver,
-    # not only the optional atmodeller backend. Removing it with atmodeller
-    # would break a standard run.
-    assert any(d.startswith('jax') for d in deps), (
-        'jax must remain a mandatory dependency (Aragog interior solver needs it)'
+    # The default Aragog interior solver runs on JAX and its modules are
+    # equinox Modules, so the jax/equinox stack must stay MANDATORY, not be
+    # gated behind the optional atmodeller extra. equinox==0.13.2 calls
+    # jax.core.mapped_aval (removed in jax 0.10), which is why jax/jaxlib are
+    # pinned <0.10. Lifting any of these would break a standard run.
+    assert 'jax<0.10' in deps and 'jaxlib<0.10' in deps, (
+        'jax/jaxlib must stay pinned <0.10 for the default Aragog jax solver'
+    )
+    assert 'equinox==0.13.2' in deps, (
+        'equinox must be a mandatory dependency for the default Aragog jax solver; '
+        'it was previously pulled only transitively via atmodeller'
+    )
+
+
+@pytest.mark.unit
+def test_ci_setup_installs_every_declared_extra():
+    """The CI setup action must install extras whose keys exist in pyproject.
+
+    The CI composite action installs PROTEUS with a literal extras list, e.g.
+    ``pip install -e ".[develop,vulcan,atmodeller]"``. pip treats an unknown
+    extra as a warning and still exits 0, so a typo or a renamed extra would
+    silently stop installing the optional backends, and their tests would skip
+    instead of failing. This guard ties the CI string to the pyproject extra
+    keys: every extra named in the action must be a real optional-dependency
+    group.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    action = (repo_root / '.github/actions/setup-proteus/action.yml').read_text(
+        encoding='utf-8'
+    )
+    data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
+    extra_keys = set(data['project']['optional-dependencies'])
+
+    # Extract the bracketed extras from the `pip install -e ".[...]"` line(s).
+    matches = re.findall(r'pip install -e "\.\[([^\]]+)\]"', action)
+    assert matches, (
+        'no `pip install -e ".[...]"` line found in setup-proteus action; '
+        'the extras-install guard cannot verify CI'
+    )
+    ci_extras = {e.strip() for group in matches for e in group.split(',')}
+    # The two optional physics backends must be installed by CI so their tests
+    # run rather than skip.
+    assert {'vulcan', 'atmodeller'} <= ci_extras, (
+        f'CI must install the vulcan + atmodeller extras; found {sorted(ci_extras)}'
+    )
+    # Every extra named in CI must be a real pyproject extra (catches typos /
+    # renames that pip would otherwise swallow).
+    unknown = ci_extras - extra_keys
+    assert not unknown, (
+        f'CI references extras not declared in pyproject [project.optional-dependencies]: '
+        f'{sorted(unknown)}; known extras are {sorted(extra_keys)}'
     )
