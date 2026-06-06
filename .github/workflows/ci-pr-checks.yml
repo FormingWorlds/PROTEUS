@@ -494,20 +494,6 @@ jobs:
           fi
           diff-cover $COV_REPORTS --diff-file /tmp/pr-changes.diff --fail-under=$DC_FAIL_UNDER
 
-      - name: Post coverage notice comment on PR
-        if: env.RUN_COVERAGE == 'true' && github.event_name == 'pull_request' && steps.coverage-validation.outputs.coverage_status != 'ok'
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            ## Coverage Notice
-
-            Estimated total coverage (PR unit tests unioned with the latest nightly artifact): **${{ steps.coverage-validation.outputs.estimated_total }}%** against the **${{ steps.coverage-validation.outputs.threshold }}%** target.
-
-            Coverage gates are warn-only on draft PRs and block once the PR is marked ready for review, so a gap that is visible here while drafting will block on undraft. Add tests to close it before then.
-
-            If the nightly artifact was unavailable for this run (`nightly_unavailable=${{ steps.coverage-validation.outputs.nightly_unavailable }}`), this number reflects unit-only coverage and understates the real total.
-
       - name: Fail job if nightly is stale
         if: always() && env.RUN_COVERAGE == 'true' && env.COV_BLOCKING == 'true' && steps.check-nightly.outcome == 'success'
         run: |
