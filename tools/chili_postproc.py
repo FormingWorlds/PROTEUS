@@ -58,6 +58,9 @@ def postproc_once(simdir: str, plot: bool = True):
     hfpath = os.path.join(simdir, 'runtime_helpfile.csv')
     if not os.path.isfile(hfpath):
         raise FileNotFoundError(f'Cannot find {hfpath}')
+    config_path = os.path.join(simdir, 'init_coupler.toml')
+    if not os.path.isfile(config_path):
+        raise FileNotFoundError(f'Cannot find {config_path}')
 
     # Make chili folder
     chilidir = os.path.join(simdir, 'chili') + '/'
@@ -70,7 +73,6 @@ def postproc_once(simdir: str, plot: bool = True):
 
     # Copy config
     print('    copy config file')
-    config_path = os.path.join(simdir, 'init_coupler.toml')
     copyfile(config_path, os.path.join(chilidir, f'evolution-proteus-{name}-config.in'))
 
     # Read config

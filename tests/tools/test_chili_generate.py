@@ -151,7 +151,10 @@ def test_committed_intercomp_files_match_regeneration():
         if committed != tomllib.loads(gen.generate_grid(planet)):
             stale.append(f'{planet}.grid.toml')
     assert not stale, f'stale committed configs, rerun tools/chili_generate.py: {stale}'
-    # Discrimination: the comparison must be able to fail. A perturbed
-    # regeneration differs from the committed content.
-    perturbed = gen.generate_case('earth').replace('chili_earth', 'somewhere_else')
+    # Discrimination: the comparison must be able to fail on a physics
+    # field outside the delta list, not just on the output path.
+    perturbed = gen.generate_case('earth').replace(
+        'semimajoraxis = 1.0', 'semimajoraxis = 1.05'
+    )
+    assert perturbed != gen.generate_case('earth')  # the perturbation landed
     assert tomllib.loads(perturbed) != tomllib.loads((outdir / 'earth.toml').read_text())

@@ -262,7 +262,8 @@ def _extract_profiles(output_dir, hf):
                 continue
 
     for _, row in hf.iterrows():
-        t = int(round(row['Time']))
+        # Aragog names snapshots with %d (truncation), not rounding.
+        t = int(row['Time'])
         ncf = nc_index.get(t)
         if ncf is None:
             for ct, cp in nc_index.items():
