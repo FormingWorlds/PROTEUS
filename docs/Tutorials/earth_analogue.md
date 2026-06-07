@@ -99,11 +99,11 @@ proteus plot -c input/tutorials/tutorial_earth.toml all
   ![Earth tutorial output](../assets/tutorials/earth_global_log.avif){ width="100%" }
   <figcaption><b>Multi-panel overview of the PROTEUS Earth analogue tutorial run.</b>
   (a) Upward heat flux components: radiogenic heating (purple, ~0.2 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid orange), OLR (dashed green), and absorbed stellar flux (ASF, dashed blue, ~226 W m<sup>-2</sup>). The net fluxes decline from ~10<sup>5</sup> W m<sup>-2</sup> to ~10<sup>2</sup> W m<sup>-2</sup> over 1.3 Myr.
-  (b) Surface partial pressures: CO<sub>2</sub> (orange) dominates early at ~88 bar; H<sub>2</sub>O (blue) starts at ~5 bar and rises to ~368 bar as it exsolves during solidification. CO (dark yellow) and H<sub>2</sub> (green) remain minor.
-  (c) Surface temperature declining from ~3300 K to ~1860 K at the solidus.
-  (d) Surface gas mole fractions: CO<sub>2</sub> (orange) dominates early; H<sub>2</sub>O (blue) rises from near zero to dominate late, crossing CO<sub>2</sub> around 10<sup>5</sup> yr.
+  (b) Surface partial pressures: CO<sub>2</sub> (orange) dominates early at ~80 bar, peaking near 105 bar; H<sub>2</sub>O (blue) starts at ~4 bar and rises to ~364 bar as it exsolves during solidification. CO (dark yellow) and H<sub>2</sub> (green) remain minor.
+  (c) Surface temperature declining from ~3300 K to ~1870 K at the solidus.
+  (d) Surface gas mole fractions: CO<sub>2</sub> (orange) dominates early; H<sub>2</sub>O (blue) rises from near zero to dominate late, crossing CO<sub>2</sub> around 8 &times; 10<sup>5</sup> yr.
   (e) Mantle evolution: core-mantle boundary (dashed purple) at ~0.49 planet fraction, rheological front (orange) propagating outward as the mantle solidifies, global melt fraction (dotted black) decreasing from 1.0 to 0.05.
-  (f) Volatile partitioning into the interior: H<sub>2</sub>O (blue) starts ~80% dissolved in the melt and drops to near 0% at solidification. CO<sub>2</sub> (orange) follows a similar but weaker trend (~15% interior initially).</figcaption>
+  (f) Volatile partitioning into the interior: H<sub>2</sub>O (blue) starts almost fully dissolved in the melt (&ge;99%) and drops to near 0% at solidification. CO<sub>2</sub> (orange) is far less soluble (~15% interior initially).</figcaption>
 </figure>
 
 ### Thermal evolution (a, c)
@@ -117,7 +117,7 @@ The absorbed stellar flux (ASF, dashed blue) is ~226 W m$^{-2}$ at 1 AU
 (instellation F$_\mathrm{ins}$ $\approx$ 1005 W m$^{-2}$ at 50 Myr,
 reduced by the geometry factor, Bond albedo, and zenith angle).
 
-The surface temperature (c) decreases from ~3300 K to ~1860 K at the
+The surface temperature (c) decreases from ~3300 K to ~1870 K at the
 solidus over ~1.3 Myr. The decline slows around 10$^5$ yr as the mantle
 enters the mushy zone and latent heat release buffers the cooling.
 
@@ -126,15 +126,15 @@ enters the mushy zone and latent heat release buffers the cooling.
 The atmosphere evolves in composition as the mantle solidifies:
 
 1. **Early phase** (t < 10$^5$ yr): CO$_2$ dominates the atmosphere at
-   ~88 bar (b), while H$_2$O starts at only ~5 bar because most water
-   is dissolved in the silicate melt (~80% interior, f). In mole
-   fraction (d), CO$_2$ dominates early.
+   ~80-105 bar (b), while H$_2$O starts at only ~4 bar because nearly
+   all water is dissolved in the silicate melt (&ge;99% interior, f). In
+   mole fraction (d), CO$_2$ dominates early.
 
 2. **Late phase** (t > 10$^5$ yr): As the melt fraction drops, H$_2$O
    exsolves from the crystallizing mantle and its partial pressure rises
-   to ~368 bar at solidification. H$_2$O overtakes CO$_2$ in mole
-   fraction around 10$^5$ yr (d) and dominates the final atmosphere at
-   ~84 mol%. The total surface pressure reaches ~438 bar.
+   to ~364 bar at solidification. H$_2$O overtakes CO$_2$ in mole
+   fraction around 8 $\times$ 10$^5$ yr (d) and dominates the final
+   atmosphere at ~84 mol%. The total surface pressure reaches ~434 bar.
 
 CO and H$_2$ remain minor species throughout (~1-10 bar), consistent
 with the oxidizing conditions (IW+4). CH$_4$ is negligible.
@@ -152,7 +152,7 @@ where $\Phi$ = 0.4, propagates outward from the CMB as the mantle
 crystallizes from the base up. The global melt fraction (dotted black)
 decreases from 1.0 to 0.05, at which point the run terminates.
 
-In (f), H$_2$O (blue) starts with ~80% of its mass dissolved in the
+In (f), H$_2$O (blue) starts with nearly all of its mass dissolved in the
 interior melt and drops to near 0% as the melt fraction approaches
 zero, releasing volatiles into the atmosphere. CO$_2$ (orange) follows
 a similar trend but with a smaller interior fraction (~15% initially)
