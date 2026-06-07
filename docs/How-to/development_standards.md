@@ -79,7 +79,7 @@ than crashes. Every code change must satisfy:
 - **Conservation**: mass and energy budgets must close. The runtime invariant
   `assert_mass_conservation` checks this on every iteration.
 - **Positivity**: temperatures must be positive (Kelvin), pressures must be
-  positive, mass fractions must be in [0, 1].
+  positive, mass fractions must be in \[0, 1].
 - **Unit consistency**: config values use "human" units (M$_\oplus$, bar, Gyr);
   internal values use SI (kg, Pa, yr). Verify units at every boundary.
 - **Float comparison**: never use `==` for floating-point values. Use

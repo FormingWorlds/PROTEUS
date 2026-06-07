@@ -148,7 +148,7 @@ class StarDummy:
 class Star:
     """Stellar parameters, model selection.
 
-    You can find useful reference data in the [documentation](https://proteus-framework.org/proteus/data.html#stars).
+    You can find useful reference data in the [documentation](https://proteus-framework.org/PROTEUS/Reference/data.html).
 
     Attributes
     ----------

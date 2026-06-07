@@ -15,22 +15,24 @@ Although PROTEUS aims to treat the problem of *planetary* evolution, it must nec
 <figure markdown="span">
 <object type="image/svg+xml" data="../assets/proteus_modules_schematic.svg" class="arch-diagram arch-diagram--light"></object>
 <object type="image/svg+xml" data="../assets/proteus_modules_schematic_darkmode.svg" class="arch-diagram arch-diagram--dark"></object>
-<figcaption>Schematic of the PROTEUS modular architecture. The planet is
-divided into radial domains: a metallic core, a silicate mantle (solid
-and partially molten), a surface boundary layer, and a volatile atmosphere.
-Each domain is handled by one or more interchangeable modules (labelled
-boxes). The star and orbit provide external forcing (instellation, XUV
-flux, tidal heating). Arrows indicate the flow of physical quantities
-between modules at each coupling timestep: the interior module passes
-the surface temperature and heat flux upward to the atmosphere, which
-returns the outgoing longwave radiation; the outgassing module partitions
-volatiles between the melt and the atmosphere based on the current
-temperature and melt fraction; and the escape module removes mass from
-the top of the atmosphere driven by the stellar XUV flux. Multiple
-implementations are available for each slot (e.g. Aragog or SPIDER for
-the interior, AGNI or JANUS for the atmosphere), enabling hierarchical
-model intercomparison.</figcaption>
+<figcaption><b>Schematic of the PROTEUS modular architecture.</b>
+Radial domains (labelled boxes) are each handled by interchangeable
+modules; the star and orbit provide external forcing; arrows show the
+quantities exchanged at each coupling timestep.</figcaption>
 </figure>
+
+The planet is divided into radial domains: a metallic core, a silicate
+mantle (solid and partially molten), a surface boundary layer, and a
+volatile atmosphere. The star and orbit force the system through
+instellation, XUV flux, and tidal heating. At each coupling timestep,
+the interior module passes the surface temperature and heat flux upward
+to the atmosphere, which returns the outgoing longwave radiation; the
+outgassing module partitions volatiles between the melt and the
+atmosphere based on the current temperature and melt fraction; and the
+escape module removes mass from the top of the atmosphere driven by the
+stellar XUV flux. Multiple implementations are available for each slot
+(e.g. Aragog or SPIDER for the interior, AGNI or JANUS for the
+atmosphere), enabling hierarchical model intercomparison.
 
 ### Module overview
 
@@ -53,7 +55,7 @@ Each module is maintained in its own repository and can be used as a standalone 
 
 [Zalmoxis](https://proteus-framework.org/Zalmoxis/) computes the hydrostatic equilibrium structure of a differentiated planet (metallic core + silicate mantle + volatile envelope). Given a total planet mass, bulk composition, and surface temperature, Zalmoxis integrates the equations of hydrostatic equilibrium inward from the surface using a tabulated equation of state (EOS), returning radial profiles of pressure, density, temperature, and gravitational acceleration. It also computes the core radius, mantle mass, and surface gravity.
 
-Zalmoxis supports several EOS backends, including the PALEOS unified tables and the Wolf & Bower (2018)[^cite-wolf2018] parameterisation. The structure solution is used by PROTEUS to initialise the planet's radius and to dynamically update the structure during the simulation when the interior thermal state changes (see [Structure-interior coupling](#structureinterior-coupling) below).
+Zalmoxis supports several EOS backends, including the PALEOS unified tables and the Wolf & Bower (2018)[^cite-wolf2018] parameterisation. The structure solution is used by PROTEUS to initialise the planet's radius and to dynamically update the structure during the simulation when the interior thermal state changes (see [Structure-interior coupling](#structure-interior-coupling) below).
 
 Config section: `[interior_struct]`. Reference: [Interior configuration](../Reference/config/interior.md).
 

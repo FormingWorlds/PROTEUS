@@ -1,4 +1,4 @@
-# Getting started
+# Quick path
 
 !!! tip "New to PROTEUS?"
     Start with the [Quick start tutorial](Tutorials/quick_start_dummy.md):

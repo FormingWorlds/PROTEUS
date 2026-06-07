@@ -22,7 +22,7 @@ H2_kg_solid  = 0  # H2 does not partition into solid silicate
 ```
 
 By construction the three reservoirs sum to `H2_kg_total` for any `sigma`
-in [0, 1], so the kg-closure is structurally trivial. The discriminating
+in \[0, 1], so the kg-closure is structurally trivial. The discriminating
 check is instead the molar-mass conversion: the reference-pinned test patches
 `rogers2025_suppression_weight` to a specific value (0.4), then verifies that
 `H2_mol_total = H2_kg_total / M(H2) / N_av` uses the molecular mass

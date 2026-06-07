@@ -22,26 +22,46 @@ PYPROJECT = REPO_ROOT / 'pyproject.toml'
 TARGET = REPO_ROOT / 'docs' / 'Reference' / 'module_versions.md'
 
 PYPI_META = {
-    'fwl-aragog': ('Interior thermal evolution', 'https://proteus-framework.org/aragog/', 'Docs'),
+    'fwl-aragog': (
+        'Interior thermal evolution',
+        'https://proteus-framework.org/aragog/',
+        'Docs',
+    ),
     'fwl-zalmoxis': ('Interior structure', 'https://proteus-framework.org/Zalmoxis/', 'Docs'),
     'fwl-calliope': ('Volatile outgassing', 'https://proteus-framework.org/CALLIOPE/', 'Docs'),
     'fwl-janus': ('1D convective atmosphere', 'https://proteus-framework.org/JANUS/', 'Docs'),
     'fwl-mors': ('Stellar evolution', 'https://proteus-framework.org/MORS/', 'Docs'),
-    'fwl-zephyrus': ('Atmospheric escape', 'https://github.com/FormingWorlds/ZEPHYRUS', 'GitHub'),
+    'fwl-zephyrus': (
+        'Atmospheric escape',
+        'https://github.com/FormingWorlds/ZEPHYRUS',
+        'GitHub',
+    ),
     # fwl-vulcan is an optional backend (see OPTIONAL below), not a mandatory
     # PyPI dependency, so it is intentionally absent from this table.
 }
 
 GIT_META = {
-    'agni': ('AGNI', 'Radiative-convective atmosphere (Julia)',
-             'https://github.com/nichollsh/AGNI',
-             'https://www.h-nicholls.space/AGNI/', 'Docs'),
-    'socrates': ('SOCRATES', 'Spectral radiative transfer (Fortran)',
-                 'https://github.com/FormingWorlds/SOCRATES',
-                 'https://proteus-framework.org/SOCRATES/', 'Docs'),
-    'spider': ('SPIDER', 'Interior evolution (C, requires PETSc)',
-               'https://github.com/FormingWorlds/SPIDER',
-               'https://proteus-framework.org/SPIDER/', 'Docs'),
+    'agni': (
+        'AGNI',
+        'Radiative-convective atmosphere (Julia)',
+        'https://github.com/nichollsh/AGNI',
+        'https://www.h-nicholls.space/AGNI/',
+        'Docs',
+    ),
+    'socrates': (
+        'SOCRATES',
+        'Spectral radiative transfer (Fortran)',
+        'https://github.com/FormingWorlds/SOCRATES',
+        'https://proteus-framework.org/SOCRATES/',
+        'Docs',
+    ),
+    'spider': (
+        'SPIDER',
+        'Interior evolution (C, requires PETSc)',
+        'https://github.com/FormingWorlds/SPIDER',
+        'https://proteus-framework.org/SPIDER/',
+        'Docs',
+    ),
 }
 
 # Each entry: (label, role, pin_val, color, pin_link, doc_url, doc_label, extra).
@@ -50,22 +70,46 @@ GIT_META = {
 # place; pin_val/pin_link are then ignored. Otherwise pin_val/pin_link are
 # used as-is (git refs, docs-only entries).
 OPTIONAL = [
-    ('LovePy', 'Multi-phase tidal heating (Julia)',
-     'main', 'lightgrey',
-     'https://github.com/nichollsh/LovePy',
-     'https://github.com/nichollsh/LovePy', 'GitHub', None),
-    ('atmodeller', 'Alternative outgassing backend (GPL-3.0)',
-     None, 'blue', None,
-     'https://github.com/djbower/atmodeller', 'GitHub', ('atmodeller', 'atmodeller')),
-    ('VULCAN', 'Atmospheric chemistry (GPL-3.0)',
-     None, 'blue', None,
-     'https://github.com/FormingWorlds/VULCAN', 'GitHub', ('vulcan', 'fwl-vulcan')),
-    ('Obliqua', 'Orbital evolution and tides (Julia)',
-     None, None, None,
-     'https://github.com/FormingWorlds/Obliqua', 'GitHub', None),
-    ('PLATON', 'Synthetic observations',
-     None, None, None,
-     'https://platon.readthedocs.io/', 'Docs', None),
+    (
+        'LovePy',
+        'Multi-phase tidal heating (Julia)',
+        'main',
+        'lightgrey',
+        'https://github.com/nichollsh/LovePy',
+        'https://github.com/nichollsh/LovePy',
+        'GitHub',
+        None,
+    ),
+    (
+        'atmodeller',
+        'Alternative outgassing backend (GPL-3.0)',
+        None,
+        'blue',
+        None,
+        'https://github.com/djbower/atmodeller',
+        'GitHub',
+        ('atmodeller', 'atmodeller'),
+    ),
+    (
+        'VULCAN',
+        'Atmospheric chemistry (GPL-3.0)',
+        None,
+        'blue',
+        None,
+        'https://github.com/FormingWorlds/VULCAN',
+        'GitHub',
+        ('vulcan', 'fwl-vulcan'),
+    ),
+    (
+        'Obliqua',
+        'Orbital evolution and tides (Julia)',
+        None,
+        None,
+        None,
+        'https://github.com/FormingWorlds/Obliqua',
+        'GitHub',
+        None,
+    ),
 ]
 
 
@@ -79,23 +123,29 @@ def _badge(label: str, value: str, color: str, link: str) -> str:
 def _build_pypi_table(deps: list[str]) -> str:
     rows = []
     for dep_str in deps:
-        name = dep_str.split('>')[0].split('@')[0].split('=')[0].strip().lower().replace('_', '-')
+        name = (
+            dep_str.split('>')[0].split('@')[0].split('=')[0].strip().lower().replace('_', '-')
+        )
         if name not in PYPI_META:
             continue
         role, doc_url, doc_label = PYPI_META[name]
         if '@' in dep_str and 'git+' in dep_str:
             branch = dep_str.rsplit('@', 1)[-1]
-            badge = _badge(name, f'branch: {branch}', 'orange',
-                           f'https://github.com/FormingWorlds/CALLIOPE/tree/{branch}')
+            badge = _badge(
+                name,
+                f'branch: {branch}',
+                'orange',
+                f'https://github.com/FormingWorlds/CALLIOPE/tree/{branch}',
+            )
         else:
             match = re.search(r'>=([0-9.]+)', dep_str)
             if match:
                 ver = match.group(1)
-                badge = _badge(name, f'>={ver}', 'blue',
-                               f'https://pypi.org/project/{name}/{ver}/')
+                badge = _badge(
+                    name, f'>={ver}', 'blue', f'https://pypi.org/project/{name}/{ver}/'
+                )
             else:
-                badge = _badge(name, 'any', 'lightgrey',
-                               f'https://pypi.org/project/{name}/')
+                badge = _badge(name, 'any', 'lightgrey', f'https://pypi.org/project/{name}/')
         rows.append(f'| {name} | {role} | {badge} | [{doc_label}]({doc_url}) |')
     return '| Module | Role | Pin | Docs |\n|--------|------|-----|------|\n' + '\n'.join(rows)
 

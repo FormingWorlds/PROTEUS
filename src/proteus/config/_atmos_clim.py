@@ -347,7 +347,7 @@ class AtmosClim:
     module: str
         Which atmosphere module to use. Choices: 'agni', 'janus', 'dummy'.
     spectral_group: str
-        Spectral file group defining gas opacities. See docs/assets/spectral_files.pdf.
+        Spectral file group defining gas opacities. See https://proteus-framework.org/SOCRATES/Reference/proteus_spectral_file_reference.html
     spectral_bands: str
         Number of wavenumber bands in k-table.
     num_levels: int

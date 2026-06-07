@@ -8,9 +8,9 @@ for the coupled evolution.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `mass_tot` | float | `1.0` | Total initial planet mass [M$_\oplus$] |
+| `mass_tot` | float | `1.0` | Total initial planet mass \[M$_\oplus$] |
 | `prevent_warming` | bool | `false` | Require monotonic cooling (clamp $T_\mathrm{magma}$ to previous value if it increases) |
-| `R_int_override` | float or none | `none` | Advanced: bypass the radius root finder and force a fixed interior radius [m]; `none` uses the root finder. Used for SPIDER/Aragog parity runs |
+| `R_int_override` | float or none | `none` | Advanced: bypass the radius root finder and force a fixed interior radius \[m]; `none` uses the root finder. Used for SPIDER/Aragog parity runs |
 
 ## Initial temperature profile
 
@@ -21,14 +21,14 @@ reference points.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `temperature_mode` | str | `"liquidus_super"` | See modes table below |
-| `tsurf_init` | float | `4000` | Surface temperature [K] (isothermal, linear, adiabatic modes) |
-| `tcmb_init` | float | `6000` | Core-mantle boundary temperature [K] (adiabatic_from_cmb mode) |
-| `tcenter_init` | float | `6000` | Center temperature [K] (linear mode only) |
-| `delta_T_super` | float | `500` | Superliquidus offset at CMB [K] (liquidus_super mode) |
-| `ini_entropy` | float | `3900` | Initial specific entropy [J/kg/K] (isentropic mode) |
-| `ini_dsdr` | float | `-4.698e-6` | Initial entropy gradient [J/kg/K/m] (isentropic mode) |
-| `f_accretion` | float | `0.04` | Accretion heat retention fraction [0, 1] (accretion mode) |
-| `f_differentiation` | float | `0.50` | Differentiation heat retention fraction [0, 1] (accretion mode) |
+| `tsurf_init` | float | `4000` | Surface temperature \[K] (isothermal, linear, adiabatic modes) |
+| `tcmb_init` | float | `6000` | Core-mantle boundary temperature \[K] (adiabatic_from_cmb mode) |
+| `tcenter_init` | float | `6000` | Center temperature \[K] (linear mode only) |
+| `delta_T_super` | float | `500` | Superliquidus offset at CMB \[K] (liquidus_super mode) |
+| `ini_entropy` | float | `3900` | Initial specific entropy \[J/kg/K] (isentropic mode) |
+| `ini_dsdr` | float | `-4.698e-6` | Initial entropy gradient \[J/kg/K/m] (isentropic mode) |
+| `f_accretion` | float | `0.04` | Accretion heat retention fraction \[0, 1] (accretion mode) |
+| `f_differentiation` | float | `0.50` | Differentiation heat retention fraction \[0, 1] (accretion mode) |
 
 ### Temperature modes
 
@@ -94,16 +94,16 @@ by surface partial pressure for each gas species.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `H2O` | float | `0.0` | [bar] |
-| `CO2` | float | `0.0` | [bar] |
-| `N2` | float | `0.0` | [bar] |
-| `S2` | float | `0.0` | [bar] |
-| `SO2` | float | `0.0` | [bar] |
-| `H2S` | float | `0.0` | [bar] |
-| `NH3` | float | `0.0` | [bar] |
-| `H2` | float | `0.0` | [bar] |
-| `CH4` | float | `0.0` | [bar] |
-| `CO` | float | `0.0` | [bar] |
+| `H2O` | float | `0.0` | \[bar] |
+| `CO2` | float | `0.0` | \[bar] |
+| `N2` | float | `0.0` | \[bar] |
+| `S2` | float | `0.0` | \[bar] |
+| `SO2` | float | `0.0` | \[bar] |
+| `H2S` | float | `0.0` | \[bar] |
+| `NH3` | float | `0.0` | \[bar] |
+| `H2` | float | `0.0` | \[bar] |
+| `CH4` | float | `0.0` | \[bar] |
+| `CO` | float | `0.0` | \[bar] |
 
 ---
 

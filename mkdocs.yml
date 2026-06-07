@@ -8,7 +8,7 @@ copyright: '© 2023-2026 <a href="https://formingworlds.space">Forming Worlds La
 nav:
   - Home:
       - About: index.md
-      - Getting started: getting_started.md
+      - Quick path: getting_started.md
 
   - How-to guides:
       - Getting started:
@@ -68,6 +68,7 @@ nav:
           - Interior structure config: Reference/api/config_struct.md
           - Interior energetics wrapper: Reference/api/interior_energetics_wrapper.md
       - Validation:
+          - Overview: Validation/index.md
           - Interior structure:
               - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
           - Orbit:
@@ -105,7 +106,6 @@ nav:
       - SPIDER: https://proteus-framework.org/SPIDER/
       - Atmodeller: https://atmodeller.readthedocs.io/en/latest/
       - FastChem: https://newstrangeworlds.github.io/FastChem/
-      - PLATON: https://platon.readthedocs.io/en/latest/
       - SOCRATES: https://github.com/FormingWorlds/SOCRATES/
 
 theme:
@@ -210,7 +210,7 @@ plugins:
             show_root_toc_entry: true
             show_docstring_attributes: true
             show_root_full_path: false
-            docstring_section_style: list
+            docstring_section_style: table
             members_order: alphabetical
             merge_init_into_class: yes
             filters: ["!^_"]

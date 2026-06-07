@@ -24,8 +24,8 @@ efficiency.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `Pxuv` | float | `5e-5` | XUV opacity pressure level [bar] |
-| `efficiency` | float | `0.1` | Escape efficiency [0, 1] |
+| `Pxuv` | float | `5e-5` | XUV opacity pressure level \[bar] |
+| `efficiency` | float | `0.1` | Escape efficiency \[0, 1] |
 | `tidal` | bool | `false` | Include tidal contribution to escape |
 
 ### Dummy escape `[escape.dummy]`
@@ -34,7 +34,7 @@ A fixed bulk escape rate, useful for testing and parameter studies.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `rate` | float | `0.0` | Bulk escape rate [kg s$^{-1}$] |
+| `rate` | float | `0.0` | Bulk escape rate \[kg s$^{-1}$] |
 
 ---
 
@@ -47,10 +47,10 @@ planetary surface conditions.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `module` | str | `"calliope"` | Outgassing module: `calliope` (Gibbs minimisation), `atmodeller` (simplified), `dummy` (fixed) |
-| `fO2_shift_IW` | float | `4.0` | Redox state: fO$_2$ offset from the iron-wustite buffer [log$_{10}$ units] |
-| `mass_thresh` | float | `1e16` | Minimum volatile mass threshold [kg] |
+| `fO2_shift_IW` | float | `4.0` | Redox state: fO$_2$ offset from the iron-wustite buffer \[log$_{10}$ units] |
+| `mass_thresh` | float | `1e16` | Minimum volatile mass threshold \[kg] |
 | `h2_binodal` | bool | `false` | Enable H$_2$-MgSiO$_3$ miscibility gap model. `true` is rejected at config load: the parameterisation is not production ready |
-| `T_floor` | float | `700.0` | Clamp the outgassing temperature to this floor [K] before the chemistry solve |
+| `T_floor` | float | `700.0` | Clamp the outgassing temperature to this floor \[K] before the chemistry solve |
 | `solver_rtol` | float | `1e-4` | Relative mass/equilibrium tolerance |
 | `solver_atol` | float | `1e-6` | Absolute mass/equilibrium tolerance |
 
@@ -82,7 +82,7 @@ fO$_2$ buffering.
 |-----------|------|---------|-------------|
 | `nguess` | int | `1000` | Maximum number of initial-guess samples for the equilibrium solver |
 | `nsolve` | int | `3000` | Maximum number of solver iterations per call |
-| `p_guess_max` | float | `1e5` | Upper bound [bar] of the cold-start surface-pressure draw, in `(0, 1e7]`; raise it to seed the solver higher for high-pressure (e.g. sub-Neptune) cases |
+| `p_guess_max` | float | `1e5` | Upper bound \[bar] of the cold-start surface-pressure draw, in `(0, 1e7]`; raise it to seed the solver higher for high-pressure (e.g. sub-Neptune) cases |
 
 ### Atmodeller `[outgas.atmodeller]`
 

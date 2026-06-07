@@ -55,7 +55,7 @@ output should look similar to this:
 
 <figure markdown="span">
   ![Dummy tutorial output](../assets/tutorials/dummy_global_lin.avif){ width="100%" }
-  <figcaption>All-dummy tutorial output. (a) Heat fluxes: the interior and
+  <figcaption><b>All-dummy tutorial output.</b> (a) Heat fluxes: the interior and
   atmospheric fluxes track each other as the planet cools; absorbed stellar
   flux (ASF) is constant. (b) Surface partial pressures: H<sub>2</sub>O dominates
   (~10<sup>4</sup> bar), with CO<sub>2</sub>, N<sub>2</sub>, and SO<sub>2</sub> as minor species; pressures

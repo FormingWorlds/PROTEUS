@@ -74,7 +74,8 @@ The current `docs/` folder structure is shown below:
 ├── Reference
 ├── stylesheets
 ├── submodules.md
-└── Tutorials
+├── Tutorials
+└── Validation
 ```
 
 The main directories and files are used as follows:
@@ -89,6 +90,9 @@ The main directories and files are used as follows:
 - `javascripts/`: contains JavaScript files used for additional frontend behaviour.
 - `overrides/`: contains theme or template overrides used by the site.
 - `paper/`: contains material related to the PROTEUS JOSS paper.
+- `Validation/`: per-source-file scientific validation pages, recording the
+  published benchmarks, analytical limits, and cross-implementation checks
+  that pin each physics module's behavior.
 - `index.md`: the **landing page** of the documentation (Home).
 - `getting_started.md`: a page to get the user started, just below Home.
 - `funding.md`: contains our sponsors.

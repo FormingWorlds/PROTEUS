@@ -22,8 +22,8 @@ with an equation of state (EOS).
 | `module` | str | `"zalmoxis"` | Structure solver: `zalmoxis` (full EOS), `dummy` (scaling laws), `spider` (SPIDER internal) |
 | `core_frac` | float | `0.325` | Core fraction (meaning depends on `core_frac_mode`) |
 | `core_frac_mode` | str | `"mass"` | How `core_frac` is interpreted: `mass` (mass fraction) or `radius` (radius fraction). The `zalmoxis` module always uses `mass` and ignores `radius` with a warning; `radius` is honoured by the `dummy` and `spider` modules |
-| `core_density` | float or "self" | `"self"` | Core density [kg m$^{-3}$]; `"self"` = computed by the structure solver |
-| `core_heatcap` | float or "self" | `"self"` | Core heat capacity [J kg$^{-1}$ K$^{-1}$]; `"self"` = computed by the structure solver |
+| `core_density` | float or "self" | `"self"` | Core density \[kg m$^{-3}$]; `"self"` = computed by the structure solver |
+| `core_heatcap` | float or "self" | `"self"` | Core heat capacity \[J kg$^{-1}$ K$^{-1}$]; `"self"` = computed by the structure solver |
 | `melting_dir` | str or none | `none` | Melting curve folder name in FWL_DATA (for SPIDER module) |
 | `eos_dir` | str or none | `none` | EOS folder name in FWL_DATA (for SPIDER module) |
 
@@ -40,7 +40,7 @@ Chabrier, or Seager 2007). It supports 2-layer (core + mantle) and 3-layer
 | `core_eos` | str | `"PALEOS:iron"` | Core EOS as `"<source>:<material>"` |
 | `mantle_eos` | str | `"PALEOS:MgSiO3"` | Mantle EOS as `"<source>:<material>"` |
 | `ice_layer_eos` | str or none | `none` | Ice/water layer EOS; `none` = 2-layer model |
-| `mushy_zone_factor` | float | `0.8` | Solidus/liquidus depression factor [0.7, 1.0] (PALEOS only) |
+| `mushy_zone_factor` | float | `0.8` | Solidus/liquidus depression factor \[0.7, 1.0] (PALEOS only) |
 | `mantle_mass_fraction` | float | `0` | Mantle mass fraction for 3-layer models; `0` = auto ($1 - \mathrm{core\_frac}$) |
 | `dry_mantle` | bool | `true` | Structure EOS assumes a dry mantle. `false` (melt-fraction-aware dissolved-volatile mixing in the mantle density) is rejected at config load until the pinned Zalmoxis release supports per-shell volatile profiles |
 
@@ -76,11 +76,11 @@ loop. The structure is recomputed when any of these conditions are met:
 | `update_dphi_abs` | float | `0.05` | Trigger when melt fraction changes by this amount |
 | `update_dtmagma_frac` | float | `0.05` | Trigger when $T_\mathrm{magma}$ changes by this fraction |
 | `update_dw_comp_abs` | float | `0.05` | Trigger when the relative dissolved-volatile (H$_2$O or H$_2$) mantle mass fraction changes by this amount |
-| `update_interval` | float | `1e9` | Maximum time between updates [yr]; effectively disabled at default |
-| `update_min_interval` | float | `0` | Minimum time between updates [yr] (prevents thrashing) |
-| `update_stale_ceiling` | float | `2.5e4` | Time since last successful re-solve that refires a trigger [yr]; `0` disables |
+| `update_interval` | float | `1e9` | Maximum time between updates \[yr]; effectively disabled at default |
+| `update_min_interval` | float | `0` | Minimum time between updates \[yr] (prevents thrashing) |
+| `update_stale_ceiling` | float | `2.5e4` | Time since last successful re-solve that refires a trigger \[yr]; `0` disables |
 | `mesh_max_shift` | float | `0.05` | Maximum fractional radius shift per update |
-| `mesh_convergence_interval` | float | `10.0` | Convergence relaxation time after mesh update [yr] |
+| `mesh_convergence_interval` | float | `10.0` | Convergence relaxation time after mesh update \[yr] |
 
 **Initialisation**
 
@@ -122,7 +122,7 @@ atmospheric evolution.
 | `num_levels` | int | `80` | Radial grid levels for the energetics domain |
 | `rtol` | float | `1e-10` | ODE solver relative tolerance |
 | `atol` | float | `1e-10` | ODE solver absolute tolerance |
-| `flux_guess` | float | `-1` | Initial heat flux guess [W m$^{-2}$]; negative = compute as $\sigma T_\mathrm{magma}^4$ |
+| `flux_guess` | float | `-1` | Initial heat flux guess \[W m$^{-2}$]; negative = compute as $\sigma T_\mathrm{magma}^4$ |
 | `surface_bc_mode` | str | `"flux"` | Surface BC for SPIDER/Aragog: `flux` (prescribed $F_\mathrm{atm}$ from the atmosphere module) or `grey_body` (native grey-body BC computed inside the interior solver) |
 
 **Transport physics**
@@ -140,28 +140,28 @@ atmospheric evolution.
 |-----------|------|---------|-------------|
 | `heat_tidal` | bool | `false` | Tidal heating (requires `orbit.module` $\neq$ `none`) |
 | `heat_radiogenic` | bool | `true` | Radiogenic heating |
-| `radio_tref` | float | `4.567` | Reference age for decay concentrations [Gyr] (4.567 = present-day BSE) |
-| `radio_Al` | float | `0.0` | $^{26}$Al concentration [ppmw]; 1.23 = canonical |
-| `radio_Fe` | float | `0.0` | $^{60}$Fe concentration [ppmw] |
-| `radio_K` | float | `310.0` | $^{40}$K concentration [ppmw of element]; BSE value |
-| `radio_U` | float | `0.031` | U concentration [ppmw of element]; BSE value |
-| `radio_Th` | float | `0.124` | Th concentration [ppmw of element]; BSE value |
+| `radio_tref` | float | `4.567` | Reference age for decay concentrations \[Gyr] (4.567 = present-day BSE) |
+| `radio_Al` | float | `0.0` | $^{26}$Al concentration \[ppmw]; 1.23 = canonical |
+| `radio_Fe` | float | `0.0` | $^{60}$Fe concentration \[ppmw] |
+| `radio_K` | float | `310.0` | $^{40}$K concentration \[ppmw of element]; BSE value |
+| `radio_U` | float | `0.031` | U concentration \[ppmw of element]; BSE value |
+| `radio_Th` | float | `0.124` | Th concentration \[ppmw of element]; BSE value |
 
 **Rheology and convection**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `rfront_loc` | float | `0.50` | Rheological front centre [melt fraction] |
-| `rfront_wid` | float | `0.20` | Rheological front width [melt fraction] |
-| `grain_size` | float | `0.1` | Crystal settling grain size [m] |
+| `rfront_loc` | float | `0.50` | Rheological front centre \[melt fraction] |
+| `rfront_wid` | float | `0.20` | Rheological front width \[melt fraction] |
+| `grain_size` | float | `0.1` | Crystal settling grain size \[m] |
 | `mixing_length` | str | `"nearest"` | MLT length scale: `nearest` (distance to nearest boundary) or `constant` ($D/4$) |
-| `kappah_floor` | float | `10.0` | Eddy diffusivity floor [m$^2$ s$^{-1}$]; prevents MLT freeze |
+| `kappah_floor` | float | `10.0` | Eddy diffusivity floor \[m$^2$ s$^{-1}$]; prevents MLT freeze |
 
 **Coupling limits**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `tmagma_atol` | float | `20.0` | Maximum $T_\mathrm{magma}$ change per PROTEUS step [K] |
+| `tmagma_atol` | float | `20.0` | Maximum $T_\mathrm{magma}$ change per PROTEUS step \[K] |
 | `tmagma_rtol` | float | `0.02` | Maximum relative $T_\mathrm{magma}$ change per step |
 
 **Ultra-thin boundary layer**
@@ -169,28 +169,28 @@ atmospheric evolution.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `param_utbl` | bool | `false` | Enable UTBL parameterisation |
-| `param_utbl_const` | float | `1e-7` | UTBL scaling constant [K$^{-1}$] |
+| `param_utbl_const` | float | `1e-7` | UTBL scaling constant \[K$^{-1}$] |
 
 **Hydrostatic EOS (Adams-Williamson)**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `adams_williamson_rhos` | float | `4078.95` | Surface density [kg m$^{-3}$] |
-| `adams_williamson_beta` | float | `1.1115e-7` | Density gradient [m$^{-1}$] |
-| `adiabatic_bulk_modulus` | float | `260e9` | Adiabatic bulk modulus [Pa] |
+| `adams_williamson_rhos` | float | `4078.95` | Surface density \[kg m$^{-3}$] |
+| `adams_williamson_beta` | float | `1.1115e-7` | Density gradient \[m$^{-1}$] |
+| `adiabatic_bulk_modulus` | float | `260e9` | Adiabatic bulk modulus \[Pa] |
 
 **Phase material properties**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `melt_log10visc` | float | `2.0` | log$_{10}$ molten-silicate viscosity [Pa s] |
-| `solid_log10visc` | float | `22.0` | log$_{10}$ solid-silicate viscosity [Pa s] |
-| `melt_cond` | float | `4.0` | Molten-silicate thermal conductivity [W m$^{-1}$ K$^{-1}$] |
-| `solid_cond` | float | `4.0` | Solid-silicate thermal conductivity [W m$^{-1}$ K$^{-1}$] |
+| `melt_log10visc` | float | `2.0` | log$_{10}$ molten-silicate viscosity \[Pa s] |
+| `solid_log10visc` | float | `22.0` | log$_{10}$ solid-silicate viscosity \[Pa s] |
+| `melt_cond` | float | `4.0` | Molten-silicate thermal conductivity \[W m$^{-1}$ K$^{-1}$] |
+| `solid_cond` | float | `4.0` | Solid-silicate thermal conductivity \[W m$^{-1}$ K$^{-1}$] |
 | `eddy_diffusivity_thermal` | float | `1.0` | Scaling on MLT thermal eddy diffusivity |
 | `eddy_diffusivity_chemical` | float | `1.0` | Scaling on MLT chemical eddy diffusivity |
-| `latent_heat_of_fusion` | float | `4e6` | Silicate latent heat of fusion [J kg$^{-1}$] |
-| `phase_transition_width` | float | `0.1` | Width of the mushy-zone blend [melt fraction] |
+| `latent_heat_of_fusion` | float | `4e6` | Silicate latent heat of fusion \[J kg$^{-1}$] |
+| `phase_transition_width` | float | `0.1` | Width of the mushy-zone blend \[melt fraction] |
 
 **Core thermal model**
 
@@ -212,13 +212,13 @@ relationship. Useful for controlled parity tests.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `const_properties` | bool | `false` | Enable constant-properties mode |
-| `const_rho` | float | `4000.0` | Constant density [kg m$^{-3}$] |
-| `const_Cp` | float | `1000.0` | Constant heat capacity [J kg$^{-1}$ K$^{-1}$] |
-| `const_alpha` | float | `1e-5` | Constant thermal expansivity [K$^{-1}$] |
-| `const_cond` | float | `4.0` | Constant thermal conductivity [W m$^{-1}$ K$^{-1}$] |
-| `const_log10visc` | float | `2.0` | Constant log$_{10}$ viscosity [Pa s] |
-| `const_T_ref` | float | `3500.0` | Reference temperature [K] |
-| `const_S_ref` | float | `3000.0` | Reference entropy [J kg$^{-1}$ K$^{-1}$] |
+| `const_rho` | float | `4000.0` | Constant density \[kg m$^{-3}$] |
+| `const_Cp` | float | `1000.0` | Constant heat capacity \[J kg$^{-1}$ K$^{-1}$] |
+| `const_alpha` | float | `1e-5` | Constant thermal expansivity \[K$^{-1}$] |
+| `const_cond` | float | `4.0` | Constant thermal conductivity \[W m$^{-1}$ K$^{-1}$] |
+| `const_log10visc` | float | `2.0` | Constant log$_{10}$ viscosity \[Pa s] |
+| `const_T_ref` | float | `3500.0` | Reference temperature \[K] |
+| `const_S_ref` | float | `3000.0` | Reference entropy \[J kg$^{-1}$ K$^{-1}$] |
 
 ### Aragog `[interior_energetics.aragog]`
 
@@ -231,10 +231,10 @@ Jacobians for robust convergence.
 | `mass_coordinates` | bool | `true` | Use mass-coordinate mesh spacing (gives finer resolution near surface) |
 | `backend` | str | `"jax"` | ODE backend: `jax` (CVODE + analytic Jacobian, recommended) or `numpy` (CVODE + finite-difference Jacobian) |
 | `solver_method` | str | `"cvode"` | ODE solver: `cvode` (SUNDIALS), `radau` (scipy), `bdf` (scipy) |
-| `atol_temperature_equivalent` | float | `1e-8` | Effective temperature-scale absolute tolerance [K] |
+| `atol_temperature_equivalent` | float | `1e-8` | Effective temperature-scale absolute tolerance \[K] |
 | `phase_smoothing` | str | `"tanh"` | Phase-boundary smoothing: `tanh` or `cubic_hermite` |
 | `core_bc` | str | `"energy_balance"` | Core-mantle boundary condition: `energy_balance` (SPIDER bit-parity), `quasi_steady`, `gradient`, or `bower2018` (experimental) |
-| `tolerance_struct` | float | `100` | Absolute mass tolerance [kg] for the interior-radius secant solver |
+| `tolerance_struct` | float | `100` | Absolute mass tolerance \[kg] for the interior-radius secant solver |
 | `scalar_gravity_override` | bool | `false` | Overwrite the mesh gravity column with a uniform surface scalar; set `true` only for paired scalar-gravity comparisons |
 | `phi_step_cap` | float | `0.0` | Per-call melt-fraction step cap; `0.0` disables, `> 0` clamps the integration window so projected $|\Delta\Phi|$ stays within the cap |
 
@@ -247,7 +247,7 @@ results consistent with Bower et al. (2018)[^cite-bower2018].
 |-----------|------|---------|-------------|
 | `solver_type` | str | `"bdf"` | SUNDIALS method: `adams` or `bdf` |
 | `matprop_smooth_width` | float | `0.01` | Melt-fraction smoothing window across solidus/liquidus |
-| `tolerance_struct` | float | `100` | Absolute mass tolerance [kg] for the interior-radius secant solver |
+| `tolerance_struct` | float | `100` | Absolute mass tolerance \[kg] for the interior-radius secant solver |
 | `log_output` | bool | `true` | Write SPIDER solver log output |
 
 ### Dummy `[interior_energetics.dummy]`
@@ -256,11 +256,11 @@ A parameterised cooling model with prescribed solidus and liquidus.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `mantle_tliq` | float | `2700.0` | Liquidus temperature [K] |
-| `mantle_tsol` | float | `1700.0` | Solidus temperature [K] |
-| `mantle_rho` | float | `4550.0` | Mantle density [kg m$^{-3}$] |
-| `mantle_cp` | float | `1792.0` | Mantle heat capacity [J kg$^{-1}$ K$^{-1}$] |
-| `heat_internal` | float | `0.0` | Internal heating rate [W kg$^{-1}$] |
+| `mantle_tliq` | float | `2700.0` | Liquidus temperature \[K] |
+| `mantle_tsol` | float | `1700.0` | Solidus temperature \[K] |
+| `mantle_rho` | float | `4550.0` | Mantle density \[kg m$^{-3}$] |
+| `mantle_cp` | float | `1792.0` | Mantle heat capacity \[J kg$^{-1}$ K$^{-1}$] |
+| `heat_internal` | float | `0.0` | Internal heating rate \[W kg$^{-1}$] |
 
 ### Boundary `[interior_energetics.boundary]`
 
@@ -271,29 +271,29 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 |-----------|------|---------|-------------|
 | `rtol` | float | `1e-6` | ODE solver relative tolerance |
 | `atol` | float | `1e-9` | ODE solver absolute tolerance |
-| `T_p_0` | float | `3500.0` | Initial potential temperature [K] (if Zalmoxis is not active) |
-| `T_solidus` | float | `1420.0` | Mantle solidus [K] |
-| `T_liquidus` | float | `2020.0` | Mantle liquidus [K] |
-| `Tsurf_event_change` | float | `20.0` | Maximum surface-$T$ jump per iteration before triggering an event [K] |
+| `T_p_0` | float | `3500.0` | Initial potential temperature \[K] (if Zalmoxis is not active) |
+| `T_solidus` | float | `1420.0` | Mantle solidus \[K] |
+| `T_liquidus` | float | `2020.0` | Mantle liquidus \[K] |
+| `Tsurf_event_change` | float | `20.0` | Maximum surface-$T$ jump per iteration before triggering an event \[K] |
 | `critical_rayleigh_number` | float | `1100.0` | Critical Rayleigh number for onset of convection |
-| `heat_fusion_silicate` | float | `4e5` | Latent heat of fusion for silicates [J kg$^{-1}$] |
+| `heat_fusion_silicate` | float | `4e5` | Latent heat of fusion for silicates \[J kg$^{-1}$] |
 | `nusselt_exponent` | float | `0.33` | Nusselt-Rayleigh scaling exponent |
-| `silicate_heat_capacity` | float | `1200.0` | Silicate heat capacity [J kg$^{-1}$ K$^{-1}$] |
-| `atm_heat_capacity` | float | `1.7e4` | Fallback atmosphere heat capacity [J kg$^{-1}$ K$^{-1}$] |
-| `silicate_density` | float | `4103.0` | Silicate density [kg m$^{-3}$] |
-| `thermal_conductivity` | float | `4.2` | Thermal conductivity [W m$^{-1}$ K$^{-1}$] |
-| `thermal_diffusivity` | float | `1e-6` | Thermal diffusivity [m$^2$ s$^{-1}$] |
-| `thermal_expansivity` | float | `2e-5` | Thermal expansivity [K$^{-1}$] |
+| `silicate_heat_capacity` | float | `1200.0` | Silicate heat capacity \[J kg$^{-1}$ K$^{-1}$] |
+| `atm_heat_capacity` | float | `1.7e4` | Fallback atmosphere heat capacity \[J kg$^{-1}$ K$^{-1}$] |
+| `silicate_density` | float | `4103.0` | Silicate density \[kg m$^{-3}$] |
+| `thermal_conductivity` | float | `4.2` | Thermal conductivity \[W m$^{-1}$ K$^{-1}$] |
+| `thermal_diffusivity` | float | `1e-6` | Thermal diffusivity \[m$^2$ s$^{-1}$] |
+| `thermal_expansivity` | float | `2e-5` | Thermal expansivity \[K$^{-1}$] |
 | `viscosity_model` | int | `2` | 1 = constant, 2 = aggregate smooth, 3 = Arrhenius |
-| `eta_constant` | float | `100` | Constant viscosity [Pa s] (model 1) |
-| `transition_width` | float | `0.2` | Viscosity transition width [melt fraction] |
-| `eta_solid_const` | float | `1e22` | Solid-end viscosity [Pa s] (aggregate model) |
-| `eta_melt_const` | float | `100` | Melt-end viscosity [Pa s] (aggregate model) |
-| `dynamic_viscosity` | float | `3.8e9` | Arrhenius solid reference dynamic viscosity [Pa s] |
-| `activation_energy` | float | `3.5e5` | Arrhenius solid activation energy [J mol$^{-1}$] |
+| `eta_constant` | float | `100` | Constant viscosity \[Pa s] (model 1) |
+| `transition_width` | float | `0.2` | Viscosity transition width \[melt fraction] |
+| `eta_solid_const` | float | `1e22` | Solid-end viscosity \[Pa s] (aggregate model) |
+| `eta_melt_const` | float | `100` | Melt-end viscosity \[Pa s] (aggregate model) |
+| `dynamic_viscosity` | float | `3.8e9` | Arrhenius solid reference dynamic viscosity \[Pa s] |
+| `activation_energy` | float | `3.5e5` | Arrhenius solid activation energy \[J mol$^{-1}$] |
 | `creep_parameter` | float | `26.0` | Arrhenius creep parameter |
-| `viscosity_prefactor` | float | `2.4e-4` | VFT magma-ocean prefactor [Pa s] |
-| `viscosity_activation_temp` | float | `4600.0` | VFT magma-ocean activation temperature [K] |
+| `viscosity_prefactor` | float | `2.4e-4` | VFT magma-ocean prefactor \[Pa s] |
+| `viscosity_activation_temp` | float | `4600.0` | VFT magma-ocean activation temperature \[K] |
 | `logging` | bool | `false` | Write diagnostic CSV files |
 
 ---

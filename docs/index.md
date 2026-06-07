@@ -65,6 +65,13 @@ billions of years.
 
 <div class="grid cards" markdown>
 
+-   :material-download: **Install PROTEUS**
+
+    Set up the framework and its physics modules with the guided
+    installer. &nbsp; &nbsp;
+
+    [Installation guide](How-to/installation.md){ .md-button .md-button--primary }
+
 -   :material-school: **New to PROTEUS?**
 
     Start with the quick-start tutorial using all-dummy backends (no external
@@ -75,9 +82,9 @@ billions of years.
 -   :material-earth: **Ready for science?**
 
     Follow the Earth analogue tutorial for a full production run with real
-    physics modules.
+    physics modules. &nbsp; &nbsp;
 
-    [Earth analogue tutorial](Tutorials/earth_analogue.md){ .md-button }
+    [Earth analogue tutorial](Tutorials/earth_analogue.md){ .md-button .md-button--primary}
 
 </div>
 

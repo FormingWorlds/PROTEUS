@@ -13,7 +13,7 @@
 set -euo pipefail
 
 if ! command -v julia >/dev/null 2>&1; then
-    echo "ERROR: julia is not on PATH. Install Julia first (see docs/How-to/installation.md)." >&2
+    echo "ERROR: julia is not on PATH. Install Julia first (see https://www.h-nicholls.space/AGNI/dev/howto/getting_started/)." >&2
     exit 1
 fi
 

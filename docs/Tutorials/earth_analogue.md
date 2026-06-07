@@ -61,12 +61,13 @@ Add `--offline` to skip the reference-data check on later runs; the first
 run must be able to download any missing data (or download it beforehand,
 see the prerequisites above).
 
+Monitor progress with `tail -f output/tutorial_earth/proteus_00.log`
+(the log appears once PROTEUS has initialized).
+
 !!! warning "Runtime"
     This run takes 30 minutes to several hours depending on hardware.
     The initial Zalmoxis structure solve (~10-20 min) is the slowest
-    phase. Monitor progress with
-    `tail -f output/tutorial_earth/proteus_00.log` (the log appears
-    once PROTEUS has initialized).
+    phase.
 
 ## Configuration
 
@@ -96,7 +97,7 @@ proteus plot -c input/tutorials/tutorial_earth.toml all
 
 <figure markdown="span">
   ![Earth tutorial output](../assets/tutorials/earth_global_log.avif){ width="100%" }
-  <figcaption>Multi-panel overview of the PROTEUS Earth analogue tutorial run.
+  <figcaption><b>Multi-panel overview of the PROTEUS Earth analogue tutorial run.</b>
   (a) Upward heat flux components: radiogenic heating (purple, ~0.2 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid orange), OLR (dashed green), and absorbed stellar flux (ASF, dashed blue, ~226 W m<sup>-2</sup>). The net fluxes decline from ~10<sup>5</sup> W m<sup>-2</sup> to ~10<sup>2</sup> W m<sup>-2</sup> over 1.3 Myr.
   (b) Surface partial pressures: CO<sub>2</sub> (orange) dominates early at ~88 bar; H<sub>2</sub>O (blue) starts at ~5 bar and rises to ~368 bar as it exsolves during solidification. CO (dark yellow) and H<sub>2</sub> (green) remain minor.
   (c) Surface temperature declining from ~3300 K to ~1860 K at the solidus.

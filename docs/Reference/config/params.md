@@ -29,10 +29,10 @@ problems; maximum gives a fixed step.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `method` | str | `"adaptive"` | Time-stepping method: `adaptive`, `proportional`, `maximum` |
-| `initial` | float | `30` | Initial time step [yr] |
-| `minimum` | float | `1e4` | Minimum allowed time step [yr] |
+| `initial` | float | `30` | Initial time step \[yr] |
+| `minimum` | float | `1e4` | Minimum allowed time step \[yr] |
 | `minimum_rel` | float | `1e-5` | Minimum relative time step (fraction of current time) |
-| `maximum` | float | `1e7` | Maximum allowed time step [yr] |
+| `maximum` | float | `1e7` | Maximum allowed time step \[yr] |
 | `maximum_rel` | float | `1.0` | Relative cap on the maximum step; the effective maximum is `maximum + maximum_rel * Time`. Set `0.0` for a fixed maximum |
 
 ### Adaptive method parameters
@@ -61,7 +61,7 @@ During the solidification transition (melt fraction between `phi_crit` and
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `mushy_maximum` | float | `0.0` | Maximum time step during mushy zone [yr]; `0` = disabled |
+| `mushy_maximum` | float | `0.0` | Maximum time step during mushy zone \[yr]; `0` = disabled |
 | `mushy_upper` | float | `0.99` | Upper melt fraction bound for the mushy regime |
 | `hysteresis_iters` | int | `0` | Suppress speed-up for N iterations after a slow-down; `0` = disabled |
 | `hysteresis_sfinc` | float | `1.1` | Gentler speed-up factor during hysteresis |
@@ -96,8 +96,8 @@ to be satisfied for two consecutive iterations before terminating.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `enabled` | bool | `true` | Enable simulation time limits |
-| `minimum` | float | `1e3` | Run at least this long [yr] |
-| `maximum` | float | `6e9` | Terminate after this time [yr] |
+| `minimum` | float | `1e3` | Run at least this long \[yr] |
+| `maximum` | float | `6e9` | Terminate after this time \[yr] |
 
 ### Solidification `[params.stop.solid]`
 
@@ -112,7 +112,7 @@ to be satisfied for two consecutive iterations before terminating.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `enabled` | bool | `true` | Terminate at radiative equilibrium |
-| `atol` | float | `1.0` | Absolute tolerance on $\|F_\mathrm{int} - F_\mathrm{atm}\|$ [W m$^{-2}$] |
+| `atol` | float | `1.0` | Absolute tolerance on $\|F_\mathrm{int} - F_\mathrm{atm}\|$ \[W m$^{-2}$] |
 | `rtol` | float | `1e-3` | Relative tolerance on energy balance |
 
 ### Atmosphere escape `[params.stop.escape]`
@@ -120,7 +120,7 @@ to be satisfied for two consecutive iterations before terminating.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `enabled` | bool | `true` | Terminate when atmosphere is lost |
-| `p_stop` | float | `3.0` | Stop when surface pressure falls below this value [bar] |
+| `p_stop` | float | `3.0` | Stop when surface pressure falls below this value \[bar] |
 
 ### Planetary disintegration `[params.stop.disint]`
 
@@ -128,6 +128,6 @@ to be satisfied for two consecutive iterations before terminating.
 |-----------|------|---------|-------------|
 | `enabled` | bool | `false` | Enable disintegration criteria |
 | `roche_enabled` | bool | `true` | Check Roche limit |
-| `offset_roche` | float | `0` | Correction to Roche limit [m] |
+| `offset_roche` | float | `0` | Correction to Roche limit \[m] |
 | `spin_enabled` | bool | `true` | Check rotational breakup |
-| `offset_spin` | float | `0` | Correction to breakup period [s] |
+| `offset_spin` | float | `0` | Correction to breakup period \[s] |
