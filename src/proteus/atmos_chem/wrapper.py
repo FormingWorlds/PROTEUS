@@ -57,7 +57,8 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     elif module == 'dummy':
         from proteus.atmos_chem.dummy import run_dummy_chem as _run
     else:
-        UpdateStatusfile(dirs, 20)
+        if dirs.get('output'):
+            UpdateStatusfile(dirs, 20)
         raise ValueError(f"Invalid atmos_chem module: '{module}'")
 
     log.info(f'    Using {module} module, {when}')
@@ -74,7 +75,8 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
         success = _run(dirs, config, hf_row, online=True)
         filename = f'{module}_{int(hf_row["Time"])}.csv'
     else:
-        UpdateStatusfile(dirs, 20)
+        if dirs.get('output'):
+            UpdateStatusfile(dirs, 20)
         raise ValueError(f"Invalid atmos_chem.when value: '{when}'")
 
     # Surface solver failure to the caller (e.g. wrong atmos module,

@@ -449,7 +449,7 @@ def test_zalmoxis_spider_helpfile_keys_register_structure_and_cmb_handoff():
     ``R_core``, ``M_core``, ``M_mantle``, ``M_planet``, ``P_center``,
     ``P_cmb``, ``core_density``, ``core_heatcap``.
     Required CMB-side columns (SPIDER writes / loop reads back):
-    ``T_core``, ``T_cmb_initial``, ``T_magma``, ``F_cmb``, ``F_int``.
+    ``T_cmb``, ``T_cmb_initial``, ``T_magma``, ``F_cmb``, ``F_int``.
     Required melt-state columns: ``Phi_global``, ``Phi_global_vol``,
     ``M_mantle_solid``, ``M_mantle_liquid``, ``RF_depth``.
 

@@ -424,7 +424,7 @@ config_version = "3.0"
     h2_binodal                = false        # H2 binodal partitioning; true is rejected at config load (not production ready)
 
     # Shared solver parameters (calliope + atmodeller)
-    T_floor                   = 700.0        # skip outgassing below this T [K]
+    T_floor                   = 700.0        # outgassing temperature floor [K]; clamped from below
     solver_rtol               = 1e-4         # relative mass/equilibrium tolerance
     solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
 

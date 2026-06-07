@@ -1815,7 +1815,9 @@ class AragogRunner:
         if dSdr_snapshot is None:
             dSdr_snapshot = getattr(solver, '_dSdr_cmb_init', None)
         dSdr_ic = dSdr_snapshot
-        T_core_pre = float(hf_row.get('T_cmb', 0.0))
+        # Pre-rename helpfiles store this column as T_core; fall back so
+        # resumed runs keep the jump guard on their first step.
+        T_core_pre = float(hf_row.get('T_cmb', hf_row.get('T_core', 0.0)))
 
         # Reset atol scale to 1.0 at the start of each coupling step
         # (cleared regardless of retry outcome at end of method)
