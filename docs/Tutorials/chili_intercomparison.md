@@ -41,10 +41,16 @@ fraction drops below 5%.
 
 - Full PROTEUS installation (see [Installation](../How-to/installation.md))
 - AGNI, SOCRATES, and all reference data
-- Spectral files downloaded (`proteus get spectral`)
+- Spectral files downloaded (`proteus get spectral -n Dayspring -b 48`)
 - Solar spectrum downloaded (`proteus get stellar`)
+- Interior data downloaded, including the PALEOS EOS tables
+  (`proteus get interiordata --config-path input/tutorials/tutorial_earth.toml`)
 - `git` (to clone the CHILI comparison data)
 - Allow 30 min to several hours per run depending on hardware
+
+The commands below run with `--offline`, which skips the automatic
+reference-data check, so all data must be on disk beforehand. Drop the
+flag to let the first run download missing data instead.
 
 ## Step 1: Run the nominal cases
 

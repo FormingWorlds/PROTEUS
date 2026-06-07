@@ -445,3 +445,154 @@ def test_validate_zalmoxis_output_schema_skips_when_hf_row_unset(tmp_path):
     # only the mass-skip branch can produce a silent pass on the second call.
     assert hf_row_no_mass['R_int'] == R_int_top
     assert hf_row_no_mass['M_int'] == pytest.approx(0.0, abs=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# check_zalmoxis_eos_files: missing-table fail-fast
+# ---------------------------------------------------------------------------
+
+
+def _synthetic_registry(tmp_path, *, write_files: bool = True) -> dict:
+    """Build a minimal EOS registry with flat, nested, and lazy entries.
+
+    Mirrors the three entry shapes of ``load_zalmoxis_material_dictionaries``:
+    flat (unified PALEOS), nested per-role (2-phase), and PALEOS-API live
+    tabulation (no ``eos_file`` until first density query).
+    """
+    iron = tmp_path / 'paleos_iron.dat'
+    mantle_liq = tmp_path / 'mgsio3_liquid.dat'
+    mantle_sol = tmp_path / 'mgsio3_solid.dat'
+    if write_files:
+        for f in (iron, mantle_liq, mantle_sol):
+            f.write_text('eos table stub')
+    return {
+        'PALEOS:iron': {'eos_file': str(iron), 'format': 'paleos_unified'},
+        'PALEOS-2phase:MgSiO3': {
+            'core': {'eos_file': str(iron)},
+            'melted_mantle': {'eos_file': str(mantle_liq), 'format': 'paleos'},
+            'solid_mantle': {'eos_file': str(mantle_sol), 'format': 'paleos'},
+        },
+        'PALEOS-API:MgSiO3': {'format': 'paleos_api', 'material': 'mgsio3'},
+    }
+
+
+def test_check_eos_files_passes_when_tables_present(tmp_path):
+    """All selected EOS table files on disk: the check is silent.
+
+    Exercises both the flat (core) and nested (mantle) registry shapes,
+    plus the lazy PALEOS-API shape that never carries a file path.
+    """
+    from proteus.interior_struct.zalmoxis import check_zalmoxis_eos_files
+
+    registry = _synthetic_registry(tmp_path, write_files=True)
+    layer_cfg = {'core': 'PALEOS:iron', 'mantle': 'PALEOS-2phase:MgSiO3'}
+    assert check_zalmoxis_eos_files(layer_cfg, registry) is None
+
+    # PALEOS-API entries have no eos_file at build time (tables are
+    # generated on demand): the check must not flag them.
+    layer_cfg_api = {'mantle': 'PALEOS-API:MgSiO3'}
+    assert check_zalmoxis_eos_files(layer_cfg_api, registry) is None
+
+    # Unknown identifiers are deferred to the registry lookup in the
+    # solver, which produces its own error; the file check stays silent.
+    layer_cfg_unknown = {'mantle': 'NoSuchEOS:MgSiO3'}
+    assert check_zalmoxis_eos_files(layer_cfg_unknown, registry) is None
+
+
+def test_check_eos_files_raises_actionable_error(tmp_path):
+    """Missing tables produce one error naming every path and the fix.
+
+    This is the guard for the offline-first-run failure mode: without it
+    the solver logs one read error per shell and exits via a misleading
+    non-convergence message.
+    """
+    from proteus.interior_struct.zalmoxis import check_zalmoxis_eos_files
+
+    registry = _synthetic_registry(tmp_path, write_files=False)
+    layer_cfg = {'core': 'PALEOS:iron', 'mantle': 'PALEOS-2phase:MgSiO3'}
+
+    with pytest.raises(RuntimeError) as excinfo:
+        check_zalmoxis_eos_files(layer_cfg, registry)
+    msg = str(excinfo.value)
+    # Every missing file is listed: the flat core table and both 2-phase
+    # mantle tables (three distinct paths, deduplicated).
+    assert 'paleos_iron.dat' in msg
+    assert 'mgsio3_liquid.dat' in msg
+    assert 'mgsio3_solid.dat' in msg
+    # The error names the command that repairs the state.
+    assert 'proteus get interiordata' in msg
+    assert '--offline' in msg
+
+
+def test_check_eos_files_parses_extended_mantle_strings(tmp_path):
+    """Volatile-extended mantle EOS strings resolve to their registry keys.
+
+    ``extend_mantle_eos_with_volatiles`` produces strings of the form
+    ``'PALEOS:MgSiO3:0.9800+PALEOS:H2O:0.0100'``; the trailing fraction
+    tokens must be stripped before the registry lookup, and every
+    component of the composite must be checked.
+    """
+    from proteus.interior_struct.zalmoxis import (
+        _strip_fraction_tokens,
+        check_zalmoxis_eos_files,
+    )
+
+    # Token stripping: fraction suffixes go, the identifier stays intact.
+    assert _strip_fraction_tokens('PALEOS:MgSiO3:0.9800') == 'PALEOS:MgSiO3'
+    assert _strip_fraction_tokens('PALEOS:MgSiO3') == 'PALEOS:MgSiO3'
+    # Edge case: a lone fraction token strips to the empty string rather
+    # than raising; the registry lookup then misses and the check defers.
+    assert _strip_fraction_tokens('0.5') == ''
+
+    missing = tmp_path / 'h2o.dat'  # never written
+    registry = {
+        'PALEOS:MgSiO3': {'eos_file': str(tmp_path / 'mgsio3.dat')},
+        'PALEOS:H2O': {'eos_file': str(missing)},
+    }
+    (tmp_path / 'mgsio3.dat').write_text('stub')
+
+    layer_cfg = {'mantle': 'PALEOS:MgSiO3:0.9900+PALEOS:H2O:0.0100'}
+    with pytest.raises(RuntimeError, match='h2o.dat'):
+        check_zalmoxis_eos_files(layer_cfg, registry)
+
+    # Non-finite trailing tokens are not fraction tokens: 'nan' stays in
+    # the identifier (and then defers as unknown) instead of collapsing
+    # the component to the empty string.
+    assert _strip_fraction_tokens('PALEOS:MgSiO3:nan') == 'PALEOS:MgSiO3:nan'
+
+
+def test_check_eos_files_walks_nested_and_lazy_siblings(tmp_path):
+    """Nested role entries are walked; lazy siblings do not mask misses.
+
+    The real registry nests Seager-style single-role entries
+    (``{'core': {...}}``) and mixes lazy PALEOS-API sub-entries (no
+    ``eos_file`` until first density query) with file-backed ones inside
+    one nested entry. A missing file-backed sibling must be flagged even
+    when a lazy sibling sits next to it.
+    """
+    from proteus.interior_struct.zalmoxis import check_zalmoxis_eos_files
+
+    present = tmp_path / 'seager_iron.txt'
+    present.write_text('stub')
+    missing = tmp_path / 'mgsio3_solid.dat'  # never written
+
+    registry = {
+        # Seager-style nested single-role entry (no top-level eos_file).
+        'Seager2007:iron': {'core': {'eos_file': str(present)}},
+        # Mixed nested entry: lazy API liquid side + file-backed solid side.
+        'PALEOS-API-2phase:MgSiO3': {
+            'core': {'eos_file': str(present)},
+            'melted_mantle': {'format': 'paleos_api_2phase', 'side': 'liquid'},
+            'solid_mantle': {'eos_file': str(missing), 'format': 'paleos'},
+        },
+    }
+
+    # All file-backed paths present for the core: silent.
+    assert check_zalmoxis_eos_files({'core': 'Seager2007:iron'}, registry) is None
+
+    # The missing file-backed sibling is flagged; the lazy sibling is not.
+    with pytest.raises(RuntimeError) as excinfo:
+        check_zalmoxis_eos_files({'mantle': 'PALEOS-API-2phase:MgSiO3'}, registry)
+    msg = str(excinfo.value)
+    assert 'mgsio3_solid.dat' in msg
+    assert 'seager_iron.txt' not in msg  # present file must not be flagged

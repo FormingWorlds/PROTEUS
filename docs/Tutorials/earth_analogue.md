@@ -14,8 +14,15 @@ It uses the production-quality module combination:
 
 - Full PROTEUS installation with AGNI and SOCRATES compiled
 - `FWL_DATA` and `RAD_DIR` environment variables set
-- Spectral files downloaded (`proteus get spectral`)
+- Spectral files downloaded (`proteus get spectral -n Dayspring -b 48`)
 - Solar spectrum downloaded (`proteus get stellar`)
+- Interior data downloaded, including the PALEOS EOS tables for the
+  structure solver
+  (`proteus get interiordata --config-path input/tutorials/tutorial_earth.toml`)
+
+Reference data is also fetched automatically when `proteus start` runs
+without the `--offline` flag, so the download commands above are only
+required for offline use.
 
 ## Physical setup
 
@@ -46,9 +53,13 @@ energy-limited (ZEPHYRUS, 30% efficiency).
 ```bash
 conda activate proteus
 mkdir -p output/tutorial_earth
-nohup proteus start --offline -c input/tutorials/tutorial_earth.toml \
+nohup proteus start -c input/tutorials/tutorial_earth.toml \
     > /tmp/proteus_earth_launch.log 2>&1 & disown
 ```
+
+Add `--offline` to skip the reference-data check on later runs; the first
+run must be able to download any missing data (or download it beforehand,
+see the prerequisites above).
 
 !!! warning "Runtime"
     This run takes 30 minutes to several hours depending on hardware.

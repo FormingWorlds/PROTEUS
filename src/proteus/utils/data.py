@@ -275,6 +275,39 @@ def md5(_fname):
     return hash_md5.hexdigest()
 
 
+def _source_marker_path(dest_path: Path) -> Path:
+    """Sidecar path recording which Zenodo record provided a single file."""
+    return dest_path.parent / (dest_path.name + '.zenodo')
+
+
+def _read_source_marker(dest_path: Path) -> str | None:
+    """Return the Zenodo record id recorded for ``dest_path``, or None.
+
+    A missing or unreadable sidecar reads as None, which callers treat
+    as "provenance unknown, refresh the file".
+    """
+    try:
+        return _source_marker_path(dest_path).read_text().strip() or None
+    except OSError:
+        return None
+
+
+def _write_source_marker(dest_path: Path, zenodo_id: str | None) -> None:
+    """Record the Zenodo record id that provided ``dest_path``.
+
+    Written after every successful single-file download (including the
+    OSF fallback, where the id states which record the fetch targeted).
+    Failures are logged, not raised: a missing marker only costs one
+    redundant re-download on the next check.
+    """
+    if zenodo_id is None or not dest_path.is_file():
+        return
+    try:
+        _source_marker_path(dest_path).write_text(f'{zenodo_id}\n')
+    except OSError as e:
+        log.warning(f'Could not write source marker for {dest_path}: {e}')
+
+
 def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=100e6) -> bool:
     """
     Validate the content of a specific Zenodo-provided folder by checking md5 hashes
@@ -863,6 +896,18 @@ def download(
         # Decide if we need to download
         file_invalid = force or (not dest_path.is_file()) or (dest_path.stat().st_size == 0)
 
+        # A pin bump must refresh files fetched from an older record: the
+        # sidecar written next to the file records the providing Zenodo
+        # record. A missing or mismatching sidecar (including every file
+        # that predates this bookkeeping) triggers a one-time re-fetch.
+        if not file_invalid and zenodo_id is not None:
+            if _read_source_marker(dest_path) != zenodo_id:
+                log.info(
+                    f'    {desc}: on-disk file is not from Zenodo record '
+                    f'{zenodo_id}; refreshing'
+                )
+                file_invalid = True
+
         if not file_invalid:
             log.debug(f'    {desc} already exists (file: {file})')
             return True
@@ -903,6 +948,7 @@ def download(
             log.debug('    No Zenodo ID provided, skipping Zenodo download')
 
         if success:
+            _write_source_marker(dest_path, zenodo_id)
             return True
 
         # OSF fallback
@@ -948,6 +994,7 @@ def download(
             log.warning(f'No OSF project ID available for {desc}')
 
         if success:
+            _write_source_marker(dest_path, zenodo_id)
             return True
 
         log.error(
@@ -1069,9 +1116,9 @@ def download_spectral_file(name: str, bands: str):
     """
     # Check name and bands
     if not isinstance(name, str) or (len(name) < 1):
-        raise Exception('Must provide name of spectral file')
+        raise ValueError('Must provide name of spectral file')
     if not isinstance(bands, str) or (len(bands) < 1):
-        raise Exception('Must provide number of bands in spectral file')
+        raise ValueError('Must provide number of bands in spectral file')
 
     folder = f'{name}/{bands}'
     source_info = get_data_source_info(folder)
@@ -1110,7 +1157,18 @@ def download_spectral_files(name: str | None = None, bands: str | None = None):
             known = sorted({f.split('/')[0] for f in SPECTRAL_FILE_FOLDERS})
             raise ValueError(f'Unknown spectral file group: {name}. Known groups: {known}')
     else:
-        folders = (f'{name}/{bands}',)
+        key = f'{name}/{bands}'
+        if key not in SPECTRAL_FILE_FOLDERS:
+            known_bands = sorted(
+                f.split('/')[1] for f in SPECTRAL_FILE_FOLDERS if f.split('/')[0] == name
+            )
+            if not known_bands:
+                known = sorted({f.split('/')[0] for f in SPECTRAL_FILE_FOLDERS})
+                raise ValueError(f'Unknown spectral file group: {name}. Known groups: {known}')
+            raise ValueError(
+                f'Unknown band count {bands} for group {name}. Available: {known_bands}'
+            )
+        folders = (key,)
 
     for folder in folders:
         group, nbands = folder.split('/')
@@ -1567,16 +1625,29 @@ def _get_sufficient(config: Config, clean: bool = False):
         download_eos_dynamic(config.interior_struct.eos_dir)
 
     # EOS for Zalmoxis (derived from struct.zalmoxis config, not struct.eos_dir)
-    if (
-        hasattr(config, 'interior_struct')
-        and getattr(config.interior_struct, 'module', None) == 'zalmoxis'
-    ):
-        zconf = config.interior_struct.zalmoxis
-        download_zalmoxis_eos(
-            mantle_eos=getattr(zconf, 'mantle_eos', ''),
-            core_eos=getattr(zconf, 'core_eos', ''),
-            ice_layer_eos=getattr(zconf, 'ice_layer_eos', None) or '',
-        )
+    download_zalmoxis_eos_for_config(config)
+
+
+def download_zalmoxis_eos_for_config(config) -> None:
+    """Download the structure EOS tables that a config's Zalmoxis setup needs.
+
+    Single extraction point for the per-layer EOS identifiers, shared by
+    the start-of-run data check and ``proteus get interiordata``. No-op
+    when the config does not select the zalmoxis structure module. The
+    ``'none'`` ice-layer sentinel maps to ``''`` (no ice EOS). Covers
+    the statically configured EOS components; volatile-extended mantle
+    components are resolved at runtime and fetched by the run itself.
+    """
+    struct_cfg = getattr(config, 'interior_struct', None)
+    if getattr(struct_cfg, 'module', None) != 'zalmoxis':
+        return
+    zconf = struct_cfg.zalmoxis
+    ice = getattr(zconf, 'ice_layer_eos', None)
+    download_zalmoxis_eos(
+        mantle_eos=getattr(zconf, 'mantle_eos', ''),
+        core_eos=getattr(zconf, 'core_eos', ''),
+        ice_layer_eos='' if ice in (None, 'none') else ice,
+    )
 
 
 def download_sufficient_data(config: Config, clean: bool = False):

@@ -512,13 +512,22 @@ def reference():
     help='Path to the TOML config file',
 )
 def interiordata(config_path: Path):
-    """Get interior lookup tables and melting curves"""
-    from .utils.data import download_interior_lookuptables, download_melting_curves
+    """Get interior lookup tables, melting curves, and structure EOS tables"""
+    from .utils.data import (
+        download_interior_lookuptables,
+        download_melting_curves,
+        download_zalmoxis_eos_for_config,
+    )
 
     download_interior_lookuptables(clean=True)
 
     configuration = read_config_object(config_path)
     download_melting_curves(configuration, clean=True)
+
+    # Structure-solver EOS tables (e.g. the PALEOS set) for the config's
+    # Zalmoxis setup. Without these on disk, an offline run fails inside
+    # the structure solver.
+    download_zalmoxis_eos_for_config(configuration)
 
 
 @click.command()

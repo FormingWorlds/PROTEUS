@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 from pathlib import Path
 
@@ -810,6 +811,78 @@ def load_zalmoxis_material_dictionaries():
     }
 
 
+def _strip_fraction_tokens(component: str) -> str:
+    """Strip trailing mass-fraction tokens from an EOS component string.
+
+    Extended mantle EOS strings carry per-component fractions, e.g.
+    ``'PALEOS:MgSiO3:0.9800'``; the registry key is the prefix without
+    the numeric token. Only finite numbers count as fraction tokens:
+    ``'nan'`` and ``'inf'`` parse as floats but are never written by
+    the EOS extension, so they stay part of the identifier.
+    """
+    tokens = component.split(':')
+    while tokens:
+        try:
+            value = float(tokens[-1])
+        except ValueError:
+            break
+        if not math.isfinite(value):
+            break
+        tokens.pop()
+    return ':'.join(tokens)
+
+
+def check_zalmoxis_eos_files(layer_eos_config: dict, mat_dicts: dict) -> None:
+    """Fail fast when a selected EOS table file is missing on disk.
+
+    Walks the registry entries selected by ``layer_eos_config`` and
+    collects every referenced table path that does not exist, then
+    raises one actionable error. Without this check the solver emits
+    one read error per shell and ends in a non-convergence failure that
+    hides the real cause. Registry entries without an ``eos_file``
+    (PALEOS-API live tabulation) generate their tables on demand and
+    are skipped.
+
+    Parameters
+    ----------
+    layer_eos_config : dict
+        Per-layer EOS identifier strings (``'core'``, ``'mantle'``, ...).
+    mat_dicts : dict
+        EOS registry from :func:`load_zalmoxis_material_dictionaries`.
+
+    Raises
+    ------
+    RuntimeError
+        If any selected EOS table file is missing, naming every missing
+        path and the command that downloads them.
+    """
+    missing: set[str] = set()
+    for identifier in layer_eos_config.values():
+        for component in str(identifier).split('+'):
+            entry = mat_dicts.get(_strip_fraction_tokens(component))
+            if entry is None:
+                # Unknown identifiers fail later with a registry error.
+                continue
+            # Flat entries carry 'eos_file' directly; nested entries map
+            # layer roles (core / melted_mantle / ...) to flat entries.
+            subentries = [entry] if 'eos_file' in entry else list(entry.values())
+            for sub in subentries:
+                if not isinstance(sub, dict):
+                    continue
+                for field in ('eos_file', 'adiabat_grad_file'):
+                    path = sub.get(field)
+                    if path and not os.path.isfile(path):
+                        missing.add(path)
+    if missing:
+        listing = '\n  '.join(sorted(missing))
+        raise RuntimeError(
+            f'Interior EOS table file(s) not found:\n  {listing}\n'
+            'Download them with '
+            '`proteus get interiordata --config-path <config.toml>`, '
+            'or run `proteus start` once without --offline.'
+        )
+
+
 def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict):
     """Return (solid_eos_path, liquid_eos_path) for the 2-phase MgSiO3 tables.
 
@@ -1403,6 +1476,7 @@ def zalmoxis_solver(
 
     # Run structure solve: use miscibility wrapper when enabled
     mat_dicts = load_zalmoxis_material_dictionaries()
+    check_zalmoxis_eos_files(config_params['layer_eos_config'], mat_dicts)
     melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
     input_data_dir = os.path.join(outdir, 'data')
 

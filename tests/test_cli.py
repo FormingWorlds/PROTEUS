@@ -188,6 +188,29 @@ def test_get_spectral_forwards_args(monkeypatch):
     assert calls == [('Frostflow', '16')]
 
 
+@pytest.mark.unit
+def test_get_spectral_band_only_rejected(monkeypatch):
+    """``proteus get spectral -b BANDS`` without a group exits non-zero.
+
+    The band-only selection is ambiguous; the real downloader raises
+    ValueError and the CLI must surface a failure, with no download
+    attempted.
+    """
+    runner = CliRunner()
+    calls = []
+
+    monkeypatch.setattr(
+        'proteus.utils.data.download_spectral_file',
+        lambda name, bands: calls.append((name, bands)),
+    )
+
+    # The real download_spectral_files runs: its validation raises before
+    # any download dispatch.
+    res = runner.invoke(cli.cli, ['get', 'spectral', '-b', '256'])
+    assert res.exit_code != 0
+    assert calls == []  # no download side effect ran
+
+
 # ---- surfaces / reference ----
 
 
@@ -526,6 +549,53 @@ def test_get_interiordata_calls_clean_downloads(monkeypatch, tmp_path):
     assert ('interior', True) in calls
     assert ('read_cfg', cfg) in calls
     assert ('melt', {'fake': 'config'}, True) in calls
+    # No structure module in the fake config: the Zalmoxis EOS download
+    # must not be attempted.
+    assert not any(c[0] == 'zalmoxis_eos' for c in calls)
+
+
+@pytest.mark.unit
+def test_get_interiordata_fetches_zalmoxis_eos(monkeypatch, tmp_path):
+    """``proteus get interiordata`` downloads the structure EOS tables when the
+    config selects the zalmoxis structure module, forwarding the configured
+    core / mantle / ice EOS identifiers.
+    """
+    from types import SimpleNamespace
+
+    runner = CliRunner()
+    calls = []
+
+    def fake_download_zalmoxis_eos(*, mantle_eos, core_eos, ice_layer_eos):
+        calls.append(('zalmoxis_eos', mantle_eos, core_eos, ice_layer_eos))
+
+    fake_config = SimpleNamespace(
+        interior_struct=SimpleNamespace(
+            module='zalmoxis',
+            zalmoxis=SimpleNamespace(
+                mantle_eos='PALEOS:MgSiO3',
+                core_eos='PALEOS:iron',
+                ice_layer_eos=None,
+            ),
+        )
+    )
+
+    monkeypatch.setattr(
+        'proteus.utils.data.download_interior_lookuptables', lambda clean=False: None
+    )
+    monkeypatch.setattr(
+        'proteus.utils.data.download_melting_curves', lambda configuration, clean=False: None
+    )
+    monkeypatch.setattr('proteus.utils.data.download_zalmoxis_eos', fake_download_zalmoxis_eos)
+    monkeypatch.setattr(cli, 'read_config_object', lambda path: fake_config)
+
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('unused')
+
+    res = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(cfg)])
+    assert res.exit_code == 0
+    # ice_layer_eos None must be coerced to '' (the downloader's no-ice value),
+    # not passed through as None.
+    assert calls == [('zalmoxis_eos', 'PALEOS:MgSiO3', 'PALEOS:iron', '')]
 
 
 # ---- tool setup subcommands ----

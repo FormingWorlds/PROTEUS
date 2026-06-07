@@ -553,6 +553,48 @@ def test_download_spectral_files_dispatch(mock_single):
     with pytest.raises(ValueError, match='Unknown spectral file group'):
         download_spectral_files('NoSuchGroup')
 
+    # Error contract: known group with an unknown band count lists the
+    # available band counts instead of deferring to a source-map error.
+    with pytest.raises(ValueError, match='Unknown band count'):
+        download_spectral_files('Dayspring', '999')
+
+    # Error contract: unknown group with explicit bands is still a
+    # group error, not a band error.
+    with pytest.raises(ValueError, match='Unknown spectral file group'):
+        download_spectral_files('NoSuchGroup', '48')
+
+
+@pytest.mark.unit
+def test_spectral_folder_registry_matches_source_map():
+    """Every spectral folder is downloadable and no spectral source is hidden.
+
+    Forward direction: each SPECTRAL_FILE_FOLDERS entry must have a
+    DATA_SOURCE_MAP record (the registry comment promises it; a missing
+    record only fails at download time otherwise). Reverse direction:
+    every DATA_SOURCE_MAP key shaped like a spectral folder
+    (Group/<digits> in the spectral OSF project) must be listed in
+    SPECTRAL_FILE_FOLDERS, so the bare `proteus get spectral` cannot
+    silently skip a newly added k-table set.
+    """
+    import re
+
+    from proteus.utils.data import DATA_SOURCE_MAP, SPECTRAL_FILE_FOLDERS
+
+    missing = [f for f in SPECTRAL_FILE_FOLDERS if f not in DATA_SOURCE_MAP]
+    assert missing == [], f'SPECTRAL_FILE_FOLDERS entries without source records: {missing}'
+
+    spectral_like = [
+        k
+        for k, v in DATA_SOURCE_MAP.items()
+        if re.fullmatch(r'[A-Za-z]+/[0-9]+', k) and v.get('osf_project') == 'vehxg'
+    ]
+    unlisted = sorted(set(spectral_like) - set(SPECTRAL_FILE_FOLDERS))
+    assert unlisted == [], (
+        f'Spectral source-map entries not in SPECTRAL_FILE_FOLDERS: {unlisted}'
+    )
+    # Sanity: the heuristic actually matched the registry (not vacuous).
+    assert len(spectral_like) == len(SPECTRAL_FILE_FOLDERS)
+
 
 @pytest.mark.unit
 @patch('proteus.utils.data.download')
@@ -610,8 +652,13 @@ def test_download_skip(mock_getfwl, mock_check, tmp_path):
 @patch('proteus.utils.data.GetFWLData')
 @patch('proteus.utils.data.download_zenodo_file')
 def test_download_file_mode_skips_existing_file(mock_zdl, mock_getfwl, tmp_path):
-    """If file exists and non-empty and force=False, download() returns True without calling Zenodo/OSF."""
-    from proteus.utils.data import download
+    """An existing file whose source marker matches the pinned record is kept.
+
+    Without a Zenodo id the marker check cannot apply, so a bare
+    existing file is also kept; with an id, the sidecar must name the
+    same record for the skip to fire.
+    """
+    from proteus.utils.data import _source_marker_path, download
 
     mock_getfwl.return_value = tmp_path
 
@@ -623,6 +670,15 @@ def test_download_file_mode_skips_existing_file(mock_zdl, mock_getfwl, tmp_path)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text('already here')
 
+    # No zenodo_id (OSF-only source): provenance not checkable, file kept.
+    ok = download(
+        folder=folder, target=target, desc='desc', file=file_rel, force=False, osf_id='abc'
+    )
+    assert ok is True
+    mock_zdl.assert_not_called()
+
+    # Matching marker: skip without re-download.
+    _source_marker_path(dest).write_text('12345\n')
     ok = download(
         folder=folder,
         target=target,
@@ -633,6 +689,82 @@ def test_download_file_mode_skips_existing_file(mock_zdl, mock_getfwl, tmp_path)
     )
     assert ok is True
     mock_zdl.assert_not_called()
+    assert dest.read_text() == 'already here'  # content untouched
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.download_zenodo_file')
+def test_download_file_mode_refreshes_on_record_change(mock_zdl, mock_getfwl, tmp_path):
+    """A pin bump refreshes on-disk files fetched from an older record.
+
+    Files with a stale source marker, or with no marker at all
+    (pre-bookkeeping installs), are re-fetched once and re-stamped with
+    the new record id. This is the guard against silently serving old
+    EOS tables after a Zenodo version bump.
+    """
+    from proteus.utils.data import _source_marker_path, download
+
+    mock_getfwl.return_value = tmp_path
+
+    folder = 'EOSFolder'
+    target = 'targetdir'
+    file_rel = 'table.dat'
+    dest = tmp_path / target / folder / file_rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text('old version payload')
+
+    def zdl_side_effect(*, zenodo_id, folder_dir, record_path):
+        (folder_dir / record_path).write_text(f'payload from {zenodo_id}')
+        return True
+
+    mock_zdl.side_effect = zdl_side_effect
+
+    # No marker (legacy install): one re-fetch, then stamped.
+    ok = download(folder=folder, target=target, desc='d', file=file_rel, zenodo_id='20084812')
+    assert ok is True
+    assert mock_zdl.call_count == 1
+    assert dest.read_text() == 'payload from 20084812'
+    assert _source_marker_path(dest).read_text().strip() == '20084812'
+
+    # Same record again: no second fetch.
+    ok = download(folder=folder, target=target, desc='d', file=file_rel, zenodo_id='20084812')
+    assert ok is True
+    assert mock_zdl.call_count == 1
+
+    # Stale marker (record bumped): re-fetch and re-stamp.
+    _source_marker_path(dest).write_text('19000316\n')
+    ok = download(folder=folder, target=target, desc='d', file=file_rel, zenodo_id='20084812')
+    assert ok is True
+    assert mock_zdl.call_count == 2
+    assert _source_marker_path(dest).read_text().strip() == '20084812'
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.download_zenodo_file')
+def test_download_file_mode_failed_refresh_keeps_old_file(mock_zdl, mock_getfwl, tmp_path):
+    """A failed refresh returns False but leaves the stale file usable.
+
+    The marker mismatch triggers a re-fetch attempt; when both Zenodo
+    and OSF fail, the old table must survive on disk so an offline-ish
+    machine can keep running on the previous version.
+    """
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_zdl.return_value = False  # Zenodo fetch fails
+
+    folder = 'EOSFolder'
+    target = 'targetdir'
+    file_rel = 'table.dat'
+    dest = tmp_path / target / folder / file_rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text('old version payload')
+
+    ok = download(folder=folder, target=target, desc='d', file=file_rel, zenodo_id='20084812')
+    assert ok is False
+    assert dest.read_text() == 'old version payload'  # stale file intact
 
 
 @pytest.mark.unit
