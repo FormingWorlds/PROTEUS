@@ -8,6 +8,7 @@ import numpy as np
 
 from proteus.escape.common import calc_unfract_fluxes
 from proteus.utils.constants import M_sun, element_list, secs_per_year
+from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -88,6 +89,8 @@ def run_escape(
         run_boreas(config, hf_row, dirs)
 
     else:
+        if dirs.get('output'):
+            UpdateStatusfile(dirs, 20)
         raise ValueError(f'Invalid escape model: {config.escape.module}')
 
     log.info(f'Bulk escape rate = {hf_row["esc_rate_total"]:.2e} kg s-1')

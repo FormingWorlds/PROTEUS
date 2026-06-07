@@ -590,14 +590,15 @@ def test_atmodeller_warns_when_eos_key_unknown(caplog):
     )
 
 
-def test_atmodeller_returns_early_when_t_magma_below_floor(caplog):
-    """When ``T_magma < config.outgas.T_floor`` the wrapper must log a
-    warning and return before invoking atmodeller's solver.
+def test_atmodeller_clamps_t_magma_to_floor(caplog):
+    """When ``T_magma < config.outgas.T_floor`` the solve runs at the floor.
 
-    Discriminating: confirm EquilibriumModel is NOT called and that
-    hf_row['P_surf'] is NOT written. A regression that fell through
-    to the solver would attempt the solve at low T and either crash
-    or write a P_surf entry.
+    The outgassing temperature is clamped from below (the same
+    semantics as the calliope entry point), not skipped: the Planet
+    state must carry T_floor, the solver must be invoked, and the clip
+    warning must fire. Discriminating: a regression back to the skip
+    behavior would never call solve; a regression that dropped the
+    clamp would build the Planet at the raw 1800 K.
     """
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
@@ -605,32 +606,32 @@ def test_atmodeller_returns_early_when_t_magma_below_floor(caplog):
     config = _make_from_o_budget_config()
     config.outgas.T_floor = 2000.0  # above the hf_row T_magma of 1800 K
     hf_row = _earth_hf_row()
-    snapshot = dict(hf_row)
+
+    planet_kwargs = {}
+
+    def fake_planet(**kwargs):
+        planet_kwargs.update(kwargs)
+        return MagicMock()
+
+    class SolveAttempted(RuntimeError):
+        pass
 
     fake_model = MagicMock()
+    fake_model.solve.side_effect = SolveAttempted('solver invoked')
     with (
         caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.atmodeller'),
         patch('atmodeller.EquilibriumModel', return_value=fake_model),
+        patch('atmodeller.Planet', side_effect=fake_planet),
+        pytest.raises(SolveAttempted),
     ):
         calc_surface_pressures_atmodeller(dirs, config, hf_row)
-    # The model is constructed for species-network setup before the
-    # T_floor check, but model.solve must NOT have been called.
-    assert fake_model.solve.call_count == 0, 'solve() must not run when T_magma < T_floor'
-    # P_surf should NOT have been added under the early-return path.
-    assert 'P_surf' not in hf_row, 'P_surf must not appear when T_magma < T_floor'
-    # Under from_O_budget the early return marks the derived offset and O
-    # residual undefined (no solve ran), and leaves everything else
-    # untouched. A regression that recorded the user pre-seed as if the
-    # chemistry had equilibrated would leave a finite value here.
-    assert np.isnan(hf_row['fO2_shift_IW_derived'])
-    assert np.isnan(hf_row['O_res'])
-    rest = {k: v for k, v in hf_row.items() if k not in ('fO2_shift_IW_derived', 'O_res')}
-    rest_snap = {
-        k: v for k, v in snapshot.items() if k not in ('fO2_shift_IW_derived', 'O_res')
-    }
-    assert rest == rest_snap
-    # Warning fired.
-    assert any('T_floor' in rec.message for rec in caplog.records)
+    # The solve was attempted (not skipped) and the planet state was
+    # built at the clamped floor temperature, not the raw T_magma.
+    assert fake_model.solve.call_count == 1
+    assert planet_kwargs['temperature'] == pytest.approx(2000.0, rel=1e-12)
+    assert planet_kwargs['temperature'] != pytest.approx(1800.0, rel=1e-3)
+    # The clip warning fired.
+    assert any('clipped' in rec.message for rec in caplog.records)
 
 
 def test_atmodeller_propagates_solver_exception(caplog):

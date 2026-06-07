@@ -167,7 +167,8 @@ class Outgas:
         Enable binodal-controlled H2 partitioning between atmosphere and
         magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model.
     T_floor: float
-        Temperature floor [K]. Outgassing skipped below this temperature.
+        Temperature floor [K]. The outgassing temperature is clamped to
+        this value from below before the chemistry solve.
     solver_rtol: float
         Relative tolerance for the volatile equilibrium solver.
     solver_atol: float

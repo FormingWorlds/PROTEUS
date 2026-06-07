@@ -189,6 +189,12 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     T_magma = float(hf_row.get('T_magma', 3000.0))
     Phi_global = float(hf_row.get('Phi_global', 1.0))
 
+    # Do not allow low temperatures: clamp to the configured floor, the
+    # same semantics as the calliope entry point.
+    if T_magma < config.outgas.T_floor:
+        T_magma = float(config.outgas.T_floor)
+        log.warning('Outgassing temperature clipped to %.1f K' % T_magma)
+
     # Core mass fraction from config
     cmf = config.interior_struct.core_frac
 
@@ -245,20 +251,6 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             'budget is below threshold. Increase planet.elements.O_budget '
             'or switch to fO2_source = "user_constant".'
         )
-
-    # Temperature floor guard
-    if T_magma < config.outgas.T_floor:
-        log.warning(
-            'T_magma=%.0f K below T_floor=%.0f K; skipping atmodeller',
-            T_magma,
-            config.outgas.T_floor,
-        )
-        if fO2_source == 'from_O_budget':
-            # No solve ran; mark the derived offset undefined rather than
-            # leaving the user pre-seed (see the no-volatiles branch above).
-            hf_row['fO2_shift_IW_derived'] = float('nan')
-            hf_row['O_res'] = float('nan')
-        return
 
     log.info(
         'Atmodeller solve: T=%.0f K, Phi=%.2f, elements=%s',

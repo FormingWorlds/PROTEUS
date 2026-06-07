@@ -89,17 +89,21 @@ def test_run_chemistry_manually_skips():
 # -----------------------------------------------------------------------
 
 
-def test_run_chemistry_unknown_module_raises():
-    """An unrecognised module name raises ValueError.
+def test_run_chemistry_unknown_module_raises(tmp_path):
+    """An unrecognised module name raises ValueError after recording status.
 
     The dispatch uses an if/elif/else chain; the else branch must
-    raise, not silently return None.
+    raise, not silently return None, and the run's status file must
+    record the error state so monitoring sees the truth instead of a
+    stale "Running" entry.
     """
     config = _make_config(module='nonexistent_chem', when='offline')
     hf_row = {'Time': 400}
     with pytest.raises(ValueError, match='Invalid atmos_chem module'):
-        run_chemistry(dirs={}, config=config, hf_row=hf_row)
-    assert hf_row['Time'] == 400  # no side effect before raise
+        run_chemistry(dirs={'output': str(tmp_path)}, config=config, hf_row=hf_row)
+    assert hf_row['Time'] == 400  # no hf_row side effect before raise
+    status = (tmp_path / 'status').read_text()
+    assert status.splitlines()[0].strip() == '20'  # error status recorded
 
 
 # -----------------------------------------------------------------------
@@ -107,17 +111,20 @@ def test_run_chemistry_unknown_module_raises():
 # -----------------------------------------------------------------------
 
 
-def test_run_chemistry_unknown_when_raises():
-    """An unrecognised scheduling mode raises ValueError.
+def test_run_chemistry_unknown_when_raises(tmp_path):
+    """An unrecognised scheduling mode raises ValueError after recording status.
 
     Valid modes are 'offline', 'online', 'manually'. Anything else
-    must raise after the backend import succeeds.
+    must raise after the backend import succeeds, with the error state
+    recorded in the run's status file.
     """
     config = _make_config(module='dummy', when='invalid_schedule')
     hf_row = {'Time': 500}
     with pytest.raises(ValueError, match='Invalid atmos_chem.when'):
-        run_chemistry(dirs={}, config=config, hf_row=hf_row)
-    assert hf_row['Time'] == 500  # no side effect before raise
+        run_chemistry(dirs={'output': str(tmp_path)}, config=config, hf_row=hf_row)
+    assert hf_row['Time'] == 500  # no hf_row side effect before raise
+    status = (tmp_path / 'status').read_text()
+    assert status.splitlines()[0].strip() == '20'  # error status recorded
 
 
 # -----------------------------------------------------------------------
