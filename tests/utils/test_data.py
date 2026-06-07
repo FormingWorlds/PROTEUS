@@ -4739,10 +4739,15 @@ def test_none_dirs_returns_proteus_and_tools_paths(monkeypatch):
 @pytest.mark.unit
 @patch('proteus.utils.data.sp.run')
 def test_get_socrates_skips_when_workpath_exists(mock_run, tmp_path):
-    """get_socrates returns early when the SOCRATES workpath already exists."""
+    """get_socrates returns early when the socrates workpath already exists.
+
+    The lowercase directory name matters: it matches install.sh, the CI
+    action, and RAD_DIR, and on case-sensitive filesystems an uppercase
+    directory would not satisfy the check.
+    """
     from proteus.utils.data import get_socrates
 
-    workpath = tmp_path / 'SOCRATES'
+    workpath = tmp_path / 'socrates'
     workpath.mkdir()
 
     dirs = {'proteus': str(tmp_path), 'tools': str(tmp_path / 'tools')}
