@@ -556,6 +556,18 @@ def load_zalmoxis_configuration(
         'PALEOS:H2O': mzf,
     }
 
+    zc = config.interior_struct.zalmoxis
+    log.debug(
+        'Zalmoxis config: num_layers=%d, outer_solver=%s, tol_outer=%.1e, '
+        'tol_inner=%.1e, use_jax=%s, use_anderson=%s',
+        zc.num_levels,
+        zc.outer_solver,
+        zc.solver_tol_outer,
+        zc.solver_tol_inner,
+        zc.use_jax,
+        zc.use_anderson,
+    )
+
     # Core fraction. The Zalmoxis solver consumes `core_mass_fraction`
     # literally as a mass fraction and does not read `core_frac_mode`, so
     # `core_frac` is always interpreted as a mass fraction here regardless
@@ -643,18 +655,6 @@ def load_zalmoxis_configuration(
             else {}
         ),
     }
-
-    zc = config.interior_struct.zalmoxis
-    log.debug(
-        'Zalmoxis config: num_layers=%d, outer_solver=%s, tol_outer=%.1e, '
-        'tol_inner=%.1e, use_jax=%s, use_anderson=%s',
-        zc.num_levels,
-        zc.outer_solver,
-        zc.solver_tol_outer,
-        zc.solver_tol_inner,
-        zc.use_jax,
-        zc.use_anderson,
-    )
 
 
 def load_zalmoxis_material_dictionaries():
@@ -1432,7 +1432,10 @@ def zalmoxis_solver(
     else:
         volatile_profile = build_volatile_profile(hf_row, mantle_eos)
 
-    # Configure global miscibility if enabled
+    # Configure global miscibility if enabled. The config gate rejects
+    # global_miscibility at load time until the Zalmoxis pin supports
+    # per-shell volatile profiles, so this branch is exercised only via
+    # test doubles; it stays in place for when the gate lifts.
     if config.interior_struct.zalmoxis.global_miscibility and volatile_profile is not None:
         volatile_profile.global_miscibility = True
         # Initialize x_interior from current dissolved masses

@@ -27,22 +27,26 @@ class TestGlobalMiscibilityConfig:
         # would still satisfy `is False` only when literally False.
         assert isinstance(z.global_miscibility, bool)
 
-    def test_accepts_zalmoxis(self):
-        """global_miscibility=True with Zalmoxis is valid."""
+    def test_rejected_under_zalmoxis(self):
+        """global_miscibility=True with the zalmoxis module is rejected.
+
+        The flag sits on the dissolved-volatile path that the pinned
+        Zalmoxis release cannot evaluate per shell, so enabling it must
+        fail loudly at config load rather than silently doing nothing.
+        """
+        import pytest as _pytest
+
         from proteus.config._struct import Struct, Zalmoxis
 
         z = Zalmoxis(global_miscibility=True)
-        s = Struct(
-            core_frac=0.3,
-            module='zalmoxis',
-            zalmoxis=z,
-        )
-        assert s.zalmoxis.global_miscibility is True
-        # Discrimination: the value must round-trip through the Struct
-        # without being overwritten by a Struct-level default. A
-        # regression that re-initialized the nested Zalmoxis would
-        # silently revert the flag to False.
-        assert s.module == 'zalmoxis'
+        with _pytest.raises(ValueError, match='global_miscibility'):
+            Struct(core_frac=0.3, module='zalmoxis', zalmoxis=z)
+        # Discrimination: the sub-config itself constructs (the gate
+        # lives on the Struct cross-field validator, not on Zalmoxis),
+        # and the default flag value passes the same Struct.
+        assert z.global_miscibility is True
+        s = Struct(core_frac=0.3, module='zalmoxis')
+        assert s.zalmoxis.global_miscibility is False
 
 
 @pytest.mark.unit

@@ -618,6 +618,16 @@ def _volatile_config(dry_mantle: bool):
     config.planet.tsurf_init = 300
     config.planet.tcenter_init = 5000
     config.interior_struct.zalmoxis.num_levels = 200
+    # Real values where MagicMock attributes would otherwise be silently
+    # absorbed by defensive try/except paths (surface-pressure resolution)
+    # or string formatting (the config debug log), hiding broken setup.
+    config.planet.tcmb_init = 4000.0
+    config.planet.gas_prs = None
+    config.interior_struct.zalmoxis.outer_solver = 'newton'
+    config.interior_struct.zalmoxis.solver_tol_outer = 3e-3
+    config.interior_struct.zalmoxis.solver_tol_inner = 1e-4
+    config.interior_struct.zalmoxis.use_jax = True
+    config.interior_struct.zalmoxis.use_anderson = False
     return config
 
 

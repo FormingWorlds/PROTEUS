@@ -154,6 +154,13 @@ def update_planet_mass(hf_row: dict):
 
     Mantle FeO-bound oxygen remains implicit in the PALEOS density
     tables that drive ``M_int``; we don't double-count it here.
+
+    This site pairs with the dry-mass target in
+    ``load_zalmoxis_configuration``: both currently treat the mantle EOS
+    as bare silicate (``dry_mantle = true``, the only configuration the
+    config gate admits). If wet-mantle support is enabled there, this
+    sum must stop counting the dissolved inventory in ``M_ele``, because
+    a wet-mantle ``M_int`` already contains that mass.
     """
 
     # Update total element mass. O is included alongside H/C/N/S
