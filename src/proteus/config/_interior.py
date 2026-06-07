@@ -329,7 +329,9 @@ class InteriorDummy:
     mantle_tsol: float
         Mantle solidus temperature [K]
     heat_internal: float
-        Internal heating rate (e.g., radiogenic, tidal) [W kg-1]
+        Fixed internal heating rate (e.g. radiogenic) [W kg-1].
+        Tidal heating is handled separately via `heat_tidal` and is
+        added on top of this value.
     """
 
     mantle_tliq: float = field(default=2700.0, validator=ge(0))

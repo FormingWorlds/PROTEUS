@@ -221,7 +221,7 @@ config_version = "3.0"
 # Interior structure (hydrostatic equilibrium & composition)
 [interior_struct]
     module                    = "zalmoxis"   # zalmoxis | dummy | spider
-    core_frac_mode            = "mass"       # radius | mass; mass requires zalmoxis or dummy
+    core_frac_mode            = "mass"       # radius | mass; zalmoxis always uses mass (radius is ignored with a warning)
     core_frac                 = 0.325        # radius or mass fraction (see core_frac_mode)
     core_density              = "self"       # core density [kg m-3]; "self" = from zalmoxis/dummy
     core_heatcap              = "self"       # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis/dummy
@@ -259,8 +259,10 @@ config_version = "3.0"
         # Structure update triggers
         update_dphi_abs       = 0.05         # primary trigger: absolute melt fraction change
         update_dtmagma_frac   = 0.05         # secondary trigger: relative T_magma change
-        update_interval       = 1e9          # max time between updates [yr]; 0 = init only
+        update_dw_comp_abs    = 0.05         # composition trigger: relative change in dissolved H2O/H2 mass fraction
+        update_interval       = 1e9          # time-cadence ceiling [yr]; the large default leaves refreshes to the dphi/dtmagma/dw triggers; 0 = init only
         update_min_interval   = 0            # min time between updates [yr]
+        update_stale_ceiling  = 2.5e4        # max time since last successful re-solve [yr]; 0 = disabled
         mesh_max_shift        = 0.05         # max fractional radius shift per update
         mesh_convergence_interval = 10.0     # convergence time after mesh update [yr]
 
@@ -269,11 +271,21 @@ config_version = "3.0"
         equilibrate_max_iter  = 15           # max equilibration iterations
         equilibrate_tol       = 0.01         # equilibration convergence tolerance
 
-        # P-S entropy lookup table resolution (derived from PALEOS EOS at runtime, cached)
+        # Mantle EOS composition. true = bare-silicate mantle tables;
+        # false (dissolved volatiles shift the structure-side density) is
+        # rejected at config load until the pinned Zalmoxis release
+        # supports per-shell volatile profiles.
+        dry_mantle            = true         # keep true; false is not yet supported
+
+        # P-S entropy lookup table resolution (derived from PALEOS EOS at
+        # runtime, cached). These tables size the inputs consumed by the
+        # interior energetics solvers (Aragog/SPIDER), not Zalmoxis itself.
         lookup_nP             = 1350         # pressure grid points
         lookup_nS             = 280          # entropy grid points
 
-        # Miscibility (H2-silicate binodal; experimental, not production-ready)
+        # Miscibility (H2-silicate binodal; experimental). true is
+        # rejected at config load: it requires dry_mantle = false, which
+        # the pinned Zalmoxis release does not support yet.
         global_miscibility    = false        # enable binodal-aware radial structure
         miscibility_max_iter  = 10           # max miscibility iterations
         miscibility_tol       = 0.01         # miscibility convergence tolerance

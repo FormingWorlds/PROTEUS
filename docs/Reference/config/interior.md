@@ -21,7 +21,7 @@ with an equation of state (EOS).
 |-----------|------|---------|-------------|
 | `module` | str | `"zalmoxis"` | Structure solver: `zalmoxis` (full EOS), `dummy` (scaling laws), `spider` (SPIDER internal) |
 | `core_frac` | float | `0.325` | Core fraction (meaning depends on `core_frac_mode`) |
-| `core_frac_mode` | str | `"mass"` | How `core_frac` is interpreted: `mass` (mass fraction) or `radius` (radius fraction) |
+| `core_frac_mode` | str | `"mass"` | How `core_frac` is interpreted: `mass` (mass fraction) or `radius` (radius fraction). The `zalmoxis` module always uses `mass` and ignores `radius` with a warning; `radius` is honoured by the `dummy` and `spider` modules |
 | `core_density` | float or "self" | `"self"` | Core density [kg m$^{-3}$]; `"self"` = computed by the structure solver |
 | `core_heatcap` | float or "self" | `"self"` | Core heat capacity [J kg$^{-1}$ K$^{-1}$]; `"self"` = computed by the structure solver |
 | `melting_dir` | str or none | `none` | Melting curve folder name in FWL_DATA (for SPIDER module) |
@@ -42,7 +42,7 @@ Chabrier, or Seager 2007). It supports 2-layer (core + mantle) and 3-layer
 | `ice_layer_eos` | str or none | `none` | Ice/water layer EOS; `none` = 2-layer model |
 | `mushy_zone_factor` | float | `0.8` | Solidus/liquidus depression factor [0.7, 1.0] (PALEOS only) |
 | `mantle_mass_fraction` | float | `0` | Mantle mass fraction for 3-layer models; `0` = auto ($1 - \mathrm{core\_frac}$) |
-| `dry_mantle` | bool | `true` | Structure EOS assumes a dry mantle; `false` enables melt-fraction-aware dissolved-volatile mixing in the mantle density |
+| `dry_mantle` | bool | `true` | Structure EOS assumes a dry mantle. `false` (melt-fraction-aware dissolved-volatile mixing in the mantle density) is rejected at config load until the pinned Zalmoxis release supports per-shell volatile profiles |
 
 **Grid and solver**
 
@@ -104,7 +104,7 @@ provide the entropy-to-temperature mapping used by Aragog and SPIDER.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `global_miscibility` | bool | `false` | Enable H$_2$-silicate binodal-aware radial structure |
+| `global_miscibility` | bool | `false` | Enable H$_2$-silicate binodal-aware radial structure. `true` is rejected at config load: it requires `dry_mantle = false`, which the pinned Zalmoxis release does not support yet |
 | `miscibility_max_iter` | int | `10` | Maximum miscibility iterations |
 | `miscibility_tol` | float | `0.01` | Miscibility convergence tolerance |
 

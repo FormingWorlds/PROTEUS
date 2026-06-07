@@ -95,16 +95,17 @@ class Zalmoxis:
     ----------
     core_eos: str
         EOS for the core layer. Format: "<source>:<material>".
-        Tabulated: "Seager2007:iron".
+        Tabulated: "PALEOS:iron" (default), "Seager2007:iron".
         Analytic: "Analytic:iron", "Analytic:MgFeSiO3", etc.
     mantle_eos: str
         EOS for the mantle layer. Format: "<source>:<material>".
-        Tabulated: "Seager2007:MgSiO3", "WolfBower2018:MgSiO3".
+        Tabulated: "PALEOS:MgSiO3" (default), "PALEOS-2phase:MgSiO3",
+        "Seager2007:MgSiO3", "WolfBower2018:MgSiO3".
         Analytic: "Analytic:MgSiO3", "Analytic:MgFeSiO3", etc.
     ice_layer_eos: str or None
         EOS for the ice/water layer (3-layer model). 'none' for
         2-layer model (core + mantle only).
-        Tabulated: "Seager2007:H2O". Analytic: "Analytic:H2O".
+        Tabulated: "PALEOS:H2O", "Seager2007:H2O". Analytic: "Analytic:H2O".
     mushy_zone_factor: float
         Cryoscopic depression factor controlling the width of the mushy
         zone (partially molten region) in the PALEOS unified EOS.
