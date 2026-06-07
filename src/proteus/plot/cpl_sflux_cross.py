@@ -66,7 +66,7 @@ def plot_sflux_cross(
     files = natural_sort(files)
 
     if len(files) <= 1:
-        log.warning('Insufficient data to make plot_sflux_cross')
+        log.info('Skipping plot_sflux_cross (a single spectrum has no time evolution)')
         return
 
     log.info('Plot stellar flux (crossection)')

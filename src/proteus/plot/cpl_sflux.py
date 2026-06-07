@@ -126,7 +126,7 @@ def plot_sflux(
         cbar = fig.colorbar(sm, cax=cax, orientation='vertical')
         cbar.set_label('Time [yr]')
     else:
-        log.warning('Only one spectrum was found')
+        log.info('Only one spectrum was found; plotting it without a time colorbar')
 
     ax.set_yscale('log')
     ax.set_ylabel(r'TOA spectral flux density [erg / (s cm$^2$ nm)]')
