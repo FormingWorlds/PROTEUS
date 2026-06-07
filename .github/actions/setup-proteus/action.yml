@@ -8,7 +8,9 @@ description: >
 
 inputs:
   python-version:
-    description: Python version to install
+    description: >
+      Python version to install. Keep aligned with the requires-python
+      ceiling in pyproject.toml (newest minor below the ceiling).
     required: false
     default: '3.12'
   julia-version:
@@ -42,7 +44,19 @@ runs:
   using: composite
   steps:
     # ------------------------------------------------------------------
-    # 0. Reclaim disk on Linux runners
+    # 0a. Supported runners
+    # ------------------------------------------------------------------
+    # Composite actions cannot declare OS support in their metadata, so
+    # fail fast here instead of partway through a long install.
+    - name: Check runner OS is supported
+      if: runner.os != 'Linux' && runner.os != 'macOS'
+      shell: bash
+      run: |
+        echo "This action supports Linux and macOS runners only (got $RUNNER_OS)." >&2
+        exit 1
+
+    # ------------------------------------------------------------------
+    # 0b. Reclaim disk on Linux runners
     # ------------------------------------------------------------------
     # GHA ubuntu-latest images ship with ~14 GB free and most of that
     # gets eaten by Android SDK + .NET + ghc + CodeQL + Haskell tools
@@ -72,69 +86,81 @@ runs:
         df -h /
 
     # ------------------------------------------------------------------
-    # 1. System packages
+    # 1a. System packages (Linux)
     # ------------------------------------------------------------------
-    - name: Install system packages
+    - name: Install system packages (Linux)
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         set -euo pipefail
-        if [[ "$RUNNER_OS" == "Linux" ]]; then
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            gfortran \
-            libnetcdff-dev \
-            netcdf-bin \
-            libssl-dev \
-            curl
-        elif [[ "$RUNNER_OS" == "macOS" ]]; then
-          # gcc bundles gfortran on macOS. netcdf-fortran provides nf-config.
-          # Tolerate brew post-install warnings: on the macos-latest
-          # Sequoia images, ``brew install`` can exit 1 with all
-          # packages successfully poured if any post-install step emits
-          # the "did not complete successfully" warning. The packages
-          # themselves are functional; verify each is on the prefix
-          # list before accepting the failure.
-          set +e
-          brew install --quiet gcc netcdf netcdf-fortran openssl@3
-          brew_rc=$?
-          set -e
-          missing=()
-          for pkg in gcc netcdf netcdf-fortran openssl@3; do
-            brew list "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
-          done
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "ERROR: brew install rc=$brew_rc and missing packages: ${missing[*]}" >&2
-            exit "${brew_rc:-1}"
-          fi
-          if [ "$brew_rc" -ne 0 ]; then
-            echo "brew install exited $brew_rc but all packages present; continuing"
-          fi
-          # Homebrew installs gfortran as a versioned binary (gfortran-15);
-          # the plain `gfortran` symlink is not always present when gcc was
-          # pre-installed on the runner image. Create one so SOCRATES's
-          # `command -v gfortran` check succeeds.
-          if ! command -v gfortran >/dev/null 2>&1; then
-            gfortran_bin="$(ls /opt/homebrew/bin/gfortran-* 2>/dev/null | sort -V | tail -n 1)"
-            if [ -z "$gfortran_bin" ]; then
-              gfortran_bin="$(ls /usr/local/bin/gfortran-* 2>/dev/null | sort -V | tail -n 1)"
-            fi
-            if [ -z "$gfortran_bin" ]; then
-              echo "ERROR: no gfortran-* binary found after brew install gcc" >&2
-              ls -la /opt/homebrew/bin/gfortran* /usr/local/bin/gfortran* 2>/dev/null || true
-              exit 1
-            fi
-            target_dir="$(dirname "$gfortran_bin")"
-            ln -sf "$gfortran_bin" "$target_dir/gfortran"
-            echo "Linked $gfortran_bin -> $target_dir/gfortran"
-          fi
-          gfortran --version | head -n 1
-        else
-          echo "Unsupported RUNNER_OS=$RUNNER_OS" >&2
-          exit 1
-        fi
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends \
+          gfortran \
+          libnetcdff-dev \
+          netcdf-bin \
+          libssl-dev \
+          curl
 
     # ------------------------------------------------------------------
-    # 1b. Cache brew downloads on macOS (Decision 9)
+    # 1b. System packages (macOS)
+    # ------------------------------------------------------------------
+    # gcc provides the Fortran toolchain; netcdf-fortran provides
+    # nf-config for the SOCRATES build. The brew exit code needs
+    # special handling: on the macos-latest Sequoia images,
+    # ``brew install`` can exit 1 with all packages successfully
+    # poured when a post-install step emits the "did not complete
+    # successfully" warning. The packages themselves are functional,
+    # so verify each is on the prefix list before accepting the
+    # failure.
+    - name: Install system packages (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        set +e
+        brew install --quiet gcc netcdf netcdf-fortran openssl@3
+        brew_rc=$?
+        set -e
+        missing=()
+        for pkg in gcc netcdf netcdf-fortran openssl@3; do
+          brew list "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+        done
+        if [ ${#missing[@]} -gt 0 ]; then
+          echo "ERROR: brew install rc=$brew_rc and missing packages: ${missing[*]}" >&2
+          exit "${brew_rc:-1}"
+        fi
+        if [ "$brew_rc" -ne 0 ]; then
+          echo "brew install exited $brew_rc but all packages present; continuing"
+        fi
+
+    # Homebrew ships gfortran only as a versioned binary (e.g.
+    # gfortran-15) when gcc was pre-installed on the runner image, so
+    # the plain `gfortran` command can be absent. SOCRATES's build
+    # checks `command -v gfortran`; link the newest versioned binary
+    # to the plain name when needed.
+    - name: Provide the gfortran command (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v gfortran >/dev/null 2>&1; then
+          gfortran_bin="$(ls /opt/homebrew/bin/gfortran-* 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$gfortran_bin" ]; then
+            gfortran_bin="$(ls /usr/local/bin/gfortran-* 2>/dev/null | sort -V | tail -n 1)"
+          fi
+          if [ -z "$gfortran_bin" ]; then
+            echo "ERROR: no gfortran-* binary found after brew install gcc" >&2
+            ls -la /opt/homebrew/bin/gfortran* /usr/local/bin/gfortran* 2>/dev/null || true
+            exit 1
+          fi
+          target_dir="$(dirname "$gfortran_bin")"
+          ln -sf "$gfortran_bin" "$target_dir/gfortran"
+          echo "Linked $gfortran_bin -> $target_dir/gfortran"
+        fi
+        gfortran --version | head -n 1
+
+    # ------------------------------------------------------------------
+    # 1c. Cache brew downloads on macOS
     # ------------------------------------------------------------------
     - name: Cache Homebrew downloads (macOS)
       if: runner.os == 'macOS'

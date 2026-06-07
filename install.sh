@@ -21,6 +21,8 @@ set -euo pipefail
 # Configuration
 # ---------------------------------------------------------------------------
 
+# Python target: fallback values, overridden from pyproject.toml's
+# requires-python ceiling once the repo root is known (see below).
 REQUIRED_PYTHON_MAJOR=3
 REQUIRED_PYTHON_MINOR=12
 REQUIRED_JULIA_MAJOR=1
@@ -218,6 +220,19 @@ if [ ! -f "$SCRIPT_DIR/pyproject.toml" ]; then
 fi
 cd "$SCRIPT_DIR"
 
+# Derive the Python target from pyproject.toml's requires-python ceiling
+# (e.g. ">=3.11,<3.13" targets 3.12), so the installer and the package
+# metadata cannot drift apart. The fallback above applies when the
+# ceiling cannot be parsed.
+python_ceiling=$(grep -m1 'requires-python' pyproject.toml \
+    | grep -oE '<3\.[0-9]+' | grep -oE '[0-9]+$' || true)
+if [ -n "$python_ceiling" ]; then
+    REQUIRED_PYTHON_MINOR=$((python_ceiling - 1))
+else
+    warn "Could not parse the requires-python ceiling from pyproject.toml;"
+    warn "falling back to Python $REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR."
+fi
+
 # Check disk space
 disk_gb=$(available_disk_gb)
 if [ "$disk_gb" -lt "$MIN_DISK_GB" ]; then
@@ -230,7 +245,7 @@ if [ -z "${CONDA_DEFAULT_ENV:-}" ]; then
     fail "No conda environment is active."
     echo ""
     echo "Create and activate a conda environment first:"
-    echo "  conda create -n proteus python=3.12"
+    echo "  conda create -n proteus python=$REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR"
     echo "  conda activate proteus"
     die "Conda environment required."
 fi

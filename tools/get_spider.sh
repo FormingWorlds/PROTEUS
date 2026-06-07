@@ -201,9 +201,34 @@ fi
 current_step="Cloning SPIDER from GitHub"
 
 # Default install directory: ./SPIDER/ ; override via first argument.
+# The --force flag is separated from the optional path argument.
+force=false
+install_path=""
+for arg in "$@"; do
+    if [ "$arg" = "--force" ]; then
+        force=true
+    elif [ -z "$install_path" ]; then
+        install_path="$arg"
+    fi
+done
 workpath="SPIDER"
-if [[ -n "$1" ]]; then
-    workpath="$1"
+if [[ -n "$install_path" ]]; then
+    workpath="$install_path"
+fi
+
+# Refuse to delete a checkout holding local work unless --force is given.
+# Keep this guard in sync across the get_* scripts that refresh checkouts.
+# Guarded states: modified tracked files, and commits not on any remote.
+# Untracked files (build artifacts) do not block the refresh.
+if [ -d "$workpath/.git" ] && [ "$force" != true ]; then
+    dirty=$(git -C "$workpath" status --porcelain --untracked-files=no 2>/dev/null | head -1)
+    unpushed=$(git -C "$workpath" log HEAD --not --remotes --oneline 2>/dev/null | head -1)
+    if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
+        echo "ERROR: $workpath has uncommitted changes or commits not on a remote." >&2
+        echo "       Refusing to delete it. Commit and push your work, or run" >&2
+        echo "       bash tools/get_spider.sh --force  to discard the checkout." >&2
+        exit 1
+    fi
 fi
 
 # Remove any previous installation

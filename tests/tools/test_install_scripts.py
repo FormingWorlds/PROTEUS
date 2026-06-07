@@ -663,3 +663,113 @@ def test_ci_setup_installs_every_declared_extra():
         f'CI references extras not declared in pyproject [project.optional-dependencies]: '
         f'{sorted(unknown)}; known extras are {sorted(extra_keys)}'
     )
+
+
+# ---------------------------------------------------------------------------
+# Dirty-checkout guard (shared shape across tools/get_*.sh)
+# ---------------------------------------------------------------------------
+
+
+def _extract_guard_block() -> str:
+    """Extract the shipped dirty-checkout guard from tools/get_aragog.sh.
+
+    Reading the block from the script under test (rather than copying it
+    into the test) pins the exact shipped lines: any rewording or logic
+    change in the guard re-runs through these cases.
+    """
+    from pathlib import Path
+
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    script = (tools_dir / 'get_aragog.sh').read_text().splitlines()
+    start = next(i for i, ln in enumerate(script) if 'Refuse to delete a checkout' in ln)
+    end = next(i for i, ln in enumerate(script) if ln.startswith('rm -rf'))
+    return '\n'.join(script[start:end])
+
+
+def _run_guard(tmp_path, *args: str) -> subprocess.CompletedProcess:
+    """Run the extracted guard with ``root`` pointing at ``tmp_path``."""
+    snippet = 'root="$GUARD_ROOT"\n' + _extract_guard_block() + '\necho GUARD_PASSED\n'
+    return subprocess.run(
+        ['bash', '-c', snippet, 'guard', *args],
+        capture_output=True,
+        text=True,
+        env={**os.environ, 'GUARD_ROOT': str(tmp_path)},
+    )
+
+
+def _git(cwd, *args: str) -> None:
+    subprocess.run(
+        ['git', '-c', 'user.email=t@e.st', '-c', 'user.name=t', *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_guard_blocks_dirty_and_unpushed_checkouts(tmp_path):
+    """Tracked modifications and local-only commits block the refresh.
+
+    A modified tracked file must exit 1 with the recovery command in the
+    message; a repo whose commits exist on no remote (covers both the
+    remote-less and the never-pushed case) must also block. Untracked
+    files alone must NOT block: build artifacts and egg-info dirs are
+    routine in refreshed checkouts.
+    """
+    workdir = tmp_path / 'aragog'
+    workdir.mkdir()
+    _git(workdir, 'init', '-q')
+    (workdir / 'tracked.py').write_text('x = 1\n')
+    _git(workdir, 'add', 'tracked.py')
+    _git(workdir, 'commit', '-q', '-m', 'c1')
+
+    # Local-only commit (no remotes at all): blocked.
+    res = _run_guard(tmp_path)
+    assert res.returncode == 1
+    assert '--force' in res.stderr  # recovery command is named
+    assert 'GUARD_PASSED' not in res.stdout
+
+    # Same state plus a dirty tracked file: still blocked.
+    (workdir / 'tracked.py').write_text('x = 2\n')
+    res = _run_guard(tmp_path)
+    assert res.returncode == 1
+    assert 'uncommitted changes' in res.stderr
+
+
+def test_guard_passes_clean_remote_backed_checkout(tmp_path):
+    """A clean checkout whose commits are on a remote is refreshed.
+
+    Mimics the normal installed state: a clone (origin exists), detached
+    HEAD at a pinned ref, untracked build artifacts present. The guard
+    must stay silent. A local commit on the detached HEAD then blocks:
+    the commit exists on no remote and would be destroyed.
+    """
+    upstream = tmp_path / 'upstream'
+    upstream.mkdir()
+    _git(upstream, 'init', '-q')
+    (upstream / 'f.py').write_text('a = 1\n')
+    _git(upstream, 'add', 'f.py')
+    _git(upstream, 'commit', '-q', '-m', 'c1')
+
+    workdir = tmp_path / 'aragog'
+    _git(tmp_path, 'clone', '-q', str(upstream), str(workdir))
+    _git(workdir, 'checkout', '-q', '--detach', 'HEAD')
+    (workdir / 'build_artifact.o').write_text('')  # untracked: must not block
+
+    res = _run_guard(tmp_path)
+    assert res.returncode == 0
+    assert 'GUARD_PASSED' in res.stdout
+
+    # Local commit on the detached HEAD: reachable from HEAD, on no
+    # remote. This is the state a tag-pinned checkout enters when a
+    # developer commits without branching; it must block.
+    (workdir / 'f.py').write_text('a = 2\n')
+    _git(workdir, 'add', 'f.py')
+    _git(workdir, 'commit', '-q', '-m', 'local work')
+    res = _run_guard(tmp_path)
+    assert res.returncode == 1
+    assert 'not on a remote' in res.stderr
+
+    # --force bypasses deliberately.
+    res = _run_guard(tmp_path, '--force')
+    assert res.returncode == 0
+    assert 'GUARD_PASSED' in res.stdout

@@ -4772,12 +4772,13 @@ def test_get_socrates_runs_setup_script_when_missing(mock_run, tmp_path, monkeyp
 
     mock_run.assert_called_once()
     cmd = mock_run.call_args[0][0]
-    # Discrimination: the second arg is the workpath, ensuring we passed
-    # the SOCRATES build path to the script.
+    # Discrimination: the second arg is the workpath. Lowercase matches
+    # install.sh, the CI action, and RAD_DIR; an uppercase path would
+    # create a second checkout on case-sensitive filesystems.
     assert cmd[0].endswith('get_socrates.sh')
-    assert cmd[1] == os.path.abspath(os.path.join(str(tmp_path), 'SOCRATES'))
+    assert cmd[1] == os.path.abspath(os.path.join(str(tmp_path), 'socrates'))
     # RAD_DIR was set by the function
-    assert 'SOCRATES' in os.environ.get('RAD_DIR', '')
+    assert os.environ.get('RAD_DIR', '').endswith('socrates')
 
 
 # ============================================================================

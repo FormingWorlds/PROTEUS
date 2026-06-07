@@ -50,10 +50,36 @@ fi
 root=$(dirname $(portable_realpath $0))
 root=$(portable_realpath "$root/..")
 
-if [ -n "$1" ]; then
-    socpath="$(portable_realpath "$1")"
+# Separate the --force flag from the optional install-path argument.
+force=false
+install_path=""
+for arg in "$@"; do
+    if [ "$arg" = "--force" ]; then
+        force=true
+    elif [ -z "$install_path" ]; then
+        install_path="$arg"
+    fi
+done
+
+if [ -n "$install_path" ]; then
+    socpath="$(portable_realpath "$install_path")"
 else
     socpath="$root/socrates"
+fi
+
+# Refuse to delete a checkout holding local work unless --force is given.
+# Keep this guard in sync across the get_* scripts that refresh checkouts.
+# Guarded states: modified tracked files, and commits not on any remote.
+# Untracked files (the compiled build tree) do not block the refresh.
+if [ -d "$socpath/.git" ] && [ "$force" != true ]; then
+    dirty=$(git -C "$socpath" status --porcelain --untracked-files=no 2>/dev/null | head -1)
+    unpushed=$(git -C "$socpath" log HEAD --not --remotes --oneline 2>/dev/null | head -1)
+    if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
+        echo "ERROR: $socpath has uncommitted changes or commits not on a remote." >&2
+        echo "       Refusing to delete it. Commit and push your work, or run" >&2
+        echo "       bash tools/get_socrates.sh --force  to discard the checkout." >&2
+        exit 1
+    fi
 fi
 rm -rf "$socpath"
 

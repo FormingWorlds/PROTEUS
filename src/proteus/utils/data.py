@@ -1694,8 +1694,10 @@ def get_socrates(dirs=None):
     if dirs is None:
         dirs = _none_dirs()
 
-    # Get path
-    workpath = os.path.join(dirs['proteus'], 'SOCRATES')
+    # Get path. Lowercase matches install.sh, the CI action, and the
+    # RAD_DIR convention; on case-sensitive filesystems an uppercase
+    # path would create a second checkout next to the real one.
+    workpath = os.path.join(dirs['proteus'], 'socrates')
     workpath = os.path.abspath(workpath)
     if os.path.isdir(workpath):
         log.debug('    already set up')

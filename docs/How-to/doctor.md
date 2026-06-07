@@ -151,7 +151,7 @@ This lists the fixable issues and their commands but does not execute anything.
 | Missing AGNI | `bash tools/get_agni.sh` |
 | AGNI commit drift from pin | `bash tools/get_agni.sh` |
 | Missing SOCRATES | `bash tools/get_socrates.sh` |
-| SOCRATES commit drift from pin | `bash tools/get_socrates.sh` |
+| SOCRATES commit drift from pin | `bash tools/get_socrates.sh` (add `--force` to discard local changes) |
 | Missing reference data | `proteus get spectral` / `proteus get stellar` |
 | Wrong Julia version | `juliaup add 1.11 && juliaup default 1.11` |
 
