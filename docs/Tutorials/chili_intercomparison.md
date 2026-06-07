@@ -71,6 +71,15 @@ nohup proteus start --offline -c input/tutorials/tutorial_venus.toml \
 Monitor progress with `tail -f output/tutorial_earth/proteus_00.log`
 (the log appears once PROTEUS has initialized).
 
+!!! info "Intercomparison configs"
+    The tutorial configs are the single source of truth for the CHILI
+    cases. `tools/chili_generate.py` derives the full intercomparison
+    set under `input/chili/intercomp/` from them (nominal Earth and
+    Venus, TRAPPIST-1 b/e/&alpha;, and the H/C inventory grid specs);
+    unit tests keep the two in lockstep. After a run, convert the
+    output to the CHILI-MIP submission format with
+    `python tools/chili_postproc.py <output_dir>`.
+
 ## Step 2: Download comparison data
 
 Clone the CHILI repository to access results from the other codes:
