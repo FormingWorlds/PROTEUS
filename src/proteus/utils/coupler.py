@@ -850,9 +850,6 @@ def ZeroHelpfileRow():
     return out
 
 
-_SECONDS_PER_YEAR = 3.155814727e7
-
-
 def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     """Fill the cumulative energy-conservation columns of ``new_row`` in place.
 

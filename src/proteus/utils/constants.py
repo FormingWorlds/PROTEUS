@@ -163,12 +163,12 @@ a_earth = 1  # Earth orbital semi-major axis [au]
 radnuc_data = {
     'al26': {
         'abundance': 1.0,  # 26Al/Al (user sets concentration as ppmw of Al)
-        'heatprod': 0.3583,  # W/kg (Castillo-Rogez+2009)
+        'heatprod': 0.3583,  # W/kg (Ruedas 2017)
         'halflife': 0.717e6,  # yr
     },
     'fe60': {
         'abundance': 1.0,  # 60Fe/Fe (user sets concentration as ratio)
-        'heatprod': 3.69e-2,  # W/kg (Ruedas 2017)
+        'heatprod': 3.6579e-2,  # W/kg (Ruedas 2017)
         'halflife': 2.62e6,  # yr
     },
     'k40': {
