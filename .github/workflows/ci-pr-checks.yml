@@ -672,8 +672,10 @@ jobs:
 
       - name: Run editable setup scripts
         run: |
-          bash tools/get_aragog.sh
-          bash tools/get_zalmoxis.sh
+          # --force: CI checkouts are disposable, so the dirty-tree
+          # guard in the get_* scripts must not block a refresh.
+          bash tools/get_aragog.sh --force
+          bash tools/get_zalmoxis.sh --force
 
       - name: Verify editable install took precedence
         id: verify
