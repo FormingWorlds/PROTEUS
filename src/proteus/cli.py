@@ -219,16 +219,31 @@ def get():
 
 
 @click.command()
-@click.option('-n', '--name', 'name', type=str, help='Name of spectral file group')
-@click.option('-b', '--bands', 'bands', type=str, help='Number of bands')
+@click.option(
+    '-n',
+    '--name',
+    'name',
+    type=str,
+    default=None,
+    help='Name of spectral file group (default: all groups)',
+)
+@click.option(
+    '-b',
+    '--bands',
+    'bands',
+    type=str,
+    default=None,
+    help='Number of bands (default: all band counts for the group)',
+)
 def spectral(**kwargs):
     """Get spectral files
 
-    By default, download all files.
+    By default, download all spectral files. Use -n GROUP to download
+    every band count for one group, or -n GROUP -b BANDS for one file.
     """
-    from .utils.data import download_spectral_file
+    from .utils.data import download_spectral_files
 
-    download_spectral_file(kwargs['name'], kwargs['bands'])
+    download_spectral_files(kwargs['name'], kwargs['bands'])
 
 
 @click.command()

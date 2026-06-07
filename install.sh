@@ -585,7 +585,10 @@ phase 7 "Reference data"
 case "$DATA_MODE" in
     essential)
         info "Downloading essential reference data (~2 GB)..."
-        proteus get spectral 2>&1 || warn "Spectral data download had issues"
+        # Default-config and tutorial k-tables only; the bare
+        # `proteus get spectral` downloads every group (~10 GB).
+        proteus get spectral -n Honeyside -b 48 2>&1 || warn "Spectral data download had issues"
+        proteus get spectral -n Dayspring -b 48 2>&1 || warn "Spectral data download had issues"
         proteus get stellar 2>&1 || warn "Stellar data download had issues"
         info "Essential data downloaded"
         ;;

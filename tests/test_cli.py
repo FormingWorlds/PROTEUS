@@ -91,6 +91,7 @@ def test_get(monkeypatch, tmp_path):
         'proteus.utils.data.download_massradius_data',
         'proteus.utils.data.download_surface_albedos',
         'proteus.utils.data.download_spectral_file',
+        'proteus.utils.data.download_spectral_files',
         'proteus.utils.data.download_phoenix',
         'proteus.utils.data.download_muscles',
         'proteus.utils.data.download_stellar_tracks',
@@ -152,16 +153,16 @@ def test_get_unknown_subcommand():
 
 @pytest.mark.unit
 def test_get_spectral_defaults(monkeypatch):
-    """``proteus get spectral`` (no args) calls the downloader with name=None, bands=None."""
+    """``proteus get spectral`` (no args) requests the full spectral set (None, None)."""
     runner = CliRunner()
     calls = []
 
-    def fake_download_spectral_file(name, bands):
+    def fake_download_spectral_files(name, bands):
         calls.append((name, bands))
 
-    # imported inside command: from .utils.data import download_spectral_file
+    # imported inside command: from .utils.data import download_spectral_files
     monkeypatch.setattr(
-        'proteus.utils.data.download_spectral_file', fake_download_spectral_file
+        'proteus.utils.data.download_spectral_files', fake_download_spectral_files
     )
 
     res = runner.invoke(cli.cli, ['get', 'spectral'])
@@ -175,11 +176,11 @@ def test_get_spectral_forwards_args(monkeypatch):
     runner = CliRunner()
     calls = []
 
-    def fake_download_spectral_file(name, bands):
+    def fake_download_spectral_files(name, bands):
         calls.append((name, bands))
 
     monkeypatch.setattr(
-        'proteus.utils.data.download_spectral_file', fake_download_spectral_file
+        'proteus.utils.data.download_spectral_files', fake_download_spectral_files
     )
 
     res = runner.invoke(cli.cli, ['get', 'spectral', '-n', 'Frostflow', '-b', '16'])

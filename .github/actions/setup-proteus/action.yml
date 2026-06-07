@@ -12,9 +12,9 @@ inputs:
     required: false
     default: '3.12'
   julia-version:
-    description: Julia version (AGNI requires 1.11.x)
+    description: Julia version
     required: false
-    default: '1.11.2'
+    default: '1.12.6'
   install-editable-submodules:
     description: >
       Whether to clone MORS / aragog / JANUS / CALLIOPE / ZEPHYRUS / Zalmoxis
@@ -174,7 +174,7 @@ runs:
         python -c "import scikits.odes; print('scikits.odes OK, version', scikits.odes.__version__)"
 
     # ------------------------------------------------------------------
-    # 3. Julia (AGNI needs 1.11.x)
+    # 3. Julia
     # ------------------------------------------------------------------
     - name: Set up Julia
       uses: julia-actions/setup-julia@v2

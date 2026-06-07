@@ -488,15 +488,37 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     # Zenodo 19680050: ecosystem-wide PALEOS reference; ships 150 + 600
     # pts/decade tables for both phases.
     'EOS_PALEOS_MgSiO3': {'zenodo_id': '19680050'},
-    # Zalmoxis EOS: PALEOS unified tables (iron, MgSiO3, H2O share Zenodo 19000316)
-    'EOS_PALEOS_iron': {'zenodo_id': '19000316'},
-    'EOS_PALEOS_MgSiO3_unified': {'zenodo_id': '19000316'},
-    'EOS_PALEOS_H2O': {'zenodo_id': '19000316'},
+    # Zalmoxis EOS: PALEOS unified tables (iron, MgSiO3, H2O share Zenodo
+    # 20084812, the v1.2.1 release of concept record 19000315). Each folder
+    # fetches only its own table file via the single-file download mode, so
+    # the high-res variants in the record are never pulled.
+    'EOS_PALEOS_iron': {'zenodo_id': '20084812'},
+    'EOS_PALEOS_MgSiO3_unified': {'zenodo_id': '20084812'},
+    'EOS_PALEOS_H2O': {'zenodo_id': '20084812'},
     # Zalmoxis EOS: Chabrier+2019/2021 H/He
     'EOS_Chabrier2021_HHe': {'zenodo_id': '19135021'},
     # Aerosol scattering data (no OSF project)
     'scattering': {'zenodo_id': '19294180', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
 }
+
+# Spectral file folders served by `proteus get spectral`. One entry per
+# line, grouped by k-table set, ordered by band count. Every entry must
+# have a matching DATA_SOURCE_MAP record.
+SPECTRAL_FILE_FOLDERS: tuple[str, ...] = (
+    'Dayspring/16',
+    'Dayspring/48',
+    'Dayspring/256',
+    'Dayspring/4096',
+    'Frostflow/16',
+    'Frostflow/48',
+    'Frostflow/256',
+    'Frostflow/4096',
+    'Honeyside/16',
+    'Honeyside/48',
+    'Honeyside/256',
+    'Honeyside/4096',
+    'Oak/318',
+)
 
 
 def get_data_source_info(folder: str) -> dict[str, str] | None:
@@ -1063,6 +1085,36 @@ def download_spectral_file(name: str, bands: str):
         zenodo_id=source_info['zenodo_id'],
         desc=f'{name}{bands} spectral file',
     )
+
+
+def download_spectral_files(name: str | None = None, bands: str | None = None):
+    """
+    Download spectral files, defaulting to the full set.
+
+    Inputs :
+        - name : str | None
+            spectral file group (e.g. "Dayspring"). None selects every group.
+        - bands : str | None
+            number of bands (e.g. "256"). None selects every band count
+            available for the group.
+    """
+    if name is None and bands is not None:
+        raise ValueError(
+            'Cannot select spectral files by band count alone; provide a group name'
+        )
+    if name is None:
+        folders = SPECTRAL_FILE_FOLDERS
+    elif bands is None:
+        folders = tuple(f for f in SPECTRAL_FILE_FOLDERS if f.split('/')[0] == name)
+        if not folders:
+            known = sorted({f.split('/')[0] for f in SPECTRAL_FILE_FOLDERS})
+            raise ValueError(f'Unknown spectral file group: {name}. Known groups: {known}')
+    else:
+        folders = (f'{name}/{bands}',)
+
+    for folder in folders:
+        group, nbands = folder.split('/')
+        download_spectral_file(group, nbands)
 
 
 def download_phoenix(*, alpha: float = 0.0, FeH: float = 0.0, force: bool = False) -> bool:

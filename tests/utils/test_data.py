@@ -513,6 +513,48 @@ def test_download_spectral_file_errors():
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.download_spectral_file')
+def test_download_spectral_files_dispatch(mock_single):
+    """Group/band dispatch of the plural spectral downloader.
+
+    The bare call must fetch every registered folder, a group-only call
+    every band count of that group, and a full selection exactly one
+    file; band-only and unknown-group selections are rejected.
+    """
+    from proteus.utils.data import SPECTRAL_FILE_FOLDERS, download_spectral_files
+
+    # Bare call: the whole registry, in registry order.
+    download_spectral_files()
+    assert mock_single.call_count == len(SPECTRAL_FILE_FOLDERS)
+    # Registry sanity: more than one group, so the all-vs-group counts
+    # below discriminate a broken filter from a working one.
+    groups = {f.split('/')[0] for f in SPECTRAL_FILE_FOLDERS}
+    assert len(groups) > 1
+
+    # Group-only call: exactly the Dayspring band counts (4), not 1, not all.
+    mock_single.reset_mock()
+    download_spectral_files('Dayspring')
+    dayspring = [f for f in SPECTRAL_FILE_FOLDERS if f.startswith('Dayspring/')]
+    assert mock_single.call_count == len(dayspring)
+    assert mock_single.call_count < len(SPECTRAL_FILE_FOLDERS)
+    called_groups = {c.args[0] for c in mock_single.call_args_list}
+    assert called_groups == {'Dayspring'}
+
+    # Full selection: one file, args forwarded verbatim.
+    mock_single.reset_mock()
+    download_spectral_files('Honeyside', '4096')
+    mock_single.assert_called_once_with('Honeyside', '4096')
+
+    # Error contract: band-only selection is ambiguous.
+    with pytest.raises(ValueError, match='band count alone'):
+        download_spectral_files(None, '256')
+
+    # Error contract: unknown group names the known ones.
+    with pytest.raises(ValueError, match='Unknown spectral file group'):
+        download_spectral_files('NoSuchGroup')
+
+
+@pytest.mark.unit
 @patch('proteus.utils.data.download')
 @patch('proteus.utils.data.get_data_source_info')
 def test_download_spectral_file_call(mock_get_info, mock_download):
