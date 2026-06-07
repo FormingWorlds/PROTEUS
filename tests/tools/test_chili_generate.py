@@ -134,17 +134,24 @@ def test_committed_intercomp_files_match_regeneration():
 
     Retuning a tutorial without rerunning tools/chili_generate.py
     leaves stale committed configs; this comparison fails CI until the
-    regeneration is committed.
+    regeneration is committed. The comparison is on the parsed TOML
+    content, so a serializer formatting change alone cannot fail it.
     """
+    import tomllib
+
     gen = _load_generator()
     outdir = REPO / 'input' / 'chili' / 'intercomp'
     stale = []
     for name in gen.CASE_DELTAS:
-        committed = (outdir / f'{name}.toml').read_text()
-        if committed != gen.generate_case(name):
+        committed = tomllib.loads((outdir / f'{name}.toml').read_text())
+        if committed != tomllib.loads(gen.generate_case(name)):
             stale.append(f'{name}.toml')
     for planet in ('earth', 'venus'):
-        committed = (outdir / f'{planet}.grid.toml').read_text()
-        if committed != gen.generate_grid(planet):
+        committed = tomllib.loads((outdir / f'{planet}.grid.toml').read_text())
+        if committed != tomllib.loads(gen.generate_grid(planet)):
             stale.append(f'{planet}.grid.toml')
     assert not stale, f'stale committed configs, rerun tools/chili_generate.py: {stale}'
+    # Discrimination: the comparison must be able to fail. A perturbed
+    # regeneration differs from the committed content.
+    perturbed = gen.generate_case('earth').replace('chili_earth', 'somewhere_else')
+    assert tomllib.loads(perturbed) != tomllib.loads((outdir / 'earth.toml').read_text())

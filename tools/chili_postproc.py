@@ -53,6 +53,12 @@ def postproc_once(simdir: str, plot: bool = True):
         if f'chili_{k}' in simdir:
             name = pl_names[k]
 
+    # Validate inputs before touching the output folder, so a call on
+    # a directory without a finished run leaves no side effects.
+    hfpath = os.path.join(simdir, 'runtime_helpfile.csv')
+    if not os.path.isfile(hfpath):
+        raise FileNotFoundError(f'Cannot find {hfpath}')
+
     # Make chili folder
     chilidir = os.path.join(simdir, 'chili') + '/'
     if os.path.isdir(chilidir):
@@ -60,9 +66,6 @@ def postproc_once(simdir: str, plot: bool = True):
     os.mkdir(chilidir)
 
     # Read simulation helpfile
-    hfpath = os.path.join(simdir, 'runtime_helpfile.csv')
-    if not os.path.isfile(hfpath):
-        raise FileNotFoundError(f'Cannot find {hfpath}')
     hf_all = pd.read_csv(hfpath, delimiter=r'\s+')
 
     # Copy config
@@ -118,7 +121,8 @@ def postproc_once(simdir: str, plot: bool = True):
 
     visc_arr = []
     for idx_t, t in enumerate(out['t(yr)']):
-        ncfile = os.path.join(simdir, 'data', f'{t:.0f}_int.nc')
+        # Aragog names snapshots with %d (truncation), not rounding.
+        ncfile = os.path.join(simdir, 'data', f'{int(t)}_int.nc')
         if not os.path.isfile(ncfile):
             visc_arr.append(np.nan)
             continue
@@ -308,8 +312,8 @@ def postproc_grid(griddir: str):
     # Read grid config to work out which cases are high/mid/low in volatiles
     with open(griddir + '/copy.grid.toml', 'rb') as hdl:
         gridtoml = tomllib.load(hdl)
-    arr_Hkg = np.unique(gridtoml['delivery.elements.H_kg']['values'])
-    arr_Ckg = np.unique(gridtoml['delivery.elements.C_kg']['values'])
+    arr_Hkg = np.unique(gridtoml['planet.elements.H_budget']['values'])
+    arr_Ckg = np.unique(gridtoml['planet.elements.C_budget']['values'])
 
     # Run them
     N = len(cases)
@@ -321,8 +325,8 @@ def postproc_grid(griddir: str):
         print('    copy files')
         with open(c + '/init_coupler.toml', 'rb') as hdl:
             thistoml = tomllib.load(hdl)
-            Hkg = float(thistoml['delivery']['elements']['H_kg'])
-            Ckg = float(thistoml['delivery']['elements']['C_kg'])
+            Hkg = float(thistoml['planet']['elements']['H_budget'])
+            Ckg = float(thistoml['planet']['elements']['C_budget'])
         for fold in glob(c + '/chili/evolution-proteus*'):
             # new file name
             fnew = os.path.basename(fold).split('-')
