@@ -23,8 +23,9 @@ import numpy as np
 import pytest
 
 from proteus.outgas.common import expected_keys
-from proteus.outgas.dummy import _ELEMENT_TO_SPECIES, _MMW, calc_surface_pressures_dummy
+from proteus.outgas.dummy import _ELEMENT_TO_SPECIES, calc_surface_pressures_dummy
 from proteus.utils.constants import element_list, gas_list
+from proteus.utils.helper import eval_gas_mmw
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -317,16 +318,16 @@ def test_dummy_outgas_mmw_multi_species():
     P_total = P_H2O + P_CO2
     vmr_H2O = P_H2O / P_total
     vmr_CO2 = P_CO2 / P_total
-    expected_mmw = vmr_H2O * _MMW['H2O'] + vmr_CO2 * _MMW['CO2']
+    expected_mmw = vmr_H2O * eval_gas_mmw('H2O') + vmr_CO2 * eval_gas_mmw('CO2')
     assert hf_row['atm_kg_per_mol'] == pytest.approx(expected_mmw, rel=1e-8)
     # Boundedness invariant: the MMW of a mixture is bracketed by the
     # endmember molar masses. A regression that summed without weighting
-    # by VMR (sum of all _MMW values) would exceed the upper bound.
-    assert _MMW['H2O'] < hf_row['atm_kg_per_mol'] < _MMW['CO2']
+    # by VMR (sum of all species molar masses) would exceed the upper bound.
+    assert eval_gas_mmw('H2O') < hf_row['atm_kg_per_mol'] < eval_gas_mmw('CO2')
     # H2O dominates by VMR (H_kg/C_kg = 10), so the mixture MMW must
     # land closer to H2O than to CO2. A regression that inverted the
     # VMR weighting would land near CO2 instead.
-    midpoint = 0.5 * (_MMW['H2O'] + _MMW['CO2'])
+    midpoint = 0.5 * (eval_gas_mmw('H2O') + eval_gas_mmw('CO2'))
     assert hf_row['atm_kg_per_mol'] < midpoint
 
 
@@ -379,7 +380,7 @@ def test_dummy_outgas_mol_keys_set():
     _run(hf_row)
 
     _, H2O_kg = _expected_species_kg(1e20, 'H')
-    expected_mol = H2O_kg / _MMW['H2O']
+    expected_mol = H2O_kg / eval_gas_mmw('H2O')
     f_atm = 0.1 + 0.9 * 0.5
     assert hf_row['H2O_mol_total'] == pytest.approx(expected_mol, rel=1e-8)
     assert hf_row['H2O_mol_atm'] == pytest.approx(f_atm * expected_mol, rel=1e-8)
@@ -429,14 +430,22 @@ def test_dummy_outgas_zero_inventory():
 
 
 @pytest.mark.unit
-def test_dummy_outgas_zero_gravity():
-    """Zero gravity: zero pressures but nonzero masses."""
-    hf_row = _make_hf_row(H_kg=1e20, gravity=0.0, Phi_global=0.0)
-    _run(hf_row)
+def test_dummy_outgas_zero_gravity_rejected():
+    """A non-positive gravity is rejected instead of silently zeroing pressures.
 
-    assert hf_row['P_surf'] == pytest.approx(0.0, abs=1e-30)
-    _, H2O_kg = _expected_species_kg(1e20, 'H')
-    assert hf_row['H2O_kg_atm'] == pytest.approx(H2O_kg, rel=1e-10)
+    Zero gravity is not a physical planet state; the previous graceful
+    fallback hid upstream wiring bugs behind an all-zero pressure field.
+    The error must name the offending value, and no partial output may
+    leak: the inputs are rejected before any partitioning runs.
+    """
+    hf_row = _make_hf_row(H_kg=1e20, gravity=0.0, Phi_global=0.0)
+    with pytest.raises(ValueError, match='gravity=0.0'):
+        _run(hf_row)
+    # Edge case just above the boundary: a tiny positive gravity is
+    # accepted and produces finite, positive pressure.
+    hf_row_ok = _make_hf_row(H_kg=1e20, gravity=1e-3, Phi_global=0.0)
+    _run(hf_row_ok)
+    assert hf_row_ok['P_surf'] > 0
 
 
 @pytest.mark.unit

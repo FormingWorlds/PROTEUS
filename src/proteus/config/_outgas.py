@@ -5,6 +5,16 @@ from attrs import define, field, validators
 from ._converters import none_if_none
 
 
+def _reject_enabled_binodal(instance, attribute, value):
+    """Reject `h2_binodal = true` until the feature is production ready."""
+    if value:
+        raise ValueError(
+            '`outgas.h2_binodal = true` is not yet supported: the H2-silicate '
+            'binodal partitioning (Rogers et al. 2025) is not production '
+            'ready. Keep `h2_binodal = false`.'
+        )
+
+
 @define
 class Calliope:
     """Module parameters for Calliope.
@@ -176,7 +186,14 @@ class Outgas:
     )
 
     mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
-    h2_binodal: bool = False
+    # H2-silicate binodal partitioning (Rogers et al. 2025). Not yet
+    # production ready: the H2 mass-fraction definition for multi-species
+    # inventories and the coupling to the structure side are unsettled,
+    # so enabling the flag is rejected at config load.
+    h2_binodal: bool = field(
+        default=False,
+        validator=_reject_enabled_binodal,
+    )
 
     # Shared solver parameters (calliope + atmodeller)
     T_floor: float = field(default=700.0, validator=validators.gt(0.0))

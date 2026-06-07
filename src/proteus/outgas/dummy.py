@@ -22,30 +22,12 @@ import numpy as np
 
 from proteus.outgas.common import expected_keys
 from proteus.utils.constants import element_list, gas_list
+from proteus.utils.helper import eval_gas_mmw
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
-
-# Molar masses [kg/mol]
-_MMW = {
-    'H2O': 18.015e-3,
-    'CO2': 44.009e-3,
-    'O2': 31.998e-3,
-    'H2': 2.016e-3,
-    'CH4': 16.04e-3,
-    'CO': 28.010e-3,
-    'N2': 28.014e-3,
-    'NH3': 17.031e-3,
-    'S2': 64.12e-3,
-    'SO2': 64.058e-3,
-    'H2S': 34.08e-3,
-    'SiO': 44.08e-3,
-    'SiO2': 60.08e-3,
-    'MgO': 40.30e-3,
-    'FeO2': 87.84e-3,
-}
 
 # Element -> dominant gas species mapping (simplified, oxidizing conditions)
 # Each entry: (species_name, kg_element_per_kg_species)
@@ -69,9 +51,14 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
     hf_row : dict
         Helpfile row (modified in place).
     """
-    Phi_global = float(hf_row.get('Phi_global', 1.0))
-    gravity = float(hf_row.get('gravity', 9.81))
-    R_int = float(hf_row.get('R_int', 6.371e6))
+    Phi_global = float(hf_row['Phi_global'])
+    gravity = float(hf_row['gravity'])
+    R_int = float(hf_row['R_int'])
+    if gravity <= 0 or R_int <= 0:
+        raise ValueError(
+            'Dummy outgassing needs a positive planet state: '
+            f'gravity={gravity} m s-2, R_int={R_int} m'
+        )
     area = 4.0 * np.pi * R_int**2
 
     # Save element totals before zeroing output keys (they are inputs)
@@ -106,24 +93,21 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
         kg_atm = f_atm * kg_total
         kg_liquid = f_dissolved * kg_total
         kg_solid = 0.0
-        mmw = _MMW.get(species, 0.028)
+        mmw = eval_gas_mmw(species)
 
         hf_row[f'{species}_kg_total'] = kg_total
         hf_row[f'{species}_kg_atm'] = kg_atm
         hf_row[f'{species}_kg_liquid'] = kg_liquid
         hf_row[f'{species}_kg_solid'] = kg_solid
 
-        mol_total = kg_total / mmw if mmw > 0 else 0.0
+        mol_total = kg_total / mmw
         hf_row[f'{species}_mol_total'] = mol_total
         hf_row[f'{species}_mol_atm'] = f_atm * mol_total
         hf_row[f'{species}_mol_liquid'] = f_dissolved * mol_total
         hf_row[f'{species}_mol_solid'] = 0.0
 
         # Partial pressure: P = m*g / A
-        if gravity > 0 and area > 0:
-            p_bar = kg_atm * gravity / area * 1e-5  # Pa -> bar
-        else:
-            p_bar = 0.0
+        p_bar = kg_atm * gravity / area * 1e-5  # Pa -> bar
         hf_row[f'{species}_bar'] = p_bar
         P_total += p_bar
 
@@ -136,12 +120,13 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
         else:
             hf_row[f'{s}_vmr'] = 0.0
 
-    # Mean molecular weight
+    # Mean molecular weight. An empty atmosphere (no volatile inventory)
+    # has no meaningful MMW; store zero and let consumers check P_surf.
     if P_total > 0:
-        mmw_sum = sum(hf_row.get(f'{s}_vmr', 0.0) * _MMW.get(s, 0.028) for s in gas_list)
+        mmw_sum = sum(hf_row.get(f'{s}_vmr', 0.0) * eval_gas_mmw(s) for s in gas_list)
         hf_row['atm_kg_per_mol'] = mmw_sum
     else:
-        hf_row['atm_kg_per_mol'] = 0.028  # default ~N2
+        hf_row['atm_kg_per_mol'] = 0.0
 
     # Element reservoir masses (from species)
     _species_elements = {

@@ -81,3 +81,19 @@ def test_outgas_custom_solver_params():
     assert o.T_floor == pytest.approx(500.0, rel=1e-12)
     assert o.solver_rtol == pytest.approx(1e-5, rel=1e-12)
     assert o.solver_atol == pytest.approx(1e-7, rel=1e-12)
+
+
+def test_h2_binodal_enabled_is_rejected():
+    """`h2_binodal = true` is rejected at config load.
+
+    The H2-silicate binodal partitioning is not production ready, so
+    enabling it must fail loudly instead of running an unsettled
+    parameterisation. The default (off) constructs, pinning that the
+    rejection is the flag value and not the field itself.
+    """
+    from proteus.config._outgas import Outgas
+
+    with pytest.raises(ValueError, match='h2_binodal'):
+        Outgas(h2_binodal=True)
+    o = Outgas()
+    assert o.h2_binodal is False

@@ -75,9 +75,14 @@ def _build_profiles(hf_row, config, num_levels=50):
         Keys: 'tmp', 'p', 'z', 'Kzz', and species names. Values: 1D arrays
         ordered from TOA (index 0) to surface (index -1).
     """
-    P_surf = max(float(hf_row.get('P_surf', 1.0)), 1e-3)  # bar
-    T_surf = float(hf_row.get('T_surf', hf_row.get('T_magma', 3000.0)))
-    gravity = float(hf_row.get('gravity', 9.81))
+    P_surf = float(hf_row['P_surf'])  # bar
+    T_surf = float(hf_row['T_surf'])
+    gravity = float(hf_row['gravity'])
+    if P_surf <= 0 or T_surf <= 0 or gravity <= 0:
+        raise ValueError(
+            'Dummy chemistry needs a positive surface state: '
+            f'P_surf={P_surf} bar, T_surf={T_surf} K, gravity={gravity} m s-2'
+        )
     p_top = config.atmos_clim.p_top  # bar
 
     # Pressure grid (log-spaced, TOA to surface)
@@ -95,15 +100,19 @@ def _build_profiles(hf_row, config, num_levels=50):
     T = np.clip(T, 150.0, T_surf)
 
     # Altitude from hydrostatic balance (simple scale height integration)
-    mmw = float(hf_row.get('atm_kg_per_mol', 0.028))
-    H = 8314.0 * T / (mmw * 1e3 * gravity) if gravity > 0 else np.full_like(T, 8000.0)
+    mmw = float(hf_row['atm_kg_per_mol'])
+    if mmw <= 0:
+        raise ValueError(f'Dummy chemistry needs a positive mean molar mass, got {mmw} kg/mol')
+    H = 8314.0 * T / (mmw * 1e3 * gravity)
     z = np.zeros(num_levels)
     for i in range(num_levels - 2, -1, -1):
         dz = H[i] * np.log(p_bar[i + 1] / p_bar[i])
         z[i] = z[i + 1] + abs(dz)
 
-    # Eddy diffusivity: simple power law (decreases with pressure)
-    Kzz = 1e8 * (p_bar[-1] / np.maximum(p_bar, 1e-10)) ** 0.5  # cm2/s
+    # Eddy diffusivity: broken power law. Constant in the deep
+    # atmosphere, increasing with height above the 1 bar level
+    # (Tsai et al. 2021, ApJ 923 264).
+    Kzz = np.where(p_bar < 1.0, 1e8 * (1.0 / np.maximum(p_bar, 1e-10)) ** 0.4, 1e8)  # cm2/s
 
     # Surface VMRs from outgassing
     surface_vmr = {}

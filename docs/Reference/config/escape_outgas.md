@@ -49,7 +49,7 @@ planetary surface conditions.
 | `module` | str | `"calliope"` | Outgassing module: `calliope` (Gibbs minimisation), `atmodeller` (simplified), `dummy` (fixed) |
 | `fO2_shift_IW` | float | `4.0` | Redox state: fO$_2$ offset from the iron-wustite buffer [log$_{10}$ units] |
 | `mass_thresh` | float | `1e16` | Minimum volatile mass threshold [kg] |
-| `h2_binodal` | bool | `false` | Enable H$_2$-MgSiO$_3$ miscibility gap model |
+| `h2_binodal` | bool | `false` | Enable H$_2$-MgSiO$_3$ miscibility gap model. `true` is rejected at config load: the parameterisation is not production ready |
 | `T_floor` | float | `700.0` | Skip outgassing below this temperature [K] |
 | `solver_rtol` | float | `1e-4` | Relative mass/equilibrium tolerance |
 | `solver_atol` | float | `1e-6` | Absolute mass/equilibrium tolerance |

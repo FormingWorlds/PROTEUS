@@ -22,13 +22,15 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from proteus.utils.helper import eval_gas_mmw
+
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
 
 # Molar mass of H2 [kg/mol]
-_MU_H2 = 2.016e-3
+_MU_H2 = eval_gas_mmw('H2')
 
 
 def apply_binodal_h2(hf_row: dict, config: Config) -> None:
@@ -168,31 +170,13 @@ def _recompute_atm_mmw(hf_row: dict) -> None:
     """
     from proteus.utils.constants import gas_list
 
-    # Molar masses [kg/mol] for the volatile species
-    _mmw = {
-        'H2O': 18.015e-3,
-        'CO2': 44.01e-3,
-        'O2': 31.999e-3,
-        'H2': 2.016e-3,
-        'CH4': 16.043e-3,
-        'CO': 28.01e-3,
-        'N2': 28.014e-3,
-        'NH3': 17.031e-3,
-        'S2': 64.13e-3,
-        'SO2': 64.066e-3,
-        'H2S': 34.08e-3,
-        'SiO': 44.085e-3,
-        'SiO2': 60.084e-3,
-        'MgO': 40.304e-3,
-        'FeO2': 87.844e-3,
-    }
-
-    # MMW = sum(x_i * mu_i), where x_i = VMR
+    # MMW = sum(x_i * mu_i), where x_i = VMR. Molar masses come from the
+    # formula evaluator; an unknown species fails loudly instead of
+    # silently counting as N2.
     mmw = 0.0
     for s in gas_list:
         vmr = float(hf_row.get(s + '_vmr', 0.0))
-        mu = _mmw.get(s, 28.0e-3)  # fallback to N2 if unknown
-        mmw += vmr * mu
+        mmw += vmr * eval_gas_mmw(s)
 
     if mmw > 0:
         hf_row['atm_kg_per_mol'] = mmw
