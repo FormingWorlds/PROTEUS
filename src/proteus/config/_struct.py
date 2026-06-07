@@ -30,6 +30,27 @@ def valid_zalmoxis(instance, attribute, value):
             f"got '{ice_layer_eos}'"
         )
 
+    # Binodal-aware miscibility iterates on a volatile profile that is
+    # only built when dry_mantle is false, so the flag would silently do
+    # nothing on a default config; and the dissolved-volatile structure
+    # path itself needs per-shell volatile-profile support that the
+    # pinned Zalmoxis release does not provide. Gate both until the
+    # Zalmoxis pin gains that support.
+    if getattr(instance.zalmoxis, 'global_miscibility', False):
+        raise ValueError(
+            '`interior_struct.zalmoxis.global_miscibility = true` is not yet usable: '
+            'with `dry_mantle = true` no volatile profile is built and the flag does '
+            'nothing, and `dry_mantle = false` requires per-shell volatile-profile '
+            'support that the pinned Zalmoxis release does not provide.'
+        )
+    if not getattr(instance.zalmoxis, 'dry_mantle', True):
+        raise ValueError(
+            '`interior_struct.zalmoxis.dry_mantle = false` is not supported with the '
+            'pinned Zalmoxis release: the mantle EOS cannot consume a per-shell '
+            'volatile profile yet, so the extended EOS would carry placeholder '
+            'fractions that nothing overrides. Keep `dry_mantle = true`.'
+        )
+
     # WolfBower2018 EOS is limited to 1 TPa. For planets > 2 M_earth,
     # CMB pressure exceeds this and Zalmoxis will fail to converge.
     import logging as _logging

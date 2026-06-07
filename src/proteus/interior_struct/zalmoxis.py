@@ -216,6 +216,13 @@ def build_volatile_profile(hf_row: dict, mantle_eos: str):
     that have Zalmoxis EOS tables. Returns None if no volatiles are dissolved
     or if the mantle liquid/solid masses are unavailable.
 
+    Ownership of the liquid/solid split: the coupled PROTEUS path takes
+    the per-phase masses from the outgassing chemistry (CALLIOPE/Aragog
+    equilibrium via the helpfile), which already solved solubility.
+    Zalmoxis's own ``partition_rule`` hook is a structure-side
+    idealization for standalone Zalmoxis runs with no chemistry coupled;
+    it is deliberately not used here.
+
     Parameters
     ----------
     hf_row : dict
@@ -495,17 +502,28 @@ def load_zalmoxis_configuration(
         config.interior_struct.zalmoxis.ice_layer_eos or 'none',
     )
 
-    # Calculate the total mass of 'wet' elements in the planet. Whole-planet
-    # oxygen accounting (issue #677): atmospheric+dissolved O is summed
-    # alongside H/C/N/S so the dry-mass target passed to Zalmoxis correctly
-    # reserves space for the O that CALLIOPE places in atmospheric H2O,
-    # CO2, SO2, etc. Mantle FeO-bound O remains in M_int implicitly via
-    # the PALEOS density tables; we do not double-count it.
+    # Calculate the volatile mass excluded from the structure target.
+    # Whole-planet oxygen accounting (issue #677): atmospheric+dissolved O
+    # is summed alongside H/C/N/S so the dry-mass target passed to
+    # Zalmoxis correctly reserves space for the O that CALLIOPE places in
+    # atmospheric H2O, CO2, SO2, etc. Mantle FeO-bound O remains in M_int
+    # implicitly via the PALEOS density tables; we do not double-count it.
+    # With dry_mantle the full inventory is excluded (the mantle EOS
+    # represents bare silicate). When the mantle EOS carries dissolved
+    # volatiles (dry_mantle = false, gated until the Zalmoxis pin supports
+    # it), only the atmospheric inventory may be excluded: the dissolved
+    # mass is already part of the wet-mantle EOS, and subtracting it again
+    # would remove it twice. Escaped mass is already debited from the
+    # *_kg_* inventories and needs no separate term.
     # Defensive .get(): some pre-IC paths invoke Zalmoxis before
     # calc_target_elemental_inventories has populated all element columns.
+    dry_mantle = config.interior_struct.zalmoxis.dry_mantle
     M_volatiles = 0.0
     for e in element_list:
-        M_volatiles += float(hf_row.get(e + '_kg_total', 0.0))
+        if dry_mantle:
+            M_volatiles += float(hf_row.get(e + '_kg_total', 0.0))
+        else:
+            M_volatiles += float(hf_row.get(e + '_kg_atm', 0.0))
 
     log.info(f'Volatile mass: {M_volatiles} kg')
     log.debug(

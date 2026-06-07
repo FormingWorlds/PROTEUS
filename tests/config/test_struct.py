@@ -113,3 +113,38 @@ class TestStructSpiderGuards:
         s = Struct(**_spider_kwargs())
         assert s.module == 'spider'
         assert s.eos_dir == 'WolfBower2018_MgSiO3'
+
+
+class TestZalmoxisVolatileGates:
+    """Gates on the dissolved-volatile structure path.
+
+    Both flags sit on a path that needs per-shell volatile-profile
+    support in the Zalmoxis density evaluator, which the pinned release
+    does not provide; enabling either must fail loudly at config load
+    instead of silently doing nothing at runtime.
+    """
+
+    def test_global_miscibility_is_rejected(self):
+        """`global_miscibility = true` raises: with the default dry mantle no
+        volatile profile is built, so the flag would be a silent no-op."""
+        with pytest.raises(ValueError, match='global_miscibility'):
+            Struct(module='zalmoxis', zalmoxis=Zalmoxis(global_miscibility=True))
+        # Discrimination: the default (miscibility off) constructs, so the
+        # rejection is the flag, not the zalmoxis module itself.
+        s = Struct(module='zalmoxis')
+        assert s.zalmoxis.global_miscibility is False
+
+    def test_wet_mantle_is_rejected(self):
+        """`dry_mantle = false` raises: the extended mantle EOS would carry
+        placeholder fractions that nothing overrides per radius."""
+        with pytest.raises(ValueError, match='dry_mantle'):
+            Struct(module='zalmoxis', zalmoxis=Zalmoxis(dry_mantle=False))
+        s = Struct(module='zalmoxis')
+        assert s.zalmoxis.dry_mantle is True
+
+    def test_spider_module_skips_the_gates(self):
+        """The gates only constrain the zalmoxis structure path: a spider
+        config carrying the same sub-config values is not validated against
+        them (the zalmoxis sub-config is inert under spider)."""
+        s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(global_miscibility=True)))
+        assert s.zalmoxis.global_miscibility is True

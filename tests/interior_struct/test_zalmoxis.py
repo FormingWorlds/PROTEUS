@@ -596,3 +596,71 @@ def test_check_eos_files_walks_nested_and_lazy_siblings(tmp_path):
     msg = str(excinfo.value)
     assert 'mgsio3_solid.dat' in msg
     assert 'seager_iron.txt' not in msg  # present file must not be flagged
+
+
+def _volatile_config(dry_mantle: bool):
+    """MagicMock config for the dry-mass target tests.
+
+    MagicMock bypasses the config-load gate on ``dry_mantle = false``
+    deliberately: the subtraction logic must already be correct for when
+    the Zalmoxis pin gains per-shell volatile-profile support and the
+    gate is lifted.
+    """
+    config = MagicMock()
+    config.planet.mass_tot = 1.0
+    config.interior_struct.zalmoxis.core_eos = 'Seager2007:iron'
+    config.interior_struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
+    config.interior_struct.zalmoxis.ice_layer_eos = None
+    config.interior_struct.core_frac = 0.325
+    config.interior_struct.zalmoxis.mantle_mass_fraction = 0.0
+    config.interior_struct.zalmoxis.dry_mantle = dry_mantle
+    config.planet.temperature_mode = 'isothermal'
+    config.planet.tsurf_init = 300
+    config.planet.tcenter_init = 5000
+    config.interior_struct.zalmoxis.num_levels = 200
+    return config
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_dry_mass_target_excludes_only_undissolved_volatiles():
+    """Mass closure of the structure target under both mantle EOS modes.
+
+    With a bare-silicate mantle EOS (dry_mantle = true) the full volatile
+    inventory is excluded from the dry-mass target. When the mantle EOS
+    carries the dissolved volatiles (dry_mantle = false), only the
+    atmospheric inventory may be excluded: the dissolved mass is already
+    part of the wet-mantle EOS density, and excluding it again would
+    remove it twice and solve the structure for an underweight planet.
+    """
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+    from proteus.utils.constants import M_earth
+
+    # Asymmetric inventories so the two modes are well separated: most of
+    # the H and O mass is dissolved, not atmospheric.
+    H_total, H_atm = 4.7e20, 1.2e20
+    O_total, O_atm = 3.1e21, 0.9e21
+    hf_row = {
+        'H_kg_total': H_total,
+        'H_kg_atm': H_atm,
+        'O_kg_total': O_total,
+        'O_kg_atm': O_atm,
+    }
+
+    dry = load_zalmoxis_configuration(_volatile_config(True), hf_row)
+    wet = load_zalmoxis_configuration(_volatile_config(False), hf_row)
+
+    # Conservation: total = dry-target + excluded volatiles, per mode.
+    assert dry['planet_mass'] == pytest.approx(M_earth - (H_total + O_total), rel=1e-12)
+    assert wet['planet_mass'] == pytest.approx(M_earth - (H_atm + O_atm), rel=1e-12)
+
+    # The mode difference is exactly the dissolved inventory: this is the
+    # mass that the previous unconditional subtraction removed twice.
+    dissolved = (H_total - H_atm) + (O_total - O_atm)
+    assert wet['planet_mass'] - dry['planet_mass'] == pytest.approx(dissolved, rel=1e-12)
+    # Sign guard: the wet-mode target must be the heavier one.
+    assert wet['planet_mass'] > dry['planet_mass']
+    # Scale guard: both targets remain within 0.1% of an Earth mass; a
+    # unit error (g vs kg) or a doubled subtraction would breach this.
+    assert 0.999 * M_earth < dry['planet_mass'] < M_earth
+    assert 0.999 * M_earth < wet['planet_mass'] < M_earth
