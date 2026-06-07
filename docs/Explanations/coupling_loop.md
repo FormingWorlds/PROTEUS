@@ -35,7 +35,7 @@ Key quantities in `hf_row` include:
 |----------|----------|-------|
 | Time | `Time`, `age_star` | yr |
 | Structure | `R_int`, `M_int`, `M_core`, `R_core` | m, kg |
-| Thermal | `T_surf`, `T_magma`, `T_core` | K |
+| Thermal | `T_surf`, `T_magma`, `T_cmb` | K |
 | Energy fluxes | `F_int`, `F_atm`, `F_net`, `F_ins`, `F_xuv` | W m$^{-2}$ |
 | Composition | `H2O_bar`, `CO2_vmr`, `H_kg_total` | bar, 1, kg |
 | Orbit | `semimajorax`, `eccentricity` | m, 1 |

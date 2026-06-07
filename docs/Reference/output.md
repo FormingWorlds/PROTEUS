@@ -118,7 +118,7 @@ are grouped by category below.
 |--------|-------|-------------|
 | `T_surf` | K | Surface temperature |
 | `T_magma` | K | Magma ocean potential temperature |
-| `T_core` | K | Core temperature |
+| `T_cmb` | K | Core temperature |
 | `T_eqm` | K | Equilibrium temperature (from instellation) |
 | `T_skin` | K | Radiative skin temperature |
 | `T_star` | K | Stellar effective temperature |

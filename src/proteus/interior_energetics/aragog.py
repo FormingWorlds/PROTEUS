@@ -1815,7 +1815,7 @@ class AragogRunner:
         if dSdr_snapshot is None:
             dSdr_snapshot = getattr(solver, '_dSdr_cmb_init', None)
         dSdr_ic = dSdr_snapshot
-        T_core_pre = float(hf_row.get('T_core', 0.0))
+        T_core_pre = float(hf_row.get('T_cmb', 0.0))
 
         # Reset atol scale to 1.0 at the start of each coupling step
         # (cleared regardless of retry outcome at end of method)
@@ -2047,7 +2047,7 @@ class AragogRunner:
             # exceeds a minimal threshold (indicates active convection). Falls
             # back to T_magma when the entire mantle is convective.
             'T_pot': _estimate_T_pot(out),
-            'T_core': out.T_core,
+            'T_cmb': out.T_core,
             'E_th_mantle': out.E_th,
             'Cp_eff': out.Cp_eff,
             'F_radio': F_radio,

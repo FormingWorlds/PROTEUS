@@ -1343,7 +1343,7 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     output['T_pot'] = float(interior_o.temp[i])
 
     # Core (CMB) temperature: last staggered node (SPIDER ordering is surface-to-CMB)
-    output['T_core'] = float(interior_o.temp[-1])
+    output['T_cmb'] = float(interior_o.temp[-1])
 
     # Total thermal energy E_th = sum(mass_i * Cp_i * T_i).
     #

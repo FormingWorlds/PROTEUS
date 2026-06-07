@@ -472,7 +472,7 @@ def test_zalmoxis_spider_helpfile_keys_register_structure_and_cmb_handoff():
         'core_density',
         'core_heatcap',
     )
-    cmb_keys = ('T_core', 'T_cmb_initial', 'T_magma', 'F_cmb', 'F_int')
+    cmb_keys = ('T_cmb', 'T_cmb_initial', 'T_magma', 'F_cmb', 'F_int')
     melt_keys = (
         'Phi_global',
         'Phi_global_vol',

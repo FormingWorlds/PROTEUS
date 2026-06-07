@@ -280,8 +280,8 @@ def test_agni_atmodeller_helpfile_keys_register_from_o_budget_columns():
     agni_diagnostic_keys = (
         'tau_atm_TOA',
         'tau_atm_surface',
-        'agni_Ra_max',
-        'agni_t_conv_over_t_rad',
+        'atm_Ra_max',
+        'atm_t_conv_over_t_rad',
     )
     atmodeller_from_o_budget_keys = (
         'fO2_shift_IW_derived',

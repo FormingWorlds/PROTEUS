@@ -234,7 +234,7 @@ def test_agni_calliope_optical_depth_per_band_strictly_increases_with_depth():
 
 def test_agni_calliope_wrapper_merge_includes_calliope_pressure_keys():
     """Beyond the AGNI diagnostic keys (tau_atm_TOA / surface,
-    agni_Ra_max, agni_t_conv_over_t_rad), the CALLIOPE leg writes
+    atm_Ra_max, atm_t_conv_over_t_rad), the CALLIOPE leg writes
     per-gas partial pressures into hf_row. The helpfile schema
     must include both sets so the wrapper merge guard
     (atmos_clim/wrapper.py:196-198) propagates everything.
@@ -249,8 +249,8 @@ def test_agni_calliope_wrapper_merge_includes_calliope_pressure_keys():
     agni_diagnostic_keys = (
         'tau_atm_TOA',
         'tau_atm_surface',
-        'agni_Ra_max',
-        'agni_t_conv_over_t_rad',
+        'atm_Ra_max',
+        'atm_t_conv_over_t_rad',
     )
     calliope_per_gas_keys = (
         'H2O_bar',

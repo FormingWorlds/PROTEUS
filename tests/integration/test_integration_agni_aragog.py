@@ -14,8 +14,8 @@ file exercises the integration-tier portions of that boundary:
   AGNI-side integration to assert the optical-depth monotonicity
   invariant `tau_atm_TOA < 0.5 * tau_atm_surface`.
 - The wrapper merge propagates the four AGNI 1.10.2 diagnostic keys
-  (`tau_atm_TOA`, `tau_atm_surface`, `agni_Ra_max`,
-  `agni_t_conv_over_t_rad`) from the atmosphere output dict into
+  (`tau_atm_TOA`, `tau_atm_surface`, `atm_Ra_max`,
+  `atm_t_conv_over_t_rad`) from the atmosphere output dict into
   `hf_row` via the registered `GetHelpfileKeys` columns.
 - The aragog backend pin (`backend='jax'`, the production default in
   `config/_interior.py`) round-trips against the schema.
@@ -178,8 +178,8 @@ def test_agni_aragog_wrapper_merge_propagates_optical_depth_keys_to_hf_row():
     """The atmos_clim wrapper at ``proteus/atmos_clim/wrapper.py:196-198``
     copies AGNI output keys into hf_row only when those keys are
     already present in hf_row. The four AGNI 1.10.2 diagnostics
-    (``tau_atm_TOA``, ``tau_atm_surface``, ``agni_Ra_max``,
-    ``agni_t_conv_over_t_rad``) must therefore be registered in
+    (``tau_atm_TOA``, ``tau_atm_surface``, ``atm_Ra_max``,
+    ``atm_t_conv_over_t_rad``) must therefore be registered in
     ``GetHelpfileKeys()``.
 
     Discrimination: drive a fresh hf_row through ``ZeroHelpfileRow``
@@ -195,8 +195,8 @@ def test_agni_aragog_wrapper_merge_propagates_optical_depth_keys_to_hf_row():
     for key in (
         'tau_atm_TOA',
         'tau_atm_surface',
-        'agni_Ra_max',
-        'agni_t_conv_over_t_rad',
+        'atm_Ra_max',
+        'atm_t_conv_over_t_rad',
     ):
         assert key in keys, (
             f'{key} must be registered in GetHelpfileKeys() so the wrapper '
@@ -208,8 +208,8 @@ def test_agni_aragog_wrapper_merge_propagates_optical_depth_keys_to_hf_row():
     for key in (
         'tau_atm_TOA',
         'tau_atm_surface',
-        'agni_Ra_max',
-        'agni_t_conv_over_t_rad',
+        'atm_Ra_max',
+        'atm_t_conv_over_t_rad',
     ):
         assert key in row
         assert row[key] == pytest.approx(0.0, abs=1e-12)

@@ -87,7 +87,7 @@ def assert_no_nan_inf(hf_row: pd.Series, columns: list[str] | None = None) -> No
 
 
 # Temperatures that are always meaningful in any simulation. Module-specific
-# fields (T_solvus, T_core, T_cmb_initial, etc.) are excluded; they are
+# fields (T_solvus, T_cmb, T_cmb_initial, etc.) are excluded; they are
 # legitimately 0.0 when the relevant module/feature is inactive. Add to this
 # list only if the field is required for every smoke run.
 ALWAYS_POSITIVE_TEMPS = ('T_surf', 'T_magma', 'T_star')
@@ -98,7 +98,7 @@ def assert_temperatures_positive(hf_row: pd.Series, columns: list[str] | None = 
 
     T = 0 K is unphysical for required state fields. T < 0 K indicates a sign
     or unit bug. Catches the easy class of "computed in Celsius, written as
-    Kelvin" mistakes. Module-specific temperatures (e.g., T_solvus, T_core,
+    Kelvin" mistakes. Module-specific temperatures (e.g., T_solvus, T_cmb,
     T_cmb_initial) that legitimately remain 0 when their module is inactive
     are excluded from the default surface; pass an explicit `columns` list
     if a smoke test needs to assert one of those.

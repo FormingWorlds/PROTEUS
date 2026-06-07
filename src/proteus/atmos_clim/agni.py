@@ -52,7 +52,7 @@ _REQUIRED_ATMOS_FIELDS = (
     'flux_u_lw',
     'flux_u_sw',
     'flux_tot',
-    # Per-band optical depth [nlev_c x nbands], longwave all-sky
+    # Per-band optical depth [nlev_l x nbands], longwave all-sky
     'tau_band',
     # Diagnostics computed by AGNI's prescribed-T solver path and
     # available on the struct after the radiative calc. Energy-solver
@@ -114,10 +114,11 @@ def _check_agni_schema(atmos) -> None:
 def _summarise_tau_band(atmos) -> tuple[float, float]:
     """Reduce the per-band optical-depth array to TOA and surface scalars.
 
-    AGNI stores ``tau_band`` as a ``(nlev_c, nbands)`` Julia array (level
-    index outermost). After juliacall conversion the numpy view may
-    appear as either ``(nlev_c, nbands)`` or ``(nbands, nlev_c)``; the
-    aggregator inspects ``atmos.nlev_c`` and ``atmos.nbands`` to align.
+    AGNI stores ``tau_band`` as a ``(nlev_l, nbands)`` Julia array: the
+    outermost index runs over cell-edge levels (``nlev_l = nlev_c + 1``),
+    not cell centres. After juliacall conversion the numpy view may
+    appear as either ``(nlev_l, nbands)`` or ``(nbands, nlev_l)``; the
+    aggregator inspects ``atmos.nlev_l`` and ``atmos.nbands`` to align.
 
     Returns
     -------
@@ -131,19 +132,28 @@ def _summarise_tau_band(atmos) -> tuple[float, float]:
         return float('nan'), float('nan')
     if tau_arr.size == 0:
         return float('nan'), float('nan')
-    nlev_c = int(atmos.nlev_c) if hasattr(atmos, 'nlev_c') else tau_arr.shape[0]
+    if hasattr(atmos, 'nlev_l'):
+        nlev_l = int(atmos.nlev_l)
+    elif hasattr(atmos, 'nlev_c'):
+        nlev_l = int(atmos.nlev_c) + 1
+    else:
+        nlev_l = tau_arr.shape[0]
     nbands = int(atmos.nbands) if hasattr(atmos, 'nbands') else tau_arr.shape[-1]
-    if tau_arr.shape == (nlev_c, nbands):
+    # Accept a cell-centre-sized level axis (nlev_l - 1) too: the TOA and
+    # surface values sit at indices 0 and -1 on either grid, so the
+    # reduction is identical and the helper tolerates both conventions.
+    level_sizes = {nlev_l, nlev_l - 1}
+    if tau_arr.ndim == 2 and tau_arr.shape[0] in level_sizes and tau_arr.shape[1] == nbands:
         toa = float(tau_arr[0, :].mean())
         surf = float(tau_arr[-1, :].mean())
-    elif tau_arr.shape == (nbands, nlev_c):
+    elif tau_arr.ndim == 2 and tau_arr.shape[0] == nbands and tau_arr.shape[1] in level_sizes:
         toa = float(tau_arr[:, 0].mean())
         surf = float(tau_arr[:, -1].mean())
     else:
         log.warning(
-            'tau_band has unexpected shape %s for nlev_c=%d, nbands=%d',
+            'tau_band has unexpected shape %s for nlev_l=%d, nbands=%d',
             tau_arr.shape,
-            nlev_c,
+            nlev_l,
             nbands,
         )
         return float('nan'), float('nan')
@@ -173,42 +183,6 @@ def _summarise_diagnostics(atmos) -> tuple[float, float]:
     denom = max(float(t_rad_arr[rcb_idx]), 1e-300)
     ratio = float(t_conv_arr[rcb_idx]) / denom
     return Ra_max, ratio
-
-
-def _agni_setup_accepts_aerosol_species() -> bool:
-    """Detect whether the installed AGNI version's ``setup!`` accepts the
-    ``aerosol_species`` kwarg. Older AGNI installs do not, and passing the
-    kwarg trips a Julia MethodError. Resolve at module load by scanning
-    every ``atmosphere.jl`` under AGNI/src for a kwarg-list reference of
-    the form ``aerosol_species ::`` or ``aerosol_species =``.
-
-    ``atmosphere.jl`` lives under ``src/`` or ``src/state/`` depending
-    on the AGNI version; this helper tolerates both paths so PROTEUS
-    does not have to be kept in lockstep with AGNI's directory structure.
-
-    Returns ``False`` when AGNI is not on the conventional sibling path
-    or when no ``atmosphere.jl`` can be located.
-    """
-    import re
-
-    from proteus.utils.helper import get_proteus_dir
-
-    agni_root = os.path.join(get_proteus_dir(), 'AGNI', 'src')
-    if not os.path.isdir(agni_root):
-        return False
-    pattern = re.compile(r'\baerosol_species\s*(?:::|=)')
-    for root, _dirs, files in os.walk(agni_root):
-        if 'atmosphere.jl' in files:
-            try:
-                with open(os.path.join(root, 'atmosphere.jl'), 'r') as fh:
-                    if pattern.search(fh.read()):
-                        return True
-            except OSError:
-                continue
-    return False
-
-
-_AGNI_HAS_AEROSOL_SPECIES = _agni_setup_accepts_aerosol_species()
 
 
 def sync_log_files(outdir: str) -> list[str]:
@@ -584,8 +558,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         κ_grey_lw=config.atmos_clim.agni.grey_opacity_lw,
         κ_grey_sw=config.atmos_clim.agni.grey_opacity_sw,
     )
-    if _AGNI_HAS_AEROSOL_SPECIES:
-        setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
+    setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
 
     succ = jl.AGNI.atmosphere.setup_b(
         atmos,
@@ -1154,8 +1127,8 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     output['albedo'] = albedo
     output['tau_atm_TOA'] = tau_TOA
     output['tau_atm_surface'] = tau_surface
-    output['agni_Ra_max'] = Ra_max
-    output['agni_t_conv_over_t_rad'] = t_conv_over_t_rad
+    output['atm_Ra_max'] = Ra_max
+    output['atm_t_conv_over_t_rad'] = t_conv_over_t_rad
     # Transient-only flag (not persisted to helpfile). True if AGNI's Newton
     # solver converged on at least one attempt; False if all attempts were
     # exhausted via the "Maximum attempts" path. The main coupling loop uses

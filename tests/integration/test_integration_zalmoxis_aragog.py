@@ -790,7 +790,7 @@ def test_zalmoxis_aragog_helpfile_keys_register_structure_handoff():
         'core_density',
         'core_heatcap',
     )
-    temperature_keys = ('T_core', 'T_cmb_initial', 'T_magma', 'T_surf')
+    temperature_keys = ('T_cmb', 'T_cmb_initial', 'T_magma', 'T_surf')
     cmb_flux_keys = ('F_cmb', 'F_int')
     melt_keys = (
         'Phi_global',

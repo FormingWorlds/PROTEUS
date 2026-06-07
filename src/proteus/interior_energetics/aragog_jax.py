@@ -343,7 +343,7 @@ class AragogJAXRunner:
             'M_mantle_solid': float(M_mantle - np.sum(phi * mass)),
             'Phi_global_vol': Phi_global,  # simplified (same as mass-weighted)
             'T_pot': T_magma,
-            'T_core': T_core,
+            'T_cmb': T_core,
             'E_th_mantle': E_th,
             'Cp_eff': Cp_eff,
             'F_radio': F_radio,

@@ -599,15 +599,27 @@ def test_summarise_tau_band_returns_monotonic_TOA_below_surface():
     the inverted ordering. The TOA value of 0.05 vs the surface value
     of 4.5 is well outside any plausible aggregation noise.
     """
-    # Layout matches AGNI's Julia storage: (nlev_c, nbands).
+    # Layout matches AGNI's Julia storage: (nlev_l, nbands), with the
+    # level axis on cell edges (nlev_l = nlev_c + 1).
     atmos = SimpleNamespace(
-        nlev_c=3,
+        nlev_l=3,
         nbands=2,
         tau_band=[[0.0, 0.1], [1.0, 1.2], [4.0, 5.0]],
     )
     toa, surf = agni_mod._summarise_tau_band(atmos)
     assert toa == pytest.approx(0.05, rel=1e-6)
     assert surf == pytest.approx(4.5, rel=1e-6)
+    # A cell-centre-sized level axis (one row fewer than nlev_l) is
+    # accepted too: TOA and surface sit at indices 0 and -1 on either
+    # grid, so the reduction must not depend on the convention.
+    atmos_c = SimpleNamespace(
+        nlev_l=4,
+        nbands=2,
+        tau_band=[[0.0, 0.1], [1.0, 1.2], [4.0, 5.0]],
+    )
+    toa_c, surf_c = agni_mod._summarise_tau_band(atmos_c)
+    assert toa_c == pytest.approx(0.05, rel=1e-6)
+    assert surf_c == pytest.approx(4.5, rel=1e-6)
     # Monotonicity: optical depth integrated from TOA downwards must
     # grow with depth. Discrimination guard against wrong-direction
     # integration: a flipped sum would invert this inequality.
