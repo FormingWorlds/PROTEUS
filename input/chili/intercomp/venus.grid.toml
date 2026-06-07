@@ -4,7 +4,7 @@ symlink = ""
 use_slurm = false
 max_jobs = 9
 max_days = 1
-max_mem = 3
+max_mem = 6
 
 ["planet.elements.H_budget"]
 method = "direct"

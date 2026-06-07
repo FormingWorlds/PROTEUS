@@ -128,13 +128,14 @@ GRID_AXES: dict[str, list[float]] = {
     'planet.elements.C_budget': [1.36e20, 2.73e20, 5.44e20],
 }
 
-# Grid-runner settings shared by both grid specs.
+# Grid-runner settings shared by both grid specs. max_mem is sized for
+# a coupled AGNI + Aragog + Zalmoxis run, which peaks near 4 GB.
 GRID_RUNNER = {
     'symlink': '',
     'use_slurm': False,
     'max_jobs': 9,
     'max_days': 1,
-    'max_mem': 3,
+    'max_mem': 6,
 }
 
 
