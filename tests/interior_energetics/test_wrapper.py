@@ -93,10 +93,18 @@ def _mock_dirs(
 
 
 def _mock_interior_o(n_stag=49):
-    """Create a mock Interior_t with minimal arrays."""
+    """Create a mock Interior_t with minimal arrays.
+
+    The consecutive-failure counters are real integers (zero, the
+    fresh-run state): the production code increments and compares
+    them, which a bare MagicMock attribute cannot support.
+    """
     interior_o = MagicMock(spec=Interior_t)
     interior_o.radius = np.linspace(6.371e6, 3.504e6, n_stag + 1)
     interior_o.temp = np.full(n_stag, 3000.0)
+    interior_o.zalmoxis_fail_count = 0
+    interior_o.spider_fail_count = 0
+    interior_o.aragog_fail_count = 0
     return interior_o
 
 
@@ -1083,11 +1091,6 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
     checks that the failure does NOT clear the flag if it was already
     True (i.e. consecutive failures keep it set).
     """
-    from proteus.interior_energetics import wrapper as _w
-
-    # Reset module-level fail counter before test (prevents hard-abort
-    # at consecutive cap = 8 from leaking between test runs).
-    _w._zalmoxis_fail_count = 0
 
     config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
     dirs = _mock_dirs()
@@ -1118,7 +1121,7 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
     assert hf_row.get('_structure_stale') is True
 
     # Reset for any downstream tests.
-    _w._zalmoxis_fail_count = 0
+    interior_o.zalmoxis_fail_count = 0
 
 
 # ============================================================================
@@ -1145,7 +1148,6 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
     - Near-but-under threshold (3e-3 - epsilon drift): must accept
       (strict > comparison).
     """
-    from proteus.interior_energetics import wrapper as _w
 
     config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
     interior_o = _mock_interior_o()
@@ -1175,7 +1177,7 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
         return _side
 
     # Case 1: 5e-3 drift (over threshold) -> fall-back path must fire.
-    _w._zalmoxis_fail_count = 0
+    interior_o.zalmoxis_fail_count = 0
     hf_row_over = _make_hf_row()
     dirs_over = _mock_dirs()
     with (
@@ -1192,15 +1194,15 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
     assert hf_row_over.get('_structure_stale') is True, (
         'mass-anchor violation must trigger fall-back (-> _structure_stale=True)'
     )
-    assert _w._zalmoxis_fail_count == 1, (
+    assert interior_o.zalmoxis_fail_count == 1, (
         'mass-anchor violation must increment _zalmoxis_fail_count (got %d)'
-        % _w._zalmoxis_fail_count
+        % interior_o.zalmoxis_fail_count
     )
 
     # Case 2: 2e-3 drift (under 3e-3 threshold) -> success path.
     # This is the regime Zalmoxis normally lands in on hot mantle
     # profiles (~0.18-0.28 % drift in production).
-    _w._zalmoxis_fail_count = 0
+    interior_o.zalmoxis_fail_count = 0
     hf_row_under = _make_hf_row()
     dirs_under = _mock_dirs()
     with (
@@ -1222,11 +1224,11 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
         'sub-tolerance drift must NOT trigger fall-back '
         '(_structure_stale=%r)' % hf_row_under.get('_structure_stale')
     )
-    assert _w._zalmoxis_fail_count == 0
+    assert interior_o.zalmoxis_fail_count == 0
 
     # Case 3: target=0 (degenerate, e.g. zalmoxis didn't write target) -> skip
     # the check (must not divide by zero or spuriously raise).
-    _w._zalmoxis_fail_count = 0
+    interior_o.zalmoxis_fail_count = 0
     hf_row_no_target = _make_hf_row()
     dirs_no = _mock_dirs()
 
@@ -1254,9 +1256,9 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
     # Must not raise, must not fall-back (graceful degrade for legacy
     # callers that haven't been updated to write M_int_target).
     assert hf_row_no_target.get('_structure_stale') is False
-    assert _w._zalmoxis_fail_count == 0
+    assert interior_o.zalmoxis_fail_count == 0
 
-    _w._zalmoxis_fail_count = 0  # cleanup
+    interior_o.zalmoxis_fail_count = 0  # cleanup
 
 
 @pytest.mark.unit
@@ -1274,9 +1276,6 @@ def test_zalmoxis_output_restored_from_prev_on_wrapper_raise(tmp_path):
     Edge case covered: when no .prev exists (first call of a run), the
     wrapper must NOT raise; it best-effort skips the restore.
     """
-    from proteus.interior_energetics import wrapper as _w
-
-    _w._zalmoxis_fail_count = 0
 
     # Set up an output dir with data/ subdirectory.
     outdir = tmp_path
@@ -1344,7 +1343,7 @@ def test_zalmoxis_output_restored_from_prev_on_wrapper_raise(tmp_path):
         '.prev (got %r)' % content_after
     )
 
-    _w._zalmoxis_fail_count = 0  # cleanup
+    interior_o.zalmoxis_fail_count = 0  # cleanup
 
 
 # ============================================================================
@@ -1366,9 +1365,6 @@ def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
     ``last_successful_struct_time``. It is independent of
     ``last_struct_time`` and so survives failures.
     """
-    from proteus.interior_energetics import wrapper as _w
-
-    _w._zalmoxis_fail_count = 0
 
     # Configure a 50 kyr normal ceiling and a 25 kyr stale ceiling.
     # Test point: elapsed=30 kyr since LAST CALL (under normal ceiling)
@@ -1457,7 +1453,7 @@ def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
         'last_successful_struct_time must advance on success'
     )
 
-    _w._zalmoxis_fail_count = 0
+    interior_o.zalmoxis_fail_count = 0
 
 
 @pytest.mark.unit
@@ -1467,9 +1463,6 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
     Otherwise the stale-aware ceiling becomes equivalent to the normal
     ceiling and the stale-aware path would have no effect.
     """
-    from proteus.interior_energetics import wrapper as _w
-
-    _w._zalmoxis_fail_count = 0
 
     config = _mock_config(update_interval=1e3, update_min_interval=0.0)
     config.interior_struct.zalmoxis.update_stale_ceiling = 0.0  # disable stale-aware ceiling
@@ -1512,7 +1505,7 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
     # last_successful_struct_time at 5e4 and fool the primary assert.
     mock_solver.assert_called_once()
 
-    _w._zalmoxis_fail_count = 0
+    interior_o.zalmoxis_fail_count = 0
 
 
 # ============================================================================
@@ -2263,27 +2256,37 @@ def test_get_nlevb_invalid_module_raises_value_error():
 
 
 @pytest.mark.unit
-def test_reset_run_state_clears_zalmoxis_and_spider_counters():
-    """reset_run_state zeroes the module-level fail counters for Zalmoxis
-    and SPIDER so a stale counter from a prior run cannot trip the abort.
+def test_fail_counters_are_per_run_state():
+    """The consecutive-failure counters are per-run Interior_t state.
+
+    A fresh instance starts every counter at zero, and mutating one
+    instance leaves another untouched: two Proteus runs in the same
+    Python process (grid ensembles, notebooks, test sessions) cannot
+    share failure streaks, and a new run cannot inherit a stale count
+    that would trip its abort threshold on the first failure.
     """
-    from proteus.interior_energetics import wrapper as _w
+    run_a = Interior_t(50)
+    run_b = Interior_t(50)
 
-    # Seed counters to non-zero values.
-    _w._zalmoxis_fail_count = 5
-    _w._spider_fail_count = 2
+    # Fresh-run contract: all three counters start at zero.
+    assert (run_a.zalmoxis_fail_count, run_a.spider_fail_count, run_a.aragog_fail_count) == (
+        0,
+        0,
+        0,
+    )
 
-    _w.reset_run_state()
-    assert _w._zalmoxis_fail_count == 0
-    assert _w._spider_fail_count == 0
-    # Anti-happy-path: a regression that only zeroed one of the two
-    # counters would still hit the assert above on the other one.
-    # Discrimination check: setting both to non-zero and re-running reset
-    # must always return both to 0.
-    _w._zalmoxis_fail_count = 100
-    _w._spider_fail_count = 100
-    _w.reset_run_state()
-    assert _w._zalmoxis_fail_count + _w._spider_fail_count == 0
+    # Isolation contract: a failure streak on run A is invisible to run B.
+    run_a.zalmoxis_fail_count = 7
+    run_a.spider_fail_count = 2
+    run_a.aragog_fail_count = 3
+    assert (run_b.zalmoxis_fail_count, run_b.spider_fail_count, run_b.aragog_fail_count) == (
+        0,
+        0,
+        0,
+    )
+    # Discrimination: the mutated instance really holds the streak (the
+    # isolation assert above cannot pass because writes were dropped).
+    assert run_a.zalmoxis_fail_count == 7
 
 
 # ============================================================================
@@ -3095,11 +3098,7 @@ def test_run_interior_spider_fallback_keeps_hf_row_on_failure():
     """
     from unittest.mock import patch as _patch
 
-    from proteus.interior_energetics import wrapper as _w
     from proteus.interior_energetics.wrapper import run_interior
-
-    # Reset module-level counter.
-    _w._spider_fail_count = 0
 
     config = _make_run_interior_config(prevent_warming=False, module='spider')
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
@@ -3110,6 +3109,7 @@ def test_run_interior_spider_fallback_keeps_hf_row_on_failure():
     interior_o.ic = 2
     interior_o.dt = 0.0
     interior_o._spider_cumulative_time = 100.0
+    interior_o.spider_fail_count = 0
 
     with (
         _patch(
@@ -3126,7 +3126,7 @@ def test_run_interior_spider_fallback_keeps_hf_row_on_failure():
         )
 
     # Counter incremented.
-    assert _w._spider_fail_count == 1
+    assert interior_o.spider_fail_count == 1
     # hf_row left at prior values (stale interior).
     assert hf_row['T_magma'] == pytest.approx(saved_T_magma, rel=1e-12)
     assert hf_row['Phi_global'] == pytest.approx(saved_Phi, rel=1e-12)
@@ -3136,7 +3136,7 @@ def test_run_interior_spider_fallback_keeps_hf_row_on_failure():
     mock_next_step.assert_called_once()
 
     # Cleanup.
-    _w._spider_fail_count = 0
+    interior_o.spider_fail_count = 0
 
 
 @pytest.mark.unit
@@ -3149,15 +3149,14 @@ def test_run_interior_spider_fallback_aborts_after_max_consecutive():
     from proteus.interior_energetics import wrapper as _w
     from proteus.interior_energetics.wrapper import run_interior
 
-    # Seed counter to (cap - 1) so the next failure crosses the threshold.
-    _w._spider_fail_count = _w._SPIDER_MAX_CONSECUTIVE_FAILS - 1
-
     config = _make_run_interior_config(prevent_warming=False, module='spider')
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
 
     interior_o = MagicMock(spec=Interior_t)
     interior_o.ic = 2
     interior_o._spider_cumulative_time = 0.0
+    # Seed counter to (cap - 1) so the next failure crosses the threshold.
+    interior_o.spider_fail_count = _w._SPIDER_MAX_CONSECUTIVE_FAILS - 1
 
     with _patch(
         'proteus.interior_energetics.spider.RunSPIDER',
@@ -3168,9 +3167,9 @@ def test_run_interior_spider_fallback_aborts_after_max_consecutive():
                 {'spider': '/tmp/spider'}, config, hf_all, hf_row, interior_o, verbose=False
             )
     # Counter has reached the cap.
-    assert _w._spider_fail_count == _w._SPIDER_MAX_CONSECUTIVE_FAILS
+    assert interior_o.spider_fail_count == _w._SPIDER_MAX_CONSECUTIVE_FAILS
 
-    _w._spider_fail_count = 0  # cleanup
+    interior_o.spider_fail_count = 0  # cleanup
 
 
 # ============================================================================
@@ -3185,10 +3184,7 @@ def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
     """
     from unittest.mock import patch as _patch
 
-    from proteus.interior_energetics import wrapper as _w
     from proteus.interior_energetics.wrapper import run_interior
-
-    _w._aragog_fail_count = 0
 
     config = _make_run_interior_config(prevent_warming=False, module='aragog')
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
@@ -3197,6 +3193,7 @@ def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
     interior_o = MagicMock(spec=Interior_t)
     interior_o.ic = 2
     interior_o.dt = 0.0
+    interior_o.aragog_fail_count = 0
 
     runner_mock = MagicMock()
     runner_mock.run_solver.side_effect = RuntimeError('retry ladder exhausted')
@@ -3214,14 +3211,14 @@ def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
         run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
 
     # Aragog counter incremented.
-    assert _w._aragog_fail_count == 1
+    assert interior_o.aragog_fail_count == 1
     # hf_row preserved (stale).
     assert hf_row['T_magma'] == pytest.approx(saved_T_magma, rel=1e-12)
     # dt advanced to next_step's return.
     assert interior_o.dt == pytest.approx(42.0, rel=1e-12)
     mock_next_step.assert_called_once()
 
-    _w._aragog_fail_count = 0
+    interior_o.aragog_fail_count = 0
 
 
 @pytest.mark.unit
@@ -3232,14 +3229,14 @@ def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
     from proteus.interior_energetics import wrapper as _w
     from proteus.interior_energetics.wrapper import run_interior
 
-    _w._aragog_fail_count = _w._ARAGOG_MAX_CONSECUTIVE_FAILS - 1
-
     config = _make_run_interior_config(prevent_warming=False, module='aragog')
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
 
     interior_o = MagicMock(spec=Interior_t)
     interior_o.ic = 2
     interior_o.dt = 0.0
+    # Seed counter to (cap - 1) so the next failure crosses the threshold.
+    interior_o.aragog_fail_count = _w._ARAGOG_MAX_CONSECUTIVE_FAILS - 1
 
     runner_mock = MagicMock()
     runner_mock.run_solver.side_effect = RuntimeError('terminal aragog failure')
@@ -3251,9 +3248,9 @@ def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
         with pytest.raises(RuntimeError, match='terminal aragog failure'):
             run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
 
-    assert _w._aragog_fail_count == _w._ARAGOG_MAX_CONSECUTIVE_FAILS
+    assert interior_o.aragog_fail_count == _w._ARAGOG_MAX_CONSECUTIVE_FAILS
 
-    _w._aragog_fail_count = 0
+    interior_o.aragog_fail_count = 0
 
 
 # ============================================================================
@@ -3856,32 +3853,6 @@ def test_fallback_restores_saved_structure_on_zalmoxis_failure():
 
 
 @pytest.mark.physics_invariant
-def test_zalmoxis_fail_count_resets_on_success():
-    """After a successful zalmoxis_solver call, _zalmoxis_fail_count
-    must be reset to 0 and _structure_stale set to False.
-
-    Discrimination: pre-load the counter to a non-zero value (2) and
-    verify it resets. A regression that did not reset would carry the
-    stale count forward and prematurely abort on the next failure.
-    """
-    import proteus.interior_energetics.wrapper as wrapper_mod
-
-    old_count = wrapper_mod._zalmoxis_fail_count
-    wrapper_mod._zalmoxis_fail_count = 2
-
-    hf_row = {'_structure_stale': True}
-
-    # Simulate the success path (L1837-1855)
-    wrapper_mod._zalmoxis_fail_count = 0
-    hf_row['_structure_stale'] = False
-
-    assert wrapper_mod._zalmoxis_fail_count == 0
-    assert hf_row['_structure_stale'] is False
-
-    # Restore module state
-    wrapper_mod._zalmoxis_fail_count = old_count
-
-
 def test_composition_sentinel_update_after_structure_change():
     """After a successful structure update triggered by composition
     change, the per-species _last_w_<species>_liquid sentinels must

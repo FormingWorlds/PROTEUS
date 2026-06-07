@@ -563,6 +563,16 @@ class Interior_t:
         # Current time step length [yr]
         self.dt = 1.0
 
+        # Consecutive solver-failure counters, reset on each success.
+        # Per-run state by construction: every run builds a fresh
+        # Interior_t, so concurrent Proteus instances in one Python
+        # process (grid ensembles, notebooks, test sessions) cannot
+        # share failure streaks. The abort thresholds live in
+        # interior_energetics/wrapper.py.
+        self.zalmoxis_fail_count = 0
+        self.spider_fail_count = 0
+        self.aragog_fail_count = 0
+
         # Cumulative SPIDER time [yr]. Used by the CVode failure
         # fallback path (wrapper.py) to keep bookkeeping consistent
         # during retries.

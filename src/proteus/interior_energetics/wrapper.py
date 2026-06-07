@@ -22,13 +22,10 @@ if TYPE_CHECKING:
 # Counter for consecutive Zalmoxis convergence failures during time evolution.
 # Reset on each successful structure update. Crash after max_consecutive.
 #
-# This is a module-level global that persists across runs in the same Python
-# process (pytest sessions with multiple integration tests, `proteus grid`
-# ensembles spawning in one process, Jupyter kernels). A prior run that hit
-# N consecutive failures leaves the counter at N; the next run's first
-# failure could then trigger the abort threshold. `reset_run_state()` below
-# clears the counter and must be called from the PROTEUS run-init path.
-_zalmoxis_fail_count = 0
+# The consecutive-failure counters live on the per-run Interior_t state
+# object (interior_energetics/common.py), so concurrent Proteus
+# instances in one Python process cannot share failure streaks. The
+# abort thresholds below are immutable and stay module-level.
 # Allow up to 8 consecutive Zalmoxis failures before aborting. Consecutive
 # `pressure=False, density=False, mass=False` streaks can occur transiently;
 # 8 retries give recoverable streaks room to recover without hiding a genuine
@@ -49,30 +46,12 @@ _ZALMOXIS_MAX_CONSECUTIVE_FAILS = 8
 # (9-15 % off target) and gross corruption.
 _ZALMOXIS_MASS_ANCHOR_TOL = 3e-3
 
-# Counter for consecutive SPIDER CVode failures during time evolution.
-# Reset on each successful SPIDER call. Crash after max_consecutive.
-_spider_fail_count = 0
+# Abort threshold for consecutive SPIDER CVode failures during time
+# evolution; the counter resets on each successful SPIDER call.
 _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 
-
-def reset_run_state() -> None:
-    """Reset the module-level consecutive-failure counters.
-
-    Must be called by the PROTEUS run-init path on every new run
-    (fresh-start or resume-from-disk). Without this, a stale counter
-    left over from a prior run in the same Python process (pytest
-    session, `proteus grid` ensemble, Jupyter kernel) could trip the
-    abort threshold on the new run's first failure.
-    """
-    global _zalmoxis_fail_count, _spider_fail_count
-    _zalmoxis_fail_count = 0
-    _spider_fail_count = 0
-
-
-# Counter for consecutive Aragog retry-ladder exhaustions. Reset on
-# each successful Aragog call. Crash after max_consecutive. Mirrors
-# the SPIDER fallback pattern.
-_aragog_fail_count = 0
+# Abort threshold for consecutive Aragog retry-ladder exhaustions; the
+# counter resets on each successful Aragog call.
 _ARAGOG_MAX_CONSECUTIVE_FAILS = 3
 
 log = logging.getLogger('fwl.' + __name__)
@@ -1312,7 +1291,6 @@ def run_interior(
         interior_o.write_tides(dirs['output'])
 
     if config.interior_energetics.module == 'spider':
-        global _spider_fail_count
         # Import
         from proteus.interior_energetics.spider import ReadSPIDER, RunSPIDER
 
@@ -1322,20 +1300,20 @@ def run_interior(
         mesh_file = dirs.get('spider_mesh')
         try:
             RunSPIDER(dirs, config, hf_all, hf_row, interior_o, mesh_file=mesh_file)
-            _spider_fail_count = 0
+            interior_o.spider_fail_count = 0
         except RuntimeError as e:
-            _spider_fail_count += 1
+            interior_o.spider_fail_count += 1
             log.warning(
                 'SPIDER CVode failure #%d/%d. '
                 'Keeping previous interior state for this step. Error: %s',
-                _spider_fail_count,
+                interior_o.spider_fail_count,
                 _SPIDER_MAX_CONSECUTIVE_FAILS,
                 str(e)[:200],
             )
-            if _spider_fail_count >= _SPIDER_MAX_CONSECUTIVE_FAILS:
+            if interior_o.spider_fail_count >= _SPIDER_MAX_CONSECUTIVE_FAILS:
                 log.error(
                     'SPIDER failed %d consecutive times. Aborting.',
-                    _spider_fail_count,
+                    interior_o.spider_fail_count,
                 )
                 raise
             # Skip ReadSPIDER; keep hf_row values from previous step.
@@ -1366,7 +1344,6 @@ def run_interior(
         sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
 
     elif config.interior_energetics.module == 'aragog':
-        global _aragog_fail_count
         from proteus.interior_energetics.aragog import AragogRunner
 
         runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
@@ -1377,20 +1354,20 @@ def run_interior(
                 dirs,
                 write_data=write_data,
             )
-            _aragog_fail_count = 0
+            interior_o.aragog_fail_count = 0
         except RuntimeError as e:
-            _aragog_fail_count += 1
+            interior_o.aragog_fail_count += 1
             log.warning(
                 'Aragog retry-ladder exhaustion #%d/%d. '
                 'Keeping previous interior state for this step. Error: %s',
-                _aragog_fail_count,
+                interior_o.aragog_fail_count,
                 _ARAGOG_MAX_CONSECUTIVE_FAILS,
                 str(e)[:200],
             )
-            if _aragog_fail_count >= _ARAGOG_MAX_CONSECUTIVE_FAILS:
+            if interior_o.aragog_fail_count >= _ARAGOG_MAX_CONSECUTIVE_FAILS:
                 log.error(
                     'Aragog failed %d consecutive times. Aborting.',
-                    _aragog_fail_count,
+                    interior_o.aragog_fail_count,
                 )
                 raise
             # Skip output update; keep hf_row values from previous step.
@@ -1786,8 +1763,6 @@ def update_structure_from_interior(
                 _exc,
             )
 
-    global _zalmoxis_fail_count
-
     nlev_b = get_nlevb(config)
     num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
 
@@ -1842,7 +1817,7 @@ def update_structure_from_interior(
         # _ZALMOXIS_MASS_ANCHOR_TOL after every successful Zalmoxis call.
         # Raise RuntimeError on violation so the except-block
         # fall-back path runs (restore _saved_structure, set
-        # _structure_stale=True, increment _zalmoxis_fail_count). This
+        # _structure_stale=True, increment interior_o.zalmoxis_fail_count). This
         # treats a too-loose-converged Zalmoxis result the same as a
         # non-converged one.
         _M_target = float(hf_row.get('M_int_target', 0.0) or 0.0)
@@ -1862,18 +1837,18 @@ def update_structure_from_interior(
                         _M_target,
                     )
                 )
-        if _zalmoxis_fail_count > 0:
+        if interior_o.zalmoxis_fail_count > 0:
             # Quantify how often the relaxed budget actually saved a run: log
             # the streak length before zeroing so post-hoc analysis can grep
             # "consecutive-failure streak reset" from proteus_00.log.
             log.info(
                 'Zalmoxis consecutive-failure streak reset on success '
                 '(streak length = %d / %d, trigger: %s)',
-                _zalmoxis_fail_count,
+                interior_o.zalmoxis_fail_count,
                 _ZALMOXIS_MAX_CONSECUTIVE_FAILS,
                 reason,
             )
-        _zalmoxis_fail_count = 0  # Reset on success
+        interior_o.zalmoxis_fail_count = 0  # Reset on success
         # Clear the stale-structure flag so downstream consumers
         # (Aragog setup_or_update_solver) can rely on it. The flag is
         # set to True on fall-back and cleared here on success, so
@@ -1895,18 +1870,18 @@ def update_structure_from_interior(
             reason,
         )
     except RuntimeError as e:
-        _zalmoxis_fail_count += 1
+        interior_o.zalmoxis_fail_count += 1
         log.warning(
             'Zalmoxis convergence failure #%d/%d during time evolution. '
             'Falling back to previous structure. Error: %s',
-            _zalmoxis_fail_count,
+            interior_o.zalmoxis_fail_count,
             _ZALMOXIS_MAX_CONSECUTIVE_FAILS,
             str(e)[:200],
         )
-        if _zalmoxis_fail_count >= _ZALMOXIS_MAX_CONSECUTIVE_FAILS:
+        if interior_o.zalmoxis_fail_count >= _ZALMOXIS_MAX_CONSECUTIVE_FAILS:
             log.error(
                 'Zalmoxis failed %d consecutive times. Aborting.',
-                _zalmoxis_fail_count,
+                interior_o.zalmoxis_fail_count,
             )
             raise
         # Restore previous structure values

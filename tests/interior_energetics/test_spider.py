@@ -370,6 +370,9 @@ def test_mesh_convergence_trigger():
     interior_o = MagicMock()
     interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
     interior_o.temp = np.full(49, 3000.0)
+    # Real integer: the per-run failure counter is incremented and
+    # compared by the code under test.
+    interior_o.zalmoxis_fail_count = 0
 
     # Case 1: mesh_shift_active=True, elapsed=15 yr (> convergence_interval=10)
     # Should trigger despite being under floor (100 yr)
