@@ -25,8 +25,11 @@ set -euo pipefail
 # requires-python ceiling once the repo root is known (see below).
 REQUIRED_PYTHON_MAJOR=3
 REQUIRED_PYTHON_MINOR=12
+# Julia: 1.11.x and 1.12.x are both supported; fresh installs pin the
+# version below (matches what CI tests).
 REQUIRED_JULIA_MAJOR=1
-REQUIRED_JULIA_MINOR=11
+REQUIRED_JULIA_MINOR=12
+ACCEPTED_JULIA_MINORS="11 12"
 MIN_DISK_GB=10
 
 # ---------------------------------------------------------------------------
@@ -357,8 +360,15 @@ if command_exists julia; then
     julia_minor=$(echo "$julia_version" | cut -d. -f2)
     info "Julia found: $julia_version"
 
-    if [ "$julia_major" -ne "$REQUIRED_JULIA_MAJOR" ] || [ "$julia_minor" -ne "$REQUIRED_JULIA_MINOR" ]; then
-        warn "Julia $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR required, found $julia_version."
+    julia_minor_ok=false
+    for accepted_minor in $ACCEPTED_JULIA_MINORS; do
+        if [ "$julia_major" -eq "$REQUIRED_JULIA_MAJOR" ] && \
+           [ "$julia_minor" -eq "$accepted_minor" ]; then
+            julia_minor_ok=true
+        fi
+    done
+    if [ "$julia_minor_ok" != true ]; then
+        warn "Julia $REQUIRED_JULIA_MAJOR.x with minor in {$ACCEPTED_JULIA_MINORS} required, found $julia_version."
         if command_exists juliaup; then
             info "Pinning Julia to $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR via juliaup..."
             juliaup add "$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"

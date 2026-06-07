@@ -189,21 +189,27 @@ class TestCheckFwlData:
 class TestCheckJulia:
     """Julia version checks."""
 
-    def test_pass_for_correct_version(self):
-        """Julia 1.11.x passes."""
-        with patch('proteus.doctor._julia_version', return_value='1.11.8'):
-            r = check_julia()
-        assert r.status == PASS
-        # The detected version is reported and no fix is suggested.
-        assert '1.11.8' in r.message
-        assert r.fix_cmd is None
+    def test_pass_for_supported_versions(self):
+        """Julia 1.11.x and 1.12.x both pass."""
+        for ver in ('1.11.8', '1.12.6'):
+            with patch('proteus.doctor._julia_version', return_value=ver):
+                r = check_julia()
+            assert r.status == PASS
+            # The detected version is reported and no fix is suggested.
+            assert ver in r.message
+            assert r.fix_cmd is None
 
     def test_warn_for_wrong_version(self):
-        """Julia 1.12.x warns with a juliaup fix."""
-        with patch('proteus.doctor._julia_version', return_value='1.12.1'):
-            r = check_julia()
-        assert r.status == WARN
-        assert 'juliaup' in r.fix_cmd
+        """Julia versions outside 1.11/1.12 warn with a juliaup fix.
+
+        1.10 (too old) and 1.13 (untested release) both warn; the
+        contrast against the passing 1.12 above pins the boundary.
+        """
+        for ver in ('1.10.4', '1.13.0'):
+            with patch('proteus.doctor._julia_version', return_value=ver):
+                r = check_julia()
+            assert r.status == WARN
+            assert 'juliaup' in r.fix_cmd
 
     def test_fail_when_missing(self):
         """Missing Julia fails with install command."""

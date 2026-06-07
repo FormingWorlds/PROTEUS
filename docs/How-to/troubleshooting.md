@@ -113,13 +113,13 @@ This happens when compiling SPIDER within a Python environment that is incompati
 
 ### Julia compatibility error {#julia-compatibility-error}
 
-There are incompatibilities between Python and some versions of Julia. Julia version 1.12+ is not yet supported because it requires a version of the OpenSSL library that is incompatible with Python.
+There are incompatibilities between Python and some versions of Julia. Supported Julia versions are **1.11.x and 1.12.x**; newer releases (including the 1.13 release candidates) are untested and may fail when juliacall resolves shared libraries.
 
-You must use **Python 3.12** and **Julia 1.11** to avoid these problems:
+You must use **Python 3.12** with a supported Julia to avoid these problems:
 
 ```console
-juliaup add 1.11
-juliaup default 1.11
+juliaup add 1.12
+juliaup default 1.12
 ```
 
 ---

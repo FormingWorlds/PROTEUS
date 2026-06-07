@@ -88,7 +88,7 @@ bash install.sh
 The installer runs through the following phases automatically:
 
 1. Pre-flight checks (OS, disk space, Python version, system dependencies)
-2. Julia installation and version pinning (1.11)
+2. Julia installation and version pinning (1.12)
 3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`)
 4. SOCRATES compilation and `RAD_DIR` setup
 5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry)
@@ -193,13 +193,14 @@ curl -fsSL https://install.julialang.org | sh
     uninstall the old version first and remove old Julia entries from your
     `PATH`.
 
-!!! warning "Pin Julia to version 1.11"
-    Julia 1.12+ is **not yet supported** due to OpenSSL library
-    incompatibilities with Python. After installing, pin to 1.11:
+!!! warning "Pin Julia to a supported version"
+    Julia 1.11.x and 1.12.x are supported; newer releases (including
+    the 1.13 release candidates) are untested. After installing, pin
+    to 1.12, which is the version exercised by CI:
 
     ```console
-    juliaup add 1.11
-    juliaup default 1.11
+    juliaup add 1.12
+    juliaup default 1.12
     ```
 
 Set the Julia environment variable:

@@ -317,7 +317,7 @@ def check_julia() -> CheckResult:
             fix_cmd='curl -fsSL https://install.julialang.org | sh',
         )
     parts = ver.split('.')
-    if len(parts) >= 2 and parts[0] == '1' and parts[1] == '11':
+    if len(parts) >= 2 and parts[0] == '1' and parts[1] in ('11', '12'):
         return CheckResult(
             name='julia',
             category='environment',
@@ -328,8 +328,8 @@ def check_julia() -> CheckResult:
         name='julia',
         category='environment',
         status=WARN,
-        message=f'{ver} (1.11.x required)',
-        fix_cmd='juliaup add 1.11 && juliaup default 1.11',
+        message=f'{ver} (1.11.x or 1.12.x required)',
+        fix_cmd='juliaup add 1.12 && juliaup default 1.12',
     )
 
 
