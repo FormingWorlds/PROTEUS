@@ -330,25 +330,32 @@ def test_zalmoxis_equilibrate_tol_gt0_with_selectivity():
 # ---------------------------------------------------------------------------
 
 
-def test_zalmoxis_global_miscibility_default_off_round_trips_on():
+def test_zalmoxis_global_miscibility_default_off_and_gated_on():
     """``Zalmoxis.global_miscibility`` gates the H2-MgSiO3 solvus
-    path (Rogers+2025 binodal). Off by default; round-trip both
-    states.
+    path (Rogers+2025 binodal). Off by default, and enabling it is
+    rejected until the pinned Zalmoxis release can consume a
+    per-shell volatile profile.
 
-    The Outgas-side counterpart ``h2_binodal`` flag does the same on
-    the CALLIOPE side. Pin both flags so the cross-side coupling
-    contract is documented at the schema layer.
+    The Outgas-side counterpart ``h2_binodal`` is rejected at the
+    class layer; the structure-side flag is rejected by the
+    cross-field ``Struct`` validator (the bare ``Zalmoxis`` class
+    carries no gate, so the enforcement point is pinned explicitly).
     """
     from proteus.config._outgas import Outgas
-    from proteus.config._struct import Zalmoxis
+    from proteus.config._struct import Struct, Zalmoxis
 
     assert Zalmoxis().global_miscibility is False
+    # The bare class accepts the flag; the gate lives on Struct.
     z_on = Zalmoxis(global_miscibility=True)
     assert z_on.global_miscibility is True
-    # CALLIOPE-side counterpart.
+    with pytest.raises(ValueError, match=r'global_miscibility'):
+        Struct(module='zalmoxis', zalmoxis=z_on)
+    # The default-off combination still constructs.
+    assert Struct(module='zalmoxis').zalmoxis.global_miscibility is False
+    # CALLIOPE-side counterpart: rejected at the class layer.
     assert Outgas().h2_binodal is False
-    o_on = Outgas(h2_binodal=True)
-    assert o_on.h2_binodal is True
+    with pytest.raises(ValueError, match=r'h2_binodal'):
+        Outgas(h2_binodal=True)
 
 
 def test_zalmoxis_miscibility_iter_and_tol_validators():

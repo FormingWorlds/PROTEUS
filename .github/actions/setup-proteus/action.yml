@@ -312,14 +312,25 @@ runs:
         # which carries no AGNI deps and fails with
         # "Package Glob not found in current path."
         #
-        # Keep the committed Manifest.toml in place: deleting it forces
-        # Pkg to re-resolve the dependency graph and re-precompile every
-        # package even on a Julia depot cache hit (~4 min penalty per
-        # run). The depot cache key already hashes Project.toml and
-        # Manifest.toml, so any genuine manifest change invalidates
-        # correctly. The pinned AGNI ref ships a matching Manifest.
+        # AGNI ships no Manifest.toml; any manifest present here was
+        # carried over by the AGNI-clone cache from an earlier run.
+        # Keep it when it matches the running Julia (re-resolving on
+        # every run costs ~4 min even on a depot cache hit), but drop
+        # it when it was resolved under a different Julia minor: the
+        # stdlib set differs between minors (MbedTLS_jll is a stdlib
+        # JLL on 1.11 but a regular package on 1.12), and
+        # Pkg.instantiate honours the stale manifest instead of
+        # re-resolving, leaving those packages uninstalled.
         export RAD_DIR="$GITHUB_WORKSPACE/socrates"
         cd AGNI
+        if [ -f Manifest.toml ]; then
+          mver=$(grep -m1 '^julia_version' Manifest.toml | grep -oE '[0-9]+\.[0-9]+' | head -1)
+          jver=$(julia -e 'print(string(VERSION.major,".",VERSION.minor))')
+          if [ "$mver" != "$jver" ]; then
+            echo "Dropping cached Manifest.toml (resolved under Julia $mver, running $jver)"
+            rm Manifest.toml
+          fi
+        fi
         julia --project=. -e 'using Pkg; Pkg.instantiate()'
         julia --project=. deps/build.jl
 
