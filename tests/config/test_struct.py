@@ -148,3 +148,7 @@ class TestZalmoxisVolatileGates:
         them (the zalmoxis sub-config is inert under spider)."""
         s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(global_miscibility=True)))
         assert s.zalmoxis.global_miscibility is True
+        # Both gated flags are inert under spider: the wet-mantle setting
+        # also constructs, so the early return covers the whole validator.
+        s2 = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(dry_mantle=False)))
+        assert s2.zalmoxis.dry_mantle is False

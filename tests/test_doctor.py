@@ -94,6 +94,10 @@ class TestCheckResult:
         )
         d = r.to_dict()
         assert 'julialang' in d['fix_cmd']
+        # The failing status and identity serialise alongside the fix, so
+        # JSON consumers can pair the command with the failed check.
+        assert d['status'] == 'fail'
+        assert d['name'] == 'julia'
 
 
 class TestCheckEnvVar:
@@ -120,6 +124,8 @@ class TestCheckEnvVar:
         with patch.dict(os.environ, {'BAD_PATH': '/no/such/path'}):
             r = check_env_var('BAD_PATH', validate_path=True)
         assert r.status == WARN
+        # The message names the offending path so the user can fix it.
+        assert '/no/such/path' in r.message
 
     def test_warn_when_required_file_missing(self, tmp_path):
         """A valid path that lacks a required file warns."""
@@ -135,6 +141,8 @@ class TestCheckEnvVar:
         with patch.dict(os.environ, {'RDIR': str(tmp_path)}):
             r = check_env_var('RDIR', required_file='bin/radlib.a')
         assert r.status == PASS
+        # A passing check carries no fix command.
+        assert r.fix_cmd is None
 
 
 class TestCheckFwlData:
@@ -167,6 +175,15 @@ class TestCheckFwlData:
         with patch.dict(os.environ, env, clear=True):
             results = check_fwl_data()
         assert results == []
+        # Discrimination: with the variable set, the same call reports
+        # per-subdirectory results, so the empty list above comes from
+        # the unset branch and not from a function that always returns
+        # nothing.
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            with patch.dict(os.environ, {'FWL_DATA': td}):
+                assert len(check_fwl_data()) > 0
 
 
 class TestCheckJulia:
@@ -177,6 +194,9 @@ class TestCheckJulia:
         with patch('proteus.doctor._julia_version', return_value='1.11.8'):
             r = check_julia()
         assert r.status == PASS
+        # The detected version is reported and no fix is suggested.
+        assert '1.11.8' in r.message
+        assert r.fix_cmd is None
 
     def test_warn_for_wrong_version(self):
         """Julia 1.12.x warns with a juliaup fix."""
@@ -205,6 +225,9 @@ class TestCheckPythonPackage:
             with patch('proteus.doctor._editable_checkout_path', return_value=None):
                 r = check_python_package('fwl-aragog', spec)
         assert r.status == PASS
+        # The installed version is reported for the human reading the
+        # doctor output.
+        assert '26.5.13' in r.message
 
     def test_fail_when_below_spec(self):
         """A version below the minimum bound fails."""
@@ -336,6 +359,10 @@ class TestGitHelpers:
         _init_test_repo(tmp_path)
         (tmp_path / 'f.txt').write_text('changed')
         assert _git_dirty(str(tmp_path)) is True
+        # Restoring the tracked content returns the repo to clean, so the
+        # True above reflects the modification and not a stuck reading.
+        (tmp_path / 'f.txt').write_text('x')
+        assert _git_dirty(str(tmp_path)) is False
 
     def test_git_dirty_none_for_non_repo(self, tmp_path):
         """Non-repo path returns None so the caller can mark the dirty state
@@ -384,6 +411,10 @@ class TestEditableCheckoutPath:
         with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
             path = _editable_checkout_path('fwl-aragog')
         assert path == '/Users/Tim L/git/aragog'
+        # The %20 escape was decoded rather than passed through, and the
+        # file:// scheme was stripped.
+        assert '%20' not in path
+        assert not path.startswith('file:')
 
     def test_returns_none_for_malformed_json(self):
         """Corrupted direct_url.json returns None."""
