@@ -1,6 +1,19 @@
 .arch-diagram {
   width: 100%;
+  height: auto;
   display: none;
+}
+
+/* Reserve the correct box size from CSS so the diagram renders at full size
+   immediately, rather than collapsing small until the SVG finishes loading.
+   Each diagram carries its own aspect ratio, taken from the source viewBox,
+   matched on its file name in the object data attribute. */
+.arch-diagram[data*="modules_schematic"] {
+  aspect-ratio: 682 / 497;
+}
+
+.arch-diagram[data*="proteus_architecture"] {
+  aspect-ratio: 1412 / 1315;
 }
 
 /* Light mode: show light diagram */
