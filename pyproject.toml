@@ -64,10 +64,11 @@ dependencies = [
     "jaxlib<0.10",
     "equinox==0.13.2",
     "cmcrameri",
-    # juliacall 0.9.33 mis-resolves the PythonCall.jl dev-path on conda
-    # envs (passes `<env>/lib/python3.12` to Pkg.develop, which has no
-    # Project.toml). 0.9.32 ships the working Pkg.add fallback.
-    "juliacall<0.9.33",
+    # Requires >=0.9.35: it adds PythonCall by registered version (no conda
+    # dev-path resolution) and declares OpenSSL_jll as a flexible range, which
+    # is what lets a fresh install resolve on Julia 1.12. Earlier releases cap
+    # Julia at 1.11 or pin OpenSSL_jll to ~3.0, which is unsatisfiable on 1.12.
+    "juliacall>=0.9.35",
     "matplotlib",
     "netCDF4",
     "numpy>=2.0.0",
