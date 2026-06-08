@@ -437,11 +437,14 @@ runs:
         echo "RAD_DIR=$RAD_DIR" >> $GITHUB_ENV
         echo "FWL_DATA=$FWL_DATA" >> $GITHUB_ENV
         echo "AGNI_DIR=$AGNI_DIR" >> $GITHUB_ENV
-        # juliacall: prefer the Julia we just installed via setup-julia.
+        # Point juliapkg at the Julia we installed via setup-julia. Use
+        # PYTHON_JULIAPKG_EXE (the same variable the installer sets); juliacall
+        # 0.9.35 rejects a lone PYTHON_JULIACALL_* exe/bindir without a matching
+        # project, so the older PYTHON_JULIACALL_BINDIR form no longer works.
         if command -v julia >/dev/null 2>&1; then
           JULIA_BINDIR="$(dirname "$(command -v julia)")"
           echo "JULIA_BINDIR=$JULIA_BINDIR" >> $GITHUB_ENV
-          echo "PYTHON_JULIACALL_BINDIR=$JULIA_BINDIR" >> $GITHUB_ENV
+          echo "PYTHON_JULIAPKG_EXE=$JULIA_BINDIR/julia" >> $GITHUB_ENV
           echo "PYTHON_JULIACALL_HANDLE_SIGNALS=yes" >> $GITHUB_ENV
         fi
         echo "rad_dir=$RAD_DIR" >> $GITHUB_OUTPUT
