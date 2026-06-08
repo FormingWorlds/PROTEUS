@@ -32,8 +32,8 @@ version = "2.0"
     # output files
     [params.out]
         path        = "scratch/toi561b"
-        logging     = "DEBUG"
-        plot_mod    = 1         # Plotting frequency, 0: wait until completion | n: every n iterations
+        logging     = "INFO"
+        plot_mod    = 50         # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "pdf"     # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 50         # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 100       # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive
