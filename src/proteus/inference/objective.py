@@ -142,7 +142,7 @@ def run_proteus(
         with open(out_abs / 'status', 'r') as f:
             status = int(f.readlines()[0].strip())
     except Exception as e:
-        log.warning(f"Failed to read status file for worker={worker} iter={iter}: {e}")
+        log.warning(f'Failed to read status file for worker={worker} iter={iter}: {e}')
 
     # Read simulator output
     df_row = dict(pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1])
@@ -266,12 +266,11 @@ def J(
 
     # If status indicates failure, return very bad objective value
     if (20 <= sim_status <= 29) or (sim_status in [0, 1, 11]):
-        log.warning(f"PROTEUS run failed for w{worker}_i{iter} with status {sim_status}")
+        log.warning(f'PROTEUS run failed for w{worker}_i{iter} with status {sim_status}')
         return BAD_OBJ_VALUE * torch.ones((1, 1), dtype=dtype)
 
     # Compute value of objective function given these results
     return eval_obj(sim_vals, true_observables)
-
 
 
 def prot_builder(

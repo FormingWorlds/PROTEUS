@@ -676,10 +676,12 @@ class BoundaryRunner:
 
         # Check reason for solver termination
         if sol.status == 1:
-            log.info(f"Tsurf change truncated timestep: dt={dt_actual / secs_per_year:.1e} years")
+            log.info(
+                f'Tsurf change truncated timestep: dt={dt_actual / secs_per_year:.1e} years'
+            )
         elif sol.status == -1:
-            log.warning("Boundary layer interior failed to integrate - solver error")
-            log.warning(f"    solver msg: {sol.message}")
+            log.warning('Boundary layer interior failed to integrate - solver error')
+            log.warning(f'    solver msg: {sol.message}')
 
         # Extract results
         T_p_final = sol.y[0, -1]

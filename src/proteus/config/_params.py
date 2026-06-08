@@ -255,6 +255,7 @@ class StopDisint:
     spin_enabled: bool = field(default=True)
     offset_spin: float = field(default=0)
 
+
 @define
 class StopClock:
     """Parameters for maximum clock time stopping criteria.
@@ -268,7 +269,8 @@ class StopClock:
     """
 
     enabled: bool = field(default=False)
-    maximum: float = field(default=60*60*24, validator=gt(0))
+    maximum: float = field(default=60 * 60 * 24, validator=gt(0))
+
 
 @define
 class StopParams:

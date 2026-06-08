@@ -181,6 +181,7 @@ def _check_miniter(handler: Proteus, finished: bool) -> bool:
         return False  # do not exit
     return True
 
+
 # Maximum clock time
 def _check_clock(handler: Proteus) -> bool:
     log.debug('Check maximum clock time')
@@ -190,6 +191,7 @@ def _check_clock(handler: Proteus) -> bool:
         _msg_termination('Maximum clock time reached')
         return True
     return False
+
 
 def _check_keepalive(handler: Proteus) -> bool:
     log.debug('Check keepalive file')
