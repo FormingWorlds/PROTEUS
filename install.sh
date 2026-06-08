@@ -86,6 +86,52 @@ read_with_default() {
 
 command_exists() { command -v "$1" &>/dev/null; }
 
+# A fresh conda environment (notably anaconda3 on macOS) often installs the
+# MPI-enabled builds of HDF5/libnetcdf. Those load libmpi before Julia, and the
+# duplicate MPI symbols crash the juliacall bridge when "import proteus" loads
+# it. PROTEUS uses no MPI in its Python stack, so the no-MPI builds are correct.
+conda_has_mpi_netcdf() {
+    command_exists conda || return 1
+    # MPI builds carry a "mpi_..." build string; no-MPI builds carry "nompi_...".
+    conda list 2>/dev/null \
+        | awk '($1=="hdf5"||$1=="libnetcdf"){print $1, $3}' \
+        | grep -vi 'nompi' | grep -qi 'mpi'
+}
+
+fix_conda_mpi_builds() {
+    command_exists conda || { warn "conda not on PATH; cannot adjust HDF5/netCDF builds."; return 1; }
+    info "Installing the no-MPI builds of HDF5 and libnetcdf..."
+    conda install -y -c conda-forge "hdf5=*=nompi*" "libnetcdf=*=nompi*" 2>&1 || return 1
+}
+
+# Verify that "import proteus" works. The import is the first place the Julia
+# bridge is loaded, so it surfaces environment problems the pip installs do not.
+# Capture the error (the old check discarded it), and self-heal the known conda
+# MPI/HDF5 conflict before giving up.
+verify_proteus_import() {
+    info "Verifying that PROTEUS imports..."
+    local import_log
+    if import_log=$(python3 -c "import proteus" 2>&1); then
+        info "PROTEUS import OK"
+        return 0
+    fi
+    fail "PROTEUS failed to import. Error output:"
+    printf '%s\n' "$import_log"
+    if printf '%s' "$import_log" | grep -qiE 'libmpi|PMPI_|ompi_|mpich|Symbol not found' \
+       || conda_has_mpi_netcdf; then
+        warn "This matches the conda MPI/HDF5 conflict. Switching to no-MPI builds and retrying..."
+        if fix_conda_mpi_builds; then
+            if import_log=$(python3 -c "import proteus" 2>&1); then
+                info "PROTEUS import OK after switching to no-MPI builds"
+                return 0
+            fi
+            fail "Still failing after the no-MPI fix. Error output:"
+            printf '%s\n' "$import_log"
+        fi
+    fi
+    die "PROTEUS Python package failed to import. The full error is above and in $LOGFILE."
+}
+
 exit_export_message=""
 
 print_exit_export_message() {
@@ -595,10 +641,8 @@ pip install -e ".[develop]"
 info "Setting up pre-commit hooks..."
 pre-commit install -f 2>&1 || warn "pre-commit install failed (non-critical)"
 
-# Verify the installation
-if ! python3 -c "import proteus" 2>/dev/null; then
-    die "PROTEUS Python package failed to import. Check pip install output in $LOGFILE."
-fi
+# Verify the installation (captures the error and self-heals the conda MPI clash)
+verify_proteus_import
 info "Python packages installed"
 
 # ===================================================================
