@@ -17,7 +17,8 @@ module is distributed.
 
 | Pin type | Where it lives in `pyproject.toml` | Pin value | Modules |
 |----------|------------------------------------|-----------|---------|
-| PyPI floor | `[project] dependencies` (or `[project.optional-dependencies]` for optional backends) | Minimum version bound, e.g. `fwl-aragog>=26.05.13` | fwl-janus, fwl-mors, fwl-calliope, fwl-zephyrus, fwl-aragog, fwl-zalmoxis, fwl-vulcan, atmodeller |
+| PyPI floor | `[project] dependencies` | Minimum version bound, e.g. `fwl-aragog>=26.05.13` | fwl-janus, fwl-mors, fwl-calliope, fwl-zephyrus, fwl-aragog, fwl-zalmoxis |
+| PyPI floor (optional) | `[project.optional-dependencies]` | Minimum version bound on an optional backend | fwl-vulcan, atmodeller |
 | Git ref | `[tool.proteus.modules.<name>]` | Exact commit SHA, tag, or branch in a `ref` field | AGNI, SOCRATES, SPIDER, BOREAS, LovePy |
 
 A third entry, PETSc, is pinned in `[tool.proteus.modules.petsc]` by the SHA-256
@@ -49,6 +50,8 @@ changed in one place:
   pins.
 - **`proteus doctor`** and **`proteus update`** compare an installation against
   the pins and report or apply fixes (see [Diagnose and update](doctor.md)).
+  Git-commit drift is checked for AGNI and SOCRATES; the other git modules are
+  pinned but not drift-checked by the doctor.
 
 Because of this, bumping a module is a single-line edit followed by a badge
 refresh and a local re-sync.
@@ -75,7 +78,9 @@ refresh and a local re-sync.
     - PyPI module: `proteus update` (or `pip install -U "<name>>=<version>"` for
       a wheel install).
     - Git module: `bash tools/get_<module>.sh` (for SOCRATES, add `--force` to
-      discard local build changes).
+      discard local modifications to the checkout, that is, changes to tracked
+      files or commits not pushed to a remote; the compiled build tree is left
+      in place).
 
 4. **Verify:**
 

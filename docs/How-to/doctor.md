@@ -32,7 +32,7 @@ command you can run manually or let `proteus update` handle.
 | `RAD_DIR` | Set, directory exists, and `bin/radlib.a` is present | Not set, path missing, or SOCRATES not compiled |
 | `FC_DIR` | Set and directory exists | Not set (only required when AGNI chemistry is enabled) |
 | `PYTHON_JULIAPKG_EXE` | Set | Not set |
-| `julia` | Julia is on PATH and version is 1.11.x | Missing or wrong version |
+| `julia` | Julia is on PATH and version is 1.11.x or 1.12.x | Missing or wrong version |
 
 ### Reference data
 
@@ -156,7 +156,7 @@ This lists the fixable issues and their commands but does not execute anything.
 | Missing SOCRATES | `bash tools/get_socrates.sh` |
 | SOCRATES commit drift from pin | `bash tools/get_socrates.sh` (add `--force` to discard local changes) |
 | Missing reference data | `proteus get spectral` / `proteus get stellar` |
-| Wrong Julia version | `juliaup add 1.11 && juliaup default 1.11` |
+| Wrong Julia version | `juliaup add 1.12 && juliaup default 1.12` |
 
 ### What proteus update cannot fix
 
