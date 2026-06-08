@@ -67,6 +67,9 @@ HEAD commit against the commit SHA pinned in `pyproject.toml` under
     even if a newer version exists on PyPI that PROTEUS has not adopted yet.
     This prevents false "update available" warnings for untested versions.
 
+    To change which versions PROTEUS pins, see
+    [Updating module pins](update_module_pins.md).
+
 ### Example output
 
 ```
@@ -234,4 +237,4 @@ proteus start --offline -c input/my_config.toml
 
 ---
 
-**See also:** [Installation](installation.md) | [Troubleshooting](troubleshooting.md) | [Configuration](config.md) | [Usage](usage.md)
+**See also:** [Installation](installation.md) | [Updating module pins](update_module_pins.md) | [Troubleshooting](troubleshooting.md) | [Configuration](config.md) | [Usage](usage.md)

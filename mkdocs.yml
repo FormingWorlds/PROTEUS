@@ -32,6 +32,7 @@ nav:
       - Development:
           - Testing: How-to/testing.md
           - Development standards: How-to/development_standards.md
+          - Updating module pins: How-to/update_module_pins.md
           - Developing documentation: How-to/documentation.md
 
   - Tutorials:
