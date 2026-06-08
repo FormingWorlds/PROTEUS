@@ -105,6 +105,7 @@ def test_check_solid_skips_when_above_crit(patch_statusfile):
     assert terminate._check_solid(h) is False
     assert patch_statusfile == []
 
+
 @pytest.mark.unit
 def test_check_clock_skips_when_below_max(patch_statusfile):
     """Clock: below maximum keeps simulation running."""
@@ -113,6 +114,7 @@ def test_check_clock_skips_when_below_max(patch_statusfile):
     h.hf_row['runtime'] = 500.0
     assert terminate._check_clock(h) is False
     assert patch_statusfile == []
+
 
 @pytest.mark.unit
 def test_check_radeqm_hits_energy_balance(patch_statusfile):

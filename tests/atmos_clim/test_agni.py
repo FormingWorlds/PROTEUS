@@ -248,6 +248,7 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
                 surf_windspeed=0.0,
                 phs_timescale=1.0,
                 evap_efficiency=1.0,
+                thermo_functions=True,
                 fastchem_floor=1e-30,
                 fastchem_maxiter_chem=1,
                 fastchem_maxiter_solv=1,
