@@ -111,6 +111,7 @@ def test_parallel_process_rejects_unknown_kernel():
             ref_config='ref.toml',
             observables={'obs': 1.0},
             parameters={'a': [0.0, 1.0]},
+            failure_codes=[],
         )
 
 
@@ -133,6 +134,7 @@ def test_parallel_process_raises_when_init_dataset_missing(monkeypatch, tmp_path
             ref_config='ref.toml',
             observables={'obs': 1.0},
             parameters={'a': [0.0, 1.0]},
+            failure_codes=[],
         )
 
 
@@ -196,6 +198,7 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
         ref_config='ref.toml',
         observables={'obs': 1.0},
         parameters={'a': [0.0, 1.0]},
+        failure_codes=[],
     )
 
     assert len(created_processes) == 2

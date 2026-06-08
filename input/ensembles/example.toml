@@ -92,7 +92,7 @@ version = "2.0"
 
         # solidification
         [params.stop.solid]
-            enabled  = false
+            enabled  = true
             phi_crit = 0.01      # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
@@ -330,7 +330,7 @@ version = "2.0"
         T_p_0 = 3000                       # Initial potential temperature if zalmoxis module is not used [K].
         T_solidus = 1420.0                 # Mantle solidus temperature [K]
         T_liquidus = 2020.0                # Mantle liquidus temperature [K]
-        Tsurf_event_change = 100.0    # Maximum allowed surface temperature change per step [K], used to prevent solver divergence.
+        Tsurf_event_change = 400.0    # Maximum allowed surface temperature change per step [K], used to prevent solver divergence.
         critical_rayleigh_number = 1100.0  # Critical Rayleigh number for onset of convection
         heat_fusion_silicate = 400000.0    # Latent heat of fusion for silicates [J/kg]
         nusselt_exponent = 0.33            # Nusselt-Rayleigh scaling exponent

@@ -7,14 +7,17 @@ seed = 42
 logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "bayesopt_infer_tr/"
+output = "bayesopt_infer_se/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "output/bayesopt_tr/init_coupler.toml"
+ref_config = "output/bayesopt_se/init_coupler.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = 3        # Number of random samples if starting from scratch.
 init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
+
+# Excluded exit codes (in addition to errors)
+failure_codes = [10, 15] # solidified, escaped
 
 # Parameters for Bayesian optimisation
 n_workers  = 10        # Number of parallel workers
@@ -49,20 +52,20 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
 # extracted at index: 43, time: 1.000e+09 years
-# [observables]
-# "M_planet" = 1.1736515264e+25
-# "R_obs" = 9.1348686099e+06
-# "T_obs" = 4.7901067133e+02
-# "atm_kg_per_mol" = 2.0924116674e-02
-# "C/O_atm" = 1.7759463148e-01
-# "S/O_atm" = 1.5394314023e-01
+[observables]
+"M_planet" = 1.1736515264e+25
+"R_obs" = 9.1348686099e+06
+"T_obs" = 4.7901067133e+02
+"atm_kg_per_mol" = 2.0924116674e-02
+"C/O_atm" = 1.7759463148e-01
+"S/O_atm" = 1.5394314023e-01
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_tr/runtime_helpfile.csv
 # extracted at index: 36, time: 1.000e+08 years
-[observables]
-"M_planet" = 5.9182108426e+24
-"R_obs" = 6.8604461848e+06
-"T_obs" = 5.4482954513e+02
-"atm_kg_per_mol" = 2.8051468810e-02
-"C/O_atm" = 1.3553387217e-01
-"S/O_atm" = 2.0274489676e-01
+# [observables]
+# "M_planet" = 5.9182108426e+24
+# "R_obs" = 6.8604461848e+06
+# "T_obs" = 5.4482954513e+02
+# "atm_kg_per_mol" = 2.8051468810e-02
+# "C/O_atm" = 1.3553387217e-01
+# "S/O_atm" = 2.0274489676e-01

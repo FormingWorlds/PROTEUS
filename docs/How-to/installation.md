@@ -31,6 +31,7 @@ Setting up PROTEUS and its submodules requires extra steps to be performed befor
 * [Kapteyn cluster](kapteyn_cluster_guide.md)
 * [Habrok cluster](habrok_cluster_guide.md)
 * [Snellius cluster](snellius_cluster_guide.md)
+* [Cambridge IoA cluster](ioa_cluster_guide.md)
 
 ---
 
@@ -38,27 +39,10 @@ Setting up PROTEUS and its submodules requires extra steps to be performed befor
 
 We recommend Python version **3.12** for running PROTEUS. Python is most easily obtained and managed using either miniconda or miniforge.
 
-=== "Linux"
-
-    Install [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux):
-
-    ```console
-    mkdir -p ~/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-    bash ~/miniconda3/miniconda.sh
-    rm ~/miniconda3/miniconda.sh
-    ```
-
-    Choose an install folder where you have plenty of disk space.
-
-=== "macOS"
-
-    Install [miniforge](https://github.com/conda-forge/miniforge) (recommended for Apple Silicon):
-
-    ```console
-    curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
-    bash Miniforge3-$(uname)-$(uname -m).sh
-    ```
+```console
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash Miniforge3-$(uname)-$(uname -m).sh
+```
 
 ---
 

@@ -119,6 +119,7 @@ def run_inference(config):
         config['ref_config'],
         config['observables'],
         config['parameters'],
+        config['failure_codes'],
     )
 
     t_1 = time.perf_counter()

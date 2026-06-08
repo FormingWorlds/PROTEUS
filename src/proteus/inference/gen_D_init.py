@@ -70,6 +70,7 @@ def create_init(config):
             init_samps,
             config['seed'],
             config['n_workers'],
+            config['failure_codes'],
         )
 
     # read from grid
@@ -184,6 +185,7 @@ def f_aug(x, iter, builder_args):
         iter=iter,
         ref_config=builder_args['ref_config'],
         output=builder_args['output'],
+        failure_codes=builder_args['failure_codes'],
     )
 
     return f(x)
@@ -197,6 +199,7 @@ def sample_from_bounds(
     nsamp: int,
     seed: int,
     n_workers: int,
+    failure_codes: list[int],
 ) -> int:
     """Generate initial BO data by evaluating Halton samples in parameter space.
 
@@ -209,6 +212,7 @@ def sample_from_bounds(
     - nsamp (int): Number of initial samples to evaluate.
     - seed (int): RNG seed for Halton sequence generation.
     - n_workers (int): Number of parallel workers to use for evaluation.
+    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
 
     Returns
     ----------
@@ -230,7 +234,8 @@ def sample_from_bounds(
 
     # prepare parallel proteus runs
     builder_args = dict(
-        parameters=params, observables=observables, ref_config=ref_config, output=output
+        parameters=params, observables=observables, ref_config=ref_config,
+        output=output, failure_codes=failure_codes
     )
 
     # Generate n random points in [0,1]^d and evaluate the objective

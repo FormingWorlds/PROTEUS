@@ -18,7 +18,7 @@ from proteus.utils.coupler import get_proteus_directories, variable_is_logarithm
 dtype = torch.double
 EPS_CLIP = 1e-10
 LOG_CLIP = 1e-20
-BAD_OBJ_VALUE = -999.0
+BAD_OBJ_VALUE = -20.0
 log = logging.getLogger('fwl.' + __name__)
 
 
@@ -230,6 +230,7 @@ def J(
     iter: int,
     output: str,
     ref_config: str,
+    failure_codes: list[int] = []
 ) -> torch.Tensor:
     """Run PROTEUS, and then compute the objective value for a given normalized input.
 
@@ -247,6 +248,7 @@ def J(
     - iter (int): Iteration number.
     - output (str): Path to output folder relative to PROTEUS output folder.
     - ref_config (str): Reference TOML config path.
+    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
 
     Returns
     ----------
@@ -265,8 +267,7 @@ def J(
     )
 
     # If status indicates failure, return very bad objective value
-    if (20 <= sim_status <= 29) or (sim_status in [0, 1, 11]):
-        log.warning(f'PROTEUS run failed for w{worker}_i{iter} with status {sim_status}')
+    if (20 <= sim_status <= 29) or (sim_status in [0, 1]) or (sim_status in failure_codes):
         return BAD_OBJ_VALUE * torch.ones((1, 1), dtype=dtype)
 
     # Compute value of objective function given these results
@@ -280,6 +281,7 @@ def prot_builder(
     iter: int,
     output: str,
     ref_config: str,
+    failure_codes: list[int] = []
 ) -> callable:
     """Factory returning a BO-compatible objective function for PROTEUS inference.
 
@@ -293,6 +295,7 @@ def prot_builder(
     - iter (int): Iteration number (seed) for reproducibility.
     - output (str): Path to output folder relative to PROTEUS output folder.
     - ref_config (str): Reference TOML config path.
+    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
 
     Returns
     ----------
@@ -328,6 +331,7 @@ def prot_builder(
             iter=iter,
             ref_config=ref_config,
             output=output,
+            failure_codes=failure_codes
         )
 
         J_eval = J_context(x_raw)

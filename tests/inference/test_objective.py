@@ -198,6 +198,7 @@ def test_prot_builder_unnormalizes_and_calls_J(monkeypatch):
         iter=9,
         output='out_dir',
         ref_config='ref.toml',
+        failure_codes=[0, 1],
     )
 
     y = f(torch.tensor([[0.5, 0.25]], dtype=torch.double))
@@ -225,6 +226,7 @@ def test_prot_builder_unnormalizes_log_scaled_parameter(monkeypatch):
         iter=0,
         output='out_dir',
         ref_config='ref.toml',
+        failure_codes=[0, 1],
     )
 
     f(torch.tensor([[0.5, 0.25]], dtype=torch.double))
