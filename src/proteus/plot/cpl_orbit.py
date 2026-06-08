@@ -52,7 +52,9 @@ def plot_orbit(
     ax_tr.set_ylabel('Planet orbital eccentricity')
     ax_tr.yaxis.label.set_color(color)
     ax_tr.tick_params(axis='y', colors=color)
-    ax_tr.set_ylim(np.amin(y) / yext, np.amax(y) * yext)
+    ymin = np.amin(y) / yext
+    ymax = max(np.amax(y) * yext, ymin + 0.01)
+    ax_tr.set_ylim(ymin, ymax)
 
     # x-axis
     ax_t.set_xscale('log')

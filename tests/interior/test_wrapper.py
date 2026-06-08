@@ -22,10 +22,11 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from proteus.interior.common import Interior_t
-from proteus.interior.wrapper import update_structure_from_interior
+from proteus.interior.wrapper import run_interior, update_structure_from_interior
 
 
 def _mock_config(
@@ -77,6 +78,111 @@ def _mock_interior_o(n_stag=49):
     interior_o.radius = np.linspace(6.371e6, 3.504e6, n_stag + 1)
     interior_o.temp = np.full(n_stag, 3000.0)
     return interior_o
+
+
+def _mock_run_interior_config(prevent_warming: bool):
+    """Create a minimal config for run_interior limiter tests."""
+    config = MagicMock()
+    config.interior.module = 'dummy'
+    config.interior.tidal_heat = False
+    config.interior.radiogenic_heat = False
+    config.interior.dummy.tmagma_atol = 20.0
+    config.interior.dummy.tmagma_rtol = 0.0
+    config.atmos_clim.prevent_warming = prevent_warming
+    return config
+
+
+def _mock_run_interior_state(prev_f_int: float):
+    """Create minimal state inputs for run_interior limiter tests."""
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 90.0,
+                'T_magma': 3000.0,
+                'T_surf': 2800.0,
+                'Phi_global': 0.4,
+                'F_int': prev_f_int,
+            }
+        ]
+    )
+    hf_row = {
+        'Time': 100.0,
+        'T_magma': 2995.0,
+        'T_surf': 2795.0,
+        'Phi_global': 0.3,
+        'F_int': 0.1,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    return hf_all, hf_row
+
+
+@pytest.mark.unit
+def test_run_interior_prevent_warming_limits_t_and_fint():
+    """prevent_warming clamps T_magma/T_surf and enforces F_int floor."""
+    config = _mock_run_interior_config(prevent_warming=True)
+
+    # previous F_int = -3
+    hf_all, hf_row = _mock_run_interior_state(prev_f_int=-3.0)
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 2
+    atmos_o = MagicMock()
+    output = {
+        'T_magma': 3005.0,
+        'T_surf': 2805.0,
+        'Phi_global': 0.7,
+        'F_int': 2.0,  # new Fint = 2
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+
+    with (
+        patch('proteus.interior.dummy.run_dummy_int', return_value=(110.0, output)),
+        patch('proteus.interior.wrapper.update_planet_mass'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, atmos_o, verbose=False)
+
+    # These should be limited to previous values,
+    #     since the new ones exceed the atol of 20 K
+    assert hf_row['T_magma'] == pytest.approx(hf_all.iloc[-1]['T_magma'])
+    assert hf_row['T_surf'] == pytest.approx(hf_all.iloc[-1]['T_surf'])
+
+    # Fint should be clamped to 1e-8, since previously it was -3
+    assert hf_row['F_int'] == pytest.approx(1.0e-8)
+
+
+@pytest.mark.unit
+def test_run_interior_without_prevent_warming_keeps_warming_step():
+    """Without prevent_warming, bounded warming step should be retained."""
+    config = _mock_run_interior_config(prevent_warming=False)
+    hf_all, hf_row = _mock_run_interior_state(prev_f_int=0.2)
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 2
+    atmos_o = MagicMock()
+    output = {
+        'T_magma': 3005.0,
+        'T_surf': 2805.0,
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+
+    with (
+        patch('proteus.interior.dummy.run_dummy_int', return_value=(110.0, output)),
+        patch('proteus.interior.wrapper.update_planet_mass'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, atmos_o, verbose=False)
+
+    assert hf_row['T_magma'] == pytest.approx(3005.0)
+    assert hf_row['T_surf'] == pytest.approx(2805.0)
+    assert hf_row['F_int'] == pytest.approx(0.15)
 
 
 # ============================================================================

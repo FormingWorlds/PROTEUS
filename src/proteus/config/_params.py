@@ -80,10 +80,19 @@ class DtAdaptive:
         Absolute tolerance on time-step size [yr].
     rtol: float
         Relative tolerance on time-step size [dimensionless].
+    scale_incr: float
+        Scale factor to increase time-step [dimensionless].
+    scale_decr: float
+        Scale factor to decrease time-step [dimensionless].
+    window: int
+        Number of previous steps to consider for comparison [dimensionless].
     """
 
     atol: float = field(default=0.02, validator=gt(0))
     rtol: float = field(default=0.10, validator=gt(0))
+    scale_incr: float = field(default=1.6, validator=gt(1))
+    scale_decr: float = field(default=0.8, validator=(gt(0), lt(1)))
+    window: int = field(default=3, validator=ge(1))
 
 
 @define
@@ -98,6 +107,8 @@ class TimeStepParams:
         Minimum relative time-step size [dimensionless].
     maximum: float
         Maximum time-step size [yr].
+    maximum_rel: float
+        Maximum relative time-step size [dimensionless].
     initial: float
         Initial time-step size [yr].
     starspec: float
@@ -125,6 +136,7 @@ class TimeStepParams:
     minimum: float = field(default=3e2, validator=gt(0))
     minimum_rel: float = field(default=1e-6, validator=gt(0))
     maximum: float = field(default=1e7, validator=gt(0))
+    maximum_rel: float = field(default=1.0, validator=gt(0))
     initial: float = field(default=1e3, validator=gt(0))
 
 

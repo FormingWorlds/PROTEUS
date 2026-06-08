@@ -14,11 +14,13 @@ See also:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
-from proteus.atmos_clim.agni import _determine_aerosols, _determine_condensates
+import proteus.atmos_clim.agni as agni_mod
+from proteus.atmos_clim.agni import _determine_aerosols, _determine_condensates, init_agni_atmos
 
 
 @pytest.mark.unit
@@ -173,3 +175,130 @@ def test_determine_condensates_empty_list():
     """
     condensates = _determine_condensates([])
     assert condensates == []
+
+
+class _FakeAtmosphere:
+    def __init__(self):
+        self.transparent = False
+
+
+class _FakeAGNI:
+    def __init__(self):
+        self.last_setup_args = None
+        self.last_allocate_input_star = None
+        self.last_fromncdf_path = None
+        self.atmosphere = SimpleNamespace(
+            Atmos_t=lambda: _FakeAtmosphere(),
+            setup_b=self._setup_b,
+            allocate_b=self._allocate_b,
+        )
+        self.setpt = SimpleNamespace(fromncdf_b=self._fromncdf_b)
+
+    def _setup_b(self, atmos, *args, **kwargs):
+        self.last_setup_args = args
+        return True
+
+    def _allocate_b(self, atmos, input_star, **kwargs):
+        self.last_allocate_input_star = input_star
+        return True
+
+    def _fromncdf_b(self, atmos, nc_path):
+        self.last_fromncdf_path = nc_path
+
+
+@pytest.mark.unit
+def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
+    """Greygas path should avoid runtime spectral-file copy inputs.
+
+    User specifies `greygas' scenario in config file. This means we don't need to worry
+    about copying/constructing/modifying SOCRATES spectral files.
+    """
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+
+    # Existing files used by init_agni_atmos bookkeeping.
+    (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
+    (data_dir / '100_atm.nc').write_text('nc', encoding='utf-8')
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            aerosols_enabled=False,
+            cloud_enabled=False,
+            rayleigh=False,
+            surf_greyalbedo=0.3,
+            surface_d=0.0,
+            surface_k=0.0,
+            tmp_minimum=50.0,
+            agni=SimpleNamespace(
+                spectral_file='greygas',
+                verbosity=2,
+                oceans=False,
+                rainout=False,
+                chemistry='none',
+                surf_material='greybody',
+                p_top=1e-5,
+                num_levels=40,
+                overlap_method='ro',
+                surf_roughness=0.0,
+                surf_windspeed=0.0,
+                phs_timescale=1.0,
+                evap_efficiency=1.0,
+                fastchem_floor=1e-30,
+                fastchem_maxiter_chem=1,
+                fastchem_maxiter_solv=1,
+                fastchem_xtol_chem=1e-6,
+                fastchem_xtol_elem=1e-6,
+                real_gas=False,
+                mlt_criterion='a',
+                grey_opacity_lw=0.1,
+                grey_opacity_sw=0.2,
+            ),
+        ),
+        orbit=SimpleNamespace(s0_factor=1.0, zenith_angle=48.0),
+        params=SimpleNamespace(out=SimpleNamespace(logging='INFO')),
+    )
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1.0,
+    }
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_args, **_kwargs: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        agni_mod,
+        'get_spfile_path',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError('get_spfile_path should not be called for greygas')
+        ),
+    )
+    monkeypatch.setattr(
+        agni_mod.glob,
+        'glob',
+        lambda pattern: (
+            [str(data_dir / '100.sflux')]
+            if pattern.endswith('*.sflux')
+            else [str(data_dir / '100_atm.nc')]
+        ),
+    )
+
+    atmos = init_agni_atmos(dirs, config, hf_row)
+
+    # main check: atmosphere was set up ok
+    assert atmos is not None
+
+    # setup_b positional args: [dirs['agni'], dirs['output'], input_sf, ...]
+    assert fake_agni.last_setup_args[2] == 'greygas'
+
+    # Empty stellar path prevents AGNI from modifying/copying runtime spectral assets.
+    assert fake_agni.last_allocate_input_star == ''

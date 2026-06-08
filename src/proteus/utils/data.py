@@ -1459,11 +1459,16 @@ def _get_sufficient(config: Config, clean: bool = False):
         # High-res file often used for post-processing
         download_spectral_file('Honeyside', '4096')
 
-        # Get the spectral file we need for this simluation
-        from proteus.atmos_clim.common import get_spfile_name_and_bands
+        # Check if spectral file is provided by path
+        if config.atmos_clim.module == 'agni' and config.atmos_clim.agni.spectral_file:
+            pass
 
-        group, bands = get_spfile_name_and_bands(config)
-        download_spectral_file(group, bands)
+        else:
+            # Get the spectral file we need for this simluation
+            from proteus.atmos_clim.common import get_spfile_name_and_bands
+
+            group, bands = get_spfile_name_and_bands(config)
+            download_spectral_file(group, bands)
 
     # Surface single-scattering data
     if config.atmos_clim.module == 'agni':
