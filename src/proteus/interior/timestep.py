@@ -229,8 +229,7 @@ def next_step(
 
         # Max step size
         #   tolerances
-        dtmaximum = config.params.dt.maximum  # absolute
-        dtmaximum += config.params.dt.maximum_rel * hf_row['Time']  # allow large
+        dtmaximum = min(config.params.dt.maximum, config.params.dt.maximum_rel * hf_row['Time'])  # allow large
         #   prevent overshooting
         if config.params.stop.time.enabled:
             maxtime = config.params.stop.time.maximum

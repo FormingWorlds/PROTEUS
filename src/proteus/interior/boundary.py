@@ -662,12 +662,19 @@ class BoundaryRunner:
             self.thermal_rhs,
             t_span,
             y0,
-            method='BDF',
+            method='LSODA',
             rtol=self.rtol,
             atol=self.atol,
             dense_output=True,
             events=tsurf_change_event,
         )
+
+        # Check reason for solver termination
+        if sol.status == 1:
+            log.info("Surface temperature change triggered time-step trucation")
+        elif sol.status == -1:
+            log.warning("Boundary layer interior failed to integrate - solver error")
+            log.warning(f"    solver msg: {sol.message}")
 
         # Extract results
         T_p_final = sol.y[0, -1]
