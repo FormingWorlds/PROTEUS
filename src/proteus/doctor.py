@@ -19,7 +19,9 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 import tomllib
+import traceback
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
@@ -235,6 +237,38 @@ def _julia_version() -> str | None:
         return out.strip().split()[-1]
     except (FileNotFoundError, subprocess.CalledProcessError):
         return None
+
+
+def _julia_version_at(exe: str) -> str | None:
+    """Return the Julia version reported by a specific julia binary, or None.
+
+    Used to report the Julia that juliacall is bound to (via
+    ``PYTHON_JULIAPKG_EXE``), which can differ from the one on ``PATH``.
+    """
+    try:
+        out = subprocess.check_output([exe, '--version'], text=True, stderr=subprocess.DEVNULL)
+        return out.strip().split()[-1]
+    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+        return None
+
+
+def _conda_build_lines() -> list[str]:
+    """Return conda build strings for the HDF5/netCDF/MPI packages.
+
+    These builds drive the libmpi symbol clash that breaks AGNI. Returns an
+    empty list when conda is unavailable or none of the packages are present.
+    """
+    try:
+        out = subprocess.check_output(['conda', 'list'], text=True, stderr=subprocess.DEVNULL)
+    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+        return []
+    wanted = ('hdf5', 'libnetcdf', 'netcdf4', 'mpich', 'openmpi', 'libmpi')
+    lines = []
+    for line in out.splitlines():
+        fields = line.split()
+        if fields and fields[0] in wanted:
+            lines.append('  ' + ' '.join(fields))
+    return lines
 
 
 # ─── Check implementations ───────────────────────────────────────────
@@ -613,11 +647,15 @@ class _Tee(io.TextIOBase):
 
     def flush(self):
         self._primary.flush()
+        self._mirror.flush()
 
     def isatty(self) -> bool:
         return self._primary.isatty()
 
 
+# Keep this list roughly in step with the package grep in the bash
+# ``collect_env_info`` in install.sh. jax/jaxlib/equinox pin the Aragog solver
+# stack; netcdf4/h5py surface the conda HDF5/MPI clash that breaks AGNI.
 _ENV_PACKAGES = (
     'fwl-proteus',
     'fwl-mors',
@@ -628,15 +666,26 @@ _ENV_PACKAGES = (
     'fwl-zalmoxis',
     'fwl-vulcan',
     'juliacall',
+    'juliapkg',
+    'jax',
+    'jaxlib',
+    'equinox',
+    'netcdf4',
+    'h5py',
 )
 _ENV_VARS = (
     'FWL_DATA',
     'RAD_DIR',
     'FC_DIR',
+    'PETSC_DIR',
     'PYTHON_JULIAPKG_EXE',
     'PYTHON_JULIACALL_BINDIR',
     'CONDA_DEFAULT_ENV',
     'CONDA_PREFIX',
+)
+# Variables whose value is a filesystem path; the report flags whether it exists.
+_ENV_PATH_VARS = frozenset(
+    {'FWL_DATA', 'RAD_DIR', 'FC_DIR', 'PETSC_DIR', 'PYTHON_JULIAPKG_EXE'}
 )
 
 
@@ -644,47 +693,74 @@ def _collect_environment_info() -> str:
     """Gather machine and environment details for the failure log.
 
     The block is written into the log so that the log file alone is enough to
-    diagnose an install or environment problem, without a back-and-forth.
+    diagnose an install or environment problem, without a back-and-forth. It
+    mirrors the bash ``collect_env_info`` in install.sh; keep the two roughly
+    in step when adding a variable or package.
 
     Returns
     -------
     str
-        A plain-text, multi-line environment report.
+        A plain-text, multi-line environment report. This function never
+        raises: any collection error is recorded in the report instead.
     """
     lines = ['=== Environment (auto-collected for debugging) ===']
-    lines.append(f'timestamp: {datetime.datetime.now().isoformat(timespec="seconds")}')
-    lines.append(f'platform: {platform.platform()}')
-    lines.append(f'machine: {platform.machine()}')
-    lines.append(f'python: {platform.python_version()} ({sys.executable})')
-
-    lines.append(f'julia (on PATH): {_julia_version() or "(not found)"}')
-
-    lines.append('environment variables:')
-    for var in _ENV_VARS:
-        lines.append(f'  {var}={os.environ.get(var, "(unset)")}')
-
-    lines.append('installed package versions:')
-    for pkg in _ENV_PACKAGES:
-        try:
-            ver = importlib.metadata.version(pkg)
-        except PackageNotFoundError:
-            ver = '(not installed)'
-        lines.append(f'  {pkg}: {ver}')
-
     try:
+        lines.append(f'timestamp: {datetime.datetime.now().isoformat(timespec="seconds")}')
+        lines.append(f'platform: {platform.platform()}')
+        lines.append(f'machine: {platform.machine()}')
+        lines.append(f'python: {platform.python_version()} ({sys.executable})')
+
+        lines.append(f'julia (on PATH): {_julia_version() or "(not found)"}')
+        # The Julia juliacall actually uses can differ from the PATH one, and
+        # an import failure depends on the bound one, so report it directly.
+        bound_exe = os.environ.get('PYTHON_JULIAPKG_EXE')
+        if bound_exe:
+            bound = _julia_version_at(bound_exe) or '(not runnable)'
+            lines.append(f'julia (juliacall-bound): {bound}')
+
+        for label, fn in (('socrates', _get_socrates_version), ('agni', _get_agni_version)):
+            try:
+                lines.append(f'{label}: {fn() or "(unknown)"}')
+            except Exception:  # noqa: BLE001 - a probe failure must not abort
+                lines.append(f'{label}: (unknown)')
+
+        lines.append('environment variables:')
+        for var in _ENV_VARS:
+            val = os.environ.get(var)
+            if val is None:
+                lines.append(f'  {var}=(unset)')
+            elif var in _ENV_PATH_VARS and not os.path.exists(val):
+                lines.append(f'  {var}={val}  (MISSING)')
+            else:
+                lines.append(f'  {var}={val}')
+
+        lines.append('installed package versions:')
+        for pkg in _ENV_PACKAGES:
+            try:
+                ver = importlib.metadata.version(pkg)
+            except PackageNotFoundError:
+                ver = '(not installed)'
+            except Exception as exc:  # noqa: BLE001 - a broken dist must not abort
+                ver = f'(version unavailable: {exc!r})'
+            lines.append(f'  {pkg}: {ver}')
+
+        conda_lines = _conda_build_lines()
+        if conda_lines:
+            lines.append('conda HDF5/netCDF/MPI builds:')
+            lines.extend(conda_lines)
+
         root = _repo_root()
         head = _git_short_head(str(root))
-        dirty = _git_dirty(str(root))
         if head:
-            mark = ' (dirty)' if dirty else ''
+            mark = ' (dirty)' if _git_dirty(str(root)) else ''
             lines.append(f'proteus checkout: {root} -> {head}{mark}')
-    except Exception:  # noqa: BLE001 - diagnostics must never raise
-        pass
+    except Exception as exc:  # noqa: BLE001 - diagnostics must never raise
+        lines.append(f'(environment collection error: {exc!r})')
 
     return '\n'.join(lines) + '\n'
 
 
-def _write_failure_log(command: str, transcript: str) -> Path:
+def _write_failure_log(command: str, transcript: str) -> Path | None:
     """Write the environment info and captured transcript to a timestamped log.
 
     Parameters
@@ -696,26 +772,47 @@ def _write_failure_log(command: str, transcript: str) -> Path:
 
     Returns
     -------
-    Path
-        Path of the written log file.
+    Path or None
+        Path of the written log file, or None if neither the working directory
+        nor the system temporary directory could be written to.
     """
     stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_path = Path.cwd() / f'proteus_{command}_{stamp}.log'
+    # The PID keeps two runs in the same second from overwriting each other.
+    name = f'proteus_{command}_{stamp}_{os.getpid()}.log'
     body = (
         f'{_collect_environment_info()}\n=== proteus {command} output ===\n'
         f'{_ANSI_RE.sub("", transcript)}'
     )
-    log_path.write_text(body, encoding='utf-8')
-    return log_path
+    for directory in (Path.cwd(), Path(tempfile.gettempdir())):
+        try:
+            log_path = directory / name
+            log_path.write_text(body, encoding='utf-8')
+            return log_path
+        except OSError:
+            continue
+    return None
 
 
-def _print_support_prompt(command: str, log_path: Path):
-    """Tell the user where the log is and how to get help."""
+def _print_support_prompt(command: str, log_path: Path | None):
+    """Tell the user where the log is and how to get help.
+
+    Parameters
+    ----------
+    command : str
+        Command name shown in the message (``doctor`` or ``update``).
+    log_path : Path or None
+        The saved log, or None when it could not be written to disk.
+    """
     click.echo()
     click.secho(f'proteus {command} reported problems.', fg='red', bold=True)
-    click.echo(f'A log of this run was saved to:\n  {log_path}')
+    if log_path is not None:
+        click.echo(f'A log of this run was saved to:\n  {log_path}')
+        what_to_send = 'send that log file'
+    else:
+        click.secho('A log file could not be written to disk.', fg='yellow')
+        what_to_send = 'copy the output above'
     click.echo(
-        'If you need help, send that log file to '
+        f'If you need help, {what_to_send} to '
         f'{click.style(_SUPPORT_EMAIL, bold=True)}, '
         'or open an issue or discussion:\n'
         f'  {_ISSUES_URL}\n'
@@ -724,7 +821,14 @@ def _print_support_prompt(command: str, log_path: Path):
 
 
 def _run_with_log(command: str, func) -> bool:
-    """Run ``func``, mirroring its output; on failure write a log and prompt.
+    """Run ``func``, mirroring its output; on failure or a crash, write a log
+    and tell the user where it is and how to get help.
+
+    Both stdout and stderr are mirrored, so the log captures click output,
+    warnings, and any traceback. An exception is treated as a failure: the
+    transcript and traceback are logged, the traceback is shown to the user,
+    and the function reports failure instead of propagating, so the support
+    prompt is never bypassed.
 
     Parameters
     ----------
@@ -736,19 +840,33 @@ def _run_with_log(command: str, func) -> bool:
     Returns
     -------
     bool
-        The value returned by ``func``.
+        True only if ``func`` returned truthy without raising.
     """
     buffer = io.StringIO()
-    real_stdout = sys.stdout
+    real_stdout, real_stderr = sys.stdout, sys.stderr
     sys.stdout = _Tee(real_stdout, buffer)
+    sys.stderr = _Tee(real_stderr, buffer)
+    crash = None
     try:
-        ok = func()
+        ok = bool(func())
+    except Exception:  # noqa: BLE001 - report any crash through the log path
+        ok = False
+        crash = traceback.format_exc()
     finally:
-        sys.stdout = real_stdout
-    if not ok:
-        log_path = _write_failure_log(command, buffer.getvalue())
-        _print_support_prompt(command, log_path)
-    return bool(ok)
+        sys.stdout, sys.stderr = real_stdout, real_stderr
+
+    if ok:
+        return True
+
+    transcript = buffer.getvalue()
+    if crash:
+        transcript += '\n=== traceback ===\n' + crash
+    log_path = _write_failure_log(command, transcript)
+    if crash:
+        # Surface the crash on screen too, not only in the log file.
+        click.echo(crash, err=True, nl=False)
+    _print_support_prompt(command, log_path)
+    return False
 
 
 def doctor_entry(output_json: bool = False) -> bool:
@@ -818,20 +936,73 @@ def doctor_entry(output_json: bool = False) -> bool:
     return n_fail == 0
 
 
-def update_entry(dry_run: bool = False):
+def _run_fix_command(fix_cmd: str, cwd: Path) -> int:
+    """Run a fix command, streaming its combined output through stdout.
+
+    The child's stdout and stderr are read in the parent and re-emitted line by
+    line through ``click`` so the output is both shown live and captured by the
+    failure log. A subprocess writing to the inherited file descriptors would
+    bypass the log entirely.
+
+    Parameters
+    ----------
+    fix_cmd : str
+        Shell command to run.
+    cwd : Path
+        Directory to run the command in.
+
+    Returns
+    -------
+    int
+        The command's exit code.
+    """
+    proc = subprocess.Popen(
+        fix_cmd,
+        shell=True,
+        cwd=str(cwd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if proc.stdout is not None:
+        for line in proc.stdout:
+            click.echo(line, nl=False)
+    return proc.wait()
+
+
+def update_entry(dry_run: bool = False) -> bool:
     """Run diagnostics and execute fix commands for failing checks.
 
     Parameters
     ----------
     dry_run : bool
         If True, show what would be done without executing.
+
+    Returns
+    -------
+    bool
+        True if the installation is healthy after the run (no remaining
+        failures and no fix command errored). A dry run reports True.
     """
     results = run_all_checks()
     fixable = [r for r in results if r.fix_cmd and r.status != PASS]
+    problems = [r for r in results if r.status != PASS]
 
     if not fixable:
-        click.secho('Nothing to update. All checks passed.', fg='green')
-        return True
+        if not problems:
+            click.secho('Nothing to update. All checks passed.', fg='green')
+            return True
+        # Problems exist but none of them carry an automatic fix command.
+        click.secho(
+            'Issues found, but none of them have an automatic fix:',
+            fg='yellow',
+            bold=True,
+        )
+        for r in problems:
+            r.echo()
+        # A remaining failure means the install is still unhealthy; a warning
+        # alone does not, so only failures trigger the log and support prompt.
+        return all(r.status != FAIL for r in problems)
 
     click.secho(f'{len(fixable)} issue(s) to fix:\n', bold=True)
     for r in fixable:
@@ -858,20 +1029,16 @@ def update_entry(dry_run: bool = False):
     for r in fixable:
         click.secho(f'Fixing: {r.name}', bold=True)
         click.echo(f'  $ {r.fix_cmd}')
-        try:
-            subprocess.run(
-                r.fix_cmd,
-                shell=True,
-                check=True,
-                cwd=str(root),
-            )
+        returncode = _run_fix_command(r.fix_cmd, root)
+        if returncode == 0:
             click.secho('  done', fg='green')
-        except subprocess.CalledProcessError as exc:
-            click.secho(f'  command failed (exit {exc.returncode})', fg='red')
+        else:
+            click.secho(f'  command failed (exit {returncode})', fg='red')
             click.echo('  Run the command manually to investigate.')
             any_fix_failed = True
 
-    # Re-run checks after fixes
+    # Re-run the checks via the unwrapped entry so the whole update produces a
+    # single failure log, not a nested one.
     click.echo()
     click.secho('Re-checking...', bold=True)
     final_ok = doctor_entry()

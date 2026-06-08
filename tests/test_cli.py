@@ -17,16 +17,20 @@ runner = CliRunner()
 
 @pytest.mark.unit
 def test_doctor():
-    """``proteus doctor`` exits 0 and reports the expected package list,
-    including AGNI and fwl-mors.
+    """``proteus doctor`` renders its report and returns a health-coded exit.
+
+    The exit code is 0 when the install is healthy and 1 when a check fails, so
+    both are valid here depending on the environment; the report itself, with
+    the package section and the AGNI and fwl-mors checks, is rendered either
+    way. A usage error or crash would exit 2 and skip the report.
     """
     # run PROTEUS doctor command
     response = runner.invoke(cli.doctor, [])
 
-    # return ok?
-    assert response.exit_code == 0
+    # 0 (healthy) or 1 (a check failed) are both valid; 2 would be a crash.
+    assert response.exit_code in (0, 1)
 
-    # contains information we expect
+    # contains information we expect, regardless of the health verdict
     assert 'Package versions' in response.output
     assert 'AGNI' in response.output
     assert 'fwl-mors' in response.output

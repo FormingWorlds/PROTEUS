@@ -50,6 +50,8 @@ phase() { printf "\n${CYAN}${BOLD}=== Phase %s: %s ===${NC}\n" "$1" "$2"; }
 
 # Collect machine and environment details into the log so the log file alone is
 # enough for us to diagnose an install failure, without a back-and-forth.
+# This runs from die() under `set -euo pipefail`, so every command here must be
+# safe against errexit: a grep that matches nothing must not abort the script.
 collect_env_info() {
     echo ""
     echo "=== Environment (auto-collected for debugging) ==="
@@ -65,12 +67,12 @@ collect_env_info() {
         echo "  ${v}=${!v:-(unset)}"
     done
     echo "package versions:"
-    python3 -m pip list 2>/dev/null | grep -iE 'fwl-|juliacall|^jax |equinox|netcdf|hdf5' | sed 's/^/  /'
+    python3 -m pip list 2>/dev/null | grep -iE 'fwl-|juliacall|juliapkg|^jax |jaxlib|equinox|netcdf|hdf5' | sed 's/^/  /' || true
     if [ -n "${SCRIPT_DIR:-}" ] && [ -d "${SCRIPT_DIR}/.git" ]; then
         echo "proteus git: $(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null) ($(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null))"
     fi
-    echo "conda HDF5/netCDF builds:"
-    command_exists conda && conda list 2>/dev/null | grep -iE '^(hdf5|libnetcdf|netcdf4|mpich|openmpi)\b' | sed 's/^/  /'
+    echo "conda HDF5/netCDF/MPI builds:"
+    { command_exists conda && conda list 2>/dev/null | grep -iE '^(hdf5|libnetcdf|netcdf4|mpich|openmpi|libmpi)\b' | sed 's/^/  /'; } || true
     echo "=== end environment ==="
 }
 
@@ -78,7 +80,7 @@ die() {
     fail "$1"
     echo ""
     echo "Installation failed at Phase $CURRENT_PHASE."
-    collect_env_info
+    collect_env_info || true
     echo ""
     if [ -n "${LOGFILE:-}" ] && [ -f "${LOGFILE:-}" ]; then
         echo "A full log was written to: $LOGFILE"

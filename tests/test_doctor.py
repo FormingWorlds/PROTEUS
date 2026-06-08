@@ -10,6 +10,8 @@ Testing standards:
 
 from __future__ import annotations
 
+import importlib.metadata
+import io
 import json
 import os
 import subprocess
@@ -24,12 +26,17 @@ from proteus.doctor import (
     WARN,
     CheckResult,
     _collect_environment_info,
+    _conda_build_lines,
     _editable_checkout_path,
     _git_dirty,
     _git_head,
     _git_short_head,
     _imported_package_dir,
     _julia_version,
+    _julia_version_at,
+    _print_support_prompt,
+    _run_fix_command,
+    _Tee,
     _write_failure_log,
     check_env_var,
     check_fwl_data,
@@ -524,14 +531,14 @@ class TestUpdateEntry:
         """Dry run lists the fixable commands but executes none of them."""
         with (
             patch('proteus.doctor.run_all_checks', return_value=_mixed_results()),
-            patch('proteus.doctor.subprocess.run') as mock_run,
+            patch('proteus.doctor._run_fix_command') as mock_fix,
         ):
             update_entry(dry_run=True)
         out = capsys.readouterr().out
         assert 'Dry run' in out
         assert 'pip install -U fwl-mors' in out
         # Error contract: dry run must not execute any fix command.
-        assert mock_run.call_count == 0
+        assert mock_fix.call_count == 0
 
     def test_executes_each_fix_from_repo_root_then_rechecks(self, tmp_path):
         """A real update runs one command per fixable check from the repo root
@@ -540,14 +547,14 @@ class TestUpdateEntry:
         with (
             patch('proteus.doctor.run_all_checks', return_value=_mixed_results()),
             patch('proteus.doctor._repo_root', return_value=tmp_path),
-            patch('proteus.doctor.subprocess.run') as mock_run,
+            patch('proteus.doctor._run_fix_command', return_value=0) as mock_fix,
             patch('proteus.doctor.doctor_entry') as mock_recheck,
         ):
             update_entry(dry_run=False)
         # Two fixable checks (Julia + mors) -> two commands.
-        assert mock_run.call_count == 2
-        # Commands run from the repo root, not the process cwd.
-        assert all(c.kwargs.get('cwd') == str(tmp_path) for c in mock_run.call_args_list)
+        assert mock_fix.call_count == 2
+        # Commands run from the repo root, not the process cwd (cwd is arg 2).
+        assert all(c.args[1] == tmp_path for c in mock_fix.call_args_list)
         # Diagnostics re-run exactly once after the fixes.
         assert mock_recheck.call_count == 1
 
@@ -558,32 +565,62 @@ class TestUpdateEntry:
         with (
             patch('proteus.doctor.run_all_checks', return_value=_mixed_results()),
             patch('proteus.doctor._repo_root', return_value=tmp_path),
-            patch('proteus.doctor.subprocess.run') as mock_run,
+            patch('proteus.doctor._run_fix_command') as mock_fix,
         ):
-            update_entry(dry_run=False)
+            result = update_entry(dry_run=False)
         out = capsys.readouterr().out
         # The refusal is reported to the user with the reason.
         assert 'Cannot run fix commands' in out
-        # Error contract: nothing executed when the source tree is absent.
-        assert mock_run.call_count == 0
+        # Error contract: nothing executed, and the install is reported unhealthy.
+        assert mock_fix.call_count == 0
+        assert result is False
 
     def test_reports_command_failure_and_continues_batch(self, capsys, tmp_path):
         """A fix command that exits non-zero is reported with its return code,
         and the remaining fixes still run (one failure does not abort the run)."""
         (tmp_path / 'tools').mkdir()
-        boom = subprocess.CalledProcessError(returncode=2, cmd='boom')
         with (
             patch('proteus.doctor.run_all_checks', return_value=_mixed_results()),
             patch('proteus.doctor._repo_root', return_value=tmp_path),
-            patch('proteus.doctor.subprocess.run', side_effect=[boom, Mock()]) as mock_run,
-            patch('proteus.doctor.doctor_entry'),
+            patch('proteus.doctor._run_fix_command', side_effect=[2, 0]) as mock_fix,
+            patch('proteus.doctor.doctor_entry', return_value=True),
         ):
-            update_entry(dry_run=False)
+            result = update_entry(dry_run=False)
         out = capsys.readouterr().out
         assert 'command failed' in out
         # Discrimination: the exit code is surfaced, and the second fix still ran.
         assert 'exit 2' in out
-        assert mock_run.call_count == 2
+        assert mock_fix.call_count == 2
+        # A failed fix makes the whole run unhealthy even if the re-check passes.
+        assert result is False
+
+    def test_unfixable_failure_is_reported_not_called_all_clear(self, capsys):
+        """A failing check with no automatic fix is reported as such, not as
+        'All checks passed', and the run is flagged unhealthy."""
+        results = [
+            CheckResult('FWL_DATA', 'environment', PASS, '/data', None),
+            CheckResult('SOCRATES', 'environment', FAIL, 'build missing', None),
+        ]
+        with patch('proteus.doctor.run_all_checks', return_value=results):
+            result = update_entry(dry_run=False)
+        out = capsys.readouterr().out
+        # The false all-clear must not appear when an unfixable failure exists.
+        assert 'All checks passed' not in out
+        assert 'none of them have an automatic fix' in out
+        assert result is False
+
+    def test_unfixable_warning_only_is_healthy(self, capsys):
+        """A warning with no fix is surfaced but does not mark the install
+        unhealthy: warnings are not failures."""
+        results = [
+            CheckResult('FWL_DATA/spectral_files', 'data', WARN, 'empty', None),
+        ]
+        with patch('proteus.doctor.run_all_checks', return_value=results):
+            result = update_entry(dry_run=False)
+        out = capsys.readouterr().out
+        assert 'none of them have an automatic fix' in out
+        # Discrimination: a warning-only run is still healthy (True), unlike a FAIL.
+        assert result is True
 
 
 class TestGitAndJuliaHelpers:
@@ -722,24 +759,69 @@ class TestEditableAndImportedPaths:
 class TestEnvironmentInfo:
     """The auto-collected environment block written into the failure log."""
 
-    def test_block_carries_machine_and_package_details(self, monkeypatch):
-        """The block names the platform, the Python interpreter, the relevant
-        environment variables, and the installed package versions, so the log
-        alone is enough to diagnose an install problem."""
+    def test_block_reports_resolved_versions_not_just_package_names(self, monkeypatch):
+        """The block reports each package's resolved version (or '(not
+        installed)'), the platform, and the interpreter, so the log alone is
+        enough to diagnose an install problem."""
         monkeypatch.setattr('proteus.doctor._julia_version', lambda: '1.12.6')
-        monkeypatch.setenv('FWL_DATA', '/data/fwl')
-        monkeypatch.delenv('RAD_DIR', raising=False)
+        monkeypatch.setattr('proteus.doctor._conda_build_lines', list)
+
+        # Return a sentinel version for one package and mark the rest absent, so
+        # the assertions fail if the version lookup itself were broken (which a
+        # bare `'fwl-proteus:' in info` substring check would not catch).
+        def fake_version(pkg):
+            if pkg == 'fwl-proteus':
+                return '9.9.9-sentinel'
+            raise importlib.metadata.PackageNotFoundError(pkg)
+
+        monkeypatch.setattr('proteus.doctor.importlib.metadata.version', fake_version)
         info = _collect_environment_info()
         assert 'platform:' in info and 'python:' in info
-        # the configured Julia is reported, and an unset var is shown as unset
         assert 'julia (on PATH): 1.12.6' in info
-        assert 'FWL_DATA=/data/fwl' in info
-        assert 'RAD_DIR=(unset)' in info
-        # at least one tracked package is reported (fwl-proteus is installed)
-        assert 'fwl-proteus:' in info
-        # discrimination: this is the environment block, not the check report;
-        # a regression returning the doctor transcript would fail this
+        # The resolved version is reported, not merely the package name.
+        assert 'fwl-proteus: 9.9.9-sentinel' in info
+        # Discrimination: a genuinely-absent package renders as not installed,
+        # so a lookup that silently returned nothing would fail this.
+        assert 'fwl-mors: (not installed)' in info
+        # This is the environment block, not the doctor check report.
         assert info.startswith('=== Environment')
+
+    def test_path_vars_are_flagged_missing_and_bound_julia_is_reported(self, monkeypatch):
+        """A path variable pointing at a non-existent location is flagged, an
+        unset variable is shown as unset, and the juliacall-bound Julia is
+        reported separately from the one on PATH."""
+        monkeypatch.setattr('proteus.doctor._julia_version', lambda: '1.12.6')
+        monkeypatch.setattr('proteus.doctor._julia_version_at', lambda exe: '1.11.5')
+        monkeypatch.setattr('proteus.doctor._conda_build_lines', list)
+        monkeypatch.setenv('FWL_DATA', '/no/such/path/fwl')
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', '/opt/julia/bin/julia')
+        monkeypatch.delenv('RAD_DIR', raising=False)
+        info = _collect_environment_info()
+        # A path that does not exist is flagged, an unset var is shown as unset.
+        assert 'FWL_DATA=/no/such/path/fwl  (MISSING)' in info
+        assert 'RAD_DIR=(unset)' in info
+        # The bound Julia is reported and is distinguished from the PATH one.
+        assert 'julia (juliacall-bound): 1.11.5' in info
+        assert 'julia (on PATH): 1.12.6' in info
+
+    def test_collection_survives_a_broken_package_distribution(self, monkeypatch):
+        """A corrupt distribution (version() raising something other than
+        PackageNotFoundError) does not abort collection: the block still reports
+        the other fields and flags the bad package rather than crashing."""
+        monkeypatch.setattr('proteus.doctor._conda_build_lines', list)
+
+        def broken_version(pkg):
+            if pkg == 'fwl-proteus':
+                raise ValueError('corrupt METADATA')
+            raise importlib.metadata.PackageNotFoundError(pkg)
+
+        monkeypatch.setattr('proteus.doctor.importlib.metadata.version', broken_version)
+        info = _collect_environment_info()
+        # Collection continued past the broken package (platform line present).
+        assert 'platform:' in info
+        # The broken package is flagged, not silently dropped.
+        assert 'fwl-proteus: (version unavailable' in info
+        assert 'fwl-mors: (not installed)' in info
 
     def test_failure_log_prepends_env_and_strips_colour(self, tmp_path, monkeypatch):
         """The log file leads with the environment block and the run transcript
@@ -756,6 +838,57 @@ class TestEnvironmentInfo:
         # ANSI escape codes are stripped, but the words survive
         assert '\x1b[' not in text
         assert 'before RED after' in text
+
+    def test_failure_log_leaves_plain_text_unchanged(self, tmp_path, monkeypatch):
+        """A transcript with no colour codes is written through verbatim, so the
+        ANSI stripping never mangles ordinary output."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr('proteus.doctor._collect_environment_info', lambda: 'E\n')
+        path = _write_failure_log('doctor', 'plain line one\nplain line two\n')
+        text = path.read_text()
+        assert 'plain line one\nplain line two' in text
+        # Discrimination: the transcript section header precedes the transcript.
+        assert text.index('=== proteus doctor output ===') < text.index('plain line one')
+
+    def test_failure_log_falls_back_to_tempdir_when_cwd_unwritable(self, tmp_path, monkeypatch):
+        """If the working directory cannot be written, the log still lands in the
+        system temp directory rather than crashing the command."""
+        cwd = tmp_path / 'cwd'
+        cwd.mkdir()
+        fallback = tmp_path / 'fallback'
+        fallback.mkdir()
+        monkeypatch.setattr('proteus.doctor.Path.cwd', classmethod(lambda cls: cwd))
+        monkeypatch.setattr('proteus.doctor.tempfile.gettempdir', lambda: str(fallback))
+        monkeypatch.setattr('proteus.doctor._collect_environment_info', lambda: 'E\n')
+
+        real_write = type(cwd).write_text
+
+        def picky_write(self, data, *args, **kwargs):
+            if self.parent == cwd:
+                raise OSError('cannot write here')
+            return real_write(self, data, *args, **kwargs)
+
+        monkeypatch.setattr('proteus.doctor.Path.write_text', picky_write, raising=False)
+        path = _write_failure_log('doctor', 'body-text')
+        # The write fell through to the temp directory, not the unwritable cwd.
+        assert path is not None and path.parent == fallback
+        assert 'body-text' in path.read_text()
+
+    def test_failure_log_returns_none_when_no_directory_writable(self, tmp_path, monkeypatch):
+        """When neither the working directory nor temp is writable, the writer
+        reports failure with None rather than raising; with a writable directory
+        it returns a real path, so None is the unwritable signal, not a constant."""
+        monkeypatch.setattr('proteus.doctor._collect_environment_info', lambda: 'E\n')
+        monkeypatch.chdir(tmp_path)
+        # Control: a writable working directory yields an actual log file.
+        ok_path = _write_failure_log('doctor', 'control')
+        assert ok_path is not None and ok_path.exists()
+
+        def always_fail(self, *args, **kwargs):
+            raise OSError('no space left')
+
+        monkeypatch.setattr('proteus.doctor.Path.write_text', always_fail, raising=False)
+        assert _write_failure_log('doctor', 'x') is None
 
 
 class TestRunLogging:
@@ -804,27 +937,210 @@ class TestRunLogging:
         parsed = json.loads(capsys.readouterr().out)
         assert len(parsed) == 3
 
-    def test_update_failed_fix_writes_log_and_prompts(self, tmp_path, monkeypatch, capsys):
-        """When a fix command fails, update saves a log and points the user to
-        it; a fixable failure that stays failing is reported as not healthy."""
+    def test_update_failed_fix_captures_command_output_in_log(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """When a fix command fails, its own output (stdout and stderr), not just
+        its exit code, is captured in the log, so the log alone explains why the
+        fix failed; the run is reported as not healthy and the prompt fires."""
         monkeypatch.chdir(tmp_path)
         (tmp_path / 'tools').mkdir()
         monkeypatch.setattr('proteus.doctor._repo_root', lambda: tmp_path)
         monkeypatch.setattr('proteus.doctor._collect_environment_info', lambda: 'ENVINFO\n')
-        failing = [
-            CheckResult('Julia', 'environment', FAIL, 'not found', 'false'),
-        ]
-        with (
-            patch('proteus.doctor.run_all_checks', return_value=failing),
-            patch(
-                'proteus.doctor.subprocess.run',
-                side_effect=subprocess.CalledProcessError(1, 'false'),
-            ),
-        ):
+        # A real fix command that writes to both streams then fails. stderr is
+        # merged into stdout by the runner, so both markers must reach the log.
+        fix = 'echo OUT_MARKER_A; echo ERR_MARKER_B 1>&2; exit 7'
+        failing = [CheckResult('Julia', 'environment', FAIL, 'broken', fix)]
+        with patch('proteus.doctor.run_all_checks', return_value=failing):
             result = run_update()
         assert result is False
         logs = list(tmp_path.glob('proteus_update_*.log'))
         assert len(logs) == 1
+        log_text = logs[0].read_text()
+        # The actual reason (the command's own output) is in the log, not lost.
+        assert 'OUT_MARKER_A' in log_text
+        assert 'ERR_MARKER_B' in log_text
+        assert 'exit 7' in log_text
         out = capsys.readouterr().out
         assert str(logs[0]) in out
         assert 'proteus_dev@formingworlds.space' in out
+
+    def test_doctor_crash_is_logged_with_traceback_and_prompt(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """An unexpected exception is captured, not propagated as a bare
+        traceback: a log carrying the traceback is written, the support prompt
+        is shown, and the command reports failure."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr('proteus.doctor._collect_environment_info', lambda: 'ENVINFO\n')
+        with patch('proteus.doctor.run_all_checks', side_effect=RuntimeError('boom_xyz_123')):
+            result = run_doctor()
+        assert result is False
+        logs = list(tmp_path.glob('proteus_doctor_*.log'))
+        assert len(logs) == 1
+        log_text = logs[0].read_text()
+        # The traceback and the exception message are in the log.
+        assert 'Traceback' in log_text and 'boom_xyz_123' in log_text
+        captured = capsys.readouterr()
+        assert 'proteus_dev@formingworlds.space' in captured.out
+        # The crash is surfaced to the user too, not buried only in the log.
+        assert 'boom_xyz_123' in (captured.out + captured.err)
+
+    def test_doctor_prompts_even_when_log_cannot_be_written(self, monkeypatch, capsys):
+        """If the log cannot be saved anywhere, the user is still told how to get
+        help (with the output to copy) rather than getting a silent failure."""
+        monkeypatch.setattr('proteus.doctor._collect_environment_info', lambda: 'E\n')
+
+        def always_fail(self, *args, **kwargs):
+            raise OSError('disk full')
+
+        monkeypatch.setattr('proteus.doctor.Path.write_text', always_fail, raising=False)
+        with patch('proteus.doctor.run_all_checks', return_value=_mixed_results()):
+            result = run_doctor()
+        assert result is False
+        out = capsys.readouterr().out
+        # The fallback message and the support channel are both shown.
+        assert 'could not be written' in out
+        assert 'proteus_dev@formingworlds.space' in out
+
+
+class TestTee:
+    """The dual-stream writer that mirrors console output into the log buffer."""
+
+    def test_mirrors_writes_to_both_streams_and_reports_length(self):
+        """Every write reaches both the primary and the mirror, and write()
+        returns the character count its callers (io machinery) expect."""
+        primary, mirror = io.StringIO(), io.StringIO()
+        tee = _Tee(primary, mirror)
+        n = tee.write('hello')
+        assert n == len('hello')
+        assert primary.getvalue() == 'hello'
+        assert mirror.getvalue() == 'hello'
+
+    def test_isatty_follows_the_primary_stream(self):
+        """isatty is delegated to the primary so colour is kept for the terminal
+        and suppressed for a non-terminal primary; a regression that hard-coded
+        either answer would fail one of these cases."""
+        tty_primary = io.StringIO()
+        tty_primary.isatty = lambda: True
+        assert _Tee(tty_primary, io.StringIO()).isatty() is True
+        # A plain StringIO primary is not a terminal.
+        assert _Tee(io.StringIO(), io.StringIO()).isatty() is False
+
+
+class TestRunFixCommand:
+    """The fix-command runner that streams subprocess output through stdout."""
+
+    def test_streams_combined_output_and_returns_exit_code(self, tmp_path, capsys):
+        """Both stdout and stderr of the child are echoed through the parent's
+        stdout (so the log can capture them) and the real exit code is returned;
+        a non-zero exit is reported faithfully, not swallowed."""
+        cmd = 'echo to_out; echo to_err 1>&2; exit 5'
+        code = _run_fix_command(cmd, tmp_path)
+        assert code == 5
+        out = capsys.readouterr().out
+        # stderr was merged into stdout, so both markers appear on stdout.
+        assert 'to_out' in out and 'to_err' in out
+
+    def test_successful_command_returns_zero(self, tmp_path, capsys):
+        """A command that succeeds returns 0 and its output is still streamed."""
+        code = _run_fix_command('echo done_marker', tmp_path)
+        assert code == 0
+        assert 'done_marker' in capsys.readouterr().out
+
+
+class TestVersionAndCondaHelpers:
+    """Environment probes that shell out (mocked subprocess)."""
+
+    def test_julia_version_at_parses_a_specific_binary(self):
+        """The bound-Julia probe returns the trailing version token from a
+        specific binary, and yields None when that binary is absent."""
+        with patch(
+            'proteus.doctor.subprocess.check_output', return_value='julia version 1.11.5\n'
+        ):
+            assert _julia_version_at('/opt/julia/bin/julia') == '1.11.5'
+        # A missing binary is swallowed to None, not raised.
+        with patch('proteus.doctor.subprocess.check_output', side_effect=FileNotFoundError):
+            assert _julia_version_at('/nope/julia') is None
+
+    def test_conda_build_lines_filters_to_the_clash_packages(self):
+        """Only the HDF5/netCDF/MPI packages are returned, each indented; an
+        unrelated package is excluded so the block stays focused."""
+        listing = (
+            '# packages in environment\n'
+            'hdf5      1.14.3  mpi_mpich_h1\n'
+            'libnetcdf 4.9.2   nompi_h2\n'
+            'numpy     1.26.4  py312_0\n'
+        )
+        with patch('proteus.doctor.subprocess.check_output', return_value=listing):
+            lines = _conda_build_lines()
+        assert any('hdf5' in line and 'mpi_mpich' in line for line in lines)
+        assert any('libnetcdf' in line for line in lines)
+        # Discrimination: an unrelated package is not included.
+        assert not any('numpy' in line for line in lines)
+
+    def test_conda_build_lines_empty_when_conda_absent_or_errors(self):
+        """A missing conda and a conda that exits non-zero both yield an empty
+        list, not an error, so the environment block simply omits the section."""
+        with patch('proteus.doctor.subprocess.check_output', side_effect=FileNotFoundError):
+            assert _conda_build_lines() == []
+        # A conda that errors (non-zero exit) is also swallowed to empty.
+        err = subprocess.CalledProcessError(returncode=1, cmd='conda')
+        with patch('proteus.doctor.subprocess.check_output', side_effect=err):
+            assert _conda_build_lines() == []
+
+
+class TestSupportPromptAndCliExit:
+    """The support prompt rendering and the CLI exit-code contract."""
+
+    def test_prompt_names_the_log_and_all_support_channels(self, tmp_path, capsys):
+        """With a saved log the prompt gives its exact path, the support email,
+        and both GitHub channels, so the user knows what to send and where."""
+        log = tmp_path / 'proteus_doctor_x.log'
+        _print_support_prompt('doctor', log)
+        out = capsys.readouterr().out
+        assert str(log) in out
+        assert 'proteus_dev@formingworlds.space' in out
+        assert 'github.com/FormingWorlds/PROTEUS/issues' in out
+        assert 'discussions' in out
+
+    def test_prompt_handles_a_missing_log_path(self, capsys):
+        """With no log written the prompt says so and tells the user to copy the
+        output instead, rather than printing a bogus path."""
+        _print_support_prompt('update', None)
+        out = capsys.readouterr().out
+        assert 'could not be written' in out
+        assert 'copy the output above' in out
+        # Discrimination: there is no 'saved to' line when there is no file.
+        assert 'saved to' not in out
+
+    def test_doctor_cli_exits_nonzero_on_failure(self, tmp_path, monkeypatch):
+        """`proteus doctor` returns a non-zero process exit code when a check
+        fails, so scripts and CI can gate on it."""
+        from click.testing import CliRunner
+
+        from proteus.cli import doctor as doctor_cmd
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr('proteus.doctor._collect_environment_info', lambda: 'E\n')
+        with patch('proteus.doctor.run_all_checks', return_value=_mixed_results()):
+            result = CliRunner().invoke(doctor_cmd, [])
+        # Exit code 1 specifically (a click usage error would be 2), and the
+        # failure path actually ran, so the support prompt is in the output.
+        assert result.exit_code == 1
+        assert 'proteus_dev@formingworlds.space' in result.output
+
+    def test_doctor_cli_exits_zero_when_clean(self, tmp_path, monkeypatch):
+        """A clean diagnose exits zero, so a passing check does not break a
+        `proteus doctor && ...` chain."""
+        from click.testing import CliRunner
+
+        from proteus.cli import doctor as doctor_cmd
+
+        monkeypatch.chdir(tmp_path)
+        passing = [CheckResult('FWL_DATA', 'environment', PASS, '/data', None)]
+        with patch('proteus.doctor.run_all_checks', return_value=passing):
+            result = CliRunner().invoke(doctor_cmd, [])
+        assert result.exit_code == 0
+        # Discrimination: no failure exit means no support prompt was printed.
+        assert 'proteus_dev@formingworlds.space' not in result.output

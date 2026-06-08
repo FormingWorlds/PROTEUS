@@ -584,7 +584,8 @@ def doctor(output_json: bool):
     """
     from .doctor import run_doctor
 
-    run_doctor(output_json=output_json)
+    if not run_doctor(output_json=output_json):
+        raise SystemExit(1)
 
 
 @click.command()
@@ -598,7 +599,8 @@ def update(dry_run: bool):
     """
     from .doctor import run_update
 
-    run_update(dry_run=dry_run)
+    if not run_update(dry_run=dry_run):
+        raise SystemExit(1)
 
 
 cli.add_command(doctor)
