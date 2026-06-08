@@ -35,6 +35,7 @@ def _cfg(**kwargs: Any) -> Any:
         ),
         time=ns(enabled=True, maximum=100.0, minimum=0.0),
         iters=ns(enabled=True, total_loops=5, total_min=1),
+        clock=ns(enabled=True, maximum=600.0),
         strict=False,
     )
     params = ns(stop=stop)
@@ -54,6 +55,7 @@ def _handler(cfg: Any, *, phi_global: float = 0.4) -> Any:
         'roche_limit': 1.0,
         'axial_period': 10.0,
         'breakup_period': 5.0,
+        'runtime': 10.0,
         'Time': 0.0,
     }
     loops = {
@@ -103,6 +105,14 @@ def test_check_solid_skips_when_above_crit(patch_statusfile):
     assert terminate._check_solid(h) is False
     assert patch_statusfile == []
 
+@pytest.mark.unit
+def test_check_clock_skips_when_below_max(patch_statusfile):
+    """Clock: below maximum keeps simulation running."""
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['runtime'] = 500.0
+    assert terminate._check_clock(h) is False
+    assert patch_statusfile == []
 
 @pytest.mark.unit
 def test_check_radeqm_hits_energy_balance(patch_statusfile):
