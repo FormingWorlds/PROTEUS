@@ -155,7 +155,7 @@ def CommentFromStatus(status: int):
         case 10:
             desc = 'Completed (solidified)'
         case 11:
-            desc = 'UNUSED_STATUS_CODE (11)'
+            desc = 'Completed (maximum clock time)'
         case 12:
             desc = 'Completed (maximum iterations)'
         case 13:

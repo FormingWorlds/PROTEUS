@@ -7,10 +7,10 @@ seed = 42
 logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "bayesopt_infer_sn/"
+output = "bayesopt_infer_tr/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "output/bayesopt_sn/init_coupler.toml"
+ref_config = "output/bayesopt_tr/init_coupler.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = 3        # Number of random samples if starting from scratch.
@@ -37,32 +37,32 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 
 # Target observables to match by optimisation...
 
-# helpfile: /scratch/p321409/proteus_outputs/bayesopt_sn/runtime_helpfile.csv
-# extracted at index: 79, time: 1.000e+09 years
+# helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_sn/runtime_helpfile.csv
+# extracted at index: 37, time: 6.000e+08 years
 # [observables]
-# "M_planet" = 2.0878218651e+25
-# "R_obs" = 1.0746542784e+07
-# "T_obs" = 4.4295690845e+02
-# "atm_kg_per_mol" = 6.0940990526e-03
-# "C/O_atm" = 2.8885347437e+00
-# "S/O_atm" = 4.5809168443e+00
+# "M_planet" = 2.0867670264e+25
+# "R_obs" = 1.0737739283e+07
+# "T_obs" = 3.3579453079e+02
+# "atm_kg_per_mol" = 1.1115610338e-02
+# "C/O_atm" = 8.6035164159e-01
+# "S/O_atm" = 1.3174638542e+00
 
-# helpfile: /scratch/p321409/proteus_outputs/bayesopt_se/runtime_helpfile.csv
-# extracted at index: 276, time: 2.000e+09 years
+# helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
+# extracted at index: 43, time: 1.000e+09 years
 # [observables]
-# "M_planet" = 1.1833572296e+25
-# "R_obs" = 8.7769204618e+06
-# "T_obs" = 5.9121528533e+02
-# "atm_kg_per_mol" = 2.2411540906e-02
-# "C/O_atm" = 1.5393012597e-01
-# "S/O_atm" = 9.1113060537e-02
+# "M_planet" = 1.1736515264e+25
+# "R_obs" = 9.1348686099e+06
+# "T_obs" = 4.7901067133e+02
+# "atm_kg_per_mol" = 2.0924116674e-02
+# "C/O_atm" = 1.7759463148e-01
+# "S/O_atm" = 1.5394314023e-01
 
-# helpfile: /scratch/p321409/proteus_outputs/bayesopt_tr/runtime_helpfile.csv
-# extracted at index: 31, time: 1.000e+08 years
+# helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_tr/runtime_helpfile.csv
+# extracted at index: 36, time: 1.000e+08 years
 [observables]
-"M_planet" = 5.9193602397e+24
-"R_obs" = 6.9577526031e+06
-"T_obs" = 5.2734064003e+02
-"atm_kg_per_mol" = 2.2593052637e-02
-"C/O_atm" = 0.0000000000e+00
-"S/O_atm" = 3.4644730387e-01
+"M_planet" = 5.9182108426e+24
+"R_obs" = 6.8604461848e+06
+"T_obs" = 5.4482954513e+02
+"atm_kg_per_mol" = 2.8051468810e-02
+"C/O_atm" = 1.3553387217e-01
+"S/O_atm" = 2.0274489676e-01

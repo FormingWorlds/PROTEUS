@@ -18,6 +18,7 @@ from proteus.utils.coupler import get_proteus_directories, variable_is_logarithm
 dtype = torch.double
 EPS_CLIP = 1e-10
 LOG_CLIP = 1e-20
+BAD_OBJ_VALUE = -999.0
 log = logging.getLogger('fwl.' + __name__)
 
 
@@ -67,7 +68,7 @@ def run_proteus(
     observables: list[str],
     ref_config: str,
     output: str,
-) -> dict:
+) -> tuple[dict, int]:
     """Run the PROTEUS simulator and return selected observables.
 
     Builds a per-run TOML file, invokes the `proteus` CLI, and reads the resulting CSV.
@@ -84,6 +85,7 @@ def run_proteus(
     Returns
     ----------
     - observables_dict (dict): Mapping of observable names to their simulated values.
+    - status (int): Status code indicating the outcome of the simulation.
     """
 
     # Construct run-specific paths
@@ -134,6 +136,14 @@ def run_proteus(
     # Re-write config in case simulator mutates or removes it
     update_toml(ref_config, parameters, str(out_cfg))
 
+    # Read status file
+    status = 20  # default to Generic Error
+    try:
+        with open(out_abs / 'status', 'r') as f:
+            status = int(f.readlines()[0].strip())
+    except Exception as e:
+        log.warning(f"Failed to read status file for worker={worker} iter={iter}: {e}")
+
     # Read simulator output
     df_row = dict(pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1])
 
@@ -152,7 +162,7 @@ def run_proteus(
     except KeyError as e:
         raise KeyError(f"Requested observable '{e.args[0]}' not found") from e
 
-    return observables_dict
+    return observables_dict, status
 
 
 def log_warp(sq_dist):
@@ -208,10 +218,6 @@ def eval_obj(sim_dict, tru_dict):
     diff = torch.ones_like(true_y) - sim / denom
     sq_dist = (diff**2).sum(dim=1, keepdim=True)
 
-    # obj = torch.ones(1, 1, dtype=dtype) - sq_dist
-
-    # print("\n",sim, true_y, obj, "\n")
-
     obj = log_warp(sq_dist)
     return obj
 
@@ -249,7 +255,7 @@ def J(
 
     # Map normalized x to raw parameter dict and run PROTEUS
     raw = {parameters[i]: x[0, i].item() for i in range(len(parameters))}
-    sim_vals = run_proteus(
+    sim_vals, sim_status = run_proteus(
         parameters=raw,
         worker=worker,
         iter=iter,
@@ -258,8 +264,14 @@ def J(
         output=output,
     )
 
-    # Return value of objective function given these results
+    # If status indicates failure, return very bad objective value
+    if (20 <= sim_status <= 29) or (sim_status in [0, 1, 11]):
+        log.warning(f"PROTEUS run failed for w{worker}_i{iter} with status {sim_status}")
+        return BAD_OBJ_VALUE * torch.ones((1, 1), dtype=dtype)
+
+    # Compute value of objective function given these results
     return eval_obj(sim_vals, true_observables)
+
 
 
 def prot_builder(

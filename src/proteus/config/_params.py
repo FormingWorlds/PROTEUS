@@ -255,6 +255,20 @@ class StopDisint:
     spin_enabled: bool = field(default=True)
     offset_spin: float = field(default=0)
 
+@define
+class StopClock:
+    """Parameters for maximum clock time stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable criteria if True
+    maximum: float
+        Model will terminate when runtime exceeds this value [s].
+    """
+
+    enabled: bool = field(default=False)
+    maximum: float = field(default=60*60*24, validator=gt(0))
 
 @define
 class StopParams:
@@ -276,6 +290,8 @@ class StopParams:
         Parameters for escape criteria.
     disint: StopDisint
         Parameters for planet disintegration criteria.
+    clock: StopClock
+        Parameters for maximum clock time criteria.
     """
 
     iters: StopIters = field(factory=StopIters)
@@ -284,6 +300,7 @@ class StopParams:
     radeqm: StopRadeqm = field(factory=StopRadeqm)
     escape: StopEscape = field(factory=StopEscape)
     disint: StopDisint = field(factory=StopDisint)
+    clock: StopClock = field(factory=StopClock)
 
     strict: bool = field(default=False)
 

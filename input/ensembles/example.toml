@@ -77,6 +77,10 @@ version = "2.0"
             minimum = 5
             maximum = 3000
 
+        [params.stop.clock]
+            enabled = true
+            maximum = 600.0  # 10 minutes
+
         # required time constraints
         [params.stop.time]
             enabled = true
