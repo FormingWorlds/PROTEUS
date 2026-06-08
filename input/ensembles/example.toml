@@ -31,9 +31,9 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "bayesopt_sn"   # SN
+        # path        = "bayesopt_sn"   # SN
         # path        = "bayesopt_se"   # SE
-        # path        = "bayesopt_tr"  # TR
+        path        = "bayesopt_tr"  # TR
 
         logging     = "INFO"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
@@ -82,9 +82,9 @@ version = "2.0"
             enabled = true
             minimum = 1.0e3      # model will certainly run to t > minimum [yr]
 
-            maximum = 6e8   # SN
-            # maximum = 1.5e9   # SE
-            # maximum = 1e8   # TR
+            # maximum = 6e8   # SN
+            # maximum = 1e9   # SE
+            maximum = 1e8   # TR
 
         # solidification
         [params.stop.solid]
@@ -139,9 +139,9 @@ version = "2.0"
     instellation_method = 'sma' # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
     instellationflux = 1.0      # instellation flux received from the planet in [Earth units]
 
-    semimajoraxis = 0.06   # SN
+    # semimajoraxis = 0.06   # SN
     # semimajoraxis = 0.03   # SE
-    # semimajoraxis = 0.02   # TR
+    semimajoraxis = 0.02   # TR
 
     eccentricity = 0.0          # initial eccentricity of planet's orbit [dimensionless]
     zenith_angle    = 54.74     # degrees
@@ -153,14 +153,14 @@ version = "2.0"
 
 # Planetary structure - physics table
 [struct]
-    mass_tot     = 3.5   # SN
+    # mass_tot     = 3.5   # SN
     # mass_tot     = 2.0   # SE
-    # mass_tot     = 1.0   # TR
+    mass_tot     = 1.0   # TR
 
 
-    corefrac     = 0.4     # SN
+    # corefrac     = 0.4     # SN
     # corefrac     = 0.3     # SE
-    # corefrac     = 0.6     # TR
+    corefrac     = 0.6     # TR
 
 
     core_density = 10738.33     # Core density [kg m-3]
@@ -349,9 +349,9 @@ version = "2.0"
 
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = -1.0    # SN
+    # fO2_shift_IW    = -1.0    # SN
     # fO2_shift_IW    = 2.0     # SE
-    # fO2_shift_IW    = 4.0     # TR
+    fO2_shift_IW    = 4.0     # TR
 
     module = "calliope"         # Which outgassing module to use
 
@@ -390,17 +390,17 @@ version = "2.0"
 
     # Set initial volatile inventory by planetary element abundances if [initial = 'elements']
     [delivery.elements]
-        H_oceans      = 650.0 # SN
+        # H_oceans      = 650.0 # SN
         # H_oceans      = 450.0  # SE
-        # H_oceans      = 50.0   # TR
+        H_oceans      = 50.0   # TR
 
-        CH_ratio    = 0.5       # SN
+        # CH_ratio    = 0.5       # SN
         # CH_ratio    = 2.0     # SE
-        # CH_ratio    = 5.0     # TR
+        CH_ratio    = 5.0     # TR
 
-        SH_ratio    = 2.5      # SN
+        # SH_ratio    = 2.5      # SN
         # SH_ratio    = 1.0    # SE
-        # SH_ratio    = 2.0    # TR
+        SH_ratio    = 2.0    # TR
 
         NH_ratio    = 0.5       # N/H mass ratio in mantle/atmosphere system
 
