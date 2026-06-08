@@ -8,6 +8,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read
 jobs:
   deploy:
     environment:
@@ -18,18 +19,18 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/checkout@v6
         with:
-          # setuptools-scm derives the version from git tags; the badge step
-          # installs the package, so the full tag history must be present.
+          # setuptools-scm derives the version from git tags, so the full tag
+          # history must be present for the editable install.
           fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: pip install -e '.[docs]'
+      - run: pip install -e '.[develop,docs]'
+      - name: Cache documentation badges as static SVGs
+        run: python tools/cache_badges.py --out docs/badges/
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: zensical build --clean
-      - name: Add test-count badges to the site
-        run: |
-          pip install -e '.[develop]'
-          python tools/generate_test_badges.py --out site/badges/
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site

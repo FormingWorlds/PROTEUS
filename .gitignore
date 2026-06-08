@@ -196,6 +196,9 @@ instance/
 # Sphinx documentation
 docs/_build/
 
+# Badge SVGs cached at documentation build time by tools/cache_badges.py
+docs/badges/
+
 # PyBuilder
 .pybuilder/
 target/

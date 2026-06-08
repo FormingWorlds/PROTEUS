@@ -117,7 +117,9 @@ def _badge(label: str, value: str, color: str, link: str) -> str:
     label_enc = quote(label, safe='').replace('-', '--')
     value_enc = quote(value, safe='').replace('-', '--')
     img = f'https://img.shields.io/badge/{label_enc}-{value_enc}-{color}'
-    return f'[![{label}]({img})]({link})'
+    # attr_list adds target/rel so the badge link opens in a new tab, matching
+    # every other badge link across the docs.
+    return f'[![{label}]({img})]({link}){{target="_blank" rel="noopener"}}'
 
 
 def _build_pypi_table(deps: list[str]) -> str:

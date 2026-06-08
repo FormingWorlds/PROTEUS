@@ -1,8 +1,8 @@
 # Test framework
 
-[![tests](https://img.shields.io/endpoint?url=https://proteus-framework.org/PROTEUS/badges/tests-total.json)](../How-to/testing.md)
-[![unit tests](https://img.shields.io/endpoint?url=https://proteus-framework.org/PROTEUS/badges/tests-unit.json)](../How-to/testing.md)
-[![integration tests](https://img.shields.io/endpoint?url=https://proteus-framework.org/PROTEUS/badges/tests-integration.json)](../How-to/testing.md)
+[![tests](../badges/tests-total.svg)](../How-to/testing.md){target="_blank" rel="noopener"}
+[![unit tests](../badges/tests-unit.svg)](../How-to/testing.md){target="_blank" rel="noopener"}
+[![integration tests](../badges/tests-integration.svg)](../How-to/testing.md){target="_blank" rel="noopener"}
 
 PROTEUS is scientific simulation software where incorrect results can
 propagate silently through coupled modules. The testing framework is
@@ -39,7 +39,7 @@ validate against published benchmarks and cross-implementation checks (e.g.
 SPIDER vs Aragog for the same initial conditions). These are the most
 expensive tests and run only in the nightly CI.
 
-The badges at the top of this page report how many tests the suite collects in each category: the total, the unit tier, and the combined smoke, integration, and slow tiers. `tools/generate_test_badges.py` regenerates the counts from `pytest --collect-only` during the documentation deploy and writes them into the published site under `badges/`, so they refresh on every documentation build.
+The badges at the top of this page report how many tests the suite collects in each category: the total, the unit tier, and the combined smoke, integration, and slow tiers. The documentation deploy counts the tests from `pytest --collect-only` and writes the badges as static SVGs into the published site under `badges/`, so they refresh on every documentation build and load without a third-party request.
 
 ## Functional tests vs physics tests
 

@@ -12,24 +12,24 @@ title: PROTEUS
 </h1>
 
 <p align="center">
-  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-pr-checks.yml?branch=main&label=Unit%20Tests">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml" target="_blank" rel="noopener">
+    <img src="badges/unit.svg" alt="Unit tests status">
   </a>
-  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-nightly.yml?branch=main&label=Integration%20Tests">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml" target="_blank" rel="noopener">
+    <img src="badges/integration.svg" alt="Integration tests status">
   </a>
-  <a href="https://proteus-framework.org/PROTEUS/">
-    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/docs.yaml?branch=main&label=Docs">
+  <a href="https://proteus-framework.org/PROTEUS/" target="_blank" rel="noopener">
+    <img src="badges/docs.svg" alt="Documentation build status">
   </a>
-  <a href="https://app.codecov.io/gh/FormingWorlds/PROTEUS/tree/main">
-    <img src="https://codecov.io/gh/FormingWorlds/PROTEUS/branch/main/graph/badge.svg">
+  <a href="https://app.codecov.io/gh/FormingWorlds/PROTEUS/tree/main" target="_blank" rel="noopener">
+    <img src="badges/codecov.svg" alt="Code coverage">
   </a>
   <br/>
-  <a href="https://opensource.org/licenses/Apache-2.0">
-    <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg">
+  <a href="https://opensource.org/licenses/Apache-2.0" target="_blank" rel="noopener">
+    <img src="badges/license.svg" alt="License: Apache 2.0">
   </a>
-  <a href="https://proteus-framework.org">
-    <img src="https://img.shields.io/website?url=https%3A%2F%2Fproteus-framework.org&label=Website&up_message=proteus-framework.org&down_message=proteus-framework.org" />
+  <a href="https://proteus-framework.org" target="_blank" rel="noopener">
+    <img src="badges/website.svg" alt="Website: proteus-framework.org">
   </a>
 </p>
 

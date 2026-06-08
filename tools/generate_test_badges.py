@@ -21,9 +21,10 @@ non-developer readers. Internal CI granularity is unaffected; the four
 markers are still registered in ``pyproject.toml`` and used by
 ``ci-pr-checks.yml`` and ``ci-nightly.yml`` directly.
 
-The documentation deploy writes the JSON files into the published site
-under ``badges/`` so shields.io can fetch them; nothing is pushed to a
-branch.
+Running this tool writes the JSON files under the output directory in the
+shields.io endpoint schema. The counting logic (``count_tests``) is also
+imported by ``cache_badges``, which renders the counts as static SVGs for
+the documentation site; nothing is pushed to a branch.
 
 Usage
 -----
