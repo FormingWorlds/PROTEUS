@@ -1,6 +1,11 @@
 .arch-diagram {
   width: 100%;
   height: auto;
+  /* Default reserved box so a diagram whose file name is not matched below
+     still reserves space instead of collapsing while the SVG loads. Add a
+     per-diagram rule below with the exact source-viewBox ratio when adding a
+     new diagram. */
+  aspect-ratio: 3 / 2;
   display: none;
 }
 
