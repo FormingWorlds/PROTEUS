@@ -640,7 +640,7 @@ class Proteus:
                 run_chemistry(self.directories, self.config, self.hf_row)
 
         # Synthetic observations
-        if self.config.observe.synthesis is not None:
+        if self.config.observe.module is not None:
             log.info(' ')
             PrintSeparator()
             if self.desiccated:

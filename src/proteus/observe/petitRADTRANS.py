@@ -54,14 +54,14 @@ petitRADTRANS_GASES = (
 petitRADTRANS_RAYLEIGH_SPECIES = ('H2', 'He', 'H')
 petitRADTRANS_CIA_SPECIES = (
     'H-',
-    'H2-H2',
-    'H2-He',
-    'CO2-CO2',
-    'N2-H2',
-    'N2-He',
-    'N2-N2',
-    'N2-O2',
-    'O2-O2',
+    'H2--H2',
+    'H2--He',
+    'CO2--CO2',
+    'N2--H2',
+    'N2--He',
+    'N2--N2',
+    'N2--O2',
+    'O2--O2',
 )
 petitRADTRANS_IGNORED_GASES = {'e-', 'MMW', 'nabla_ad'}
 
@@ -74,7 +74,7 @@ def _get_input_data_path(input_data_path: str | None) -> str:
 
     import petitRADTRANS
 
-    package_dir = Path(petitRADTRANS.__file__).resolve().parent
+    package_dir = Path(petitRADTRANS.__file__).resolve().parent.parent
     candidate = package_dir / 'input_data'
     if candidate.is_dir():
         return str(candidate)
@@ -85,12 +85,22 @@ def _get_input_data_path(input_data_path: str | None) -> str:
     )
 
 
-def _get_supported_line_species(gases: list[str]) -> list[str]:
-    return [
-        gas
-        for gas in gases
-        if gas not in petitRADTRANS_IGNORED_GASES and gas not in petitRADTRANS_RAYLEIGH_SPECIES
-    ]
+def _get_supported_line_species(gases: list[str], input_data_path: str | None) -> list[str]:
+    """Return gases that have line-opacity tables in the configured pRT data tree."""
+
+    if input_data_path is None:
+        input_data_path = _get_input_data_path(None)
+
+    lines_root = Path(input_data_path) / 'opacities' / 'lines' / 'correlated_k'
+    supported = []
+    for gas in gases:
+        if gas in petitRADTRANS_IGNORED_GASES or gas in petitRADTRANS_RAYLEIGH_SPECIES:
+            continue
+        if (lines_root / gas).is_dir():
+            supported.append(gas)
+        else:
+            log.debug("Skipping gas '%s' because no line-opacity directory exists", gas)
+    return supported
 
 
 def _get_supported_rayleigh_species(gases: list[str], include_rayleigh: bool) -> list[str]:
@@ -102,8 +112,18 @@ def _get_supported_rayleigh_species(gases: list[str], include_rayleigh: bool) ->
 def _get_supported_cia_species(gases: list[str], include_cia: bool) -> list[str]:
     if not include_cia:
         return []
-    contributors = [gas for gas in petitRADTRANS_CIA_SPECIES if gas != 'H-' or 'H-' in gases]
-    return contributors
+
+    available = []
+    for cia_species in petitRADTRANS_CIA_SPECIES:
+        components = cia_species.split('-')
+        if all(component in gases for component in components):
+            available.append(cia_species)
+        else:
+            log.debug(
+                "Skipping CIA species '%s' because not all components are present in the gas mix",
+                cia_species,
+            )
+    return available
 
 
 def _vmrs_to_mass_fractions(
@@ -138,9 +158,10 @@ def _build_prt_composition(
     clip_vmr: float,
     include_rayleigh: bool,
     include_cia: bool,
+    input_data_path: str | None,
 ) -> tuple:
     gases, vmrs = _get_mix(hf_row, atm, source, clip_vmr)
-    line_species = _get_supported_line_species(gases)
+    line_species = _get_supported_line_species(gases, input_data_path)
     rayleigh_species = _get_supported_rayleigh_species(gases, include_rayleigh)
     gas_continuum_contributors = _get_supported_cia_species(gases, include_cia)
     return (
@@ -355,6 +376,7 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
     include_rayleigh     = config.observe.petitRADTRANS.include_rayleigh
     include_cia          = config.observe.petitRADTRANS.include_cia
     include_vmr_clipping = config.observe.petitRADTRANS.clip_vmr
+    input_data_path = _get_input_data_path(config.observe.petitRADTRANS.input_data_path)
 
     # Parse
     if atm is None:
@@ -369,10 +391,30 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
         line_species,
         rayleigh_species,
         gas_continuum_contributors,
-    ) = _build_prt_composition(hf_row, atm, source, include_vmr_clipping, include_rayleigh, include_cia)
+    ) = _build_prt_composition(
+        hf_row,
+        atm,
+        source,
+        include_vmr_clipping,
+        include_rayleigh,
+        include_cia,
+        input_data_path,
+    )
 
     prs, tmp, vmrs = _interpolate_prt_profiles(prs, tmp, vmrs, n_points=100)
     mass_fractions, mean_molar_masses = _vmrs_to_mass_fractions(gases, vmrs)
+
+    # write pressure, temperature and mr profiles to file for diagnostics
+    profile_X = np.column_stack([prs, tmp] + vmrs)
+    profile_header = 'Pressure/Pa\tTemperature/K\t' + '\t'.join([f'{gas}_VMR' for gas in gases])
+    np.savetxt(
+        get_transit_fpath(outdir, source, 'profiles'),
+        profile_X,
+        delimiter='\t',
+        fmt='%.8e',
+        header=profile_header,
+        comments='',
+    )
 
     # create a Radtrans object
     log.debug('Compute transit depth spectra')
@@ -382,7 +424,7 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
         gas_continuum_contributors=gas_continuum_contributors,
         rayleigh_species=rayleigh_species,
         line_opacity_mode=config.observe.petitRADTRANS.line_opacity_mode,
-        path_input_data=_get_input_data_path(config.observe.petitRADTRANS.input_data_path),
+        path_input_data=input_data_path,
     )
 
     # compute full spectrum
@@ -390,11 +432,12 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
         temperatures=np.array(tmp, dtype=float),
         mass_fractions=mass_fractions,
         mean_molar_masses=mean_molar_masses,
-        reference_gravity=100.0 * cst.G * Mp / (Rp * Rp),
+        reference_gravity=0.1 * cst.G * Mp / (Rp * Rp),
         reference_pressure=float(prs[-1]) / 1e5,
         planet_radius=Rp_cm,
         frequencies_to_wavelengths=True,
     )
+
     wl = np.array(wl_cm, dtype=float) * 1e4  # cm -> um
     de = (np.array(transit_radii, dtype=float) / Rs_cm) ** 2 * 1e6
     X = [wl, de]
@@ -409,7 +452,7 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
                 temperatures=np.array(tmp, dtype=float),
                 mass_fractions=_copy_mass_fractions(mass_fractions, [gas]),
                 mean_molar_masses=mean_molar_masses,
-                reference_gravity=100.0 * cst.G * Mp / (Rp * Rp),
+                reference_gravity=0.1 * cst.G * Mp / (Rp * Rp),
                 reference_pressure=float(prs[-1]) / 1e5,
                 planet_radius=Rp_cm,
                 frequencies_to_wavelengths=True,
@@ -464,6 +507,7 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
     include_rayleigh     = config.observe.petitRADTRANS.include_rayleigh
     include_cia          = config.observe.petitRADTRANS.include_cia
     include_vmr_clipping = config.observe.petitRADTRANS.clip_vmr
+    input_data_path = _get_input_data_path(config.observe.petitRADTRANS.input_data_path)
 
     # Get profile from the required source
     if source == 'offchem':
@@ -484,7 +528,15 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
         line_species,
         rayleigh_species,
         gas_continuum_contributors,
-    ) = _build_prt_composition(hf_row, atm, source, include_vmr_clipping, include_rayleigh, include_cia)
+    ) = _build_prt_composition(
+        hf_row,
+        atm,
+        source,
+        include_vmr_clipping,
+        include_rayleigh,
+        include_cia,
+        input_data_path,
+    )
 
     prs, tmp, vmrs = _interpolate_prt_profiles(prs, tmp, vmrs, n_points=100)
     mass_fractions, mean_molar_masses = _vmrs_to_mass_fractions(gases, vmrs)
@@ -497,7 +549,7 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
         gas_continuum_contributors=gas_continuum_contributors,
         rayleigh_species=rayleigh_species,
         line_opacity_mode=config.observe.petitRADTRANS.line_opacity_mode,
-        path_input_data=_get_input_data_path(config.observe.petitRADTRANS.input_data_path),
+        path_input_data=input_data_path,
     )
 
     # compute full spectrum
@@ -505,7 +557,7 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
         temperatures=np.array(tmp, dtype=float),
         mass_fractions=mass_fractions,
         mean_molar_masses=mean_molar_masses,
-        reference_gravity=100.0 * cst.G * Mp / (Rp * Rp),
+        reference_gravity=0.1 * cst.G * Mp / (Rp * Rp),
         planet_radius=Rp_cm,
         star_effective_temperature=Ts,
         star_radius=Rs_cm,
@@ -533,7 +585,7 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
                 temperatures=np.array(tmp, dtype=float),
                 mass_fractions=_copy_mass_fractions(mass_fractions, [gas]),
                 mean_molar_masses=mean_molar_masses,
-                reference_gravity=100.0 * cst.G * Mp / (Rp * Rp),
+                reference_gravity=0.1 * cst.G * Mp / (Rp * Rp),
                 planet_radius=Rp_cm,
                 star_effective_temperature=Ts,
                 star_radius=Rs_cm,

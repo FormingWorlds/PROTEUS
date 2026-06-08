@@ -43,8 +43,11 @@ const_Nav = 6.02214076e23  # Avogadro's constant [mol-1]
 B_ein = 2.5
 
 # Supported gases
-vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
-vap_list = ['SiO', 'SiO2', 'MgO', 'FeO2']
+vol_list  = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
+vap_list  = ['SiO', 'SiO2', 'MgO', 'FeO2']
+prt_gases = ['H2', 'H2O', 'CH4', 'CO', 'CO2', 'O', 'NH3', 'O2', 'O3', 'H2S', 'HCN', 'OH', 'PH3', 'SiO', 'SO2', 'TiO', 'VO', 'Na', 'K', 'Ti', 'Fe', 'C2H2', 'FeH']
+prt_rayleigh_species = ['H2', 'He', 'H']
+prt_rayleigh_species = ['H2--H2', 'H2--He', 'CO2--CO2', 'N2--H2', 'N2--He', 'N2--N2', 'N2--O2', 'O2--O2']
 gas_list = vol_list + vap_list
 
 # Supported elements
