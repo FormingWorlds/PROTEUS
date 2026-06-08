@@ -48,12 +48,44 @@ warn()  { printf "${YELLOW}[WARN]${NC}  %s\n" "$*"; }
 fail()  { printf "${RED}[FAIL]${NC}  %s\n" "$*"; }
 phase() { printf "\n${CYAN}${BOLD}=== Phase %s: %s ===${NC}\n" "$1" "$2"; }
 
+# Collect machine and environment details into the log so the log file alone is
+# enough for us to diagnose an install failure, without a back-and-forth.
+collect_env_info() {
+    echo ""
+    echo "=== Environment (auto-collected for debugging) ==="
+    echo "date:    $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "uname:   $(uname -a)"
+    command_exists sw_vers && echo "macos:   $(sw_vers -productVersion 2>/dev/null) ($(uname -m))"
+    echo "shell:   ${SHELL:-?}"
+    echo "conda:   env=${CONDA_DEFAULT_ENV:-(none)} prefix=${CONDA_PREFIX:-?}"
+    echo "python:  $(python3 --version 2>&1) ($(command -v python3 2>/dev/null))"
+    echo "julia:   $(julia --version 2>/dev/null || echo '(not on PATH)') ($(command -v julia 2>/dev/null))"
+    local v
+    for v in FWL_DATA RAD_DIR FC_DIR PYTHON_JULIAPKG_EXE PYTHON_JULIACALL_BINDIR; do
+        echo "  ${v}=${!v:-(unset)}"
+    done
+    echo "package versions:"
+    python3 -m pip list 2>/dev/null | grep -iE 'fwl-|juliacall|^jax |equinox|netcdf|hdf5' | sed 's/^/  /'
+    if [ -n "${SCRIPT_DIR:-}" ] && [ -d "${SCRIPT_DIR}/.git" ]; then
+        echo "proteus git: $(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null) ($(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null))"
+    fi
+    echo "conda HDF5/netCDF builds:"
+    command_exists conda && conda list 2>/dev/null | grep -iE '^(hdf5|libnetcdf|netcdf4|mpich|openmpi)\b' | sed 's/^/  /'
+    echo "=== end environment ==="
+}
+
 die() {
     fail "$1"
     echo ""
     echo "Installation failed at Phase $CURRENT_PHASE."
+    collect_env_info
+    echo ""
     if [ -n "${LOGFILE:-}" ] && [ -f "${LOGFILE:-}" ]; then
-        echo "See $LOGFILE for details."
+        echo "A full log was written to: $LOGFILE"
+        echo "If you need help, send that log file to proteus_dev@formingworlds.space,"
+        echo "or open an issue or discussion at:"
+        echo "  https://github.com/FormingWorlds/PROTEUS/issues"
+        echo "  https://github.com/orgs/FormingWorlds/discussions"
     fi
     echo "Fix the issue above, then re-run: bash install.sh"
     exit 1

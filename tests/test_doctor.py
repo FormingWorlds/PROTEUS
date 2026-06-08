@@ -23,18 +23,22 @@ from proteus.doctor import (
     PYTHON_PACKAGES,
     WARN,
     CheckResult,
+    _collect_environment_info,
     _editable_checkout_path,
     _git_dirty,
     _git_head,
     _git_short_head,
     _imported_package_dir,
     _julia_version,
+    _write_failure_log,
     check_env_var,
     check_fwl_data,
     check_julia,
     check_python_package,
     doctor_entry,
     run_all_checks,
+    run_doctor,
+    run_update,
     update_entry,
 )
 
@@ -713,3 +717,114 @@ class TestEditableAndImportedPaths:
             patch('proteus.doctor.importlib.util.find_spec', return_value=spec_ok),
         ):
             assert _imported_package_dir('fwl-aragog') == '/x/aragog'
+
+
+class TestEnvironmentInfo:
+    """The auto-collected environment block written into the failure log."""
+
+    def test_block_carries_machine_and_package_details(self, monkeypatch):
+        """The block names the platform, the Python interpreter, the relevant
+        environment variables, and the installed package versions, so the log
+        alone is enough to diagnose an install problem."""
+        monkeypatch.setattr('proteus.doctor._julia_version', lambda: '1.12.6')
+        monkeypatch.setenv('FWL_DATA', '/data/fwl')
+        monkeypatch.delenv('RAD_DIR', raising=False)
+        info = _collect_environment_info()
+        assert 'platform:' in info and 'python:' in info
+        # the configured Julia is reported, and an unset var is shown as unset
+        assert 'julia (on PATH): 1.12.6' in info
+        assert 'FWL_DATA=/data/fwl' in info
+        assert 'RAD_DIR=(unset)' in info
+        # at least one tracked package is reported (fwl-proteus is installed)
+        assert 'fwl-proteus:' in info
+        # discrimination: this is the environment block, not the check report;
+        # a regression returning the doctor transcript would fail this
+        assert info.startswith('=== Environment')
+
+    def test_failure_log_prepends_env_and_strips_colour(self, tmp_path, monkeypatch):
+        """The log file leads with the environment block and the run transcript
+        with ANSI colour codes removed, and is named for the command."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            'proteus.doctor._collect_environment_info', lambda: 'ENV_BLOCK_SENTINEL\n'
+        )
+        path = _write_failure_log('doctor', 'before \x1b[31mRED\x1b[0m after')
+        assert path.parent == tmp_path
+        assert path.name.startswith('proteus_doctor_') and path.name.endswith('.log')
+        text = path.read_text()
+        assert 'ENV_BLOCK_SENTINEL' in text
+        # ANSI escape codes are stripped, but the words survive
+        assert '\x1b[' not in text
+        assert 'before RED after' in text
+
+
+class TestRunLogging:
+    """run_doctor / run_update write a log and a help prompt on failure only."""
+
+    def test_doctor_failure_writes_log_and_points_user_to_it(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A failing check writes a named log file in the working directory and
+        the prompt tells the user that exact path plus the support channels."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr('proteus.doctor._collect_environment_info', lambda: 'ENVINFO\n')
+        with patch('proteus.doctor.run_all_checks', return_value=_mixed_results()):
+            result = run_doctor()
+        assert result is False
+        logs = list(tmp_path.glob('proteus_doctor_*.log'))
+        assert len(logs) == 1
+        log_text = logs[0].read_text()
+        # the log is self-contained: env block + the failing check transcript
+        assert 'ENVINFO' in log_text and 'Julia' in log_text
+        out = capsys.readouterr().out
+        # the user is told the exact file to send and where to send it
+        assert str(logs[0]) in out
+        assert 'proteus_dev@formingworlds.space' in out
+        assert 'github.com/FormingWorlds/PROTEUS/issues' in out
+        assert 'discussions' in out
+
+    def test_doctor_all_pass_writes_no_log_and_no_prompt(self, tmp_path, monkeypatch, capsys):
+        """A clean run leaves no log file behind and prints no support prompt."""
+        monkeypatch.chdir(tmp_path)
+        passing = [CheckResult('FWL_DATA', 'environment', PASS, '/data', None)]
+        with patch('proteus.doctor.run_all_checks', return_value=passing):
+            result = run_doctor()
+        assert result is True
+        assert list(tmp_path.glob('proteus_*.log')) == []
+        out = capsys.readouterr().out
+        assert 'proteus_dev@formingworlds.space' not in out
+
+    def test_doctor_json_mode_is_not_logged(self, tmp_path, monkeypatch, capsys):
+        """JSON output is for scripts: no log file and no prompt, just JSON."""
+        monkeypatch.chdir(tmp_path)
+        with patch('proteus.doctor.run_all_checks', return_value=_mixed_results()):
+            result = run_doctor(output_json=True)
+        assert result is False  # a failing check still reports False
+        assert list(tmp_path.glob('proteus_*.log')) == []
+        parsed = json.loads(capsys.readouterr().out)
+        assert len(parsed) == 3
+
+    def test_update_failed_fix_writes_log_and_prompts(self, tmp_path, monkeypatch, capsys):
+        """When a fix command fails, update saves a log and points the user to
+        it; a fixable failure that stays failing is reported as not healthy."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / 'tools').mkdir()
+        monkeypatch.setattr('proteus.doctor._repo_root', lambda: tmp_path)
+        monkeypatch.setattr('proteus.doctor._collect_environment_info', lambda: 'ENVINFO\n')
+        failing = [
+            CheckResult('Julia', 'environment', FAIL, 'not found', 'false'),
+        ]
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=failing),
+            patch(
+                'proteus.doctor.subprocess.run',
+                side_effect=subprocess.CalledProcessError(1, 'false'),
+            ),
+        ):
+            result = run_update()
+        assert result is False
+        logs = list(tmp_path.glob('proteus_update_*.log'))
+        assert len(logs) == 1
+        out = capsys.readouterr().out
+        assert str(logs[0]) in out
+        assert 'proteus_dev@formingworlds.space' in out

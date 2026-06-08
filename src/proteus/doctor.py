@@ -8,12 +8,17 @@ commands and offers to run them.
 
 from __future__ import annotations
 
+import datetime
 import importlib.metadata
 import importlib.util
+import io
 import json
 import os
+import platform
+import re
 import shlex
 import subprocess
+import sys
 import tomllib
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError
@@ -582,13 +587,182 @@ def run_all_checks() -> list[CheckResult]:
     return results
 
 
-def doctor_entry(output_json: bool = False):
+# ─── Run logging and support prompt ──────────────────────────────────
+
+_SUPPORT_EMAIL = 'proteus_dev@formingworlds.space'
+_ISSUES_URL = 'https://github.com/FormingWorlds/PROTEUS/issues'
+_DISCUSSIONS_URL = 'https://github.com/orgs/FormingWorlds/discussions'
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+
+class _Tee(io.TextIOBase):
+    """Mirror text writes to two streams.
+
+    ``isatty`` is delegated to the primary stream so click keeps emitting
+    colour to the terminal while the mirror captures the same text for the log.
+    """
+
+    def __init__(self, primary, mirror):
+        self._primary = primary
+        self._mirror = mirror
+
+    def write(self, s: str) -> int:
+        self._primary.write(s)
+        self._mirror.write(s)
+        return len(s)
+
+    def flush(self):
+        self._primary.flush()
+
+    def isatty(self) -> bool:
+        return self._primary.isatty()
+
+
+_ENV_PACKAGES = (
+    'fwl-proteus',
+    'fwl-mors',
+    'fwl-janus',
+    'fwl-calliope',
+    'fwl-zephyrus',
+    'fwl-aragog',
+    'fwl-zalmoxis',
+    'fwl-vulcan',
+    'juliacall',
+)
+_ENV_VARS = (
+    'FWL_DATA',
+    'RAD_DIR',
+    'FC_DIR',
+    'PYTHON_JULIAPKG_EXE',
+    'PYTHON_JULIACALL_BINDIR',
+    'CONDA_DEFAULT_ENV',
+    'CONDA_PREFIX',
+)
+
+
+def _collect_environment_info() -> str:
+    """Gather machine and environment details for the failure log.
+
+    The block is written into the log so that the log file alone is enough to
+    diagnose an install or environment problem, without a back-and-forth.
+
+    Returns
+    -------
+    str
+        A plain-text, multi-line environment report.
+    """
+    lines = ['=== Environment (auto-collected for debugging) ===']
+    lines.append(f'timestamp: {datetime.datetime.now().isoformat(timespec="seconds")}')
+    lines.append(f'platform: {platform.platform()}')
+    lines.append(f'machine: {platform.machine()}')
+    lines.append(f'python: {platform.python_version()} ({sys.executable})')
+
+    lines.append(f'julia (on PATH): {_julia_version() or "(not found)"}')
+
+    lines.append('environment variables:')
+    for var in _ENV_VARS:
+        lines.append(f'  {var}={os.environ.get(var, "(unset)")}')
+
+    lines.append('installed package versions:')
+    for pkg in _ENV_PACKAGES:
+        try:
+            ver = importlib.metadata.version(pkg)
+        except PackageNotFoundError:
+            ver = '(not installed)'
+        lines.append(f'  {pkg}: {ver}')
+
+    try:
+        root = _repo_root()
+        head = _git_short_head(str(root))
+        dirty = _git_dirty(str(root))
+        if head:
+            mark = ' (dirty)' if dirty else ''
+            lines.append(f'proteus checkout: {root} -> {head}{mark}')
+    except Exception:  # noqa: BLE001 - diagnostics must never raise
+        pass
+
+    return '\n'.join(lines) + '\n'
+
+
+def _write_failure_log(command: str, transcript: str) -> Path:
+    """Write the environment info and captured transcript to a timestamped log.
+
+    Parameters
+    ----------
+    command : str
+        Command name used in the file name (``doctor`` or ``update``).
+    transcript : str
+        Captured console output; ANSI colour codes are stripped before writing.
+
+    Returns
+    -------
+    Path
+        Path of the written log file.
+    """
+    stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_path = Path.cwd() / f'proteus_{command}_{stamp}.log'
+    body = (
+        f'{_collect_environment_info()}\n=== proteus {command} output ===\n'
+        f'{_ANSI_RE.sub("", transcript)}'
+    )
+    log_path.write_text(body, encoding='utf-8')
+    return log_path
+
+
+def _print_support_prompt(command: str, log_path: Path):
+    """Tell the user where the log is and how to get help."""
+    click.echo()
+    click.secho(f'proteus {command} reported problems.', fg='red', bold=True)
+    click.echo(f'A log of this run was saved to:\n  {log_path}')
+    click.echo(
+        'If you need help, send that log file to '
+        f'{click.style(_SUPPORT_EMAIL, bold=True)}, '
+        'or open an issue or discussion:\n'
+        f'  {_ISSUES_URL}\n'
+        f'  {_DISCUSSIONS_URL}'
+    )
+
+
+def _run_with_log(command: str, func) -> bool:
+    """Run ``func``, mirroring its output; on failure write a log and prompt.
+
+    Parameters
+    ----------
+    command : str
+        Command name for the log file and prompt.
+    func : callable
+        Zero-argument callable returning True on success, False on failure.
+
+    Returns
+    -------
+    bool
+        The value returned by ``func``.
+    """
+    buffer = io.StringIO()
+    real_stdout = sys.stdout
+    sys.stdout = _Tee(real_stdout, buffer)
+    try:
+        ok = func()
+    finally:
+        sys.stdout = real_stdout
+    if not ok:
+        log_path = _write_failure_log(command, buffer.getvalue())
+        _print_support_prompt(command, log_path)
+    return bool(ok)
+
+
+def doctor_entry(output_json: bool = False) -> bool:
     """Run diagnostics and print results.
 
     Parameters
     ----------
     output_json : bool
         If True, print JSON instead of human-readable output.
+
+    Returns
+    -------
+    bool
+        True if no checks failed.
     """
     results = run_all_checks()
 
@@ -596,7 +770,7 @@ def doctor_entry(output_json: bool = False):
         import json as _json
 
         click.echo(_json.dumps([r.to_dict() for r in results], indent=2))
-        return
+        return all(r.status != FAIL for r in results)
 
     # Group by category
     categories = {}
@@ -640,6 +814,9 @@ def doctor_entry(output_json: bool = False):
                 f'{len(fixable)} issue(s) automatically.'
             )
 
+    # A failing check is what triggers the log file and support prompt.
+    return n_fail == 0
+
 
 def update_entry(dry_run: bool = False):
     """Run diagnostics and execute fix commands for failing checks.
@@ -654,7 +831,7 @@ def update_entry(dry_run: bool = False):
 
     if not fixable:
         click.secho('Nothing to update. All checks passed.', fg='green')
-        return
+        return True
 
     click.secho(f'{len(fixable)} issue(s) to fix:\n', bold=True)
     for r in fixable:
@@ -664,7 +841,7 @@ def update_entry(dry_run: bool = False):
 
     if dry_run:
         click.echo(f'\n{click.style("Dry run", bold=True)}: no changes made.')
-        return
+        return True
 
     root = _repo_root()
     if not (root / 'tools').is_dir():
@@ -674,9 +851,10 @@ def update_entry(dry_run: bool = False):
             'not a wheel install.',
             fg='red',
         )
-        return
+        return False
 
     click.echo()
+    any_fix_failed = False
     for r in fixable:
         click.secho(f'Fixing: {r.name}', bold=True)
         click.echo(f'  $ {r.fix_cmd}')
@@ -691,8 +869,46 @@ def update_entry(dry_run: bool = False):
         except subprocess.CalledProcessError as exc:
             click.secho(f'  command failed (exit {exc.returncode})', fg='red')
             click.echo('  Run the command manually to investigate.')
+            any_fix_failed = True
 
     # Re-run checks after fixes
     click.echo()
     click.secho('Re-checking...', bold=True)
-    doctor_entry()
+    final_ok = doctor_entry()
+    return final_ok and not any_fix_failed
+
+
+def run_doctor(output_json: bool = False) -> bool:
+    """Run ``proteus doctor``; on a failing check, save a log and prompt for help.
+
+    JSON output is for scripts, so it is neither logged nor prompted.
+
+    Parameters
+    ----------
+    output_json : bool
+        If True, print machine-readable JSON instead of the human report.
+
+    Returns
+    -------
+    bool
+        True if all checks passed.
+    """
+    if output_json:
+        return doctor_entry(output_json=True)
+    return _run_with_log('doctor', doctor_entry)
+
+
+def run_update(dry_run: bool = False) -> bool:
+    """Run ``proteus update``; on a failed fix or remaining failure, log and prompt.
+
+    Parameters
+    ----------
+    dry_run : bool
+        If True, only show what would be done.
+
+    Returns
+    -------
+    bool
+        True if the update left the installation healthy.
+    """
+    return _run_with_log('update', lambda: update_entry(dry_run=dry_run))

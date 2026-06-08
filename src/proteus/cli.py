@@ -582,9 +582,9 @@ def doctor(output_json: bool):
     and git module pins. Each check reports pass/warn/fail with a fix
     command where applicable.
     """
-    from .doctor import doctor_entry
+    from .doctor import run_doctor
 
-    doctor_entry(output_json=output_json)
+    run_doctor(output_json=output_json)
 
 
 @click.command()
@@ -596,9 +596,9 @@ def update(dry_run: bool):
     suggested fix commands for any failing or warning checks. Use
     ``--dry-run`` to preview without making changes.
     """
-    from .doctor import update_entry
+    from .doctor import run_update
 
-    update_entry(dry_run=dry_run)
+    run_update(dry_run=dry_run)
 
 
 cli.add_command(doctor)
