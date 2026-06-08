@@ -1,9 +1,12 @@
 """Unit tests for README and docs badge validation.
 
 Validates that badge URLs in README.md and docs/index.md are well-formed, use
-HTTPS, follow expected patterns, and stay in sync. This prevents badge
-regressions like the Codecov "unknown" issue caused by a missing `/branch/main/`
-path segment, and ensures the README and docs landing page show identical badges.
+HTTPS, and follow expected patterns. The README renders on GitHub, which proxies
+and caches the live shields.io/codecov badges, so it keeps those live sources.
+The docs site serves cached static SVGs from its own origin, so its badges load
+without a third-party request. The two surfaces use different image sources by
+design but must link to the same destinations; these tests pin both the README
+source contract and that the two surfaces stay in sync on what they point to.
 
 Testing standards: docs/test_infrastructure.md, docs/test_categorization.md,
 docs/test_building.md
@@ -163,21 +166,48 @@ def _extract_badge_block(text: str) -> str:
     return '\n'.join(line.strip() for line in match.group(1).splitlines())
 
 
-@pytest.mark.unit
-def test_readme_and_docs_badges_are_identical():
-    """Badge blocks in README.md and docs/index.md must be identical.
+def _extract_attr(block: str, attr: str) -> list[str]:
+    """Return the ordered values of an HTML attribute in a badge block.
 
-    Both files should present the same set of badges in the same order so
-    that the GitHub landing page and the documentation site look consistent.
-    Any divergence indicates one file was updated without the other.
+    Parameters
+    ----------
+    block : str
+        The badge block markup.
+    attr : str
+        Attribute name, for example ``'href'`` or ``'src'``.
     """
-    readme_badges = _extract_badge_block(README_PATH.read_text())
-    docs_badges = _extract_badge_block(DOCS_INDEX_PATH.read_text())
-    assert readme_badges == docs_badges, (
-        'Badge blocks differ between README.md and docs/index.md. '
-        'Update both files to keep them in sync.'
+    return re.findall(rf'{attr}="([^"]+)"', block)
+
+
+@pytest.mark.unit
+def test_readme_and_docs_badges_link_to_same_destinations():
+    """README and docs landing page must point at the same badge destinations.
+
+    The two surfaces render badges from different sources by design: the README
+    uses live shields.io/codecov badges (GitHub proxies and caches these, so they
+    stay current), while the docs site serves cached static SVGs from its own
+    origin. They must still link to the same targets in the same order, so a
+    badge added or removed on one surface is added or removed on the other.
+    """
+    readme_block = _extract_badge_block(README_PATH.read_text())
+    docs_block = _extract_badge_block(DOCS_INDEX_PATH.read_text())
+
+    readme_links = _extract_attr(readme_block, 'href')
+    docs_links = _extract_attr(docs_block, 'href')
+    assert readme_links, 'No badge links found in README badge block'
+    assert readme_links == docs_links, (
+        'Badge link destinations differ between README.md and docs/index.md. '
+        'Add or remove the badge on both surfaces to keep them in sync.'
     )
-    # Discrimination: equality between two empty strings would also pass
-    # the check above. Pin that the extracted block carries actual badge
-    # markup (the <img tag is the load-bearing element).
-    assert '<img' in readme_badges
+    # Pin the intentional source divergence so a regression that points the
+    # README at the docs-site SVGs (which 404 off the docs origin and freeze CI
+    # status at the last deploy) is caught: the docs site uses cached local
+    # SVGs, the README uses live shields/codecov sources.
+    docs_imgs = _extract_attr(docs_block, 'src')
+    readme_imgs = _extract_attr(readme_block, 'src')
+    assert docs_imgs and all(src.startswith('badges/') for src in docs_imgs), (
+        f'docs/index.md badges must use cached local SVGs (badges/*.svg): {docs_imgs}'
+    )
+    assert readme_imgs and not any('/PROTEUS/badges/' in src for src in readme_imgs), (
+        'README badges must use live shields/codecov sources, not docs-site SVGs.'
+    )

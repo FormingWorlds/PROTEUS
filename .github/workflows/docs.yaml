@@ -26,6 +26,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e '.[develop,docs]'
+      # Restore the previous deploy's badges so a badge that cannot be
+      # refreshed this run keeps its last-good SVG instead of a placeholder.
+      # A fresh checkout has no docs/badges/ (it is gitignored), so without
+      # this the last-good fallback could never fire in CI.
+      - uses: actions/cache@v4
+        with:
+          path: docs/badges
+          key: docs-badges-${{ github.run_id }}
+          restore-keys: |
+            docs-badges-
       - name: Cache documentation badges as static SVGs
         run: python tools/cache_badges.py --out docs/badges/
         env:

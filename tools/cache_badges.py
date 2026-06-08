@@ -49,13 +49,19 @@ _REPO = 'FormingWorlds/PROTEUS'
 _BRANCH = 'main'
 _USER_AGENT = 'PROTEUS-docs-badge-cache'
 
-# Map a GitHub Actions run conclusion to the badge message and colour. A run
-# that is queued or in progress has a null conclusion and is shown as pending.
+# Map a GitHub Actions run conclusion to the badge message and colour. Every
+# failure-class conclusion maps to red so a broken run is never shown as a
+# neutral grey badge. A null conclusion (queued or in progress) shows no status.
 _CONCLUSION_STYLE: dict[str | None, tuple[str, str]] = {
     'success': ('passing', 'brightgreen'),
     'failure': ('failing', 'red'),
-    'cancelled': ('cancelled', 'inactive'),
+    'startup_failure': ('failing', 'red'),
+    'action_required': ('action required', 'red'),
     'timed_out': ('timed out', 'red'),
+    'cancelled': ('cancelled', 'inactive'),
+    'stale': ('stale', 'lightgrey'),
+    'skipped': ('skipped', 'lightgrey'),
+    'neutral': ('neutral', 'lightgrey'),
     None: ('no status', 'lightgrey'),
 }
 
@@ -83,9 +89,14 @@ def _latest_conclusion(workflow: str, timeout: float, retries: int) -> str | Non
         run has no conclusion yet, or the sentinel ``'unknown'`` if the API
         could not be reached or reported no runs.
     """
+    # Query the latest COMPLETED run of the workflow. status=completed excludes
+    # the in-progress docs deploy that is calling this (a null conclusion would
+    # otherwise render the Docs badge as "no status"). No branch filter: the
+    # PR-check workflows run on pull_request, never on main, so a branch=main
+    # filter would match only stale historical runs and freeze the badge.
     url = (
         f'https://api.github.com/repos/{_REPO}/actions/workflows/'
-        f'{workflow}/runs?branch={_BRANCH}&per_page=1'
+        f'{workflow}/runs?status=completed&per_page=1'
     )
     headers = {'User-Agent': _USER_AGENT, 'Accept': 'application/vnd.github+json'}
     token = os.environ.get('GITHUB_TOKEN')
@@ -181,7 +192,10 @@ def _looks_like_svg(body: bytes) -> bool:
         timeout page is HTML and fails this test.
     """
     head = body[:512].lstrip().lower()
-    return head.startswith(b'<?xml') or head.startswith(b'<svg') or b'<svg' in head
+    # Require the document to OPEN as SVG/XML. A substring match on '<svg'
+    # anywhere in the head would accept an HTML error page that embeds an
+    # inline SVG logo, which is exactly the broken-badge case to reject.
+    return head.startswith(b'<?xml') or head.startswith(b'<svg')
 
 
 def _fetch_svg(
@@ -211,7 +225,8 @@ def _fetch_svg(
                 with urllib.request.urlopen(req, timeout=timeout) as resp:
                     body = resp.read()
                     ctype = resp.headers.get('Content-Type', '')
-                if _looks_like_svg(body) and ('svg' in ctype.lower() or _looks_like_svg(body)):
+                ctype_l = ctype.lower()
+                if _looks_like_svg(body) and ('svg' in ctype_l or 'xml' in ctype_l):
                     return body, url
             except (urllib.error.URLError, TimeoutError, OSError):
                 pass
