@@ -7,10 +7,10 @@ seed = 42
 logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "scratch/bayesopt_infer_tr/"
+output = "bayesopt_infer_sn/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "output/scratch/bayesopt_tr/init_coupler.toml"
+ref_config = "output/bayesopt_sn/init_coupler.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = 3        # Number of random samples if starting from scratch.

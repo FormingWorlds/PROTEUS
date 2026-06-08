@@ -31,9 +31,9 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "scratch/bayesopt_sn"   # SN
-        # path        = "scratch/bayesopt_se"   # SE
-        # path        = "scratch/bayesopt_tr"  # TR
+        path        = "bayesopt_sn"   # SN
+        # path        = "bayesopt_se"   # SE
+        # path        = "bayesopt_tr"  # TR
 
         logging     = "INFO"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
@@ -82,8 +82,8 @@ version = "2.0"
             enabled = true
             minimum = 1.0e3      # model will certainly run to t > minimum [yr]
 
-            maximum = 1e9   # SN
-            # maximum = 2e9   # SE
+            maximum = 6e8   # SN
+            # maximum = 1.5e9   # SE
             # maximum = 1e8   # TR
 
         # solidification
@@ -98,8 +98,8 @@ version = "2.0"
             rtol    = 1e-3       # relative tolerance
 
         [params.stop.escape]
-            enabled = false
-            p_stop  = 5.0        # Stop surface pressure is less than this value
+            enabled = true
+            p_stop  = 1.0        # Stop surface pressure is less than this value
 
         # disintegration
         [params.stop.disint]
@@ -212,7 +212,7 @@ version = "2.0"
     surf_state      = "fixed"   # surface scheme: "mixed_layer" | "fixed" | "skin"
     surf_greyalbedo = 0.1       # surface grey albedo
     albedo_pl       = 0.0   	# Enforced input value of bond albedo; float (0 to 1) or str (path to CSV)
-    rayleigh        = true     # enable rayleigh scattering
+    rayleigh        = false     # enable rayleigh scattering
     tmp_minimum     = 0.5       # temperature floor on solver
     tmp_maximum     = 5000.0    # temperature ceiling on solver
 
@@ -224,13 +224,13 @@ version = "2.0"
         p_obs           = 0.02          # bar, level probed in transmission
         # spectral_group  = "Dayspring"   # which gas opacities to include
         # spectral_bands  = "16"          # how many spectral bands?
-        spectral_file   = "output/scratch/runtime.sf"          # optional path to AGNI spectral file; if None, will use spectral_group and spectral_bands to find file in FWL data directory
+        spectral_file   = "output/runtime.sf"          # optional path to AGNI spectral file; if None, will use spectral_group and spectral_bands to find file in FWL data directory
         # spectral_file   = "greygas"          # optional path to AGNI spectral file; if None, will use spectral_group and spectral_bands to find file in FWL data directory
         num_levels      = 35            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = true          # solve for energy-conserving atmosphere profile
-        solution_atol   = 1.0           # solver absolute tolerance
+        solution_atol   = 9.0           # solver absolute tolerance
         solution_rtol   = 0.5          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         surf_roughness  = 1e-3          # characteristic surface roughness [m]
@@ -246,7 +246,7 @@ version = "2.0"
         sens_heat       = true          # include sensible heat flux near surface, with TKE scheme
         real_gas        = false         # use real-gas equations of state
         thermo_functions = false         # use temperature-dependent thermodynamic variables?
-        psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode
+        psurf_thresh    = 0.01           # bar, surface pressure where we switch to 'transparent' mode
         dx_max_ini      = 300.0         # initial maximum temperature step [kelvin] allowed by solver
         dx_max          = 100.0          # maximum temperature step [kelvin] allowed by solver
         max_steps       = 70            # max steps allowed by solver during each iteration
@@ -390,15 +390,15 @@ version = "2.0"
 
     # Set initial volatile inventory by planetary element abundances if [initial = 'elements']
     [delivery.elements]
-        H_oceans      = 600.0 # SN
-        # H_oceans      = 200.0  # SE
+        H_oceans      = 650.0 # SN
+        # H_oceans      = 450.0  # SE
         # H_oceans      = 50.0   # TR
 
         CH_ratio    = 0.5       # SN
         # CH_ratio    = 2.0     # SE
         # CH_ratio    = 5.0     # TR
 
-        SH_ratio    = 2.0      # SN
+        SH_ratio    = 2.5      # SN
         # SH_ratio    = 1.0    # SE
         # SH_ratio    = 2.0    # TR
 

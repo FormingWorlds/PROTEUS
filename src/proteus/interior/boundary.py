@@ -662,16 +662,21 @@ class BoundaryRunner:
             self.thermal_rhs,
             t_span,
             y0,
-            method='LSODA',
+            method='BDF',
             rtol=self.rtol,
             atol=self.atol,
             dense_output=True,
             events=tsurf_change_event,
         )
 
+        # time-step
+        t_final = sol.t[-1]
+        dt_actual = t_final - t_span[0]
+        sim_time = t_final / secs_per_year  # convert back to years
+
         # Check reason for solver termination
         if sol.status == 1:
-            log.info("Surface temperature change triggered time-step trucation")
+            log.info(f"Tsurf change truncated timestep: dt={dt_actual / secs_per_year:.1e} years")
         elif sol.status == -1:
             log.warning("Boundary layer interior failed to integrate - solver error")
             log.warning(f"    solver msg: {sol.message}")
@@ -679,10 +684,8 @@ class BoundaryRunner:
         # Extract results
         T_p_final = sol.y[0, -1]
         T_surf_final = sol.y[1, -1]
-        t_final = sol.t[-1]
         phi_final = self.melt_fraction(T_p_final)
         r_s_final = self.r_s(T_p_final)
-        sim_time = t_final / secs_per_year  # convert back to years
         phi_final = self.melt_fraction(T_p_final)
         visc_final = self.viscosity(T_p_final, T_surf_final, phi_final)
         f_radio_final = self.radioactive_heating(t_final) * self.mantle_mass
