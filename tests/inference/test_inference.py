@@ -46,18 +46,10 @@ def inference_run():
 
 # The three tests below run the full inference pipeline as a child PROTEUS
 # subprocess. Each evaluation takes ~75 s wall (~5 min for 4 evaluations),
-# which exceeds the smoke tier's per-test budget. Tagged `slow` so they
-# run on-demand without gating PR CI; the unit-tier test below
-# (test_run_inference_rejects_too_many_workers) covers the fast-feedback
-# portion of the inference contract.
+# which exceeds the smoke tier's per-test budget. Tagged as slow.
 #
-# The earlier `test_inference_smoke_run` was removed: its only assertion
-# was `assert inference_run is None`, which is trivially true because the
-# fixture returns None implicitly. The three remaining tests check actual
-# output files, which is the meaningful evidence that the run completed.
-
-
 @pytest.mark.slow
+@pytest.mark.timeout(3600)
 def test_inference_smoke_config(inference_run):
     """A finished inference run leaves a copy of its config TOML
     (``copy.infer.toml``) and a bit-identical copy of the reference base
@@ -68,6 +60,7 @@ def test_inference_smoke_config(inference_run):
 
 
 @pytest.mark.slow
+@pytest.mark.timeout(3600)
 def test_inference_smoke_init(inference_run):
     """The inference run produces an ``init.csv`` containing the
     Halton-sampled initial design, with the canonical ``y`` objective
@@ -80,6 +73,7 @@ def test_inference_smoke_init(inference_run):
 
 
 @pytest.mark.slow
+@pytest.mark.timeout(3600)
 def test_inference_smoke_output(inference_run):
     """The inference run produces a ``data.csv`` with at least three rows
     (initial design + BO iterations) and writes the two canonical result

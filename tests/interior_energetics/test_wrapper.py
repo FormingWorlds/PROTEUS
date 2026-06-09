@@ -3260,9 +3260,11 @@ def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
 
 
 @pytest.mark.unit
-def test_run_interior_boundary_with_atmos_r():
-    """The boundary backend requires the atmosphere struct to derive cp;
-    passing None
+@pytest.mark.physics_invariant
+def test_run_interior_boundary_with_atmos_equals_none():
+    """The boundary backend does not require atmos_o. After the call, positivity invariants on
+    T_magma and Phi_global must hold, and radiogenic heating must remain
+    zero because heat_radiogenic is False in the config.
     """
     from proteus.interior_energetics.wrapper import run_interior
 
@@ -3274,8 +3276,11 @@ def test_run_interior_boundary_with_atmos_r():
 
     run_interior({}, config, hf_all, hf_row, interior_o, atmos_o=None, verbose=False)
 
-    # F_radio was calculated to be zero
-    assert hf_row['F_radio'] == pytest.approx(0.0, rel=1e-12)
+    # Radiogenic heating is disabled in config; must stay zero.
+    assert hf_row['F_radio'] == pytest.approx(0.0, abs=1e-12)
+    # Physical positivity and bounds invariants.
+    assert hf_row['T_magma'] > 0.0, 'T_magma must be positive after boundary step'
+    assert 0.0 <= hf_row['Phi_global'] <= 1.0, 'melt fraction must lie in [0, 1]'
 
 
 # ============================================================================

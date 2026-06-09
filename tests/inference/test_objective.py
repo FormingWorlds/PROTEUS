@@ -284,7 +284,12 @@ def test_eval_obj_mixes_log_and_linear_variables(monkeypatch):
 
 @pytest.mark.unit
 def test_eval_obj_handles_zero_true_value():
-    """Zero-valued observables should use an offset denominator."""
+    """Zero-valued observables should use an EPS_CLIP offset denominator
+    to avoid division-by-zero.
+
+    Discrimination: a denominator of exactly 0.0 would produce +inf or NaN;
+    the EPS_CLIP offset must make the result finite.
+    """
     sim = {'R_obs': 2.0}
     tru = {'R_obs': 0.0}
 
@@ -296,6 +301,9 @@ def test_eval_obj_handles_zero_true_value():
         torch.tensor([[expected_sq + objective_mod.EPS_CLIP]], dtype=torch.double)
     )
     assert value.item() == pytest.approx(expected.item())
+    # Without EPS_CLIP the result would be +inf or NaN; finite output
+    # is the key contract of the zero-denominator guard.
+    assert torch.isfinite(value).all()
 
 
 @pytest.mark.unit
