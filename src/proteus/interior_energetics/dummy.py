@@ -48,10 +48,17 @@ def run_dummy_int(
     output = {}
     output['F_int'] = hf_row['F_atm']
 
+    # Core radius from the structure solve, consistent with the boundary
+    # backend. config.core_frac is a mass fraction in 'mass' mode, so it must
+    # not be reused as a radius fraction here; the structure's R_core already
+    # encodes the realized core radius for either mode.
+    R_core = hf_row.get('R_core', config.interior_struct.core_frac * hf_row['R_int'])
+    core_radius_frac = R_core / hf_row['R_int']
+
     # Interior structure
     output['M_mantle'] = calculate_simple_mantle_mass(
         hf_row['R_int'],
-        config.interior_struct.core_frac,
+        core_radius_frac,
         config.interior_energetics.dummy.mantle_rho,
     )
 
@@ -120,9 +127,8 @@ def run_dummy_int(
     output['Phi_global_vol'] = output['Phi_global']
     output['M_mantle_liquid'] = output['M_mantle'] * output['Phi_global']
     output['M_mantle_solid'] = output['M_mantle'] - output['M_mantle_liquid']
-    output['RF_depth'] = output['Phi_global'] * (1 - config.interior_struct.core_frac)
+    output['RF_depth'] = output['Phi_global'] * (1 - core_radius_frac)
     output['boundary_layer_thickness'] = config.atmos_clim.surface_d
-    R_core = config.interior_struct.core_frac * hf_row['R_int']
 
     # Store arrays
     interior_o.phi = np.array([output['Phi_global']])

@@ -373,6 +373,42 @@ def test_run_dummy_int_initialization():
 
 
 @pytest.mark.unit
+def test_run_dummy_int_rf_depth_uses_structure_core_radius():
+    """RF_depth uses the structure-derived core radius fraction R_core/R_int,
+    consistent with the boundary backend, rather than config.core_frac (which
+    is a mass fraction in 'mass' mode). With melt fraction 1, RF_depth equals
+    1 - R_core/R_int.
+    """
+    # core_frac=0.30 in config, but the structure puts the core at R_core/R_int
+    # = 0.5; these differ so the test discriminates which one RF_depth uses.
+    config = _create_mock_config(tsurf_init=3000.0, core_frac=0.30)
+    dirs = {}
+    hf_row = {
+        'F_atm': 100.0,
+        'R_int': 6.0e6,
+        'R_core': 3.0e6,  # R_core/R_int = 0.5
+        'M_core': 2e24,
+        'P_surf': 1e5,
+        'Time': 0.0,
+        'T_magma': 0.0,
+    }
+    hf_all = pd.DataFrame()
+
+    interior_o = Interior_t(nlev_b=2)
+    interior_o.ic = 1
+    interior_o.tides = [0.0]
+
+    _, output = run_dummy_int(config, dirs, hf_row, hf_all, interior_o)
+
+    # tsurf_init (3000) is above the liquidus (2500), so the mantle is molten.
+    assert output['Phi_global'] == pytest.approx(1.0)
+    # RF_depth uses the structure radius fraction (0.5): 1 - 0.5 = 0.5.
+    assert output['RF_depth'] == pytest.approx(0.5)
+    # Discrimination: the old config.core_frac path (0.30) would give 0.70.
+    assert abs(output['RF_depth'] - (1.0 - 0.30)) > 0.1
+
+
+@pytest.mark.unit
 def test_run_dummy_int_melt_fraction_fully_solid():
     """Test melt fraction (phi) when T_magma < T_solidus.
 
