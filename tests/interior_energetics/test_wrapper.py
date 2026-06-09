@@ -3261,8 +3261,8 @@ def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
 
 @pytest.mark.unit
 def test_run_interior_boundary_with_atmos_r():
-    """The boundary backend requires the atmosphere struct to derive cp; 
-    passing None 
+    """The boundary backend requires the atmosphere struct to derive cp;
+    passing None
     """
     from proteus.interior_energetics.wrapper import run_interior
 
