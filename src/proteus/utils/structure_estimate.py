@@ -18,13 +18,50 @@ from __future__ import annotations
 
 import numpy as np
 
-from proteus.utils.constants import M_earth, const_G
+from proteus.utils.constants import M_earth, const_G, element_mmw
+
+
+def _nl20_radius_fraction(x_cmf: float, m_ratio: float, x_fem: float) -> float:
+    """Realized core radius fraction R_c/R_p under NL20 Eqs. 5 and 9.
+
+    The 1e3 km->m factors and the m_ratio exponents do not fully cancel
+    (R_c scales as m^0.266 and R_p as m^0.282), so the ratio retains a weak
+    mass dependence; that is why the inversion below needs the planet mass.
+    """
+    x_fe = x_fem + x_cmf * (1.0 - x_fem)
+    R_p = (7030.0 - 1840.0 * x_fe) * m_ratio**0.282
+    R_c = 4850.0 * x_cmf**0.328 * m_ratio**0.266
+    return R_c / R_p
+
+
+def _x_cmf_for_radius_fraction(radius_frac: float, m_ratio: float, x_fem: float) -> float:
+    """Invert NL20 for the core mass fraction whose realized R_c/R_p equals the
+    requested core radius fraction.
+
+    R_c/R_p increases monotonically with x_cmf (R_c grows via Eq. 9 while R_p
+    shrinks because the iron weight fraction rises in Eq. 5), so a bracketed
+    bisection converges. A requested fraction outside the achievable NL20 range
+    is clamped to the nearest bound.
+    """
+    lo, hi = 1.0e-4, 0.99
+    if _nl20_radius_fraction(lo, m_ratio, x_fem) >= radius_frac:
+        return lo
+    if _nl20_radius_fraction(hi, m_ratio, x_fem) <= radius_frac:
+        return hi
+    for _ in range(60):
+        mid = 0.5 * (lo + hi)
+        if _nl20_radius_fraction(mid, m_ratio, x_fem) > radius_frac:
+            hi = mid
+        else:
+            lo = mid
+    return 0.5 * (lo + hi)
 
 
 def iron_fractions(
     core_frac: float,
     core_frac_mode: str,
     fe_mantle: float = 0.1,
+    mass_tot_M_earth: float = 1.0,
 ) -> tuple[float, float, float]:
     """Compute iron fractions from core fraction and mantle iron number.
 
@@ -41,6 +78,10 @@ def iron_fractions(
     fe_mantle : float
         Mantle iron number ``#Fe_M`` (fraction of iron-bearing minerals).
         Default 0.1.
+    mass_tot_M_earth : float
+        Planet mass in Earth masses. Only used in ``'radius'`` mode, where the
+        core mass fraction is found so the realized NL20 R_c/R_p matches
+        ``core_frac`` (the ratio depends weakly on mass). Default 1.0.
 
     Returns
     -------
@@ -61,10 +102,12 @@ def iron_fractions(
     if core_frac_mode not in ('mass', 'radius'):
         raise ValueError(f"core_frac_mode must be 'mass' or 'radius'; got {core_frac_mode!r}")
 
-    m_fe = 55.845
-    m_mg = 24.305
-    m_si = 28.0855
-    m_o = 15.999
+    # Molar masses from the shared table (kg/mol); x_fem is a ratio, so the
+    # unit scale cancels and only the element values matter.
+    m_fe = element_mmw['Fe']
+    m_mg = element_mmw['Mg']
+    m_si = element_mmw['Si']
+    m_o = element_mmw['O']
 
     x_fem = (2 * fe_mantle * m_fe) / (
         2 * ((1 - fe_mantle) * m_mg + fe_mantle * m_fe) + m_si + 4 * m_o
@@ -73,8 +116,10 @@ def iron_fractions(
     if core_frac_mode == 'mass':
         x_cmf = core_frac
     else:
-        x_cmf = core_frac**2.5
-        x_cmf = max(0.01, min(x_cmf, 0.80))
+        # Choose the core mass fraction so the NL20 core radius fraction
+        # R_c/R_p equals the requested core_frac, honouring the user's radial
+        # CMF rather than approximating it with a fixed power law.
+        x_cmf = _x_cmf_for_radius_fraction(core_frac, mass_tot_M_earth, x_fem)
 
     x_fe = x_fem + x_cmf * (1 - x_fem)
     return x_cmf, x_fe, x_fem
@@ -122,7 +167,7 @@ def estimate_P_cmb_NL20(
     if mass_tot_M_earth <= 0:
         raise ValueError(f'mass_tot_M_earth must be > 0; got {mass_tot_M_earth!r}')
 
-    x_cmf, x_fe, _ = iron_fractions(core_frac, core_frac_mode, fe_mantle)
+    x_cmf, x_fe, _ = iron_fractions(core_frac, core_frac_mode, fe_mantle, mass_tot_M_earth)
     M_p = mass_tot_M_earth * M_earth
     m_ratio = mass_tot_M_earth
 

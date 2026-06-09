@@ -44,34 +44,42 @@ class TestIronFractions:
         assert 0.0 < x_fem < 1.0
         assert x_fem < x_fe < 1.0
 
-    def test_radius_mode_collapses_via_power_law(self):
-        """In ``'radius'`` mode, ``iron_fractions`` maps the input
-        core-radius fraction to CMF via ``cf**2.5`` (the NL20 power-law
-        approximation for converting radius to mass fraction).
+    def test_radius_mode_honours_requested_core_radius_fraction(self):
+        """In ``'radius'`` mode, ``iron_fractions`` chooses the core mass
+        fraction so the realized NL20 core radius fraction R_c/R_p equals the
+        requested ``core_frac``, instead of approximating it with a fixed
+        power law.
         """
-        from proteus.utils.structure_estimate import iron_fractions
+        from proteus.utils.structure_estimate import _nl20_radius_fraction, iron_fractions
 
-        x_cmf, _, _ = iron_fractions(0.55, 'radius')
-        assert x_cmf == pytest.approx(0.55**2.5, rel=1e-12)
-        # Exponent-error discrimination: a regression that used the
-        # mass-mode passthrough (exponent 1.0) would give 0.55 here,
-        # well separated from the correct 0.55**2.5 ~ 0.224.
-        assert abs(x_cmf - 0.55) > 0.1
-        # A regression that used the cube (exponent 3.0) would give
-        # 0.55**3 = 0.166, also discriminable.
-        assert abs(x_cmf - 0.55**3) > 0.01
+        x_cmf, _, x_fem = iron_fractions(0.6, 'radius', mass_tot_M_earth=1.0)
+        realized = _nl20_radius_fraction(x_cmf, 1.0, x_fem)
+        # The requested radius fraction is honoured to root-find precision.
+        assert realized == pytest.approx(0.6, abs=1e-4)
+        # Discrimination: the retired cf**2.5 heuristic set x_cmf=0.6**2.5=0.279,
+        # which realizes R_c/R_p~0.497; the inversion must land far from that.
+        assert abs(realized - 0.497) > 0.05
+        # The chosen mass fraction is neither the radius-as-mass passthrough
+        # (0.6) nor the old heuristic value (0.279).
+        assert abs(x_cmf - 0.6) > 0.05
+        assert abs(x_cmf - 0.6**2.5) > 0.05
 
-    def test_radius_mode_clamps_to_window(self):
-        """``'radius'`` mode clamps the resulting CMF to the [0.01, 0.80]
-        window so the NL20 calibration band is not violated at the
-        physical extremes (Mercury-like to mantle-stripped).
+    def test_radius_mode_clamps_unreachable_fraction_to_unit_interval(self):
+        """A requested radius fraction beyond the achievable NL20 range clamps
+        to the nearest core-mass-fraction bound, and the result stays in (0, 1)
+        across the input range (replacing the old [0.01, 0.80] CMF window).
         """
-        from proteus.utils.structure_estimate import iron_fractions
+        from proteus.utils.structure_estimate import _nl20_radius_fraction, iron_fractions
 
-        x_cmf_lo, _, _ = iron_fractions(0.05, 'radius')
-        x_cmf_hi, _, _ = iron_fractions(0.99, 'radius')
-        assert x_cmf_lo == pytest.approx(0.01, rel=1e-12)
-        assert x_cmf_hi <= 0.80
+        # NL20 caps R_c/R_p near ~0.93, so a near-unity request is unreachable
+        # and clamps to the upper x_cmf bound.
+        x_hi, _, x_fem = iron_fractions(0.99, 'radius', mass_tot_M_earth=1.0)
+        assert 0.0 < x_hi < 1.0
+        assert _nl20_radius_fraction(x_hi, 1.0, x_fem) < 0.99
+        # A small requested fraction yields a small but positive core; the
+        # mapping is monotonic, so it sits below the near-unity case.
+        x_lo, _, _ = iron_fractions(0.05, 'radius', mass_tot_M_earth=1.0)
+        assert 0.0 < x_lo < x_hi
 
     @pytest.mark.parametrize('bad_cf', [-0.1, 0.0, 1.0, 1.5])
     def test_invalid_core_frac_raises(self, bad_cf):

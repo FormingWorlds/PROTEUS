@@ -65,6 +65,7 @@ def solve_dummy_structure(
     x_cmf, x_fe, x_fem = _iron_fractions(
         config.interior_struct.core_frac,
         config.interior_struct.core_frac_mode,
+        mass_tot_M_earth=m_ratio,
     )
     log.debug(
         'Dummy structure: M_p=%.4f M_earth, core_frac=%.3f (%s), x_cmf=%.3f',
@@ -136,6 +137,21 @@ def solve_dummy_structure(
         g_surf,
         P_cmb * 1e-9,
     )
+
+    # The dummy (Noack & Lasbleis) structure derives core density from the core
+    # mass fraction and planet mass, so a numeric core_density is not applied
+    # here (unlike core_heatcap above). Warn rather than silently diverge from
+    # the configured value.
+    cfg_density = getattr(config.interior_struct, 'core_density', 'self')
+    if cfg_density != 'self' and not np.isclose(float(cfg_density), rho_c, rtol=1e-3):
+        log.warning(
+            'Configured core_density=%.0f kg/m^3 is not applied by the dummy '
+            '(Noack & Lasbleis) structure, which derives rho_core=%.0f kg/m^3 '
+            "from the core mass fraction and planet mass. Set core_density='self' "
+            "or use interior_struct.module='zalmoxis' to control it.",
+            float(cfg_density),
+            rho_c,
+        )
 
     # --- Build radial profiles on a mesh ---
 
