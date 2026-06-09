@@ -22,7 +22,6 @@ from proteus.config._config import (
     instmethod_evolve,
     janus_escape_atmosphere,
     observe_resolved_atmosphere,
-    prevent_warming_advisory,
     satellite_evolve,
     spada_zephyrus,
     tides_enabled_orbit,
@@ -286,65 +285,6 @@ def test_tides_enabled_orbit_requires_orbit_module():
     # raised on heat_tidal=True (ignoring orbit.module) would fail here.
     inst.orbit.module = 'lovepy'
     assert tides_enabled_orbit(inst, None, None) is None
-
-
-def _ns_for_prevent_warming(prevent_warming: bool, module: str = 'aragog'):
-    """Build the minimal SimpleNamespace shape that prevent_warming_advisory reads.
-
-    The validator now only inspects ``planet.prevent_warming``. The
-    ``module`` argument is kept on the helper for callsite parity with the
-    pre-Φ_vol-deletion test suite.
-    """
-    return SimpleNamespace(
-        planet=SimpleNamespace(prevent_warming=prevent_warming),
-        interior_energetics=SimpleNamespace(module=module),
-    )
-
-
-@pytest.mark.unit
-def test_prevent_warming_advisory_silent_when_disabled(caplog):
-    """prevent_warming = false: validator is a no-op for every interior module."""
-    import logging
-
-    caplog.set_level(logging.WARNING, logger='fwl.proteus.config._config')
-    for module in ('aragog', 'dummy', 'spider'):
-        caplog.clear()
-        inst = _ns_for_prevent_warming(prevent_warming=False, module=module)
-        prevent_warming_advisory(inst, None, None)
-        assert caplog.records == [], f'unexpected warning emitted for module={module}'
-
-    # Discrimination: with prevent_warming=True the validator MUST emit a
-    # warning. Pinning the inverse branch catches a regression that silenced
-    # the warning unconditionally (which would have made the disabled-path
-    # assertion above trivially pass for the wrong reason).
-    caplog.clear()
-    inst_on = _ns_for_prevent_warming(prevent_warming=True, module='aragog')
-    prevent_warming_advisory(inst_on, None, None)
-    assert len(caplog.records) == 1
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize('module', ['aragog', 'spider', 'dummy'])
-def test_prevent_warming_advisory_warns_when_enabled(caplog, module):
-    """prevent_warming = true: validator emits exactly one base warning.
-
-    Wording must reference the monotonic-cooling assumption and the
-    F_atm = F_int clamp-consistency pitfall. The earlier
-    dilatation-specific STRONG WARNING was retired together with the
-    Φ_vol source term: that source was a divergence double-count and is
-    now deleted, so the heat-pump-vs-clamp interaction can no longer
-    occur. The warning is now module-independent.
-    """
-    import logging
-
-    caplog.set_level(logging.WARNING, logger='fwl.proteus.config._config')
-    inst = _ns_for_prevent_warming(prevent_warming=True, module=module)
-    prevent_warming_advisory(inst, None, None)
-    assert len(caplog.records) == 1, 'expected exactly one warning record'
-    msg = caplog.records[0].getMessage()
-    assert 'monotonically decrease' in msg
-    assert 'F_atm = F_int' in msg
-    assert 'STRONG WARNING' not in msg, 'STRONG WARNING was tied to the deleted dilatation gate'
 
 
 @pytest.mark.unit
