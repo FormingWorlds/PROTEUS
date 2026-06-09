@@ -3259,24 +3259,49 @@ def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
 
 
 @pytest.mark.unit
-def test_run_interior_boundary_without_atmos_raises_value_error():
-    """The boundary backend requires the atmosphere struct; passing None
-    must raise ValueError before any solver call.
+def test_run_interior_boundary_tolerates_missing_atmos():
+    """Before the first atmosphere solve (and in the structure-solve calls)
+    atmos_o is None. The boundary backend no longer aborts: it dispatches and
+    relies on the configured fallback atmospheric heat capacity, which is inert
+    at t=0 (dt=0). Discrimination: BoundaryRunner is still constructed, with
+    atmos_o=None passed through, so the run proceeds rather than raising.
     """
     from proteus.interior_energetics.wrapper import run_interior
 
     config = _make_run_interior_config(prevent_warming=False, module='boundary')
-    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    out = {
+        'T_magma': 3010.0,
+        'T_surf': 2810.0,
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
 
     interior_o = MagicMock(spec=Interior_t)
     interior_o.ic = 2
+    interior_o.dt = 10.0
 
-    saved_T = hf_row['T_magma']
-    with pytest.raises(ValueError, match='Boundary interior backend requires'):
+    boundary_runner = MagicMock()
+    boundary_runner.run_solver.return_value = (110.0, out)
+    with (
+        patch(
+            'proteus.interior_energetics.boundary.BoundaryRunner',
+            return_value=boundary_runner,
+        ) as mock_runner,
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        # Must NOT raise the old "requires the atmosphere struct" guard.
         run_interior({}, config, hf_all, hf_row, interior_o, atmos_o=None, verbose=False)
-    # hf_row was not mutated because the validator fired before any
-    # backend dispatch.
-    assert hf_row['T_magma'] == pytest.approx(saved_T, rel=1e-12)
+
+    # The backend was dispatched, receiving atmos_o=None as its last argument.
+    assert mock_runner.call_count == 1
+    assert mock_runner.call_args.args[-1] is None
+    # The run produced an updated state (T_magma jump 10 K < tmagma_atol 20).
+    assert hf_row['T_magma'] == pytest.approx(3010.0)
 
 
 # ============================================================================
