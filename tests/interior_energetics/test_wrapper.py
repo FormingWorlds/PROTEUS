@@ -3272,7 +3272,6 @@ def test_run_interior_boundary_with_atmos_r():
     interior_o = MagicMock(spec=Interior_t)
     interior_o.ic = 2
 
-    saved_T = hf_row['T_magma']
     run_interior({}, config, hf_all, hf_row, interior_o, atmos_o=None, verbose=False)
 
     # F_radio was calculated to be zero

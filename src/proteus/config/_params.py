@@ -318,7 +318,7 @@ class StopClock:
     """
 
     enabled: bool = field(default=False)
-    maximum: float = field(default=60 * 60 * 24, validator=gt(0))
+    maximum: float = field(default=60 * 60 * 24 * 7, validator=gt(0))
 
 
 @define
