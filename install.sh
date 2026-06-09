@@ -144,12 +144,23 @@ fix_conda_mpi_builds() {
 # no lib/julia/sys.so). Ask the running Julia for its actual BINDIR; fall back
 # to the launcher only if that probe fails.
 resolve_real_julia_exe() {
-    local bindir
-    bindir="$(julia --startup-file=no -e 'print(Sys.BINDIR)' 2>/dev/null || true)"
+    # Optional $1 is a juliaup channel selector like "+1.11"; empty uses the
+    # default channel.
+    local sel="${1:-}" bindir
+    bindir="$(julia $sel --startup-file=no -e 'print(Sys.BINDIR)' 2>/dev/null || true)"
     if [ -n "$bindir" ] && [ -x "$bindir/julia" ]; then
         printf '%s\n' "$bindir/julia"
     else
         command -v julia 2>/dev/null || true
+    fi
+}
+
+# Remove the installer-owned juliacall project so the next import re-resolves
+# the Julia environment. Only the path the installer itself owns, never an
+# externally set PYTHON_JULIAPKG_PROJECT.
+reset_julia_env() {
+    if [ -n "${CONDA_PREFIX:-}" ] && [ -d "${CONDA_PREFIX}/julia_env" ]; then
+        rm -rf "${CONDA_PREFIX}/julia_env"
     fi
 }
 
@@ -193,33 +204,30 @@ fix_conda_openssl() {
         warn "  $(python3 -c 'import ssl; print(ssl.OPENSSL_VERSION)' 2>/dev/null)"
         return 1
     fi
-    # Drop the installer-owned juliacall project so the next import re-resolves
-    # OpenSSL_jll against the upgraded OpenSSL. Only remove the path the
-    # installer itself owns, never an externally set PYTHON_JULIAPKG_PROJECT.
-    if [ -n "${CONDA_PREFIX:-}" ] && [ -d "${CONDA_PREFIX}/julia_env" ]; then
-        rm -rf "${CONDA_PREFIX}/julia_env"
-    fi
+    reset_julia_env
 }
 
 # When Python links OpenSSL < 3.5, juliacall can only resolve its environment on
 # Julia <= 1.11, which still ships OpenSSL_jll for the 3.0 series. juliacall
 # 0.9.35 supports Julia 1.10.3-1.11 and AGNI runs on 1.11, so when juliaup
-# manages Julia this is the non-destructive fix: point the bridge at 1.11.
+# manages Julia, point only the bridge (PYTHON_JULIAPKG_EXE) at a 1.11 binary.
+# The user's global default Julia is left untouched.
 fix_julia_111_for_openssl() {
     command_exists juliaup || return 1
-    info "Switching the juliacall Julia to 1.11 (matches OpenSSL < 3.5)..."
+    info "Pointing the juliacall Julia at 1.11 (matches OpenSSL < 3.5)..."
     juliaup add 1.11 </dev/null 2>&1 || return 1
-    juliaup default 1.11 </dev/null 2>&1 || return 1
-    # Point juliacall at the real 1.11 binary (not the launcher shim) so it can
-    # find sys.so, and persist the change for later sessions.
-    if command_exists julia; then
-        export PYTHON_JULIAPKG_EXE="$(resolve_real_julia_exe)"
-        append_export_to_rc "PYTHON_JULIAPKG_EXE" "$PYTHON_JULIAPKG_EXE" "$RC_FILE"
+    # Resolve the real 1.11 binary via the channel selector, without changing
+    # the user's default Julia. The real binary (not the launcher shim) lets
+    # juliacall find sys.so beside it.
+    local exe
+    exe="$(resolve_real_julia_exe '+1.11')"
+    if [ -z "$exe" ] || [ "$exe" = "$(command -v julia)" ]; then
+        warn "Could not locate the Julia 1.11 binary after 'juliaup add 1.11'."
+        return 1
     fi
-    # Re-resolve from scratch against Julia 1.11.
-    if [ -n "${CONDA_PREFIX:-}" ] && [ -d "${CONDA_PREFIX}/julia_env" ]; then
-        rm -rf "${CONDA_PREFIX}/julia_env"
-    fi
+    export PYTHON_JULIAPKG_EXE="$exe"
+    append_export_to_rc "PYTHON_JULIAPKG_EXE" "$exe" "$RC_FILE"
+    reset_julia_env
 }
 
 # Verify that "import proteus" works. The import is the first place the Julia
@@ -623,14 +631,17 @@ info "Julia: OK"
 norm_arch() { case "$1" in arm64|aarch64) echo arm ;; x86_64|amd64) echo x86 ;; *) echo "$1" ;; esac; }
 py_arch=$(python3 -c "import platform; print(platform.machine())" 2>/dev/null || true)
 jl_arch=$(julia --startup-file=no -e 'print(String(Sys.ARCH))' 2>/dev/null || true)
-if [ -n "$py_arch" ] && [ -n "$jl_arch" ] && [ "$(norm_arch "$py_arch")" != "$(norm_arch "$jl_arch")" ]; then
-    fail "Python ($py_arch) and Julia ($jl_arch) are built for different CPU architectures."
-    warn "juliacall loads Julia into the Python process, so the two must match."
-    warn "On Apple Silicon this usually means an Intel (x86_64) conda. Install a native"
-    warn "arm64 conda (e.g. miniforge for Apple Silicon), recreate the proteus env, and"
-    warn "re-run install.sh. A native arm64 conda also provides OpenSSL >= 3.5."
-    die "Python and Julia CPU architectures do not match."
-fi
+# Only flag a recognized arm-vs-x86 mismatch; an unrecognized arch fails open.
+case "$(norm_arch "$py_arch") $(norm_arch "$jl_arch")" in
+    "arm x86"|"x86 arm")
+        fail "Python ($py_arch) and Julia ($jl_arch) are built for different CPU architectures."
+        warn "juliacall loads Julia into the Python process, so the two must match. Either:"
+        warn "  - use a Python matching Julia ($jl_arch): on Apple Silicon, a native arm64"
+        warn "    conda-forge env (miniforge), which also provides OpenSSL >= 3.5; or"
+        warn "  - install a Julia matching Python ($py_arch) via juliaup."
+        die "Python and Julia CPU architectures do not match."
+        ;;
+esac
 
 # ===================================================================
 # Phase 3: Environment variables
