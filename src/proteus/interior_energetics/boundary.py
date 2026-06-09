@@ -48,7 +48,11 @@ class BoundaryRunner:
         self.m_atm = hf_row.get('M_atm', 0.0)  # Atmospheric mass, default to 0 if not available
         self.f_atm = hf_row['F_atm']
 
-        cp_layer = getattr(getattr(atmos_o, '_atm', None), 'layer_cp', None)
+        if atmos_o is not None:
+            cp_layer = getattr(getattr(atmos_o, '_atm', None), 'layer_cp', None)
+        else:
+            cp_layer = None
+
         if cp_layer is not None:
             cp_arr = np.asarray(cp_layer, dtype=float).ravel()
             valid = np.isfinite(cp_arr)

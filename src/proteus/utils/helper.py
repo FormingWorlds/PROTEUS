@@ -175,7 +175,7 @@ def CommentFromStatus(status: int):
         case 10:
             desc = 'Completed (solidified)'
         case 11:
-            desc = 'Completed (maximum clock time)'
+            desc = 'Completed (maximum clock runtime)'
         case 12:
             desc = 'Completed (maximum iterations)'
         case 13:

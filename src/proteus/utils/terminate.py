@@ -29,7 +29,7 @@ def print_termination_criteria(config: Config):
     _print_criterion(config.params.stop.escape.enabled, 'Volatile escape')
     _print_criterion(config.params.stop.time.enabled, 'Maximum time')
     _print_criterion(config.params.stop.iters.enabled, 'Maximum loops')
-    _print_criterion(config.params.stop.clock.enabled, 'Maximum clock time')
+    _print_criterion(config.params.stop.clock.enabled, 'Maximum runtime')
 
     # Always enabled:
     _print_criterion(True, 'Keepalive file')
@@ -196,13 +196,13 @@ def _check_miniter(handler: Proteus, finished: bool) -> bool:
     return True
 
 
-# Maximum clock time
+# Maximum clock runtime
 def _check_clock(handler: Proteus) -> bool:
-    log.debug('Check maximum clock time')
+    log.debug('Check maximum clock runtime')
 
     if handler.hf_row['runtime'] >= handler.config.params.stop.clock.maximum:
         UpdateStatusfile(handler.directories, 11)
-        _msg_termination('Maximum clock time reached')
+        _msg_termination('Maximum clock runtime reached')
         return True
     return False
 
@@ -274,7 +274,7 @@ def check_termination(handler: Proteus) -> bool:
     if handler.config.params.stop.iters.enabled:
         finished = finished or _check_maxiter(handler)
 
-    # Maximum clock time reached
+    # Maximum clock runtime reached
     if handler.config.params.stop.clock.enabled:
         finished = finished or _check_clock(handler)
 

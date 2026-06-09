@@ -307,7 +307,7 @@ class StopDisint:
 
 @define
 class StopClock:
-    """Parameters for maximum clock time stopping criteria.
+    """Parameters for maximum clock runtime stopping criteria.
 
     Attributes
     ----------
@@ -342,7 +342,7 @@ class StopParams:
     disint: StopDisint
         Parameters for planet disintegration criteria.
     clock: StopClock
-        Parameters for maximum clock time criteria.
+        Parameters for maximum clock runtime criteria.
     """
 
     iters: StopIters = field(factory=StopIters)

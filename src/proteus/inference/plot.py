@@ -443,7 +443,7 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
     )
 
     # Un-normalise X data
-    X = unnormalize_parameters(D['X'], bounds, keys)
+    X = unnormalize_parameters(torch.tensor(D['X']), bounds, keys)
     X = np.array(X, copy=None, dtype=float)
 
     # Colors

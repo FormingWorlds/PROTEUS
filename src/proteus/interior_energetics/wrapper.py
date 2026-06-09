@@ -1387,11 +1387,6 @@ def run_interior(
             return
 
     elif config.interior_energetics.module == 'boundary':
-        if atmos_o is None:
-            raise ValueError(
-                'Boundary interior backend requires the atmosphere struct '
-                '(`atmos_o`); the caller passed None.'
-            )
         from proteus.interior_energetics.boundary import BoundaryRunner
 
         BoundaryRunnerInstance = BoundaryRunner(
