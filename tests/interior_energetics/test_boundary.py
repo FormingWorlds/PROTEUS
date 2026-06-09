@@ -1495,6 +1495,7 @@ def test_run_solver_writes_csv_log_when_logging_enabled(
     fake_sol = SimpleNamespace(
         t=np.array([0.0, 1.0e3]),
         y=np.array([[3500.0, 3490.0], [1600.0, 1605.0]]),
+        status=0,
     )
     with patch('proteus.interior_energetics.boundary.solve_ivp', return_value=fake_sol):
         # run_solver signature: (hf_row, interior_o, dirs)

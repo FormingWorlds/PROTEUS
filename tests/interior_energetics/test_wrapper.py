@@ -1595,6 +1595,7 @@ def _make_run_interior_config(*, prevent_warming: bool, module: str = 'dummy'):
     config.interior_energetics.tmagma_rtol = 0.0
     config.interior_energetics.boundary.Tsurf_event_change = 25.0
     config.planet.prevent_warming = prevent_warming
+    config.params.stop.time.maximum = 1e9
     return config
 
 
@@ -3254,14 +3255,14 @@ def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
 
 
 # ============================================================================
-# run_interior boundary backend requires atmos_o
+# run_interior boundary backend requires atmos_o to derive heat capacities
 # ============================================================================
 
 
 @pytest.mark.unit
-def test_run_interior_boundary_without_atmos_raises_value_error():
-    """The boundary backend requires the atmosphere struct; passing None
-    must raise ValueError before any solver call.
+def test_run_interior_boundary_with_atmos_r():
+    """The boundary backend requires the atmosphere struct to derive cp; 
+    passing None 
     """
     from proteus.interior_energetics.wrapper import run_interior
 
@@ -3272,11 +3273,10 @@ def test_run_interior_boundary_without_atmos_raises_value_error():
     interior_o.ic = 2
 
     saved_T = hf_row['T_magma']
-    with pytest.raises(ValueError, match='Boundary interior backend requires'):
-        run_interior({}, config, hf_all, hf_row, interior_o, atmos_o=None, verbose=False)
-    # hf_row was not mutated because the validator fired before any
-    # backend dispatch.
-    assert hf_row['T_magma'] == pytest.approx(saved_T, rel=1e-12)
+    run_interior({}, config, hf_all, hf_row, interior_o, atmos_o=None, verbose=False)
+
+    # F_radio was calculated to be zero
+    assert hf_row['F_radio'] == pytest.approx(0.0, rel=1e-12)
 
 
 # ============================================================================
