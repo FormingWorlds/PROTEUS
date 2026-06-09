@@ -61,6 +61,9 @@ class CheckResult:
     status: str
     message: str
     fix_cmd: str | None = None
+    # When False, fix_cmd is human advice (e.g. "export VAR=<path>"), not a
+    # runnable command, so `proteus update` shows it but does not execute it.
+    auto_fixable: bool = True
 
     def echo(self):
         icon = click.style(f'[{_ICON[self.status]}]', **_STYLE[self.status])
@@ -76,6 +79,7 @@ class CheckResult:
             'status': self.status,
             'message': self.message,
             'fix_cmd': self.fix_cmd,
+            'auto_fixable': self.auto_fixable,
         }
 
 
@@ -286,6 +290,7 @@ def check_env_var(
             status=FAIL,
             message='not set',
             fix_cmd=f'export {name}=<path>  # add to your shell rc file',
+            auto_fixable=False,
         )
     if validate_path and not os.path.exists(val):
         return CheckResult(
@@ -917,7 +922,7 @@ def doctor_entry(output_json: bool = False) -> bool:
     # Summary
     n_fail = sum(1 for r in results if r.status == FAIL)
     n_warn = sum(1 for r in results if r.status == WARN)
-    fixable = [r for r in results if r.fix_cmd and r.status != PASS]
+    fixable = [r for r in results if r.fix_cmd and r.status != PASS and r.auto_fixable]
 
     click.echo()
     if n_fail == 0 and n_warn == 0:
@@ -988,7 +993,8 @@ def update_entry(dry_run: bool = False) -> bool:
         failures and no fix command errored). A dry run reports True.
     """
     results = run_all_checks()
-    fixable = [r for r in results if r.fix_cmd and r.status != PASS]
+    fixable = [r for r in results if r.fix_cmd and r.status != PASS and r.auto_fixable]
+    manual = [r for r in results if r.fix_cmd and r.status != PASS and not r.auto_fixable]
     problems = [r for r in results if r.status != PASS]
 
     if not fixable:
@@ -1012,6 +1018,15 @@ def update_entry(dry_run: bool = False) -> bool:
         icon = click.style(f'[{_ICON[r.status]}]', **_STYLE[r.status])
         click.echo(f'  {icon} {r.name}: {r.message}')
         click.echo(f'       {click.style(r.fix_cmd, fg="cyan")}')
+
+    if manual:
+        click.secho(
+            '\nThese need manual action (not run automatically):',
+            fg='yellow',
+            bold=True,
+        )
+        for r in manual:
+            r.echo()
 
     if dry_run:
         click.echo(f'\n{click.style("Dry run", bold=True)}: no changes made.')
