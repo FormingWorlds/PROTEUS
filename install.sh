@@ -235,6 +235,13 @@ verify_proteus_import() {
     fi
     fail "PROTEUS failed to import. Error output:"
     printf '%s\n' "$import_log"
+    # An architecture mismatch between Python and Julia cannot be self-healed.
+    if printf '%s' "$import_log" | grep -qi 'incompatible architecture'; then
+        warn "Python and Julia are built for different CPU architectures (see above)."
+        warn "On Apple Silicon, install a native arm64 conda (e.g. miniforge), recreate"
+        warn "the proteus env, and re-run install.sh."
+        die "PROTEUS Python package failed to import. The full error is above and in $LOGFILE."
+    fi
     if printf '%s' "$import_log" | grep -qiE 'libmpi|PMPI_|ompi_|mpich|Symbol not found' \
        || conda_has_mpi_netcdf; then
         warn "This matches the conda MPI/HDF5 conflict. Switching to no-MPI builds and retrying..."
@@ -607,6 +614,23 @@ if ! julia -e 'println("ok")' &>/dev/null; then
     die "Julia is installed but not functional. Check your PATH."
 fi
 info "Julia: OK"
+
+# juliacall loads Julia into the Python process via dlopen, so Python and Julia
+# must share a CPU architecture. The common Apple Silicon mix-up is an x86_64
+# (Intel/Rosetta) conda Python with a native arm64 Julia, which resolves the
+# Julia environment in a subprocess but then fails to embed with "incompatible
+# architecture". Catch it here rather than after the full submodule install.
+norm_arch() { case "$1" in arm64|aarch64) echo arm ;; x86_64|amd64) echo x86 ;; *) echo "$1" ;; esac; }
+py_arch=$(python3 -c "import platform; print(platform.machine())" 2>/dev/null || true)
+jl_arch=$(julia --startup-file=no -e 'print(String(Sys.ARCH))' 2>/dev/null || true)
+if [ -n "$py_arch" ] && [ -n "$jl_arch" ] && [ "$(norm_arch "$py_arch")" != "$(norm_arch "$jl_arch")" ]; then
+    fail "Python ($py_arch) and Julia ($jl_arch) are built for different CPU architectures."
+    warn "juliacall loads Julia into the Python process, so the two must match."
+    warn "On Apple Silicon this usually means an Intel (x86_64) conda. Install a native"
+    warn "arm64 conda (e.g. miniforge for Apple Silicon), recreate the proteus env, and"
+    warn "re-run install.sh. A native arm64 conda also provides OpenSSL >= 3.5."
+    die "Python and Julia CPU architectures do not match."
+fi
 
 # ===================================================================
 # Phase 3: Environment variables
