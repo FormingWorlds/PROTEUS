@@ -3,15 +3,15 @@ Unit tests for PETSc/SPIDER installation shell scripts.
 
 Tests the reusable shell logic extracted from ``tools/get_petsc.sh`` and
 ``tools/get_spider.sh``:
-- ``portable_realpath()`` — cross-platform path resolution
-- ERR trap — exit-code and step-name capture
-- Platform detection — PETSC_ARCH assignment
-- Homebrew prefix fallback — architecture-aware default
-- Workpath argument handling — ``$1`` override vs default
-- PETSc library detection — versioned ``.so``, ``.dylib``, missing
+- ``portable_realpath()``: cross-platform path resolution
+- ERR trap: exit-code and step-name capture
+- Platform detection: PETSC_ARCH assignment
+- Homebrew prefix fallback: architecture-aware default
+- Workpath argument handling: ``$1`` override vs default
+- PETSc library detection: versioned ``.so``, ``.dylib``, missing
 
-Each test runs an isolated bash snippet via ``subprocess.run()`` — no
-network access, no real builds.
+Each test runs an isolated bash snippet via ``subprocess.run()``, with no
+network access and no real builds.
 
 See also:
 - docs/test_infrastructure.md
@@ -116,7 +116,7 @@ def test_portable_realpath_python_fallback(tmp_path):
     target = tmp_path / 'target'
     target.mkdir()
 
-    # Build a PATH with *only* python3 — no realpath anywhere.
+    # Build a PATH with *only* python3, no realpath anywhere.
     python_bin = sys.executable
     safe_bin = tmp_path / 'safe_bin'
     safe_bin.mkdir()
@@ -470,3 +470,306 @@ def test_spider_lib_check_fails_on_empty_dir(tmp_path):
     )
     assert result.returncode != 0
     assert 'NOT_FOUND' in result.stdout
+
+
+# ============================================================================
+# Regression: installation.md does not promote editable installs of PyPI deps
+# ============================================================================
+
+
+import re  # noqa: E402
+import tomllib  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+import pytest  # noqa: E402
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+@pytest.mark.unit
+def test_installation_md_does_not_clone_aragog_or_zalmoxis():
+    """Regression for PR #673 follow-up: installation.md must not tell
+    users to ``git clone`` and ``pip install -e`` Aragog or Zalmoxis.
+    These are PyPI deps (``fwl-aragog``, ``fwl-zalmoxis``) declared in
+    pyproject.toml and installed automatically by
+    ``pip install -e ".[develop]"``. Re-introducing editable-install
+    instructions silently shadows the PyPI versions and breaks the
+    documented dependency pinning.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / 'docs' / 'How-to' / 'installation.md').read_text(encoding='utf-8')
+    # Match `git clone <url>/<aragog|Zalmoxis>` or `pip install -e <aragog|Zalmoxis>`.
+    forbidden = re.compile(
+        r'(git\s+clone[^\n]*?(aragog|Zalmoxis))'
+        r'|(pip\s+install\s+-e\s+(aragog|Zalmoxis))',
+        re.IGNORECASE,
+    )
+    matches = forbidden.findall(text)
+    assert not matches, (
+        f'installation.md re-introduced editable-install of Aragog/Zalmoxis: {matches!r}'
+    )
+    # Discrimination: installation.md must still cover the PyPI install
+    # path. An empty file would also have zero matches above but would
+    # silently delete the install instructions; pin the canonical PyPI
+    # package name as evidence the file still documents the supported
+    # path.
+    assert 'fwl-aragog' in text or 'pip install -e ".[develop]"' in text
+
+
+@pytest.mark.unit
+def test_pyproject_pins_aragog_and_zalmoxis_pypi_packages():
+    """Companion guarantee: pyproject.toml must continue pinning the
+    PyPI distributions ``fwl-aragog`` and ``fwl-zalmoxis``. If either
+    pin is removed, the rationale for not editable-installing them
+    breaks and installation.md must be rewritten."""
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / 'pyproject.toml').read_text(encoding='utf-8')
+    assert 'fwl-aragog' in text, 'pyproject.toml must pin fwl-aragog'
+    assert 'fwl-zalmoxis' in text, 'pyproject.toml must pin fwl-zalmoxis'
+
+
+@pytest.mark.unit
+def test_pyproject_keeps_boreas_out_of_mandatory_dependencies():
+    """BOREAS is installed only explicitly, via ``bash tools/get_boreas.sh``.
+
+    Two clauses:
+    1. ``[project] dependencies`` must not list boreas. Re-adding the
+       direct git URL there would make BOREAS mandatory again and would
+       also block PyPI uploads of fwl-proteus, since PyPI rejects
+       packages whose dependency metadata contains direct references.
+       The PyPI name ``boreas`` belongs to an unrelated project, so a
+       plain ``boreas`` version pin would resolve to the wrong package.
+    2. The pin lives in ``[tool.proteus.modules.boreas]`` with the
+       ExoInteriors GitHub URL and a full 40-character commit SHA, which
+       tools/get_boreas.sh and the CI setup action resolve through
+       tools/_module_pins.py.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
+
+    deps = data['project']['dependencies']
+    boreas_deps = [d for d in deps if 'boreas' in d.lower()]
+    assert boreas_deps == [], (
+        f'boreas must not be a mandatory dependency of fwl-proteus: {boreas_deps!r}'
+    )
+    # Discrimination: an empty dependencies list would also pass the
+    # check above; pin a known-mandatory package as evidence the list
+    # is intact.
+    assert any('fwl-calliope' in d for d in deps), 'mandatory dependency list is intact'
+
+    spec = data['tool']['proteus']['modules']['boreas']
+    assert spec['url'].startswith('https://github.com/ExoInteriors/BOREAS'), (
+        f'boreas pin must point at the ExoInteriors repo, got {spec["url"]!r}'
+    )
+    # Full-SHA pin: reproducible clone, short refs are ambiguous and
+    # mutable upstream.
+    assert re.fullmatch(r'[0-9a-f]{40}', spec['ref']), (
+        f'boreas ref must be a full commit SHA, got {spec["ref"]!r}'
+    )
+
+
+@pytest.mark.unit
+def test_optional_backends_vulcan_atmodeller_are_extras_not_mandatory():
+    """VULCAN and atmodeller are optional backends, installed on demand.
+
+    A standard PROTEUS run uses CALLIOPE for outgassing and no atmospheric
+    chemistry, so neither package should be a mandatory dependency. Each
+    must instead live in ``[project.optional-dependencies]`` under its own
+    extra, keeping the published version pins so the optional install is
+    reproducible. Re-adding either to ``[project] dependencies`` would force
+    every PROTEUS user to pull a GPL-3.0 package the core does not need.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
+
+    deps = data['project']['dependencies']
+    mandatory = [d for d in deps if 'vulcan' in d.lower() or 'atmodeller' in d.lower()]
+    assert mandatory == [], (
+        f'vulcan/atmodeller must not be mandatory dependencies: {mandatory!r}'
+    )
+    # Discrimination: an empty or truncated dependency list would also pass
+    # the check above; confirm a known-mandatory backend is still present.
+    assert any('fwl-calliope' in d for d in deps), 'mandatory dependency list is intact'
+
+    extras = data['project']['optional-dependencies']
+    # Membership, not exact-list: an extra may gain a second requirement
+    # later (e.g. a transitive pin) without this guard going stale.
+    assert any(r.startswith('atmodeller>=1.0.0') for r in extras.get('atmodeller', [])), (
+        f'atmodeller extra must keep its pin, got {extras.get("atmodeller")!r}'
+    )
+    assert any(r.startswith('fwl-vulcan>=26.04.22') for r in extras.get('vulcan', [])), (
+        f'vulcan extra must keep its pin, got {extras.get("vulcan")!r}'
+    )
+    # The default Aragog interior solver runs on JAX and its modules are
+    # equinox Modules, so the jax/equinox stack must stay MANDATORY, not be
+    # gated behind the optional atmodeller extra. equinox==0.13.2 calls
+    # jax.core.mapped_aval (removed in jax 0.10), which is why jax/jaxlib are
+    # pinned <0.10. Lifting any of these would break a standard run.
+    assert 'jax<0.10' in deps and 'jaxlib<0.10' in deps, (
+        'jax/jaxlib must stay pinned <0.10 for the default Aragog jax solver'
+    )
+    assert 'equinox==0.13.2' in deps, (
+        'equinox must be a mandatory dependency for the default Aragog jax solver; '
+        'it was previously pulled only transitively via atmodeller'
+    )
+
+    # VULCAN is a single-source PyPI package like fwl-aragog/fwl-zalmoxis: its
+    # only pin is the extra above, and tools/get_vulcan.sh checks out the git
+    # tag matching that floor. It must NOT also carry a [tool.proteus.modules]
+    # SHA pin, which could drift from the PyPI release (the dual-pin trap).
+    git_modules = data['tool']['proteus']['modules']
+    assert 'vulcan' not in git_modules, (
+        'vulcan must not have a [tool.proteus.modules] git pin; it is pinned '
+        'once via the fwl-vulcan extra and the matching git tag, like '
+        f'fwl-aragog/fwl-zalmoxis. Found: {sorted(git_modules)}'
+    )
+
+
+@pytest.mark.unit
+def test_ci_setup_installs_every_declared_extra():
+    """The CI setup action must install extras whose keys exist in pyproject.
+
+    The CI composite action installs PROTEUS with a literal extras list, e.g.
+    ``pip install -e ".[develop,vulcan,atmodeller]"``. pip treats an unknown
+    extra as a warning and still exits 0, so a typo or a renamed extra would
+    silently stop installing the optional backends, and their tests would skip
+    instead of failing. This guard ties the CI string to the pyproject extra
+    keys: every extra named in the action must be a real optional-dependency
+    group.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    action = (repo_root / '.github/actions/setup-proteus/action.yml').read_text(
+        encoding='utf-8'
+    )
+    data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
+    extra_keys = set(data['project']['optional-dependencies'])
+
+    # Extract the bracketed extras from the `pip install -e ".[...]"` line(s).
+    matches = re.findall(r'pip install -e "\.\[([^\]]+)\]"', action)
+    assert matches, (
+        'no `pip install -e ".[...]"` line found in setup-proteus action; '
+        'the extras-install guard cannot verify CI'
+    )
+    ci_extras = {e.strip() for group in matches for e in group.split(',')}
+    # The two optional physics backends must be installed by CI so their tests
+    # run rather than skip.
+    assert {'vulcan', 'atmodeller'} <= ci_extras, (
+        f'CI must install the vulcan + atmodeller extras; found {sorted(ci_extras)}'
+    )
+    # Every extra named in CI must be a real pyproject extra (catches typos /
+    # renames that pip would otherwise swallow).
+    unknown = ci_extras - extra_keys
+    assert not unknown, (
+        f'CI references extras not declared in pyproject [project.optional-dependencies]: '
+        f'{sorted(unknown)}; known extras are {sorted(extra_keys)}'
+    )
+
+
+# ---------------------------------------------------------------------------
+# Dirty-checkout guard (shared shape across tools/get_*.sh)
+# ---------------------------------------------------------------------------
+
+
+def _extract_guard_block() -> str:
+    """Extract the shipped dirty-checkout guard from tools/get_aragog.sh.
+
+    Reading the block from the script under test (rather than copying it
+    into the test) pins the exact shipped lines: any rewording or logic
+    change in the guard re-runs through these cases.
+    """
+    from pathlib import Path
+
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    script = (tools_dir / 'get_aragog.sh').read_text().splitlines()
+    start = next(i for i, ln in enumerate(script) if 'Refuse to delete a checkout' in ln)
+    end = next(i for i, ln in enumerate(script) if ln.startswith('rm -rf'))
+    return '\n'.join(script[start:end])
+
+
+def _run_guard(tmp_path, *args: str) -> subprocess.CompletedProcess:
+    """Run the extracted guard with ``root`` pointing at ``tmp_path``."""
+    snippet = 'root="$GUARD_ROOT"\n' + _extract_guard_block() + '\necho GUARD_PASSED\n'
+    return subprocess.run(
+        ['bash', '-c', snippet, 'guard', *args],
+        capture_output=True,
+        text=True,
+        env={**os.environ, 'GUARD_ROOT': str(tmp_path)},
+    )
+
+
+def _git(cwd, *args: str) -> None:
+    subprocess.run(
+        ['git', '-c', 'user.email=t@e.st', '-c', 'user.name=t', *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_guard_blocks_dirty_and_unpushed_checkouts(tmp_path):
+    """Tracked modifications and local-only commits block the refresh.
+
+    A modified tracked file must exit 1 with the recovery command in the
+    message; a repo whose commits exist on no remote (covers both the
+    remote-less and the never-pushed case) must also block. Untracked
+    files alone must NOT block: build artifacts and egg-info dirs are
+    routine in refreshed checkouts.
+    """
+    workdir = tmp_path / 'aragog'
+    workdir.mkdir()
+    _git(workdir, 'init', '-q')
+    (workdir / 'tracked.py').write_text('x = 1\n')
+    _git(workdir, 'add', 'tracked.py')
+    _git(workdir, 'commit', '-q', '-m', 'c1')
+
+    # Local-only commit (no remotes at all): blocked.
+    res = _run_guard(tmp_path)
+    assert res.returncode == 1
+    assert '--force' in res.stderr  # recovery command is named
+    assert 'GUARD_PASSED' not in res.stdout
+
+    # Same state plus a dirty tracked file: still blocked.
+    (workdir / 'tracked.py').write_text('x = 2\n')
+    res = _run_guard(tmp_path)
+    assert res.returncode == 1
+    assert 'uncommitted changes' in res.stderr
+
+
+def test_guard_passes_clean_remote_backed_checkout(tmp_path):
+    """A clean checkout whose commits are on a remote is refreshed.
+
+    Mimics the normal installed state: a clone (origin exists), detached
+    HEAD at a pinned ref, untracked build artifacts present. The guard
+    must stay silent. A local commit on the detached HEAD then blocks:
+    the commit exists on no remote and would be destroyed.
+    """
+    upstream = tmp_path / 'upstream'
+    upstream.mkdir()
+    _git(upstream, 'init', '-q')
+    (upstream / 'f.py').write_text('a = 1\n')
+    _git(upstream, 'add', 'f.py')
+    _git(upstream, 'commit', '-q', '-m', 'c1')
+
+    workdir = tmp_path / 'aragog'
+    _git(tmp_path, 'clone', '-q', str(upstream), str(workdir))
+    _git(workdir, 'checkout', '-q', '--detach', 'HEAD')
+    (workdir / 'build_artifact.o').write_text('')  # untracked: must not block
+
+    res = _run_guard(tmp_path)
+    assert res.returncode == 0
+    assert 'GUARD_PASSED' in res.stdout
+
+    # Local commit on the detached HEAD: reachable from HEAD, on no
+    # remote. This is the state a tag-pinned checkout enters when a
+    # developer commits without branching; it must block.
+    (workdir / 'f.py').write_text('a = 2\n')
+    _git(workdir, 'add', 'f.py')
+    _git(workdir, 'commit', '-q', '-m', 'local work')
+    res = _run_guard(tmp_path)
+    assert res.returncode == 1
+    assert 'not on a remote' in res.stderr
+
+    # --force bypasses deliberately.
+    res = _run_guard(tmp_path, '--force')
+    assert res.returncode == 0
+    assert 'GUARD_PASSED' in res.stdout

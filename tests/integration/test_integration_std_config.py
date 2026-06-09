@@ -39,8 +39,15 @@ from tests.integration.conftest import (
     validate_stability,
 )
 
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+
+# Mixed-tier file: 2 integration tests + 2 slow tests. The slow pair
+# carries @pytest.mark.slow per-function and runs only in the nightly
+# slow surface; the integration filter selects only the first two.
+
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 @pytest.mark.slow
 @pytest.mark.timeout(1800)  # 30 minute timeout for this test
 def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
@@ -260,6 +267,7 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 @pytest.mark.slow
 @pytest.mark.timeout(3600)  # 60 minute timeout for extended run
 def test_integration_std_config_extended_run(proteus_multi_timestep_run):

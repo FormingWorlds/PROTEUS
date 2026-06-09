@@ -5,13 +5,16 @@ on:
       - docs/paper/**
       - .github/workflows/draft-pdf.yml
 
+permissions:
+  contents: read    # checkout + read paper sources; PDF goes to actions artifacts
+
 jobs:
   paper:
     runs-on: ubuntu-latest
     name: Paper Draft
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Build draft PDF
         uses: openjournals/openjournals-draft-action@master
         with:

@@ -17,31 +17,54 @@ References:
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
+
 import numpy as np
 import pytest
 
-from tools.solidus_func import (
-    _fmt_range,
-    andrault_2011,
-    belonoshko_2005,
-    build_common_entropy_grid,
-    fei_2021,
-    fiquet_2010,
-    get_melting_curves,
-    hirschmann_2000,
-    invert_to_entropy_along_profile,
-    katz_2003,
-    lin_2024,
-    liquidus_from_solidus_stixrude,
-    make_entropy_header,
-    make_pressure_grid,
-    monteux_2016,
-    solidus_from_liquidus_stixrude,
-    stixrude_2014,
-    truncate_to_physical_interval,
-    validate_entropy_export_arrays,
-    wolf_bower_2018,
-)
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+def _load_solidus_func_module():
+    """Load ``tools/solidus_func.py`` as a module without sys.path manipulation.
+
+    The ``tools/`` directory is not a Python package, and adding the repo root
+    to ``sys.path`` would shadow the installed ``aragog`` package with the
+    local development checkout. ``importlib.util`` loads the script directly.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    script_path = repo_root / 'tools' / 'solidus_func.py'
+    spec = importlib.util.spec_from_file_location('solidus_func_under_test', script_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+_solidus_func = _load_solidus_func_module()
+
+_fmt_range = _solidus_func._fmt_range
+andrault_2011 = _solidus_func.andrault_2011
+belonoshko_2005 = _solidus_func.belonoshko_2005
+build_common_entropy_grid = _solidus_func.build_common_entropy_grid
+fei_2021 = _solidus_func.fei_2021
+fiquet_2010 = _solidus_func.fiquet_2010
+get_melting_curves = _solidus_func.get_melting_curves
+hirschmann_2000 = _solidus_func.hirschmann_2000
+invert_to_entropy_along_profile = _solidus_func.invert_to_entropy_along_profile
+katz_2003 = _solidus_func.katz_2003
+lin_2024 = _solidus_func.lin_2024
+liquidus_from_solidus_stixrude = _solidus_func.liquidus_from_solidus_stixrude
+make_entropy_header = _solidus_func.make_entropy_header
+make_pressure_grid = _solidus_func.make_pressure_grid
+monteux_2016 = _solidus_func.monteux_2016
+solidus_from_liquidus_stixrude = _solidus_func.solidus_from_liquidus_stixrude
+stixrude_2014 = _solidus_func.stixrude_2014
+truncate_to_physical_interval = _solidus_func.truncate_to_physical_interval
+validate_entropy_export_arrays = _solidus_func.validate_entropy_export_arrays
+wolf_bower_2018 = _solidus_func.wolf_bower_2018
 
 # =============================================================================
 # FIXTURES & HELPERS
@@ -50,13 +73,13 @@ from tools.solidus_func import (
 
 @pytest.fixture
 def pressure_grid():
-    """Standard pressure grid for testing (0–1000 GPa, 100 points)."""
+    """Standard pressure grid for testing (0-1000 GPa, 100 points)."""
     return np.linspace(0.0, 1000.0, 100)
 
 
 @pytest.fixture
 def small_pressure_grid():
-    """Small pressure grid for quick smoke tests (0–100 GPa, 10 points)."""
+    """Small pressure grid for quick smoke tests (0-100 GPa, 10 points)."""
     return np.linspace(0.0, 100.0, 10)
 
 
@@ -106,28 +129,33 @@ class TestMakePressureGrid:
         """Creates a 500-point grid from 0 to 1000 GPa (default)."""
         P = make_pressure_grid()
         assert len(P) == 500
-        assert pytest.approx(P[0], rel=1e-10) == 0.0
-        assert pytest.approx(P[-1], rel=1e-10) == 1000.0
+        assert P[0] == pytest.approx(0.0, abs=1e-12)
+        assert P[-1] == pytest.approx(1000.0, rel=1e-10)
         assert np.all(np.diff(P) > 0), 'Pressure grid must be monotonically increasing'
 
     def test_custom_range_and_count(self):
         """Custom Pmin, Pmax, n parameters."""
         P = make_pressure_grid(Pmin=10.0, Pmax=100.0, n=20)
         assert len(P) == 20
-        assert pytest.approx(P[0], rel=1e-10) == 10.0
-        assert pytest.approx(P[-1], rel=1e-10) == 100.0
+        assert P[0] == pytest.approx(10.0, rel=1e-10)
+        assert P[-1] == pytest.approx(100.0, rel=1e-10)
 
     def test_uniform_spacing(self):
         """Pressure grid is uniformly spaced."""
         P = make_pressure_grid(Pmin=0.0, Pmax=100.0, n=101)
         dP = np.diff(P)
         assert np.allclose(dP, dP[0]), 'Spacing must be uniform'
+        # Discrimination: for Pmin=0, Pmax=100, n=101 the spacing must be
+        # exactly 1.0 GPa. A regression that used n in the denominator
+        # instead of n-1 (off-by-one in np.linspace semantics) would land
+        # at 100/101 ~ 0.9901, well outside the tight tolerance below.
+        assert dP[0] == pytest.approx(1.0, rel=1e-12)
 
     def test_single_point(self):
         """Single-point grid returns array of length 1."""
         P = make_pressure_grid(Pmin=50.0, Pmax=50.0, n=1)
         assert len(P) == 1
-        assert pytest.approx(P[0], rel=1e-10) == 50.0
+        assert P[0] == pytest.approx(50.0, rel=1e-10)
 
 
 # =============================================================================
@@ -178,6 +206,12 @@ class TestStixrudeRatios:
         T_liq_recovered = liquidus_from_solidus_stixrude(T_sol)
 
         assert np.allclose(T_liq_recovered, T_liq_orig, rtol=1e-10)
+        # Discrimination: the intermediate solidus must obey the physical
+        # ordering T_sol < T_liq_orig. A regression that swapped the ratio
+        # (multiplying instead of dividing by 1 - log(0.79)) would still
+        # round-trip perfectly but the intermediate would land above
+        # T_liq_orig, not below.
+        assert np.all(T_sol < T_liq_orig), 'Stixrude solidus must lie below the liquidus seed'
 
 
 # =============================================================================
@@ -194,18 +228,32 @@ class TestFmtRange:
         arr = np.array([10.5, 50.0, 100.0])
         result = _fmt_range(arr, fmt='.1f')
         assert '[10.5, 100.0]' in result
+        # Discrimination: the .1f format spec must be honoured; a regression
+        # that fell back to the default '.3f' would emit '10.500' / '100.000'
+        # and would not match the .1f literal pinned above. Pin the absence
+        # of the .3f trailing-zero pattern as a guard against that fallback.
+        assert '10.500' not in result and '100.000' not in result
 
     def test_array_with_nans(self):
         """Ignores NaN values, uses only finite elements."""
         arr = np.array([10.0, np.nan, 50.0, np.nan, 100.0])
         result = _fmt_range(arr, fmt='.1f')
         assert '[10.0, 100.0]' in result
+        # Discrimination: a regression that propagated NaN through np.min /
+        # np.max (forgetting the mask) would emit 'nan' instead of finite
+        # bounds; pin the absence of that sentinel.
+        assert 'nan' not in result
 
     def test_all_nans(self):
         """Returns [nan, nan] for all-NaN array."""
         arr = np.array([np.nan, np.nan, np.nan])
         result = _fmt_range(arr)
         assert '[nan, nan]' in result
+        # Discrimination: the all-NaN branch must short-circuit before the
+        # finite-min/max path; a regression that accidentally formatted NaN
+        # via the f-string would emit 'nan' twice but with extra digits or
+        # decimal points (e.g. 'nan.000'); the literal sentinel rules that out.
+        assert 'nan.' not in result
 
 
 # =============================================================================
@@ -257,6 +305,12 @@ class TestAndrault2011:
         """Invalid kind parameter raises ValueError."""
         with pytest.raises(ValueError, match='kind must be'):
             andrault_2011(kind='invalid')
+        # Discrimination: the guard must fire on any non-{solidus,liquidus}
+        # string, not only on the literal 'invalid'. A regression that
+        # whitelisted by negation of a single bad token would let this
+        # second call slip through.
+        with pytest.raises(ValueError, match='kind must be'):
+            andrault_2011(kind='melt')
 
 
 # =============================================================================
@@ -449,7 +503,7 @@ class TestMonteux2016:
 
 @pytest.mark.unit
 class TestHirschmann2000:
-    """Test Hirschmann (2000) melting curve (low pressure, ~0–10 GPa)."""
+    """Test Hirschmann (2000) melting curve (low pressure, ~0-10 GPa)."""
 
     def test_solidus_basic_shape(self):
         """Solidus returns correct shape."""
@@ -553,6 +607,11 @@ class TestWolfBower2018:
         # Check temperature is generally monotonically increasing (with small numerical tolerance)
         dT = np.diff(T)
         assert np.count_nonzero(dT > -1e-6) > len(dT) * 0.99, 'Temperature should increase'
+        # Discrimination: physical positivity (T > 0 Kelvin everywhere). A
+        # regression that flipped a sign or swapped a slope-intercept pair
+        # would surface as a negative temperature in one of the three
+        # piecewise branches.
+        assert np.all(T > 0.0), 'Solidus temperature must be strictly positive (Kelvin)'
 
 
 # =============================================================================
@@ -572,6 +631,12 @@ class TestKatz2003:
         P_wb, T_wb = wolf_bower_2018(kind='solidus', Pmin=50.0, Pmax=100.0, n=50)
 
         assert np.allclose(T_sol_katz, T_wb, rtol=1e-10)
+        # Discrimination: dry limit is X_h2o=0 -> delta_T = K * 0^gamma = 0.
+        # A regression that used a non-zero K*1 floor (e.g. delta_T = K)
+        # would shift T_sol_katz by ~43 K below T_wb, breaking the close
+        # match above. Pin the pressure grid alignment too, so a regression
+        # that changed make_pressure_grid semantics is caught.
+        assert np.allclose(P_sol_katz, P_wb, rtol=1e-12)
 
     def test_hydrous_effect(self):
         """Increasing water content decreases melting temperature (physical)."""
@@ -579,6 +644,13 @@ class TestKatz2003:
         _, T_wet = katz_2003(kind='solidus', X_h2o=30.0, Pmin=50.0, Pmax=100.0, n=50)
 
         assert np.all(T_wet < T_dry), 'Water lowers melting temperature'
+        # Discrimination: pin the closed-form magnitude. Katz (2003)
+        # delta_T = K * X_h2o**gamma with K=43, gamma=0.75. At X_h2o=30:
+        # delta_T = 43 * 30**0.75 ~ 551.2 K. A regression that used the
+        # wrong exponent (e.g. linear in X_h2o) would land at 43*30 = 1290
+        # K and would not match this approx pin.
+        expected_delta = 43.0 * 30.0**0.75
+        assert np.allclose(T_dry - T_wet, expected_delta, rtol=1e-10)
 
     def test_default_water_content(self):
         """Default water content is X_h2o = 30 ppm."""
@@ -586,6 +658,12 @@ class TestKatz2003:
         P2, T2 = katz_2003(kind='solidus', X_h2o=30.0, Pmin=50.0, Pmax=100.0, n=50)
 
         assert np.allclose(T1, T2)
+        # Discrimination: the default must also differ from the dry limit
+        # by the Katz delta_T at X_h2o=30. A regression that flipped the
+        # default to 0.0 would make T1 equal to the dry curve, which would
+        # contradict this nonzero-offset pin.
+        _, T_dry = katz_2003(kind='solidus', X_h2o=0.0, Pmin=50.0, Pmax=100.0, n=50)
+        assert np.all(T1 < T_dry), 'Default X_h2o must depress solidus below the dry curve'
 
     def test_physical_constraint_solidus_less_than_liquidus(self):
         """Solidus < liquidus with hydration at valid pressures."""
@@ -623,6 +701,14 @@ class TestLin2024:
 
         # Lower fO2 (more reducing) -> higher T
         assert np.all(T_reducing > T_oxidizing), 'Lower fO2 should increase solidus T'
+        # Discrimination: pin the closed-form delta. Lin (2024) uses
+        # delta_T = (340/3.2) * (2 - fO2), so going from fO2 = -3 to -5
+        # shifts the solidus by (340/3.2) * (-5 - (-3)) = -212.5 K, i.e.
+        # T_reducing exceeds T_oxidizing by exactly 212.5 K. A regression
+        # that swapped the coefficient sign or dropped the factor of 2
+        # would miss this pin.
+        expected_diff = (340.0 / 3.2) * ((-3.0) - (-5.0))
+        assert np.allclose(T_reducing - T_oxidizing, expected_diff, rtol=1e-10)
 
     def test_physical_constraint_solidus_less_than_liquidus(self):
         """Solidus < liquidus with varying fO2 at valid pressures."""
@@ -676,6 +762,11 @@ class TestGetMeltingCurves:
         """Unknown model raises ValueError."""
         with pytest.raises(ValueError, match='Unknown model'):
             get_melting_curves('unknown_model')
+        # Discrimination: the guard must reject empty string and unrelated
+        # tokens too, not just the literal 'unknown_model'. A regression
+        # that special-cased one missing key would let these slip through.
+        with pytest.raises(ValueError, match='Unknown model'):
+            get_melting_curves('')
 
     def test_custom_pressure_range(self):
         """Custom pressure range is applied correctly."""
@@ -706,6 +797,13 @@ class TestTruncateToPhysicalInterval:
 
         # In the physical interval, solidus < liquidus
         assert np.all(T_sol < T_liq)
+        # Discrimination: the truncation must return non-empty arrays on a
+        # well-behaved model with a real physical interval. A regression
+        # that always returned empty arrays would pass `np.all(T_sol < T_liq)`
+        # vacuously (np.all of an empty array is True).
+        assert len(T_sol) > 0 and len(T_liq) > 0, (
+            'truncate_to_physical_interval must return a non-empty main block'
+        )
 
     def test_decorator_preserves_main_block(self):
         """Main physical block is largest contiguous block."""
@@ -714,6 +812,11 @@ class TestTruncateToPhysicalInterval:
         # Should not raise
         P_sol, T_sol = wrapped_wolf(kind='solidus', Pmin=0.0, Pmax=1000.0, n=200)
         assert len(P_sol) > 0
+        # Discriminating physics check: solidus temperature is strictly
+        # positive everywhere (Kelvin), and the returned profile arrays have
+        # matching lengths (P_sol[i] aligns with T_sol[i]).
+        assert len(P_sol) == len(T_sol)
+        assert np.all(T_sol > 0)
 
 
 # =============================================================================
@@ -769,6 +872,11 @@ class TestInvertToEntropyAlongProfile:
         S = invert_to_entropy_along_profile(P, T, S_axis_solid, mock_eos_interpolator)
 
         assert np.isnan(S[0]), 'Out-of-bounds should return NaN'
+        # Discrimination: NaN must be the only sentinel produced, not a
+        # silent clamp to the entropy-axis boundary. A regression that
+        # clamped P > P_max to P_max would return a finite S inside the
+        # axis range, which would pass `not np.isnan` checks downstream.
+        assert S.shape == P.shape, 'Inversion must preserve input shape'
 
     def test_empty_pressure_array(self, mock_eos_interpolator, mock_S_axes):
         """Empty pressure array returns empty entropy array."""
@@ -779,6 +887,11 @@ class TestInvertToEntropyAlongProfile:
         S = invert_to_entropy_along_profile(P, T, S_axis_solid, mock_eos_interpolator)
 
         assert len(S) == 0
+        # Discrimination: the output type must be a numpy array on the
+        # empty-input fast path; a regression that returned a bare list or
+        # None would also satisfy len(...)==0 (or raise for None) but break
+        # downstream array operations.
+        assert isinstance(S, np.ndarray)
 
 
 # =============================================================================
@@ -866,6 +979,13 @@ class TestBuildCommonEntropyGrid:
 
         if len(P_common) > 0:
             assert len(P_common) <= 25
+        # Discrimination: with two fully overlapping inputs of length 100,
+        # the common grid must actually be populated. A regression that
+        # always returned an empty array would make the bounded-length
+        # check above vacuously pass. Also pin monotonicity to catch a
+        # regression that returned a permuted grid.
+        assert len(P_common) > 0, 'Overlapping inputs must yield a non-empty common grid'
+        assert np.all(np.diff(P_common) > 0), 'Common pressure grid must be strictly increasing'
 
 
 # =============================================================================
@@ -883,8 +1003,11 @@ class TestValidateEntropyExportArrays:
         S_sol = np.array([100.0, 150.0, 200.0])
         S_liq = np.array([150.0, 200.0, 250.0])
 
-        # Should not raise
-        validate_entropy_export_arrays(P, S_sol, S_liq, 'test_model')
+        result = validate_entropy_export_arrays(P, S_sol, S_liq, 'test_model')
+        assert result is None  # contract: validator returns None silently on the pass path
+        # Discriminating physics check: liquidus entropy strictly above solidus
+        # at every pressure (the physical ordering the validator must accept).
+        assert np.all(S_liq > S_sol)
 
     def test_empty_array_raises(self):
         """Empty array raises ValueError."""
@@ -894,6 +1017,13 @@ class TestValidateEntropyExportArrays:
 
         with pytest.raises(ValueError, match='could not build|empty'):
             validate_entropy_export_arrays(P, S_sol, S_liq, 'test_model')
+        # Discrimination: the empty guard must fire even when only one of
+        # the three arrays is empty. A regression that required all three
+        # to be empty before raising would let a partial-empty case slip
+        # through silently.
+        P_one = np.array([10.0])
+        with pytest.raises(ValueError, match='could not build|empty'):
+            validate_entropy_export_arrays(P_one, np.array([]), np.array([]), 'test_model')
 
     def test_mismatched_lengths_raises(self):
         """Mismatched array lengths raise ValueError."""
@@ -903,6 +1033,13 @@ class TestValidateEntropyExportArrays:
 
         with pytest.raises(ValueError, match='inconsistent'):
             validate_entropy_export_arrays(P, S_sol, S_liq, 'test_model')
+        # Discrimination: the guard must fire when S_liq is the short one
+        # too, not only when S_sol is short. A regression that checked
+        # only S_sol length against P would miss this case.
+        with pytest.raises(ValueError, match='inconsistent'):
+            validate_entropy_export_arrays(
+                P, np.array([100.0, 150.0, 200.0]), np.array([150.0, 200.0]), 'test_model'
+            )
 
     def test_nans_in_arrays_raises(self):
         """NaN values raise ValueError."""
@@ -912,6 +1049,16 @@ class TestValidateEntropyExportArrays:
 
         with pytest.raises(ValueError, match='non-finite'):
             validate_entropy_export_arrays(P, S_sol, S_liq, 'test_model')
+        # Discrimination: the guard must also catch NaN entries in the
+        # entropy arrays, not only in the pressure column. A regression
+        # that checked finiteness of P alone would miss this case.
+        with pytest.raises(ValueError, match='non-finite'):
+            validate_entropy_export_arrays(
+                np.array([10.0, 20.0, 30.0]),
+                np.array([100.0, np.nan, 200.0]),
+                np.array([150.0, 200.0, 250.0]),
+                'test_model',
+            )
 
     def test_infs_in_arrays_raises(self):
         """Infinite values raise ValueError."""
@@ -921,6 +1068,16 @@ class TestValidateEntropyExportArrays:
 
         with pytest.raises(ValueError, match='non-finite'):
             validate_entropy_export_arrays(P, S_sol, S_liq, 'test_model')
+        # Discrimination: -inf must trip the guard the same as +inf. A
+        # regression that compared against a positive sentinel only (e.g.
+        # `> 1e308` instead of np.isfinite) would let -inf slip through.
+        with pytest.raises(ValueError, match='non-finite'):
+            validate_entropy_export_arrays(
+                np.array([10.0, 20.0, 30.0]),
+                np.array([100.0, 150.0, 200.0]),
+                np.array([150.0, -np.inf, 250.0]),
+                'test_model',
+            )
 
 
 # =============================================================================

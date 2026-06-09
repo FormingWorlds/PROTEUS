@@ -1,27 +1,39 @@
-# Getting started
+# Quick path
 
-The PROTEUS documentation is divided into **How-to guides**, **Tutorials**, **Explanations** and **Reference material**, which you can find in the top bar. For a quick start you can follow the path below.
+!!! tip "New to PROTEUS?"
+    Start with the [Quick start tutorial](Tutorials/quick_start_dummy.md):
+    an all-dummy run that exercises the full coupling architecture in under a
+    minute, with no external solvers needed.
+
+The PROTEUS documentation follows the [Diataxis](https://diataxis.fr/)
+framework: **Tutorials** for learning by doing, **How-to guides** for
+specific tasks, **Explanations** for understanding the design, and
+**Reference** for looking up details. You can find all sections in the top
+navigation bar.
 
 ## Quick path
 
 1. **Prepare your local machine**
-    Set up your local environment. <br>
+    Set up your local environment (compilers, package managers). <br>
     → [Local machine guide](How-to/local_machine_guide.md)
 
     !!! warning "HPC clusters"
-        These steps do not apply on an HPC cluster; please follow the [Kapteyn](How-to/kapteyn_cluster_guide.md), [Habrok](How-to/habrok_cluster_guide.md) or [Snellius](How-to/snellius_cluster_guide.md) cluster guide.
+        These steps do not apply on an HPC cluster; follow the
+        [Kapteyn](How-to/kapteyn_cluster_guide.md),
+        [Habrok](How-to/habrok_cluster_guide.md), or
+        [Snellius](How-to/snellius_cluster_guide.md) cluster guide instead.
 
-1. **Install PROTEUS**
+2. **Install PROTEUS**
    Set up the code and required dependencies. <br>
    → [Installation guide](How-to/installation.md)
 
-2. **Configure your setup**
-   Choose and customise the model parameters for your problem. <br>
-   → [Configuration](How-to/config.md)
+3. **Run the quick start tutorial**
+   Verify the installation and understand the code flow with an all-dummy run. <br>
+   → [Quick start tutorial](Tutorials/quick_start_dummy.md)
 
-3. **First PROTEUS run**
-   Execute your first simulation. <br>
-   → [Using PROTEUS](How-to/usage.md)
+4. **Run an Earth analogue**
+   A production-quality simulation with real physics modules. <br>
+   → [Earth analogue tutorial](Tutorials/earth_analogue.md)
 
 ---
 
@@ -37,6 +49,10 @@ The PROTEUS documentation is divided into **How-to guides**, **Tutorials**, **Ex
 
     [Go to configuration](How-to/config.md)
 
+-   :material-school: **Learn by example**
+
+    [Go to tutorials](Tutorials/quick_start_dummy.md)
+
 -   :material-rocket-launch: **Run PROTEUS**
 
     [Go to usage](How-to/usage.md)
@@ -49,9 +65,17 @@ The PROTEUS documentation is divided into **How-to guides**, **Tutorials**, **Ex
 
     [Go to model description](Explanations/model.md)
 
+-   :material-cog: **Configuration reference**
+
+    [Go to config parameters](Reference/config/params.md)
+
 -   :material-database: **Browse reference data**
 
     [Go to reference data](Reference/data.md)
+
+-   :material-chart-line: **Understand the output**
+
+    [Go to output format](Reference/output.md)
 
 -   :material-code-braces: **Contribute or develop**
 
@@ -64,9 +88,5 @@ The PROTEUS documentation is divided into **How-to guides**, **Tutorials**, **Ex
 -   :material-account-group: **Meet the team**
 
     [Go to developers](https://proteus-framework.org/people)
-
--   :material-email: **Get in touch**
-
-    [Go to contact](Community/contact.md)
 
 </div>

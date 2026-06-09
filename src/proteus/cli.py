@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from difflib import get_close_matches
 from pathlib import Path
 
@@ -12,18 +13,60 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'  # noqa
 os.environ['NUMEXPR_NUM_THREADS'] = '1'  # noqa
 os.environ['VECLIB_MAXIMUM_THREADS'] = '1'  # noqa
 
-import shutil
-import subprocess
-import sys
-import tempfile
+# Optional --deterministic mode: extra-strict numerical reproducibility for
+# coupled runs that fail on noise-floor floating-point divergence. Activated
+# by passing --deterministic on any subcommand. We intercept it here in raw
+# sys.argv (before click parses it) because JAX/XLA env vars must be set
+# BEFORE any module that imports JAX is imported, and `from proteus import
+# Proteus` below transitively imports JAX via Aragog.
+_PROTEUS_DETERMINISTIC_SENTINEL = 'PROTEUS_DETERMINISTIC_APPLIED'
+_DETERMINISTIC_XLA_FLAG = '--xla_cpu_enable_fast_math=false'
 
-import click
 
-from proteus import Proteus
-from proteus import __version__ as proteus_version
-from proteus.config import read_config_object
-from proteus.utils.data import download_sufficient_data
-from proteus.utils.logs import setup_logger
+def _apply_deterministic_env(environ) -> None:
+    """Set the deterministic env vars in `environ` (in-place).
+
+    Idempotent: appends the XLA flag only if not already present, sets
+    JAX_ENABLE_X64=1, and marks the sentinel. Caller decides whether to
+    re-exec; this function does NOT re-exec on its own (so it is safe to
+    call from tests).
+    """
+    environ[_PROTEUS_DETERMINISTIC_SENTINEL] = '1'
+    environ['JAX_ENABLE_X64'] = '1'
+    xla_existing = environ.get('XLA_FLAGS', '').strip()
+    if _DETERMINISTIC_XLA_FLAG not in xla_existing:
+        environ['XLA_FLAGS'] = (xla_existing + ' ' + _DETERMINISTIC_XLA_FLAG).strip()
+
+
+def _should_apply_deterministic(argv, environ) -> bool:
+    """Return True iff --deterministic is in argv and sentinel is not set."""
+    return '--deterministic' in argv and environ.get(_PROTEUS_DETERMINISTIC_SENTINEL) != '1'
+
+
+if _should_apply_deterministic(sys.argv, os.environ):
+    _apply_deterministic_env(os.environ)
+    # Re-exec so the env vars take effect before JAX is imported. The form
+    # depends on how PROTEUS was launched: the `proteus` console script puts
+    # an executable launcher in argv[0] that can be re-run directly, whereas
+    # `python -m proteus.cli` runs this file as __main__ with the module path
+    # in argv[0], which is not directly executable and must be re-run via -m.
+    if __name__ == '__main__':
+        os.execv(sys.executable, [sys.executable, '-m', 'proteus.cli', *sys.argv[1:]])
+    else:
+        os.execvp(sys.argv[0], sys.argv)
+
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+import tempfile  # noqa: E402
+
+import click  # noqa: E402
+
+from proteus import Proteus  # noqa: E402
+from proteus import __version__ as proteus_version  # noqa: E402
+from proteus.config import read_config_object  # noqa: E402
+from proteus.utils.data import download_sufficient_data  # noqa: E402
+from proteus.utils.helper import resolve_fwl_data_dir  # noqa: E402
+from proteus.utils.logs import setup_logger  # noqa: E402
 
 config_option = click.option(
     '-c',
@@ -130,8 +173,28 @@ cli.add_command(plot)
     default=False,
     help='Run in offline mode; do not connect to the internet',
 )
-def start(config_path: Path, resume: bool, offline: bool):
+@click.option(
+    '--deterministic',
+    is_flag=True,
+    default=False,
+    help=(
+        'Force extra-strict numerical reproducibility (sets JAX_ENABLE_X64=1 '
+        'and XLA_FLAGS=--xla_cpu_enable_fast_math=false on top of the always-on '
+        'BLAS thread pins). Use when a coupled run fails on noise-floor '
+        'floating-point divergence (e.g. Aragog T_core-jump-guard exhaustion '
+        'on numerically fragile anchors). The flag is intercepted before JAX '
+        'imports and triggers a one-shot self re-exec; the sentinel env var '
+        'PROTEUS_DETERMINISTIC_APPLIED=1 is set in the child process.'
+    ),
+)
+def start(config_path: Path, resume: bool, offline: bool, deterministic: bool):
     """Start proteus run"""
+    if deterministic and os.environ.get(_PROTEUS_DETERMINISTIC_SENTINEL) != '1':
+        click.secho(
+            '[!] --deterministic was requested but the env-var re-exec did not '
+            'take effect. Numerical determinism is NOT pinned. Investigate.',
+            fg='yellow',
+        )
     runner = Proteus(config_path=config_path)
     runner.start(resume=resume, offline=offline)
 
@@ -156,16 +219,31 @@ def get():
 
 
 @click.command()
-@click.option('-n', '--name', 'name', type=str, help='Name of spectral file group')
-@click.option('-b', '--bands', 'bands', type=str, help='Number of bands')
+@click.option(
+    '-n',
+    '--name',
+    'name',
+    type=str,
+    default=None,
+    help='Name of spectral file group (default: all groups)',
+)
+@click.option(
+    '-b',
+    '--bands',
+    'bands',
+    type=str,
+    default=None,
+    help='Number of bands (default: all band counts for the group)',
+)
 def spectral(**kwargs):
     """Get spectral files
 
-    By default, download all files.
+    By default, download all spectral files. Use -n GROUP to download
+    every band count for one group, or -n GROUP -b BANDS for one file.
     """
-    from .utils.data import download_spectral_file
+    from .utils.data import download_spectral_files
 
-    download_spectral_file(kwargs['name'], kwargs['bands'])
+    download_spectral_files(kwargs['name'], kwargs['bands'])
 
 
 @click.command()
@@ -434,13 +512,22 @@ def reference():
     help='Path to the TOML config file',
 )
 def interiordata(config_path: Path):
-    """Get interior lookup tables and melting curves"""
-    from .utils.data import download_interior_lookuptables, download_melting_curves
+    """Get interior lookup tables, melting curves, and structure EOS tables"""
+    from .utils.data import (
+        download_interior_lookuptables,
+        download_melting_curves,
+        download_zalmoxis_eos_for_config,
+    )
 
     download_interior_lookuptables(clean=True)
 
     configuration = read_config_object(config_path)
     download_melting_curves(configuration, clean=True)
+
+    # Structure-solver EOS tables (e.g. the PALEOS set) for the config's
+    # Zalmoxis setup. Without these on disk, an offline run fails inside
+    # the structure solver.
+    download_zalmoxis_eos_for_config(configuration)
 
 
 @click.command()
@@ -487,14 +574,37 @@ get.add_command(spider)
 
 
 @click.command()
-def doctor():
-    """Diagnose your PROTEUS installation"""
-    from .doctor import doctor_entry
+@click.option('--json', 'output_json', is_flag=True, help='Output results as JSON.')
+def doctor(output_json: bool):
+    """Diagnose your PROTEUS installation.
 
-    doctor_entry()
+    Checks environment variables, reference data, Python package versions,
+    and git module pins. Each check reports pass/warn/fail with a fix
+    command where applicable.
+    """
+    from .doctor import run_doctor
+
+    if not run_doctor(output_json=output_json):
+        raise SystemExit(1)
+
+
+@click.command()
+@click.option('--dry-run', is_flag=True, help='Show what would be done without executing.')
+def update(dry_run: bool):
+    """Update PROTEUS and its submodules.
+
+    Runs the same checks as ``proteus doctor``, then executes the
+    suggested fix commands for any failing or warning checks. Use
+    ``--dry-run`` to preview without making changes.
+    """
+    from .doctor import run_update
+
+    if not run_update(dry_run=dry_run):
+        raise SystemExit(1)
 
 
 cli.add_command(doctor)
+cli.add_command(update)
 
 # ----------------
 # 'archive' commands
@@ -531,7 +641,7 @@ def offchem(config_path: Path):
     """Run offline chemistry on PROTEUS output files"""
     runner = Proteus(config_path=config_path)
     setup_logger(
-        logpath=runner.directories['output'] + 'offchem.log',
+        logpath=os.path.join(runner.directories['output'], 'offchem.log'),
         logterm=True,
         level=runner.config.params.out.logging,
     )
@@ -544,7 +654,7 @@ def observe(config_path: Path):
     """Run synthetic observations pipeline"""
     runner = Proteus(config_path=config_path)
     setup_logger(
-        logpath=runner.directories['output'] + 'observe.log',
+        logpath=os.path.join(runner.directories['output'], 'observe.log'),
         logterm=True,
         level=runner.config.params.out.logging,
     )
@@ -561,11 +671,18 @@ cli.add_command(observe)
 
 @click.command()
 @config_option
-def grid(config_path: Path):
+@click.option(
+    '--dry-run',
+    is_flag=True,
+    default=False,
+    help='Generate the grid and write per-case config files without launching '
+    'PROTEUS simulations. Useful for validating a grid before spending compute.',
+)
+def grid(config_path: Path, dry_run: bool):
     """Run GridPROTEUS to generate a grid of forward models"""
     from proteus.grid.manage import grid_from_config
 
-    grid_from_config(config_path)
+    grid_from_config(config_path, test_run=dry_run)
 
 
 @click.command()
@@ -620,15 +737,6 @@ def grid_pack(output_path: Path):
 # ----------------
 # installer
 # ----------------
-
-
-def resolve_fwl_data_dir() -> Path:
-    """Return the FWL_DATA path (env or default)."""
-    if 'FWL_DATA' in os.environ:
-        return Path(os.environ['FWL_DATA'])
-    else:
-        # Return a default path to install FWL data.
-        return Path(__file__).resolve().parent.parent / 'FWL_DATA'
 
 
 def append_to_shell_rc(var: str, value: str, shell: str | None = None) -> Path | None:

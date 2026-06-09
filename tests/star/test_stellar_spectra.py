@@ -15,6 +15,9 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 # Helpers
 
 
@@ -150,6 +153,10 @@ def _make_handler_for_init_star(
 
 @pytest.mark.unit
 def test_phoenix_param_zero_formatting():
+    """``phoenix_param(0.0)`` formats FeH as ``'-0.0'`` and alpha as
+    ``'+0.0'``. The asymmetric sign convention matches the PHOENIX
+    filename grid layout, where these two strings index distinct files.
+    """
     from proteus.utils.phoenix_helper import phoenix_param
 
     assert phoenix_param(0.0, kind='FeH') == '-0.0'
@@ -158,13 +165,17 @@ def test_phoenix_param_zero_formatting():
 
 @pytest.mark.unit
 def test_phoenix_to_grid_snaps_to_nearest():
+    """``phoenix_to_grid`` snaps off-grid (FeH, alpha, Teff, logg)
+    requests to the nearest tabulated PHOENIX grid value. Off-grid
+    inputs like Teff=5873 land on the nearest 100-K node (5900 K).
+    """
     from proteus.utils.phoenix_helper import phoenix_to_grid
 
     grid = phoenix_to_grid(FeH=-0.12, alpha=0.33, Teff=5873, logg=4.62)
-    assert grid['FeH'] == 0.0
+    assert grid['FeH'] == pytest.approx(0.0, abs=1e-12)
     assert grid['alpha'] == pytest.approx(0.4)
-    assert grid['Teff'] == 5900.0
-    assert grid['logg'] == 4.5
+    assert grid['Teff'] == pytest.approx(5900.0, rel=1e-12)
+    assert grid['logg'] == pytest.approx(4.5, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -178,17 +189,28 @@ def test_phoenix_to_grid_disallows_alpha_when_feh_positive(caplog):
     caplog.set_level('WARNING')
     grid = phoenix_to_grid(FeH=+0.4, alpha=0.6, Teff=5800, logg=4.5)
 
-    assert grid['FeH'] == 0.5
-    assert grid['alpha'] == 0.0
+    assert grid['FeH'] == pytest.approx(0.5, rel=1e-12)
+    assert grid['alpha'] == pytest.approx(0.0, abs=1e-12)
     assert any('using [alpha/M]=0.0' in rec.message for rec in caplog.records)
 
 
 @pytest.mark.unit
 def test_phoenix_filename_format():
+    """``phoenix_filename`` produces the canonical PHOENIX file naming
+    pattern ``LTE_T<T>_logg<g>_FeH<x>_alpha<y>_phoenixMedRes_R05000.txt``
+    used by the downloader and the FWL_DATA tree.
+    """
     from proteus.utils.phoenix_helper import phoenix_filename
 
     name = phoenix_filename(Teff=2300, logg=1.0, FeH=0.0, alpha=0.0)
     assert name == 'LTE_T02300_logg1.00_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt'
+    # Discrimination: the Teff field is zero-padded to 5 digits, and a
+    # different (Teff, logg, FeH, alpha) tuple must produce a distinct
+    # filename with the same template. A regression that hard-coded the
+    # T or logg slot (e.g. always 'T02300' or 'logg1.00') would fail here.
+    other = phoenix_filename(Teff=5800, logg=4.5, FeH=0.5, alpha=0.2)
+    assert other == 'LTE_T05800_logg4.50_FeH+0.5_alpha+0.2_phoenixMedRes_R05000.txt'
+    assert other != name
 
 
 # star/phoenix.py tests
@@ -196,6 +218,10 @@ def test_phoenix_filename_format():
 
 @pytest.mark.unit
 def test_get_phoenix_modern_spectrum_scales_to_1au(tmp_path, monkeypatch):
+    """``get_phoenix_modern_spectrum`` scales the raw stellar-surface
+    PHOENIX flux to 1 AU by ``(R_star / 1 AU)**2``. The wavelength axis
+    is preserved unchanged.
+    """
     import proteus.star.phoenix as phoenix_mod
     from proteus.star.phoenix import get_phoenix_modern_spectrum
     from proteus.utils.constants import AU, R_sun
@@ -226,6 +252,10 @@ def test_get_phoenix_modern_spectrum_scales_to_1au(tmp_path, monkeypatch):
 
 @pytest.mark.unit
 def test_get_phoenix_modern_spectrum_offline_missing_raw_raises(tmp_path, monkeypatch):
+    """In offline mode with no raw PHOENIX file on disk,
+    ``get_phoenix_modern_spectrum`` raises FileNotFoundError rather
+    than attempting to download from Zenodo.
+    """
     import proteus.star.phoenix as phoenix_mod
     from proteus.star.phoenix import get_phoenix_modern_spectrum
 
@@ -235,9 +265,20 @@ def test_get_phoenix_modern_spectrum_offline_missing_raw_raises(tmp_path, monkey
     with pytest.raises(FileNotFoundError):
         get_phoenix_modern_spectrum(handler, stellar_track=None)
 
+    # Discrimination: the offline branch must NOT silently emit a 1 AU file
+    # before raising. A regression that wrote a zero-flux fallback to disk
+    # and then raised (or that swallowed the raise) would corrupt the
+    # downstream pipeline; assert no PHOENIX 1AU directory was created.
+    one_au_dir = tmp_path / 'stellar_spectra' / 'PHOENIX' / '1AU'
+    assert not one_au_dir.exists() or not any(one_au_dir.iterdir())
+
 
 @pytest.mark.unit
 def test_get_phoenix_modern_spectrum_downloads_when_online(tmp_path, monkeypatch):
+    """In online mode with no raw PHOENIX file present,
+    ``get_phoenix_modern_spectrum`` calls ``download_phoenix`` to
+    materialise the raw grid before producing the 1 AU file.
+    """
     import proteus.star.phoenix as phoenix_mod
     from proteus.star.phoenix import get_phoenix_modern_spectrum
     from proteus.utils.phoenix_helper import phoenix_filename, phoenix_param
@@ -270,6 +311,10 @@ def test_get_phoenix_modern_spectrum_downloads_when_online(tmp_path, monkeypatch
 
 @pytest.mark.unit
 def test_init_star_source_none_prefers_muscles_when_available(tmp_path, monkeypatch):
+    """With ``spectrum_source=None``, ``init_star`` prefers MUSCLES over
+    solar when BOTH files exist; pins the priority order in the spectrum
+    fallback chain.
+    """
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
@@ -287,10 +332,18 @@ def test_init_star_source_none_prefers_muscles_when_available(tmp_path, monkeypa
     backup = tmp_path / 'out' / 'data' / '-1.sflux'
     arr = np.loadtxt(backup)
     assert np.allclose(arr[:, 1], np.array([30.0, 40.0]))
+    # Discrimination: a regression that picked solar (the OTHER existing
+    # file, flux=[10, 20]) would still pass a "is not None" check on the
+    # backup. Pin the MUSCLES flux specifically and reject the solar flux.
+    assert not np.allclose(arr[:, 1], np.array([10.0, 20.0]))
 
 
 @pytest.mark.unit
 def test_init_star_source_none_uses_muscles_when_solar_missing(tmp_path, monkeypatch):
+    """With ``spectrum_source=None`` and no solar file on disk,
+    ``init_star`` falls through to MUSCLES rather than raising. Pairs
+    with the preference test above to pin the full fallback chain.
+    """
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
@@ -305,12 +358,21 @@ def test_init_star_source_none_uses_muscles_when_solar_missing(tmp_path, monkeyp
     backup = tmp_path / 'out' / 'data' / '-1.sflux'
     arr = np.loadtxt(backup)
     assert np.allclose(arr[:, 1], np.array([30.0, 40.0]))
+    # Discrimination: the wavelength column is preserved verbatim from the
+    # MUSCLES file (100, 200 nm), and the row count matches the source. A
+    # regression that built a zero-flux fallback grid would fail both pins.
+    assert np.allclose(arr[:, 0], np.array([100.0, 200.0]))
+    assert arr.shape == (2, 2)
 
 
 @pytest.mark.unit
 def test_init_star_source_solar_falls_back_to_muscles_with_warning(
     tmp_path, monkeypatch, caplog
 ):
+    """With ``spectrum_source='solar'`` but no solar file on disk,
+    ``init_star`` falls back to MUSCLES AND emits a warning so the user
+    sees that the requested source was unavailable.
+    """
     from proteus.star.wrapper import init_star
 
     caplog.set_level('WARNING')
@@ -333,6 +395,10 @@ def test_init_star_source_solar_falls_back_to_muscles_with_warning(
 def test_init_star_source_muscles_falls_back_to_solar_with_warning(
     tmp_path, monkeypatch, caplog
 ):
+    """Symmetric to the solar->MUSCLES fallback: with
+    ``spectrum_source='muscles'`` but no MUSCLES file on disk,
+    ``init_star`` falls back to solar with a warning.
+    """
     from proteus.star.wrapper import init_star
 
     caplog.set_level('WARNING')
@@ -353,6 +419,10 @@ def test_init_star_source_muscles_falls_back_to_solar_with_warning(
 
 @pytest.mark.unit
 def test_init_star_source_none_missing_both_raises(tmp_path, monkeypatch):
+    """With ``spectrum_source=None`` and neither solar nor MUSCLES on
+    disk, ``init_star`` raises FileNotFoundError rather than producing
+    a silent zero-flux spectrum.
+    """
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
@@ -361,9 +431,20 @@ def test_init_star_source_none_missing_both_raises(tmp_path, monkeypatch):
     with pytest.raises(FileNotFoundError):
         init_star(handler)
 
+    # Discrimination: the raise must fire BEFORE any backup spectrum is
+    # written. A regression that silently produced a zero-flux fallback
+    # file and then raised (or that swallowed the raise) would corrupt
+    # the downstream pipeline. The backup path must not exist.
+    backup = tmp_path / 'out' / 'data' / '-1.sflux'
+    assert not backup.exists()
+
 
 @pytest.mark.unit
 def test_init_star_star_path_override_is_used(tmp_path, monkeypatch):
+    """A user-supplied ``star_path`` takes precedence over the
+    catalogue-based dispatch; the file at that path is loaded as the
+    stellar spectrum verbatim.
+    """
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
@@ -378,10 +459,19 @@ def test_init_star_star_path_override_is_used(tmp_path, monkeypatch):
     backup = tmp_path / 'out' / 'data' / '-1.sflux'
     arr = np.loadtxt(backup)
     assert np.allclose(arr[:, 1], np.array([111.0, 222.0]))
+    # Discrimination: the override path's wavelength axis (100, 200 nm from
+    # _write_spectrum_file) is preserved verbatim. A regression that
+    # silently fell through to the catalogue dispatch (which has no file on
+    # disk in this test) would either raise or produce a different grid.
+    assert np.allclose(arr[:, 0], np.array([100.0, 200.0]))
 
 
 @pytest.mark.unit
 def test_init_star_star_path_missing_raises(tmp_path, monkeypatch):
+    """A user-supplied ``star_path`` that does not exist on disk raises
+    FileNotFoundError with a 'Custom stellar spectrum path' message,
+    so the user sees the typo rather than getting a silent fallback.
+    """
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
@@ -396,9 +486,23 @@ def test_init_star_star_path_missing_raises(tmp_path, monkeypatch):
     with pytest.raises(FileNotFoundError, match='Custom stellar spectrum path does not exist'):
         init_star(handler)
 
+    # Discrimination: the raise must fire BEFORE any backup file is
+    # produced. A regression that silently fell back to the catalogue
+    # dispatch (with no MUSCLES or solar file on disk either) and then
+    # raised a generic FileNotFoundError would still satisfy the match
+    # pattern only by coincidence. Pin: the backup spectrum file must
+    # not exist after the raise.
+    backup = tmp_path / 'out' / 'data' / '-1.sflux'
+    assert not backup.exists()
+
 
 @pytest.mark.unit
 def test_init_star_phoenix_branch_uses_get_phoenix_modern_spectrum(tmp_path, monkeypatch):
+    """With ``spectrum_source='phoenix'`` and ``tracks='baraffe'``,
+    ``init_star`` dispatches to ``get_phoenix_modern_spectrum`` exactly
+    once, passing the Baraffe track object, and attaches the track to
+    the handler so the radiative-transfer pipeline can read it later.
+    """
     import proteus.star.wrapper as wrapper_mod
     from proteus.star.wrapper import init_star
 
@@ -432,3 +536,47 @@ def test_init_star_phoenix_branch_uses_get_phoenix_modern_spectrum(tmp_path, mon
     arr = np.loadtxt(backup)
     assert np.allclose(arr[:, 1], np.array([7.0, 8.0]))
     assert isinstance(handler.stellar_track, fake_mors.BaraffeTrack)
+
+
+@pytest.mark.unit
+def test_init_star_phoenix_branch_tolerates_star_name_none(tmp_path, monkeypatch):
+    """PHOENIX synthesises its spectrum from the stellar track, so a
+    user may leave ``star_name`` unset. With ``star_name=None`` and
+    ``spectrum_source='phoenix'``, ``init_star`` must reach
+    ``get_phoenix_modern_spectrum`` instead of crashing while building
+    the (unused, for PHOENIX) catalogue file name from a None value.
+    """
+    import proteus.star.wrapper as wrapper_mod
+    from proteus.star.wrapper import init_star
+
+    _install_fake_mors(monkeypatch)
+
+    phoenix_modern = tmp_path / 'stellar_spectra' / 'PHOENIX' / '1AU' / 'fake_phoenix.txt'
+    _write_spectrum_file(phoenix_modern, fl=(7.0, 8.0))
+
+    calls = {'n': 0}
+
+    def fake_get_phoenix_modern_spectrum(handler, stellar_track=None, age_yr=None):
+        calls['n'] += 1
+        return phoenix_modern
+
+    monkeypatch.setattr(
+        wrapper_mod, 'get_phoenix_modern_spectrum', fake_get_phoenix_modern_spectrum
+    )
+
+    handler = _make_handler_for_init_star(
+        tmp_path,
+        spectrum_source='phoenix',
+        star_name=None,
+        tracks='baraffe',
+        offline=True,
+    )
+    init_star(handler)
+
+    # Discrimination: an unguarded name lookup (``star_name.lower()`` /
+    # ``.strip()``) would raise AttributeError on None BEFORE the PHOENIX
+    # branch ran, leaving the call count at 0 and writing no backup file.
+    assert calls['n'] == 1
+    backup = tmp_path / 'out' / 'data' / '-1.sflux'
+    arr = np.loadtxt(backup)
+    assert np.allclose(arr[:, 1], np.array([7.0, 8.0]))

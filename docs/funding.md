@@ -76,4 +76,12 @@ style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
 alt="UK Research and Innovation (STFC) logo"
 style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
 </a>
+<a href="https://www.ast.cam.ac.uk/" target="_blank">
+<img src="assets/logos/Cambridge.png" class="logo-light"
+alt="University of Cambridge logo"
+style="max-width: 220px; max-height: 120px; width: auto; height: auto; background: white; padding: 8px; border-radius: 4px;">
+<img src="assets/logos/Cambridge.png" class="logo-dark"
+alt="University of Cambridge logo"
+style="max-width: 220px; max-height: 120px; width: auto; height: auto; background: white; padding: 8px; border-radius: 4px;">
+</a>
 </div>

@@ -50,7 +50,7 @@ def get_nested(config: dict, key: str, sep: str = '.'):
     Parameters
     ----------
     - config (dict): A potentially nested dictionary.
-    - key (str): Dot-separated path to the target value (e.g., "struct.mass_tot").
+    - key (str): Dot-separated path to the target value (e.g., "planet.mass_tot").
     - sep (str): Separator for key segments. Defaults to '.'.
 
     Returns

@@ -14,6 +14,8 @@ import torch
 
 import proteus.inference.BO as bo_mod
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 class _DummyLock:
     def __enter__(self):
@@ -37,6 +39,10 @@ class _DummyGP:
 
 @pytest.mark.unit
 def test_unit_bounds_returns_hypercube_tensor():
+    """``unit_bounds(d)`` returns a (2, d) tensor whose rows are all-zeros
+    and all-ones, i.e. the lower and upper corners of the d-dimensional
+    unit hypercube the BO loop optimises over.
+    """
     bounds = bo_mod.unit_bounds(3)
     assert tuple(bounds.shape) == (2, 3)
     assert bounds[0].tolist() == [0.0, 0.0, 0.0]
@@ -45,6 +51,11 @@ def test_unit_bounds_returns_hypercube_tensor():
 
 @pytest.mark.unit
 def test_bo_step_with_x_in_skips_gp_fitting():
+    """When ``BO_step`` is called with an explicit ``x_in`` (an
+    externally-suggested candidate), it skips the GP fit + acquisition
+    optimisation, evaluates ``f(x_in)`` directly, and registers the
+    candidate in the busy dict ``B``.
+    """
     D = {
         'X': torch.tensor([[0.1]], dtype=torch.double),
         'Y': torch.tensor([[0.2]], dtype=torch.double),
@@ -70,6 +81,10 @@ def test_bo_step_with_x_in_skips_gp_fitting():
 
 @pytest.mark.unit
 def test_bo_step_raises_for_unknown_acquisition(monkeypatch):
+    """An unsupported acquisition function name raises ValueError with
+    'Unknown acquisition function' rather than silently dispatching to
+    a default.
+    """
     monkeypatch.setattr(bo_mod, 'SingleTaskGP', lambda **kwargs: _DummyGP())
     monkeypatch.setattr(bo_mod, 'ExactMarginalLogLikelihood', lambda _lik, _gp: object())
     monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *args, **kwargs: None)
@@ -83,20 +98,34 @@ def test_bo_step_raises_for_unknown_acquisition(monkeypatch):
         1: torch.tensor([[0.20]], dtype=torch.double),
     }
 
+    f_calls: list = []
+
+    def _f(_x):
+        f_calls.append(_x)
+        return torch.tensor([[0.0]], dtype=torch.double)
+
     with pytest.raises(ValueError, match='Unknown acquisition function'):
         bo_mod.BO_step(
             D=D,
             B=B,
-            f=lambda _x: torch.tensor([[0.0]], dtype=torch.double),
+            f=_f,
             k=object(),
             acqf='BAD-ACQF',
             lock=_DummyLock(),
             worker_id=0,
         )
+    # Discrimination: the guard must fire BEFORE the expensive objective
+    # call. A regression that evaluated `f` first and then raised would
+    # waste a costly simulator call per misconfigured worker.
+    assert f_calls == []
 
 
 @pytest.mark.unit
 def test_bo_step_ucb_path_computes_distance(monkeypatch):
+    """The UCB acquisition path returns the proposed candidate, the
+    evaluated ``y`` at that candidate, and the minimum distance to any
+    other worker's busy point (used by the diversity-aware scheduler).
+    """
     monkeypatch.setattr(bo_mod, 'SingleTaskGP', lambda **kwargs: _DummyGP())
     monkeypatch.setattr(bo_mod, 'ExactMarginalLogLikelihood', lambda _lik, _gp: object())
     monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *args, **kwargs: None)
@@ -133,6 +162,11 @@ def test_bo_step_ucb_path_computes_distance(monkeypatch):
 
 @pytest.mark.unit
 def test_init_locs_returns_batch_candidates(monkeypatch):
+    """``init_locs(n, D)`` returns an n*d tensor of initial candidate
+    locations for the n workers; the returned rows are exactly the
+    output of ``optimize_acqf`` over the qLogExpectedImprovement
+    acquisition.
+    """
     monkeypatch.setattr(bo_mod, 'get_kernel_w_prior', lambda *args, **kwargs: object())
     monkeypatch.setattr(bo_mod, 'SingleTaskGP', lambda **kwargs: _DummyGP())
     monkeypatch.setattr(bo_mod, 'ExactMarginalLogLikelihood', lambda _lik, _gp: object())
@@ -156,6 +190,10 @@ def test_init_locs_returns_batch_candidates(monkeypatch):
 
 @pytest.mark.unit
 def test_plot_iter_writes_figure(tmp_path):
+    """``plot_iter`` writes the BO-iteration diagnostic figure to disk
+    under the given directory and filename. Verifies the file-IO leg of
+    the diagnostic plotting pipeline.
+    """
     gp = _DummyGP()
 
     class _Acqf:
@@ -174,3 +212,7 @@ def test_plot_iter_writes_figure(tmp_path):
     )
 
     assert (tmp_path / 'iter.png').is_file()
+    # Discrimination: a regression that wrote an empty file (matplotlib
+    # closed before save) would still satisfy `is_file()`. Pin a non-zero
+    # file size to catch that mode.
+    assert (tmp_path / 'iter.png').stat().st_size > 0

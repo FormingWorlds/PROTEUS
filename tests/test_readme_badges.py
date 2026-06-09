@@ -1,9 +1,12 @@
 """Unit tests for README and docs badge validation.
 
 Validates that badge URLs in README.md and docs/index.md are well-formed, use
-HTTPS, follow expected patterns, and stay in sync. This prevents badge
-regressions like the Codecov "unknown" issue caused by a missing `/branch/main/`
-path segment, and ensures the README and docs landing page show identical badges.
+HTTPS, and follow expected patterns. The README renders on GitHub, which proxies
+and caches the live shields.io/codecov badges, so it keeps those live sources.
+The docs site serves cached static SVGs from its own origin, so its badges load
+without a third-party request. The two surfaces use different image sources by
+design but must link to the same destinations; these tests pin both the README
+source contract and that the two surfaces stay in sync on what they point to.
 
 Testing standards: docs/test_infrastructure.md, docs/test_categorization.md,
 docs/test_building.md
@@ -18,6 +21,9 @@ import pytest
 
 from tests.helpers.helpers import PROTEUS_ROOT
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 README_PATH = PROTEUS_ROOT / 'README.md'
 DOCS_INDEX_PATH = PROTEUS_ROOT / 'docs' / 'index.md'
 
@@ -31,7 +37,6 @@ EXPECTED_BADGES = [
     'docs.yaml',
     'License',
     'graph/badge.svg',
-    'DOI',
     'Website',
 ]
 
@@ -49,6 +54,10 @@ def readme_content():
 def test_readme_exists():
     """README.md must exist at the repository root."""
     assert README_PATH.is_file(), f'README.md not found at {README_PATH}'
+    # Discrimination: existence alone passes on an empty README. Pin a
+    # non-trivial size so a regression that truncated the file to a
+    # placeholder still surfaces here.
+    assert README_PATH.stat().st_size > 1024
 
 
 @pytest.mark.unit
@@ -76,7 +85,7 @@ def test_all_badge_image_urls_are_valid_https(readme_content):
 def test_all_badge_links_are_valid_https(readme_content):
     """All badge <a href='...'> URLs must use HTTPS.
 
-    Badges link to GitHub Actions, documentation, and external services —
+    Badges link to GitHub Actions, documentation, and external services,
     all of which should be accessed over HTTPS.
     """
     href_urls = re.findall(r'<a\s+href="([^"]+)"', readme_content)
@@ -92,11 +101,17 @@ def test_expected_badges_present(readme_content, badge_marker):
     """All expected badges must be present in the README.
 
     We check for 6 badges: Unit Tests, Integration Tests, docs, License,
-    Codecov, and DOI. Each is identified by a unique substring in its URL.
+    Codecov, and Website. Each is identified by a unique substring in its URL.
     """
     img_urls = re.findall(r'<img\s+src="([^"]+)"', readme_content)
     matching = [url for url in img_urls if badge_marker in url]
     assert len(matching) > 0, f"Expected badge with '{badge_marker}' not found in README"
+    # Discriminating check: each badge marker should appear exactly once; a
+    # duplicate is a copy-paste regression that a `len > 0` check would miss.
+    assert len(matching) == 1, (
+        f"Badge with '{badge_marker}' appears {len(matching)} times in README; "
+        f'expected exactly one occurrence.'
+    )
 
 
 @pytest.mark.unit
@@ -128,6 +143,11 @@ def test_workflow_badges_reference_existing_workflows(workflow_file):
     assert workflow_path.is_file(), (
         f'Workflow file referenced by badge does not exist: {workflow_path}'
     )
+    # Discrimination: existence alone passes on an empty stub workflow.
+    # Pin a non-zero size and the YAML extension so a regression that
+    # touched empty placeholder files surfaces here.
+    assert workflow_path.stat().st_size > 0
+    assert workflow_path.suffix in ('.yml', '.yaml')
 
 
 def _extract_badge_block(text: str) -> str:
@@ -146,17 +166,48 @@ def _extract_badge_block(text: str) -> str:
     return '\n'.join(line.strip() for line in match.group(1).splitlines())
 
 
-@pytest.mark.unit
-def test_readme_and_docs_badges_are_identical():
-    """Badge blocks in README.md and docs/index.md must be identical.
+def _extract_attr(block: str, attr: str) -> list[str]:
+    """Return the ordered values of an HTML attribute in a badge block.
 
-    Both files should present the same set of badges in the same order so
-    that the GitHub landing page and the documentation site look consistent.
-    Any divergence indicates one file was updated without the other.
+    Parameters
+    ----------
+    block : str
+        The badge block markup.
+    attr : str
+        Attribute name, for example ``'href'`` or ``'src'``.
     """
-    readme_badges = _extract_badge_block(README_PATH.read_text())
-    docs_badges = _extract_badge_block(DOCS_INDEX_PATH.read_text())
-    assert readme_badges == docs_badges, (
-        'Badge blocks differ between README.md and docs/index.md. '
-        'Update both files to keep them in sync.'
+    return re.findall(rf'{attr}="([^"]+)"', block)
+
+
+@pytest.mark.unit
+def test_readme_and_docs_badges_link_to_same_destinations():
+    """README and docs landing page must point at the same badge destinations.
+
+    The two surfaces render badges from different sources by design: the README
+    uses live shields.io/codecov badges (GitHub proxies and caches these, so they
+    stay current), while the docs site serves cached static SVGs from its own
+    origin. They must still link to the same targets in the same order, so a
+    badge added or removed on one surface is added or removed on the other.
+    """
+    readme_block = _extract_badge_block(README_PATH.read_text())
+    docs_block = _extract_badge_block(DOCS_INDEX_PATH.read_text())
+
+    readme_links = _extract_attr(readme_block, 'href')
+    docs_links = _extract_attr(docs_block, 'href')
+    assert readme_links, 'No badge links found in README badge block'
+    assert readme_links == docs_links, (
+        'Badge link destinations differ between README.md and docs/index.md. '
+        'Add or remove the badge on both surfaces to keep them in sync.'
+    )
+    # Pin the intentional source divergence so a regression that points the
+    # README at the docs-site SVGs (which 404 off the docs origin and freeze CI
+    # status at the last deploy) is caught: the docs site uses cached local
+    # SVGs, the README uses live shields/codecov sources.
+    docs_imgs = _extract_attr(docs_block, 'src')
+    readme_imgs = _extract_attr(readme_block, 'src')
+    assert docs_imgs and all(src.startswith('badges/') for src in docs_imgs), (
+        f'docs/index.md badges must use cached local SVGs (badges/*.svg): {docs_imgs}'
+    )
+    assert readme_imgs and not any('/PROTEUS/badges/' in src for src in readme_imgs), (
+        'README badges must use live shields/codecov sources, not docs-site SVGs.'
     )

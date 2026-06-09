@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_observe_platon_downsample_valid():
@@ -19,8 +21,10 @@ def test_observe_platon_downsample_valid():
     # Just verify defaults are set correctly since these use attrs validators
     p_default = Platon()
     assert p_default.downsample == 8  # Default value
-
-    # The validator ge(1) enforces downsampling >= 1 at class construction
+    # Discrimination: the ge(1) validator must reject 0; a regression that
+    # silently coerced or dropped the validator would let this through.
+    with pytest.raises((ValueError, TypeError)):
+        Platon(downsample=0)
 
 
 @pytest.mark.unit
@@ -30,9 +34,14 @@ def test_observe_platon_clip_vmr_valid():
 
     # Default VMR value should be valid
     p_default = Platon()
-    assert p_default.clip_vmr == 1e-8
-
-    # Validator enforces 0 < vmr < 1
+    assert p_default.clip_vmr == pytest.approx(1e-8, rel=1e-12)
+    # Discrimination: the (gt(0), lt(1)) validator pair must reject both
+    # boundary endpoints. A regression to a one-sided check (e.g. only ge(0))
+    # would let 1.0 slip past.
+    with pytest.raises((ValueError, TypeError)):
+        Platon(clip_vmr=0.0)
+    with pytest.raises((ValueError, TypeError)):
+        Platon(clip_vmr=1.0)
 
 
 @pytest.mark.unit
@@ -44,6 +53,11 @@ def test_observe_synthesis_none_accepted():
     # Synthesis accepts None as a valid value after converter
     obs = Observe(synthesis=None)
     assert obs.synthesis is None
+    # Discriminating check: the construction produced an Observe instance with
+    # an explicit synthesis=None field; a regression that swallowed the input
+    # would have produced a class-level default (which `_observe.py` sets to
+    # None too) and looked the same on the surface.
+    assert isinstance(obs, Observe)
 
 
 @pytest.mark.unit
@@ -54,3 +68,8 @@ def test_observe_synthesis_platon_accepted():
     # Synthesis accepts 'platon' as a valid string value
     obs = Observe(synthesis='platon')
     assert obs.synthesis == 'platon'
+    # Discrimination: the validator must reject an unknown synthesizer.
+    # A regression that dropped the in_((None, 'platon')) constraint would
+    # let 'unknown' through.
+    with pytest.raises((ValueError, TypeError)):
+        Observe(synthesis='unknown')

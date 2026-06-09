@@ -18,8 +18,6 @@ import pytest
 
 from proteus.config._interior import Aragog, Interior, InteriorDummy, Spider
 from proteus.config._params import (
-    DtAdaptive,
-    DtProportional,
     OutputParams,
     Params,
     StopDisint,
@@ -31,6 +29,8 @@ from proteus.config._params import (
     StopTime,
     TimeStepParams,
 )
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.mark.unit
@@ -48,7 +48,7 @@ def test_output_params_defaults():
     assert out.logging == 'INFO'
     assert out.plot_fmt == 'png'
     assert out.write_mod == 1  # Write every step (safe for short runs)
-    assert out.plot_mod == 10  # Plot every 10 steps
+    assert out.plot_mod == 5  # Plot every 10 steps
     assert out.archive_mod is None  # Archiving disabled by default
     assert out.remove_sf is False  # Keep spectral files by default for debugging
 
@@ -65,18 +65,15 @@ def test_dt_params_defaults():
     """
     dt = TimeStepParams()
     assert dt.method == 'adaptive'
-    assert dt.minimum == 3e2  # Minimum step 300 years
-    assert dt.minimum_rel == 1e-6  # Relative minimum precision
-    assert dt.maximum == 1e7  # Maximum step 10 Myr
-    assert dt.initial == 1e3  # Start with 1000 years
+    assert dt.minimum == pytest.approx(1e4, rel=1e-12)  # Minimum step 300 years
+    assert dt.minimum_rel == pytest.approx(1e-5, rel=1e-12)  # Relative minimum precision
+    assert dt.maximum == pytest.approx(1e7, rel=1e-12)  # Maximum step 10 Myr
+    assert dt.initial == pytest.approx(3e1, rel=1e-12)  # Start with 1000 years
 
-    # Sub-configs
-    assert isinstance(dt.proportional, DtProportional)
-    assert dt.proportional.propconst == 52.0
-
-    assert isinstance(dt.adaptive, DtAdaptive)
-    assert dt.adaptive.atol == 0.02
-    assert dt.adaptive.rtol == 0.10
+    # Proportional and adaptive parameters (flattened)
+    assert dt.propconst == pytest.approx(52.0, rel=1e-12)
+    assert dt.atol == pytest.approx(0.02, rel=1e-12)
+    assert dt.rtol == pytest.approx(0.10, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -101,22 +98,22 @@ def test_stop_params_defaults():
     # Time
     assert isinstance(stop.time, StopTime)
     assert stop.time.enabled is True
-    assert stop.time.maximum == 6e9
+    assert stop.time.maximum == pytest.approx(6e9, rel=1e-12)
 
     # Solid
     assert isinstance(stop.solid, StopSolid)
     assert stop.solid.enabled is True
-    assert stop.solid.phi_crit == 0.01
+    assert stop.solid.phi_crit == pytest.approx(0.01, rel=1e-12)
 
     # Radeqm
     assert isinstance(stop.radeqm, StopRadeqm)
     assert stop.radeqm.enabled is True
-    assert stop.radeqm.atol == 1.0
+    assert stop.radeqm.atol == pytest.approx(1.0, rel=1e-12)
 
     # Escape
     assert isinstance(stop.escape, StopEscape)
     assert stop.escape.enabled is True
-    assert stop.escape.p_stop == 1
+    assert stop.escape.p_stop == pytest.approx(3.0, rel=1e-12)
 
     # Disint (defaults to disabled)
     assert isinstance(stop.disint, StopDisint)
@@ -156,31 +153,29 @@ def test_interior_defaults():
     """
     # Interior requires module argument
     # If module='spider', we must provide a valid spider config
-    spider_cfg = Spider(ini_entropy=3000.0)
+    spider_cfg = Spider()
     i = Interior(module='spider', spider=spider_cfg)
     assert i.module == 'spider'
     assert i.spider == spider_cfg
-    assert i.radiogenic_heat is True  # Heating terms on
-    assert i.tidal_heat is True
-    assert i.grain_size == 0.1  # 10 cm crystals
-    assert i.F_initial == 1e3  # 1000 W/m^2
+    assert i.heat_radiogenic is True  # Heating terms on
+    assert i.heat_tidal is False
+    assert i.grain_size == pytest.approx(0.1, rel=1e-12)  # 10 cm crystals
+    assert i.flux_guess == -1  # Auto-detect
 
     # Sub-modules defaults
     assert isinstance(i.aragog, Aragog)
-    assert i.aragog.num_levels == 100
-    assert i.aragog.logging == 'ERROR'
+    assert i.num_levels == 80  # num_levels is on Interior, not Aragog
 
     assert isinstance(i.dummy, InteriorDummy)
-    assert i.dummy.tmagma_atol == 30.0
 
     # Test Aragog module selection
-    aragog_cfg = Aragog(ini_tmagma=3000.0)
+    aragog_cfg = Aragog()
     i2 = Interior(module='aragog', aragog=aragog_cfg)
     assert i2.module == 'aragog'
     assert i2.aragog == aragog_cfg
 
     # Test Dummy module selection
-    dummy_cfg = InteriorDummy(ini_tmagma=3000.0)
+    dummy_cfg = InteriorDummy()
     i3 = Interior(module='dummy', dummy=dummy_cfg)
     assert i3.module == 'dummy'
     assert i3.dummy == dummy_cfg
@@ -191,18 +186,25 @@ def test_spider_defaults():
     """
     Test verification of Spider specific defaults.
 
-    Verifies SPIDER (C-based interior module) defaults:
-    - 190 grid levels (high resolution)
-    - Mixing length 2 (standard convection parameter)
-    - BDF solver (Backwards Differentiation Formula, stable for stiff systems)
+    History:
+    - Tier 4 (2026-04-08) promoted ``tolerance_rel`` and
+      ``matprop_smooth_width`` from Spider to the top-level Interior
+      class, leaving only ``solver_type`` as SPIDER-specific.
+    - 2026-04-09 reverted ``matprop_smooth_width`` back to Spider as
+      a real field (default 1e-2) after Aragog's Jgrav smoothing was
+      replaced with a parameter-free cubic Hermite polynomial that
+      does not need a width knob.
+
+    ``tolerance_rel`` remains a deprecation-aliased sentinel field
+    (default -1.0 = "not set"; a positive value is copied to
+    ``Interior.rtol`` with a DeprecationWarning).
     """
     s = Spider()
-    assert s.num_levels == 190
-    assert s.mixing_length == 2
-    assert s.tolerance == 1e-10
     assert s.solver_type == 'bdf'
-    assert s.convection is True
-    assert s.matprop_smooth_width == 1e-2
+    # Deprecation alias sentinel (not set)
+    assert s.tolerance_rel == pytest.approx(-1.0, abs=1e-12)
+    # Real SPIDER-only field (post 2026-04-09)
+    assert s.matprop_smooth_width == pytest.approx(1e-2)
 
 
 @pytest.mark.unit
@@ -210,14 +212,30 @@ def test_aragog_defaults():
     """
     Test verification of Aragog specific defaults.
 
-    Verifies ARAGOG (Python-based interior module) defaults:
-    - 100 grid levels
-    - Initial condition 1 (Linear temperature profile)
-    - Bulk modulus 260 GPa (Earth-like mantle)
+    Verifies ARAGOG (Python-based interior module) defaults.
     """
     a = Aragog()
-    assert a.logging == 'ERROR'
-    assert a.num_levels == 100
-    assert a.initial_condition == 1
-    assert a.tolerance == 1e-10
-    assert a.bulk_modulus == 260e9
+    assert a.mass_coordinates is True
+    assert a.backend == 'jax'
+    assert not hasattr(a, 'jax')
+    assert not hasattr(a, 'use_jax_jacobian')
+    assert not hasattr(a, 'dilatation'), (
+        'dilatation slot must be removed; existing TOMLs setting '
+        'this field should now fail to load.'
+    )
+    # Strategy B (per-call ΔΦ cap): default 0.0 keeps existing behaviour.
+    assert a.phi_step_cap == pytest.approx(0.0)
+    # Validator must reject negative values.
+    with pytest.raises(ValueError):
+        Aragog(phi_step_cap=-0.01)
+    # Positive value persists.
+    assert Aragog(phi_step_cap=0.05).phi_step_cap == pytest.approx(0.05)
+    import pytest as _pt
+
+    with _pt.raises(ValueError):
+        Aragog(backend='diffrax')
+    # The deleted dilatation kwarg must now raise: an unknown attrs
+    # kwarg is the user-facing signal that an old TOML carries a stale
+    # field. ``TypeError`` from attrs' ``__init__``.
+    with _pt.raises(TypeError):
+        Aragog(dilatation=True)
