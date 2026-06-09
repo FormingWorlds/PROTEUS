@@ -20,7 +20,7 @@ import toml
 import torch
 from scipy.stats.qmc import Halton
 
-from proteus.inference.objective import eval_obj, prot_builder, child_timeout_s
+from proteus.inference.objective import child_timeout_s, eval_obj, prot_builder
 from proteus.inference.transforms import normalize_parameters
 from proteus.inference.utils import save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
@@ -248,8 +248,11 @@ def sample_from_bounds(
 
     # prepare parallel proteus runs
     builder_args = dict(
-        parameters=params, observables=observables, ref_config=ref_config,
-        output=output, failure_codes=failure_codes
+        parameters=params,
+        observables=observables,
+        ref_config=ref_config,
+        output=output,
+        failure_codes=failure_codes,
     )
 
     # Generate n random points in [0,1]^d and evaluate the objective

@@ -275,7 +275,7 @@ def J(
     iter: int,
     output: str,
     ref_config: str,
-    failure_codes: list[int] = []
+    failure_codes: list[int] = [],
 ) -> torch.Tensor:
     """Run PROTEUS, and then compute the objective value for a given normalized input.
 
@@ -326,7 +326,7 @@ def prot_builder(
     iter: int,
     output: str,
     ref_config: str,
-    failure_codes: list[int] = []
+    failure_codes: list[int] = [],
 ) -> callable:
     """Factory returning a BO-compatible objective function for PROTEUS inference.
 
@@ -376,7 +376,7 @@ def prot_builder(
             iter=iter,
             ref_config=ref_config,
             output=output,
-            failure_codes=failure_codes
+            failure_codes=failure_codes,
         )
 
         J_eval = J_context(x_raw)
