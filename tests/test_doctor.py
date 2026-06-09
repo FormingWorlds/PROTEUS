@@ -257,6 +257,38 @@ class TestCheckPythonPackage:
         assert r.status == FAIL
         assert 'requires' in r.message
 
+    def test_pass_when_editable_dev_version_above_bound(self):
+        """A setuptools-scm dev version a few commits past the tagged release
+        satisfies a >= bound, even though it is a pre-release in PEP 440 terms."""
+        from packaging.requirements import Requirement
+
+        # 26.6.1.post1.dev8 sorts ABOVE 26.6.1, so it satisfies >=26.06.01;
+        # the default SpecifierSet membership would wrongly exclude it as a
+        # pre-release and report a failure.
+        spec = Requirement('fwl-calliope>=26.06.01')
+        with patch(
+            'proteus.doctor.importlib.metadata.version',
+            return_value='26.6.1.post1.dev8+g1e3ad73dd',
+        ):
+            with patch('proteus.doctor._editable_checkout_path', return_value=None):
+                r = check_python_package('fwl-calliope', spec)
+        assert r.status == PASS
+        assert '26.6.1.post1.dev8' in r.message
+
+    def test_fail_when_dev_version_below_bound(self):
+        """Allowing pre-releases must not blanket-pass them: a dev version that
+        sorts BELOW the bound still fails, so the check respects ordering."""
+        from packaging.requirements import Requirement
+
+        # 26.6.1.dev1 is a dev release of 26.6.1 and sorts BELOW it, so it does
+        # not satisfy >=26.6.1; a naive prereleases=True must not let it pass.
+        spec = Requirement('fwl-calliope>=26.06.01')
+        with patch('proteus.doctor.importlib.metadata.version', return_value='26.6.1.dev1'):
+            with patch('proteus.doctor._editable_checkout_path', return_value=None):
+                r = check_python_package('fwl-calliope', spec)
+        assert r.status == FAIL
+        assert 'requires' in r.message
+
     def test_fail_when_not_installed(self):
         """A missing package fails with a pip install command."""
         from importlib.metadata import PackageNotFoundError

@@ -416,9 +416,12 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
                     f' [editable record @ {base}{marker}, but importing from {imported_dir}]'
                 )
 
-    # Check against pyproject.toml minimum bound
+    # Check against pyproject.toml minimum bound. Allow pre-releases: editable
+    # installs carry setuptools-scm dev versions (e.g. 26.6.1.post1.dev8) that
+    # are pre-releases in PEP 440 terms but still satisfy a >= bound; the default
+    # SpecifierSet membership would reject them and report a spurious failure.
     if spec and spec.specifier:
-        if installed not in spec.specifier:
+        if not spec.specifier.contains(installed, prereleases=True):
             fix = f'pip install -U "{spec}"'
             if checkout:
                 fix = f'cd {shlex.quote(checkout)} && git pull && pip install -e .'
