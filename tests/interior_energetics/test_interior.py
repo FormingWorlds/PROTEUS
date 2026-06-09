@@ -410,6 +410,43 @@ def test_run_dummy_int_rf_depth_uses_structure_core_radius():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_dummy_int_mantle_mass_from_structure_budget():
+    """The dummy energetics mantle mass equals the structure's M_int - M_core
+    (consistent with the boundary backend and the planet mass budget), not the
+    density times shell-volume estimate, so M_core + M_mantle <= M_planet.
+    """
+    config = _create_mock_config(tsurf_init=2000.0, mantle_rho=4000.0)
+    dirs = {}
+    M_int = 6.0e24
+    M_core = 2.0e24  # structure mantle mass = 4.0e24
+    hf_row = {
+        'F_atm': 100.0,
+        'R_int': 6e6,
+        'R_core': 3e6,
+        'M_int': M_int,
+        'M_core': M_core,
+        'P_surf': 1e5,
+        'Time': 0.0,
+    }
+    hf_all = pd.DataFrame()
+    interior_o = Interior_t(nlev_b=2)
+    interior_o.ic = 1
+    interior_o.tides = [0.0]
+
+    _, output = run_dummy_int(config, dirs, hf_row, hf_all, interior_o)
+
+    # Mantle mass is the structure budget, not rho times shell volume.
+    assert output['M_mantle'] == pytest.approx(M_int - M_core)
+    # Conservation: core plus mantle does not exceed the planet mass.
+    assert output['M_mantle'] + M_core <= M_int + 1.0
+    # Discrimination: the rho times shell-volume fallback (~3.2e24 here) is well
+    # separated from the structure budget (4.0e24).
+    fallback = calculate_simple_mantle_mass(6e6, 0.5, 4000.0)
+    assert abs(output['M_mantle'] - fallback) > 1e23
+
+
+@pytest.mark.unit
 def test_run_dummy_int_melt_fraction_fully_solid():
     """Test melt fraction (phi) when T_magma < T_solidus.
 

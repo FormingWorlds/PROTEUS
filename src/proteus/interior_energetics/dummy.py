@@ -55,12 +55,18 @@ def run_dummy_int(
     R_core = hf_row.get('R_core', config.interior_struct.core_frac * hf_row['R_int'])
     core_radius_frac = R_core / hf_row['R_int']
 
-    # Interior structure
-    output['M_mantle'] = calculate_simple_mantle_mass(
-        hf_row['R_int'],
-        core_radius_frac,
-        config.interior_energetics.dummy.mantle_rho,
-    )
+    # Mantle mass from the structure (M_int - M_core), consistent with the
+    # boundary backend and with the structure's own mass budget. Fall back to a
+    # density times shell-volume estimate only when the structure did not
+    # provide both masses.
+    if 'M_int' in hf_row and 'M_core' in hf_row:
+        output['M_mantle'] = hf_row['M_int'] - hf_row['M_core']
+    else:
+        output['M_mantle'] = calculate_simple_mantle_mass(
+            hf_row['R_int'],
+            core_radius_frac,
+            config.interior_energetics.dummy.mantle_rho,
+        )
 
     # Physical parameters
     tmp_liq = config.interior_energetics.dummy.mantle_tliq  # Liquidus

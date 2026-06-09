@@ -381,7 +381,7 @@ config_version = "3.0"
     [interior_energetics.dummy]
         mantle_tliq           = 2700.0       # liquidus [K]
         mantle_tsol           = 1700.0       # solidus [K]
-        mantle_rho            = 4550.0       # mantle density [kg m-3]
+        mantle_rho            = 4550.0       # mantle density [kg m-3]; mantle mass uses M_int-M_core when the structure provides it
         mantle_cp             = 1792.0       # mantle heat capacity [J K-1 kg-1]
         heat_internal         = 0.0          # internal heating rate [W kg-1]
 
