@@ -1,0 +1,247 @@
+config_version = "3.0"
+
+[atmos_chem]
+Kzz_const = "none"
+Kzz_on = true
+module = "vulcan"
+moldiff_on = true
+photo_on = true
+updraft_const = 0.0
+when = "manually"
+
+[atmos_chem.vulcan]
+clip_fl = 1e-20
+clip_vmr = 1e-10
+fix_surf = false
+ini_mix = "profile"
+make_funs = true
+network = "SNCHO"
+save_frames = false
+slope_cri = 0.0001
+yconv_cri = 0.05
+
+[atmos_clim]
+albedo_pl = 0.0
+cloud_alpha = 0.0
+cloud_enabled = false
+module = "agni"
+rayleigh = false
+surf_greyalbedo = 0.1
+surf_state = "fixed"
+surface_d = 0.01
+surface_k = 2.0
+tmp_minimum = 0.5
+aerosols_enabled = false
+num_levels = 35
+p_top = 0.001
+
+[atmos_clim.agni]
+chemistry = "none"
+conduction = true
+convection = true
+dx_max = 100.0
+dx_max_ini = 300.0
+fastchem_floor = 150.0
+fastchem_maxiter_chem = 60000
+fastchem_maxiter_solv = 20000
+fastchem_xtol_chem = 0.0001
+fastchem_xtol_elem = 0.0001
+fdo = 2
+ini_profile = "loglinear"
+latent_heat = false
+ls_default = 2
+max_steps = 70
+mlt_criterion = "s"
+oceans = false
+perturb_all = true
+psurf_thresh = 0.01
+rainout = false
+real_gas = false
+sens_heat = true
+solution_atol = 9.0
+solution_rtol = 0.5
+solve_energy = true
+surf_material = "greybody"
+surf_roughness = 0.001
+surf_windspeed = 2.0
+verbosity = 1
+spectral_file = "output/runtime.sf"
+thermo_functions = false
+
+[atmos_clim.janus]
+tmp_maximum = 5000.0
+
+[planet]
+prevent_warming = true
+volatile_mode = "elements"
+mass_tot = 1.0
+
+[planet.elements]
+metallicity = 1000.0
+use_metallicity = false
+H_mode = "oceans"
+H_budget = 50.0
+C_mode = "C/H"
+C_budget = 5.0
+N_mode = "N/H"
+N_budget = 0.5
+S_mode = "S/H"
+S_budget = 2.0
+O_mode = "ic_chemistry"
+O_budget = 0.0
+
+[planet.gas_prs]
+CH4 = 0
+CO = 0
+CO2 = 0
+H2 = 0
+H2O = 0
+H2S = 0
+N2 = 0
+NH3 = 0
+S2 = 0
+SO2 = 0
+
+[accretion]
+module = "none"
+
+[interior_energetics]
+radio_K = 310.0
+radio_Th = 0.124
+radio_U = 0.031
+radio_tref = 4.55
+flux_guess = 500.0
+grain_size = 0.1
+module = "boundary"
+heat_radiogenic = true
+rfront_loc = 0.3
+rfront_wid = 0.15
+heat_tidal = false
+kappah_floor = 0.0
+
+[escape]
+module = "zephyrus"
+reservoir = "outgas"
+
+[escape.zephyrus]
+Pxuv = 5e-05
+efficiency = 0.1
+tidal = false
+
+[interior_struct]
+eos_dir = "WolfBower2018_MgSiO3"
+melting_dir = "Monteux-600"
+core_density = 10738.33
+core_heatcap = 880.0
+core_frac = 0.6
+module = "spider"
+core_frac_mode = "radius"
+
+[observe]
+synthesis = "none"
+
+[orbit]
+eccentricity = 0.0
+evolve = false
+instellation_method = "distance"
+instellationflux = 1.0
+module = "none"
+s0_factor = 0.25
+semimajoraxis = 0.02
+zenith_angle = 54.74
+
+[outgas]
+T_floor = 700.0
+solver_rtol = 0.001
+solver_atol = 1e-05
+fO2_shift_IW = 4.0
+module = "calliope"
+
+[outgas.calliope]
+include_CH4 = true
+include_CO = true
+include_CO2 = true
+include_H2 = true
+include_H2O = true
+include_H2S = true
+include_N2 = true
+include_NH3 = true
+include_S2 = true
+include_SO2 = true
+solubility = true
+nguess = 1000
+nsolve = 4000
+
+[params.dt]
+atol = 0.15
+rtol = 0.4
+initial = 200.0
+maximum = 200000000.0
+method = "adaptive"
+minimum = 1000.0
+minimum_rel = 0.5
+propconst = 52.0
+starinst = 100.0
+starspec = 9000000000.0
+maximum_rel = 0.7
+scale_incr = 2.0
+scale_decr = 0.8
+window = 2
+
+[params.out]
+archive_mod = 0
+logging = "INFO"
+path = "bayesopt_tr"
+plot_fmt = "png"
+plot_mod = 0
+remove_sf = false
+write_mod = 10
+
+[params.stop]
+strict = false
+
+[params.stop.disint]
+enabled = false
+offset_roche = 0
+offset_spin = 0
+roche_enabled = true
+spin_enabled = true
+
+[params.stop.escape]
+enabled = true
+p_stop = 1.0
+
+[params.stop.iters]
+enabled = true
+maximum = 3000
+minimum = 5
+
+[params.stop.radeqm]
+atol = 0.2
+enabled = false
+rtol = 0.001
+
+[params.stop.solid]
+enabled = true
+phi_crit = 0.01
+
+[params.stop.time]
+enabled = true
+maximum = 100000000.0
+minimum = 1000.0
+
+[params.stop.clock]
+enabled = true
+maximum = 600.0
+
+[star]
+age_ini = 0.05
+mass = 0.2923
+module = "mors"
+
+[star.mors]
+age_now = 4.567
+rot_pcntle = 50.0
+spectrum_source = "muscles"
+star_name = "l-98-59"
+tracks = "spada"

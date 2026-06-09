@@ -12,10 +12,11 @@ def valid_mors(instance, attribute, value):
 
     if (instance.mors.age_now is None) or (instance.mors.age_now <= 0):
         raise ValueError('mors.age_now must be > 0')
-    if instance.mors.star_name is None:
-        raise ValueError('Must provide mors.star_name')
-
     src = instance.mors.spectrum_source
+
+    # star_name required for solar and muscles spectra (not for phoenix)
+    if instance.mors.star_name is None and src in ('solar', 'muscles'):
+        raise ValueError('Must provide mors.star_name for spectrum_source=%s' % src)
     if src == 'phoenix':
         if instance.mors.phoenix_alpha is None or instance.mors.phoenix_FeH is None:
             raise ValueError(
@@ -71,15 +72,21 @@ class Mors:
         Effective temperature [K]. If 'none', Teff will be calculated will be calculated using mors' stellar tracks, if spectrum_source is 'phoenix'.
     """
 
-    age_now = field(default=None)
-    star_name = field(default=None, converter=none_if_none)
-    star_path = field(default=None, converter=none_if_none)
-    rot_pcntle = field(default=None, converter=none_if_none)
-    rot_period = field(default=None, converter=none_if_none)
+    age_now: float = field(default=4.567)
+    star_name: str | None = field(default=None, converter=none_if_none)
+    star_path: str | None = field(default=None, converter=none_if_none)
+    # Type hint includes `str` so cattrs can structure the literal string
+    # `"none"` (or other sentinels) before the `none_if_none` converter
+    # maps them to Python None. Pure `float | None` would make cattrs try
+    # `float("none")` and raise `could not convert string to float: 'none'`,
+    # because None is a singleton type not a string-coercion target. Same
+    # pattern as phoenix_radius/log_g/Teff below.
+    rot_pcntle: float | str | None = field(default=50.0, converter=none_if_none)
+    rot_period: float | str | None = field(default=None, converter=none_if_none)
     tracks: str = field(default='spada', validator=in_(('spada', 'baraffe')))
 
     spectrum_source: str = field(
-        default=None,
+        default='phoenix',
         validator=in_(('solar', 'muscles', 'phoenix', None)),
         converter=none_if_none,
     )
@@ -132,7 +139,7 @@ class StarDummy:
         Observed effective temperature [K].
     """
 
-    Teff = field(default=5780)
+    Teff: float = field(default=5772.0)
     radius: float | str = field(default=None, converter=none_if_none)
     calculate_radius: bool = field(default=False)
 
@@ -141,7 +148,7 @@ class StarDummy:
 class Star:
     """Stellar parameters, model selection.
 
-    You can find useful reference data in the [documentation](https://proteus-framework.org/proteus/data.html#stars).
+    You can find useful reference data in the [documentation](https://proteus-framework.org/PROTEUS/Reference/data.html).
 
     Attributes
     ----------
@@ -162,12 +169,13 @@ class Star:
     """
 
     module: str | None = field(
+        default='mors',
         validator=in_((None, 'mors', 'dummy')),
         converter=none_if_none,
     )
 
-    mass: float = field(validator=gt(0))
-    age_ini: float = field(validator=gt(0))
+    mass: float = field(default=1.0, validator=gt(0))
+    age_ini: float = field(default=0.1, validator=gt(0))
 
     mors: Mors = field(factory=Mors, validator=valid_mors)
     dummy: StarDummy = field(factory=StarDummy, validator=valid_stardummy)

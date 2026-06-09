@@ -1,0 +1,120 @@
+# Base configuration for the slow-tier zalmoxis + aragog + calliope
+# coupling test (tests/integration/test_slow_zalmoxis_aragog_calliope.py).
+#
+# This config is owned by that test and is intentionally NOT shared with
+# input/dummy.toml. dummy.toml is tuned for the all-dummy tutorial and CI
+# wiring runs; its volatile budgets, cooling, and temperature_mode are
+# adjusted from time to time. The structure test pins a bit-stable R_int
+# across rows, so it needs a trajectory that does not move with those
+# tutorial edits. Keeping a dedicated config isolates the test from them.
+#
+# The three physics slots under test (interior structure, interior
+# energetics, outgassing) run their production backends. Star, orbit,
+# atmosphere, escape, and chemistry stay on dummy backends so the test
+# isolates the interior + outgas coupling boundary.
+#
+# Dynamic structure refresh is disabled (update_interval = 0): Zalmoxis
+# solves the mass-radius profile once at the initial condition and the
+# result is held fixed for the rest of the run. The test asserts R_int is
+# constant across rows, which this guarantees by construction.
+config_version = "3.0"
+
+    [params.out]
+        path = "auto"
+
+    [params.dt]
+        initial  = 1e2           # initial step [yr]
+        minimum  = 1e2           # min step [yr]
+        maximum  = 3e7           # max step [yr]
+
+        [params.stop.time]
+            maximum = 1e9        # stop time [yr]
+        [params.stop.solid]
+            enabled = false
+        [params.stop.escape]
+            enabled = false
+        [params.stop.radeqm]
+            enabled = false
+
+# Star: fixed solar luminosity (no evolution)
+[star]
+    module = "dummy"
+    [star.dummy]
+        radius = 1.0                 # [R_sun]
+
+# Orbit: 0.5 AU with weak tidal heating
+[orbit]
+    module        = "dummy"
+    semimajoraxis = 0.5          # [AU]
+    eccentricity  = 0.1
+    [orbit.dummy]
+        H_tide = 1e-9            # tidal power density [W/kg]
+        Imk2   = -0.01           # Im(k2) love number
+
+# Planet: 1 Earth mass with an H-C-N-S volatile inventory so the per-element
+# mass-closure assertions exercise every tracked element.
+[planet]
+    mass_tot      = 1.0              # [M_earth]
+    # adiabatic_from_cmb keeps the entropy initial condition free of the
+    # silicate liquidus lookup, matching the trajectory the coupling test
+    # is validated against.
+    temperature_mode = "adiabatic_from_cmb"
+    volatile_mode = "elements"
+    [planet.elements]
+        O_mode   = "ic_chemistry"
+        O_budget = 0.0
+        H_mode   = "ppmw"
+        H_budget = 1e4
+        C_mode   = "ppmw"
+        C_budget = 1e3
+        N_mode   = "ppmw"
+        N_budget = 500
+        S_mode   = "ppmw"
+        S_budget = 500
+
+# Interior structure: real Zalmoxis (PALEOS mantle + iron core EOS,
+# Newton outer solver, JAX backend). Structure is solved once at the
+# initial condition and held constant (update_interval = 0).
+[interior_struct]
+    module         = "zalmoxis"
+    core_frac      = 0.55        # radius fraction
+    core_frac_mode = "radius"
+    [interior_struct.zalmoxis]
+        # Disable dynamic structure refresh during the main loop. The
+        # remaining update_* knobs become unreachable once update_interval
+        # returns no_update, but stay pinned for defence-in-depth against
+        # future code-path changes.
+        update_interval      = 0
+        update_dphi_abs      = 0.999
+        update_dtmagma_frac  = 0.999
+        update_dw_comp_abs   = 0.999
+        update_stale_ceiling = 0
+
+# Interior energetics: real Aragog (entropy ODE, JAX-derived RHS with
+# analytic Jacobian).
+[interior_energetics]
+    module = "aragog"
+
+# Outgassing: real CALLIOPE volatile partitioning.
+[outgas]
+    fO2_shift_IW = 2
+    module       = "calliope"
+
+# Atmosphere: grey opacity dummy model
+[atmos_clim]
+    module     = "dummy"
+    surf_state = "fixed"
+    rayleigh   = false
+    albedo_pl  = 0.1
+    [atmos_clim.dummy]
+        gamma = 0.5              # T_rad = T_surf * (1 - gamma); 0 = transparent, 1 = zero OLR
+
+# Escape: disabled (no volatile loss over the short coupling window)
+[escape]
+    module = "dummy"
+    [escape.dummy]
+        rate = 0.0               # bulk escape rate [kg/s]
+
+[atmos_chem]
+    module = "dummy"
+    when   = "offline"

@@ -34,6 +34,20 @@ def print_termination_criteria(config: Config):
     # Always enabled:
     _print_criterion(True, 'Keepalive file')
 
+    # Re-emit the prevent_warming advisory in proteus_00.log. The same
+    # advisory fires from the config validator at config-load time (so it
+    # appears in stderr / launch logs), but the run logfile is opened
+    # later by setup_logger and would otherwise miss it.
+    if config.planet.prevent_warming:
+        log.warning(
+            'planet.prevent_warming = true: T_magma is forced to monotonically '
+            'decrease each iteration. This suppresses physical temperature '
+            'oscillations and can hide energy non-conservation (T_magma '
+            'latching, F_atm = F_int reported as convergence by clamp '
+            'consistency rather than radiative balance). Default is false; '
+            'enable only for known strictly-cooling regimes.'
+        )
+
 
 # Print message in common format
 def _msg_termination(msg: str):
@@ -74,7 +88,7 @@ def _check_radeqm(handler: Proteus) -> bool:
         return True
 
     # Simulation when wants to warm up but cannot do so
-    if handler.config.atmos_clim.prevent_warming and (F_eps < 0):
+    if handler.config.planet.prevent_warming and (F_eps < 0):
         UpdateStatusfile(handler.directories, 14)
         _msg_termination('Planet is no longer cooling')
         return True

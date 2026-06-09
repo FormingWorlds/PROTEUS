@@ -36,6 +36,8 @@ from proteus.observe.common import (
     read_transit,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_get_transit_fpath_outgas():
@@ -127,7 +129,7 @@ def test_read_transit_success(tmp_path):
     assert 'Wavelength/um' in result.columns
     assert 'None/ppm' in result.columns
     assert 'H2O/ppm' in result.columns
-    assert pytest.approx(result['Wavelength/um'].iloc[0], rel=1e-5) == 0.5
+    assert result['Wavelength/um'].iloc[0] == pytest.approx(0.5, rel=1e-5)
 
 
 @pytest.mark.unit
@@ -175,8 +177,24 @@ def test_read_transit_file_not_found(tmp_path):
     """
     outdir = str(tmp_path / 'empty_output')  # Non-existent directory
 
-    with pytest.raises(FileNotFoundError, match='Transit spectrum file'):
+    with pytest.raises(FileNotFoundError, match='Transit spectrum file') as excinfo:
         read_transit(outdir, 'outgas', 'initial')
+    # Identity guard: the error message must name the missing file path
+    # so the operator can find the gap. A regression that emitted a
+    # generic 'Transit spectrum file' literal without interpolation
+    # would match the regex but lose the diagnostic.
+    assert 'outgas' in str(excinfo.value)
+    assert 'initial' in str(excinfo.value)
+    # Discrimination: writing the expected file with a single row must
+    # let the read complete normally on the same source/stage. This
+    # rules out a regression that hard-raises FileNotFoundError on
+    # every input.
+    observe_dir = tmp_path / 'empty_output' / 'observe'
+    observe_dir.mkdir(parents=True)
+    csv_file = observe_dir / 'transit_outgas_initial.csv'
+    csv_file.write_text('Wavelength/um\tNone/ppm\n1.0\t100.0\n')
+    result = read_transit(outdir, 'outgas', 'initial')
+    assert len(result) == 1
 
 
 @pytest.mark.unit
@@ -189,8 +207,20 @@ def test_read_eclipse_file_not_found(tmp_path):
     """
     outdir = str(tmp_path / 'empty_output')  # Non-existent directory
 
-    with pytest.raises(FileNotFoundError, match='Eclipse spectrum file'):
+    with pytest.raises(FileNotFoundError, match='Eclipse spectrum file') as excinfo:
         read_eclipse(outdir, 'offchem', 'composition')
+    # Identity guard: the error message must name source+stage so the
+    # operator can identify which spectrum file is missing.
+    assert 'offchem' in str(excinfo.value)
+    assert 'composition' in str(excinfo.value)
+    # Discrimination: writing the expected file lets the read complete
+    # normally. Rules out a regression that hard-raises on every input.
+    observe_dir = tmp_path / 'empty_output' / 'observe'
+    observe_dir.mkdir(parents=True)
+    csv_file = observe_dir / 'eclipse_offchem_composition.csv'
+    csv_file.write_text('Wavelength/um\tNone/ppm\n1.0\t10.0\n')
+    result = read_eclipse(outdir, 'offchem', 'composition')
+    assert len(result) == 1
 
 
 @pytest.mark.unit
@@ -323,7 +353,7 @@ def test_calc_synthetic_spectra_invalid_synthesis_module():
     Physics: Only 'platon' is currently supported for synthetic spectrum
     generation. Invalid module names should fail gracefully.
     """
-    from unittest.mock import MagicMock
+    from unittest.mock import MagicMock, patch
 
     from proteus.observe.wrapper import calc_synthetic_spectra
 
@@ -335,7 +365,20 @@ def test_calc_synthetic_spectra_invalid_synthesis_module():
     hf_row = {'Time': 0.0}
     outdir = '/tmp/output'
 
-    with pytest.raises(ValueError, match='Unknown synthesis module'):
+    with pytest.raises(ValueError, match='Unknown synthesis module') as excinfo:
+        calc_synthetic_spectra(hf_row, outdir, config)
+    # Identity guard: the error message must name the offending module
+    # name so the operator sees the typo, not a generic message.
+    assert 'unknown_module' in str(excinfo.value)
+    # Discrimination: switching to the supported 'platon' module on
+    # the same hf_row + config must let the call complete (with the
+    # synthesis functions mocked). This rules out a regression that
+    # hard-raises ValueError independent of the synthesis field.
+    config.observe.synthesis = 'platon'
+    with (
+        patch('proteus.observe.platon.transit_depth'),
+        patch('proteus.observe.platon.eclipse_depth'),
+    ):
         calc_synthetic_spectra(hf_row, outdir, config)
 
 
@@ -364,3 +407,63 @@ def test_run_observe_calls_synthetic_spectra():
 
         # Verify calc_synthetic_spectra was called with correct arguments
         mock_calc.assert_called_once_with(hf_row, outdir, config)
+        # Argument-identity guard: the call must pass through the same
+        # hf_row dict object (not a copy) so downstream side effects on
+        # hf_row are visible to the caller. A regression that copied
+        # hf_row before dispatch would still satisfy assert_called_once_with
+        # by value-equality but break the in-place mutation contract.
+        passed_hf_row = mock_calc.call_args.args[0]
+        assert passed_hf_row is hf_row
+        # The Time field must survive the call unchanged (the orchestrator
+        # does not mutate the simulation clock).
+        assert passed_hf_row['Time'] == pytest.approx(50.0)
+
+
+# ============================================================================
+# Physics invariant: transit spectrum wavelength and depth constraints
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_read_transit_wavelengths_positive_and_monotonic(tmp_path):
+    """Wavelengths in a transit spectrum must be strictly positive and
+    monotonically increasing. Transit depths (in ppm) must be bounded
+    in [0, 1e6] (0 to 100% of stellar disk area).
+
+    These are physical invariants of any valid observation output:
+    negative wavelength is unphysical, non-monotonic grids break
+    interpolation, and transit depth > 100% is geometrically impossible.
+    """
+    import numpy as np
+
+    outdir = str(tmp_path / 'output')
+    observe_dir = tmp_path / 'output' / 'observe'
+    observe_dir.mkdir(parents=True)
+
+    # Realistic wavelength grid spanning UV to mid-IR
+    csv_file = observe_dir / 'transit_outgas_initial.csv'
+    csv_content = 'Wavelength/um\tNone/ppm\n'
+    csv_content += '3.00000000e-01\t5.00000000e+01\n'
+    csv_content += '5.00000000e-01\t1.20000000e+02\n'
+    csv_content += '1.00000000e+00\t1.50000000e+02\n'
+    csv_content += '2.00000000e+00\t1.80000000e+02\n'
+    csv_content += '5.00000000e+00\t2.00000000e+02\n'
+    csv_content += '1.00000000e+01\t1.60000000e+02\n'
+    csv_file.write_text(csv_content)
+
+    result = read_transit(outdir, 'outgas', 'initial')
+
+    wl = result['Wavelength/um'].values
+    depth = result['None/ppm'].values
+
+    # Positivity: all wavelengths must be strictly positive
+    assert np.all(wl > 0), 'wavelengths must be positive'
+    # Monotonicity: wavelength grid must be strictly increasing
+    assert np.all(np.diff(wl) > 0), 'wavelengths must be monotonically increasing'
+    # Boundedness: transit depth must be non-negative and below 1e6 ppm (100%)
+    assert np.all(depth >= 0), 'transit depth must be non-negative'
+    assert np.all(depth <= 1e6), 'transit depth must not exceed 100% of stellar disk'
+    # Scale guard: realistic hot-Jupiter depths are O(100) ppm, not O(1e5).
+    # The test data spans 50-200 ppm; verify no value exceeds 1000 ppm.
+    assert np.max(depth) < 1e3

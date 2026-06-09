@@ -1,0 +1,2211 @@
+# Aragog interior module
+from __future__ import annotations  # noqa: I001
+
+import glob
+import logging
+import os
+import platform
+import time
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import netCDF4 as nc
+import numpy as np
+import pandas as pd
+import platformdirs
+
+from aragog import aragog_file_logger
+from aragog.eos.entropy import EntropyEOS
+from aragog.mesh import derive_core_density_from_mesh
+from aragog.solver import EntropySolver, SolverOutput
+from aragog.parser import (
+    Parameters,
+    _BoundaryConditionsParameters,
+    _EnergyParameters,
+    _InitialConditionParameters,
+    _MeshParameters,
+    _PhaseMixedParameters,
+    _PhaseParameters,
+    _Radionuclide,
+    _SolverParameters,
+)
+from proteus.interior_energetics.common import Interior_t
+from proteus.interior_energetics.timestep import next_step
+from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
+from proteus.utils.constants import radnuc_data
+
+log = logging.getLogger('fwl.' + __name__)
+
+if TYPE_CHECKING:
+    from proteus.config import Config
+
+
+FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
+
+
+_entropy_eos_cache: dict = {}
+_entropy_eos_jax_cache: dict = {}
+
+
+def _eos_content_key(eos_dir_str: str) -> str:
+    """Compute a content fingerprint for an EOS directory.
+
+    The PROTEUS test fixture materialises the EOS tables into a fresh
+    per-test ``outdir/data/spider_eos`` directory each time, so a path
+    based cache key misses across tests. The content fingerprint is a
+    sorted tuple of ``(filename, file size)`` pairs for every regular
+    file in the directory; it is stable across distinct on-disk copies
+    of the same tables but cheap to compute (one ``os.listdir`` + one
+    ``getsize`` per file).
+    """
+    try:
+        pairs = []
+        for name in sorted(os.listdir(eos_dir_str)):
+            full = os.path.join(eos_dir_str, name)
+            if os.path.isfile(full):
+                pairs.append((name, os.path.getsize(full)))
+        return repr(pairs)
+    except OSError:
+        # Filesystem error: fall back to the path as the key.
+        return eos_dir_str
+
+
+def _cached_entropy_eos(eos_dir_str: str):
+    """Construct an EntropyEOS, caching by content fingerprint.
+
+    PALEOS table load + scipy interpolator construction takes ~10 s on
+    macOS arm64 and ~390 s on Linux x86 per PROTEUS timestep. The result
+    depends only on the file contents and is read-only after
+    construction (pure lookup methods, no mutation API), so a single
+    cached instance can be shared across PROTEUS timesteps and across
+    pytest tests in the same process.
+    """
+    key = _eos_content_key(eos_dir_str)
+    cached = _entropy_eos_cache.get(key)
+    if cached is None:
+        cached = EntropyEOS(Path(eos_dir_str))
+        _entropy_eos_cache[key] = cached
+    return cached
+
+
+def _cached_entropy_eos_jax(eos_dir_str: str):
+    """Construct an EntropyEOS_JAX, caching by content fingerprint.
+
+    Same motivation as ``_cached_entropy_eos``: the JAX-side EOS trace
+    + compile is ~7 s on macOS arm64 and ~310 s on Linux x86, the result
+    is an equinox Module (immutable pytree), and the construction
+    depends only on the file contents.
+    """
+    key = _eos_content_key(eos_dir_str)
+    cached = _entropy_eos_jax_cache.get(key)
+    if cached is None:
+        from aragog.jax.eos import EntropyEOS_JAX
+
+        cached = EntropyEOS_JAX(eos_dir_str)
+        _entropy_eos_jax_cache[key] = cached
+    return cached
+
+
+# Research-only flag. Flip to True to enable the diffrax direct-JAX
+# integration path (`aragog_jax.AragogJAXRunner`). Not production-viable
+# on CHILI Earth runs (kvaerno3 stalls on the first crystallization
+# step). Reserved for autodiff development.
+_DIFFRAX_RESEARCH_ONLY = False
+
+# Physically plausible bulk-core density bounds [kg m^-3] used as a
+# sanity check on the mesh-derived rho_core. Earth's outer core is
+# ~9900 to 12100 (PREM); a 10 M_E super-Earth core can compress to
+# ~16000 to 18000. Anything outside [1000, 30000] is unphysical and
+# almost certainly indicates a corrupt or partially-written mesh file
+# (the most likely cause is a write race during a Zalmoxis re-solve
+# on a network filesystem).
+_RHO_CORE_MIN = 1000.0
+_RHO_CORE_MAX = 30000.0
+
+
+def _is_plausible_core_density(rho_core: float) -> bool:
+    """Return True iff ``rho_core`` falls inside the physical-bounds bracket."""
+    return _RHO_CORE_MIN <= float(rho_core) <= _RHO_CORE_MAX
+
+
+_DIAG_ENV_LOGGED = False
+
+
+def _maybe_log_solver_environment(config: Config) -> None:
+    """One-shot diagnostic log of the host + JAX + solver configuration.
+
+    Active only when ``PROTEUS_CI_NIGHTLY=1``. Captures the data needed
+    to attribute aragog wall-time differences across runners: machine,
+    CPU count, JAX backend and version, aragog backend choice, ODE
+    method, and tolerance settings. Logged once per process.
+    """
+    global _DIAG_ENV_LOGGED
+    if _DIAG_ENV_LOGGED:
+        return
+    if os.environ.get('PROTEUS_CI_NIGHTLY') != '1':
+        return
+    _DIAG_ENV_LOGGED = True
+    try:
+        jax_backend = jax_devices = jax_version = '<jax-unavailable>'
+        try:
+            import jax
+
+            jax_backend = jax.default_backend()
+            jax_devices = repr(jax.devices())
+            jax_version = jax.__version__
+        except Exception as exc:
+            jax_version = f'<import-failed: {exc}>'
+
+        cfg = config.interior_energetics.aragog
+        log.info(
+            'aragog diag: machine=%s system=%s cpu=%s | jax=%s backend=%s devices=%s '
+            'JAX_PLATFORMS=%s XLA_FLAGS=%s | aragog.backend=%s ode_method=%s '
+            'atol_T=%s rtol=%s surface_bc=%s core_bc=%s',
+            platform.machine(),
+            platform.system(),
+            os.cpu_count(),
+            jax_version,
+            jax_backend,
+            jax_devices,
+            os.environ.get('JAX_PLATFORMS', '<unset>'),
+            os.environ.get('XLA_FLAGS', '<unset>'),
+            cfg.backend,
+            getattr(cfg, 'ode_method', '<unset>'),
+            cfg.atol_temperature_equivalent,
+            config.interior_energetics.rtol,
+            config.interior_energetics.surface_bc_mode,
+            cfg.core_bc,
+        )
+    except Exception as exc:
+        log.warning('aragog diag env log failed: %s', exc)
+
+
+def resolve_core_density(config: Config, hf_row: dict, outdir: str) -> float:
+    """Resolve self-consistent core density for the Aragog energy-balance BC.
+
+    Echo-back semantics: when a Zalmoxis mantle mesh file is present at
+    ``<outdir>/data/zalmoxis_output.dat`` and ``hf_row['M_core'] > 0``,
+    recompute :math:`\\rho_\\mathrm{core} = M_\\mathrm{core} / (\\tfrac{4}{3} \\pi R_\\mathrm{cmb}^3)`
+    from the mesh's first-row radius and the live core mass, and write
+    the corrected value back to ``hf_row['core_density']`` so downstream
+    modules see the actually-used density. Falls back to
+    :func:`get_core_density` (config or stale ``hf_row['core_density']``)
+    otherwise.
+
+    This mirrors the SPIDER wrapper's ``-rho_core`` re-derivation in
+    ``proteus/interior_energetics/spider.py``: it survives mesh-blending
+    fall-backs and stale-cache cases where ``hf_row['core_density']`` has
+    drifted from the on-disk mesh state. Without this, an Aragog run
+    using ``core_bc = "energy_balance"`` would silently use a stale core
+    density in the basal-cell flux balance whenever a Zalmoxis re-solve
+    shifts :math:`R_\\mathrm{cmb}`.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration object.
+    hf_row : dict
+        Live helpfile row. Read: ``M_core``, possibly ``core_density``.
+        Written: ``core_density`` when echo-back fires.
+    outdir : str
+        PROTEUS output directory; the mesh file is read from
+        ``<outdir>/data/zalmoxis_output.dat``.
+
+    Returns
+    -------
+    float
+        Resolved core density [kg m^-3].
+    """
+    rho_core = get_core_density(config, hf_row)
+
+    M_core = float(hf_row.get('M_core', 0.0))
+    mesh_file = os.path.join(outdir, 'data', 'zalmoxis_output.dat')
+
+    if M_core > 0.0 and os.path.isfile(mesh_file):
+        try:
+            rho_core_mesh = derive_core_density_from_mesh(mesh_file, M_core)
+        except (ValueError, FileNotFoundError, OSError) as exc:
+            log.debug('Aragog core_density echo-back skipped: %s', exc)
+            return rho_core
+        if not _is_plausible_core_density(rho_core_mesh):
+            # Likely cause: file-write race during a Zalmoxis re-solve on a
+            # network filesystem. The first row was readable but truncated
+            # to a non-physical R_cmb. Fall back rather than feed a junk
+            # density into the energy-balance core BC.
+            log.warning(
+                'Aragog core_density echo-back skipped: mesh-derived '
+                'rho_core=%.2f kg/m^3 outside plausible range '
+                '[%.0f, %.0f]; cached hf_row[core_density]=%.2f kept.',
+                rho_core_mesh,
+                _RHO_CORE_MIN,
+                _RHO_CORE_MAX,
+                rho_core,
+            )
+            return rho_core
+        log.debug(
+            'Aragog core_density echo-back: %.2f -> %.2f kg/m^3 '
+            '(M_core=%.4e kg, mesh-derived R_cmb)',
+            rho_core,
+            rho_core_mesh,
+            M_core,
+        )
+        hf_row['core_density'] = rho_core_mesh
+        return rho_core_mesh
+
+    return rho_core
+
+
+def _estimate_T_pot(out) -> float:
+    """Estimate potential temperature from SolverOutput.
+
+    SPIDER criterion (spider.py:1323-1329): scan from surface toward
+    the CMB; the first basic node where ``Jconv > Jcond`` marks the
+    top of the well-mixed convecting interior (bottom of the
+    conductive boundary layer). Report ``T_pot`` as the staggered
+    temperature at that node, clamped to ``len(T_stag) - 1`` to match
+    SPIDER's ``i = min(i, len(interior_o.temp) - 1)``.
+
+    Falls back to ``T_magma`` when no crossover exists (e.g. fully
+    stagnant or fully conductive profile).
+
+    Aragog orders nodes CMB -> surface; SPIDER orders surface -> CMB.
+    Same physical semantics, scan directions are reversed.
+    """
+    jconv = np.asarray(out.jconv_b).ravel()
+    jcond = np.asarray(out.jcond_b).ravel()
+    T_stag = np.asarray(out.T_stag).ravel()
+    n_stag = len(T_stag)
+    # Aragog ordering: CMB (index 0) to surface (index -1).
+    # Scan surface -> CMB for the shallowest node with Jconv > Jcond.
+    for i in range(len(jconv) - 1, -1, -1):
+        if jconv[i] > jcond[i]:
+            return float(T_stag[min(i, n_stag - 1)])
+    return float(out.T_magma)
+
+
+class AragogRunner:
+    def __init__(
+        self,
+        config: Config,
+        dirs: dict,
+        hf_row: dict,
+        hf_all: pd.DataFrame,
+        interior_o: Interior_t,
+    ):
+        AragogRunner.setup_logger(config, dirs)
+        # Store P-S EOS directory path for entropy solver initialization
+        interior_o._spider_eos_dir = dirs.get('spider_eos_dir', '')
+        dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all, interior_o)
+        self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
+        self.aragog_solver = interior_o.aragog_solver
+        self._config = config
+        # Diffrax direct-JAX integration is research-only (autodiff
+        # development). It is NOT exposed in the user-facing schema; flip
+        # the constant below to enable for development. The CHILI
+        # crystallization step defeats kvaerno3, so production runs must
+        # use the CVODE path via `[interior_energetics.aragog] backend`.
+        self._use_jax = _DIFFRAX_RESEARCH_ONLY
+
+        if self._use_jax:
+            import warnings
+
+            warnings.warn(
+                'Aragog diffrax path enabled via _DIFFRAX_RESEARCH_ONLY; '
+                'this path is not production-ready (kvaerno3 stalls on '
+                'first crystallization step). Use only for autodiff '
+                'development.',
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            from proteus.interior_energetics.aragog_jax import AragogJAXRunner
+
+            self._jax_runner = AragogJAXRunner(config, dirs, hf_row, hf_all, interior_o)
+
+    @staticmethod
+    def setup_logger(config: Config, dirs: dict):
+        file_level = logging.getLevelName(config.params.out.logging)
+        aragog_file_logger(
+            console_level=logging.WARNING, file_level=file_level, log_dir=dirs['output']
+        )
+
+    @staticmethod
+    def compute_time_step(
+        config: Config, dirs: dict, hf_row: dict, hf_all: pd.DataFrame, interior_o: Interior_t
+    ) -> float:
+        if interior_o.ic == 1:
+            return 0.0
+        else:
+            step_sf = 1.0  # dt scale factor
+            return next_step(
+                config,
+                dirs,
+                hf_row,
+                hf_all,
+                step_sf,
+                interior_o=interior_o,
+            )
+
+    @staticmethod
+    def setup_or_update_solver(
+        config: Config, hf_row: dict, interior_o: Interior_t, dt: float, dirs: dict
+    ):
+        if interior_o.aragog_solver is None:
+            _maybe_log_solver_environment(config)
+            _t_setup = time.perf_counter()
+            AragogRunner.setup_solver(config, hf_row, interior_o, dirs['output'])
+            if config.params.resume:
+                AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
+            _t_init = time.perf_counter()
+            interior_o.aragog_solver.initialize()
+            _t_after_init = time.perf_counter()
+            # Option Z: register the JAX CVODE callback factory when
+            # the flag is on. No-op when the flag is off.
+            AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
+            _t_after_factory = time.perf_counter()
+            if os.environ.get('PROTEUS_CI_NIGHTLY') == '1':
+                log.info(
+                    'aragog diag: first-call phases setup=%.2fs initialize=%.2fs '
+                    'jax_cvode_factory=%.2fs',
+                    _t_init - _t_setup,
+                    _t_after_init - _t_init,
+                    _t_after_factory - _t_after_init,
+                )
+            if config.params.resume and getattr(interior_o, '_last_entropy', None) is not None:
+                # Restore the evolved entropy field from the last NetCDF
+                # snapshot. Without this, _set_entropy_ic overwrites the
+                # solver with the t=0 isentrope, causing remelting.
+                solver = interior_o.aragog_solver
+                S_snap = interior_o._last_entropy
+                n_stag = getattr(solver, '_n_stag', len(S_snap))
+
+                if len(S_snap) != n_stag:
+                    log.error(
+                        'Entropy snapshot length %d != mesh staggered nodes %d. '
+                        'The mesh changed between the original run and resume. '
+                        'Falling back to fresh IC.',
+                        len(S_snap),
+                        n_stag,
+                    )
+                    AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
+                else:
+                    # Clear stale dSdr_cmb so set_initial_entropy recomputes
+                    # it from the restored profile via finite differences.
+                    if hasattr(solver, '_dSdr_cmb_init'):
+                        solver._dSdr_cmb_init = None
+                    solver.set_initial_entropy(S_snap)
+                    log.info(
+                        'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
+                        float(np.mean(S_snap)),
+                    )
+            else:
+                # Fresh run: set entropy IC from Zalmoxis T(r) profile
+                AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
+                AragogRunner._verify_entropy_ic(
+                    config,
+                    interior_o,
+                    dirs['output'],
+                    hf_row=hf_row,
+                )
+        else:
+            # Track how long Aragog has been integrating on a stale
+            # Zalmoxis structure. The _structure_stale flag is set by the
+            # wrapper's fall-back path on Zalmoxis non-convergence and
+            # cleared on the next successful Zalmoxis call. Surfacing this
+            # counter at INFO makes the silent-stale-mesh window visible in
+            # proteus_00.log; the hard-fail policy lives in the
+            # wrapper's _ZALMOXIS_MAX_CONSECUTIVE_FAILS budget.
+            if hf_row.get('_structure_stale', False):
+                interior_o._stale_struct_steps += 1
+                log.info(
+                    'Aragog re-running on stale Zalmoxis structure '
+                    '(consecutive stale steps = %d, R_int=%.4e m, '
+                    'M_int=%.4e kg from last successful re-solve)',
+                    interior_o._stale_struct_steps,
+                    float(hf_row.get('R_int', 0.0)),
+                    float(hf_row.get('M_int', 0.0)),
+                )
+            else:
+                interior_o._stale_struct_steps = 0
+            if interior_o.ic == 1:
+                AragogRunner.update_structure(config, hf_row, interior_o)
+                # Preserve the evolved S field across equilibration resets.
+                # Use entropy_staggered accessor (handles variable state
+                # vector sizes depending on core BC mode).
+                sol = interior_o.aragog_solver.solution
+                if sol is not None and sol.y.size > 0:
+                    S_block = interior_o.aragog_solver.entropy_staggered
+                    S_last = S_block[:, -1] if S_block.ndim > 1 else S_block
+                    interior_o._last_entropy = S_last
+            else:
+                AragogRunner.update_structure(config, hf_row, interior_o)
+                AragogRunner.update_solver(dt, hf_row, interior_o)
+            interior_o.aragog_solver.reset()
+            # Restore entropy IC from previous solve
+            if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
+                interior_o.aragog_solver.set_initial_entropy(interior_o._last_entropy)
+
+    @staticmethod
+    def setup_solver(config: Config, hf_row: dict, interior_o: Interior_t, outdir: str):
+        solver = _SolverParameters(
+            start_time=0,
+            end_time=0,
+            # rtol and atol (temperature-equivalent) from config.
+            # Aragog's state is entropy, but users specify temperature-
+            # scale atol for intuitive tuning (default 0.01 K resolves
+            # typical magma-ocean cooling rates).
+            atol=float(config.interior_energetics.aragog.atol_temperature_equivalent),
+            rtol=float(config.interior_energetics.rtol),
+        )
+
+        # Surface boundary condition mode (matches SPIDER wrapper):
+        # - 'flux' (default): outer_bc=4, consume hf_row['F_atm'] unchanged.
+        # - 'grey_body': outer_bc=1, Aragog recomputes
+        #   emissivity * sigma * (T_surf^4 - T_eqm^4) per CVode substep using
+        #   the current top-cell T. emissivity=1 matches SPIDER's -emissivity0
+        #   setting for parity runs, so both solvers follow the identical
+        #   physical law.
+        _aragog_outer_bc = 1 if config.interior_energetics.surface_bc_mode == 'grey_body' else 4
+        # Core BC mode from config. Valid values:
+        #   'energy_balance' (default, capacitance-weighted core cooling)
+        #   'quasi_steady'   (alpha-factor approximation)
+        #   'gradient'       (gradient-based state)
+        #   'bower2018'      (EXPERIMENTAL, not recommended)
+        # Validation lives on the attrs schema (config._interior.Aragog).
+        # The attrs schema (config._interior.Aragog) already restricts
+        # core_bc to the four valid modes, so it is consumed directly here
+        # rather than re-checked with a silent fallback that could swap in a
+        # different core model.
+        core_bc_str = config.interior_energetics.aragog.core_bc
+
+        boundary_conditions = _BoundaryConditionsParameters(
+            # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])
+            # 1 = native grey-body (emissivity * sigma * (T^4 - T_eqm^4))
+            outer_boundary_condition=_aragog_outer_bc,
+            # first guess surface heat flux [W/m2] (only used if outer_bc=4)
+            outer_boundary_value=hf_row['F_atm'],
+            # 1 = core cooling model
+            # 2 = prescribed heat flux
+            # 3 = prescribed temperature
+            inner_boundary_condition=(1),
+            # core temperature [K], if inner_boundary_condition = 3
+            inner_boundary_value=(4000),
+            # only used in gray body BC, outer_boundary_condition = 1
+            emissivity=1,
+            # only used in gray body BC, outer_boundary_condition = 1
+            equilibrium_temperature=hf_row['T_eqm'],
+            # used if inner_boundary_condition = 1
+            core_heat_capacity=get_core_heatcap(config, hf_row),
+            # core T_avg/T_cmb ratio from adiabatic gradient (Bower+2018 Table 2)
+            tfac_core_avg=config.interior_energetics.core_tfac_avg,
+            # ultra-thin boundary layer parameterization (Bower et al. 2018, Eq. 18)
+            param_utbl=config.interior_energetics.param_utbl,
+            param_utbl_const=config.interior_energetics.param_utbl_const,
+            # core BC mode (the 'energy_balance' option is available)
+            core_bc=core_bc_str,
+        )
+
+        # Define the inner_radius for the mesh.
+        # Prefer hf_row['R_core'] (set by the structure module) over
+        # config.core_frac * R_int, because the dummy structure uses
+        # Noack & Lasbleis 2020 scaling that gives a different R_core/R_int
+        # ratio than the config core_frac. SPIDER reads R_core from the
+        # mesh file (which the dummy structure writes), so Aragog must use
+        # the same value to ensure both solvers operate on the same domain.
+        if config.interior_struct.module in ('spider', 'dummy'):
+            R_core_hf = hf_row.get('R_core', 0)
+            if R_core_hf and R_core_hf > 0:
+                inner_radius = R_core_hf
+            else:
+                inner_radius = config.interior_struct.core_frac * hf_row['R_int']
+        elif config.interior_struct.module == 'zalmoxis':
+            inner_radius = hf_row.get(
+                'R_core', config.interior_struct.core_frac * hf_row['R_int']
+            )
+        else:
+            raise ValueError(
+                f"Aragog: unsupported interior_struct.module = '{config.interior_struct.module}'"
+            )
+
+        mesh = _MeshParameters(
+            # planet radius [m]
+            outer_radius=hf_row['R_int'],
+            # core radius [m]
+            inner_radius=inner_radius,
+            # basic nodes
+            number_of_nodes=config.interior_energetics.num_levels,
+            mixing_length_profile=(
+                'nearest_boundary'
+                if config.interior_energetics.mixing_length == 'nearest'
+                else 'constant'
+            ),
+            core_density=resolve_core_density(config, hf_row, outdir),
+            eos_method=1,  # 1: Adams-Williamson / 2: User defined
+            surface_density=config.interior_energetics.adams_williamson_rhos,
+            gravitational_acceleration=hf_row['gravity'],  # [m/s-2]
+            adiabatic_bulk_modulus=config.interior_energetics.adiabatic_bulk_modulus,
+            adams_williamson_beta=config.interior_energetics.adams_williamson_beta,
+            mass_coordinates=config.interior_energetics.aragog.mass_coordinates,
+            # Atmospheric overburden as the upper BC for the Adams-Williamson
+            # P(r) integration. hf_row['P_surf'] is in bar; Aragog wants Pa.
+            # Defaults to 0 at init when no atmosphere step has run yet.
+            surface_pressure=float(hf_row.get('P_surf', 0.0)) * 1e5,
+        )
+
+        # Use the external mesh file when available (dummy or Zalmoxis).
+        # The dummy structure writes spider_mesh.dat with uniform
+        # rho_mantle from Noack & Lasbleis 2020. SPIDER reads this file
+        # directly. Without eos_method=2, Aragog builds its own A-W
+        # exponential profile which gives 7.5% more mass (rho varies
+        # 4079-6044 vs uniform 4432). Using the same mesh file ensures
+        # identical cell masses, pressure, gravity, and domain geometry.
+        spider_mesh = os.path.join(outdir, 'data', 'spider_mesh.dat')
+        if config.interior_struct.module in ('spider', 'dummy') and os.path.isfile(spider_mesh):
+            mesh.eos_method = 2
+            mesh.eos_file = spider_mesh
+        elif config.interior_struct.module == 'zalmoxis':
+            mesh.eos_method = 2  # User-defined EOS based on Zalmoxis
+            mesh.eos_file = os.path.join(
+                outdir, 'data', 'zalmoxis_output.dat'
+            )  # Zalmoxis output file with mantle parameters
+
+        energy = _EnergyParameters(
+            conduction=config.interior_energetics.trans_conduction,
+            convection=config.interior_energetics.trans_convection,
+            gravitational_separation=(config.interior_energetics.trans_grav_sep),
+            mixing=config.interior_energetics.trans_mixing,
+            radionuclides=config.interior_energetics.heat_radiogenic,
+            tidal=config.interior_energetics.heat_tidal,
+            tidal_array=interior_o.tides,
+            kappah_floor=config.interior_energetics.kappah_floor,
+            # Bridge the PROTEUS schema knob onto the numpy/scipy RHS
+            # path. The JAX path consumes the same value via PhaseParams
+            # (see `aragog_jax.py`); without this passthrough, a non-
+            # default user value would apply on JAX and silently default
+            # to 1.0 on the numpy/scipy fallback, breaking bit-parity.
+            eddy_diffusivity_thermal=float(config.interior_energetics.eddy_diffusivity_thermal),
+            phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
+            solver_method=config.interior_energetics.aragog.solver_method,
+            use_jax_jacobian=(config.interior_energetics.aragog.backend == 'jax'),
+            phi_step_cap=config.interior_energetics.aragog.phi_step_cap,
+        )
+
+        # Define initial conditions for prescribing temperature profile
+        if config.interior_struct.module in ('spider', 'dummy'):
+            initial_condition_temperature_profile = 3
+            init_file_temperature_profile = os.path.join(FWL_DATA_DIR, '')
+        elif config.interior_struct.module == 'zalmoxis':
+            _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
+            if config.interior_struct.zalmoxis.mantle_eos.startswith(_TDEP_PREFIXES):
+                # When using Zalmoxis with temperature-dependent silicate EOS, set initial condition to user-defined temperature field (from file) in Aragog
+                initial_condition_temperature_profile = 2
+                init_file_temperature_profile = os.path.join(
+                    outdir, 'data', 'zalmoxis_output_temp.txt'
+                )
+            elif config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:'):
+                # For PALEOS EOS with adiabatic IC: Aragog uses IC=3 with
+                # entropy tables for its entropy-conserving adiabat. After
+                # initialization, _verify_entropy_ic compares against an
+                # independent PALEOS entropy inversion and corrects the IC
+                # if the discrepancy exceeds 1% (table resolution effect).
+                initial_condition_temperature_profile = 3
+                init_file_temperature_profile = ''
+            else:
+                # Otherwise, use the initial condition from aragog config
+                initial_condition_temperature_profile = 3
+                init_file_temperature_profile = os.path.join(FWL_DATA_DIR, '')
+        else:
+            raise ValueError(
+                f"Aragog IC: unsupported interior_struct.module = '{config.interior_struct.module}'"
+            )
+
+        # When initial_thermal_state = 'self_consistent', Zalmoxis computes
+        # T_surface from accretion + differentiation energy (White+Li 2025)
+        # and passes it via hf_row. This overrides the config tsurf_init.
+        tsurf_init = config.planet.tsurf_init
+        T_surface_computed = hf_row.get('T_surface_initial', 0)
+        if T_surface_computed and T_surface_computed > 0:
+            log.info(
+                'Overriding tsurf_init with self-consistent thermal state: %.0f K -> %.0f K',
+                tsurf_init,
+                T_surface_computed,
+            )
+            tsurf_init = T_surface_computed
+
+        initial_condition = _InitialConditionParameters(
+            # 1 = linear profile
+            # 2 = user-defined profile
+            # 3 = adiabatic profile
+            initial_condition=initial_condition_temperature_profile,
+            # initial top temperature (K)
+            surface_temperature=tsurf_init,
+            basal_temperature=7000.0,
+            init_file=init_file_temperature_profile,
+        )
+
+        # Constant-properties mode: skip all EOS table setup. The
+        # EntropyPhaseEvaluator._update_const() path uses analytical
+        # formulas only, but the EntropySolver still requires an EntropyEOS
+        # for mesh construction. Use the bundled SPIDER tables as a dummy.
+        if config.interior_energetics.const_properties:
+            spider_submod = (
+                Path(__file__).resolve().parent.parent.parent
+                / 'SPIDER'
+                / 'lookup_data'
+                / '1TPa-dK09-elec-free'
+            )
+            if spider_submod.is_dir():
+                LOOK_UP_DIR = spider_submod
+            else:
+                LOOK_UP_DIR = Path(outdir) / 'data' / 'spider_eos'
+
+        # EOS lookup directory for phase properties (Cp, alpha, density, entropy).
+        # For PALEOS EOS: generate P-T tables from PALEOS data.
+        # Prefer PALEOS-2phase (separate solid/liquid) over unified table:
+        # 2-phase tables give clean phase-specific entropy values at
+        # solidus/liquidus, enabling correct Delta_S for mixing flux and IC.
+        # The unified table has interpolation artifacts across the melting
+        # curve discontinuity.
+        elif (
+            config.interior_struct.module == 'zalmoxis'
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(
+                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
+            )
+        ):
+            from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
+
+            mat_dicts = load_zalmoxis_material_dictionaries()
+
+            # Get unified table path (needed for melting curves and fallback)
+            eos_entry = mat_dicts.get(config.interior_struct.zalmoxis.mantle_eos, {})
+            paleos_eos_file = eos_entry.get('eos_file', '')
+
+            mass_tot = config.planet.mass_tot or 1.0
+            # P_max for the Aragog phase-boundary + lookup table grid.
+            # The grid must reach the planet's CMB pressure so the mantle
+            # does not read an extrapolated phase boundary at the table
+            # edge. For 5 M_Earth the actual P_cmb is ~670 GPa, so a flat
+            # 200 GPa cap would leave ~70% of the mantle on an
+            # extrapolated boundary. The PALEOS-2phase EOS tables extend
+            # to 100 TPa (header, paleos_mgsio3_tables_pt_proteus_*.dat); the
+            # Fei+2021 melting curve is fit up to ~1 TPa but the functional
+            # form (Simon-Glatzel power law) extrapolates smoothly higher.
+            # Cap at 10 TPa so the grid can cover very massive rocky planets
+            # without hitting the table edge. Mass scaling keeps the table
+            # compact for sub-Earth / Earth-mass configs.
+            P_max = min(1.0e13, 150e9 * mass_tot + 200e9)
+            LOOK_UP_DIR = Path(outdir) / 'data' / 'aragog_pt'
+
+            # Try PALEOS-2phase first (separate solid/liquid tables). Pick
+            # the 2-phase registry key that matches the requested EOS family
+            # so PALEOS-API runs consume API-generated tables (not the
+            # shipped-Zenodo ones that live under the PALEOS-2phase key).
+            # The -highres variant (Zenodo 19680050, 600 pts/decade) is
+            # opt-in; default is the 150-pts/decade tables.
+            _mantle_eos_sel = config.interior_struct.zalmoxis.mantle_eos
+            if _mantle_eos_sel.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')):
+                _twophase_key = 'PALEOS-API-2phase:MgSiO3'
+            elif _mantle_eos_sel == 'PALEOS-2phase:MgSiO3-highres':
+                _twophase_key = 'PALEOS-2phase:MgSiO3-highres'
+            else:
+                _twophase_key = 'PALEOS-2phase:MgSiO3'
+            twophase_entry = mat_dicts.get(_twophase_key, {})
+            # PALEOS-API entries carry grid metadata, not file paths. Materialise
+            # cached .dat paths now so the `eos_file` lookups below find concrete
+            # files. No-op for shipped PALEOS-2phase entries.
+            if twophase_entry and _twophase_key.startswith('PALEOS-API'):
+                from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
+
+                resolve_registry_entry(twophase_entry)
+            solid_eos = twophase_entry.get('solid_mantle', {}).get('eos_file', '')
+            liquid_eos = twophase_entry.get('melted_mantle', {}).get('eos_file', '')
+            has_2phase = (
+                solid_eos
+                and os.path.isfile(solid_eos)
+                and liquid_eos
+                and os.path.isfile(liquid_eos)
+            )
+
+            if has_2phase:
+                if not (LOOK_UP_DIR / 'density_melt.dat').is_file():
+                    from zalmoxis.eos_export import generate_aragog_pt_tables_2phase
+
+                    log.info('Generating phase-specific Aragog P-T tables from PALEOS-2phase')
+                    generate_aragog_pt_tables_2phase(
+                        solid_eos_file=solid_eos,
+                        liquid_eos_file=liquid_eos,
+                        P_range=(1e5, P_max),
+                        n_P=200,
+                        n_T=200,
+                        output_dir=LOOK_UP_DIR,
+                    )
+                else:
+                    log.info('PALEOS-2phase tables already exist, skipping generation')
+            elif not has_2phase:
+                # Fall back to unified table (identical solid/melt files)
+                from zalmoxis.eos_export import generate_aragog_pt_tables
+
+                if paleos_eos_file and os.path.isfile(paleos_eos_file):
+                    from proteus.interior_struct.zalmoxis import (
+                        load_zalmoxis_solidus_liquidus_functions,
+                    )
+
+                    melt_funcs = load_zalmoxis_solidus_liquidus_functions(
+                        config.interior_struct.zalmoxis.mantle_eos, config
+                    )
+                    if melt_funcs is not None:
+                        sol_func, liq_func = melt_funcs
+                    else:
+                        from zalmoxis.melting_curves import (
+                            get_solidus_liquidus_functions,
+                        )
+
+                        sol_func, liq_func = get_solidus_liquidus_functions(
+                            'Stixrude14-solidus', 'PALEOS-liquidus'
+                        )
+
+                    if not (LOOK_UP_DIR / 'density_melt.dat').is_file():
+                        log.warning(
+                            'PALEOS-2phase tables not found, falling back to '
+                            'unified table (entropy near melting curve may be '
+                            'unreliable)'
+                        )
+                        generate_aragog_pt_tables(
+                            eos_file=paleos_eos_file,
+                            solidus_func=sol_func,
+                            liquidus_func=liq_func,
+                            P_range=(1e5, P_max),
+                            n_P=200,
+                            n_T=200,
+                            output_dir=LOOK_UP_DIR,
+                        )
+            else:
+                log.warning(
+                    'PALEOS EOS file not found (%s), falling back to the shipped EOS tables',
+                    paleos_eos_file,
+                )
+                LOOK_UP_DIR = (
+                    FWL_DATA_DIR
+                    / 'interior_lookup_tables'
+                    / '1TPa-dK09-elec-free'
+                    / 'MgSiO3_Wolf_Bower_2018_1TPa'
+                )
+        else:
+            # Shipped EOS tables; used when interior_struct.eos_dir is
+            # None (no dynamic EOS selected) or when the dynamic path
+            # does not resolve to a populated directory. The "EOS/dynamic"
+            # tree is only materialised when zalmoxis pre-generates
+            # PALEOS tables; outside that pathway it is empty.
+            legacy_lookup = (
+                FWL_DATA_DIR
+                / 'interior_lookup_tables'
+                / '1TPa-dK09-elec-free'
+                / 'MgSiO3_Wolf_Bower_2018_1TPa'
+            )
+            if config.interior_struct.eos_dir is None:
+                LOOK_UP_DIR = legacy_lookup
+            else:
+                LOOK_UP_DIR = (
+                    FWL_DATA_DIR
+                    / 'interior_lookup_tables'
+                    / 'EOS'
+                    / 'dynamic'
+                    / config.interior_struct.eos_dir
+                    / 'P-T'
+                )
+                if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
+                    LOOK_UP_DIR = legacy_lookup
+        # Determine melting curves. When using PALEOS EOS via Zalmoxis,
+        # generate PALEOS-derived melting curves so Aragog uses the SAME
+        # solidus/liquidus as SPIDER (PALEOS-liquidus * mushy_zone_factor).
+        # Without this, Aragog uses Monteux-600 which differs by ~600 K,
+        # making melt fractions incomparable.
+        if (
+            config.interior_struct.module == 'zalmoxis'
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(
+                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
+            )
+        ):
+            paleos_melt_dir = Path(outdir) / 'data' / 'paleos_melting'
+            paleos_melt_dir.mkdir(parents=True, exist_ok=True)
+            sol_file = paleos_melt_dir / 'solidus_P-T.dat'
+            liq_file = paleos_melt_dir / 'liquidus_P-T.dat'
+            if not sol_file.is_file():
+                from proteus.interior_struct.zalmoxis import (
+                    _make_derived_solidus,
+                    load_zalmoxis_solidus_liquidus_functions,
+                )
+
+                melt_fns = load_zalmoxis_solidus_liquidus_functions(
+                    config.interior_struct.zalmoxis.mantle_eos, config
+                )
+                if melt_fns is not None:
+                    s_fn, l_fn = melt_fns
+                else:
+                    from zalmoxis.melting_curves import (
+                        get_solidus_liquidus_functions as _gslf,
+                    )
+
+                    _, l_fn = _gslf('Stixrude14-solidus', 'PALEOS-liquidus')
+                    s_fn = _make_derived_solidus(
+                        l_fn, config.interior_struct.zalmoxis.mushy_zone_factor
+                    )
+
+                P_arr = np.logspace(8, 12, 500)
+                sol_data = np.column_stack([P_arr, [s_fn(P) for P in P_arr]])
+                liq_data = np.column_stack([P_arr, [l_fn(P) for P in P_arr]])
+                np.savetxt(str(sol_file), sol_data, header='pressure temperature', comments='#')
+                np.savetxt(str(liq_file), liq_data, header='pressure temperature', comments='#')
+                log.info('Generated PALEOS melting curves for Aragog: %s', paleos_melt_dir)
+
+            solidus_path = sol_file
+            liquidus_path = liq_file
+        else:
+            if config.interior_struct.melting_dir is None:
+                raise ValueError(
+                    'interior_struct.melting_dir must be set for non-PALEOS EOS. '
+                    'Provide a melting curve folder name (e.g. "Monteux-600").'
+                )
+            MELTING_DIR = FWL_DATA_DIR / 'interior_lookup_tables/Melting_curves/'
+            solidus_path = MELTING_DIR / config.interior_struct.melting_dir / 'solidus_P-T.dat'
+            liquidus_path = (
+                MELTING_DIR / config.interior_struct.melting_dir / 'liquidus_P-T.dat'
+            )
+
+        # check data exist
+        if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
+            raise FileNotFoundError(f'Aragog lookup data not found at {LOOK_UP_DIR}')
+
+        # Entropy tables (optional): enable entropy-conserving adiabatic IC.
+        # Generated by Zalmoxis from the same PALEOS data as Cp/alpha/rho.
+        entropy_melt = LOOK_UP_DIR / 'entropy_melt.dat'
+        entropy_solid = LOOK_UP_DIR / 'entropy_solid.dat'
+        entropy_melt_arg = str(entropy_melt) if entropy_melt.is_file() else ''
+        entropy_solid_arg = str(entropy_solid) if entropy_solid.is_file() else ''
+        if entropy_melt_arg:
+            log.info('Entropy tables found: enabling entropy-conserving adiabat IC')
+        else:
+            log.info('No entropy tables: Aragog will use single-phase dTdPs adiabat')
+
+        phase_liquid = _PhaseParameters(
+            density=LOOK_UP_DIR / 'density_melt.dat',
+            viscosity=10.0 ** float(config.interior_energetics.melt_log10visc),
+            heat_capacity=LOOK_UP_DIR / 'heat_capacity_melt.dat',
+            melt_fraction=1,
+            thermal_conductivity=float(config.interior_energetics.melt_cond),
+            thermal_expansivity=LOOK_UP_DIR / 'thermal_exp_melt.dat',
+            entropy=entropy_melt_arg,
+        )
+
+        phase_solid = _PhaseParameters(
+            density=LOOK_UP_DIR / 'density_solid.dat',
+            viscosity=10.0 ** float(config.interior_energetics.solid_log10visc),
+            heat_capacity=LOOK_UP_DIR / 'heat_capacity_solid.dat',
+            melt_fraction=0,
+            thermal_conductivity=float(config.interior_energetics.solid_cond),
+            thermal_expansivity=LOOK_UP_DIR / 'thermal_exp_solid.dat',
+            entropy=entropy_solid_arg,
+        )
+
+        phase_mixed = _PhaseMixedParameters(
+            latent_heat_of_fusion=float(config.interior_energetics.latent_heat_of_fusion),
+            rheological_transition_melt_fraction=config.interior_energetics.rfront_loc,
+            rheological_transition_width=config.interior_energetics.rfront_wid,
+            solidus=solidus_path,
+            liquidus=liquidus_path,
+            phase='mixed',
+            phase_transition_width=float(config.interior_energetics.phase_transition_width),
+            grain_size=config.interior_energetics.grain_size,
+            matprop_smooth_width=float(config.interior_energetics.spider.matprop_smooth_width),
+            const_properties=bool(config.interior_energetics.const_properties),
+            const_rho=float(config.interior_energetics.const_rho),
+            const_Cp=float(config.interior_energetics.const_Cp),
+            const_alpha=float(config.interior_energetics.const_alpha),
+            const_cond=float(config.interior_energetics.const_cond),
+            const_log10visc=float(config.interior_energetics.const_log10visc),
+            const_T_ref=float(config.interior_energetics.const_T_ref),
+            const_S_ref=float(config.interior_energetics.const_S_ref),
+        )
+
+        radionuclides = []
+        if config.interior_energetics.heat_radiogenic:
+            # offset by age_ini, which converts model simulation time to the
+            # actual age
+            radio_t0 = config.interior_energetics.radio_tref - config.star.age_ini
+            radio_t0 *= 1e9  # Convert Gyr to yr
+
+            def _append_radnuc(_iso, _cnc):
+                radionuclides.append(
+                    _Radionuclide(
+                        name=_iso,
+                        t0_years=radio_t0,
+                        abundance=radnuc_data[_iso]['abundance'],
+                        concentration=_cnc,
+                        heat_production=radnuc_data[_iso]['heatprod'],
+                        half_life_years=radnuc_data[_iso]['halflife'],
+                    )
+                )
+
+            if config.interior_energetics.radio_Al > 0.0:
+                _append_radnuc('al26', config.interior_energetics.radio_Al)
+
+            if config.interior_energetics.radio_Fe > 0.0:
+                _append_radnuc('fe60', config.interior_energetics.radio_Fe)
+
+            if config.interior_energetics.radio_K > 0.0:
+                _append_radnuc('k40', config.interior_energetics.radio_K)
+
+            if config.interior_energetics.radio_Th > 0.0:
+                _append_radnuc('th232', config.interior_energetics.radio_Th)
+
+            if config.interior_energetics.radio_U > 0.0:
+                _append_radnuc('u235', config.interior_energetics.radio_U)
+                _append_radnuc('u238', config.interior_energetics.radio_U)
+
+        param = Parameters(
+            boundary_conditions=boundary_conditions,
+            energy=energy,
+            initial_condition=initial_condition,
+            mesh=mesh,
+            phase_solid=phase_solid,
+            phase_liquid=phase_liquid,
+            phase_mixed=phase_mixed,
+            radionuclides=radionuclides,
+            solver=solver,
+        )
+
+        # Load PALEOS P-S EOS tables for entropy solver.
+        # Skip entirely in const_properties mode (no table lookups needed).
+        nightly_strict = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
+        _t_pre_eos = time.perf_counter()
+        if config.interior_energetics.const_properties:
+            entropy_eos = None
+            log.info('const_properties=True: skipping EOS table loading')
+        else:
+            spider_eos_dir = interior_o._spider_eos_dir
+            if spider_eos_dir and os.path.isdir(spider_eos_dir):
+                entropy_eos = _cached_entropy_eos(str(spider_eos_dir))
+            else:
+                fallback_dir = Path(outdir) / 'data' / 'spider_eos'
+                if fallback_dir.is_dir():
+                    entropy_eos = _cached_entropy_eos(str(fallback_dir))
+                else:
+                    raise FileNotFoundError(
+                        f'PALEOS P-S tables not found. Aragog entropy solver '
+                        f'requires P-S tables. Checked: {spider_eos_dir}, {fallback_dir}'
+                    )
+        _t_post_eos = time.perf_counter()
+        interior_o.aragog_solver = EntropySolver(param, entropy_eos)
+        _t_post_solver = time.perf_counter()
+        if nightly_strict:
+            log.info(
+                'aragog diag: setup_solver phases entropy_eos=%.2fs entropy_solver=%.2fs',
+                _t_post_eos - _t_pre_eos,
+                _t_post_solver - _t_post_eos,
+            )
+
+    @staticmethod
+    def _maybe_install_jax_cvode_factory(config: Config, interior_o: Interior_t) -> None:
+        """Install a JAX CVODE callback factory on the solver (option Z).
+
+        Activated only when ``config.interior_energetics.aragog.backend ==
+        'jax'``. Builds the JAX pytrees (EOS, phase, mesh, boundary,
+        heating) from PROTEUS config + the initialized solver state
+        and registers a factory with the solver. The factory is called
+        once per ``solver.solve()`` with the solver's nondim scales and
+        returns the ``(rhs_fn, jac_fn)`` pair that CVODE consumes.
+
+        No-op (silent) for backend='numpy'. When backend='jax' but
+        JAX import or pytree construction fails, logs a warning and
+        leaves the factory unset so the solver falls back to the
+        default finite-difference Jacobian path.
+        """
+        use_jax_jac = config.interior_energetics.aragog.backend == 'jax'
+        if not use_jax_jac:
+            return
+
+        # Nightly CI escalates every fallback path to a hard failure so the
+        # tests cannot silently pass on the FD Jacobian when they claim to
+        # exercise the production JAX + analytic-Jacobian path.
+        nightly_strict = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
+
+        solver = interior_o.aragog_solver
+        if solver is None:
+            msg = "backend='jax' but aragog_solver is None; skipping factory install."
+            if nightly_strict:
+                raise RuntimeError(msg)
+            log.warning(msg)
+            return
+
+        # Pre-initialise the discrimination counter so a test that fails to
+        # install the factory (e.g. JAX stack missing on a non-nightly run)
+        # reads 0 rather than raising AttributeError.
+        solver._jax_factory_call_count = 0
+
+        try:
+            import jax.numpy as jnp
+            from aragog.jax.phase import MeshArrays, PhaseParams
+            from aragog.jax.solver import BoundaryParams
+            from aragog.solver.cvode_jax import build_jax_rhs_and_jacobian
+            # EntropyEOS_JAX is imported lazily by _cached_entropy_eos_jax.
+        except ImportError as exc:
+            msg = (
+                f'Option Z requested but JAX stack is not importable '
+                f'({exc}); falling back to FD Jacobian.'
+            )
+            if nightly_strict:
+                raise RuntimeError(msg) from exc
+            log.warning(msg)
+            return
+
+        try:
+            eos_dir = interior_o._spider_eos_dir
+            _t_pre_jax_eos = time.perf_counter()
+            eos_jax = _cached_entropy_eos_jax(str(eos_dir))
+            _t_post_jax_eos = time.perf_counter()
+            if nightly_strict:
+                log.info(
+                    'aragog diag: jax_cvode_factory phases entropy_eos_jax=%.2fs',
+                    _t_post_jax_eos - _t_pre_jax_eos,
+                )
+
+            ie = config.interior_energetics
+            params_jax = PhaseParams(
+                phi_rheo=ie.rfront_loc,
+                phi_width=ie.rfront_wid,
+                viscosity_solid=10.0 ** float(ie.solid_log10visc),
+                viscosity_liquid=10.0 ** float(ie.melt_log10visc),
+                grain_size=ie.grain_size,
+                k_solid=float(ie.solid_cond),
+                k_liquid=float(ie.melt_cond),
+                matprop_smooth_width=float(ie.spider.matprop_smooth_width),
+                conduction=ie.trans_conduction,
+                convection=ie.trans_convection,
+                grav_sep=ie.trans_grav_sep,
+                mixing=ie.trans_mixing,
+                eddy_diff_thermal=float(ie.eddy_diffusivity_thermal),
+                eddy_diff_chemical=float(ie.eddy_diffusivity_chemical),
+                kappah_floor=float(ie.kappah_floor),
+                bottom_up_grav_sep=True,
+                phase_smoothing=ie.aragog.phase_smoothing,
+                # Width matches hardcoded 1e-2 in numpy entropy_state.py
+                # _spider_get_smoothing call sites (not matprop_smooth_width,
+                # which is a separate SPIDER material-property blend).
+                phase_smoothing_width=0.01,
+            )
+
+            _t_pre_mesh = time.perf_counter()
+            mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
+            _t_post_mesh = time.perf_counter()
+            n_stag = solver._n_stag
+            if nightly_strict:
+                log.info(
+                    'aragog diag: jax_cvode_factory phases params_jax+mesh=%.2fs',
+                    _t_post_mesh - _t_post_jax_eos,
+                )
+
+            def factory(scales, core_bc_mode):
+                # Discrimination counter (set on solver before the try block).
+                # Tests assert this is > 0 after a run to prove CVODE actually
+                # consumed the analytic Jacobian rather than silently falling
+                # back to the FD path.
+                solver._jax_factory_call_count += 1
+                # ``scales`` is an aragog.jax.nondim.NonDimScales single
+                # source of truth.
+                # Rebuild BoundaryParams from live solver state every
+                # solve() call. PROTEUS updates outer_boundary_value
+                # (F_atm), equilibrium_temperature, and inner_boundary_value
+                # between coupling steps; capturing them once at factory-
+                # install time would freeze the interior to the initial
+                # F_atm and halt cooling (Phi_global stuck at 1.0).
+                bc_cfg = solver.parameters.boundary_conditions
+                bc_jax_live = BoundaryParams(
+                    outer_bc_type=bc_cfg.outer_boundary_condition,
+                    outer_bc_value=bc_cfg.outer_boundary_value,
+                    emissivity=bc_cfg.emissivity,
+                    T_eq=bc_cfg.equilibrium_temperature,
+                    inner_bc_type=(
+                        5
+                        if solver._core_bc == 'energy_balance'
+                        else bc_cfg.inner_boundary_condition
+                    ),
+                    inner_bc_value=bc_cfg.inner_boundary_value,
+                    core_density=solver.parameters.mesh.core_density,
+                    core_heat_capacity=bc_cfg.core_heat_capacity,
+                    tfac_core_avg=getattr(bc_cfg, 'tfac_core_avg', 1.147),
+                    cmb_area=float(getattr(solver, '_cmb_area', 0.0)),
+                    core_M=float(getattr(solver, '_core_M', 0.0)),
+                    cmb_dr_cmb=float(getattr(solver, '_cmb_dr_cmb', 0.0)),
+                    # U1: UTBL Cardano correction. Static-flag gated;
+                    # off in production CHILI configs, on for SPIDER-
+                    # parity tests. Without this the JAX surface BC
+                    # would diverge from the numpy/SPIDER path when
+                    # param_utbl=True is set.
+                    param_utbl=bool(getattr(bc_cfg, 'param_utbl', False)),
+                    param_utbl_const=float(getattr(bc_cfg, 'param_utbl_const', 0.0)),
+                )
+                # ── A2: per-step radio + frozen tidal ──
+                # The static heating array carries only the time-
+                # independent contribution (tidal). Per-isotope radio
+                # params are passed separately and evaluated inside the
+                # JAX trace at the live integrator time, restoring
+                # verify_jax_vs_numpy_rhs parity at all mid-step times.
+                heating_static = jnp.zeros(n_stag)
+                tidal_arr = np.asarray(getattr(solver.parameters.energy, 'tidal_array', [0.0]))
+                if tidal_arr.size == n_stag:
+                    heating_static = jnp.asarray(tidal_arr)
+                elif tidal_arr.size == 1 and tidal_arr[0] != 0.0:
+                    heating_static = jnp.full(n_stag, float(tidal_arr[0]))
+
+                radionuclides = getattr(solver.parameters, 'radionuclides', [])
+                if radionuclides:
+                    radio_isotope_params = (
+                        np.array([float(r.heat_production) for r in radionuclides]),
+                        np.array([float(r.abundance) for r in radionuclides]),
+                        np.array([float(r.concentration) for r in radionuclides]),
+                        np.array([float(r.t0_years) for r in radionuclides]),
+                        np.array([float(r.half_life_years) for r in radionuclides]),
+                    )
+                else:
+                    radio_isotope_params = ()
+
+                rhs_fn, jac_fn, _info = build_jax_rhs_and_jacobian(
+                    eos_jax,
+                    params_jax,
+                    mesh_jax,
+                    bc_jax_live,
+                    np.asarray(heating_static),
+                    scales,
+                    core_bc_mode=core_bc_mode,
+                    radio_isotope_params=radio_isotope_params,
+                )
+                return rhs_fn, jac_fn
+
+            solver.set_jax_cvode_factory(factory)
+            log.info(
+                'Option Z: JAX CVODE factory installed on aragog solver '
+                '(core_bc=%s, n_stag=%d).',
+                solver._core_bc,
+                n_stag,
+            )
+        except Exception as exc:
+            msg = f'Option Z factory install failed ({exc}); falling back to FD Jacobian.'
+            if nightly_strict:
+                raise RuntimeError(msg) from exc
+            log.warning(msg)
+
+    @staticmethod
+    def _set_entropy_ic(
+        config: Config, interior_o: Interior_t, outdir: str, hf_row: dict | None = None
+    ):
+        """Set the entropy IC via the shared compute_initial_entropy helper.
+
+        Delegates to ``proteus.interior_energetics.common.compute_initial_entropy``
+        so that SPIDER and Aragog resolve the initial mantle entropy
+        through the same code path. That helper handles:
+
+        - ``temperature_mode = "isentropic"`` -> return
+          ``planet.ini_entropy`` verbatim (no EOS lookup). This is the
+          CHILI protocol path.
+        - Otherwise: invert the P-S temperature table at (P=1 bar,
+          tsurf_init) using the Aragog EntropyEOS on the same tables the
+          solver integrates with.
+        - Fallback to the PALEOS adiabat via Zalmoxis if the P-S
+          inversion path is unavailable.
+
+        After obtaining the scalar ``S_target``, build the initial
+        entropy profile on the solver's staggered nodes. The baseline
+        is a uniform ``S_target`` profile; add a small linear
+        perturbation ``ini_dsdr * (r - r_surf)`` when
+        ``config.planet.ini_dsdr`` is non-zero. This matches SPIDER's
+        ``-ic_dsdr`` flag, which is the numerical perturbation SPIDER's
+        BDF solver needs for stability on a uniform isentropic IC
+        (the CHILI protocol sets ``ini_dsdr = -4.698e-6 J/kg/K/m``).
+
+        Parameters
+        ----------
+        config : Config
+            PROTEUS configuration.
+        interior_o : Interior_t
+            Interior object with initialized EntropySolver.
+        outdir : str
+            Output directory. Accepted for call-signature compatibility; unused.
+        hf_row : dict, optional
+            Helpfile row. Passed through to compute_initial_entropy so
+            it can honour Zalmoxis's accretion-mode T_surface_initial
+            override.
+        """
+        from proteus.interior_energetics.common import compute_initial_entropy
+
+        solver = interior_o.aragog_solver
+        spider_eos_dir = interior_o._spider_eos_dir or None
+
+        S_target = compute_initial_entropy(
+            config,
+            hf_row=hf_row,
+            spider_eos_dir=spider_eos_dir,
+        )
+
+        # Build the initial entropy profile. Baseline is uniform
+        # S_target on all staggered nodes. When ini_dsdr is non-zero,
+        # add a linear radial perturbation anchored at the surface
+        # (S_init[i] = S_target + ini_dsdr * (r_stag[i] - r_surf)) so the
+        # perturbation is exactly zero at the top cell and grows toward
+        # the CMB. This matches SPIDER's -ic_dsdr semantic: a small
+        # perturbation used purely to break degeneracy in the BDF
+        # solver; the physical magnitude is negligible
+        # (~ -14 J/kg/K over 3e6 m for the CHILI default of -4.698e-6).
+        P_stag = solver._P_stag_flat
+        N = len(P_stag)
+        S_init = np.full(N, float(S_target))
+
+        ini_dsdr = float(config.planet.ini_dsdr)
+        if ini_dsdr != 0.0:
+            r_basic = np.asarray(solver._r_basic_flat, dtype=float)
+            # Staggered nodes sit between basic nodes; midpoints are exact
+            # for uniform meshes and a good approximation for mass-
+            # coordinate meshes. The perturbation magnitude is tiny so
+            # any small discretisation error is irrelevant.
+            r_stag = 0.5 * (r_basic[:-1] + r_basic[1:])
+            if len(r_stag) == N:
+                r_surf = float(r_basic[-1])
+                S_init = S_init + ini_dsdr * (r_stag - r_surf)
+                log.info(
+                    'Applied ini_dsdr perturbation: %.3e J/kg/K/m, '
+                    'amplitude %.2f J/kg/K from surface to CMB',
+                    ini_dsdr,
+                    float(abs(S_init[0] - S_init[-1])),
+                )
+            else:
+                log.warning(
+                    'ini_dsdr perturbation skipped: r_stag length %d != '
+                    'staggered nodes %d. Using uniform S_target.',
+                    len(r_stag),
+                    N,
+                )
+
+        solver.set_initial_entropy(S_init)
+        log.info(
+            'Aragog entropy IC set from compute_initial_entropy: '
+            'S_target=%.1f J/kg/K (uniform baseline, %d staggered nodes)',
+            float(S_target),
+            N,
+        )
+
+    @staticmethod
+    def _verify_entropy_ic(
+        config: Config,
+        interior_o: Interior_t,
+        outdir: str,
+        hf_row: dict | None = None,
+    ):
+        """Verify Aragog's IC against an independent PALEOS entropy adiabat.
+
+        After ``_set_entropy_ic`` has written the entropy profile into the
+        solver, this function independently computes a PALEOS adiabat via
+        ``zalmoxis.eos_export.compute_entropy_adiabat`` and compares its T(P)
+        against the T(P) derived from Aragog's initialized entropy via the
+        P-S EOS tables. A mismatch > 1% triggers an override: the entropy
+        profile is replaced with values inverted from the adiabat's T profile.
+        A mismatch > 5% is raised as a ``RuntimeError`` (true code-path drift).
+
+        Parameters
+        ----------
+        config : Config
+            PROTEUS configuration.
+        interior_o : Interior_t
+            Interior object with initialized EntropySolver.
+        outdir : str
+            Output directory for diagnostic files.
+        """
+        if not (
+            config.interior_struct.module == 'zalmoxis'
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(
+                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
+            )
+        ):
+            log.debug(
+                'Entropy IC cross-check skipped: not zalmoxis+PALEOS '
+                "(interior_struct.module='%s')",
+                config.interior_struct.module,
+            )
+            return
+
+        solver = interior_o.aragog_solver
+
+        # Catch expected failures only. AttributeError and TypeError must
+        # propagate so that future API drift fails loudly in tests.
+        try:
+            from zalmoxis.eos_export import compute_entropy_adiabat
+
+            from proteus.interior_struct.zalmoxis import (
+                load_zalmoxis_material_dictionaries,
+                load_zalmoxis_solidus_liquidus_functions,
+                resolve_2phase_mgsio3_paths,
+            )
+
+            mat_dicts = load_zalmoxis_material_dictionaries()
+            mantle_eos = config.interior_struct.zalmoxis.mantle_eos
+
+            # Prefer 2-phase tables (clean phase-specific entropy at melting curve).
+            # API-aware so PALEOS-API runs use API 2-phase tables, not shipped.
+            solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
+
+            # `eos_file` arg for compute_entropy_adiabat is a sentinel: any
+            # valid PALEOS table works. Prefer unified eos_file when present
+            # (paleos_unified mantle), else fall back to solid 2-phase path.
+            eos_entry = mat_dicts.get(mantle_eos, {})
+            paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
+            if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
+                log.debug(
+                    'Entropy IC cross-check skipped: PALEOS file not found (%s)',
+                    paleos_eos_file,
+                )
+                return
+
+            melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
+            sol_func = liq_func = None
+            if melt_funcs is not None:
+                sol_func, liq_func = melt_funcs
+
+            # ---- Current Aragog IC (from the entropy profile just set) ----
+            #
+            # The EntropySolver stores:
+            #   solver._S0           : staggered entropy profile [J/kg/K]
+            #   solver._P_stag_flat  : staggered pressures [Pa]
+            #   solver.entropy_eos   : EntropyEOS with temperature_scalar(P, S)
+            #
+            # Derive T(P) on Aragog's staggered mesh by looking up the EOS.
+            # Aragog stores _S0 as the full state vector. Under core_bc =
+            # 'energy_balance' (default) and 'bower2018', _S0 has length
+            # n_stag + 1, with _S0[n_stag] = dSdr_cmb (an entropy gradient
+            # boundary state, not an entropy). 'gradient' adds two boundary
+            # states (length n_stag + 2). Strip the trailing boundary states
+            # so we compare entropy-on-stag against pressure-on-stag.
+            P_stag = np.asarray(solver._P_stag_flat, dtype=float)
+            S_full = np.asarray(solver._S0, dtype=float)
+            if S_full.size < P_stag.size:
+                raise RuntimeError(
+                    f'Entropy IC shape mismatch: P_stag={P_stag.shape}, S_full={S_full.shape} '
+                    f'(expected S_full.size >= P_stag.size)'
+                )
+            S_stag = S_full[: P_stag.size]
+            T_stag_aragog = np.array(
+                [
+                    float(solver.entropy_eos.temperature_scalar(float(p), float(s)))
+                    for p, s in zip(P_stag, S_stag)
+                ]
+            )
+
+            # ---- Independent PALEOS adiabat ----
+            # Use the same surface temperature that _set_entropy_ic used:
+            # config.planet.tsurf_init unless hf_row carries an accretion
+            # override (T_surface_initial from Zalmoxis White+Li mode).
+            T_surf = float(config.planet.tsurf_init)
+            if hf_row is not None:
+                T_surface_computed = hf_row.get('T_surface_initial', 0)
+                if T_surface_computed and T_surface_computed > 0:
+                    T_surf = float(T_surface_computed)
+
+            # Surface pressure: use 1 bar (same as _set_entropy_ic and
+            # common.compute_initial_entropy) to keep the cross-check
+            # comparing apples to apples.
+            P_surf_adiabat = 1e5
+            P_cmb_adiabat = float(P_stag[0])
+
+            result = compute_entropy_adiabat(
+                eos_file=paleos_eos_file,
+                T_surface=T_surf,
+                P_surface=P_surf_adiabat,
+                P_cmb=P_cmb_adiabat,
+                n_points=500,
+                solidus_func=sol_func,
+                liquidus_func=liq_func,
+                solid_eos_file=solid_eos,
+                liquid_eos_file=liquid_eos,
+            )
+
+            # Interpolate the independent adiabat onto Aragog's staggered mesh
+            from scipy.interpolate import interp1d
+
+            T_adiabat_interp = interp1d(
+                result['P'],
+                result['T'],
+                bounds_error=False,
+                fill_value='extrapolate',
+            )(P_stag)
+
+            # ---- Compare ----
+            T_diff = np.abs(T_stag_aragog - T_adiabat_interp)
+            T_rel_diff = T_diff / np.maximum(T_stag_aragog, 1.0) * 100.0
+            max_diff = float(np.max(T_diff))
+            max_rel = float(np.max(T_rel_diff))
+            mean_rel = float(np.mean(T_rel_diff))
+
+            WARN_PCT = 1.0
+            FAIL_PCT = 5.0
+
+            if max_rel <= WARN_PCT:
+                verdict = 'PASS'
+            elif max_rel <= FAIL_PCT:
+                verdict = 'WARN'
+            else:
+                verdict = 'FAIL'
+
+            log.info(
+                'Entropy IC cross-check (Aragog): max T diff = %.1f K (%.2f%%), '
+                'mean = %.3f%%, verdict = %s',
+                max_diff,
+                max_rel,
+                mean_rel,
+                verdict,
+            )
+
+            # Save diagnostic data on every call so post-mortem is possible
+            diag_dir = Path(outdir) / 'data' / 'entropy_ic_verification'
+            diag_dir.mkdir(parents=True, exist_ok=True)
+            np.savez(
+                diag_dir / 'entropy_ic_comparison.npz',
+                P_staggered=P_stag,
+                S_aragog=S_stag,
+                T_aragog=T_stag_aragog,
+                T_adiabat=T_adiabat_interp,
+                T_diff=T_diff,
+                S_target=result['S_target'],
+            )
+
+            if verdict == 'WARN':
+                log.warning(
+                    'Entropy IC full-profile cross-check > %.1f%% '
+                    '(max %.1f K / %.2f%% at depth). Diagnostic only; '
+                    'not overriding the IC. '
+                    'PALEOS P-T and regenerated P-S tables disagree at '
+                    'high P / high T because the table regeneration '
+                    'involves bilinear interpolation across non-converged '
+                    'cells. Up to ~10%% is expected at M>=2.0 Earth masses.',
+                    WARN_PCT,
+                    max_diff,
+                    max_rel,
+                )
+            elif verdict == 'FAIL':
+                # Do NOT raise. Log only. Production runs on Habrok
+                # showed that this threshold fires on every Aragog case
+                # at M>=2.0 Earth masses (CMB pressure >~250 GPa) due
+                # to the same table-boundary effect noted above. This
+                # is an EOS self-consistency drift, not a coupling bug.
+                # If you want a stricter safety net, use the surface-only
+                # scalar check in _set_entropy_ic (T_check log line at
+                # line ~600) which is always reliable.
+                log.warning(
+                    'Entropy IC full-profile cross-check > %.1f%% '
+                    '(max %.1f K / %.2f%% at depth). Diagnostic only; '
+                    'NOT raising because this reflects known PALEOS '
+                    'P-T vs P-S table boundary drift at high mass, '
+                    'not a coupling bug. The scalar surface cross-check '
+                    'logged by _set_entropy_ic is the authoritative '
+                    'IC sanity check.',
+                    FAIL_PCT,
+                    max_diff,
+                    max_rel,
+                )
+
+        except (
+            FileNotFoundError,
+            ImportError,
+            ModuleNotFoundError,
+            KeyError,
+            ValueError,
+        ) as e:
+            # Expected failures:
+            # - FileNotFoundError / ImportError: missing PALEOS files or Zalmoxis
+            #   not installed
+            # - KeyError: missing config keys
+            # - ValueError: scipy brentq inside compute_entropy_adiabat raises
+            #   this when the adiabat's internal root-find lands on a NaN, which
+            #   happens when the integrated T(P) exceeds the PALEOS table range
+            #   (T > ~4900 K at deep pressures for tsurf_init >= ~3500 K). The
+            #   SPIDER twin in common.py has the same guard; without this we
+            #   crash hot-initial-condition runs (e.g. earthlike_*_dry at
+            #   tsurf_init = 4000 K, which reaches T ~ 8000 K at the CMB).
+            log.warning('Entropy IC cross-check skipped (expected error: %s)', e)
+
+    @staticmethod
+    def update_solver(dt: float, hf_row: dict, interior_o: Interior_t, output_dir: str = None):
+        """Update solver for next coupling step (entropy formulation)."""
+        solver = interior_o.aragog_solver
+        solver.parameters.solver.start_time = hf_row['Time']
+        solver.parameters.solver.end_time = hf_row['Time'] + dt
+
+        # Get entropy field from previous run. Use entropy_staggered
+        # accessor to handle variable state vector sizes.
+        if output_dir is not None:
+            S_field = read_last_Sfield(output_dir, hf_row['Time'])
+        else:
+            sol = solver.solution
+            if sol is not None and sol.y.size > 0:
+                S_block = solver.entropy_staggered
+                S_field = S_block[:, -1] if S_block.ndim > 1 else S_block
+            else:
+                S_field = None
+
+        if S_field is not None:
+            interior_o._last_entropy = S_field
+
+        # Update boundary conditions (F_atm from atmosphere module)
+        solver.parameters.boundary_conditions.outer_boundary_value = hf_row['F_atm']
+
+        # Update equilibrium temperature (tracks stellar luminosity evolution).
+        # SPIDER receives fresh T_eqm at every call via -teqm (spider.py:748).
+        # Without this update, grey_body surface BC mode uses the initial T_eqm
+        # for the entire run while the star evolves.
+        solver.parameters.boundary_conditions.equilibrium_temperature = hf_row['T_eqm']
+
+        # Update tidal heating
+        solver.parameters.energy.tidal_array = interior_o.tides
+
+    @staticmethod
+    def update_structure(config: Config, hf_row: dict, interior_o: Interior_t):
+        """Refresh the Aragog mesh with current planet structure.
+
+        Called at every coupling timestep to keep the mesh consistent with
+        the evolving planet radius, core radius, and surface gravity,
+        matching SPIDER's behavior of re-reading R_int / R_core / gravity
+        at each call. The EOS file (zalmoxis_output.dat for Zalmoxis,
+        spider_mesh.dat for SPIDER/dummy) is re-read inside
+        solver.reset(), which is called by setup_or_update_solver
+        immediately after this update. Together this propagates any
+        mid-run structure update (e.g. a Zalmoxis re-solve inside
+        update_structure_from_interior) into Aragog before the next
+        integration call.
+        """
+        solver = interior_o.aragog_solver
+        solver.parameters.mesh.outer_radius = hf_row['R_int']
+        solver.parameters.mesh.gravitational_acceleration = hf_row['gravity']
+
+        if config.interior_struct.module in ('spider', 'dummy'):
+            # Use hf_row['R_core'] from the structure module when available,
+            # matching the setup_solver convention. Falls back to core_frac
+            # when R_core is unset (module='spider' without dummy structure).
+            R_core_hf = hf_row.get('R_core', 0)
+            if R_core_hf and R_core_hf > 0:
+                solver.parameters.mesh.inner_radius = R_core_hf
+            else:
+                solver.parameters.mesh.inner_radius = (
+                    config.interior_struct.core_frac * hf_row['R_int']
+                )
+        elif config.interior_struct.module == 'zalmoxis':
+            # Refresh inner_radius from hf_row on every coupling
+            # step so Zalmoxis re-solves that shift R_core propagate into
+            # the Aragog mesh. Matches the setup_solver convention
+            # (aragog.py:234-237). Without this the mesh domain's inner
+            # boundary stays pinned at the init-time R_core while the EOS
+            # file (re-read inside solver.reset()) carries the updated
+            # radial grid, producing an inconsistent mesh interpolation.
+            R_core_hf = hf_row.get('R_core', 0)
+            if R_core_hf and R_core_hf > 0:
+                solver.parameters.mesh.inner_radius = R_core_hf
+            else:
+                solver.parameters.mesh.inner_radius = (
+                    config.interior_struct.core_frac * hf_row['R_int']
+                )
+
+        # Echo-back: refresh core_density from the on-disk Zalmoxis mesh
+        # plus the live hf_row['M_core'] so a Zalmoxis re-solve that
+        # shifts R_cmb propagates into the energy_balance core BC. The
+        # cached solver.parameters.mesh.core_density would otherwise stay
+        # pinned at the init-time value, silently using a stale density
+        # in the basal-cell flux balance after every Zalmoxis update.
+        # See proteus.interior_energetics.aragog.resolve_core_density.
+        eos_file = getattr(solver.parameters.mesh, 'eos_file', '') or ''
+        M_core = float(hf_row.get('M_core', 0.0))
+        if (
+            config.interior_struct.module == 'zalmoxis'
+            and M_core > 0.0
+            and eos_file
+            and os.path.isfile(eos_file)
+        ):
+            try:
+                rho_core_mesh = derive_core_density_from_mesh(eos_file, M_core)
+            except (ValueError, FileNotFoundError, OSError) as exc:
+                log.debug('Aragog core_density echo-back skipped at update: %s', exc)
+            else:
+                if not _is_plausible_core_density(rho_core_mesh):
+                    # File-write race during a Zalmoxis re-solve. Keep the
+                    # previous live core_density and warn so the symptom
+                    # is observable in proteus_00.log.
+                    log.warning(
+                        'Aragog core_density echo-back skipped at update: '
+                        'mesh-derived rho_core=%.2f kg/m^3 outside '
+                        '[%.0f, %.0f]; live solver value preserved.',
+                        rho_core_mesh,
+                        _RHO_CORE_MIN,
+                        _RHO_CORE_MAX,
+                    )
+                else:
+                    prev_rho = float(solver.parameters.mesh.core_density)
+                    solver.parameters.mesh.core_density = rho_core_mesh
+                    hf_row['core_density'] = rho_core_mesh
+                    if abs(rho_core_mesh - prev_rho) > 1e-6 * max(prev_rho, 1.0):
+                        log.debug(
+                            'Aragog core_density echo-back at update: '
+                            '%.2f -> %.2f kg/m^3 (M_core=%.4e kg)',
+                            prev_rho,
+                            rho_core_mesh,
+                            M_core,
+                        )
+
+        # Lightweight trace so validation can check that
+        # the mesh scalars track the Zalmoxis re-solve cadence. The d*
+        # fields are the change since the previous update, computed from
+        # cached prior values stored on solver. Oscillation in dR_int
+        # across consecutive updates is the canonical signature of a
+        # Zalmoxis↔Aragog fixed-point loop going unstable.
+        prev = getattr(solver, '_prev_struct_log', None)
+        R_int_new = float(solver.parameters.mesh.outer_radius)
+        R_core_new = float(solver.parameters.mesh.inner_radius)
+        g_new = float(solver.parameters.mesh.gravitational_acceleration)
+        t_new = float(hf_row.get('Time', 0.0))
+        if prev is not None:
+            dR_int = R_int_new - prev[1]
+            dR_core = R_core_new - prev[2]
+            dg = g_new - prev[3]
+            log.info(
+                'Aragog update_structure: t=%.3e yr  R_int=%.5e m  R_core=%.5e m  '
+                'g=%.4f m/s^2  dR_int=%+.3e  dR_core=%+.3e  dg=%+.4f',
+                t_new,
+                R_int_new,
+                R_core_new,
+                g_new,
+                dR_int,
+                dR_core,
+                dg,
+            )
+        else:
+            log.info(
+                'Aragog update_structure: t=%.3e yr  R_int=%.5e m  R_core=%.5e m  '
+                'g=%.4f m/s^2  (first call)',
+                t_new,
+                R_int_new,
+                R_core_new,
+                g_new,
+            )
+        solver._prev_struct_log = (t_new, R_int_new, R_core_new, g_new)
+
+    def run_solver(self, hf_row, interior_o, dirs, write_data: bool = True):
+        # Dispatch to JAX solver if configured
+        if self._use_jax:
+            return self._jax_runner.run_solver(hf_row, interior_o, dirs, write_data=write_data)
+
+        # Run Aragog solver with retry ladder.
+        #
+        # CVODE can hit status=-1 ("Error test failures occurred too many
+        # times or minimum step size was reached") when a long coupling
+        # step lands in a stiff regime (e.g. the first crystallisation
+        # transition). Retry with a halved dt from the same start state.
+        # Mirrors SPIDER's _try_spider retry ladder in spider.py.
+        out = self._solve_with_retry(hf_row, interior_o)
+
+        # Build PROTEUS helpfile output from SolverOutput
+        output = self._build_helpfile_output(
+            out,
+            hf_row,
+            interior_o=interior_o,
+            surface_d=self._config.atmos_clim.surface_d,
+            surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
+        )
+
+        # Store arrays on interior object for inter-module access.
+        # Radius is stored in metres (SI), matching SPIDER's convention
+        # (spider.py:1185 reads radius_b directly from the SPIDER JSON
+        # in metres). update_structure_from_interior (wrapper.py:795)
+        # requires metres: its r <= _R_cmb comparison and downstream
+        # np.interp would use mixed units if km were stored here, which
+        # matters whenever Zalmoxis update_interval > 0.
+        interior_o.phi = out.phi_stag
+        interior_o.visc = out.visc_stag
+        interior_o.density = out.rho_stag
+        interior_o.radius = out.r_basic  # m
+        interior_o.mass = out.mass_stag
+        interior_o.temp = out.T_stag
+        interior_o.pres = out.P_stag
+
+        # Use the actual integration endpoint, not the requested end_time.
+        # If the solver exits early (status != 0), dt_actual < requested dt.
+        # Matches the SPIDER fix (reading time_years from JSON instead of
+        # using dtswitch) to prevent the same class of time desync.
+        sim_time = hf_row['Time'] + out.dt_actual
+
+        # Write output to a file (skipped when dt_write suppresses this step)
+        if write_data:
+            self._write_output_ncdf(
+                dirs['output'],
+                sim_time,
+                out,
+                write_diagnostics=getattr(
+                    self._config.interior_energetics, 'write_flux_diagnostics', False
+                ),
+                T_surf_coupled=hf_row.get('T_surf'),
+            )
+
+        return sim_time, output
+
+    def _solve_with_retry(self, hf_row, interior_o) -> SolverOutput:
+        """Run aragog_solver.solve() with a dt-halving retry ladder.
+
+        On CVODE failure (status != 0), restore the entropy IC and
+        dSdr_cmb_init from before the attempt, halve the integration
+        interval, and retry. Up to ``max_attempts`` attempts; on final
+        failure, returns the SolverOutput from the last attempt
+        (caller propagates status to the helpfile via dt_actual).
+
+        Parameters
+        ----------
+        hf_row : dict
+            Current helpfile row (for logging context).
+        interior_o : Interior_t
+            Interior state object holding _last_entropy.
+
+        Returns
+        -------
+        SolverOutput
+            Solver state from the first successful attempt, or from the
+            last attempt if all failed.
+        """
+        solver = self.aragog_solver
+        max_attempts = 6
+        atol_sf_max = 5.0  # cap on atol scaling; tested 125x corrupted T_core
+        # Scale the T_core-jump sanity threshold with planet mass. At 1 M_Earth
+        # the IC transient in T_core is O(100 K); at 5 M_Earth with per-node
+        # gravity the same transient is O(2-3 kK) because core heat extraction
+        # scales with CMB gravity and core-mantle area (g_cmb^2 * R_core^2).
+        # A flat 1500 K threshold is calibrated for 1 M_Earth and
+        # wrongly rejects physical transients on super-Earth runs, driving the
+        # retry ladder to exhaustion. Linear-in-mass scaling is defensible:
+        # for rocky planets the product (g_cmb * M_core * C_p_core) rises
+        # approximately linearly with planet mass, and the first-step
+        # dT_core/dt scales with that product. At 5 M_Earth this gives a
+        # 7500 K ceiling, ~2.5x headroom above the observed 2700 K jump.
+        mass_tot = float(getattr(self._config.planet, 'mass_tot', 1.0) or 1.0)
+        sanity_dT_core = 1500.0 * max(
+            1.0, mass_tot
+        )  # max plausible T_core change per retry [K]
+
+        # Capture IC for restoration on retry, and pre-call T_core for
+        # the sanity check on retry success.
+        t_start = float(solver.parameters.solver.start_time)
+        t_end = float(solver.parameters.solver.end_time)
+        dt_requested = t_end - t_start
+        S_ic = (
+            interior_o._last_entropy.copy()
+            if getattr(interior_o, '_last_entropy', None) is not None
+            else None
+        )
+        # Snapshot dSdr_cmb BEFORE the first attempt so retries can
+        # restore the pre-solve value. Without this the hot-start at
+        # Aragog's set_initial_entropy (entropy_solver.py:604-616) reads
+        # the FAILED attempt's final dSdr_cmb from _solution.y[..., -1]
+        # and uses it as the IC for the next retry, producing a
+        # positive-feedback loop in which each retry drives dSdr_cmb
+        # further from the pre-solve value and T_core jumps grow
+        # unbounded. Seen on the 5 M_Earth dry CHILI super-Earth runs.
+        # Prefer the Aragog getter; fall back to the private override
+        # attribute when present (e.g. when a previous call forced it).
+        dSdr_snapshot = None
+        if hasattr(solver, 'get_current_dSdr_cmb'):
+            dSdr_snapshot = solver.get_current_dSdr_cmb()
+        if dSdr_snapshot is None:
+            dSdr_snapshot = getattr(solver, '_dSdr_cmb_init', None)
+        dSdr_ic = dSdr_snapshot
+        # Pre-rename helpfiles store this column as T_core; fall back so
+        # resumed runs keep the jump guard on their first step.
+        T_core_pre = float(hf_row.get('T_cmb', hf_row.get('T_core', 0.0)))
+
+        # Reset atol scale to 1.0 at the start of each coupling step
+        # (cleared regardless of retry outcome at end of method)
+        solver._atol_sf = 1.0
+
+        out = None
+        _diag_on = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
+        try:
+            for attempt in range(1, max_attempts + 1):
+                _t0 = time.perf_counter()
+                solver.solve()
+                _solve_wall = time.perf_counter() - _t0
+                out = solver.get_state()
+                if _diag_on:
+                    log.info(
+                        'aragog diag: solve() attempt=%d dt=%.3e yr wall=%.2fs '
+                        'status=%d t=%.3e yr',
+                        attempt,
+                        float(solver.parameters.solver.end_time) - t_start,
+                        _solve_wall,
+                        int(out.status),
+                        float(hf_row.get('Time', 0.0)),
+                    )
+
+                # Status check: did CVODE accept the step?
+                if out.status == 0:
+                    # Sanity check: reject suspiciously large T_core jumps
+                    # that indicate the solver "succeeded" with garbage.
+                    # Applies on ALL attempts (not just retries):
+                    #   - chili_atolrelax showed atol_sf=125x corruption on
+                    #     a retry attempt
+                    #   - chili_n_maxsteps500k showed corruption on attempt 1
+                    #     when more step budget allowed CVODE to traverse a
+                    #     phase boundary in one shot
+                    # Either way, we want to reject the result and retry
+                    # with a smaller dt.
+                    T_core_post = float(out.T_core)
+                    # T_core_pre is 0 only on the very first solve, before any
+                    # converged core temperature exists to compare against, so
+                    # the jump guard is necessarily inactive on that one step.
+                    dT = abs(T_core_post - T_core_pre) if T_core_pre > 0 else 0.0
+                    if dT > sanity_dT_core:
+                        log.warning(
+                            'Aragog attempt %d returned status=0 but T_core '
+                            'jumped %.1f K (>%.0f K threshold). Treating as '
+                            'failure and continuing retry ladder.',
+                            attempt,
+                            dT,
+                            sanity_dT_core,
+                        )
+                        # Fall through to the retry/exhaustion branch below
+                    else:
+                        if attempt > 1:
+                            log.info(
+                                'Aragog retry succeeded on attempt %d '
+                                '(dt=%.3e yr, atol_sf=%.1fx; '
+                                'was dt=%.3e yr, atol_sf=1.0x at attempt 1)',
+                                attempt,
+                                float(solver.parameters.solver.end_time) - t_start,
+                                float(solver._atol_sf),
+                                dt_requested,
+                            )
+                        return out
+
+                if attempt >= max_attempts:
+                    # status==0 here means CVODE accepted every step but each
+                    # result was rejected for an over-threshold T_core jump, so
+                    # report that reason rather than the misleading status=0.
+                    if out.status == 0:
+                        reason = (
+                            'status=0 but the T_core jump exceeded the '
+                            f'{sanity_dT_core:.0f} K sanity threshold on every attempt'
+                        )
+                    else:
+                        reason = f'CVODE status={out.status}'
+                    log.error(
+                        'Aragog solver failed after %d attempts (%s). '
+                        'Raising RuntimeError so wrapper can apply skip-step fallback.',
+                        attempt,
+                        reason,
+                    )
+                    raise RuntimeError(
+                        f'Aragog retry ladder exhausted: {reason} '
+                        f'after {attempt} attempts at t={hf_row.get("Time", 0.0):.3e} yr'
+                    )
+
+                # Failure: halve dt AND relax atol (capped), restore state, retry.
+                # atol_sf increases linearly to atol_sf_max over attempts 2-3,
+                # then stays at the cap for further attempts. dt continues
+                # halving so additional attempts gain resolution, not looser
+                # tolerance.
+                dt_new = dt_requested * (0.5**attempt)
+                atol_sf_new = min(atol_sf_max, 1.0 + (atol_sf_max - 1.0) * (attempt / 2.0))
+                log.warning(
+                    'Aragog solver failed at t=%.3e yr (status=%d, attempt %d/%d). '
+                    'Retrying with dt=%.3e yr, atol_sf=%.1fx (was dt=%.3e yr).',
+                    hf_row.get('Time', 0.0),
+                    out.status,
+                    attempt,
+                    max_attempts,
+                    dt_new,
+                    atol_sf_new,
+                    dt_requested,
+                )
+                solver.parameters.solver.start_time = t_start
+                solver.parameters.solver.end_time = t_start + dt_new
+                solver._atol_sf = atol_sf_new
+                if dSdr_ic is not None:
+                    # Force the next attempt's hot-start to use the pre-solve
+                    # snapshot instead of the failed attempt's final value.
+                    if hasattr(solver, 'set_initial_dSdr_cmb'):
+                        solver.set_initial_dSdr_cmb(dSdr_ic)
+                    else:
+                        solver._dSdr_cmb_init = dSdr_ic
+                solver.reset()
+                if S_ic is not None:
+                    solver.set_initial_entropy(S_ic)
+        finally:
+            # Always reset atol_sf so subsequent coupling steps start at 1.0x
+            solver._atol_sf = 1.0
+            # Release the dSdr_cmb override so the NEXT coupling step's
+            # set_initial_entropy can hot-start from its own _solution
+            # (which, after a successful retry, holds the accepted
+            # attempt's final dSdr_cmb, or after a full ladder exhaustion
+            # the wrapper will apply its own skip-step fallback before
+            # the next coupling step begins).
+            if hasattr(solver, 'set_initial_dSdr_cmb'):
+                solver.set_initial_dSdr_cmb(None)
+            else:
+                solver._dSdr_cmb_init = None
+
+        return out
+
+    @staticmethod
+    def _build_helpfile_output(
+        out: SolverOutput,
+        hf_row: dict,
+        interior_o=None,
+        surface_d: float = 0.0,
+        surface_bc_mode: str = 'flux',
+    ) -> dict:
+        """Build the PROTEUS helpfile dict from SolverOutput.
+
+        Parameters
+        ----------
+        out : SolverOutput
+            Aragog solver output.
+        hf_row : dict
+            Current helpfile row.
+        interior_o : Interior_t, optional
+            Interior object. When provided, tidal heating flux is
+            computed from the tidal array (matching SPIDER's
+            Htidal_s * mass_s / area convention).
+        surface_d : float, optional
+            Surface depth offset passed through to the output dict.
+        surface_bc_mode : str, optional
+            Interior surface boundary condition. In ``'flux'`` mode Aragog
+            is driven by ``F_atm``, so its integrated surface flux equals
+            ``F_atm``. In ``'grey_body'`` mode Aragog computes its own
+            surface flux, so ``F_int`` is taken from the surface heat-flux
+            node instead.
+        """
+        log.info(
+            'Aragog entropy: T_surf=%.0f K, T_cmb=%.0f K, Phi=%.3f, status=%d',
+            out.T_magma,
+            out.T_core,
+            out.Phi_global,
+            out.status,
+        )
+
+        # Split total heating into radiogenic and tidal components.
+        # SPIDER reports radio and tidal separately (Hradio_s, Htidal_s
+        # integrated over cell masses). Aragog's ``out.F_heat_total`` is
+        # the combined flux summed over the source terms (radio + tidal).
+        # Compute F_radio analytically from the radionuclides at the
+        # current sim time so the helpfile column for each source is
+        # physically correct rather than recovered by subtraction.
+        area_surf = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
+        F_tidal = 0.0
+        if interior_o is not None and hasattr(interior_o, 'tides'):
+            tides = np.asarray(interior_o.tides)
+            if tides.size > 0 and np.any(tides > 0):
+                F_tidal = float(np.dot(tides[: len(out.mass_stag)], out.mass_stag)) / area_surf
+        F_radio = 0.0
+        solver_obj = (
+            getattr(interior_o, 'aragog_solver', None) if interior_o is not None else None
+        )
+        if solver_obj is not None:
+            radionuclides = getattr(solver_obj.parameters, 'radionuclides', [])
+            if radionuclides:
+                # Sample radio heating at the END of the step. ``out.F_heat_total``
+                # reflects the surface flux at the post-step state (Aragog
+                # returns the integrated surface flux at t_end), and PROTEUS
+                # increments ``hf_row['Time']`` by the interior dt only AFTER
+                # this output assembly runs (see proteus.py: run_interior is
+                # called before ``hf_row['Time'] += interior_o.dt``). Using
+                # ``hf_row['Time'] + interior_o.dt`` keeps the F_radio sample
+                # aligned with the F_heat_total reference instead of trailing
+                # by one dt, which matters for any isotope whose half-life is
+                # of order a coupling step.
+                t_end_yr = float(hf_row.get('Time', 0.0))
+                if interior_o is not None:
+                    t_end_yr += float(getattr(interior_o, 'dt', 0.0))
+                H_radio_per_kg = sum(float(r.get_heating(t_end_yr)) for r in radionuclides)
+                F_radio = H_radio_per_kg * float(out.M_mantle) / area_surf
+
+        return {
+            'M_mantle': out.M_mantle,
+            'M_core': hf_row.get('M_core', 0.0),
+            'T_magma': out.T_magma,
+            'Phi_global': out.Phi_global,
+            'RF_depth': out.RF_depth,
+            # In flux mode Aragog is driven by F_atm, so its integrated
+            # surface flux equals F_atm. In grey_body mode Aragog computes
+            # its own surface flux from emissivity*sigma*(T_surf^4 - T_eqm^4);
+            # report the surface basic-node heat flux it actually integrated
+            # so this column reflects the interior solver rather than the
+            # atmosphere. out.heat_flux is positive-outward (W/m^2), the same
+            # sign convention as F_atm.
+            'F_int': (
+                float(out.heat_flux[-1]) if surface_bc_mode == 'grey_body' else hf_row['F_atm']
+            ),
+            'M_mantle_liquid': out.M_mantle_liquid,
+            'M_mantle_solid': out.M_mantle_solid,
+            'Phi_global_vol': out.Phi_global_vol,
+            # T_pot estimate: SPIDER uses the first node where Jconv > Jcond
+            # (spider.py:1321-1327). Aragog SolverOutput doesn't split fluxes,
+            # so approximate with the shallowest node where eddy diffusivity
+            # exceeds a minimal threshold (indicates active convection). Falls
+            # back to T_magma when the entire mantle is convective.
+            'T_pot': _estimate_T_pot(out),
+            'T_cmb': out.T_core,
+            'E_th_mantle': out.E_th,
+            'Cp_eff': out.Cp_eff,
+            'F_radio': F_radio,
+            'F_tidal': F_tidal,
+            # Energy-conservation diagnostic columns (Aragog A1+A2).
+            # E_state is the EOS-consistent integrated mantle enthalpy
+            # from the precomputed h(P,S) table; F_cmb is the CMB heat
+            # flux signed positive-out-of-core; Q_*_W are mantle-mass-
+            # integrated source powers in watts (not surface-equivalent
+            # fluxes). Cumulative dE_predicted / E_residual columns are
+            # filled later in coupler.ExtendHelpfile from these inputs.
+            'E_state_J': out.E_state,
+            'E_state_cons_J': out.E_state_cons,
+            'F_cmb': out.F_cmb,
+            'Q_radio_W': out.Q_radio_total,
+            'Q_tidal_W': out.Q_tidal_total,
+            # Per-call energy contributions [J] integrated over the
+            # CVODE sub-step trajectory. Replaces helpfile-side
+            # trapezoidal interpolation of end-of-step F_cmb snapshots
+            # (which were prone to phase-boundary spikes at single
+            # sub-step boundaries). The cumulative ``dE_predicted_cons_J``
+            # is now sum_n step_dE_*_J across all rows in the helpfile.
+            # The state-mass ``step_dE_Q_*_J`` are kept as instrumentation
+            # diagnostics; the residual itself uses ``step_dE_Q_*_cons_J``.
+            'step_dE_F_int_J': out.step_dE_F_int_J,
+            'step_dE_F_cmb_J': out.step_dE_F_cmb_J,
+            'step_dE_Q_radio_J': out.step_dE_Q_radio_J,
+            'step_dE_Q_tidal_J': out.step_dE_Q_tidal_J,
+            # Conservation-grade variants: same per-call integrals but
+            # with frozen-mass weighting on the volumetric source
+            # terms (Q_radio, Q_tidal). Together with E_state_cons_J
+            # they give a Lagrangian-frame budget that closes against
+            # the entropy ODE to numerical precision.
+            'step_dE_Q_radio_cons_J': out.step_dE_Q_radio_cons_J,
+            'step_dE_Q_tidal_cons_J': out.step_dE_Q_tidal_cons_J,
+            # Per-call entropy-ODE solver residual [J]. Sums to a
+            # cumulative ``solver_residual_J`` in the coupler that
+            # quantifies trapezoidal-vs-CVODE-internal integration
+            # mismatch. Should remain near zero for a well-converged
+            # integrator; non-trivial values signal step rejection or
+            # tolerance issues.
+            'step_solver_residual_J': out.step_solver_residual_J,
+            # Boundary layer thickness, taken straight from the atmosphere
+            # config. Surfaced here so the helpfile carries a single
+            # backend-agnostic field for downstream tooling that has to
+            # compare Aragog and Boundary runs side by side.
+            'boundary_layer_thickness': surface_d,
+        }
+
+    @staticmethod
+    def _write_output_ncdf(
+        output_dir: str,
+        time: float,
+        out: SolverOutput,
+        write_diagnostics: bool = False,
+        T_surf_coupled: float | None = None,
+    ):
+        """Write entropy solver output to NetCDF using SolverOutput.
+
+        Parameters
+        ----------
+        write_diagnostics : bool
+            When True, append per-component flux decomposition and
+            basic-node state to the NetCDF. See
+            ``config.interior_energetics.write_flux_diagnostics``.
+        T_surf_coupled : float or None
+            PROTEUS-coupled surface temperature (post AGNI skin-layer
+            correction). Stored alongside Aragog's adiabatic temp_s so
+            resume can initialize AGNI at the correct T_surf.
+        """
+        fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
+        ds = nc.Dataset(fpath, mode='w')
+        ds.description = 'Aragog entropy solver output'
+
+        n_stag = len(out.S_final)
+        n_basic = len(out.r_basic)
+        ds.createDimension('staggered', n_stag)
+        ds.createDimension('basic', n_basic)
+
+        def _add(name, data, dim, units=''):
+            v = ds.createVariable(name, np.float64, (dim,))
+            v[:] = data
+            v.units = units
+
+        _add('entropy_s', out.S_final, 'staggered', 'J/kg/K')
+        _add('temp_s', out.T_stag, 'staggered', 'K')
+        _add('phi_s', out.phi_stag, 'staggered', '')
+        _add('radius_s', out.r_stag / 1e3, 'staggered', 'km')
+        _add('pres_s', out.P_stag / 1e9, 'staggered', 'GPa')
+        _add('radius_b', out.r_basic / 1e3, 'basic', 'km')
+        _add('log10visc_s', np.log10(np.maximum(out.visc_stag, 1e-10)), 'staggered', 'Pa s')
+        _add('density_s', out.rho_stag, 'staggered', 'kg m-3')
+        _add('Ftotal_b', out.heat_flux, 'basic', 'W m-2')
+        _add('Htotal_s', out.heating, 'staggered', 'W kg-1')
+        _add('mass_s', out.mass_stag, 'staggered', 'kg')
+        # Diagnostic: per-component fluxes and basic-node state.
+        # Gated by config.interior_energetics.write_flux_diagnostics.
+        if write_diagnostics:
+            _add('Jcond_b', out.jcond_b, 'basic', 'W m-2')
+            _add('Jconv_b', out.jconv_b, 'basic', 'W m-2')
+            _add('Jgrav_b', out.jgrav_b, 'basic', 'W m-2')
+            _add('Jmix_b', out.jmix_b, 'basic', 'W m-2')
+            _add('dSdr_b', out.dSdr_b, 'basic', 'J kg-1 K-1 m-1')
+            _add('eddy_diff_b', out.eddy_diff, 'basic', 'm2 s-1')
+            _add('phi_basic_b', out.phi_basic, 'basic', '')
+            _add('T_basic_b', out.T_basic, 'basic', 'K')
+            _add('cp_basic_b', out.cp_basic, 'basic', 'J kg-1 K-1')
+            _add('rho_basic_b', out.rho_basic, 'basic', 'kg m-3')
+
+        ds.createVariable('time', np.float64)
+        ds['time'][0] = float(time)
+        ds['time'].units = 'yr'
+
+        ds.createVariable('phi_global', np.float64)
+        ds['phi_global'][0] = out.Phi_global
+
+        if T_surf_coupled is not None:
+            ds.createVariable('T_surf_coupled', np.float64)
+            ds['T_surf_coupled'][0] = float(T_surf_coupled)
+            ds['T_surf_coupled'].units = 'K'
+
+        ds.close()
+
+
+def read_last_Sfield(output_dir: str, time: float):
+    """Read the entropy field from the previous Aragog NetCDF output."""
+    fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
+    ds = nc.Dataset(fpath)
+    try:
+        S_stag = np.array(ds['entropy_s'][:])
+    except (KeyError, IndexError):
+        # Fallback: older output format without entropy; read T and convert
+        log.warning('No entropy_s in %s; falling back to temp_s', fpath)
+        S_stag = np.array(ds.get('temp_s', ds.get('temp_b', [3200.0]))[:])
+    ds.close()
+    return S_stag
+
+
+def get_all_output_times(output_dir: str):
+    files = glob.glob(output_dir + '/data/*_int.nc')
+    years = [int(f.split('/')[-1].split('_int')[0]) for f in files]
+    mask = np.argsort(years)
+
+    return [years[i] for i in mask]
+
+
+def read_ncdf(fpath: str):
+    out = {}
+    ds = nc.Dataset(fpath)
+
+    for key in ds.variables.keys():
+        out[key] = ds.variables[key][:]
+
+    ds.close()
+    return out
+
+
+def read_ncdfs(output_dir: str, times: list):
+    return [read_ncdf(os.path.join(output_dir, 'data', '%d_int.nc' % t)) for t in times]

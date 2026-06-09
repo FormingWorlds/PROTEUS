@@ -151,7 +151,7 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
 
 def plot_emission_entry(handler: Proteus):
     plot_times, _ = sample_output(handler, tmin=1000.0, extension='_atm.nc')
-    print('Snapshots:', plot_times)
+    log.info('Snapshots: %s', plot_times)
 
     # Plot fixed set from above
     plot_emission(

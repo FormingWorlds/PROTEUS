@@ -21,6 +21,42 @@ LOG_CLIP = 1e-20
 BAD_OBJ_VALUE = -20.0
 log = logging.getLogger('fwl.' + __name__)
 
+# Per-child PROTEUS run timeout for inference workers. A single wedged child
+# run would otherwise hang the whole batch with no diagnostic. Tunable per
+# study via the inference config field `child_timeout_s`. The value is plumbed
+# to the worker processes (which may be spawned, and so do not inherit module
+# state) through the environment. A value of 0 or below disables the timeout.
+DEFAULT_CHILD_TIMEOUT_S = 6 * 3600.0
+_CHILD_TIMEOUT_ENV = 'PROTEUS_INFERENCE_CHILD_TIMEOUT_S'
+
+
+def set_child_timeout(seconds: float | None = None) -> None:
+    """Record the per-child PROTEUS timeout for inference worker processes.
+
+    Stored in the environment so it is visible to the main process and to any
+    spawned pool workers. ``None`` selects ``DEFAULT_CHILD_TIMEOUT_S``.
+    """
+    value = DEFAULT_CHILD_TIMEOUT_S if seconds is None else seconds
+    os.environ[_CHILD_TIMEOUT_ENV] = str(value)
+
+
+def child_timeout_s() -> float | None:
+    """Return the per-child PROTEUS run timeout in seconds, or None to disable.
+
+    Reads the value recorded by ``set_child_timeout`` from the environment so
+    it is consistent across the main process and spawned pool workers. Falls
+    back to ``DEFAULT_CHILD_TIMEOUT_S`` when unset; a value of 0 or below
+    disables the timeout.
+    """
+    raw = os.environ.get(_CHILD_TIMEOUT_ENV)
+    if raw is None:
+        return DEFAULT_CHILD_TIMEOUT_S
+    try:
+        val = float(raw)
+    except ValueError:
+        return DEFAULT_CHILD_TIMEOUT_S
+    return val if val > 0 else None
+
 
 def update_toml(config_file: str, updates: dict, output_file: str) -> None:
     """Update values in a TOML configuration file.
@@ -123,10 +159,19 @@ def run_proteus(
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.STDOUT,
+            timeout=child_timeout_s(),
         )
     except FileNotFoundError as err:
         log.error(f"Cannot execute '{command[0]}': command not found")
         raise RuntimeError("Failed to run PROTEUS: 'proteus' command not found") from err
+    except subprocess.TimeoutExpired as err:
+        log.error(
+            f'PROTEUS run exceeded the {child_timeout_s()} s timeout for '
+            f'worker={worker} iter={iter} outdir={str(out_dir)}'
+        )
+        raise RuntimeError(
+            f'PROTEUS run timed out after {child_timeout_s()} s for worker={worker} iter={iter}'
+        ) from err
     except subprocess.CalledProcessError as err:
         log.error(f'PROTEUS run failed for worker={worker} iter={iter} outdir={str(out_dir)}')
         raise RuntimeError(
