@@ -447,6 +447,15 @@ runs:
           echo "PYTHON_JULIAPKG_EXE=$JULIA_BINDIR/julia" >> $GITHUB_ENV
           echo "PYTHON_JULIACALL_HANDLE_SIGNALS=yes" >> $GITHUB_ENV
         fi
+        # juliacall matches the Julia OpenSSL_jll to the Python interpreter's
+        # OpenSSL; Julia 1.12 ships OpenSSL_jll 3.5+, so the environment must
+        # provide OpenSSL >= 3.5. conda-forge does; assert it so a future
+        # environment change surfaces here instead of as an opaque OpenSSL_jll
+        # resolve failure at the first "import proteus".
+        if ! python -c "import ssl, sys; sys.exit(0 if ssl.OPENSSL_VERSION_INFO[:2] >= (3, 5) else 1)"; then
+          echo "::error::Python links $(python -c 'import ssl; print(ssl.OPENSSL_VERSION)') but Julia 1.12 needs OpenSSL >= 3.5"
+          exit 1
+        fi
         echo "rad_dir=$RAD_DIR" >> $GITHUB_OUTPUT
         echo "fwl_data=$FWL_DATA" >> $GITHUB_OUTPUT
         echo ""
