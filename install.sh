@@ -138,6 +138,21 @@ fix_conda_mpi_builds() {
     conda install -y -c conda-forge "hdf5=*=nompi*" "libnetcdf=*=nompi*" 2>&1 || return 1
 }
 
+# juliaup installs a launcher shim at ~/.juliaup/bin/julia that dispatches to
+# the real versioned binary. juliacall needs the real binary as
+# PYTHON_JULIAPKG_EXE so it can find sys.so / libjulia beside it (the shim has
+# no lib/julia/sys.so). Ask the running Julia for its actual BINDIR; fall back
+# to the launcher only if that probe fails.
+resolve_real_julia_exe() {
+    local bindir
+    bindir="$(julia --startup-file=no -e 'print(Sys.BINDIR)' 2>/dev/null || true)"
+    if [ -n "$bindir" ] && [ -x "$bindir/julia" ]; then
+        printf '%s\n' "$bindir/julia"
+    else
+        command -v julia 2>/dev/null || true
+    fi
+}
+
 # juliacall builds a Julia environment whose OpenSSL_jll is matched to the
 # OpenSSL the Python interpreter links against. Julia 1.12 provides OpenSSL_jll
 # 3.5 and newer only, so a Python interpreter linking OpenSSL < 3.5 pins
@@ -195,10 +210,10 @@ fix_julia_111_for_openssl() {
     info "Switching the juliacall Julia to 1.11 (matches OpenSSL < 3.5)..."
     juliaup add 1.11 </dev/null 2>&1 || return 1
     juliaup default 1.11 </dev/null 2>&1 || return 1
-    # juliacall reads PYTHON_JULIAPKG_EXE; keep it on the juliaup launcher, which
-    # now resolves to 1.11, and persist the change for later sessions.
+    # Point juliacall at the real 1.11 binary (not the launcher shim) so it can
+    # find sys.so, and persist the change for later sessions.
     if command_exists julia; then
-        export PYTHON_JULIAPKG_EXE="$(command -v julia)"
+        export PYTHON_JULIAPKG_EXE="$(resolve_real_julia_exe)"
         append_export_to_rc "PYTHON_JULIAPKG_EXE" "$PYTHON_JULIAPKG_EXE" "$RC_FILE"
     fi
     # Re-resolve from scratch against Julia 1.11.
@@ -617,8 +632,9 @@ fi
 mkdir -p "$fwl_path"
 append_export_to_rc "FWL_DATA" "$fwl_path" "$RC_FILE"
 
-# PYTHON_JULIAPKG_EXE
-julia_exe="$(which julia)"
+# PYTHON_JULIAPKG_EXE. Resolve the real binary so juliacall can find sys.so even
+# when julia on PATH is the juliaup launcher shim.
+julia_exe="$(resolve_real_julia_exe)"
 export PYTHON_JULIAPKG_EXE="$julia_exe"
 append_export_to_rc "PYTHON_JULIAPKG_EXE" "$julia_exe" "$RC_FILE"
 
