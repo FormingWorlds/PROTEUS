@@ -101,7 +101,7 @@ def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     monkeypatch.setattr(objective_mod.subprocess, 'run', lambda *args, **kwargs: None)
 
     parameters = {}
-    obs = objective_mod.run_proteus(
+    obs, status = objective_mod.run_proteus(
         parameters=parameters,
         worker=1,
         iter=2,
@@ -113,6 +113,7 @@ def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     assert obs['P_surf'] == pytest.approx(0.0)
     assert obs['atm_kg_per_mol'] == pytest.approx(0.0)
     assert len(updates) == 2
+    assert status >= 0
 
 
 @pytest.mark.unit
@@ -230,7 +231,7 @@ def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
     # Discrimination: a valid observable on the same helpfile must
     # complete normally. This rules out a regression that hard-raises
     # KeyError on every input regardless of the observables list.
-    obs = objective_mod.run_proteus(
+    obs, status = objective_mod.run_proteus(
         parameters={},
         worker=0,
         iter=0,
@@ -239,6 +240,7 @@ def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
         output='dummy_output',
     )
     assert obs['P_surf'] == pytest.approx(1.0)
+    assert status >= 0
 
 
 @pytest.mark.unit

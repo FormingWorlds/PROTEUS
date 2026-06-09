@@ -142,6 +142,7 @@ def test_parallel_process_rejects_unknown_kernel():
             ref_config='ref.toml',
             observables={'obs': 1.0},
             parameters={'a': [0.0, 1.0]},
+            failure_codes=[],
         )
 
 
