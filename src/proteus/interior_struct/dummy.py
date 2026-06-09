@@ -19,7 +19,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.utils.constants import M_earth, const_G
-from proteus.utils.structure_estimate import iron_fractions as _iron_fractions
+from proteus.utils.structure_estimate import (
+    iron_fractions as _iron_fractions,
+)
+from proteus.utils.structure_estimate import (
+    nl20_core_radius_km,
+    nl20_planet_radius_km,
+)
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -77,12 +83,11 @@ def solve_dummy_structure(
 
     # --- Noack & Lasbleis (2020) scaling laws ---
 
-    # Eq. 5: Planet radius [km]
-    R_p_km = (7030.0 - 1840.0 * x_fe) * m_ratio**0.282
+    # NL20 Eq. 5 / Eq. 9, shared with structure_estimate so the radius-mode
+    # core-fraction inversion round-trips to the same R_c/R_p here.
+    R_p_km = nl20_planet_radius_km(x_fe, m_ratio)
     R_p = R_p_km * 1e3  # [m]
-
-    # Eq. 9: Core radius (hot profile) [km]
-    R_c_km = 4850.0 * x_cmf**0.328 * m_ratio**0.266
+    R_c_km = nl20_core_radius_km(x_cmf, m_ratio)
     R_c = R_c_km * 1e3  # [m]
 
     # Clamp core radius to be smaller than planet radius

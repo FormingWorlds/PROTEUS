@@ -75,23 +75,26 @@ class TestNoackScalingLaws:
         assert 0.0 < x_fem < 0.15  # mantle iron fraction
         assert 0.30 < x_fe < 0.40  # total iron fraction
 
+    @pytest.mark.physics_invariant
     def test_iron_fractions_radius_mode(self):
-        """Iron fractions from radius-mode core_frac."""
+        """Radius-mode core_frac is inverted so the realized NL20 R_c/R_p equals
+        the requested value, not approximated by a power law.
+        """
         from proteus.interior_struct.dummy import _iron_fractions
+        from proteus.utils.structure_estimate import _nl20_radius_fraction
 
-        x_cmf, x_fe, x_fem = _iron_fractions(0.55, 'radius')
-        assert 0.01 < x_cmf < 0.80
-        # Boundedness invariant (Section 3): every iron fraction lives
-        # in [0, 1] regardless of input mode. A regression that
-        # double-counted core+mantle iron, or treated radius-mode
-        # input as if it were mass-mode without conversion, would
-        # land x_fe or x_fem outside [0, 1].
+        x_cmf, x_fe, x_fem = _iron_fractions(0.55, 'radius', mass_tot_M_earth=1.0)
+        # The realized core radius fraction matches the requested 0.55.
+        assert _nl20_radius_fraction(x_cmf, 1.0, x_fem) == pytest.approx(0.55, abs=1e-3)
+        # Discrimination: the retired 0.55**2.5 (~0.224) heuristic would realize
+        # a different R_c/R_p, so the inverted x_cmf must differ from it.
+        assert abs(x_cmf - 0.55**2.5) > 0.05
+        # Boundedness invariant: every iron fraction lives in [0, 1].
         assert 0.0 <= x_fe <= 1.0
         assert 0.0 <= x_fem <= 1.0
-        # Inequality discriminator: total iron fraction x_fe must
-        # exceed the mantle iron fraction x_fem (the core adds iron
-        # on top of whatever sits in the mantle). A regression that
-        # swapped the return order would invert this.
+        # Inequality discriminator: total iron x_fe exceeds the mantle iron
+        # x_fem (the core adds iron on top of the mantle). A swapped return
+        # order would invert this.
         assert x_fe >= x_fem
 
     def test_solve_dummy_structure_fills_hf_row(self):

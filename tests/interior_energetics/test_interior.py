@@ -373,6 +373,7 @@ def test_run_dummy_int_initialization():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_run_dummy_int_rf_depth_uses_structure_core_radius():
     """RF_depth uses the structure-derived core radius fraction R_core/R_int,
     consistent with the boundary backend, rather than config.core_frac (which
@@ -595,9 +596,16 @@ def test_run_dummy_int_interior_arrays():
     config = _create_mock_config(tsurf_init=2000.0, mantle_rho=4000.0)
     dirs = {}
     R_int = 6e6
-    core_frac = 0.55
+    R_core = 2.7e6  # R_core/R_int = 0.45, deliberately != config core_frac (0.55)
     P_surf = 1e5
-    hf_row = {'F_atm': 100.0, 'R_int': R_int, 'M_core': 2e24, 'P_surf': P_surf, 'Time': 0.0}
+    hf_row = {
+        'F_atm': 100.0,
+        'R_int': R_int,
+        'R_core': R_core,
+        'M_core': 2e24,
+        'P_surf': P_surf,
+        'Time': 0.0,
+    }
     hf_all = pd.DataFrame()
 
     interior_o = Interior_t(nlev_b=2)
@@ -621,8 +629,11 @@ def test_run_dummy_int_interior_arrays():
     assert interior_o.density[0] == pytest.approx(4000.0)
     assert interior_o.temp[0] == pytest.approx(output['T_magma'])
     assert interior_o.pres[0] == pytest.approx(P_surf)
-    assert interior_o.radius[0] == pytest.approx(core_frac * R_int)
+    # radius[0] is the structure-derived core radius, not config.core_frac*R_int.
+    assert interior_o.radius[0] == pytest.approx(R_core)
     assert interior_o.radius[1] == pytest.approx(R_int)
+    # Discrimination: the retired config.core_frac path would put it at 3.3e6.
+    assert abs(interior_o.radius[0] - 0.55 * R_int) > 1e5
 
 
 @pytest.mark.unit
@@ -637,7 +648,16 @@ def test_run_dummy_int_rf_depth_scaling():
         tsurf_init=2000.0, mantle_tsol=1500.0, mantle_tliq=2500.0, core_frac=0.6
     )
     dirs = {}
-    hf_row = {'F_atm': 100.0, 'R_int': 6e6, 'M_core': 2e24, 'P_surf': 1e5, 'Time': 0.0}
+    # R_core/R_int = 0.5, deliberately != config.core_frac (0.6), so RF_depth is
+    # driven by the structure-derived radius fraction, not the config value.
+    hf_row = {
+        'F_atm': 100.0,
+        'R_int': 6e6,
+        'R_core': 3e6,
+        'M_core': 2e24,
+        'P_surf': 1e5,
+        'Time': 0.0,
+    }
     hf_all = pd.DataFrame()
 
     interior_o = Interior_t(nlev_b=2)
@@ -646,16 +666,15 @@ def test_run_dummy_int_rf_depth_scaling():
 
     _, output = run_dummy_int(config, dirs, hf_row, hf_all, interior_o)
 
-    expected_rf_depth = output['Phi_global'] * (1 - 0.6)
-    assert output['RF_depth'] == pytest.approx(expected_rf_depth, rel=1e-10)
-    # Boundedness (Section 3): RF_depth is a normalised mantle-fraction
-    # so it must lie in [0, 1 - core_frac]. With core_frac=0.6 the
-    # upper bound is 0.4.
-    assert 0.0 <= output['RF_depth'] <= 0.4
-    # Discrimination: a regression that dropped the (1 - core_frac)
-    # factor would give RF_depth = Phi_global, which here exceeds
-    # the 0.4 upper bound because tsurf_init=2000 sits mid-melt
-    # (Phi_global = 0.5 > 0.4).
+    # tsurf_init=2000 sits mid-melt (Phi = (2000-1500)/(2500-1500) = 0.5).
+    assert output['Phi_global'] == pytest.approx(0.5)
+    # RF_depth = Phi * (1 - R_core/R_int) = 0.5 * (1 - 0.5) = 0.25.
+    assert output['RF_depth'] == pytest.approx(0.5 * (1 - 0.5), rel=1e-10)
+    # Discrimination: the retired config.core_frac path would give
+    # 0.5 * (1 - 0.6) = 0.20, distinguishable from 0.25.
+    assert abs(output['RF_depth'] - 0.5 * (1 - 0.6)) > 0.02
+    # Boundedness: RF_depth is a normalised mantle fraction in [0, 1-R_core/R_int].
+    assert 0.0 <= output['RF_depth'] <= 0.5
     assert output['RF_depth'] < output['Phi_global']
 
 
