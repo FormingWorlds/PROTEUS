@@ -164,7 +164,7 @@ config_version = "3.0"
         N_budget              = 0.5          # unit defined by N_mode
 
         S_mode                = "S/H"        # S/H mass ratio | ppmw | kg
-        
+
         # THE_PLANETS
         S_budget      = 2.5      # SN
         # S_budget      = 1.0    # SE
@@ -599,4 +599,3 @@ config_version = "3.0"
 # Synthetic observations
 [observe]
     synthesis                 = "none"       # none | platon
-
