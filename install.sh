@@ -731,8 +731,14 @@ phase 6 "Python submodules"
 # to HTTPS (the submodules are public). Capture the output and exit code up
 # front: a later bare $? would report the exit code of an intervening test, not
 # of ssh.
-ssh_test_out=$(ssh -T -o BatchMode=yes git@github.com 2>&1)
-ssh_test_rc=$?
+# ssh -T returns non-zero even on success (exit 1, "does not provide shell
+# access"), so the capture must stay inside an if to survive set -e; a bare
+# assignment would abort the script.
+if ssh_test_out=$(ssh -T -o BatchMode=yes git@github.com 2>&1); then
+    ssh_test_rc=0
+else
+    ssh_test_rc=$?
+fi
 if printf '%s' "$ssh_test_out" | grep -qiE 'bad (owner|permissions)|permissions .* are too open'; then
     warn "OpenSSH is ignoring your ~/.ssh files because of their owner or permissions:"
     printf '%s\n' "$ssh_test_out"
