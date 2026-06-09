@@ -138,6 +138,75 @@ fix_conda_mpi_builds() {
     conda install -y -c conda-forge "hdf5=*=nompi*" "libnetcdf=*=nompi*" 2>&1 || return 1
 }
 
+# juliacall builds a Julia environment whose OpenSSL_jll is matched to the
+# OpenSSL the Python interpreter links against. Julia 1.12 provides OpenSSL_jll
+# 3.5 and newer only, so a Python interpreter linking OpenSSL < 3.5 pins
+# OpenSSL_jll to the 3.0 series and leaves the Julia 1.12 resolve unsatisfiable.
+python_openssl_below_35() {
+    python3 - <<'PY' 2>/dev/null
+import ssl, sys
+sys.exit(0 if ssl.OPENSSL_VERSION_INFO[:2] < (3, 5) else 1)
+PY
+}
+
+julia_minor_at_least_12() {
+    local v maj min
+    v=$(julia --version 2>/dev/null | awk '{print $3}')
+    maj=${v%%.*}
+    min=$(printf '%s' "$v" | cut -d. -f2)
+    case "$maj.$min" in *[!0-9.]*|.|"") return 1 ;; esac
+    [ "$maj" -eq 1 ] && [ "$min" -ge 12 ]
+}
+
+conda_openssl_too_old_for_julia() {
+    command_exists conda || return 1
+    julia_minor_at_least_12 || return 1
+    python_openssl_below_35 || return 1
+    return 0
+}
+
+fix_conda_openssl() {
+    command_exists conda || { warn "conda not on PATH; cannot upgrade OpenSSL."; return 1; }
+    info "Upgrading OpenSSL to >= 3.5 (required by the Julia 1.12 environment)..."
+    # Redirect stdin so an unexpected channel Terms-of-Service prompt fails fast
+    # instead of hanging a non-interactive install.
+    conda install -y -c conda-forge "openssl>=3.5" </dev/null 2>&1 || return 1
+    # The upgrade only helps if the interpreter actually links the new OpenSSL;
+    # a defaults-channel env can report success while leaving the link unchanged.
+    if python_openssl_below_35; then
+        warn "conda reported success but Python still links OpenSSL < 3.5:"
+        warn "  $(python3 -c 'import ssl; print(ssl.OPENSSL_VERSION)' 2>/dev/null)"
+        return 1
+    fi
+    # Drop the installer-owned juliacall project so the next import re-resolves
+    # OpenSSL_jll against the upgraded OpenSSL. Only remove the path the
+    # installer itself owns, never an externally set PYTHON_JULIAPKG_PROJECT.
+    if [ -n "${CONDA_PREFIX:-}" ] && [ -d "${CONDA_PREFIX}/julia_env" ]; then
+        rm -rf "${CONDA_PREFIX}/julia_env"
+    fi
+}
+
+# When Python links OpenSSL < 3.5, juliacall can only resolve its environment on
+# Julia <= 1.11, which still ships OpenSSL_jll for the 3.0 series. juliacall
+# 0.9.35 supports Julia 1.10.3-1.11 and AGNI runs on 1.11, so when juliaup
+# manages Julia this is the non-destructive fix: point the bridge at 1.11.
+fix_julia_111_for_openssl() {
+    command_exists juliaup || return 1
+    info "Switching the juliacall Julia to 1.11 (matches OpenSSL < 3.5)..."
+    juliaup add 1.11 </dev/null 2>&1 || return 1
+    juliaup default 1.11 </dev/null 2>&1 || return 1
+    # juliacall reads PYTHON_JULIAPKG_EXE; keep it on the juliaup launcher, which
+    # now resolves to 1.11, and persist the change for later sessions.
+    if command_exists julia; then
+        export PYTHON_JULIAPKG_EXE="$(command -v julia)"
+        append_export_to_rc "PYTHON_JULIAPKG_EXE" "$PYTHON_JULIAPKG_EXE" "$RC_FILE"
+    fi
+    # Re-resolve from scratch against Julia 1.11.
+    if [ -n "${CONDA_PREFIX:-}" ] && [ -d "${CONDA_PREFIX}/julia_env" ]; then
+        rm -rf "${CONDA_PREFIX}/julia_env"
+    fi
+}
+
 # Verify that "import proteus" works. The import is the first place the Julia
 # bridge is loaded, so it surfaces environment problems the pip installs do not.
 # Capture the error (the old check discarded it), and self-heal the known conda
@@ -162,6 +231,38 @@ verify_proteus_import() {
             fail "Still failing after the no-MPI fix. Error output:"
             printf '%s\n' "$import_log"
         fi
+    fi
+    # Self-heal the Julia / OpenSSL mismatch in the juliacall environment. Julia
+    # 1.12 ships OpenSSL_jll 3.5+, so a Python linking OpenSSL < 3.5 cannot
+    # resolve it. Two routes: move the bridge to Julia 1.11 (which ships
+    # OpenSSL_jll for the 3.0 series), or raise the Python OpenSSL to >= 3.5.
+    if printf '%s' "$import_log" | grep -qi 'OpenSSL_jll'; then
+        # Prefer the non-destructive route when juliaup manages Julia.
+        if python_openssl_below_35 && command_exists juliaup; then
+            if fix_julia_111_for_openssl; then
+                warn "Moved the juliacall environment to Julia 1.11. Retrying import..."
+                if import_log=$(python3 -c "import proteus" 2>&1); then
+                    info "PROTEUS import OK on Julia 1.11"
+                    return 0
+                fi
+                fail "Still failing after switching to Julia 1.11. Error output:"
+                printf '%s\n' "$import_log"
+            fi
+        fi
+        # Otherwise raise the Python OpenSSL so Julia 1.12 can resolve.
+        if conda_openssl_too_old_for_julia && fix_conda_openssl; then
+            warn "Upgraded OpenSSL to match the Julia environment. Retrying import..."
+            if import_log=$(python3 -c "import proteus" 2>&1); then
+                info "PROTEUS import OK after upgrading OpenSSL"
+                return 0
+            fi
+            fail "Still failing after the OpenSSL upgrade. Error output:"
+            printf '%s\n' "$import_log"
+        fi
+        warn "The Julia environment cannot resolve OpenSSL_jll: Julia 1.12 needs OpenSSL >= 3.5"
+        warn "in this Python environment. Fix it with either:"
+        warn "  juliaup add 1.11 && juliaup default 1.11      (use Julia 1.11 instead)"
+        warn "  conda install -c conda-forge 'openssl>=3.5'   (keep Julia 1.12, then re-run)"
     fi
     die "PROTEUS Python package failed to import. The full error is above and in $LOGFILE."
 }
@@ -625,17 +726,29 @@ fi
 CURRENT_PHASE=6
 phase 6 "Python submodules"
 
-# Detect SSH access to GitHub (exit code 1 = authenticated, other = no SSH)
-if ssh -T git@github.com; then
+# Detect SSH access to GitHub. A successful key auth returns exit 1 with
+# "successfully authenticated"; a missing or rejected key fails so we fall back
+# to HTTPS (the submodules are public). Capture the output and exit code up
+# front: a later bare $? would report the exit code of an intervening test, not
+# of ssh.
+ssh_test_out=$(ssh -T -o BatchMode=yes git@github.com 2>&1)
+ssh_test_rc=$?
+if printf '%s' "$ssh_test_out" | grep -qiE 'bad (owner|permissions)|permissions .* are too open'; then
+    warn "OpenSSH is ignoring your ~/.ssh files because of their owner or permissions:"
+    printf '%s\n' "$ssh_test_out"
+    warn "Falling back to HTTPS for the public submodule clones. To use SSH instead,"
+    warn "fix the permissions and re-run install.sh:"
+    warn "  chmod 700 ~/.ssh"
+    warn "  chmod 600 ~/.ssh/config ~/.ssh/id_* 2>/dev/null"
+    warn "  chmod 644 ~/.ssh/*.pub ~/.ssh/known_hosts 2>/dev/null"
+    warn "If the message says 'Bad owner', also confirm you own them: ls -le ~/.ssh"
+    GH_PREFIX="https://github.com/"
+elif [ "$ssh_test_rc" -eq 1 ] && printf '%s' "$ssh_test_out" | grep -qi 'successfully authenticated'; then
+    GH_PREFIX="git@github.com:"
+    info "GitHub SSH access: OK"
+else
     GH_PREFIX="https://github.com/"
     info "GitHub SSH access: not available, using HTTPS"
-else
-    if [ $? -eq 1 ]; then
-        GH_PREFIX="git@github.com:"
-        info "GitHub SSH access: OK"
-    else
-        die "Unexpected SSH exit code $? when testing GitHub access."
-    fi
 fi
 
 # Clone and install a submodule as editable if not already present.
