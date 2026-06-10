@@ -123,15 +123,15 @@ def _summarise_tau_band(atmos) -> tuple[float, float]:
     Returns
     -------
     tuple of (tau_atm_TOA, tau_atm_surface), each the band-mean
-    optical depth at that level. NaN on shape or read errors so the
+    optical depth at that level. Return zero on shape or read errors so the
     helpfile column is still well-formed.
     """
     try:
         tau_arr = np.asarray(atmos.tau_band)
     except Exception:
-        return float('nan'), float('nan')
+        return 0.0, 0.0
     if tau_arr.size == 0:
-        return float('nan'), float('nan')
+        return 0.0, 0.0
     if hasattr(atmos, 'nlev_l'):
         nlev_l = int(atmos.nlev_l)
     elif hasattr(atmos, 'nlev_c'):
@@ -139,16 +139,22 @@ def _summarise_tau_band(atmos) -> tuple[float, float]:
     else:
         nlev_l = tau_arr.shape[0]
     nbands = int(atmos.nbands) if hasattr(atmos, 'nbands') else tau_arr.shape[-1]
+
+    # Find the optical depth at the given wavelength index
+    # This could be calculated using a particular wavelength, in the future
+    wl_idx = tau_arr.shape[-1] // 2
+    wl_idx = max(0, min(wl_idx, nbands - 1))
+
     # Accept a cell-centre-sized level axis (nlev_l - 1) too: the TOA and
     # surface values sit at indices 0 and -1 on either grid, so the
     # reduction is identical and the helper tolerates both conventions.
     level_sizes = {nlev_l, nlev_l - 1}
     if tau_arr.ndim == 2 and tau_arr.shape[0] in level_sizes and tau_arr.shape[1] == nbands:
-        toa = float(tau_arr[0, :].mean())
-        surf = float(tau_arr[-1, :].mean())
+        toa = float(tau_arr[0, wl_idx])
+        surf = float(tau_arr[-1, wl_idx])
     elif tau_arr.ndim == 2 and tau_arr.shape[0] == nbands and tau_arr.shape[1] in level_sizes:
-        toa = float(tau_arr[:, 0].mean())
-        surf = float(tau_arr[:, -1].mean())
+        toa = float(tau_arr[wl_idx, 0])
+        surf = float(tau_arr[wl_idx, -1])
     else:
         log.warning(
             'tau_band has unexpected shape %s for nlev_l=%d, nbands=%d',
@@ -156,7 +162,9 @@ def _summarise_tau_band(atmos) -> tuple[float, float]:
             nlev_l,
             nbands,
         )
-        return float('nan'), float('nan')
+        toa = 0.0
+        surf = 0.0
+
     return toa, surf
 
 

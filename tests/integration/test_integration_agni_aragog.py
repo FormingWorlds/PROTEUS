@@ -136,11 +136,13 @@ def test_agni_aragog_optical_depth_monotonic_from_TOA_to_surface():
     atmos = SimpleNamespace(tau_band=tau_band, nlev_c=4, nbands=3)
     tau_TOA, tau_surface = _summarise_tau_band(atmos)
 
-    # Closed-form: per-row means are 0.01166..., 0.333..., 1.5, 5.666....
-    assert tau_TOA == pytest.approx(0.011666666666666667, rel=1e-12)
-    assert tau_surface == pytest.approx(5.666666666666667, rel=1e-12)
+    # Closed-form: per-row values are from middle band
+    assert tau_TOA == pytest.approx(0.02, rel=1e-12)
+    assert tau_surface == pytest.approx(8.0, rel=1e-12)
+
     # Monotonicity invariant (the matrix design lock).
     assert tau_TOA < tau_surface
+
     # Scale guard against a regression that shrank rather than
     # inverted the gap: tau_TOA must be well below half the surface
     # value.
@@ -226,7 +228,7 @@ def test_agni_aragog_diagnostic_summarisers_emit_finite_or_nan_only():
     Discrimination: a regression that returned None or raised on a
     degenerate input would corrupt the helpfile CSV with sentinels
     that downstream readers cannot parse. The math.isnan guard pins
-    that the fallback is specifically NaN, not zero or None.
+    that the fallback is specifically zero.
     """
     import math
 
@@ -253,16 +255,16 @@ def test_agni_aragog_diagnostic_summarisers_emit_finite_or_nan_only():
     assert Ra_max >= 0
     assert ratio > 0
 
-    # Degenerate input for tau aggregator: zero-size tau_band -> NaN.
+    # Degenerate input for tau aggregator: zero-size tau_band -> 0.0
     empty = SimpleNamespace(tau_band=np.zeros((0, 0)), nlev_c=0, nbands=0)
     tau_TOA_empty, tau_surface_empty = _summarise_tau_band(empty)
-    assert math.isnan(tau_TOA_empty)
-    assert math.isnan(tau_surface_empty)
+    assert tau_TOA_empty == pytest.approx(0.0, abs=1e-20)
+    assert tau_surface_empty == pytest.approx(0.0, abs=1e-20)
 
     # Degenerate input for diagnostics aggregator: purely radiative
     # atmosphere (mask_c all False). Ra_max stays finite from the
     # diagnostic array; the convective/radiative timescale ratio is
-    # NaN because there is no convective level to anchor at.
+    # 0.0 because there is no convective level to anchor at.
     no_conv = SimpleNamespace(
         tau_band=np.ones((3, 2)),
         nlev_c=3,
@@ -275,4 +277,4 @@ def test_agni_aragog_diagnostic_summarisers_emit_finite_or_nan_only():
     Ra_no_conv, ratio_no_conv = _summarise_diagnostics(no_conv)
     assert math.isfinite(Ra_no_conv)
     assert Ra_no_conv == pytest.approx(3.0, rel=1e-12)
-    assert math.isnan(ratio_no_conv)
+    assert ratio_no_conv == pytest.approx(0.0, abs=1e-20)
