@@ -60,7 +60,6 @@ _REQUIRED_ATMOS_FIELDS = (
     'diagnostic_Ra',
     'timescale_conv',
     'timescale_rad',
-    'mask_c',
     # Gas composition
     'gas_names',
     'gas_vmr',

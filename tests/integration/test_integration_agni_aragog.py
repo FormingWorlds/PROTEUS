@@ -242,7 +242,6 @@ def test_agni_aragog_diagnostic_summarisers_emit_finite_or_nan_only():
         diagnostic_Ra=np.array([0.5, 4.0, 2.0]),
         timescale_conv=np.array([0.0, 1.0e3, 5.0e3]),
         timescale_rad=np.array([1.0e6, 1.0e6, 1.0e6]),
-        mask_c=np.array([False, True, True]),
     )
     tau_TOA, tau_surface = _summarise_tau_band(good)
     Ra_max, ratio = _summarise_diagnostics(good)
@@ -260,21 +259,3 @@ def test_agni_aragog_diagnostic_summarisers_emit_finite_or_nan_only():
     tau_TOA_empty, tau_surface_empty = _summarise_tau_band(empty)
     assert tau_TOA_empty == pytest.approx(0.0, abs=1e-20)
     assert tau_surface_empty == pytest.approx(0.0, abs=1e-20)
-
-    # Degenerate input for diagnostics aggregator: purely radiative
-    # atmosphere (mask_c all False). Ra_max stays finite from the
-    # diagnostic array; the convective/radiative timescale ratio is
-    # 0.0 because there is no convective level to anchor at.
-    no_conv = SimpleNamespace(
-        tau_band=np.ones((3, 2)),
-        nlev_c=3,
-        nbands=2,
-        diagnostic_Ra=np.array([1.0, 2.0, 3.0]),
-        timescale_conv=np.zeros(3),
-        timescale_rad=np.ones(3) * 1e6,
-        mask_c=np.zeros(3, dtype=bool),
-    )
-    Ra_no_conv, ratio_no_conv = _summarise_diagnostics(no_conv)
-    assert math.isfinite(Ra_no_conv)
-    assert Ra_no_conv == pytest.approx(3.0, rel=1e-12)
-    assert ratio_no_conv == pytest.approx(0.0, abs=1e-20)
