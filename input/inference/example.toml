@@ -33,9 +33,9 @@ config_version = "3.0"
 
     [params.out]
         # THE_PLANETS
-        path        = "bayesopt_sn_conf"   # SN
-        # path        = "bayesopt_se_conf"   # SE
-        # path        = "bayesopt_tr_conf"  # TR
+        path          = "bayesopt_sn"   # SN
+        # path        = "bayesopt_se"   # SE
+        # path        = "bayesopt_tr"  # TR
 
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 5            # 0: at end | n: every n iters | none: never
