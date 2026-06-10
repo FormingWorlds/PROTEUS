@@ -1,6 +1,24 @@
 .arch-diagram {
   width: 100%;
+  height: auto;
+  /* Default reserved box so a diagram whose file name is not matched below
+     still reserves space instead of collapsing while the SVG loads. Add a
+     per-diagram rule below with the exact source-viewBox ratio when adding a
+     new diagram. */
+  aspect-ratio: 3 / 2;
   display: none;
+}
+
+/* Reserve the correct box size from CSS so the diagram renders at full size
+   immediately, rather than collapsing small until the SVG finishes loading.
+   Each diagram carries its own aspect ratio, taken from the source viewBox,
+   matched on its file name in the object data attribute. */
+.arch-diagram[data*="modules_schematic"] {
+  aspect-ratio: 682 / 497;
+}
+
+.arch-diagram[data*="proteus_architecture"] {
+  aspect-ratio: 1412 / 1315;
 }
 
 /* Light mode: show light diagram */
@@ -16,6 +34,14 @@
 /* Remove underline from links that contain only an image */
 .md-typeset p a:has(> img) {
   text-decoration: none;
+}
+
+/* Figure captions: justified, full width, slightly smaller */
+.md-typeset figcaption {
+  text-align: justify;
+  max-width: 100%;
+  font-size: 0.85em;
+  line-height: 1.5;
 }
 
 /* Funding logos dark switch */

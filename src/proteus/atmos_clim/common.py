@@ -26,6 +26,13 @@ class Atmos_t:
         # Albedo lookup object
         self.albedo_o: Albedo_t = None
 
+        # Whether the most recent atmosphere call converged. For AGNI this
+        # is True iff the Newton/LM solver converged on at least one attempt;
+        # JANUS, dummy, and transparent solvers always set it True. The main
+        # coupling loop reads this to detect AGNI deadlocks (consecutive
+        # failures with no interior state change). Transient, not persisted.
+        self.converged: bool = True
+
 
 def ncdf_flag_to_bool(var) -> bool:
     """Convert NetCDF flag (y/n) to Python bool (true/false)"""
@@ -219,12 +226,8 @@ def get_spfile_name_and_bands(config: Config):
     Get spectral file name and bands from config
     """
 
-    # Get table corresponding to the right atmosphere module
-    obj = getattr(config.atmos_clim, config.atmos_clim.module)
-
-    # Get bands and group name (strings)
-    bands = obj.spectral_bands
-    group = obj.spectral_group
+    group = config.atmos_clim.spectral_group
+    bands = config.atmos_clim.spectral_bands
 
     return group, bands
 
@@ -267,11 +270,10 @@ def get_oarr_from_parr(p_arr: list, o_arr: list, p_tgt: float) -> tuple:
 
 
 def get_radius_from_pressure(p_arr: list, r_arr: list, p_tgt: float) -> tuple[float, float]:
-    """Backwards-compatible helper: return radius at a target pressure.
+    """Return the radius at a target pressure.
 
-    Historically PROTEUS exposed `get_radius_from_pressure(p_arr, r_arr, p_tgt)`.
-    Newer code uses the generic `get_oarr_from_parr`. Keep this wrapper so older
-    call-sites (and tests) continue to work.
+    Thin wrapper around the generic ``get_oarr_from_parr`` for the
+    pressure-to-radius case.
     """
     return get_oarr_from_parr(p_arr, r_arr, p_tgt)
 

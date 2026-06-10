@@ -49,7 +49,7 @@ logging = 'INFO'
 output = "infer_demo/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "input/demos/dummy.toml"
+ref_config = "input/dummy.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = '2'         # Number of random samples if starting from scratch.
@@ -57,17 +57,17 @@ init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEU
 
 # Parameters for Bayesian optimisation
 n_workers  = 7        # Number of parallel workers
-kernel     = "MAT"    # Kernel type for GP, "RBF" | "MAT"
-acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI"
+kernel     = "MAT3/2" # GP kernel: "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
+acqf       = "LogEI"  # Acquisition function: "UCB" | "LogEI" | "E-LogEI"
 n_steps    = 30       # Total number of evaluations (i.e. BO steps)
 n_restarts = 10       # GP optimization restarts
 n_samples  = 1000     # Raw samples for acquisition optimization
 
 # Parameters to optimize (with bounds)
 [parameters]
-"struct.mass_tot" = [0.7, 3.0]
-"struct.corefrac" = [0.3, 0.9]
-"delivery.elements.H_ppmw" = [6e3, 2e4]
+"planet.mass_tot" = [0.7, 3.0]
+"interior_struct.core_frac" = [0.3, 0.9]
+"planet.elements.H_budget" = [6e3, 2e4]  # requires H_mode = "ppmw" in ref_config
 "outgas.fO2_shift_IW" = [-3.0, 5.0]
 
 # Target observables to match by optimisation
@@ -81,7 +81,7 @@ n_samples  = 1000     # Raw samples for acquisition optimization
 Execute the main optimisation process by using the PROTEUS command-line interface
 
 ```bash
-proteus infer --config input/ensembles/example.infer.toml
+proteus infer --config input/example.infer.toml
 ```
 
 In this case, we randomly sample the parameter space to provide a starting point for the

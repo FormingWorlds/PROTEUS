@@ -50,21 +50,61 @@ fi
 root=$(dirname $(portable_realpath $0))
 root=$(portable_realpath "$root/..")
 
-if [ -n "$1" ]; then
-    socpath="$(portable_realpath "$1")"
+# Separate the --force flag from the optional install-path argument.
+force=false
+install_path=""
+for arg in "$@"; do
+    if [ "$arg" = "--force" ]; then
+        force=true
+    elif [ -z "$install_path" ]; then
+        install_path="$arg"
+    fi
+done
+
+if [ -n "$install_path" ]; then
+    socpath="$(portable_realpath "$install_path")"
 else
     socpath="$root/socrates"
+fi
+
+# Refuse to delete a checkout holding local work unless --force is given.
+# Keep this guard in sync across the get_* scripts that refresh checkouts.
+# Guarded states: modified tracked files, and commits not on any remote.
+# Untracked files (the compiled build tree) do not block the refresh.
+# make/Mk_cmd is excluded: build_code rewrites it on every build (compiler
+# detection and the reproducibility flags), so it is regenerable build config
+# rather than user work and would otherwise block every refresh.
+if [ -d "$socpath/.git" ] && [ "$force" != true ]; then
+    dirty=$(git -C "$socpath" status --porcelain --untracked-files=no \
+        -- ':(exclude)make/Mk_cmd' 2>/dev/null | head -1)
+    unpushed=$(git -C "$socpath" log HEAD --not --remotes --oneline 2>/dev/null | head -1)
+    if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
+        echo "ERROR: $socpath has uncommitted changes or commits not on a remote." >&2
+        echo "       Refusing to delete it. Commit and push your work, or run" >&2
+        echo "       bash tools/get_socrates.sh --force  to discard the checkout." >&2
+        exit 1
+    fi
 fi
 rm -rf "$socpath"
 
 set -euo pipefail
 
 
+# Resolve the pinned URL + ref from pyproject.toml. The HTTPS URL is the
+# default; SSH is used only when ssh -T against github succeeded above.
+soc_url=$(python "$root/tools/_module_pins.py" socrates url)
+soc_ref=$(python "$root/tools/_module_pins.py" socrates ref)
+
 if [ "$use_ssh" = true ]; then
-    git clone git@github.com:FormingWorlds/SOCRATES.git "$socpath"
+    # Rewrite https://github.com/ -> git@github.com: for SSH transport.
+    soc_ssh_url=${soc_url/https:\/\/github.com\//git@github.com:}
+    git clone "$soc_ssh_url" "$socpath"
 else
-    git clone https://github.com/FormingWorlds/SOCRATES.git "$socpath"
+    git clone "$soc_url" "$socpath"
 fi
+
+# Pin to the configured SHA / tag / branch.
+git -C "$socpath" checkout --quiet "$soc_ref"
 
 # Compile SOCRATES
 cd "$socpath"

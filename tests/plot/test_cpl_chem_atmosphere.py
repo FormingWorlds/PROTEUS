@@ -19,6 +19,8 @@ import pytest
 
 from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
@@ -32,7 +34,11 @@ def test_plot_chem_atmosphere_no_files(mock_glob):
 
     # Should return without error
     result = plot_chem_atmosphere('output_dir', 'vulcan', plot_format='png')
-    assert result is None
+    assert result is None  # empty-file-list branch must yield None silently
+    # Discriminating check: the glob lookup was actually attempted; a regression
+    # that short-circuited before checking for files would have left the mock
+    # uncalled.
+    mock_glob.assert_called()
 
 
 @pytest.mark.unit

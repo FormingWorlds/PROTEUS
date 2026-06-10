@@ -130,21 +130,29 @@ def plot_chem_atmosphere(
         if gas in vol_list:
             _lw *= 1.25
 
-        # plot from netCDF (dashed lines)
+        # plot from netCDF (dashed lines). The prepend of ``xarr[0]``
+        # adds a TOA point for visual continuity when the source VMR
+        # array is shorter than parr by one (the layer-vs-interface
+        # convention some atmosphere backends use). When the VMR and
+        # parr already match, the prepend overshoots by one and
+        # matplotlib raises a shape mismatch; defend by truncating
+        # both to the common length before plotting.
         key = gas + '_vmr'
         if key in atm_profile.keys():
             xarr = list(atm_profile[key])
             xarr = [xarr[0]] + xarr
             if np.amax(xarr) >= xmin:
                 vmr = float(xarr[-1])
-                ax1.plot(xarr, parr, ls='dashed', color=col, lw=_lw, alpha=al)
+                n = min(len(xarr), len(parr))
+                ax1.plot(xarr[:n], parr[:n], ls='dashed', color=col, lw=_lw, alpha=al)
 
         # plot from offline chemistry, if available (solid lines)
         if has_offchem and (gas in atm_offchem.keys()):
             xarr = list(atm_offchem[gas].values)
             if np.amax(xarr) >= xmin:
                 vmr = float(xarr[-1])  # prefer vmr from offline chemistry
-                ax1.plot(xarr, parr, ls='solid', color=col, lw=_lw, alpha=al)
+                n = min(len(xarr), len(parr))
+                ax1.plot(xarr[:n], parr[:n], ls='solid', color=col, lw=_lw, alpha=al)
 
         # create legend entry and store surface vmr
         if vmr > 0.0:
@@ -191,9 +199,14 @@ def plot_chem_atmosphere(
     # Cloud profiles
     if 'cloud_mmr' in atm_profile.keys():
         cloud_mmr = atm_profile['cloud_mmr']
+        # Prepend matches the gas VMR case above; truncate to the
+        # common length so the plot does not fail when the source
+        # mmr array is already the same length as parr.
+        cloud_arr = [cloud_mmr[0]] + list(cloud_mmr)
+        n = min(len(cloud_arr), len(parr))
         ax2.plot(
-            [cloud_mmr[0]] + list(cloud_mmr),
-            parr,
+            cloud_arr[:n],
+            parr[:n],
             ls='solid',
             color=get_colour('cloud'),
             lw=1.5,
@@ -208,9 +221,11 @@ def plot_chem_atmosphere(
         for aer_name in atm_profile['aerosols']:
             num_aerosols += 1
             aer_mmr = atm_profile[f'{aer_name}_mmr']
+            aer_arr = [aer_mmr[0]] + list(aer_mmr)
+            n = min(len(aer_arr), len(parr))
             ax2.plot(
-                [aer_mmr[0]] + list(aer_mmr),
-                parr,
+                aer_arr[:n],
+                parr[:n],
                 ls='solid',
                 lw=1.5,
                 alpha=0.7,

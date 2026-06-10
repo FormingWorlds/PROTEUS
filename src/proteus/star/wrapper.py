@@ -61,7 +61,10 @@ def init_star(handler: Proteus):
                 )
 
         else:
-            starname_input = mors_cfg.star_name.strip()
+            # PHOENIX builds its spectrum from the stellar track, so star_name
+            # may be None there; for the file-based sources an empty name falls
+            # through to the not-found handling below.
+            starname_input = (mors_cfg.star_name or '').strip()
             star_file = starname_input.lower().replace(' ', '-').replace('gj-', 'gj') + '.txt'
 
             # Solar special cases

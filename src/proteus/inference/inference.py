@@ -20,7 +20,7 @@ import proteus.inference.plot as plotBO
 # bayesopt source files
 from proteus.inference.async_BO import checkpoint, parallel_process
 from proteus.inference.gen_D_init import create_init
-from proteus.inference.objective import prot_builder
+from proteus.inference.objective import prot_builder, set_child_timeout
 from proteus.inference.utils import print_results, str_time
 
 # proteus libraries
@@ -71,6 +71,11 @@ def run_inference(config):
     with open(os.path.join(dirs['output'], 'copy.infer.toml'), 'w') as file:
         file.write(f'# Created: {str_time()}\n\n')
         toml.dump(config, file)
+
+    # Bound each child PROTEUS run so one wedged simulation cannot hang the
+    # whole batch. Tunable via the optional `child_timeout_s` config field;
+    # plumbed to worker processes through the environment.
+    set_child_timeout(config.get('child_timeout_s'))
 
     # Ensure there are enough CPU cores for the specified number of workers
     if config['n_workers'] >= os.cpu_count():
@@ -159,7 +164,7 @@ def infer_from_config(config_fpath: str):
     """
 
     # Load configuration from TOML file
-    print(f'Inference config: {config_fpath}')
+    log.info(f'Inference config: {config_fpath}')
     with open(config_fpath, 'r') as file:
         config = toml.load(file)
 

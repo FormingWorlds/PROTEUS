@@ -268,10 +268,14 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     vcfg.atm_base = max(backs, key=backs.get)
     log.debug(f"Background gas is '{vcfg.atm_base}'")
 
-    # TP profile
+    # TP profile.
+    # P_b / P_t are the boundary pressures (surface and TOA), which live
+    # on the level edges (atmos['pl'], length nz+1), not on the cell
+    # centres (atmos['p'], length nz). Using 'p' truncated the column by
+    # one half-cell at each end. The '* 10' converts Pa to barye (CGS).
     vcfg.nz = len(p_arr)
-    vcfg.P_b = np.amax(atmos['p']) * 10
-    vcfg.P_t = np.amin(atmos['p']) * 10
+    vcfg.P_b = float(np.amax(atmos['pl'])) * 10
+    vcfg.P_t = float(np.amin(atmos['pl'])) * 10
     vcfg.atm_type = 'file'
     vcfg.atm_file = prof_write
     vcfg.rocky = True

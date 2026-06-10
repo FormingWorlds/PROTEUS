@@ -51,7 +51,15 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     cd /dataserver/users/formingworlds/<username>
     ```
 
-4. To avoid the cluster terminating PROTEUS jobs, increase the temporary file limit for your user by adding to your shell rc file (e.g., '~/.bashrc'):
+4. Configure the system environment. The Kapteyn cluster provides NetCDF
+   and other libraries via the module system. Add the following to your
+   `~/.bashrc` so the correct modules are loaded on every login:
+    ```console
+    echo "module purge" >> "$HOME/.bashrc"
+    echo "module load netcdf-fortran" >> "$HOME/.bashrc"
+    ```
+
+5. To avoid the cluster terminating PROTEUS jobs, increase the temporary file limit:
     ```console
     echo "ulimit -Sn 4000000" >> "$HOME/.bashrc"
     echo "ulimit -Hn 5000000" >> "$HOME/.bashrc"
@@ -61,7 +69,7 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     source "$HOME/.bashrc"
     ```
 
-5. You can now follow the usual installation steps [here](installation.md), but, since your home folder is capped
+6. You can now follow the usual installation steps [here](installation.md), but, since your home folder is capped
    at 9GB, you need to install Julia and miniconda or conda-forge in "/dataserver/users/formingworlds/<username>".
     ### Julia considerations
     If you have already installed Julia in your home folder, you could remove that through `rm -rf ~/.julia`.
@@ -108,19 +116,15 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     Alternatively, you can set default paths upfront for miniconda:
     ```console
     mkdir -p /dataserver/users/formingworlds/<username>/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O
-        /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
-    bash /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh -b -u -p
-        /dataserver/users/formingworlds/<username>/miniconda3
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
+    bash /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh -b -u -p /dataserver/users/formingworlds/<username>/miniconda3
     rm /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
     ```
     and similarly for conda-forge:
     ```console
     mkdir -p /dataserver/users/formingworlds/${USER}/miniforge3
-    wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" -O
-        /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh
-    bash /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh -b -p
-        /dataserver/users/formingworlds/${USER}/miniforge3
+    wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" -O /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh
+    bash /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh -b -p /dataserver/users/formingworlds/${USER}/miniforge3
     rm /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh
     ```
     For both Miniconda and conda-forge follow the instructions wrt updating your `~/.shellrc` file.
@@ -154,17 +158,17 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
 
 - You can copy and paste the example submit script below (to start a single PROTEUS simulation) and modify it according to your needs.
 
-```console
-    getenv = True
-    universe = vanilla
-    executable = /dataserver/users/formingworlds/${USER}/miniconda3/bin/conda
-    arguments = run --name proteus --no-capture-output proteus start --config /dataserver/users/formingworlds/${USER}/PROTEUS/input/demos/escape.toml
-    log = condor_outputs/log/logfile.$(PROCESS)
-    output = condor_outputs/output/outfile.$(PROCESS)
-    error = condor_outputs/output/errfile.$(PROCESS)
-    notify_user = <your-email>@astro.rug.nl
-    Requirements = (Cluster == "normas")
-    queue 1
+```text
+getenv = True
+universe = vanilla
+executable = /dataserver/users/formingworlds/${USER}/miniconda3/bin/conda
+arguments = run --name proteus --no-capture-output proteus start --config /dataserver/users/formingworlds/${USER}/PROTEUS/input/dummy.toml
+log = condor_outputs/log/logfile.$(PROCESS)
+output = condor_outputs/output/outfile.$(PROCESS)
+error = condor_outputs/output/errfile.$(PROCESS)
+notify_user = <your-email>@astro.rug.nl
+Requirements = (Cluster == "normas")
+queue 1
 ```
 
 To exit nano, press `Ctrl+X`, then press `Enter` when prompted to save the file.
@@ -230,10 +234,10 @@ To resolve this issue:
 3. Delete the `socrates/` directory using `rm -r socrates/`
 4. Run the `./tools/get_socrates.sh` command to download SOCRATES again, ensuring this is done OUTSIDE of any conda environment.
 5. Execute the `cat socrates/set_rad_env` command to verify that SOCRATES is pointing to the correct NetCDF version (i.e. the NetCDF version installed on the Kapteyn cluster system).
-6. Finally, run a PROTEUS simulation using the `default.toml` configuration file to confirm it is working correctly.
+6. Finally, run a PROTEUS simulation using the `dummy.toml` configuration file to confirm it is working correctly.
 
 ### Error reporting
 
 - If you encounter an error that is not listed here, please create a new issue on the [PROTEUS GitHub webpage](https://github.com/FormingWorlds/PROTEUS/issues) (green button 'New issue' on the top right, choose 'Bug').
 - Include details about what you were trying to do and how the error occurred. Providing a screenshot or copying/pasting the error message and log file can help others understand the issue better.
-- Once the issue has been resolved, ensure that this troubleshooting section is updated to include the solution for future reference. You can check [here](CONTRIBUTING.md) how to edit the documentation.
+- Once the issue has been resolved, ensure that this troubleshooting section is updated to include the solution for future reference. You can check the [documentation guide](documentation.md) for how to edit the docs.
