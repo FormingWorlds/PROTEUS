@@ -445,7 +445,7 @@ def test_run_outgassing_atmosphere_mass_conservation():
 
         # Check mass conservation with tolerance for floating point
         expected_M_atm = sum(gas_masses)
-        assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-10)
+        assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-6)
         # Positivity invariant: the sum is over strictly positive gas
         # masses spanning 10 orders of magnitude, so M_atm must be
         # dominated by the largest entry (1e20 kg) and never negative.

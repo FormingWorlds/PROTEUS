@@ -56,13 +56,24 @@ class BoundaryRunner:
         )
         ma_layer = getattr(getattr(atmos_o, '_atm', None), 'layer_σ', [1.0])
 
-        # Get extracted values (with NaN filtering)
+        # Get extracted values
+        cp_arr = np.array(cp_layer, dtype=float)
+        ma_arr = np.array(ma_layer, dtype=float)
+
+        # Skip NaN values
         valid = np.isfinite(cp_layer) & np.isfinite(ma_layer)
-        cp_arr = np.array(cp_layer, dtype=float)[valid]
-        ma_arr = np.array(ma_layer, dtype=float)[valid]
+        cp_arr = cp_arr[valid]
+        ma_arr = ma_arr[valid]
+
+        # Handle zero-length arrays after filtering
+        if len(cp_arr) == 0 or len(ma_arr) == 0:
+            self.atmosphere_heat_capacity = (
+                config.interior_energetics.boundary.atm_heat_capacity
+            )
 
         # Store mass-weighted cp average
-        self.atmosphere_heat_capacity = float(np.average(cp_arr, weights=ma_arr))
+        else:
+            self.atmosphere_heat_capacity = float(np.average(cp_arr, weights=ma_arr))
 
         # Prefer Zalmoxis-derived CMB radius when available.
         # Fall back to corefrac-based radius for non-Zalmoxis runs.

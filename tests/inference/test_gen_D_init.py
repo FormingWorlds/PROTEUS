@@ -174,6 +174,7 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
             nsamp=2,
             seed=1,
             n_workers=-1,
+            failure_codes=[],
         )
 
 

@@ -1280,7 +1280,7 @@ def test_boundary_runner_all_nan_layer_cp_falls_back_to_atm_heat_capacity(
 
     # Force the all-NaN branch.
     mock_atmos._atm.layer_cp = np.array([np.nan, np.nan, np.nan])
-    mock_atmos._atm.layer_ma = np.array([1.0, 1.0, 1.0])
+    mock_atmos._atm.layer_σ = np.array([1.0, 1.0, 1.0])
 
     with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
         runner = BoundaryRunner(
@@ -1306,7 +1306,7 @@ def test_boundary_runner_partial_nan_layer_cp_averages_finite_values(
     mock_config.interior_energetics.boundary.atm_heat_capacity = 9999.9
 
     mock_atmos._atm.layer_cp = np.array([1.0e4, np.nan, 2.0e4, np.nan, 3.0e4])
-    mock_atmos._atm.layer_ma = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
+    mock_atmos._atm.layer_σ = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
 
     with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
         runner = BoundaryRunner(

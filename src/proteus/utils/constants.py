@@ -44,7 +44,7 @@ B_ein = 2.5
 
 # Supported gases
 vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
-vap_list = []  # empty for now
+vap_list = ['SiO']  # just one for now
 gas_list = vol_list + vap_list
 
 # Supported elements

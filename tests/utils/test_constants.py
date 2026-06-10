@@ -41,6 +41,7 @@ from proteus.utils.constants import (
     element_mmw,
     gas_list,
     secs_per_year,
+    vap_list,
     vol_list,
 )
 
@@ -265,6 +266,33 @@ def test_gas_list_extends_vol_list():
     # check presence of volatiles
     for species in vol_list:
         assert species in gas_list
+
+
+def test_gas_list_extends_vap_list():
+    """gas_list = vol_list + vap_list (volatiles + vapour species).
+
+    gas_list must be a superset of vol_list.
+    """
+
+    # check lengths
+    assert len(gas_list) >= len(vap_list)
+
+    # check presence of vapour species
+    for species in vap_list:
+        assert species in gas_list
+
+
+def test_vol_list_excludes_vap_list():
+    """
+    vol_list and vap_list are disjoint: volatiles vs vapour species.
+    """
+
+    # check lengths are both >0
+    assert len(vol_list) > 0
+    assert len(vap_list) > 0
+
+    # check no overlap
+    assert set(vol_list).isdisjoint(set(vap_list)), 'vol_list and vap_list should be disjoint'
 
 
 def test_element_list_contains_expected_elements():
