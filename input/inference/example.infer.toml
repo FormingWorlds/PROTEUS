@@ -33,9 +33,9 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 # "planet.mass_tot"           = [0.8,     4.0]
 "interior_struct.core_frac"           = [0.2,     0.8]
 "outgas.fO2_shift_IW"       = [-3.5,    5.0]
-"delivery.elements.H_budget"= [1.0,     750.0]      # oceans
-"delivery.elements.C_budget"= [0.1,     6.0]        # C/H
-"delivery.elements.S_budget"= [0.1,     6.0]        # S/H
+"planet.elements.H_budget"= [1.0,     750.0]      # oceans
+"planet.elements.C_budget"= [0.1,     6.0]        # C/H
+"planet.elements.S_budget"= [0.1,     6.0]        # S/H
 
 
 # Target observables to match by optimisation...
@@ -52,16 +52,6 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
 # extracted at index: 24, time: 1.000e+09 years
-# [observables]
-# "M_planet" = 1.2862326572e+25
-# "R_obs" = 7.5436421662e+06
-# "T_obs" = 5.0064853688e+02
-# "atm_kg_per_mol" = 2.7450258753e-02
-# "C/O_atm" = 3.4886348812e-01
-# "S/O_atm" = 6.5449797851e-02
-
-# helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
-# extracted at index: 24, time: 1.000e+09 years
 [observables]
 "M_planet" = 1.2862326572e+25
 "R_obs" = 7.5436421662e+06
@@ -69,3 +59,13 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 "atm_kg_per_mol" = 2.7450258753e-02
 "C/O_atm" = 3.4886348812e-01
 "S/O_atm" = 6.5449797851e-02
+
+# helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
+# extracted at index: 24, time: 1.000e+09 years
+# [observables]
+# "M_planet" = 1.2862326572e+25
+# "R_obs" = 7.5436421662e+06
+# "T_obs" = 5.0064853688e+02
+# "atm_kg_per_mol" = 2.7450258753e-02
+# "C/O_atm" = 3.4886348812e-01
+# "S/O_atm" = 6.5449797851e-02
