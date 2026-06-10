@@ -139,6 +139,21 @@ fi
 
 ./build_code
 
+# Verify the flags that reached the compiler. build_code copies
+# make/Mk_cmd into bin/Mk_cmd before compiling, but on recognised
+# cluster hostnames it replaces bin/Mk_cmd with a committed per-host
+# template (bin/Mk_cmd_<host>), which may carry host-specific
+# optimisation flags. Check the file make actually read, so a template
+# override cannot silently produce a non-portable binary.
+if grep -qE -- '-march=native|-Ofast' bin/Mk_cmd; then
+    echo "ERROR: SOCRATES was compiled with non-portable optimisation flags." >&2
+    echo "       A per-host Mk_cmd template likely replaced the portable" >&2
+    echo "       flags during build_code; edit or remove the template and" >&2
+    echo "       rebuild." >&2
+    grep -nE -- '-march=native|-Ofast' bin/Mk_cmd >&2
+    exit 1
+fi
+
 # Environment
 export RAD_DIR=$socpath
 cd $root
