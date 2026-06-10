@@ -1,7 +1,6 @@
 # Function used to run LavAtmos 2.0
 from __future__ import annotations
 
-import csv
 import logging
 import os
 import sys
@@ -50,8 +49,9 @@ class paths_importer:
 
         # FastChem 3
         self.fastchem3_dir = os.environ.get("FC_DIR")
+        print('fastchem directory:',self.fastchem3_dir)
         #self.fastchem3_dir = self.wkdir+'FastChem/fastchem3/'
-        self.fastchem3_input = self.wkdir+'input/fastchem3/'
+        self.fastchem3_input = self.fastchem3_dir+'/input/'
         self.fastchem3_config_template = self.fastchem3_input+'config_template.input'
         self.element_abundances3 = self.fastchem3_input+'element_abundances/'
         self.janafdata=self.wkdir+'data/'
@@ -84,7 +84,7 @@ class set_magmaproperties:
         self.volatile_comp = volatile_comp
         # Saving volatile comp to csv for so that LavAtmos can read it later
         #need to find better way to read in volatile composition that from a parameter dictionary maybe ?
-
+        print('volatile composition in set_magmaproperties', self.volatile_comp)
 
 
 
@@ -337,16 +337,9 @@ def run_lavatmos(config: Config, hf_row: dict, volatile_fracs):
     for i in melt_comp_df.index:
         melt_comp[melt_comp_df['spec'].loc[i]] = float(melt_comp_df['abund'].loc[i])
 
-    volatile_comp_fname = paths.input_dir+'volatile_comp.csv'
-    print(f'Volatile composition read from: {volatile_comp_fname}')
-    volatile_comp = {}
-    with open(volatile_comp_fname, 'r') as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            volatile_comp[row['']] = float(row['mole_fraction'])
-
+    print(f'Volatile composition used to run lavatmos: {volatile_fracs}')
     system = lavatmos3.melt_vapor_system(paths)
-    lavatmos_output = system.vaporise(Magma.T_surf, Magma.P_volatile, melt_comp, volatile_comp, Magma.elementfile, Magma.melt_fraction)
+    lavatmos_output = system.vaporise(Magma.T_surf, Magma.P_volatile, melt_comp, volatile_fracs, Magma.elementfile, Magma.melt_fraction)
 
     # Save results
     output_name = f'{Magma.run_name}.csv'

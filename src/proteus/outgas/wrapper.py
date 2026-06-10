@@ -8,9 +8,9 @@ import numpy as np
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
+from proteus.outgas.lavatmos_v2 import compute_silicate_outgassing
 
-#from proteus.outgas.lavatmos_v2 import compute_silicate_outgassing
-from proteus.outgas.lavatmos import compute_silicate_outgassing
+#from proteus.outgas.lavatmos import compute_silicate_outgassing
 from proteus.utils.constants import element_list, vap_list, vol_list
 
 if TYPE_CHECKING:

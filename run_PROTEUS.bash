@@ -2,10 +2,10 @@
 MIXFILE=vertical_mix
 #orb_dist=("0.01" "0.025" "0.016")
 orb_dist=("0.016" "0.064" "0.032")
-fO2=("1" "-1" "3" "-3")
+fO2=("3" "-3" "1" "-1" "5" "-5")
 Hoceans=("9")
 silicates=("true")
-CHratio=("1")
+CHratio=("109.0" "218.0" "436.0")
 input_file=input/run_silicates.toml
 
 # make directories for each composition and make fastchem grids for all compositions that don't have grids yet
