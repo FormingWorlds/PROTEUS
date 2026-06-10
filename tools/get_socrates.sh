@@ -71,8 +71,12 @@ fi
 # Keep this guard in sync across the get_* scripts that refresh checkouts.
 # Guarded states: modified tracked files, and commits not on any remote.
 # Untracked files (the compiled build tree) do not block the refresh.
+# make/Mk_cmd is excluded: build_code rewrites it on every build (compiler
+# detection and the reproducibility flags), so it is regenerable build config
+# rather than user work and would otherwise block every refresh.
 if [ -d "$socpath/.git" ] && [ "$force" != true ]; then
-    dirty=$(git -C "$socpath" status --porcelain --untracked-files=no 2>/dev/null | head -1)
+    dirty=$(git -C "$socpath" status --porcelain --untracked-files=no \
+        -- ':(exclude)make/Mk_cmd' 2>/dev/null | head -1)
     unpushed=$(git -C "$socpath" log HEAD --not --remotes --oneline 2>/dev/null | head -1)
     if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
         echo "ERROR: $socpath has uncommitted changes or commits not on a remote." >&2

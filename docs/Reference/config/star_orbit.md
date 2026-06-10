@@ -6,7 +6,7 @@ any satellite.
 
 Submodule documentation:
 [MORS](https://proteus-framework.org/MORS/) |
-[Obliqua](https://github.com/FormingWorlds/Obliqua).
+[Obliqua](https://proteus-framework.org/Obliqua/).
 See also [Model description](../../Explanations/model.md#stellar-evolution-mors).
 
 ## Stellar model `[star]`

@@ -258,7 +258,7 @@ A parameterised cooling model with prescribed solidus and liquidus.
 |-----------|------|---------|-------------|
 | `mantle_tliq` | float | `2700.0` | Liquidus temperature \[K] |
 | `mantle_tsol` | float | `1700.0` | Solidus temperature \[K] |
-| `mantle_rho` | float | `4550.0` | Mantle density \[kg m$^{-3}$] |
+| `mantle_rho` | float | `4550.0` | Mantle density \[kg m$^{-3}$] for the density profile and the fallback mantle-mass estimate; the mantle mass uses $M_\mathrm{int}-M_\mathrm{core}$ when the structure provides it |
 | `mantle_cp` | float | `1792.0` | Mantle heat capacity \[J kg$^{-1}$ K$^{-1}$] |
 | `heat_internal` | float | `0.0` | Internal heating rate \[W kg$^{-1}$] |
 

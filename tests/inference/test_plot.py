@@ -37,6 +37,7 @@ import proteus.inference.transforms as transforms_mod
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 # ---------------------------------------------------------------------------
 # Shared helpers

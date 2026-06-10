@@ -321,7 +321,9 @@ class InteriorDummy:
     Attributes
     ----------
     mantle_rho: float
-        Mantle mass density [kg m-3].
+        Mantle density [kg m-3] for the dummy density profile and the
+        fallback mantle-mass estimate. When the interior structure provides
+        the masses, the mantle mass is taken as ``M_int - M_core`` instead.
     mantle_cp: float
         Mantle specific heat capacity [J kg-1 K-1]
     mantle_tliq: float

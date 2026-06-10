@@ -47,7 +47,6 @@ def inference_run():
 # The three tests below run the full inference pipeline as a child PROTEUS
 # subprocess. Each evaluation takes ~75 s wall (~5 min for 4 evaluations),
 # which exceeds the smoke tier's per-test budget. Tagged as slow.
-#
 @pytest.mark.slow
 @pytest.mark.timeout(3600)
 def test_inference_smoke_config(inference_run):

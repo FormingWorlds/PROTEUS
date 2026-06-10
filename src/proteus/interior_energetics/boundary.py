@@ -48,23 +48,31 @@ class BoundaryRunner:
         self.m_atm = hf_row.get('M_atm', 0.0)  # Atmospheric mass, default to 0 if not available
         self.f_atm = hf_row['F_atm']
 
+        # If atmos_o is None, then set cp_layer to None
         if atmos_o is not None:
             cp_layer = getattr(getattr(atmos_o, '_atm', None), 'layer_cp', None)
+            ma_layer = getattr(getattr(atmos_o, '_atm', None), 'layer_σ', None)
         else:
             cp_layer = None
+            ma_layer = None
 
+        # If atmosphere is available, then extract heat capacity
         if cp_layer is not None:
-            cp_arr = np.asarray(cp_layer, dtype=float).ravel()
-            valid = np.isfinite(cp_arr)
-            if np.any(valid):
-                # Use profile-mean atmospheric heat capacity across all valid layers.
-                self.atmosphere_heat_capacity = float(np.mean(cp_arr[valid]))  # J/kg/K
+            valid = np.argwhere(np.isfinite(cp_layer) & np.isfinite(ma_layer)).flatten()
+            cp_arr = np.asarray(cp_layer, dtype=float).ravel()[valid]
+            ma_arr = np.asarray(ma_layer, dtype=float).ravel()[valid]
+            if len(cp_arr) > 0:
+                # Use profile-mean atmospheric heat capacity
+                # Weighted by the layer mass
+                self.atmosphere_heat_capacity = float(np.average(cp_arr, weights=ma_arr))
             else:
                 # All-NaN layer_cp: fall back to the configured constant.
                 # InteriorBoundary defines atm_heat_capacity.
                 self.atmosphere_heat_capacity = (
                     config.interior_energetics.boundary.atm_heat_capacity
                 )
+
+        # If properties are unavailable, fall back to default atmospheric cp.
         else:
             self.atmosphere_heat_capacity = (
                 config.interior_energetics.boundary.atm_heat_capacity

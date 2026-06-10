@@ -44,34 +44,48 @@ class TestIronFractions:
         assert 0.0 < x_fem < 1.0
         assert x_fem < x_fe < 1.0
 
-    def test_radius_mode_collapses_via_power_law(self):
-        """In ``'radius'`` mode, ``iron_fractions`` maps the input
-        core-radius fraction to CMF via ``cf**2.5`` (the NL20 power-law
-        approximation for converting radius to mass fraction).
+    @pytest.mark.physics_invariant
+    def test_radius_mode_honours_requested_core_radius_fraction(self):
+        """In ``'radius'`` mode, ``iron_fractions`` chooses the core mass
+        fraction so the realized NL20 core radius fraction R_c/R_p equals the
+        requested ``core_frac``, instead of approximating it with a fixed
+        power law.
         """
-        from proteus.utils.structure_estimate import iron_fractions
+        from proteus.utils.structure_estimate import _nl20_radius_fraction, iron_fractions
 
-        x_cmf, _, _ = iron_fractions(0.55, 'radius')
-        assert x_cmf == pytest.approx(0.55**2.5, rel=1e-12)
-        # Exponent-error discrimination: a regression that used the
-        # mass-mode passthrough (exponent 1.0) would give 0.55 here,
-        # well separated from the correct 0.55**2.5 ~ 0.224.
-        assert abs(x_cmf - 0.55) > 0.1
-        # A regression that used the cube (exponent 3.0) would give
-        # 0.55**3 = 0.166, also discriminable.
-        assert abs(x_cmf - 0.55**3) > 0.01
+        x_cmf, _, x_fem = iron_fractions(0.6, 'radius', mass_tot_M_earth=1.0)
+        realized = _nl20_radius_fraction(x_cmf, 1.0, x_fem)
+        # The requested radius fraction is honoured to root-find precision.
+        assert realized == pytest.approx(0.6, abs=1e-4)
+        # Discrimination: the retired cf**2.5 heuristic set x_cmf=0.6**2.5=0.279,
+        # which realizes R_c/R_p~0.497; the inversion must land far from that.
+        assert abs(realized - 0.497) > 0.05
+        # The chosen mass fraction is neither the radius-as-mass passthrough
+        # (0.6) nor the old heuristic value (0.279).
+        assert abs(x_cmf - 0.6) > 0.05
+        assert abs(x_cmf - 0.6**2.5) > 0.05
 
-    def test_radius_mode_clamps_to_window(self):
-        """``'radius'`` mode clamps the resulting CMF to the [0.01, 0.80]
-        window so the NL20 calibration band is not violated at the
-        physical extremes (Mercury-like to mantle-stripped).
+    @pytest.mark.physics_invariant
+    def test_radius_mode_clamps_unreachable_fraction_to_unit_interval(self):
+        """A requested radius fraction beyond the achievable NL20 range clamps
+        to the nearest core-mass-fraction bound, and the result stays in (0, 1)
+        across the input range (replacing the old [0.01, 0.80] CMF window).
         """
-        from proteus.utils.structure_estimate import iron_fractions
+        from proteus.utils.structure_estimate import _nl20_radius_fraction, iron_fractions
 
-        x_cmf_lo, _, _ = iron_fractions(0.05, 'radius')
-        x_cmf_hi, _, _ = iron_fractions(0.99, 'radius')
-        assert x_cmf_lo == pytest.approx(0.01, rel=1e-12)
-        assert x_cmf_hi <= 0.80
+        # NL20 caps R_c/R_p near ~0.93, so a near-unity request is unreachable
+        # and clamps to the upper x_cmf bound.
+        x_hi, _, x_fem = iron_fractions(0.99, 'radius', mass_tot_M_earth=1.0)
+        assert 0.0 < x_hi < 1.0
+        assert _nl20_radius_fraction(x_hi, 1.0, x_fem) < 0.99
+        # A small requested fraction yields a small but positive core; the
+        # mapping is monotonic, so it sits below the near-unity case.
+        x_lo, _, _ = iron_fractions(0.05, 'radius', mass_tot_M_earth=1.0)
+        assert 0.0 < x_lo < x_hi
+        # Below the achievable minimum (~0.03 at 1 M_earth), it clamps to the
+        # lower x_cmf bound (1e-4) rather than going to zero or negative.
+        x_min, _, _ = iron_fractions(0.01, 'radius', mass_tot_M_earth=1.0)
+        assert x_min == pytest.approx(1.0e-4, rel=1e-6)
 
     @pytest.mark.parametrize('bad_cf', [-0.1, 0.0, 1.0, 1.5])
     def test_invalid_core_frac_raises(self, bad_cf):
@@ -100,7 +114,7 @@ class TestIronFractions:
         # must produce CMF values in the open unit interval. A
         # regression that tightened the gate would surface here.
         x_cmf_mass, _, _ = iron_fractions(0.325, 'mass')
-        x_cmf_rad, _, _ = iron_fractions(0.325, 'radius')
+        x_cmf_rad, _, _ = iron_fractions(0.325, 'radius', mass_tot_M_earth=1.0)
         assert 0.0 < x_cmf_mass < 1.0
         assert 0.0 < x_cmf_rad < 1.0
 
@@ -128,6 +142,8 @@ class TestIronFractions:
 class TestEstimatePCMB:
     """Pin the NL20 P_cmb estimate at multiple masses + bound checks."""
 
+    @pytest.mark.reference_pinned
+    @pytest.mark.physics_invariant
     def test_earth_returns_close_to_PREM(self):
         """NL20 at 1 M_Earth, CMF=0.325 mass-mode, fe_mantle=0.1 returns
         ~142 GPa, within ~6 GPa of PREM's 136 GPa CMB pressure.
@@ -146,6 +162,23 @@ class TestEstimatePCMB:
         # parameters; identical 135 GPa would mean the formula was
         # short-circuited to the old fallback.
         assert abs(P_cmb - 135e9) > 1e9
+
+    @pytest.mark.physics_invariant
+    def test_radius_mode_p_cmb_uses_inverted_core_fraction(self):
+        """In radius mode P_cmb is computed from the inverted core mass fraction,
+        so for the same nominal core_frac it differs from the mass-mode value
+        (and stays positive). Guards the mass-threading into iron_fractions.
+        """
+        from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
+        p_radius = estimate_P_cmb_NL20(1.0, 0.5, 'radius')
+        p_mass = estimate_P_cmb_NL20(1.0, 0.5, 'mass')
+        # Positivity invariant.
+        assert p_radius > 0.0
+        # Discrimination: radius mode inverts core_frac=0.5 to a different core
+        # mass fraction than the mass-mode passthrough (x_cmf=0.5), so the two
+        # P_cmb values must differ by more than rounding.
+        assert abs(p_radius - p_mass) > 1e9
 
     def test_super_earth_3me_lifts_p_cmb_substantially(self):
         """At 3 M_Earth, P_cmb scales up. The 135 GPa Earth-only

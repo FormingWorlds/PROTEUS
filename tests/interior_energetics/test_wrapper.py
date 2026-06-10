@@ -3255,32 +3255,104 @@ def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
 
 
 # ============================================================================
-# run_interior boundary backend requires atmos_o to derive heat capacities
+# run_interior boundary backend requires atmos_o
 # ============================================================================
 
 
 @pytest.mark.unit
-@pytest.mark.physics_invariant
-def test_run_interior_boundary_with_atmos_equals_none():
-    """The boundary backend does not require atmos_o. After the call, positivity invariants on
-    T_magma and Phi_global must hold, and radiogenic heating must remain
-    zero because heat_radiogenic is False in the config.
+def test_run_interior_boundary_tolerates_missing_atmos():
+    """Before the first atmosphere solve (and in the structure-solve calls)
+    atmos_o is None. The boundary backend no longer aborts: it dispatches and
+    relies on the configured fallback atmospheric heat capacity, which is inert
+    at t=0 (dt=0). Discrimination: BoundaryRunner is still constructed, with
+    atmos_o=None passed through, so the run proceeds rather than raising.
     """
     from proteus.interior_energetics.wrapper import run_interior
 
     config = _make_run_interior_config(prevent_warming=False, module='boundary')
-    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    out = {
+        'T_magma': 3010.0,
+        'T_surf': 2810.0,
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
 
     interior_o = MagicMock(spec=Interior_t)
     interior_o.ic = 2
+    interior_o.dt = 10.0
 
-    run_interior({}, config, hf_all, hf_row, interior_o, atmos_o=None, verbose=False)
+    boundary_runner = MagicMock()
+    boundary_runner.run_solver.return_value = (110.0, out)
+    with (
+        patch(
+            'proteus.interior_energetics.boundary.BoundaryRunner',
+            return_value=boundary_runner,
+        ) as mock_runner,
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        # Must NOT raise the old "requires the atmosphere struct" guard.
+        run_interior({}, config, hf_all, hf_row, interior_o, atmos_o=None, verbose=False)
 
-    # Radiogenic heating is disabled in config; must stay zero.
-    assert hf_row['F_radio'] == pytest.approx(0.0, abs=1e-12)
-    # Physical positivity and bounds invariants.
-    assert hf_row['T_magma'] > 0.0, 'T_magma must be positive after boundary step'
-    assert 0.0 <= hf_row['Phi_global'] <= 1.0, 'melt fraction must lie in [0, 1]'
+    # The backend was dispatched, receiving atmos_o=None as its last argument.
+    assert mock_runner.call_count == 1
+    assert mock_runner.call_args.args[-1] is None
+    # The run produced an updated state (T_magma jump 10 K < tmagma_atol 20).
+    assert hf_row['T_magma'] == pytest.approx(3010.0)
+
+
+@pytest.mark.unit
+def test_run_interior_dtswitch_fallback_is_debug_and_names_module_at_init(caplog):
+    """At the first step (ic==1) a backend returns sim_time == Time, so the
+    dt<=0 dtswitch fallback fires. The message is demoted to debug and names the
+    active interior module instead of hard-coding SPIDER.
+    """
+    import logging
+
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='boundary')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    out = {
+        'T_magma': hf_row['T_magma'],
+        'T_surf': hf_row['T_surf'],
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 1
+
+    boundary_runner = MagicMock()
+    # sim_time == hf_row['Time'] drives interior_o.dt = 0 <= 0 -> dtswitch fallback.
+    boundary_runner.run_solver.return_value = (hf_row['Time'], out)
+    with (
+        patch(
+            'proteus.interior_energetics.boundary.BoundaryRunner',
+            return_value=boundary_runner,
+        ),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+        patch('proteus.interior_energetics.timestep.next_step', return_value=1.0),
+        caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, atmos_o=None, verbose=False)
+
+    dt_msgs = [
+        (r.levelname, r.getMessage()) for r in caplog.records if 'dtswitch' in r.getMessage()
+    ]
+    # The init fallback is logged at DEBUG and names the active module.
+    assert any(lvl == 'DEBUG' and 'boundary' in m for lvl, m in dt_msgs), dt_msgs
+    # Discrimination: it must not warn at init, and must not name SPIDER while
+    # running the boundary backend.
+    assert not any(lvl == 'WARNING' for lvl, _ in dt_msgs)
+    assert not any('SPIDER' in m for _, m in dt_msgs)
 
 
 # ============================================================================

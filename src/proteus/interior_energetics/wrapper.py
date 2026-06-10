@@ -1521,14 +1521,12 @@ def run_interior(
     # when the poststep change limit was hit every step.
     interior_o.dt = float(sim_time) - hf_row['Time']
     if interior_o.dt <= 0:
-        # Safety fallback when sim_time <= hf_row['Time']. Known triggers:
-        # 1. Init phase: SPIDER JSON time rounds to 0 via llround.
-        # 2. Solver rollback: SPIDER rolls back to a state before the
-        #    current hf_row['Time'] (rare, implies a stale JSON directory).
-        # In both cases, fall back to dtswitch so the main loop doesn't
-        # stall or go backwards. This bounds the desync to one step of
-        # dtswitch instead of accumulating, and should
-        # not trigger in normal evolution.
+        # sim_time <= hf_row['Time'] happens for every backend at the first
+        # step (ic == 1 returns sim_time == Time), and for a genuine solver
+        # rollback mid-run (rare; e.g. SPIDER reloading a stale JSON state).
+        # Fall back to dtswitch so the main loop neither stalls nor goes
+        # backwards. This is expected at initialisation and only noteworthy
+        # afterwards, so the message is demoted to debug on the first step.
         from proteus.interior_energetics.timestep import next_step
 
         dtswitch = next_step(
@@ -1539,13 +1537,25 @@ def run_interior(
             1.0,
             interior_o=interior_o,
         )
-        log.warning(
-            'SPIDER sim_time (%.2f yr) <= hf_row[Time] (%.2f yr); '
-            'falling back to dtswitch=%.2f yr',
-            float(sim_time),
-            hf_row['Time'],
-            dtswitch,
-        )
+        module = config.interior_energetics.module
+        if interior_o.ic == 1:
+            log.debug(
+                '%s reported sim_time (%.2f yr) == hf_row[Time] (%.2f yr) at '
+                'initialisation; using dtswitch=%.2f yr',
+                module,
+                float(sim_time),
+                hf_row['Time'],
+                dtswitch,
+            )
+        else:
+            log.warning(
+                '%s sim_time (%.2f yr) <= hf_row[Time] (%.2f yr); '
+                'falling back to dtswitch=%.2f yr',
+                module,
+                float(sim_time),
+                hf_row['Time'],
+                dtswitch,
+            )
         interior_o.dt = dtswitch
 
     # Note: Aragog mesh refresh after a Zalmoxis re-solve runs through the

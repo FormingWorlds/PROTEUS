@@ -79,7 +79,6 @@ def run_inference(config):
 
     # Default for configs that pre-date this field
     config.setdefault('failure_codes', [])
-
     # Ensure there are enough CPU cores for the specified number of workers
     if config['n_workers'] >= os.cpu_count():
         raise RuntimeError(f'Not enough CPU cores for {config["n_workers"]} workers')

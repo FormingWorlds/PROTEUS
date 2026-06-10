@@ -296,12 +296,20 @@ def test_write_spider_mesh_writes_basic_and_staggered_blocks(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def _solve_config(core_frac=0.325, mass_tot=1.0, num_levels=16, temperature_mode='isothermal'):
+def _solve_config(
+    core_frac=0.325,
+    mass_tot=1.0,
+    num_levels=16,
+    temperature_mode='isothermal',
+    core_density='self',
+    core_frac_mode='mass',
+):
     """Minimal config object for ``solve_dummy_structure``."""
     interior_struct = SimpleNamespace(
         core_frac=core_frac,
-        core_frac_mode='mass',
+        core_frac_mode=core_frac_mode,
         core_heatcap='self',
+        core_density=core_density,
     )
     interior_energetics = SimpleNamespace(num_levels=num_levels)
     planet = SimpleNamespace(
@@ -372,6 +380,60 @@ def test_solve_dummy_structure_clamps_core_radius_when_it_exceeds_planet_radius(
     assert hf_row['R_core'] < hf_row['R_int']
     # Positivity invariant.
     assert hf_row['R_int'] > 0.0
+
+
+def test_solve_dummy_structure_warns_when_core_density_is_overridden(tmp_path, caplog):
+    """A numeric core_density is not applied by the NL20 dummy structure (which
+    derives it from the core mass fraction and planet mass); the solver warns
+    and keeps the derived value. Discrimination: with core_density='self' no
+    such warning fires.
+    """
+    import logging
+
+    from proteus.interior_struct.dummy import solve_dummy_structure
+
+    # NL20 derives rho_core ~1.2e4 kg/m^3 for these params; pick a clearly
+    # different configured value so the mismatch (not equality) triggers.
+    config = _solve_config(core_density=5000.0)
+    hf_row: dict = {}
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_struct.dummy'):
+        solve_dummy_structure(config, hf_row, str(tmp_path), num_spider_nodes=0)
+    msgs = [r.getMessage() for r in caplog.records]
+    assert any('core_density=5000' in m and 'not applied' in m for m in msgs), msgs
+    # The structure keeps the NL20-derived value, not the configured one.
+    assert abs(hf_row['core_density'] - 5000.0) > 1.0
+
+    # Discrimination: with 'self' the override warning must NOT fire.
+    caplog.clear()
+    hf_row2: dict = {}
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_struct.dummy'):
+        solve_dummy_structure(_solve_config(core_density='self'), hf_row2, str(tmp_path), 0)
+    assert not any('not applied' in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('core_frac, mass_tot', [(0.4, 1.0), (0.6, 1.0), (0.6, 5.0)])
+def test_solve_dummy_structure_radius_mode_realizes_requested_fraction(
+    tmp_path, core_frac, mass_tot
+):
+    """In radius mode the solved structure realizes R_core/R_int equal to the
+    requested core_frac. The radius->mass inversion (structure_estimate) and the
+    structure's own NL20 R_c/R_p must round-trip; this guards against drift
+    between those two copies of the scaling laws.
+    """
+    from proteus.interior_struct.dummy import solve_dummy_structure
+
+    config = _solve_config(core_frac=core_frac, mass_tot=mass_tot, core_frac_mode='radius')
+    hf_row: dict = {}
+    solve_dummy_structure(config, hf_row, str(tmp_path), num_spider_nodes=0)
+
+    realized = hf_row['R_core'] / hf_row['R_int']
+    # The requested radius fraction is honoured. The retired core_frac**2.5
+    # heuristic realized a different ratio (~0.50 for a requested 0.6), which
+    # fails this approx, so this assertion is the discrimination guard.
+    assert realized == pytest.approx(core_frac, abs=1e-3)
+    # The core remains a proper sub-planet mass.
+    assert 0.0 < hf_row['M_core'] < hf_row['M_int']
 
 
 # ---------------------------------------------------------------------------

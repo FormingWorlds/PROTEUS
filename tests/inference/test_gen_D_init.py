@@ -161,6 +161,20 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
             n_workers=-1,
             failure_codes=[],
         )
+    # Discrimination: negative worker counts must also raise. A regression
+    # that only guarded the n_workers==0 boundary (e.g. `if n == 0`) would
+    # let -1 slip through and crash multiprocessing.Pool with an opaque
+    # error far from the user's misconfiguration.
+    with pytest.raises(ValueError, match='at least 1'):
+        init_mod.sample_from_bounds(
+            output='out',
+            ref_config='ref.toml',
+            params={'a': [0.0, 1.0]},
+            observables={'obs': 1.0},
+            nsamp=2,
+            seed=1,
+            n_workers=-1,
+        )
 
 
 @pytest.mark.unit

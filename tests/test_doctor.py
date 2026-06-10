@@ -122,13 +122,17 @@ class TestCheckEnvVar:
         assert str(tmp_path) in r.message
 
     def test_fail_when_not_set(self):
-        """An unset variable fails with a fix suggestion."""
+        """An unset variable fails with human advice that update must not run."""
         env = os.environ.copy()
         env.pop('NONEXISTENT_VAR', None)
         with patch.dict(os.environ, env, clear=True):
             r = check_env_var('NONEXISTENT_VAR')
         assert r.status == FAIL
-        assert r.fix_cmd is not None
+        # The fix is a placeholder export line, not a runnable command, so it
+        # must be flagged non-auto-fixable; otherwise `proteus update` feeds
+        # 'export VAR=<path>  # ...' to the shell and it errors on '<path>'.
+        assert r.auto_fixable is False
+        assert '<path>' in r.fix_cmd
 
     def test_warn_when_path_missing(self):
         """A set variable pointing to a nonexistent path warns."""
@@ -254,6 +258,38 @@ class TestCheckPythonPackage:
         with patch('proteus.doctor.importlib.metadata.version', return_value='25.1.1'):
             with patch('proteus.doctor._editable_checkout_path', return_value=None):
                 r = check_python_package('fwl-aragog', spec)
+        assert r.status == FAIL
+        assert 'requires' in r.message
+
+    def test_pass_when_editable_dev_version_above_bound(self):
+        """A setuptools-scm dev version a few commits past the tagged release
+        satisfies a >= bound, even though it is a pre-release in PEP 440 terms."""
+        from packaging.requirements import Requirement
+
+        # 26.6.1.post1.dev8 sorts ABOVE 26.6.1, so it satisfies >=26.06.01;
+        # the default SpecifierSet membership would wrongly exclude it as a
+        # pre-release and report a failure.
+        spec = Requirement('fwl-calliope>=26.06.01')
+        with patch(
+            'proteus.doctor.importlib.metadata.version',
+            return_value='26.6.1.post1.dev8+g1e3ad73dd',
+        ):
+            with patch('proteus.doctor._editable_checkout_path', return_value=None):
+                r = check_python_package('fwl-calliope', spec)
+        assert r.status == PASS
+        assert '26.6.1.post1.dev8' in r.message
+
+    def test_fail_when_dev_version_below_bound(self):
+        """Allowing pre-releases must not blanket-pass them: a dev version that
+        sorts BELOW the bound still fails, so the check respects ordering."""
+        from packaging.requirements import Requirement
+
+        # 26.6.1.dev1 is a dev release of 26.6.1 and sorts BELOW it, so it does
+        # not satisfy >=26.6.1; a naive prereleases=True must not let it pass.
+        spec = Requirement('fwl-calliope>=26.06.01')
+        with patch('proteus.doctor.importlib.metadata.version', return_value='26.6.1.dev1'):
+            with patch('proteus.doctor._editable_checkout_path', return_value=None):
+                r = check_python_package('fwl-calliope', spec)
         assert r.status == FAIL
         assert 'requires' in r.message
 
@@ -557,6 +593,41 @@ class TestUpdateEntry:
         assert all(c.args[1] == tmp_path for c in mock_fix.call_args_list)
         # Diagnostics re-run exactly once after the fixes.
         assert mock_recheck.call_count == 1
+
+    def test_manual_advice_is_shown_but_never_executed(self, capsys, tmp_path):
+        """An unset env var carries human advice ('export VAR=<path>'), not a
+        runnable command. update lists it under manual action and never passes
+        it to the shell, while still running the genuinely fixable check."""
+        (tmp_path / 'tools').mkdir()
+        results = [
+            CheckResult(
+                'FC_DIR',
+                'environment',
+                FAIL,
+                'not set',
+                'export FC_DIR=<path>  # add to your shell rc file',
+                auto_fixable=False,
+            ),
+            CheckResult(
+                'SOCRATES', 'versions', WARN, 'differs from pin', 'bash tools/get_socrates.sh'
+            ),
+        ]
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=results),
+            patch('proteus.doctor._repo_root', return_value=tmp_path),
+            patch('proteus.doctor._run_fix_command', return_value=0) as mock_fix,
+            patch('proteus.doctor.doctor_entry', return_value=True),
+        ):
+            update_entry(dry_run=False)
+        # Only the runnable SOCRATES fix is executed; the export advice is not.
+        assert mock_fix.call_count == 1
+        ran = mock_fix.call_args_list[0].args[0]
+        assert ran == 'bash tools/get_socrates.sh'
+        assert 'export FC_DIR' not in ran
+        # The manual item is still surfaced so the user knows to act on it.
+        out = capsys.readouterr().out
+        assert 'manual action' in out
+        assert 'FC_DIR' in out
 
     def test_refuses_to_fix_without_tools_directory(self, capsys, tmp_path):
         """A wheel install (no tools/ directory) cannot run fix commands; update

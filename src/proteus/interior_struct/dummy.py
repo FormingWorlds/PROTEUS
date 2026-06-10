@@ -19,7 +19,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.utils.constants import M_earth, const_G
-from proteus.utils.structure_estimate import iron_fractions as _iron_fractions
+from proteus.utils.structure_estimate import (
+    iron_fractions as _iron_fractions,
+)
+from proteus.utils.structure_estimate import (
+    nl20_core_radius_km,
+    nl20_planet_radius_km,
+)
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -65,6 +71,7 @@ def solve_dummy_structure(
     x_cmf, x_fe, x_fem = _iron_fractions(
         config.interior_struct.core_frac,
         config.interior_struct.core_frac_mode,
+        mass_tot_M_earth=m_ratio,
     )
     log.debug(
         'Dummy structure: M_p=%.4f M_earth, core_frac=%.3f (%s), x_cmf=%.3f',
@@ -76,12 +83,11 @@ def solve_dummy_structure(
 
     # --- Noack & Lasbleis (2020) scaling laws ---
 
-    # Eq. 5: Planet radius [km]
-    R_p_km = (7030.0 - 1840.0 * x_fe) * m_ratio**0.282
+    # NL20 Eq. 5 / Eq. 9, shared with structure_estimate so the radius-mode
+    # core-fraction inversion round-trips to the same R_c/R_p here.
+    R_p_km = nl20_planet_radius_km(x_fe, m_ratio)
     R_p = R_p_km * 1e3  # [m]
-
-    # Eq. 9: Core radius (hot profile) [km]
-    R_c_km = 4850.0 * x_cmf**0.328 * m_ratio**0.266
+    R_c_km = nl20_core_radius_km(x_cmf, m_ratio)
     R_c = R_c_km * 1e3  # [m]
 
     # Clamp core radius to be smaller than planet radius
@@ -136,6 +142,21 @@ def solve_dummy_structure(
         g_surf,
         P_cmb * 1e-9,
     )
+
+    # The dummy (Noack & Lasbleis) structure derives core density from the core
+    # mass fraction and planet mass, so a numeric core_density is not applied
+    # here (unlike core_heatcap above). Warn rather than silently diverge from
+    # the configured value.
+    cfg_density = getattr(config.interior_struct, 'core_density', 'self')
+    if cfg_density != 'self' and not np.isclose(float(cfg_density), rho_c, rtol=1e-3):
+        log.warning(
+            'Configured core_density=%.0f kg/m^3 is not applied by the dummy '
+            '(Noack & Lasbleis) structure, which derives rho_core=%.0f kg/m^3 '
+            "from the core mass fraction and planet mass. Set core_density='self' "
+            "or use interior_struct.module='zalmoxis' to control it.",
+            float(cfg_density),
+            rho_c,
+        )
 
     # --- Build radial profiles on a mesh ---
 

@@ -536,3 +536,47 @@ def test_init_star_phoenix_branch_uses_get_phoenix_modern_spectrum(tmp_path, mon
     arr = np.loadtxt(backup)
     assert np.allclose(arr[:, 1], np.array([7.0, 8.0]))
     assert isinstance(handler.stellar_track, fake_mors.BaraffeTrack)
+
+
+@pytest.mark.unit
+def test_init_star_phoenix_branch_tolerates_star_name_none(tmp_path, monkeypatch):
+    """PHOENIX synthesises its spectrum from the stellar track, so a
+    user may leave ``star_name`` unset. With ``star_name=None`` and
+    ``spectrum_source='phoenix'``, ``init_star`` must reach
+    ``get_phoenix_modern_spectrum`` instead of crashing while building
+    the (unused, for PHOENIX) catalogue file name from a None value.
+    """
+    import proteus.star.wrapper as wrapper_mod
+    from proteus.star.wrapper import init_star
+
+    _install_fake_mors(monkeypatch)
+
+    phoenix_modern = tmp_path / 'stellar_spectra' / 'PHOENIX' / '1AU' / 'fake_phoenix.txt'
+    _write_spectrum_file(phoenix_modern, fl=(7.0, 8.0))
+
+    calls = {'n': 0}
+
+    def fake_get_phoenix_modern_spectrum(handler, stellar_track=None, age_yr=None):
+        calls['n'] += 1
+        return phoenix_modern
+
+    monkeypatch.setattr(
+        wrapper_mod, 'get_phoenix_modern_spectrum', fake_get_phoenix_modern_spectrum
+    )
+
+    handler = _make_handler_for_init_star(
+        tmp_path,
+        spectrum_source='phoenix',
+        star_name=None,
+        tracks='baraffe',
+        offline=True,
+    )
+    init_star(handler)
+
+    # Discrimination: an unguarded name lookup (``star_name.lower()`` /
+    # ``.strip()``) would raise AttributeError on None BEFORE the PHOENIX
+    # branch ran, leaving the call count at 0 and writing no backup file.
+    assert calls['n'] == 1
+    backup = tmp_path / 'out' / 'data' / '-1.sflux'
+    arr = np.loadtxt(backup)
+    assert np.allclose(arr[:, 1], np.array([7.0, 8.0]))

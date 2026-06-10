@@ -59,28 +59,6 @@ def tides_enabled_orbit(instance, attribute, value):
         raise ValueError('Interior tidal heating requires an orbit module to be enabled')
 
 
-def prevent_warming_advisory(instance, attribute, value):
-    """Warn when planet.prevent_warming is enabled.
-
-    The clamp at interior_energetics/wrapper.py forces T_magma to monotonically
-    decrease each iteration. This suppresses physical temperature oscillations
-    and can hide energy non-conservation (T_magma latching, F_atm = F_int
-    reported as convergence by clamp consistency rather than radiative
-    balance). It is only safe in regimes that are known a priori to be
-    strictly cooling.
-    """
-    if not instance.planet.prevent_warming:
-        return
-    log.warning(
-        'planet.prevent_warming = true: T_magma is forced to monotonically '
-        'decrease each iteration. This suppresses physical temperature '
-        'oscillations and can hide energy non-conservation (T_magma latching, '
-        'F_atm = F_int reported as convergence by clamp consistency rather '
-        'than radiative balance). Default is false; enable only for known '
-        'strictly-cooling regimes.'
-    )
-
-
 CURRENT_CONFIG_VERSION = '3.0'
 
 
@@ -365,7 +343,6 @@ class Config:
         factory=Interior,
         validator=(
             tides_enabled_orbit,
-            prevent_warming_advisory,
             boundary_requires_fixed_surface_state,
             boundary_zalmoxis_incompatible,
         ),
