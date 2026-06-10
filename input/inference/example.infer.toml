@@ -17,7 +17,7 @@ init_samps = 3        # Number of random samples if starting from scratch.
 init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
 
 # Excluded exit codes (in addition to errors)
-failure_codes = [10, 15] # solidified, escaped
+failure_codes = [10, 15, 11] # solidified, escaped, max_runtime
 
 # Parameters for Bayesian optimisation
 n_workers  = 10        # Number of parallel workers
