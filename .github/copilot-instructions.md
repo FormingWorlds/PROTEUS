@@ -167,14 +167,29 @@ pre-commit install -f
 
 **Always run** `pip install -e ".[develop]"` after code changes to update installation.
 
-#### SOCRATES build flags (Aragog reproducibility)
+#### SOCRATES build flags
 
-For bit-reproducibility (paper plots, CHILI, SPIDER-parity) edit
-`SOCRATES/make/Mk_cmd`: replace `FORTCOMP ... -Ofast -march=native` with
-`-O2 -fno-fast-math` and clear `OMPARG = -fopenmp`. The upstream flags
-produce ULP-level non-determinism that AGNI's Newton solver amplifies
-into 1-2 % F_atm variance, which the Aragog hardening stack absorbs but
-still leaves runs non-bit-identical. Rebuild with `cd socrates && ./build_code`.
+By default `tools/get_socrates.sh` keeps the configure flags `-Ofast
+-march=native`, which give the best performance on the build host. Set
+`SOCRATES_PORTABLE_FLAGS=1` to compile with `-O2 -fno-fast-math` instead: the
+`-march=native` default bakes the build host's CPU extensions into the binary,
+so a compiled tree reused on a different processor aborts with an
+illegal-instruction fault, while the portable flags run on any CPU. CI sets the
+switch because its caches are restored across runner machines with mixed CPU
+generations. Dropping fast-math also removes compiler value reordering, the
+build-to-build component of the ULP-level non-determinism that AGNI's Newton
+solver amplifies into 1-2 % F_atm variance; run-to-run scatter from OpenMP
+threading remains while OMPARG is set. In portable mode the build fails loudly
+if a future SOCRATES release changes the flag string, so no manual edit is
+needed.
+
+For full bit-reproducibility (paper plots, CHILI, SPIDER-parity) install with
+`SOCRATES_PORTABLE_FLAGS=1 bash tools/get_socrates.sh` and also clear
+`OMPARG = -fopenmp` in `socrates/make/Mk_cmd`, then force a recompile with
+`cd socrates/bin && make clean && cd .. && ./build_code` (no make rule depends
+on `Mk_cmd`, so rebuilding without the clean reuses the OpenMP objects
+unchanged); the install path keeps OpenMP enabled and does not clear it
+automatically.
 
 ### Test Commands
 

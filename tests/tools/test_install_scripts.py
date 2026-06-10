@@ -773,3 +773,220 @@ def test_guard_passes_clean_remote_backed_checkout(tmp_path):
     res = _run_guard(tmp_path, '--force')
     assert res.returncode == 0
     assert 'GUARD_PASSED' in res.stdout
+
+
+# ---------------------------------------------------------------------------
+# Portable-flag rewrite and guards (tools/get_socrates.sh)
+# ---------------------------------------------------------------------------
+
+
+def _extract_socrates_block(start_marker: str, end_marker: str) -> str:
+    """Extract shipped lines of tools/get_socrates.sh between two markers.
+
+    Reading the block from the script under test (rather than copying it
+    into the test) pins the exact shipped lines: any rewording or logic
+    change in the flag handling re-runs through these cases.
+    """
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    script = (tools_dir / 'get_socrates.sh').read_text().splitlines()
+    start = next(i for i, ln in enumerate(script) if start_marker in ln)
+    end = next(i for i, ln in enumerate(script) if end_marker in ln and i > start)
+    return '\n'.join(script[start:end])
+
+
+def _extract_pattern_line() -> str:
+    """Return the shipped nonportable_flags definition line."""
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    script = (tools_dir / 'get_socrates.sh').read_text().splitlines()
+    return next(ln for ln in script if ln.startswith('nonportable_flags='))
+
+
+def _portable_env(workdir, portable: bool) -> dict:
+    """Build the env for a snippet run, toggling the portable-flags switch."""
+    env = {**os.environ, 'WORKDIR': str(workdir)}
+    env.pop('SOCRATES_PORTABLE_FLAGS', None)
+    if portable:
+        env['SOCRATES_PORTABLE_FLAGS'] = '1'
+    return env
+
+
+def _run_flag_rewrite(workdir, portable: bool = True) -> subprocess.CompletedProcess:
+    """Run the shipped flag rewrite and its guards against a fixture tree."""
+    block = _extract_socrates_block('A missing make/Mk_cmd', './build_code')
+    snippet = 'set -euo pipefail\ncd "$WORKDIR"\n' + block + '\necho REWRITE_OK\n'
+    return subprocess.run(
+        ['bash', '-c', snippet],
+        capture_output=True,
+        text=True,
+        env=_portable_env(workdir, portable),
+    )
+
+
+def _run_post_build_guard(workdir, portable: bool = True) -> subprocess.CompletedProcess:
+    """Run the shipped post-build flag check against a fixture bin/Mk_cmd."""
+    pattern_line = _extract_pattern_line()
+    block = _extract_socrates_block('Verify the flags that reached', '# Environment')
+    snippet = (
+        'set -euo pipefail\ncd "$WORKDIR"\n' + pattern_line + '\n' + block + '\necho GUARD_OK\n'
+    )
+    return subprocess.run(
+        ['bash', '-c', snippet],
+        capture_output=True,
+        text=True,
+        env=_portable_env(workdir, portable),
+    )
+
+
+# Shaped like real configure output, including the trailing spaces its
+# echo lines leave behind.
+_CONFIGURE_STYLE_MK_CMD = (
+    '# Generated automatically\n'
+    'FORTCOMP        = gfortran -Ofast -march=native -fallow-argument-mismatch -c \n'
+    'LINK            = gfortran -Ofast -march=native -fallow-argument-mismatch \n'
+    'LIBLINK         = ar rvu \n'
+    'OMPARG          = -fopenmp \n'
+)
+
+
+def test_flag_rewrite_makes_configure_output_portable(tmp_path):
+    """The shipped rewrite turns configure's default flags portable.
+
+    Runs the rewrite block against a fixture make/Mk_cmd shaped like real
+    configure output, with the non-portable flags on both the compile and
+    link lines. Both occurrences must become '-O2 -fno-fast-math', no
+    CPU-specific flag may remain anywhere, and OMPARG must pass through
+    untouched (OpenMP is deliberately kept by the install path).
+    """
+    (tmp_path / 'make').mkdir()
+    mk = tmp_path / 'make' / 'Mk_cmd'
+    mk.write_text(_CONFIGURE_STYLE_MK_CMD)
+
+    res = _run_flag_rewrite(tmp_path)
+
+    assert res.returncode == 0, res.stderr
+    assert 'REWRITE_OK' in res.stdout
+    rewritten = mk.read_text()
+    # Both FORTCOMP and LINK must be rewritten: a count of 1 would mean
+    # the link line kept the host-specific flags.
+    assert rewritten.count('-O2 -fno-fast-math') == 2
+    assert '-march=native' not in rewritten
+    assert '-Ofast' not in rewritten
+    assert 'OMPARG          = -fopenmp' in rewritten
+
+
+def test_flag_rewrite_stops_on_changed_configure_defaults(tmp_path):
+    """A changed configure flag string stops the build with a clear error.
+
+    If a SOCRATES release ships different optimisation defaults (here the
+    aarch64 spelling '-mcpu=native', which the rewrite pattern does not
+    match), the block must exit nonzero before ./build_code runs, name
+    the file to update in the error, and leave the fixture unmodified
+    rather than letting a host-specific binary compile.
+    """
+    (tmp_path / 'make').mkdir()
+    mk = tmp_path / 'make' / 'Mk_cmd'
+    changed = _CONFIGURE_STYLE_MK_CMD.replace('-Ofast -march=native', '-O3 -mcpu=native')
+    mk.write_text(changed)
+
+    res = _run_flag_rewrite(tmp_path)
+
+    assert res.returncode == 1
+    assert 'REWRITE_OK' not in res.stdout
+    assert 'get_socrates.sh' in res.stderr  # error names the file to update
+    assert mk.read_text() == changed  # fixture left untouched
+
+
+def test_flag_rewrite_reports_missing_mk_cmd_as_configure_failure(tmp_path):
+    """A missing make/Mk_cmd is diagnosed as a configure failure in any mode.
+
+    When configure exits zero without writing make/Mk_cmd (or the file
+    moves in a future SOCRATES release), the block must exit nonzero with
+    an error pointing at the configure step, and must not emit the
+    changed-defaults message, which would send the reader to the wrong
+    fix (the rewrite pattern instead of the configure output). The check
+    guards the default (non-portable) build path too, so it runs with the
+    portable switch off.
+    """
+    # Deliberately no make/ directory: the fixture models a configure run
+    # that produced no output file.
+    res = _run_flag_rewrite(tmp_path, portable=False)
+
+    assert res.returncode == 1
+    assert 'REWRITE_OK' not in res.stdout
+    assert 'was not generated' in res.stderr
+    # Discrimination: the changed-defaults diagnosis must not fire for a
+    # missing file; the two failure modes need different fixes.
+    assert 'defaults have' not in res.stderr
+
+
+def test_flag_rewrite_skipped_without_portable_switch(tmp_path):
+    """The default build keeps the upstream performance flags untouched.
+
+    Without SOCRATES_PORTABLE_FLAGS=1 the rewrite must not run: the
+    configure-style fixture passes through byte-identical, keeping
+    '-Ofast -march=native' and never introducing the portable spelling.
+    This pins the gate itself: local installs keep the upstream flags
+    and only opted-in builds (CI) are rewritten.
+    """
+    (tmp_path / 'make').mkdir()
+    mk = tmp_path / 'make' / 'Mk_cmd'
+    mk.write_text(_CONFIGURE_STYLE_MK_CMD)
+
+    res = _run_flag_rewrite(tmp_path, portable=False)
+
+    assert res.returncode == 0, res.stderr
+    assert 'REWRITE_OK' in res.stdout
+    # Discrimination: the file is byte-identical, the native flags are
+    # still present, and the portable spelling was never written.
+    assert mk.read_text() == _CONFIGURE_STYLE_MK_CMD
+    assert '-Ofast -march=native' in mk.read_text()
+    assert '-O2 -fno-fast-math' not in mk.read_text()
+
+
+def test_post_build_guard_inactive_without_portable_switch(tmp_path):
+    """The post-build flag check only applies to opted-in portable builds.
+
+    Without SOCRATES_PORTABLE_FLAGS=1 a bin/Mk_cmd carrying CPU-specific
+    flags is the expected outcome of a default build and must pass; the
+    same fixture fails when the switch is on (covered by the rejection
+    test above), so this pins the gate rather than the pattern.
+    """
+    (tmp_path / 'bin').mkdir()
+    binmk = tmp_path / 'bin' / 'Mk_cmd'
+    binmk.write_text('FORTCOMP = gfortran -Ofast -march=native -c \n')
+
+    res = _run_post_build_guard(tmp_path, portable=False)
+
+    assert res.returncode == 0, res.stderr
+    assert 'GUARD_OK' in res.stdout
+    # Discrimination: with the switch on, this exact fixture is rejected.
+    res_on = _run_post_build_guard(tmp_path, portable=True)
+    assert res_on.returncode == 1
+    assert 'GUARD_OK' not in res_on.stdout
+
+
+def test_post_build_guard_rejects_cpu_specific_template_flags(tmp_path):
+    """A per-host template carrying CPU-specific flags fails the build.
+
+    build_code can replace bin/Mk_cmd with a committed per-host template
+    on recognised cluster hostnames. The shipped post-build check must
+    accept the portable rewrite output and reject the known CPU-specific
+    spellings of the compilers the committed templates use (gfortran
+    '-march=native', ifx '-xHost' and '-ax<arch>').
+    """
+    (tmp_path / 'bin').mkdir()
+    binmk = tmp_path / 'bin' / 'Mk_cmd'
+
+    # Portable flags pass through.
+    binmk.write_text('FORTCOMP = gfortran -O2 -fno-fast-math -c \n')
+    res = _run_post_build_guard(tmp_path)
+    assert res.returncode == 0, res.stderr
+    assert 'GUARD_OK' in res.stdout
+
+    # Host-specific template flags fail, across compiler vocabularies.
+    for flags in ('-Ofast -march=native', '-O3 -xHost', '-O2 -axCORE-AVX512'):
+        binmk.write_text(f'FORTCOMP = ifx {flags} -c \n')
+        res = _run_post_build_guard(tmp_path)
+        assert res.returncode == 1, f'{flags} not rejected'
+        assert 'non-portable' in res.stderr
+        assert 'GUARD_OK' not in res.stdout

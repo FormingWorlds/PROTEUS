@@ -222,26 +222,37 @@ runs:
     # ------------------------------------------------------------------
     # 5. SOCRATES build cache
     # ------------------------------------------------------------------
+    # CI builds SOCRATES with portable optimisation flags (the build step
+    # sets SOCRATES_PORTABLE_FLAGS=1), so the compiled tree runs on any
+    # CPU model in the hosted runner fleets, which mix processor
+    # generations within the same OS/arch label. One cache per OS/arch is
+    # therefore sufficient. The '-portable' key component separates these
+    # caches from any tree built with the default performance flags.
+    # No restore-keys: a prefix-restored tree would be deleted and rebuilt
+    # from scratch by get_socrates.sh anyway, so a partial restore is pure
+    # download cost.
     - name: Cache SOCRATES build
       id: cache-socrates
       uses: actions/cache@v5
       with:
         path: socrates/
-        key: socrates-${{ runner.os }}-${{ runner.arch }}-${{ steps.pins.outputs.socrates_ref }}-${{ hashFiles('tools/get_socrates.sh') }}
-        restore-keys: |
-          socrates-${{ runner.os }}-${{ runner.arch }}-${{ steps.pins.outputs.socrates_ref }}-
-          socrates-${{ runner.os }}-${{ runner.arch }}-
+        key: socrates-${{ runner.os }}-${{ runner.arch }}-portable-${{ steps.pins.outputs.socrates_ref }}-${{ hashFiles('tools/get_socrates.sh') }}
 
     - name: Build SOCRATES (cache miss)
       if: steps.cache-socrates.outputs.cache-hit != 'true'
       shell: bash
       run: |
         set -euo pipefail
-        # Disable SSH detection in the script -- CI always uses HTTPS.
+        # Portable flags: cached trees are restored across runner machines
+        # with mixed CPU generations, so the binaries must not carry
+        # build-host CPU extensions.
+        export SOCRATES_PORTABLE_FLAGS=1
+        # Make the script's GitHub SSH probe (and any git-over-SSH it
+        # selects) non-interactive and fast-failing; the runner has no
+        # GitHub SSH key, so the probe fails and the script uses HTTPS.
         export GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -o ConnectTimeout=1 -o BatchMode=yes'
-        # --force: a partial cache restore (restore-keys prefix match)
-        # leaves a stale checkout that the dirty-tree guard would
-        # otherwise refuse to replace; CI checkouts are disposable.
+        # --force: never block on the dirty-tree guard; CI checkouts are
+        # disposable.
         bash tools/get_socrates.sh --force
 
     # ------------------------------------------------------------------
