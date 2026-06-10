@@ -173,15 +173,19 @@ pre-commit install -f
 the configure default `-Ofast -march=native`. The `-march=native` default bakes
 the build host's CPU extensions into the binary, so a cached build restored onto
 a different processor aborts with an illegal-instruction fault; the portable
-flags run on any CPU. Dropping fast-math also removes the ULP-level
-non-determinism that AGNI's Newton solver otherwise amplifies into 1-2 % F_atm
-variance. The rewrite runs on every install and the build fails loudly if a
-future SOCRATES release changes the flag string, so no manual edit is needed.
+flags run on any CPU. Dropping fast-math also removes compiler value
+reordering, the build-to-build component of the ULP-level non-determinism that
+AGNI's Newton solver amplifies into 1-2 % F_atm variance; run-to-run scatter
+from OpenMP threading remains while OMPARG is set. The rewrite runs on every
+install and the build fails loudly if a future SOCRATES release changes the
+flag string, so no manual edit is needed.
 
 For full bit-reproducibility (paper plots, CHILI, SPIDER-parity) also clear
-`OMPARG = -fopenmp` in `socrates/make/Mk_cmd` and rebuild with
-`cd socrates && ./build_code`; the install path keeps OpenMP enabled and does
-not clear it automatically.
+`OMPARG = -fopenmp` in `socrates/make/Mk_cmd`, then force a recompile with
+`cd socrates/bin && make clean && cd .. && ./build_code` (no make rule depends
+on `Mk_cmd`, so rebuilding without the clean reuses the OpenMP objects
+unchanged); the install path keeps OpenMP enabled and does not clear it
+automatically.
 
 ### Test Commands
 
