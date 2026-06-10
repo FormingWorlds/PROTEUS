@@ -1001,6 +1001,12 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
             sorted(unknown_keys),
         )
 
+    # Check for NaN values, and raise warning if any are found
+    for k, v in new_row.items():
+        if not np.isfinite(v):
+            new_row[k] = 0.0
+            log.warning('Helpfile row key "%s" has non-finite value %s; set to zero.' % (k, v))
+
     # convert row to df
     new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
 

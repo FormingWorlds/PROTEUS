@@ -163,25 +163,33 @@ def _summarise_tau_band(atmos) -> tuple[float, float]:
 def _summarise_diagnostics(atmos) -> tuple[float, float]:
     """Reduce the convection / radiation diagnostic arrays to scalars.
 
-    Returns the maximum Rayleigh number across levels and the ratio
-    timescale_conv / timescale_rad evaluated at the topmost convective
-    level (the radiative-convective boundary). NaN when no level is
-    convective or when the diagnostics were not populated (energy
-    solver path skips them).
+    Ra_max is the maximum value of Rayleigh number across the column.
+    t_conv_over_t_rad is the maximum of the convective/radiative timescales.
+
+    Returns:
+    tuple of (Ra_max, t_conv_over_t_rad), where Ra_max is the maximum
     """
-    try:
-        ra_arr = np.asarray(atmos.diagnostic_Ra)
-        t_conv_arr = np.asarray(atmos.timescale_conv)
-        t_rad_arr = np.asarray(atmos.timescale_rad)
-        mask_c = np.asarray(atmos.mask_c).astype(bool)
-    except Exception:
-        return float('nan'), float('nan')
-    Ra_max = float(np.nanmax(ra_arr)) if ra_arr.size else float('nan')
-    if not mask_c.any() or t_conv_arr.size == 0 or t_rad_arr.size == 0:
-        return Ra_max, float('nan')
-    rcb_idx = int(np.argmax(mask_c))  # first convective level from TOA downwards
-    denom = max(float(t_rad_arr[rcb_idx]), 1e-300)
-    ratio = float(t_conv_arr[rcb_idx]) / denom
+
+    # Get arrays from AGNI
+    ra_arr = np.asarray(atmos.diagnostic_Ra, dtype=float)
+    t_conv_arr = np.asarray(atmos.timescale_conv, dtype=float)
+    t_rad_arr = np.asarray(atmos.timescale_rad, dtype=float)
+
+    # Replace NaN values with zero
+    ra_arr = np.nan_to_num(ra_arr, nan=0.0)
+    t_conv_arr = np.nan_to_num(t_conv_arr, nan=0.0)
+    t_rad_arr = np.nan_to_num(t_rad_arr, nan=0.0)
+
+    # Get maximum Rayleigh number
+    Ra_max = float(np.amax(ra_arr))
+
+    # Get maximum t_conv_t_rad
+    mask_c = ra_arr > 1e-9
+    if np.any(mask_c):
+        ratio = np.amax(t_conv_arr[mask_c] / t_rad_arr[mask_c])
+    else:
+        ratio = 0.0
+
     return Ra_max, ratio
 
 
