@@ -1134,9 +1134,8 @@ def run_agni(
         p_xuv = hf_row['p_xuv']  # bar
         r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv * 1e5)[1]  # m
 
-    # Diagnostics surfaced into hf_row: band-mean optical depth at TOA
-    # and at the surface, plus the Rayleigh number maximum and the
-    # convective vs radiative timescale ratio at the RCB.
+    # Diagnostics surfaced into hf_row: median optical depth at TOA
+    # and at the surface, plus the Ra_max and timescale ratios.
     tau_TOA, tau_surface = _summarise_tau_band(atmos)
     Ra_max, t_conv_over_t_rad = _summarise_diagnostics(atmos)
 

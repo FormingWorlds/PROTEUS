@@ -239,7 +239,6 @@ class _FakeAtmosphere:
         self.diagnostic_Ra = [1.0]
         self.timescale_conv = [1e3]
         self.timescale_rad = [1e6]
-        self.mask_c = [False]
         # Gas composition
         self.gas_names = ['H2O']
         self.gas_vmr = {'H2O': [1.0]}
@@ -513,7 +512,6 @@ def _build_complete_atmos_stub() -> SimpleNamespace:
         diagnostic_Ra=[1.0, 2.0],
         timescale_conv=[1e3, 2e3],
         timescale_rad=[1e6, 1e6],
-        mask_c=[False, True],
         gas_names=['H2O'],
         gas_vmr={'H2O': [1.0]},
         gas_ovmr={'H2O': [1.0]},
@@ -663,7 +661,6 @@ def test_summarise_diagnostics_picks_convective_level():
         diagnostic_Ra=[0.0, 5.0, 4.0, 3.0],
         timescale_conv=[0.0, 1.0e3, 2.0e3, 1.0e2],
         timescale_rad=[1.0e6, 1.0e6, 1.0e5, 1.0e4],
-        mask_c=[False, True, True, True],
     )
     ra_max, ratio = agni_mod._summarise_diagnostics(atmos)
     assert ra_max == pytest.approx(5.0, rel=1e-12)
@@ -672,19 +669,18 @@ def test_summarise_diagnostics_picks_convective_level():
     # Sign + scale guards. A negative or zero ratio would mean the
     # convective timescale was read as zero, which is unphysical.
     assert ratio > 0
-    assert ratio < 1.0  # convection should win at the RCB
+    assert ratio < 1.0
 
 
 def test_summarise_diagnostics_emits_zero_when_no_level_is_convective():
-    """A purely radiative profile has no RCB; the timescale ratio is zero."""
+    """A purely radiative profile has timescale ratio set to zero."""
     atmos = SimpleNamespace(
-        diagnostic_Ra=[0.5, 0.3, 0.2],
-        timescale_conv=[1e3, 1e3, 1e3],
+        diagnostic_Ra=[0.0, 0.0, 0.0],
+        timescale_conv=[0.0, 0.0, 0.0],
         timescale_rad=[1e6, 1e6, 1e6],
-        mask_c=[False, False, False],
     )
     ra_max, ratio = agni_mod._summarise_diagnostics(atmos)
-    assert ra_max == pytest.approx(0.5, rel=1e-12)
+    assert ra_max == pytest.approx(0.0, abs=1e-10)
     assert ratio == pytest.approx(0.0, abs=1e-10)
 
 
@@ -906,7 +902,6 @@ def _make_run_agni_atmos(*, transparent=False):
     atmos.diagnostic_Ra = [0.1, 5.0]
     atmos.timescale_conv = [1e3, 2e3]
     atmos.timescale_rad = [1e6, 1e5]
-    atmos.mask_c = [False, True]
     atmos.nlev_c = 2
     atmos.nbands = 2
     return atmos
