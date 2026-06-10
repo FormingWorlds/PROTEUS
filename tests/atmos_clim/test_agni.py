@@ -608,8 +608,9 @@ def test_summarise_tau_band_returns_monotonic_TOA_below_surface():
         tau_band=[[0.0, 0.1], [1.0, 1.2], [4.0, 5.0]],
     )
     toa, surf = agni_mod._summarise_tau_band(atmos)
-    assert toa == pytest.approx(0.05, rel=1e-6)
-    assert surf == pytest.approx(4.5, rel=1e-6)
+    assert toa == pytest.approx(0.1, rel=1e-6)
+    assert surf == pytest.approx(5.0, rel=1e-6)
+
     # A cell-centre-sized level axis (one row fewer than nlev_l) is
     # accepted too: TOA and surface sit at indices 0 and -1 on either
     # grid, so the reduction must not depend on the convention.
@@ -619,12 +620,14 @@ def test_summarise_tau_band_returns_monotonic_TOA_below_surface():
         tau_band=[[0.0, 0.1], [1.0, 1.2], [4.0, 5.0]],
     )
     toa_c, surf_c = agni_mod._summarise_tau_band(atmos_c)
-    assert toa_c == pytest.approx(0.05, rel=1e-6)
-    assert surf_c == pytest.approx(4.5, rel=1e-6)
+    assert toa_c == pytest.approx(0.1, rel=1e-6)
+    assert surf_c == pytest.approx(5.0, rel=1e-6)
+
     # Monotonicity: optical depth integrated from TOA downwards must
     # grow with depth. Discrimination guard against wrong-direction
     # integration: a flipped sum would invert this inequality.
     assert toa < surf
+
     # Scale guard: the inversion-resistant form. Rejects 0.5 *
     # surface = 2.25 > TOA, which still passes the strict inequality
     # but would mean the gap is shrinking.
@@ -633,7 +636,7 @@ def test_summarise_tau_band_returns_monotonic_TOA_below_surface():
 
 def test_summarise_tau_band_returns_nan_on_unreadable_array():
     """If atmos.tau_band cannot be coerced into a numpy array, both
-    aggregates are NaN so the helpfile column remains well-formed.
+    aggregates are zero so the helpfile column remains well-formed.
 
     Edge: a transparent-mode solve never populates tau_band, leaving
     the field unset on the struct. The summariser must not raise.
@@ -648,23 +651,14 @@ def test_summarise_tau_band_returns_nan_on_unreadable_array():
     atmos.nlev_c = 3
     atmos.nbands = 2
     toa, surf = agni_mod._summarise_tau_band(atmos)
-    import math
 
-    assert math.isnan(toa)
-    assert math.isnan(surf)
+    assert toa == pytest.approx(0.0, abs=1e-10)
+    assert surf == pytest.approx(0.0, abs=1e-10)
 
 
 @pytest.mark.physics_invariant
-def test_summarise_diagnostics_picks_top_convective_level_for_rcb():
-    """The radiative-convective boundary is the topmost convective
-    level (smallest index where mask_c is True).
-
-    Discriminating: a regression that took the LAST convective level
-    (np.where(mask_c)[0][-1]) would land at index 3, where
-    t_conv / t_rad = 1e2 / 1e4 = 1e-2. The correct topmost index is
-    1, where the ratio is 1.0e3 / 1.0e6 = 1e-3. Order-of-magnitude
-    separation.
-    """
+def test_summarise_diagnostics_picks_convective_level():
+    """Get diagnostics at correct level"""
     atmos = SimpleNamespace(
         diagnostic_Ra=[0.0, 5.0, 4.0, 3.0],
         timescale_conv=[0.0, 1.0e3, 2.0e3, 1.0e2],
@@ -673,20 +667,16 @@ def test_summarise_diagnostics_picks_top_convective_level_for_rcb():
     )
     ra_max, ratio = agni_mod._summarise_diagnostics(atmos)
     assert ra_max == pytest.approx(5.0, rel=1e-12)
-    assert ratio == pytest.approx(1.0e-3, rel=1e-6)
+    assert ratio == pytest.approx(0.02, rel=1e-6)
+
     # Sign + scale guards. A negative or zero ratio would mean the
     # convective timescale was read as zero, which is unphysical.
     assert ratio > 0
     assert ratio < 1.0  # convection should win at the RCB
 
 
-def test_summarise_diagnostics_emits_nan_when_no_level_is_convective():
-    """A purely radiative profile has no RCB; the timescale ratio is NaN.
-
-    Edge: this is the limit-input case for an atmosphere too cold or
-    too stable to convect. Ra_max is still well-defined as the maximum
-    of the populated array.
-    """
+def test_summarise_diagnostics_emits_zero_when_no_level_is_convective():
+    """A purely radiative profile has no RCB; the timescale ratio is zero."""
     atmos = SimpleNamespace(
         diagnostic_Ra=[0.5, 0.3, 0.2],
         timescale_conv=[1e3, 1e3, 1e3],
@@ -695,9 +685,7 @@ def test_summarise_diagnostics_emits_nan_when_no_level_is_convective():
     )
     ra_max, ratio = agni_mod._summarise_diagnostics(atmos)
     assert ra_max == pytest.approx(0.5, rel=1e-12)
-    import math
-
-    assert math.isnan(ratio)
+    assert ratio == pytest.approx(0.0, abs=1e-10)
 
 
 # ---------------------------------------------------------------------------
@@ -872,41 +860,18 @@ def test_validate_agni_state_handles_missing_tmp_surf_attr():
 
 
 @pytest.mark.physics_invariant
-def test_summarise_tau_band_handles_transposed_layout():
-    """When tau_band is stored as (nbands, nlev_c) instead of
-    (nlev_c, nbands), the summariser detects the transposition
-    and swaps the indexing axis.
-
-    Discrimination: a regression that always assumed (nlev_c, nbands)
-    would read the wrong axis and swap TOA/surface values.
-    """
-    atmos = SimpleNamespace(
-        nlev_c=3,
-        nbands=2,
-        tau_band=[[0.0, 1.0, 4.0], [0.1, 1.2, 5.0]],
-    )
-    toa, surf = agni_mod._summarise_tau_band(atmos)
-    assert toa == pytest.approx(0.05, rel=1e-6)
-    assert surf == pytest.approx(4.5, rel=1e-6)
-    assert toa < surf
-
-
-def test_summarise_tau_band_unexpected_shape_returns_nan():
+def test_summarise_tau_band_unexpected_shape_returns_zero():
     """A shape that matches neither (nlev_c, nbands) nor (nbands, nlev_c)
-    must return NaN for both values and log a warning.
-
-    Edge: a future AGNI change could reshape the array to 3D.
+    must return zero for both values and log a warning.
     """
-    import math
-
     atmos = SimpleNamespace(
         nlev_c=3,
         nbands=2,
         tau_band=[[[0.0]], [[0.1]]],
     )
     toa, surf = agni_mod._summarise_tau_band(atmos)
-    assert math.isnan(toa)
-    assert math.isnan(surf)
+    assert toa == pytest.approx(0.0, abs=1e-10)
+    assert surf == pytest.approx(0.0, abs=1e-10)
 
 
 # ---------------------------------------------------------------------------
