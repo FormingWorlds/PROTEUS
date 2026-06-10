@@ -53,11 +53,11 @@ class PetitRADTRANS:
 class Observe:
     """Synthetic observations.
 
-    module: str
+    synthesis: str
         Module to use for calculating synthetic spectra.
     """
 
-    module: str = field(
+    synthesis: str = field(
         validator=in_((None, 'platon', 'petitRADTRANS')),
         converter=none_if_none,
     )

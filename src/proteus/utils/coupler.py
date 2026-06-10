@@ -369,11 +369,13 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info('Atmos_chem module %s' % config.atmos_chem.module)
 
     # Observations synthesis module
-    write = 'Observe module    %s' % config.observe.module
-    if config.observe.module == 'platon':
-        from platon import __version__ as platon_version
+    write = 'Observe module    %s' % config.observe.synthesis
+    if config.observe.synthesis == 'platon':
+        from platon import __version__ as obs_version
+    elif config.observe.synthesis == 'petitRADTRANS':
+        from petitRADTRANS import __version__ as obs_version
 
-        write += ' version ' + platon_version
+    write += ' version ' + obs_version
     log.info(write)
 
     # End spacer
