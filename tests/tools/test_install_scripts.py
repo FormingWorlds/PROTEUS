@@ -882,6 +882,27 @@ def test_flag_rewrite_stops_on_changed_configure_defaults(tmp_path):
     assert mk.read_text() == changed  # fixture left untouched
 
 
+def test_flag_rewrite_reports_missing_mk_cmd_as_configure_failure(tmp_path):
+    """A missing make/Mk_cmd is diagnosed as a configure failure.
+
+    When configure exits zero without writing make/Mk_cmd (or the file
+    moves in a future SOCRATES release), the block must exit nonzero with
+    an error pointing at the configure step, and must not emit the
+    changed-defaults message, which would send the reader to the wrong
+    fix (the rewrite pattern instead of the configure output).
+    """
+    # Deliberately no make/ directory: the fixture models a configure run
+    # that produced no output file.
+    res = _run_flag_rewrite(tmp_path)
+
+    assert res.returncode == 1
+    assert 'REWRITE_OK' not in res.stdout
+    assert 'was not generated' in res.stderr
+    # Discrimination: the changed-defaults diagnosis must not fire for a
+    # missing file; the two failure modes need different fixes.
+    assert 'defaults have' not in res.stderr
+
+
 def test_post_build_guard_rejects_cpu_specific_template_flags(tmp_path):
     """A per-host template carrying CPU-specific flags fails the build.
 

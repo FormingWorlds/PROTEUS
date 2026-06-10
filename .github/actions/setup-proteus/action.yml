@@ -258,7 +258,9 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # Disable SSH detection in the script -- CI always uses HTTPS.
+        # Make the script's GitHub SSH probe (and any git-over-SSH it
+        # selects) non-interactive and fast-failing; the runner has no
+        # GitHub SSH key, so the probe fails and the script uses HTTPS.
         export GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -o ConnectTimeout=1 -o BatchMode=yes'
         # --force: never block on the dirty-tree guard; CI checkouts are
         # disposable.
