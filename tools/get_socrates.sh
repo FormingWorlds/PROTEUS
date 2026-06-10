@@ -71,9 +71,9 @@ fi
 # Keep this guard in sync across the get_* scripts that refresh checkouts.
 # Guarded states: modified tracked files, and commits not on any remote.
 # Untracked files (the compiled build tree) do not block the refresh.
-# make/Mk_cmd is excluded: build_code rewrites it on every build (compiler
-# detection and the reproducibility flags), so it is regenerable build config
-# rather than user work and would otherwise block every refresh.
+# make/Mk_cmd is excluded: configure regenerates it on every build (compiler
+# detection, host paths, and optimisation flags), so it is regenerable build
+# config rather than user work and would otherwise block every refresh.
 if [ -d "$socpath/.git" ] && [ "$force" != true ]; then
     dirty=$(git -C "$socpath" status --porcelain --untracked-files=no \
         -- ':(exclude)make/Mk_cmd' 2>/dev/null | head -1)
@@ -109,6 +109,21 @@ git -C "$socpath" checkout --quiet "$soc_ref"
 # Compile SOCRATES
 cd "$socpath"
 ./configure
+
+# Compile against a portable instruction set. The SOCRATES configure
+# script sets the optimisation flags to "-Ofast -march=native", which
+# bakes the build host's specific CPU extensions into the binaries. Such
+# a binary aborts with an illegal-instruction fault if the compiled tree
+# is reused on a host whose CPU lacks those extensions, which happens
+# whenever the build is cached and restored across machines with
+# different processors. Rewrite the generated flags to "-O2
+# -fno-fast-math", which runs on any CPU and avoids fast-math value
+# reordering.
+if grep -q -- '-Ofast -march=native' make/Mk_cmd; then
+    sed 's/-Ofast -march=native/-O2 -fno-fast-math/g' make/Mk_cmd > make/Mk_cmd.portable
+    mv make/Mk_cmd.portable make/Mk_cmd
+fi
+
 ./build_code
 
 # Environment
