@@ -119,21 +119,30 @@ cd "$socpath"
 # different processors. Rewrite the generated flags to "-O2
 # -fno-fast-math", which runs on any CPU and avoids fast-math value
 # reordering.
-if grep -q -- '-Ofast -march=native' make/Mk_cmd; then
-    sed 's/-Ofast -march=native/-O2 -fno-fast-math/g' make/Mk_cmd > make/Mk_cmd.portable
-    mv make/Mk_cmd.portable make/Mk_cmd
+#
+# The rewrite requires the exact flag string configure writes today, so
+# a SOCRATES release that changes the optimisation flags stops the build
+# here, where the fix is a one-line update, rather than compiling a
+# host-specific binary that fails far away from its cause.
+if ! grep -q -- '-Ofast -march=native' make/Mk_cmd; then
+    echo "ERROR: the SOCRATES configure script did not write the expected" >&2
+    echo "       '-Ofast -march=native' optimisation flags; its defaults have" >&2
+    echo "       changed. Update the flag rewrite in tools/get_socrates.sh." >&2
+    exit 1
 fi
+sed 's/-Ofast -march=native/-O2 -fno-fast-math/g' make/Mk_cmd > make/Mk_cmd.portable
+mv make/Mk_cmd.portable make/Mk_cmd
 
-# Stop the build if any non-portable optimisation flag survived the rewrite.
-# The substitution above keys on the exact flag string configure writes
-# today; a future SOCRATES release that changes that string would otherwise
-# skip the rewrite and silently compile a host-specific binary that aborts
-# when the cached build is reused on a different CPU. Fail here instead.
-if grep -qE -- '-march=native|-Ofast' make/Mk_cmd; then
+# CPU-specific flag spellings across the compilers the committed Mk_cmd
+# templates use (gfortran -march/-mcpu, ifort/ifx -xHost/-ax<arch>).
+nonportable_flags='-march=|-mcpu=native|-Ofast|-xHost|-ax[A-Z]'
+
+# Belt-and-braces net behind the exact-string check above.
+if grep -qE -- "$nonportable_flags" make/Mk_cmd; then
     echo "ERROR: non-portable optimisation flags remain in make/Mk_cmd." >&2
-    echo "       The SOCRATES configure flag string has changed; update the" >&2
-    echo "       rewrite in tools/get_socrates.sh to match." >&2
-    grep -nE -- '-march=native|-Ofast' make/Mk_cmd >&2
+    echo "       Update the flag rewrite in tools/get_socrates.sh to match" >&2
+    echo "       the current SOCRATES configure output." >&2
+    grep -nE -- "$nonportable_flags" make/Mk_cmd >&2
     exit 1
 fi
 
@@ -144,13 +153,14 @@ fi
 # cluster hostnames it replaces bin/Mk_cmd with a committed per-host
 # template (bin/Mk_cmd_<host>), which may carry host-specific
 # optimisation flags. Check the file make actually read, so a template
-# override cannot silently produce a non-portable binary.
-if grep -qE -- '-march=native|-Ofast' bin/Mk_cmd; then
+# carrying any of the known CPU-specific flags cannot silently produce
+# a non-portable binary.
+if grep -qE -- "$nonportable_flags" bin/Mk_cmd; then
     echo "ERROR: SOCRATES was compiled with non-portable optimisation flags." >&2
     echo "       A per-host Mk_cmd template likely replaced the portable" >&2
     echo "       flags during build_code; edit or remove the template and" >&2
     echo "       rebuild." >&2
-    grep -nE -- '-march=native|-Ofast' bin/Mk_cmd >&2
+    grep -nE -- "$nonportable_flags" bin/Mk_cmd >&2
     exit 1
 fi
 
