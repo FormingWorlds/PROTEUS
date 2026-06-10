@@ -33,9 +33,9 @@ config_version = "3.0"
 
     [params.out]
         # THE_PLANETS
-        path          = "bayesopt_sn"   # SN
+        # path          = "bayesopt_sn"   # SN
         # path        = "bayesopt_se"   # SE
-        # path        = "bayesopt_tr"  # TR
+        path        = "bayesopt_tr"  # TR
 
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 5            # 0: at end | n: every n iters | none: never
@@ -84,9 +84,9 @@ config_version = "3.0"
             minimum           = 1.0e3        # run at least this long [yr]
 
             # THE_PLANETS
-            maximum = 6e8   # SN
+            # maximum = 6e8   # SN
             # maximum = 1e9   # SE
-            # maximum = 1e8   # TR
+            maximum = 1e8   # TR
 
         [params.stop.solid]                  # solidification criterion
             enabled           = true
@@ -115,9 +115,9 @@ config_version = "3.0"
 [planet]
 
     # THE_PLANETS
-    mass_tot     = 3.0   # SN
+    # mass_tot     = 3.0   # SN
     # mass_tot     = 2.0   # SE
-    # mass_tot     = 1.0   # TR
+    mass_tot     = 1.0   # TR
 
     # Initial temperature profile
     temperature_mode          = "adiabatic"  # default; other modes: isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
@@ -148,16 +148,16 @@ config_version = "3.0"
         H_mode                = "oceans"     # oceans | ppmw | kg
 
         # THE_PLANETS
-        H_budget      = 700.0 # SN
+        # H_budget      = 700.0 # SN
         # H_budget      = 450.0  # SE
-        # H_budget      = 50.0   # TR
+        H_budget      = 50.0   # TR
 
         C_mode                = "C/H"        # C/H mass ratio | ppmw | kg
 
         # THE_PLANETS
-        C_budget      = 0.5       # SN
+        # C_budget      = 0.5       # SN
         # C_budget      = 2.0     # SE
-        # C_budget        = 5.0     # TR
+        C_budget        = 5.0     # TR
 
 
         N_mode                = "N/H"        # N/H mass ratio | ppmw | kg
@@ -166,9 +166,9 @@ config_version = "3.0"
         S_mode                = "S/H"        # S/H mass ratio | ppmw | kg
 
         # THE_PLANETS
-        S_budget      = 1.0      # SN
+        # S_budget      = 1.0      # SN
         # S_budget      = 0.5    # SE
-        # S_budget      = 2.0    # TR
+        S_budget      = 2.0    # TR
 
         use_metallicity       = false        # scale C/N/S from solar metallicity; replaces C/N/S budgets
         metallicity           = 1000         # metallicity relative to solar [by mass]
@@ -215,9 +215,9 @@ config_version = "3.0"
     instellation_method       = "distance"   # "distance" (semi-major axis) | "inst" (flux)
 
     # THE_PLANETS
-    semimajoraxis = 0.06   # SN
+    # semimajoraxis = 0.06   # SN
     # semimajoraxis = 0.03   # SE
-    # semimajoraxis = 0.02   # TR
+    semimajoraxis = 0.02   # TR
 
     instellationflux          = 1.0          # instellation [S_Earth] (if method = "inst")
     eccentricity              = 0.0          # orbital eccentricity
@@ -250,9 +250,9 @@ config_version = "3.0"
     core_frac_mode            = "radius"       # radius | mass; zalmoxis always uses mass (radius is ignored with a warning)
 
     # THE_PLANETS
-    core_frac     = 0.3     # SN
+    # core_frac     = 0.3     # SN
     # core_frac     = 0.7     # SE
-    # core_frac     = 0.5     # TR
+    core_frac     = 0.5     # TR
 
     core_density              = 12244.0       # core density [kg m-3]; "self" = from zalmoxis/dummy
     core_heatcap              = 880.0       # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis/dummy
@@ -452,9 +452,9 @@ config_version = "3.0"
     module                    = "calliope"   # calliope | atmodeller | dummy
 
     # THE_PLANETS
-    fO2_shift_IW    = -3.0    # SN
+    # fO2_shift_IW    = -3.0    # SN
     # fO2_shift_IW    = 2.0     # SE
-    # fO2_shift_IW    = 4.0     # TR
+    fO2_shift_IW    = 4.0     # TR
 
     mass_thresh               = 1e16         # minimum volatile mass threshold [kg]
     h2_binodal                = false        # H2 binodal partitioning; true is rejected at config load (not production ready)
