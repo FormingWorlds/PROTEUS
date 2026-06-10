@@ -52,6 +52,16 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
 # extracted at index: 24, time: 1.000e+09 years
+# [observables]
+# "M_planet" = 1.2862326572e+25
+# "R_obs" = 7.5436421662e+06
+# "T_obs" = 5.0064853688e+02
+# "atm_kg_per_mol" = 2.7450258753e-02
+# "C/O_atm" = 3.4886348812e-01
+# "S/O_atm" = 6.5449797851e-02
+
+# helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
+# extracted at index: 24, time: 1.000e+09 years
 [observables]
 "M_planet" = 1.2862326572e+25
 "R_obs" = 7.5436421662e+06
@@ -59,13 +69,3 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 "atm_kg_per_mol" = 2.7450258753e-02
 "C/O_atm" = 3.4886348812e-01
 "S/O_atm" = 6.5449797851e-02
-
-# helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_sn/runtime_helpfile.csv
-# extracted at index: 34, time: 6.000e+08 years
-# [observables]
-# "M_planet" = 2.1751937195e+25
-# "R_obs" = 1.0205859280e+07
-# "T_obs" = 3.6520334845e+02
-# "atm_kg_per_mol" = 1.1326178337e-02
-# "C/O_atm" = 1.0219849141e+00
-# "S/O_atm" = 1.2773384323e+00

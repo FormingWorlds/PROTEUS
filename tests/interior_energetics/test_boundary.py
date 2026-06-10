@@ -174,7 +174,7 @@ def mock_atmos():
     return SimpleNamespace(
         _atm=SimpleNamespace(
             layer_cp=np.array([1.7e4, 1.7e4, 1.7e4]),  # J/kg/K for H2 layers
-            layer_mass=np.array([1e18, 1e18, 1e18]),  # kg for H2 layers
+            layer_σ=np.array([1e18, 1e18, 1e18]),  # kg for H2 layers
         ),
     )
 
