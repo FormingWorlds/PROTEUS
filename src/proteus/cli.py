@@ -58,6 +58,7 @@ if _should_apply_deterministic(sys.argv, os.environ):
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
+import tomllib  # noqa: E402
 
 import click  # noqa: E402
 
@@ -781,6 +782,36 @@ def _update_input_data(config_path: Path):
         return False
 
 
+def _is_proteus_root(path: Path) -> bool:
+    """Return True when ``path`` holds the PROTEUS source tree.
+
+    Identity is checked by the project name in ``pyproject.toml``, so an
+    arbitrary Python project, a stale editable-install pointer, or a
+    directory that merely contains some ``pyproject.toml`` is never
+    accepted as the install target. Any filesystem error while probing
+    counts as "not a PROTEUS root".
+
+    Parameters
+    ----------
+    path : Path
+        Candidate directory.
+
+    Returns
+    -------
+    bool
+        Whether the directory holds the ``fwl-proteus`` project.
+    """
+    try:
+        pyproject = path / 'pyproject.toml'
+        if not pyproject.is_file():
+            return False
+        with open(pyproject, 'rb') as fh:
+            name = tomllib.load(fh).get('project', {}).get('name', '')
+    except (OSError, tomllib.TOMLDecodeError):
+        return False
+    return name == 'fwl-proteus'
+
+
 def _resolve_proteus_root() -> Path:
     """Return the PROTEUS source tree root, independent of the working directory.
 
@@ -791,39 +822,51 @@ def _resolve_proteus_root() -> Path:
     Deriving the root from the caller's current directory breaks the moment the
     command is run from anywhere other than the checkout.
 
-    For a non-editable install (plain wheel) the package location does not sit
-    in a source tree; in that case the current directory is used when it is
-    itself a PROTEUS checkout, which keeps the command usable for wheel users
-    standing inside a clone.
+    Both candidates are verified to actually hold the ``fwl-proteus`` project
+    before being accepted, and the chosen root is announced. For a non-editable
+    install (plain wheel) the package location does not sit in a source tree;
+    in that case the current directory is used when it is itself a PROTEUS
+    checkout, which keeps the command usable for wheel users standing inside a
+    clone.
 
     Returns
     -------
     Path
-        Absolute path to the directory containing ``pyproject.toml``.
+        Absolute path to the PROTEUS source tree.
 
     Raises
     ------
     SystemExit
-        If no source tree is reachable from either the installed package or
-        the current directory. There is then no checkout to set up or update,
-        so the command exits with a clear message instead of a confusing
-        downstream error.
+        If no PROTEUS source tree is reachable from either the installed
+        package or the current directory. There is then no checkout to set up
+        or update, so the command exits with a clear message instead of a
+        confusing downstream error.
     """
+    root = None
     try:
-        return Path(get_proteus_dir())
-    except EnvironmentError as exc:
-        cwd = Path.cwd()
-        if (cwd / 'pyproject.toml').is_file() and (cwd / 'tools' / 'get_socrates.sh').is_file():
-            click.secho(f'[i] Using the PROTEUS checkout at {cwd}', fg='cyan')
-            return cwd
+        candidate = Path(get_proteus_dir())
+    except EnvironmentError:
+        candidate = None
+    if candidate is not None and _is_proteus_root(candidate):
+        root = candidate
+    else:
+        try:
+            cwd = Path.cwd()
+        except OSError:
+            cwd = None
+        if cwd is not None and _is_proteus_root(cwd):
+            root = cwd
+    if root is None:
         click.secho(
-            f'[x] Cannot locate the PROTEUS source tree ({exc}). '
+            '[x] Cannot locate the PROTEUS source tree. '
             "'install-all' and 'update-all' need a PROTEUS git checkout: "
             'install PROTEUS in editable mode (pip install -e) or run the '
             'command from inside a clone of the repository.',
             fg='red',
         )
         raise SystemExit(1)
+    click.secho(f'[i] PROTEUS root: {root}', fg='cyan')
+    return root
 
 
 @cli.command()
@@ -860,8 +903,6 @@ def install_all(export_env: bool, config_path: Path | None):
             fg='red',
         )
         raise SystemExit(1)
-
-    """Install SOCRATES, AGNI, and configure PROTEUS environment."""
 
     # --- Step 1: FWL_DATA directory ---
     fwl_data = resolve_fwl_data_dir()
@@ -984,16 +1025,19 @@ def update_all(export_env: bool, config_path: Path | None):
             fg='red',
         )
         raise SystemExit(1)
-    """Update SOCRATES, AGNI, and refresh PROTEUS environment."""
 
     # --- Step 1: update all Python packages ---
     subprocess.run([sys.executable, '-m', 'pip', 'install', '-U', '-e', str(root)], check=True)
 
     # --- Step 2: FWL_DATA check ---
-    try:
-        fwl_data = resolve_fwl_data_dir()
-    except EnvironmentError:
-        click.secho('[x] FWL_DATA not set. Run `proteus install-all` first.', fg='red')
+    # resolve_fwl_data_dir always returns a path; an update only makes sense
+    # when the data directory from a previous installation actually exists.
+    fwl_data = resolve_fwl_data_dir()
+    if not fwl_data.is_dir():
+        click.secho(
+            f'[x] FWL_DATA directory not found at {fwl_data}. Run `proteus install-all` first.',
+            fg='red',
+        )
         raise SystemExit(1)
     click.secho(f'[+] Using FWL_DATA: {fwl_data}', fg='green')
 

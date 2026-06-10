@@ -1390,11 +1390,36 @@ def _stub_disk_usage_low():
     return Usage(total=1_000_000_000_000, used=0, free=1_000_000_000)
 
 
+def _pin_proteus_root(monkeypatch, root):
+    """Shape ``root`` as a PROTEUS checkout and pin resolution to it.
+
+    Writes the project marker the resolver verifies, points the package
+    lookup at ``root``, and pre-sets RAD_DIR so the commands' setdefault
+    cannot leak an environment variable past the test.
+    """
+    root.mkdir(exist_ok=True)
+    (root / 'pyproject.toml').write_text('[project]\nname = "fwl-proteus"\n')
+    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(root))
+    monkeypatch.setenv('RAD_DIR', str(root / 'socrates'))
+
+
+def _make_fwl_data(monkeypatch, tmp_path):
+    """Point FWL_DATA at an existing directory, as after an installation."""
+    fwl = tmp_path / 'fwl_data'
+    fwl.mkdir(exist_ok=True)
+    monkeypatch.setenv('FWL_DATA', str(fwl))
+
+
 @pytest.mark.unit
 def test_install_all_aborts_on_low_disk(monkeypatch, tmp_path):
     """``install-all`` exits non-zero when free disk is below the 5 GB threshold."""
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(tmp_path))
+    _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_low())
+    # Defensive stub: a regression past the gate must fail an assertion, not
+    # launch a real installer.
+    monkeypatch.setattr(
+        cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})()
+    )
 
     res = runner.invoke(cli.cli, ['install-all'])
     assert res.exit_code != 0
@@ -1407,11 +1432,16 @@ def test_install_all_aborts_on_low_disk(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_install_all_aborts_when_julia_missing(monkeypatch, tmp_path):
     """``install-all`` aborts with a Julia-not-found message when julia is missing."""
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(tmp_path))
+    _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
     # Pre-create socrates dir so the SOCRATES install path is skipped
     (tmp_path / 'socrates').mkdir()
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    # Defensive stub: a regression into the SOCRATES branch must fail an
+    # assertion, not launch a real installer.
+    monkeypatch.setattr(
+        cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})()
+    )
     # Force the julia check to fail
     monkeypatch.setattr(cli, 'is_julia_installed', lambda: False)
 
@@ -1429,7 +1459,7 @@ def test_install_all_success_with_export_env(monkeypatch, tmp_path):
     Verifies the rc-export step writes lines, the socrates / AGNI dirs are
     detected as pre-existing, and the completion message fires.
     """
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(tmp_path))
+    _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
     monkeypatch.setattr(
         cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
@@ -1467,7 +1497,7 @@ def test_install_all_success_with_export_env(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_install_all_invokes_socrates_when_missing(monkeypatch, tmp_path):
     """SOCRATES install branch fires subprocess.run when the socrates/ dir is absent."""
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(tmp_path))
+    _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
     monkeypatch.setattr(
         cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
@@ -1503,7 +1533,7 @@ def test_install_all_invokes_socrates_when_missing(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_install_all_socrates_subprocess_failure_aborts(monkeypatch, tmp_path):
     """A CalledProcessError from the SOCRATES install script aborts with exit != 0."""
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(tmp_path))
+    _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
     monkeypatch.setattr(
         cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
@@ -1532,7 +1562,7 @@ def test_install_all_socrates_subprocess_failure_aborts(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_install_all_agni_clone_failure_aborts(monkeypatch, tmp_path):
     """A CalledProcessError during AGNI clone aborts the installation."""
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(tmp_path))
+    _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
     monkeypatch.setattr(
         cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
@@ -1568,8 +1598,13 @@ def test_install_all_agni_clone_failure_aborts(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_update_all_aborts_on_low_disk(monkeypatch, tmp_path):
     """``update-all`` exits non-zero when free disk is below the 5 GB threshold."""
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(tmp_path))
+    _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_low())
+    # Defensive stub: a regression past the gate must fail an assertion, not
+    # run a real pip reinstall.
+    monkeypatch.setattr(
+        cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})()
+    )
 
     res = runner.invoke(cli.cli, ['update-all'])
     assert res.exit_code != 0
@@ -1581,12 +1616,12 @@ def test_update_all_aborts_on_low_disk(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_update_all_success_path(monkeypatch, tmp_path):
     """Happy path: socrates + AGNI present, julia found, pip + git pull all stubbed."""
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(tmp_path))
+    _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
     monkeypatch.setattr(
         cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
     )
-    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    _make_fwl_data(monkeypatch, tmp_path)
 
     (tmp_path / 'socrates').mkdir()
     (tmp_path / 'AGNI').mkdir()
@@ -1614,12 +1649,12 @@ def test_update_all_success_path(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_update_all_warns_when_socrates_missing(monkeypatch, tmp_path):
     """SOCRATES-missing path emits a warning, no crash."""
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(tmp_path))
+    _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
     monkeypatch.setattr(
         cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
     )
-    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    _make_fwl_data(monkeypatch, tmp_path)
 
     # NO socrates dir, NO AGNI dir
     monkeypatch.setattr(
@@ -1636,10 +1671,10 @@ def test_update_all_warns_when_socrates_missing(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_update_all_warns_when_julia_missing(monkeypatch, tmp_path):
     """Julia-missing path emits a warning but does NOT abort (unlike install-all)."""
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(tmp_path))
+    _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
     monkeypatch.setattr(cli.shutil, 'which', lambda exe: None)
-    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    _make_fwl_data(monkeypatch, tmp_path)
 
     (tmp_path / 'socrates').mkdir()
     monkeypatch.setattr(
@@ -1658,12 +1693,12 @@ def test_update_all_warns_when_julia_missing(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_update_all_socrates_update_failure_continues(monkeypatch, tmp_path):
     """A SOCRATES update subprocess failure is reported but the command still continues."""
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(tmp_path))
+    _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
     monkeypatch.setattr(
         cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
     )
-    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    _make_fwl_data(monkeypatch, tmp_path)
 
     (tmp_path / 'socrates').mkdir()
     (tmp_path / 'AGNI').mkdir()
@@ -1690,12 +1725,12 @@ def test_update_all_socrates_update_failure_continues(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_update_all_agni_update_failure_continues(monkeypatch, tmp_path):
     """An AGNI update subprocess failure is reported but the command still continues."""
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(tmp_path))
+    _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
     monkeypatch.setattr(
         cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
     )
-    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    _make_fwl_data(monkeypatch, tmp_path)
 
     (tmp_path / 'socrates').mkdir()
     (tmp_path / 'AGNI').mkdir()
@@ -1721,12 +1756,12 @@ def test_update_all_agni_update_failure_continues(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_update_all_export_env_writes_rc(monkeypatch, tmp_path):
     """``update-all --export-env`` writes rc lines for FWL_DATA and RAD_DIR."""
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(tmp_path))
+    _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
     monkeypatch.setattr(
         cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
     )
-    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    _make_fwl_data(monkeypatch, tmp_path)
     monkeypatch.setenv('SHELL', '/bin/bash')
     monkeypatch.setattr(Path, 'home', lambda: tmp_path / 'home')
     (tmp_path / 'home').mkdir()
@@ -1770,11 +1805,11 @@ def test_update_all_anchors_paths_to_source_root_not_cwd(monkeypatch, tmp_path):
     foreign_cwd.mkdir()
 
     monkeypatch.chdir(foreign_cwd)
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(source_root))
+    _pin_proteus_root(monkeypatch, source_root)
     monkeypatch.setattr(
         cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
     )
-    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    _make_fwl_data(monkeypatch, tmp_path)
 
     disk_paths = []
 
@@ -1811,11 +1846,9 @@ def test_update_all_anchors_paths_to_source_root_not_cwd(monkeypatch, tmp_path):
     pip_targets = [
         cmd[-1] for cmd, _ in captured if 'pip' in cmd and 'install' in cmd and '-e' in cmd
     ]
+    # Discrimination: a cwd-derived implementation passes the bare '.'
+    # (resolving against the caller's directory), which this equality rejects.
     assert pip_targets == [str(source_root)]
-    assert str(foreign_cwd) not in pip_targets
-    # Discrimination: a cwd-derived implementation would pass the bare '.',
-    # which resolves against the caller's directory.
-    assert '.' not in pip_targets
 
     # The SOCRATES script is referenced by its absolute path under the root, so
     # bash can find it regardless of where the command was launched.
@@ -1858,12 +1891,19 @@ def test_install_all_anchors_paths_to_source_root_not_cwd(monkeypatch, tmp_path)
     # Deliberately no socrates/ and no AGNI/ so both install branches fire.
 
     monkeypatch.chdir(foreign_cwd)
-    monkeypatch.setattr(cli, 'get_proteus_dir', lambda: str(source_root))
-    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    _pin_proteus_root(monkeypatch, source_root)
     monkeypatch.setattr(
         cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
     )
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+
+    disk_paths = []
+
+    def fake_disk_usage(path):
+        disk_paths.append(Path(path))
+        return _stub_disk_usage_high()
+
+    monkeypatch.setattr(cli.shutil, 'disk_usage', fake_disk_usage)
 
     captured = []
 
@@ -1897,7 +1937,6 @@ def test_install_all_anchors_paths_to_source_root_not_cwd(monkeypatch, tmp_path)
     # checkout lands under the root and never in the foreign cwd.
     clone_dests = [cmd[-1] for cmd, _ in captured if 'clone' in cmd]
     assert clone_dests == [str(source_root / 'AGNI')]
-    assert str(foreign_cwd) not in clone_dests[0]
 
     # The default config for the data download sits under the root.
     assert data_paths == [source_root / 'input' / 'all_options.toml']
@@ -1906,6 +1945,13 @@ def test_install_all_anchors_paths_to_source_root_not_cwd(monkeypatch, tmp_path)
     # directory.
     assert (source_root / 'output').is_dir()
     assert not (foreign_cwd / 'output').exists()
+
+    # The AGNI setup script runs inside the cloned checkout under the root.
+    agni_cwds = [kw.get('cwd') for cmd, kw in captured if 'src/get_agni.sh' in cmd]
+    assert agni_cwds == [source_root / 'AGNI']
+
+    # The disk gate measures the filesystem the install writes to.
+    assert disk_paths == [source_root]
 
     # Failures must propagate: every subprocess call runs with check=True.
     assert captured and all(kw.get('check') is True for _, kw in captured)
@@ -1979,17 +2025,44 @@ def test_install_all_errors_cleanly_when_source_tree_missing(monkeypatch, tmp_pa
 def test_resolve_proteus_root_returns_directory_with_pyproject(monkeypatch, tmp_path):
     """``_resolve_proteus_root`` returns the source root, not the working dir.
 
-    The resolved path is taken from the installed package location and must
-    contain ``pyproject.toml``; changing the process working directory must not
-    change the answer.
+    The resolved path comes from the installed package location and must hold
+    the PROTEUS ``pyproject.toml``; changing the process working directory to
+    an unrelated location must not change the answer.
     """
-    monkeypatch.chdir(tmp_path)
+    source_root = tmp_path / 'proteus_src'
+    elsewhere = tmp_path / 'elsewhere'
+    elsewhere.mkdir()
+    _pin_proteus_root(monkeypatch, source_root)
+    monkeypatch.chdir(elsewhere)
+
     root = cli._resolve_proteus_root()
+    assert root == source_root
     assert (root / 'pyproject.toml').is_file()
     # Discrimination: the result is decoupled from the cwd we just moved to and
     # is an absolute path.
-    assert root != tmp_path
+    assert root != elsewhere
     assert root.is_absolute()
+
+
+@pytest.mark.unit
+def test_resolve_proteus_root_prefers_package_location_over_cwd(monkeypatch, tmp_path):
+    """The package-derived root wins even when the cwd is also a checkout.
+
+    The working directory is a fallback for wheel installs only; with a valid
+    package-derived root available, standing inside a second checkout must not
+    redirect the install target to it.
+    """
+    root_a = tmp_path / 'clone_a'
+    root_b = tmp_path / 'clone_b'
+    _pin_proteus_root(monkeypatch, root_a)
+    root_b.mkdir()
+    (root_b / 'pyproject.toml').write_text('[project]\nname = "fwl-proteus"\n')
+    monkeypatch.chdir(root_b)
+
+    root = cli._resolve_proteus_root()
+    # Discrimination: a cwd-first implementation returns clone_b here.
+    assert root == root_a
+    assert root != root_b
 
 
 @pytest.mark.unit
@@ -2020,9 +2093,9 @@ def test_resolve_proteus_root_falls_back_to_checkout_cwd(monkeypatch, tmp_path):
     """A wheel install run from inside a checkout uses that checkout.
 
     When the package location yields no source tree, the helper accepts the
-    working directory only if it carries the checkout markers (pyproject.toml
-    plus tools/get_socrates.sh); a directory holding only the pyproject.toml
-    of some other project must still exit.
+    working directory only if its pyproject.toml names the fwl-proteus
+    project; a directory holding some other project's pyproject.toml must
+    still exit.
     """
     monkeypatch.chdir(tmp_path)
 
@@ -2037,12 +2110,132 @@ def test_resolve_proteus_root_falls_back_to_checkout_cwd(monkeypatch, tmp_path):
         cli._resolve_proteus_root()
     assert excinfo.value.code == 1
 
-    # With both checkout markers present the working directory is used.
-    (tmp_path / 'tools').mkdir()
-    (tmp_path / 'tools' / 'get_socrates.sh').write_text('#!/bin/bash\n')
+    # With the PROTEUS project name in place the working directory is used.
+    (tmp_path / 'pyproject.toml').write_text('[project]\nname = "fwl-proteus"\n')
     root = cli._resolve_proteus_root()
     assert root == tmp_path
     assert root.is_absolute()
+
+
+@pytest.mark.unit
+def test_is_proteus_root_rejects_invalid_candidates(tmp_path):
+    """``_is_proteus_root`` accepts only a directory holding fwl-proteus.
+
+    Probes the empty directory, a foreign project, malformed TOML, and the
+    genuine project name, so a stale editable pointer or an arbitrary Python
+    project can never be accepted as the install target.
+    """
+    # Edge case: no pyproject.toml at all.
+    assert cli._is_proteus_root(tmp_path) is False
+
+    # A different project's pyproject.toml is rejected.
+    pyproject = tmp_path / 'pyproject.toml'
+    pyproject.write_text('[project]\nname = "other"\n')
+    assert cli._is_proteus_root(tmp_path) is False
+
+    # Malformed TOML counts as not-a-root rather than raising.
+    pyproject.write_text('not [valid toml')
+    assert cli._is_proteus_root(tmp_path) is False
+
+    # The genuine project name is accepted.
+    pyproject.write_text('[project]\nname = "fwl-proteus"\n')
+    assert cli._is_proteus_root(tmp_path) is True
+
+
+@pytest.mark.unit
+def test_update_all_explicit_config_path_not_reanchored(monkeypatch, tmp_path):
+    """An explicitly passed --config-path is forwarded exactly as given.
+
+    Only the implicit default is anchored to the source root; a user-supplied
+    relative path keeps its usual cwd-relative meaning and must reach the
+    data-download step unchanged.
+    """
+    source_root = tmp_path / 'proteus_src'
+    foreign_cwd = tmp_path / 'run_from_here'
+    foreign_cwd.mkdir()
+    _pin_proteus_root(monkeypatch, source_root)
+    (source_root / 'socrates').mkdir()
+    (source_root / 'AGNI').mkdir()
+    monkeypatch.chdir(foreign_cwd)
+    _make_fwl_data(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
+    monkeypatch.setattr(
+        cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})()
+    )
+
+    data_paths = []
+
+    def record_input_data(path):
+        data_paths.append(path)
+        return False
+
+    monkeypatch.setattr(cli, '_update_input_data', record_input_data)
+
+    res = runner.invoke(cli.cli, ['update-all', '--config-path', 'my/conf.toml'])
+    assert res.exit_code == 0, f'update-all output: {res.output}'
+    # Discrimination: a re-anchoring implementation would forward
+    # source_root / 'my/conf.toml' instead of the path as typed.
+    assert data_paths == [Path('my/conf.toml')]
+
+
+@pytest.mark.unit
+def test_install_all_explicit_config_path_not_reanchored(monkeypatch, tmp_path):
+    """``install-all`` forwards an explicit --config-path exactly as given."""
+    source_root = tmp_path / 'proteus_src'
+    foreign_cwd = tmp_path / 'run_from_here'
+    foreign_cwd.mkdir()
+    _pin_proteus_root(monkeypatch, source_root)
+    (source_root / 'socrates').mkdir()
+    (source_root / 'AGNI').mkdir()
+    monkeypatch.chdir(foreign_cwd)
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
+    monkeypatch.setattr(
+        cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})()
+    )
+
+    data_paths = []
+
+    def record_input_data(path):
+        data_paths.append(path)
+        return False
+
+    monkeypatch.setattr(cli, '_update_input_data', record_input_data)
+
+    res = runner.invoke(cli.cli, ['install-all', '--config-path', 'my/conf.toml'])
+    assert res.exit_code == 0, f'install-all output: {res.output}'
+    # Discrimination: a re-anchoring implementation would forward
+    # source_root / 'my/conf.toml' instead of the path as typed.
+    assert data_paths == [Path('my/conf.toml')]
+
+
+@pytest.mark.unit
+def test_update_all_aborts_when_fwl_data_missing(monkeypatch, tmp_path):
+    """``update-all`` exits with guidance when the FWL_DATA directory is absent.
+
+    Updating presumes a prior installation; with FWL_DATA pointing at a
+    directory that does not exist, the command must abort with the
+    install-all hint rather than continue against a non-existent data tree.
+    """
+    _pin_proteus_root(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'no_such_dir'))
+    monkeypatch.setattr(
+        cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})()
+    )
+
+    res = runner.invoke(cli.cli, ['update-all'])
+    assert res.exit_code != 0
+    assert 'FWL_DATA directory not found' in res.output
+    assert 'install-all' in res.output
+    # Discrimination: the success banner must not fire on this path.
+    assert 'PROTEUS update completed' not in res.output
 
 
 # ---------------------------
