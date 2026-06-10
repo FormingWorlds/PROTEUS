@@ -222,42 +222,31 @@ runs:
     # ------------------------------------------------------------------
     # 5. SOCRATES build cache
     # ------------------------------------------------------------------
-    # The hosted runner fleets mix CPU generations, so a compiled tree is
-    # only ever restored onto the same processor model that built it. The
-    # build script enforces portable optimisation flags, but the cached
-    # tree also holds libSOCRATES_C.so, which the AGNI build step compiles
-    # inside socrates/ with its own Makefile flags that the build-script
-    # checks do not inspect; the per-CPU key keeps any CPU-specific binary
-    # from crossing processor models regardless of which path produced it.
+    # CI builds SOCRATES with portable optimisation flags (the build step
+    # sets SOCRATES_PORTABLE_FLAGS=1), so the compiled tree runs on any
+    # CPU model in the hosted runner fleets, which mix processor
+    # generations within the same OS/arch label. One cache per OS/arch is
+    # therefore sufficient. The '-portable' key component separates these
+    # caches from any tree built with the default performance flags.
     # No restore-keys: a prefix-restored tree would be deleted and rebuilt
     # from scratch by get_socrates.sh anyway, so a partial restore is pure
     # download cost.
-    - name: Read CPU model
-      id: cpu
-      shell: bash
-      run: |
-        set -euo pipefail
-        case "$RUNNER_OS" in
-          macOS) model=$(/usr/sbin/sysctl -n machdep.cpu.brand_string) ;;
-          *)     model=$(awk -F: '/model name/{print $2; exit}' /proc/cpuinfo) ;;
-        esac
-        [ -n "$model" ] || model=unknown
-        slug=$(printf '%s' "$model" | tr -cs '[:alnum:]' '-' | sed 's/^-//;s/-$//')
-        echo "model=$slug" >> "$GITHUB_OUTPUT"
-        echo "CPU model: $model (cache key component: $slug)"
-
     - name: Cache SOCRATES build
       id: cache-socrates
       uses: actions/cache@v5
       with:
         path: socrates/
-        key: socrates-${{ runner.os }}-${{ runner.arch }}-${{ steps.cpu.outputs.model }}-${{ steps.pins.outputs.socrates_ref }}-${{ hashFiles('tools/get_socrates.sh') }}
+        key: socrates-${{ runner.os }}-${{ runner.arch }}-portable-${{ steps.pins.outputs.socrates_ref }}-${{ hashFiles('tools/get_socrates.sh') }}
 
     - name: Build SOCRATES (cache miss)
       if: steps.cache-socrates.outputs.cache-hit != 'true'
       shell: bash
       run: |
         set -euo pipefail
+        # Portable flags: cached trees are restored across runner machines
+        # with mixed CPU generations, so the binaries must not carry
+        # build-host CPU extensions.
+        export SOCRATES_PORTABLE_FLAGS=1
         # Make the script's GitHub SSH probe (and any git-over-SSH it
         # selects) non-interactive and fast-failing; the runner has no
         # GitHub SSH key, so the probe fails and the script uses HTTPS.

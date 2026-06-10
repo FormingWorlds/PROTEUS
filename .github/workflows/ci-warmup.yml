@@ -4,9 +4,8 @@ name: CI - Cache warmup
 # nothing else. The purpose is to keep the actions/cache entries warm
 # under GitHub's 7-day inactivity eviction policy, so new branches keep
 # inheriting from a fresh main-branch cache (via restore-keys for most
-# entries; the SOCRATES cache matches on exact key only and is scoped
-# per CPU model, so the warmup refreshes it for whichever model the
-# runner lands on).
+# entries; the SOCRATES cache matches on exact key only, one portable
+# build per OS/arch).
 #
 # Cost: one ~5 min run per week per platform (~10 min total compute).
 # Public repo billing: free.
