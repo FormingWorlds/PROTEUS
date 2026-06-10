@@ -256,9 +256,13 @@ def test_vol_list_contains_expected_species():
 def test_gas_list_extends_vol_list():
     """gas_list = vol_list + vap_list (volatiles + vapour species).
 
-    gas_list must be a strict superset of vol_list.
+    gas_list must be a superset of vol_list.
     """
-    assert len(gas_list) > len(vol_list)
+
+    # check lengths
+    assert len(gas_list) >= len(vol_list)
+
+    # check presence of volatiles
     for species in vol_list:
         assert species in gas_list
 

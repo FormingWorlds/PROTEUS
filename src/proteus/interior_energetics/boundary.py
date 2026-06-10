@@ -48,35 +48,21 @@ class BoundaryRunner:
         self.m_atm = hf_row.get('M_atm', 0.0)  # Atmospheric mass, default to 0 if not available
         self.f_atm = hf_row['F_atm']
 
-        # If atmos_o is None, then set cp_layer to None
-        if atmos_o is not None:
-            cp_layer = getattr(getattr(atmos_o, '_atm', None), 'layer_cp', None)
-            ma_layer = getattr(getattr(atmos_o, '_atm', None), 'layer_σ', None)
-        else:
-            cp_layer = None
-            ma_layer = None
+        # Attempt to obtain cp and ma from atmos object
+        cp_layer = getattr(
+            getattr(atmos_o, '_atm', None),
+            'layer_cp',
+            [config.interior_energetics.boundary.atm_heat_capacity],
+        )
+        ma_layer = getattr(getattr(atmos_o, '_atm', None), 'layer_σ', [1.0])
 
-        # If atmosphere is available, then extract heat capacity
-        if cp_layer is not None:
-            valid = np.argwhere(np.isfinite(cp_layer) & np.isfinite(ma_layer)).flatten()
-            cp_arr = np.asarray(cp_layer, dtype=float).ravel()[valid]
-            ma_arr = np.asarray(ma_layer, dtype=float).ravel()[valid]
-            if len(cp_arr) > 0:
-                # Use profile-mean atmospheric heat capacity
-                # Weighted by the layer mass
-                self.atmosphere_heat_capacity = float(np.average(cp_arr, weights=ma_arr))
-            else:
-                # All-NaN layer_cp: fall back to the configured constant.
-                # InteriorBoundary defines atm_heat_capacity.
-                self.atmosphere_heat_capacity = (
-                    config.interior_energetics.boundary.atm_heat_capacity
-                )
+        # Get extracted values (with NaN filtering)
+        valid = np.isfinite(cp_layer) & np.isfinite(ma_layer)
+        cp_arr = np.array(cp_layer, dtype=float)[valid]
+        ma_arr = np.array(ma_layer, dtype=float)[valid]
 
-        # If properties are unavailable, fall back to default atmospheric cp.
-        else:
-            self.atmosphere_heat_capacity = (
-                config.interior_energetics.boundary.atm_heat_capacity
-            )
+        # Store mass-weighted cp average
+        self.atmosphere_heat_capacity = float(np.average(cp_arr, weights=ma_arr))
 
         # Prefer Zalmoxis-derived CMB radius when available.
         # Fall back to corefrac-based radius for non-Zalmoxis runs.
