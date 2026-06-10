@@ -124,6 +124,19 @@ if grep -q -- '-Ofast -march=native' make/Mk_cmd; then
     mv make/Mk_cmd.portable make/Mk_cmd
 fi
 
+# Stop the build if any non-portable optimisation flag survived the rewrite.
+# The substitution above keys on the exact flag string configure writes
+# today; a future SOCRATES release that changes that string would otherwise
+# skip the rewrite and silently compile a host-specific binary that aborts
+# when the cached build is reused on a different CPU. Fail here instead.
+if grep -qE -- '-march=native|-Ofast' make/Mk_cmd; then
+    echo "ERROR: non-portable optimisation flags remain in make/Mk_cmd." >&2
+    echo "       The SOCRATES configure flag string has changed; update the" >&2
+    echo "       rewrite in tools/get_socrates.sh to match." >&2
+    grep -nE -- '-march=native|-Ofast' make/Mk_cmd >&2
+    exit 1
+fi
+
 ./build_code
 
 # Environment

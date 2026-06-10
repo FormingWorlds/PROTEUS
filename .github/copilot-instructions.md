@@ -167,14 +167,21 @@ pre-commit install -f
 
 **Always run** `pip install -e ".[develop]"` after code changes to update installation.
 
-#### SOCRATES build flags (Aragog reproducibility)
+#### SOCRATES build flags
 
-For bit-reproducibility (paper plots, CHILI, SPIDER-parity) edit
-`SOCRATES/make/Mk_cmd`: replace `FORTCOMP ... -Ofast -march=native` with
-`-O2 -fno-fast-math` and clear `OMPARG = -fopenmp`. The upstream flags
-produce ULP-level non-determinism that AGNI's Newton solver amplifies
-into 1-2 % F_atm variance, which the Aragog hardening stack absorbs but
-still leaves runs non-bit-identical. Rebuild with `cd socrates && ./build_code`.
+`tools/get_socrates.sh` compiles SOCRATES with `-O2 -fno-fast-math` in place of
+the configure default `-Ofast -march=native`. The `-march=native` default bakes
+the build host's CPU extensions into the binary, so a cached build restored onto
+a different processor aborts with an illegal-instruction fault; the portable
+flags run on any CPU. Dropping fast-math also removes the ULP-level
+non-determinism that AGNI's Newton solver otherwise amplifies into 1-2 % F_atm
+variance. The rewrite runs on every install and the build fails loudly if a
+future SOCRATES release changes the flag string, so no manual edit is needed.
+
+For full bit-reproducibility (paper plots, CHILI, SPIDER-parity) also clear
+`OMPARG = -fopenmp` in `socrates/make/Mk_cmd` and rebuild with
+`cd socrates && ./build_code`; the install path keeps OpenMP enabled and does
+not clear it automatically.
 
 ### Test Commands
 
