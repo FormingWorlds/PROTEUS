@@ -694,16 +694,16 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
 
     # ---------------------
     # Store old/current log-pressure vs temperature arrays
-    p_old = list(atmos.p)
+    p_old = list(atmos.p)  # pascals
     t_old = list(atmos.tmp)
     nlev_c = len(p_old)
 
     #    extend to lower pressures
-    p_old = [p_old[0] / 10] + p_old
+    p_old = [p_old[0] / 1.1] + p_old
     t_old = [t_old[0]] + t_old
 
     #    extend to higher pressures
-    p_old = p_old + [p_old[-1] * 10]
+    p_old = p_old + [max(np.amax(p_old) * 1.1, hf_row['P_surf'] * 1e5)]
     t_old = t_old + [t_old[-1]]
 
     #    create interpolator
@@ -990,7 +990,9 @@ def _solve_transparent(atmos, config: Config):
     return atmos
 
 
-def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
+def run_agni(
+    atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict, write_data: bool = True
+):
     """Run AGNI atmosphere model.
 
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -1008,6 +1010,8 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
+        write_data : bool, optional
+            Whether to write AGNI output to NetCDF.
 
     Returns
     ----------
@@ -1056,9 +1060,10 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
 
     # Write output data
-    log.debug('AGNI write to NetCDF file')
-    ncdf_path = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % hf_row['Time'])
-    jl.AGNI.save.write_ncdf(atmos, ncdf_path)
+    if write_data:
+        log.debug('AGNI write to NetCDF file')
+        ncdf_path = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % hf_row['Time'])
+        jl.AGNI.save.write_ncdf(atmos, ncdf_path)
 
     # Make plots
     if multiple(loops_total, config.params.out.plot_mod):

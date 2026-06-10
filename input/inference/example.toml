@@ -57,7 +57,7 @@ config_version = "3.0"
         propconst             = 52.0         # proportionality constant (proportional method)
         atol                  = 0.15         # step size absolute tolerance (adaptive method)
         rtol                  = 0.40         # step size relative tolerance (adaptive method)
-        scale_incr            = 2.0          # growth factor on successful adaptive step
+        scale_incr            = 3.0          # growth factor on successful adaptive step
         scale_decr            = 0.8          # shrink factor on rejected adaptive step
         window                = 2            # lookback window for adaptive comparison [steps]
         max_growth_factor     = 0.0          # cap on dt growth ratio between consecutive steps; 0 = disabled
@@ -115,7 +115,7 @@ config_version = "3.0"
 [planet]
 
     # THE_PLANETS
-    mass_tot     = 3.5   # SN
+    mass_tot     = 3.0   # SN
     # mass_tot     = 2.0   # SE
     # mass_tot     = 1.0   # TR
 
@@ -148,7 +148,7 @@ config_version = "3.0"
         H_mode                = "oceans"     # oceans | ppmw | kg
 
         # THE_PLANETS
-        H_budget      = 650.0 # SN
+        H_budget      = 700.0 # SN
         # H_budget      = 450.0  # SE
         # H_budget      = 50.0   # TR
 
@@ -166,8 +166,8 @@ config_version = "3.0"
         S_mode                = "S/H"        # S/H mass ratio | ppmw | kg
 
         # THE_PLANETS
-        S_budget      = 2.5      # SN
-        # S_budget      = 1.0    # SE
+        S_budget      = 1.0      # SN
+        # S_budget      = 0.5    # SE
         # S_budget      = 2.0    # TR
 
         use_metallicity       = false        # scale C/N/S from solar metallicity; replaces C/N/S budgets
@@ -247,12 +247,12 @@ config_version = "3.0"
 # Interior structure (hydrostatic equilibrium & composition)
 [interior_struct]
     module                    = "dummy"   # zalmoxis | dummy | spider
-    core_frac_mode            = "mass"       # radius | mass; zalmoxis always uses mass (radius is ignored with a warning)
+    core_frac_mode            = "radius"       # radius | mass; zalmoxis always uses mass (radius is ignored with a warning)
 
     # THE_PLANETS
-    core_frac     = 0.2     # SN
-    # core_frac     = 0.4     # SE
-    # core_frac     = 0.6     # TR
+    core_frac     = 0.3     # SN
+    # core_frac     = 0.7     # SE
+    # core_frac     = 0.5     # TR
 
     core_density              = 12244.0       # core density [kg m-3]; "self" = from zalmoxis/dummy
     core_heatcap              = 880.0       # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis/dummy
@@ -452,7 +452,7 @@ config_version = "3.0"
     module                    = "calliope"   # calliope | atmodeller | dummy
 
     # THE_PLANETS
-    fO2_shift_IW    = -1.0    # SN
+    fO2_shift_IW    = -3.0    # SN
     # fO2_shift_IW    = 2.0     # SE
     # fO2_shift_IW    = 4.0     # TR
 
@@ -507,7 +507,7 @@ config_version = "3.0"
     # spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
     # spectral_bands            = "16"         # wavenumber bands in k-table
     spectral_file   = "output/runtime.sf"
-    num_levels                = 35           # vertical atmosphere levels (min 15)
+    num_levels                = 30           # vertical atmosphere levels (min 15)
     p_top                     = 1.0e-3       # top-of-atmosphere pressure [bar]
     p_obs                     = 0.02         # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
@@ -539,7 +539,7 @@ config_version = "3.0"
         latent_heat           = false        # latent heat from condensation/evaporation
         real_gas              = false        # real-gas EOS where available
         chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem)
-        thermo_functions = false
+        thermo_functions      = true
         mlt_criterion         = "s"          # convection criterion: s (Schwarzschild) | l (Ledoux)
 
         # Surface properties
@@ -552,7 +552,7 @@ config_version = "3.0"
         evap_efficiency       = 0.01         # raindrop re-evaporation efficiency (0 to 1)
 
         # Solver tuning (rarely need to change)
-        solution_atol         = 9.0          # Newton solver absolute tolerance [W/m2]
+        solution_atol         = 5.0          # Newton solver absolute tolerance [W/m2]
         solution_rtol         = 0.5          # Newton solver relative tolerance
         psurf_thresh          = 0.1          # skip full RCE when P_surf below this [bar]
         dx_max                = 100.0         # max Newton step per iteration [K]

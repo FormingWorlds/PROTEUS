@@ -176,6 +176,8 @@ class Agni:
         Shape of initial T(p) guess: 'loglinear', 'isothermal', 'dry_adiabat', 'analytic'.
     ls_default: int
         Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking.
+    fdo: int
+        Numerical order of finite-difference for jacobian. 2 or 4.
     spectral_file: str | None
         Path to AGNI spectral file, or 'greygas' to enable the grey-gas RT scheme.
         If None, will use atmos_clim.spectral_group and atmos_clim.spectral_bands.

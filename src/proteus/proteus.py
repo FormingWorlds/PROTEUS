@@ -893,6 +893,7 @@ class Proteus:
                     update_stellar_spectrum,
                     self.hf_all,
                     self.hf_row,
+                    write_data=is_snapshot,
                 )
             finally:
                 # Restore the overridden hf_row values even if the atmosphere

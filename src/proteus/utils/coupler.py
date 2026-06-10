@@ -1242,6 +1242,9 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
             plot_chem_atmosphere(
                 output_dir, config.atmos_chem.module, plot_format=config.params.out.plot_fmt
             )
+            atm_data = read_atmosphere_data(output_dir, plot_times)
+            plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
+            plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
 
         # Visualise planet and star
         if agni:

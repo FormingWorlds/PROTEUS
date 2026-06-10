@@ -176,7 +176,7 @@ def next_step(
         dtswitch = 1.0
         log.info('Time-stepping intent: static')
 
-    elif dt_window + 5 >= len(hf_all['Time']):
+    elif dt_window + 3 >= len(hf_all['Time']):
         dtswitch = config.params.dt.initial
         log.info('Time-stepping intent: initial')
 
