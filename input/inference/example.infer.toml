@@ -33,7 +33,7 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 "planet.mass_tot"           = [0.8,     4.0]
 "interior_struct.core_frac"           = [0.2,     0.8]
 "outgas.fO2_shift_IW"       = [-3.5,    5.0]
-"delivery.elements.H_budget"= [1.0,     750.0]      # oceans 
+"delivery.elements.H_budget"= [1.0,     750.0]      # oceans
 "delivery.elements.C_budget"= [0.1,     6.0]        # C/H
 "delivery.elements.S_budget"= [0.1,     6.0]        # S/H
 
