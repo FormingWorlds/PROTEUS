@@ -32,7 +32,11 @@ variables, and reference data downloads in a single command.
     disk space (5 GB minimum), creates `FWL_DATA` if needed, and sets the
     environment variables. Pass `--export-env` to write the environment
     variables to your shell rc file. To refresh an existing installation later,
-    use `proteus update-all` (see [Diagnose and update](doctor.md)).
+    use `proteus update-all` (see [Diagnose and update](doctor.md)). Both
+    commands operate on the PROTEUS source tree, which they locate from the
+    installed package (editable installs) or, for a plain wheel install, from
+    the current directory when it is a PROTEUS clone; with neither available
+    they exit with an error.
 
 ### 1. System packages
 
