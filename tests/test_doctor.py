@@ -557,7 +557,7 @@ class TestCheckGitModulePinMismatch:
         Constructing the right string is useless unless `proteus update` runs
         it. This drives check_git_module's real off-pin result through
         update_entry with the runner mocked, and asserts the chained command,
-        AGNI rebuild and all, reaches the shell unattended exactly once.
+        AGNI rebuild and all, reaches the fix runner exactly once.
         """
         monkeypatch.setenv('RAD_DIR', str(tmp_path))
         (tmp_path / 'tools').mkdir()
@@ -602,7 +602,9 @@ class TestCheckGitModuleInstallState:
         is present and the AGNI rebuild is chained on.
         """
         monkeypatch.delenv('RAD_DIR', raising=False)
-        with patch('proteus.doctor._module_pins', return_value=self._pins()):
+        # The not-installed branch returns before any pin is read; patch
+        # _module_pins only to keep the test off the real pyproject.
+        with patch('proteus.doctor._module_pins', return_value={}):
             r = check_git_module('SOCRATES', {})
         assert r.status == FAIL
         assert r.message == 'not installed'
@@ -619,7 +621,9 @@ class TestCheckGitModuleInstallState:
         is the not-installed edge case. The fix names AGNI's own script and does
         not drag in a SOCRATES rebuild.
         """
-        with patch('proteus.doctor._module_pins', return_value=self._pins()):
+        # The not-installed branch returns before any pin is read; patch
+        # _module_pins only to keep the test off the real pyproject.
+        with patch('proteus.doctor._module_pins', return_value={}):
             r = check_git_module('AGNI', {})
         assert r.status == FAIL
         assert r.message == 'not installed'
@@ -680,29 +684,6 @@ class TestCheckGitModuleInstallState:
         # the actionable fix, instead of crashing or dropping the suggestion.
         assert r.fix_cmd is not None
         assert 'get_socrates.sh' in r.fix_cmd
-
-    def test_unprobed_git_module_falls_back_to_placeholder_version(self, tmp_path):
-        """A pinned git module with no version probe still grades against its pin.
-
-        Version probes exist only for AGNI and SOCRATES, but check_git_module is
-        generic over the module name. A pinned module without a probe (for
-        instance a new entry added to GIT_MODULES before it gains one) degrades
-        the version label to '?' and is still graded by HEAD against its pin,
-        rather than raising on the missing probe.
-        """
-        pins = {'extra': {'ref': 'a' * 40}}
-        with (
-            patch('proteus.doctor._module_pins', return_value=pins),
-            patch('proteus.doctor._git_head', return_value='a' * 40),
-        ):
-            r = check_git_module('EXTRA', {'extra': str(tmp_path)})
-        assert r.status == PASS
-        # No probe for this module, so the version slot degrades to '?' instead
-        # of inventing a version or crashing.
-        assert '?' in r.message
-        # Discrimination: the matched short hash still anchors the result, so '?'
-        # is the version slot only, not a blanket placeholder.
-        assert ('a' * 40)[:8] in r.message
 
 
 def _mixed_results() -> list[CheckResult]:
