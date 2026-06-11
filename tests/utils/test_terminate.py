@@ -125,7 +125,7 @@ def test_check_clock_hits_when_above_max(patch_statusfile):
     h = _handler(cfg)
     h.hf_row['runtime'] = 1e99
     assert terminate._check_clock(h) is True
-    assert patch_statusfile == []
+    assert patch_statusfile[-1][1] == 11  # stop code 11
 
 
 @pytest.mark.unit
