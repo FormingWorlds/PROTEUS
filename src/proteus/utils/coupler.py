@@ -369,11 +369,13 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info('Atmos_chem module %s' % config.atmos_chem.module)
 
     # Observations synthesis module
-    write = 'Observe module    %s' % config.observe.synthesis
-    if config.observe.synthesis == 'platon':
-        from platon import __version__ as platon_version
+    write = 'Observe module    %s' % config.observe.module
+    if config.observe.module == 'platon':
+        from platon import __version__ as obs_version
+    elif config.observe.module == 'petitRADTRANS':
+        from petitRADTRANS import __version__ as obs_version
 
-        write += ' version ' + platon_version
+    write += ' version ' + obs_version
     log.info(write)
 
     # End spacer
@@ -452,9 +454,11 @@ def print_citation(config: Config):
             pass
 
     # Observations synthesis module
-    match config.observe.synthesis:
+    match config.observe.module:
         case 'platon':
             _cite('Zhang et al. (2024)', 'https://doi.org/10.48550/arXiv.2410.22398')
+        case 'petitRADTRANS':
+            _cite('Mollière et al. (2019)', 'https://doi.org/10.1051/0004-6361/201935470')
         case _:
             pass
 
@@ -1134,9 +1138,10 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     dummy_atm = config.atmos_clim.module == 'dummy'
     dummy_int = config.interior_energetics.module == 'dummy'
     agni = config.atmos_clim.module == 'agni'
+
     spider = config.interior_energetics.module == 'spider'
     aragog = config.interior_energetics.module == 'aragog'
-    observed = bool(config.observe.synthesis is not None)
+    observed = bool(config.observe.module is not None)
 
     # Get all output times
     output_times = []
