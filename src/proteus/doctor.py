@@ -461,6 +461,10 @@ def check_git_module(name: str, dirs: dict) -> CheckResult:
         path = dirs.get(dir_key, '')
 
     if not path or not os.path.isdir(path):
+        # Unlike the off-pin case below, this fix is not chained to an AGNI
+        # rebuild: a not-installed SOCRATES means RAD_DIR is unset, so the AGNI
+        # step would have nowhere to find SOCRATES. The install script prints
+        # the AGNI follow-up once SOCRATES is in place.
         setup_script = f'bash tools/get_{name.lower()}.sh'
         return CheckResult(
             name=name,
@@ -492,12 +496,27 @@ def check_git_module(name: str, dirs: dict) -> CheckResult:
                 message=f'{ver} ({head[:8]})',
             )
         else:
+            # Re-cloning the SOCRATES tree deletes the build products AGNI
+            # writes into it: the generated wrappers under socrates/julia/gen
+            # and the compiled libSOCRATES under socrates/julia/lib. AGNI then
+            # fails to precompile until they are rebuilt, so a SOCRATES refresh
+            # chains an AGNI rebuild. Both halves target the tree RAD_DIR points
+            # at (set here, since the checkout is present and only off-pin), so
+            # a custom install path cannot leave the two out of step. The AGNI
+            # step needs Julia; without it the rebuild fails loudly and the
+            # chain reports the failure rather than masking it.
+            refresh = f'bash tools/get_{name.lower()}.sh'
+            if name == 'SOCRATES':
+                refresh = (
+                    'bash tools/get_socrates.sh "$RAD_DIR" '
+                    '&& RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0'
+                )
             return CheckResult(
                 name=name,
                 category='versions',
                 status=WARN,
                 message=(f'{ver} ({head[:8]}) differs from pin ({pinned_ref[:8]})'),
-                fix_cmd=f'bash tools/get_{name.lower()}.sh',
+                fix_cmd=refresh,
             )
 
     return CheckResult(

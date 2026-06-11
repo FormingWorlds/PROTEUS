@@ -990,3 +990,53 @@ def test_post_build_guard_rejects_cpu_specific_template_flags(tmp_path):
         assert res.returncode == 1, f'{flags} not rejected'
         assert 'non-portable' in res.stderr
         assert 'GUARD_OK' not in res.stdout
+
+
+# ---------------------------------------------------------------------------
+# Post-rebuild AGNI-wrapper note (tools/get_socrates.sh)
+# ---------------------------------------------------------------------------
+
+
+def _run_agni_rebuild_note(workdir, has_agni: bool) -> subprocess.CompletedProcess:
+    """Run the shipped AGNI-rebuild note block against a fixture root.
+
+    Extracts the conditional note tools/get_socrates.sh prints after a rebuild
+    and runs it with ``root`` pointed at a fixture tree that does or does not
+    contain an AGNI checkout.
+    """
+    if has_agni:
+        (workdir / 'AGNI').mkdir()
+    block = _extract_socrates_block('if [ -d "$root/AGNI" ]', 'exit 0')
+    snippet = f'root="{workdir}"\n{block}'
+    return subprocess.run(['bash', '-c', snippet], capture_output=True, text=True)
+
+
+def test_socrates_rebuild_warns_to_regenerate_agni_wrappers(tmp_path):
+    """After a rebuild, the script tells the user to regenerate AGNI's wrappers.
+
+    Rebuilding SOCRATES re-clones its tree and deletes the Julia wrappers AGNI
+    generates under socrates/julia, so the script must point the user at the
+    AGNI rebuild that restores them. The note is conditional on an AGNI checkout
+    being present.
+    """
+    # AGNI present: the note fires and names the exact rebuild command, anchored
+    # at the resolved root so it is copy-pasteable from any directory.
+    with_agni = tmp_path / 'with_agni'
+    with_agni.mkdir()
+    res = _run_agni_rebuild_note(with_agni, has_agni=True)
+    assert res.returncode == 0, res.stderr
+    assert 'get_agni.sh 0' in res.stdout
+    assert str(with_agni / 'tools' / 'get_agni.sh') in res.stdout
+
+    # Guard against the referenced rebuild script being renamed out from under
+    # the note: the command it points at must name a script that exists.
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    assert (tools_dir / 'get_agni.sh').is_file()
+
+    # Discrimination: with no AGNI checkout there is nothing to rebuild, so the
+    # note stays silent rather than point the user at a missing tree.
+    without_agni = tmp_path / 'without_agni'
+    without_agni.mkdir()
+    res_absent = _run_agni_rebuild_note(without_agni, has_agni=False)
+    assert res_absent.returncode == 0, res_absent.stderr
+    assert 'get_agni.sh' not in res_absent.stdout
