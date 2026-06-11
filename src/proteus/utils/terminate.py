@@ -246,6 +246,10 @@ def check_termination(handler: Proteus) -> bool:
         handler.finished_prev = True
         return True
 
+    # Maximum time reached
+    if handler.config.params.stop.time.enabled:
+        finished = finished or _check_maxtime(handler)
+
     # Stop simulation when planet is completely solidified
     if handler.config.params.stop.solid.enabled:
         finished = finished or _check_solid(handler)
@@ -265,10 +269,6 @@ def check_termination(handler: Proteus) -> bool:
 
         if handler.config.params.stop.disint.spin_enabled:
             finished = finished or _check_spinrate(handler)
-
-    # Maximum time reached
-    if handler.config.params.stop.time.enabled:
-        finished = finished or _check_maxtime(handler)
 
     # Maximum loops reached
     if handler.config.params.stop.iters.enabled:
