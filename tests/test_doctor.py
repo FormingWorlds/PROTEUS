@@ -585,6 +585,103 @@ class TestCheckGitModulePinMismatch:
         assert '&&' in ran
 
 
+class TestCheckGitModuleInstallState:
+    """check_git_module's not-installed (FAIL) and on-pin (PASS) results."""
+
+    @staticmethod
+    def _pins() -> dict:
+        """Pinned refs used to drive the on-pin branch via a matching head."""
+        return {'socrates': {'ref': 'a' * 40}, 'agni': {'ref': 'b' * 40}}
+
+    def test_socrates_not_installed_fix_is_unchained(self, monkeypatch):
+        """A missing SOCRATES suggests a bare rebuild, with no AGNI step chained.
+
+        With RAD_DIR unset the SOCRATES tree is absent, so RAD_DIR cannot point a
+        chained AGNI rebuild at anything; the fix is deliberately the lone
+        SOCRATES install. This is the inverse of the off-pin case, where the tree
+        is present and the AGNI rebuild is chained on.
+        """
+        monkeypatch.delenv('RAD_DIR', raising=False)
+        with patch('proteus.doctor._module_pins', return_value=self._pins()):
+            r = check_git_module('SOCRATES', {})
+        assert r.status == FAIL
+        assert r.message == 'not installed'
+        assert r.fix_cmd == 'bash tools/get_socrates.sh'
+        # Discrimination: the off-pin SOCRATES fix chains AGNI with `&&`; the
+        # not-installed fix must not, because RAD_DIR has nowhere to point.
+        assert '&&' not in r.fix_cmd
+        assert 'get_agni.sh' not in r.fix_cmd
+
+    def test_agni_not_installed_reports_its_own_setup(self):
+        """A missing AGNI checkout suggests the AGNI install and nothing else.
+
+        AGNI's path comes from the dirs mapping, not RAD_DIR, so an empty mapping
+        is the not-installed edge case. The fix names AGNI's own script and does
+        not drag in a SOCRATES rebuild.
+        """
+        with patch('proteus.doctor._module_pins', return_value=self._pins()):
+            r = check_git_module('AGNI', {})
+        assert r.status == FAIL
+        assert r.message == 'not installed'
+        assert r.fix_cmd == 'bash tools/get_agni.sh'
+        # Discrimination: never chain a SOCRATES rebuild onto an AGNI fix.
+        assert 'get_socrates.sh' not in r.fix_cmd
+        assert '&&' not in r.fix_cmd
+
+    def test_socrates_on_pin_passes_with_no_fix(self, tmp_path, monkeypatch):
+        """A SOCRATES checkout exactly on its pin passes and suggests no fix.
+
+        When HEAD matches the pinned ref the tree is already correct, so the
+        result is PASS carrying the resolved version and short hash, and crucially
+        no rebuild command: surfacing a fix here would send the user to re-clone a
+        tree that needs nothing.
+        """
+        monkeypatch.setenv('RAD_DIR', str(tmp_path))
+        on_pin = 'a' * 40  # matches the SOCRATES ref returned by _pins()
+        with (
+            patch('proteus.doctor._module_pins', return_value=self._pins()),
+            patch('proteus.doctor._git_head', return_value=on_pin),
+            patch('proteus.doctor._get_socrates_version', return_value='soc-test'),
+        ):
+            r = check_git_module('SOCRATES', {})
+        assert r.status == PASS
+        assert r.fix_cmd is None
+        # The resolved version and matched short hash are reported so the user
+        # can confirm the pin, rather than a bare status.
+        assert 'soc-test' in r.message
+        assert on_pin[:8] in r.message
+        # Discrimination: an off-pin head would read 'differs from pin' and warn;
+        # the on-pin path must not.
+        assert 'differs' not in r.message
+
+    def test_socrates_version_unreadable_still_classifies(self, tmp_path, monkeypatch):
+        """An unreadable SOCRATES version degrades to '?' instead of crashing.
+
+        Reading the version can fail on a half-built tree, so the lookup is
+        guarded: the version label falls back to '?' and the check still compares
+        HEAD to the pin. The user gets an actionable off-pin warning carrying the
+        '?' placeholder, not an exception that aborts the whole diagnose run.
+        """
+        monkeypatch.setenv('RAD_DIR', str(tmp_path))
+        with (
+            patch('proteus.doctor._module_pins', return_value=self._pins()),
+            patch('proteus.doctor._git_head', return_value='c' * 40),
+            patch(
+                'proteus.doctor._get_socrates_version',
+                side_effect=OSError('version file missing'),
+            ),
+        ):
+            r = check_git_module('SOCRATES', {})
+        # Head 'c'*40 differs from the pin 'a'*40, so the guarded version still
+        # lands on the off-pin warning rather than swallowing the mismatch.
+        assert r.status == WARN
+        assert '?' in r.message
+        # Discrimination: the failure degraded the version slot to '?' but kept
+        # the actionable fix, instead of crashing or dropping the suggestion.
+        assert r.fix_cmd is not None
+        assert 'get_socrates.sh' in r.fix_cmd
+
+
 def _mixed_results() -> list[CheckResult]:
     """A pass + a fixable fail + a fixable warn, mirroring a real diagnose run."""
     return [
