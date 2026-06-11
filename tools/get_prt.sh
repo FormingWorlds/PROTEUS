@@ -53,13 +53,8 @@ opacities/continuum/collision_induced_absorptions/H2--He/H2--He-NatAbund = H2--H
 ' ~/.petitradtrans/petitradtrans_config_file.ini
 
 python - <<'PY'
-import os
-
 from petitRADTRANS.radtrans import Radtrans
-
-prt_gases = ['H2', 'H2O', 'CH4', 'CO', 'CO2', 'O', 'NH3', 'O2', 'O3', 'H2S', 'HCN', 'OH', 'PH3', 'SiO', 'SO2', 'TiO', 'VO', 'Na', 'K', 'Ti', 'Fe', 'C2H2', 'FeH']
-prt_rayleigh_species = ['H2', 'He', 'H']
-prt_cia_species = ['H2--H2', 'H2--He', 'CO2--CO2', 'N2--H2', 'N2--He', 'N2--N2', 'N2--O2', 'O2--O2']
+from proteus.utils.constants import prt_cia_species, prt_gases, prt_rayleigh_species
 
 radtrans = Radtrans(line_species=prt_gases, rayleigh_species=prt_rayleigh_species, gas_continuum_contributors=prt_cia_species)
 PY

@@ -9,6 +9,12 @@ import numpy as np
 from petitRADTRANS import physical_constants as cst
 from scipy.interpolate import PchipInterpolator
 
+from proteus.utils.constants import (
+    prt_cia_species,
+    prt_gases,
+    prt_ignored_gases,
+    prt_rayleigh_species,
+)
 from proteus.utils.helper import eval_gas_mmw
 
 if TYPE_CHECKING:
@@ -17,53 +23,10 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 petitRADTRANS_TLIMS = (100.0 + 0.5, 4000.0 - 0.5)
-petitRADTRANS_GASES = (
-    'H2',
-    'H',
-    'He',
-    'H2O',
-    'CH4',
-    'CO',
-    'CO2',
-    'O',
-    'C',
-    'N',
-    'NH3',
-    'N2',
-    'O2',
-    'O3',
-    'H2S',
-    'HCN',
-    'NO',
-    'NO2',
-    'OH',
-    'PH3',
-    'SiO',
-    'SO2',
-    'TiO',
-    'VO',
-    'Na',
-    'K',
-    'Ca',
-    'Ti',
-    'Fe',
-    'Ni',
-    'C2H2',
-    'FeH',
-)
-petitRADTRANS_RAYLEIGH_SPECIES = ('H2', 'He', 'H')
-petitRADTRANS_CIA_SPECIES = (
-    'H-',
-    'H2--H2',
-    'H2--He',
-    'CO2--CO2',
-    'N2--H2',
-    'N2--He',
-    'N2--N2',
-    'N2--O2',
-    'O2--O2',
-)
-petitRADTRANS_IGNORED_GASES = {'e-', 'MMW', 'nabla_ad'}
+petitRADTRANS_GASES = tuple(prt_gases)
+petitRADTRANS_RAYLEIGH_SPECIES = tuple(prt_rayleigh_species)
+petitRADTRANS_CIA_SPECIES = tuple(prt_cia_species)
+petitRADTRANS_IGNORED_GASES = set(prt_ignored_gases)
 
 
 def _get_input_data_path(input_data_path: str | None) -> str:
@@ -140,7 +103,9 @@ def _vmrs_to_mass_fractions(
     total_mass = np.sum(mass_contrib, axis=0)
 
     if np.any(total_mass <= 0.0):
-        raise ValueError('Atmospheric composition has zero total mass fraction at one or more layers')
+        raise ValueError(
+            'Atmospheric composition has zero total mass fraction at one or more layers'
+        )
 
     mass_fractions = {
         gas: mass_contrib[i] / total_mass
@@ -204,13 +169,23 @@ def _get_atm_profile(outdir: str, hf_row: dict) -> dict:
     from proteus.atmos_clim.common import read_atmosphere_data
 
     atm_arr = read_atmosphere_data(
-        outdir, [hf_row['Time']], extra_keys=['tmpl', 'pl', 'rl', 'x_gas']
+        outdir, [hf_row['Time']], extra_keys=['tmpl', 'pl', 'rl', 'gl', 'x_gas']
     )
 
     if (len(atm_arr) == 0) or (atm_arr[-1] is None):
         log.warning(f"Could not read atmosphere data from '{outdir}'")
         return None
     return atm_arr[-1]
+
+
+def _get_reference_prt_values(atm: dict) -> tuple[float, float, float]:
+    """Return the reference pressure [bar], radius [cm], and gravity [cgs] from the profile."""
+
+    mid_idx = len(atm['pl']) // 2
+    reference_pressure = float(np.asarray(atm['pl'], dtype=float)[mid_idx] / 1e5)
+    reference_radius = float(np.asarray(atm['rl'], dtype=float)[mid_idx] * 100.0)
+    reference_gravity = float(np.asarray(atm['gl'], dtype=float)[mid_idx] * 100.0)
+    return reference_pressure, reference_radius, reference_gravity
 
 
 def _get_atm_offchem(outdir: str, hf_row: dict, chem_module: str) -> dict:
@@ -284,6 +259,7 @@ def _get_mix(hf_row: dict, atm: dict, source: str, clip_vmr: float) -> tuple:
 
     return gas_incl, vmr_incl
 
+
 def _construct_abundances(
     atm: dict, gas_incl: list, vmr_incl: list, T_grid: list, P_grid: list
 ) -> dict:
@@ -341,6 +317,7 @@ def _copy_mass_fractions(
             copied[gas] = np.zeros_like(copied[gas])
     return copied
 
+
 def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
     """
     Computes the transit depth spectrum using petitRADTRANS.
@@ -362,10 +339,7 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
 
     # All planet quantities in SI
     Rs = hf_row['R_star']  # Radius of star [m]
-    Mp = hf_row['M_planet']  # Mass of planet [kg]
-    Rp = hf_row['R_int']  # Radius of planet [m]
     Rs_cm = Rs * 100.0
-    Rp_cm = Rp * 100.0
 
     # Get profile from the required source
     if source == 'offchem':
@@ -373,15 +347,21 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
     elif source in ('outgas', 'profile'):
         atm = _get_atm_profile(outdir, hf_row)
 
-    include_rayleigh     = config.observe.petitRADTRANS.include_rayleigh
-    include_cia          = config.observe.petitRADTRANS.include_cia
-    include_vmr_clipping = config.observe.petitRADTRANS.clip_vmr
+    atm_reference = _get_atm_profile(outdir, hf_row)
+
+    include_rayleigh = config.observe.petitRADTRANS.include_rayleigh
+    include_cia = config.observe.petitRADTRANS.include_cia
+    include_vmr_clipping = config.observe.clip_vmr
     input_data_path = _get_input_data_path(config.observe.petitRADTRANS.input_data_path)
 
     # Parse
-    if atm is None:
+    if (atm is None) or (atm_reference is None):
         log.warning(f"Could not read atmosphere data for source '{source}'")
         return None
+
+    reference_pressure, reference_radius, reference_gravity = _get_reference_prt_values(
+        atm_reference
+    )
 
     # Get composition from requested source
     prs, tmp, _ = _get_ptr(atm)
@@ -404,18 +384,6 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
     prs, tmp, vmrs = _interpolate_prt_profiles(prs, tmp, vmrs, n_points=100)
     mass_fractions, mean_molar_masses = _vmrs_to_mass_fractions(gases, vmrs)
 
-    # write pressure, temperature and mr profiles to file for diagnostics
-    profile_X = np.column_stack([prs, tmp] + vmrs)
-    profile_header = 'Pressure/Pa\tTemperature/K\t' + '\t'.join([f'{gas}_VMR' for gas in gases])
-    np.savetxt(
-        get_transit_fpath(outdir, source, 'profiles'),
-        profile_X,
-        delimiter='\t',
-        fmt='%.8e',
-        header=profile_header,
-        comments='',
-    )
-
     # create a Radtrans object
     log.debug('Compute transit depth spectra')
     radtrans = Radtrans(
@@ -432,9 +400,9 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
         temperatures=np.array(tmp, dtype=float),
         mass_fractions=mass_fractions,
         mean_molar_masses=mean_molar_masses,
-        reference_gravity=0.1 * cst.G * Mp / (Rp * Rp),
-        reference_pressure=float(prs[-1]) / 1e5,
-        planet_radius=Rp_cm,
+        reference_gravity=reference_gravity,
+        reference_pressure=reference_pressure,
+        planet_radius=reference_radius,
         frequencies_to_wavelengths=True,
     )
 
@@ -444,21 +412,6 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
     header = ''
     header += str('Wavelength/um').ljust(14, ' ') + '\t'
     header += str('None/ppm').ljust(14, ' ') + '\t'
-
-    if config.observe.petitRADTRANS.remove_one_gas:
-    # loop over removing different gases
-        for gas in gases:
-            _, transit_radii, _ = radtrans.calculate_transit_radii(
-                temperatures=np.array(tmp, dtype=float),
-                mass_fractions=_copy_mass_fractions(mass_fractions, [gas]),
-                mean_molar_masses=mean_molar_masses,
-                reference_gravity=0.1 * cst.G * Mp / (Rp * Rp),
-                reference_pressure=float(prs[-1]) / 1e5,
-                planet_radius=Rp_cm,
-                frequencies_to_wavelengths=True,
-            )
-            X.append((np.array(transit_radii, dtype=float) / Rs_cm) ** 2 * 1e6)
-            header += str(f'{gas}/ppm').ljust(14, ' ') + '\t'  # compose header
 
     # write file
     X = np.array(X).T
@@ -496,17 +449,14 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
 
     # All planet quantities in SI
     Rs = hf_row['R_star']  # Radius of star [m]
-    Mp = hf_row['M_planet']  # Mass of planet [kg]
-    Rp = hf_row['R_int']  # Radius of planet [m]
     Ts = hf_row['T_star']  # Stellar temperature
     sep = hf_row['separation']
     Rs_cm = Rs * 100.0
-    Rp_cm = Rp * 100.0
     sep_cm = sep * 100.0
 
-    include_rayleigh     = config.observe.petitRADTRANS.include_rayleigh
-    include_cia          = config.observe.petitRADTRANS.include_cia
-    include_vmr_clipping = config.observe.petitRADTRANS.clip_vmr
+    include_rayleigh = config.observe.petitRADTRANS.include_rayleigh
+    include_cia = config.observe.petitRADTRANS.include_cia
+    include_vmr_clipping = config.observe.clip_vmr
     input_data_path = _get_input_data_path(config.observe.petitRADTRANS.input_data_path)
 
     # Get profile from the required source
@@ -515,10 +465,16 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
     elif source in ('outgas', 'profile'):
         atm = _get_atm_profile(outdir, hf_row)
 
+    atm_reference = _get_atm_profile(outdir, hf_row)
+
     # Parse
-    if atm is None:
+    if (atm is None) or (atm_reference is None):
         log.warning(f"Could not read atmosphere data for source '{source}'")
         return None
+
+    reference_pressure, reference_radius, reference_gravity = _get_reference_prt_values(
+        atm_reference
+    )
 
     # Get composition from requested source
     prs, tmp, _ = _get_ptr(atm)
@@ -557,8 +513,8 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
         temperatures=np.array(tmp, dtype=float),
         mass_fractions=mass_fractions,
         mean_molar_masses=mean_molar_masses,
-        reference_gravity=0.1 * cst.G * Mp / (Rp * Rp),
-        planet_radius=Rp_cm,
+        reference_gravity=reference_gravity,
+        planet_radius=reference_radius,
         star_effective_temperature=Ts,
         star_radius=Rs_cm,
         orbit_semi_major_axis=sep_cm,
@@ -571,30 +527,17 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
         star_radius=Rs_cm,
     )
     stellar_surface_flux = np.array(stellar_flux, dtype=float) * np.pi * (sep_cm / Rs_cm) ** 2
-    de = np.array(planet_flux, dtype=float) / stellar_surface_flux * (Rp_cm / Rs_cm) ** 2 * 1e6
+    de = (
+        np.array(planet_flux, dtype=float)
+        / stellar_surface_flux
+        * (reference_radius / Rs_cm) ** 2
+        * 1e6
+    )
     wl = (cst.c / np.array(wl_hz, dtype=float)) * 1e4
     X = [wl, de]
     header = ''
     header += str('Wavelength/um').ljust(14, ' ') + '\t'
     header += str('None/ppm').ljust(14, ' ') + '\t'
-
-    if config.observe.petitRADTRANS.remove_one_gas:
-        # loop over removing different gases
-        for gas in gases:
-            _, planet_flux, _ = radtrans.calculate_flux(
-                temperatures=np.array(tmp, dtype=float),
-                mass_fractions=_copy_mass_fractions(mass_fractions, [gas]),
-                mean_molar_masses=mean_molar_masses,
-                reference_gravity=0.1 * cst.G * Mp / (Rp * Rp),
-                planet_radius=Rp_cm,
-                star_effective_temperature=Ts,
-                star_radius=Rs_cm,
-                orbit_semi_major_axis=sep_cm,
-                frequencies_to_wavelengths=False,
-            )
-            de = np.array(planet_flux, dtype=float) / stellar_surface_flux * (Rp_cm / Rs_cm) ** 2 * 1e6
-            X.append(de)
-            header += str(f'{gas}/ppm').ljust(14, ' ') + '\t'  # compose header
 
     # write file
     X = np.array(X).T

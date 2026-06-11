@@ -43,11 +43,15 @@ const_Nav = 6.02214076e23  # Avogadro's constant [mol-1]
 B_ein = 2.5
 
 # Supported gases
-vol_list  = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
-vap_list  = ['SiO', 'SiO2', 'MgO', 'FeO2']
-prt_gases = ['H2', 'H2O', 'CH4', 'CO', 'CO2', 'O', 'NH3', 'O2', 'O3', 'H2S', 'HCN', 'OH', 'PH3', 'SiO', 'SO2', 'TiO', 'VO', 'Na', 'K', 'Ti', 'Fe', 'C2H2', 'FeH']
+vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
+vap_list = ['SiO', 'SiO2', 'MgO', 'FeO2']
+prt_gases = ["Al", "Al_+", "AlH", "AlO", "C2H2", "C2H4", "Ca_+", "CaH", "CH4", "CO",\
+             "CO2", "CrH", "Fe", "Fe_+", "FeH", "H2", "H2O", "H2S", "HCN", "K",\
+             "Li", "Mg", "Mg_+", "MgH", "MgO", "Na", "NaH", "NH3", "O", "O2", "O3",\
+             "OH", "PH3", "SH", "Si", "Si_+", "SiO", "SiO2", "SO2", "Ti", "Ti_+", "TiO", "V", "V_+", "VO"]
 prt_rayleigh_species = ['H2', 'He', 'H']
-prt_rayleigh_species = ['H2--H2', 'H2--He', 'CO2--CO2', 'N2--H2', 'N2--He', 'N2--N2', 'N2--O2', 'O2--O2']
+prt_cia_species = ["CO2--CO2", "H2--H2", "H2--He", "H2O--H2O", "H2O--N2", "N2--H2", "N2--He", "N2--N2", "N2--O2", "O2--O2"]
+prt_ignored_gases = {'e-', 'MMW', 'nabla_ad'}
 gas_list = vol_list + vap_list
 
 # Supported elements
