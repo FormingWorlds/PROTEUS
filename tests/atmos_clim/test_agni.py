@@ -965,7 +965,7 @@ def test_run_agni_transparent_returns_R_obs_equal_R_int(monkeypatch):
 
     fake_jl = SimpleNamespace(
         AGNI=SimpleNamespace(
-            atmosphere=SimpleNamespace(calc_observed_rho_b=lambda a: None),
+            atmosphere=SimpleNamespace(estimate_photosphere_b=lambda a: None),
             save=SimpleNamespace(write_ncdf=lambda a, p: None),
             plotting=SimpleNamespace(plot_contfunc1=lambda a, p: None),
             solver=SimpleNamespace(solve_transparent_b=lambda *a, **kw: None),
@@ -1007,7 +1007,7 @@ def test_run_agni_prevent_warming_clamps_negative_flux(monkeypatch):
     dirs = {'output': '/tmp/fake', 'output/plots': '/tmp/fake_plots'}
     fake_jl = SimpleNamespace(
         AGNI=SimpleNamespace(
-            atmosphere=SimpleNamespace(calc_observed_rho_b=lambda a: None),
+            atmosphere=SimpleNamespace(estimate_photosphere_b=lambda a: None),
             save=SimpleNamespace(write_ncdf=lambda a, p: None),
             plotting=SimpleNamespace(plot_contfunc1=lambda a, p: None),
             chemistry=SimpleNamespace(calc_composition_b=lambda *a: False),
@@ -1053,7 +1053,7 @@ def test_run_agni_ocean_output_keys_populated(monkeypatch):
     dirs = {'output': '/tmp/fake', 'output/plots': '/tmp/fake_plots'}
     fake_jl = SimpleNamespace(
         AGNI=SimpleNamespace(
-            atmosphere=SimpleNamespace(calc_observed_rho_b=lambda a: None),
+            atmosphere=SimpleNamespace(estimate_photosphere_b=lambda a: None),
             save=SimpleNamespace(write_ncdf=lambda a, p: None),
             plotting=SimpleNamespace(plot_contfunc1=lambda a, p: None),
             chemistry=SimpleNamespace(calc_composition_b=lambda *a: False),

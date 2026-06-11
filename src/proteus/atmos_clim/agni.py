@@ -1053,13 +1053,13 @@ def run_agni(
     if bool(atmos.transparent):
         # no opacity
         log.info('Using transparent solver')
-        atmos.transspec_p = float(atmos.p_boa)
+        atmos.transspec_ref_p = float(atmos.p_boa)
         atmos = _solve_transparent(atmos, config)
 
     # Opaque case
     else:
         # Set observed pressure
-        atmos.transspec_p = float(config.atmos_clim.p_obs * 1e5)  # converted to Pa
+        atmos.transspec_ref_p = float(config.atmos_clim.p_obs * 1e5)  # converted to Pa
 
         # full solver
         if config.atmos_clim.agni.solve_energy:
@@ -1071,8 +1071,11 @@ def run_agni(
             log.info('Using prescribed temperature profile')
             atmos = _solve_once(atmos, config)
 
-    # Calculate planet transit radius (to be stored in NetCDF)
-    jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
+    # Set default observed pressure
+    atmos.transspec_p = atmos.transspec_ref_p
+
+    # Calculate planet transit radius and other photospheric properties
+    jl.AGNI.atmosphere.estimate_photosphere_b(atmos, setby=str('prs'))
 
     # Write output data
     if write_data:

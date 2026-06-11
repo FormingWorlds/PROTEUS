@@ -210,7 +210,7 @@ class Agni:
     oceans: bool = field(default=True)
     latent_heat: bool = field(default=False)
     convection: bool = field(default=True)
-    conduction: bool = field(default=True)
+    conduction: bool = field(default=False)
     sens_heat: bool = field(default=True)
     real_gas: bool = field(default=False)
     thermo_functions: bool = field(default=True)

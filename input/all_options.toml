@@ -495,7 +495,7 @@ config_version = "3.0"
         # Physics switches
         solve_energy          = true         # iterative energy-conserving T(p) profile
         convection            = true         # convective adjustment (MLT)
-        conduction            = true         # conductive heat transport (Fourier)
+        conduction            = false        # conductive heat transport (Fourier)
         sens_heat             = true         # sensible heat flux at surface
         rainout               = true         # volatile condensation and evaporation
         oceans                = true         # surface liquid water oceans

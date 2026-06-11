@@ -34,14 +34,14 @@ config_version = "3.0"
     [params.out]
         # THE_PLANETS
         # path          = "bayesopt_sn"   # SN
-        path        = "bayesopt_se"   # SE
-        # path        = "bayesopt_tr"  # TR
+        #  path        = "bayesopt_se"   # SE
+        path        = "bayesopt_tr"  # TR
 
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 5            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
         write_mod             = 1            # 0: at end | n: every n iters
-        dt_write_rel          = 1e-3         # min write interval as fraction of elapsed simulation time (0: off)
+        dt_write_rel          = 0.0         # min write interval as fraction of elapsed simulation time (0: off)
         archive_mod           = "none"       # 0: at end | n: every n iters | none: never
         remove_sf             = false        # remove spectral file when done
 
@@ -84,9 +84,9 @@ config_version = "3.0"
             minimum           = 1.0e3        # run at least this long [yr]
 
             # THE_PLANETS
-            # maximum = 6e8   # SN
-            maximum = 1e9   # SE
-            # maximum = 1e8   # TR
+            # maximum = 1e9   # SN
+            #  maximum = 2e9   # SE
+            maximum = 1e8   # TR
 
         [params.stop.solid]                  # solidification criterion
             enabled           = true
@@ -116,8 +116,8 @@ config_version = "3.0"
 
     # THE_PLANETS
     # mass_tot     = 3.0   # SN
-    mass_tot     = 2.0   # SE
-    # mass_tot     = 1.0   # TR
+    #  mass_tot     = 2.0   # SE
+    mass_tot     = 1.0   # TR
 
     # Initial temperature profile
     temperature_mode          = "adiabatic"  # default; other modes: isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
@@ -149,15 +149,15 @@ config_version = "3.0"
 
         # THE_PLANETS
         # H_budget      = 700.0 # SN
-        H_budget      = 450.0  # SE
-        # H_budget      = 50.0   # TR
+        #  H_budget      = 500.0  # SE
+        H_budget      = 150.0   # TR
 
         C_mode                = "C/H"        # C/H mass ratio | ppmw | kg
 
         # THE_PLANETS
         # C_budget      = 0.5       # SN
-        C_budget      = 2.0     # SE
-        # C_budget        = 5.0     # TR
+        #  C_budget      = 1.0     # SE
+        C_budget        = 2.0     # TR
 
 
         N_mode                = "N/H"        # N/H mass ratio | ppmw | kg
@@ -167,8 +167,8 @@ config_version = "3.0"
 
         # THE_PLANETS
         # S_budget      = 1.0      # SN
-        S_budget      = 0.5    # SE
-        # S_budget      = 2.0    # TR
+        #  S_budget      = 3.0    # SE
+        S_budget      = 2.0    # TR
 
         use_metallicity       = false        # scale C/N/S from solar metallicity; replaces C/N/S budgets
         metallicity           = 1000         # metallicity relative to solar [by mass]
@@ -216,8 +216,8 @@ config_version = "3.0"
 
     # THE_PLANETS
     # semimajoraxis = 0.06   # SN
-    semimajoraxis = 0.03   # SE
-    # semimajoraxis = 0.02   # TR
+    #  semimajoraxis = 0.04   # SE
+    semimajoraxis = 0.02   # TR
 
     instellationflux          = 1.0          # instellation [S_Earth] (if method = "inst")
     eccentricity              = 0.0          # orbital eccentricity
@@ -251,8 +251,8 @@ config_version = "3.0"
 
     # THE_PLANETS
     # core_frac     = 0.3     # SN
-    core_frac     = 0.7     # SE
-    # core_frac     = 0.5     # TR
+    #  core_frac     = 0.7     # SE
+    core_frac     = 0.5     # TR
 
     core_density              = 12244.0       # core density [kg m-3]; "self" = from zalmoxis/dummy
     core_heatcap              = 880.0       # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis/dummy
@@ -453,8 +453,8 @@ config_version = "3.0"
 
     # THE_PLANETS
     # fO2_shift_IW    = -3.0    # SN
-    fO2_shift_IW    = 2.0     # SE
-    # fO2_shift_IW    = 4.0     # TR
+    #  fO2_shift_IW    = 1.0     # SE
+    fO2_shift_IW    = 4.0     # TR
 
     mass_thresh               = 1e16         # minimum volatile mass threshold [kg]
     h2_binodal                = false        # H2 binodal partitioning; true is rejected at config load (not production ready)
@@ -506,7 +506,6 @@ config_version = "3.0"
     # Grid and spectral setup (shared by agni + janus)
     # spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
     # spectral_bands            = "16"         # wavenumber bands in k-table
-    spectral_file   = "output/runtime.sf"
     num_levels                = 30           # vertical atmosphere levels (min 15)
     p_top                     = 1.0e-3       # top-of-atmosphere pressure [bar]
     p_obs                     = 0.02         # observation pressure level [bar] (transit radius)
@@ -529,10 +528,13 @@ config_version = "3.0"
     tmp_minimum               = 0.5          # temperature floor [K]
 
     [atmos_clim.agni]
+
+        spectral_file   = "output/runtime.sf"
+
         # Physics switches
         solve_energy          = true         # iterative energy-conserving T(p) profile
         convection            = true         # convective adjustment (MLT)
-        conduction            = true         # conductive heat transport (Fourier)
+        conduction            = false         # conductive heat transport (Fourier)
         sens_heat             = true         # sensible heat flux at surface
         rainout               = false         # volatile condensation and evaporation
         oceans                = false         # surface liquid water oceans
