@@ -60,3 +60,6 @@ jobs:
           files: coverage.xml
           flags: unit-tests
           name: main-baseline-coverage
+          # A transient upload failure must not turn this baseline job red:
+          # coverage already generated, and the job is not a gate.
+          fail_ci_if_error: false
