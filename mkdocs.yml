@@ -8,13 +8,19 @@ copyright: '© 2023-2026 <a href="https://formingworlds.space">Forming Worlds La
 nav:
   - Home:
       - About: index.md
-      - Getting started: getting_started.md
+      - Quick path: getting_started.md
 
   - How-to guides:
       - Getting started:
           - Install PROTEUS: How-to/installation.md
+          - Diagnose and update: How-to/doctor.md
           - Configure PROTEUS: How-to/config.md
-          - Usage: How-to/usage.md
+          - Usage:
+              - Overview: How-to/usage.md
+              - Running and output: How-to/usage_running.md
+              - Initial thermal conditions: How-to/usage_initial_conditions.md
+              - Parameter grids: How-to/usage_grids.md
+              - Postprocessing and chemistry: How-to/usage_postprocessing.md
           - Troubleshooting: How-to/troubleshooting.md
           - Run on a local machine: How-to/local_machine_guide.md
       - Advanced usage:
@@ -24,22 +30,57 @@ nav:
           - Run on Snellius: How-to/snellius_cluster_guide.md
           - Run on Habrok: How-to/habrok_cluster_guide.md
       - Development:
-          - Testing infrastructure: How-to/test_infrastructure.md
-          - Test categorization: How-to/test_categorization.md
-          - Test building: How-to/test_building.md
+          - Testing: How-to/testing.md
+          - Development standards: How-to/development_standards.md
+          - Updating module pins: How-to/update_module_pins.md
           - Developing documentation: How-to/documentation.md
-          - AI-assisted development: How-to/ai_usage.md
 
   - Tutorials:
-      - First PROTEUS run: How-to/usage.md
+      - Quick start (all-dummy): Tutorials/quick_start_dummy.md
+      - Earth analogue: Tutorials/earth_analogue.md
+      - Parameter grid sweep: Tutorials/parameter_grid.md
+      - Solar System CHILI intercomparison: Tutorials/chili_intercomparison.md
 
   - Explanations:
-      - Model description: Explanations/model.md
-      - Docker CI architecture: Explanations/docker_ci_architecture.md
+      - Scientific background:
+          - Model description: Explanations/model.md
+          - Coupling loop: Explanations/coupling_loop.md
+      - Software design:
+          - Code architecture: Explanations/code_architecture.md
+          - Dummy modules: Explanations/dummy_modules.md
+          - Test framework: Explanations/test_framework.md
 
   - Reference:
+      - Configuration:
+          - Execution and output: Reference/config/params.md
+          - Planet and volatiles: Reference/config/planet.md
+          - Star and orbit: Reference/config/star_orbit.md
+          - Interior structure and energetics: Reference/config/interior.md
+          - Atmosphere and chemistry: Reference/config/atmosphere.md
+          - Escape and outgassing: Reference/config/escape_outgas.md
+          - Observations: Reference/config/observe.md
+      - Melting curves: Reference/melting_curves.md
+      - Module versions: Reference/module_versions.md
+      - Output format: Reference/output.md
       - Reference data: Reference/data.md
       - Bibliography: Reference/bibliography.md
+      - API:
+          - Interior structure (Zalmoxis wrapper): Reference/api/interior_struct_zalmoxis.md
+          - Interior structure config: Reference/api/config_struct.md
+          - Interior energetics wrapper: Reference/api/interior_energetics_wrapper.md
+      - Validation:
+          - Overview: Validation/index.md
+          - Interior structure:
+              - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
+          - Orbit:
+              - Orbital evolution (orbit.py): Validation/orbit/orbit.md
+              - Satellite angular momentum (satellite.py): Validation/orbit/satellite.md
+              - Orbit module wrapper (wrapper.py): Validation/orbit/wrapper.md
+          - Outgas:
+              - H2-MgSiO3 binodal (binodal.py): Validation/outgas/binodal.md
+          - Star:
+              - Stellar luminosity and instellation (star.py): Validation/star/star.md
+              - Stellar wrapper dispatch (wrapper.py): Validation/star/wrapper.md
 
   - Community:
       - Contact: Community/contact.md
@@ -66,7 +107,6 @@ nav:
       - SPIDER: https://proteus-framework.org/SPIDER/
       - Atmodeller: https://atmodeller.readthedocs.io/en/latest/
       - FastChem: https://newstrangeworlds.github.io/FastChem/
-      - PLATON: https://platon.readthedocs.io/en/latest/
       - SOCRATES: https://github.com/FormingWorlds/SOCRATES/
 
 theme:
@@ -108,6 +148,7 @@ theme:
 markdown_extensions:
   - admonition
   - attr_list
+  - footnotes
   - markdown_include.include:
       base_path: docs
   - pymdownx.extra
@@ -144,6 +185,7 @@ extra_javascript:
 
 extra_css:
   - stylesheets/extra.css
+  - stylesheets/proteus_theme.css
 
 plugins:
   - search
@@ -169,7 +211,7 @@ plugins:
             show_root_toc_entry: true
             show_docstring_attributes: true
             show_root_full_path: false
-            docstring_section_style: list
+            docstring_section_style: table
             members_order: alphabetical
             merge_init_into_class: yes
             filters: ["!^_"]
@@ -178,7 +220,6 @@ use_directory_urls: false
 
 watch:
   - src/
-  - docs/
   - README.md
   - CONTRIBUTING.md
   - CODE_OF_CONDUCT.md

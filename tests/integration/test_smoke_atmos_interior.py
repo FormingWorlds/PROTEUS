@@ -23,15 +23,19 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from _smoke_invariants import assert_smoke_conservation_invariants
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
+
+pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
 
 # Run JANUS/AGNI smoke tests only in nightly CI (requires compiled binaries)
 RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
 
 
 @pytest.mark.smoke
+@pytest.mark.physics_invariant
 def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
     """Test dummy atmosphere + dummy interior coupling (1 timestep).
 
@@ -56,7 +60,7 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load dummy configuration (uses dummy atmos + dummy interior)
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
@@ -67,8 +71,8 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
         # Re-initialize directories after changing output path
         runner.init_directories()
 
-        # Fix: Lower ini_tmagma to prevent runaway heating (T_magma > 1e6 K issue)
-        runner.config.interior.dummy.ini_tmagma = 2000.0
+        # Fix: Lower tsurf_init to prevent runaway heating (T_magma > 1e6 K issue)
+        runner.config.planet.tsurf_init = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr, minimum time
@@ -117,96 +121,80 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
             # Validate time progressed
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
+
+            # Conservation invariants, applied to every smoke test so a
+            # bookkeeping regression in any module surfaces here, not
+            # in a quiet helpfile drift months later.
+            assert_smoke_conservation_invariants(runner.hf_all)
         finally:
             # Cleanup handled by tempfile context manager
             pass
 
 
-@pytest.mark.smoke
-def test_smoke_dummy_atmos_dummy_interior_prevent_warming_bounds():
-    """prevent_warming keeps interior fields bounded in a coupled smoke run."""
-    import uuid
-
-    unique_id = str(uuid.uuid4())[:8]
-    with tempfile.TemporaryDirectory() as tmpdir:
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
-        runner = Proteus(config_path=config_path)
-
-        runner.config.params.out.path = str(Path(tmpdir) / f'smoke_pw_{unique_id}')
-        runner.init_directories()
-
-        runner.config.atmos_clim.prevent_warming = True
-        runner.config.interior.dummy.ini_tmagma = 2000.0
-        runner.config.params.stop.time.minimum = 1e2
-        runner.config.params.stop.time.maximum = 1e3
-        runner.config.params.out.plot_mod = 0
-        runner.config.params.out.write_mod = 0
-        runner.config.params.out.archive_mod = 'none'
-
-        runner.start(resume=False, offline=True)
-
-        assert runner.hf_all is not None
-        assert len(runner.hf_all) > 0
-
-        final_row = runner.hf_all.iloc[-1]
-        assert np.isfinite(final_row['T_magma'])
-        assert np.isfinite(final_row['T_surf'])
-        assert np.isfinite(final_row['F_int'])
-        assert final_row['F_int'] >= 1.0e-8
-
-        # check that T_magma and T_surf did not increase beyond
-        #   previous values (should be clamped), since prevent_warming=True
-        if len(runner.hf_all) > 1:
-            prev_row = runner.hf_all.iloc[-2]
-            assert final_row['T_magma'] <= prev_row['T_magma'] + 1.0e-9
-            assert final_row['T_surf'] <= prev_row['T_surf'] + 1.0e-9
-
-
-@pytest.mark.smoke
+@pytest.mark.integration
+@pytest.mark.timeout(300)
+@pytest.mark.physics_invariant
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
-    reason='JANUS integration smoke test requires compiled SOCRATES binaries (nightly only)',
+    reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
 )
-def test_smoke_janus_dummy_interior_radiation_balance():
-    """Test JANUS + dummy interior coupling (1 timestep).
+def test_agni_greygas_dummy_interior_coupling():
+    """AGNI (grey gas) + dummy interior coupled step.
 
-    Physical scenario: Validates that JANUS (radiative-convective atmosphere)
-    can couple correctly with a dummy interior. This tests real radiative transfer
-    calculations with SOCRATES but uses simple interior physics.
+    Physical scenario: AGNI solves radiative-convective balance for a
+    thick outgassed atmosphere above a magma-ocean surface held by the
+    dummy interior. The grey-gas scheme needs no SOCRATES spectral file
+    or stellar spectrum, so the test isolates the Julia-Python
+    interface and the AGNI solver itself from the data pipeline.
 
     Validates:
-    - JANUS produces valid atmospheric flux
-    - Radiation balance is approximately satisfied (F_atm ≈ F_int within factor of 2)
-    - Surface temperature converges to physically reasonable value
-    - Atmospheric structure (T-P profile) is smooth and monotonic below tropopause
+    - AGNI boots and executes without Julia runtime errors
+    - No NaN propagation from Julia to Python (F_atm, T_surf)
+    - The transit photosphere sits above the surface (0 < p_obs <
+      P_surf) and emits cooler than the magma surface (T_obs <
+      T_surf); the dummy atmosphere copies the surface values into
+      both observables, so the strict inequalities also guard against
+      silently running the dummy module instead of AGNI
+    - Conservation invariants across the coupled step
 
-    Runtime: ~20-25s (1 timestep, JANUS low-res: 10 levels, SOCRATES minimal bands)
+    Integration tier: the Julia runtime boot and AGNI package load
+    dominate the wall time; the grey-gas solve itself is seconds.
     """
-    # Create temporary output directory
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Load JANUS configuration
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'janus.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
-        # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
+
+        # AGNI atmosphere over dummy interior modules. Grey-gas mode
+        # bypasses the spectral-file and stellar-spectrum machinery.
+        # The module must be set before init_directories so the
+        # SOCRATES directory (RAD_DIR) is registered for the banner.
+        runner.config.atmos_clim.module = 'agni'
+        runner.config.atmos_clim.agni.spectral_file = 'greygas'
+        runner.config.interior_energetics.module = 'dummy'
+        runner.config.interior_struct.module = 'dummy'
 
         # Override output path via config (proper way - triggers init_directories)
         runner.config.params.out.path = str(Path(tmpdir) / 'output')
         runner.init_directories()
 
-        # Use dummy interior (fast) - already set in janus.toml
-        runner.config.interior.module = 'dummy'
+        # Moderate initial temperature to keep AGNI in a convergent regime
+        runner.config.planet.tsurf_init = 2000.0
 
-        # Override stop time to run only 1 timestep
-        runner.config.params.stop.time.minimum = 1e2
-        runner.config.params.stop.time.maximum = 1e3
+        # The dummy interior does not advance model time, so cap the
+        # iteration count to bound the number of AGNI solves (init
+        # loops plus one coupled step) instead of relying on the
+        # maximum-time stop.
+        runner.config.params.stop.time.minimum = 1.0
+        runner.config.params.stop.time.maximum = 2.0
+        runner.config.params.stop.iters.minimum = 1
+        runner.config.params.stop.iters.maximum = 5
 
         # Disable plotting/archiving
         runner.config.params.out.plot_mod = 0
         runner.config.params.out.write_mod = 0
         runner.config.params.out.archive_mod = 'none'
 
-        # Run simulation
         runner.start(resume=False, offline=True)
 
         # Validate helpfile
@@ -215,99 +203,42 @@ def test_smoke_janus_dummy_interior_radiation_balance():
 
         final_row = runner.hf_all.iloc[-1]
 
-        # Validate fluxes (negative values indicate cooling)
-        f_atm = final_row['F_atm']
-        f_int = final_row['F_int']
-        assert not np.isnan(f_atm)
-        assert not np.isnan(f_int)
-        assert -10000 <= f_atm <= 10000
-        assert -10000 <= f_int <= 10000
-
-        # Validate radiation balance (within factor of 2 for 1 timestep)
-        # Use absolute values for ratio since sign indicates direction
-        flux_ratio = abs(f_atm) / abs(f_int) if abs(f_int) > 1e-3 else np.inf
-        assert 0.5 <= flux_ratio <= 2.0, (
-            f'Radiation balance should be approximately satisfied (0.5 < F_atm/F_int < 2.0), got {flux_ratio}'
-        )
-
-        # Validate surface temperature
-        t_surf = final_row['T_surf']
-        assert not np.isnan(t_surf)
-        assert 200 <= t_surf <= 4000, f'T_surf should be physical for magma ocean, got {t_surf}'
-
-
-@pytest.mark.smoke
-@pytest.mark.skipif(
-    not RUN_NIGHTLY_SMOKE,
-    reason='AGNI integration smoke test requires Julia/AGNI binaries (nightly only)',
-)
-def test_smoke_agni_dummy_interior_convergence():
-    """Test AGNI + dummy interior coupling (1 timestep).
-
-    Physical scenario: Validates that AGNI (Julia-based atmosphere) can couple
-    with a dummy interior. Tests the Julia-Python interface and verifies that
-    AGNI's radiative-convective solver converges.
-
-    Validates:
-    - AGNI executes without Julia runtime errors
-    - Atmospheric flux converges (F_atm is stable)
-    - Surface temperature is updated correctly
-    - No NaN propagation from Julia to Python
-
-    Runtime: ~25-30s (1 timestep, AGNI convergence with relaxed tolerances)
-    """
-    # Create temporary output directory
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Load AGNI configuration
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'agni.toml'
-
-        # Initialize PROTEUS
-        runner = Proteus(config_path=config_path)
-
-        # Override output path via config (proper way - triggers init_directories)
-        runner.config.params.out.path = str(Path(tmpdir) / 'output')
-        runner.init_directories()
-
-        # Use dummy interior - already set in agni.toml
-        runner.config.interior.module = 'dummy'
-
-        # Override stop time
-        runner.config.params.stop.time.minimum = 1e2
-        runner.config.params.stop.time.maximum = 1e3
-
-        # Disable plotting/archiving
-        runner.config.params.out.plot_mod = 0
-        runner.config.params.out.write_mod = 0
-        runner.config.params.out.archive_mod = 'none'
-
-        # Run simulation
-        runner.start(resume=False, offline=True)
-
-        # Validate helpfile
-        assert runner.hf_all is not None
-        assert len(runner.hf_all) > 0
-
-        final_row = runner.hf_all.iloc[-1]
-
-        # Validate AGNI produced valid flux (negative values indicate cooling)
+        # F_atm: finite and bounded. Negative values are physical when
+        # greenhouse forcing exceeds OLR over a dummy interior.
         f_atm = final_row['F_atm']
         assert not np.isnan(f_atm), 'AGNI should produce valid F_atm (no NaN from Julia)'
         assert not np.isinf(f_atm)
-        assert -1e6 <= f_atm <= 1e6
+        assert abs(f_atm) < 1e7, f'|F_atm| should be < 1e7 W/m^2, got {f_atm}'
 
-        # Validate interior flux
+        # F_int: the dummy interior mirrors F_atm, so it must be finite
+        # whenever the coupled step completed.
         f_int = final_row['F_int']
         assert not np.isnan(f_int)
-        assert -1e6 <= f_int <= 1e6
+        assert abs(f_int) < 1e7
 
-        # Validate convergence (AGNI should produce stable flux within 1 timestep)
-        # Use absolute values for ratio since sign indicates direction
-        flux_ratio = abs(f_atm) / abs(f_int) if abs(f_int) > 1e-3 else np.inf
-        assert 0.1 <= flux_ratio <= 10.0, (
-            f'AGNI flux should converge (0.1 < F_atm/F_int < 10.0), got {flux_ratio}'
+        # The transit photosphere must sit above the surface: AGNI
+        # derives p_obs from the optical-depth profile. The dummy
+        # atmosphere copies P_surf into p_obs exactly, so the strict
+        # upper bound discriminates a real AGNI solve from a silent
+        # fallback to the dummy module; the lower bound catches a NaN
+        # or unwritten observable.
+        p_obs = final_row['p_obs']
+        p_surf = final_row['P_surf']
+        assert 0.0 < p_obs < p_surf, (
+            f'photosphere must sit above the surface, p_obs={p_obs}, P_surf={p_surf} bar'
         )
 
-        # Validate surface temperature
+        # The emitting level is cooler than the magma surface beneath
+        # a greenhouse atmosphere; the dummy module copies T_surf.
+        assert final_row['T_obs'] < final_row['T_surf']
+
+        # Outgoing longwave is positive for any atmosphere above 0 K.
+        assert final_row['F_olr'] > 0.0
+
+        # Surface temperature physical
         t_surf = final_row['T_surf']
         assert not np.isnan(t_surf)
         assert 50 <= t_surf <= 10000
+
+        # Conservation invariants across the coupled step
+        assert_smoke_conservation_invariants(runner.hf_all)

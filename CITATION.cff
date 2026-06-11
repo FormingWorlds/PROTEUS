@@ -1,7 +1,5 @@
 cff-version: 1.2.0
 title: "PROTEUS Framework for Planetary Evolution"
-version: 25.11.19
-date-released: 2025-11-19
 license: "Apache-2.0"
 message: "If you use this software, please cite it as below."
 
@@ -20,11 +18,9 @@ authors:
 
 - family-names: "Sastre"
   given-names: "Mariana"
-  orcid: "https://orcid.org/0000-0000-0000-0000"
 
 - family-names: "Postolec"
   given-names: "Emma"
-  orcid: "https://orcid.org/0000-0000-0000-0000"
 
 - family-names: "Bower"
   given-names: "Dan"

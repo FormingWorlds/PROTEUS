@@ -1,14 +1,14 @@
 [build-system]
-requires = ["setuptools>=61.2"]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 # https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
 name = "fwl-proteus"
-version = "25.11.19"
+dynamic = ["version"]
 description = "Coupled atmosphere-interior framework to simulate the temporal evolution of rocky planets"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 authors = [
     {name="Tim Lichtenberg",         email="tim.lichtenberg@rug.nl"},
     {name="Harrison Nicholls",       email="contact@h-nicholls.space"},
@@ -23,6 +23,7 @@ authors = [
     {name="Stef Smeets",             email="s.smeets@esciencecenter.nl"},
     {name="Robb Calder",             email="rdc49@cam.ac.uk"},
     {name="Raymond T. Pierrehumbert",email="raymond.pierrehumbert@physics.ox.ac.uk"},
+    {name="Karen Stuitje",           email= "stuitje@proton.me"}
 ]
 keywords = [
     "Astronomy",
@@ -47,14 +48,28 @@ dependencies = [
     "cattrs",
     "fwl-janus>=24.11.05",
     "fwl-mors>=26.01.02",
-    "fwl-calliope>=25.05.01",
+    "fwl-calliope>=26.06.01",
     "fwl-zephyrus>=25.03.11",
-    "fwl-aragog>=26.01.06",
-    "fwl-zalmoxis>=26.01.06",
-    "fwl-vulcan>=26.04.22",
-    "boreas@git+https://github.com/ExoInteriors/BOREAS@0174edb",
+    "fwl-aragog>=26.05.13",
+    "fwl-zalmoxis>=26.05.13",
+    # The default Aragog interior solver runs on JAX: its eos/phase/solver
+    # modules are equinox Modules, so jax, jaxlib, and equinox are needed by
+    # a standard run, not only by the optional atmodeller backend. The stack
+    # is pinned to the tested combination: equinox 0.13.2 calls
+    # jax.core.mapped_aval, which JAX removed in 0.10, so jax and jaxlib are
+    # held below 0.10. Lifting any of these bounds requires revalidating the
+    # default Aragog numerics (atmodeller pins the same equinox==0.13.2, so
+    # the optional backend stays consistent).
+    "jax<0.10",
+    "jaxlib<0.10",
+    "equinox==0.13.2",
     "cmcrameri",
-    "juliacall",
+    # Pinned >=0.9.35: 0.9.33-0.9.34 mis-resolve the PythonCall.jl dev-path on
+    # conda envs, and 0.9.35 restores resolution by registered version.
+    # Separately, juliacall matches the Julia OpenSSL_jll to the Python
+    # interpreter's OpenSSL; Julia 1.12 ships OpenSSL_jll 3.5+, so the conda
+    # environment must provide OpenSSL >= 3.5 (install.sh aligns it).
+    "juliacall>=0.9.35",
     "matplotlib",
     "netCDF4",
     "numpy>=2.0.0",
@@ -83,8 +98,24 @@ documentation = "https://proteus-framework.org/proteus/"
 changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 
 [project.optional-dependencies]
+# Optional physics backends. These are not pulled in by a default
+# `pip install fwl-proteus`; a standard run uses CALLIOPE (outgassing)
+# and needs neither. Install on demand, e.g. `pip install
+# "fwl-proteus[atmodeller]"`. Both are licensed GPL-3.0; review their
+# terms before installing. (PROTEUS's own code is Apache-2.0, but the
+# default install already includes other GPL dependencies such as
+# fwl-aragog, so opting out of these two does not yield a GPL-free
+# environment.)
+#
+# atmodeller: alternative outgassing backend (Bower+2025, ApJ 995:59),
+# selected via outgas.module = "atmodeller". Pulls JAX + equinox.
+atmodeller = ["atmodeller>=1.0.0"]
+# vulcan: atmospheric photochemistry backend, selected via
+# atmos_chem.module = "vulcan". Also installable editable via
+# tools/get_vulcan.sh.
+vulcan = ["fwl-vulcan>=26.04.22"]
+
 develop = [
-    "bump-my-version",
     # coverage[toml] enables standalone coverage tool with TOML config support (used by ratcheting script)
     # pytest-cov provides pytest integration for "pytest --cov" convenience (slightly different from CI)
     # Note: Both work independently; CI uses "coverage run -m pytest", developers can use either approach
@@ -96,10 +127,12 @@ develop = [
     "pytest-cov",
     "pytest-dependency",
     "pytest-timeout",
+    "pytest-xdist",  # parallel test execution via `-n auto` in CI
+    "hypothesis",    # property-based / fuzz tests at slow tier
 ]
 
 docs = [
-    "zensical",
+    "zensical==0.0.39",
     "mkdocs-material",
     "markdown-include",
     "mkdocs",
@@ -127,6 +160,19 @@ omit = [
     "*/conftest.py",
 ]
 
+[tool.coverage.paths]
+# Path equivalence map so ``coverage combine`` can union .coverage
+# files produced on different runners (local dev, Linux GHA at
+# /home/runner/work/..., macOS GHA at /Users/runner/work/...) under
+# a single canonical source path. Without this section, line entries
+# with different absolute paths are not recognised as the same file
+# and the union would double-count or miss lines.
+source = [
+    "src/proteus",
+    "*/src/proteus",
+    "*/PROTEUS/src/proteus",
+]
+
 [tool.pytest.ini_options]
 minversion = "8.1"
 addopts = [
@@ -140,6 +186,11 @@ addopts = [
     "--strict-config",
     "-ra",
     "--showlocals",
+    # importlib mode keeps test collection robust against namespace
+    # collisions between ``proteus.interior_energetics.aragog`` and the
+    # third-party ``aragog`` PyPI package. Without it, pytest's default
+    # rootdir-based import can shadow the installed package.
+    "--import-mode=importlib",
 ]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
@@ -150,14 +201,19 @@ markers = [
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
     "smoke: marks tests as smoke tests (quick validation with real binaries, 1 timestep, low res)",
+    "physics_invariant: marks tests that assert a physical invariant (conservation, positivity, boundedness, monotonicity, symmetry). See .github/.claude/rules/proteus-tests.md section 3.",
+    "reference_pinned: marks tests that pin behavior against a published benchmark, analytical limit, or cross-implementation cross-check. Cite the source in the test docstring. Each physics module must contain at least one. See .github/.claude/rules/proteus-tests.md section 3.",
 ]
 
 [tool.coverage.report]
-# Coverage threshold - automatically updated by CI when coverage increases.
-# See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml.
-# The ratcheting (only ever increasing or staying the same) is enforced in CI;
-# do not manually decrease this value in pyproject.toml.
-fail_under = 59
+# Full coverage gate: unit + smoke + integration + slow tests, enforced by the
+# nightly workflow. Fixed ceiling at 90% (the PROTEUS-ecosystem target). The
+# estimated-total coverage on PRs (union of PR unit coverage with the latest
+# nightly artifact) is also compared against this gate; that is the 90% KPI
+# operators read. The fixed value is enforced by
+# tools/update_coverage_threshold.py and the PR threshold guard.
+# See .github/.claude/rules/proteus-tests.md section 15 for the contract.
+fail_under = 90
 show_missing = true
 precision = 2
 exclude_lines = [
@@ -175,11 +231,75 @@ exclude_lines = [
 [tool.coverage.html]
 directory = "htmlcov"
 
+[tool.proteus.modules]
+# Pins for every external module PROTEUS pulls outside of `pip install`.
+# Python deps that resolve via PyPI live in [project] dependencies. The
+# entries here describe non-Python modules and pip-from-git deps that
+# need a clone step in CI or in `tools/get_*.sh`. Each entry has at
+# minimum a `url` and a `ref` (commit SHA, tag, or branch). The CI
+# composite action reads this table; the `tools/get_*.sh` scripts read
+# it via `tools/_module_pins.py`.
+#
+# Bumping a module = editing its `ref` here in a single-line PR. The
+# same commit SHA always produces the same external state, which makes
+# branch CI reproducible.
+
+[tool.proteus.modules.agni]
+# Radiative-convective atmosphere module (Julia, with juliacall bridge).
+# Tracks nichollsh/AGNI main. Bump after every AGNI release that
+# PROTEUS depends on.
+url = "https://github.com/nichollsh/AGNI.git"
+ref = "179472b36b14e15bb125666cd8c9c6f231a2e907"
+
+[tool.proteus.modules.socrates]
+# Spectral radiative transfer library (Fortran). Compiled in-place
+# under socrates/ by tools/get_socrates.sh; the build output is what
+# the AGNI / JANUS atmosphere modules link against at runtime.
+url = "https://github.com/FormingWorlds/SOCRATES.git"
+ref = "fe0c4a486f1dbf9addf6f01a03c644d6bd5e1d1e"
+
+[tool.proteus.modules.spider]
+# Interior thermal evolution module (C, requires PETSc). Cloned and
+# built by tools/get_spider.sh. Tests on this branch run without
+# SPIDER; the pin still matters for local installs and future CI.
+url = "https://github.com/FormingWorlds/SPIDER.git"
+ref = "c9a3fd4301c7008291d4f4921506d36b6288f8ca"
+
+# VULCAN has no entry here on purpose: like fwl-aragog and fwl-zalmoxis,
+# it is a single-source PyPI package. tools/get_vulcan.sh checks out the
+# git tag matching the fwl-vulcan floor in [project.optional-dependencies],
+# so the editable checkout and the PyPI release cannot diverge.
+
+[tool.proteus.modules.boreas]
+# Hydrodynamic escape module (Python). Optional: installed explicitly by
+# tools/get_boreas.sh, not pulled in by `pip install fwl-proteus`. The
+# package is not on PyPI (the PyPI name "boreas" belongs to an unrelated
+# project), so the pin lives here rather than in [project] dependencies.
+url = "https://github.com/ExoInteriors/BOREAS.git"
+ref = "0174edb04558a92a8f0b47cbd994964787f495aa"
+
+[tool.proteus.modules.lovepy]
+# Multi-phase tidal heating module (Julia). Installed via Julia
+# Pkg.add(url=..., rev=...) by tools/get_lovepy.sh. Optional.
+url = "https://github.com/nichollsh/LovePy"
+ref = "main"
+
+[tool.proteus.modules.petsc]
+# Pre-built PETSc archive on OSF. Required by SPIDER. tools/get_petsc.sh
+# downloads and validates by SHA-256.
+url = "https://osf.io/download/p5vxq/"
+sha256 = ""
+
 [tool.proteus.coverage_fast]
-# Fast CI (unit + smoke) coverage gate; ratcheted independently from full suite
-# This lower bar is intended for mocked/fast tests only and will auto-increase
-# when the fast suite gains coverage. Do not decrease manually.
-fail_under = 44.45
+# Fast PR gate: unit-only coverage on PRs (smoke, integration, and slow tiers
+# run nightly). Fixed ceiling at 80%: the gate requires unit-only coverage to
+# exceed 80% and does not ratchet above it. Unit tests alone do not reach the
+# 90% ecosystem target because wrapper code that requires real binaries
+# (SOCRATES, AGNI, SPIDER) is exercised by the nightly tiers; reaching 90% is
+# the estimated-total responsibility (PR unit coverage unioned with the latest
+# nightly artifact, see [tool.coverage.report]). The fixed value is enforced by
+# tools/update_coverage_threshold.py and the PR threshold guard.
+fail_under = 80
 
 [tool.ruff]
 line-length = 96
@@ -207,33 +327,22 @@ required-imports = ["from __future__ import annotations"]
 quote-style = "single"
 indent-style = "space"
 
-[tool.bumpversion]
-# https://callowayproject.github.io/bump-my-version/howtos/calver/
-current_version = "25.11.19"
-parse = """(?x)                      # Verbose mode
-    (?P<release>                     # The release part
-        (?:[1-9][0-9])\\.            # YY.
-        (?:1[0-2]|0[1-9])\\.         # MM.
-        (?:3[0-1]|[1-2][0-9]|0[1-9]) # DD
-    )
-    (?:\\.(?P<patch>\\d+))?         # .patch, optional
-"""
-serialize = ["{release}.{patch}", "{release}"]
-
-[tool.bumpversion.parts.release]
-calver_format = "{YY}.{0M}.{0D}"
-
-[[tool.bumpversion.files]]
-filename = "src/proteus/__init__.py"
-search = "__version__ = '{current_version}'"
-replace = "__version__ = '{new_version}'"
-
-[[tool.bumpversion.files]]
-filename = "pyproject.toml"
-search = "version = \"{current_version}\""
-replace = "version = \"{new_version}\""
-
-[[tool.bumpversion.files]]
-filename = "CITATION.cff"
-search = "version: {current_version}"
-replace = "version: {new_version}"
+[tool.setuptools_scm]
+# CalVer: tags are bare YY.MM.DD dates (no leading 'v', e.g. 26.05.13).
+# setuptools-scm derives the version from the latest git tag.
+# version_scheme = "no-guess-dev" is required for CalVer: the default
+# "guess-next-dev" would produce 26.5.14.devN+gHASH for commits after
+# the 26.05.13 tag, claiming a future calendar date that will collide
+# with the next daily release tag. "no-guess-dev" produces
+# 26.05.13.post1.devN+gHASH instead, which is honest about the build
+# being a post-tag development commit rather than a pre-release of
+# the next version.
+#
+# fallback_version is used whenever git introspection fails (e.g.
+# inside the CI Docker container where the rsync overlay leaves a
+# stale .git that fails "safe.directory" checks, source-tarball
+# installs, or builds from a shallow clone without tags). Without
+# this, build_editable raises and the install aborts.
+version_scheme = "no-guess-dev"
+version_file = "src/proteus/_version.py"
+fallback_version = "0.0.0.dev0"

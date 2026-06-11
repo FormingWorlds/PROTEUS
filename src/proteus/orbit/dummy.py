@@ -1,17 +1,14 @@
 # Dummy orbit module
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.interior.common import Interior_t
+from proteus.interior_energetics.common import Interior_t
 
 if TYPE_CHECKING:
     from proteus.config import Config
-
-log = logging.getLogger('fwl.' + __name__)
 
 
 def run_dummy_orbit(config: Config, interior_o: Interior_t):

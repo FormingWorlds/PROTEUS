@@ -8,12 +8,12 @@
 #   [params]   parameters for code execution, output files, time-stepping, convergence
 #   [star]     stellar parameters, model selection
 #   [orbit]    planetary orbital parameters
-#   [struct]   planetary structure (mass, radius)
+#   [interior_struct]   planetary structure (mass, radius)
 #   [atmos]    atmosphere parameters, model selection
 #   [escape]   escape parameters, model selection
-#   [interior] magma ocean model selection and parameters
+#   [interior_energetics] magma ocean model selection and parameters
 #   [outgas]   outgassing parameters (fO2) and included volatiles
-#   [delivery] initial volatile inventory, and delivery model selection
+#   [accretion] initial volatile inventory, and delivery model selection
 
 # ----------------------------------------------------
 # Metadata
@@ -39,10 +39,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
 
-        [params.dt.proportional]
             propconst    = 52.0   # Proportionality constant
 
-        [params.dt.adaptive]
             atol         = 0.02   # Step size atol
             rtol         = 0.07   # Step size rtol
 
@@ -113,10 +111,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 
 # Planetary structure - physics table
-[struct]
+[interior_struct]
     mass        = 1.0       # M_earth
     radius      = 1.073     # R_earth
-    corefrac    = 0.55      # non-dim., radius fraction
+    core_frac    = 0.55      # non-dim., radius fraction
 
     # No module for specifically for internal structure
     module  = "none"
@@ -168,22 +166,18 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         rate = 0.0    #  Bulk unfractionated escape rate [kg s-1]
 
 # Interior - physics table
-[interior]
+[interior_energetics]
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e5   # Initial heat flux guess [W m-2]
 
     module = "spider"   # Which interior module to use
 
-    [interior.spider]
+    [interior_energetics.spider]
         num_levels      = 220       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1.0e-10   # solver tolerance
-        tsurf_atol      = 20.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
-        ini_entropy     = 3200.0    # Surface entropy conditions [J K-1 kg-1]
-        ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
-    [interior.aragog]
+    [interior_energetics.aragog]
         num_levels      = 220       # Number of Aragog grid levels
         tolerance       = 1.0e-10   # solver tolerance
 
@@ -207,25 +201,28 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         some_parameter = "some_value"
 
 # Volatile delivery - physics table
-[delivery]
+[accretion]
 
     # [Settings here for accretion rate, etc.]
 
     # Which initial inventory to use?
-    initial = 'elements'        # "elements" | "volatiles"
 
     # No module for accretion as of yet
     module = "none"
 
     # Set initial volatile inventory by planetary element abundances
-    [delivery.elements]
-        CH_ratio    = 1.0       # C/H ratio in mantle/atmosphere system
-        H_oceans    = 8.0       # Hydrogen inventory in units of equivalent Earth oceans, by mass
-        N_ppmw      = 2.01      # Nitrogen inventory in ppmw relative to mantle mass, by mass
-        S_ppmw      = 235.0     # Sulfur inventory in ppmw relative to mass of melt
+    [planet.elements]
+        H_mode          = "oceans"
+        H_budget        = 8.0
+        C_mode          = "C/H"
+        C_budget        = 1.0
+        N_mode          = "ppmw"
+        N_budget        = 2.01
+        S_mode          = "ppmw"
+        S_budget        = 235.0
 
     # Set initial volatile inventory by partial pressures in atmosphere
-    [delivery.volatiles]
+    [planet.gas_prs]
         H2O  = 0.0           # partial pressure of H2O
         CO2  = 0.0          # partial pressure of CO2
         N2   = 0.0          # etc

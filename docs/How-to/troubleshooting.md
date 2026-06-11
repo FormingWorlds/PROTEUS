@@ -9,6 +9,7 @@ step-by-step guide or the advice below,
 
 | Error / symptom | Section |
 |---|---|
+| `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
 | `Out-of-date modules detected` | [Module updates](#out-of-date-modules-detected) |
 | Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
@@ -22,6 +23,23 @@ step-by-step guide or the advice below,
 ---
 
 ## General (all platforms)
+
+### Numerically fragile coupled runs {#numerically-fragile-coupled-runs}
+
+Some coupled atmosphere-interior-outgassing configurations occasionally fail with messages such as `RuntimeError: Aragog retry ladder exhausted` or with warnings about T_core jumping >1500 K despite Aragog reporting `status=0`. The same config may succeed on one launch and fail on the next.
+
+The cause is sub-1e-7 floating-point noise in JAX/XLA reduction order that compounds through Aragog's tight tolerances and lands the solver on a wrong P-S branch within ~15 iterations.
+
+Workaround: launch PROTEUS with `--deterministic`:
+
+```bash
+nohup proteus start -c <cfg.toml> --offline --deterministic \
+    > output/<run>/launch.log 2>&1 & disown
+```
+
+The flag intercepts itself in `sys.argv` *before* any heavy imports, sets `JAX_ENABLE_X64=1` and `XLA_FLAGS=--xla_cpu_enable_fast_math=false`, and self-re-execs once. PROTEUS already pins BLAS thread counts at import time; `--deterministic` adds the JAX/XLA layer that BLAS pinning alone does not cover.
+
+Do not enable by default; the flag has a small per-step cost. Use only when a config shows noise-floor divergence between launches.
 
 ### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}
 
@@ -95,13 +113,13 @@ This happens when compiling SPIDER within a Python environment that is incompati
 
 ### Julia compatibility error {#julia-compatibility-error}
 
-There are incompatibilities between Python and some versions of Julia. Julia version 1.12+ is not yet supported because it requires a version of the OpenSSL library that is incompatible with Python.
+There are incompatibilities between Python and some versions of Julia. Supported Julia versions are **1.11.x and 1.12.x**; newer releases (including the 1.13 release candidates) are untested and may fail when juliacall resolves shared libraries.
 
-You must use **Python 3.12** and **Julia 1.11** to avoid these problems:
+You must use **Python 3.12** with a supported Julia to avoid these problems:
 
 ```console
-juliaup add 1.11
-juliaup default 1.11
+juliaup add 1.12
+juliaup default 1.12
 ```
 
 ---

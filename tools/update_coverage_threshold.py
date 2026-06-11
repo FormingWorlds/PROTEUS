@@ -45,6 +45,14 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for older interpreter
 
 import tomlkit
 
+# Fixed per-gate coverage ceilings. Each gate sits at a fixed value and the
+# ratchet never raises it above the ceiling: the fast (unit-only) gate is fixed
+# at 80% and the full (unit + smoke + integration + slow) gate at the 90%
+# PROTEUS-ecosystem target. Unit tests alone do not reach 90% because the
+# binary-dependent wrapper code is exercised only by the nightly tiers, so the
+# fast gate is held at 80 rather than chasing 90.
+CEILINGS = {'fast': 80.0, 'full': 90.0}
+
 
 def read_current_coverage(coverage_file: Path) -> float:
     """Read the current test coverage percentage from a coverage JSON file.
@@ -174,7 +182,20 @@ def main() -> int:
         print(f'Current coverage: {current_coverage:.2f}%')
         print(f'Current threshold: {current_threshold:.2f}%')
 
-        new_threshold = round(current_coverage, 2)
+        ceiling = CEILINGS[target]
+        new_threshold = min(round(current_coverage, 2), ceiling)
+
+        # If the existing threshold already sits at or above this gate's
+        # fixed ceiling, the ratchet has nothing to do. Treat this as
+        # "no update needed" rather than letting the capped new_threshold
+        # fall into the "Coverage decreased" branch below, which would
+        # emit a misleading error.
+        if current_threshold >= ceiling:
+            print(
+                f'[=] Threshold {current_threshold:.2f}% already at or above '
+                f'the {ceiling:.2f}% {target}-gate ceiling (no update needed)'
+            )
+            return 1
 
         if new_threshold > current_threshold:
             print(

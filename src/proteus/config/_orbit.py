@@ -14,9 +14,10 @@ def phi_tide_validator(instance, attribute, value):
     # value of inequality
     try:
         number = float(value[1:])
-    finally:
-        if (number < 0.0) or (number > 1.0):
-            raise ValueError(f'Phi_tide value must be between 0 and 1, got {number}')
+    except ValueError:
+        raise ValueError(f'Phi_tide must contain a number (e.g. "<0.3"), got {value}')
+    if (number < 0.0) or (number > 1.0):
+        raise ValueError(f'Phi_tide value must be between 0 and 1, got {number}')
 
 
 @define
@@ -77,7 +78,7 @@ class Orbit:
     eccentricity: float
         Initial Eccentricity of the planet's orbit.
     instellation_method: str
-        Whether to use the semi-major axis ('sma') or instellation flux ('inst') to define the planet's initial orbit
+        Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit
     instellationflux: float
         Instellation flux initially received by the planet in Earth units.
 
@@ -101,25 +102,29 @@ class Orbit:
     """
 
     # Tidal heating modules
-    module: str | None = field(validator=in_((None, 'dummy', 'lovepy')), converter=none_if_none)
+    module: str | None = field(
+        default='none', validator=in_((None, 'dummy', 'lovepy')), converter=none_if_none
+    )
 
     # Planet initial orbital parameter
-    semimajoraxis: float = field(validator=gt(0))
+    semimajoraxis: float = field(default=1.0, validator=gt(0))
     eccentricity: float = field(
+        default=0.0,
         validator=(
             ge(0),
             lt(1),
-        )
+        ),
     )
 
     # Climate parameters set by rotation of planet
     zenith_angle: float = field(
+        default=48.19,
         validator=(
             ge(0),
             lt(90),
-        )
+        ),
     )
-    s0_factor: float = field(validator=gt(0))
+    s0_factor: float = field(default=0.375, validator=gt(0))
 
     # Allow the planet's orbit to evolve based on eccentricity tides?
     evolve: bool = field(default=False)
@@ -136,5 +141,5 @@ class Orbit:
     dummy: OrbitDummy = field(factory=OrbitDummy)
     lovepy: Lovepy = field(factory=Lovepy)
 
-    instellation_method: str = field(default='sma', validator=in_(('sma', 'inst')))
+    instellation_method: str = field(default='distance', validator=in_(('distance', 'inst')))
     instellationflux: float = field(default=1.0, validator=gt(0))

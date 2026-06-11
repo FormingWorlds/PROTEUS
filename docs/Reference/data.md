@@ -19,8 +19,8 @@ PROTEUS can use:
 
 By default, observed spectra are searched in:
 
-- `$FWL_DATA/stellar_spectra/MUSCLES`  – MUSCLES / Mega-MUSCLES stars
-- `$FWL_DATA/stellar_spectra/solar`    – solar spectra (modern, past, future)
+- `$FWL_DATA/stellar_spectra/MUSCLES`  - MUSCLES / Mega-MUSCLES stars
+- `$FWL_DATA/stellar_spectra/solar`    - solar spectra (modern, past, future)
 
 To see which files you have installed, run for example:
 
@@ -80,7 +80,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/eps%20Eri
     - **Spectral type:** K2V
     - **Teff:** 5020 K
-    - **Age:** 400–800 Myr
+    - **Age:** 400-800 Myr
     - **Luminosity:** 0.32 L☉
     - **Mass:** 0.82 M☉
     - **Radius:** 0.759 R☉
@@ -108,7 +108,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201214
     - **Spectral type:** M4 V
     - **Teff:** 3100 K
-    - **Age:** 5–10 Gyr
+    - **Age:** 5-10 Gyr
     - **Luminosity:** 0.00351 L☉
     - **Mass:** 0.182 M☉
     - **Radius:** 0.216 R☉
@@ -218,7 +218,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     - **Star name:** `gj15a`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%2015
-    - **Spectral type:** M1–M2V
+    - **Spectral type:** M1-M2V
     - **Teff:** ~3700 K
     - **Age:** ?
     - **Luminosity:** ~0.021 L☉
@@ -233,7 +233,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
     - **Star name:** `gj163`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/gj%20163%20b
     - **Spectral type:** M3.5V
-    - **Teff:** ~3300–3500 K
+    - **Teff:** ~3300-3500 K
     - **Age:** ~2-10 Gyr
     - **Luminosity:** ~0.02 L☉
     - **Mass:** ~0.40 M☉
@@ -262,7 +262,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20436
     - **Spectral type:** M2.5-M3V
     - **Teff:** ~3600 K
-    - **Age:** ~6–15 Gyr
+    - **Age:** ~6-15 Gyr
     - **Luminosity:** 0.023 L☉
     - **Mass:** 0.44 M☉
     - **Radius:** 0.42 R☉
@@ -321,7 +321,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
     - **Age:** >2 Gyr
     - **Luminosity:** ~0.014 L☉
     - **Mass:** ~0.33 M☉
-    - **Radius:** ~0.32–0.42 R☉
+    - **Radius:** ~0.32-0.42 R☉
     - **Source:** MUSCLES
 
     ---
@@ -331,8 +331,8 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
     - **Star name:** `gj674`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20674
     - **Spectral type:** M2.5V
-    - **Teff:** ~3400–3600 K
-    - **Age:** ~0.5–3 Gyr
+    - **Teff:** ~3400-3600 K
+    - **Age:** ~0.5-3 Gyr
     - **Luminosity:** 0.017 L☉
     - **Mass:** 0.35 M☉
     - **Radius:** 0.36 R☉
@@ -345,7 +345,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
     - **Star name:** `gj676a`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20676A
     - **Spectral type:** M0V
-    - **Teff:** ~3800–4000 K
+    - **Teff:** ~3800-4000 K
     - **Age:** ?
     - **Luminosity:** 0.083 L☉
     - **Mass:** 0.63 M☉
@@ -373,9 +373,9 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
     - **Star name:** `gj729`
     - **URL:** https://simbad.cds.unistra.fr/simbad/sim-id?Ident=GJ+729
     - **Spectral type:** M3.5V
-    - **Teff:** ~3200–3300 K
-    - **Age:** <1–2 Gyr
-    - **Luminosity:** ~0.004–0.005 L☉
+    - **Teff:** ~3200-3300 K
+    - **Age:** <1-2 Gyr
+    - **Luminosity:** ~0.004-0.005 L☉
     - **Mass:** ~0.18 M☉
     - **Radius:** ~0.20 R☉
     - **Source:** Mega-MUSCLES
@@ -388,7 +388,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HIP%20106440
     - **Spectral type:** M1-M3V
     - **Teff:** ~3500-3500 K
-    - **Age:** ~4–12 Gyr
+    - **Age:** ~4-12 Gyr
     - **Luminosity:** ~0.03 L☉
     - **Mass:** 0.45 M☉
     - **Radius:** 0.45 R☉
@@ -401,8 +401,8 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
     - **Star name:** `gj876`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20876
     - **Spectral type:** M2-4V
-    - **Teff:** ~3200–3300 K
-    - **Age:** ~2–15 Gyr
+    - **Teff:** ~3200-3300 K
+    - **Age:** ~2-15 Gyr
     - **Luminosity:** ~0.013 L☉
     - **Mass:** ~0.37 M☉
     - **Radius:** ~0.37 R☉
@@ -458,7 +458,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HD%2040307
     - **Spectral type:** K2.5V
     - **Teff:** ~4800-5000 K
-    - **Age:** ~2–5 Gyr
+    - **Age:** ~2-5 Gyr
     - **Luminosity:** ~0.22 L☉
     - **Mass:** ~0.79 M☉
     - **Radius:** ~0.71 R☉
@@ -542,9 +542,9 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/WASP-127
     - **Spectral type:** G5 (subgiant-like)
     - **Teff:** ~5600-5800 K
-    - **Age:** ~10–12 Gyr
+    - **Age:** ~10-12 Gyr
     - **Luminosity:** ~1.8 L☉
-    - **Mass:** ~0.95–1.10 M☉
+    - **Mass:** ~0.95-1.10 M☉
     - **Radius:** ~1.3 R☉
     - **Source:** MUSCLES extension
 
@@ -554,7 +554,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     - **Star name:** `wasp-17`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/WASP-17
-    - **Spectral type:** F4–F6V
+    - **Spectral type:** F4-F6V
     - **Teff:** ~6550 K
     - **Age:** ~3 Gyr
     - **Luminosity:** ~4 L☉
@@ -591,10 +591,10 @@ Each subdirectory corresponds to a metallicity / alpha combination, e.g.
 
 PHOENIX models are defined on a grid in:
 
-- `Teff` (K) — effective temperature
-- `log_g` (dex) — surface gravity
-- `FeH` (dex) — metallicity (0.0 for solar)
-- `alpha` (dex) — alpha enhancement (0.0 for solar)
+- `Teff` (K): effective temperature
+- `log_g` (dex): surface gravity
+- `FeH` (dex): metallicity (0.0 for solar)
+- `alpha` (dex): alpha enhancement (0.0 for solar)
 
 You can set these under `star.mors` in your config file.
 

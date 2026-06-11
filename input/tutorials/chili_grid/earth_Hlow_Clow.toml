@@ -1,0 +1,149 @@
+# PROTEUS CHILI Grid: Hlow Clow
+#
+# CHILI Earth grid case (H=1.60e+20 kg, C=1.36e+20 kg)
+# Lichtenberg et al. 2026, PSJ 7:108, Table 3.
+#
+# Planet: 1 M_Earth, BSE composition, fO2 = IW+4
+# Star: Sun at 50 Myr (Spada tracks, solar spectrum)
+# Orbit: 1 AU, no tides
+# Interior: Aragog + Zalmoxis (PALEOS EOS)
+# Atmosphere: AGNI (correlated-k, Dayspring 48 bands)
+# Outgassing: CALLIOPE (C-H-O equilibrium, IW+4)
+# Escape: ZEPHYRUS (energy-limited, 30% efficiency)
+#
+# Expected: solidification in ~0.5-4 Myr, consistent with CHILI models.
+#
+# Run: proteus start --offline -c input/tutorials/chili_grid/earth_Hlow_Clow.toml
+
+config_version = "3.0"
+
+[params.out]
+    path    = "chili_grid_earth_Hlow_Clow"
+    logging = "INFO"
+
+[params.dt]
+    method        = "adaptive"
+    initial       = 10.0
+    minimum       = 100.0
+    maximum       = 1e7
+    starspec      = 1e9
+    atol          = 0.04
+    rtol          = 0.11
+    mushy_maximum = 4e3
+    mushy_upper   = 0.99
+
+    [params.stop.time]
+        maximum = 5e9
+    [params.stop.solid]
+        phi_crit = 0.05
+
+[star]
+    module  = "mors"
+    mass    = 1.0
+    age_ini = 0.05
+    [star.mors]
+        tracks          = "spada"
+        age_now         = 4.567
+        rot_pcntle      = 50.0
+        star_name       = "sun"
+        spectrum_source = "solar"
+
+[orbit]
+    module        = "none"
+    semimajoraxis = 1.0
+    eccentricity  = 0.0
+    zenith_angle  = 48.19
+    s0_factor     = 0.375
+
+[planet]
+    mass_tot         = 1.0
+    prevent_warming  = false
+    temperature_mode = "liquidus_super"
+    delta_T_super    = 500.0
+    volatile_mode    = "elements"
+    [planet.elements]
+        O_mode   = "ic_chemistry"
+        O_budget = 0.0
+        H_mode   = "kg"
+        H_budget = 1.60e+20
+        C_mode   = "kg"
+        C_budget = 1.36e+20
+        N_mode   = "kg"
+        N_budget = 0.0
+        S_mode   = "kg"
+        S_budget = 0.0
+
+[interior_struct]
+    module         = "zalmoxis"
+    core_frac      = 0.325
+    core_frac_mode = "mass"
+
+    [interior_struct.zalmoxis]
+        core_eos          = "PALEOS:iron"
+        mantle_eos        = "PALEOS-2phase:MgSiO3"
+        mushy_zone_factor = 0.8
+        num_levels        = 150
+        dry_mantle        = true
+        use_jax           = true
+        update_interval   = 0.0
+
+[interior_energetics]
+    module           = "aragog"
+    num_levels       = 80
+    rtol             = 1e-8
+    flux_guess       = 1000.0
+    trans_conduction = true
+    trans_convection = true
+    trans_grav_sep   = true
+    trans_mixing     = true
+    heat_radiogenic  = true
+    radio_tref       = 4.55
+    radio_K          = 310.0
+    radio_U          = 0.031
+    radio_Th         = 0.124
+    grain_size       = 0.1
+    mixing_length    = "constant"
+
+    [interior_energetics.aragog]
+        mass_coordinates = true
+        core_bc          = "energy_balance"
+        phase_smoothing  = "tanh"
+        solver_method    = "cvode"
+        backend          = "jax"
+
+[outgas]
+    module       = "calliope"
+    fO2_shift_IW = 4.0
+    [outgas.calliope]
+        include_H2O = true
+        include_CO2 = true
+        include_N2  = true
+        include_S2  = true
+        include_H2  = true
+        include_CH4 = true
+        include_CO  = true
+        solubility  = true
+
+[atmos_clim]
+    module         = "agni"
+    surf_state     = "skin"
+    surface_d      = 0.01
+    surface_k      = 2.0
+    rayleigh       = false
+    albedo_pl      = 0.1
+    spectral_group = "Dayspring"
+    spectral_bands = "48"
+    num_levels     = 45
+    p_top          = 1e-4
+    [atmos_clim.agni]
+        chemistry    = "none"
+        solve_energy = true
+        real_gas     = true
+        dx_max       = 15.0
+        max_steps    = 70
+        perturb_all  = true
+
+[escape]
+    module = "zephyrus"
+    [escape.zephyrus]
+        efficiency = 0.3
