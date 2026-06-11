@@ -1,0 +1,62 @@
+name: Main coverage baseline
+
+# Refresh the unit-test coverage report Codecov uses as the comparison base for
+# pull requests. The pull-request workflow uploads coverage only on
+# pull_request events, so pushes to main never refresh the base; without this
+# job Codecov compares each PR against an increasingly stale main report, which
+# distorts the patch and project coverage shown on the PR. Running the unit
+# suite with coverage on every push to main keeps the base current. The run is
+# not a gate: it never fails on coverage, it only publishes the baseline.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash -el {0}
+
+jobs:
+  unit-coverage:
+    name: Upload unit coverage for main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up PROTEUS environment
+        uses: ./.github/actions/setup-proteus
+        with:
+          full-data: 'false'
+
+      - name: Run unit tests with coverage
+        run: |
+          set -euo pipefail
+          # Same selection and flags as the pull-request unit job, so the
+          # baseline matches what pull requests are compared against. fail-under
+          # is 0 because this job publishes a baseline, it does not gate.
+          pytest -m "unit and not skip and not slow and not integration" \
+            --ignore=tests/examples \
+            --cov=src \
+            --cov-report=xml \
+            --cov-fail-under=0 \
+            -p no:faulthandler
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          flags: unit-tests
+          name: main-baseline-coverage
