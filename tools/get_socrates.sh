@@ -212,6 +212,6 @@ if [ -d "$root/AGNI" ]; then
     echo "      socrates/julia. If you ran this script directly (not via"
     echo "      proteus install-all / update-all, which rebuild AGNI for you),"
     echo "      regenerate them before running PROTEUS:"
-    echo "          bash $root/tools/get_agni.sh 0"
+    echo "          RAD_DIR=\"$socpath\" bash \"$root/tools/get_agni.sh\" 0"
 fi
 exit 0

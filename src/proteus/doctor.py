@@ -501,10 +501,12 @@ def check_git_module(name: str, dirs: dict) -> CheckResult:
             # and the compiled libSOCRATES under socrates/julia/lib. AGNI then
             # fails to precompile until they are rebuilt, so a SOCRATES refresh
             # chains an AGNI rebuild. Both halves target the tree RAD_DIR points
-            # at (set here, since the checkout is present and only off-pin), so
-            # a custom install path cannot leave the two out of step. The AGNI
-            # step needs Julia; without it the rebuild fails loudly and the
-            # chain reports the failure rather than masking it.
+            # at: reaching this branch means the SOCRATES checkout resolved from
+            # RAD_DIR exists, so RAD_DIR is non-empty in the environment and the
+            # chained command's references resolve. A custom install path cannot
+            # leave the two out of step. The AGNI step needs Julia; without it
+            # the rebuild fails loudly and the chain reports the failure rather
+            # than masking it.
             refresh = f'bash tools/get_{name.lower()}.sh'
             if name == 'SOCRATES':
                 refresh = (

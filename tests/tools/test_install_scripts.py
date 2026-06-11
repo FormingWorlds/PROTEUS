@@ -1007,7 +1007,9 @@ def _run_agni_rebuild_note(workdir, has_agni: bool) -> subprocess.CompletedProce
     if has_agni:
         (workdir / 'AGNI').mkdir()
     block = _extract_socrates_block('if [ -d "$root/AGNI" ]', 'exit 0')
-    snippet = f'root="{workdir}"\n{block}'
+    # The note references both the resolved root and the SOCRATES path it set
+    # earlier in the script; supply both so the printed command is complete.
+    snippet = f'root="{workdir}"\nsocpath="{workdir}/socrates"\n{block}'
     return subprocess.run(['bash', '-c', snippet], capture_output=True, text=True)
 
 
@@ -1025,8 +1027,15 @@ def test_socrates_rebuild_warns_to_regenerate_agni_wrappers(tmp_path):
     with_agni.mkdir()
     res = _run_agni_rebuild_note(with_agni, has_agni=True)
     assert res.returncode == 0, res.stderr
-    assert 'get_agni.sh 0' in res.stdout
+    assert 'get_agni.sh" 0' in res.stdout
     assert str(with_agni / 'tools' / 'get_agni.sh') in res.stdout
+    # The command is self-contained: it sets RAD_DIR to the SOCRATES path the
+    # script resolved, so a user who has not yet exported RAD_DIR can paste it
+    # as-is. Discrimination: a bare `bash .../get_agni.sh 0` would omit this and
+    # fail when RAD_DIR is unset.
+    assert f'RAD_DIR="{with_agni}/socrates"' in res.stdout
+    # The script path is quoted so a root containing spaces survives the paste.
+    assert f'bash "{with_agni}/tools/get_agni.sh"' in res.stdout
 
     # Guard against the referenced rebuild script being renamed out from under
     # the note: the command it points at must name a script that exists.
