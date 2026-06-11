@@ -681,6 +681,29 @@ class TestCheckGitModuleInstallState:
         assert r.fix_cmd is not None
         assert 'get_socrates.sh' in r.fix_cmd
 
+    def test_unprobed_git_module_falls_back_to_placeholder_version(self, tmp_path):
+        """A pinned git module with no version probe still grades against its pin.
+
+        Version probes exist only for AGNI and SOCRATES, but check_git_module is
+        generic over the module name. A pinned module without a probe (for
+        instance a new entry added to GIT_MODULES before it gains one) degrades
+        the version label to '?' and is still graded by HEAD against its pin,
+        rather than raising on the missing probe.
+        """
+        pins = {'extra': {'ref': 'a' * 40}}
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._git_head', return_value='a' * 40),
+        ):
+            r = check_git_module('EXTRA', {'extra': str(tmp_path)})
+        assert r.status == PASS
+        # No probe for this module, so the version slot degrades to '?' instead
+        # of inventing a version or crashing.
+        assert '?' in r.message
+        # Discrimination: the matched short hash still anchors the result, so '?'
+        # is the version slot only, not a blanket placeholder.
+        assert ('a' * 40)[:8] in r.message
+
 
 def _mixed_results() -> list[CheckResult]:
     """A pass + a fixable fail + a fixable warn, mirroring a real diagnose run."""
