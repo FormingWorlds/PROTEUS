@@ -697,9 +697,6 @@ def test_run_outgassing_mixed_species_dominance():
         'SO2_kg_atm': 0.0,
         'H2S_kg_atm': 0.0,
         'SiO_kg_atm': 0.0,
-        'SiO2_kg_atm': 0.0,
-        'MgO_kg_atm': 0.0,
-        'FeO2_kg_atm': 0.0,
     }
 
     for s in gas_list:

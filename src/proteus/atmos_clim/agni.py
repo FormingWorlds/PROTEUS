@@ -113,18 +113,21 @@ def _check_agni_schema(atmos) -> None:
 def _summarise_tau_band(atmos) -> tuple[float, float]:
     """Reduce the per-band optical-depth array to TOA and surface scalars.
 
-    AGNI stores ``tau_band`` as a ``(nlev_l, nbands)`` Julia array: the
-    outermost index runs over cell-edge levels (``nlev_l = nlev_c + 1``),
-    not cell centres. After juliacall conversion the numpy view may
-    appear as either ``(nlev_l, nbands)`` or ``(nbands, nlev_l)``; the
-    aggregator inspects ``atmos.nlev_l`` and ``atmos.nbands`` to align.
+    Optical depths are zero if transparent mode is enabled. Return zero on
+    shape or read errors so the helpfile column is still well-formed.
+
+    Optical depths extracted at reference wavelength.
 
     Returns
     -------
-    tuple of (tau_atm_TOA, tau_atm_surface), each the band-mean
-    optical depth at that level. Return zero on shape or read errors so the
-    helpfile column is still well-formed.
+    tuple of (tau_atm_TOA, tau_atm_surface)
     """
+
+    # Handle transparent case
+    if bool(getattr(atmos, 'transparent', False)):
+        return 0.0, 0.0
+
+    # Extract arrays
     try:
         tau_arr = np.asarray(atmos.tau_band)
     except Exception:
@@ -164,6 +167,14 @@ def _summarise_tau_band(atmos) -> tuple[float, float]:
         toa = 0.0
         surf = 0.0
 
+    # Ensure finite
+    toa = toa if np.isfinite(toa) else 0.0
+    surf = surf if np.isfinite(surf) else 0.0
+
+    # Warn if small
+    if surf < 1e-9:
+        log.warning('Surface optical depth is small: %.2e', surf)
+
     return toa, surf
 
 
@@ -173,9 +184,14 @@ def _summarise_diagnostics(atmos) -> tuple[float, float]:
     Ra_max is the maximum value of Rayleigh number across the column.
     t_conv_over_t_rad is the maximum of the convective/radiative timescales.
 
-    Returns:
-    tuple of (Ra_max, t_conv_over_t_rad), where Ra_max is the maximum
+    Returns
+    -------
+    tuple of (Ra_max, t_conv_over_t_rad)
     """
+
+    # Handle transparent case
+    if bool(getattr(atmos, 'transparent', False)):
+        return 0.0, 0.0
 
     # Get arrays from AGNI
     ra_arr = np.asarray(atmos.diagnostic_Ra, dtype=float)
@@ -193,7 +209,7 @@ def _summarise_diagnostics(atmos) -> tuple[float, float]:
     # Get maximum t_conv_t_rad
     mask_c = ra_arr > 1e-9
     if np.any(mask_c):
-        ratio = np.amax(t_conv_arr[mask_c] / t_rad_arr[mask_c])
+        ratio = np.amax(t_conv_arr[mask_c] / np.maximum(t_rad_arr[mask_c], 1e-300))
     else:
         ratio = 0.0
 

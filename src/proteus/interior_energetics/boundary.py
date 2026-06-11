@@ -61,12 +61,12 @@ class BoundaryRunner:
         ma_arr = np.array(ma_layer, dtype=float)
 
         # Skip NaN values
-        valid = np.isfinite(cp_layer) & np.isfinite(ma_layer)
+        valid = np.isfinite(cp_arr) & np.isfinite(ma_arr)
         cp_arr = cp_arr[valid]
         ma_arr = ma_arr[valid]
 
         # Handle zero-length arrays after filtering
-        if len(cp_arr) == 0 or len(ma_arr) == 0:
+        if len(cp_arr) == 0 or len(ma_arr) == 0 or np.sum(ma_arr) < 1e-9:
             self.atmosphere_heat_capacity = (
                 config.interior_energetics.boundary.atm_heat_capacity
             )

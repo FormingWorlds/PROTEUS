@@ -317,7 +317,7 @@ class StopClock:
         Model will terminate when runtime exceeds this value [s].
     """
 
-    enabled: bool = field(default=False)
+    enabled: bool = field(default=True)
     maximum: float = field(default=60 * 60 * 24 * 7, validator=gt(0))
 
 

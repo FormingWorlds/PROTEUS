@@ -10,7 +10,8 @@ logging = "INFO"
 output = "bayesopt_infer_sn/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "output/bayesopt_sn/init_coupler.toml"
+# ref_config = "output/bayesopt_sn/init_coupler.toml"
+ref_config = "input/inference/example.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = 3        # Number of random samples if starting from scratch.

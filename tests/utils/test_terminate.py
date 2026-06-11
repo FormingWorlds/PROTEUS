@@ -119,6 +119,16 @@ def test_check_clock_skips_when_below_max(patch_statusfile):
 
 
 @pytest.mark.unit
+def test_check_clock_hits_when_above_max(patch_statusfile):
+    """Clock: above maximum stops simulation."""
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['runtime'] = 1e99
+    assert terminate._check_clock(h) is True
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
 def test_check_radeqm_hits_energy_balance(patch_statusfile):
     """Energy balance: F_atm == F_tidal yields convergence with status 14."""
     cfg = _cfg()

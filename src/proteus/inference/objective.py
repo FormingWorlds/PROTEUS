@@ -383,7 +383,7 @@ def prot_builder(
 
         # Check J is finite
         if not torch.isfinite(J_eval).all():
-            x_param = {parameters[i]: x_raw[0, i].item() for i in range(d)}
+            x_param = {param_keys[i]: x_raw[0, i].item() for i in range(d)}
 
             log.warning('Non-finite objective value')
             log.warning(f'    Raw input x: {x_param}')

@@ -18,6 +18,7 @@ The system performs Bayesian optimization to infer planetary formation parameter
     | File               | Description                               |
     |:-------------------|:------------------------------------------|
     | `inference.py`     | Main entry point                          |
+    | `transforms.py`    | Functions for transforming and scaling variables |
     | `async_BO.py`      | Parallel BO implementation                |
     | `BO.py`            | Single BO step implementation             |
     | `objective.py`     | PROTEUS interface and objective function  |
@@ -50,6 +51,9 @@ output = "infer_demo/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
 ref_config = "input/dummy.toml"
+
+# Simulation statuses considered as a failure-state, with unfavourable objective
+failure_codes = [10, 15, 11] # solidified, escaped, max_runtime
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = '2'         # Number of random samples if starting from scratch.

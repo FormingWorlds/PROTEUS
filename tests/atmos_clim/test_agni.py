@@ -655,8 +655,13 @@ def test_summarise_tau_band_returns_nan_on_unreadable_array():
 
 
 @pytest.mark.physics_invariant
-def test_summarise_diagnostics_picks_convective_level():
-    """Get diagnostics at correct level"""
+def test_summarise_diagnostics_picks_extrema():
+    """Get diagnostics at extrema of the profile
+
+    We extract the profile-maximum values of both:
+    - Ra, which identifies the most convective level and its Ra number.
+    - The timescale ratio of t_conv/t_rad
+    """
     atmos = SimpleNamespace(
         diagnostic_Ra=[0.0, 5.0, 4.0, 3.0],
         timescale_conv=[0.0, 1.0e3, 2.0e3, 1.0e2],
@@ -667,7 +672,7 @@ def test_summarise_diagnostics_picks_convective_level():
     assert ratio == pytest.approx(0.02, rel=1e-6)
 
     # Sign + scale guards. A negative or zero ratio would mean the
-    # convective timescale was read as zero, which is unphysical.
+    # convective timescale was read as zero, which is unphysical in this case.
     assert ratio > 0
     assert ratio < 1.0
 
