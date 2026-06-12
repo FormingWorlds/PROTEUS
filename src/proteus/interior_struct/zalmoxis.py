@@ -477,8 +477,16 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
         much superheat at this mass). The message reports the largest
         achievable superheat so the user can lower ``delta_T_super``.
     """
-    from zalmoxis.eos_export import compute_entropy_adiabat
-    from zalmoxis.melting_curves import paleos_liquidus
+    try:
+        from zalmoxis.eos_export import compute_entropy_adiabat
+        from zalmoxis.melting_curves import paleos_liquidus
+    except (ImportError, ModuleNotFoundError) as e:
+        raise RuntimeError(
+            'liquidus_super mode requires Zalmoxis '
+            '(zalmoxis.eos_export.compute_entropy_adiabat and '
+            'zalmoxis.melting_curves.paleos_liquidus); import failed: '
+            f'{e}'
+        )
 
     delta = float(config.planet.delta_T_super)
 
@@ -490,6 +498,15 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
             float(config.planet.mass_tot),
             float(config.interior_struct.core_frac),
             str(config.interior_struct.core_frac_mode),
+        )
+        log.warning(
+            'liquidus_super: hf_row["P_cmb"] not yet populated; using '
+            'Noack & Lasbleis (2020) mass-aware fallback P_cmb=%.1f GPa '
+            '(mass_tot=%.2f M_Earth). The energetics initial condition is '
+            're-derived against the converged Zalmoxis P_cmb on the next '
+            'iteration.',
+            P_cmb / 1e9,
+            float(config.planet.mass_tot),
         )
     P_cmb = float(P_cmb)
 
