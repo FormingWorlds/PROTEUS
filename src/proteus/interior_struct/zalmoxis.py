@@ -421,17 +421,69 @@ def _resolve_zalmoxis_cmb_temperature(config: Config, hf_row: dict, mode: str) -
     if mode != 'liquidus_super':
         return config.planet.tcmb_init
 
+    # Anchor the Zalmoxis structure-solve adiabat at the CMB temperature of the
+    # fully-molten superheated adiabat that the energetics initial condition
+    # uses, so the density structure and the entropy IC start from one
+    # consistent profile (see solve_superliquidus_adiabat).
+    res = solve_superliquidus_adiabat(config, hf_row)
+    log.info(
+        'liquidus_super CMB anchor for Zalmoxis: T_cmb=%.0f K (fully molten, '
+        '%.0f K above the liquidus; surface T=%.0f K, P_cmb=%.0f GPa).',
+        res['cmb_T'],
+        res['achieved_superheat'],
+        res['surface_T'],
+        res['P_cmb'] / 1e9,
+    )
+    return float(res['cmb_T'])
+
+
+def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
+    """Solve for the coolest fully molten adiabat with a controlled superheat.
+
+    The ``liquidus_super`` initial condition starts the mantle on a single
+    adiabat (uniform specific entropy) that lies a minimum of
+    ``config.planet.delta_T_super`` Kelvin above the configured liquidus,
+    evaluated at the most-constraining mantle depth. Solving for the surface
+    temperature that achieves this margin fixes the whole isentropic profile.
+
+    The superheat is checked against whatever solidus/liquidus parameterisation
+    is configured, so the initial condition adapts to the melting curve in use
+    rather than relying on a fixed surface temperature or entropy value. Because
+    the binding (minimum-superheat) depth is shallow, the solved entropy is
+    essentially independent of planet mass, which keeps a mass grid on a common
+    initial adiabat.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration. Uses ``planet.delta_T_super`` (required superheat
+        in K), ``planet.mass_tot``, ``interior_struct.core_frac`` and
+        ``interior_struct.zalmoxis.mantle_eos``.
+    hf_row : dict or None
+        Helpfile row. ``hf_row['P_cmb']`` is used when populated; otherwise a
+        Noack & Lasbleis (2020) mass-aware estimate is used on the first call.
+
+    Returns
+    -------
+    dict
+        ``surface_T`` [K], ``S_target`` [J/(kg K)], ``cmb_T`` [K],
+        ``achieved_superheat`` [K], ``binding_P`` [Pa] and ``P_cmb`` [Pa].
+
+    Raises
+    ------
+    RuntimeError
+        If the requested superheat cannot be reached before the deep adiabat
+        exhausts the EOS table (the mantle is too deep to be molten with that
+        much superheat at this mass). The message reports the largest
+        achievable superheat so the user can lower ``delta_T_super``.
+    """
+    from zalmoxis.eos_export import compute_entropy_adiabat
     from zalmoxis.melting_curves import paleos_liquidus
 
-    P_cmb = None
-    if isinstance(hf_row, dict):
-        P_cmb = hf_row.get('P_cmb', None)
+    delta = float(config.planet.delta_T_super)
+
+    P_cmb = hf_row.get('P_cmb') if isinstance(hf_row, dict) else None
     if not P_cmb or P_cmb <= 0:
-        # First-call fallback. Use a Noack & Lasbleis (2020) mass-aware
-        # estimate so super-Earth runs do not anchor to the Earth-like
-        # 135 GPa value. The Noack & Lasbleis (2020) scaling is accurate
-        # to within ~5% across 0.5-10 M_Earth. Subsequent timesteps use
-        # the converged hf_row['P_cmb'].
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
 
         P_cmb = estimate_P_cmb_NL20(
@@ -439,30 +491,123 @@ def _resolve_zalmoxis_cmb_temperature(config: Config, hf_row: dict, mode: str) -
             float(config.interior_struct.core_frac),
             str(config.interior_struct.core_frac_mode),
         )
-        log.info(
-            'liquidus_super: hf_row["P_cmb"] not yet populated for the '
-            'structure call; using Noack & Lasbleis (2020) mass-aware '
-            'fallback P_cmb=%.1f GPa '
-            '(mass_tot=%.2f M_Earth, core_frac=%.3f %s). Next iteration '
-            'will use the converged Zalmoxis P_cmb.',
-            P_cmb / 1e9,
-            float(config.planet.mass_tot),
-            float(config.interior_struct.core_frac),
-            str(config.interior_struct.core_frac_mode),
+    P_cmb = float(P_cmb)
+
+    mantle_eos = config.interior_struct.zalmoxis.mantle_eos
+    mat_dicts = load_zalmoxis_material_dictionaries()
+    solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
+    eos_file = mat_dicts.get(mantle_eos, {}).get('eos_file', '') or solid_eos or ''
+    melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
+    if melt_funcs is not None:
+        sol_func, liq_func = melt_funcs
+    else:
+        liq_func = paleos_liquidus
+
+        def sol_func(P):
+            return 0.8 * np.asarray(paleos_liquidus(P))
+
+    def _probe(T_surf: float) -> dict:
+        """Adiabat from this surface T: min superheat over depth and validity."""
+        result = compute_entropy_adiabat(
+            eos_file=eos_file,
+            T_surface=float(T_surf),
+            P_surface=1e5,
+            P_cmb=P_cmb,
+            n_points=160,
+            solidus_func=sol_func,
+            liquidus_func=liq_func,
+            solid_eos_file=solid_eos,
+            liquid_eos_file=liquid_eos,
+        )
+        P = np.asarray(result['P'], dtype=float)
+        T = np.asarray(result['T'], dtype=float)
+        order = np.argsort(P)
+        P, T = P[order], T[order]
+        # A finite, monotone-with-depth profile means the deep adiabat stayed
+        # in-table; a plateau or NaN at depth flags EOS-table exhaustion.
+        valid = bool(
+            np.isfinite(T).all()
+            and np.isfinite(result['S_target'])
+            and np.all(np.diff(T) > -5.0)
+        )
+        liq = np.asarray(liq_func(P), dtype=float)
+        i = int(np.argmin(T - liq))
+        return {
+            'superheat': float(T[i] - liq[i]),
+            'binding_P': float(P[i]),
+            'S_target': float(result['S_target']),
+            'cmb_T': float(T[-1]),
+            'valid': valid,
+        }
+
+    # Scan surface temperature; keep the adiabats that stay fully in-table.
+    scan = []
+    T_surf = 3200.0
+    while T_surf <= 4900.0:
+        d = _probe(T_surf)
+        if d['valid'] and np.isfinite(d['superheat']):
+            scan.append((T_surf, d))
+        T_surf += 150.0
+    if not scan:
+        raise RuntimeError(
+            'liquidus_super: no valid molten adiabat found while solving the '
+            f'initial condition (P_cmb={P_cmb / 1e9:.0f} GPa).'
         )
 
-    T_liq = float(paleos_liquidus(P_cmb))
-    delta = float(config.planet.delta_T_super)
-    tcmb_anchor = T_liq + delta
+    # Superheat rises with surface temperature until the deep adiabat hits the
+    # EOS-table ceiling; restrict the solve to that increasing branch.
+    superheats = [d['superheat'] for _, d in scan]
+    branch = scan[: int(np.argmax(superheats)) + 1]
+    if branch[-1][1]['superheat'] < delta:
+        ceil_T, ceil_d = branch[-1]
+        raise RuntimeError(
+            'liquidus_super: cannot initialise a fully molten mantle with '
+            f'delta_T_super={delta:.0f} K at P_cmb={P_cmb / 1e9:.0f} GPa. The '
+            f'largest achievable superheat is {ceil_d["superheat"]:.0f} K (at '
+            f'surface T={ceil_T:.0f} K) before the deep adiabat exhausts the '
+            'EOS table. Lower delta_T_super or the planet mass, or extend the '
+            'EOS table to higher temperature.'
+        )
+
+    # Bracket the delta crossing on the increasing branch, then bisection-refine.
+    if branch[0][1]['superheat'] >= delta:
+        T_solved = branch[0][0]
+    else:
+        T_lo, T_hi = branch[0][0], branch[-1][0]
+        for k in range(1, len(branch)):
+            if branch[k][1]['superheat'] >= delta:
+                T_lo, T_hi = branch[k - 1][0], branch[k][0]
+                break
+        for _ in range(6):
+            mid = 0.5 * (T_lo + T_hi)
+            dm = _probe(mid)
+            if dm['valid'] and dm['superheat'] >= delta:
+                T_hi = mid
+            else:
+                T_lo = mid
+        T_solved = T_hi
+
+    final = _probe(T_solved)
     log.info(
-        'liquidus_super CMB anchor for Zalmoxis: P_cmb=%.2e Pa -> '
-        'T_liq_Fei2021=%.0f K + delta_T_super=%.0f K = T_cmb=%.0f K',
-        P_cmb,
-        T_liq,
+        'liquidus_super: surface T=%.0f K gives a fully molten adiabat at least '
+        '%.0f K above the liquidus (achieved %.0f K at P=%.0f GPa); T_cmb=%.0f K, '
+        'S=%.1f J/(kg K), P_cmb=%.0f GPa.',
+        T_solved,
         delta,
-        tcmb_anchor,
+        final['superheat'],
+        final['binding_P'] / 1e9,
+        final['cmb_T'],
+        final['S_target'],
+        P_cmb / 1e9,
     )
-    return tcmb_anchor
+    return {
+        'surface_T': float(T_solved),
+        'S_target': float(final['S_target']),
+        'cmb_T': float(final['cmb_T']),
+        'achieved_superheat': float(final['superheat']),
+        'binding_P': float(final['binding_P']),
+        'P_cmb': P_cmb,
+    }
 
 
 def load_zalmoxis_configuration(
