@@ -1707,23 +1707,42 @@ def update_structure_from_interior(
 
     outdir = dirs['output']
 
-    # Build SPIDER's mantle T(r) in ascending radius (CMB to surface)
-    # interior_o.radius is basic nodes (surface to CMB), temp is staggered nodes
+    # Build the mantle T(r) hand-off from the live interior profile.
+    # interior_o.radius holds basic nodes and interior_o.temp staggered-node
+    # temperatures, but the node ordering is module-dependent: SPIDER stores
+    # surface-first descending radius (spider.py:1308, T_cmb = temp[-1]),
+    # Aragog stores CMB-first ascending radius (aragog.py:1776, r_basic[0]
+    # at the CMB). Sort explicitly by radius rather than assuming either
+    # convention: np.interp requires monotonically increasing xp, and the
+    # CMB anchor below must be the innermost node.
     r_stag = 0.5 * (interior_o.radius[:-1] + interior_o.radius[1:])
-    r_ascending = r_stag[::-1]
-    T_ascending = interior_o.temp[::-1]
+    _r_unsorted = np.asarray(r_stag, dtype=float).ravel()
+    _T_unsorted = np.asarray(interior_o.temp, dtype=float).ravel()
+    _order = np.argsort(_r_unsorted)
+    _r_asc = np.ascontiguousarray(_r_unsorted[_order])
+    _T_asc = np.ascontiguousarray(_T_unsorted[_order])
 
-    # Build T(r,P) interpolator from SPIDER/Aragog output in memory.
-    # SPIDER only covers the mantle (CMB to surface), so hold T constant
-    # at the CMB value for the core region.
-    R_cmb = float(np.squeeze(r_ascending[0]))
-    T_cmb = float(np.squeeze(T_ascending[0]))
+    # The interior profile covers only the mantle (CMB to surface), so hold
+    # T constant at the CMB value for the core region.
+    _R_cmb = float(_r_asc[0])
+    _T_cmb = float(_T_asc[0])
 
-    # Capture arrays in closure for the temperature function
-    _r_asc = np.asarray(r_ascending, dtype=float)
-    _T_asc = np.asarray(T_ascending, dtype=float)
-    _R_cmb = R_cmb
-    _T_cmb = T_cmb
+    # Diagnostic: trace the temperature profile actually fed to the structure
+    # re-solve (deep/CMB and upper-mantle range) against what the energetics
+    # reports and the pre-solve radius, to see whether R_int tracks interior
+    # cooling.
+    log.info(
+        'Re-solve T hand-off: deep/CMB T_fed=%.0f K, upper-mantle T_fed range '
+        '[%.0f, %.0f] K | energetics hf_row T_cmb=%.0f K T_magma=%.0f K '
+        'Phi=%.3f | pre-solve R_int=%.6e m',
+        _T_cmb,
+        float(np.min(_T_asc)),
+        float(np.max(_T_asc)),
+        float(hf_row.get('T_cmb', 0.0)),
+        float(hf_row.get('T_magma', 0.0)),
+        float(hf_row.get('Phi_global', 0.0)),
+        float(hf_row.get('R_int', 0.0)),
+    )
 
     def temperature_function(r, P):
         if r <= _R_cmb:
@@ -1784,20 +1803,14 @@ def update_structure_from_interior(
     # needs them in r-indexed form because the default P-indexed
     # tabulation in jax_eos/wrapper.py collapses for this closure
     # (T_asc varies with r and ignores P).
-    # The numpy path ignores temperature_arrays and uses the callable.
-    # Force strict ascending sort by r: jnp.interp requires monotonic
-    # increasing xp, and ``r_ascending = r_stag[::-1]`` above can end up
-    # descending depending on Aragog's per-call radius ordering. An
-    # explicit argsort is cheap (~150 elements) and removes the
-    # convention-dependence. A descending array arriving as
-    # [surface, ..., CMB] would otherwise produce ``Final M=0``
+    # zalmoxis_solver dispatches between the two: it feeds the arrays to
+    # the JAX path when the configured mantle EOS supports it (2-phase
+    # PALEOS mantle + unified core) and otherwise passes the callable to
+    # the numpy path, so the evolved T(r) reaches the density solve on
+    # either path. The arrays are already sorted strictly ascending in r
+    # above, as jnp.interp requires monotonically increasing xp; a
+    # descending [surface, ..., CMB] array would produce ``Final M=0``
     # failures in JAX.
-    _r_for_arrays = np.asarray(_r_asc, dtype=float)
-    _T_for_arrays = np.asarray(_T_asc, dtype=float)
-    _order = np.argsort(_r_for_arrays)
-    _r_for_arrays = np.ascontiguousarray(_r_for_arrays[_order])
-    _T_for_arrays = np.ascontiguousarray(_T_for_arrays[_order])
-
     try:
         import time as _zalmoxis_time
 
@@ -1808,7 +1821,7 @@ def update_structure_from_interior(
             hf_row,
             num_spider_nodes=num_spider_nodes,
             temperature_function=temperature_function,
-            temperature_arrays=(_r_for_arrays, _T_for_arrays),
+            temperature_arrays=(_r_asc, _T_asc),
         )
         _zalmoxis_wall = _zalmoxis_time.monotonic() - _zalmoxis_wall_t0
         # Mass-anchor check: enforce |M_int / M_int_target - 1| <
@@ -2012,7 +2025,7 @@ def update_structure_from_interior(
         dirs['mesh_convergence_steps'] = 0
 
     # Clean up temporary arrays
-    del r_stag, r_ascending, T_ascending
+    del r_stag, _r_unsorted, _T_unsorted
     gc.collect()
 
     # Regenerate SPIDER-format P-S EOS tables when composition changed
