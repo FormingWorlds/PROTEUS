@@ -104,8 +104,12 @@ def plot_overview(output_dir: Path, save_path: Path | None = None):
 def main():
     parser = argparse.ArgumentParser(description='Plot PROTEUS tutorial output')
     parser.add_argument('output_dir', type=Path, help='Path to PROTEUS output directory')
-    parser.add_argument('--save', type=Path, default=None,
-                        help='Save plot to file (PNG, PDF, or AVIF via ImageMagick)')
+    parser.add_argument(
+        '--save',
+        type=Path,
+        default=None,
+        help='Save plot to file (PNG, PDF, or AVIF via ImageMagick)',
+    )
     args = parser.parse_args()
 
     plot_overview(args.output_dir, args.save)

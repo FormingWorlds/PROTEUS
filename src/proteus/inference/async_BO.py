@@ -187,6 +187,7 @@ def parallel_process(
     ref_config: str,
     observables: dict,
     parameters: dict,
+    failure_codes: list[int],
 ) -> tuple[dict, list, list]:
     """Orchestrate parallel asynchronous Bayesian optimization.
 
@@ -205,6 +206,7 @@ def parallel_process(
     - ref_config (str): Path to reference config to pass to objective_builder.
     - observables (dict): Target observables (keys) and values.
     - parameters (dict):  Parameters (keys) with bounds (values) for inference.
+    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
 
     Returns
     ----------
@@ -220,6 +222,7 @@ def parallel_process(
         parameters=parameters,
         ref_config=ref_config,
         output=output,
+        failure_codes=failure_codes,
     )
 
     # Build kernel

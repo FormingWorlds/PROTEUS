@@ -77,6 +77,8 @@ def run_inference(config):
     # plumbed to worker processes through the environment.
     set_child_timeout(config.get('child_timeout_s'))
 
+    # Default for configs that pre-date this field
+    config.setdefault('failure_codes', [])
     # Ensure there are enough CPU cores for the specified number of workers
     if config['n_workers'] >= os.cpu_count():
         raise RuntimeError(f'Not enough CPU cores for {config["n_workers"]} workers')
@@ -124,6 +126,7 @@ def run_inference(config):
         config['ref_config'],
         config['observables'],
         config['parameters'],
+        config['failure_codes'],
     )
 
     t_1 = time.perf_counter()

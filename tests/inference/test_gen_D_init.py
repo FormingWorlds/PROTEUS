@@ -51,6 +51,7 @@ def test_create_init_routes_to_sample_from_bounds(monkeypatch):
         'observables': {'R_obs': 1.0},
         'seed': 1,
         'n_workers': 2,
+        'failure_codes': [],
     }
     grid_calls: list = []
     monkeypatch.setattr(
@@ -84,6 +85,7 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
         'output': 'out',
         'parameters': {'planet.mass_tot': [0.7, 3.0]},
         'observables': {'R_obs': 1.0},
+        'failure_codes': [],
     }
 
     assert init_mod.create_init(config) == 6
@@ -142,6 +144,7 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
             nsamp=2,
             seed=1,
             n_workers=0,
+            failure_codes=[],
         )
     # Discrimination: negative worker counts must also raise. A regression
     # that only guarded the n_workers==0 boundary (e.g. `if n == 0`) would
@@ -156,6 +159,22 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
             nsamp=2,
             seed=1,
             n_workers=-1,
+            failure_codes=[],
+        )
+    # Discrimination: negative worker counts must also raise. A regression
+    # that only guarded the n_workers==0 boundary (e.g. `if n == 0`) would
+    # let -1 slip through and crash multiprocessing.Pool with an opaque
+    # error far from the user's misconfiguration.
+    with pytest.raises(ValueError, match='at least 1'):
+        init_mod.sample_from_bounds(
+            output='out',
+            ref_config='ref.toml',
+            params={'a': [0.0, 1.0]},
+            observables={'obs': 1.0},
+            nsamp=2,
+            seed=1,
+            n_workers=-1,
+            failure_codes=[],
         )
 
 
@@ -218,6 +237,7 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
         nsamp=2,
         seed=11,
         n_workers=10,
+        failure_codes=[1, 10],
     )
 
     assert n == 2
