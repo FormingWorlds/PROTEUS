@@ -949,6 +949,55 @@ def load_zalmoxis_configuration(
     }
 
 
+def _zalmoxis_jax_structure_viable(mat_dicts: dict, core_eos: str, mantle_eos: str) -> bool:
+    """Report whether the Zalmoxis JAX structure path can run for an EOS pair.
+
+    Mirrors, on static registry properties, the preconditions that
+    ``zalmoxis.jax_eos.wrapper.solve_structure_via_jax`` enforces before
+    integrating: the mantle registry entry must carry both ``solid_mantle``
+    and ``melted_mantle`` dict sub-tables (the 2-phase PALEOS layout), and
+    the core entry must resolve to the ``paleos_unified`` format. A
+    ``paleos_api`` core qualifies because
+    ``zalmoxis.eos.paleos_api_cache.resolve_registry_entry`` materialises
+    it to ``paleos_unified`` in place before the JAX dispatch checks it.
+
+    When either precondition fails, the Zalmoxis dispatch raises inside
+    the JAX wrapper and falls back to the numpy ODE, which consumes
+    ``temperature_function`` rather than ``temperature_arrays``; the
+    caller must therefore keep the temperature callable in play.
+
+    Parameters
+    ----------
+    mat_dicts : dict
+        EOS registry from :func:`load_zalmoxis_material_dictionaries`.
+    core_eos : str
+        Core EOS identifier (registry key).
+    mantle_eos : str
+        Mantle EOS identifier (registry key). Trailing mass-fraction
+        tokens from volatile-extended strings are stripped before the
+        lookup.
+
+    Returns
+    -------
+    bool
+        True when the JAX dispatch preconditions hold for both layers.
+        False otherwise, including unknown registry keys: the
+        conservative answer routes the solve to the numpy path with the
+        callable attached.
+    """
+    mantle_entry = mat_dicts.get(_strip_fraction_tokens(str(mantle_eos)))
+    if not isinstance(mantle_entry, dict):
+        return False
+    if not isinstance(mantle_entry.get('solid_mantle'), dict):
+        return False
+    if not isinstance(mantle_entry.get('melted_mantle'), dict):
+        return False
+    core_entry = mat_dicts.get(_strip_fraction_tokens(str(core_eos)))
+    if not isinstance(core_entry, dict):
+        return False
+    return core_entry.get('format') in ('paleos_unified', 'paleos_api')
+
+
 def load_zalmoxis_material_dictionaries():
     """Build an EOS registry dict with file paths pointing to FWL_DATA.
 
@@ -1695,10 +1744,15 @@ def zalmoxis_solver(
         dispatch. Used to pass SPIDER/Aragog T(r) profiles in memory.
     temperature_arrays : tuple[ndarray, ndarray] or None, optional
         Explicit r-indexed ``(r_arr, T_arr)`` for the Zalmoxis JAX path.
-        Consumed only when ``use_jax=True`` in the Zalmoxis config and the
-        caller has already flattened their T profile onto a radial grid
-        (the standard update_structure_from_interior path). The numpy path
-        uses ``temperature_function`` regardless. See Zalmoxis'
+        Consumed only when ``use_jax=True`` AND the configured EOS pair
+        can take the Zalmoxis JAX dispatch (2-phase PALEOS mantle with
+        solid and melted sub-tables plus a unified PALEOS core; see
+        :func:`_zalmoxis_jax_structure_viable`). In that case the
+        external callable is withheld so the inner Picard converges on
+        Zalmoxis' internal linear-T profile while the JAX RHS integrates
+        against the arrays. For any other EOS configuration the solve
+        runs on the numpy path, which consumes ``temperature_function``,
+        and the callable is therefore passed through. See Zalmoxis'
         ``solve_structure_via_jax`` docstring for why both kwargs can be
         passed together.
     temperature_mode_override : str or None, optional
@@ -1806,6 +1860,41 @@ def zalmoxis_solver(
     melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
     input_data_dir = os.path.join(outdir, 'data')
 
+    # Temperature-source dispatch for this call. temperature_arrays can be
+    # consumed only by the Zalmoxis JAX inner path, which requires a
+    # 2-phase PALEOS mantle (solid_mantle + melted_mantle sub-tables) and
+    # a unified PALEOS core. Only in that case is the external callable
+    # withheld: the JAX RHS integrates against the arrays while the numpy
+    # Picard helper converges quickly on Zalmoxis' internal linear-T
+    # profile (passing the callable there lands Picard near PALEOS
+    # phase-boundary clamps and costs roughly two orders of magnitude
+    # more wall time at the same JAX arrays). For every other EOS
+    # configuration the JAX dispatch declines and the numpy ODE runs;
+    # that path consumes only the callable, so it must pass through for
+    # the solve to follow the evolved T(r) instead of rebuilding the
+    # internal temperature_mode profile from the hot initial anchor.
+    _use_jax_active = bool(config_params.get('use_jax'))
+    _jax_viable = _zalmoxis_jax_structure_viable(
+        mat_dicts, config.interior_struct.zalmoxis.core_eos, mantle_eos
+    )
+    _drop_callable = _use_jax_active and temperature_arrays is not None and _jax_viable
+    _tf_effective = None if _drop_callable else temperature_function
+    if _drop_callable:
+        log.info(
+            'Structure-solve T source: temperature_arrays via the Zalmoxis '
+            'JAX path; external callable withheld for this call.'
+        )
+    elif temperature_function is not None:
+        log.info(
+            'Structure-solve T source: external temperature_function '
+            '(consumed by the numpy path).'
+        )
+    else:
+        log.info(
+            'Structure-solve T source: internal %r mode dispatch.',
+            config_params.get('temperature_mode'),
+        )
+
     if config.interior_struct.zalmoxis.global_miscibility:
         from zalmoxis.solver import solve_miscible_interior
 
@@ -1821,12 +1910,6 @@ def zalmoxis_solver(
         if H2O_kg_liquid > 0:
             h2_mass_targets['PALEOS:H2O'] = H2O_kg_liquid
 
-        _use_jax_active = bool(config_params.get('use_jax'))
-        _tf_effective = (
-            None
-            if (_use_jax_active and temperature_arrays is not None)
-            else temperature_function
-        )
         model_results = solve_miscible_interior(
             config_params,
             material_dictionaries=mat_dicts,
@@ -1860,34 +1943,25 @@ def zalmoxis_solver(
             model_results.get('miscibility_iterations', 0),
         )
     else:
-        # When temperature_arrays is supplied to the JAX path, do NOT
-        # also pass temperature_function. Zalmoxis' _solve uses the
-        # callable for the numpy Picard density update (building the
-        # per-node `temperatures` array for EOS lookups) even though
-        # the JAX RHS uses arrays for integration. Passing both creates
-        # a mismatch: PROTEUS' callable gives Aragog's adiabatic T(r)
-        # values that land Picard near PALEOS phase-boundary clamps
-        # and force ~75x more inner Picard iterations to converge.
-        # Dropping the callable makes Zalmoxis fall back to its
-        # internal linear T profile for Picard, which converges
-        # quickly while the JAX integration still uses the accurate
-        # array-based T(r). Passing the callable instead of dropping it
-        # costs roughly two orders of magnitude more wall time at the
-        # same JAX arrays. Warm-starts are also disabled on the JAX
-        # path: they drive Anderson into oscillation and do not help
-        # otherwise, because the inner Picard plateau at diff=0.1 is set
-        # by the lever-rule EOS kink, not by initial density quality, so
-        # warm-start cannot collapse the bail count.
-        _use_jax_active = bool(config_params.get('use_jax'))
-        _tf_effective = (
-            None
-            if (_use_jax_active and temperature_arrays is not None)
-            else temperature_function
-        )
+        # _tf_effective carries the temperature-source decision hoisted
+        # above: the callable is withheld only when the JAX inner path
+        # will actually consume temperature_arrays (2-phase PALEOS
+        # mantle + unified core); on any other EOS configuration the
+        # numpy path runs and the callable passes through. Warm-starts
+        # stay disabled on the JAX path: they drive Anderson into
+        # oscillation and do not help otherwise, because the inner
+        # Picard plateau at diff=0.1 is set by the lever-rule EOS kink,
+        # not by initial density quality, so warm-start cannot collapse
+        # the bail count.
         # Reuse the cached density profile as a Picard seed only when it
         # belongs to this same planet; otherwise start cold. Seeding never
-        # changes the converged result, only the iteration count.
-        _seed_match = not _use_jax_active and _density_cache.get('key') == _structure_cache_key(
+        # changes the converged result, only the iteration count. The seed
+        # and the central-pressure hint follow the temperature-source
+        # dispatch: they are withheld only on the JAX-arrays path (where
+        # warm-starts drive Anderson into oscillation) and applied on the
+        # numpy path, where they cut the Newton iteration count for
+        # repeated re-solves of the same planet.
+        _seed_match = not _drop_callable and _density_cache.get('key') == _structure_cache_key(
             config
         )
         _seed_density = _density_cache['density'] if _seed_match else None
@@ -1900,7 +1974,7 @@ def zalmoxis_solver(
             volatile_profile=volatile_profile,
             temperature_function=_tf_effective,
             temperature_arrays=temperature_arrays,
-            p_center_hint=None if _use_jax_active else hf_row.get('P_center'),
+            p_center_hint=None if _drop_callable else hf_row.get('P_center'),
             initial_density=_seed_density,
             initial_radii=_seed_radii,
         )
@@ -1968,13 +2042,8 @@ def zalmoxis_solver(
         # is unlikely to succeed at any wall.
         config_params_retry['wall_timeout'] = 600.0
 
-        # Same temperature_function gate as the primary call path.
-        _use_jax_active = bool(config_params_retry.get('use_jax'))
-        _tf_effective = (
-            None
-            if (_use_jax_active and temperature_arrays is not None)
-            else temperature_function
-        )
+        # The retry copies use_jax unchanged, so the hoisted
+        # temperature-source gate (_tf_effective) applies as-is.
         model_results = main(
             config_params_retry,
             material_dictionaries=mat_dicts,
@@ -1986,6 +2055,8 @@ def zalmoxis_solver(
         )
 
         radii = model_results['radii']
+        density = model_results['density']
+        gravity = model_results['gravity']
         pressure = model_results['pressure']
         temperature = model_results['temperature']
         mass_enclosed = model_results['mass_enclosed']
@@ -2070,21 +2141,23 @@ def zalmoxis_solver(
     planet_radius = radii[-1]
     cmb_radius = radii[cmb_index]
 
-    # Recompute density and temperature against the accurate T(r) when we
-    # took the fast JAX+temperature_arrays path. In that path we drop
-    # `temperature_function` before calling Zalmoxis so the numpy Picard
-    # converges quickly using Zalmoxis' internal linear-T fallback.
-    # The JAX integrator still uses `temperature_arrays` (Aragog's true
-    # T(r)) and produces correct P(r), M(r), g(r), but `model_results`
-    # returns `density = EOS(P, T_linear_fallback)` and `temperature =
-    # T_linear_fallback` because those come from the Picard helper. Aragog
-    # later reads `zalmoxis_output.dat` for mesh construction
-    # (`eos_method=2`), so a stale density column would feed the wrong
-    # cell masses into its energy evolution (~10% T-driven density
-    # error at the CMB in the PALEOS-2phase melt regime). Recompute
-    # both columns here from (P, T_aragog) using numpy EOS before any
-    # downstream consumer reads them.
-    if config_params.get('use_jax') and temperature_arrays is not None:
+    # Recompute density and temperature against the accurate T(r) when the
+    # solve took the JAX+temperature_arrays path (_drop_callable). On that
+    # path `temperature_function` is withheld so the numpy Picard converges
+    # quickly using Zalmoxis' internal linear-T fallback. The JAX integrator
+    # still uses `temperature_arrays` (Aragog's true T(r)) and produces
+    # correct P(r), M(r), g(r), but `model_results` returns `density =
+    # EOS(P, T_linear_fallback)` and `temperature = T_linear_fallback`
+    # because those come from the Picard helper. Aragog later reads
+    # `zalmoxis_output.dat` for mesh construction (`eos_method=2`), so a
+    # stale density column would feed the wrong cell masses into its energy
+    # evolution (~10% T-driven density error at the CMB in the
+    # PALEOS-2phase melt regime). Recompute both columns here from
+    # (P, T_aragog) using numpy EOS before any downstream consumer reads
+    # them. When the callable was honored on the numpy path instead, the
+    # solver's own columns already reflect the evolved T(r) and no rebuild
+    # runs.
+    if _drop_callable:
         from zalmoxis.eos.dispatch import calculate_density as _calc_rho
 
         _r_ref, _T_ref = temperature_arrays

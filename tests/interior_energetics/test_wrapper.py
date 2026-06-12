@@ -392,6 +392,147 @@ def test_no_mesh_resets_convergence():
 
 
 # ============================================================================
+# test T(r) hand-off construction (node-ordering conventions)
+# ============================================================================
+
+
+def _capture_handoff(radius, temp):
+    """Run a triggered structure update and capture the T(r) hand-off.
+
+    Builds the minimal trigger context (ceiling trigger fires), mocks
+    ``zalmoxis_solver``, and returns the ``temperature_function`` callable
+    and ``temperature_arrays`` tuple that ``update_structure_from_interior``
+    passed to it.
+
+    Parameters
+    ----------
+    radius : np.ndarray
+        Basic-node radii in metres, in the interior module's native order.
+    temp : np.ndarray
+        Staggered-node temperatures in K, ordered consistently with
+        ``radius`` (one element fewer).
+
+    Returns
+    -------
+    tuple
+        ``(temperature_function, (r_array, T_array))`` as received by the
+        mocked solver.
+    """
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    dirs = _mock_dirs()
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o(n_stag=len(temp))
+    interior_o.radius = np.asarray(radius, dtype=float)
+    interior_o.temp = np.asarray(temp, dtype=float)
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+    mock_solver.assert_called_once()
+    kwargs = mock_solver.call_args.kwargs
+    return kwargs['temperature_function'], kwargs['temperature_arrays']
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_handoff_callable_anchors_cmb_for_aragog_ascending_profile():
+    """Aragog-ordered (CMB-first ascending) profiles anchor the callable at the CMB.
+
+    Aragog stores ``interior_o.radius`` ascending with the CMB at index 0
+    and ``interior_o.temp`` on staggered nodes in the same order. The
+    hand-off callable must return the innermost (hottest) staggered
+    temperature for the core region, not the near-surface value, and must
+    interpolate the evolved profile across the mantle.
+    """
+    n_basic = 50
+    # CMB at 3000 km, surface at 6000 km; T falls from 7740 K (deep,
+    # solidified at high rho) to 2500 K near the surface, mirroring the
+    # cooled m10 profile where the pre-sort hand-off fed 2500 K instead
+    # of 7740 K at the CMB.
+    radius = np.linspace(3.0e6, 6.0e6, n_basic)
+    temp = np.linspace(7740.0, 2500.0, n_basic - 1)
+    r_stag = 0.5 * (radius[:-1] + radius[1:])
+
+    tf, (r_arr, T_arr) = _capture_handoff(radius, temp)
+
+    # Core-region clamp: r = 0 (deep edge case) and r exactly at the
+    # innermost staggered node (clamp-branch boundary) both return the
+    # true CMB temperature.
+    assert tf(0.0, 0.0) == pytest.approx(7740.0, rel=1e-12)
+    assert tf(float(r_stag[0]), 0.0) == pytest.approx(7740.0, rel=1e-12)
+    # Discrimination guard: an ordering-blind hand-off returns the
+    # near-surface staggered value (2500 K) at the CMB; the correct
+    # anchor differs from it by far more than the tolerance.
+    assert abs(tf(0.0, 0.0) - float(temp[-1])) > 5.0e3
+
+    # Mid-mantle interpolation reproduces the linear evolved profile:
+    # probe halfway between two staggered nodes.
+    r_probe = 0.5 * (r_stag[20] + r_stag[21])
+    T_expected = 0.5 * (temp[20] + temp[21])
+    assert tf(float(r_probe), 0.0) == pytest.approx(float(T_expected), rel=1e-12)
+
+    # Above-surface limit input: np.interp clamps to the outermost value.
+    assert tf(1.0e8, 0.0) == pytest.approx(2500.0, rel=1e-12)
+
+    # The arrays handed to the JAX path are strictly ascending in r and
+    # preserve the monotonic cooling of the profile (T decreasing
+    # outward, all values positive).
+    assert np.all(np.diff(r_arr) > 0.0)
+    assert np.all(np.diff(T_arr) < 0.0)
+    assert np.all(T_arr > 0.0)
+    assert T_arr[0] == pytest.approx(7740.0, rel=1e-12)
+    assert T_arr[-1] == pytest.approx(2500.0, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_handoff_profile_invariant_to_node_ordering():
+    """The hand-off is identical for SPIDER- and Aragog-ordered input profiles.
+
+    The same physical T(r) handed over in SPIDER order (surface-first
+    descending radius, T_cmb at temp[-1]) and Aragog order (CMB-first
+    ascending radius, T_cmb at temp[0]) must yield identical callables
+    and identical ascending temperature arrays: the node-ordering
+    convention is a storage detail, not a physical degree of freedom.
+    """
+    n_basic = 50
+    radius_asc = np.linspace(3.0e6, 6.0e6, n_basic)
+    temp_asc = np.linspace(7740.0, 2500.0, n_basic - 1)
+
+    tf_aragog, (r_a, T_a) = _capture_handoff(radius_asc, temp_asc)
+    tf_spider, (r_s, T_s) = _capture_handoff(radius_asc[::-1], temp_asc[::-1])
+
+    np.testing.assert_allclose(r_a, r_s, rtol=1e-14)
+    np.testing.assert_allclose(T_a, T_s, rtol=1e-14)
+
+    # Probe the callable across the full domain, including the core
+    # clamp (r = 0), the CMB boundary, mid-mantle, and beyond the
+    # surface (limit inputs on both ends).
+    r_stag = 0.5 * (radius_asc[:-1] + radius_asc[1:])
+    probes = [0.0, float(r_stag[0]), 4.5e6, float(r_stag[-1]), 1.0e8]
+    for r_probe in probes:
+        assert tf_aragog(r_probe, 0.0) == pytest.approx(tf_spider(r_probe, 0.0), rel=1e-14)
+    # Discrimination guard: with an ordering-blind hand-off the two
+    # conventions disagree at the CMB by the full deep-to-surface
+    # temperature contrast carried by the arrays, far above the
+    # comparison tolerance; pin the CMB anchor to the deep value.
+    assert (T_a[0] - T_a[-1]) > 5.0e3
+    assert tf_aragog(0.0, 0.0) == pytest.approx(7740.0, rel=1e-12)
+
+
+# ============================================================================
 # test full update path with mesh blending and convergence
 # ============================================================================
 

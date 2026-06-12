@@ -17,7 +17,7 @@ Functions tested:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -270,8 +270,6 @@ def test_solidus_liquidus_non_tdep():
 @pytest.mark.unit
 def test_solidus_liquidus_rtpress():
     """RTPress100TPa prefix triggers melting curve loading."""
-    from unittest.mock import patch
-
     from proteus.interior_struct.zalmoxis import load_zalmoxis_solidus_liquidus_functions
 
     with patch(
@@ -749,3 +747,448 @@ def test_dry_mass_target_excludes_only_undissolved_volatiles():
     # unit error (g vs kg) or a doubled subtraction would breach this.
     assert 0.999 * M_earth < dry['planet_mass'] < M_earth
     assert 0.999 * M_earth < wet['planet_mass'] < M_earth
+
+
+# ============================================================================
+# Temperature-source dispatch: JAX-path viability and callable pass-through
+# ============================================================================
+
+
+def _gate_registry(tmp_path) -> dict:
+    """EOS registry covering the JAX-viable and numpy-fallback layouts.
+
+    Mirrors the shapes built by ``load_zalmoxis_material_dictionaries``:
+    a unified PALEOS core and mantle (flat entries, format
+    ``paleos_unified``, no phase sub-tables) and a 2-phase PALEOS mantle
+    (``solid_mantle`` + ``melted_mantle`` sub-tables). All referenced
+    table files exist on disk so ``check_zalmoxis_eos_files`` passes.
+    """
+    iron = tmp_path / 'paleos_iron.dat'
+    unified = tmp_path / 'mgsio3_unified.dat'
+    sol = tmp_path / 'mgsio3_solid.dat'
+    liq = tmp_path / 'mgsio3_liquid.dat'
+    for f in (iron, unified, sol, liq):
+        f.write_text('eos table stub')
+    return {
+        'PALEOS:iron': {'eos_file': str(iron), 'format': 'paleos_unified'},
+        'PALEOS:MgSiO3': {'eos_file': str(unified), 'format': 'paleos_unified'},
+        'PALEOS-2phase:MgSiO3': {
+            'core': {'eos_file': str(iron)},
+            'melted_mantle': {'eos_file': str(liq), 'format': 'paleos'},
+            'solid_mantle': {'eos_file': str(sol), 'format': 'paleos'},
+        },
+    }
+
+
+def test_jax_structure_viability_predicate(tmp_path):
+    """JAX-path viability tracks the registry layout, not the config flags.
+
+    The predicate must reproduce the precondition outcome of Zalmoxis'
+    JAX dispatch: True only for a 2-phase mantle (both phase sub-tables)
+    paired with a core that resolves to the unified PALEOS format.
+    Edge cases: unknown registry keys (conservative False, keeping the
+    temperature callable in play), a ``paleos_api`` core (resolves in
+    place to ``paleos_unified``, so True), and a volatile-extended
+    mantle string whose fraction token must be stripped before lookup.
+    """
+    from proteus.interior_struct.zalmoxis import _zalmoxis_jax_structure_viable
+
+    registry = _gate_registry(tmp_path)
+
+    # Unified mantle has no phase sub-tables: the JAX dispatch raises and
+    # the numpy ODE runs, so the predicate must be False.
+    assert _zalmoxis_jax_structure_viable(registry, 'PALEOS:iron', 'PALEOS:MgSiO3') is False
+
+    # 2-phase mantle + unified core: the JAX path can run.
+    assert (
+        _zalmoxis_jax_structure_viable(registry, 'PALEOS:iron', 'PALEOS-2phase:MgSiO3') is True
+    )
+
+    # Missing registry entries (mantle or core): conservative False.
+    assert _zalmoxis_jax_structure_viable(registry, 'PALEOS:iron', 'NoSuchEOS') is False
+    assert (
+        _zalmoxis_jax_structure_viable(registry, 'NoSuchCore', 'PALEOS-2phase:MgSiO3') is False
+    )
+    assert _zalmoxis_jax_structure_viable({}, 'PALEOS:iron', 'PALEOS-2phase:MgSiO3') is False
+
+    # A paleos_api core materialises to paleos_unified before the JAX
+    # dispatch checks it, so it qualifies.
+    registry_api = dict(registry)
+    registry_api['PALEOS-API:iron'] = {'format': 'paleos_api', 'material': 'iron'}
+    assert (
+        _zalmoxis_jax_structure_viable(registry_api, 'PALEOS-API:iron', 'PALEOS-2phase:MgSiO3')
+        is True
+    )
+
+    # A non-unified core (Seager nested layout, no top-level format)
+    # fails the core precondition even with a 2-phase mantle.
+    registry_seager = dict(registry)
+    registry_seager['Seager2007:iron'] = {'core': {'eos_file': str(tmp_path / 'fe.txt')}}
+    assert (
+        _zalmoxis_jax_structure_viable(
+            registry_seager, 'Seager2007:iron', 'PALEOS-2phase:MgSiO3'
+        )
+        is False
+    )
+
+    # Volatile-extended mantle strings carry fraction tokens; the lookup
+    # strips them, so the extended form matches its registry key.
+    assert (
+        _zalmoxis_jax_structure_viable(registry, 'PALEOS:iron', 'PALEOS-2phase:MgSiO3:0.9800')
+        is True
+    )
+
+
+def _gate_config(mantle_eos: str):
+    """MagicMock config for the temperature-source dispatch tests.
+
+    Isothermal temperature mode keeps the configuration loader off the
+    super-liquidus adiabat solve; ``outer_solver='picard'`` keeps the
+    Newton-only knobs out of the config dict; ``use_jax=True`` arms the
+    arrays-vs-callable gate under test.
+    """
+    config = MagicMock()
+    config.planet.mass_tot = 1.0
+    config.planet.temperature_mode = 'isothermal'
+    config.planet.tsurf_init = 300.0
+    config.planet.tcenter_init = 5000.0
+    config.planet.tcmb_init = 4000.0
+    config.interior_struct.core_frac = 0.325
+    config.interior_struct.core_frac_mode = 'mass'
+    config.interior_struct.core_heatcap = 450.0
+    config.interior_struct.zalmoxis.core_eos = 'PALEOS:iron'
+    config.interior_struct.zalmoxis.mantle_eos = mantle_eos
+    config.interior_struct.zalmoxis.ice_layer_eos = None
+    config.interior_struct.zalmoxis.mantle_mass_fraction = 0.0
+    config.interior_struct.zalmoxis.dry_mantle = True
+    config.interior_struct.zalmoxis.global_miscibility = False
+    config.interior_struct.zalmoxis.num_levels = 60
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.8
+    config.interior_struct.zalmoxis.solver_tol_outer = 3e-3
+    config.interior_struct.zalmoxis.solver_tol_inner = 1e-4
+    config.interior_struct.zalmoxis.solver_max_iter_outer = 100
+    config.interior_struct.zalmoxis.solver_max_iter_inner = 100
+    config.interior_struct.zalmoxis.use_jax = True
+    config.interior_struct.zalmoxis.use_anderson = False
+    config.interior_struct.zalmoxis.outer_solver = 'picard'
+    config.interior_energetics.module = 'aragog'
+    config.interior_energetics.num_levels = 30
+    config.interior_energetics.aragog.scalar_gravity_override = False
+    return config
+
+
+def _plausible_model_results(n: int = 60) -> dict:
+    """Converged Zalmoxis model_results for an Earth-mass rocky planet.
+
+    Density decreases outward (iron core to silicate surface), pressure
+    decreases outward, the enclosed mass is the cumulative shell
+    integral of that density, and ``cmb_mass`` sits exactly on a grid
+    node so the core-mantle split is self-consistent.
+    """
+    r_surf = 6.371e6
+    radii = np.linspace(1.0e3, r_surf, n)
+    cmb_index = n // 3
+    density = np.linspace(12000.0, 3300.0, n)  # kg/m^3, core to surface
+    pressure = np.linspace(360e9, 1e5, n)  # Pa, monotone decreasing
+    temperature = np.linspace(5500.0, 2500.0, n)  # K
+    gravity = np.linspace(0.5, 9.8, n)  # m/s^2, ~0 at centre to surface g
+    shell_mass = 4.0 * np.pi * radii**2 * density * np.gradient(radii)
+    mass_enclosed = np.cumsum(shell_mass)
+    return {
+        'radii': radii,
+        'density': density,
+        'gravity': gravity,
+        'pressure': pressure,
+        'temperature': temperature,
+        'mass_enclosed': mass_enclosed,
+        'cmb_mass': float(mass_enclosed[cmb_index]),
+        'core_mantle_mass': float(mass_enclosed[cmb_index]),
+        'converged': True,
+        'converged_pressure': True,
+        'converged_density': True,
+        'converged_mass': True,
+        'best_mass_error': 1e-4,
+        'p_center': 360e9,
+    }
+
+
+def _cooled_mantle_arrays(model_results: dict) -> tuple[np.ndarray, np.ndarray]:
+    """Cooled mantle (r, T) hand-off arrays spanning CMB to surface.
+
+    Represents an evolved (partially crystallized) interior profile:
+    7740 K at the CMB falling to 2500 K at the surface, well below the
+    hot initial adiabat, so a solve that honors it is distinguishable
+    from one that rebuilds the hot internal profile.
+    """
+    radii = np.asarray(model_results['radii'])
+    n = len(radii)
+    cmb_index = n // 3
+    r_arr = np.linspace(float(radii[cmb_index]), float(radii[-1]), 20)
+    t_arr = np.linspace(7740.0, 2500.0, 20)
+    return r_arr, t_arr
+
+
+def _run_gate_solver(
+    tmp_path, monkeypatch, mantle_eos, temperature_arrays, tf, main_results=None
+):
+    """Invoke zalmoxis_solver with the heavy solve mocked out.
+
+    Patches the EOS registry to the on-disk synthetic one, the melting
+    curves to plausible constants, the Zalmoxis ``main`` solve to a
+    converged Earth-like result, and the EOS density dispatch used by
+    the post-solve column rebuild. Returns the mocks and the hf_row.
+
+    Parameters
+    ----------
+    main_results : dict or list of dict, optional
+        Result(s) the mocked ``main`` solve returns. A dict is returned
+        on every call; a list is consumed call by call (primary, retry,
+        ...). Defaults to a single converged Earth-like result.
+    """
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    registry = _gate_registry(tmp_path)
+    if main_results is None:
+        main_results = _plausible_model_results()
+    if isinstance(main_results, list):
+        main_patch_kwargs = {'side_effect': main_results}
+        model_results = main_results[-1]
+    else:
+        main_patch_kwargs = {'return_value': main_results}
+        model_results = main_results
+    hf_row = {'P_surf': 1.0}  # bar; resolves the surface-pressure target
+
+    monkeypatch.setattr(
+        zalmoxis_wrapper,
+        '_density_cache',
+        {'density': None, 'radii': None, 'key': None},
+    )
+
+    def _fake_density(P, mats, eos, T, sol, liq, interpolation_functions=None, **kwargs):
+        # Plausible monotone-in-P, decreasing-in-T condensed density.
+        return 3300.0 + 2.0e-8 * float(P) - 0.1 * (float(T) - 3000.0)
+
+    with (
+        patch.object(
+            zalmoxis_wrapper,
+            'load_zalmoxis_material_dictionaries',
+            return_value=registry,
+        ),
+        patch.object(
+            zalmoxis_wrapper,
+            'load_zalmoxis_solidus_liquidus_functions',
+            return_value=(lambda P: 4000.0, lambda P: 5000.0),
+        ),
+        patch.object(zalmoxis_wrapper, 'main', **main_patch_kwargs) as main_mock,
+        patch('zalmoxis.eos.dispatch.calculate_density', side_effect=_fake_density) as rho_mock,
+    ):
+        cmb_radius, mesh_file = zalmoxis_wrapper.zalmoxis_solver(
+            _gate_config(mantle_eos),
+            str(tmp_path),
+            hf_row,
+            num_spider_nodes=0,
+            temperature_function=tf,
+            temperature_arrays=temperature_arrays,
+        )
+
+    return main_mock, rho_mock, hf_row, model_results, cmb_radius, mesh_file
+
+
+def test_zalmoxis_solver_passes_callable_when_jax_path_not_viable(tmp_path, monkeypatch):
+    """Unified-mantle re-solves hand the evolved T(r) callable to the solve.
+
+    With ``use_jax=True``, ``temperature_arrays`` supplied, and a unified
+    PALEOS mantle (no phase sub-tables), the JAX dispatch cannot run and
+    the numpy ODE consumes only ``temperature_function``. The callable
+    must therefore reach the solve unmodified; nulling it would make
+    every re-solve rebuild the internal hot-anchor profile and freeze
+    the interior radius across the entire crystallization sequence.
+    """
+    model_for_arrays = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
+
+    def tf(r, P):
+        # Evolved-interior closure: cooled mantle, clamped below the CMB.
+        if r <= r_arr[0]:
+            return float(t_arr[0])
+        return float(np.interp(r, r_arr, t_arr))
+
+    main_mock, rho_mock, hf_row, model_results, cmb_radius, mesh_file = _run_gate_solver(
+        tmp_path, monkeypatch, 'PALEOS:MgSiO3', (r_arr, t_arr), tf
+    )
+
+    # The callable passes through identically; the arrays ride along for
+    # the (declined) JAX dispatch inside Zalmoxis.
+    assert main_mock.call_count == 1
+    kwargs = main_mock.call_args.kwargs
+    assert kwargs['temperature_function'] is tf
+    passed_r, passed_t = kwargs['temperature_arrays']
+    np.testing.assert_allclose(passed_r, r_arr, rtol=0, atol=0)
+    np.testing.assert_allclose(passed_t, t_arr, rtol=0, atol=0)
+
+    # The post-solve column rebuild is exclusive to the arrays-via-JAX
+    # path: with the callable honored, the solver's own columns stand.
+    assert rho_mock.call_count == 0
+
+    # Structure scalars come from the (mocked) converged solve; the
+    # core-mantle split stays bounded by the total.
+    radii = model_results['radii']
+    assert hf_row['R_int'] == pytest.approx(float(radii[-1]), rel=1e-12)
+    assert 0.0 < hf_row['M_core'] < hf_row['M_int']
+    assert 0.0 < cmb_radius < hf_row['R_int']
+    assert mesh_file is None  # num_spider_nodes=0 requests no SPIDER mesh
+
+
+def test_zalmoxis_solver_withholds_callable_on_jax_viable_eos(tmp_path, monkeypatch):
+    """2-phase-mantle re-solves feed the arrays to the JAX path instead.
+
+    With a 2-phase PALEOS mantle the JAX dispatch consumes
+    ``temperature_arrays``, so the external callable is withheld (the
+    inner Picard converges on the internal linear-T profile) and the
+    post-solve rebuild rewrites the density and temperature columns
+    against the hand-off arrays before any downstream consumer reads
+    them.
+    """
+    model_for_arrays = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
+
+    def tf(r, P):
+        if r <= r_arr[0]:
+            return float(t_arr[0])
+        return float(np.interp(r, r_arr, t_arr))
+
+    main_mock, rho_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
+        tmp_path, monkeypatch, 'PALEOS-2phase:MgSiO3', (r_arr, t_arr), tf
+    )
+
+    # Callable withheld, arrays passed through.
+    kwargs = main_mock.call_args.kwargs
+    assert kwargs['temperature_function'] is None
+    passed_r, passed_t = kwargs['temperature_arrays']
+    np.testing.assert_allclose(passed_r, r_arr, rtol=0, atol=0)
+    np.testing.assert_allclose(passed_t, t_arr, rtol=0, atol=0)
+
+    # The rebuild ran: one EOS density evaluation per radial node.
+    assert rho_mock.call_count == len(model_results['radii'])
+
+    # The written hand-off file carries the rebuilt (cooled) temperature
+    # column: its surface value tracks the arrays, not the mocked solve
+    # output (2500 K vs 2500 K here by construction at the surface, but
+    # the CMB row discriminates: 7740 K hand-off vs 5500/4500 K mock).
+    data = np.loadtxt(tmp_path / 'data' / 'zalmoxis_output.dat')
+    t_column = data[:, 4]
+    assert t_column[0] == pytest.approx(7740.0, rel=1e-6)
+    # Discrimination guard: the mocked solver temperature at the first
+    # mantle node is ~4500 K, more than 3000 K away from the hand-off
+    # value, so the assertion above cannot pass on un-rebuilt columns.
+    n = len(model_results['radii'])
+    t_mock_cmb = float(model_results['temperature'][n // 3])
+    assert abs(7740.0 - t_mock_cmb) > 3000.0
+
+    # Boundedness of the structure scalars still holds on this path.
+    assert 0.0 < hf_row['M_core'] < hf_row['M_int']
+    assert 0.0 < cmb_radius < hf_row['R_int']
+
+
+def test_zalmoxis_solver_init_call_keeps_internal_mode_dispatch(tmp_path, monkeypatch):
+    """Init-style calls (no callable, no arrays) keep the internal T mode.
+
+    Initial-condition and equilibration calls arrive with neither a
+    temperature callable nor hand-off arrays. The solver must then
+    disable the JAX and Anderson paths (their internal T dispatch
+    collapses for P-ignoring profiles) and run the internal
+    temperature-mode dispatch, with no external profile injected. This
+    pins the limit-input behavior of the gate: the dispatch fix applies
+    only to re-solves that actually carry an evolved profile.
+    """
+    main_mock, rho_mock, hf_row, model_results, _, _ = _run_gate_solver(
+        tmp_path, monkeypatch, 'PALEOS-2phase:MgSiO3', None, None
+    )
+
+    config_params = main_mock.call_args.args[0]
+    kwargs = main_mock.call_args.kwargs
+    assert kwargs['temperature_function'] is None
+    assert kwargs['temperature_arrays'] is None
+    # The no-profile downgrade turns the JAX path off for this call.
+    assert config_params['use_jax'] is False
+    assert config_params['use_anderson'] is False
+    # No arrays: the post-solve rebuild has nothing to rebuild against.
+    assert rho_mock.call_count == 0
+    # The internal isothermal dispatch is the active temperature source.
+    assert config_params['temperature_mode'] == 'isothermal'
+    assert hf_row['R_int'] == pytest.approx(float(model_results['radii'][-1]), rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_zalmoxis_solver_retry_replaces_density_and_gravity(tmp_path, monkeypatch):
+    """A retry-converged solve propagates the retry's density and gravity.
+
+    The primary solve fails mass convergence with ``best_mass_error``
+    just below the 0.05 retry-skip threshold (the edge of that guard),
+    carrying density and gravity columns offset from the converged
+    structure. The relaxed-tolerance retry converges; every downstream
+    consumer (surface gravity in hf_row, the density and gravity columns
+    Aragog reads from zalmoxis_output.dat for its cell masses) must then
+    reflect the retry solution, not the failed primary's. Self-consistency
+    of the written structure (rho, g, M from one solve) is the invariant.
+    """
+    retry_results = _plausible_model_results()
+    primary_results = _plausible_model_results()
+    primary_results['density'] = primary_results['density'] - 500.0
+    primary_results['gravity'] = primary_results['gravity'] * 0.8
+    primary_results['converged'] = False
+    primary_results['converged_mass'] = False
+    primary_results['best_mass_error'] = 0.049  # just below the 0.05 skip gate
+
+    r_arr, t_arr = _cooled_mantle_arrays(retry_results)
+
+    def tf(r, P):
+        # Evolved-interior closure: cooled mantle, clamped below the CMB.
+        if r <= r_arr[0]:
+            return float(t_arr[0])
+        return float(np.interp(r, r_arr, t_arr))
+
+    main_mock, rho_mock, hf_row, _, cmb_radius, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        tf,
+        main_results=[primary_results, retry_results],
+    )
+
+    # Primary plus exactly one relaxed-tolerance retry, with the
+    # temperature-source gate applying to the retry unchanged.
+    assert main_mock.call_count == 2
+    retry_params = main_mock.call_args_list[1].args[0]
+    assert retry_params['tolerance_outer'] == pytest.approx(3e-3 * 3, rel=1e-12)
+    assert retry_params['max_iterations_outer'] == 200
+    assert retry_params['wall_timeout'] == pytest.approx(600.0)
+    assert main_mock.call_args_list[1].kwargs['temperature_function'] is tf
+
+    # Surface gravity comes from the retry solution.
+    g_retry = float(retry_results['gravity'][-1])
+    g_primary = float(primary_results['gravity'][-1])
+    assert hf_row['gravity'] == pytest.approx(g_retry, rel=1e-12)
+    # Discrimination guard: the stale primary value sits ~2 m/s^2 away,
+    # far outside the comparison tolerance.
+    assert abs(g_retry - g_primary) > 1.0
+
+    # The written hand-off columns carry the retry's density and gravity
+    # over the mantle nodes (columns: r, P, rho, g, T).
+    n = len(retry_results['radii'])
+    cmb_index = n // 3
+    data = np.loadtxt(tmp_path / 'data' / 'zalmoxis_output.dat')
+    np.testing.assert_allclose(data[:, 2], retry_results['density'][cmb_index:], rtol=1e-15)
+    np.testing.assert_allclose(data[:, 3], retry_results['gravity'][cmb_index:], rtol=1e-15)
+    # Discrimination guard: the primary's columns differ by 500 kg/m^3
+    # in rho and 20% in g at every node, so the assertions above cannot
+    # pass on a file written from the failed primary's arrays.
+    assert np.all(np.abs(retry_results['density'] - primary_results['density']) > 100.0)
+
+    # No rebuild on the honored-callable path; structure scalars bounded.
+    assert rho_mock.call_count == 0
+    assert 0.0 < hf_row['M_core'] < hf_row['M_int']
+    assert 0.0 < cmb_radius < hf_row['R_int']
