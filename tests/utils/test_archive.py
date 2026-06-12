@@ -248,13 +248,16 @@ def test_extract_returns_none_when_directory_missing(tmp_path, caplog):
 
 
 def test_remove_old_keeps_archive_and_recent_snapshots(tmp_path):
-    """remove_old keeps files whose age (parsed from the filename prefix)
-    is >= the `before` cutoff. It also unconditionally keeps .tar
-    archives. Other files are removed.
+    """remove_old prunes timestamped snapshots whose age (parsed from the
+    filename prefix) is below the `before` cutoff and keeps everything
+    else: the .tar archive, recent snapshots, and fixed-name runtime
+    files that the interior modules re-read between structure re-solves.
 
     Discrimination: with three snapshots at ages 100, 1000, 10000 and a
-    cutoff of 500, only the 1000 and 10000 snapshots must remain.
-    Random non-snapshot files (foo.csv) must be removed regardless of age.
+    cutoff of 500, only the age-100 snapshot may disappear. The runtime
+    hand-off files (zalmoxis_output.dat, spider_mesh.dat) and the
+    spider_eos/ table directory must survive: deleting them kills the
+    next Aragog solver.reset(), which re-reads zalmoxis_output.dat.
     """
     # Pre-existing tar (must survive)
     (tmp_path / f'{tmp_path.name}.tar').write_bytes(b'archive')
@@ -262,8 +265,12 @@ def test_remove_old_keeps_archive_and_recent_snapshots(tmp_path):
     (tmp_path / '100_int.nc').write_text('a', encoding='utf-8')
     (tmp_path / '1000_int.nc').write_text('b', encoding='utf-8')
     (tmp_path / '10000_atm.nc').write_text('c', encoding='utf-8')
-    # Non-snapshot file (must be removed regardless of name)
-    (tmp_path / 'random.csv').write_text('d', encoding='utf-8')
+    # Fixed-name runtime files re-read by the interior modules
+    (tmp_path / 'zalmoxis_output.dat').write_text('mesh', encoding='utf-8')
+    (tmp_path / 'spider_mesh.dat').write_text('mesh', encoding='utf-8')
+    # EOS table directory (directories are kept wholesale)
+    (tmp_path / 'spider_eos').mkdir()
+    (tmp_path / 'spider_eos' / 'table.dat').write_text('eos', encoding='utf-8')
 
     archive_mod.remove_old(str(tmp_path), before=500)
 
@@ -273,8 +280,37 @@ def test_remove_old_keeps_archive_and_recent_snapshots(tmp_path):
     assert not (tmp_path / '100_int.nc').exists()
     assert (tmp_path / '1000_int.nc').exists()
     assert (tmp_path / '10000_atm.nc').exists()
-    # Non-snapshot file removed
-    assert not (tmp_path / 'random.csv').exists()
+    # Runtime hand-off files survive the prune
+    assert (tmp_path / 'zalmoxis_output.dat').exists()
+    assert (tmp_path / 'spider_mesh.dat').exists()
+    # The table directory survives with its contents intact
+    assert (tmp_path / 'spider_eos' / 'table.dat').read_text(encoding='utf-8') == 'eos'
+
+
+def test_remove_old_keeps_non_timestamped_nc_and_json_names(tmp_path):
+    """A .nc/.json name without a leading integer time token is not a
+    snapshot and must be kept rather than crashing the int() parse.
+
+    Edge case for the prefix parser: 'notes.json' and 'mesh_summary.nc'
+    have no integer prefix, while '0_int.nc' is the boundary-age
+    snapshot (age 0 < any positive cutoff, so it is pruned). A
+    regression that re-applied delete-by-default or raised ValueError on
+    the parse would fail this test.
+    """
+    (tmp_path / 'notes.json').write_text('a', encoding='utf-8')
+    (tmp_path / 'mesh_summary.nc').write_text('b', encoding='utf-8')
+    # Boundary snapshot: age 0 parses cleanly and is below the cutoff
+    (tmp_path / '0_int.nc').write_text('c', encoding='utf-8')
+
+    archive_mod.remove_old(str(tmp_path), before=500)
+
+    # Non-timestamped names kept; no exception raised on the parse
+    assert (tmp_path / 'notes.json').exists()
+    assert (tmp_path / 'mesh_summary.nc').exists()
+    # Discrimination: the parseable age-0 snapshot IS pruned, so the
+    # kept files above survive because of the name check, not because
+    # the prune was a no-op.
+    assert not (tmp_path / '0_int.nc').exists()
 
 
 def test_remove_old_keeps_json_snapshots_alongside_nc(tmp_path):

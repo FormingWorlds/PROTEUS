@@ -224,15 +224,26 @@ def update(dir: str, remove_files: bool = True) -> None:
 
 def remove_old(dir: str, before: float) -> None:
     """
-    Remove files from the directory, except archives and those corresponding to times
-    greater than or equal to `before`.
+    Prune archived snapshot files older than a cutoff time.
+
+    Only timestamped snapshot files are removed: names ending in ``.nc``
+    or ``.json`` whose leading underscore-delimited token parses as an
+    integer simulated time (e.g. ``1000_int.nc``), and only when that
+    time is below `before`. Every other entry is kept, notably the tar
+    archive itself and the fixed-name runtime files that the interior
+    modules re-read between structure re-solves (``zalmoxis_output.dat``
+    and its ``.prev`` backup, ``zalmoxis_output_temp.txt``,
+    ``spider_mesh.dat``, and the EOS table directories). Pruned
+    snapshots remain recoverable from the tar archive written by
+    :func:`update` before this function runs.
 
     Arguments
     ---------
     dir : str
         The directory to remove old files from.
     before : float
-        Remove files corresponding to simulated times before this time [years].
+        Remove snapshot files corresponding to simulated times before
+        this time [years].
     """
 
     # Paths
@@ -241,22 +252,19 @@ def remove_old(dir: str, before: float) -> None:
     # Files
     files = glob.glob(os.path.join(dir, '*'))
 
-    # Remove files
+    # Remove only recognized timestamped snapshots older than the cutoff
     for f in files:
         name = os.path.split(f)[-1]
+        keep = True
 
-        # Keep archives
-        if name.endswith('.tar'):
-            keep = True
-
-        # Keep nc and json files, for time >= before
-        elif name.endswith('.nc') or name.endswith('.json'):
-            age = int(name.split('.')[0].split('_')[0])
-            keep = age >= before
-
-        # Do not keep other files
-        else:
-            keep = False
+        if name.endswith('.nc') or name.endswith('.json'):
+            try:
+                age = int(name.split('.')[0].split('_')[0])
+            except ValueError:
+                # Not a timestamped snapshot; keep it.
+                pass
+            else:
+                keep = age >= before
 
         if not keep:
             safe_rm(f)

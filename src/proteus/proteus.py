@@ -1025,9 +1025,11 @@ class Proteus:
             ):
                 log.info('Updating archive of model output data')
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                # do not remove ALL files
+                # pack every loose file into data.tar, keeping the originals
                 archive.update(self.directories['output/data'], remove_files=False)
-                # remove all files EXCEPT the latest ones
+                # prune archived snapshots older than the cutoff; fixed-name
+                # runtime files needed by the interior modules (mesh and EOS
+                # hand-off files) stay in place
                 archive.remove_old(self.directories['output/data'], self.hf_row['Time'] * 0.99)
                 if _IT_TIMING_ENABLED:
                     _t_mod['archive'] = time.perf_counter() - _t0
