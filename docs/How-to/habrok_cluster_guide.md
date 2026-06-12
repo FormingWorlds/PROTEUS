@@ -83,9 +83,30 @@ There is information on the HPC wiki on [how to submit jobs](https://wiki.hpc.ru
 
 See the [parameter grids guide](usage_grids.md) for how to submit grids to the nodes via Slurm.
 
-You can also submit single PROTEUS runs to the nodes. For example:
+You can also submit a single PROTEUS run to the nodes. Write it as a script file rather than using `sbatch --wrap`: a batch shell does not source `~/.bashrc`, so the modules and the conda environment have to be set up inside the script itself. A `--wrap` one-liner skips that setup, and the job then fails with errors like `proteus: command not found` or `libnetcdff.so: cannot open shared object file`.
+
+Create `run_proteus.sh`:
+```bash
+#!/bin/bash
+#SBATCH --job-name=proteus
+#SBATCH --partition=regular
+#SBATCH --mem-per-cpu=3G
+#SBATCH --time=1-00:00:00          # up to 10 days on the regular partition
+
+# A batch shell does not source ~/.bashrc, so set up the environment explicitly.
+module purge
+module load netCDF-Fortran libarchive
+
+# Initialise conda (use the full path, e.g. ~/miniforge3/bin/conda, if not on PATH).
+eval "$(conda shell.bash hook)"
+conda activate proteus
+
+proteus start --offline -c input/all_options.toml
+```
+
+Submit it with:
 ```console
-sbatch --mem-per-cpu=3G --time=1440 --wrap "proteus start --offline -c input/all_options.toml"
+sbatch run_proteus.sh
 ```
 
 ## Transferring data from Habrok to Kapteyn
