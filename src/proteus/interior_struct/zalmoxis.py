@@ -199,6 +199,11 @@ def validate_zalmoxis_output_schema(
     expected_mantle = M_int_hf - M_core_hf
     if expected_mantle > 0:
         m_rel = abs(mantle_mass_file / expected_mantle - 1.0)
+        log.info(
+            'zalmoxis mass-closure: mantle split m_rel=%.3e (rtol_mass=%.1e)',
+            m_rel,
+            rtol_mass,
+        )
         if m_rel > rtol_mass:
             raise RuntimeError(
                 'zalmoxis_output.dat schema violation: '
@@ -1269,8 +1274,6 @@ def generate_spider_tables(config: Config, outdir: str):
             mzf,
         )
 
-    spider_eos_dir = os.path.join(outdir, 'data', 'spider_eos')
-
     # Determine pressure range from planet mass (higher mass needs wider range)
     mass_tot = config.planet.mass_tot or 1.0
     # P_max for the SPIDER P-S lookup grid. Must cover the actual P_cmb
@@ -1287,11 +1290,26 @@ def generate_spider_tables(config: Config, outdir: str):
     nP = config.interior_struct.zalmoxis.lookup_nP
     nS = config.interior_struct.zalmoxis.lookup_nS
 
+    layout = '2phase' if is_twophase else 'unified'
+    cache_key = f'P_max={P_max:.6e}_nP={nP}_nS={nS}_mzf={mzf}_layout={layout}'
+
+    # Table location. Default: per-run output/<run>/data/spider_eos. When
+    # PROTEUS_PS_CACHE_DIR is set, the directory is keyed by cache_key so that
+    # independent runs with the same planet mass and table resolution reuse one
+    # generated table instead of each rebuilding the slow full-resolution PALEOS
+    # P-S table. The cache_key already encodes everything that changes the table
+    # (P_max, nP, nS, mushy_zone_factor, layout), so reuse is exact.
+    _ps_cache_root = os.environ.get('PROTEUS_PS_CACHE_DIR')
+    if _ps_cache_root:
+        _safe_key = cache_key.replace('.', 'p').replace('=', '-').replace('+', '')
+        spider_eos_dir = os.path.join(_ps_cache_root, _safe_key)
+        os.makedirs(spider_eos_dir, exist_ok=True)
+    else:
+        spider_eos_dir = os.path.join(outdir, 'data', 'spider_eos')
+
     # Cache check: skip regeneration if tables exist and pressure range unchanged.
     # The pressure range depends on planet mass, which doesn't change during evolution.
     cache_marker = os.path.join(spider_eos_dir, '.cache_info.txt')
-    layout = '2phase' if is_twophase else 'unified'
-    cache_key = f'P_max={P_max:.6e}_nP={nP}_nS={nS}_mzf={mzf}_layout={layout}'
     if os.path.isfile(cache_marker):
         with open(cache_marker) as f:
             existing_key = f.read().strip()
