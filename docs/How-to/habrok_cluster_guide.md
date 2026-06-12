@@ -13,13 +13,13 @@ ssh-keygen -t ed25519
 ```
 Then copy your public key to Habrok (`ssh-copy-id` selects your default key automatically):
 ```console
-ssh-copy-id YOUR_USERNAME@login1.hb.hpc.rug.nl
+ssh-copy-id YOUR_USERNAME@interactive1.hb.hpc.rug.nl
 ```
 
 Once you have added your SSH key to Habrok, modify the entry below and insert it into your `~/.ssh/config` file:
 ```
 Host habrok
-    HostName login1.hb.hpc.rug.nl
+    HostName interactive1.hb.hpc.rug.nl
     User YOUR_USERNAME
     IdentityFile ~/.ssh/id_ed25519   # match the key you generated (e.g. ~/.ssh/id_rsa)
     ServerAliveInterval 120
