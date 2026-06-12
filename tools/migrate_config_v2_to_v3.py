@@ -845,10 +845,10 @@ def translate_grid(grid_toml: dict):
 
 
 def _dump_toml(nested, path):
-    import tomli_w
+    import tomlkit
 
-    with open(path, 'wb') as f:
-        tomli_w.dump(_replace_none(nested), f)
+    with open(path, 'w') as f:
+        tomlkit.dump(_replace_none(nested), f)
 
 
 def _replace_none(d):
