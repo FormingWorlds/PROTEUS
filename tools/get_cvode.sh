@@ -26,15 +26,26 @@ fi
 
 conda_bin="${CONDA_EXE:-conda}"
 
+# Pin the SUNDIALS major and the wrapper minor: a future SUNDIALS major can
+# change the ABI the wrapper builds against, so bound the ranges to the known
+# working combination (SUNDIALS 7.x, scikits-odes-sundials 3.x) while allowing
+# minor/patch updates.
 echo "Installing the SUNDIALS C library (conda-forge) into ${CONDA_PREFIX}..."
-"$conda_bin" install -y --prefix "$CONDA_PREFIX" -c conda-forge sundials
+"$conda_bin" install -y --prefix "$CONDA_PREFIX" -c conda-forge 'sundials>=7,<8'
 
 echo "Building scikits-odes-sundials against SUNDIALS..."
 # The build (scikit-build-core / CMake) locates SUNDIALS through the conda
 # prefix; expose it both ways so older and newer build backends find it.
 export CMAKE_PREFIX_PATH="${CONDA_PREFIX}:${CMAKE_PREFIX_PATH:-}"
 export SUNDIALS_INST="${CONDA_PREFIX}"
-pip install scikits-odes-sundials
+pip install 'scikits-odes-sundials>=3.0,<4'
 
-python -c "import scikits_odes_sundials.cvode" \
-    && echo "[+] CVODE (scikits-odes-sundials) installed and importable."
+# Hard gate: a wrapper that builds but does not import (wrong/missing SUNDIALS,
+# ABI mismatch) is exactly what this script exists to catch, so fail loudly
+# instead of reporting success.
+if ! python -c "import scikits_odes_sundials.cvode" >/dev/null 2>&1; then
+    echo "ERROR: scikits-odes-sundials installed but does not import." >&2
+    echo "       Check the SUNDIALS build against the conda library above." >&2
+    exit 1
+fi
+echo "[+] CVODE (scikits-odes-sundials) installed and importable."
