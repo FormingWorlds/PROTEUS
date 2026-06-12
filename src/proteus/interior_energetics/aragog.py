@@ -1397,14 +1397,27 @@ class AragogRunner:
             )
 
             # ---- Independent PALEOS adiabat ----
-            # Use the same surface temperature that _set_entropy_ic used:
-            # config.planet.tsurf_init unless hf_row carries an accretion
-            # override (T_surface_initial from Zalmoxis White+Li mode).
-            T_surf = float(config.planet.tsurf_init)
-            if hf_row is not None:
-                T_surface_computed = hf_row.get('T_surface_initial', 0)
-                if T_surface_computed and T_surface_computed > 0:
-                    T_surf = float(T_surface_computed)
+            # Reference surface temperature for the independent adiabat.
+            # liquidus_super builds the IC by solving for the surface
+            # temperature that gives the requested superheat, so anchor the
+            # cross-check adiabat at that same solved value (tsurf_init is
+            # ignored by liquidus_super). The cold-surface guard below then
+            # compares the IC's unpacked surface against the intended surface,
+            # so a corrupted IC is still caught.
+            if config.planet.temperature_mode == 'liquidus_super':
+                from proteus.interior_struct.zalmoxis import (
+                    solve_superliquidus_adiabat,
+                )
+
+                T_surf = float(solve_superliquidus_adiabat(config, hf_row)['surface_T'])
+            else:
+                # config.planet.tsurf_init unless hf_row carries an accretion
+                # override (T_surface_initial from Zalmoxis White+Li mode).
+                T_surf = float(config.planet.tsurf_init)
+                if hf_row is not None:
+                    T_surface_computed = hf_row.get('T_surface_initial', 0)
+                    if T_surface_computed and T_surface_computed > 0:
+                        T_surf = float(T_surface_computed)
 
             # Surface pressure: use 1 bar (same as _set_entropy_ic and
             # common.compute_initial_entropy) to keep the cross-check

@@ -249,57 +249,51 @@ def compute_initial_entropy(
         )
         return S
 
-    # CMB-anchored adiabat: invert (P_cmb, tcmb_init) -> S via the same
-    # entropy tables the interior solver integrates with. Because S is
-    # conserved along an adiabat, S(P_cmb, T_cmb) = S(P_surf, T_surf), so
-    # this returns exactly the entropy that produces T(P_cmb) = tcmb_init
-    # when the solver unpacks the IC. Use this mode when the surface-
-    # anchored adiabat under the current EOS would land in the mushy zone
-    # at IC and you want to force a fully molten initial state.
-    #
-    # liquidus_super shares the (P_cmb, T_cmb) -> S inversion path with
-    # adiabatic_from_cmb, with one substitution: T_cmb is derived from
-    # the EoS-agnostic Fei et al. (2021) MgSiO3 liquidus at P_cmb plus
-    # the user-set delta_T_super offset, instead of being read directly
-    # from config.planet.tcmb_init. This makes the IC anchor independent
-    # of which silicate EoS bookkeeping convention (WB17 S_0=0 vs PALEOS
-    # Stebbins-anchored) is being compared.
-    cmb_mode = config.planet.temperature_mode in ('adiabatic_from_cmb', 'liquidus_super')
+    # liquidus_super: start the mantle on the coolest single adiabat that is
+    # fully molten everywhere with delta_T_super of superheat above the
+    # configured liquidus. The superheat is solved against the actual melting
+    # curve at the most-constraining depth, so the initial condition is robust
+    # to the liquidus parameterisation and to planet mass instead of relying on
+    # a fixed surface temperature or entropy value (see
+    # zalmoxis.solve_superliquidus_adiabat). This replaces the former CMB
+    # liquidus anchor, which extrapolated the melting curve past calibration at
+    # high mass and produced a cold-surface, energy-non-conserving IC.
+    if config.planet.temperature_mode == 'liquidus_super':
+        from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
-    # Out-of-calibration liquidus_super redirect. Above the Fei+2021 melting-
-    # curve calibration the CMB liquidus anchor is a power-law extrapolation;
-    # inverted at the very high CMB pressure it yields an entropy that falls
-    # with pressure and unpacks to a cold surface, i.e. a steeply inverted,
-    # non-physical, energy-non-conserving initial condition. The surface-
-    # anchored adiabat stays fully molten and isentropic at these masses, so
-    # route to it instead. Gated on P_cmb so in-calibration masses (e.g. the
-    # 1 M_Earth case at ~140 GPa) keep the CMB anchor unchanged.
-    if cmb_mode and config.planet.temperature_mode == 'liquidus_super':
-        P_cmb_check = hf_row.get('P_cmb') if hf_row is not None else None
-        if not P_cmb_check or P_cmb_check <= 0:
-            from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+        res = solve_superliquidus_adiabat(config, hf_row)
+        surface_T = res['surface_T']
+        if spider_eos_dir and os.path.isdir(spider_eos_dir):
+            try:
+                from aragog.eos.entropy import EntropyEOS
 
-            P_cmb_check = estimate_P_cmb_NL20(
-                float(getattr(config.planet, 'mass_tot', 1.0)),
-                float(config.interior_struct.core_frac),
-                str(config.interior_struct.core_frac_mode),
-            )
-        if P_cmb_check > FEI2021_LIQUIDUS_P_CALIB_PA:
-            cmb_mode = False
-            log.warning(
-                'liquidus_super: P_cmb=%.0f GPa is beyond the Fei+2021 '
-                'melting-curve calibration (~%.0f GPa); the CMB liquidus '
-                'anchor would extrapolate to a cold-surface, energy-non-'
-                'conserving initial condition. Anchoring the initial entropy '
-                'at the surface instead, which yields a fully molten '
-                'isentropic profile at this planet mass.',
-                P_cmb_check / 1e9,
-                FEI2021_LIQUIDUS_P_CALIB_PA / 1e9,
-            )
+                S = float(EntropyEOS(spider_eos_dir).invert_temperature(1e5, surface_T))
+                log.info(
+                    'liquidus_super initial entropy from surface P-S inversion: '
+                    'surface T=%.0f K -> S=%.1f J/kg/K',
+                    surface_T,
+                    S,
+                )
+                return S
+            except (ImportError, ValueError, FileNotFoundError) as e:
+                log.warning(
+                    'liquidus_super surface P-S inversion failed (%s); using the '
+                    'PALEOS adiabat entropy S=%.1f J/kg/K.',
+                    e,
+                    res['S_target'],
+                )
+        return float(res['S_target'])
+
+    # adiabatic_from_cmb: invert (P_cmb, tcmb_init) -> S via the same entropy
+    # tables the interior solver integrates with. Because S is conserved along
+    # an adiabat, S(P_cmb, tcmb_init) = S(P_surf, T_surf), so this returns the
+    # entropy that reproduces T(P_cmb) = tcmb_init when the solver unpacks the
+    # IC. Use this mode to force a fully molten initial state by an explicit
+    # user-set CMB temperature.
+    cmb_mode = config.planet.temperature_mode == 'adiabatic_from_cmb'
 
     if cmb_mode:
         mode = config.planet.temperature_mode
-        is_liquidus_super = mode == 'liquidus_super'
         P_cmb = None
         if hf_row is not None:
             P_cmb = hf_row.get('P_cmb', None)
@@ -333,46 +327,9 @@ def compute_initial_entropy(
                 struct_mod,
             )
 
-        # Compute the CMB anchor temperature.
-        #   adiabatic_from_cmb: tcmb_init is user-set absolute K.
-        #   liquidus_super:     T_liq_Fei2021(P_cmb) + delta_T_super.
-        # The Fei+2021 (Nat. Commun. 12, 876) MgSiO3 liquidus is a third-party
-        # calibration shared between PALEOS and external references, so
-        # neither the WB17 nor the PALEOS S_0 anchoring choice biases the
-        # IC. The piecewise Simon-Glatzel fit is implemented in Zalmoxis
-        # (zalmoxis.melting_curves.paleos_liquidus); we import lazily so
-        # users without Zalmoxis can still run adiabatic_from_cmb.
-        if is_liquidus_super:
-            try:
-                from zalmoxis.melting_curves import paleos_liquidus
-            except (ImportError, ModuleNotFoundError) as e:
-                raise RuntimeError(
-                    f'liquidus_super mode requires Zalmoxis '
-                    f'(zalmoxis.melting_curves.paleos_liquidus); '
-                    f'import failed: {e}'
-                )
-            if P_cmb > FEI2021_LIQUIDUS_P_CALIB_PA:
-                log.warning(
-                    'liquidus_super: P_cmb=%.0f GPa exceeds the Fei+2021 '
-                    'MgSiO3 melting-curve calibration (~%.0f GPa); the CMB '
-                    'anchor temperature is an extrapolation and the initial '
-                    'condition is uncertain at this planet mass.',
-                    P_cmb / 1e9,
-                    FEI2021_LIQUIDUS_P_CALIB_PA / 1e9,
-                )
-            T_liq = float(paleos_liquidus(P_cmb))
-            delta = float(config.planet.delta_T_super)
-            tcmb = T_liq + delta
-            log.info(
-                'liquidus_super CMB anchor: P_cmb=%.2e Pa -> '
-                'T_liq_Fei2021=%.0f K + delta_T_super=%.0f K = T_cmb=%.0f K',
-                P_cmb,
-                T_liq,
-                delta,
-                tcmb,
-            )
-        else:
-            tcmb = float(config.planet.tcmb_init)
+        # The adiabatic_from_cmb anchor temperature is the user-set absolute
+        # value; S(P_cmb, tcmb_init) is inverted below.
+        tcmb = float(config.planet.tcmb_init)
 
         # Preferred path: invert via the Aragog entropy tables (the same
         # tables the solver integrates with), so the resulting S yields
