@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import M_earth, const_G
+from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, M_earth, const_G
 from proteus.utils.structure_estimate import (
     iron_fractions as _iron_fractions,
 )
@@ -34,10 +34,6 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Earth mass in kg (for scaling law normalization)
 M_EARTH_KG = M_earth
-
-# Fei et al. (2021, Nat. Commun. 12, 876) MgSiO3 melting temperature is
-# calibrated to ~500 GPa; above this the liquidus_super anchor extrapolates.
-FEI2021_LIQUIDUS_P_CALIB_PA = 500e9
 
 
 def solve_dummy_structure(
@@ -286,16 +282,12 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
         return T
 
     elif mode == 'liquidus_super':
-        # CMB-anchored adiabat using the Fei+2021 MgSiO3 liquidus.
-        # T_cmb = T_liq_Fei2021(P_cmb) + delta_T_super, then integrate
-        # the adiabat upward to the surface. This is the EoS-agnostic
-        # IC anchor: the third-party Fei+2021 calibration is shared
-        # across PALEOS-internal use and external references, so
-        # neither the WB17 (S_0=0) nor the PALEOS (Stebbins-anchored)
-        # entropy convention biases the IC. The dummy module provides
-        # only a coarse adiabat from constant alpha/Cp/g; the
-        # production path (zalmoxis + Aragog) computes the same anchor
-        # against the converged structure-solve P_cmb.
+        # Coarse CMB-anchored placeholder T(r) for the dummy structure only:
+        # T_cmb = T_liq_Fei2021(P_cmb) + delta_T_super, integrated upward with
+        # constant alpha/Cp/g. The production energetics initial condition does
+        # NOT use this anchor; it solves a fully-molten super-liquidus adiabat
+        # via solve_superliquidus_adiabat regardless of the structure module, so
+        # this coarse anchor affects only the dummy structure's density profile.
         try:
             from zalmoxis.melting_curves import paleos_liquidus
         except (ImportError, ModuleNotFoundError) as e:

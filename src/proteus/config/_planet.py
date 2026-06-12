@@ -298,12 +298,13 @@ class Planet:
     ini_entropy: float = field(default=3900.0, validator=gt(0))
     ini_dsdr: float = field(default=-4.698e-6)
 
-    # Superliquidus offset at the CMB for temperature_mode = 'liquidus_super'.
-    # T_cmb anchor is T_liq_Fei2021(P_cmb) + delta_T_super; the adiabat is
-    # then integrated upward to the surface. The default 500 K is a heuristic
-    # margin tuned for Earth-mass to few-Earth-mass mantles; the Fei+2021
-    # liquidus is calibrated to ~500 GPa, so at higher P_cmb the anchor is an
-    # extrapolation. Setting delta_T_super = 0 places the adiabat on the liquidus.
+    # Minimum superheat above the liquidus for temperature_mode =
+    # 'liquidus_super'. The IC adiabat is solved so its temperature exceeds the
+    # configured liquidus by at least delta_T_super at the most-constraining
+    # mantle depth, which fixes a fully molten isentropic profile for any mass
+    # and any melting curve. The default 500 K gives a comfortably molten start
+    # across the Earth-mass to ten-Earth-mass range; delta_T_super = 0 makes the
+    # mantle marginally molten (touching the liquidus at the binding depth).
     delta_T_super: float = field(default=500.0, validator=ge(0))
 
     # Initial volatile inventory
