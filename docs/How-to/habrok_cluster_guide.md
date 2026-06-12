@@ -6,19 +6,22 @@ You will need a RUG account, with an account name (e.g. `p321401`) and two-facto
 To do this, first follow [the instructions](https://wiki.hpc.rug.nl/habrok/connecting_to_the_system/connecting) on the online documentation.
 
 We recommend that you also add your public SSH key to Habrok, so each connection only asks for your two-factor code rather than your password.
-The `~/.ssh/id_rsa` key pair is shared across all clusters, so if you already generated one while setting up the [Kapteyn cluster](kapteyn_cluster_guide.md), do **not** run `ssh-keygen` again: regenerating overwrites the existing key and locks you out of the other cluster.
-Reuse the key you already have and only copy it across:
+Your SSH key pair is shared across all clusters, so if you already generated one while setting up the [Kapteyn cluster](kapteyn_cluster_guide.md), do **not** run `ssh-keygen` again: regenerating overwrites the existing key and locks you out of the other cluster.
+If you do not have a key yet, create one (Ed25519 is the current default; RSA also works):
 ```console
-ssh-copy-id -i ~/.ssh/id_rsa.pub YOUR_USERNAME@login1.hb.hpc.rug.nl
+ssh-keygen -t ed25519
 ```
-If you do not have an SSH key yet, create one first with `ssh-keygen -t rsa`.
+Then copy your public key to Habrok (`ssh-copy-id` selects your default key automatically):
+```console
+ssh-copy-id YOUR_USERNAME@login1.hb.hpc.rug.nl
+```
 
 Once you have added your SSH key to Habrok, modify the entry below and insert it into your `~/.ssh/config` file:
 ```
 Host habrok
     HostName login1.hb.hpc.rug.nl
     User YOUR_USERNAME
-    IdentityFile ~/.ssh/id_rsa
+    IdentityFile ~/.ssh/id_ed25519   # match the key you generated (e.g. ~/.ssh/id_rsa)
     ServerAliveInterval 120
     ServerAliveCountMax 60
     ControlMaster auto
@@ -89,7 +92,6 @@ Create `run_proteus.sh`:
 ```bash
 #!/bin/bash
 #SBATCH --job-name=proteus
-#SBATCH --partition=regular
 #SBATCH --mem-per-cpu=3G
 #SBATCH --time=1-00:00:00          # up to 10 days on the regular partition
 
@@ -215,4 +217,5 @@ ssh habrok 'tar -cf - --exclude=data -C /scratch/<habrok_user>/proteus_output my
     The sizes differ by design if you used a slim `--exclude=data/` transfer; in that case rely on the dry-run check instead.
 - **Check sizes first.** Before pulling, check how large the data is: `ssh habrok 'du -sh /scratch/<habrok_user>/proteus_output/my_run/'`. Large runs can be tens of GB.
 - **The `data/` directory is often not needed.** It contains raw NetCDF/JSON output at every timestep. The `runtime_helpfile.csv` and `plots/` directory are usually sufficient for analysis.
+- **Habrok storage quotas.** Your home, projects, and scratch partitions on Habrok also have limited space. Check your usage with `hbquota` when logged in to the interactive servers.
 - **Kapteyn storage quotas.** The formingworlds dataserver has also limited space. Check your usage with `ssh norma2 'du -sh /dataserver/users/formingworlds/<kapteyn_user>/'` before transferring large datasets.
