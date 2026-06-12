@@ -48,23 +48,32 @@ class BoundaryRunner:
         self.m_atm = hf_row.get('M_atm', 0.0)  # Atmospheric mass, default to 0 if not available
         self.f_atm = hf_row['F_atm']
 
-        cp_layer = getattr(getattr(atmos_o, '_atm', None), 'layer_cp', None)
-        if cp_layer is not None:
-            cp_arr = np.asarray(cp_layer, dtype=float).ravel()
-            valid = np.isfinite(cp_arr)
-            if np.any(valid):
-                # Use profile-mean atmospheric heat capacity across all valid layers.
-                self.atmosphere_heat_capacity = float(np.mean(cp_arr[valid]))  # J/kg/K
-            else:
-                # All-NaN layer_cp: fall back to the configured constant.
-                # InteriorBoundary defines atm_heat_capacity.
-                self.atmosphere_heat_capacity = (
-                    config.interior_energetics.boundary.atm_heat_capacity
-                )
-        else:
+        # Attempt to obtain cp and ma from atmos object
+        cp_layer = getattr(
+            getattr(atmos_o, '_atm', None),
+            'layer_cp',
+            [config.interior_energetics.boundary.atm_heat_capacity],
+        )
+        ma_layer = getattr(getattr(atmos_o, '_atm', None), 'layer_σ', [1.0])
+
+        # Get extracted values
+        cp_arr = np.array(cp_layer, dtype=float)
+        ma_arr = np.array(ma_layer, dtype=float)
+
+        # Skip NaN values
+        valid = np.isfinite(cp_arr) & np.isfinite(ma_arr)
+        cp_arr = cp_arr[valid]
+        ma_arr = ma_arr[valid]
+
+        # Handle zero-length arrays after filtering
+        if len(cp_arr) == 0 or len(ma_arr) == 0 or np.sum(ma_arr) < 1e-9:
             self.atmosphere_heat_capacity = (
                 config.interior_energetics.boundary.atm_heat_capacity
             )
+
+        # Store mass-weighted cp average
+        else:
+            self.atmosphere_heat_capacity = float(np.average(cp_arr, weights=ma_arr))
 
         # Prefer Zalmoxis-derived CMB radius when available.
         # Fall back to corefrac-based radius for non-Zalmoxis runs.
@@ -695,13 +704,25 @@ class BoundaryRunner:
             events=tsurf_change_event,
         )
 
+        # time-step
+        t_final = sol.t[-1]
+        dt_actual = t_final - t_span[0]
+        sim_time = t_final / secs_per_year  # convert back to years
+
+        # Check reason for solver termination
+        if sol.status == 1:
+            log.warning(
+                f'Tsurf event truncated timestep: dt={dt_actual / secs_per_year:.1e} years'
+            )
+        elif sol.status == -1:
+            log.warning('Boundary layer interior failed to integrate - solver error')
+            log.warning(f'    solver msg: {sol.message}')
+
         # Extract results
         T_p_final = sol.y[0, -1]
         T_surf_final = sol.y[1, -1]
-        t_final = sol.t[-1]
         phi_final = self.melt_fraction(T_p_final)
         r_s_final = self.r_s(T_p_final)
-        sim_time = t_final / secs_per_year  # convert back to years
         phi_final = self.melt_fraction(T_p_final)
         visc_final = self.viscosity(T_p_final, T_surf_final, phi_final)
         f_radio_final = self.radioactive_heating(t_final) * self.mantle_mass

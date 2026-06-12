@@ -20,11 +20,11 @@ import numpy as np
 import pandas as pd
 import toml
 import torch
-from botorch.utils.transforms import unnormalize
 from matplotlib import cm
 from matplotlib.ticker import MaxNLocator
 
 from proteus import Proteus
+from proteus.inference.transforms import unnormalize_parameters
 from proteus.plot import plot_dispatch
 from proteus.utils.coupler import variable_is_logarithmic
 from proteus.utils.helper import recursive_get
@@ -443,7 +443,7 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
     )
 
     # Un-normalise X data
-    X = unnormalize(D['X'], bounds)
+    X = unnormalize_parameters(torch.tensor(D['X']), bounds, keys)
     X = np.array(X, copy=None, dtype=float)
 
     # Colors

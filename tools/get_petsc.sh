@@ -182,7 +182,13 @@ if [[ "$OSTYPE" == "linux"* ]]; then
         else
             echo "    mpicc not in PATH — will download MPICH"
         fi
-        blas_flag=""
+
+        if [[ "$host" == *"ast.cam.ac.uk" ]]; then
+            echo "    Detected IoA cluster "
+        else
+            blas_flag=""
+        fi
+
         # RHEL 9+ / Rocky 9+ GCC enables -Werror=format-security by default,
         # which breaks sundials 2.5. LTO type-mismatch warnings also cause
         # PETSc's library probe to fail. Suppress both.
