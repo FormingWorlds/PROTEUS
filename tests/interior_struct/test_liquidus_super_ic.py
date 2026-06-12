@@ -29,11 +29,23 @@ superheat, is:
 
 from __future__ import annotations
 
+import re
 from unittest.mock import MagicMock
 
 import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+@pytest.fixture(autouse=True)
+def _clear_superliquidus_solver_cache():
+    """Drop the per-process super-liquidus solve cache around every test, so a
+    cached result from one case (real or mocked) never leaks into another."""
+    from proteus.interior_struct.zalmoxis import _clear_superliquidus_cache
+
+    _clear_superliquidus_cache()
+    yield
+    _clear_superliquidus_cache()
 
 
 # ----------------------------------------------------------------------
@@ -269,18 +281,21 @@ class TestSolveSuperliquidusAdiabat:
         cfg.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
         return cfg
 
-    @pytest.mark.physics_invariant
     def test_solves_for_requested_superheat(self, monkeypatch):
-        """The solved adiabat clears the liquidus by at least delta_T_super
-        everywhere, and lands close to that margin at the binding depth.
+        """The bisection lands the solve on the requested superheat margin.
+
+        This exercises the scan/bracket/bisection CONTROL FLOW against a
+        synthetic adiabat (min superheat = T_surf - 3700 by construction); it
+        is not a physics invariant. The real-EOS numerical output is pinned in
+        the slow-tier test_superliquidus_adiabat tests.
         """
         _install_fake_solver_deps(monkeypatch)
         from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
         cfg = self._cfg(delta_T_super=500.0)
         res = solve_superliquidus_adiabat(cfg, {'P_cmb': 1.5e11})
-        # Full-melt invariant: the solver never under-melts (achieved superheat
-        # is at least the requested margin), and lands close to it.
+        # The solver never under-melts (achieved superheat is at least the
+        # requested margin) and lands close to it.
         assert res['achieved_superheat'] >= 500.0 - 1.0
         assert res['achieved_superheat'] == pytest.approx(500.0, abs=30.0)
         # In the synthetic model min superheat = T_surf - 3700, so delta pins
@@ -294,14 +309,21 @@ class TestSolveSuperliquidusAdiabat:
 
     def test_unachievable_superheat_raises(self, monkeypatch):
         """A superheat the synthetic table cannot support raises RuntimeError
-        rather than silently returning a partially-solid initial condition.
+        rather than silently returning a partially-solid initial condition, and
+        the error reports the largest achievable superheat.
         """
         _install_fake_solver_deps(monkeypatch, ceiling_T=4800.0)
         from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
         cfg = self._cfg(delta_T_super=6000.0)  # beyond the synthetic ceiling
-        with pytest.raises(RuntimeError, match='cannot initialise a fully molten'):
+        with pytest.raises(RuntimeError, match='cannot initialise a fully molten') as exc:
             solve_superliquidus_adiabat(cfg, {'P_cmb': 1.5e11})
+        msg = str(exc.value)
+        # The message must quote a concrete, achievable ceiling below the
+        # unreachable 6000 K request (so the user knows what to lower to).
+        assert 'largest achievable superheat' in msg
+        ceiling = re.search(r'largest achievable superheat is (\d+) K', msg)
+        assert ceiling is not None and 0.0 < float(ceiling.group(1)) < 6000.0
 
     def test_missing_p_cmb_uses_nl20_estimate(self, monkeypatch):
         """When hf_row lacks P_cmb the solve falls back to the
