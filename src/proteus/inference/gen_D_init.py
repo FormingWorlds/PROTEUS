@@ -18,10 +18,10 @@ import numpy as np
 import pandas as pd
 import toml
 import torch
-from botorch.utils.transforms import normalize
 from scipy.stats.qmc import Halton
 
 from proteus.inference.objective import child_timeout_s, eval_obj, prot_builder
+from proteus.inference.transforms import normalize_parameters
 from proteus.inference.utils import save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
 from proteus.utils.helper import recursive_get
@@ -70,6 +70,7 @@ def create_init(config):
             init_samps,
             config['seed'],
             config['n_workers'],
+            config['failure_codes'],
         )
 
     # read from grid
@@ -144,7 +145,7 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
         raw_x = torch.tensor(raw_x, dtype=dtype)
 
         # Generate normalised INPUT parameters
-        nrm_x = normalize(raw_x, bounds).flatten()
+        nrm_x = normalize_parameters(raw_x, bounds, keys).flatten()
         X[i, :] = nrm_x[:]  # store (list of floats)
 
         # Get values of OUTPUT observables from grid point data (list of floats)
@@ -184,6 +185,7 @@ def f_aug(x, iter, builder_args):
         iter=iter,
         ref_config=builder_args['ref_config'],
         output=builder_args['output'],
+        failure_codes=builder_args['failure_codes'],
     )
 
     return f(x)
@@ -211,6 +213,7 @@ def sample_from_bounds(
     nsamp: int,
     seed: int,
     n_workers: int,
+    failure_codes: list[int],
 ) -> int:
     """Generate initial BO data by evaluating Halton samples in parameter space.
 
@@ -223,6 +226,7 @@ def sample_from_bounds(
     - nsamp (int): Number of initial samples to evaluate.
     - seed (int): RNG seed for Halton sequence generation.
     - n_workers (int): Number of parallel workers to use for evaluation.
+    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
 
     Returns
     ----------
@@ -244,7 +248,11 @@ def sample_from_bounds(
 
     # prepare parallel proteus runs
     builder_args = dict(
-        parameters=params, observables=observables, ref_config=ref_config, output=output
+        parameters=params,
+        observables=observables,
+        ref_config=ref_config,
+        output=output,
+        failure_codes=failure_codes,
     )
 
     # Generate n random points in [0,1]^d and evaluate the objective

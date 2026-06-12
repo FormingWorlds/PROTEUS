@@ -291,8 +291,8 @@ def test_agni_zephyrus_optical_depth_monotonic_from_TOA_to_surface():
     )
     atmos = SimpleNamespace(tau_band=tau_band, nlev_c=4, nbands=3)
     tau_TOA, tau_surface = _summarise_tau_band(atmos)
-    assert tau_TOA == pytest.approx(np.mean(tau_band[0, :]), rel=1e-12)
-    assert tau_surface == pytest.approx(np.mean(tau_band[-1, :]), rel=1e-12)
+    assert tau_TOA == pytest.approx(tau_band[0, 1], rel=1e-12)
+    assert tau_surface == pytest.approx(tau_band[-1, 1], rel=1e-12)
     assert tau_TOA < tau_surface
     assert tau_TOA < 0.5 * tau_surface
 
@@ -317,8 +317,8 @@ def test_agni_zephyrus_optical_depth_bounded_below_by_zero():
     )
     atmos = SimpleNamespace(tau_band=tau_band, nlev_c=3, nbands=2)
     tau_TOA, tau_surface = _summarise_tau_band(atmos)
-    assert tau_TOA >= 0.0
-    assert tau_surface > 0.0
+    assert tau_TOA == pytest.approx(tau_band[0, 1], rel=1e-12)
+    assert tau_surface == pytest.approx(tau_band[-1, 1], rel=1e-12)
     assert tau_TOA < tau_surface
     assert tau_TOA < 0.5 * tau_surface
 

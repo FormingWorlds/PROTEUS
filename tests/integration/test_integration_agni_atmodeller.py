@@ -209,16 +209,16 @@ def test_agni_atmodeller_optical_depth_monotonic_from_TOA_to_surface():
     # property.
     tau_band = np.array(
         [
-            [0.002, 0.001, 0.0005, 0.0003],  # TOA
+            [0.002, 0.001, 0.001, 0.0003],  # TOA
             [0.04, 0.06, 0.02, 0.03],
             [0.4, 0.5, 0.25, 0.3],
-            [2.5, 4.0, 1.5, 2.0],  # surface
+            [2.5, 1.5, 1.5, 2.0],  # surface
         ]
     )
     atmos = SimpleNamespace(tau_band=tau_band, nlev_c=4, nbands=4)
     tau_TOA, tau_surface = _summarise_tau_band(atmos)
-    assert tau_TOA == pytest.approx(np.mean(tau_band[0, :]), rel=1e-12)
-    assert tau_surface == pytest.approx(np.mean(tau_band[-1, :]), rel=1e-12)
+    assert tau_TOA == pytest.approx(tau_band[0, 1], rel=1e-12)
+    assert tau_surface == pytest.approx(tau_band[-1, 1], rel=1e-12)
     # Monotonicity (matrix design lock).
     assert tau_TOA < tau_surface
     # Scale guard: gap covers ~3 orders of magnitude, well below

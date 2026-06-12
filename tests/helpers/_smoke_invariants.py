@@ -60,11 +60,6 @@ DEFAULT_ABS_TOL_KG = 1.0  # kg; some bookkeeping fields legitimately go to 0.0
 # ---------------------------------------------------------------------------
 # Finiteness and sign
 # ---------------------------------------------------------------------------
-# Diagnostic columns whose schema defines NaN as a sentinel rather than a
-# bug: the AGNI convection diagnostics are NaN when no atmospheric level is
-# convective or when the chosen solver path does not populate them (see
-# proteus.atmos_clim.agni._summarise_diagnostics). Inf is still rejected.
-NAN_SENTINEL_COLUMNS = ('atm_Ra_max', 'atm_t_conv_over_t_rad')
 
 
 def assert_no_nan_inf(hf_row: pd.Series, columns: list[str] | None = None) -> None:
@@ -72,8 +67,7 @@ def assert_no_nan_inf(hf_row: pd.Series, columns: list[str] | None = None) -> No
 
     NaN and Inf in a helpfile column indicate a bug: a divide-by-zero, a
     missing fallback, or a propagation from an upstream solver that did not
-    converge. The only exception is the `NAN_SENTINEL_COLUMNS` diagnostics,
-    whose contract defines NaN as "not populated".
+    converge.
     """
     if columns is None:
         columns = [c for c, v in hf_row.items() if isinstance(v, (int, float, np.floating))]
@@ -88,8 +82,6 @@ def assert_no_nan_inf(hf_row: pd.Series, columns: list[str] | None = None) -> No
         except (TypeError, ValueError):
             continue
         if math.isnan(f):
-            if c in NAN_SENTINEL_COLUMNS:
-                continue
             bad.append(f'{c}=NaN')
         elif math.isinf(f):
             bad.append(f'{c}=Inf')

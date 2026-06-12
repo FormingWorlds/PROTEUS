@@ -9,14 +9,16 @@ from pathlib import Path
 import pandas as pd
 import toml
 import torch
-from botorch.utils.transforms import unnormalize
 from numpy import log10
 
+from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import element_list, gas_list
 from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
 
 dtype = torch.double
-LOG_CLIP = 1e-30
+EPS_CLIP = 1e-10
+LOG_CLIP = 1e-20
+BAD_OBJ_VALUE = -20.0
 log = logging.getLogger('fwl.' + __name__)
 
 # Per-child PROTEUS run timeout for inference workers. A single wedged child
@@ -102,7 +104,7 @@ def run_proteus(
     observables: list[str],
     ref_config: str,
     output: str,
-) -> dict:
+) -> tuple[dict, int]:
     """Run the PROTEUS simulator and return selected observables.
 
     Builds a per-run TOML file, invokes the `proteus` CLI, and reads the resulting CSV.
@@ -119,6 +121,7 @@ def run_proteus(
     Returns
     ----------
     - observables_dict (dict): Mapping of observable names to their simulated values.
+    - status (int): Status code indicating the outcome of the simulation.
     """
 
     # Construct run-specific paths
@@ -178,6 +181,14 @@ def run_proteus(
     # Re-write config in case simulator mutates or removes it
     update_toml(ref_config, parameters, str(out_cfg))
 
+    # Read status file
+    status = 20  # default to Generic Error
+    try:
+        with open(out_abs / 'status', 'r') as f:
+            status = int(f.readlines()[0].strip())
+    except Exception as e:
+        log.warning(f'Failed to read status file for worker={worker} iter={iter}: {e}')
+
     # Read simulator output
     df_row = dict(pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1])
 
@@ -196,7 +207,7 @@ def run_proteus(
     except KeyError as e:
         raise KeyError(f"Requested observable '{e.args[0]}' not found") from e
 
-    return observables_dict
+    return observables_dict, status
 
 
 def log_warp(sq_dist):
@@ -210,7 +221,7 @@ def log_warp(sq_dist):
     ----------
     - torch.Tensor: Warped score, larger for closer matches.
     """
-    warped_dist = -torch.log10(sq_dist + 1e-10)
+    warped_dist = -torch.log10(sq_dist + EPS_CLIP)
     return warped_dist
 
 
@@ -219,6 +230,7 @@ def eval_obj(sim_dict, tru_dict):
 
     The metric compares each observable in either linear or log space,
     accumulates squared normalized differences, and applies `log_warp`.
+    A small offset is applied to the denominator to avoid division by zero.
 
     Parameters
     ----------
@@ -247,13 +259,9 @@ def eval_obj(sim_dict, tru_dict):
     true_y = torch.tensor(tru_vals, dtype=dtype).reshape(1, -1)
 
     # Compute normalized difference and squared distance
-
-    diff = torch.ones(1, 1, dtype=dtype) - sim / true_y
+    denom = torch.where(true_y >= 0, true_y + EPS_CLIP, true_y - EPS_CLIP)
+    diff = torch.ones_like(true_y) - sim / denom
     sq_dist = (diff**2).sum(dim=1, keepdim=True)
-
-    # obj = torch.ones(1, 1, dtype=dtype) - sq_dist
-
-    # print("\n",sim, true_y, obj, "\n")
 
     obj = log_warp(sq_dist)
     return obj
@@ -267,13 +275,14 @@ def J(
     iter: int,
     output: str,
     ref_config: str,
+    failure_codes: list[int] = [],
 ) -> torch.Tensor:
     """Run PROTEUS, and then compute the objective value for a given normalized input.
 
     Transforms normalized `x` to raw parameters, runs the simulator,
     and computes the squared-error based objective:
 
-        J = log_10(sum((1 - sim/true)^2) + 1e-10)
+        J = log_10(sum((1 - sim/true)^2) + eps)
 
     Parameters
     ----------
@@ -284,6 +293,7 @@ def J(
     - iter (int): Iteration number.
     - output (str): Path to output folder relative to PROTEUS output folder.
     - ref_config (str): Reference TOML config path.
+    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
 
     Returns
     ----------
@@ -292,7 +302,7 @@ def J(
 
     # Map normalized x to raw parameter dict and run PROTEUS
     raw = {parameters[i]: x[0, i].item() for i in range(len(parameters))}
-    sim_vals = run_proteus(
+    sim_vals, sim_status = run_proteus(
         parameters=raw,
         worker=worker,
         iter=iter,
@@ -301,7 +311,11 @@ def J(
         output=output,
     )
 
-    # Return value of objective function given these results
+    # If status indicates failure, return very bad objective value
+    if (20 <= sim_status <= 29) or (sim_status in [0, 1]) or (sim_status in failure_codes):
+        return BAD_OBJ_VALUE * torch.ones((1, 1), dtype=dtype)
+
+    # Compute value of objective function given these results
     return eval_obj(sim_vals, true_observables)
 
 
@@ -312,6 +326,7 @@ def prot_builder(
     iter: int,
     output: str,
     ref_config: str,
+    failure_codes: list[int] = [],
 ) -> callable:
     """Factory returning a BO-compatible objective function for PROTEUS inference.
 
@@ -325,13 +340,15 @@ def prot_builder(
     - iter (int): Iteration number (seed) for reproducibility.
     - output (str): Path to output folder relative to PROTEUS output folder.
     - ref_config (str): Reference TOML config path.
+    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
 
     Returns
     ----------
     - callable: Function f(x_norm) -> y_objective.
     """
     # Build bounds tensor for unnormalization
-    d = len(parameters)
+    param_keys = list(parameters.keys())
+    d = len(param_keys)
     bounds = torch.tensor(
         [[list(parameters.values())[i][j] for i in range(d)] for j in range(2)], dtype=dtype
     )
@@ -348,18 +365,31 @@ def prot_builder(
         - torch.Tensor: Objective value tensor of shape (1, 1).
         """
         # Convert normalized to raw inputs
-        x_raw = unnormalize(x_norm, bounds)
+        x_raw = unnormalize_parameters(x_norm, bounds, param_keys)
+
         # Partially apply J with fixed context
         J_context = partial(
             J,
-            parameters=list(parameters.keys()),
+            parameters=param_keys,
             true_observables=observables,
             worker=worker,
             iter=iter,
             ref_config=ref_config,
             output=output,
+            failure_codes=failure_codes,
         )
+
+        J_eval = J_context(x_raw)
+
+        # Check J is finite
+        if not torch.isfinite(J_eval).all():
+            x_param = {param_keys[i]: x_raw[0, i].item() for i in range(d)}
+
+            log.warning('Non-finite objective value')
+            log.warning(f'    Raw input x: {x_param}')
+            log.warning(f'    Reference config: {ref_config}')
+
         # Compute objective
-        return J_context(x_raw)
+        return J_eval
 
     return f

@@ -176,7 +176,7 @@ def next_step(
         dtswitch = 1.0
         log.info('Time-stepping intent: static')
 
-    elif dt_window + 5 >= len(hf_all['Time']):
+    elif dt_window + 3 >= len(hf_all['Time']):
         dtswitch = config.params.dt.initial
         log.info('Time-stepping intent: initial')
 
@@ -299,7 +299,7 @@ def next_step(
     # from collapsing dt to zero (and then to dt.minimum on the next line).
     if config.params.stop.time.enabled:
         maxtime = config.params.stop.time.maximum
-        dtmaximum = min(dtmaximum, max(1, maxtime - hf_row['Time']))
+        dtmaximum = min(dtmaximum, max(1.0, float(maxtime - hf_row['Time'])))
 
     dtswitch = min(dtswitch, dtmaximum)
 
