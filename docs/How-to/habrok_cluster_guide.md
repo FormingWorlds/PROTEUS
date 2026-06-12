@@ -5,13 +5,15 @@
 You will need a RUG account, with an account name (e.g. `p321401`) and two-factor authentication set up.
 To do this, first follow [the instructions](https://wiki.hpc.rug.nl/habrok/connecting_to_the_system/connecting) on the online documentation.
 
-We recommend that you also add your public ssh key to Habrok. Doing so allows password-free connectivity:
+We recommend that you also add your public SSH key to Habrok, so each connection only asks for your two-factor code rather than your password.
+The `~/.ssh/id_rsa` key pair is shared across all clusters, so if you already generated one while setting up the [Kapteyn cluster](kapteyn_cluster_guide.md), do **not** run `ssh-keygen` again: regenerating overwrites the existing key and locks you out of the other cluster.
+Reuse the key you already have and only copy it across:
 ```console
-ssh-keygen -t rsa
 ssh-copy-id -i ~/.ssh/id_rsa.pub YOUR_USERNAME@login1.hb.hpc.rug.nl
 ```
+If you do not have an SSH key yet, create one first with `ssh-keygen -t rsa`.
 
-Once you have added your SSH key to Habrok, modify the entry below and insert it into your `~/.ssh/config` file
+Once you have added your SSH key to Habrok, modify the entry below and insert it into your `~/.ssh/config` file:
 ```
 Host habrok
     HostName login1.hb.hpc.rug.nl
@@ -19,7 +21,12 @@ Host habrok
     IdentityFile ~/.ssh/id_rsa
     ServerAliveInterval 120
     ServerAliveCountMax 60
+    ControlMaster auto
+    ControlPath ~/.ssh/controlmasters/%r@%h:%p
+    ControlPersist 24h
 ```
+Create the socket directory once with `mkdir -p ~/.ssh/controlmasters`.
+The `ControlMaster` settings reuse a single authenticated connection: after you log in once with `ssh habrok` and enter your two-factor code, every later `ssh habrok` and `rsync` command (including the transfer workflow below) runs without prompting again, for up to 24 hours.
 
 ## Configure environment
 
@@ -96,11 +103,16 @@ Habrok  -->  your laptop  -->  Kapteyn (norma2)
 
 You need SSH access to both clusters configured on your laptop. See the [Habrok SSH setup](#access-the-habrok-cluster) above and the [Kapteyn cluster guide](kapteyn_cluster_guide.md) for SSH config instructions, including the ProxyJump setup needed to reach `norma2`.
 
-Test that both connections work before proceeding:
+Test that both connections work before proceeding.
+Run each command on its own and type `exit` to leave the first cluster before testing the second.
+Do not paste both lines together: the second `ssh` would then run from *inside* the first session, and Habrok cannot reach `norma2`.
 
 ```console
-ssh habrok    # will ask for your TOTP code
-ssh norma2    # key-based, no 2FA
+ssh habrok    # asks for your two-factor code, then logs you in; type `exit` to return
+```
+
+```console
+ssh norma2    # key-based via ProxyJump, no two-factor; type `exit` to return
 ```
 
 ### Step 1: Pull data from Habrok to your laptop
@@ -173,7 +185,13 @@ ssh habrok 'tar -cf - --exclude=data -C /scratch/<habrok_user>/proteus_output my
 
 ### Tips
 
-- **rsync is incremental.** If the transfer gets interrupted (laptop goes to sleep, WiFi drops), re-run the same `rsync` command. It picks up where it left off and only transfers new or changed files.
+- **rsync is incremental.** If the transfer gets interrupted (laptop goes to sleep, WiFi drops), re-run the same `rsync` command. It picks up where it left off and only transfers new or changed files. For runs with large individual files, add `--partial` (or `-P`, which also shows progress) so an interrupted file resumes mid-file instead of restarting.
+- **Verify the transfer** before deleting anything on Habrok. For an `rsync` transfer, re-run the same command with `-n` (dry run): if it reports no files left to copy, both sides are identical. As a quick sanity check when you copied the whole run, compare directory sizes on each cluster:
+    ```console
+    ssh habrok 'du -sh /scratch/<habrok_user>/proteus_output/my_run/'
+    ssh norma2 'du -sh /dataserver/users/formingworlds/<kapteyn_user>/proteus_output/my_run/'
+    ```
+    The sizes differ by design if you used a slim `--exclude=data/` transfer; in that case rely on the dry-run check instead.
 - **Check sizes first.** Before pulling, check how large the data is: `ssh habrok 'du -sh /scratch/<habrok_user>/proteus_output/my_run/'`. Large runs can be tens of GB.
 - **The `data/` directory is often not needed.** It contains raw NetCDF/JSON output at every timestep. The `runtime_helpfile.csv` and `plots/` directory are usually sufficient for analysis.
 - **Kapteyn storage quotas.** The formingworlds dataserver has also limited space. Check your usage with `ssh norma2 'du -sh /dataserver/users/formingworlds/<kapteyn_user>/'` before transferring large datasets.
