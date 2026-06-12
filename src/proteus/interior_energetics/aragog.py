@@ -29,7 +29,7 @@ from aragog.parser import (
     _Radionuclide,
     _SolverParameters,
 )
-from proteus.interior_energetics.common import Interior_t
+from proteus.interior_energetics.common import FEI2021_LIQUIDUS_P_CALIB_PA, Interior_t
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
@@ -1487,25 +1487,61 @@ class AragogRunner:
                     max_rel,
                 )
             elif verdict == 'FAIL':
-                # Do NOT raise. Log only. Production runs on Habrok
-                # showed that this threshold fires on every Aragog case
-                # at M>=2.0 Earth masses (CMB pressure >~250 GPa) due
-                # to the same table-boundary effect noted above. This
-                # is an EOS self-consistency drift, not a coupling bug.
-                # If you want a stricter safety net, use the surface-only
-                # scalar check in _set_entropy_ic (T_check log line at
-                # line ~600) which is always reliable.
+                # Two distinct regimes produce a FAIL verdict:
+                #
+                # (1) Benign EOS table drift: the regenerated P-S table and the
+                #     direct PALEOS adiabat disagree by ~5-10% at high P (the
+                #     regeneration involves bilinear interpolation across non-
+                #     converged cells). The run still conserves energy and cools
+                #     monotonically; the disagreement grows with mass and is
+                #     diagnostic only. The 1 M_Earth case already sits at ~6%.
+                # (2) The out-of-calibration liquidus_super failure mode: the
+                #     extrapolated CMB liquidus anchor inverts to a low entropy
+                #     that unpacks to a COLD surface (T well below the adiabat
+                #     anchor), a steeply inverted profile that drives a spurious
+                #     CMB flux and breaks energy conservation. compute_initial_
+                #     entropy redirects this case to the surface anchor, so it
+                #     should not normally reach here; the raise is a safety net
+                #     for any path that bypasses that redirect.
+                #
+                # The signature that separates (2) from (1) is the COLD SURFACE,
+                # not the verdict magnitude: benign drift can also exceed the
+                # FAIL threshold, so gating the raise on the verdict alone would
+                # wrongly block a correctly-anchored high-mass run.
+                isurf = int(np.argmin(P_stag))
+                surface_too_cold = T_stag_aragog[isurf] < 0.9 * T_adiabat_interp[isurf]
+                is_liquidus_super = config.planet.temperature_mode == 'liquidus_super'
+                if (
+                    is_liquidus_super
+                    and P_cmb_adiabat > FEI2021_LIQUIDUS_P_CALIB_PA
+                    and surface_too_cold
+                ):
+                    raise RuntimeError(
+                        f'Entropy IC cross-check FAILED with a cold-surface '
+                        f'inversion (surface T={T_stag_aragog[isurf]:.0f} K vs '
+                        f'adiabat {T_adiabat_interp[isurf]:.0f} K; max '
+                        f'{max_diff:.0f} K / {max_rel:.1f}%) for liquidus_super '
+                        f'at P_cmb={P_cmb_adiabat / 1e9:.0f} GPa, beyond the '
+                        f'Fei+2021 calibration '
+                        f'(~{FEI2021_LIQUIDUS_P_CALIB_PA / 1e9:.0f} GPa). The '
+                        'extrapolated CMB anchor produced a non-physical, '
+                        'energy-non-conserving initial condition. Use an '
+                        'adiabatic (surface-anchored) initial condition for '
+                        'this planet mass.'
+                    )
                 log.warning(
                     'Entropy IC full-profile cross-check > %.1f%% '
-                    '(max %.1f K / %.2f%% at depth). Diagnostic only; '
-                    'NOT raising because this reflects known PALEOS '
-                    'P-T vs P-S table boundary drift at high mass, '
-                    'not a coupling bug. The scalar surface cross-check '
-                    'logged by _set_entropy_ic is the authoritative '
-                    'IC sanity check.',
+                    '(max %.1f K / %.2f%% at depth). Diagnostic only; benign '
+                    'PALEOS P-T vs regenerated P-S table drift (P_cmb=%.0f GPa, '
+                    'surface T=%.0f K vs adiabat %.0f K), not a coupling bug. '
+                    'The scalar surface cross-check logged by _set_entropy_ic '
+                    'is the authoritative IC sanity check.',
                     FAIL_PCT,
                     max_diff,
                     max_rel,
+                    P_cmb_adiabat / 1e9,
+                    T_stag_aragog[isurf],
+                    T_adiabat_interp[isurf],
                 )
 
         except (

@@ -264,7 +264,40 @@ def compute_initial_entropy(
     # from config.planet.tcmb_init. This makes the IC anchor independent
     # of which silicate EoS bookkeeping convention (WB17 S_0=0 vs PALEOS
     # Stebbins-anchored) is being compared.
-    if config.planet.temperature_mode in ('adiabatic_from_cmb', 'liquidus_super'):
+    cmb_mode = config.planet.temperature_mode in ('adiabatic_from_cmb', 'liquidus_super')
+
+    # Out-of-calibration liquidus_super redirect. Above the Fei+2021 melting-
+    # curve calibration the CMB liquidus anchor is a power-law extrapolation;
+    # inverted at the very high CMB pressure it yields an entropy that falls
+    # with pressure and unpacks to a cold surface, i.e. a steeply inverted,
+    # non-physical, energy-non-conserving initial condition. The surface-
+    # anchored adiabat stays fully molten and isentropic at these masses, so
+    # route to it instead. Gated on P_cmb so in-calibration masses (e.g. the
+    # 1 M_Earth case at ~140 GPa) keep the CMB anchor unchanged.
+    if cmb_mode and config.planet.temperature_mode == 'liquidus_super':
+        P_cmb_check = hf_row.get('P_cmb') if hf_row is not None else None
+        if not P_cmb_check or P_cmb_check <= 0:
+            from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
+            P_cmb_check = estimate_P_cmb_NL20(
+                float(getattr(config.planet, 'mass_tot', 1.0)),
+                float(config.interior_struct.core_frac),
+                str(config.interior_struct.core_frac_mode),
+            )
+        if P_cmb_check > FEI2021_LIQUIDUS_P_CALIB_PA:
+            cmb_mode = False
+            log.warning(
+                'liquidus_super: P_cmb=%.0f GPa is beyond the Fei+2021 '
+                'melting-curve calibration (~%.0f GPa); the CMB liquidus '
+                'anchor would extrapolate to a cold-surface, energy-non-'
+                'conserving initial condition. Anchoring the initial entropy '
+                'at the surface instead, which yields a fully molten '
+                'isentropic profile at this planet mass.',
+                P_cmb_check / 1e9,
+                FEI2021_LIQUIDUS_P_CALIB_PA / 1e9,
+            )
+
+    if cmb_mode:
         mode = config.planet.temperature_mode
         is_liquidus_super = mode == 'liquidus_super'
         P_cmb = None
