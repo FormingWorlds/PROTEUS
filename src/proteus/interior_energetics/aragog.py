@@ -29,7 +29,8 @@ from aragog.parser import (
     _Radionuclide,
     _SolverParameters,
 )
-from proteus.interior_energetics.common import FEI2021_LIQUIDUS_P_CALIB_PA, Interior_t
+from proteus.interior_energetics.common import Interior_t
+from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data

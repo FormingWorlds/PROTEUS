@@ -16,11 +16,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Fei et al. (2021, Nat. Commun. 12, 876) MgSiO3 melting temperature is
-# calibrated to ~500 GPa. Above this pressure the liquidus_super CMB anchor
-# relies on extrapolation of the high-pressure power-law branch.
-FEI2021_LIQUIDUS_P_CALIB_PA = 500e9
-
 
 @dataclass
 class rheo_t:
