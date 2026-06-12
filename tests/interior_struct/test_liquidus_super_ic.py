@@ -6,24 +6,25 @@ Covers:
     mapping (liquidus_super -> adiabatic_from_cmb, accretion/isentropic
     -> adiabatic, others pass through).
 
-(2) ``_resolve_zalmoxis_cmb_temperature``: Fei+2021 liquidus + delta_T_super
-    arithmetic at the converged P_cmb (or 135 GPa fallback when hf_row
-    has not yet been populated).
+(2) ``_resolve_zalmoxis_cmb_temperature``: liquidus_super delegates to the
+    super-liquidus solve and returns the solved adiabat's CMB temperature;
+    every other mode echoes ``tcmb_init`` verbatim.
 
-(3) ``load_zalmoxis_configuration`` end-to-end: liquidus_super propagates
-    the right cmb_temperature into the ``config_params`` dict consumed by
+(2b) ``solve_superliquidus_adiabat``: the solver finds the surface
+    temperature (hence entropy) of the coolest adiabat that is fully molten
+    everywhere with at least ``delta_T_super`` of superheat above the
+    configured liquidus, and raises when that superheat is unreachable. The
+    expensive PALEOS adiabat is mocked so the bracketing and error logic are
+    unit-tested deterministically.
+
+(3) ``load_zalmoxis_configuration`` end-to-end: liquidus_super propagates the
+    solved cmb_temperature into the ``config_params`` dict consumed by
     ``zalmoxis.solver.main``.
 
-The Fei+2021 liquidus formula is:
+The Fei+2021 / Belonoshko+2005 piecewise liquidus, still used to evaluate the
+superheat, is:
     T = 1831 * (1 + P/4.6)**0.33      for P < 2.55 GPa  (Belonoshko+2005)
     T = 6000 * (P/140)**0.26          for P >= 2.55 GPa (Fei+2021)
-
-Anchor values used in the tests below (from Zalmoxis melting_curves.py):
-
-    P =   135 GPa -> T_liq ~ 5935 K   (1 M_E reference)
-    P =   400 GPa -> T_liq ~ 7716 K   (3 M_E reference)
-    P =   600 GPa -> T_liq ~ 8417 K   (super-Earth)
-    P =     1 GPa -> T_liq ~ 1942 K   (low-pressure Belonoshko branch)
 """
 
 from __future__ import annotations
@@ -45,8 +46,9 @@ class TestResolveZalmoxisTemperatureMode:
 
     def test_liquidus_super_maps_to_adiabatic_from_cmb(self):
         """PROTEUS ``liquidus_super`` mode maps to Zalmoxis
-        ``adiabatic_from_cmb``. PROTEUS-side handles the liquidus anchor
-        before handing the mode to Zalmoxis as a standard CMB adiabat.
+        ``adiabatic_from_cmb``. The PROTEUS side solves the fully-molten
+        anchor temperature before handing the mode to Zalmoxis as a standard
+        CMB adiabat.
         """
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_temperature_mode,
@@ -118,7 +120,7 @@ class TestResolveZalmoxisTemperatureMode:
 
 
 # ----------------------------------------------------------------------
-# (2) liquidus_super CMB temperature anchor
+# (2) liquidus_super CMB temperature: gate and delegation to the solve
 # ----------------------------------------------------------------------
 
 
@@ -127,7 +129,7 @@ def _make_minimal_config(
     tcmb_init=6000.0,
     temperature_mode='liquidus_super',
 ):
-    """Build a stub config exposing only fields _resolve_zalmoxis_cmb_temperature reads."""
+    """Build a stub config exposing only fields the resolver reads."""
     cfg = MagicMock()
     cfg.planet.delta_T_super = delta_T_super
     cfg.planet.tcmb_init = tcmb_init
@@ -136,230 +138,194 @@ def _make_minimal_config(
 
 
 class TestResolveZalmoxisCMBTemperature:
-    """Fei+2021 + delta_T_super arithmetic and fallback discipline."""
+    """Mode gate and delegation to ``solve_superliquidus_adiabat``."""
 
     def test_non_liquidus_super_returns_tcmb_init_verbatim(self):
-        """For any non-liquidus_super mode, ``_resolve_zalmoxis_cmb_temperature``
-        echoes ``config.planet.tcmb_init`` verbatim and does not consult
-        ``hf_row['P_cmb']``. This pins the contract that the Fei+2021
-        anchor logic is gated on the mode flag.
+        """For any non-liquidus_super mode the resolver echoes
+        ``config.planet.tcmb_init`` verbatim and does not run the
+        super-liquidus solve or consult ``hf_row['P_cmb']``.
         """
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_cmb_temperature,
         )
 
         cfg = _make_minimal_config(tcmb_init=7199.0, temperature_mode='adiabatic_from_cmb')
-        # hf_row carries a P_cmb value but it must NOT be consulted in
-        # non-liquidus_super modes.
-        T = _resolve_zalmoxis_cmb_temperature(
-            cfg,
-            {'P_cmb': 135e9},
-            'adiabatic_from_cmb',
-        )
+        # hf_row carries a P_cmb value but it must NOT be consulted here.
+        T = _resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': 135e9}, 'adiabatic_from_cmb')
         assert T == pytest.approx(7199.0)
-        # Discrimination: T must NOT be the Fei+2021 anchor at 135 GPa
-        # (~5944 K). If the gate on the mode flag failed, the anchor
-        # would override tcmb_init and the test would still see a
-        # plausible Kelvin value but the wrong one.
-        T_liq_135 = 6000.0 * (135.0 / 140.0) ** 0.26
-        assert abs(T - T_liq_135) > 1000.0
+        # Discrimination: must be exactly tcmb_init, not diverted into the
+        # liquidus_super solve (which ignores tcmb_init and returns a much
+        # hotter, fully-molten CMB temperature). Even a nearby-but-different
+        # value would signal the gate failing.
+        assert abs(T - 7199.0) < 1e-6
 
-    @pytest.mark.physics_invariant
-    def test_liquidus_super_uses_hf_row_p_cmb_at_135_gpa(self):
-        """At P=135 GPa, Fei+2021 gives T_liq ~ 5935 K. With
-        delta_T_super=500 K, the anchor should be ~6435 K.
-
-        Discriminating: tests at a real super-Earth pressure (135 GPa,
-        not 1 Pa where all the constants disappear).
+    def test_liquidus_super_returns_solved_cmb_temperature(self, monkeypatch):
+        """liquidus_super delegates to ``solve_superliquidus_adiabat`` and
+        returns the solved adiabat's CMB temperature, NOT ``tcmb_init`` and
+        NOT the legacy liquidus-plus-offset anchor.
         """
-        from proteus.interior_struct.zalmoxis import (
-            _resolve_zalmoxis_cmb_temperature,
-        )
+        import proteus.interior_struct.zalmoxis as zmod
 
-        cfg = _make_minimal_config(delta_T_super=500.0)
-        T = _resolve_zalmoxis_cmb_temperature(
-            cfg,
-            {'P_cmb': 135e9},
-            'liquidus_super',
-        )
-        # Fei+2021: 6000 * (135/140)**0.26 ~ 5935 K
-        T_liq_expected = 6000.0 * (135.0 / 140.0) ** 0.26
-        assert T == pytest.approx(T_liq_expected + 500.0, rel=1e-9)
-        # Sign + scale guard: T must be positive Kelvin (Section 3 positivity)
-        # and the offset must be additive, not multiplicative. A regression
-        # that multiplied by (1 + delta_T_super) instead of adding 500 K
-        # would put T at ~3e6 K, far outside the magma-ocean band.
-        assert T > 0.0
-        assert 5000.0 < T < 10000.0
+        sentinel = {
+            'surface_T': 4241.0,
+            'S_target': 10591.0,
+            'cmb_T': 8765.0,
+            'achieved_superheat': 500.0,
+            'binding_P': 1.2e11,
+            'P_cmb': 6.7e11,
+        }
+        seen = {}
 
-    @pytest.mark.physics_invariant
-    def test_liquidus_super_zero_offset_lands_on_liquidus(self):
-        """delta_T_super = 0 K -> anchor exactly on the Fei liquidus.
-        This is the boundary physical case (validator allows ge(0)).
-        """
-        from proteus.interior_struct.zalmoxis import (
-            _resolve_zalmoxis_cmb_temperature,
-        )
+        def fake_solve(config, hf_row):
+            seen['hf_row'] = hf_row
+            return sentinel
 
-        cfg = _make_minimal_config(delta_T_super=0.0)
-        T = _resolve_zalmoxis_cmb_temperature(
-            cfg,
-            {'P_cmb': 135e9},
-            'liquidus_super',
-        )
-        T_liq_expected = 6000.0 * (135.0 / 140.0) ** 0.26
-        assert T == pytest.approx(T_liq_expected, rel=1e-9)
-        # Discrimination: changing delta_T_super from 0 to 500 K must
-        # shift T by exactly 500 K. A regression that ignored delta_T_super
-        # (or applied it multiplicatively) would not produce that exact
-        # additive shift.
-        cfg_offset = _make_minimal_config(delta_T_super=500.0)
-        T_offset = _resolve_zalmoxis_cmb_temperature(
-            cfg_offset,
-            {'P_cmb': 135e9},
-            'liquidus_super',
-        )
-        assert T_offset - T == pytest.approx(500.0, rel=1e-9)
+        monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', fake_solve)
+        cfg = _make_minimal_config(delta_T_super=500.0, tcmb_init=6000.0)
+        T = zmod._resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': 6.7e11}, 'liquidus_super')
+        assert T == pytest.approx(8765.0)
+        # The resolver must use the solve result, not tcmb_init.
+        assert T != pytest.approx(6000.0)
+        # Discrimination against the removed behaviour: the old anchor was
+        # liquidus(670 GPa) + 500 ~ 9580 K, distinct from the solved 8765 K.
+        legacy_anchor = 6000.0 * (670.0 / 140.0) ** 0.26 + 500.0
+        assert abs(T - legacy_anchor) > 100.0
+        # The helpfile row is forwarded to the solve unchanged.
+        assert seen['hf_row'] == {'P_cmb': 6.7e11}
 
-    @pytest.mark.physics_invariant
-    def test_liquidus_super_super_earth_pressure(self):
-        """At P=400 GPa (3 M_E typical), T_liq ~ 7716 K, anchor with
-        delta=500 K ~ 8216 K. Verifies the high-pressure Fei+2021 branch
-        gives a meaningfully different answer from the 135 GPa case.
-        """
-        from proteus.interior_struct.zalmoxis import (
-            _resolve_zalmoxis_cmb_temperature,
-        )
 
-        cfg = _make_minimal_config(delta_T_super=500.0)
-        T = _resolve_zalmoxis_cmb_temperature(
-            cfg,
-            {'P_cmb': 400e9},
-            'liquidus_super',
-        )
-        T_liq_expected = 6000.0 * (400.0 / 140.0) ** 0.26
-        assert T == pytest.approx(T_liq_expected + 500.0, rel=1e-9)
-        # Discriminator: 400 GPa branch must be strictly hotter than 135 GPa.
-        T_135 = _resolve_zalmoxis_cmb_temperature(
-            cfg,
-            {'P_cmb': 135e9},
-            'liquidus_super',
-        )
-        assert T > T_135
+# ----------------------------------------------------------------------
+# (2b) The super-liquidus solve itself (logic, with a mocked adiabat)
+# ----------------------------------------------------------------------
 
-    @pytest.mark.physics_invariant
-    def test_liquidus_super_low_pressure_belonoshko_branch(self):
-        """At P=1 GPa, the piecewise fit drops to the Belonoshko+2005
-        branch: T = 1831 * (1 + 1/4.6)**0.33 ~ 1942 K. With delta=500 K
-        the anchor is ~2442 K.
 
-        Discriminating: 1 GPa is below the 2.55 GPa crossover, so this
-        test fails if we accidentally use the Fei branch on the whole
-        domain. Fei at 1 GPa would give ~3148 K, which is very different.
-        """
-        from proteus.interior_struct.zalmoxis import (
-            _resolve_zalmoxis_cmb_temperature,
-        )
+_FAKE_BINDING_OFFSET = 3700.0  # synthetic: min superheat = T_surface - this
 
-        cfg = _make_minimal_config(delta_T_super=500.0)
-        T = _resolve_zalmoxis_cmb_temperature(
-            cfg,
-            {'P_cmb': 1e9},
-            'liquidus_super',
-        )
-        T_liq_expected = 1831.0 * (1.0 + 1.0 / 4.6) ** 0.33
-        assert T == pytest.approx(T_liq_expected + 500.0, rel=1e-9)
-        # Negative discrimination: must NOT match the Fei branch.
-        T_fei_branch = 6000.0 * (1.0 / 140.0) ** 0.26 + 500.0
-        assert abs(T - T_fei_branch) > 100.0
 
-    @pytest.mark.parametrize(
-        'hf_row', [None, {}, {'P_cmb': None}, {'P_cmb': 0.0}, {'P_cmb': -1e9}]
+def _install_fake_solver_deps(monkeypatch, ceiling_T=4800.0):
+    """Patch the solver's EOS dependencies with deterministic stubs.
+
+    The synthetic adiabat is ``T(P) = (T_surface - 3700) + T_liq(P)``: monotone
+    in pressure, with a uniform superheat above the liquidus of
+    ``T_surface - 3700`` K (independent of the pressure range, so the same
+    requested margin is reachable for any P_cmb). The offset places the
+    delta_T_super = 500 K solution at T_surface ~ 4200 K, inside the solver's
+    surface-temperature scan window. Above ``ceiling_T`` the deep half is set to
+    NaN so the profile reads as EOS-table-exhausted, which is how the solver
+    detects its upper limit. The real ``paleos_liquidus`` is used for the
+    liquidus, so the superheat arithmetic is exercised without loading any
+    PALEOS table.
+    """
+    import numpy as np
+    import zalmoxis.eos_export as eos_export
+    from zalmoxis.melting_curves import paleos_liquidus
+
+    import proteus.interior_struct.zalmoxis as zmod
+
+    monkeypatch.setattr(
+        zmod,
+        'load_zalmoxis_material_dictionaries',
+        lambda: {'PALEOS:MgSiO3': {'eos_file': '/stub/eos.dat'}},
     )
-    def test_liquidus_super_fallback_to_NL20_at_1me(self, hf_row):
-        """When hf_row lacks a usable P_cmb at 1 M_Earth, fall back to
-        the Noack & Lasbleis (2020) mass-aware estimate (~142 GPa for
-        CMF=0.325 mass-mode), NOT the legacy hardcoded 135 GPa.
+    monkeypatch.setattr(zmod, 'resolve_2phase_mgsio3_paths', lambda *a, **k: (None, None))
+    monkeypatch.setattr(zmod, 'load_zalmoxis_solidus_liquidus_functions', lambda *a, **k: None)
 
-        Anti-happy-path: tests four ways P_cmb can be missing/unusable
-        (None, empty dict, explicit None, 0.0, negative). All must
-        collapse to the same NL20 fallback; otherwise an unset hf_row
-        would silently feed Zalmoxis a meaningless tcmb.
-        """
-        from proteus.interior_struct.zalmoxis import (
-            _resolve_zalmoxis_cmb_temperature,
-        )
-        from proteus.utils.structure_estimate import estimate_P_cmb_NL20
-
-        cfg = _make_minimal_config(delta_T_super=500.0)
-        # Make config look like a 1 M_Earth Earth-like planet so
-        # the NL20 fallback matches the resolver path.
-        cfg.planet.mass_tot = 1.0
-        cfg.interior_struct.core_frac = 0.325
-        cfg.interior_struct.core_frac_mode = 'mass'
-        T = _resolve_zalmoxis_cmb_temperature(cfg, hf_row, 'liquidus_super')
-        P_expected = estimate_P_cmb_NL20(1.0, 0.325, 'mass')
-        T_liq_expected = 6000.0 * (P_expected / 1e9 / 140.0) ** 0.26
-        assert T == pytest.approx(T_liq_expected + 500.0, rel=1e-9)
-        # Discriminating: NL20 at 1 M_E is ~142 GPa, distinguishable
-        # from the legacy 135 GPa fallback.
-        T_legacy = 6000.0 * (135.0 / 140.0) ** 0.26 + 500.0
-        assert abs(T - T_legacy) > 5.0, (
-            f'Resolver still uses the legacy 135 GPa fallback (T={T:.1f}); '
-            f'NL20 mass-aware T={T_liq_expected + 500.0:.1f}, legacy T={T_legacy:.1f}'
-        )
-
-    @pytest.mark.parametrize(
-        'mass_tot,low_GPa,high_GPa',
-        [
-            (1.0, 130, 160),
-            (3.0, 350, 480),
-            (5.0, 550, 800),
-            (10.0, 900, 2000),
-        ],
-    )
-    def test_liquidus_super_fallback_scales_with_mass(
-        self,
-        mass_tot,
-        low_GPa,
-        high_GPa,
+    def fake_adiabat(
+        eos_file,
+        T_surface,
+        P_surface,
+        P_cmb,
+        n_points,
+        solidus_func,
+        liquidus_func,
+        solid_eos_file,
+        liquid_eos_file,
     ):
-        """Super-Earth check: when hf_row['P_cmb'] is missing, the
-        fallback P_cmb must scale with planet mass (3 M_E -> ~400 GPa,
-        5 M_E -> ~600 GPa, 10 M_E -> ~1000+ GPa) and the resulting T_cmb
-        anchor must reflect the higher pressure. The legacy hardcoded
-        135 GPa fallback failed this check by misplacing the 5 M_E
-        anchor by ~2700 K. Discriminating: a regression to the legacy
-        constant would put T_cmb under 6500 K for every mass.
-        """
-        from proteus.interior_struct.zalmoxis import (
-            _resolve_zalmoxis_cmb_temperature,
-        )
-        from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+        P = np.linspace(P_surface, P_cmb, n_points)
+        liq = np.asarray(liquidus_func(P), dtype=float)
+        T = (T_surface - _FAKE_BINDING_OFFSET) + liq
+        if T_surface > ceiling_T:
+            T[n_points // 2 :] = np.nan  # EOS table exhausted at depth
+        return {
+            'P': P,
+            'T': T,
+            'S_target': float(T_surface),  # monotone proxy for entropy
+            'S_profile': np.full(n_points, float(T_surface)),
+        }
 
-        cfg = _make_minimal_config(delta_T_super=500.0)
+    monkeypatch.setattr(eos_export, 'compute_entropy_adiabat', fake_adiabat)
+    return paleos_liquidus
+
+
+class TestSolveSuperliquidusAdiabat:
+    """Solver logic: it finds the adiabat with the requested superheat."""
+
+    def _cfg(self, delta_T_super=500.0, mass_tot=1.0):
+        cfg = MagicMock()
+        cfg.planet.delta_T_super = delta_T_super
         cfg.planet.mass_tot = mass_tot
         cfg.interior_struct.core_frac = 0.325
         cfg.interior_struct.core_frac_mode = 'mass'
-        T = _resolve_zalmoxis_cmb_temperature(cfg, None, 'liquidus_super')
-        P_expected = estimate_P_cmb_NL20(mass_tot, 0.325, 'mass')
-        # The fallback P_cmb must land in the documented physical band.
-        assert low_GPa * 1e9 < P_expected < high_GPa * 1e9, (
-            f'NL20 P_cmb at {mass_tot} M_E is {P_expected / 1e9:.1f} GPa, '
-            f'outside the expected [{low_GPa}, {high_GPa}] GPa band'
-        )
-        T_liq_expected = 6000.0 * (P_expected / 1e9 / 140.0) ** 0.26
-        assert T == pytest.approx(T_liq_expected + 500.0, rel=1e-9)
-        # Regression guard: must NOT be the legacy 135 GPa anchor for
-        # any super-Earth mass. The 1 M_E case is allowed to be close
-        # but for mass > 2 M_E the anchor must differ by > 1000 K.
-        if mass_tot > 2.0:
-            T_legacy = 6000.0 * (135.0 / 140.0) ** 0.26 + 500.0
-            assert T - T_legacy > 1000.0, (
-                f'Resolver regressed to the legacy 135 GPa fallback at '
-                f'{mass_tot} M_E (T={T:.0f}, legacy T={T_legacy:.0f}); '
-                f'expected NL20 anchor near {T_liq_expected + 500.0:.0f}'
-            )
+        cfg.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+        return cfg
+
+    @pytest.mark.physics_invariant
+    def test_solves_for_requested_superheat(self, monkeypatch):
+        """The solved adiabat clears the liquidus by at least delta_T_super
+        everywhere, and lands close to that margin at the binding depth.
+        """
+        _install_fake_solver_deps(monkeypatch)
+        from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
+
+        cfg = self._cfg(delta_T_super=500.0)
+        res = solve_superliquidus_adiabat(cfg, {'P_cmb': 1.5e11})
+        # Full-melt invariant: the solver never under-melts (achieved superheat
+        # is at least the requested margin), and lands close to it.
+        assert res['achieved_superheat'] >= 500.0 - 1.0
+        assert res['achieved_superheat'] == pytest.approx(500.0, abs=30.0)
+        # In the synthetic model min superheat = T_surf - 3700, so delta pins
+        # the solved surface temperature to ~4200 K.
+        assert res['surface_T'] == pytest.approx(4200.0, abs=30.0)
+        # Discrimination: a solver that ignored delta and returned the
+        # marginally-molten adiabat would give surface_T ~3700 K (superheat ~0);
+        # the solved adiabat must also be hotter at depth than at the surface.
+        assert res['surface_T'] > 3900.0
+        assert res['cmb_T'] > res['surface_T']
+
+    def test_unachievable_superheat_raises(self, monkeypatch):
+        """A superheat the synthetic table cannot support raises RuntimeError
+        rather than silently returning a partially-solid initial condition.
+        """
+        _install_fake_solver_deps(monkeypatch, ceiling_T=4800.0)
+        from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
+
+        cfg = self._cfg(delta_T_super=6000.0)  # beyond the synthetic ceiling
+        with pytest.raises(RuntimeError, match='cannot initialise a fully molten'):
+            solve_superliquidus_adiabat(cfg, {'P_cmb': 1.5e11})
+
+    def test_missing_p_cmb_uses_nl20_estimate(self, monkeypatch):
+        """When hf_row lacks P_cmb the solve falls back to the
+        Noack & Lasbleis (2020) mass-aware estimate, and carries that
+        pressure into the result, instead of crashing.
+        """
+        _install_fake_solver_deps(monkeypatch)
+        import proteus.utils.structure_estimate as se
+        from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
+
+        seen = {}
+        real_nl20 = se.estimate_P_cmb_NL20
+
+        def spy(mass, core_frac, core_frac_mode):
+            seen['p'] = real_nl20(mass, core_frac, core_frac_mode)
+            return seen['p']
+
+        monkeypatch.setattr(se, 'estimate_P_cmb_NL20', spy)
+        cfg = self._cfg(delta_T_super=300.0, mass_tot=5.0)
+        res = solve_superliquidus_adiabat(cfg, None)
+        assert 'p' in seen  # NL20 was consulted
+        assert res['P_cmb'] == pytest.approx(seen['p'])
+        # A 5 M_Earth core-mantle pressure is far above the Earth-like 135 GPa.
+        assert res['P_cmb'] > 4e11
 
 
 # ----------------------------------------------------------------------
@@ -381,6 +347,8 @@ def _make_full_mock_config(
     config.planet.tcenter_init = 5000.0
     config.planet.temperature_mode = temperature_mode
     config.planet.delta_T_super = delta_T_super
+    config.interior_struct.core_frac = 0.325
+    config.interior_struct.core_frac_mode = 'mass'
     config.interior_struct.zalmoxis.core_eos = 'PALEOS:iron'
     config.interior_struct.zalmoxis.mantle_eos = 'PALEOS-2phase:MgSiO3'
     config.interior_struct.zalmoxis.ice_layer_eos = None
@@ -426,57 +394,66 @@ def _stub_target_surface_pressure(monkeypatch):
     monkeypatch.setattr(_mod, '_get_target_surface_pressure', lambda *a, **kw: 1.0e5)
 
 
+def _stub_solver(monkeypatch, cmb_T=8765.0):
+    """Replace the expensive super-liquidus solve with a fixed result so the
+    plumbing tests stay fast unit tests."""
+    import proteus.interior_struct.zalmoxis as _mod
+
+    monkeypatch.setattr(
+        _mod,
+        'solve_superliquidus_adiabat',
+        lambda config, hf_row: {
+            'surface_T': 4241.0,
+            'S_target': 10591.0,
+            'cmb_T': cmb_T,
+            'achieved_superheat': 500.0,
+            'binding_P': 1.2e11,
+            'P_cmb': 6.7e11,
+        },
+    )
+
+
 class TestLoadZalmoxisConfigurationLiquidusSuper:
     """Integration: liquidus_super flows through load_zalmoxis_configuration."""
 
     def test_temperature_mode_remapped_for_zalmoxis(self, monkeypatch):
-        """PROTEUS liquidus_super -> Zalmoxis adiabatic_from_cmb."""
+        """PROTEUS liquidus_super -> Zalmoxis adiabatic_from_cmb, with the
+        solved CMB temperature plumbed alongside the remap."""
         from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
 
         config = _make_full_mock_config(temperature_mode='liquidus_super')
         _stub_target_surface_pressure(monkeypatch)
+        _stub_solver(monkeypatch, cmb_T=8765.0)
         cp = load_zalmoxis_configuration(config, _make_hf_row(P_cmb=135e9))
         assert cp['temperature_mode'] == 'adiabatic_from_cmb', (
             'liquidus_super must collapse to adiabatic_from_cmb on the '
             f'Zalmoxis structure side; got {cp["temperature_mode"]!r}'
         )
-        # Discrimination: the cmb_temperature plumbed alongside the remap
-        # must be the Fei-derived anchor (positive Kelvin in the magma-ocean
-        # band), not the raw token or an unset placeholder. A regression
-        # that remapped the mode but left cmb_temperature stale would fail
-        # this positivity + scale guard.
-        T_anchor = cp['cmb_temperature']
-        assert T_anchor > 0.0
-        assert 5000.0 < T_anchor < 10000.0
+        # The cmb_temperature must be the solved anchor, not the raw token or
+        # an unset placeholder. A regression that remapped the mode but left
+        # cmb_temperature stale would fail this.
+        assert cp['cmb_temperature'] == pytest.approx(8765.0)
 
     def test_cmb_temperature_overrides_tcmb_init(self, monkeypatch):
-        """When mode=liquidus_super, cmb_temperature is the Fei-derived
-        anchor, NOT config.planet.tcmb_init.
-
-        Discriminating: the default config tcmb_init=6000 K is intentionally
-        100 K different from the expected liquidus_super anchor at
-        P=135 GPa (~6435 K), so a buggy implementation that returns
-        tcmb_init verbatim would fail this test.
+        """When mode=liquidus_super, cmb_temperature is the solved anchor,
+        NOT config.planet.tcmb_init.
         """
         from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
 
         config = _make_full_mock_config(
             temperature_mode='liquidus_super',
-            delta_T_super=500.0,
-            tcmb_init=6000.0,  # deliberately != Fei + 500 at 135 GPa
+            tcmb_init=6000.0,  # deliberately != the solved anchor
         )
         _stub_target_surface_pressure(monkeypatch)
+        _stub_solver(monkeypatch, cmb_T=8765.0)
         cp = load_zalmoxis_configuration(config, _make_hf_row(P_cmb=135e9))
-        T_liq_expected = 6000.0 * (135.0 / 140.0) ** 0.26
-        assert cp['cmb_temperature'] == pytest.approx(
-            T_liq_expected + 500.0,
-            rel=1e-9,
-        )
+        assert cp['cmb_temperature'] == pytest.approx(8765.0)
+        # Discrimination: the default tcmb_init must not leak through.
         assert cp['cmb_temperature'] != pytest.approx(6000.0)
 
     def test_cmb_temperature_unchanged_for_adiabatic_from_cmb(self, monkeypatch):
         """Backward compatibility: adiabatic_from_cmb must still echo
-        config.planet.tcmb_init unchanged.
+        config.planet.tcmb_init unchanged (the solve is not invoked).
         """
         from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
 
@@ -489,43 +466,10 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         assert cp['cmb_temperature'] == pytest.approx(7199.0)
         assert cp['temperature_mode'] == 'adiabatic_from_cmb'
 
-    def test_first_call_uses_NL20_fallback_when_p_cmb_missing(self, monkeypatch):
-        """First call (P_cmb not yet populated) at 1 M_Earth: use the
-        NL20 mass-aware fallback (~142 GPa) instead of the legacy
-        hardcoded 135 GPa. The energetics IC step then re-derives the
-        anchor against the converged Zalmoxis P_cmb, so this only
-        matters for the very first structure call.
-        """
-        from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
-        from proteus.utils.structure_estimate import estimate_P_cmb_NL20
-
-        config = _make_full_mock_config(
-            temperature_mode='liquidus_super',
-            delta_T_super=500.0,
-        )
-        # _make_full_mock_config sets mass_tot=1.0; explicitly stub
-        # the structure-side fields the NL20 fallback now reads.
-        config.interior_struct.core_frac = 0.325
-        config.interior_struct.core_frac_mode = 'mass'
-        _stub_target_surface_pressure(monkeypatch)
-        cp = load_zalmoxis_configuration(config, _make_hf_row(P_cmb=None))
-        P_expected = estimate_P_cmb_NL20(1.0, 0.325, 'mass')
-        T_liq_expected = 6000.0 * (P_expected / 1e9 / 140.0) ** 0.26
-        assert cp['cmb_temperature'] == pytest.approx(
-            T_liq_expected + 500.0,
-            rel=1e-9,
-        )
-        # Discrimination: the fallback must differ from the legacy
-        # hardcoded 135 GPa anchor by > 5 K at 1 M_E (NL20 lands at
-        # ~142 GPa). A regression that re-introduced the legacy
-        # constant would collapse the two anchors.
-        T_legacy = 6000.0 * (135.0 / 140.0) ** 0.26 + 500.0
-        assert abs(cp['cmb_temperature'] - T_legacy) > 5.0
-
     def test_isentropic_unaffected_by_delta_T_super(self, monkeypatch):
-        """Setting delta_T_super on a non-liquidus_super run must not
-        change anything on the Zalmoxis side. Anti-happy-path: ensures
-        the new field doesn't leak into other modes.
+        """Setting delta_T_super on a non-liquidus_super run must not change
+        anything on the Zalmoxis side. Anti-happy-path: ensures the field
+        does not leak into other modes.
         """
         from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
 
@@ -546,10 +490,10 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
 
 
 class TestPaleosLiquidusSourceOfTruth:
-    """Pin the Zalmoxis paleos_liquidus values used as the IC anchor.
+    """Pin the Zalmoxis paleos_liquidus values the IC solve evaluates.
 
-    If Zalmoxis ever changes the Fei+2021 fit, these tests fail loudly
-    and the IC mode must be re-validated.
+    If Zalmoxis ever changes the Fei+2021 fit, these tests fail loudly and
+    the IC mode must be re-validated.
     """
 
     @pytest.mark.physics_invariant
