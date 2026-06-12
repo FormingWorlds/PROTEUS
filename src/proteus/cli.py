@@ -936,6 +936,18 @@ def update_all(export_env: bool, config_path: Path):
     # --- Step 1: update all Python packages ---
     subprocess.run([sys.executable, '-m', 'pip', 'install', '-U', '-e', '.'], check=True)
 
+    # --- Step 1b: ensure the SUNDIALS CVODE solver (Aragog production path) ---
+    # CVODE lives outside the pip dependency tree because it needs the SUNDIALS
+    # C library; without it Aragog falls back to scipy Radau. The helper is
+    # idempotent and returns early when CVODE already imports.
+    try:
+        subprocess.run(['bash', 'tools/get_cvode.sh'], check=True)
+    except subprocess.CalledProcessError:
+        click.secho(
+            '[!] CVODE install failed; Aragog will fall back to scipy Radau.',
+            fg='yellow',
+        )
+
     # --- Step 2: FWL_DATA check ---
     try:
         fwl_data = resolve_fwl_data_dir()
