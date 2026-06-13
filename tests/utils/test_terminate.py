@@ -329,6 +329,67 @@ def test_check_termination_strict_resets_if_condition_lost(monkeypatch, patch_st
     assert patch_statusfile[-1][1] == 13
 
 
+@pytest.mark.unit
+def test_check_termination_maxtime_vs_escape(monkeypatch, patch_statusfile):
+    """When volatile escape and the maximum-time limit are both satisfied on
+    the same iteration, the recorded status is the maximum simulation time.
+
+    Here, we check that time limit (code 13) outranks escape (code 15).
+    """
+    cfg = _cfg()  # strict=False
+    h = _handler(cfg)
+    h.hf_row['P_surf'] = 0.5  # below p_stop=1.0 -> escape fires (code 15)
+    h.hf_row['Time'] = 200.0  # above maximum=100.0 -> max time fires (code 13)
+    h.loops['total'] = 5  # satisfy min_iter so exit is allowed
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    codes = [code for _, code in patch_statusfile]
+    assert codes[-1] == 13
+    assert 15 not in codes
+
+
+@pytest.mark.unit
+def test_check_termination_maxtime_vs_solid(monkeypatch, patch_statusfile):
+    """When solidification and the maximum-time limit are both satisfied on
+    the same iteration, the recorded status is the maximum simulation time.
+
+    Here, we check that time limit (code 13) outranks solidification (code 10)
+    """
+    cfg = _cfg()  # strict=False
+    h = _handler(cfg, phi_global=0.2)  # below phi_crit=0.3 -> solid fires (10)
+    h.hf_row['P_surf'] = 50.0  # keep escape from firing
+    h.hf_row['Time'] = 200.0  # above maximum -> max time would fire (13)
+    h.loops['total'] = 5
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    codes = [code for _, code in patch_statusfile]
+    assert codes[-1] == 13
+    assert 10 not in codes
+
+
+@pytest.mark.unit
+def test_check_termination_radeqm_vs_escape(monkeypatch, patch_statusfile):
+    """When volatile escape and the energy-balance criterion are both satisfied on
+    the same iteration, the recorded status is the energy-balance code.
+
+    Here, we check that radeqm (code 14) outranks escape (code 15).
+    """
+    cfg = _cfg()  # strict=False
+    h = _handler(cfg)
+    h.hf_row['F_atm'] = 1.0
+    h.hf_row['F_tidal'] = 1.0  # radeqm fires (14)
+    h.hf_row['P_surf'] = 0.5  # below p_stop=1.0 -> escape fires (15)
+    h.loops['total'] = 5
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    codes = [code for _, code in patch_statusfile]
+    assert codes[-1] == 14
+    assert 15 not in codes
+
+
 class TestPrintTerminationCriteria:
     """print_termination_criteria: summary logging of active stop conditions."""
 
