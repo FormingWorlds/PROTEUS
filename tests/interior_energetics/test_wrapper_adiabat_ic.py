@@ -21,6 +21,13 @@ internal linear-in-r temperature guess:
 - ``determine_interior_radius_with_zalmoxis``: gates the re-solve on the
   zalmoxis structure module + liquidus_super + non-SPIDER energetics; SPIDER and
   other temperature modes keep the linear-guess solve untouched.
+- ``update_structure_from_interior``: the dynamic-evolution structure re-solve
+  enforces a monotonic-radius guard under the super-liquidus adiabat IC. A
+  re-solve that would raise R_int above the running minimum is rejected as a
+  cross-table representation artifact (the IC adiabat is a P-T table; the evolved
+  interior temperature is a P-S representation), the previous structure is
+  retained, and the consecutive-failure counter is left untouched; a genuine
+  contraction is accepted, and the guard is a no-op for non-liquidus_super runs.
 
 Invariants exercised:
 - Positivity / boundedness: the adiabat T(P) is finite and positive; the NaN
@@ -29,7 +36,9 @@ Invariants exercised:
   the adiabat and clips out-of-range pressures to the table edges.
 - Monotonicity: integrating a real hydrostatic + mass ODE against the convex
   adiabat yields a larger radius than against a colder linear-like T(P), and a
-  lower surface temperature yields a smaller radius (t = 0 is the maximum).
+  lower surface temperature yields a smaller radius (t = 0 is the maximum). The
+  recorded R_int never rises above its running minimum once the super-liquidus
+  IC is active, because a fully molten start can only cool and crystallise.
 - The adiabat-anchored IC solve relaxes R_int outward (lower mean density) and
   rolls back to the linear-guess radius (and on-disk geometry) on a mass-anchor
   violation.
@@ -43,18 +52,22 @@ Testing standards and documentation:
 from __future__ import annotations
 
 import contextlib
+import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
+from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
     _ADIABAT_IC_PCMB_MARGIN,
+    _MONOTONIC_RINT_REL_TOL,
     _build_superliquidus_adiabat_tp,
     _resolve_adiabatic_ic_structure,
     _solve_structure_with_adiabat_or_rollback,
     _use_superliquidus_adiabat_ic,
+    update_structure_from_interior,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -976,3 +989,293 @@ def test_adiabat_ic_gives_larger_radius_than_colder_profile():
     assert 5.0e6 < R_adiabat_cold < 5.0e7
     assert R_adiabat_cold < R_adiabat
     assert R_adiabat - R_adiabat_cold > 1.0e3
+
+
+# ============================================================================
+# update_structure_from_interior: monotonic-radius guard (super-liquidus IC)
+# ============================================================================
+
+
+def _monotonic_config(
+    module: str = 'aragog',
+    temperature_mode: str = 'liquidus_super',
+    struct_module: str = 'zalmoxis',
+):
+    """Concrete config namespace for the dynamic structure-update guard tests.
+
+    A concrete SimpleNamespace (not a MagicMock) is used so the gate's three
+    conjuncts and the trigger thresholds read real values; a MagicMock would
+    auto-create attributes and silently satisfy the gate. The trigger knobs are
+    set so a single ceiling crossing fires the re-solve: update_interval is short
+    and every change-based threshold is left high so the ceiling is the trigger.
+    """
+    return SimpleNamespace(
+        interior_energetics=SimpleNamespace(module=module, num_levels=50),
+        planet=SimpleNamespace(temperature_mode=temperature_mode),
+        interior_struct=SimpleNamespace(
+            module=struct_module,
+            zalmoxis=SimpleNamespace(
+                mantle_eos='PALEOS:MgSiO3',
+                update_interval=1000.0,
+                update_min_interval=100.0,
+                mesh_convergence_interval=10.0,
+                update_stale_ceiling=0.0,
+                update_dphi_abs=10.0,
+                update_dtmagma_frac=10.0,
+                update_dw_comp_abs=10.0,
+                mesh_max_shift=0.05,
+                global_miscibility=False,
+            ),
+        ),
+    )
+
+
+def _monotonic_interior_o(n_stag=49):
+    """Real Interior_t with a mantle T(r) profile for the re-solve hand-off.
+
+    A real Interior_t (not a MagicMock) so zalmoxis_fail_count is a true integer
+    the guard must leave untouched and last_successful_struct_time is settable.
+    The radius/temp arrays feed the temperature_function the wrapper builds.
+    """
+    interior_o = Interior_t(n_stag + 1)
+    interior_o.radius = np.linspace(6.371e6, 3.504e6, n_stag + 1)
+    interior_o.temp = np.full(n_stag, 3000.0)
+    interior_o.zalmoxis_fail_count = 0
+    interior_o.last_successful_struct_time = float('-inf')
+    return interior_o
+
+
+def _monotonic_hf_row(R_int_prev, M_target=5.972e24):
+    """Helpfile row entering a ceiling-triggered re-solve at R_int_prev.
+
+    Time is past update_interval so the ceiling fires. M_int is mass-anchored to
+    M_target so the mass-anchor check passes and control reaches the radius guard.
+    """
+    return {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': R_int_prev,
+        'R_core': 3.504e6,
+        'M_int': M_target,
+        'M_int_target': M_target,
+        'M_core': 1.9e24,
+        'M_mantle': M_target - 1.9e24,
+        'P_surf': 1.0e5,
+        'P_center': 1.6e12,
+        'P_cmb': 1.4e12,
+        'rho_avg': 8.0e3,
+        # Surface gravity consistent with R_int_prev, so a restore reverting it
+        # in lockstep with R_int is checkable against G*M/R^2.
+        'gravity': 6.674e-11 * M_target / R_int_prev**2,
+    }
+
+
+def _run_monotonic_resolve(config, dirs, hf_row, interior_o, R_int_returned, M_target):
+    """Drive one ceiling-triggered update_structure_from_interior re-solve.
+
+    The mocked zalmoxis_solver writes the on-disk geometry and sets the returned
+    R_int / mass anchor, mimicking the real solver's writeback. blend_mesh_files
+    is mocked to a no-op shift so the success path's mesh handling does not touch
+    the toy mesh files. Returns the (last_struct_time, last_Tmagma, last_Phi)
+    sentinel tuple the function returns.
+    """
+
+    def _solver(cfg, outdir, row, num_spider_nodes=0, temperature_function=None, **kw):
+        # The real solver overwrites zalmoxis_output.dat before returning, and
+        # writes gravity / P_cmb derived from the new (here: up-step) radius.
+        out_path = os.path.join(outdir, 'data', 'zalmoxis_output.dat')
+        with open(out_path, 'w') as f:
+            f.write('RESOLVE GEOMETRY: R_int=%.6e m\n' % R_int_returned)
+        row['R_int'] = R_int_returned
+        row['M_int'] = M_target  # mass-anchored so the anchor check passes
+        row['M_int_target'] = M_target
+        row['gravity'] = 6.674e-11 * M_target / R_int_returned**2
+        row['P_cmb'] = 1.5e12
+        return 3.504e6, dirs['spider_mesh']
+
+    with (
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=_solver),
+        patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.0),
+    ):
+        return update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+
+
+def _monotonic_dirs(tmp_path, prev_content):
+    """Lay out data/zalmoxis_output.dat + .prev and a mesh + .prev on disk.
+
+    The .prev snapshots hold the previous (running-minimum) geometry the guard
+    restores when it rejects an up-step. Returns the dirs dict the wrapper reads.
+    """
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    out_path = data_dir / 'zalmoxis_output.dat'
+    out_path.write_text(prev_content)
+    # Pre-seed the .prev snapshot the wrapper will also (re)write before the
+    # solve; the guard restores from it on a rejected up-step.
+    (data_dir / 'zalmoxis_output.dat.prev').write_text(prev_content)
+    mesh = tmp_path / 'mesh.dat'
+    mesh.write_text('prev mesh\n')
+    mesh_prev = tmp_path / 'mesh.dat.prev'
+    mesh_prev.write_text('prev mesh\n')
+    return {
+        'output': str(tmp_path),
+        'spider': str(tmp_path / 'spider'),
+        'spider_mesh': str(mesh),
+        'spider_mesh_prev': str(mesh_prev),
+        'mesh_shift_active': False,
+        'mesh_convergence_steps': 0,
+    }, out_path
+
+
+@pytest.mark.physics_invariant
+def test_monotonic_radius_guard_rejects_representation_up_step(tmp_path):
+    """A re-solve that raises R_int above the running minimum is a clean no-op.
+
+    Physical invariant: a fully molten super-liquidus start can only cool and
+    crystallise, so the solid-body R_int is non-increasing. A dynamic re-solve
+    against the evolved P-S interior temperature can land slightly ABOVE the IC
+    P-T-adiabat radius purely as a cross-table representation artifact. The guard
+    must reject it: the recorded R_int stays at the previous (running-minimum)
+    value, the function returns the unchanged sentinel tuple, and the
+    consecutive-failure counter does NOT increment (a rejected up-step is not a
+    solver failure and must not consume the abort budget). The on-disk geometry
+    is restored from the .prev snapshot, not left at the rejected up-step file.
+    """
+    R_int_prev = 1.2007e7
+    R_int_up = R_int_prev * (1.0 + 1.0e-4)  # well above the 1e-9 guard tolerance
+    M_target = 5.972e24
+    config = _monotonic_config(module='aragog', temperature_mode='liquidus_super')
+    interior_o = _monotonic_interior_o()
+    prev_content = 'PREV GEOMETRY: R_int=%.6e m\n' % R_int_prev
+    dirs, out_path = _monotonic_dirs(tmp_path, prev_content)
+    hf_row = _monotonic_hf_row(R_int_prev, M_target=M_target)
+
+    sentinel = _run_monotonic_resolve(
+        config, dirs, hf_row, interior_o, R_int_returned=R_int_up, M_target=M_target
+    )
+
+    # No-op contract 1: the recorded radius is the previous running minimum,
+    # NOT the rejected up-step. Pin against R_int_prev and discriminate against
+    # the up-step value, which is ~1.2 km larger (far above any rounding).
+    assert hf_row['R_int'] == pytest.approx(R_int_prev, rel=1e-12)
+    assert abs(hf_row['R_int'] - R_int_up) > 1.0e3
+    # No-op contract 2: the trigger clock and sentinels ADVANCE to the current
+    # time/state (the retained structure is the current best, "checked at
+    # current_time"), so a persistent artifact re-fires only at the normal
+    # cadence, not an expensive re-solve every timestep. T_magma/Phi are
+    # unchanged by the rejected solve, so they equal their entry values.
+    assert sentinel[0] == pytest.approx(1100.0, rel=1e-12)
+    assert sentinel[1] == pytest.approx(3000.0, rel=1e-12)
+    assert sentinel[2] == pytest.approx(0.8, rel=1e-12)
+    # The stale-aware ceiling anchor advances too, so it does not immediately
+    # re-arm and force a wasteful re-solve next step.
+    assert interior_o.last_successful_struct_time == pytest.approx(1100.0, rel=1e-12)
+    # No-op contract 3 (the load-bearing one): a rejected up-step is NOT a solver
+    # failure, so the consecutive-failure counter stays at zero and the run's
+    # abort budget is untouched.
+    assert interior_o.zalmoxis_fail_count == 0
+    # The retained structure is consistent, so the stale flag is not raised
+    # (which would otherwise force Aragog onto a frozen-mesh recovery path).
+    assert hf_row.get('_structure_stale') in (None, False)
+    # Consistency: gravity is reverted in lockstep with R_int, not left at the
+    # rejected up-step value. After the no-op gravity must match G*M/R_int**2 for
+    # the restored R_int (the bug: gravity left ~2e-4 high from the up-step).
+    g_expected = 6.674e-11 * M_target / hf_row['R_int'] ** 2
+    assert hf_row['gravity'] == pytest.approx(g_expected, rel=1e-9)
+    g_upstep = 6.674e-11 * M_target / R_int_up**2
+    assert abs(hf_row['gravity'] - g_upstep) > 1e-5 * g_expected
+    # On-disk contract: zalmoxis_output.dat holds the PREV geometry again, not
+    # the rejected up-step file the solver wrote. This is the discriminating
+    # check that an hf_row-only no-op (the bug) would fail.
+    restored = out_path.read_text()
+    assert restored == prev_content
+    assert 'RESOLVE GEOMETRY' not in restored
+
+
+@pytest.mark.physics_invariant
+def test_monotonic_radius_guard_accepts_genuine_contraction(tmp_path):
+    """A re-solve that LOWERS R_int (real cooling) is accepted, sentinels advance.
+
+    Discriminating negative for the guard: genuine crystallisation contracts the
+    planet, so a re-solve below the running minimum is the physically correct
+    direction and must be accepted. The recorded R_int updates downward, the
+    returned sentinel advances to the current time/state, and the on-disk
+    geometry is the new (contracted) file, not the .prev snapshot. This separates
+    'rejects up-steps' from 'rejects every re-solve'.
+    """
+    R_int_prev = 1.2007e7
+    R_int_down = R_int_prev * (1.0 - 5.0e-4)  # genuine contraction
+    M_target = 5.972e24
+    config = _monotonic_config(module='aragog', temperature_mode='liquidus_super')
+    interior_o = _monotonic_interior_o()
+    dirs, out_path = _monotonic_dirs(tmp_path, 'PREV GEOMETRY\n')
+    hf_row = _monotonic_hf_row(R_int_prev, M_target=M_target)
+
+    sentinel = _run_monotonic_resolve(
+        config, dirs, hf_row, interior_o, R_int_returned=R_int_down, M_target=M_target
+    )
+
+    # Acceptance contract: R_int moved DOWN to the contracted value, not held at
+    # the previous minimum. Pin the new value and discriminate against a no-op.
+    assert hf_row['R_int'] == pytest.approx(R_int_down, rel=1e-9)
+    assert hf_row['R_int'] < R_int_prev
+    assert R_int_prev - hf_row['R_int'] > 1.0e3
+    # The sentinel advanced to the current time (1100.0) and state: a contraction
+    # is a successful re-solve, so the trigger clock and anchors move forward.
+    assert sentinel[0] == pytest.approx(1100.0, rel=1e-12)
+    # On-disk contract: the contracted geometry survives (not restored to .prev).
+    assert 'RESOLVE GEOMETRY' in out_path.read_text()
+    # A success also resets the failure streak (it was already zero here).
+    assert interior_o.zalmoxis_fail_count == 0
+
+
+@pytest.mark.physics_invariant
+def test_monotonic_radius_guard_inactive_for_non_liquidus_super(tmp_path):
+    """The same up-step is accepted for a non-liquidus_super config (gate off).
+
+    Discriminating negative for the gating: regimes that are not the molten
+    super-liquidus IC can re-inflate for real (tidal reheating, volatile
+    re-dissolution), so the monotonic clamp must NOT fire there. With an
+    isothermal temperature mode the gate is off, so an identical R_int up-step is
+    accepted: R_int rises, the sentinel advances, and the failure counter stays
+    at zero (no regression for other regimes).
+    """
+    R_int_prev = 1.2007e7
+    R_int_up = R_int_prev * (1.0 + 1.0e-4)  # same up-step as the rejected case
+    M_target = 5.972e24
+    # Gate off via the temperature mode (isothermal), everything else identical.
+    config = _monotonic_config(module='aragog', temperature_mode='isothermal')
+    assert _use_superliquidus_adiabat_ic(config) is False
+    interior_o = _monotonic_interior_o()
+    dirs, out_path = _monotonic_dirs(tmp_path, 'PREV GEOMETRY\n')
+    hf_row = _monotonic_hf_row(R_int_prev, M_target=M_target)
+
+    sentinel = _run_monotonic_resolve(
+        config, dirs, hf_row, interior_o, R_int_returned=R_int_up, M_target=M_target
+    )
+
+    # No clamp: the up-step is recorded because re-inflation is physical here.
+    assert hf_row['R_int'] == pytest.approx(R_int_up, rel=1e-9)
+    assert hf_row['R_int'] > R_int_prev
+    # The sentinel advanced (accepted re-solve), so this is not the no-op path.
+    assert sentinel[0] == pytest.approx(1100.0, rel=1e-12)
+    # The new geometry survives on disk; the guard did not restore the snapshot.
+    assert 'RESOLVE GEOMETRY' in out_path.read_text()
+    assert interior_o.zalmoxis_fail_count == 0
+
+
+def test_monotonic_radius_tolerance_is_tiny_and_positive():
+    """The guard tolerance is a tiny positive relative band (floating-point noise).
+
+    Boundedness of the tuning constant: it must be strictly positive so an exact
+    re-solve that reproduces the previous radius (rel change 0) is accepted, and
+    far below any physical contraction step so a real representation up-step
+    (~1e-4 in the production trace) is rejected rather than absorbed.
+    """
+    assert _MONOTONIC_RINT_REL_TOL > 0.0
+    # Discrimination: the band is well below the ~1e-4 representation up-step the
+    # guard must catch, and not, e.g., a 1e-2 typo that would absorb real rises.
+    assert _MONOTONIC_RINT_REL_TOL < 1.0e-6

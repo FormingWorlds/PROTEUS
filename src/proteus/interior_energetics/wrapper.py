@@ -46,6 +46,16 @@ _ZALMOXIS_MAX_CONSECUTIVE_FAILS = 8
 # (9-15 % off target) and gross corruption.
 _ZALMOXIS_MASS_ANCHOR_TOL = 3e-3
 
+# Relative tolerance on the monotonic-radius guard enforced on dynamic
+# structure re-solves under the super-liquidus adiabat IC. A fully molten
+# super-liquidus start can only cool and crystallise, so the solid-body R_int
+# is physically non-increasing; any recorded rise is a structure-solver
+# cross-table representation artifact (the IC adiabat is a P-T table while the
+# evolved interior_o.temp is a P-S representation). The tolerance is tiny so a
+# rise is only accepted when it is within floating-point noise of the running
+# minimum, and a genuine representation up-step is rejected.
+_MONOTONIC_RINT_REL_TOL = 1e-9
+
 # Abort threshold for consecutive SPIDER CVode failures during time
 # evolution; the counter resets on each successful SPIDER call.
 _SPIDER_MAX_CONSECUTIVE_FAILS = 3
@@ -2262,7 +2272,12 @@ def update_structure_from_interior(
     nlev_b = get_nlevb(config)
     num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
 
-    # Save current structure values for fallback on convergence failure
+    # Save current structure values for fallback on convergence failure or a
+    # rejected (non-physical) radius increase. gravity and P_cmb are included so
+    # a restore reverts the radius-derived gravity and the CMB pressure in
+    # lockstep with R_int; zalmoxis_solver overwrites both from the new solve, so
+    # omitting them would leave them inconsistent with the restored R_int for the
+    # downstream outgassing and atmosphere calls in the same iteration.
     _saved_structure = {
         k: hf_row[k]
         for k in (
@@ -2273,10 +2288,18 @@ def update_structure_from_interior(
             'P_surf',
             'R_core',
             'P_center',
+            'P_cmb',
+            'gravity',
             'rho_avg',
         )
         if k in hf_row
     }
+
+    # Running-minimum radius for the monotonic-radius guard. Because each
+    # accepted re-solve under the super-liquidus adiabat IC only lowers R_int,
+    # the last accepted value IS the running minimum, so a single read of the
+    # current hf_row['R_int'] is the bound to compare the new solve against.
+    R_int_prev = float(hf_row.get('R_int', 0.0) or 0.0)
 
     # Also hand the (r, T) arrays to Zalmoxis explicitly. The JAX path
     # needs them in r-indexed form because the default P-indexed
@@ -2327,6 +2350,84 @@ def update_structure_from_interior(
                         _M_target,
                     )
                 )
+
+        # Monotonic-radius guard for the super-liquidus adiabat IC. A fully
+        # molten super-liquidus start can only cool and crystallise, so the
+        # solid-body R_int is physically non-increasing. The IC structure is
+        # solved on the true P-T adiabat, while a dynamic re-solve integrates
+        # against Aragog's evolved P-S interior_o.temp; the cross-table mismatch
+        # can let a re-solve raise R_int slightly above the running minimum,
+        # which is a representation artifact, not real re-inflation. Reject such
+        # an up-step: restore the previous structure (hf_row keys AND the on-disk
+        # zalmoxis_output.dat snapshot) and return the no-update sentinel. This
+        # is a clean no-op, NOT a solver failure: the consecutive-failure counter
+        # is left untouched (a rejected up-step must not count toward the abort
+        # budget) and the stale flag is not raised. The guard is gated on
+        # _use_superliquidus_adiabat_ic so regimes with genuine re-inflation
+        # (tidal reheating, volatile re-dissolution) are never clamped.
+        _R_int_new = float(hf_row.get('R_int', 0.0) or 0.0)
+        if (
+            _use_superliquidus_adiabat_ic(config)
+            and R_int_prev > 0.0
+            and _R_int_new > R_int_prev * (1.0 + _MONOTONIC_RINT_REL_TOL)
+        ):
+            log.info(
+                'Rejected representation-artifact radius increase under the '
+                'super-liquidus adiabat IC: re-solve R_int=%.6e m > running '
+                'minimum %.6e m (rel +%.3e). Retaining the previous structure; '
+                'this is a clean no-op, not a solver failure.',
+                _R_int_new,
+                R_int_prev,
+                _R_int_new / R_int_prev - 1.0,
+            )
+            # Restore hf_row structure keys exactly like the mass-anchor
+            # rollback, but WITHOUT incrementing zalmoxis_fail_count or setting
+            # _structure_stale: a retained previous structure is consistent, not
+            # stale, and a rejected up-step is not a convergence failure.
+            hf_row.update(_saved_structure)
+            # Restore zalmoxis_output.dat from its pre-call .prev snapshot so the
+            # next solver reads the retained previous geometry, not the rejected
+            # up-step geometry the solver just wrote.
+            try:
+                _output_prev = _output_zalmoxis_path + '.prev'
+                if os.path.isfile(_output_prev):
+                    shutil.copy2(_output_prev, _output_zalmoxis_path)
+                    log.info(
+                        'Monotonic-radius no-op: restored %s from %s',
+                        _output_zalmoxis_path,
+                        _output_prev,
+                    )
+            except Exception as _exc:
+                log.warning(
+                    'Could not restore zalmoxis_output.dat from .prev on the '
+                    'monotonic-radius no-op: %s',
+                    _exc,
+                )
+            # Keep dirs['spider_mesh'] pointing at the retained previous mesh
+            # (mirror the mass-anchor fallback's mesh handling) and clear any
+            # in-flight convergence state so the next trigger evaluates cleanly.
+            if prev_path and os.path.isfile(prev_path):
+                dirs['spider_mesh'] = prev_path
+            dirs['mesh_shift_active'] = False
+            dirs['mesh_convergence_steps'] = 0
+            del r_stag, _r_unsorted, _T_unsorted
+            gc.collect()
+            # Advance the trigger clock and the stale-aware anchor so a
+            # persistent cross-table artifact does not re-fire an expensive
+            # re-solve every timestep: the retained previous structure is the
+            # current best structure, so this state is "checked at current_time".
+            # The sentinels advance like the success path (current Phi/T_magma),
+            # but the structure itself is unchanged.
+            try:
+                interior_o.last_successful_struct_time = float(current_time)
+            except AttributeError:
+                pass
+            return (
+                current_time,
+                float(hf_row['T_magma']),
+                float(hf_row['Phi_global']),
+            )
+
         if interior_o.zalmoxis_fail_count > 0:
             # Quantify how often the relaxed budget actually saved a run: log
             # the streak length before zeroing so post-hoc analysis can grep
