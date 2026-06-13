@@ -62,6 +62,10 @@ class Proteus:
         self.init_stage = False
         self.loops = None
 
+        # Whether the one-time callable-representation structure baseline has
+        # been solved (set once at the init/evolution boundary, see main loop)
+        self._baseline_structure_done = False
+
         # Interior
         self.interior_o = None  # Interior object from interior/common.py
 
@@ -192,6 +196,51 @@ class Proteus:
 
         self.directories = set_directories(self.config)
 
+    def _solve_structure_baseline_if_needed(self):
+        """Solve the one-time callable-representation structure baseline.
+
+        At the first evolution step both dynamic and static Zalmoxis runs solve
+        the structure once from the converged initial interior profile, so they
+        share an identical, self-consistent starting radius rather than the
+        structure-solver's own initial-condition adiabat. The baseline is solved
+        once per run; resumed runs and already-baselined runs are a no-op.
+
+        A failed forced solve restores the initial-condition structure and flags
+        it stale; in that case the baseline is left unmarked so the next
+        evolution step retries. The solver's own consecutive-failure budget
+        aborts the run if the baseline cannot be established, so a static run is
+        never silently frozen on the unconverged initial-condition structure.
+        """
+        if (
+            self.init_stage
+            or self._baseline_structure_done
+            or self.config.interior_struct.module != 'zalmoxis'
+        ):
+            return
+
+        from proteus.interior_energetics.wrapper import update_structure_from_interior
+
+        new_time, new_Tmagma, new_Phi = update_structure_from_interior(
+            self.directories,
+            self.config,
+            self.hf_row,
+            self.interior_o,
+            self.last_struct_time,
+            self.last_struct_Tmagma,
+            self.last_struct_Phi,
+            force=True,
+        )
+
+        # Commit the baseline only when the solve converged. On a fall-back the
+        # structure is the stale initial-condition one; retry on the next step.
+        if self.hf_row.get('_structure_stale', False):
+            return
+
+        self.last_struct_time = new_time
+        self.last_struct_Tmagma = new_Tmagma
+        self.last_struct_Phi = new_Phi
+        self._baseline_structure_done = True
+
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
 
@@ -320,6 +369,7 @@ class Proteus:
             'init_loops': 3,  # Maximum number of init iters
         }
         self.init_stage = True
+        self._baseline_structure_done = False
 
         # Write config to output directory, for future reference
         self.config.write(os.path.join(self.directories['output'], 'init_coupler.toml'))
@@ -509,6 +559,12 @@ class Proteus:
             # Set loop counters
             self.loops['total'] = len(self.hf_all)
             self.init_stage = False
+            # A resumed run continues from its on-disk structure; do not solve
+            # the init baseline mid-evolution, which would inject a spurious
+            # radius step (and would un-freeze a static run). For runs first
+            # launched on this code path the on-disk structure is already the
+            # callable-representation baseline.
+            self._baseline_structure_done = True
 
             # Restore Zalmoxis mesh path for resumed SPIDER runs
             if (
@@ -685,6 +741,12 @@ class Proteus:
             # Advance current time in main loop according to interior step
             self.hf_row['Time'] += self.interior_o.dt  # in years
             self.hf_row['age_star'] += self.interior_o.dt  # in years
+
+            # One-time structure baseline in the interior-fed callable
+            # representation (dynamic and static runs share an identical start).
+            # Static runs perform no further structure solves; dynamic runs
+            # continue in the block below.
+            self._solve_structure_baseline_if_needed()
 
             # Re-compute structure if Zalmoxis feedback is active
             if (

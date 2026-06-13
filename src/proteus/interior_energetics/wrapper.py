@@ -1572,6 +1572,7 @@ def update_structure_from_interior(
     last_struct_time: float,
     last_Tmagma: float,
     last_Phi: float,
+    force: bool = False,
 ) -> tuple[float, float, float]:
     """Re-run Zalmoxis with SPIDER's current T(r) to update structure.
 
@@ -1601,6 +1602,12 @@ def update_structure_from_interior(
         T_magma [K] at the last structure update.
     last_Phi : float
         Phi_global at the last structure update.
+    force : bool, optional
+        When True, bypass the dynamic-update interval guard and every
+        change-based trigger and perform exactly one structure solve in
+        the interior-fed callable representation. Used once at the
+        init/evolution boundary so dynamic and static runs share an
+        identical, self-consistent starting structure. Default False.
 
     Returns
     -------
@@ -1610,21 +1617,29 @@ def update_structure_from_interior(
     """
     no_update = (last_struct_time, last_Tmagma, last_Phi)
 
-    # Dynamic updates disabled
-    if config.interior_struct.zalmoxis.update_interval <= 0:
+    # Dynamic updates disabled. The one-time init baseline solve passes
+    # force=True to bypass this guard and the change-based triggers below,
+    # so dynamic and static runs share an identical callable-representation
+    # starting structure (set at the proteus.py init/evolution boundary).
+    if not force and config.interior_struct.zalmoxis.update_interval <= 0:
         return no_update
 
     current_time = hf_row['Time']
     elapsed = current_time - last_struct_time
 
-    # Evaluate triggers
-    triggered = False
-    reason = ''
+    # Evaluate triggers. A forced baseline counts as an unconditional
+    # trigger, so every change-based test below self-skips on `not triggered`.
+    triggered = force
+    reason = 'init baseline (interior-fed callable representation)' if force else ''
 
     # Mesh convergence trigger: bypasses normal floor when mesh is still
     # converging toward the true Zalmoxis solution after blending
     mesh_converging = dirs.get('mesh_shift_active', False)
-    if mesh_converging and elapsed >= config.interior_struct.zalmoxis.mesh_convergence_interval:
+    if (
+        not force
+        and mesh_converging
+        and elapsed >= config.interior_struct.zalmoxis.mesh_convergence_interval
+    ):
         triggered = True
         reason = (
             f'mesh convergence (elapsed {elapsed:.1f} yr '
@@ -1933,15 +1948,25 @@ def update_structure_from_interior(
     if spider_mesh_file:
         dirs['spider_mesh'] = spider_mesh_file
 
-        # Blend mesh to limit per-update radius shift
+        # Blend mesh to limit per-update radius shift. Per-step blending
+        # protects Aragog's entropy remap during evolution; the one-time init
+        # baseline instead lands directly on the full callable mesh (max_shift
+        # disabled) so the on-disk mesh equals the reported R_int and no
+        # convergence state is left dangling. A static run never re-solves to
+        # reconcile a clamped intermediate, so the baseline must be unclamped.
         from proteus.interior_energetics.spider import blend_mesh_files
 
+        _blend_max_shift = (
+            float('inf') if force else config.interior_struct.zalmoxis.mesh_max_shift
+        )
         actual_shift = blend_mesh_files(
             prev_path or '',
             spider_mesh_file,
-            max_shift=config.interior_struct.zalmoxis.mesh_max_shift,
+            max_shift=_blend_max_shift,
         )
-        still_converging = actual_shift > config.interior_struct.zalmoxis.mesh_max_shift
+        still_converging = (
+            not force and actual_shift > config.interior_struct.zalmoxis.mesh_max_shift
+        )
 
         # Track convergence steps; give up after 20 consecutive blends
         # to avoid infinite rapid-update loops when Zalmoxis and SPIDER
