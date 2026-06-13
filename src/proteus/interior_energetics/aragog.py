@@ -1823,20 +1823,24 @@ class AragogRunner:
         solver = self.aragog_solver
         max_attempts = 6
         atol_sf_max = 5.0  # cap on atol scaling; tested 125x corrupted T_core
-        # Scale the T_core-jump sanity threshold with planet mass. At 1 M_Earth
-        # the IC transient in T_core is O(100 K); at 5 M_Earth with per-node
-        # gravity the same transient is O(2-3 kK) because core heat extraction
-        # scales with CMB gravity and core-mantle area (g_cmb^2 * R_core^2).
-        # A flat 1500 K threshold is calibrated for 1 M_Earth and
-        # wrongly rejects physical transients on super-Earth runs, driving the
-        # retry ladder to exhaustion. Linear-in-mass scaling is defensible:
-        # for rocky planets the product (g_cmb * M_core * C_p_core) rises
-        # approximately linearly with planet mass, and the first-step
-        # dT_core/dt scales with that product. At 5 M_Earth this gives a
-        # 7500 K ceiling, ~2.5x headroom above the observed 2700 K jump.
+        # Scale the T_core-jump sanity threshold with planet mass, with a floor.
+        # The early-evolution transient in T_core grows with planet mass because
+        # core heat extraction scales with CMB gravity and core-mantle area
+        # (g_cmb^2 * R_core^2); the product (g_cmb * M_core * C_p_core) rises
+        # roughly linearly with planet mass, so the first-step dT_core/dt tracks
+        # it. A 5 M_Earth run shows an O(2-3 kK) transient, so the linear term
+        # gives a 7500 K ceiling there (about 2.5x headroom over the observed
+        # 2700 K). The transient is sub-linear at the low-mass end rather than
+        # the O(100 K) the linear term alone implies: with the super-liquidus
+        # initial condition a 1 M_Earth run settles its core by about 1700 K on
+        # the early steps, above the bare 1500 K linear value, which froze T_cmb
+        # and exhausted the retry ladder. The floor gives the low-mass runs
+        # headroom over that transient while the guard still rejects the much
+        # larger jumps from a corrupted solve (an over-relaxed atol returns
+        # T_core errors of many thousands of K).
         mass_tot = float(getattr(self._config.planet, 'mass_tot', 1.0) or 1.0)
-        sanity_dT_core = 1500.0 * max(
-            1.0, mass_tot
+        sanity_dT_core = max(
+            3000.0, 1500.0 * mass_tot
         )  # max plausible T_core change per retry [K]
 
         # Capture IC for restoration on retry, and pre-call T_core for
