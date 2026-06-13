@@ -329,6 +329,12 @@ class TestCommentFromStatus:
         assert 'solidified' in CommentFromStatus(10)
 
     @pytest.mark.unit
+    def test_status_runtime(self):
+        """Status 11: Completed (maximum clock runtime)."""
+        assert CommentFromStatus(11) == 'Completed (maximum clock runtime)'
+        assert 'maximum clock runtime' in CommentFromStatus(11)
+
+    @pytest.mark.unit
     def test_status_max_iterations(self):
         """Status 12: Completed (maximum iterations)."""
         assert CommentFromStatus(12) == 'Completed (maximum iterations)'
