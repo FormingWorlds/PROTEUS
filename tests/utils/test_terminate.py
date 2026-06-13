@@ -329,6 +329,51 @@ def test_check_termination_strict_resets_if_condition_lost(monkeypatch, patch_st
     assert patch_statusfile[-1][1] == 13
 
 
+@pytest.mark.unit
+def test_physical_completion_outranks_max_time(monkeypatch, patch_statusfile):
+    """When volatile escape and the maximum-time limit are both satisfied on
+    the same iteration, the recorded status is the physical reason (escape,
+    code 15) and not the resource-budget reason (target time, code 13).
+
+    The criteria are combined with a short-circuiting ``or``, so the first
+    firing criterion writes the status file and suppresses the rest. Escape is
+    checked before maximum time, so code 13 must never be written here; a bare
+    ``== 15`` final-value check would also pass if 13 were written first and
+    then overwritten, which is not the behaviour being guarded.
+    """
+    cfg = _cfg()  # strict=False
+    h = _handler(cfg)
+    h.hf_row['P_surf'] = 0.5  # below p_stop=1.0 -> escape fires (code 15)
+    h.hf_row['Time'] = 200.0  # above maximum=100.0 -> max time fires (code 13)
+    h.loops['total'] = 5  # satisfy min_iter so exit is allowed
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    codes = [code for _, code in patch_statusfile]
+    assert codes[-1] == 15
+    # Discrimination: max-time (13) is lower priority and is short-circuited,
+    # so it is never written, not merely overwritten.
+    assert 13 not in codes
+
+
+@pytest.mark.unit
+def test_solidification_outranks_max_time(monkeypatch, patch_statusfile):
+    """Solidification (code 10) also outranks the maximum-time limit when both
+    fire together: the physical-completion group is checked ahead of the
+    resource-budget group, so the run reports the physical reason."""
+    cfg = _cfg()  # strict=False
+    h = _handler(cfg, phi_global=0.2)  # below phi_crit=0.3 -> solid fires (10)
+    h.hf_row['P_surf'] = 50.0  # keep escape from firing
+    h.hf_row['Time'] = 200.0  # above maximum -> max time would fire (13)
+    h.loops['total'] = 5
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    codes = [code for _, code in patch_statusfile]
+    assert codes[-1] == 10
+    assert 13 not in codes
+
+
 class TestPrintTerminationCriteria:
     """print_termination_criteria: summary logging of active stop conditions."""
 

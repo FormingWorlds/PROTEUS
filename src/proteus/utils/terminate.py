@@ -246,9 +246,14 @@ def check_termination(handler: Proteus) -> bool:
         handler.finished_prev = True
         return True
 
-    # Maximum time reached
-    if handler.config.params.stop.time.enabled:
-        finished = finished or _check_maxtime(handler)
+    # Criteria are evaluated in priority order. They are combined with a
+    # short-circuiting ``or``, so the first criterion that fires writes the
+    # status file and suppresses the checks below it. Physical completion
+    # reasons (solidified, energy balance, escaped, disintegrated) are
+    # therefore checked before resource-budget limits (maximum time, loops,
+    # clock): if a run both finishes escaping and reaches its time ceiling on
+    # the same iteration, the reported reason is the physical one rather than
+    # "target time".
 
     # Stop simulation when planet is completely solidified
     if handler.config.params.stop.solid.enabled:
@@ -269,6 +274,10 @@ def check_termination(handler: Proteus) -> bool:
 
         if handler.config.params.stop.disint.spin_enabled:
             finished = finished or _check_spinrate(handler)
+
+    # Maximum time reached
+    if handler.config.params.stop.time.enabled:
+        finished = finished or _check_maxtime(handler)
 
     # Maximum loops reached
     if handler.config.params.stop.iters.enabled:
