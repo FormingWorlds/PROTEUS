@@ -176,6 +176,8 @@ class Agni:
         Shape of initial T(p) guess: 'loglinear', 'isothermal', 'dry_adiabat', 'analytic'.
     ls_default: int
         Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking.
+    fdo: int
+        Numerical order of finite-difference for jacobian. 2 or 4.
     spectral_file: str | None
         Path to AGNI spectral file, or 'greygas' to enable the grey-gas RT scheme.
         If None, will use atmos_clim.spectral_group and atmos_clim.spectral_bands.
@@ -208,9 +210,10 @@ class Agni:
     oceans: bool = field(default=True)
     latent_heat: bool = field(default=False)
     convection: bool = field(default=True)
-    conduction: bool = field(default=True)
+    conduction: bool = field(default=False)
     sens_heat: bool = field(default=True)
     real_gas: bool = field(default=False)
+    thermo_functions: bool = field(default=True)
     psurf_thresh: float = field(default=0.1, validator=ge(0))
     dx_max: float = field(default=35.0, validator=gt(1))
     dx_max_ini: float = field(default=50.0, validator=gt(1))

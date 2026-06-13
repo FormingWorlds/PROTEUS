@@ -1387,10 +1387,6 @@ def run_interior(
             return
 
     elif config.interior_energetics.module == 'boundary':
-        # atmos_o may be None before the first atmosphere solve (and in the
-        # structure-solve calls). The backend reads it only for the atmospheric
-        # heat capacity and falls back to the configured atm_heat_capacity when
-        # it is absent; that term is inert at t=0 (dt=0), so no guard is needed.
         from proteus.interior_energetics.boundary import BoundaryRunner
 
         BoundaryRunnerInstance = BoundaryRunner(

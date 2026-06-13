@@ -60,7 +60,6 @@ _REQUIRED_ATMOS_FIELDS = (
     'diagnostic_Ra',
     'timescale_conv',
     'timescale_rad',
-    'mask_c',
     # Gas composition
     'gas_names',
     'gas_vmr',
@@ -114,24 +113,27 @@ def _check_agni_schema(atmos) -> None:
 def _summarise_tau_band(atmos) -> tuple[float, float]:
     """Reduce the per-band optical-depth array to TOA and surface scalars.
 
-    AGNI stores ``tau_band`` as a ``(nlev_l, nbands)`` Julia array: the
-    outermost index runs over cell-edge levels (``nlev_l = nlev_c + 1``),
-    not cell centres. After juliacall conversion the numpy view may
-    appear as either ``(nlev_l, nbands)`` or ``(nbands, nlev_l)``; the
-    aggregator inspects ``atmos.nlev_l`` and ``atmos.nbands`` to align.
+    Optical depths are zero if transparent mode is enabled. Return zero on
+    shape or read errors so the helpfile column is still well-formed.
+
+    Optical depths extracted at reference wavelength.
 
     Returns
     -------
-    tuple of (tau_atm_TOA, tau_atm_surface), each the band-mean
-    optical depth at that level. NaN on shape or read errors so the
-    helpfile column is still well-formed.
+    tuple of (tau_atm_TOA, tau_atm_surface)
     """
+
+    # Handle transparent case
+    if bool(getattr(atmos, 'transparent', False)):
+        return 0.0, 0.0
+
+    # Extract arrays
     try:
         tau_arr = np.asarray(atmos.tau_band)
     except Exception:
-        return float('nan'), float('nan')
+        return 0.0, 0.0
     if tau_arr.size == 0:
-        return float('nan'), float('nan')
+        return 0.0, 0.0
     if hasattr(atmos, 'nlev_l'):
         nlev_l = int(atmos.nlev_l)
     elif hasattr(atmos, 'nlev_c'):
@@ -139,16 +141,22 @@ def _summarise_tau_band(atmos) -> tuple[float, float]:
     else:
         nlev_l = tau_arr.shape[0]
     nbands = int(atmos.nbands) if hasattr(atmos, 'nbands') else tau_arr.shape[-1]
+
+    # Find the optical depth at the given wavelength index
+    # This could be calculated using a particular wavelength, in the future
+    wl_idx = tau_arr.shape[-1] // 2
+    wl_idx = max(0, min(wl_idx, nbands - 1))
+
     # Accept a cell-centre-sized level axis (nlev_l - 1) too: the TOA and
     # surface values sit at indices 0 and -1 on either grid, so the
     # reduction is identical and the helper tolerates both conventions.
     level_sizes = {nlev_l, nlev_l - 1}
     if tau_arr.ndim == 2 and tau_arr.shape[0] in level_sizes and tau_arr.shape[1] == nbands:
-        toa = float(tau_arr[0, :].mean())
-        surf = float(tau_arr[-1, :].mean())
+        toa = float(tau_arr[0, wl_idx])
+        surf = float(tau_arr[-1, wl_idx])
     elif tau_arr.ndim == 2 and tau_arr.shape[0] == nbands and tau_arr.shape[1] in level_sizes:
-        toa = float(tau_arr[:, 0].mean())
-        surf = float(tau_arr[:, -1].mean())
+        toa = float(tau_arr[wl_idx, 0])
+        surf = float(tau_arr[wl_idx, -1])
     else:
         log.warning(
             'tau_band has unexpected shape %s for nlev_l=%d, nbands=%d',
@@ -156,32 +164,55 @@ def _summarise_tau_band(atmos) -> tuple[float, float]:
             nlev_l,
             nbands,
         )
-        return float('nan'), float('nan')
+        toa = 0.0
+        surf = 0.0
+
+    # Ensure finite
+    toa = toa if np.isfinite(toa) else 0.0
+    surf = surf if np.isfinite(surf) else 0.0
+
+    # Warn if small
+    if surf < 1e-9:
+        log.warning('Surface optical depth is small: %.2e', surf)
+
     return toa, surf
 
 
 def _summarise_diagnostics(atmos) -> tuple[float, float]:
     """Reduce the convection / radiation diagnostic arrays to scalars.
 
-    Returns the maximum Rayleigh number across levels and the ratio
-    timescale_conv / timescale_rad evaluated at the topmost convective
-    level (the radiative-convective boundary). NaN when no level is
-    convective or when the diagnostics were not populated (energy
-    solver path skips them).
+    Ra_max is the maximum value of Rayleigh number across the column.
+    t_conv_over_t_rad is the maximum of the convective/radiative timescales.
+
+    Returns
+    -------
+    tuple of (Ra_max, t_conv_over_t_rad)
     """
-    try:
-        ra_arr = np.asarray(atmos.diagnostic_Ra)
-        t_conv_arr = np.asarray(atmos.timescale_conv)
-        t_rad_arr = np.asarray(atmos.timescale_rad)
-        mask_c = np.asarray(atmos.mask_c).astype(bool)
-    except Exception:
-        return float('nan'), float('nan')
-    Ra_max = float(np.nanmax(ra_arr)) if ra_arr.size else float('nan')
-    if not mask_c.any() or t_conv_arr.size == 0 or t_rad_arr.size == 0:
-        return Ra_max, float('nan')
-    rcb_idx = int(np.argmax(mask_c))  # first convective level from TOA downwards
-    denom = max(float(t_rad_arr[rcb_idx]), 1e-300)
-    ratio = float(t_conv_arr[rcb_idx]) / denom
+
+    # Handle transparent case
+    if bool(getattr(atmos, 'transparent', False)):
+        return 0.0, 0.0
+
+    # Get arrays from AGNI
+    ra_arr = np.asarray(atmos.diagnostic_Ra, dtype=float)
+    t_conv_arr = np.asarray(atmos.timescale_conv, dtype=float)
+    t_rad_arr = np.asarray(atmos.timescale_rad, dtype=float)
+
+    # Replace NaN values with zero
+    ra_arr = np.nan_to_num(ra_arr, nan=0.0)
+    t_conv_arr = np.nan_to_num(t_conv_arr, nan=0.0)
+    t_rad_arr = np.nan_to_num(t_rad_arr, nan=0.0)
+
+    # Get maximum Rayleigh number
+    Ra_max = float(np.amax(ra_arr))
+
+    # Get maximum t_conv_t_rad
+    mask_c = ra_arr > 1e-9
+    if np.any(mask_c):
+        ratio = np.amax(t_conv_arr[mask_c] / np.maximum(t_rad_arr[mask_c], 1e-300))
+    else:
+        ratio = 0.0
+
     return Ra_max, ratio
 
 
@@ -549,6 +580,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         fastchem_xtol_chem=config.atmos_clim.agni.fastchem_xtol_chem,
         fastchem_xtol_elem=config.atmos_clim.agni.fastchem_xtol_elem,
         real_gas=config.atmos_clim.agni.real_gas,
+        thermo_functions=config.atmos_clim.agni.thermo_functions,
         check_integrity=False,  # don't check thermo files every time
         mlt_criterion=convert(jl.Char, config.atmos_clim.agni.mlt_criterion),
         skin_d=config.atmos_clim.surface_d,
@@ -693,16 +725,16 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
 
     # ---------------------
     # Store old/current log-pressure vs temperature arrays
-    p_old = list(atmos.p)
+    p_old = list(atmos.p)  # pascals
     t_old = list(atmos.tmp)
     nlev_c = len(p_old)
 
     #    extend to lower pressures
-    p_old = [p_old[0] / 10] + p_old
+    p_old = [p_old[0] / 1.1] + p_old
     t_old = [t_old[0]] + t_old
 
     #    extend to higher pressures
-    p_old = p_old + [p_old[-1] * 10]
+    p_old = p_old + [max(np.amax(p_old) * 1.1, hf_row['P_surf'] * 1e5)]
     t_old = t_old + [t_old[-1]]
 
     #    create interpolator
@@ -716,10 +748,11 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
 
     # ---------------------
     # Set temperatures at all levels
+    tmp_max = max(1000, float(hf_row['T_magma']))
     for i in range(nlev_c):
-        atmos.tmp[i] = float(itp(np.log10(atmos.p[i])))
-        atmos.tmpl[i] = float(itp(np.log10(atmos.pl[i])))
-    atmos.tmpl[-1] = float(itp(np.log10(atmos.pl[-1])))
+        atmos.tmp[i] = float(min(tmp_max, itp(np.log10(atmos.p[i]))))
+        atmos.tmpl[i] = float(min(tmp_max, itp(np.log10(atmos.pl[i]))))
+    atmos.tmpl[-1] = float(min(tmp_max, itp(np.log10(atmos.pl[-1]))))
 
     return atmos
 
@@ -768,6 +801,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
         easy_start = False
         grey_start = False
         dx_max = float(config.atmos_clim.agni.dx_max)
+        ls_min_scale = 1e-4
         ls_increase = 0.7
         perturb_all = bool(config.atmos_clim.agni.perturb_all)
         max_steps = int(config.atmos_clim.agni.max_steps)
@@ -816,6 +850,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
 
         # Update solver
         jl.AGNI.solver.solve_energy.ls_increase = float(ls_increase)
+        jl.AGNI.solver.solve_energy.ls_min_scale = float(ls_min_scale)
 
         # Try solving temperature profile.
         #
@@ -986,7 +1021,9 @@ def _solve_transparent(atmos, config: Config):
     return atmos
 
 
-def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
+def run_agni(
+    atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict, write_data: bool = True
+):
     """Run AGNI atmosphere model.
 
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -1004,6 +1041,8 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
+        write_data : bool, optional
+            Whether to write AGNI output to NetCDF.
 
     Returns
     ----------
@@ -1030,13 +1069,13 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     if bool(atmos.transparent):
         # no opacity
         log.info('Using transparent solver')
-        atmos.transspec_p = float(atmos.p_boa)
+        atmos.transspec_ref_p = float(atmos.p_boa)
         atmos = _solve_transparent(atmos, config)
 
     # Opaque case
     else:
         # Set observed pressure
-        atmos.transspec_p = float(config.atmos_clim.p_obs * 1e5)  # converted to Pa
+        atmos.transspec_ref_p = float(config.atmos_clim.p_obs * 1e5)  # converted to Pa
 
         # full solver
         if config.atmos_clim.agni.solve_energy:
@@ -1048,13 +1087,17 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
             log.info('Using prescribed temperature profile')
             atmos = _solve_once(atmos, config)
 
-    # Calculate planet transit radius (to be stored in NetCDF)
-    jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
+    # Set default observed pressure
+    atmos.transspec_p = atmos.transspec_ref_p
+
+    # Calculate planet transit radius and other photospheric properties
+    jl.AGNI.atmosphere.estimate_photosphere_b(atmos, setby=str('prs'))
 
     # Write output data
-    log.debug('AGNI write to NetCDF file')
-    ncdf_path = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % hf_row['Time'])
-    jl.AGNI.save.write_ncdf(atmos, ncdf_path)
+    if write_data:
+        log.debug('AGNI write to NetCDF file')
+        ncdf_path = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % hf_row['Time'])
+        jl.AGNI.save.write_ncdf(atmos, ncdf_path)
 
     # Make plots
     if multiple(loops_total, config.params.out.plot_mod):
@@ -1109,9 +1152,8 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
         p_xuv = hf_row['p_xuv']  # bar
         r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv * 1e5)[1]  # m
 
-    # Diagnostics surfaced into hf_row: band-mean optical depth at TOA
-    # and at the surface, plus the Rayleigh number maximum and the
-    # convective vs radiative timescale ratio at the RCB.
+    # Diagnostics surfaced into hf_row: median optical depth at TOA
+    # and at the surface, plus the Ra_max and timescale ratios.
     tau_TOA, tau_surface = _summarise_tau_band(atmos)
     Ra_max, t_conv_over_t_rad = _summarise_diagnostics(atmos)
 

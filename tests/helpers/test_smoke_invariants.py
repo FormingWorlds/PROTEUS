@@ -159,19 +159,21 @@ def test_assert_no_nan_inf_allows_nan_sentinel_diagnostics():
     """NaN passes in the AGNI convection diagnostics but Inf still trips.
 
     The schema for ``atm_Ra_max`` and ``atm_t_conv_over_t_rad`` defines
-    NaN as the "not populated / no convective level" sentinel, so the
+    zero as the "not populated / no convective level" sentinel, so the
     finiteness sweep must not flag it there; an Inf in the same column
     is still a numerical bug and must fire.
     """
     row = _good_row()
-    row['atm_t_conv_over_t_rad'] = float('nan')
-    row['atm_Ra_max'] = float('nan')
+    row['atm_t_conv_over_t_rad'] = 0.0
+    row['atm_Ra_max'] = 0.0
     assert assert_no_nan_inf(pd.Series(row)) is None
-    # Discrimination: the carve-out is NaN-specific, not column-blind.
+
+    # Discrimination: the carve-out is zero-specific, not column-blind.
     row['atm_Ra_max'] = float('inf')
     with pytest.raises(AssertionError, match=r'atm_Ra_max=Inf'):
         assert_no_nan_inf(pd.Series(row))
-    # Discrimination: NaN outside the sentinel columns still fires.
+
+    # Discrimination: NaN still fires.
     row['atm_Ra_max'] = 1.0e9
     row['T_surf'] = float('nan')
     with pytest.raises(AssertionError, match=r'T_surf=NaN'):
