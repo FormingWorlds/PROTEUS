@@ -737,3 +737,108 @@ def test_solvus_override_no_op_when_r_solvus_exceeds_r_int():
     # Override must NOT have fired
     assert _saved_atm_bc == {}
     assert hf_row['T_surf'] == pytest.approx(2000.0, rel=1e-12)
+
+
+# ============================================================================
+# _solve_structure_baseline_if_needed: one-time callable-representation baseline
+# ============================================================================
+
+_BASELINE_TARGET = 'proteus.interior_energetics.wrapper.update_structure_from_interior'
+
+
+def _make_baseline_proteus(tmp_path, *, module='zalmoxis', init_stage=False, done=False):
+    """Build a Proteus positioned for the structure-baseline gate.
+
+    The method reads init_stage, the one-shot flag, the interior_struct module,
+    the interior object and the structure sentinels; everything else is left at
+    its post-__init__ default.
+    """
+    p = _make_proteus_instance(tmp_path, struct_module=module)
+    p.init_stage = init_stage
+    p._baseline_structure_done = done
+    p.interior_o = MagicMock()
+    p.hf_row = {'_structure_stale': False}
+    p.last_struct_time = 0.0
+    p.last_struct_Tmagma = float('inf')
+    p.last_struct_Phi = float('inf')
+    return p
+
+
+def test_structure_baseline_fires_once_with_force_then_is_idempotent(tmp_path):
+    """The first evolution step solves the baseline once with force=True and
+    commits the returned structure sentinels; a second call is a no-op.
+
+    Discriminating: the sentinels are pinned to the solver's returned values
+    (123.0, 2500.0, 0.71), which differ from the post-__init__ defaults, so a
+    regression that failed to commit them would be caught; and the second-call
+    assertion guards against the one-shot flag not latching (which would
+    re-solve every iteration and inject a spurious radius step).
+    """
+    p = _make_baseline_proteus(tmp_path)
+    with patch(_BASELINE_TARGET, return_value=(123.0, 2500.0, 0.71)) as mock_update:
+        p._solve_structure_baseline_if_needed()
+
+        assert mock_update.call_count == 1
+        assert mock_update.call_args.kwargs['force'] is True
+        assert p._baseline_structure_done is True
+        assert p.last_struct_time == pytest.approx(123.0, rel=1e-12)
+        assert p.last_struct_Tmagma == pytest.approx(2500.0, rel=1e-12)
+        assert p.last_struct_Phi == pytest.approx(0.71, rel=1e-12)
+
+        # Idempotent: the latched flag prevents any further forced solve.
+        p._solve_structure_baseline_if_needed()
+        assert mock_update.call_count == 1
+
+
+@pytest.mark.parametrize(
+    'kwargs',
+    [
+        {'done': True},  # already baselined, e.g. a resumed run
+        {'init_stage': True},  # still in the init stage
+        {'module': 'dummy'},  # non-Zalmoxis structure module
+    ],
+    ids=['already_done_or_resumed', 'init_stage', 'non_zalmoxis_module'],
+)
+def test_structure_baseline_skipped(tmp_path, kwargs):
+    """The baseline solve fires only for a fresh, post-init Zalmoxis run.
+
+    Edge cases: a resumed/already-baselined run (the flag pre-set), an
+    init-stage iteration, and a non-Zalmoxis module each must skip the forced
+    solve. Discriminating: the one-shot flag is asserted unchanged at its input
+    value, so a regression that dropped a guard and solved anyway is caught.
+    """
+    p = _make_baseline_proteus(tmp_path, **kwargs)
+    with patch(_BASELINE_TARGET, return_value=(1.0, 2.0, 0.3)) as mock_update:
+        p._solve_structure_baseline_if_needed()
+    mock_update.assert_not_called()
+    assert p._baseline_structure_done is kwargs.get('done', False)
+
+
+def test_structure_baseline_retries_after_failed_solve(tmp_path):
+    """A failed forced baseline (fall-back to the IC-internal structure) must
+    NOT mark the baseline done, so the next evolution step retries.
+
+    Without this, a single failed baseline on a static run would freeze it on
+    the IC-internal-adiabat radius for the rest of the run, silently re-adding
+    the representation offset to the dynamic-vs-static comparison.
+
+    Discriminating: the solver signals failure by setting hf_row
+    _structure_stale True; the test asserts the flag stays False (retry) AND
+    the sentinels are NOT advanced from their defaults, distinguishing a real
+    fall-back from a committed solve.
+    """
+
+    def _failed_solve(directories, config, hf_row, *args, **kwargs):
+        # Mirror the wrapper fall-back: flag the structure stale, return the
+        # unchanged sentinels (last_struct_time/Tmagma/Phi are args[2:5] here).
+        hf_row['_structure_stale'] = True
+        return (args[1], args[2], args[3])
+
+    p = _make_baseline_proteus(tmp_path)
+    with patch(_BASELINE_TARGET, side_effect=_failed_solve) as mock_update:
+        p._solve_structure_baseline_if_needed()
+
+    mock_update.assert_called_once()
+    assert p._baseline_structure_done is False  # retried, not latched
+    assert p.last_struct_time == pytest.approx(0.0, abs=0.0)  # sentinels untouched
+    assert p.last_struct_Phi == float('inf')

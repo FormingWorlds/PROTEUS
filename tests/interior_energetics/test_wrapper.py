@@ -137,6 +137,244 @@ def test_update_disabled():
 
 
 # ============================================================================
+# test force=True init baseline (callable-representation structure at init)
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_force_baseline_solves_when_dynamic_updates_disabled():
+    """force=True solves once even when dynamic updates are disabled.
+
+    At the init/evolution boundary the structure is solved once in the
+    interior-fed callable representation for BOTH dynamic and static runs,
+    so a static configuration (update_interval=0) must still take the
+    baseline solve. This is the discriminating contrast to
+    test_update_disabled: the SAME update_interval=0 config skips the solver
+    entirely when force is left at its default False.
+    """
+    config = _mock_config(update_interval=0)
+    dirs = _mock_dirs()
+    hf_row = {
+        'Time': 200.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.80,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o()
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 9999.0, 0.999, force=True
+        )
+
+    # The forced baseline MUST invoke the solver despite update_interval=0.
+    mock_solver.assert_called_once()
+    # It MUST return the current state, not the stale sentinel passed in.
+    # Pinning all three discriminates a no-op regression (which would return
+    # the (0.0, 9999.0, 0.999) input tuple) from a real baseline solve.
+    assert result[0] == pytest.approx(200.0, rel=1e-12)
+    assert result[1] == pytest.approx(3000.0, rel=1e-12)
+    assert result[2] == pytest.approx(0.80, rel=1e-12)
+    assert result != (0.0, 9999.0, 0.999)
+
+
+@pytest.mark.unit
+def test_force_baseline_ignores_unmet_triggers():
+    """force=True bypasses change-based triggers that would otherwise skip.
+
+    With Phi and T_magma unchanged from the last update and elapsed time
+    below update_min_interval, the normal (force=False) path returns
+    unchanged without solving. The forced baseline must solve regardless,
+    proving it bypasses the floor and every change trigger, not only the
+    update_interval guard.
+    """
+    # Dynamic config, but nothing changed and we sit inside the min-interval
+    # floor, so the non-forced path must not trigger.
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    dirs = _mock_dirs()
+    hf_row = {
+        'Time': 50.0,  # elapsed = 50 < min_interval 100 -> floor blocks
+        'T_magma': 3000.0,
+        'Phi_global': 0.80,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o()
+
+    # Control: force=False with these unchanged inputs must NOT solve.
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_unforced:
+        unforced = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80
+        )
+    mock_unforced.assert_not_called()
+    assert unforced == (0.0, 3000.0, 0.80)
+
+    # Treatment: force=True with identical unchanged inputs MUST solve once.
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_forced,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        forced = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80, force=True
+        )
+    mock_forced.assert_called_once()
+    assert forced[0] == pytest.approx(50.0, rel=1e-12)
+
+
+def _dirs_hf_with_composition_delta():
+    """Build dirs + hf_row carrying a dissolved-H2O fraction change that is
+    above the composition trigger threshold (w 1.0e-3 -> 2.0e-3, dw = 100%)."""
+    dirs = _mock_dirs()
+    dirs['_last_w_H2O_liquid'] = 1.0e-3
+    dirs['_last_w_H2_liquid'] = 0.0
+    hf_row = {
+        'Time': 100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.80,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'M_mantle': 4.0e24,
+        'H2O_kg_liquid': 8.0e21,  # / M_mantle -> w_new = 2.0e-3
+        'H2_kg_liquid': 0.0,
+    }
+    return dirs, hf_row
+
+
+@pytest.mark.unit
+def test_force_baseline_suppresses_composition_eos_regeneration():
+    """The forced baseline skips composition-driven EOS regeneration.
+
+    A baseline solve is a representation change, not a composition change, so
+    comp_changed must stay False and the SPIDER/Aragog P-S EOS tables must not
+    be regenerated (doing so would desync Aragog's in-memory EntropyEOS from
+    the on-disk tables, the documented wet-run gap).
+
+    Discriminating via a positive control: the IDENTICAL composition delta
+    drives a regeneration on the non-forced path, so the not-called assertion
+    on the forced path proves force suppresses it, not that the inputs never
+    fire regeneration.
+    """
+    config = _mock_config(
+        update_interval=1.0e9,
+        update_min_interval=0.0,
+        update_dtmagma_frac=1.0,
+        update_dphi_abs=1.0,
+    )
+    config.interior_energetics.module = 'aragog'
+    config.interior_struct.zalmoxis.update_dw_comp_abs = 0.01
+
+    # Positive control: no force, composition trigger reachable -> regen fires.
+    dirs, hf_row = _dirs_hf_with_composition_delta()
+    interior_o = _mock_interior_o()
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ),
+        patch(
+            'proteus.interior_struct.zalmoxis.generate_spider_tables',
+            return_value=None,
+        ) as mock_gen_ctrl,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80)
+    mock_gen_ctrl.assert_called_once()
+
+    # Treatment: force=True with the identical composition delta must NOT regen.
+    dirs, hf_row = _dirs_hf_with_composition_delta()
+    interior_o = _mock_interior_o()
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_solver,
+        patch(
+            'proteus.interior_struct.zalmoxis.generate_spider_tables',
+            return_value=None,
+        ) as mock_gen_forced,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 9999.0, 0.999, force=True
+        )
+    # Reached the solver (not a vacuous pass) but suppressed the regeneration.
+    mock_solver.assert_called_once()
+    mock_gen_forced.assert_not_called()
+
+
+@pytest.mark.unit
+def test_force_baseline_lands_on_unclamped_callable_mesh():
+    """The forced baseline disables per-update mesh-shift clamping.
+
+    Per-step blending protects Aragog's entropy remap during evolution, but a
+    static run never re-solves to reconcile a clamped intermediate mesh against
+    the reported R_int. The baseline must therefore land directly on the full
+    callable mesh and leave no pending convergence, so a frozen static run is
+    self-consistent (on-disk mesh == reported R_int).
+
+    Discriminating: the blend receives an infinite max_shift on the forced path
+    (no clamp at any magnitude) versus the configured 0.05 on a triggered path,
+    and mesh_shift_active is cleared even though the raw shift (30%) far exceeds
+    the configured 5% limit.
+    """
+    config = _mock_config(update_interval=0, mesh_max_shift=0.05)
+    dirs = _mock_dirs()
+    hf_row = {
+        'Time': 100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.80,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o()
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, '/tmp/test_mesh.dat'),
+        ),
+        # 30% raw shift, far above the configured 5% clamp.
+        patch(
+            'proteus.interior_energetics.spider.blend_mesh_files',
+            return_value=0.30,
+        ) as mock_blend,
+        patch(
+            'proteus.interior_energetics.spider.get_all_output_times',
+            return_value=[],
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 9999.0, 0.999, force=True
+        )
+
+    mock_blend.assert_called_once()
+    # Clamp disabled on the baseline: the full callable mesh is kept at any shift.
+    assert mock_blend.call_args.kwargs['max_shift'] == float('inf')
+    # No pending convergence despite the 30% raw shift, so a frozen static run
+    # integrates on the same mesh its reported R_int describes.
+    assert dirs['mesh_shift_active'] is False
+
+
+# ============================================================================
 # test ceiling trigger
 # ============================================================================
 
