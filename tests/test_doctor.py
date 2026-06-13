@@ -40,6 +40,7 @@ from proteus.doctor import (
     _write_failure_log,
     check_env_var,
     check_fwl_data,
+    check_git_module,
     check_julia,
     check_python_package,
     doctor_entry,
@@ -497,6 +498,194 @@ class TestRunAllChecks:
             assert r.status in (PASS, WARN, FAIL)
 
 
+class TestCheckGitModulePinMismatch:
+    """check_git_module's fix suggestion when a git submodule is off its pin."""
+
+    @staticmethod
+    def _pins() -> dict:
+        """Pinned refs distinct from the head returned by the patched helper."""
+        return {'socrates': {'ref': 'a' * 40}, 'agni': {'ref': 'b' * 40}}
+
+    def test_socrates_mismatch_fix_also_rebuilds_agni(self, tmp_path, monkeypatch):
+        """A SOCRATES checkout off its pin must suggest a fix that rebuilds AGNI.
+
+        Rebuilding SOCRATES re-clones its tree and deletes the Julia wrapper
+        sources AGNI generates inside it, so a SOCRATES-only refresh leaves AGNI
+        unable to precompile. The suggested command therefore chains the AGNI
+        rebuild after the SOCRATES one, in that order.
+        """
+        monkeypatch.setenv('RAD_DIR', str(tmp_path))
+        with (
+            patch('proteus.doctor._module_pins', return_value=self._pins()),
+            patch('proteus.doctor._git_head', return_value='c' * 40),
+            patch('proteus.doctor._get_socrates_version', return_value='soc-test'),
+        ):
+            r = check_git_module('SOCRATES', {})
+        assert r.status == WARN
+        assert 'tools/get_socrates.sh' in r.fix_cmd
+        assert 'tools/get_agni.sh' in r.fix_cmd
+        # The SOCRATES rebuild must run before the AGNI one, else AGNI would
+        # regenerate against the stale tree and be wiped again.
+        assert r.fix_cmd.index('get_socrates.sh') < r.fix_cmd.index('get_agni.sh')
+        # Discrimination: the broken behaviour was a bare SOCRATES refresh with
+        # no AGNI step; that command has no shell chain.
+        assert '&&' in r.fix_cmd
+
+    def test_agni_mismatch_fix_does_not_chain_socrates(self, tmp_path):
+        """An AGNI checkout off its pin rebuilds only AGNI.
+
+        AGNI's own rebuild regenerates the wrappers from the current SOCRATES
+        tree, so it needs no SOCRATES step; chaining one would re-clone SOCRATES
+        needlessly. This guards the asymmetry: only a SOCRATES refresh drags
+        AGNI along, never the reverse.
+        """
+        with (
+            patch('proteus.doctor._module_pins', return_value=self._pins()),
+            patch('proteus.doctor._git_head', return_value='c' * 40),
+            patch('proteus.doctor._get_agni_version', return_value='agni-test'),
+        ):
+            r = check_git_module('AGNI', {'agni': str(tmp_path)})
+        assert r.status == WARN
+        assert 'tools/get_agni.sh' in r.fix_cmd
+        # Discrimination: the AGNI fix must not pull in a SOCRATES rebuild.
+        assert 'get_socrates.sh' not in r.fix_cmd
+        assert '&&' not in r.fix_cmd
+
+    def test_update_runs_the_chained_socrates_fix(self, tmp_path, monkeypatch):
+        """`proteus update` actually executes the chained SOCRATES fix.
+
+        Constructing the right string is useless unless `proteus update` runs
+        it. This drives check_git_module's real off-pin result through
+        update_entry with the runner mocked, and asserts the chained command,
+        AGNI rebuild and all, reaches the fix runner exactly once.
+        """
+        monkeypatch.setenv('RAD_DIR', str(tmp_path))
+        (tmp_path / 'tools').mkdir()
+        with (
+            patch('proteus.doctor._module_pins', return_value=self._pins()),
+            patch('proteus.doctor._git_head', return_value='c' * 40),
+            patch('proteus.doctor._get_socrates_version', return_value='soc-test'),
+        ):
+            warn = check_git_module('SOCRATES', {})
+        # An off-pin module must be auto-fixable, else update would only print
+        # the advice and the chain would never run.
+        assert warn.status == WARN and warn.auto_fixable
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=[warn]),
+            patch('proteus.doctor._repo_root', return_value=tmp_path),
+            patch('proteus.doctor._run_fix_command', return_value=0) as mock_fix,
+            patch('proteus.doctor.doctor_entry', return_value=True),
+        ):
+            update_entry(dry_run=False)
+        assert mock_fix.call_count == 1
+        ran = mock_fix.call_args_list[0].args[0]
+        assert 'get_socrates.sh' in ran and 'get_agni.sh' in ran
+        # Discrimination: a regression dropping the AGNI step would still run
+        # the SOCRATES half, so assert the chain survived end to end.
+        assert '&&' in ran
+
+
+class TestCheckGitModuleInstallState:
+    """check_git_module's not-installed (FAIL) and on-pin (PASS) results."""
+
+    @staticmethod
+    def _pins() -> dict:
+        """Pinned refs used to drive the on-pin branch via a matching head."""
+        return {'socrates': {'ref': 'a' * 40}, 'agni': {'ref': 'b' * 40}}
+
+    def test_socrates_not_installed_fix_is_unchained(self, monkeypatch):
+        """A missing SOCRATES suggests a bare rebuild, with no AGNI step chained.
+
+        With RAD_DIR unset the SOCRATES tree is absent, so RAD_DIR cannot point a
+        chained AGNI rebuild at anything; the fix is deliberately the lone
+        SOCRATES install. This is the inverse of the off-pin case, where the tree
+        is present and the AGNI rebuild is chained on.
+        """
+        monkeypatch.delenv('RAD_DIR', raising=False)
+        # The not-installed branch returns before any pin is read; patch
+        # _module_pins only to keep the test off the real pyproject.
+        with patch('proteus.doctor._module_pins', return_value={}):
+            r = check_git_module('SOCRATES', {})
+        assert r.status == FAIL
+        assert r.message == 'not installed'
+        assert r.fix_cmd == 'bash tools/get_socrates.sh'
+        # Discrimination: the off-pin SOCRATES fix chains AGNI with `&&`; the
+        # not-installed fix must not, because RAD_DIR has nowhere to point.
+        assert '&&' not in r.fix_cmd
+        assert 'get_agni.sh' not in r.fix_cmd
+
+    def test_agni_not_installed_reports_its_own_setup(self):
+        """A missing AGNI checkout suggests the AGNI install and nothing else.
+
+        AGNI's path comes from the dirs mapping, not RAD_DIR, so an empty mapping
+        is the not-installed edge case. The fix names AGNI's own script and does
+        not drag in a SOCRATES rebuild.
+        """
+        # The not-installed branch returns before any pin is read; patch
+        # _module_pins only to keep the test off the real pyproject.
+        with patch('proteus.doctor._module_pins', return_value={}):
+            r = check_git_module('AGNI', {})
+        assert r.status == FAIL
+        assert r.message == 'not installed'
+        assert r.fix_cmd == 'bash tools/get_agni.sh'
+        # Discrimination: never chain a SOCRATES rebuild onto an AGNI fix.
+        assert 'get_socrates.sh' not in r.fix_cmd
+        assert '&&' not in r.fix_cmd
+
+    def test_socrates_on_pin_passes_with_no_fix(self, tmp_path, monkeypatch):
+        """A SOCRATES checkout exactly on its pin passes and suggests no fix.
+
+        When HEAD matches the pinned ref the tree is already correct, so the
+        result is PASS carrying the resolved version and short hash, and crucially
+        no rebuild command: surfacing a fix here would send the user to re-clone a
+        tree that needs nothing.
+        """
+        monkeypatch.setenv('RAD_DIR', str(tmp_path))
+        on_pin = 'a' * 40  # matches the SOCRATES ref returned by _pins()
+        with (
+            patch('proteus.doctor._module_pins', return_value=self._pins()),
+            patch('proteus.doctor._git_head', return_value=on_pin),
+            patch('proteus.doctor._get_socrates_version', return_value='soc-test'),
+        ):
+            r = check_git_module('SOCRATES', {})
+        assert r.status == PASS
+        assert r.fix_cmd is None
+        # The resolved version and matched short hash are reported so the user
+        # can confirm the pin, rather than a bare status.
+        assert 'soc-test' in r.message
+        assert on_pin[:8] in r.message
+        # Discrimination: an off-pin head would read 'differs from pin' and warn;
+        # the on-pin path must not.
+        assert 'differs' not in r.message
+
+    def test_socrates_version_unreadable_still_classifies(self, tmp_path, monkeypatch):
+        """An unreadable SOCRATES version degrades to '?' instead of crashing.
+
+        Reading the version can fail on a half-built tree, so the lookup is
+        guarded: the version label falls back to '?' and the check still compares
+        HEAD to the pin. The user gets an actionable off-pin warning carrying the
+        '?' placeholder, not an exception that aborts the whole diagnose run.
+        """
+        monkeypatch.setenv('RAD_DIR', str(tmp_path))
+        with (
+            patch('proteus.doctor._module_pins', return_value=self._pins()),
+            patch('proteus.doctor._git_head', return_value='c' * 40),
+            patch(
+                'proteus.doctor._get_socrates_version',
+                side_effect=OSError('version file missing'),
+            ),
+        ):
+            r = check_git_module('SOCRATES', {})
+        # Head 'c'*40 differs from the pin 'a'*40, so the guarded version still
+        # lands on the off-pin warning rather than swallowing the mismatch.
+        assert r.status == WARN
+        assert '?' in r.message
+        # Discrimination: the failure degraded the version slot to '?' but kept
+        # the actionable fix, instead of crashing or dropping the suggestion.
+        assert r.fix_cmd is not None
+        assert 'get_socrates.sh' in r.fix_cmd
+
+
 def _mixed_results() -> list[CheckResult]:
     """A pass + a fixable fail + a fixable warn, mirroring a real diagnose run."""
     return [
@@ -608,9 +797,7 @@ class TestUpdateEntry:
                 'export FC_DIR=<path>  # add to your shell rc file',
                 auto_fixable=False,
             ),
-            CheckResult(
-                'SOCRATES', 'versions', WARN, 'differs from pin', 'bash tools/get_socrates.sh'
-            ),
+            CheckResult('AGNI', 'versions', WARN, 'differs from pin', 'bash tools/get_agni.sh'),
         ]
         with (
             patch('proteus.doctor.run_all_checks', return_value=results),
@@ -619,10 +806,10 @@ class TestUpdateEntry:
             patch('proteus.doctor.doctor_entry', return_value=True),
         ):
             update_entry(dry_run=False)
-        # Only the runnable SOCRATES fix is executed; the export advice is not.
+        # Only the runnable AGNI fix is executed; the export advice is not.
         assert mock_fix.call_count == 1
         ran = mock_fix.call_args_list[0].args[0]
-        assert ran == 'bash tools/get_socrates.sh'
+        assert ran == 'bash tools/get_agni.sh'
         assert 'export FC_DIR' not in ran
         # The manual item is still surfaced so the user knows to act on it.
         out = capsys.readouterr().out
