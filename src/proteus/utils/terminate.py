@@ -256,19 +256,7 @@ def check_termination(handler: Proteus) -> bool:
         return True
 
     # ------------------------
-    # 2) Check resource-based criteria, set by user according to the
-    #    available the machine / job. These are not physical criteria.
-
-    # Maximum loops reached
-    if handler.config.params.stop.iters.enabled:
-        finished = finished or _check_maxiter(handler)
-
-    # Maximum clock runtime reached
-    if handler.config.params.stop.clock.enabled:
-        finished = finished or _check_clock(handler)
-
-    # ------------------------
-    # 3) Check physical criteria which are enabled by user.
+    # 2) Check physical criteria which are enabled by user.
     #    These correspond to measures for the 'real' state of the planet.
 
     # Planet reached certain age (since initial time)
@@ -296,6 +284,18 @@ def check_termination(handler: Proteus) -> bool:
         # Spinning faster than breakup rate (centrifugal disruption)
         if handler.config.params.stop.disint.spin_enabled:
             finished = finished or _check_spinrate(handler)
+
+    # ------------------------
+    # 3) Check resource-based criteria, set by user according to the
+    #    available the machine / job. These are not physical criteria.
+
+    # Maximum loops reached
+    if handler.config.params.stop.iters.enabled:
+        finished = finished or _check_maxiter(handler)
+
+    # Maximum clock runtime reached
+    if handler.config.params.stop.clock.enabled:
+        finished = finished or _check_clock(handler)
 
     # ------------------------
     # 4) Handle *minimum* criteria, which PREVENT model exiting until
