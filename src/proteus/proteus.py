@@ -210,6 +210,14 @@ class Proteus:
         evolution step retries. The solver's own consecutive-failure budget
         aborts the run if the baseline cannot be established, so a static run is
         never silently frozen on the unconverged initial-condition structure.
+
+        For the super-liquidus adiabat initial condition the structure solve
+        already integrates against the true adiabat for both dynamic and static
+        runs, so the shared starting radius is established at the initial
+        condition itself. Re-solving here against the energetics module's
+        temperature profile would overwrite that maximal-radius initial
+        condition with a different (cross-table) representation and could nudge
+        R_int upward, so the baseline re-solve is skipped in that case.
         """
         if (
             self.init_stage
@@ -218,7 +226,14 @@ class Proteus:
         ):
             return
 
-        from proteus.interior_energetics.wrapper import update_structure_from_interior
+        from proteus.interior_energetics.wrapper import (
+            _use_superliquidus_adiabat_ic,
+            update_structure_from_interior,
+        )
+
+        if _use_superliquidus_adiabat_ic(self.config):
+            self._baseline_structure_done = True
+            return
 
         new_time, new_Tmagma, new_Phi = update_structure_from_interior(
             self.directories,

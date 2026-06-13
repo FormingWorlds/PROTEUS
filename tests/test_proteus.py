@@ -845,3 +845,29 @@ def test_structure_baseline_retries_after_failed_solve(tmp_path):
     assert p._baseline_structure_done is False  # retried, not latched
     assert p.last_struct_time == pytest.approx(0.0, abs=0.0)  # sentinels untouched
     assert p.last_struct_Phi == float('inf')
+
+
+def test_structure_baseline_skipped_for_superliquidus_adiabat(tmp_path):
+    """For the super-liquidus adiabat IC the structure solve already integrates
+    against the true adiabat for both dynamic and static runs, so the shared
+    maximal-radius baseline is set at the initial condition. A forced re-solve
+    here would overwrite it with a different (cross-table) representation and
+    could nudge R_int upward, so the baseline must be skipped.
+
+    Discriminating: a non-liquidus_super zalmoxis run (test_structure_baseline_
+    fires_once...) DOES fire the forced solve, so this asserts the skip is
+    specific to the adiabat IC, not a blanket disable; the flag is still latched
+    so the gate is not re-evaluated every step.
+    """
+    p = _make_baseline_proteus(tmp_path)
+    # Make _use_superliquidus_adiabat_ic(config) true: zalmoxis struct module
+    # (already set), liquidus_super temperature mode, non-spider energetics.
+    p.config.interior_struct.module = 'zalmoxis'
+    p.config.planet.temperature_mode = 'liquidus_super'
+    p.config.interior_energetics.module = 'aragog'
+
+    with patch(_BASELINE_TARGET) as mock_update:
+        p._solve_structure_baseline_if_needed()
+
+    mock_update.assert_not_called()  # forced re-solve skipped, IC adiabat stands
+    assert p._baseline_structure_done is True  # latched so it is not re-checked

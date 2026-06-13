@@ -92,6 +92,34 @@ def _prevent_warming_clamp_active(config: Config) -> bool:
     return bool(config.planet.prevent_warming)
 
 
+def _use_superliquidus_adiabat_ic(config: Config) -> bool:
+    """Return True iff the IC structure solve should integrate against the
+    super-liquidus adiabat ``T(P)`` rather than the linear-in-r guess.
+
+    The adiabat-anchored IC keeps the planet radius maximal at ``t = 0`` for any
+    Zalmoxis structure run started on a fully molten super-liquidus adiabat. It
+    fires for the Zalmoxis structure module with ``temperature_mode =
+    'liquidus_super'`` on every energetics backend except SPIDER, which supplies
+    its own ``T(r)`` through entropy evolution and so does not need the
+    pressure-indexed adiabat hand-off.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration.
+
+    Returns
+    -------
+    bool
+        True when the super-liquidus adiabat IC re-solve applies.
+    """
+    return (
+        config.interior_struct.module == 'zalmoxis'
+        and config.planet.temperature_mode == 'liquidus_super'
+        and config.interior_energetics.module != 'spider'
+    )
+
+
 def calculate_core_mass(hf_row: dict, config: Config):
     """
     Calculate the core mass of the planet.
@@ -1003,6 +1031,353 @@ def determine_interior_radius_with_dummy(
     )
 
 
+def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: float):
+    """Build a pressure-indexed super-liquidus adiabat ``T(P)`` for the IC solve.
+
+    The ``liquidus_super`` initial condition places the whole mantle on one
+    isentropic super-liquidus adiabat. The structure solve must integrate the
+    mantle density against that convex adiabat rather than the colder linear-in-r
+    guess; otherwise the deep mantle is over-compressed and the planet is solved
+    to a radius too small for its own mass.
+
+    The adiabat is anchored at the surface temperature returned by the memoised
+    :func:`solve_superliquidus_adiabat`, so the structure CMB anchor, the Aragog
+    entropy IC, and this ``T(P)`` profile all derive from one adiabat. The
+    profile is tabulated from the 1 bar surface to ``P_cmb_target`` so the
+    structure integral never extrapolates beyond the adiabat grid.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration.
+    hf_row : dict
+        Helpfile row passed to :func:`solve_superliquidus_adiabat`.
+    P_cmb_target : float
+        Upper pressure bound of the adiabat grid [Pa]. Pass the structure's own
+        ``P_cmb`` with a small margin so the grid covers the full integration
+        range.
+
+    Returns
+    -------
+    tuple or None
+        ``(temperature_function, P_arr, T_arr)`` where ``temperature_function``
+        is the closure ``f(r, P) -> T`` consumed by the Zalmoxis numpy path
+        (``r`` is ignored; ``P`` is clipped into the adiabat grid). Returns
+        ``None`` when the adiabat cannot be built or contains NaNs, so the
+        caller can fall back to the linear-guess result.
+    """
+    try:
+        from zalmoxis.eos_export import compute_entropy_adiabat
+
+        from proteus.interior_struct.zalmoxis import (
+            load_zalmoxis_material_dictionaries,
+            load_zalmoxis_solidus_liquidus_functions,
+            resolve_2phase_mgsio3_paths,
+            solve_superliquidus_adiabat,
+        )
+
+        surface_T = float(solve_superliquidus_adiabat(config, hf_row)['surface_T'])
+
+        zcfg = config.interior_struct.zalmoxis
+        mat_dicts = load_zalmoxis_material_dictionaries()
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zcfg.mantle_eos, mat_dicts)
+        eos_entry = mat_dicts.get(zcfg.mantle_eos, {})
+        eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
+        if not eos_file or not os.path.isfile(eos_file):
+            log.warning(
+                'liquidus_super IC adiabat: PALEOS table not found (%s); '
+                'falling back to the linear-guess structure.',
+                eos_file,
+            )
+            return None
+
+        melt_funcs = load_zalmoxis_solidus_liquidus_functions(zcfg.mantle_eos, config)
+        sol_func = liq_func = None
+        if melt_funcs is not None:
+            sol_func, liq_func = melt_funcs
+
+        # Match the 1 bar surface anchor used by the energetics entropy IC
+        # (common.compute_initial_entropy) and the aragog.py cross-check, so all
+        # three derive S_target from the same surface pressure.
+        result = compute_entropy_adiabat(
+            eos_file=eos_file,
+            T_surface=surface_T,
+            P_surface=1e5,
+            P_cmb=float(P_cmb_target),
+            n_points=500,
+            solidus_func=sol_func,
+            liquidus_func=liq_func,
+            solid_eos_file=solid_eos,
+            liquid_eos_file=liquid_eos,
+        )
+    except (
+        ImportError,
+        ModuleNotFoundError,
+        RuntimeError,
+        FileNotFoundError,
+        ValueError,
+        KeyError,
+    ) as exc:
+        log.warning(
+            'liquidus_super IC adiabat construction failed (%s); falling back '
+            'to the linear-guess structure.',
+            exc,
+        )
+        return None
+
+    P_arr = np.asarray(result['P'], dtype=float)
+    T_arr = np.asarray(result['T'], dtype=float)
+    if P_arr.size == 0 or T_arr.size != P_arr.size:
+        log.warning(
+            'liquidus_super IC adiabat: empty or mismatched P/T arrays; '
+            'falling back to the linear-guess structure.',
+        )
+        return None
+    if not np.all(np.isfinite(P_arr)) or not np.all(np.isfinite(T_arr)):
+        log.warning(
+            'liquidus_super IC adiabat: NaN/inf in the T(P) profile; falling '
+            'back to the linear-guess structure.',
+        )
+        return None
+
+    P_lo = float(P_arr.min())
+    P_hi = float(P_arr.max())
+
+    def temperature_function(r, P):
+        # The numpy structure path calls this as f(r, P) with P = y[2]. There
+        # is no r grid at IC time, so the adiabat is purely pressure-indexed;
+        # clip P into the tabulated range to avoid np.interp edge extrapolation.
+        P_clipped = min(max(float(P), P_lo), P_hi)
+        return float(np.interp(P_clipped, P_arr, T_arr))
+
+    log.info(
+        'liquidus_super IC adiabat: surface_T=%.0f K, P span [%.2f, %.1f] GPa, '
+        'T span [%.0f, %.0f] K.',
+        surface_T,
+        P_lo / 1e9,
+        P_hi / 1e9,
+        float(T_arr.min()),
+        float(T_arr.max()),
+    )
+    return temperature_function, P_arr, T_arr
+
+
+# Margin on the linear-guess P_cmb when sizing the adiabat grid, so the
+# tabulated T(P) covers the structure's full pressure range even if the
+# adiabat-anchored re-solve compresses to a slightly deeper CMB. 5 % is ample:
+# the re-solve moves R_int outward (lower mean density), so its P_cmb does not
+# exceed the linear-guess value in practice; the margin is a one-sided guard.
+_ADIABAT_IC_PCMB_MARGIN = 1.05
+
+
+# Structure-defining hf_row keys saved before an adiabat re-solve so a failed or
+# off-anchor solve can be rolled back to the linear-guess result. These are the
+# keys the adiabat re-solve may mutate plus the mass/pressure anchors. M_mantle
+# is intentionally absent: zalmoxis_solver writes only M_int and M_core, and the
+# caller recomputes M_mantle = M_int - M_core after the helper returns, so
+# restoring M_int/M_core fully reverts the masses the solve touches.
+_ADIABAT_IC_RESTORE_KEYS = (
+    'R_int',
+    'R_core',
+    'M_int',
+    'M_core',
+    'M_int_target',
+    'P_surf',
+    'P_center',
+    'P_cmb',
+    'gravity',
+    'core_density',
+    'rho_avg',
+)
+
+
+def _solve_structure_with_adiabat_or_rollback(
+    config: Config,
+    outdir: str,
+    hf_row: dict,
+    num_spider_nodes: int,
+    temperature_function,
+) -> tuple[str | None, bool]:
+    """Run one structure solve against ``temperature_function`` with rollback.
+
+    Captures the on-disk ``zalmoxis_output.dat`` and the structure-defining
+    ``hf_row`` keys, calls :func:`zalmoxis_solver` with the supplied adiabat
+    ``T(P)`` closure, then enforces the mass-anchor contract
+    (``|M_int / M_int_target - 1| < _ZALMOXIS_MASS_ANCHOR_TOL``) and a finite,
+    positive ``R_int``. On any failure it restores BOTH the saved ``hf_row``
+    keys AND ``zalmoxis_output.dat`` from its ``.prev`` snapshot, so the
+    immediately-following ``run_interior`` (Aragog ``ic = 1``) never sees the
+    failed adiabat geometry against a linear-guess EOS mesh.
+
+    This is the shared core of the IC two-pass re-solve
+    (:func:`_resolve_adiabatic_ic_structure`) and the equilibration-loop
+    re-solve (:func:`equilibrate_initial_state`).
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration.
+    outdir : str
+        Output directory holding ``data/zalmoxis_output.dat``.
+    hf_row : dict
+        Helpfile row carrying the linear-guess (or previous-iteration) structure
+        on entry; overwritten with the adiabat-anchored structure on success,
+        restored from the saved keys on failure.
+    num_spider_nodes : int
+        SPIDER basic-node count forwarded to the solver (0 for Aragog/dummy).
+    temperature_function : callable
+        Adiabat ``f(r, P) -> T`` closure handed to the Zalmoxis numpy path.
+
+    Returns
+    -------
+    tuple
+        ``(mesh_file, ok)``. ``mesh_file`` is the solver's mesh path on success
+        and ``None`` on failure; ``ok`` is True only when the solve passed both
+        the mass anchor and the ``R_int`` validity check. The caller decides
+        what to do with the linear-guess mesh on failure.
+    """
+    from proteus.interior_struct.zalmoxis import zalmoxis_solver
+
+    # Capture zalmoxis_output.dat -> .prev BEFORE the solve so a rollback can
+    # restore the on-disk geometry, mirroring update_structure_from_interior.
+    _output_zalmoxis_path = os.path.join(outdir, 'data', 'zalmoxis_output.dat')
+    if os.path.isfile(_output_zalmoxis_path):
+        try:
+            shutil.copy2(_output_zalmoxis_path, _output_zalmoxis_path + '.prev')
+        except OSError as _exc:
+            log.warning(
+                'Could not capture zalmoxis_output.dat -> .prev pre-call: %s',
+                _exc,
+            )
+
+    saved = {k: hf_row[k] for k in _ADIABAT_IC_RESTORE_KEYS if k in hf_row}
+    R_int_prev = float(hf_row.get('R_int', 0.0) or 0.0)
+
+    try:
+        _cmb_radius, adiabat_mesh_file = zalmoxis_solver(
+            config,
+            outdir,
+            hf_row,
+            num_spider_nodes=num_spider_nodes,
+            temperature_function=temperature_function,
+        )
+        # Mass-anchor contract: a too-loosely-converged adiabat solve is
+        # treated as a failure, same as the time-evolution re-solve path.
+        M_target = float(hf_row.get('M_int_target', 0.0) or 0.0)
+        M_int = float(hf_row.get('M_int', 0.0) or 0.0)
+        if M_target > 0.0:
+            mass_rel_err = abs(M_int / M_target - 1.0)
+            if mass_rel_err > _ZALMOXIS_MASS_ANCHOR_TOL:
+                raise RuntimeError(
+                    'adiabat IC re-solve mass-anchor violation: '
+                    f'|M_int / M_int_target - 1| = {mass_rel_err:.3e} > '
+                    f'tol={_ZALMOXIS_MASS_ANCHOR_TOL:.3e}.'
+                )
+        R_int_adiabat = float(hf_row.get('R_int', 0.0) or 0.0)
+        if not np.isfinite(R_int_adiabat) or R_int_adiabat <= 0.0:
+            raise RuntimeError(
+                f'adiabat IC re-solve produced an invalid R_int={R_int_adiabat}.'
+            )
+    except (RuntimeError, ValueError, FloatingPointError) as exc:
+        # Restore the structure-defining hf_row keys AND the on-disk
+        # zalmoxis_output.dat, so the next run_interior reads a mesh that is
+        # consistent with the restored hf_row state.
+        hf_row.update(saved)
+        try:
+            _output_prev = _output_zalmoxis_path + '.prev'
+            if os.path.isfile(_output_prev):
+                shutil.copy2(_output_prev, _output_zalmoxis_path)
+                log.info(
+                    'Fall-back: restored %s from %s',
+                    _output_zalmoxis_path,
+                    _output_prev,
+                )
+        except OSError as _exc:
+            log.warning(
+                'Could not restore zalmoxis_output.dat from .prev on fall-back: %s',
+                _exc,
+            )
+        log.warning(
+            'liquidus_super IC adiabat re-solve failed (%s); restored the '
+            'linear-guess structure (R_int=%.1f km).',
+            exc,
+            R_int_prev / 1e3,
+        )
+        return None, False
+
+    log.info(
+        'liquidus_super IC adiabat re-solve: R_int %.1f km -> %.1f km '
+        '(adiabat IC is isentropic and hydrostatically consistent).',
+        R_int_prev / 1e3,
+        R_int_adiabat / 1e3,
+    )
+    return adiabat_mesh_file, True
+
+
+def _resolve_adiabatic_ic_structure(
+    config: Config,
+    outdir: str,
+    hf_row: dict,
+    num_spider_nodes: int,
+    linear_mesh_file: str | None,
+) -> str | None:
+    """Re-solve the IC structure against the super-liquidus adiabat.
+
+    Two-pass: the linear-guess solve has already populated ``hf_row`` (R_int,
+    P_cmb, masses, mesh file). This builds the adiabat ``T(P)`` over the
+    converged pressure range and re-solves the structure with it via
+    :func:`_solve_structure_with_adiabat_or_rollback`. On any failure (adiabat
+    unavailable, solver raises, mass-anchor violation) the linear-guess
+    structure (both ``hf_row`` and the on-disk ``zalmoxis_output.dat``) is
+    restored and its mesh file returned, so the IC is never made worse than the
+    existing behaviour.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration.
+    outdir : str
+        Output directory for Zalmoxis files.
+    hf_row : dict
+        Helpfile row carrying the linear-guess structure on entry; overwritten
+        with the adiabat-anchored structure on success, restored on fallback.
+    num_spider_nodes : int
+        SPIDER basic-node count forwarded to the solver (0 for Aragog).
+    linear_mesh_file : str or None
+        Mesh file path from the linear-guess solve, returned on fallback.
+
+    Returns
+    -------
+    str or None
+        Mesh file path from the accepted solve.
+    """
+    P_cmb_linear = float(hf_row.get('P_cmb', 0.0) or 0.0)
+    if P_cmb_linear <= 0.0:
+        log.warning(
+            'liquidus_super IC adiabat: linear-guess P_cmb is non-positive; '
+            'keeping the linear-guess structure.',
+        )
+        return linear_mesh_file
+
+    built = _build_superliquidus_adiabat_tp(
+        config, hf_row, P_cmb_linear * _ADIABAT_IC_PCMB_MARGIN
+    )
+    if built is None:
+        return linear_mesh_file
+    temperature_function, _P_arr, _T_arr = built
+
+    adiabat_mesh_file, ok = _solve_structure_with_adiabat_or_rollback(
+        config,
+        outdir,
+        hf_row,
+        num_spider_nodes,
+        temperature_function,
+    )
+    if not ok:
+        return linear_mesh_file
+    return adiabat_mesh_file if adiabat_mesh_file else linear_mesh_file
+
+
 def determine_interior_radius_with_zalmoxis(
     dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
 ):
@@ -1053,6 +1428,20 @@ def determine_interior_radius_with_zalmoxis(
         num_spider_nodes=num_spider_nodes,
         temperature_mode_override=_temp_mode_override,
     )
+
+    # liquidus_super: the first solve above integrated the mantle density against
+    # Zalmoxis' internal linear-in-r temperature guess, which is colder and
+    # denser in the deep mantle and not isentropic, so it solves the planet to a
+    # radius too small for its own mass. Re-solve the IC structure against the
+    # true super-liquidus adiabat T(P) so the initial condition is isentropic and
+    # hydrostatically consistent (maximal radius at t=0). The first solve
+    # populates hf_row['P_cmb'], so the adiabat grid is built to span the
+    # converged pressure range with a small margin. SPIDER provides its own T(r)
+    # through entropy evolution and is intentionally excluded.
+    if _use_superliquidus_adiabat_ic(config):
+        spider_mesh_file = _resolve_adiabatic_ic_structure(
+            config, outdir, hf_row, num_spider_nodes, spider_mesh_file
+        )
 
     # Store mesh file path for subsequent SPIDER calls
     if spider_mesh_file:
@@ -1133,6 +1522,27 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
     delta_R = 1.0
     delta_P = 1.0
 
+    # liquidus_super: re-solve the structure against the true super-liquidus
+    # adiabat T(P), the same hand-off determine_interior_radius_with_zalmoxis
+    # uses, so equilibration does not overwrite the isentropic, hydrostatically
+    # consistent IC with the colder linear-in-r guess. The molten adiabat is set
+    # by the surface superheat, not by the volatile composition this loop
+    # iterates, so it is built once from the structure's current P_cmb. None =>
+    # the linear guess (unchanged behaviour for SPIDER and non-liquidus_super
+    # runs). P_cmb_grid records the upper pressure the grid was sized for so a
+    # later iteration whose converged P_cmb exceeds it triggers a rebuild rather
+    # than clipping the deep mantle to a flat T_cmb.
+    adiabat_tfunc = None
+    P_cmb_grid = 0.0
+    use_adiabat = _use_superliquidus_adiabat_ic(config)
+    if use_adiabat:
+        P_cmb_seed = float(hf_row.get('P_cmb', 0.0) or 0.0)
+        if P_cmb_seed > 0.0:
+            P_cmb_grid = P_cmb_seed * _ADIABAT_IC_PCMB_MARGIN
+            built = _build_superliquidus_adiabat_tp(config, hf_row, P_cmb_grid)
+            if built is not None:
+                adiabat_tfunc = built[0]
+
     for i in range(max_iter):
         R_old = float(hf_row.get('R_int', 0.0))
         P_old = float(hf_row.get('P_surf', 0.0))
@@ -1142,16 +1552,70 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
         calc_target_elemental_inventories(dirs, config, hf_row)
         run_outgassing(dirs, config, hf_row)
 
-        # 2. Re-compute structure with updated composition
-        #    (volatile_profile is built inside zalmoxis_solver from hf_row)
-        _cmb_radius, spider_mesh_file = zalmoxis_solver(
-            config, outdir, hf_row, num_spider_nodes=num_spider_nodes
-        )
+        # 2. Re-compute structure with updated composition (volatile_profile is
+        #    built inside zalmoxis_solver from hf_row). When the super-liquidus
+        #    adiabat is available, the structure is solved against it with a
+        #    mass-anchor guard and rollback; on failure the iteration degrades
+        #    to the linear-guess solve so init never aborts where the linear
+        #    path would have converged. SPIDER and non-liquidus_super runs take
+        #    the linear-guess solve unchanged.
+        if adiabat_tfunc is not None:
+            spider_mesh_file, ok = _solve_structure_with_adiabat_or_rollback(
+                config,
+                outdir,
+                hf_row,
+                num_spider_nodes,
+                adiabat_tfunc,
+            )
+            if not ok:
+                log.warning(
+                    'Equilibration iter %d/%d: adiabat re-solve failed; '
+                    'falling back to the linear-guess solve for this iteration.',
+                    i + 1,
+                    max_iter,
+                )
+                _cmb_radius, spider_mesh_file = zalmoxis_solver(
+                    config,
+                    outdir,
+                    hf_row,
+                    num_spider_nodes=num_spider_nodes,
+                    temperature_function=None,
+                )
+        else:
+            _cmb_radius, spider_mesh_file = zalmoxis_solver(
+                config,
+                outdir,
+                hf_row,
+                num_spider_nodes=num_spider_nodes,
+                temperature_function=None,
+            )
 
         # Update M_mantle from Zalmoxis results (M_int and M_core are set
         # by zalmoxis_solver, but M_mantle is not). run_outgassing needs
         # an up-to-date M_mantle for dissolved fraction calculations.
         hf_row['M_mantle'] = float(hf_row.get('M_int', 0.0)) - float(hf_row.get('M_core', 0.0))
+
+        # If this iteration's converged P_cmb now exceeds the pressure span the
+        # adiabat grid was tabulated over, rebuild the adiabat so the deepest
+        # mantle is not clipped to a flat T_cmb on the next iteration.
+        if adiabat_tfunc is not None:
+            P_cmb_now = float(hf_row.get('P_cmb', 0.0) or 0.0)
+            if P_cmb_now > P_cmb_grid > 0.0:
+                P_cmb_grid_new = P_cmb_now * _ADIABAT_IC_PCMB_MARGIN
+                log.info(
+                    'Equilibration iter %d/%d: converged P_cmb=%.1f GPa exceeds '
+                    'the adiabat grid ceiling %.1f GPa; rebuilding the adiabat '
+                    'to %.1f GPa.',
+                    i + 1,
+                    max_iter,
+                    P_cmb_now / 1e9,
+                    P_cmb_grid / 1e9,
+                    P_cmb_grid_new / 1e9,
+                )
+                rebuilt = _build_superliquidus_adiabat_tp(config, hf_row, P_cmb_grid_new)
+                if rebuilt is not None:
+                    adiabat_tfunc = rebuilt[0]
+                    P_cmb_grid = P_cmb_grid_new
 
         # Update mesh path if written
         if spider_mesh_file:
