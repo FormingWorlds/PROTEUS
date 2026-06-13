@@ -1338,6 +1338,11 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         Proteus directories dict
     """
     root_dir = get_proteus_dir()
+    if os.environ.get('PROTEUS_OUTPUT_PATH') is None:
+        output_root = os.path.join(root_dir, 'output')
+    else:
+        output_root = os.environ.get('PROTEUS_OUTPUT_PATH')
+        log.info(f'Output directory root from PROTEUS_OUTPUT_PATH environment variable: {output_root}')
 
     return {
         'proteus': root_dir,
@@ -1350,11 +1355,11 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         'vulcan': os.path.join(root_dir, 'VULCAN'),
         'tools': os.path.join(root_dir, 'tools'),
         'utils': os.path.join(root_dir, 'src', 'proteus', 'utils'),
-        'output': os.path.join(root_dir, 'output', outdir),
-        'output/data': os.path.join(root_dir, 'output', outdir, 'data'),
-        'output/observe': os.path.join(root_dir, 'output', outdir, 'observe'),
-        'output/offchem': os.path.join(root_dir, 'output', outdir, 'offchem'),
-        'output/plots': os.path.join(root_dir, 'output', outdir, 'plots'),
+        'output': os.path.join(output_root, outdir),
+        'output/data': os.path.join(output_root, outdir, 'data'),
+        'output/observe': os.path.join(output_root, outdir, 'observe'),
+        'output/offchem': os.path.join(output_root, outdir, 'offchem'),
+        'output/plots': os.path.join(output_root, outdir, 'plots'),
     }
 
 
