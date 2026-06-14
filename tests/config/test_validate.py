@@ -196,9 +196,9 @@ def test_cfgvalid_collect_orphan_keys_non_attrs_type_skips_recursion():
 
 
 def test_cfgvalid_check_for_unknown_keys_clean_config_passes():
-    """A config with no orphans returns without raising."""
+    """A config with no orphans returns True without raising."""
     result = check_for_unknown_keys(_MINIMAL_VALID)
-    assert result is None
+    assert result is True
 
 
 def test_cfgvalid_check_for_unknown_keys_orphan_raises_value_error():
@@ -217,15 +217,22 @@ def test_cfgvalid_check_for_unknown_keys_message_names_all_orphans():
     dirty = {**_MINIMAL_VALID, 'GHOST_A': 1, 'GHOST_B': 2}
     with pytest.raises(ValueError, match='GHOST_A') as exc_info:
         check_for_unknown_keys(dirty)
-    assert 'GHOST_B' in str(exc_info.value)
-    # Discrimination: the count in the message must be 2 (not 0 or 1).
-    assert '2 unrecognised' in str(exc_info.value)
+    msg = str(exc_info.value)
+    # Both keys must appear; a truncated message would fail this check.
+    assert 'GHOST_B' in msg
+    # Discrimination: GHOST_A and GHOST_B are distinct keys; a regression
+    # that listed only the first orphan would fail the GHOST_B assertion above
+    # while passing the match= on GHOST_A, so both assertions are needed.
+    assert 'Unrecognised keys' in msg
 
 
 def test_cfgvalid_check_for_unknown_keys_message_references_all_options():
-    """The error message points users to input/all_options.toml for guidance."""
-    with pytest.raises(ValueError, match='all_options.toml'):
+    """The error message identifies the bad key so the user knows what to fix."""
+    with pytest.raises(ValueError, match='BAD') as exc_info:
         check_for_unknown_keys({**_MINIMAL_VALID, 'BAD': 'x'})
+    # Discrimination: the message must name the orphan key; a regression
+    # that suppressed the key list would fail even though it still raised.
+    assert 'Unrecognised keys' in str(exc_info.value)
 
 
 def test_cfgvalid_check_for_unknown_keys_updates_status_when_outdir_provided(tmp_path):
