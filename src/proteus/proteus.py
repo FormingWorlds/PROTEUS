@@ -47,11 +47,12 @@ class Proteus:
         self.init_directories()
 
         # Check for orphan keys in the config
-        if not check_config_orphan_free(
-            read_config(config_path), outdir=self.directories['output']
-        ):
-            UpdateStatusfile(self.directories, 20)
-            raise RuntimeError(f'Unknown configuration keys found in {config_path}.')
+        if self.directories and os.path.isfile(config_path):
+            if not check_config_orphan_free(
+                read_config(config_path), outdir=self.directories['output']
+            ):
+                UpdateStatusfile(self.directories, 20)
+                raise RuntimeError(f'Unknown configuration keys found in {config_path}.')
 
         # Helpfile variables for the current iteration
         self.hf_row = None
