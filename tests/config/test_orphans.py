@@ -1,4 +1,4 @@
-"""Tests for src/proteus/config/validate.py.
+"""Tests for src/proteus/config/orphans.py.
 
 Exercises the orphan-key detection functions that guard against TOML keys
 being silently discarded by the cattrs-based config parser.
@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import pytest
 
-from proteus.config import read_config_object
-from proteus.config.validate import (
+from proteus.config.orphans import (
     _collect_orphan_keys,
     _extract_attrs_class,
-    check_for_unknown_keys,
+    check_config_orphan_free,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -56,7 +55,7 @@ _MINIMAL_VALID = {
 # ---------------------------------------------------------------------------
 
 
-def test_cfgvalid_extract_attrs_class_direct_attrs_class():
+def test_orphans_extract_attrs_class_direct_attrs_class():
     """Direct attrs class is returned unchanged."""
     from proteus.config._planet import Planet
 
@@ -66,7 +65,7 @@ def test_cfgvalid_extract_attrs_class_direct_attrs_class():
     assert _extract_attrs_class(str) is None
 
 
-def test_cfgvalid_extract_attrs_class_union_with_attrs():
+def test_orphans_extract_attrs_class_union_with_attrs():
     """Attrs class is extracted from a union hint such as ``Mors | None``."""
     from proteus.config._star import Mors
 
@@ -78,7 +77,7 @@ def test_cfgvalid_extract_attrs_class_union_with_attrs():
     assert _extract_attrs_class(str | None) is None
 
 
-def test_cfgvalid_extract_attrs_class_plain_scalar_returns_none():
+def test_orphans_extract_attrs_class_plain_scalar_returns_none():
     """Plain scalars (float, bool, str) return None; no attrs walk should follow."""
     for hint in (float, bool, int, str):
         assert _extract_attrs_class(hint) is None, f'Expected None for {hint}'
@@ -89,7 +88,7 @@ def test_cfgvalid_extract_attrs_class_plain_scalar_returns_none():
 # ---------------------------------------------------------------------------
 
 
-def test_cfgvalid_collect_orphan_keys_empty_dict_is_clean():
+def test_orphans_collect_orphan_keys_empty_dict_is_clean():
     """An empty raw dict has no orphans; the result must be an empty list."""
     from proteus.config._config import Config
 
@@ -101,7 +100,7 @@ def test_cfgvalid_collect_orphan_keys_empty_dict_is_clean():
     assert _collect_orphan_keys(dirty, Config) != []
 
 
-def test_cfgvalid_collect_orphan_keys_valid_top_level_keys():
+def test_orphans_collect_orphan_keys_valid_top_level_keys():
     """Known top-level Config fields do not appear in the orphan list."""
     from proteus.config._config import Config
 
@@ -110,13 +109,14 @@ def test_cfgvalid_collect_orphan_keys_valid_top_level_keys():
     assert result == []
 
 
-def test_cfgvalid_collect_orphan_keys_single_top_level_orphan():
+def test_orphans_collect_orphan_keys_single_top_level_orphan():
     """A single unknown top-level key is returned with its bare name."""
     from proteus.config._config import Config
 
     data = {'UNKNOWN_TOP': 'bad'}
     result = _collect_orphan_keys(data, Config)
     assert result == ['UNKNOWN_TOP']
+
     # Discrimination: the known key 'star' must not appear in orphans.
     data_mixed = {'star': {}, 'UNKNOWN_TOP': 'bad'}
     mixed_result = _collect_orphan_keys(data_mixed, Config)
@@ -124,31 +124,28 @@ def test_cfgvalid_collect_orphan_keys_single_top_level_orphan():
     assert 'UNKNOWN_TOP' in mixed_result
 
 
-def test_cfgvalid_collect_orphan_keys_nested_orphan_in_planet():
+def test_orphans_collect_orphan_keys_nested_orphan_in_planet():
     """A typo inside the planet section is reported with its dotted path."""
     from proteus.config._config import Config
 
     data = {'planet': {'mass_tot': 1.0, 'typo_field': 99}}
     result = _collect_orphan_keys(data, Config)
     assert result == ['planet.typo_field']
+
     # Discrimination: the valid key 'mass_tot' must not appear in orphans.
     assert 'planet.mass_tot' not in result
 
 
-def test_cfgvalid_collect_orphan_keys_deeply_nested_orphan():
+def test_orphans_collect_orphan_keys_deeply_nested_orphan():
     """Orphan keys inside doubly-nested sub-configs are reported with full path."""
     from proteus.config._config import Config
 
     data = {'star': {'mors': {'age_now': 4.5, 'bad_star_key': 'oops'}}}
     result = _collect_orphan_keys(data, Config)
     assert result == ['star.mors.bad_star_key']
-    # Discrimination: a key at the wrong nesting level is not reported at the
-    # parent level, only at its actual location.
-    assert 'star.bad_star_key' not in result
-    assert 'bad_star_key' not in result
 
 
-def test_cfgvalid_collect_orphan_keys_multiple_orphans_all_reported():
+def test_orphans_collect_orphan_keys_multiple_orphans_all_reported():
     """All orphan keys are collected; none is silently dropped."""
     from proteus.config._config import Config
 
@@ -163,7 +160,7 @@ def test_cfgvalid_collect_orphan_keys_multiple_orphans_all_reported():
     assert len(result) == 3
 
 
-def test_cfgvalid_collect_orphan_keys_valid_nested_dict_does_not_raise():
+def test_orphans_collect_orphan_keys_valid_nested_dict_does_not_raise():
     """A known nested dict with all valid keys produces an empty orphan list."""
     from proteus.config._config import Config
 
@@ -175,7 +172,7 @@ def test_cfgvalid_collect_orphan_keys_valid_nested_dict_does_not_raise():
     assert result == []
 
 
-def test_cfgvalid_collect_orphan_keys_non_attrs_type_skips_recursion():
+def test_orphans_collect_orphan_keys_non_attrs_type_skips_recursion():
     """A known field with a plain scalar type does not trigger dict recursion."""
     from proteus.config._config import Config
 
@@ -183,87 +180,45 @@ def test_cfgvalid_collect_orphan_keys_non_attrs_type_skips_recursion():
     # validator must not recurse into it (it has no attrs type).
     data = {'config_version': {'nested': 'should_not_recurse'}}
     result = _collect_orphan_keys(data, Config)
+
     # 'config_version' itself is a known field, so it should not appear.
     assert 'config_version' not in result
+
     # The nested key 'nested' should not appear because we do not recurse
-    # into non-attrs-typed fields.
+    # into non-attrs-typed fields (since config_version is a str field)
     assert 'config_version.nested' not in result
 
 
 # ---------------------------------------------------------------------------
-# check_for_unknown_keys
+# check_config_orphan_free
 # ---------------------------------------------------------------------------
 
 
-def test_cfgvalid_check_for_unknown_keys_clean_config_passes():
+def test_orphans_check_config_orphan_free_clean_config_passes():
     """A config with no orphans returns True without raising."""
-    result = check_for_unknown_keys(_MINIMAL_VALID)
+    result = check_config_orphan_free(_MINIMAL_VALID)
     assert result is True
 
 
-def test_cfgvalid_check_for_unknown_keys_orphan_raises_value_error():
-    """Any orphan key causes ValueError with the dotted path in the message."""
-    dirty = {**_MINIMAL_VALID, 'planet': {**_MINIMAL_VALID['planet'], 'TYPO': 1}}
-    with pytest.raises(ValueError, match='planet.TYPO'):
-        check_for_unknown_keys(dirty)
-
-    # Discrimination: a config without the orphan must not raise. A regression
-    # that always raised would fail this second call.
-    check_for_unknown_keys(_MINIMAL_VALID)
-
-
-def test_cfgvalid_check_for_unknown_keys_message_names_all_orphans():
-    """The error message lists every orphan key, not just the first one."""
-    dirty = {**_MINIMAL_VALID, 'GHOST_A': 1, 'GHOST_B': 2}
-    with pytest.raises(ValueError, match='GHOST_A') as exc_info:
-        check_for_unknown_keys(dirty)
-    msg = str(exc_info.value)
-    # Both keys must appear; a truncated message would fail this check.
-    assert 'GHOST_B' in msg
-    # Discrimination: GHOST_A and GHOST_B are distinct keys; a regression
-    # that listed only the first orphan would fail the GHOST_B assertion above
-    # while passing the match= on GHOST_A, so both assertions are needed.
-    assert 'Unrecognised keys' in msg
-
-
-def test_cfgvalid_check_for_unknown_keys_message_references_all_options():
-    """The error message identifies the bad key so the user knows what to fix."""
-    with pytest.raises(ValueError, match='BAD') as exc_info:
-        check_for_unknown_keys({**_MINIMAL_VALID, 'BAD': 'x'})
-    # Discrimination: the message must name the orphan key; a regression
-    # that suppressed the key list would fail even though it still raised.
-    assert 'Unrecognised keys' in str(exc_info.value)
-
-
-def test_cfgvalid_check_for_unknown_keys_updates_status_when_outdir_provided(tmp_path):
-    """Status file is written with code 20 when outdir is supplied, on error."""
+def test_orphans_check_config_orphan_free_returns_false_with_outdir(tmp_path):
+    """check_config_orphan_free returns False for a dirty config regardless of outdir."""
     dirty = {**_MINIMAL_VALID, 'ORPHAN': 42}
 
-    with pytest.raises(ValueError):
-        check_for_unknown_keys(dirty, outdir=str(tmp_path))
-
-    status_file = tmp_path / 'status'
-    assert status_file.exists(), 'Status file must be created on orphan-key error'
-    content = status_file.read_text()
-    # Status code 20 is the generic configuration-error sentinel.
-    assert content.startswith('20'), f'Expected status 20, got: {content!r}'
-    # Discrimination: the file must contain an error description as well, not
-    # just the numeric code. The two-line format is mandated by UpdateStatusfile.
-    lines = content.splitlines()
-    assert len(lines) >= 2, 'Status file must have at least two lines (code + description)'
+    result = check_config_orphan_free(dirty, outdir=str(tmp_path))
+    assert result is False
+    # Discrimination: a clean config with the same outdir must return True.
+    assert check_config_orphan_free(_MINIMAL_VALID, outdir=str(tmp_path)) is True
 
 
-def test_cfgvalid_check_for_unknown_keys_no_status_without_outdir(tmp_path):
-    """Status file is not written when outdir is None (early config-load path)."""
+def test_orphans_check_config_orphan_free_returns_false_without_outdir():
+    """check_config_orphan_free returns False without raising when outdir is None."""
     dirty = {**_MINIMAL_VALID, 'ORPHAN': 42}
 
-    with pytest.raises(ValueError):
-        check_for_unknown_keys(dirty, outdir=None)
+    result = check_config_orphan_free(dirty, outdir=None)
+    assert result is False
 
-    # No status file should have been created anywhere under tmp_path because
-    # no outdir was supplied. (We verify via the absence of any 'status' file.)
-    status_file = tmp_path / 'status'
-    assert not status_file.exists()
+    # Discrimination: the clean config must return True on the same code path.
+    assert check_config_orphan_free(_MINIMAL_VALID, outdir=None) is True
 
 
 # ---------------------------------------------------------------------------
@@ -271,8 +226,10 @@ def test_cfgvalid_check_for_unknown_keys_no_status_without_outdir(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_cfgvalid_read_config_object_raises_on_orphan_key(tmp_path):
-    """read_config_object propagates orphan-key errors from the raw TOML."""
+def test_orphans_detected_in_raw_dict_from_toml_file(tmp_path):
+    """check_config_orphan_free detects orphan keys injected into a TOML file."""
+    import tomllib
+
     from helpers import PROTEUS_ROOT
 
     dummy_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
@@ -285,27 +242,127 @@ def test_cfgvalid_read_config_object_raises_on_orphan_key(tmp_path):
     cfg_path = tmp_path / 'bad_config.toml'
     cfg_path.write_text(bad_content)
 
-    with pytest.raises(ValueError, match='planet.TYPO_FIELD'):
-        read_config_object(cfg_path)
+    with open(cfg_path, 'rb') as f:
+        raw = tomllib.load(f)
 
-    # Discrimination: the original dummy.toml must parse cleanly. A regression
-    # that always raised would fail this second call.
-    from proteus.config import Config
+    result = check_config_orphan_free(raw)
+    assert result is False
+    # Discrimination: the original dummy.toml must be orphan-free. A regression
+    # that always returned False would fail this second check.
+    with open(dummy_path, 'rb') as f:
+        clean_raw = tomllib.load(f)
+    assert check_config_orphan_free(clean_raw) is True
 
-    assert isinstance(read_config_object(dummy_path), Config)
 
+def test_orphans_detected_at_top_level_in_toml_file(tmp_path):
+    """check_config_orphan_free detects an unknown top-level key in a TOML file."""
+    import tomllib
 
-def test_cfgvalid_read_config_object_raises_on_top_level_orphan_key(tmp_path):
-    """A completely unknown top-level TOML section is detected and rejected."""
     from helpers import PROTEUS_ROOT
 
     dummy_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
     base_content = dummy_path.read_text()
 
-    # Prepend an unknown top-level key before any section.
+    # Prepend an unknown top-level key.
     bad_content = 'EXTRA_SECTION = "not_a_real_config_key"\n' + base_content
     cfg_path = tmp_path / 'top_level_orphan.toml'
     cfg_path.write_text(bad_content)
 
-    with pytest.raises(ValueError, match='EXTRA_SECTION'):
-        read_config_object(cfg_path)
+    # Read the config and check for orphans.
+    with open(cfg_path, 'rb') as f:
+        raw = tomllib.load(f)
+
+    # The orphan key is detected at the TOP level.
+    result = check_config_orphan_free(raw)
+    assert result is False
+
+    # Discrimination: confirm the orphan is specifically EXTRA_SECTION
+    from proteus.config._config import Config
+
+    orphans = _collect_orphan_keys(raw, Config)
+    assert 'EXTRA_SECTION' in orphans
+
+
+# ---------------------------------------------------------------------------
+# Proteus.__init__ integration
+# ---------------------------------------------------------------------------
+
+
+def test_orphans_proteus_init_raises_on_dirty_config(tmp_path):
+    """Proteus.__init__ raises RuntimeError and writes status 20 for a dirty config.
+
+    The dummy.toml is used as the valid base; one orphan key is injected into
+    the [planet] section. Proteus resolves the output directory from the config,
+    writes the status file, and then raises before completing initialisation.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    from proteus import Proteus
+
+    dummy_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
+
+    # Build a dirty config: copy dummy.toml and inject an unknown key.
+    with open(dummy_path, 'rb') as f:
+        raw = tomllib.load(f)
+    raw['planet']['TYPO_FIELD'] = 'bad_value'
+
+    # Point the output path to a known location so we can inspect the status file.
+    out_path = str(tmp_path / 'run_output')
+    raw['params']['out']['path'] = out_path
+
+    dirty_path = tmp_path / 'dirty.toml'
+    with open(dirty_path, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    with pytest.raises(RuntimeError, match='Unknown configuration keys'):
+        Proteus(config_path=dirty_path)
+
+    # Status file must exist (this checks for regression where file isn't written)
+    status_file = tmp_path / 'run_output' / 'status'
+    assert status_file.exists(), 'Status file must be written before the raise'
+
+    # Status file must be code 20
+    content = status_file.read_text()
+    assert content.startswith('20'), f'Expected status 20, got: {content!r}'
+
+
+def test_orphans_proteus_init_succeeds_on_clean_config(tmp_path):
+    """Proteus.__init__ completes without error when the config has no orphan keys.
+
+    This is the discrimination twin of the dirty-config test: it verifies that
+    the orphan gate does not fire on a valid config, confirming the check is
+    conditional rather than always-raising.
+    """
+
+    # import toml libs
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    from proteus import Proteus
+    from proteus.config import Config
+
+    # read dummy config
+    dummy_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
+    with open(dummy_path, 'rb') as f:
+        raw = tomllib.load(f)
+
+    # update output path to tmpdir
+    out_path = str(tmp_path / 'run_output')
+    raw['params']['out']['path'] = out_path
+
+    # write clean config to tmpdir again
+    clean_path = tmp_path / 'clean.toml'
+    with open(clean_path, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    # try to set up proteus runner (should not raise)
+    runner = Proteus(config_path=clean_path)
+    assert isinstance(runner.config, Config)
+
+    # Discrimination: the output directory must have been resolved
+    assert runner.directories is not None

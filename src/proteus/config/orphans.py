@@ -101,23 +101,20 @@ def _collect_orphan_keys(data: dict, cls: type, path: str = '') -> list[str]:
     return orphans
 
 
-def check_for_unknown_keys(raw_dict: dict, outdir: str | None = None) -> bool:
-    """Raise if *raw_dict* contains keys that Config schema doesn't define.
-
-    Raises a ValueError if one or more keys have no matching field.
+def check_config_orphan_free(raw_dict: dict, outdir: str | None = None) -> bool:
+    """Detect if *raw_dict* contains keys that Config schema doesn't define.
 
     Parameters
     ----------
     raw_dict:
-        Raw TOML dict as returned by :func:`tomllib.load`.
+        Raw TOML dict as returned by `tomllib.load`.
     outdir:
         Output directory path.
 
     Returns
     ------
     bool
-        True if looks good. False if unrecognised keys, but will raise first.
-
+        True if looks good. False if unrecognised keys are found.
     """
 
     # Identify orphaned keys in the raw_dict
@@ -129,25 +126,13 @@ def check_for_unknown_keys(raw_dict: dict, outdir: str | None = None) -> bool:
 
     # If didn't return, then we have some orphans to deal with
     # Construct a message for the user.
-    msg = 'Configuration contains "orphan" keys that are not recognised.'
-    log.error(msg)
+    log.error('Configuration contains "orphan" keys that are not recognised.')
     log.error('\tPerhaps you have a typo or are using an outdated option name.')
     log.error('\tCheck input/all_options.toml for parameter reference.')
 
     # List the keys
-    msg += '\nUnrecognised keys:\n' + '\n'.join(f'\t{key}' for key in orphans)
+    msg = '\tUnrecognised keys: ' + ', '.join(f'"{key}"' for key in orphans)
     log.error(msg)
 
-    # Update the status file, if possible
-    if outdir is not None:
-        from proteus.utils.helper import UpdateStatusfile
-
-        UpdateStatusfile({'output': outdir}, 20)
-    else:
-        log.error('No `outdir` provided, so cannot update status file!')
-
-    # Raise error here
-    raise ValueError(msg)
-
-    # For completeness, but will raise before this is called.
+    # Return false if orphans
     return False

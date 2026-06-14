@@ -7,7 +7,7 @@ from pathlib import Path
 import cattrs
 
 from ._config import Config
-from .validate import check_for_unknown_keys
+from .orphans import check_config_orphan_free
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -41,10 +41,6 @@ def read_config_object(path: Path | str) -> Config:
             obj.escape.module,
         )
 
-        # Parsed config is now a Config object.
-        # Check for unknown keys in the raw dict (raises if any are found).
-        check_for_unknown_keys(cfg, outdir=obj.params.out.path)
-
         # Looks good! Return the structured config object.
         return obj
 
@@ -65,4 +61,4 @@ def read_config_object(path: Path | str) -> Config:
         ) from None
 
 
-__all__ = ['Config', 'read_config_object', 'read_config', 'check_for_unknown_keys']
+__all__ = ['Config', 'read_config_object', 'read_config', 'check_config_orphan_free']
