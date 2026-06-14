@@ -7,6 +7,7 @@ from pathlib import Path
 import cattrs
 
 from ._config import Config
+from .validate import check_for_unknown_keys
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -22,8 +23,13 @@ def read_config(path: Path | str) -> dict:
 
 def read_config_object(path: Path | str) -> Config:
     """Read and validate config into Config object."""
+
+    # Read config from TOML file in path as a raw dict.
     cfg = read_config(path)
+
+    # Attempt to structure config with cattrs.
     try:
+        # Structure the config
         obj = cattrs.structure(cfg, Config)
         log.debug(
             'Config structured: star.module=%s, interior_energetics.module=%s, '
@@ -34,7 +40,15 @@ def read_config_object(path: Path | str) -> Config:
             obj.atmos_clim.module,
             obj.escape.module,
         )
+
+        # Parsed config is now a Config object.
+        # Check for unknown keys in the raw dict (raises if any are found).
+        check_for_unknown_keys(cfg, outdir=obj.params.out.path)
+
+        # Looks good! Return the structured config object.
         return obj
+
+    # Catch validation exceptions
     except cattrs.errors.ClassValidationError as e:
         # Extract actionable error messages from the nested exception group
         messages = []
@@ -51,4 +65,4 @@ def read_config_object(path: Path | str) -> Config:
         ) from None
 
 
-__all__ = ['Config', 'read_config_object', 'read_config']
+__all__ = ['Config', 'read_config_object', 'read_config', 'check_for_unknown_keys']
