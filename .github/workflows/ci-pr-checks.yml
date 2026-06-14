@@ -518,6 +518,12 @@ jobs:
           files: coverage.xml
           flags: unit-tests
           name: unit-tests-coverage
+          # Upload only the unit coverage.xml. The earlier diff-cover step
+          # restores the last nightly report into nightly-coverage/; without
+          # this, codecov-action also discovers and uploads that base-aligned
+          # report under the unit-tests flag, whose stale line numbers corrupt
+          # the head report and mismark covered lines as missing on the PR.
+          disable_search: true
           fail_ci_if_error: false
 
       - name: Upload HTML coverage

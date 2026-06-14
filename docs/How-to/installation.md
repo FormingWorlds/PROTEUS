@@ -32,7 +32,11 @@ variables, and reference data downloads in a single command.
     disk space (5 GB minimum), creates `FWL_DATA` if needed, and sets the
     environment variables. Pass `--export-env` to write the environment
     variables to your shell rc file. To refresh an existing installation later,
-    use `proteus update-all` (see [Diagnose and update](doctor.md)).
+    use `proteus update-all` (see [Diagnose and update](doctor.md)). Both
+    commands operate on the PROTEUS source tree, which they locate from the
+    installed package (editable installs) or, for a plain wheel install, from
+    the current directory when it is a PROTEUS clone; with neither available
+    they exit with an error.
 
 ### 1. System packages
 
@@ -155,6 +159,7 @@ Install the required system packages for your platform before proceeding.
 * [Kapteyn cluster](kapteyn_cluster_guide.md)
 * [Habrok cluster](habrok_cluster_guide.md)
 * [Snellius cluster](snellius_cluster_guide.md)
+* [Cambridge IoA cluster](ioa_cluster_guide.md)
 
 ### 2. Set up a Python environment
 
@@ -162,21 +167,10 @@ Python **3.12** is required. Install it via
 [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
 or [miniforge](https://github.com/conda-forge/miniforge).
 
-=== "Linux"
-
-    ```console
-    mkdir -p ~/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-    bash ~/miniconda3/miniconda.sh
-    rm ~/miniconda3/miniconda.sh
-    ```
-
-=== "macOS"
-
-    ```console
-    curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
-    bash Miniforge3-$(uname)-$(uname -m).sh
-    ```
+```console
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash Miniforge3-$(uname)-$(uname -m).sh
+```
 
 ### 3. Install Julia
 

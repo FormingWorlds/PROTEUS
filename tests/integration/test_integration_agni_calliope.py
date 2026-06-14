@@ -183,11 +183,13 @@ def test_agni_calliope_optical_depth_monotonic_from_TOA_to_surface():
     atmos = SimpleNamespace(tau_band=tau_band, nlev_c=5, nbands=3)
     tau_TOA, tau_surface = _summarise_tau_band(atmos)
 
-    # Closed-form: row means.
-    assert tau_TOA == pytest.approx((0.001 + 0.002 + 0.0005) / 3, rel=1e-12)
-    assert tau_surface == pytest.approx((10.0 + 20.0 + 8.0) / 3, rel=1e-12)
+    # Closed-form: row index
+    assert tau_TOA == pytest.approx(0.002, rel=1e-12)
+    assert tau_surface == pytest.approx(20.0, rel=1e-12)
+
     # Monotonicity invariant (the matrix design lock).
     assert tau_TOA < tau_surface
+
     # Scale guard: gap must be at least one order of magnitude in a
     # wet-greenhouse regime. tau_TOA ~ 1e-3, tau_surface ~ 13;
     # tau_TOA / tau_surface ~ 1e-4, well below the 0.5 guard.

@@ -174,6 +174,7 @@ def mock_atmos():
     return SimpleNamespace(
         _atm=SimpleNamespace(
             layer_cp=np.array([1.7e4, 1.7e4, 1.7e4]),  # J/kg/K for H2 layers
+            layer_σ=np.array([1e18, 1e18, 1e18]),  # kg for H2 layers
         ),
     )
 
@@ -1279,6 +1280,7 @@ def test_boundary_runner_all_nan_layer_cp_falls_back_to_atm_heat_capacity(
 
     # Force the all-NaN branch.
     mock_atmos._atm.layer_cp = np.array([np.nan, np.nan, np.nan])
+    mock_atmos._atm.layer_σ = np.array([1.0, 1.0, 1.0])
 
     with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
         runner = BoundaryRunner(
@@ -1304,6 +1306,7 @@ def test_boundary_runner_partial_nan_layer_cp_averages_finite_values(
     mock_config.interior_energetics.boundary.atm_heat_capacity = 9999.9
 
     mock_atmos._atm.layer_cp = np.array([1.0e4, np.nan, 2.0e4, np.nan, 3.0e4])
+    mock_atmos._atm.layer_σ = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
 
     with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
         runner = BoundaryRunner(
@@ -1495,6 +1498,7 @@ def test_run_solver_writes_csv_log_when_logging_enabled(
     fake_sol = SimpleNamespace(
         t=np.array([0.0, 1.0e3]),
         y=np.array([[3500.0, 3490.0], [1600.0, 1605.0]]),
+        status=0,
     )
     with patch('proteus.interior_energetics.boundary.solve_ivp', return_value=fake_sol):
         # run_solver signature: (hf_row, interior_o, dirs)

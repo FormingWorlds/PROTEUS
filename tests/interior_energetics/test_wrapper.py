@@ -1974,6 +1974,7 @@ def _make_run_interior_config(*, prevent_warming: bool, module: str = 'dummy'):
     config.interior_energetics.tmagma_rtol = 0.0
     config.interior_energetics.boundary.Tsurf_event_change = 25.0
     config.planet.prevent_warming = prevent_warming
+    config.params.stop.time.maximum = 1e9
     return config
 
 
