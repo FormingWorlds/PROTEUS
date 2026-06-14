@@ -719,6 +719,7 @@ def GetHelpfileKeys():
         'step_dE_Q_radio_cons_J',  # per-call ∫ +Q_radio dt [J] (frozen-mass)
         'step_dE_Q_tidal_cons_J',  # per-call ∫ +Q_tidal dt [J] (frozen-mass)
         'step_solver_residual_J',  # per-call entropy-ODE LHS-RHS [J]
+        'step_dE_compression_J',  # per-call structure-re-solve compression work [J]
         'dE_predicted_cons_J',  # cumulative sum of step_dE_*_cons_J across rows [J]
         'E_residual_cons_J',    # (E_state_cons - E_state_cons[0]) - dE_predicted_cons_J [J]
         'E_residual_cons_frac', # E_residual_cons_J / max(|ΔE_state_cons|, 1 J) [1]
@@ -907,11 +908,16 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     # Per-call energy increment from Aragog [J]. Sign is already baked
     # into each step delta (positive = energy added to mantle). Uses
     # frozen-mass Q_*_cons to pair with the frozen-mass E_state_cons_J.
+    # ``step_dE_compression_J`` is the adiabatic compression work the
+    # structure re-solve adds to the mantle enthalpy; it is zero for a
+    # static structure and closes the dynamic-contraction term that the
+    # boundary-flux budget cannot see.
     dE_inc_cons = (
         float(new_row.get('step_dE_F_int_J', 0.0))
         + float(new_row.get('step_dE_F_cmb_J', 0.0))
         + float(new_row.get('step_dE_Q_radio_cons_J', 0.0))
         + float(new_row.get('step_dE_Q_tidal_cons_J', 0.0))
+        + float(new_row.get('step_dE_compression_J', 0.0))
     )
     solver_inc = float(new_row.get('step_solver_residual_J', 0.0))
 

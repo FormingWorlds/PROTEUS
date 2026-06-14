@@ -2146,6 +2146,12 @@ class AragogRunner:
             # value flags a divergence-assembly bug, not time-integration
             # quality (that is carried by ``E_residual_cons_frac``).
             'step_solver_residual_J': out.step_solver_residual_J,
+            # Per-call adiabatic compression work [J] from the structure
+            # re-solve that preceded this step. Zero for a static
+            # structure; for a contracting interior it carries the
+            # pressure-rise enthalpy gain the boundary-flux budget omits,
+            # and the coupler adds it to ``dE_predicted_cons_J``.
+            'step_dE_compression_J': out.step_dE_compression_J,
             # Boundary layer thickness, taken straight from the atmosphere
             # config. Surfaced here so the helpfile carries a single
             # backend-agnostic field for downstream tooling that has to
