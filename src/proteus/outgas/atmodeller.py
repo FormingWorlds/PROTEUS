@@ -22,6 +22,50 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
+def _total_volatile_oxygen_kg(hf_row: dict, element_mmw: dict) -> float:
+    """Total volatile oxygen [kg]: atmospheric plus melt-dissolved O.
+
+    Sums the oxygen carried by the O-bearing volatile species
+    ``{H2O, CO2, CO, SO2, O2}`` across both the atmospheric (``_kg_atm``)
+    and dissolved (``_kg_liquid``) reservoirs. This is the whole-planet O
+    inventory that ``M_ele`` must include so that ``M_atm <= M_planet``
+    holds even when O sits in an oxidising O2 atmosphere.
+
+    Atomic-O mass fractions are derived from ``element_mmw`` (rather than
+    hand-rounded values) so a correction to the atomic-mass table
+    propagates automatically.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row carrying per-species ``{sp}_kg_atm`` / ``{sp}_kg_liquid``.
+    element_mmw : dict
+        Molar masses [kg/mol] keyed by element symbol (``'O'``, ``'C'``, ...).
+
+    Returns
+    -------
+    float
+        Total volatile oxygen mass [kg]. Zero when no O-bearing species are
+        present.
+    """
+    m_O = element_mmw['O']
+    m_C = element_mmw['C']
+    m_H = element_mmw['H']
+    m_S = element_mmw['S']
+    o_mass_frac = {
+        'H2O': m_O / (2 * m_H + m_O),
+        'CO2': 2 * m_O / (m_C + 2 * m_O),
+        'CO': m_O / (m_C + m_O),
+        'SO2': 2 * m_O / (m_S + 2 * m_O),
+        'O2': 1.0,
+    }
+    total = 0.0
+    for sp, frac in o_mass_frac.items():
+        total += float(hf_row.get(f'{sp}_kg_atm', 0.0)) * frac
+        total += float(hf_row.get(f'{sp}_kg_liquid', 0.0)) * frac
+    return total
+
+
 def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     """Compute volatile partitioning using atmodeller.
 
@@ -39,15 +83,15 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     hf_row : dict
         Current helpfile row (modified in place).
     """
+    from atmodeller.solubility import get_solubility_models
+    from atmodeller.thermodata import IronWustiteBuffer
+
     from atmodeller import (
         ChemicalSpecies,
         EquilibriumModel,
         Planet,
         SpeciesNetwork,
     )
-    from atmodeller.solubility import get_solubility_models
-    from atmodeller.thermodata import IronWustiteBuffer
-
     from proteus.utils.constants import M_earth, element_mmw, gas_list
 
     atm_config = config.outgas.atmodeller
@@ -393,6 +437,12 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         mmw * 1e3,
     )
 
+    # Total volatile oxygen (atmospheric + melt-dissolved), summed over the
+    # O-bearing volatile species. Computed for every fO2 source so the
+    # whole-planet O accounting (M_ele) includes atmospheric O whether or not
+    # O was a mass constraint; mirrors CALLIOPE, which always writes O_kg_total.
+    volatile_O_kg = _total_volatile_oxygen_kg(hf_row, element_mmw)
+
     # Plumb the derived IW-buffer offset only for the 'from_O_budget'
     # source. Under
     # user_constant the wrapper's pre-dispatch echo of
@@ -427,34 +477,29 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                     e,
                     hf_row.get('fO2_shift_IW_derived', float('nan')),
                 )
-        # O mass-balance residual: (atmospheric O + dissolved O) - target.
-        # atmodeller's element_residual output is per-element relative
-        # error; we report kg here to match CALLIOPE's H/C/N/S/O_res
-        # convention. Atomic-O mass fractions are derived from the
-        # canonical element_mmw table (proteus.utils.constants) rather
-        # than hand-rounded values, so a future correction to atomic
-        # masses propagates here automatically.
-        _m_O = element_mmw['O']
-        _m_C = element_mmw['C']
-        _m_H = element_mmw['H']
-        _m_S = element_mmw['S']
-        o_mass_frac = {
-            'H2O': _m_O / (2 * _m_H + _m_O),
-            'CO2': 2 * _m_O / (_m_C + 2 * _m_O),
-            'CO': _m_O / (_m_C + _m_O),
-            'SO2': 2 * _m_O / (_m_S + 2 * _m_O),
-            'O2': 1.0,
-        }
-        atm_O = 0.0
-        liq_O = 0.0
-        for sp, frac in o_mass_frac.items():
-            atm_O += float(hf_row.get(f'{sp}_kg_atm', 0.0)) * frac
-            liq_O += float(hf_row.get(f'{sp}_kg_liquid', 0.0)) * frac
-        hf_row['O_res'] = (atm_O + liq_O) - float(target_O_kg)
+        # O mass-balance residual: total volatile O (atmospheric + dissolved,
+        # computed above) minus the authoritative user target. Reported in kg
+        # to match CALLIOPE's H/C/N/S/O_res convention.
+        hf_row['O_res'] = volatile_O_kg - float(target_O_kg)
 
-        # Restore the authoritative user O budget. atmodeller's solver
-        # may have converged to atom_O + liq_O slightly off from
-        # target_O_kg (within its atol/rtol); the per-iteration drift
-        # would otherwise accumulate in the escape pipeline that reads
-        # hf_row['O_kg_total'] to compute the next debit.
+        # Restore the authoritative user O budget. atmodeller's solver may
+        # have converged to atm_O+liq_O slightly off from target_O_kg (within
+        # its atol/rtol); the per-iteration drift would otherwise accumulate
+        # in the escape pipeline that reads hf_row['O_kg_total'] to compute
+        # the next debit.
         hf_row['O_kg_total'] = float(target_O_kg)
+    else:
+        # Buffered-fO2 sources (e.g. user_constant): O is not a mass
+        # constraint, so the equilibrium-derived total volatile O is the
+        # tracked element budget. Without this, M_ele / M_planet omit
+        # atmospheric O entirely (e.g. the O2 atmosphere at oxidising IW),
+        # which breaks the M_atm <= M_planet accounting at high fO2. The
+        # escape pipeline's between-step debit of O_kg_total is superseded
+        # here each call, exactly as in CALLIOPE under user_constant: the
+        # buffered equilibrium re-derives O from the current H/C/S
+        # inventory, which itself falls as escape depletes those budgets.
+        hf_row['O_kg_total'] = volatile_O_kg
+        # No authoritative O target under a buffered fO2 source, so the O
+        # mass-balance residual is zero by construction. Written explicitly
+        # to match CALLIOPE rather than relying on the pre-dispatch seed.
+        hf_row['O_res'] = 0.0
