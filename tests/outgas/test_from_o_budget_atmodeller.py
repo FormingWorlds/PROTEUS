@@ -10,8 +10,13 @@ Covers the dispatch logic added to ``proteus.outgas.atmodeller`` when
 * After the solve, the wrapper writes ``fO2_shift_IW_derived`` from
   atmodeller's back-computed ``log10dIW_1_bar`` output and reports the
   O mass residual.
-* The authoritative ``hf_row['O_kg_total']`` is preserved across the
-  call so per-iteration drift cannot accumulate into the escape pipeline.
+* Under from_O_budget the authoritative ``hf_row['O_kg_total']`` is
+  restored to the user target after the solve so per-iteration solver
+  drift cannot accumulate into the escape pipeline.
+* Under user_constant ``hf_row['O_kg_total']`` is set to the
+  chemistry-derived total volatile oxygen (atmospheric + dissolved) so
+  the whole-planet O accounting (``M_ele``) includes atmospheric O even
+  though O is buffered, not a mass constraint (issue #677).
 """
 
 from __future__ import annotations
@@ -424,15 +429,21 @@ def test_from_o_budget_preserves_authoritative_O_kg_total():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_legacy_path_does_not_overwrite_O_kg_total():
-    """Mirror: under user_constant the atmodeller wrapper does not
-    touch ``O_kg_total`` (atmodeller's output doesn't include O as a
-    per-element constraint, and the wrapper doesn't reconstruct it).
-    The value carried by hf_row before the call (from
-    ``_resolve_oxygen_budget`` at IC, or from a previous iteration's
-    escape debit) survives unchanged.
+def test_user_constant_writes_chemistry_derived_O_kg_total():
+    """Under user_constant the wrapper records the chemistry-derived total
+    volatile oxygen (atmospheric + dissolved) in ``O_kg_total`` so the
+    whole-planet O accounting (``M_ele``) includes atmospheric O even
+    though O is buffered, not a mass constraint (issue #677). Without this
+    the pre-seeded value (0 under O_mode='ic_chemistry') would persist and
+    M_ele would omit the atmospheric O entirely (e.g. an oxidising O2
+    atmosphere), breaking the M_atm <= M_planet invariant at high fO2.
+
+    Discriminating: the pre-seeded O_kg_total (5.5e21) must be replaced by
+    the equilibrium-derived total volatile O summed over the O-bearing
+    species, not left untouched and not driven to zero.
     """
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+    from proteus.utils.constants import element_mmw
 
     dirs = {'output': '/tmp/test'}
     config = _make_from_o_budget_config()
@@ -445,13 +456,90 @@ def test_legacy_path_does_not_overwrite_O_kg_total():
     with patch('atmodeller.EquilibriumModel', return_value=fake_model):
         calc_surface_pressures_atmodeller(dirs, config, hf_row)
 
-    assert hf_row['O_kg_total'] == pytest.approx(5.5e21, rel=1e-12)
-    # Discrimination: the legacy path must NOT have added 'O' to the
-    # mass_constraints dict (atmodeller solves O via the IW fugacity
-    # buffer here). A regression that mistakenly added it would
-    # silently over-constrain the system.
+    # Independently re-derive the expected total volatile O from the
+    # per-species atmospheric+dissolved masses the wrapper just populated
+    # (NOT via the helper under test), so a stoichiometry error in the
+    # helper would surface here rather than cancel out.
+    m_O = element_mmw['O']
+    m_C = element_mmw['C']
+    m_H = element_mmw['H']
+    m_S = element_mmw['S']
+    o_frac = {
+        'H2O': m_O / (2 * m_H + m_O),
+        'CO2': 2 * m_O / (m_C + 2 * m_O),
+        'CO': m_O / (m_C + m_O),
+        'SO2': 2 * m_O / (m_S + 2 * m_O),
+        'O2': 1.0,
+    }
+    expected = sum(
+        (hf_row.get(f'{sp}_kg_atm', 0.0) + hf_row.get(f'{sp}_kg_liquid', 0.0)) * f
+        for sp, f in o_frac.items()
+    )
+    assert hf_row['O_kg_total'] == pytest.approx(expected, rel=1e-12)
+    # The fake solve carries real O-bearing volatiles, so the result is a
+    # strictly positive reservoir, NOT the bug's 0 and NOT the stale pre-seed.
+    assert hf_row['O_kg_total'] > 0.0
+    assert abs(hf_row['O_kg_total'] - 5.5e21) > 1e21
+    # Discrimination: O must still be solved via the IW fugacity buffer
+    # (NOT added as a mass constraint) under user_constant.
     mass_kwargs = fake_model.solve.call_args.kwargs['mass_constraints']
     assert 'O' not in mass_kwargs
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_total_volatile_oxygen_sums_atm_and_dissolved_over_o_bearing_species():
+    """``_total_volatile_oxygen_kg`` sums oxygen across both the atmospheric
+    and dissolved reservoirs of the O-bearing volatiles {H2O, CO2, CO, SO2,
+    O2}, weighted by the stoichiometric O mass fraction. This is the
+    whole-planet O reservoir that M_ele must include.
+
+    Discriminating: O-free volatiles (H2, CH4, N2) contribute exactly zero,
+    and dropping the dissolved part underestimates the total.
+    """
+    from proteus.outgas.atmodeller import _total_volatile_oxygen_kg
+    from proteus.utils.constants import element_mmw
+
+    m_O = element_mmw['O']
+    m_C = element_mmw['C']
+    m_H = element_mmw['H']
+    m_S = element_mmw['S']
+    hf_row = {
+        'H2O_kg_atm': 1.8e21,
+        'H2O_kg_liquid': 2.0e20,
+        'CO2_kg_atm': 4.4e20,
+        'SO2_kg_atm': 6.4e19,
+        'O2_kg_atm': 3.2e20,
+        'CH4_kg_atm': 1.0e20,  # carries no oxygen
+        'N2_kg_atm': 5.0e20,  # carries no oxygen
+    }
+    expected = (
+        (1.8e21 + 2.0e20) * (m_O / (2 * m_H + m_O))  # H2O atm + dissolved
+        + 4.4e20 * (2 * m_O / (m_C + 2 * m_O))  # CO2
+        + 6.4e19 * (2 * m_O / (m_S + 2 * m_O))  # SO2
+        + 3.2e20 * 1.0  # O2 is pure oxygen
+    )
+    got = _total_volatile_oxygen_kg(hf_row, element_mmw)
+    assert got == pytest.approx(expected, rel=1e-12)
+    # Discrimination 1: CH4 + N2 (6.0e20 kg) carry no O, so a buggy
+    # all-volatiles sum would exceed the correct value by a large margin.
+    assert abs(got - (expected + 6.0e20)) > 1e20
+    # Discrimination 2: the dissolved H2O O is included (not atmosphere-only).
+    atm_only = got - 2.0e20 * (m_O / (2 * m_H + m_O))
+    assert got - atm_only == pytest.approx(2.0e20 * (m_O / (2 * m_H + m_O)), rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_total_volatile_oxygen_zero_without_o_bearing_species():
+    """Edge case: with only O-free volatiles present (or an empty row) the
+    total volatile oxygen is exactly zero, not a spurious small float."""
+    from proteus.outgas.atmodeller import _total_volatile_oxygen_kg
+    from proteus.utils.constants import element_mmw
+
+    assert _total_volatile_oxygen_kg({}, element_mmw) == 0.0
+    hf_row = {'H2_kg_atm': 1e20, 'CH4_kg_atm': 2e20, 'N2_kg_liquid': 3e20}
+    assert _total_volatile_oxygen_kg(hf_row, element_mmw) == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -497,10 +585,10 @@ def test_from_o_budget_with_O_below_threshold_raises():
 
 @pytest.mark.unit
 def test_from_o_budget_writes_finite_O_residual():
-    """Under from_O_budget the wrapper must compute and write ``O_res`` from
-    target - (atmospheric_O + dissolved_O). A finite, bounded residual
-    is the strongest assertion available without the real solver; the
-    fake output's hand-built numbers give us a deterministic check.
+    """Under from_O_budget the wrapper must compute and write ``O_res`` =
+    (atmospheric_O + dissolved_O) - target. A finite, bounded, correctly
+    signed residual is the strongest assertion available without the real
+    solver; the fake output's hand-built numbers give a deterministic check.
     """
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
@@ -520,6 +608,11 @@ def test_from_o_budget_writes_finite_O_residual():
     # The fake output produces a finite atmospheric + dissolved O, so
     # the residual must be strictly less than the full target.
     assert abs(hf_row['O_res']) < target_O
+    # Sign pin: the equilibrium volatile O (~1e20) sits far below the 1e22
+    # target, so O_res = volatile_O - target must be strongly negative. A
+    # sign-flipped residual (target - volatile) would pass the bounded
+    # check above but land positive here.
+    assert hf_row['O_res'] < 0.0
 
 
 # ---------------------------------------------------------------------------
