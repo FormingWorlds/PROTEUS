@@ -13,7 +13,7 @@ import numpy as np
 from juliacall import Main  # noqa: F401
 
 import proteus.utils.archive as archive
-from proteus.config import read_config_object
+from proteus.config import check_config_orphan_free, read_config, read_config_object
 from proteus.utils.constants import vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
@@ -45,6 +45,14 @@ class Proteus:
         # Setup directories dictionary
         self.directories: dict = None  # Directories dictionary
         self.init_directories()
+
+        # Check for orphan keys in the config
+        if self.directories and os.path.isfile(config_path):
+            if not check_config_orphan_free(
+                read_config(config_path), outdir=self.directories['output']
+            ):
+                UpdateStatusfile(self.directories, 20)
+                raise RuntimeError(f'Unknown configuration keys found in {config_path}.')
 
         # Helpfile variables for the current iteration
         self.hf_row = None

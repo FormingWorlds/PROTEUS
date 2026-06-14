@@ -7,6 +7,7 @@ from pathlib import Path
 import cattrs
 
 from ._config import Config
+from .orphans import check_config_orphan_free
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -22,8 +23,13 @@ def read_config(path: Path | str) -> dict:
 
 def read_config_object(path: Path | str) -> Config:
     """Read and validate config into Config object."""
+
+    # Read config from TOML file in path as a raw dict.
     cfg = read_config(path)
+
+    # Attempt to structure config with cattrs.
     try:
+        # Structure the config
         obj = cattrs.structure(cfg, Config)
         log.debug(
             'Config structured: star.module=%s, interior_energetics.module=%s, '
@@ -34,7 +40,11 @@ def read_config_object(path: Path | str) -> Config:
             obj.atmos_clim.module,
             obj.escape.module,
         )
+
+        # Looks good! Return the structured config object.
         return obj
+
+    # Catch validation exceptions
     except cattrs.errors.ClassValidationError as e:
         # Extract actionable error messages from the nested exception group
         messages = []
@@ -51,4 +61,4 @@ def read_config_object(path: Path | str) -> Config:
         ) from None
 
 
-__all__ = ['Config', 'read_config_object', 'read_config']
+__all__ = ['Config', 'read_config_object', 'read_config', 'check_config_orphan_free']
