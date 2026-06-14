@@ -269,7 +269,7 @@ included:
 | `E_residual_cons_frac` | 1 | Fractional energy residual |
 | `Q_radio_W` | W | Instantaneous radiogenic power |
 | `Q_tidal_W` | W | Instantaneous tidal power |
-| `solver_residual_J` | J | ODE solver energy residual per call |
+| `solver_residual_J` | J | Entropy-equation flux-divergence self-consistency check (machine-zero by construction; non-zero flags an assembly bug, not integrator quality) |
 
 ## Synthetic observation output files
 

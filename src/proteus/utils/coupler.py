@@ -681,18 +681,20 @@ def GetHelpfileKeys():
         # + step_dE_Q_tidal_cons_J``) for the running residual:
         #   E_residual_cons_J  = (E_state_cons - E_state_cons[0]) - dE_predicted_cons_J
         #   E_residual_cons_frac = E_residual_cons_J / max(|ΔE_state_cons|, 1 J)
-        # Closes to ~5 % of total cooling and ~2 % of initial reservoir
-        # over multi-Myr trajectories. The state-mass enthalpy
+        # A few percent of total cooling on smooth single-phase segments;
+        # it grows at the crystallisation-front and structure-remesh
+        # steps. The state-mass enthalpy
         # ``E_state_J`` is reported as a diagnostic snapshot only; do
         # NOT use it for residual checks. State-dependent ``ρ(P,S) × V``
         # mass weighting introduces a non-conservation cross term that
         # grows with mantle cooling, so a residual built on
         # ``E_state_J`` would conflate that frame artefact with real
         # numerical drift.
-        # ``solver_residual_J`` is the cumulative entropy-ODE LHS-RHS
-        # residual over the trajectory and closes to machine precision
-        # (~1e-7 of total cooling); it is the rigorous solver-correctness
-        # check. ``E_th_mantle`` is the legacy ``m × Cp_apparent × T``
+        # ``solver_residual_J`` is the entropy-equation self-consistency
+        # check: the discrete flux divergence telescopes to the boundary
+        # fluxes, so it is machine-zero by construction and a non-zero
+        # value flags a divergence-assembly bug, not time-integration
+        # quality. ``E_th_mantle`` is the legacy ``m × Cp_apparent × T``
         # proxy with phase-dependent jumps in the mushy zone -- not for
         # conservation use. ``Q_radio_W`` / ``Q_tidal_W`` are instantaneous
         # mantle-integrated source powers in watts (do NOT integrate
@@ -863,22 +865,23 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
         step_solver_residual_J = ∫ (LHS - RHS) dt      [J]
 
     The cumulative ``dE_predicted_cons_J`` is the running sum of the
-    flux+source integrals across all helpfile rows. This eliminates the
-    previous helpfile-side trapezoidal interpolation between
-    end-of-step F_cmb snapshots, which was prone to phase-boundary
-    spikes: a single CVODE sub-step transient could blow up the
-    integral by orders of magnitude when used as a trapezoid endpoint
-    over a PROTEUS iteration's worth of time.
+    per-call flux+source integrals across all helpfile rows. Summing
+    Aragog's own sub-step integrals avoids interpolating between
+    end-of-step ``F_cmb`` snapshots, which spikes at phase boundaries
+    when a single sub-step transient lands on a trapezoid endpoint.
 
     Row 0 sets all cumulative columns to zero by definition.
     ``E_residual_cons_frac`` normalises by ``max(|ΔE_state_cons|, 1 J)``
     so the residual stays bounded when both numerator and denominator
-    are tiny (quiescent steady state). Closes to ~5 % of total cooling
-    over multi-Myr trajectories.
+    are tiny (quiescent steady state). It is a few percent of total
+    cooling on smooth single-phase segments and grows at the
+    crystallisation-front and structure-remesh steps.
 
-    ``solver_residual_J`` is the running entropy-ODE LHS-RHS check;
-    closes to machine precision (~1e-7 of total cooling) and flags
-    real CVODE step rejection or atol/rtol issues if it drifts.
+    ``solver_residual_J`` is the entropy-equation self-consistency
+    check: the discrete flux divergence telescopes to the boundary
+    fluxes, so it is machine-zero by construction and a non-zero value
+    flags a bug in the divergence assembly, not time-integration
+    quality. The conservation diagnostic is ``E_residual_cons_frac``.
 
     Active only when ``E_state_cons_J`` is finite and non-zero,
     signalling that an EOS-aware interior module populated it. Other

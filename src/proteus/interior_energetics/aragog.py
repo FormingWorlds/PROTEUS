@@ -2139,12 +2139,12 @@ class AragogRunner:
             # the entropy ODE to numerical precision.
             'step_dE_Q_radio_cons_J': out.step_dE_Q_radio_cons_J,
             'step_dE_Q_tidal_cons_J': out.step_dE_Q_tidal_cons_J,
-            # Per-call entropy-ODE solver residual [J]. Sums to a
-            # cumulative ``solver_residual_J`` in the coupler that
-            # quantifies trapezoidal-vs-CVODE-internal integration
-            # mismatch. Should remain near zero for a well-converged
-            # integrator; non-trivial values signal step rejection or
-            # tolerance issues.
+            # Per-call entropy-equation self-consistency residual [J].
+            # Sums to a cumulative ``solver_residual_J`` in the coupler.
+            # The discrete flux divergence telescopes to the boundary
+            # fluxes, so it is machine-zero by construction; a non-zero
+            # value flags a divergence-assembly bug, not time-integration
+            # quality (that is carried by ``E_residual_cons_frac``).
             'step_solver_residual_J': out.step_solver_residual_J,
             # Boundary layer thickness, taken straight from the atmosphere
             # config. Surfaced here so the helpfile carries a single
