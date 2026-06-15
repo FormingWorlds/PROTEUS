@@ -209,6 +209,6 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
         #else:
             #log.warning('Lavatmos directory not found, did you set the LAVATMOS_DIR environment variable?')
         if hf_row['Phi_global'] > 0.00:
-            compute_silicate_outgassing(config, hf_row)
+            compute_silicate_outgassing(dirs, config, hf_row)
         else:
             log.info('planet has solidified, no silicate outgassing occurs')
