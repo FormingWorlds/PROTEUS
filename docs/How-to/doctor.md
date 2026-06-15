@@ -58,8 +58,11 @@ fwl-mors, fwl-vulcan, fwl-zephyrus, fwl-zalmoxis), the doctor checks:
 
 For git-pinned modules (AGNI, SOCRATES), the doctor compares the checkout's
 HEAD commit against the commit SHA pinned in `pyproject.toml` under
-`[tool.proteus.modules]`. A mismatch produces a warning with a fix command
-(`bash tools/get_agni.sh` or `bash tools/get_socrates.sh`).
+`[tool.proteus.modules]`. A mismatch produces a warning with a fix command.
+The AGNI fix is `bash tools/get_agni.sh`. The SOCRATES fix also rebuilds AGNI,
+because re-cloning the SOCRATES tree removes the wrappers AGNI compiles into
+`socrates/julia`, so it reads
+`bash tools/get_socrates.sh "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0`.
 
 !!! info "pyproject.toml is the version authority"
     The doctor compares against `pyproject.toml`, not against the latest
@@ -154,7 +157,7 @@ This lists the fixable issues and their commands but does not execute anything.
 | Missing AGNI | `bash tools/get_agni.sh` |
 | AGNI commit drift from pin | `bash tools/get_agni.sh` |
 | Missing SOCRATES | `bash tools/get_socrates.sh` |
-| SOCRATES commit drift from pin | `bash tools/get_socrates.sh` (add `--force` to discard local changes) |
+| SOCRATES commit drift from pin | `bash tools/get_socrates.sh "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0` (rebuilds AGNI's wrappers too). To discard local changes in the SOCRATES checkout, pass `--force` to the SOCRATES step only: `bash tools/get_socrates.sh --force "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0` |
 | Missing reference data | `proteus get spectral` / `proteus get stellar` |
 | Wrong Julia version | `juliaup add 1.12 && juliaup default 1.12` |
 
