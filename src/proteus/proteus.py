@@ -48,9 +48,7 @@ class Proteus:
 
         # Check for orphan keys in the config
         if self.directories and os.path.isfile(config_path):
-            if not check_config_orphan_free(
-                read_config(config_path), outdir=self.directories['output']
-            ):
+            if not check_config_orphan_free(read_config(config_path)):
                 UpdateStatusfile(self.directories, 20)
                 raise RuntimeError(f'Unknown configuration keys found in {config_path}.')
 

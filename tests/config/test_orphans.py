@@ -200,27 +200,6 @@ def test_orphans_check_config_orphan_free_clean_config_passes():
     assert result is True
 
 
-def test_orphans_check_config_orphan_free_returns_false_with_outdir(tmp_path):
-    """check_config_orphan_free returns False for a dirty config regardless of outdir."""
-    dirty = {**_MINIMAL_VALID, 'ORPHAN': 42}
-
-    result = check_config_orphan_free(dirty, outdir=str(tmp_path))
-    assert result is False
-    # Discrimination: a clean config with the same outdir must return True.
-    assert check_config_orphan_free(_MINIMAL_VALID, outdir=str(tmp_path)) is True
-
-
-def test_orphans_check_config_orphan_free_returns_false_without_outdir():
-    """check_config_orphan_free returns False without raising when outdir is None."""
-    dirty = {**_MINIMAL_VALID, 'ORPHAN': 42}
-
-    result = check_config_orphan_free(dirty, outdir=None)
-    assert result is False
-
-    # Discrimination: the clean config must return True on the same code path.
-    assert check_config_orphan_free(_MINIMAL_VALID, outdir=None) is True
-
-
 # ---------------------------------------------------------------------------
 # Integration with read_config_object
 # ---------------------------------------------------------------------------

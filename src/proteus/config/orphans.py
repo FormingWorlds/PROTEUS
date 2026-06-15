@@ -101,15 +101,13 @@ def _collect_orphan_keys(data: dict, cls: type, path: str = '') -> list[str]:
     return orphans
 
 
-def check_config_orphan_free(raw_dict: dict, outdir: str | None = None) -> bool:
+def check_config_orphan_free(raw_dict: dict) -> bool:
     """Detect if *raw_dict* contains keys that Config schema doesn't define.
 
     Parameters
     ----------
     raw_dict:
         Raw TOML dict as returned by `tomllib.load`.
-    outdir:
-        Output directory path.
 
     Returns
     ------
