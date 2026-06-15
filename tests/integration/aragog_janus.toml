@@ -18,8 +18,6 @@ config_version = "3.0"
 
     prevent_warming = false      # do not allow the planet to heat up
 
-author  = "Harrison Nicholls, Tim Lichtenberg"
-
 # ----------------------------------------------------
 # Parameters
     [params.out]
@@ -142,7 +140,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         solve_energy    = false         # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-3          # solver absolute tolerance
         solution_rtol   = 2e-2          # solver relative tolerance
-        condensation    = true          # volatile condensation
         real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
