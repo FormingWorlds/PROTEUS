@@ -1,0 +1,4 @@
+input/superearth_grid/S5_sun_a0p1.toml
+input/superearth_grid/S5_sun_a0p3.toml
+input/superearth_grid/S5_mdwarf_a0p1.toml
+input/superearth_grid/S5_mdwarf_a0p3.toml

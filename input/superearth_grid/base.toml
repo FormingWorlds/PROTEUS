@@ -1,0 +1,162 @@
+# Super-Earth structure-evolution grid: shared base configuration.
+# Reference point: 5 M_earth, mass-scaled-linear volatiles (T2), redox IW+4,
+# dynamic interior structure, Sun at 1 AU. Per-run configs copy this file and
+# override only the fields that vary (mass, volatile budget, redox, structure
+# update mode, star, orbit). Module stack: zalmoxis structure + aragog
+# energetics + atmodeller outgassing + agni climate + zephyrus escape + mors star.
+
+config_version = "3.0"
+
+[params]
+    offline = true
+
+    [params.out]
+        path         = "auto"     # per-run generator sets a fixed folder name
+        logging      = "INFO"
+        plot_mod     = 0          # PROTEUS plots at end only; figures are made externally
+        plot_fmt     = "png"
+        write_mod    = 1          # write helpfile row + interior snapshot every iteration
+        dt_write_rel = 1e-3       # min write interval as fraction of elapsed sim time
+        archive_mod  = 10         # bundle snapshots into data/data.tar every 10 iterations
+
+    [params.dt]
+        method        = "adaptive"
+        initial       = 10.0
+        minimum       = 100.0
+        maximum       = 1e7
+        starspec      = 1e9
+        atol          = 0.04
+        rtol          = 0.11
+        mushy_maximum = 4e3
+        mushy_upper   = 0.99
+
+    [params.stop]
+        [params.stop.time]
+            enabled = true
+            maximum = 6.0e9       # [yr]
+        [params.stop.solid]
+            enabled  = true
+            phi_crit = 0.01       # stop at near-complete solidification
+        [params.stop.escape]
+            enabled = true
+            p_stop  = 3.0         # [bar]
+
+[planet]
+    mass_tot         = 5.0        # [M_earth]
+    temperature_mode = "liquidus_super"
+    delta_T_super    = 500.0
+    volatile_mode    = "elements"
+    fO2_source       = "user_constant"   # redox set by outgas.fO2_shift_IW
+
+    [planet.elements]
+        O_mode   = "ic_chemistry"        # O budget from atmodeller fO2-buffered equilibrium
+        O_budget = 0.0
+        H_mode   = "kg"
+        H_budget = 2.35e21               # 5 M_earth, T2 (linear x5 of 4.70e20)
+        C_mode   = "kg"
+        C_budget = 1.365e21              # linear x5 of 2.73e20
+        N_mode   = "kg"
+        N_budget = 2.5e19                # linear x5 of 5.0e18
+        S_mode   = "kg"
+        S_budget = 2.5e20                # linear x5 of 5.0e19
+
+[star]
+    module  = "mors"
+    mass    = 1.0                # [M_sun], Sun reference
+    age_ini = 0.1                # [Gyr]
+    [star.mors]
+        tracks          = "spada"
+        age_now         = 4.567
+        rot_pcntle      = 50.0
+        star_name       = "sun"
+        spectrum_source = "solar"
+
+[orbit]
+    module              = "none"
+    instellation_method = "distance"
+    semimajoraxis       = 1.0    # [AU]
+    eccentricity        = 0.0
+    zenith_angle        = 48.19
+    s0_factor           = 0.375
+
+[interior_struct]
+    module         = "zalmoxis"
+    core_frac_mode = "mass"
+    core_frac      = 0.325
+
+    [interior_struct.zalmoxis]
+        core_eos    = "PALEOS:iron"
+        mantle_eos  = "PALEOS:MgSiO3"
+        num_levels  = 150
+        outer_solver = "newton"
+        use_jax     = true
+        dry_mantle  = true
+
+        # Dynamic structure updates: re-solve when melt fraction, T_magma, or
+        # dissolved-volatile mass fraction cross these thresholds. The static
+        # twin overrides this block to freeze the structure after init.
+        update_interval      = 1e9    # time-cadence ceiling [yr]; large => trigger-driven
+        update_dphi_abs      = 0.05
+        update_dtmagma_frac  = 0.05
+        update_dw_comp_abs   = 0.05
+        update_stale_ceiling = 2.5e4  # [yr]; force a re-solve if this long since last
+
+[interior_energetics]
+    module          = "aragog"
+    num_levels      = 80
+    rtol            = 1e-10
+    atol            = 1e-10
+    heat_radiogenic = true
+    radio_tref      = 4.567       # present-day BSE reference age [Gyr]
+    radio_Al        = 0.0
+    radio_Fe        = 0.0
+    radio_K         = 310.0       # BSE [ppmw]
+    radio_U         = 0.031       # BSE [ppmw]
+    radio_Th        = 0.124       # BSE [ppmw]
+
+    [interior_energetics.aragog]
+        backend       = "jax"
+        solver_method = "cvode"
+
+[outgas]
+    module       = "atmodeller"
+    fO2_shift_IW = 4              # redox state [log10(delta_IW)]
+
+    [outgas.atmodeller]
+        solver_mode   = "robust"
+        # Solubility laws (atmodeller).
+        solubility_H2O = "H2O_peridotite_sossi23"    # Sossi et al. 2023, peridotite
+        solubility_CO2 = "CO2_basalt_dixon95"        # Dixon et al. 1995, basalt
+        solubility_H2  = "H2_basalt_hirschmann12"    # Hirschmann et al. 2012
+        solubility_CO  = "CO_basalt_yoshioka19"      # Yoshioka et al. 2019
+        solubility_CH4 = "CH4_basalt_ardia13"        # Ardia et al. 2013
+        solubility_N2  = "N2_basalt_dasgupta22"      # Dasgupta et al. 2022
+        solubility_S2  = "S2_basalt_boulliung23"     # combined sulfide+sulfate, fO2-dependent
+        # Ideal gas is the grid default (matches the validated CHILI and
+        # appendix runs). Real-gas EOS is exercised only in the dedicated S4
+        # high-pressure comparison (and conditionally high-mass S3 T3/T4), where
+        # it is eased in above ~1000 bar. The hot molten initial condition
+        # (~4238 K) is outside the real-gas EOS calibration range, so real-gas
+        # on at the start fails to converge in atmodeller.
+        eos_H2O = "none"
+        eos_CO2 = "none"
+        eos_H2  = "none"
+
+[atmos_clim]
+    module         = "agni"
+    surf_state     = "skin"
+    surface_d      = 0.01
+    surface_k      = 2.0
+    spectral_group = "Honeyside"
+    spectral_bands = "48"
+
+    [atmos_clim.agni]
+        real_gas     = false      # ideal-gas default; real-gas only in S4
+        solve_energy = true
+        chemistry    = "none"
+
+[escape]
+    module = "zephyrus"
+    [escape.zephyrus]
+        Pxuv       = 5e-5
+        efficiency = 0.1
