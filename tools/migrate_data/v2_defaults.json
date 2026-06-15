@@ -178,8 +178,6 @@
  "interior.spider.tsurf_atol": 10.0,
  "interior.spider.tsurf_rtol": 0.01,
  "interior.tidal_heat": true,
- "observe.platon.clip_vmr": 1e-08,
- "observe.platon.downsample": 8,
  "observe.synthesis": "<REQUIRED>",
  "orbit.axial_period": null,
  "orbit.dummy.H_tide": 0.0,

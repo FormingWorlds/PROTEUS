@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-from petitRADTRANS import physical_constants as cst
 from scipy.interpolate import PchipInterpolator
 
 from proteus.utils.constants import (
@@ -78,7 +77,7 @@ def _get_supported_cia_species(gases: list[str], include_cia: bool) -> list[str]
 
     available = []
     for cia_species in petitRADTRANS_CIA_SPECIES:
-        components = cia_species.split('-')
+        components = [c for c in cia_species.split('--') if c]
         if all(component in gases for component in components):
             available.append(cia_species)
         else:
@@ -98,6 +97,15 @@ def _vmrs_to_mass_fractions(
         return {}, np.array([])
 
     vmr_arr = np.array([np.array(vmr, dtype=float) for vmr in vmrs], dtype=float)
+
+    # Normalize VMRs to sum to 1 (after clip_vmr they may not sum to 1)
+    vmr_sum = np.sum(vmr_arr, axis=0)
+    if np.any(vmr_sum <= 0.0):
+        raise ValueError(
+            'Atmospheric composition has zero total VMR at one or more layers'
+        )
+    vmr_arr = vmr_arr / vmr_sum
+
     molar_masses = np.array([eval_gas_mmw(gas) for gas in gases], dtype=float)  # kg mol-1
     mass_contrib = vmr_arr * molar_masses[:, None]
     total_mass = np.sum(mass_contrib, axis=0)
@@ -178,13 +186,20 @@ def _get_atm_profile(outdir: str, hf_row: dict) -> dict:
     return atm_arr[-1]
 
 
-def _get_reference_prt_values(atm: dict) -> tuple[float, float, float]:
-    """Return the reference pressure [bar], radius [cm], and gravity [cgs] from the profile."""
+def _get_reference_prt_values(atm: dict, config: Config) -> tuple[float, float, float]:
+    """Return the reference pressure [bar], radius [cm], and gravity [cgs] from the profile.
 
-    mid_idx = len(atm['pl']) // 2
-    reference_pressure = float(np.asarray(atm['pl'], dtype=float)[mid_idx] / 1e5)
-    reference_radius = float(np.asarray(atm['rl'], dtype=float)[mid_idx] * 100.0)
-    reference_gravity = float(np.asarray(atm['gl'], dtype=float)[mid_idx] * 100.0)
+    Uses the reference pressure from the config to find the closest matching layer.
+    """
+    prs = np.asarray(atm['pl'], dtype=float)  # Pa
+    config_ref_pressure_pa = config.observe.reference_pressure * 1e5  # Convert bar to Pa
+
+    # Find the index with closest pressure to config reference
+    ref_idx = np.argmin(np.abs(prs - config_ref_pressure_pa))
+
+    reference_pressure = float(prs[ref_idx] / 1e5)
+    reference_radius = float(np.asarray(atm['rl'], dtype=float)[ref_idx] * 100.0)
+    reference_gravity = float(np.asarray(atm['gl'], dtype=float)[ref_idx] * 100.0)
     return reference_pressure, reference_radius, reference_gravity
 
 
@@ -260,62 +275,43 @@ def _get_mix(hf_row: dict, atm: dict, source: str, clip_vmr: float) -> tuple:
     return gas_incl, vmr_incl
 
 
-def _construct_abundances(
-    atm: dict, gas_incl: list, vmr_incl: list, T_grid: list, P_grid: list
-) -> dict:
-    """
-    Constructs the abundance dictionary for petitRADTRANS from the gas names and VMR arrays.
-
-    Parameters
-    ----------
-    atm : dict
-        The atmosphere data as a dictionary.
-    gas_incl : list
-        The list of gas names.
-    vmr_incl : list
-        The list of VMR profiles.
-    T_grid : list
-        The temperature grid from petitRADTRANS [K]
-    P_grid : list
-        The pressure grid from petitRADTRANS [Pa].
-    """
-
-    abundances = {}
-
-    for i, gas in enumerate(gas_incl):
-        parr = [1e-6] + list(atm['pl']) + [1e13]
-        varr = [vmr_incl[i][0]] + list(vmr_incl[i]) + [vmr_incl[i][-1]]
-        itp_1d = PchipInterpolator(np.log10(parr), np.log10(varr))
-
-        arr_2d = np.zeros((len(T_grid), len(P_grid)))
-        for j, p in enumerate(P_grid):
-            arr_2d[:, j] = 10 ** itp_1d(np.log10(p))
-        abundances[gas] = arr_2d
-
-    return abundances
-
-
-def _get_ptr(atm: dict):
+def _get_ptr(
+    atm: dict, vmrs: list[np.ndarray] | None = None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[np.ndarray] | None]:
     """
     Returns the pressure, temperature and radius from the atmosphere data."""
     prs = np.array(atm['pl'])  # Pa
     tmp = np.array(atm['tmpl'])  # K
     rad = np.array(atm['rl'])  # m
-    if prs[1] < prs[0]:
+    vmrs_sorted = vmrs
+    if prs.size > 1 and prs[1] < prs[0]:
+        order = slice(None, None, -1)
         prs = prs[::-1]
-        tmp = np.clip(tmp[::-1], a_min=petitRADTRANS_TLIMS[0], a_max=petitRADTRANS_TLIMS[1])
+        tmp = np.clip(tmp[order], a_min=petitRADTRANS_TLIMS[0], a_max=petitRADTRANS_TLIMS[1])
         rad = rad[::-1]
-    return prs, tmp, rad
+        if vmrs is not None:
+            vmrs_sorted = [np.array(vmr, dtype=float)[order] for vmr in vmrs]
+    return prs, tmp, rad, vmrs_sorted
 
 
-def _copy_mass_fractions(
-    mass_fractions: dict[str, np.ndarray], gases_to_zero: list[str]
-) -> dict[str, np.ndarray]:
-    copied = {gas: np.array(values, copy=True) for gas, values in mass_fractions.items()}
-    for gas in gases_to_zero:
-        if gas in copied:
-            copied[gas] = np.zeros_like(copied[gas])
-    return copied
+def _load_stellar_toa_flux(
+    outdir: str, hf_row: dict, target_wavelength_nm: np.ndarray
+) -> np.ndarray:
+    """Load the PROTEUS-written stellar spectrum from ``data/<Time>.sflux``.
+
+    The spectrum is already scaled to the top of the planet atmosphere, so it
+    can be used directly in the eclipse-depth denominator.
+    """
+
+    spectrum_path = Path(outdir) / 'data' / f"{int(hf_row['Time'])}.sflux"
+    if not spectrum_path.is_file():
+        raise FileNotFoundError(f"Stellar spectrum file '{spectrum_path}' not found.")
+
+    star_data = np.loadtxt(spectrum_path, skiprows=1).T
+    stellar_wavelength_nm = np.array(star_data[0], dtype=float)
+    stellar_flux = np.array(star_data[1], dtype=float)
+    stellar_flux = np.interp(target_wavelength_nm, stellar_wavelength_nm, stellar_flux)
+    return stellar_flux * 1.0e7  # erg cm-2 s-1 nm-1 -> erg cm-2 s-1 cm-1
 
 
 def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
@@ -360,11 +356,10 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
         return None
 
     reference_pressure, reference_radius, reference_gravity = _get_reference_prt_values(
-        atm_reference
+        atm_reference, config
     )
 
     # Get composition from requested source
-    prs, tmp, _ = _get_ptr(atm)
     (
         gases,
         vmrs,
@@ -381,6 +376,7 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
         input_data_path,
     )
 
+    prs, tmp, _, vmrs = _get_ptr(atm, vmrs)
     prs, tmp, vmrs = _interpolate_prt_profiles(prs, tmp, vmrs, n_points=100)
     mass_fractions, mean_molar_masses = _vmrs_to_mass_fractions(gases, vmrs)
 
@@ -417,7 +413,7 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
     X = np.array(X).T
     log.debug('Writing transit depth spectrum')
     np.savetxt(
-        get_transit_fpath(outdir, source, 'synthesis'),
+        get_transit_fpath(outdir, source, 'observe'),
         X,
         delimiter='\t',
         fmt='%.8e',
@@ -473,11 +469,10 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
         return None
 
     reference_pressure, reference_radius, reference_gravity = _get_reference_prt_values(
-        atm_reference
+        atm_reference, config
     )
 
     # Get composition from requested source
-    prs, tmp, _ = _get_ptr(atm)
     (
         gases,
         vmrs,
@@ -494,6 +489,7 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
         input_data_path,
     )
 
+    prs, tmp, _, vmrs = _get_ptr(atm, vmrs)
     prs, tmp, vmrs = _interpolate_prt_profiles(prs, tmp, vmrs, n_points=100)
     mass_fractions, mean_molar_masses = _vmrs_to_mass_fractions(gases, vmrs)
 
@@ -509,7 +505,7 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
     )
 
     # compute full spectrum
-    wl_hz, planet_flux, _ = radtrans.calculate_flux(
+    wl_cm, planet_flux, _ = radtrans.calculate_flux(
         temperatures=np.array(tmp, dtype=float),
         mass_fractions=mass_fractions,
         mean_molar_masses=mean_molar_masses,
@@ -518,22 +514,17 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
         star_effective_temperature=Ts,
         star_radius=Rs_cm,
         orbit_semi_major_axis=sep_cm,
-        frequencies_to_wavelengths=False,
+        frequencies_to_wavelengths=True,
     )
-    stellar_flux = Radtrans.compute_star_spectrum(
-        star_effective_temperature=Ts,
-        orbit_semi_major_axis=sep_cm,
-        frequencies=np.array(wl_hz, dtype=float),
-        star_radius=Rs_cm,
-    )
-    stellar_surface_flux = np.array(stellar_flux, dtype=float) * np.pi * (sep_cm / Rs_cm) ** 2
+    stellar_wavelength_nm = wl_cm * 1.0e7
+    stellar_surface_flux = _load_stellar_toa_flux(outdir, hf_row, stellar_wavelength_nm)
     de = (
         np.array(planet_flux, dtype=float)
         / stellar_surface_flux
         * (reference_radius / Rs_cm) ** 2
         * 1e6
     )
-    wl = (cst.c / np.array(wl_hz, dtype=float)) * 1e4
+    wl = (wl_cm * 1e4)
     X = [wl, de]
     header = ''
     header += str('Wavelength/um').ljust(14, ' ') + '\t'
@@ -543,7 +534,7 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
     X = np.array(X).T
     log.debug('Writing eclipse depth spectra')
     np.savetxt(
-        get_eclipse_fpath(outdir, source, 'synthesis'),
+        get_eclipse_fpath(outdir, source, 'observe'),
         X,
         delimiter='\t',
         fmt='%.8e',

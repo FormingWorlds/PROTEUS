@@ -594,11 +594,8 @@ config_version = "3.0"
 
 # Synthetic observations
 [observe]
-    module                    = "none"       # none | platon | petitRADTRANS
+    module                    = "none"       # none | petitRADTRANS
     clip_vmr                  =  1e-8        # minimum VMR for inclusion
-
-    [observe.platon]
-        downsample            = 8            # opacity downsample factor
 
     [observe.petitRADTRANS]
         input_data_path       = "none"       # path to petitRADTRANS `input_data` folder. If `None`, the installed package location will be used.

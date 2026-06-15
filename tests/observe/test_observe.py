@@ -111,7 +111,7 @@ def test_read_transit_success(tmp_path):
     observe_dir.mkdir(parents=True)
 
     csv_file = observe_dir / 'transit_outgas_initial.csv'
-    # Match real Platon output format: tab-delimited, columns are
+    # Match real PRT output format: tab-delimited, columns are
     # Wavelength/um, None/ppm, then per-gas contributions in ppm.
     csv_content = 'Wavelength/um\tNone/ppm\tH2O/ppm\n'
     csv_content += '5.00000000e-01\t1.20000000e+02\t1.10000000e+02\n'
@@ -147,7 +147,7 @@ def test_read_eclipse_success(tmp_path):
     observe_dir.mkdir(parents=True)
 
     csv_file = observe_dir / 'eclipse_profile_final.csv'
-    # Match real Platon output format: tab-delimited, columns are
+    # Match real PRT output format: tab-delimited, columns are
     # Wavelength/um, None/ppm, then per-gas contributions in ppm.
     csv_content = 'Wavelength/um\tNone/ppm\tCO2/ppm\n'
     csv_content += '1.00000000e+00\t1.50000000e+01\t1.40000000e+01\n'
@@ -260,7 +260,7 @@ def test_calc_synthetic_spectra_dummy_atmos_skips_profile():
 
     # Create mock config with dummy atmos_clim but valid other modules
     config = MagicMock()
-    config.observe.synthesis = 'platon'
+    config.observe.module = 'petitRADTRANS'
     config.atmos_clim.module = 'dummy'  # Use dummy atmospheric model
     config.atmos_chem.module = 'vulcan'  # Chemistry enabled
 
@@ -268,8 +268,8 @@ def test_calc_synthetic_spectra_dummy_atmos_skips_profile():
     outdir = '/tmp/output'
 
     with (
-        patch('proteus.observe.platon.transit_depth') as mock_transit,
-        patch('proteus.observe.platon.eclipse_depth') as mock_eclipse,
+        patch('proteus.observe.petitRADTRANS.transit_depth') as mock_transit,
+        patch('proteus.observe.petitRADTRANS.eclipse_depth') as mock_eclipse,
     ):
         calc_synthetic_spectra(hf_row, outdir, config)
 
@@ -295,7 +295,7 @@ def test_calc_synthetic_spectra_no_chemistry_skips_offchem():
 
     # Create mock config with chemistry disabled
     config = MagicMock()
-    config.observe.synthesis = 'platon'
+    config.observe.module = 'petitRADTRANS'
     config.atmos_clim.module = 'janus'  # Detailed atmospheric model
     config.atmos_chem.module = None  # Chemistry disabled
 
@@ -303,8 +303,8 @@ def test_calc_synthetic_spectra_no_chemistry_skips_offchem():
     outdir = '/tmp/output'
 
     with (
-        patch('proteus.observe.platon.transit_depth') as mock_transit,
-        patch('proteus.observe.platon.eclipse_depth') as mock_eclipse,
+        patch('proteus.observe.petitRADTRANS.transit_depth') as mock_transit,
+        patch('proteus.observe.petitRADTRANS.eclipse_depth') as mock_eclipse,
     ):
         calc_synthetic_spectra(hf_row, outdir, config)
 
@@ -327,7 +327,7 @@ def test_calc_synthetic_spectra_all_sources_available():
 
     # Create mock config with all modules enabled
     config = MagicMock()
-    config.observe.synthesis = 'platon'
+    config.observe.module = 'petitRADTRANS'
     config.atmos_clim.module = 'janus'  # Detailed model
     config.atmos_chem.module = 'vulcan'  # Chemistry enabled
 
@@ -335,8 +335,8 @@ def test_calc_synthetic_spectra_all_sources_available():
     outdir = '/tmp/output'
 
     with (
-        patch('proteus.observe.platon.transit_depth') as mock_transit,
-        patch('proteus.observe.platon.eclipse_depth') as mock_eclipse,
+        patch('proteus.observe.petitRADTRANS.transit_depth') as mock_transit,
+        patch('proteus.observe.petitRADTRANS.eclipse_depth') as mock_eclipse,
     ):
         calc_synthetic_spectra(hf_row, outdir, config)
 
@@ -350,7 +350,7 @@ def test_calc_synthetic_spectra_invalid_synthesis_module():
     """
     Test calc_synthetic_spectra raises ValueError for invalid synthesis module.
 
-    Physics: Only 'platon' is currently supported for synthetic spectrum
+    Physics: Only 'petitRADTRANS' is currently supported for synthetic spectrum
     generation. Invalid module names should fail gracefully.
     """
     from unittest.mock import MagicMock, patch
@@ -358,7 +358,7 @@ def test_calc_synthetic_spectra_invalid_synthesis_module():
     from proteus.observe.wrapper import calc_synthetic_spectra
 
     config = MagicMock()
-    config.observe.synthesis = 'unknown_module'  # Invalid
+    config.observe.module = 'unknown_module'  # Invalid
     config.atmos_clim.module = 'janus'
     config.atmos_chem.module = 'vulcan'
 
@@ -370,14 +370,14 @@ def test_calc_synthetic_spectra_invalid_synthesis_module():
     # Identity guard: the error message must name the offending module
     # name so the operator sees the typo, not a generic message.
     assert 'unknown_module' in str(excinfo.value)
-    # Discrimination: switching to the supported 'platon' module on
+    # Discrimination: switching to the supported 'petitRADTRANS' module on
     # the same hf_row + config must let the call complete (with the
     # synthesis functions mocked). This rules out a regression that
     # hard-raises ValueError independent of the synthesis field.
-    config.observe.synthesis = 'platon'
+    config.observe.module = 'petitRADTRANS'
     with (
-        patch('proteus.observe.platon.transit_depth'),
-        patch('proteus.observe.platon.eclipse_depth'),
+        patch('proteus.observe.petitRADTRANS.transit_depth'),
+        patch('proteus.observe.petitRADTRANS.eclipse_depth'),
     ):
         calc_synthetic_spectra(hf_row, outdir, config)
 
@@ -395,7 +395,7 @@ def test_run_observe_calls_synthetic_spectra():
     from proteus.observe.wrapper import run_observe
 
     config = MagicMock()
-    config.observe.synthesis = 'platon'
+    config.observe.module = 'petitRADTRANS'
     config.atmos_clim.module = 'janus'
     config.atmos_chem.module = 'vulcan'
 

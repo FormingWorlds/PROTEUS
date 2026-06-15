@@ -2,7 +2,7 @@
 
 The `[observe]` section configures synthetic observation generation. PROTEUS
 can compute transit and eclipse depth spectra from the simulated atmospheric
-state using the PLATON forward model.
+state using the petitRADTRANS forward model.
 
 The `[accretion]` section is reserved for late accretion modelling (not yet
 implemented).
@@ -11,11 +11,13 @@ implemented).
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `synthesis` | str or none | `"none"` | Observation module: `platon` or `none` (disabled) |
+| `module` | str or none | `"none"` | Observation module: `petitRADTRANS` or `none` (disabled) |
+| `clip_vmr` | float | `1e-8` | Minimum VMR for species inclusion in the calculation |
+| `reference_pressure` | float | `10` | Reference pressure for synthetic spectrum generation [bar] |
 
-### PLATON `[observe.platon]`
+### petitRADTRANS `[observe.petitRADTRANS]`
 
-PLATON computes wavelength-dependent transit and eclipse depths from the
+petitRADTRANS computes wavelength-dependent transit and eclipse depths from the
 atmospheric composition and temperature-pressure profile. Three input sources
 are available:
 
@@ -25,8 +27,10 @@ are available:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `downsample` | int | `8` | Opacity downsample factor (lower = higher spectral resolution, slower) |
-| `clip_vmr` | float | `1e-8` | Minimum VMR for species inclusion in the calculation |
+| `input_data_path` | str | `"none"` | Optional path to petitRADTRANS `input_data`. If `None`, the installed package location will be used. |
+| `line_opacity_mode` | str | `"c-k"` | Opacity treatment: 'c-k' (correlated-k) or 'lbl' (line-by-line). |
+| `include_rayleigh` | bool | `"true"` | Include Rayleigh scattering contributions. |
+| `include_cia` | bool | `"true"` | Include collision-induced absorption contributions. |
 
 ## Late accretion `[accretion]`
 

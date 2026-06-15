@@ -370,12 +370,10 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
 
     # Observations synthesis module
     write = 'Observe module    %s' % config.observe.module
-    if config.observe.module == 'platon':
-        from platon import __version__ as obs_version
-    elif config.observe.module == 'petitRADTRANS':
+    if config.observe.module == 'petitRADTRANS':
         from petitRADTRANS import __version__ as obs_version
+        write += ' version ' + obs_version
 
-    write += ' version ' + obs_version
     log.info(write)
 
     # End spacer
@@ -455,8 +453,6 @@ def print_citation(config: Config):
 
     # Observations synthesis module
     match config.observe.module:
-        case 'platon':
-            _cite('Zhang et al. (2024)', 'https://doi.org/10.48550/arXiv.2410.22398')
         case 'petitRADTRANS':
             _cite('Mollière et al. (2019)', 'https://doi.org/10.1051/0004-6361/201935470')
         case _:

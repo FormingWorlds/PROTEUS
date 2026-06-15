@@ -456,13 +456,13 @@ written in Julia.
 bash tools/get_lovepy.sh
 ```
 
-### Synthetic observations (PLATON)
+### Synthetic observations (petitRADTRANS)
 
-[PLATON](https://platon.readthedocs.io/en/latest/intro.html) generates
+[PLATON](https://petitradtrans.readthedocs.io/en/latest/) generates
 synthetic transmission and secondary eclipse spectra.
 
 ```console
-bash tools/get_platon.sh
+bash tools/get_prt.sh
 ```
 
 !!! note

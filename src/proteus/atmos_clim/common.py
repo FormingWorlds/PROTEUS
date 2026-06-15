@@ -85,6 +85,9 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     p = np.array(ds.variables['p'][:])
     pl = np.array(ds.variables['pl'][:])
 
+    g = np.array(ds.variables['g'][:])
+    gl = np.array(ds.variables['gl'][:])
+
     t = np.array(ds.variables['tmp'][:])
     tl = np.array(ds.variables['tmpl'][:])
 
@@ -104,11 +107,12 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
 
     nlev_c = len(p)
 
-    # read pressure, temperature, height data into dictionary values
+    # read pressure, temperature, gravity and height data into dictionary values
     out = {}
     if combine_edges:
         out['p'] = [pl[0]]
         out['t'] = [tl[0]]
+        out['g'] = [gl[0]]
         out['z'] = [zl[0]]
         out['r'] = [rl[0]]
         for i in range(nlev_c):
@@ -118,6 +122,9 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
             out['t'].append(t[i])
             out['t'].append(tl[i + 1])
 
+            out['g'].append(g[i])
+            out['g'].append(gl[i + 1])
+
             out['z'].append(z[i])
             out['z'].append(zl[i + 1])
 
@@ -126,10 +133,12 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     else:
         out['p'] = p
         out['t'] = t
+        out['g'] = g
         out['z'] = z
         out['r'] = r
         out['pl'] = pl
         out['tmpl'] = tl
+        out['gl'] = gl
         out['zl'] = zl
         out['rl'] = rl
 
