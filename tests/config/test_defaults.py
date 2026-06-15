@@ -223,13 +223,22 @@ def test_aragog_defaults():
         'dilatation slot must be removed; existing TOMLs setting '
         'this field should now fail to load.'
     )
-    # Strategy B (per-call ΔΦ cap): default 0.0 keeps existing behaviour.
+    # Per-call step caps: schema defaults 0.0 keep existing behaviour and the
+    # non-zalmoxis bit-parity invariant (the wrapper auto-enables non-zero
+    # values only for the zalmoxis stack). Validators reject negatives.
     assert a.phi_step_cap == pytest.approx(0.0)
-    # Validator must reject negative values.
+    assert a.temperature_step_cap == pytest.approx(0.0)
+    assert a.entropy_step_cap == pytest.approx(0.0)
     with pytest.raises(ValueError):
         Aragog(phi_step_cap=-0.01)
-    # Positive value persists.
+    with pytest.raises(ValueError):
+        Aragog(temperature_step_cap=-1.0)
+    with pytest.raises(ValueError):
+        Aragog(entropy_step_cap=-1.0)
+    # Positive values persist.
     assert Aragog(phi_step_cap=0.05).phi_step_cap == pytest.approx(0.05)
+    assert Aragog(temperature_step_cap=150.0).temperature_step_cap == pytest.approx(150.0)
+    assert Aragog(entropy_step_cap=80.0).entropy_step_cap == pytest.approx(80.0)
     import pytest as _pt
 
     with _pt.raises(ValueError):

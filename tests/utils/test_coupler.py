@@ -1106,17 +1106,22 @@ def _aragog_row(
     step_dE_F_cmb_J: float = 0.0,
     step_dE_Q_radio_cons_J: float = 0.0,
     step_dE_Q_tidal_cons_J: float = 0.0,
+    step_dE_Q_radio_J: float = 0.0,
+    step_dE_Q_tidal_J: float = 0.0,
     step_solver_residual_J: float = 0.0,
+    step_dE_state_heat_J: float = 0.0,
     F_cmb: float = 0.0,
     R_int: float = 6.371e6,
     R_core: float = 3.481e6,
     T_magma: float = 3000.0,
 ) -> dict:
-    """Helper: build a ZeroHelpfileRow populated with the cons (frozen-mass)
-    columns the energy-residual helper reads. Uses Earth-like radii by
-    default. The instantaneous F_cmb keyword argument is supported only so
-    the discrimination test can prove it is IGNORED by the cumulative-sum
-    logic; it has no effect on dE_predicted_cons_J."""
+    """Helper: build a ZeroHelpfileRow populated with the columns the
+    energy-residual helper reads. The predicted side is the boundary-flux
+    and source increments; the state side is ``step_dE_state_heat_J`` (the
+    entropy-transported heat). Uses Earth-like radii by default. The
+    instantaneous F_cmb keyword is supported only so the discrimination
+    test can prove it is IGNORED by the cumulative-sum logic; it has no
+    effect on dE_predicted_cons_J."""
     row = ZeroHelpfileRow()
     row['Time'] = time_yr
     row['E_state_cons_J'] = E_state_cons_J
@@ -1124,7 +1129,10 @@ def _aragog_row(
     row['step_dE_F_cmb_J'] = step_dE_F_cmb_J
     row['step_dE_Q_radio_cons_J'] = step_dE_Q_radio_cons_J
     row['step_dE_Q_tidal_cons_J'] = step_dE_Q_tidal_cons_J
+    row['step_dE_Q_radio_J'] = step_dE_Q_radio_J
+    row['step_dE_Q_tidal_J'] = step_dE_Q_tidal_J
     row['step_solver_residual_J'] = step_solver_residual_J
+    row['step_dE_state_heat_J'] = step_dE_state_heat_J
     row['F_cmb'] = F_cmb
     row['R_int'] = R_int
     row['R_core'] = R_core
@@ -1140,22 +1148,26 @@ def test_helpfile_keys_include_energy_conservation_columns():
     be reconstructed downstream."""
     keys = GetHelpfileKeys()
     expected = {
-        # Frozen-mass conservation primitives (consumed by the residual).
-        'E_state_cons_J',
+        # Predicted-side primitives (boundary + source, frozen-mass).
         'step_dE_F_int_J',
         'step_dE_F_cmb_J',
         'step_dE_Q_radio_cons_J',
         'step_dE_Q_tidal_cons_J',
         'step_solver_residual_J',
+        # State-side primitive: the entropy-transported heat content change.
+        'step_dE_state_heat_J',
         # Cumulative columns derived from the primitives above.
+        'E_state_heat_cons_J',
         'dE_predicted_cons_J',
         'E_residual_cons_J',
         'E_residual_cons_frac',
         'solver_residual_J',
-        # State-mass columns kept as diagnostics (NOT used for residuals).
+        # Enthalpy columns kept as diagnostics (NOT used for residuals).
+        'E_state_cons_J',
         'E_state_J',
         'step_dE_Q_radio_J',
         'step_dE_Q_tidal_J',
+        'step_dE_compression_J',
     }
     missing = expected - set(keys)
     assert not missing, f'Energy-conservation keys missing from schema: {missing}'
@@ -1252,8 +1264,11 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
         time_yr=10.0,
         E_state_cons_J=E1,
         step_dE_F_int_J=delta_1_F_int,
-        step_dE_Q_radio_cons_J=delta_1_Q_radio,
+        step_dE_Q_radio_J=delta_1_Q_radio,
         step_solver_residual_J=solver_inc_1,
+        # Self-consistent run: the entropy-transported heat per step equals
+        # the predicted boundary+source increment, so the residual is zero.
+        step_dE_state_heat_J=delta_1_F_int + delta_1_Q_radio,
     )
     _populate_energy_residual(hf, row1)
     hf = ExtendHelpfile(hf, row1)
@@ -1270,6 +1285,7 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
         step_dE_F_int_J=delta_2_F_int,
         step_dE_F_cmb_J=delta_2_F_cmb,
         step_solver_residual_J=solver_inc_2,
+        step_dE_state_heat_J=delta_2_F_int + delta_2_F_cmb,
     )
     _populate_energy_residual(hf, row2)
     hf = ExtendHelpfile(hf, row2)
@@ -1286,6 +1302,7 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
         step_dE_F_cmb_J=delta_3_F_cmb,
         step_dE_F_int_J=delta_3_F_int,
         step_solver_residual_J=solver_inc_3,
+        step_dE_state_heat_J=delta_3_F_cmb + delta_3_F_int,
     )
     _populate_energy_residual(hf, row3)
 
@@ -1322,12 +1339,13 @@ def test_populate_energy_residual_ignores_instantaneous_F_cmb_spike():
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    # Physical step delta: -1e29 J (mild cooling).
+    # Physical step delta: -1e29 J (mild cooling), matched on both sides.
     physical_delta = -1.0e29
     row1 = _aragog_row(
         time_yr=10.0,
         E_state_cons_J=E0 + physical_delta,
         step_dE_F_int_J=physical_delta,
+        step_dE_state_heat_J=physical_delta,
         # Catastrophic instantaneous spike; must be IGNORED.
         F_cmb=1.0e23,
     )
@@ -1357,8 +1375,9 @@ def test_populate_energy_residual_frac_normalises_safely_when_dE_tiny():
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    # dE_actual_cons = +0.5 J, dE_pred_cons = 0 (no step deltas set).
-    row1 = _aragog_row(time_yr=1.0, E_state_cons_J=E0 + 0.5)
+    # State-heat increment = +0.5 J, predicted = 0 (no step deltas set), so
+    # the residual is +0.5 J against a cumulative state heat of +0.5 J.
+    row1 = _aragog_row(time_yr=1.0, E_state_cons_J=E0, step_dE_state_heat_J=0.5)
     _populate_energy_residual(hf, row1)
 
     # Without flooring this would be 0.5 / 0.5 = 1.0; with floor at 1 J
@@ -1371,32 +1390,108 @@ def test_populate_energy_residual_frac_normalises_safely_when_dE_tiny():
 
 @pytest.mark.unit
 def test_populate_energy_residual_residual_detects_missing_source():
-    """Conservation residual must surface a missing source. We
-    construct a 'real' planet whose E_state_cons actually ROSE by
-    5e29 J because of a fictional unreported source, but Aragog (in
-    this scenario) only reported the cooling step delta (-3e29 J).
-    The residual should be +8e29 J = (E_state_cons-E_state_cons[0])
-    - dE_predicted_cons, sign and magnitude both meaningful. Catches
-    a regression where the helper would silently zero residuals or
-    apply the wrong sign convention."""
+    """Conservation residual must surface a missing source. We construct a
+    'real' planet whose entropy-transported heat content actually ROSE by
+    5e29 J because of a fictional unreported source, but Aragog (in this
+    scenario) only reported the cooling boundary-flux delta (-3e29 J). The
+    residual is the state-heat side minus the predicted side, +8e29 J, sign
+    and magnitude both meaningful. Catches a regression where the helper
+    would silently zero residuals or apply the wrong sign convention."""
     E0 = 1.0e31
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    actual_dE = +5.0e29  # planet warmed
-    reported_step_delta = -3.0e29  # Aragog only reported the cooling
+    # Hold the enthalpy snapshot E_state_cons_J fixed at E0 and let the
+    # entropy-transported heat carry the true rise. The reverted enthalpy-
+    # anchor logic would read zero state change and report only +3e29; the
+    # state-heat logic reports +8e29. The two regimes therefore disagree, so
+    # this assertion fails on a revert rather than passing for both.
+    actual_dE = +5.0e29  # true heat content rise (state side)
+    reported_step_delta = -3.0e29  # Aragog only reported the cooling flux
     row1 = _aragog_row(
         time_yr=100.0,
-        E_state_cons_J=E0 + actual_dE,
+        E_state_cons_J=E0,
         step_dE_F_int_J=reported_step_delta,
+        step_dE_state_heat_J=actual_dE,
     )
     _populate_energy_residual(hf, row1)
 
     expected_residual = actual_dE - reported_step_delta  # = +8e29 J
     assert row1['dE_predicted_cons_J'] == pytest.approx(reported_step_delta, rel=1e-12)
+    assert row1['E_state_heat_cons_J'] == pytest.approx(actual_dE, rel=1e-12)
     assert row1['E_residual_cons_J'] == pytest.approx(expected_residual, rel=1e-12)
+    # Reverted enthalpy-anchor logic would give actual_dE=0 -> residual +3e29.
+    enthalpy_anchor_residual = 0.0 - reported_step_delta
+    assert abs(expected_residual - enthalpy_anchor_residual) > 1e29
     # E_residual_cons_frac should be O(1); residual is comparable to actual.
     assert abs(row1['E_residual_cons_frac']) > 0.5
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_excludes_compression_from_predicted():
+    """The compression term must NOT enter the predicted side.
+
+    ``step_dE_compression_J`` is an enthalpy-framed quantity retained only
+    as a diagnostic; the entropy-transported heat already carries the full
+    thermodynamic content. We set a large compression value alongside a
+    physical boundary-flux delta and assert the predicted increment equals
+    the flux delta alone. If compression leaked back into the sum (the
+    behaviour being reverted) the predicted value would shift by the
+    compression magnitude, which the discrimination guard rules out.
+    """
+    E0 = 1.0e31
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    flux_delta = -2.0e29
+    compression = +7.0e29  # large, opposite sign; must be ignored
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_cons_J=E0 + flux_delta,
+        step_dE_F_int_J=flux_delta,
+        step_dE_state_heat_J=flux_delta,
+    )
+    row1['step_dE_compression_J'] = compression
+    _populate_energy_residual(hf, row1)
+
+    assert row1['dE_predicted_cons_J'] == pytest.approx(flux_delta, rel=1e-12)
+    # Compression excluded on both sides => residual stays at zero, not at
+    # the compression magnitude.
+    assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(compression)
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_predicted_uses_live_mass_heating():
+    """The predicted side uses the live-density heating variants, matching the
+    live-density state side.
+
+    The state side integrates rho(P,S) (live EOS density), so the heating
+    sources on the predicted side must use the same mass frame: the live
+    step_dE_Q_radio_J / step_dE_Q_tidal_J, not the frozen-mass *_cons
+    variants. We give the live and frozen radiogenic increments different
+    values and assert the predicted side tracks the live one. If the residual
+    reverted to the frozen-mass variant the predicted increment would differ
+    by the live-minus-frozen gap, which the discrimination guard rejects.
+    """
+    E0 = 1.0e31
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    live_radio = +1.0e29
+    frozen_radio = +4.0e29  # deliberately different; must be IGNORED
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_cons_J=E0 + live_radio,
+        step_dE_Q_radio_J=live_radio,
+        step_dE_Q_radio_cons_J=frozen_radio,
+        step_dE_state_heat_J=live_radio,
+    )
+    _populate_energy_residual(hf, row1)
+
+    assert row1['dE_predicted_cons_J'] == pytest.approx(live_radio, rel=1e-12)
+    # Frozen-mass variant would have given +4e29; guard the gap.
+    assert abs(row1['dE_predicted_cons_J'] - frozen_radio) > 1e29
+    assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(live_radio)
 
 
 @pytest.mark.unit

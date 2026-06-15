@@ -45,6 +45,8 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.aragog.backend = 'numpy'
     config.interior_energetics.aragog.scalar_gravity_override = False
     config.interior_energetics.aragog.phi_step_cap = 0.0
+    config.interior_energetics.aragog.temperature_step_cap = 0.0
+    config.interior_energetics.aragog.entropy_step_cap = 0.0
     config.interior_energetics.spider.matprop_smooth_width = 0.0
     config.interior_energetics.const_properties = False
     config.interior_energetics.heat_radiogenic = False
@@ -362,3 +364,84 @@ class TestUpdateStructureZalmoxisRefresh:
         # 20 km) but 3.2e6 is 300 km away; the explicit lower-bound
         # check makes the failure mode loud.
         assert abs(solver.parameters.mesh.inner_radius - 3.2e6) > 100e3
+
+
+@pytest.mark.unit
+def test_effective_phi_step_cap_auto_enables_for_zalmoxis():
+    """The melt-fraction cap defaults ON for the zalmoxis interior stack.
+
+    A zalmoxis run that leaves phi_step_cap at the disabled schema default
+    (0.0) must be promoted to the non-zero coupled-stack default so the
+    crystallisation-onset core-temperature discontinuity is guarded without
+    the user having to opt in. A non-zalmoxis interior is left untouched, and
+    an explicit positive value always wins. The discrimination guard pins all
+    three branches so a regression that drops the auto-enable, fires it for
+    the wrong module, or overrides the user value is caught.
+    """
+    from proteus.interior_energetics.aragog import (
+        _ZALMOXIS_DEFAULT_PHI_STEP_CAP,
+        _effective_phi_step_cap,
+    )
+
+    def cfg(module, cap):
+        c = MagicMock()
+        c.interior_struct.module = module
+        c.interior_energetics.aragog.phi_step_cap = cap
+        return c
+
+    # zalmoxis + disabled default -> promoted to the non-zero default
+    promoted = _effective_phi_step_cap(cfg('zalmoxis', 0.0))
+    assert promoted == pytest.approx(_ZALMOXIS_DEFAULT_PHI_STEP_CAP)
+    assert promoted > 0.0
+    # non-zalmoxis interior keeps the disabled value (no auto-enable)
+    assert _effective_phi_step_cap(cfg('spider', 0.0)) == 0.0
+    assert _effective_phi_step_cap(cfg('dummy', 0.0)) == 0.0
+    # explicit user value wins on every interior, even zalmoxis
+    assert _effective_phi_step_cap(cfg('zalmoxis', 0.05)) == pytest.approx(0.05)
+    assert _effective_phi_step_cap(cfg('spider', 0.2)) == pytest.approx(0.2)
+    # the auto-enabled default must differ from the disabled value, else the
+    # promotion would be a no-op
+    assert _ZALMOXIS_DEFAULT_PHI_STEP_CAP != 0.0
+
+
+@pytest.mark.unit
+def test_effective_temperature_and_entropy_step_caps_auto_enable_for_zalmoxis():
+    """The temperature and entropy step caps also default ON for zalmoxis.
+
+    The melt-fraction cap cannot bound the core-temperature drop once a cell
+    is fully solid, so the temperature and entropy caps must be auto-enabled
+    alongside it for the zalmoxis stack. Same promotion contract as the
+    melt-fraction cap: disabled schema default promoted for zalmoxis, left
+    alone for other interiors, explicit positive value wins. Discrimination
+    guards pin each branch and assert the auto-enabled defaults are non-zero.
+    """
+    from proteus.interior_energetics.aragog import (
+        _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP,
+        _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP,
+        _effective_entropy_step_cap,
+        _effective_temperature_step_cap,
+    )
+
+    def cfg(module, t_cap, s_cap):
+        c = MagicMock()
+        c.interior_struct.module = module
+        c.interior_energetics.aragog.temperature_step_cap = t_cap
+        c.interior_energetics.aragog.entropy_step_cap = s_cap
+        return c
+
+    # zalmoxis + disabled defaults -> promoted to the non-zero defaults
+    assert _effective_temperature_step_cap(cfg('zalmoxis', 0.0, 0.0)) == pytest.approx(
+        _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP
+    )
+    assert _effective_entropy_step_cap(cfg('zalmoxis', 0.0, 0.0)) == pytest.approx(
+        _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP
+    )
+    # non-zalmoxis keeps disabled
+    assert _effective_temperature_step_cap(cfg('spider', 0.0, 0.0)) == 0.0
+    assert _effective_entropy_step_cap(cfg('dummy', 0.0, 0.0)) == 0.0
+    # explicit values win, even on zalmoxis
+    assert _effective_temperature_step_cap(cfg('zalmoxis', 250.0, 0.0)) == pytest.approx(250.0)
+    assert _effective_entropy_step_cap(cfg('zalmoxis', 0.0, 75.0)) == pytest.approx(75.0)
+    # auto-enabled defaults must aggressively suppress jumps (non-zero, finite)
+    assert _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP > 0.0
+    assert _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP > 0.0

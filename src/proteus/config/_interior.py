@@ -187,12 +187,29 @@ class Aragog:
     False by default; set True only when running a paired scalar-gravity
     comparison."""
     phi_step_cap: float = field(default=0.0, validator=ge(0.0))
-    """Per-call ΔΦ cap. When > 0 and at least one staggered cell sits in or
-    near the mushy band at solve() entry, Aragog clamps the integration
-    end_time so the projected per-cell |ΔΦ| over the requested window stays
-    within this cap. The estimate uses |dΦ/dt| at t=start_time scaled by a 0.5
-    safety factor, and the PROTEUS outer loop sees the truncated achieved time
-    via ``sol.t[-1]``. Default 0.0 (disabled)."""
+    """Per-call melt-fraction step cap. When > 0 and any staggered cell is in
+    or near the two-phase window at solve() entry, a CVODE root function (and
+    the equivalent scipy event) returns control at the exact time the larger
+    of the global mass-weighted |ΔΦ| and the maximum single-cell |Δφ| reaches
+    this cap. The per-cell term bounds how far one deep cell may cross the
+    mushy window in a single call, which removes the discontinuous
+    core-temperature drop at crystallisation onset. Schema default 0.0; the
+    Aragog wrapper auto-enables a non-zero default for the coupled zalmoxis
+    interior stack, and an explicit value here overrides that."""
+
+    temperature_step_cap: float = field(default=0.0, validator=ge(0.0))
+    """Per-call per-cell temperature step cap [K]. Shares the same root
+    function as phi_step_cap and fires on the maximum single-cell |ΔT| since
+    solve() entry. It bounds the core-temperature drop on the solid adiabat
+    just below the solidus, where the melt-fraction cap goes blind because a
+    fully solid cell's melt fraction can no longer move. Schema default 0.0;
+    the Aragog wrapper auto-enables a non-zero default for the coupled
+    zalmoxis stack, and an explicit value overrides that."""
+
+    entropy_step_cap: float = field(default=0.0, validator=ge(0.0))
+    """Per-call per-cell entropy step cap [J/kg/K], in the native solver
+    variable; same role as temperature_step_cap without an EOS lookup in the
+    root function. Default 0.0 (disabled)."""
 
     tolerance_struct: float = field(default=1e2, validator=gt(0))
     """Absolute mass tolerance [kg] for the secant solver in

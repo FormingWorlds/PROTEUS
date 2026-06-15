@@ -2,6 +2,7 @@
 from __future__ import annotations  # noqa: I001
 
 import glob
+import inspect
 import logging
 import os
 import platform
@@ -122,6 +123,74 @@ _DIFFRAX_RESEARCH_ONLY = False
 # on a network filesystem).
 _RHO_CORE_MIN = 1000.0
 _RHO_CORE_MAX = 30000.0
+
+# Default per-call melt-fraction step cap auto-enabled for the coupled
+# zalmoxis interior stack. Bounds how far any single cell's melt fraction
+# may move within one solver call, so a deep cell cannot cross the entire
+# two-phase window in one step (the source of the core-temperature
+# discontinuity at crystallisation onset). The cliff occurs whether or not
+# the structure is re-solved during runtime, so the cap is enabled for both
+# static and dynamic zalmoxis runs. A user value > 0 in the config always
+# takes precedence. Sensitivity-tested across the m-series grid.
+_ZALMOXIS_DEFAULT_PHI_STEP_CAP = 0.1
+
+# Default per-cell temperature and entropy step caps auto-enabled for the
+# coupled zalmoxis stack, alongside the melt-fraction cap. The melt-fraction
+# cap goes blind once a cell is fully solid, so it cannot bound the core-
+# temperature drop on the solid adiabat just below the solidus; the
+# temperature cap bounds |ΔT| per cell directly, and the entropy cap bounds
+# |ΔS| in the native solver variable. All three are set aggressively to
+# suppress any single-step core-temperature jump (robustness over runtime;
+# runtime tuning is a follow-up). Sensitivity-tested; a config value > 0
+# overrides each.
+_ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP = 100.0
+_ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP = 100.0
+
+
+def _effective_phi_step_cap(config: Config) -> float:
+    """Resolve the melt-fraction step cap passed to Aragog.
+
+    Returns the configured ``interior_energetics.aragog.phi_step_cap`` when it
+    is positive. Otherwise, for the coupled zalmoxis interior stack, promotes
+    the disabled schema default (0.0) to :data:`_ZALMOXIS_DEFAULT_PHI_STEP_CAP`
+    so the crystallisation-onset core-temperature discontinuity is guarded by
+    default. Non-zalmoxis interiors keep the configured value unchanged.
+    """
+    cap = float(config.interior_energetics.aragog.phi_step_cap)
+    if cap <= 0.0 and config.interior_struct.module == 'zalmoxis':
+        return _ZALMOXIS_DEFAULT_PHI_STEP_CAP
+    return cap
+
+
+def _effective_temperature_step_cap(config: Config) -> float:
+    """Resolve the per-cell temperature step cap [K] passed to Aragog.
+
+    The melt-fraction cap cannot bound the core-temperature drop once a cell
+    is fully solid (its melt fraction can no longer move), so for the coupled
+    zalmoxis interior stack the disabled schema default (0.0) is promoted to
+    :data:`_ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP`, which bounds the per-cell
+    temperature change on the solid adiabat below the solidus. A configured
+    positive value overrides; non-zalmoxis interiors keep the configured value.
+    """
+    cap = float(config.interior_energetics.aragog.temperature_step_cap)
+    if cap <= 0.0 and config.interior_struct.module == 'zalmoxis':
+        return _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP
+    return cap
+
+
+def _effective_entropy_step_cap(config: Config) -> float:
+    """Resolve the per-cell entropy step cap [J/kg/K] passed to Aragog.
+
+    Auto-enabled for the coupled zalmoxis interior stack (disabled schema
+    default 0.0 promoted to :data:`_ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP`),
+    bounding the per-cell entropy change in the native solver variable. A
+    configured positive value overrides; non-zalmoxis interiors keep the
+    configured value.
+    """
+    cap = float(config.interior_energetics.aragog.entropy_step_cap)
+    if cap <= 0.0 and config.interior_struct.module == 'zalmoxis':
+        return _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP
+    return cap
 
 
 def _is_plausible_core_density(rho_core: float) -> bool:
@@ -569,7 +638,32 @@ class AragogRunner:
                 outdir, 'data', 'zalmoxis_output.dat'
             )  # Zalmoxis output file with mantle parameters
 
-        energy = _EnergyParameters(
+        # Per-cell step caps, all auto-enabled for the coupled zalmoxis
+        # interior stack. The melt-fraction cap subdivides a cell's crossing
+        # of the two-phase window; the temperature and entropy caps bound the
+        # per-cell |ΔT| and |ΔS|, which additionally cover the core-temperature
+        # drop on the solid adiabat below the solidus where the melt-fraction
+        # cap goes blind. Together they remove the discontinuous core-
+        # temperature drop at crystallisation onset. A config value overrides
+        # each.
+        ar = config.interior_energetics.aragog
+        phi_step_cap = _effective_phi_step_cap(config)
+        temperature_step_cap = _effective_temperature_step_cap(config)
+        entropy_step_cap = _effective_entropy_step_cap(config)
+        if (
+            phi_step_cap != ar.phi_step_cap
+            or temperature_step_cap != ar.temperature_step_cap
+            or entropy_step_cap != ar.entropy_step_cap
+        ):
+            log.info(
+                'Auto-enabling step caps for the zalmoxis interior stack: '
+                'phi=%.3g, T=%.3g K, S=%.3g J/kg/K',
+                phi_step_cap,
+                temperature_step_cap,
+                entropy_step_cap,
+            )
+
+        energy_kwargs = dict(
             conduction=config.interior_energetics.trans_conduction,
             convection=config.interior_energetics.trans_convection,
             gravitational_separation=(config.interior_energetics.trans_grav_sep),
@@ -587,8 +681,26 @@ class AragogRunner:
             phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
             solver_method=config.interior_energetics.aragog.solver_method,
             use_jax_jacobian=(config.interior_energetics.aragog.backend == 'jax'),
-            phi_step_cap=config.interior_energetics.aragog.phi_step_cap,
+            phi_step_cap=phi_step_cap,
+            temperature_step_cap=temperature_step_cap,
+            entropy_step_cap=entropy_step_cap,
         )
+        # The temperature/entropy step caps require a paired Aragog. Pass them
+        # only when the installed Aragog accepts them, so an older Aragog
+        # degrades to no caps with a clear warning instead of crashing on an
+        # unexpected keyword.
+        _energy_fields = set(inspect.signature(_EnergyParameters).parameters)
+        _unsupported = {'temperature_step_cap', 'entropy_step_cap'} - _energy_fields
+        if _unsupported and (temperature_step_cap > 0.0 or entropy_step_cap > 0.0):
+            log.warning(
+                'Installed Aragog does not support %s; per-cell %s step cap(s) '
+                'are disabled. Update Aragog to enable them.',
+                ', '.join(sorted(_unsupported)),
+                ' and '.join(sorted(_unsupported)),
+            )
+        for _key in _unsupported:
+            energy_kwargs.pop(_key, None)
+        energy = _EnergyParameters(**energy_kwargs)
 
         # Define initial conditions for prescribing temperature profile
         if config.interior_struct.module in ('spider', 'dummy'):
@@ -2147,11 +2259,19 @@ class AragogRunner:
             # quality (that is carried by ``E_residual_cons_frac``).
             'step_solver_residual_J': out.step_solver_residual_J,
             # Per-call adiabatic compression work [J] from the structure
-            # re-solve that preceded this step. Zero for a static
-            # structure; for a contracting interior it carries the
-            # pressure-rise enthalpy gain the boundary-flux budget omits,
-            # and the coupler adds it to ``dE_predicted_cons_J``.
+            # re-solve that preceded this step. Informational only: the
+            # conservation residual is built from the entropy-transported
+            # heat below, not from an enthalpy-plus-compression prediction.
             'step_dE_compression_J': out.step_dE_compression_J,
+            # Per-call entropy-transported heat content change [J], the
+            # Lagrangian heat the entropy ODE moves (rho*T weighting). Its
+            # cumulative sum is the state side of the conservation residual
+            # in the coupler; the boundary-flux+source sum is the predicted
+            # side. Both integrate the same entropy-transported heat, so the
+            # residual closes to about a percent of the cooling (the floor is
+            # the table-vs-phase density difference); machine-precision
+            # conservation is the separate solver-residual column.
+            'step_dE_state_heat_J': out.step_dE_state_heat_J,
             # Boundary layer thickness, taken straight from the atmosphere
             # config. Surfaced here so the helpfile carries a single
             # backend-agnostic field for downstream tooling that has to
