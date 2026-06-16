@@ -263,7 +263,7 @@ def parallel_process(
     log_list = mgr.list([None] * n_init)  # no logs from init data
 
     # Generate initial candidate locations and busy-map
-    X_init = init_locs(n_workers, D_shared)
+    X_init = init_locs(n_workers, D_shared, acqf=acqf)  # shape (n_workers, d)
     B = mgr.dict()
 
     # Shared list for end times

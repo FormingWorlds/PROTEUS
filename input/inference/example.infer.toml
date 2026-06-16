@@ -7,34 +7,34 @@ seed = 42
 logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "bayesopt_infer_se/"
+output = "bayesopt_infer_tr/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "output/bayesopt_se/init_coupler.toml"
+ref_config = "output/bayesopt_tr/init_coupler.toml"
 # ref_config = "input/inference/example.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
-init_samps = 3        # Number of random samples if starting from scratch.
+init_samps = 10        # Number of random samples if starting from scratch.
 init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
 
 # Excluded exit codes (in addition to errors)
-failure_codes = [10, 15, 11] # solidified, escaped, max_runtime
+failure_codes = [11, ] # solidified (10), escaped (15), max_runtime (11)
 
 # Parameters for Bayesian optimisation
 n_workers  = 10        # Number of parallel workers
 kernel     = "MAT3/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
-acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI" | "E-LogEI"
-n_steps    = 60       # Total number of evaluations (i.e. BO steps)
+acqf       = "LogPI"  # Acquisition function, "UCB" | "LogEI" | "LogPI"
+n_steps    = 70       # Total number of evaluations (i.e. BO steps)
 
 # Parameters to optimize (with bounds)
 [parameters]
 # "params.stop.time.maximum"  = [1e7,     3e9] # for SN only
 # "orbit.semimajoraxis"       = [0.05,    0.2] # for SN only
-"interior_energetics.boundary.T_p_0"   = [2000.0,  4000.0]
-"planet.mass_tot"           = [0.8,     4.0]
-"interior_struct.core_frac"           = [0.2,     0.8]
-"outgas.fO2_shift_IW"       = [-4.0,    4.0]
-"planet.elements.H_budget"= [10.0,     800.0]      # oceans
+# "interior_energetics.boundary.T_p_0"   = [2500.0,  4000.0]
+"planet.mass_tot"           = [1.0,     4.0]
+"interior_struct.core_frac"           = [0.3,     0.7]
+"outgas.fO2_shift_IW"       = [-3.5,    4.0]
+"planet.elements.H_budget"= [1e2,     1e4]      # Hppmw
 "planet.elements.C_budget"= [0.1,     4.0]        # C/H
 "planet.elements.S_budget"= [0.1,     4.0]        # S/H
 
@@ -42,35 +42,33 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 # Target observables to match by optimisation...
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_sn/runtime_helpfile.csv
-# extracted at index: 22, time: 1.000e+09 years
+# extracted at index: 21, time: 1.000e+09 years
 # [observables]
-# "M_planet" = 2.4274410589e+25
-# "R_obs" = 1.1352871937e+07
-# "T_obs" = 3.1396225714e+02
-# "atm_kg_per_mol" = 4.9827900710e-03
-# "C/O_atm" = 3.8957677816e+00
-# "S/O_atm" = 1.1561090750e+00
-
-
+# "M_planet" = 1.8436347535e+25
+# "R_obs" = 1.0931380030e+07
+# "T_obs" = 3.1214076787e+02
+# "atm_kg_per_mol" = 4.7775097322e-03
+# "C/O_atm" = 3.6017936980e+00
+# "S/O_atm" = 1.0713954525e+00
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
-# extracted at index: 23, time: 2.000e+09 years
-[observables]
-"M_planet" = 1.2759621632e+25
-"R_obs" = 7.8996146062e+06
-"T_obs" = 4.0878072823e+02
-"atm_kg_per_mol" = 2.2164619701e-02
-"C/O_atm" = 5.3529481582e-01
-"S/O_atm" = 9.6450311019e-01
-
+# extracted at index: 24, time: 5.000e+09 years
+# [observables]
+# "M_planet" = 1.2936790270e+25
+# "R_obs" = 8.5569979112e+06
+# "T_obs" = 4.1365102849e+02
+# "atm_kg_per_mol" = 2.1771616812e-02
+# "C/O_atm" = 5.8992053472e-01
+# "S/O_atm" = 1.2621662433e+00
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_tr/runtime_helpfile.csv
-# extracted at index: 20, time: 3.000e+08 years
-# [observables]
-# "M_planet" = 6.2554369561e+24
-# "R_obs" = 6.8761035576e+06
-# "T_obs" = 5.7279917373e+02
-# "atm_kg_per_mol" = 3.0173724223e-02
-# "C/O_atm" = 2.5987358639e-01
-# "S/O_atm" = 1.9713127819e-01
+# extracted at index: 19, time: 1.000e+08 years
+[observables]
+"M_planet" = 7.3155384046e+24
+"R_obs" = 6.9542228460e+06
+"T_obs" = 5.7852491838e+02
+"atm_kg_per_mol" = 3.4141930219e-02
+"C/O_atm" = 3.2525696507e-01
+"S/O_atm" = 1.3795011059e-01
+
 

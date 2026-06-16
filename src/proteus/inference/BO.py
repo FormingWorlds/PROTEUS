@@ -18,10 +18,10 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import torch
-from botorch.acquisition import (
+from botorch.acquisition.analytic import (
     LogExpectedImprovement,
+    LogProbabilityOfImprovement,
     UpperConfidenceBound,
-    qLogExpectedImprovement,
 )
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
@@ -50,6 +50,32 @@ def unit_bounds(d):
     # Build bounds [[0,...,0], [1,...,1]]
     bounds = torch.tensor([[0] * d, [1] * d], dtype=dtype)
     return bounds
+
+
+def get_acqf(name: str, gp: SingleTaskGP, best: float):
+    """Build the acquisition function.
+
+    Supports 'UCB', 'LogEI', and 'LogPI' acquisition functions.
+    See docs: https://botorch.readthedocs.io/en/latest/acquisition.html
+
+    Parameters
+    ----------
+    - name (str): Name of the acquisition function.
+    - gp (SingleTaskGP): Fitted Gaussian Process model.
+    - best (float): Current best observed value for EI/PI.
+
+    Returns
+    ----------
+    - AcquisitionFunction: The constructed acquisition function.
+    """
+    if name == 'UCB':
+        return UpperConfidenceBound(gp, beta=2.0)
+    elif name == 'LogEI':
+        return LogExpectedImprovement(gp, best_f=best)
+    elif name == 'LogPI':
+        return LogProbabilityOfImprovement(gp, best_f=best)
+    else:
+        raise ValueError(f'Unsupported acquisition function: {name}')
 
 
 def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
@@ -114,18 +140,10 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
 
         t_0_ac = time.perf_counter()
 
-        # build acquisition function
-        if acqf == 'UCB':
-            acqf = UpperConfidenceBound(gp, beta=2.0)
-        elif acqf == 'LogEI':
-            acqf = LogExpectedImprovement(gp, best_f=best)
-        elif acqf == 'E-LogEI':
-            acqf = qLogExpectedImprovement(gp, best_f=best, X_pending=busys)
-        else:
-            raise ValueError('Unknown acquisition function, choices are UCB or LogEI')
+        acqf_f = get_acqf(acqf, gp, best)
 
         x, _ = optimize_acqf(
-            acq_function=acqf,  # expects outputs shape (N)
+            acq_function=acqf_f,  # expects outputs shape (N)
             bounds=unit_bounds(d),
             q=1,
             num_restarts=10,
@@ -187,13 +205,14 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
     )
 
 
-def init_locs(n_workers: int, D: dict) -> torch.Tensor:
+def init_locs(n_workers: int, D: dict, acqf: str = 'LogEI') -> torch.Tensor:
     """Generate initial sample locations using batch acqf.
 
     Parameters
     ----------
     - n_workers (int): Number of initial points to generate.
     - D (dict): Shared dict with key 'X' to infer problem dimension.
+    - acqf (str): Name of the acquisition function to use.
 
     Returns
     ----------
@@ -226,10 +245,10 @@ def init_locs(n_workers: int, D: dict) -> torch.Tensor:
     )
 
     # build acquisition function
-    acqf = qLogExpectedImprovement(gp, best_f=best)
+    acqf_f = get_acqf(acqf, gp, best)
 
     x_batch, _ = optimize_acqf(
-        acq_function=acqf,
+        acq_function=acqf_f,
         bounds=unit_bounds(d),
         q=n_workers,
         num_restarts=10,

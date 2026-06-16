@@ -164,14 +164,14 @@ def test_bo_step_ucb_path_computes_distance(monkeypatch):
 def test_init_locs_returns_batch_candidates(monkeypatch):
     """``init_locs(n, D)`` returns an n*d tensor of initial candidate
     locations for the n workers; the returned rows are exactly the
-    output of ``optimize_acqf`` over the qLogExpectedImprovement
+    output of ``optimize_acqf`` over the LogExpectedImprovement
     acquisition.
     """
     monkeypatch.setattr(bo_mod, 'get_kernel_w_prior', lambda *args, **kwargs: object())
     monkeypatch.setattr(bo_mod, 'SingleTaskGP', lambda **kwargs: _DummyGP())
     monkeypatch.setattr(bo_mod, 'ExactMarginalLogLikelihood', lambda _lik, _gp: object())
     monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *args, **kwargs: None)
-    monkeypatch.setattr(bo_mod, 'qLogExpectedImprovement', lambda _gp, best_f: object())
+    monkeypatch.setattr(bo_mod, 'LogExpectedImprovement', lambda _gp, best_f: object())
     monkeypatch.setattr(
         bo_mod,
         'optimize_acqf',

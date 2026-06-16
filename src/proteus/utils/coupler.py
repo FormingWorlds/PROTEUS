@@ -1078,7 +1078,12 @@ def variable_is_logarithmic(varname: str) -> bool:
         'semimajorax',
         'eccentricity',
         'params.stop.time.maximum',
+        'planet.elements.H_budget',
+        'planet.elements.C_budget',
+        'planet.elements.S_budget',
+        'planet.elements.N_budget',
         'orbit.semimajoraxis',
+        'atm_kg_per_mol',
     ):
         out = True
 
