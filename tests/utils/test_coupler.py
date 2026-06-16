@@ -419,6 +419,65 @@ def test_write_and_read_helpfile_roundtrip():
 
 
 @pytest.mark.unit
+def test_write_helpfile_preserves_prior_file_on_failed_write():
+    """A crash or full disk mid-write must not destroy the existing helpfile.
+
+    The atomic write serialises to a temporary file and renames it into
+    place, so a failed serialisation leaves the previous complete file
+    untouched and a later resume can still read a full row history. A
+    direct remove-then-write would have left the helpfile missing, which
+    is the empty-CSV state that blocks resume.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row1 = ZeroHelpfileRow()
+        row1['Time'] = 111.0
+        row1['T_surf'] = 301.0
+        WriteHelpfileToCSV(tmpdir, CreateHelpfileFromDict(row1))
+
+        fpath = os.path.join(tmpdir, 'runtime_helpfile.csv')
+        with open(fpath) as fh:
+            before = fh.read()
+
+        # Simulate a disk-full / killed process during the next write.
+        row2 = ZeroHelpfileRow()
+        row2['Time'] = 222.0
+        hf2 = CreateHelpfileFromDict(row2)
+        with patch.object(
+            pd.DataFrame,
+            'to_csv',
+            side_effect=OSError('[Errno 28] No space left on device'),
+        ):
+            with pytest.raises(OSError):
+                WriteHelpfileToCSV(tmpdir, hf2)
+
+        # The prior complete file survives byte-for-byte, and no temp
+        # artefact is left behind.
+        assert os.path.exists(fpath)
+        with open(fpath) as fh:
+            assert fh.read() == before
+        assert not os.path.exists(fpath + '.tmp')
+
+        # Discrimination guard: the surviving file is the v1 row (Time=111),
+        # not the failed v2 row (Time=222) and not an empty file.
+        df = pd.read_csv(fpath, sep=r'\s+')
+        assert len(df) == 1
+        assert df['Time'].iloc[0] == pytest.approx(111.0)
+
+
+@pytest.mark.unit
+def test_write_helpfile_leaves_no_temp_file_on_success():
+    """A successful atomic write leaves only the final CSV, no .tmp artefact."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        row['Time'] = 5.0
+        WriteHelpfileToCSV(tmpdir, CreateHelpfileFromDict(row))
+
+        entries = os.listdir(tmpdir)
+        assert 'runtime_helpfile.csv' in entries
+        assert not any(e.endswith('.tmp') for e in entries)
+
+
+@pytest.mark.unit
 def test_read_helpfile_from_csv_missing_file():
     """Test that ReadHelpfileFromCSV raises error for missing file."""
     with tempfile.TemporaryDirectory() as tmpdir:

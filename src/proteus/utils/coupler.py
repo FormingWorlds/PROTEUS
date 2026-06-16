@@ -1067,13 +1067,23 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     if len(difference) > 0:
         raise Exception('There are mismatched keys in helpfile: ' + str(difference))
 
-    # remove old file
+    # Write atomically: serialise to a temporary file in the same
+    # directory, then rename it into place. A direct remove-then-write
+    # leaves the helpfile missing or truncated if the process is killed
+    # (or the disk fills) mid-write, and an empty helpfile then blocks
+    # resume because the restored row history is too short. os.replace is
+    # atomic within one filesystem, so a reader, or a later resume, always
+    # sees either the complete previous file or the complete new one. On a
+    # failed write the previous file is left untouched.
     fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
-    if os.path.exists(fpath):
-        os.remove(fpath)
-
-    # write new file
-    current_hf.to_csv(fpath, index=False, sep='\t', float_format='%.10e')
+    tmp_path = fpath + '.tmp'
+    try:
+        current_hf.to_csv(tmp_path, index=False, sep='\t', float_format='%.10e')
+        os.replace(tmp_path, fpath)
+    except BaseException:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
     return fpath
 
 
