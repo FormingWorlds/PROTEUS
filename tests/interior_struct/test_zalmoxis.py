@@ -428,11 +428,16 @@ def test_validate_zalmoxis_output_schema_accumulator_overrides_trapezoid(tmp_pat
     # With the accurate accumulator reference: passes silently.
     result = validate_zalmoxis_output_schema(output_path, hf_row, mantle_mass_ref=M_mantle_true)
     assert result is None  # accumulator path returns None on a match
-    # Discrimination guard: the trapezoid/truth gap (10%) is double the 5%
-    # default tolerance, so the pass cannot be an artifact of a loose threshold.
-    trapezoid_gap = abs(M_mantle_file / M_mantle_true - 1.0)
-    assert trapezoid_gap == pytest.approx(0.10, abs=1e-9)
-    assert trapezoid_gap > 5e-2
+    # The accumulator reference equals the truth exactly, so it passes even at a
+    # tolerance far tighter than the 10% trapezoid gap. This pins that the check
+    # evaluated the supplied reference, not the file's trapezoid sum: a
+    # regression that ignored mantle_mass_ref and re-integrated the file would
+    # see a 10% gap and raise at this tolerance.
+    validate_zalmoxis_output_schema(
+        output_path, hf_row, mantle_mass_ref=M_mantle_true, rtol_mass=1e-6
+    )
+    with pytest.raises(RuntimeError, match='trapezoid'):
+        validate_zalmoxis_output_schema(output_path, hf_row, rtol_mass=1e-6)
 
 
 @pytest.mark.unit
@@ -464,9 +469,16 @@ def test_validate_zalmoxis_output_schema_accumulator_mismatch_raises(tmp_path):
         output_path, hf_row, mantle_mass_ref=expected_mantle * 1.01
     )
     assert result is None  # sub-tolerance snap overshoot must not raise
-    # Discrimination guard: 1% passes, 12% raises, so the boundary sits
-    # strictly between them rather than rubber-stamping any reference.
-    assert abs(1.01 - 1.0) < 5e-2 < abs(1.12 - 1.0)
+    # The 5% gate sits strictly between these references: 4.9% off passes,
+    # 5.1% off raises. This pins the threshold against the function's own
+    # behaviour rather than against test-side literals.
+    validate_zalmoxis_output_schema(
+        output_path, hf_row, mantle_mass_ref=expected_mantle * 1.049
+    )
+    with pytest.raises(RuntimeError, match='accumulator'):
+        validate_zalmoxis_output_schema(
+            output_path, hf_row, mantle_mass_ref=expected_mantle * 1.051
+        )
 
 
 @pytest.mark.unit
