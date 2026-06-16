@@ -117,7 +117,6 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.boundary.thermal_conductivity',
         'interior_energetics.boundary.thermal_diffusivity',
         'interior_energetics.boundary.thermal_expansivity',
-        'interior_energetics.boundary.transition_width',
         'interior_energetics.boundary.viscosity_activation_temp',
         'interior_energetics.boundary.viscosity_model',
         'interior_energetics.boundary.viscosity_prefactor',

@@ -52,8 +52,8 @@ def create_init(config):
     if init_grid.lower().strip() == 'none':
         init_grid = None
         init_samps = int(config['init_samps'])
-        if init_samps < 2:
-            raise ValueError('Initial guess dataset must contain >1 sample')
+        if init_samps < 1:
+            init_samps = int(config['n_workers'])
     else:
         init_grid = os.path.join(get_proteus_directories()['proteus'], 'output', init_grid)
         init_samps = None

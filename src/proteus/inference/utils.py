@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 import toml
 import torch
+from botorch.models import SingleTaskGP
 from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.kernels import MaternKernel, RBFKernel
 from gpytorch.priors.torch_priors import LogNormalPrior
@@ -239,6 +240,38 @@ def print_results(D, logs, config, output, n_init):
     return in_path
 
 
+def get_acqf(name: str, gp: SingleTaskGP, best: float):
+    """Build the acquisition function.
+
+    Supports 'UCB', 'LogEI', and 'LogPI' acquisition functions.
+    See docs: https://botorch.readthedocs.io/en/latest/acquisition.html
+
+    Parameters
+    ----------
+    - name (str): Name of the acquisition function.
+    - gp (SingleTaskGP): Fitted Gaussian Process model.
+    - best (float): Current best observed value for EI/PI.
+
+    Returns
+    ----------
+    - AcquisitionFunction: The constructed acquisition function.
+    """
+    if name == 'UCB':
+        from botorch.acquisition.analytic import UpperConfidenceBound
+
+        return UpperConfidenceBound(gp, beta=2.0)
+    elif name == 'LogEI':
+        from botorch.acquisition.analytic import LogExpectedImprovement
+
+        return LogExpectedImprovement(gp, best_f=best)
+    elif name == 'LogPI':
+        from botorch.acquisition.analytic import LogProbabilityOfImprovement
+
+        return LogProbabilityOfImprovement(gp, best_f=best)
+    else:
+        raise ValueError(f'Unsupported acquisition function: {name}')
+
+
 def get_kernel_w_prior(
     ard_num_dims: int,
     batch_shape: torch.Size | None = None,
@@ -276,6 +309,30 @@ def get_kernel_w_prior(
         active_dims=active_dims,
     )
     return base_kernel
+
+
+def get_kernel(kernel: str, d: int) -> MaternKernel | RBFKernel:
+    """Return a kernel with priors based on the specified type.
+
+    Parameters
+    ----------
+    - kernel (str): Kernel type ('RBF', 'MAT1/2', 'MAT3/2', 'MAT5/2').
+    - d (int): Number of input dimensions.
+
+    Returns
+    ----------
+    - MaternKernel | RBFKernel: Configured kernel instance.
+    """
+    if kernel == 'RBF':
+        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=True)
+    elif kernel == 'MAT1/2':
+        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=0.5)
+    elif kernel == 'MAT3/2':
+        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=1.5)
+    elif kernel == 'MAT5/2':
+        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=2.5)
+    else:
+        raise ValueError('Unknown kernel, choices are RBF or MAT{1/2, 3/2, 5/2}')
 
 
 def get_obs(out_csv, observables: list[str]):

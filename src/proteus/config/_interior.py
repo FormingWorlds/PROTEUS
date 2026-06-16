@@ -255,8 +255,6 @@ class InteriorBoundary:
         Viscosity parameterisation model. Choices: 1 (constant), 2 (aggregate smooth transition), 3 (Arrhenius temperature-dependent).
     eta_constant: float
         Constant viscosity value [Pa s] for model 1.
-    transition_width: float
-        Width of viscosity transition in melt fraction space [-] for aggregate model.
     eta_solid_const: float
         Constant solid viscosity for aggregate formulation [Pa s].
     eta_melt_const: float
@@ -301,7 +299,6 @@ class InteriorBoundary:
     eta_constant: float = field(default=1e2, validator=gt(0))  # Pa s, for model 1
 
     # Aggregate viscosity parameters
-    transition_width: float = field(default=0.2, validator=(gt(0), lt(1)))  # -
     eta_solid_const: float = field(default=1e22, validator=gt(0))  # Pa s
     eta_melt_const: float = field(default=1e2, validator=gt(0))  # Pa s
 

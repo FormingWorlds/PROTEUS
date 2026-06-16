@@ -23,7 +23,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-ATM_MASS_MIN = 1.0
+ATM_MASS_MIN = 1.0  # min atmosphere mass
+DELTA_MIN = 1e-3  # min CBL thickness
 
 
 class BoundaryRunner:
@@ -167,7 +168,7 @@ class BoundaryRunner:
 
         # Aggregate viscosity parameters
         self.transition_width = (
-            config.interior_energetics.boundary.transition_width
+            config.interior_energetics.phase_transition_width
         )  # dimensionless
         self.eta_solid_const = config.interior_energetics.boundary.eta_solid_const  # Pa s
         self.eta_melt_const = config.interior_energetics.boundary.eta_melt_const  # Pa s
@@ -400,8 +401,8 @@ class BoundaryRunner:
 
         # calculate boundary layer thickness using Fourier's law
         delta = self.thermal_conductivity * (T_p - T_surf) / q_m_val
-        if delta < 1e-3 or np.isnan(delta) or np.isinf(delta):
-            delta = 1e-3
+        if delta < DELTA_MIN or np.isnan(delta) or np.isinf(delta):
+            delta = DELTA_MIN
 
         return delta
 

@@ -26,7 +26,7 @@ import pandas as pd
 import torch
 
 from proteus.inference.BO import BO_step, init_locs
-from proteus.inference.utils import get_kernel_w_prior, load_dataset_csv, save_dataset_csv
+from proteus.inference.utils import get_kernel, load_dataset_csv, save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
 
 # Tensor dtype for all computations
@@ -227,16 +227,7 @@ def parallel_process(
 
     # Build kernel
     d = len(parameters)
-    if kernel == 'RBF':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=True)
-    elif kernel == 'MAT1/2':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=0.5)
-    elif kernel == 'MAT3/2':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=1.5)
-    elif kernel == 'MAT5/2':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=2.5)
-    else:
-        raise ValueError('Unknown kernel, choices are RBF or MAT{1/2, 3/2, 5/2}')
+    kernel = get_kernel(kernel, d)
 
     process_fun = partial(
         BO_step,
