@@ -28,6 +28,8 @@ import pytest
 
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
+    _RESUME_STRUCT_DPHI_BACKSTOP_CAP,
+    _RESUME_STRUCT_DR_REL_TOL,
     _prevent_warming_clamp_active,
     update_structure_from_interior,
 )
@@ -4288,3 +4290,313 @@ def test_composition_sentinel_update_after_structure_change():
     assert dirs['_last_w_H2_liquid'] == pytest.approx(1e20 / 3e24, rel=1e-12)
     # Discrimination: the old values (1e21/3e24 and 0.0) are gone
     assert dirs['_last_w_H2O_liquid'] != pytest.approx(1e21 / 3e24)
+
+
+# ============================================================================
+# Resume-settling structure-re-solve guard
+#
+# After a resume the interior relaxes thermally over the first loops and the
+# dT/T trigger fires every loop, but the structure radius converges after the
+# first couple of re-solves and then no longer moves. The guard suppresses a
+# dT/T-only re-solve once the structure has converged (small |dR_int/R_int|),
+# within a resume-armed window, with a Phi backstop so genuine solidification
+# is never frozen. These are structural (control-flow) tests, not physics
+# invariants, so they carry no physics_invariant marker.
+# ============================================================================
+
+
+def _dtmagma_scenario(update_dphi_abs=0.05):
+    """Inputs that make the dT/T trigger the SOLE re-solve trigger.
+
+    Elapsed (500 yr) clears the 100 yr floor and sits under the 1000 yr
+    ceiling; T_magma drops 3000->2800 K (dT/T=0.067 >= 0.03) while Phi is
+    unchanged, so neither the ceiling, stale, Phi, nor composition trigger
+    fires. ``update_dphi_abs`` is exposed so a test can disable the Phi
+    trigger (0.999, production-like) and exercise the guard's own Phi backstop.
+    """
+    config = _mock_config(update_dphi_abs=update_dphi_abs)
+    hf_row = {
+        'Time': 500.0,
+        'T_magma': 2800.0,
+        'Phi_global': 0.80,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    # Baselines passed as last_struct_*: dT/T = |2800-3000|/3000 = 0.067.
+    return config, hf_row, 0.0, 3000.0, 0.80
+
+
+def _solver_patches(side_effect=None, return_value=(3.504e6, None)):
+    """Patch the Zalmoxis solver plus the file writes its success path performs."""
+    kw = {'side_effect': side_effect} if side_effect else {'return_value': return_value}
+    return (
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', **kw),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    )
+
+
+@pytest.mark.unit
+def test_resume_settling_guard_suppresses_converged_dtmagma_resolve():
+    """An armed window + converged structure suppresses the dT/T re-solve.
+
+    The dT/T trigger fires, but the last accepted re-solve barely moved R_int
+    (|dR_int/R_int| below tolerance) and the window is open, so the guard
+    returns the unchanged sentinel WITHOUT calling the ~1300 s solver. This is
+    the spurious-re-solve burst the guard exists to kill.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    # Below tolerance => structure converged. Use half the tolerance so the
+    # comparison is unambiguous, not a boundary coincidence.
+    dirs['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    interior_o = _mock_interior_o()
+
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_solver:
+        result = update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    # Side-effect discrimination: the guard must short-circuit BEFORE the solver.
+    mock_solver.assert_not_called()
+    # And return the no-update sentinel (the passed-in baselines), unchanged.
+    assert result == (lt, lT, lP)
+
+
+@pytest.mark.unit
+def test_resume_settling_guard_inactive_on_forward_run():
+    """With no window armed (a fresh run), the identical inputs DO re-solve.
+
+    This is the forward-byte-identity guarantee: a fresh run never sets
+    ``_resume_struct_settle_loops`` in dirs, so the guard branch is skipped
+    entirely and the dT/T trigger proceeds to the solver exactly as before the
+    guard existed. The discriminating contrast to the suppressed case is the
+    sole absence of the window key.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    dirs = _mock_dirs()
+    # Fresh-run state: NO window key, and a converged-looking dR would-be value
+    # present must NOT matter without the window.
+    dirs['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    interior_o = _mock_interior_o()
+
+    s, ns, cp = _solver_patches()
+    with s as mock_solver, ns, cp:
+        result = update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    # The dT/T trigger must reach the solver: forward behaviour is unchanged.
+    mock_solver.assert_called_once()
+    # Success returns the current state, not the stale baselines.
+    assert result[0] == pytest.approx(500.0, rel=1e-12)
+    assert result != (lt, lT, lP)
+
+
+@pytest.mark.unit
+def test_resume_settling_guard_allows_resolve_while_structure_moving():
+    """An armed window does NOT suppress while the structure is still moving.
+
+    If the last accepted re-solve moved R_int by more than the tolerance, the
+    structure has not converged, so suppressing would freeze a genuinely
+    evolving radius (the EOS-vs-mesh desync failure mode). The guard must let
+    the re-solve through. Discriminates against a guard keyed only on the
+    window + trigger, ignoring dR.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    # Two orders of magnitude ABOVE tolerance: structure clearly still moving.
+    dirs['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL * 100.0
+    interior_o = _mock_interior_o()
+
+    s, ns, cp = _solver_patches()
+    with s as mock_solver, ns, cp:
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+
+
+@pytest.mark.unit
+def test_resume_settling_guard_phi_backstop_forces_resolve():
+    """A Phi move beyond the backstop forces the re-solve even when converged.
+
+    With the Phi trigger disabled (0.999, production-like) a real rheological
+    change would otherwise slip past, so the guard's own Phi backstop must
+    force the structure update. The paired control (Phi unchanged, same
+    converged dR and window) confirms that WITHOUT the backstop the guard
+    suppresses, isolating the backstop as the cause.
+    """
+    # Phi trigger disabled (0.999) so it cannot pre-empt the dT/T trigger; the
+    # effective backstop is then the cap, min(0.999, cap) = cap.
+    config, hf_row, lt, lT, lP_base = _dtmagma_scenario(update_dphi_abs=0.999)
+    # Phi moved past the cap since the last structure update -> backstop fires.
+    last_Phi = hf_row['Phi_global'] - (_RESUME_STRUCT_DPHI_BACKSTOP_CAP + 0.05)
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    dirs['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    interior_o = _mock_interior_o()
+
+    s, ns, cp = _solver_patches()
+    with s as mock_solver, ns, cp:
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, 3000.0, last_Phi)
+    # Backstop fires -> the solver runs despite the converged structure.
+    mock_solver.assert_called_once()
+
+    # Control: identical converged state but Phi unchanged -> guard suppresses.
+    dirs_ctrl = _mock_dirs()
+    dirs_ctrl['_resume_struct_settle_loops'] = 50
+    dirs_ctrl['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_ctrl:
+        update_structure_from_interior(
+            dirs_ctrl, config, hf_row, _mock_interior_o(), lt, 3000.0, hf_row['Phi_global']
+        )
+    mock_ctrl.assert_not_called()
+
+
+@pytest.mark.unit
+def test_resume_settling_guard_backstop_tracks_active_dphi_trigger():
+    """Backstop ties to update_dphi_abs, so it never blocks a dT/T re-solve.
+
+    When the melt-fraction trigger is active (update_dphi_abs=0.05, the
+    production dynamic setting), a dT/T-triggered re-solve can only occur with
+    a Phi change already below 0.05 (otherwise the melt-fraction trigger would
+    fire instead). A converged structure with such a sub-threshold Phi change
+    must therefore be SUPPRESSED. This is the case a fixed backstop of 0.02
+    wrongly blocked: a Phi change of 0.03 sits in [0.02, 0.05), firing the dT/T
+    trigger yet exceeding the old backstop. The effective backstop is now
+    min(0.05, cap)=0.05, so 0.03 passes and the guard suppresses.
+    """
+    # update_dphi_abs=0.05 active; dPhi=0.03 is below it (so the dT/T trigger,
+    # not the melt-fraction trigger, fires) yet above the old 0.02 backstop.
+    config, hf_row, lt, lT, _ = _dtmagma_scenario(update_dphi_abs=0.05)
+    last_Phi = hf_row['Phi_global'] - 0.03
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    dirs['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    interior_o = _mock_interior_o()
+
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_solver:
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, lt, 3000.0, last_Phi
+        )
+
+    # The dPhi change (0.03) is below the effective backstop (0.05), so the
+    # converged structure is NOT re-solved: this is the dead-zone fix.
+    mock_solver.assert_not_called()
+    assert result == (lt, 3000.0, last_Phi)
+    # Discrimination: 0.03 is strictly above the previous fixed 0.02 backstop,
+    # so the old logic would have re-solved here; the config-tied backstop
+    # (0.05) is what makes the suppression correct.
+    assert 0.03 > 0.02
+    assert 0.03 < min(
+        config.interior_struct.zalmoxis.update_dphi_abs, _RESUME_STRUCT_DPHI_BACKSTOP_CAP
+    )
+
+
+@pytest.mark.unit
+def test_resume_settling_guard_disengages_when_window_expired():
+    """Once the window counts down to zero the guard stops suppressing.
+
+    A converged structure with the window at zero must re-solve normally, so
+    genuine later cooling-driven structure changes are never permanently
+    frozen after the resume transient ends. Boundary case: exactly zero.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 0  # window exhausted
+    dirs['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    interior_o = _mock_interior_o()
+
+    s, ns, cp = _solver_patches()
+    with s as mock_solver, ns, cp:
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+
+
+@pytest.mark.unit
+def test_resume_settling_records_relative_radius_change():
+    """A successful re-solve records |dR_int/R_int| for the next loop's guard.
+
+    The recorded value is what the guard reads to decide convergence, so it
+    must equal the relative radius change the solve actually produced. The mock
+    shrinks R_int by 0.05 %, a non-trivial value distinct from both zero and
+    the tolerance, so the assertion cannot pass on a stale or hard-coded entry.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    dirs = _mock_dirs()  # forward run: no window, so the solve proceeds
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _shrink_radius(*args, **kwargs):
+        # Aragog cooling shrinks the radius; a decrease avoids the
+        # monotonic-radius up-step guard. 0.05 % is well above the 1e-4 tol.
+        passed_hf = args[2]
+        passed_hf['R_int'] = r_prev * (1.0 - 5e-4)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_shrink_radius)
+    with s as mock_solver, ns, cp:
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    assert dirs['_last_resolve_dR_rel'] == pytest.approx(5e-4, rel=1e-9)
+    # Discrimination: it is NOT zero (a no-op record) and IS above tolerance,
+    # so a subsequent guard check would correctly see the structure as moving.
+    assert dirs['_last_resolve_dR_rel'] > _RESUME_STRUCT_DR_REL_TOL
+
+
+@pytest.mark.unit
+def test_resume_settling_monotonic_noop_records_zero_dr():
+    """A rejected up-step (monotonic no-op) records dR_rel=0 so the guard can skip.
+
+    On a super-liquidus resume the dynamic re-solve can produce a small radius
+    INCREASE that the monotonic-radius guard rejects as a cross-table artifact,
+    retaining the previous structure. The accepted radius then did not change,
+    so the guard must record |dR_int/R_int|=0. Otherwise a prior
+    above-tolerance value persists and the guard never reaches the skip
+    condition, leaving the spurious re-solve burst un-suppressed (the failure
+    mode observed in a live resume: dR_rel stuck at 2e-4 across no-op solves).
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    # Prior above-tolerance value: the guard proceeds to the solve, and the
+    # no-op outcome must OVERWRITE this to 0.
+    dirs['_last_resolve_dR_rel'] = 2.0e-4
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        # Solve nudges the radius UP past the running minimum -> rejected as a
+        # cross-table artifact by the monotonic-radius guard.
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    # The solve runs (the no-op only triggers after the solver returns the
+    # rejected up-step), then the guard records the retained-structure outcome.
+    mock_solver.assert_called_once()
+    assert dirs['_last_resolve_dR_rel'] == 0.0
+    # Discrimination: the rejected up-step was +1e-3 relative; recording THAT
+    # (or leaving the prior 2e-4) would keep the guard above tolerance forever.
+    # Zero is what lets the next dT/T trigger skip.
+    assert dirs['_last_resolve_dR_rel'] < _RESUME_STRUCT_DR_REL_TOL

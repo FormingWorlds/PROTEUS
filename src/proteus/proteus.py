@@ -647,6 +647,19 @@ class Proteus:
             self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
             self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
 
+            # Arm the resume-settling structure-re-solve guard. The resumed
+            # interior relaxes thermally over the first loops and would
+            # otherwise fire repeated dynamic structure re-solves that recompute
+            # the same converged radius at a large wall cost. The guard (in
+            # interior_energetics/wrapper.py) suppresses dT/T-only re-solves once
+            # the radius has converged, within this window. Only the resume path
+            # arms it, so a fresh run's re-solve cadence is unchanged.
+            from proteus.interior_energetics.wrapper import (
+                _RESUME_STRUCT_SETTLE_LOOPS,
+            )
+
+            self.directories['_resume_struct_settle_loops'] = _RESUME_STRUCT_SETTLE_LOOPS
+
             # Save the coupled T_surf for the first resumed atmosphere solve.
             # Aragog's first step outputs an adiabatic T_magma ~30-50 K above
             # the coupled T_surf because the conductive skin layer is an AGNI
@@ -814,6 +827,13 @@ class Proteus:
                 if _IT_TIMING_ENABLED:
                     _t_mod['structure'] = time.perf_counter() - _t0
                 # gc.collect() already called inside update_structure_from_interior()
+
+                # Count down the resume-settling structure-re-solve window once
+                # per loop. When it reaches zero the guard disengages and the
+                # normal dynamic re-solve cadence resumes. Only ever armed on the
+                # resume path, so a fresh run never decrements (the key is absent).
+                if self.directories.get('_resume_struct_settle_loops', 0) > 0:
+                    self.directories['_resume_struct_settle_loops'] -= 1
 
             ############### / INTERIOR AND STRUCTURE
 

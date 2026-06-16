@@ -64,6 +64,31 @@ _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 # counter resets on each successful Aragog call.
 _ARAGOG_MAX_CONSECUTIVE_FAILS = 3
 
+# Resume-settling guard for the dynamic structure re-solve. After a resume the
+# interior relaxes thermally over the first loops, swinging T_magma enough to
+# fire the dT/T structure-re-solve trigger every loop. The structure radius,
+# however, converges after the first couple of re-solves and then no longer
+# moves (R_int tracks melt fraction, not temperature), so subsequent
+# dT/T-triggered re-solves recompute the same radius at a large wall cost. Once
+# the structure has converged (relative R_int change below the tolerance), the
+# guard suppresses further dT/T-only-triggered re-solves for the remainder of
+# the settling window; the mesh-convergence, ceiling, stale-ceiling and Phi
+# triggers are left intact, and a Phi move beyond the backstop forces a re-solve
+# so genuine solidification during the window is never frozen. The window is
+# armed only on resume, so a fresh run never enters the guard.
+#
+# The backstop is the SMALLER of the config's own melt-fraction trigger
+# (update_dphi_abs) and the cap below. A dT/T-triggered re-solve only happens
+# when the melt-fraction trigger did NOT fire, i.e. when the Phi change is
+# already below update_dphi_abs, so tying the backstop to update_dphi_abs means
+# the guard never blocks a re-solve the melt-fraction trigger would have let
+# through. The cap supplies a finite floor for configs that disable the
+# melt-fraction trigger (update_dphi_abs set very high), so a large Phi move in
+# the window still forces a re-solve there.
+_RESUME_STRUCT_SETTLE_LOOPS = 50
+_RESUME_STRUCT_DR_REL_TOL = 1e-4
+_RESUME_STRUCT_DPHI_BACKSTOP_CAP = 0.10
+
 log = logging.getLogger('fwl.' + __name__)
 
 
@@ -2105,6 +2130,11 @@ def update_structure_from_interior(
     # trigger, so every change-based test below self-skips on `not triggered`.
     triggered = force
     reason = 'init baseline (interior-fed callable representation)' if force else ''
+    # Tracks whether the dT/T (temperature) trigger is the SOLE reason for this
+    # re-solve. The resume-settling guard below acts only on a dT/T-only
+    # re-solve; every other trigger (mesh convergence, ceiling, stale, Phi,
+    # composition) sets `triggered` first and short-circuits the dT/T block.
+    trigger_is_dtmagma = False
 
     # Mesh convergence trigger: bypasses normal floor when mesh is still
     # converging toward the true Zalmoxis solution after blending
@@ -2166,6 +2196,7 @@ def update_structure_from_interior(
         dT_frac = abs(hf_row['T_magma'] - last_Tmagma) / last_Tmagma
         if dT_frac >= config.interior_struct.zalmoxis.update_dtmagma_frac:
             triggered = True
+            trigger_is_dtmagma = True
             reason = (
                 f'dT/T={dT_frac:.3f} >= {config.interior_struct.zalmoxis.update_dtmagma_frac}'
             )
@@ -2191,6 +2222,57 @@ def update_structure_from_interior(
 
     if not triggered:
         return no_update
+
+    # Resume-settling guard. During the first loops after a resume the interior
+    # relaxes thermally and the dT/T trigger fires every loop, but the structure
+    # radius converges after the first couple of re-solves and then no longer
+    # moves, so each further dT/T re-solve recomputes the same radius at a large
+    # wall cost. Once the last accepted re-solve changed R_int by less than the
+    # tolerance (structure converged), suppress a dT/T-ONLY re-solve for the rest
+    # of the window. A Phi move beyond the backstop forces the re-solve so genuine
+    # solidification during the window is never frozen, and only the dT/T trigger
+    # is gated (mesh-convergence, ceiling, stale and Phi triggers always proceed).
+    # The window is armed only on the resume code path, so forward runs never
+    # reach this branch and their re-solve cadence is unchanged.
+    if trigger_is_dtmagma and dirs.get('_resume_struct_settle_loops', 0) > 0:
+        _dR_rel = dirs.get('_last_resolve_dR_rel')
+        _dPhi_since = abs(hf_row['Phi_global'] - last_Phi)
+        # Tie the backstop to the config's own melt-fraction trigger so the guard
+        # never blocks a re-solve that trigger would have allowed (a dT/T-only
+        # re-solve already implies dPhi < update_dphi_abs), capped so a
+        # melt-fraction-trigger-disabled config still has a finite Phi floor.
+        _backstop = min(
+            config.interior_struct.zalmoxis.update_dphi_abs,
+            _RESUME_STRUCT_DPHI_BACKSTOP_CAP,
+        )
+        _converged = _dR_rel is not None and _dR_rel < _RESUME_STRUCT_DR_REL_TOL
+        if _converged and _dPhi_since < _backstop:
+            log.info(
+                'Resume settling: skipping dT/T-triggered structure re-solve '
+                '(%s; last |dR_int/R_int|=%.2e < %.0e, dPhi=%.4f < %.3f, '
+                'window %d loops left). Structure already converged; the re-solve '
+                'would recompute the same radius.',
+                reason,
+                _dR_rel,
+                _RESUME_STRUCT_DR_REL_TOL,
+                _dPhi_since,
+                _backstop,
+                dirs['_resume_struct_settle_loops'],
+            )
+            return no_update
+        # Observable trace of why the guard did NOT suppress this dT/T re-solve
+        # (first solve has no recorded dR yet; structure still moving; or Phi
+        # moved past the backstop). Lets a resume log show the guard's decision.
+        log.info(
+            'Resume settling: dT/T re-solve proceeds (%s; last |dR_int/R_int|=%s, '
+            'converged=%s, dPhi=%.4f vs backstop %.3f, window %d loops left).',
+            reason,
+            'n/a' if _dR_rel is None else '%.2e' % _dR_rel,
+            _converged,
+            _dPhi_since,
+            _backstop,
+            dirs['_resume_struct_settle_loops'],
+        )
 
     log.info('Updating structure from interior T(r) via Zalmoxis (trigger: %s)', reason)
 
@@ -2422,6 +2504,11 @@ def update_structure_from_interior(
                 interior_o.last_successful_struct_time = float(current_time)
             except AttributeError:
                 pass
+            # The previous structure was retained, so the accepted radius did
+            # not change: record zero so the resume-settling guard treats this
+            # as converged and suppresses further spurious dT/T re-solves (a
+            # rejected cross-table up-step recurs every step otherwise).
+            dirs['_last_resolve_dR_rel'] = 0.0
             return (
                 current_time,
                 float(hf_row['T_magma']),
@@ -2445,6 +2532,13 @@ def update_structure_from_interior(
         # set to True on fall-back and cleared here on success, so
         # Aragog can tell whether it is running on a fresh or stale mesh.
         hf_row['_structure_stale'] = False
+        # Record the relative radius change this accepted re-solve produced.
+        # The resume-settling guard reads it next loop: a value below the
+        # tolerance means the structure has converged and a further
+        # dT/T-triggered re-solve would recompute the same radius.
+        _R_int_post = float(hf_row.get('R_int', 0.0) or 0.0)
+        if R_int_prev > 0.0:
+            dirs['_last_resolve_dR_rel'] = abs(_R_int_post - R_int_prev) / R_int_prev
         # Anchor the stale-aware ceiling on the last SUCCESSFUL
         # re-solve (vs `last_struct_time` which is reset on every
         # call regardless of success).

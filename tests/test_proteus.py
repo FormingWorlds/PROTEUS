@@ -114,6 +114,16 @@ def _resume_with_patches(p, hf_df):
         stack.enter_context(
             patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
         )
+        # These tests exercise the mesh-restoration block, not snapshot
+        # selection: pass the helpfile through unchanged so the resume reaches
+        # the mesh code instead of failing the snapshot-pair check (which would
+        # need on-disk _int.nc/_atm.nc files these tests deliberately omit).
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                return_value=(hf_df, []),
+            )
+        )
         stack.enter_context(
             patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
         )
