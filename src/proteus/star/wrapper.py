@@ -50,6 +50,10 @@ def init_star(handler: Proteus):
 
         if mors_cfg.star_path is not None:
             star_modern_path = mors_cfg.star_path
+
+            # if e.g. $HOME or $FWL_DATA is included in the path, expand it
+            star_modern_path = os.path.expandvars(os.path.expanduser(star_modern_path))
+
             log.info('Using custom stellar spectrum path.')
             if not os.path.exists(star_modern_path):
                 raise FileNotFoundError(
@@ -57,7 +61,10 @@ def init_star(handler: Proteus):
                 )
 
         else:
-            starname_input = mors_cfg.star_name.strip()
+            # PHOENIX builds its spectrum from the stellar track, so star_name
+            # may be None there; for the file-based sources an empty name falls
+            # through to the not-found handling below.
+            starname_input = (mors_cfg.star_name or '').strip()
             star_file = starname_input.lower().replace(' ', '-').replace('gj-', 'gj') + '.txt'
 
             # Solar special cases

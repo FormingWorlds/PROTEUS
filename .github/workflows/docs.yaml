@@ -5,25 +5,44 @@ on:
       - master
       - main
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+  actions: read
 jobs:
   deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Configure Git Credentials
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-      - uses: actions/setup-python@v5
+      - uses: actions/configure-pages@v5
+      - uses: actions/checkout@v6
         with:
-          python-version: 3.x
-      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
+          # setuptools-scm derives the version from git tags, so the full tag
+          # history must be present for the editable install.
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -e '.[develop,docs]'
+      # Restore the previous deploy's badges so a badge that cannot be
+      # refreshed this run keeps its last-good SVG instead of a placeholder.
+      # A fresh checkout has no docs/badges/ (it is gitignored), so without
+      # this the last-good fallback could never fire in CI.
       - uses: actions/cache@v4
         with:
-          key: mkdocs-material-${{ env.cache_id }}
-          path: ~/.cache
+          path: docs/badges
+          key: docs-badges-${{ github.run_id }}
           restore-keys: |
-            mkdocs-material-
-      - run: pip install mkdocs-material markdown-include pymdown-extensions mkdocstrings  mkdocstrings-python
-      - run: mkdocs gh-deploy --force
+            docs-badges-
+      - name: Cache documentation badges as static SVGs
+        run: python tools/cache_badges.py --out docs/badges/
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: zensical build --clean
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - uses: actions/deploy-pages@v4
+        id: deployment

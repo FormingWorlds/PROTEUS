@@ -3,62 +3,87 @@ from __future__ import annotations
 from typing import Optional
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, lt
+from attrs.validators import ge, gt, in_, le, lt
 
 from ._converters import none_if_none
 
 
-def mass_radius_valid(instance, attribute, value):
-    radius_int = none_if_none(instance.radius_int)
-    mass_tot = none_if_none(instance.mass_tot)
-
-    if (radius_int is None) and (mass_tot is None):
-        raise ValueError('Must set one of `radius_int` or `mass_tot`')
-    if (radius_int is not None) and (mass_tot is not None):
-        raise ValueError('Must set either `radius_int` or `mass_tot`, not both')
-
-    if mass_tot is not None:
-        if mass_tot < 0:
-            raise ValueError('The total planet mass must be > 0')
-        if mass_tot > 20:
-            raise ValueError('The total planet mass must be < 20 M_earth')
-
-    if radius_int is not None:
-        if radius_int < 0:
-            raise ValueError('The interior radius must be > 0')
-        if radius_int > 10:
-            raise ValueError('The interior radius must be < 10 R_earth')
-
-
 def valid_zalmoxis(instance, attribute, value):
-    if instance.module != 'zalmoxis':
+    if instance.module == 'spider':
         return
 
-    max_iterations_outer = instance.zalmoxis.max_iterations_outer
-    max_iterations_inner = instance.zalmoxis.max_iterations_inner
-    max_iterations_pressure = instance.zalmoxis.max_iterations_pressure
-    EOSchoice = instance.zalmoxis.EOSchoice
-    core_mass_fraction = instance.zalmoxis.coremassfrac
+    core_eos = instance.zalmoxis.core_eos
+    mantle_eos = instance.zalmoxis.mantle_eos
+    ice_layer_eos = instance.zalmoxis.ice_layer_eos
     mantle_mass_fraction = instance.zalmoxis.mantle_mass_fraction
-    mass_tot = instance.mass_tot
 
-    if mass_tot is None:
-        raise ValueError('`mass_tot` must be set when using the Zalmoxis module.')
-    if max_iterations_outer < 3:
-        raise ValueError('`interior.zalmoxis.max_iterations_outer` must be > 2')
-    if max_iterations_inner < 13:
-        raise ValueError('`interior.zalmoxis.max_iterations_inner` must be > 12')
-    if max_iterations_pressure < 13:
-        raise ValueError('`interior.zalmoxis.max_iterations_pressure` must be > 12')
-    if EOSchoice == 'Tabulated:iron/silicate':
+    # EOS format validation: must be "<source>:<material>"
+    for name, eos_val in [('core_eos', core_eos), ('mantle_eos', mantle_eos)]:
+        if ':' not in eos_val:
+            raise ValueError(
+                f"`interior_struct.zalmoxis.{name}` must be in '<source>:<material>' format, "
+                f"got '{eos_val}'"
+            )
+    if ice_layer_eos is not None and ':' not in ice_layer_eos:
+        raise ValueError(
+            f"`interior_struct.zalmoxis.ice_layer_eos` must be 'none' or '<source>:<material>' format, "
+            f"got '{ice_layer_eos}'"
+        )
+
+    # Binodal-aware miscibility iterates on a volatile profile that is
+    # only built when dry_mantle is false, so the flag would silently do
+    # nothing on a default config; and the dissolved-volatile structure
+    # path itself needs per-shell volatile-profile support that the
+    # pinned Zalmoxis release does not provide. Gate both until the
+    # Zalmoxis pin gains that support.
+    if getattr(instance.zalmoxis, 'global_miscibility', False):
+        raise ValueError(
+            '`interior_struct.zalmoxis.global_miscibility = true` is not yet usable: '
+            'with `dry_mantle = true` no volatile profile is built and the flag does '
+            'nothing, and `dry_mantle = false` requires per-shell volatile-profile '
+            'support that the pinned Zalmoxis release does not provide.'
+        )
+    if not getattr(instance.zalmoxis, 'dry_mantle', True):
+        raise ValueError(
+            '`interior_struct.zalmoxis.dry_mantle = false` is not supported with the '
+            'pinned Zalmoxis release: the mantle EOS cannot consume a per-shell '
+            'volatile profile yet, so the extended EOS would carry placeholder '
+            'fractions that nothing overrides. Keep `dry_mantle = true`.'
+        )
+
+    # WolfBower2018 EOS is limited to 1 TPa. For planets > 2 M_earth,
+    # CMB pressure exceeds this and Zalmoxis will fail to converge.
+    import logging as _logging
+
+    _log = _logging.getLogger('fwl.' + __name__)
+    # mushy_zone_factor only applies to PALEOS unified tables
+    mzf = getattr(instance.zalmoxis, 'mushy_zone_factor', 0.8)
+    if mzf < 1.0 and not mantle_eos.startswith('PALEOS:'):
+        _log.warning(
+            'mushy_zone_factor=%.2f has no effect with mantle EOS %s. '
+            'The mushy zone factor only applies to PALEOS unified tables. '
+            'For WolfBower2018/RTPress100TPa, the mushy zone is defined by '
+            'the solidus/liquidus melting curve files.',
+            mzf,
+            mantle_eos,
+        )
+
+    # 2-layer model (no ice layer, non-T-dep mantle): mantle_mass_fraction must be 0
+    _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
+    if ice_layer_eos is None and not mantle_eos.startswith(_TDEP_PREFIXES):
         if mantle_mass_fraction != 0:
             raise ValueError(
-                "`interior.zalmoxis.mantle_mass_fraction` must be 0 when `EOSchoice` is 'Tabulated:iron/silicate' (only 2 layers are modeled)."
+                '`interior_struct.zalmoxis.mantle_mass_fraction` must be 0 for a 2-layer model '
+                'without T-dependent mantle EOS (only core + mantle are modeled).'
             )
-    if EOSchoice == 'Tabulated:water':
-        if core_mass_fraction + mantle_mass_fraction > 0.75:
+
+    # 3-layer model (with ice layer): mass fractions must not exceed 75%
+    if ice_layer_eos is not None:
+        cmf = instance.core_frac if instance.core_frac_mode == 'mass' else 0.325
+        if cmf + mantle_mass_fraction > 0.75:
             raise ValueError(
-                "`interior.zalmoxis.coremassfrac` and `interior.zalmoxis.mantle_mass_fraction` must add up to <= 75% when `EOSchoice` is 'Tabulated:water' (see the definition of water planets according to Seager 2007)."
+                '`core_frac` and `zalmoxis.mantle_mass_fraction` '
+                'must add up to <= 75% for a 3-layer model (Seager 2007).'
             )
 
 
@@ -68,99 +93,150 @@ class Zalmoxis:
 
     Attributes
     ----------
-    EOSchoice: str
-        EOS choice of Zalmoxis. Choices: "Tabulated:iron/silicate", "Tabulated:iron/Tdep_silicate", "Tabulated:water".
-    coremassfrac: float
-        Fraction of the planet's interior mass corresponding to the core.
+    core_eos: str
+        EOS for the core layer. Format: "<source>:<material>".
+        Tabulated: "PALEOS:iron" (default), "Seager2007:iron".
+        Analytic: "Analytic:iron", "Analytic:MgFeSiO3", etc.
+    mantle_eos: str
+        EOS for the mantle layer. Format: "<source>:<material>".
+        Tabulated: "PALEOS:MgSiO3" (default), "PALEOS-2phase:MgSiO3",
+        "Seager2007:MgSiO3", "WolfBower2018:MgSiO3".
+        Analytic: "Analytic:MgSiO3", "Analytic:MgFeSiO3", etc.
+    ice_layer_eos: str or None
+        EOS for the ice/water layer (3-layer model). 'none' for
+        2-layer model (core + mantle only).
+        Tabulated: "PALEOS:H2O", "Seager2007:H2O". Analytic: "Analytic:H2O".
+    mushy_zone_factor: float
+        Cryoscopic depression factor controlling the width of the mushy
+        zone (partially molten region) in the PALEOS unified EOS.
+        Defines the solidus as T_sol = T_liq * mushy_zone_factor.
+        1.0 = sharp phase boundary (no mushy zone).
+        0.8 = solidus at 80% of the liquidus temperature, roughly
+        matching the Stixrude+2014 cryoscopic depression for MgSiO3.
+        Must be in [0.7, 1.0]. Only applies to PALEOS unified EOS;
+        ignored for WolfBower2018 and RTPress100TPa (which use explicit
+        melting curve files). This factor is applied consistently across
+        Zalmoxis (density interpolation), SPIDER (phase boundaries),
+        and the VolatileProfile phi-blending.
     mantle_mass_fraction: float
-        Fraction of the planet's interior mass corresponding to the mantle (needed for modeling more than 2 layers).
-    weight_iron_frac: float
-        Fraction of the planet's mass that is iron.
-    temperature_mode: str
-        Choice of input temperature profile: "isothermal", "linear", "prescribed".
-    surface_temperature: float
-        Surface temperature (K), required for temperature_mode="isothermal" or "linear", ignored otherwise.
-    center_temperature: float
-        Center temperature (K), required for temperature_mode="linear", ignored otherwise.
-    temperature_profile_file: Optional[str]
-        Filename containing a prescribed temperature profile, required for temperature_mode="prescribed".
+        Fraction of the planet's interior mass corresponding to the mantle.
+        Required for 3-layer models (with ice layer) and for T-dependent
+        2-layer models (WolfBower2018, RTPress100TPa) where it partitions
+        mass between core and mantle layers.
     num_levels: int
         Number of Zalmoxis radius layers.
-    max_iterations_outer: int
-        Maximum number of iterations for the outer loop.
-    tolerance_outer: float
-        Convergence tolerance for the outer loop [kg].
-    max_iterations_inner: int
-        Maximum number of iterations for the inner loop.
-    tolerance_inner: float
-        Convergence tolerance for the inner loop [kg/m^3].
-    relative_tolerance: float
-        Relative tolerance for solve_ivp.
-    absolute_tolerance: float
-        Absolute tolerance for solve_ivp.
-    maximum_step: float
-        Maximum integration step size for solve_ivp (m).
-    adaptive_radial_fraction: float
-        Fraction (0–1) of the radial domain defining where solve_ivp transitions from adaptive integration to fixed-step integration when using the temperature-dependent `"Tabulated:iron/Tdep_silicate"` EOS.
-    max_center_pressure_guess: float
-        Maximum pressure guess at the center of the planet based on the "Tabulated:iron/Tdep_silicate" EOS files (Pa).
-    target_surface_pressure: float
-        Target surface pressure for the pressure adjustment [Pa].
-    pressure_tolerance: float
-        Convergence tolerance for the pressure adjustment [Pa].
-    max_iterations_pressure: int
-        Maximum number of iterations for the pressure adjustment.
-    pressure_adjustment_factor: float
-        Reduction factor for adjusting the pressure in the pressure adjustment.
-    verbose: bool
-        If true, logs detailed convergence info and warnings; if false, only essential messages are shown (true/false).
-    iteration_profiles_enabled: bool
-        If true, writes pressure and density profiles for each iteration to files (true/false).
+    solver_tol_outer: float
+        Relative tolerance for mass convergence (outer loop).
+    solver_tol_inner: float
+        Relative tolerance for density convergence (inner loop).
+    solver_max_iter_outer: int
+        Max iterations for mass convergence (outer loop).
+    solver_max_iter_inner: int
+        Max iterations for density convergence (inner loop).
+    lookup_nP: int
+        Number of pressure points in SPIDER P-S tables generated from PALEOS.
+    lookup_nS: int
+        Number of entropy points in SPIDER P-S tables generated from PALEOS.
     """
 
-    EOSchoice: str = field(
-        default='Tabulated:iron/silicate',
-        validator=in_(
-            ('Tabulated:iron/silicate', 'Tabulated:iron/Tdep_silicate', 'Tabulated:water')
-        ),
-    )
+    core_eos: str = field(default='PALEOS:iron')
+    mantle_eos: str = field(default='PALEOS:MgSiO3')
+    ice_layer_eos = field(default=None, converter=none_if_none)
 
-    coremassfrac: float = field(default=0.325, validator=(gt(0), lt(1)))
+    mushy_zone_factor: float = field(default=0.8, validator=(ge(0.7), le(1.0)))
+
     mantle_mass_fraction: float = field(default=0, validator=(ge(0), lt(1)))
-    weight_iron_frac: float = field(default=0.325, validator=(gt(0), lt(1)))
-    temperature_mode: str = field(
-        default='isothermal', validator=in_(('isothermal', 'linear', 'prescribed'))
-    )
-    surface_temperature: float = field(default=3500, validator=ge(0))
-    center_temperature: float = field(default=6000, validator=ge(0))
-    temperature_profile_file: Optional[str] = field(default=None)
 
     num_levels: int = field(default=150)
 
-    max_iterations_outer: int = field(default=100, validator=ge(1))
-    tolerance_outer: float = field(default=3e-3, validator=ge(0))
-    max_iterations_inner: int = field(default=100, validator=ge(1))
-    tolerance_inner: float = field(default=1e-4, validator=ge(0))
-    relative_tolerance: float = field(default=1e-5, validator=ge(0))
-    absolute_tolerance: float = field(default=1e-6, validator=ge(0))
-    maximum_step: float = field(default=250000, validator=ge(0))
-    adaptive_radial_fraction: float = field(default=0.98, validator=ge(0))
-    max_center_pressure_guess: float = field(default=0.99e12, validator=ge(0))
+    # Solver tuning (passed to Zalmoxis iterative solver)
+    solver_tol_outer: float = field(default=3e-3, validator=gt(0))
+    solver_tol_inner: float = field(default=1e-4, validator=gt(0))
+    solver_max_iter_outer: int = field(default=100, validator=ge(10))
+    solver_max_iter_inner: int = field(default=100, validator=ge(10))
 
-    target_surface_pressure: float = field(default=101325, validator=ge(0))
-    pressure_tolerance: float = field(default=1e9, validator=ge(0))
-    max_iterations_pressure: int = field(default=200, validator=ge(1))
-    pressure_adjustment_factor: float = field(default=1.1, validator=ge(0))
+    # Structure update triggers (during coupled evolution)
+    update_interval: float = field(default=1e9, validator=ge(0))
+    update_min_interval: float = field(default=0, validator=ge(0))
+    update_dtmagma_frac: float = field(default=0.05, validator=(gt(0), lt(1)))
+    update_dphi_abs: float = field(default=0.05, validator=(gt(0), lt(1)))
+    # Dissolved-volatile composition trigger: fires when the relative
+    # change in H2O or H2 mass fraction in the liquid mantle exceeds
+    # this threshold between consecutive iterations. Pairs with the
+    # T_magma and Phi triggers above.
+    update_dw_comp_abs: float = field(default=0.05, validator=(gt(0), lt(1)))
+    # Stale-aware ceiling on time since the last *successful* Zalmoxis
+    # re-solve (vs `update_interval` which counts since the last call).
+    # Default 25 kyr at 1 M_E sized to be ~half the typical 50 kyr
+    # ceiling, so a fall-back stretch refires the trigger after half a
+    # normal interval rather than waiting a full one.
+    # Set to 0 to disable. Set high to relax.
+    update_stale_ceiling: float = field(default=2.5e4, validator=ge(0))
 
-    verbose: bool = field(default=False)
-    iteration_profiles_enabled: bool = field(default=False)
+    # Mesh smoothing
+    mesh_max_shift: float = field(default=0.05, validator=(gt(0), lt(1)))
+    mesh_convergence_interval: float = field(default=10.0, validator=gt(0))
+
+    # Pre-main-loop equilibration (CALLIOPE + Zalmoxis convergence)
+    equilibrate_init: bool = field(default=True)
+    equilibrate_max_iter: int = field(default=15, validator=ge(1))
+    equilibrate_tol: float = field(default=0.01, validator=gt(0))
+
+    # Structure solver assumes a dry mantle (no dissolved volatile
+    # components mixed into the mantle EOS via VolatileProfile) by default.
+    # The structure surface then depends only on the canonical solid +
+    # liquid mantle tables and the core EOS. Volatile partitioning still
+    # happens in the outgassing module; this flag only controls whether
+    # dissolved volatile mass shifts the structure-side EOS density /
+    # mixing. Set to False to enable phi-aware volatile mixing in the
+    # mantle density.
+    dry_mantle: bool = field(default=True)
+
+    # SPIDER P-S table resolution (generated from PALEOS)
+    lookup_nP: int = field(default=1350, validator=ge(100))
+    lookup_nS: int = field(default=280, validator=ge(50))
+
+    # Binodal-aware miscibility (H2-MgSiO3 solvus)
+    global_miscibility: bool = field(default=False)
+    miscibility_max_iter: int = field(default=10, validator=ge(1))
+    miscibility_tol: float = field(default=0.01, validator=gt(0))
+
+    # Zalmoxis JAX + diffrax structure path. Default on; the numpy path
+    # is selectable for bit-identical reproduction of the numpy-path
+    # trajectory or for systems without a JAX-compatible backend.
+    use_jax: bool = field(default=True)
+    # Anderson Type-II Picard acceleration on the density loop.
+    # Default off; only effective when use_jax=True.
+    use_anderson: bool = field(default=False)
+
+    # Outer mass-radius solver. 'newton' (Newton + brentq bracketing,
+    # default) is robust on hot fully-molten mantle profiles where the
+    # damped fixed-point 'picard' search can stall in a basin attractor
+    # during the radius search. 'picard' (damped fixed-point) remains
+    # available as an alternative.
+    outer_solver: str = field(
+        default='newton',
+        validator=in_(('picard', 'newton')),
+    )
+
+    # Newton-specific knobs (only used when outer_solver='newton').
+    newton_max_iter: int = field(default=30, validator=ge(5))
+    newton_tol: float = field(default=1.0e-4, validator=gt(0))
+    # Integrator tolerance overrides for the Newton path. Newton requires
+    # tight integrator tolerances (rel <= 1e-7) so M(R) is smooth at the
+    # central-difference dM/dR scale; looser tolerances leave M(R) noise
+    # that dominates Newton's derivative estimate. Auto-applied when
+    # outer_solver='newton'.
+    newton_relative_tolerance: float = field(default=1.0e-9, validator=gt(0))
+    newton_absolute_tolerance: float = field(default=1.0e-10, validator=gt(0))
 
     def __attrs_post_init__(self):
-        if self.temperature_mode == 'prescribed':
-            if not self.temperature_profile_file:
-                raise ValueError(
-                    "`temperature_profile_file` must be provided when `temperature_mode` is 'prescribed'."
-                )
+        if self.update_interval > 0 and self.update_min_interval > self.update_interval:
+            raise ValueError(
+                f'`update_min_interval` ({self.update_min_interval}) must be '
+                f'<= `update_interval` ({self.update_interval}), otherwise '
+                f'the floor blocks all updates before the ceiling can fire.'
+            )
 
 
 @define
@@ -169,45 +245,78 @@ class Struct:
 
     Attributes
     ----------
-    corefrac: float
+    core_frac: float
         Fraction of the planet's interior radius corresponding to the core.
     module: str
-        Module for solving the planet's interior structure. Choices: 'self', 'zalmoxis'.
+        Module for solving the planet's interior structure. Choices: 'dummy', 'spider', 'zalmoxis'.
     zalmoxis: Zalmoxis or None
         Zalmoxis parameters if module is 'zalmoxis'.
-    mass_tot: float
-        Total mass of the planet [M_earth]
-    radius_int: float
-        Radius of the atmosphere-mantle boundary [R_earth]
-    core_density: float
-        Density of the planet's core [kg m-3]
-    core_heatcap: float
-        Specific heat capacity of the planet's core [J kg-1 K-1]
-    module: str
-        Module for solving the planet's interior structure. Choices: 'self', 'zalmoxis'.
+    core_frac_mode: str
+        How core_frac is interpreted. 'radius': fraction of planet radius.
+        'mass': fraction of total planet mass. Only 'radius' is supported
+        when module = 'spider'. The zalmoxis module always interprets
+        core_frac as a mass fraction and ignores this flag (a warning is
+        emitted at runtime if 'radius' is set with module = 'zalmoxis').
+    core_density: float or str
+        Density of the planet's core [kg m-3]. Set to 'self' for
+        self-consistent calculation by Zalmoxis (requires module = 'zalmoxis').
+    core_heatcap: float or str
+        Specific heat capacity of the planet's core [J kg-1 K-1]. Set to 'self'
+        for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis').
     """
 
-    corefrac: float = field(validator=(gt(0), lt(1)))
+    core_frac: float = field(default=0.325, validator=(gt(0), lt(1)))
+    core_frac_mode: str = field(default='mass', validator=in_(('radius', 'mass')))
 
     module: Optional[str] = field(
-        default='self',
-        validator=lambda inst, attr, val: val is None or val in ('self', 'zalmoxis'),
+        default='zalmoxis',
+        validator=lambda inst, attr, val: val is None or val in ('dummy', 'spider', 'zalmoxis'),
     )
     zalmoxis: Optional[Zalmoxis] = field(
-        default=None,
+        factory=Zalmoxis,
         validator=lambda inst, attr, val: val is None or valid_zalmoxis(inst, attr, val),
     )
 
-    core_density: float = field(default=10738.33, validator=gt(0))
-    core_heatcap: float = field(default=880.0, validator=gt(0))
-    mass_tot = field(default='none', validator=mass_radius_valid, converter=none_if_none)
-    radius_int = field(default='none', validator=mass_radius_valid, converter=none_if_none)
+    core_density = field(default='self')
+    core_heatcap = field(default='self')
 
-    @property
-    def set_by(self) -> str:
-        """How is the structure set?"""
-        if self.mass_tot is not None:
-            return 'mass_tot'
-        if self.radius_int is not None:
-            return 'radius_int'
-        return 'none'
+    melting_dir = field(default=None, converter=none_if_none)
+    eos_dir = field(default=None, converter=none_if_none)
+
+    def __attrs_post_init__(self):
+        # core_frac_mode = "mass" requires Zalmoxis
+        if self.core_frac_mode == 'mass' and self.module == 'spider':
+            raise ValueError(
+                '`core_frac_mode = "mass"` requires `module = "zalmoxis"`. '
+                'The spider module only supports radius-based core fraction.'
+            )
+
+        # core_density and core_heatcap: "self" requires Zalmoxis
+        for param_name in ('core_density', 'core_heatcap'):
+            val = getattr(self, param_name)
+            if val == 'self':
+                if self.module == 'spider':
+                    raise ValueError(
+                        f'`{param_name} = "self"` requires `module = "zalmoxis"`. '
+                        f'Set a numerical value when using module = "spider".'
+                    )
+            elif not isinstance(val, (int, float)) or val <= 0:
+                raise ValueError(
+                    f'`{param_name}` must be "self" or a positive number, got {val!r}'
+                )
+
+        # melting_dir and eos_dir: required for the spider struct module
+        # (Zalmoxis and dummy derive EOS from their own config)
+        if self.module == 'spider':
+            if self.melting_dir is None:
+                raise ValueError(
+                    'interior_struct.melting_dir must be set when module = "spider". '
+                    'Provide a melting curve folder name (e.g. "Monteux-600") from '
+                    'FWL_DATA/interior_lookup_tables/Melting_curves/.'
+                )
+            if self.eos_dir is None:
+                raise ValueError(
+                    'interior_struct.eos_dir must be set when module = "spider". '
+                    'Provide an EOS folder name (e.g. "WolfBower2018_MgSiO3") from '
+                    'FWL_DATA/interior_lookup_tables/EOS/dynamic/.'
+                )

@@ -75,6 +75,25 @@ _preset_colours = {
     'atm_bkg': '#f2faff',
     'int_bkg': '#fffaf2',
     'cor_bkg': '#efefef',
+    # Clouds and aerosols
+    'cloud': '#027FB1',
+    'frsoot': '#876e44',
+    'soot': '#63401a',
+    'agsoot': '#251607',
+    'nitrate': '#ffaa00',
+    'ash': '#970505',
+    'sulph': '#ff22ff',
+    'biogenic': '#33ccff',
+    'bioms1': '#33ccaa',
+    'delta': '#6a9064',
+    'dustdiv1': '#fcfcd7',
+    'dustdiv2': '#fbfca1',
+    'dustdiv3': '#f6f873',
+    'dustdiv4': '#fcff5d',
+    'dustdiv5': '#fcff33',
+    'dustdiv6': '#fbff21',
+    'naclflm': '#fca1ff',
+    'nacljet': '#ee29f5',
 }
 
 
@@ -302,7 +321,7 @@ def sample_output(
     if len(files) < 1:
         # Maybe archived...
         if archive_exists(handler.directories['output/data']):
-            log.error('No output files found, but tar archive exists. Extract it first.')
+            log.warning('No output files found, but tar archive exists. Extract it first.')
             return [], []
 
         # Return empty

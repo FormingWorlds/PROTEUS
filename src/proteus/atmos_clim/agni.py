@@ -25,27 +25,316 @@ log = logging.getLogger('fwl.' + __name__)
 AGNI_LOGFILE_NAME = 'agni_recent.log'
 ALWAYS_DRY = ('CO', 'N2', 'H2')
 
+# Fields PROTEUS expects to find on the Julia Atmos_t struct after
+# `atmosphere.allocate_b` succeeds. The list mirrors what `agni.py` and
+# `atmos_clim/common.py` actually read at runtime. A missing entry here
+# fires AgniSchemaMismatch at IC rather than surfacing as a silent
+# AttributeError once the main coupling loop is running.
+_REQUIRED_ATMOS_FIELDS = (
+    # Pressure-temperature state
+    'tmp',
+    'tmpl',
+    'pl',
+    'p_boa',
+    'p_oboa',
+    'tmp_surf',
+    'tmp_magma',
+    # Solver flags
+    'is_converged',
+    'transparent',
+    # Radiative fluxes
+    'flux_d_sw',
+    'flux_u_lw',
+    'flux_u_sw',
+    'flux_tot',
+    # Per-band optical depth [nlev_l x nbands], longwave all-sky
+    'tau_band',
+    # Diagnostics computed by AGNI's prescribed-T solver path and
+    # available on the struct after the radiative calc. Energy-solver
+    # path leaves the arrays at their zero-initialised state.
+    'diagnostic_Ra',
+    'timescale_conv',
+    'timescale_rad',
+    # Gas composition
+    'gas_names',
+    'gas_vmr',
+    'gas_ovmr',
+    # Ocean diagnostics
+    'ocean_areacov',
+    'ocean_maxdepth',
+    'ocean_tot',
+    # Stellar / transit
+    'instellation',
+    'transspec_p',
+    'transspec_r',
+    'transspec_tmp',
+    # Chemistry workspace
+    'fastchem_work',
+)
 
-def sync_log_files(outdir: str):
+
+class AgniSchemaMismatch(RuntimeError):
+    """AGNI's Atmos_t is missing a field PROTEUS expects.
+
+    Raised once at first allocate_b, so a future AGNI rename or removal
+    surfaces at IC with a clear list of the missing names instead of
+    propagating into the coupling loop as a generic AttributeError.
+    """
+
+
+def _check_agni_schema(atmos) -> None:
+    """Verify the live Atmos_t carries every field PROTEUS reads.
+
+    Runs after a successful `atmosphere.allocate_b`; both `setup_b` and
+    `allocate_b` must have allocated their backing arrays before this
+    is called, because several fields (e.g. ``tau_band``,
+    ``flux_*``) only exist after the SOCRATES init block runs.
+    """
+    missing = [name for name in _REQUIRED_ATMOS_FIELDS if not hasattr(atmos, name)]
+    if not missing:
+        return
+    try:
+        version = str(jl.AGNI.consts.AGNI_VERSION)
+    except Exception:
+        version = 'unknown'
+    raise AgniSchemaMismatch(
+        f'AGNI {version} Atmos_t is missing PROTEUS-required field(s): '
+        f'{", ".join(missing)}. The AGNI pin in pyproject.toml may have '
+        'moved past a PROTEUS-known schema; update _REQUIRED_ATMOS_FIELDS '
+        'and the matching reads in atmos_clim/agni.py.'
+    )
+
+
+def _summarise_tau_band(atmos) -> tuple[float, float]:
+    """Reduce the per-band optical-depth array to TOA and surface scalars.
+
+    Optical depths are zero if transparent mode is enabled. Return zero on
+    shape or read errors so the helpfile column is still well-formed.
+
+    Optical depths extracted at reference wavelength.
+
+    Returns
+    -------
+    tuple of (tau_atm_TOA, tau_atm_surface)
+    """
+
+    # Handle transparent case
+    if bool(getattr(atmos, 'transparent', False)):
+        return 0.0, 0.0
+
+    # Extract arrays
+    try:
+        tau_arr = np.asarray(atmos.tau_band)
+    except Exception:
+        return 0.0, 0.0
+    if tau_arr.size == 0:
+        return 0.0, 0.0
+    if hasattr(atmos, 'nlev_l'):
+        nlev_l = int(atmos.nlev_l)
+    elif hasattr(atmos, 'nlev_c'):
+        nlev_l = int(atmos.nlev_c) + 1
+    else:
+        nlev_l = tau_arr.shape[0]
+    nbands = int(atmos.nbands) if hasattr(atmos, 'nbands') else tau_arr.shape[-1]
+
+    # Find the optical depth at the given wavelength index
+    # This could be calculated using a particular wavelength, in the future
+    wl_idx = tau_arr.shape[-1] // 2
+    wl_idx = max(0, min(wl_idx, nbands - 1))
+
+    # Accept a cell-centre-sized level axis (nlev_l - 1) too: the TOA and
+    # surface values sit at indices 0 and -1 on either grid, so the
+    # reduction is identical and the helper tolerates both conventions.
+    level_sizes = {nlev_l, nlev_l - 1}
+    if tau_arr.ndim == 2 and tau_arr.shape[0] in level_sizes and tau_arr.shape[1] == nbands:
+        toa = float(tau_arr[0, wl_idx])
+        surf = float(tau_arr[-1, wl_idx])
+    elif tau_arr.ndim == 2 and tau_arr.shape[0] == nbands and tau_arr.shape[1] in level_sizes:
+        toa = float(tau_arr[wl_idx, 0])
+        surf = float(tau_arr[wl_idx, -1])
+    else:
+        log.warning(
+            'tau_band has unexpected shape %s for nlev_l=%d, nbands=%d',
+            tau_arr.shape,
+            nlev_l,
+            nbands,
+        )
+        toa = 0.0
+        surf = 0.0
+
+    # Ensure finite
+    toa = toa if np.isfinite(toa) else 0.0
+    surf = surf if np.isfinite(surf) else 0.0
+
+    # Warn if small
+    if surf < 1e-9:
+        log.warning('Surface optical depth is small: %.2e', surf)
+
+    return toa, surf
+
+
+def _summarise_diagnostics(atmos) -> tuple[float, float]:
+    """Reduce the convection / radiation diagnostic arrays to scalars.
+
+    Ra_max is the maximum value of Rayleigh number across the column.
+    t_conv_over_t_rad is the maximum of the convective/radiative timescales.
+
+    Returns
+    -------
+    tuple of (Ra_max, t_conv_over_t_rad)
+    """
+
+    # Handle transparent case
+    if bool(getattr(atmos, 'transparent', False)):
+        return 0.0, 0.0
+
+    # Get arrays from AGNI
+    ra_arr = np.asarray(atmos.diagnostic_Ra, dtype=float)
+    t_conv_arr = np.asarray(atmos.timescale_conv, dtype=float)
+    t_rad_arr = np.asarray(atmos.timescale_rad, dtype=float)
+
+    # Replace NaN values with zero
+    ra_arr = np.nan_to_num(ra_arr, nan=0.0)
+    t_conv_arr = np.nan_to_num(t_conv_arr, nan=0.0)
+    t_rad_arr = np.nan_to_num(t_rad_arr, nan=0.0)
+
+    # Get maximum Rayleigh number
+    Ra_max = float(np.amax(ra_arr))
+
+    # Get maximum t_conv_t_rad
+    mask_c = ra_arr > 1e-9
+    if np.any(mask_c):
+        ratio = np.amax(t_conv_arr[mask_c] / np.maximum(t_rad_arr[mask_c], 1e-300))
+    else:
+        ratio = 0.0
+
+    return Ra_max, ratio
+
+
+def sync_log_files(outdir: str) -> list[str]:
+    """Move AGNI logfile content into the PROTEUS logfile and clear it.
+
+    Returns the list of lines that were copied, so that callers can scan
+    them for failure-mode markers (see `_extract_agni_failure_reason`).
+    Returns an empty list if the AGNI logfile cannot be read.
+    """
     # Logfile paths
     agni_logpath = os.path.join(outdir, AGNI_LOGFILE_NAME)
     logpath = GetLogfilePath(outdir, GetCurrentLogfileIndex(outdir))
 
     # Copy logfile content
-    with open(agni_logpath, 'r') as infile:
-        inlines = infile.readlines()
+    try:
+        with open(agni_logpath, 'r') as infile:
+            inlines = infile.readlines()
+    except OSError:
+        return []
 
-        with open(logpath, 'a') as outfile:
-            for i, line in enumerate(inlines):
-                # First line of agni logfile has NULL chars at the start, for some reason
-                if i == 0:
-                    line = '[' + line.split('[', 1)[1]
-                # copy the line
-                outfile.write(line)
+    with open(logpath, 'a') as outfile:
+        for i, line in enumerate(inlines):
+            # First line of agni logfile has NULL chars at the start, for some reason
+            if i == 0 and '[' in line:
+                line = '[' + line.split('[', 1)[1]
+            # copy the line
+            outfile.write(line)
 
     # Remove logfile content
     with open(agni_logpath, 'w') as hdl:
         hdl.write('')
+
+    return inlines
+
+
+# AGNI failure-mode markers emitted by AGNI/src/solver.jl lines 967-993.
+# Each `failure (X)` substring corresponds to a CODE_* constant in solver.jl.
+# When `_solve_energy` detects a non-convergence, we scan the just-synced AGNI
+# log lines for the most recent matching marker so the deadlock detector and
+# user can distinguish NaN-flux from singular-jacobian from line-search etc.
+_AGNI_FAILURE_MARKERS = (
+    ('failure (NaN values)', 'nan_flux'),
+    ('failure (singular jacobian)', 'singular_jacobian'),
+    ('failure (maximum iterations)', 'max_iterations'),
+    ('failure (maximum time)', 'max_time'),
+    ('failure (configuration)', 'configuration'),
+    ('failure (objective function)', 'objective_function'),
+    ('failure (other; last step not ok)', 'last_step_failed'),
+    ('failure (hydrostatic integration)', 'hydrostatic_integration'),
+    ('failure (other)', 'unknown'),
+)
+
+
+def _extract_agni_failure_reason(loglines: list[str]) -> str:
+    """Scan AGNI log lines for the most-recent failure-mode marker.
+
+    Parameters
+    ----------
+        loglines : list[str]
+            Lines just emitted by AGNI's solver, as returned by `sync_log_files`.
+
+    Returns
+    -------
+        str
+            Short tag identifying the failure mode (e.g. 'nan_flux',
+            'singular_jacobian'), or 'unparsed' if no marker matched.
+    """
+    # Iterate from the end so the LAST attempt's failure wins when multiple
+    # AGNI attempts have run within one PROTEUS iteration.
+    for line in reversed(loglines):
+        for marker, tag in _AGNI_FAILURE_MARKERS:
+            if marker in line:
+                return tag
+    return 'unparsed'
+
+
+def _validate_agni_state(atmos) -> tuple[bool, str]:
+    """Validate that an AGNI atmosphere struct holds physically sane values.
+
+    Even when `solve_energy_b` returns success, the post-processing path can
+    leave non-finite or unphysical state on the struct (CHILI sweep R12, R17
+    sometimes returned T_surf=NaN with success=True). This guard catches that
+    before the values poison hf_row and propagate downstream.
+
+    Parameters
+    ----------
+        atmos : AGNI.atmosphere.Atmos_t
+            Atmosphere struct returned by AGNI's solver.
+
+    Returns
+    -------
+        ok : bool
+            True if all checked fields are finite and physically valid.
+        reason : str
+            Empty string if ok, otherwise a short description of the failure.
+    """
+    # AGNI marks `is_converged=True` only on CODE_SUC (solver.jl:962-964).
+    # If solve_energy_b returned True but is_converged is False we have a
+    # contradictory state and must reject it.
+    try:
+        is_converged = bool(atmos.is_converged)
+    except (AttributeError, Exception):  # noqa: BLE001
+        is_converged = True  # missing flag = trust the boolean return
+    if not is_converged:
+        return False, 'atmos.is_converged is False despite solver success'
+
+    # Surface temperature must be finite and positive.
+    try:
+        t_surf = float(atmos.tmp_surf)
+    except (AttributeError, ValueError, Exception):  # noqa: BLE001
+        return False, 'atmos.tmp_surf could not be read'
+    if not np.isfinite(t_surf) or t_surf <= 0.0:
+        return False, f'atmos.tmp_surf = {t_surf} (non-finite or <= 0)'
+
+    # Total flux profile must be entirely finite.
+    try:
+        tot_flux = np.array(atmos.flux_tot, dtype=float)
+    except (AttributeError, ValueError, Exception):  # noqa: BLE001
+        return False, 'atmos.flux_tot could not be read'
+    if tot_flux.size == 0:
+        return False, 'atmos.flux_tot is empty'
+    if not np.all(np.isfinite(tot_flux)):
+        n_bad = int(np.sum(~np.isfinite(tot_flux)))
+        return False, f'atmos.flux_tot has {n_bad} non-finite element(s)'
+
+    return True, ''
 
 
 def activate_julia(dirs: dict, verbosity: int):
@@ -123,6 +412,36 @@ def _determine_condensates(vol_list: list):
     return [v for v in vol_list if v not in ALWAYS_DRY]
 
 
+def _determine_aerosols(dirs: dict) -> list:
+    """
+    Determine which aerosols are available.
+
+    Parameters
+    ----------
+        dirs : dict
+            Dictionary containing paths to directories
+
+    Returns
+    ----------
+        aerosols : list
+            List of available aerosols
+    """
+
+    scattering_dir = os.path.join(dirs['fwl'], 'scattering', 'scattering')
+    if not os.path.isdir(scattering_dir):
+        log.warning(f'Scattering data directory not found: {scattering_dir}')
+        return []
+
+    aerosols = []
+    for f in os.listdir(scattering_dir):
+        if f.endswith('.mon'):
+            aerosols.append(f.replace('.mon', ''))
+    aerosols = sorted(aerosols)
+
+    log.debug(f'Available aerosols: {aerosols}')
+    return aerosols
+
+
 def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     """Initialise atmosphere struct for use by AGNI.
 
@@ -148,19 +467,52 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
 
     atmos = jl.AGNI.atmosphere.Atmos_t()
 
-    # Stellar spectrum path
-    sflux_files = glob.glob(os.path.join(dirs['output'], 'data', '*.sflux'))
-    sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
-    sflux_path = os.path.join(dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1]))
+    # Decide the spectral-file path first; the stellar-flux glob only runs
+    # when we actually need a stellar spectrum (i.e. AGNI will copy + modify
+    # the spectral file from FWL_DATA). Grey-gas and user-provided paths
+    # bypass the glob entirely so a missing or empty `data/*.sflux` directory
+    # is not a precondition for those modes.
 
-    # Spectral file path
-    try_spfile = os.path.join(dirs['output'], 'runtime.sf')
-    if os.path.exists(try_spfile):
-        # exists => don't modify it
+    # Spectral file path provided?
+    if config.atmos_clim.agni.spectral_file is not None:
+        # Grey gas?
+        if str(config.atmos_clim.agni.spectral_file).lower() == 'greygas':
+            try_spfile = 'greygas'
+        else:
+            try_spfile = os.path.abspath(config.atmos_clim.agni.spectral_file)
+            if not os.path.isfile(try_spfile):
+                UpdateStatusfile(dirs, 20)
+                raise FileNotFoundError(
+                    f'AGNI spectral file not found at specified path: {try_spfile}'
+                )
+    else:
+        # No spectral file provided: use existing runtime.sf in output, or
+        # let AGNI copy from FWL_DATA + modify as required.
+        try_spfile = os.path.join(dirs['output'], 'runtime.sf')
+
+    # Obtain spectral file
+    if try_spfile == 'greygas':
+        log.info('Requested grey-gas radiative transfer scheme')
+        input_sf = 'greygas'
+        input_star = ''
+    elif os.path.exists(try_spfile):
+        # exists in output folder => don't modify it
         input_sf = try_spfile
         input_star = ''
     else:
-        # doesn't exist => AGNI will copy it + modify as required
+        # doesn't exist in output folder => AGNI will copy from FWL_DATA + modify.
+        # Resolve the stellar spectrum path here, where it is actually needed.
+        sflux_files = glob.glob(os.path.join(dirs['output'], 'data', '*.sflux'))
+        if not sflux_files:
+            UpdateStatusfile(dirs, 20)
+            raise FileNotFoundError(
+                f'No stellar spectrum (*.sflux) found in {dirs["output"]}/data; '
+                'AGNI cannot construct a fresh spectral file without it'
+            )
+        sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
+        sflux_path = os.path.join(
+            dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1])
+        )
         input_sf = get_spfile_path(dirs['fwl'], config)
         input_star = sflux_path
 
@@ -206,28 +558,23 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     p_top = config.atmos_clim.agni.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
-    # Setup struct
-    succ = jl.AGNI.atmosphere.setup_b(
-        atmos,
-        dirs['agni'],
-        dirs['output'],
-        input_sf,
-        hf_row['F_ins'],
-        config.orbit.s0_factor,
-        float(hf_row['albedo_pl']),
-        config.orbit.zenith_angle,
-        hf_row['T_surf'],
-        hf_row['gravity'],
-        hf_row['R_int'],
-        int(config.atmos_clim.agni.num_levels),
-        p_surf,
-        p_top,
-        vol_dict,
-        '',
+    # Aerosol species dictionary (set MMR to zero initially)
+    aerosol_species = {}
+    if config.atmos_clim.aerosols_enabled:
+        aerosol_species = {a: 0.0 for a in _determine_aerosols(dirs)}
+        if len(aerosol_species) == 0:
+            log.warning('No data found for aerosol species')
+
+    # Build the AGNI setup! kwargs. The ``aerosol_species`` parameter is
+    # only present on newer AGNI installs; if the installed AGNI predates
+    # that addition, sending the kwarg raises a Julia MethodError. Detect
+    # the kwarg at module load and only pass it when AGNI accepts it.
+    setup_kwargs = dict(
         IO_DIR=io_dir,
         flag_rayleigh=config.atmos_clim.rayleigh,
         flag_cloud=config.atmos_clim.cloud_enabled,
-        overlap_method=config.atmos_clim.agni.overlap_method,
+        flag_aerosol=config.atmos_clim.aerosols_enabled,
+        overlap_method=config.atmos_clim.overlap_method,
         albedo_s=config.atmos_clim.surf_greyalbedo,
         surface_material=surface_material,
         surf_roughness=config.atmos_clim.agni.surf_roughness,
@@ -242,12 +589,36 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         fastchem_xtol_chem=config.atmos_clim.agni.fastchem_xtol_chem,
         fastchem_xtol_elem=config.atmos_clim.agni.fastchem_xtol_elem,
         real_gas=config.atmos_clim.agni.real_gas,
+        thermo_functions=config.atmos_clim.agni.thermo_functions,
         check_integrity=False,  # don't check thermo files every time
         mlt_criterion=convert(jl.Char, config.atmos_clim.agni.mlt_criterion),
         skin_d=config.atmos_clim.surface_d,
         skin_k=config.atmos_clim.surface_k,
         tmp_magma=hf_row['T_surf'],
         tmp_floor=config.atmos_clim.tmp_minimum,
+        κ_grey_lw=config.atmos_clim.agni.grey_opacity_lw,
+        κ_grey_sw=config.atmos_clim.agni.grey_opacity_sw,
+    )
+    setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
+
+    succ = jl.AGNI.atmosphere.setup_b(
+        atmos,
+        dirs['agni'],
+        dirs['output'],
+        input_sf,
+        hf_row['F_ins'],
+        config.orbit.s0_factor,
+        float(hf_row['albedo_pl']),
+        config.orbit.zenith_angle,
+        hf_row['T_surf'],
+        hf_row['gravity'],
+        hf_row['R_int'],
+        int(config.atmos_clim.num_levels),
+        p_surf,
+        p_top,
+        vol_dict,
+        '',
+        **setup_kwargs,
     )
 
     # Check setup! success
@@ -263,6 +634,9 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     if not bool(succ):
         UpdateStatusfile(dirs, 22)
         raise RuntimeError('Could not allocate atmosphere object')
+
+    # Confirm the live Atmos_t carries every field PROTEUS reads
+    _check_agni_schema(atmos)
 
     # Set temperature profile from old NetCDF if it exists
     nc_files = glob.glob(os.path.join(dirs['output'], 'data', '*_atm.nc'))
@@ -367,16 +741,16 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
 
     # ---------------------
     # Store old/current log-pressure vs temperature arrays
-    p_old = list(atmos.p)
+    p_old = list(atmos.p)  # pascals
     t_old = list(atmos.tmp)
     nlev_c = len(p_old)
 
     #    extend to lower pressures
-    p_old = [p_old[0] / 10] + p_old
+    p_old = [p_old[0] / 1.1] + p_old
     t_old = [t_old[0]] + t_old
 
     #    extend to higher pressures
-    p_old = p_old + [p_old[-1] * 10]
+    p_old = p_old + [max(np.amax(p_old) * 1.1, hf_row['P_surf'] * 1e5)]
     t_old = t_old + [t_old[-1]]
 
     #    create interpolator
@@ -385,15 +759,16 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     # ---------------------
     # Update surface pressure [Pa] and generate new grid
     atmos.p_oboa = 1.0e5 * float(hf_row['P_surf'])
-    atmos.p_boa = atmos.p_boa
+    atmos.p_boa = atmos.p_oboa
     jl.AGNI.atmosphere.generate_pgrid_b(atmos)
 
     # ---------------------
     # Set temperatures at all levels
+    tmp_max = max(1000, float(hf_row['T_magma']))
     for i in range(nlev_c):
-        atmos.tmp[i] = float(itp(np.log10(atmos.p[i])))
-        atmos.tmpl[i] = float(itp(np.log10(atmos.pl[i])))
-    atmos.tmpl[-1] = float(itp(np.log10(atmos.pl[-1])))
+        atmos.tmp[i] = float(min(tmp_max, itp(np.log10(atmos.p[i]))))
+        atmos.tmpl[i] = float(min(tmp_max, itp(np.log10(atmos.pl[i]))))
+    atmos.tmpl[-1] = float(min(tmp_max, itp(np.log10(atmos.pl[-1]))))
 
     return atmos
 
@@ -416,6 +791,9 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
     ----------
         atmos : AGNI.atmosphere.Atmos_t
             Atmosphere struct
+        agni_success : bool
+            True if AGNI's Newton solver converged on at least one attempt.
+            False if all attempts exhausted with the "Maximum attempts" path.
     """
 
     # atmosphere solver plotting frequency
@@ -439,6 +817,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
         easy_start = False
         grey_start = False
         dx_max = float(config.atmos_clim.agni.dx_max)
+        ls_min_scale = 1e-4
         ls_increase = 0.7
         perturb_all = bool(config.atmos_clim.agni.perturb_all)
         max_steps = int(config.atmos_clim.agni.max_steps)
@@ -486,37 +865,83 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
         )
 
         # Update solver
-        jl.AGNI.solver.ls_increase = float(ls_increase)
+        jl.AGNI.solver.solve_energy.ls_increase = float(ls_increase)
+        jl.AGNI.solver.solve_energy.ls_min_scale = float(ls_min_scale)
 
-        # Try solving temperature profile
-        agni_success = jl.AGNI.solver.solve_energy_b(
-            atmos,
-            sol_type=int(config.atmos_clim.surf_state_int),
-            method=int(1),
-            chem=chemistry,
-            conduct=config.atmos_clim.agni.conduction,
-            convect=config.atmos_clim.agni.convection,
-            sens_heat=config.atmos_clim.agni.sens_heat,
-            latent=config.atmos_clim.agni.latent_heat,
-            rainout=config.atmos_clim.agni.rainout,
-            oceans=config.atmos_clim.agni.oceans,
-            max_steps=int(max_steps),
-            max_runtime=900.0,
-            conv_atol=float(config.atmos_clim.agni.solution_atol),
-            conv_rtol=float(config.atmos_clim.agni.solution_rtol),
-            fdo=int(config.atmos_clim.agni.fdo),
-            ls_method=int(linesearch),
-            dx_max=float(dx_max),
-            easy_start=easy_start,
-            grey_start=grey_start,
-            perturb_all=perturb_all,
-            save_frames=False,
-            modplot=int(modplot),
-            plot_jacobian=plot_jacobian,
-        )
+        # Try solving temperature profile.
+        #
+        # We wrap the call in a try/except because AGNI unconditionally
+        # invokes `plot_step()` (solver.jl lines 969, 973, 978, 983, 986,
+        # 989) whenever its Newton solver fails. When the failure is due to
+        # NaN fluxes (CODE_NAN, CODE_OBJ), plot_fluxes passes the NaN to
+        # Julia's `range()` which rounds NaN to Int64 and throws
+        # InexactError. That exception propagates up the pyjulia boundary
+        # and would kill the whole Python process, bypassing the
+        # atmosphere-interior deadlock detector in proteus.py::start.
+        # Catching it here lets us report the failure cleanly and lets the
+        # main loop either retry with different solver params or abort via
+        # the deadlock counter.
+        try:
+            agni_success = jl.AGNI.solver.solve_energy_b(
+                atmos,
+                sol_type=int(config.atmos_clim.surf_state_int),
+                method=int(1),
+                chem=chemistry,
+                conduct=config.atmos_clim.agni.conduction,
+                convect=config.atmos_clim.agni.convection,
+                sens_heat=config.atmos_clim.agni.sens_heat,
+                latent=config.atmos_clim.agni.latent_heat,
+                rainout=config.atmos_clim.agni.rainout,
+                oceans=config.atmos_clim.agni.oceans,
+                max_steps=int(max_steps),
+                max_runtime=900.0,
+                conv_atol=float(config.atmos_clim.agni.solution_atol),
+                conv_rtol=float(config.atmos_clim.agni.solution_rtol),
+                fdo=int(config.atmos_clim.agni.fdo),
+                ls_method=int(linesearch),
+                dx_max=float(dx_max),
+                easy_start=easy_start,
+                grey_start=grey_start,
+                perturb_all=perturb_all,
+                save_frames=False,
+                modplot=int(modplot),
+                plot_jacobian=plot_jacobian,
+            )
+        except Exception as e:
+            # Any Julia-side exception (InexactError on NaN, SingularException,
+            # etc.) is treated as an AGNI non-convergence. We intentionally
+            # use a bare `Exception` here because juliacall raises its own
+            # exception hierarchy that may not be importable at module load
+            # time (chicken-and-egg with juliacall init). The message is
+            # logged with traceback for post-mortem, and agni_success stays
+            # False so the main loop's deadlock counter handles it.
+            log.warning(
+                'AGNI solve_energy_b raised a Julia-side exception; '
+                'treating as a non-converged attempt. Exception: %s',
+                e,
+            )
+            agni_success = False
 
-        # Move AGNI logfile content into PROTEUS logfile
-        sync_log_files(dirs['output'])
+        # Move AGNI logfile content into PROTEUS logfile (and capture lines
+        # for failure-mode parsing).
+        log_lines = sync_log_files(dirs['output'])
+
+        # Defensive: even when AGNI reports success, validate that the
+        # returned struct holds finite, physically valid state. AGNI's
+        # post-solve processing has been observed to leave NaN tmp_surf
+        # or non-finite flux_tot on the struct after `is_converged=True`
+        # in rare line-search collapse paths (CHILI sweep R12/R17). If we
+        # let those values propagate to hf_row, the deadlock detector
+        # never fires and the run silently produces garbage.
+        if agni_success:
+            ok, reason = _validate_agni_state(atmos)
+            if not ok:
+                log.error(
+                    'AGNI reported success but post-solve validation failed '
+                    '(%s). Forcing this attempt to be treated as a failure.',
+                    reason,
+                )
+                agni_success = False
 
         # Model status check
         if agni_success:
@@ -525,9 +950,10 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
             break
         else:
             # failure, loop again...
-            log.warning('Attempt %d failed' % attempts)
+            reason = _extract_agni_failure_reason(log_lines)
+            log.warning('Attempt %d failed (reason: %s)', attempts, reason)
 
-    return atmos
+    return atmos, bool(agni_success)
 
 
 def _solve_once(atmos, config: Config):
@@ -617,7 +1043,9 @@ def _solve_transparent(atmos, config: Config):
     return atmos
 
 
-def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
+def run_agni(
+    atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict, write_data: bool = True
+):
     """Run AGNI atmosphere model.
 
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -635,6 +1063,8 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
+        write_data : bool, optional
+            Whether to write AGNI output to NetCDF.
 
     Returns
     ----------
@@ -651,35 +1081,45 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     # Solve atmosphere
     # ---------------------------
 
+    # Track whether AGNI's Newton solver actually converged. The transparent
+    # and prescribed-T branches do not run a Newton solver, so they cannot
+    # "fail" in the deadlock sense; only `_solve_energy` can. We default to
+    # True and override only in the energy branch.
+    agni_converged = True
+
     # Transparent case
     if bool(atmos.transparent):
         # no opacity
         log.info('Using transparent solver')
-        atmos.transspec_p = float(atmos.p_boa)
+        atmos.transspec_ref_p = float(atmos.p_boa)
         atmos = _solve_transparent(atmos, config)
 
     # Opaque case
     else:
         # Set observed pressure
-        atmos.transspec_p = float(config.atmos_clim.agni.p_obs * 1e5)  # converted to Pa
+        atmos.transspec_ref_p = float(config.atmos_clim.p_obs * 1e5)  # converted to Pa
 
         # full solver
         if config.atmos_clim.agni.solve_energy:
             log.info('Using nonlinear solver to conserve fluxes')
-            atmos = _solve_energy(atmos, loops_total, dirs, config)
+            atmos, agni_converged = _solve_energy(atmos, loops_total, dirs, config)
 
         # simplified T(p)
         else:
             log.info('Using prescribed temperature profile')
             atmos = _solve_once(atmos, config)
 
-    # Calculate planet transit radius (to be stored in NetCDF)
-    jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
+    # Set default observed pressure
+    atmos.transspec_p = atmos.transspec_ref_p
+
+    # Calculate planet transit radius and other photospheric properties
+    jl.AGNI.atmosphere.estimate_photosphere_b(atmos, setby=str('prs'))
 
     # Write output data
-    log.debug('AGNI write to NetCDF file')
-    ncdf_path = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % hf_row['Time'])
-    jl.AGNI.save.write_ncdf(atmos, ncdf_path)
+    if write_data:
+        log.debug('AGNI write to NetCDF file')
+        ncdf_path = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % hf_row['Time'])
+        jl.AGNI.save.write_ncdf(atmos, ncdf_path)
 
     # Make plots
     if multiple(loops_total, config.params.out.plot_mod):
@@ -695,7 +1135,9 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     LW_flux_up = np.array(atmos.flux_u_lw)
     SW_flux_up = np.array(atmos.flux_u_sw)
     SW_flux_down = np.array(atmos.flux_d_sw)
-    albedo = SW_flux_up[0] / SW_flux_down[0]
+    # Guard against zero instellation (nightside or F_ins=0), where there is no
+    # downward shortwave flux to reflect and the albedo ratio is undefined.
+    albedo = SW_flux_up[0] / SW_flux_down[0] if SW_flux_down[0] > 0.0 else 0.0
     if bool(atmos.transparent):
         R_obs = float(hf_row['R_int'])
         T_obs = float(atmos.tmp_surf)
@@ -714,7 +1156,7 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     F_atm_new = tot_flux[0]
 
     # Enforce positive limit on F_atm, if enabled
-    if config.atmos_clim.prevent_warming:
+    if config.planet.prevent_warming:
         F_atm_lim = max(1e-8, F_atm_new)
     else:
         F_atm_lim = F_atm_new
@@ -732,6 +1174,11 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
         p_xuv = hf_row['p_xuv']  # bar
         r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv * 1e5)[1]  # m
 
+    # Diagnostics surfaced into hf_row: median optical depth at TOA
+    # and at the surface, plus the Ra_max and timescale ratios.
+    tau_TOA, tau_surface = _summarise_tau_band(atmos)
+    Ra_max, t_conv_over_t_rad = _summarise_diagnostics(atmos)
+
     # final things to store
     output = {}
     output['F_atm'] = F_atm_lim
@@ -742,6 +1189,15 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     output['T_obs'] = T_obs
     output['R_obs'] = R_obs
     output['albedo'] = albedo
+    output['tau_atm_TOA'] = tau_TOA
+    output['tau_atm_surface'] = tau_surface
+    output['atm_Ra_max'] = Ra_max
+    output['atm_t_conv_over_t_rad'] = t_conv_over_t_rad
+    # Transient-only flag (not persisted to helpfile). True if AGNI's Newton
+    # solver converged on at least one attempt; False if all attempts were
+    # exhausted via the "Maximum attempts" path. The main coupling loop uses
+    # this to detect AGNI deadlocks (see proteus.py).
+    output['agni_converged'] = bool(agni_converged)
     output['p_xuv'] = p_xuv  # Pressure at Rxuv   [bars]
     output['R_xuv'] = r_xuv  # Radius at Pxuv     [m]
     output['ocean_areacov'] = float(atmos.ocean_areacov)

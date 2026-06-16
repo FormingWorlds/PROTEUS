@@ -80,7 +80,7 @@ def plot_atmosphere(output_dir: str, times: list, profiles: list, plot_format='p
 
 def plot_atmosphere_entry(handler: Proteus):
     plot_times, _ = sample_output(handler, tmin=1e4, extension='_atm.nc')
-    print('Snapshots:', plot_times)
+    log.info('Snapshots: %s', plot_times)
 
     # Plot fixed set from above
     profiles = read_atmosphere_data(handler.directories['output'], plot_times)

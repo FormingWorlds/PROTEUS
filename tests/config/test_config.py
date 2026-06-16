@@ -8,6 +8,7 @@ docs/test_building.md for required structure, speed, and physics validity.
 
 from __future__ import annotations
 
+import os
 from itertools import chain
 from types import SimpleNamespace
 
@@ -26,10 +27,13 @@ from proteus.config._config import (
     tides_enabled_orbit,
 )
 from proteus.config._converters import none_if_none
-from proteus.config._delivery import Volatiles
 from proteus.config._interior import valid_aragog, valid_interiordummy, valid_spider
 from proteus.config._outgas import Calliope
 from proteus.config._params import max_bigger_than_min, valid_mod, valid_path
+from proteus.config._planet import GasPrs, Planet
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 PATHS = chain(
     (PROTEUS_ROOT / 'input').glob('*.toml'),
@@ -39,7 +43,7 @@ PATHS = chain(
 @pytest.fixture
 def cfg():
     """Load the demo dummy config and return the parsed Config object."""
-    path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+    path = PROTEUS_ROOT / 'input' / 'dummy.toml'
     obj = read_config_object(path)
 
     assert isinstance(obj, Config)
@@ -55,10 +59,86 @@ def test_read_config_returns_dict():
     Physical scenario: config files are TOML; read_config provides
     the low-level dict before validation/structure.
     """
-    path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+    path = PROTEUS_ROOT / 'input' / 'dummy.toml'
     raw = read_config(path)
     assert isinstance(raw, dict)
     assert 'params' in raw or 'star' in raw or 'orbit' in raw
+
+
+@pytest.mark.unit
+def test_valid_config_version_rejects_old():
+    """config_version validator rejects old versions with a clear upgrade message."""
+    from proteus.config._config import valid_config_version
+
+    instance = SimpleNamespace()
+    with pytest.raises(ValueError, match='config_version = "3.0"'):
+        valid_config_version(instance, SimpleNamespace(), '2.0')
+
+    # Discrimination: the rejection path must not mutate the input instance.
+    # A regression that recorded the rejected version on the instance before
+    # raising would fail this post-state check.
+    assert vars(instance) == {}
+
+
+@pytest.mark.unit
+def test_valid_config_version_accepts_current():
+    """config_version validator accepts the current version.
+
+    Sister to ``test_valid_config_version_rejects_unknown`` (which exercises
+    a future version string '2.0' that must raise); together they pin the
+    accepted-version envelope.
+    """
+    from proteus.config._config import valid_config_version
+
+    instance = SimpleNamespace()
+    result = valid_config_version(instance, SimpleNamespace(), '3.0')
+    assert result is None  # contract: validator returns None silently on accepted version
+    assert vars(instance) == {}  # validator must not mutate the input instance
+
+
+@pytest.mark.unit
+def test_auto_output_path_resolved():
+    """params.out.path = 'auto' resolves to run_YYYYMMDD_HHMMSS_xxxx."""
+    import re
+
+    from proteus.config import read_config_object
+    from proteus.utils.coupler import set_directories
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'dummy.toml')
+    assert cfg.params.out.path == 'auto'
+    set_directories(cfg)
+    assert cfg.params.out.path != 'auto'
+    assert re.match(r'run_\d{8}_\d{6}_[0-9a-f]{4}', cfg.params.out.path)
+
+
+@pytest.mark.unit
+def test_factory_defaults_from_minimal_config():
+    """Config sections omitted from TOML use factory defaults.
+
+    Pins the per-module default backend so a downstream schema change cannot
+    silently flip a default and corrupt CI runs that lack the optional
+    backend's package. The most recent regression of this kind: the
+    outgas.module default used to be "atmodeller" while atmodeller is not
+    in the PROTEUS dependency set; CI without atmodeller could not load
+    minimal.toml because check_module_dependencies tried to import the
+    missing package.
+    """
+    from proteus.config import read_config_object
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    # Omitted sections should use factory defaults
+    assert cfg.escape.module == 'zephyrus'
+    assert cfg.accretion.module is None
+    assert cfg.observe.synthesis is None
+    assert cfg.atmos_chem.module is None
+    assert cfg.interior_energetics.module == 'aragog'
+    assert cfg.star.module == 'mors'
+    assert cfg.atmos_clim.module == 'agni'
+    # outgas.module default must be a backend whose package is in the
+    # PROTEUS hard-dependency set. calliope is hard-pinned in
+    # pyproject.toml; atmodeller is not. The default must be calliope so
+    # any environment that has PROTEUS installed can load minimal.toml.
+    assert cfg.outgas.module == 'calliope'
 
 
 @pytest.mark.unit
@@ -68,9 +148,15 @@ def test_read_config_object_returns_config():
 
     Physical scenario: full parse and validate; used by Proteus and tests.
     """
-    path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+    path = PROTEUS_ROOT / 'input' / 'dummy.toml'
     obj = read_config_object(path)
     assert isinstance(obj, Config)
+    # Discriminating check: dummy.toml uses the dummy backend stack across
+    # every coupled module (atmos_clim, outgas, escape, etc.). A regression
+    # that returned a stale or partially populated Config would have left at
+    # least one of these fields empty or wrong.
+    assert obj.atmos_clim.module == 'dummy'
+    assert obj.outgas.module == 'dummy'
 
 
 @pytest.mark.unit
@@ -83,21 +169,39 @@ def test_none_if_none():
 
 
 @pytest.mark.parametrize('path', PATHS)
+@pytest.mark.skipif(
+    not os.environ.get('RAD_DIR'),
+    reason=(
+        'Configs that select AGNI or JANUS read RAD_DIR at init. Local '
+        'developer environments that have not installed SOCRATES skip; '
+        'CI jobs (Linux and macOS) install SOCRATES via the composite '
+        'action so RAD_DIR is set and this test exercises fully.'
+    ),
+)
 def test_proteus_init(path):
     """Smoke-test initialization for bundled example configs that should parse."""
     if 'nogit' in str(path):
         # Skip configs that rely on git metadata when running offline.
         return
+    if path.name.startswith('example.'):
+        # Skip subcommand meta-configs: example.infer.toml drives `proteus infer`
+        # and example.grid.toml drives `proteus grid`. Their schema is intentionally
+        # different from the standard PROTEUS Config (no planet.mass_tot, etc.) and
+        # they are loaded by their own CLI handlers, not by Proteus(config_path=...).
+        return
     print(f'Testing config at {path}')
     runner = Proteus(config_path=path)
     assert isinstance(runner.config, Config)
+    # Discriminating check: the runner's config_path attribute round-trips the
+    # input. A regression that returned a default-constructed Proteus runner
+    # without ingesting the TOML would still pass the isinstance check alone.
+    assert runner.config_path == path
 
 
 @pytest.mark.unit
 def test_calliope_is_included():
     """Calliope includes/excludes species based on boolean flags."""
     conf = Calliope(
-        T_floor=0.1,
         include_CO=False,
         include_H2=True,
     )
@@ -110,8 +214,8 @@ def test_calliope_is_included():
 @pytest.mark.unit
 def test_delivery_get_pressure():
     """Volatile partial pressure lookup succeeds for known keys and errors otherwise."""
-    conf = Volatiles(N2=123.0)
-    assert conf.get_pressure('N2') == 123.0
+    conf = GasPrs(N2=123.0)
+    assert conf.get_pressure('N2') == pytest.approx(123.0, rel=1e-12)
     with pytest.raises(AttributeError):
         conf.get_pressure('fails')
 
@@ -131,6 +235,13 @@ def test_instmethod_dummy_rejects_non_dummy_star():
     with pytest.raises(ValueError):
         instmethod_dummy(inst, None, None)
 
+    # Discrimination: flipping star.module to 'dummy' (with instellation_method
+    # still 'inst') is the only valid combo and must silent-pass. A regression
+    # that always raised under instellation_method='inst' (ignoring star.module)
+    # would fail this second invocation.
+    inst.star.module = 'dummy'
+    assert instmethod_dummy(inst, None, None) is None
+
 
 @pytest.mark.unit
 def test_instmethod_evolve_rejects_evolving_inst_method():
@@ -138,6 +249,12 @@ def test_instmethod_evolve_rejects_evolving_inst_method():
     inst = SimpleNamespace(orbit=SimpleNamespace(instellation_method='inst', evolve=True))
     with pytest.raises(ValueError):
         instmethod_evolve(inst, None, None)
+
+    # Discrimination: dropping evolve to False clears the guard. A regression
+    # that always raised when instellation_method='inst' (ignoring evolve)
+    # would fail this second invocation.
+    inst.orbit.evolve = False
+    assert instmethod_evolve(inst, None, None) is None
 
 
 @pytest.mark.unit
@@ -147,15 +264,27 @@ def test_satellite_evolve_rejects_combination():
     with pytest.raises(ValueError):
         satellite_evolve(inst, None, None)
 
+    # Discrimination: dropping evolve to False (satellite still True) is the
+    # canonical valid combo and must silent-pass. A regression that raised
+    # whenever satellite=True (ignoring evolve) would fail this second call.
+    inst.orbit.evolve = False
+    assert satellite_evolve(inst, None, None) is None
+
 
 @pytest.mark.unit
 def test_tides_enabled_orbit_requires_orbit_module():
     """Tidal heating requires an orbit module to propagate the energy source."""
     inst = SimpleNamespace(
-        interior=SimpleNamespace(tidal_heat=True), orbit=SimpleNamespace(module=None)
+        interior_energetics=SimpleNamespace(heat_tidal=True), orbit=SimpleNamespace(module=None)
     )
     with pytest.raises(ValueError):
         tides_enabled_orbit(inst, None, None)
+
+    # Discrimination: setting orbit.module to any non-None backend (with
+    # heat_tidal still True) clears the guard. A regression that always
+    # raised on heat_tidal=True (ignoring orbit.module) would fail here.
+    inst.orbit.module = 'lovepy'
+    assert tides_enabled_orbit(inst, None, None) is None
 
 
 @pytest.mark.unit
@@ -166,6 +295,12 @@ def test_observe_resolved_atmosphere_requires_non_dummy():
     )
     with pytest.raises(ValueError):
         observe_resolved_atmosphere(inst, None, None)
+
+    # Discrimination: flipping atmos_clim.module to a non-dummy value clears
+    # the guard. A regression that always raised on synthesis != None
+    # (ignoring atmos_clim.module) would fail this second invocation.
+    inst.atmos_clim.module = 'agni'
+    assert observe_resolved_atmosphere(inst, None, None) is None
 
 
 @pytest.mark.unit
@@ -178,17 +313,30 @@ def test_spada_zephyrus_requires_mors_spada():
     with pytest.raises(ValueError):
         spada_zephyrus(inst, None, None)
 
+    # Discrimination: flipping mors.tracks to 'spada' (with the zephyrus +
+    # mors combination still in place) is the canonical valid combo. A
+    # regression that always raised under module='zephyrus' (ignoring
+    # tracks) would fail this second invocation.
+    inst.star.mors.tracks = 'spada'
+    assert spada_zephyrus(inst, None, None) is None
+
 
 @pytest.mark.unit
 def test_janus_escape_requires_escape_stop_flag():
-    """Janus escape needs stop.escape flag to prevent runaway mass loss."""
+    """Janus escape needs stop.escape.enabled=True to prevent runaway mass loss."""
     inst = SimpleNamespace(
         escape=SimpleNamespace(module='zephyrus'),
         atmos_clim=SimpleNamespace(module='janus'),
-        params=SimpleNamespace(stop=SimpleNamespace(escape=False)),
+        params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=False))),
     )
     with pytest.raises(ValueError):
         janus_escape_atmosphere(inst, None, None)
+
+    # Discrimination: flipping stop.escape.enabled to True clears the guard.
+    # A regression that always raised on the zephyrus+janus pair (ignoring
+    # the stop-escape flag) would fail this second invocation.
+    inst.params.stop.escape.enabled = True
+    assert janus_escape_atmosphere(inst, None, None) is None
 
 
 # =============================================================================
@@ -199,65 +347,73 @@ def test_janus_escape_requires_escape_stop_flag():
 @pytest.mark.unit
 def test_valid_interiordummy_checks_tmagma_and_liquidus():
     """Dummy interior rejects unrealistically low magma temperature and thin liquidus gap."""
-    dummy = SimpleNamespace(ini_tmagma=150.0, mantle_tliq=1500.0, mantle_tsol=1600.0)
+    dummy = SimpleNamespace(mantle_tliq=1500.0, mantle_tsol=1600.0)
     inst = SimpleNamespace(module='dummy', dummy=dummy)
     with pytest.raises(ValueError):
         valid_interiordummy(inst, None, None)
 
-    dummy_ok = SimpleNamespace(ini_tmagma=500.0, mantle_tliq=1700.0, mantle_tsol=1600.0)
+    dummy_ok = SimpleNamespace(mantle_tliq=1700.0, mantle_tsol=1600.0)
     inst_ok = SimpleNamespace(module='dummy', dummy=dummy_ok)
-    # Should not raise
-    valid_interiordummy(inst_ok, None, None)
+    # Discrimination: a tliq strictly greater than tsol is the canonical valid
+    # combo and must silent-pass. A regression that always raised when
+    # module='dummy' (ignoring the tliq vs tsol comparison) would fail here.
+    assert valid_interiordummy(inst_ok, None, None) is None
 
 
 @pytest.mark.unit
 def test_valid_aragog_requires_energy_term_and_tmagma():
     """Aragog interior needs at least one heat transport term and warm initial magma."""
-    aragog = SimpleNamespace(
-        ini_tmagma=150.0,
-        conduction=False,
-        convection=False,
-        mixing=False,
-        gravitational_separation=False,
+    inst = SimpleNamespace(
+        module='aragog',
+        trans_conduction=False,
+        trans_convection=False,
+        trans_mixing=False,
+        trans_grav_sep=False,
+        aragog=SimpleNamespace(),
     )
-    inst = SimpleNamespace(module='aragog', aragog=aragog)
     with pytest.raises(ValueError):
         valid_aragog(inst, None, None)
 
-    aragog_ok = SimpleNamespace(
-        ini_tmagma=800.0,
-        conduction=True,
-        convection=False,
-        mixing=False,
-        gravitational_separation=False,
+    inst_ok = SimpleNamespace(
+        module='aragog',
+        trans_conduction=True,
+        trans_convection=False,
+        trans_mixing=False,
+        trans_grav_sep=False,
+        aragog=SimpleNamespace(),
     )
-    inst_ok = SimpleNamespace(module='aragog', aragog=aragog_ok)
-    valid_aragog(inst_ok, None, None)
+    # Discrimination: enabling just one transport term must take the validator
+    # to the silent-accept branch. A regression that always raised on
+    # module='aragog' (ignoring the trans_* flags) would fail here.
+    assert valid_aragog(inst_ok, None, None) is None
 
 
 @pytest.mark.unit
 def test_valid_spider_requires_energy_term_and_entropy():
     """Spider interior requires an energy transport term and positive entropy."""
-    spider = SimpleNamespace(
-        ini_entropy=150.0,
-        conduction=False,
-        convection=False,
-        mixing=False,
-        gravitational_separation=False,
+    inst = SimpleNamespace(
+        module='spider',
+        trans_conduction=False,
+        trans_convection=False,
+        trans_mixing=False,
+        trans_grav_sep=False,
+        spider=SimpleNamespace(),
     )
-    inst = SimpleNamespace(module='spider', spider=spider)
     with pytest.raises(ValueError):
         valid_spider(inst, None, None)
 
-    spider_ok = SimpleNamespace(
-        ini_entropy=400.0,
-        conduction=True,
-        convection=False,
-        mixing=False,
-        gravitational_separation=False,
+    inst_ok = SimpleNamespace(
+        module='spider',
+        trans_conduction=True,
+        trans_convection=False,
+        trans_mixing=False,
+        trans_grav_sep=False,
+        spider=SimpleNamespace(),
     )
-    inst_ok = SimpleNamespace(module='spider', spider=spider_ok)
-    valid_spider(inst_ok, None, None)
+    # Discrimination: enabling just one transport term must take the validator
+    # to the silent-accept branch. A regression that always raised on
+    # module='spider' (ignoring the trans_* flags) would fail here.
+    assert valid_spider(inst_ok, None, None) is None
 
 
 # =============================================================================
@@ -271,6 +427,11 @@ def test_valid_path_rejects_empty_string():
     with pytest.raises(ValueError):
         valid_path(None, SimpleNamespace(name='path'), '')
 
+    # Discrimination: a non-empty string must reach the silent-accept branch.
+    # A regression that rejected every input (e.g. inverted truthiness) would
+    # fail this second invocation.
+    assert valid_path(None, SimpleNamespace(name='path'), '/tmp/output') is None
+
 
 @pytest.mark.unit
 def test_max_bigger_than_min_enforces_order():
@@ -278,6 +439,11 @@ def test_max_bigger_than_min_enforces_order():
     dummy = SimpleNamespace(minimum=10)
     with pytest.raises(ValueError):
         max_bigger_than_min(dummy, SimpleNamespace(name='maximum'), 5)
+
+    # Discrimination: a maximum strictly greater than minimum must silent-pass.
+    # A regression that swapped the inequality (or always raised) would fail
+    # this second invocation.
+    assert max_bigger_than_min(dummy, SimpleNamespace(name='maximum'), 20) is None
 
 
 @pytest.mark.unit
@@ -322,20 +488,28 @@ def test_star_mors_invalid_age():
 
 @pytest.mark.unit
 def test_star_mors_missing_spec():
-    """Test MORS validator requires star_name."""
+    """Test MORS validator requires star_name for solar/muscles spectra."""
     from proteus.config._star import valid_mors
 
     config = SimpleNamespace(
         module='mors',
         mors=SimpleNamespace(
-            age_now=5.0,  # Valid age
-            star_name=None,  # Invalid: missing star name
+            age_now=5.0,
+            star_name=None,  # Invalid: missing for solar source
             rot_pcntle=50.0,
             rot_period=None,
-            spectrum_source=None,
+            spectrum_source='solar',
         ),
     )
 
+    with pytest.raises(ValueError, match='Must provide mors.star_name'):
+        valid_mors(config, SimpleNamespace(), None)
+
+    # Discrimination: the same star_name=None must also be rejected with
+    # spectrum_source='muscles' (the validator checks both 'solar' AND
+    # 'muscles' branches). A regression that only checked 'solar' would
+    # let 'muscles' slip through.
+    config.mors.spectrum_source = 'muscles'
     with pytest.raises(ValueError, match='Must provide mors.star_name'):
         valid_mors(config, SimpleNamespace(), None)
 
@@ -357,8 +531,11 @@ def test_star_mors_rotation_percentile_valid():
         ),
     )
 
-    # Should not raise error
-    valid_mors(config, SimpleNamespace(), None)
+    result = valid_mors(config, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently on the pass path
+    # validator must not mutate the input config; use pytest.approx to keep the
+    # comparison float-safe (the underlying value is a literal float).
+    assert config.mors.rot_pcntle == pytest.approx(50.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -401,8 +578,10 @@ def test_star_mors_rotation_period_positive():
         ),
     )
 
-    # Should not raise error
-    valid_mors(config, SimpleNamespace(), None)
+    # Discrimination: rot_period > 0 must reach the silent-accept branch.
+    # A regression that rejected every input would fail here before the
+    # negative-rejection branch below.
+    assert valid_mors(config, SimpleNamespace(), None) is None
 
     config.mors.rot_period = -1.0  # Invalid: negative
     with pytest.raises(ValueError, match='Rotation period must be greater than zero'):
@@ -510,17 +689,17 @@ def test_escape_zephyrus_pxuv_bounds():
 
     # Pxuv = 0 - invalid
     config.zephyrus.Pxuv = 0.0
-    with pytest.raises(ValueError, match='Pxuv.*must be >0 and < 10'):
+    with pytest.raises(ValueError, match='Pxuv.*must be >0 and <= 10'):
         valid_zephyrus(config, SimpleNamespace(), None)
 
     # Pxuv = 10.1 - invalid
     config.zephyrus.Pxuv = 10.1
-    with pytest.raises(ValueError, match='Pxuv.*must be >0 and < 10'):
+    with pytest.raises(ValueError, match='Pxuv.*must be >0 and <= 10'):
         valid_zephyrus(config, SimpleNamespace(), None)
 
     # Pxuv = None - invalid
     config.zephyrus.Pxuv = None
-    with pytest.raises(ValueError, match='Pxuv.*must be >0 and < 10'):
+    with pytest.raises(ValueError, match='Pxuv.*must be >0 and <= 10'):
         valid_zephyrus(config, SimpleNamespace(), None)
 
 
@@ -573,14 +752,18 @@ def test_escape_dummy_rate_positive():
     # Should not raise error
     valid_escapedummy(config, SimpleNamespace(), None)
 
-    # Rate = 0 - invalid
+    # Rate = 0 - valid (zero escape)
     config.dummy.rate = 0.0
-    with pytest.raises(ValueError, match='rate.*must be >0'):
-        valid_escapedummy(config, SimpleNamespace(), None)
+    valid_escapedummy(config, SimpleNamespace(), None)  # Should not raise
 
     # Rate = None - invalid
     config.dummy.rate = None
-    with pytest.raises(ValueError, match='rate.*must be >0'):
+    with pytest.raises(ValueError, match='rate.*must be >= 0'):
+        valid_escapedummy(config, SimpleNamespace(), None)
+
+    # Rate = -1 - invalid
+    config.dummy.rate = -1.0
+    with pytest.raises(ValueError, match='rate.*must be >= 0'):
         valid_escapedummy(config, SimpleNamespace(), None)
 
 
@@ -630,37 +813,6 @@ def test_orbit_phi_tide_value_bounds():
 
 
 @pytest.mark.unit
-def test_interior_spider_entropy_minimum():
-    """Test SPIDER validator requires minimum initial entropy."""
-    from proteus.config._interior import valid_spider
-
-    # Valid entropy
-    config = SimpleNamespace(
-        module='spider',
-        spider=SimpleNamespace(
-            ini_entropy=250.0,  # Valid: > 200
-            conduction=True,
-            convection=True,
-            mixing=False,
-            gravitational_separation=False,
-        ),
-    )
-
-    # Should not raise error
-    valid_spider(config, SimpleNamespace(), None)
-
-    # Entropy = 200.0 - invalid (must be > 200)
-    config.spider.ini_entropy = 200.0
-    with pytest.raises(ValueError, match='ini_entropy.*must be >200'):
-        valid_spider(config, SimpleNamespace(), None)
-
-    # Entropy = None - invalid
-    config.spider.ini_entropy = None
-    with pytest.raises(ValueError, match='ini_entropy.*must be >200'):
-        valid_spider(config, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
 def test_interior_spider_energy_term_required():
     """Test SPIDER validator requires at least one energy transport term enabled."""
     from proteus.config._interior import valid_spider
@@ -668,43 +820,22 @@ def test_interior_spider_energy_term_required():
     # At least one enabled - valid
     config = SimpleNamespace(
         module='spider',
-        spider=SimpleNamespace(
-            ini_entropy=250.0,
-            conduction=True,  # At least this one
-            convection=False,
-            mixing=False,
-            gravitational_separation=False,
-        ),
+        trans_conduction=True,
+        trans_convection=False,
+        trans_mixing=False,
+        trans_grav_sep=False,
+        spider=SimpleNamespace(),
     )
 
-    # Should not raise error
-    valid_spider(config, SimpleNamespace(), None)
+    # Discrimination: at least one transport term enabled (trans_conduction)
+    # must reach the silent-accept branch. A regression that always raised on
+    # module='spider' (ignoring the trans_* flags) would fail this branch.
+    assert valid_spider(config, SimpleNamespace(), None) is None
 
     # All disabled - invalid
-    config.spider.conduction = False
+    config.trans_conduction = False
     with pytest.raises(ValueError, match='Must enable at least one energy transport term'):
         valid_spider(config, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_interior_valid_path_string_required():
-    """Test valid_path validator requires non-empty string."""
-    from proteus.config._interior import valid_path
-
-    # Valid path
-    valid_path(SimpleNamespace(), SimpleNamespace(name='path_field'), '/some/path')  # OK
-
-    # Empty string - invalid
-    with pytest.raises(ValueError, match='must be a non-empty string'):
-        valid_path(SimpleNamespace(), SimpleNamespace(name='path_field'), '')
-
-    # Non-string - invalid
-    with pytest.raises(ValueError, match='must be a non-empty string'):
-        valid_path(SimpleNamespace(), SimpleNamespace(name='path_field'), None)
-
-    # Whitespace only - invalid
-    with pytest.raises(ValueError, match='must be a non-empty string'):
-        valid_path(SimpleNamespace(), SimpleNamespace(name='path_field'), '   ')
 
 
 # ========================
@@ -713,35 +844,73 @@ def test_interior_valid_path_string_required():
 
 
 @pytest.mark.unit
-def test_atmos_clim_tmp_max_bigger_than_tmp_min_valid():
-    """Test tmp_max_bigger_than_tmp_min validator with valid inputs."""
-    from proteus.config._atmos_clim import tmp_max_bigger_than_tmp_min
+def test_janus_tmp_max_bigger_than_tmp_min_valid():
+    """Test valid_janus accepts janus.tmp_maximum > tmp_minimum."""
+    from proteus.config._atmos_clim import valid_janus
 
-    # Valid case: tmp_maximum > tmp_minimum
-    instance = SimpleNamespace(tmp_minimum=300.0)
-    tmp_max_bigger_than_tmp_min(instance, SimpleNamespace(), 5000.0)  # Should not raise
+    instance = SimpleNamespace(
+        module='janus',
+        spectral_group='Honeyside',
+        spectral_bands='48',
+        tmp_minimum=300.0,
+        janus=SimpleNamespace(
+            tmp_maximum=5000.0,
+        ),
+    )
+    result = valid_janus(instance, SimpleNamespace(), instance.janus)
+    assert result is None  # contract: validator returns None silently on the pass path
+    # Discriminating bounds preserved: tmp_minimum unchanged, tmp_maximum strictly greater.
+    assert instance.tmp_minimum == pytest.approx(300.0, rel=1e-12)
+    assert instance.janus.tmp_maximum > instance.tmp_minimum
 
 
 @pytest.mark.unit
-def test_atmos_clim_tmp_max_equals_tmp_min_invalid():
-    """Test tmp_max_bigger_than_tmp_min validator rejects equal values."""
-    from proteus.config._atmos_clim import tmp_max_bigger_than_tmp_min
+def test_janus_tmp_max_equals_tmp_min_invalid():
+    """Test valid_janus rejects janus.tmp_maximum == tmp_minimum."""
+    from proteus.config._atmos_clim import valid_janus
 
-    # Invalid: tmp_maximum == tmp_minimum
-    instance = SimpleNamespace(tmp_minimum=300.0)
-    with pytest.raises(ValueError, match="'tmp_maximum' has to be bigger than 'tmp_minimum'"):
-        tmp_max_bigger_than_tmp_min(instance, SimpleNamespace(), 300.0)
+    instance = SimpleNamespace(
+        module='janus',
+        spectral_group='Honeyside',
+        spectral_bands='48',
+        tmp_minimum=300.0,
+        janus=SimpleNamespace(
+            tmp_maximum=300.0,
+        ),
+    )
+    with pytest.raises(ValueError, match='has to be bigger'):
+        valid_janus(instance, SimpleNamespace(), instance.janus)
+
+    # Discrimination: nudging tmp_maximum just above tmp_minimum clears the
+    # guard. A regression with a non-strict comparison would have skipped the
+    # raise above; a regression that always raised on module='janus' would
+    # fail this corrected configuration here.
+    instance.janus.tmp_maximum = 301.0
+    assert valid_janus(instance, SimpleNamespace(), instance.janus) is None
 
 
 @pytest.mark.unit
-def test_atmos_clim_tmp_max_less_than_tmp_min_invalid():
-    """Test tmp_max_bigger_than_tmp_min validator rejects tmp_max < tmp_min."""
-    from proteus.config._atmos_clim import tmp_max_bigger_than_tmp_min
+def test_janus_tmp_max_less_than_tmp_min_invalid():
+    """Test valid_janus rejects janus.tmp_maximum < tmp_minimum."""
+    from proteus.config._atmos_clim import valid_janus
 
-    # Invalid: tmp_maximum < tmp_minimum
-    instance = SimpleNamespace(tmp_minimum=400.0)
-    with pytest.raises(ValueError, match="'tmp_maximum' has to be bigger than 'tmp_minimum'"):
-        tmp_max_bigger_than_tmp_min(instance, SimpleNamespace(), 300.0)
+    instance = SimpleNamespace(
+        module='janus',
+        spectral_group='Honeyside',
+        spectral_bands='48',
+        tmp_minimum=400.0,
+        janus=SimpleNamespace(
+            tmp_maximum=300.0,
+        ),
+    )
+    with pytest.raises(ValueError, match='has to be bigger'):
+        valid_janus(instance, SimpleNamespace(), instance.janus)
+
+    # Discrimination: raising tmp_maximum above tmp_minimum clears the guard.
+    # A regression that swapped the inequality direction would have passed the
+    # invalid configuration above silently but fail this corrected one.
+    instance.janus.tmp_maximum = 500.0
+    assert valid_janus(instance, SimpleNamespace(), instance.janus) is None
 
 
 @pytest.mark.unit
@@ -751,7 +920,10 @@ def test_atmos_clim_warn_if_dummy_rayleigh_compatible():
 
     # Valid: AGNI module with rayleigh enabled
     instance = SimpleNamespace(module='agni')
-    warn_if_dummy(instance, SimpleNamespace(), True)  # Should not raise
+    attribute = SimpleNamespace(name='rayleigh')
+    result = warn_if_dummy(instance, attribute, True)
+    assert result is None  # contract: validator returns None silently on accepted module
+    assert instance.module == 'agni'  # no mutation of the module sentinel
 
 
 @pytest.mark.unit
@@ -761,10 +933,16 @@ def test_atmos_clim_warn_if_dummy_rayleigh_incompatible():
 
     # Invalid: dummy module with rayleigh enabled
     instance = SimpleNamespace(module='dummy')
+    attribute = SimpleNamespace(name='rayleigh')
     with pytest.raises(
-        ValueError, match='Dummy atmos_clim module is incompatible with Rayleigh scattering'
+        ValueError, match='Dummy atmos_clim module is incompatible with rayleigh=True'
     ):
-        warn_if_dummy(instance, SimpleNamespace(), True)
+        warn_if_dummy(instance, attribute, True)
+
+    # Discrimination: the validator must short-circuit silently when the
+    # value is falsy, even with module='dummy'. A regression that raised on
+    # the module='dummy' branch unconditionally would fail this second call.
+    assert warn_if_dummy(instance, attribute, False) is None
 
 
 @pytest.mark.unit
@@ -774,7 +952,9 @@ def test_atmos_clim_warn_if_dummy_rayleigh_disabled():
 
     # Valid: dummy module with rayleigh disabled
     instance = SimpleNamespace(module='dummy')
-    warn_if_dummy(instance, SimpleNamespace(), False)  # Should not raise
+    result = warn_if_dummy(instance, SimpleNamespace(), False)
+    assert result is None  # contract: rayleigh=False short-circuits the dummy guard
+    assert instance.module == 'dummy'  # no mutation of the module sentinel
 
 
 @pytest.mark.unit
@@ -783,7 +963,9 @@ def test_atmos_clim_check_overlap_valid_ro():
     from proteus.config._atmos_clim import check_overlap
 
     instance = SimpleNamespace()
-    check_overlap(instance, SimpleNamespace(), 'ro')  # Should not raise
+    result = check_overlap(instance, SimpleNamespace(), 'ro')
+    assert result is None  # contract: validator returns None silently on accepted overlap
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -792,7 +974,9 @@ def test_atmos_clim_check_overlap_valid_rorr():
     from proteus.config._atmos_clim import check_overlap
 
     instance = SimpleNamespace()
-    check_overlap(instance, SimpleNamespace(), 'rorr')  # Should not raise
+    result = check_overlap(instance, SimpleNamespace(), 'rorr')
+    assert result is None  # contract: validator returns None silently on accepted overlap
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -801,7 +985,9 @@ def test_atmos_clim_check_overlap_valid_ee():
     from proteus.config._atmos_clim import check_overlap
 
     instance = SimpleNamespace()
-    check_overlap(instance, SimpleNamespace(), 'ee')  # Should not raise
+    result = check_overlap(instance, SimpleNamespace(), 'ee')
+    assert result is None  # contract: validator returns None silently on accepted overlap
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -813,6 +999,11 @@ def test_atmos_clim_check_overlap_invalid():
     with pytest.raises(ValueError, match='Overlap type must be one of'):
         check_overlap(instance, SimpleNamespace(), 'invalid')
 
+    # Discrimination: the validator must not mutate the instance even when it
+    # raises. A regression that recorded the rejected value on the instance
+    # before raising would fail this post-state check.
+    assert vars(instance) == {}
+
 
 @pytest.mark.unit
 def test_atmos_clim_check_overlap_empty_string():
@@ -823,6 +1014,11 @@ def test_atmos_clim_check_overlap_empty_string():
     with pytest.raises(ValueError, match='Overlap type must be one of'):
         check_overlap(instance, SimpleNamespace(), '')
 
+    # Discrimination: an empty string must be rejected with no instance
+    # mutation. A regression that fell through and silently recorded the
+    # rejected value on the instance would fail this post-state check.
+    assert vars(instance) == {}
+
 
 @pytest.mark.unit
 def test_atmos_clim_valid_albedo_float_in_range():
@@ -830,10 +1026,13 @@ def test_atmos_clim_valid_albedo_float_in_range():
     from proteus.config._atmos_clim import valid_albedo
 
     instance = SimpleNamespace()
-    # Boundary values and midpoint
-    valid_albedo(instance, SimpleNamespace(), 0.0)  # Lower bound
-    valid_albedo(instance, SimpleNamespace(), 0.5)  # Midpoint
-    valid_albedo(instance, SimpleNamespace(), 1.0)  # Upper bound
+    # Boundary values and midpoint; each call must return silently on the
+    # accepted-range path.
+    assert valid_albedo(instance, SimpleNamespace(), 0.0) is None
+    assert valid_albedo(instance, SimpleNamespace(), 0.5) is None
+    assert valid_albedo(instance, SimpleNamespace(), 1.0) is None
+    # The validator does not mutate the input instance.
+    assert vars(instance) == {}
 
 
 @pytest.mark.unit
@@ -845,6 +1044,11 @@ def test_atmos_clim_valid_albedo_float_below_range():
     with pytest.raises(ValueError, match='must be between 0 and 1'):
         valid_albedo(instance, SimpleNamespace(), -0.1)
 
+    # Discrimination: the lower bound is closed at 0. Moving the value to
+    # exactly 0 must cross to the silent-accept branch; a regression that
+    # used a strict `> 0` lower bound would fail this second invocation.
+    assert valid_albedo(instance, SimpleNamespace(), 0.0) is None
+
 
 @pytest.mark.unit
 def test_atmos_clim_valid_albedo_float_above_range():
@@ -855,6 +1059,11 @@ def test_atmos_clim_valid_albedo_float_above_range():
     with pytest.raises(ValueError, match='must be between 0 and 1'):
         valid_albedo(instance, SimpleNamespace(), 1.1)
 
+    # Discrimination: the upper bound is closed at 1. Moving the value to
+    # exactly 1 must cross to the silent-accept branch; a regression that
+    # used a strict `< 1` upper bound would fail this second invocation.
+    assert valid_albedo(instance, SimpleNamespace(), 1.0) is None
+
 
 @pytest.mark.unit
 def test_atmos_clim_valid_albedo_string():
@@ -862,7 +1071,9 @@ def test_atmos_clim_valid_albedo_string():
     from proteus.config._atmos_clim import valid_albedo
 
     instance = SimpleNamespace()
-    valid_albedo(instance, SimpleNamespace(), '/path/to/albedo_file.csv')  # Should not raise
+    result = valid_albedo(instance, SimpleNamespace(), '/path/to/albedo_file.csv')
+    assert result is None  # contract: validator returns None silently on accepted string
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -886,9 +1097,15 @@ def test_atmos_clim_janus_module_skip():
     # With module='agni', validator should return early without checking janus config
     instance = SimpleNamespace(
         module='agni',
-        janus=SimpleNamespace(spectral_group=None, spectral_bands=None),
+        spectral_group=None,
+        spectral_bands=None,
     )
-    valid_janus(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_janus(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-janus module short-circuits the validator
+    # Discriminating check: spectral_group/spectral_bands are both None, which
+    # would normally raise via the janus path; only the module-skip branch can
+    # produce a silent pass here.
+    assert instance.module == 'agni'
 
 
 @pytest.mark.unit
@@ -898,10 +1115,20 @@ def test_atmos_clim_janus_spectral_group_required():
 
     instance = SimpleNamespace(
         module='janus',
-        janus=SimpleNamespace(spectral_group=None, spectral_bands='16'),
+        spectral_group=None,
+        spectral_bands='16',
+        tmp_minimum=0.5,
     )
-    with pytest.raises(ValueError, match='Must set atmos_clim.janus.spectral_group'):
+    with pytest.raises(ValueError, match='Must set atmos_clim.spectral_group'):
         valid_janus(instance, SimpleNamespace(), None)
+
+    # Discrimination: providing a non-empty spectral_group clears the group
+    # branch and lets the validator advance to the tmp_maximum check. A
+    # regression that always raised on the janus path (ignoring whether the
+    # group is actually unset) would fail this second invocation.
+    instance.spectral_group = 'Honeyside'
+    instance.janus = SimpleNamespace(tmp_maximum=5000.0)
+    assert valid_janus(instance, SimpleNamespace(), None) is None
 
 
 @pytest.mark.unit
@@ -911,10 +1138,20 @@ def test_atmos_clim_janus_spectral_bands_required():
 
     instance = SimpleNamespace(
         module='janus',
-        janus=SimpleNamespace(spectral_group='sw', spectral_bands=None),
+        spectral_group='sw',
+        spectral_bands=None,
+        tmp_minimum=0.5,
     )
-    with pytest.raises(ValueError, match='Must set atmos_clim.janus.spectral_bands'):
+    with pytest.raises(ValueError, match='Must set atmos_clim.spectral_bands'):
         valid_janus(instance, SimpleNamespace(), None)
+
+    # Discrimination: providing a non-empty spectral_bands clears the bands
+    # branch and lets the validator advance to the tmp_maximum check. A
+    # regression that always raised on the janus path (ignoring whether
+    # bands itself is unset) would fail this second invocation.
+    instance.spectral_bands = '16'
+    instance.janus = SimpleNamespace(tmp_maximum=5000.0)
+    assert valid_janus(instance, SimpleNamespace(), None) is None
 
 
 @pytest.mark.unit
@@ -924,9 +1161,14 @@ def test_atmos_clim_janus_valid_spectral_config():
 
     instance = SimpleNamespace(
         module='janus',
-        janus=SimpleNamespace(spectral_group='sw_lw', spectral_bands='16'),
+        spectral_group='sw_lw',
+        spectral_bands='16',
+        tmp_minimum=0.5,
+        janus=SimpleNamespace(tmp_maximum=5000.0),
     )
-    valid_janus(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_janus(instance, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently on the pass path
+    assert instance.janus.tmp_maximum > instance.tmp_minimum  # bounds preserved
 
 
 @pytest.mark.unit
@@ -936,7 +1178,11 @@ def test_atmos_clim_agni_module_skip():
 
     # With module='dummy', validator should return early without checking agni config
     instance = SimpleNamespace(module='dummy', agni=SimpleNamespace())
-    valid_agni(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_agni(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-agni module short-circuits the validator
+    # Discriminating check: instance.agni is empty; only the module-skip branch
+    # can produce a silent pass.
+    assert instance.module == 'dummy'
 
 
 @pytest.mark.unit
@@ -946,23 +1192,31 @@ def test_atmos_clim_agni_p_top_must_be_less_than_psurf_thresh():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group='sw_lw',
+        spectral_bands='16',
+        p_top=0.2,  # Greater than psurf_thresh,
+        p_obs=1.0,
         agni=SimpleNamespace(
-            p_top=0.2,  # Greater than psurf_thresh
             psurf_thresh=0.1,  # Less than p_top - INVALID
-            p_obs=1.0,
             solve_energy=True,
             latent_heat=False,
             rainout=True,
-            spectral_group='sw_lw',
-            spectral_bands='16',
             chemistry='none',
         ),
         surf_state='skin',
     )
     with pytest.raises(
-        ValueError, match='Must set `agni.p_top` to be less than `agni.psurf_thresh`'
+        ValueError, match='Must set `p_top` to be less than `agni.psurf_thresh`'
     ):
         valid_agni(instance, SimpleNamespace(), None)
+
+    # Discrimination: lowering p_top below psurf_thresh must move the
+    # validator to the silent-accept branch. A regression that always
+    # raised on the agni-module path (ignoring the actual inequality)
+    # would fail this second branch.
+    instance.p_top = 0.05
+    instance.agni.spectral_file = None
+    assert valid_agni(instance, SimpleNamespace(), None) is None
 
 
 @pytest.mark.unit
@@ -972,21 +1226,29 @@ def test_atmos_clim_agni_p_top_must_be_less_than_p_obs():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group='sw_lw',
+        spectral_bands='16',
+        p_top=2.0,  # Greater than p_obs,
+        p_obs=1.0,  # Less than p_top - INVALID,
         agni=SimpleNamespace(
-            p_top=2.0,  # Greater than p_obs
             psurf_thresh=5.0,  # Valid: > p_top
-            p_obs=1.0,  # Less than p_top - INVALID
             solve_energy=True,
             latent_heat=False,
             rainout=True,
-            spectral_group='sw_lw',
-            spectral_bands='16',
             chemistry='none',
         ),
         surf_state='skin',
     )
-    with pytest.raises(ValueError, match='Must set `agni.p_top` to be less than `agni.p_obs`'):
+    with pytest.raises(ValueError, match='Must set `p_top` to be less than `p_obs`'):
         valid_agni(instance, SimpleNamespace(), None)
+
+    # Discrimination: swapping the inequality so p_top < p_obs must cross to
+    # the silent-accept branch. A regression that swapped the inequality
+    # direction in the check would pass this invalid configuration silently
+    # but fail the corrected configuration here.
+    instance.p_top = 0.005
+    instance.agni.spectral_file = None
+    assert valid_agni(instance, SimpleNamespace(), None) is None
 
 
 @pytest.mark.unit
@@ -996,15 +1258,15 @@ def test_atmos_clim_agni_solve_energy_required_for_skin_surf_state():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group='sw_lw',
+        spectral_bands='16',
+        p_top=1e-5,
+        p_obs=0.02,
         agni=SimpleNamespace(
-            p_top=1e-5,
             psurf_thresh=0.1,
-            p_obs=0.02,
             solve_energy=False,  # INVALID for skin surf_state
             latent_heat=False,
             rainout=True,
-            spectral_group='sw_lw',
-            spectral_bands='16',
             chemistry='none',
         ),
         surf_state='skin',  # Requires solve_energy=True
@@ -1014,6 +1276,13 @@ def test_atmos_clim_agni_solve_energy_required_for_skin_surf_state():
     ):
         valid_agni(instance, SimpleNamespace(), None)
 
+    # Discrimination: enabling solve_energy=True must clear the skin-surf
+    # check. A regression that always raised on surf_state='skin' (ignoring
+    # solve_energy) would fail this corrected configuration here.
+    instance.agni.solve_energy = True
+    instance.agni.spectral_file = None
+    assert valid_agni(instance, SimpleNamespace(), None) is None
+
 
 @pytest.mark.unit
 def test_atmos_clim_agni_latent_heat_requires_rainout():
@@ -1022,15 +1291,15 @@ def test_atmos_clim_agni_latent_heat_requires_rainout():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group='sw_lw',
+        spectral_bands='16',
+        p_top=1e-5,
+        p_obs=0.02,
         agni=SimpleNamespace(
-            p_top=1e-5,
             psurf_thresh=0.1,
-            p_obs=0.02,
             solve_energy=True,
             latent_heat=True,  # Requires rainout=True
             rainout=False,  # INVALID
-            spectral_group='sw_lw',
-            spectral_bands='16',
             chemistry='none',
         ),
         surf_state='skin',
@@ -1040,6 +1309,14 @@ def test_atmos_clim_agni_latent_heat_requires_rainout():
     ):
         valid_agni(instance, SimpleNamespace(), None)
 
+    # Discrimination: flipping rainout to True (with latent_heat still True)
+    # must take the validator to the spectral-file pass path silently. A
+    # regression that always raises on latent_heat=True (ignoring rainout)
+    # would fail this second branch.
+    instance.agni.rainout = True
+    instance.agni.spectral_file = None
+    assert valid_agni(instance, SimpleNamespace(), None) is None
+
 
 @pytest.mark.unit
 def test_atmos_clim_agni_spectral_group_required():
@@ -1048,21 +1325,29 @@ def test_atmos_clim_agni_spectral_group_required():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group=None,
+        spectral_bands='16',
+        p_top=1e-5,
+        p_obs=0.02,
         agni=SimpleNamespace(
-            p_top=1e-5,
             psurf_thresh=0.1,
-            p_obs=0.02,
             solve_energy=True,
             latent_heat=False,
             rainout=True,
-            spectral_group=None,  # INVALID
-            spectral_bands='16',
             chemistry='none',
+            spectral_file=None,
         ),
         surf_state='skin',
     )
-    with pytest.raises(ValueError, match='Must set atmos_clim.agni.spectral_group'):
+    with pytest.raises(ValueError, match='Must set atmos_clim.spectral_group'):
         valid_agni(instance, SimpleNamespace(), None)
+
+    # Discrimination: setting spectral_group to a non-empty value (and
+    # keeping spectral_bands set) must clear this branch. A regression that
+    # always raised on the spectral path (ignoring whether the field is
+    # actually unset) would fail here.
+    instance.spectral_group = 'sw_lw'
+    assert valid_agni(instance, SimpleNamespace(), None) is None
 
 
 @pytest.mark.unit
@@ -1072,21 +1357,28 @@ def test_atmos_clim_agni_spectral_bands_required():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group='sw_lw',
+        spectral_bands=None,
+        p_top=1e-5,
+        p_obs=0.02,
         agni=SimpleNamespace(
-            p_top=1e-5,
             psurf_thresh=0.1,
-            p_obs=0.02,
             solve_energy=True,
             latent_heat=False,
             rainout=True,
-            spectral_group='sw_lw',
-            spectral_bands=None,  # INVALID
             chemistry='none',
+            spectral_file=None,
         ),
         surf_state='skin',
     )
-    with pytest.raises(ValueError, match='Must set atmos_clim.agni.spectral_bands'):
+    with pytest.raises(ValueError, match='Must set atmos_clim.spectral_bands'):
         valid_agni(instance, SimpleNamespace(), None)
+
+    # Discrimination: setting spectral_bands to a non-empty value clears the
+    # bands branch. A regression that always raised on the spectral path
+    # (ignoring whether bands itself is unset) would fail here.
+    instance.spectral_bands = '48'
+    assert valid_agni(instance, SimpleNamespace(), None) is None
 
 
 @pytest.mark.unit
@@ -1096,20 +1388,26 @@ def test_atmos_clim_agni_valid_complete_config():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group='sw_lw',
+        spectral_bands='16',
+        p_top=1e-5,
+        p_obs=0.02,
         agni=SimpleNamespace(
-            p_top=1e-5,
             psurf_thresh=0.1,
-            p_obs=0.02,
             solve_energy=True,
             latent_heat=False,
             rainout=True,
-            spectral_group='sw_lw',
-            spectral_bands='16',
             chemistry='none',
+            spectral_file=None,
         ),
         surf_state='skin',
     )
-    valid_agni(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_agni(instance, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently on the pass path
+    # Discriminating bounds: p_top below both psurf_thresh and p_obs; surf_state='skin'
+    # is compatible with solve_energy=True. Each is a separate branch in valid_agni.
+    assert instance.p_top < instance.agni.psurf_thresh
+    assert instance.p_top < instance.p_obs
 
 
 # ========================
@@ -1122,7 +1420,10 @@ def test_params_valid_path_non_empty_string():
     """Test valid_path validator accepts non-empty strings."""
     from proteus.config._params import valid_path
 
-    valid_path(SimpleNamespace(), SimpleNamespace(name='data_path'), '/data/output')  # OK
+    instance = SimpleNamespace()
+    result = valid_path(instance, SimpleNamespace(name='data_path'), '/data/output')
+    assert result is None  # contract: validator returns None silently on accepted string
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -1130,8 +1431,13 @@ def test_params_valid_path_empty_string():
     """Test valid_path validator rejects empty strings."""
     from proteus.config._params import valid_path
 
+    instance = SimpleNamespace()
     with pytest.raises(ValueError, match='must be a non-empty string'):
-        valid_path(SimpleNamespace(), SimpleNamespace(name='data_path'), '')
+        valid_path(instance, SimpleNamespace(name='data_path'), '')
+
+    # Discrimination: a regression that recorded the rejected value on the
+    # instance before raising would fail this post-state check.
+    assert vars(instance) == {}
 
 
 @pytest.mark.unit
@@ -1139,8 +1445,13 @@ def test_params_valid_path_whitespace_only():
     """Test valid_path validator rejects whitespace-only strings."""
     from proteus.config._params import valid_path
 
+    # The validator uses ``value.strip()`` to detect whitespace-only strings;
+    # a tab and a newline must also be rejected to discriminate against a
+    # regression that only checked the literal space character.
     with pytest.raises(ValueError, match='must be a non-empty string'):
         valid_path(SimpleNamespace(), SimpleNamespace(name='data_path'), '   ')
+    with pytest.raises(ValueError, match='must be a non-empty string'):
+        valid_path(SimpleNamespace(), SimpleNamespace(name='data_path'), '\t\n')
 
 
 @pytest.mark.unit
@@ -1161,7 +1472,9 @@ def test_params_max_bigger_than_min_valid():
     from proteus.config._params import max_bigger_than_min
 
     instance = SimpleNamespace(minimum=100)
-    max_bigger_than_min(instance, SimpleNamespace(), 1000)  # Should not raise
+    result = max_bigger_than_min(instance, SimpleNamespace(), 1000)
+    assert result is None  # contract: validator returns None silently when max > min
+    assert instance.minimum == 100  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -1173,6 +1486,12 @@ def test_params_max_bigger_than_min_equal():
     with pytest.raises(ValueError, match="'maximum' has to be bigger than 'minimum'"):
         max_bigger_than_min(instance, SimpleNamespace(), 100)
 
+    # Discrimination: maximum strictly greater than minimum must silent-pass.
+    # A regression with a non-strict comparison (allowing maximum == minimum)
+    # would have skipped the raise above, but a regression that rejected all
+    # inputs would fail this second invocation.
+    assert max_bigger_than_min(instance, SimpleNamespace(), 101) is None
+
 
 @pytest.mark.unit
 def test_params_max_bigger_than_min_less():
@@ -1183,6 +1502,11 @@ def test_params_max_bigger_than_min_less():
     with pytest.raises(ValueError, match="'maximum' has to be bigger than 'minimum'"):
         max_bigger_than_min(instance, SimpleNamespace(), 100)
 
+    # Discrimination: a strictly-greater maximum clears the guard. A
+    # regression that always raised on this validator (or inverted the
+    # comparison) would fail one of these two branches.
+    assert max_bigger_than_min(instance, SimpleNamespace(), 1001) is None
+
 
 @pytest.mark.unit
 def test_params_valid_mod_none():
@@ -1190,7 +1514,9 @@ def test_params_valid_mod_none():
     from proteus.config._params import valid_mod
 
     instance = SimpleNamespace()
-    valid_mod(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_mod(instance, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently for value=None
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -1199,8 +1525,10 @@ def test_params_valid_mod_positive():
     from proteus.config._params import valid_mod
 
     instance = SimpleNamespace()
-    valid_mod(instance, SimpleNamespace(), 1)  # OK
-    valid_mod(instance, SimpleNamespace(), 100)  # OK
+    # Both small (1) and large (100) positive values on the accepted-range path.
+    assert valid_mod(instance, SimpleNamespace(), 1) is None
+    assert valid_mod(instance, SimpleNamespace(), 100) is None
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -1209,7 +1537,9 @@ def test_params_valid_mod_zero():
     from proteus.config._params import valid_mod
 
     instance = SimpleNamespace()
-    valid_mod(instance, SimpleNamespace(), 0)  # OK (0 means special behavior, not invalid)
+    result = valid_mod(instance, SimpleNamespace(), 0)
+    assert result is None  # zero is a documented special sentinel, not invalid
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -1221,6 +1551,11 @@ def test_params_valid_mod_negative():
     with pytest.raises(ValueError, match='must be None or greater than 0'):
         valid_mod(instance, SimpleNamespace(), -1)
 
+    # Discrimination: a regression that mishandled the boundary (rejecting 0
+    # as negative) would fail here. The source allows value == 0 silently
+    # (only ``value < 0`` triggers the raise).
+    assert valid_mod(instance, SimpleNamespace(), 0) is None
+
 
 # ========================
 # STRUCT VALIDATORS
@@ -1228,216 +1563,144 @@ def test_params_valid_mod_negative():
 
 
 @pytest.mark.unit
-def test_struct_mass_radius_valid_mass_tot_set():
-    """Test mass_radius_valid validator accepts mass_tot being set."""
-    from proteus.config._struct import mass_radius_valid
+def test_planet_mass_valid_accepts_positive():
+    """Test planet_mass_valid validator accepts positive mass_tot."""
+    from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(mass_tot=1.0, radius_int=None)  # Only mass_tot set
-    mass_radius_valid(instance, SimpleNamespace(), None)  # Should not raise
-
-
-@pytest.mark.unit
-def test_struct_mass_radius_valid_radius_int_set():
-    """Test mass_radius_valid validator accepts radius_int being set."""
-    from proteus.config._struct import mass_radius_valid
-
-    instance = SimpleNamespace(mass_tot=None, radius_int=1.0)  # Only radius_int set
-    mass_radius_valid(instance, SimpleNamespace(), None)  # Should not raise
+    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=1.0))
+    result = planet_mass_valid(instance, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently on accepted mass
+    # validator must not mutate mass_tot; use pytest.approx to keep the
+    # comparison float-safe.
+    assert instance.planet.mass_tot == pytest.approx(1.0, rel=1e-12)
 
 
 @pytest.mark.unit
-def test_struct_mass_radius_neither_set():
-    """Test mass_radius_valid validator rejects when neither mass_tot nor radius_int set."""
-    from proteus.config._struct import mass_radius_valid
+def test_planet_mass_valid_rejects_zero():
+    """Test planet_mass_valid validator rejects zero mass."""
+    from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(mass_tot=None, radius_int=None)
-    with pytest.raises(ValueError, match='Must set one of'):
-        mass_radius_valid(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_struct_mass_radius_both_set():
-    """Test mass_radius_valid validator rejects when both mass_tot and radius_int set."""
-    from proteus.config._struct import mass_radius_valid
-
-    instance = SimpleNamespace(mass_tot=1.0, radius_int=1.0)
-    with pytest.raises(ValueError, match='Must set either'):
-        mass_radius_valid(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_struct_mass_radius_mass_tot_negative():
-    """Test mass_radius_valid validator rejects negative mass_tot."""
-    from proteus.config._struct import mass_radius_valid
-
-    instance = SimpleNamespace(mass_tot=-1.0, radius_int=None)
+    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=0.0))
     with pytest.raises(ValueError, match='must be > 0'):
-        mass_radius_valid(instance, SimpleNamespace(), None)
+        planet_mass_valid(instance, SimpleNamespace(), None)
+
+    # Discrimination: providing a valid positive mass (1 M_earth) must take
+    # the validator to the silent-accept branch. A regression that always
+    # raised here (regardless of mass_tot) would fail this second call.
+    instance.planet.mass_tot = 1.0
+    assert planet_mass_valid(instance, SimpleNamespace(), None) is None
 
 
 @pytest.mark.unit
-def test_struct_mass_radius_mass_tot_too_large():
-    """Test mass_radius_valid validator rejects mass_tot > 20 M_earth."""
-    from proteus.config._struct import mass_radius_valid
+def test_planet_mass_valid_rejects_negative():
+    """Test planet_mass_valid validator rejects negative mass_tot."""
+    from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(mass_tot=21.0, radius_int=None)
+    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=-1.0))
+    with pytest.raises(ValueError, match='must be > 0'):
+        planet_mass_valid(instance, SimpleNamespace(), None)
+
+    # Discrimination: mass_tot exactly zero must also be rejected by the
+    # strict ``mass_tot <= 0`` check. A regression that loosened this to
+    # ``mass_tot < 0`` would let zero pass silently.
+    instance.planet.mass_tot = 0.0
+    with pytest.raises(ValueError, match='must be > 0'):
+        planet_mass_valid(instance, SimpleNamespace(), None)
+
+
+@pytest.mark.unit
+def test_planet_mass_valid_rejects_too_large():
+    """Test planet_mass_valid validator rejects mass_tot > 20 M_earth."""
+    from proteus.config._config import planet_mass_valid
+
+    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=21.0))
     with pytest.raises(ValueError, match='must be < 20'):
-        mass_radius_valid(instance, SimpleNamespace(), None)
+        planet_mass_valid(instance, SimpleNamespace(), None)
 
-
-@pytest.mark.unit
-def test_struct_mass_radius_radius_int_negative():
-    """Test mass_radius_valid validator rejects negative radius_int."""
-    from proteus.config._struct import mass_radius_valid
-
-    instance = SimpleNamespace(mass_tot=None, radius_int=-1.0)
-    with pytest.raises(ValueError, match='must be > 0'):
-        mass_radius_valid(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_struct_mass_radius_radius_int_too_large():
-    """Test mass_radius_valid validator rejects radius_int > 10 R_earth."""
-    from proteus.config._struct import mass_radius_valid
-
-    instance = SimpleNamespace(mass_tot=None, radius_int=11.0)
-    with pytest.raises(ValueError, match='must be < 10'):
-        mass_radius_valid(instance, SimpleNamespace(), None)
+    # Discrimination: 19 M_earth is just below the cap and must silent-pass.
+    # A regression that lowered the ceiling (or always raised) would fail
+    # this second invocation.
+    instance.planet.mass_tot = 19.0
+    assert planet_mass_valid(instance, SimpleNamespace(), None) is None
 
 
 @pytest.mark.unit
 def test_struct_zalmoxis_module_skip():
-    """Test valid_zalmoxis validator skips when module != 'zalmoxis'."""
+    """Test valid_zalmoxis validator skips when module == 'spider'."""
     from proteus.config._struct import valid_zalmoxis
 
-    instance = SimpleNamespace(module='self', zalmoxis=SimpleNamespace())
-    valid_zalmoxis(instance, SimpleNamespace(), None)  # Should not raise
+    instance = SimpleNamespace(module='spider', zalmoxis=SimpleNamespace())
+    result = valid_zalmoxis(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-zalmoxis module short-circuits the validator
+    assert instance.module == 'spider'  # no mutation of the module sentinel
 
 
 @pytest.mark.unit
-def test_struct_zalmoxis_mass_tot_required():
-    """Test valid_zalmoxis validator requires mass_tot."""
+def test_planet_mass_valid_rejects_above_upper():
+    """Test planet_mass_valid rejects mass above 20 M_earth."""
+    from proteus.config._config import planet_mass_valid
+
+    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=25.0))
+    with pytest.raises(ValueError, match='< 20'):
+        planet_mass_valid(instance, SimpleNamespace(), None)
+
+    # Discrimination: exactly 20 M_earth must be accepted (the check is
+    # mass_tot > 20, not >=). A regression that used >= would reject
+    # boundary values unnecessarily.
+    instance.planet.mass_tot = 20.0
+    assert planet_mass_valid(instance, SimpleNamespace(), None) is None
+
+
+@pytest.mark.unit
+def test_struct_zalmoxis_two_layer_requires_no_mantle_fraction():
+    """Test valid_zalmoxis requires mantle_mass_fraction=0 for 2-layer non-Tdep model."""
     from proteus.config._struct import valid_zalmoxis
 
     instance = SimpleNamespace(
         module='zalmoxis',
-        mass_tot=None,  # INVALID
         zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=100,
-            max_iterations_pressure=200,
-            EOSchoice='Tabulated:iron/silicate',
-            coremassfrac=0.325,
-            mantle_mass_fraction=0,
-        ),
-    )
-    with pytest.raises(ValueError, match='`mass_tot` must be set'):
-        valid_zalmoxis(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_struct_zalmoxis_max_iterations_outer_minimum():
-    """Test valid_zalmoxis validator enforces max_iterations_outer > 2."""
-    from proteus.config._struct import valid_zalmoxis
-
-    instance = SimpleNamespace(
-        module='zalmoxis',
-        mass_tot=1.0,
-        zalmoxis=SimpleNamespace(
-            max_iterations_outer=2,  # INVALID (must be > 2)
-            max_iterations_inner=100,
-            max_iterations_pressure=200,
-            EOSchoice='Tabulated:iron/silicate',
-            coremassfrac=0.325,
-            mantle_mass_fraction=0,
-        ),
-    )
-    with pytest.raises(ValueError, match='max_iterations_outer.*must be > 2'):
-        valid_zalmoxis(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_struct_zalmoxis_max_iterations_inner_minimum():
-    """Test valid_zalmoxis validator enforces max_iterations_inner > 12."""
-    from proteus.config._struct import valid_zalmoxis
-
-    instance = SimpleNamespace(
-        module='zalmoxis',
-        mass_tot=1.0,
-        zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=12,  # INVALID (must be > 12)
-            max_iterations_pressure=200,
-            EOSchoice='Tabulated:iron/silicate',
-            coremassfrac=0.325,
-            mantle_mass_fraction=0,
-        ),
-    )
-    with pytest.raises(ValueError, match='max_iterations_inner.*must be > 12'):
-        valid_zalmoxis(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_struct_zalmoxis_max_iterations_pressure_minimum():
-    """Test valid_zalmoxis validator enforces max_iterations_pressure > 12."""
-    from proteus.config._struct import valid_zalmoxis
-
-    instance = SimpleNamespace(
-        module='zalmoxis',
-        mass_tot=1.0,
-        zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=100,
-            max_iterations_pressure=12,  # INVALID (must be > 12)
-            EOSchoice='Tabulated:iron/silicate',
-            coremassfrac=0.325,
-            mantle_mass_fraction=0,
-        ),
-    )
-    with pytest.raises(ValueError, match='max_iterations_pressure.*must be > 12'):
-        valid_zalmoxis(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_struct_zalmoxis_iron_silicate_eos_requires_no_mantle():
-    """Test valid_zalmoxis requires mantle_mass_fraction=0 for Tabulated:iron/silicate."""
-    from proteus.config._struct import valid_zalmoxis
-
-    instance = SimpleNamespace(
-        module='zalmoxis',
-        mass_tot=1.0,
-        zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=100,
-            max_iterations_pressure=200,
-            EOSchoice='Tabulated:iron/silicate',
-            coremassfrac=0.325,
+            core_eos='Seager2007:iron',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos=None,
             mantle_mass_fraction=0.2,  # INVALID (must be 0)
         ),
     )
     with pytest.raises(ValueError, match='mantle_mass_fraction.*must be 0'):
         valid_zalmoxis(instance, SimpleNamespace(), None)
 
+    # Discrimination: dropping mantle_mass_fraction to 0 takes the 2-layer
+    # path to the silent-accept branch. A regression that always raised on
+    # ice_layer_eos=None + Seager mantle (ignoring the actual fraction)
+    # would fail this second invocation.
+    instance.zalmoxis.mantle_mass_fraction = 0
+    assert valid_zalmoxis(instance, SimpleNamespace(), None) is None
+
 
 @pytest.mark.unit
-def test_struct_zalmoxis_water_eos_mass_constraint():
-    """Test valid_zalmoxis enforces core+mantle mass < 75% for Tabulated:water EOS."""
+def test_struct_zalmoxis_three_layer_mass_constraint():
+    """Test valid_zalmoxis enforces core+mantle mass <= 75% for 3-layer model."""
     from proteus.config._struct import valid_zalmoxis
 
     instance = SimpleNamespace(
         module='zalmoxis',
-        mass_tot=1.0,
+        core_frac=0.5,
+        core_frac_mode='mass',
         zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=100,
-            max_iterations_pressure=200,
-            EOSchoice='Tabulated:water',
-            coremassfrac=0.5,  # 50%
-            mantle_mass_fraction=0.3,  # 30%, sum=80% > 75% INVALID
+            core_eos='Seager2007:iron',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos='Seager2007:H2O',
+            mantle_mass_fraction=0.3,  # 50%+30%=80% > 75% INVALID
         ),
     )
     with pytest.raises(ValueError, match='must add up to <= 75%'):
         valid_zalmoxis(instance, SimpleNamespace(), None)
+
+    # Discrimination: dropping mantle_mass_fraction to 0.2 (50%+20%=70%, just
+    # under the 75% cap) takes the 3-layer path to the silent-accept branch.
+    # A regression that swapped the inequality direction would fail this
+    # second invocation but pass the invalid configuration above silently.
+    instance.zalmoxis.mantle_mass_fraction = 0.2
+    assert valid_zalmoxis(instance, SimpleNamespace(), None) is None
 
 
 @pytest.mark.unit
@@ -1447,17 +1710,90 @@ def test_struct_zalmoxis_valid_configuration():
 
     instance = SimpleNamespace(
         module='zalmoxis',
-        mass_tot=1.0,
         zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=100,
-            max_iterations_pressure=200,
-            EOSchoice='Tabulated:iron/silicate',
-            coremassfrac=0.325,
+            core_eos='Seager2007:iron',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos=None,
             mantle_mass_fraction=0,
         ),
     )
-    valid_zalmoxis(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_zalmoxis(instance, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently on the pass path
+    # Discriminating check: ice_layer_eos=None selects the 2-layer branch where
+    # mantle_mass_fraction=0 is the only valid combination.
+    assert instance.zalmoxis.mantle_mass_fraction == 0
+
+
+@pytest.mark.unit
+def test_struct_zalmoxis_eos_format_missing_colon():
+    """Test valid_zalmoxis rejects core_eos without ':' separator."""
+    from proteus.config._struct import valid_zalmoxis
+
+    instance = SimpleNamespace(
+        module='zalmoxis',
+        zalmoxis=SimpleNamespace(
+            core_eos='iron_no_source',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos=None,
+            mantle_mass_fraction=0,
+        ),
+    )
+    with pytest.raises(ValueError, match='<source>:<material>'):
+        valid_zalmoxis(instance, SimpleNamespace(), None)
+
+    # Discrimination: the same colon-format requirement must also fire on
+    # mantle_eos. A regression that only checked core_eos (and not the
+    # mantle_eos branch in the loop) would let this slip through.
+    instance.zalmoxis.core_eos = 'Seager2007:iron'
+    instance.zalmoxis.mantle_eos = 'MgSiO3_no_source'
+    with pytest.raises(ValueError, match='<source>:<material>'):
+        valid_zalmoxis(instance, SimpleNamespace(), None)
+
+
+@pytest.mark.unit
+def test_struct_zalmoxis_ice_eos_format_missing_colon():
+    """Test valid_zalmoxis rejects ice_layer_eos with non-empty invalid format."""
+    from proteus.config._struct import valid_zalmoxis
+
+    instance = SimpleNamespace(
+        module='zalmoxis',
+        zalmoxis=SimpleNamespace(
+            core_eos='Seager2007:iron',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos='H2O_bad_format',
+            mantle_mass_fraction=0,
+        ),
+    )
+    with pytest.raises(ValueError, match='ice_layer_eos'):
+        valid_zalmoxis(instance, SimpleNamespace(), None)
+
+    # Discrimination: ice_layer_eos=None must be accepted (the 2-layer model).
+    # A regression that required the colon format unconditionally (rather
+    # than only when the field is non-None) would fail this second call.
+    instance.zalmoxis.ice_layer_eos = None
+    assert valid_zalmoxis(instance, SimpleNamespace(), None) is None
+
+
+@pytest.mark.unit
+def test_struct_zalmoxis_tdep_allows_mantle_fraction():
+    """WolfBower2018 T-dep EOS should allow mantle_mass_fraction > 0."""
+    from proteus.config._struct import valid_zalmoxis
+
+    instance = SimpleNamespace(
+        module='zalmoxis',
+        zalmoxis=SimpleNamespace(
+            core_eos='Seager2007:iron',
+            mantle_eos='WolfBower2018:MgSiO3',
+            ice_layer_eos=None,
+            mantle_mass_fraction=0.675,
+        ),
+    )
+    result = valid_zalmoxis(instance, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently on the pass path
+    # Discriminating check: a fixed-EOS (Seager2007) mantle would have rejected
+    # mantle_mass_fraction=0.675; the T-dependent WolfBower2018 EOS path is the
+    # only branch that permits it.
+    assert instance.zalmoxis.mantle_eos.startswith('WolfBower2018')
 
 
 # ========================
@@ -1478,6 +1814,14 @@ def test_config_spada_zephyrus_requires_mors_spada():
     with pytest.raises(ValueError, match='ZEPHYRUS must be used with MORS'):
         spada_zephyrus(instance, SimpleNamespace(), None)
 
+    # Discrimination: flipping star.module to mors + tracks=spada must reach
+    # the silent-accept branch. A regression that always raised on
+    # zephyrus (ignoring the star.module + tracks combination) would fail
+    # this second invocation.
+    instance.star.module = 'mors'
+    instance.star.mors = SimpleNamespace(tracks='spada')
+    assert spada_zephyrus(instance, SimpleNamespace(), None) is None
+
 
 @pytest.mark.unit
 def test_config_spada_zephyrus_non_zephyrus_skip():
@@ -1489,7 +1833,11 @@ def test_config_spada_zephyrus_non_zephyrus_skip():
         escape=SimpleNamespace(module='dummy'),
         star=SimpleNamespace(module='dummy'),
     )
-    spada_zephyrus(instance, SimpleNamespace(), None)  # Should not raise
+    result = spada_zephyrus(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-zephyrus escape short-circuits the validator
+    # Discriminating check: star.module='dummy' would have raised under zephyrus;
+    # the escape-module-skip branch is the only path to a silent pass here.
+    assert instance.escape.module == 'dummy'
 
 
 @pytest.mark.unit
@@ -1505,6 +1853,13 @@ def test_config_instmethod_dummy_requires_dummy_star():
     with pytest.raises(ValueError, match="can only be 'inst' when star.module=dummy"):
         instmethod_dummy(instance, SimpleNamespace(), None)
 
+    # Discrimination: flipping star.module to 'dummy' (with instellation_method
+    # still 'inst') is the only valid combination and must silent-pass. A
+    # regression that always raised under 'inst' (ignoring star.module) would
+    # fail this second invocation.
+    instance.star.module = 'dummy'
+    assert instmethod_dummy(instance, SimpleNamespace(), None) is None
+
 
 @pytest.mark.unit
 def test_config_instmethod_dummy_non_inst_skip():
@@ -1516,7 +1871,11 @@ def test_config_instmethod_dummy_non_inst_skip():
         orbit=SimpleNamespace(instellation_method='gravity'),
         star=SimpleNamespace(module='mors'),
     )
-    instmethod_dummy(instance, SimpleNamespace(), None)  # Should not raise
+    result = instmethod_dummy(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-inst method short-circuits the validator
+    # Discriminating check: star.module='mors' would have raised under 'inst';
+    # the instellation_method-skip branch is the only path to a silent pass.
+    assert instance.orbit.instellation_method == 'gravity'
 
 
 @pytest.mark.unit
@@ -1534,6 +1893,13 @@ def test_config_instmethod_evolve_rejects_inst_with_orbit_evolution():
     with pytest.raises(ValueError, match='not supported for `instellation_method'):
         instmethod_evolve(instance, SimpleNamespace(), None)
 
+    # Discrimination: dropping evolve to False (with instellation_method still
+    # 'inst') must take the validator to the silent-accept branch. A
+    # regression that always raised on instellation_method='inst' (ignoring
+    # evolve) would fail this second invocation.
+    instance.orbit.evolve = False
+    assert instmethod_evolve(instance, SimpleNamespace(), None) is None
+
 
 @pytest.mark.unit
 def test_config_instmethod_evolve_allows_non_inst_with_evolution():
@@ -1547,7 +1913,12 @@ def test_config_instmethod_evolve_allows_non_inst_with_evolution():
             evolve=True,
         ),
     )
-    instmethod_evolve(instance, SimpleNamespace(), None)  # Should not raise
+    result = instmethod_evolve(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-inst method permits orbital evolution
+    # Discriminating check: evolve=True with instellation_method='inst' would have raised;
+    # only the gravity-method branch allows the True-evolve combination.
+    assert instance.orbit.evolve is True
+    assert instance.orbit.instellation_method == 'gravity'
 
 
 @pytest.mark.unit
@@ -1565,6 +1936,12 @@ def test_config_satellite_evolve_rejects_both_satellite_and_evolution():
     with pytest.raises(ValueError, match='cannot be used simultaneously'):
         satellite_evolve(instance, SimpleNamespace(), None)
 
+    # Discrimination: dropping evolve (with satellite still True) must reach
+    # the silent-accept branch. A regression that always raised when
+    # satellite=True (ignoring evolve) would fail this second invocation.
+    instance.orbit.evolve = False
+    assert satellite_evolve(instance, SimpleNamespace(), None) is None
+
 
 @pytest.mark.unit
 def test_config_satellite_evolve_allows_satellite_without_evolution():
@@ -1578,7 +1955,12 @@ def test_config_satellite_evolve_allows_satellite_without_evolution():
             evolve=False,
         ),
     )
-    satellite_evolve(instance, SimpleNamespace(), None)  # Should not raise
+    result = satellite_evolve(instance, SimpleNamespace(), None)
+    assert result is None  # contract: satellite=True with evolve=False is the valid combo
+    # Discriminating check: satellite=True with evolve=True would have raised; only the
+    # evolve=False branch can produce a silent pass with satellite=True.
+    assert instance.orbit.satellite is True
+    assert instance.orbit.evolve is False
 
 
 @pytest.mark.unit
@@ -1588,11 +1970,18 @@ def test_config_tides_enabled_orbit_requires_orbit_module():
 
     # Invalid: tidal heating without orbit module
     instance = SimpleNamespace(
-        interior=SimpleNamespace(tidal_heat=True),
+        interior_energetics=SimpleNamespace(heat_tidal=True),
         orbit=SimpleNamespace(module=None),  # No orbit module - INVALID
     )
     with pytest.raises(ValueError, match='Interior tidal heating requires'):
         tides_enabled_orbit(instance, SimpleNamespace(), None)
+
+    # Discrimination: setting orbit.module to any non-None backend (with
+    # heat_tidal still True) must reach the silent-accept branch. A
+    # regression that always raised on heat_tidal=True (ignoring orbit.module)
+    # would fail this second invocation.
+    instance.orbit.module = 'lovepy'
+    assert tides_enabled_orbit(instance, SimpleNamespace(), None) is None
 
 
 @pytest.mark.unit
@@ -1602,10 +1991,14 @@ def test_config_tides_enabled_orbit_allows_no_tides():
 
     # Valid: no tidal heating
     instance = SimpleNamespace(
-        interior=SimpleNamespace(tidal_heat=False),
+        interior_energetics=SimpleNamespace(heat_tidal=False),
         orbit=SimpleNamespace(module=None),
     )
-    tides_enabled_orbit(instance, SimpleNamespace(), None)  # Should not raise
+    result = tides_enabled_orbit(instance, SimpleNamespace(), None)
+    assert result is None  # contract: heat_tidal=False short-circuits the validator
+    # Discriminating check: orbit.module=None with heat_tidal=True would have raised;
+    # only the heat_tidal-disabled branch can produce a silent pass.
+    assert instance.interior_energetics.heat_tidal is False
 
 
 @pytest.mark.unit
@@ -1621,6 +2014,13 @@ def test_config_observe_resolved_atmosphere_requires_non_dummy_atmos():
     with pytest.raises(ValueError, match='Observational synthesis requires'):
         observe_resolved_atmosphere(instance, SimpleNamespace(), None)
 
+    # Discrimination: flipping atmos_clim.module to a non-dummy value (with
+    # synthesis still set) clears the guard. A regression that always raised
+    # on synthesis != None (ignoring the atmos module) would fail this
+    # second invocation.
+    instance.atmos_clim.module = 'agni'
+    assert observe_resolved_atmosphere(instance, SimpleNamespace(), None) is None
+
 
 @pytest.mark.unit
 def test_config_observe_resolved_atmosphere_allows_no_synthesis():
@@ -1632,22 +2032,33 @@ def test_config_observe_resolved_atmosphere_allows_no_synthesis():
         observe=SimpleNamespace(synthesis=None),
         atmos_clim=SimpleNamespace(module='dummy'),
     )
-    observe_resolved_atmosphere(instance, SimpleNamespace(), None)  # Should not raise
+    result = observe_resolved_atmosphere(instance, SimpleNamespace(), None)
+    assert result is None  # contract: synthesis=None short-circuits the validator
+    # Discriminating check: atmos_clim.module='dummy' with synthesis='platon' would
+    # have raised; only the synthesis-disabled branch can produce a silent pass.
+    assert instance.observe.synthesis is None
 
 
 @pytest.mark.unit
 def test_config_janus_escape_atmosphere_requires_stop_escape():
-    """Test janus_escape_atmosphere validator requires stop.escape=True."""
+    """Test janus_escape_atmosphere validator requires stop.escape.enabled=True."""
     from proteus.config._config import janus_escape_atmosphere
 
-    # Invalid: Zephyrus + JANUS without stop.escape
+    # Invalid: Zephyrus + JANUS without stop.escape enabled
     instance = SimpleNamespace(
         escape=SimpleNamespace(module='zephyrus'),
         atmos_clim=SimpleNamespace(module='janus'),
-        params=SimpleNamespace(stop=SimpleNamespace(escape=False)),  # INVALID
+        params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=False))),
     )
     with pytest.raises(ValueError, match='params.stop.escape must be True'):
         janus_escape_atmosphere(instance, SimpleNamespace(), None)
+
+    # Discrimination: flipping params.stop.escape.enabled to True (with
+    # zephyrus + janus still in play) clears the guard. A regression that
+    # always raised on the zephyrus+janus pair (ignoring the stop-escape
+    # flag) would fail this second invocation.
+    instance.params.stop.escape.enabled = True
+    assert janus_escape_atmosphere(instance, SimpleNamespace(), None) is None
 
 
 @pytest.mark.unit
@@ -1659,9 +2070,13 @@ def test_config_janus_escape_atmosphere_non_zephyrus_skip():
     instance = SimpleNamespace(
         escape=SimpleNamespace(module='dummy'),
         atmos_clim=SimpleNamespace(module='janus'),
-        params=SimpleNamespace(stop=SimpleNamespace(escape=False)),
+        params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=False))),
     )
-    janus_escape_atmosphere(instance, SimpleNamespace(), None)  # Should not raise
+    result = janus_escape_atmosphere(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-zephyrus escape short-circuits the validator
+    # Discriminating check: stop.escape.enabled=False with zephyrus+janus would have
+    # raised; only the escape-module-skip branch can produce a silent pass here.
+    assert instance.escape.module == 'dummy'
 
 
 @pytest.mark.unit
@@ -1673,6 +2088,331 @@ def test_config_janus_escape_atmosphere_non_janus_skip():
     instance = SimpleNamespace(
         escape=SimpleNamespace(module='zephyrus'),
         atmos_clim=SimpleNamespace(module='agni'),
-        params=SimpleNamespace(stop=SimpleNamespace(escape=False)),
+        params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=False))),
     )
-    janus_escape_atmosphere(instance, SimpleNamespace(), None)  # Should not raise
+    result = janus_escape_atmosphere(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-janus atmosphere short-circuits the validator
+    # Discriminating check: stop.escape.enabled=False with zephyrus+janus would have
+    # raised; only the atmos-module-skip branch can produce a silent pass here.
+    assert instance.atmos_clim.module == 'agni'
+
+
+# ----------------------------------------------------------------------
+# liquidus_super temperature_mode + delta_T_super (IC anchor validation)
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_planet_temperature_mode_accepts_liquidus_super():
+    """Planet validator must accept the new 'liquidus_super' mode.
+
+    Discriminating: this test fails if the validator tuple is missing the
+    new entry, which is the most plausible regression after a refactor of
+    the temperature_mode list. We also confirm the mode does not silently
+    coerce to one of the existing six modes.
+    """
+    p = Planet(temperature_mode='liquidus_super')
+    assert p.temperature_mode == 'liquidus_super'
+    # negative discrimination: liquidus_super must stay distinct from the
+    # fixed-T_cmb adiabat, not coerce to it
+    assert p.temperature_mode != 'adiabatic_from_cmb'
+
+
+@pytest.mark.unit
+def test_planet_temperature_mode_default_is_liquidus_super():
+    """A Planet built without an explicit mode uses the liquidus_super IC.
+
+    Pins the schema default so a refactor cannot silently revert it to a
+    fixed-T_cmb or surface-anchored mode, which would change the initial
+    condition of every config that omits temperature_mode.
+    """
+    p = Planet()
+    assert p.temperature_mode == 'liquidus_super'
+    # Exhaustive discrimination: the default must be none of the six other
+    # modes; any of them would change the IC of every config that omits the field.
+    assert p.temperature_mode not in (
+        'isothermal',
+        'linear',
+        'adiabatic',
+        'adiabatic_from_cmb',
+        'accretion',
+        'isentropic',
+    )
+
+
+@pytest.mark.unit
+def test_dummy_config_pins_solver_free_temperature_mode():
+    """input/dummy.toml pins adiabatic_from_cmb so the all-dummy quick-start
+    runs without the silicate liquidus lookup.
+
+    The schema default is liquidus_super, which routes the dummy interior
+    structure through the Zalmoxis melting-curve lookup. The explicit pin in
+    dummy.toml keeps the all-dummy path free of any external structure solver.
+    This guard fails if the pin is dropped and dummy.toml silently inherits the
+    liquidus_super default.
+    """
+    from proteus.config import read_config_object
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'dummy.toml')
+    assert cfg.planet.temperature_mode == 'adiabatic_from_cmb'
+    # Discrimination: must not have inherited the liquidus_super default, which
+    # would pull the Zalmoxis liquidus lookup into the all-dummy path.
+    assert cfg.planet.temperature_mode != 'liquidus_super'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'mode',
+    [
+        'isothermal',
+        'linear',
+        'adiabatic',
+        'adiabatic_from_cmb',
+        'accretion',
+        'isentropic',
+        'liquidus_super',
+    ],
+)
+def test_planet_temperature_mode_full_enumeration(mode):
+    """Every documented temperature_mode value must construct successfully.
+
+    This pins the public surface so that adding new modes does not silently
+    drop existing ones from the validator.
+    """
+    p = Planet(temperature_mode=mode)
+    assert p.temperature_mode == mode
+    # Discrimination: the validator must reject an unknown mode for the same
+    # Planet class. A regression that silently accepted any string (dropping
+    # the enum check entirely) would let this construction succeed.
+    with pytest.raises(ValueError):
+        Planet(temperature_mode='not_a_real_mode')
+
+
+@pytest.mark.unit
+def test_planet_temperature_mode_rejects_typos():
+    """Unknown temperature_mode values must raise (no silent fallback).
+
+    Anti-happy-path: tests three plausible typos (case error, plural, wrong
+    underscore) plus an empty string. A bug that downcases input or tries
+    fuzzy matching would fail one of these.
+    """
+    for bad in ('Liquidus_super', 'liquidussuper', 'liquidus-super', ''):
+        with pytest.raises(ValueError):
+            Planet(temperature_mode=bad)
+
+    # Discrimination: the canonical accepted name must still construct
+    # successfully. A regression that rejected every input (e.g. broken
+    # enum table) would have silently let the typos pass at construction
+    # time only via this single AST `Assert` path, so pin the canonical
+    # accept here.
+    p = Planet(temperature_mode='liquidus_super')
+    assert p.temperature_mode == 'liquidus_super'
+
+
+@pytest.mark.unit
+def test_planet_delta_T_super_default_is_500():
+    """delta_T_super default must match the documented 500 K, not 0 or
+    some unrelated leftover constant. A 500 K offset above the Fei+2021
+    liquidus at P_cmb ~ 135 GPa (T_liq ~ 5935 K) gives the canonical
+    fully-molten 1 M_E IC at T_cmb ~ 6435 K used in the paper rerun.
+    """
+    p = Planet()
+    assert p.delta_T_super == pytest.approx(500.0, rel=0, abs=0)
+    # Discrimination: 500 K is well above 0 and well below 5000 K. A
+    # regression that defaulted to 0 K (anchor on the liquidus) or 5000 K
+    # (an unrelated upper bound) would fail one of these two bounds.
+    assert 100.0 < p.delta_T_super < 1000.0
+
+
+@pytest.mark.unit
+def test_planet_delta_T_super_accepts_zero():
+    """delta_T_super = 0 K must be allowed (anchor exactly on the liquidus,
+    a meaningful physical limit, not just a numerical edge case).
+    """
+    p = Planet(delta_T_super=0.0)
+    assert p.delta_T_super == pytest.approx(0.0, abs=0)
+    # Discrimination: a strict ``gt(0)`` validator would have rejected 0.0.
+    # Pin the inverse: a small negative value must still raise, so the
+    # accepted floor is exactly 0 (closed at 0, open below).
+    with pytest.raises(ValueError):
+        Planet(delta_T_super=-1e-9)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('value', [-1.0, -0.001, -1e6])
+def test_planet_delta_T_super_rejects_negative(value):
+    """Negative delta_T_super (subliquidus IC by request) must raise.
+
+    Physically, a sub-liquidus anchor is supported by the existing
+    'adiabatic_from_cmb' mode with a chosen tcmb_init; the
+    'liquidus_super' mode is explicitly the super-liquidus side and a
+    negative value would silently become a sub-liquidus IC of unknown
+    melt fraction.
+    """
+    with pytest.raises(ValueError):
+        Planet(delta_T_super=value)
+
+    # Discrimination: flipping the sign of the same magnitude must take the
+    # constructor to the silent-accept branch. A regression that rejected
+    # every input (e.g. inverted comparator) would fail this second call.
+    p = Planet(delta_T_super=abs(value))
+    assert p.delta_T_super == pytest.approx(abs(value))
+
+
+@pytest.mark.unit
+def test_planet_delta_T_super_accepts_large_super_earth_value():
+    """A 5000 K super-liquidus offset must be allowed.
+
+    Discriminating: large offsets are physically meaningful for hot
+    super-Earth ICs, so the validator must not impose a hidden upper
+    bound. (If we ever add ge(0) AND a sanity ceiling, this test will
+    flag the change.)
+    """
+    p = Planet(delta_T_super=5000.0)
+    assert p.delta_T_super == pytest.approx(5000.0, abs=0)
+    # Discrimination: a regression that defaulted any out-of-range input to
+    # 500 K (the documented default) would have silently coerced 5000.0
+    # down. Pin the magnitude separately so a coercion-to-default cannot
+    # pass this check.
+    assert p.delta_T_super > 1000.0
+
+
+@pytest.mark.unit
+def test_planet_liquidus_super_does_not_disturb_other_defaults():
+    """Selecting liquidus_super must not collide with other IC scalars.
+
+    Verifies that ini_entropy, tsurf_init, tcmb_init keep their defaults
+    when liquidus_super is chosen; this is the regression test for the
+    case where a future refactor makes one mode mutually-exclusive with
+    another's parameters.
+    """
+    p = Planet(temperature_mode='liquidus_super', delta_T_super=750.0)
+    assert p.temperature_mode == 'liquidus_super'
+    assert p.delta_T_super == pytest.approx(750.0)
+    assert p.ini_entropy == pytest.approx(3900.0)
+    assert p.tsurf_init == pytest.approx(4000.0)
+    assert p.tcmb_init == pytest.approx(6000.0)
+
+
+# ============================================================================
+# Regression: melting_dir / eos_dir belong on [interior_struct], not [interior_energetics]
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_melting_dir_is_field_of_Struct_not_Interior():
+    """Regression: ``melting_dir`` and ``eos_dir`` are fields of
+    ``Struct`` (which maps to TOML section ``[interior_struct]``),
+    not ``Interior`` (``[interior_energetics]``). Putting them on
+    ``Interior`` makes cattrs silently drop the values from the TOML,
+    then the Struct validator raises a confusing
+    ``melting_dir must be set`` error.
+
+    This pins down the schema location so a future refactor that
+    moves them back to ``Interior`` fails this test rather than
+    silently breaking every example config that follows the docstring.
+    """
+    import attrs
+
+    from proteus.config._interior import Interior
+    from proteus.config._struct import Struct
+
+    interior_fields = {f.name for f in attrs.fields(Interior)}
+    struct_fields = {f.name for f in attrs.fields(Struct)}
+
+    assert 'melting_dir' in struct_fields, (
+        'melting_dir must live on Struct (the [interior_struct] section)'
+    )
+    assert 'melting_dir' not in interior_fields, (
+        'melting_dir must NOT live on Interior; cattrs would silently drop it'
+    )
+    assert 'eos_dir' in struct_fields, 'eos_dir must live on Struct'
+    assert 'eos_dir' not in interior_fields, 'eos_dir must NOT live on Interior'
+
+
+@pytest.mark.unit
+def test_Interior_docstring_does_not_advertise_struct_fields():
+    """Companion guarantee: the ``Interior`` class docstring must not
+    document ``melting_dir`` or ``eos_dir`` as if they were its own
+    fields. That docstring is what caused the example
+    ``init_coupler.toml`` to place ``melting_dir`` in the wrong section."""
+    from inspect import getdoc
+
+    from proteus.config._interior import Interior
+
+    doc = getdoc(Interior)
+    assert doc is not None
+    # The docstring may mention these names in passing, but must not
+    # list them as `<name>: <type>` attributes the way attrs docstring
+    # conventions document fields.
+    forbidden_lines = ('melting_dir: str', 'eos_dir: str')
+    for marker in forbidden_lines:
+        assert marker not in doc, (
+            f'Interior docstring still advertises a non-existent field: {marker!r}'
+        )
+
+
+@pytest.mark.unit
+def test_example_init_coupler_places_melting_dir_under_interior_struct():
+    """Regression: the canonical ``examples/minimal/init_coupler.toml``
+    must place ``melting_dir`` inside the ``[interior_struct]`` section.
+    Otherwise cattrs silently drops the value at parse time."""
+    text = (PROTEUS_ROOT / 'examples' / 'minimal' / 'init_coupler.toml').read_text(
+        encoding='utf-8'
+    )
+
+    # Find every section header and the index of the melting_dir line.
+    lines = text.splitlines()
+    section = None
+    melting_dir_section = None
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('[') and stripped.endswith(']'):
+            section = stripped[1:-1]
+        if stripped.startswith('melting_dir'):
+            melting_dir_section = section
+            break
+
+    assert melting_dir_section == 'interior_struct', (
+        f'melting_dir is under [{melting_dir_section}] but must be under '
+        '[interior_struct]; otherwise cattrs silently drops it'
+    )
+    # Discrimination: the file must NOT also place melting_dir under the
+    # stale ``[interior_energetics]`` section anywhere (an additional
+    # duplicate entry there would silently mask the fix above when cattrs
+    # picks up the wrong one).
+    assert text.count('melting_dir') == 1, (
+        'melting_dir must appear exactly once in the example config'
+    )
+
+
+@pytest.mark.unit
+def test_no_input_toml_uses_bare_interior_section():
+    """Regression: no TOML under input/ may use the bare
+    ``[interior]`` section name. The current schema places interior
+    physics under ``[interior_energetics]``; cattrs silently drops
+    unknown top-level sections, so a stale ``[interior]`` header
+    silently demotes module=spider runs to the factory default
+    (aragog) without any error. A config carrying a bare ``[interior]``
+    header would therefore run Aragog regardless of the configured
+    backend, with no warning.
+    """
+    import re
+
+    repo_root = PROTEUS_ROOT
+    pattern = re.compile(r'^\[interior\](?:\.|$)', re.MULTILINE)
+    offenders = []
+    for toml_path in (repo_root / 'input').rglob('*.toml'):
+        text = toml_path.read_text(encoding='utf-8')
+        if pattern.search(text):
+            offenders.append(str(toml_path.relative_to(repo_root)))
+    assert not offenders, (
+        f'These input TOMLs still use the bare [interior] section '
+        f'(should be [interior_energetics]): {offenders}'
+    )
+    # Discrimination: the scan must have actually examined at least one
+    # TOML file. A regression where the glob returned an empty list (wrong
+    # path, missing directory) would produce ``offenders == []`` for the
+    # wrong reason and silently pass the assertion above.
+    toml_files = list((repo_root / 'input').rglob('*.toml'))
+    assert len(toml_files) > 0

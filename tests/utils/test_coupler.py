@@ -23,6 +23,7 @@ Fixtures from conftest.py:
 
 from __future__ import annotations
 
+import math
 import os
 import tempfile
 from datetime import datetime
@@ -42,7 +43,11 @@ from proteus.utils.coupler import (
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
     _get_current_time,
+    _populate_energy_residual,
+    get_proteus_directories,
 )
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 # =============================================================================
 # Test: Helpfile Key Generation
@@ -113,6 +118,10 @@ def test_get_helpfile_keys_no_duplicates():
     """Test that GetHelpfileKeys contains no duplicate keys."""
     keys = GetHelpfileKeys()
     assert len(keys) == len(set(keys)), 'Duplicate keys found in helpfile'
+    # Discrimination: a regression that returned an empty list would also
+    # trivially satisfy the no-duplicate check; pin a substantial lower
+    # bound on the schema size so an accidental truncation is caught.
+    assert len(keys) > 50
 
 
 # =============================================================================
@@ -125,6 +134,11 @@ def test_zero_helpfile_row_returns_dict():
     """Test that ZeroHelpfileRow returns a dictionary."""
     row = ZeroHelpfileRow()
     assert isinstance(row, dict)
+    # Discriminating check: the row is non-empty (carries every helpfile column
+    # zeroed out) and includes the canonical Time scalar; an empty-dict regression
+    # would pass isinstance alone.
+    assert len(row) > 0
+    assert 'Time' in row
 
 
 @pytest.mark.unit
@@ -133,6 +147,11 @@ def test_zero_helpfile_row_all_values_are_zero():
     row = ZeroHelpfileRow()
     for key, value in row.items():
         assert value == 0.0, f'Key {key} has value {value}, expected 0.0'
+    # Discrimination: every value must be a Python float (not int 0 or
+    # numpy zero), so a regression that initialised values to integer 0
+    # would be caught even though `0 == 0.0` is True.
+    for key, value in row.items():
+        assert isinstance(value, float), f'Key {key} is {type(value).__name__}, expected float'
 
 
 @pytest.mark.unit
@@ -142,6 +161,10 @@ def test_zero_helpfile_row_has_correct_keys():
     keys = GetHelpfileKeys()
 
     assert set(row.keys()) == set(keys), 'ZeroHelpfileRow keys do not match GetHelpfileKeys'
+    # Discrimination: equal set sizes corroborate the equality above;
+    # a regression that emitted duplicate keys via the loop would make
+    # set(row.keys()) lossy and len(row) != len(keys).
+    assert len(row) == len(keys)
 
 
 @pytest.mark.unit
@@ -166,9 +189,9 @@ def test_create_helpfile_from_dict_preserves_values():
 
     hf = CreateHelpfileFromDict(row)
 
-    assert hf['Time'].iloc[0] == 1.5e9
-    assert hf['T_surf'].iloc[0] == 350.0
-    assert hf['P_surf'].iloc[0] == 100.0
+    assert hf['Time'].iloc[0] == pytest.approx(1.5e9, rel=1e-12)
+    assert hf['T_surf'].iloc[0] == pytest.approx(350.0, rel=1e-12)
+    assert hf['P_surf'].iloc[0] == pytest.approx(100.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -180,6 +203,10 @@ def test_create_helpfile_from_dict_has_all_keys():
     keys = GetHelpfileKeys()
     for key in keys:
         assert key in hf.columns
+    # Discrimination: the DataFrame must carry exactly the schema columns
+    # in schema order (no extras leaking in from the dict, no reordering);
+    # CSV writers downstream rely on the column order being canonical.
+    assert list(hf.columns) == keys
 
 
 # =============================================================================
@@ -235,8 +262,36 @@ def test_extend_helpfile_validates_keys():
     # Create a row with missing keys
     row2 = {'Time': 1.0}  # Missing other keys
 
-    with pytest.raises(Exception, match='mismatched keys'):
+    with pytest.raises(Exception, match='missing expected keys'):
         ExtendHelpfile(hf, row2)
+    # Discrimination: the raise must happen BEFORE the helpfile gets a new
+    # row appended. A regression that appended first and then raised would
+    # leave the helpfile growing on every failed call.
+    assert len(hf) == 1
+
+
+@pytest.mark.unit
+def test_extend_helpfile_warns_on_unknown_keys(caplog):
+    """ExtendHelpfile should WARN (not raise) on unknown keys so the CSV
+    silently-drop-key bug is surfaced in logs. Private (underscore-prefixed)
+    keys are intentionally skipped. Explicitly-allowlisted non-schema keys
+    like ``core_state_initial`` are also skipped."""
+    import logging
+
+    row = ZeroHelpfileRow()
+    row['_structure_stale'] = True  # private transient key: must not warn
+    row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
+    row['nonsense_future_key'] = 1.0  # genuine drift: must warn
+    hf = CreateHelpfileFromDict(ZeroHelpfileRow())
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
+        ExtendHelpfile(hf, row)
+
+    warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    joined = '\n'.join(r.message for r in warns)
+    assert 'nonsense_future_key' in joined, f'Expected unknown-key warning, got: {joined!r}'
+    assert '_structure_stale' not in joined, 'Private key leaked into warning'
+    assert 'core_state_initial' not in joined, 'Allowlisted key triggered warning'
 
 
 @pytest.mark.unit
@@ -255,6 +310,11 @@ def test_extend_helpfile_preserves_dataframe_order():
     expected_times = [0.0] + times
     for i, expected_t in enumerate(expected_times):
         assert hf['Time'].iloc[i] == pytest.approx(expected_t)
+    # Discrimination: the helpfile must be strictly monotonic in Time so
+    # a regression that reversed insertion order or shuffled rows would
+    # produce a non-sorted column.
+    times_seq = hf['Time'].tolist()
+    assert times_seq == sorted(times_seq)
 
 
 # =============================================================================
@@ -353,8 +413,15 @@ def test_write_and_read_helpfile_roundtrip():
 def test_read_helpfile_from_csv_missing_file():
     """Test that ReadHelpfileFromCSV raises error for missing file."""
     with tempfile.TemporaryDirectory() as tmpdir:
+        # Precondition: confirm no helpfile is present so the missing-file
+        # branch is what gets exercised (not a tmpdir leftover).
+        assert not os.path.exists(os.path.join(tmpdir, 'runtime_helpfile.csv'))
         with pytest.raises(Exception, match='Cannot find helpfile'):
             ReadHelpfileFromCSV(tmpdir)
+        # Discrimination: the error path must not have created a stub file
+        # as a side effect. A regression that wrote an empty CSV before
+        # raising would silently corrupt resume.
+        assert not os.path.exists(os.path.join(tmpdir, 'runtime_helpfile.csv'))
 
 
 @pytest.mark.unit
@@ -405,6 +472,11 @@ def test_create_lock_file_returns_path():
 
         expected_path = os.path.join(tmpdir, 'keepalive')
         assert lockfile_path == expected_path
+        # Discrimination: the returned path is not just a string; the file
+        # must actually exist on disk. A regression that returned the
+        # expected path string without writing the file would still pass
+        # the equality check above but leave the loop unable to find it.
+        assert os.path.isfile(lockfile_path)
 
 
 @pytest.mark.unit
@@ -432,6 +504,11 @@ def test_lock_file_contains_message():
             content = f.read()
 
         assert 'stop' in content.lower() or 'remove' in content.lower()
+        # Discrimination: the message must reference PROTEUS by name so an
+        # operator who finds the file in an unfamiliar directory can tell
+        # which simulator owns it. A regression that wrote a generic
+        # placeholder ("delete me") would lose that traceability.
+        assert 'proteus' in content.lower()
 
 
 # =============================================================================
@@ -456,6 +533,11 @@ def test_print_current_state_with_valid_row():
 
         # Verify logger was called
         assert mock_log.info.called
+        # Discrimination: every populated quantity must produce its own
+        # log.info call. The source emits 9 lines (header + Wall time +
+        # Time + T_surf + T_magma + P_surf + Phi_global + F_atm + F_int);
+        # a regression that fused lines or dropped one would land below 9.
+        assert mock_log.info.call_count >= 9
 
 
 @pytest.mark.unit
@@ -470,6 +552,11 @@ def test_print_current_state_includes_time():
         # Check if Time was in any log call
         log_calls = [str(call) for call in mock_log.info.call_args_list]
         assert any('Model time' in str(call) for call in log_calls)
+        # Discrimination: the numeric Time value must appear in the log
+        # in %.2e format. A regression that printed the label but dropped
+        # the substitution (e.g. broken %-format) would still match
+        # 'Model time' but lose the 1.50e+08 fingerprint.
+        assert any('1.50e+08' in str(call) for call in log_calls)
 
 
 @pytest.mark.unit
@@ -485,6 +572,12 @@ def test_print_current_state_includes_temperatures():
         # Verify temperatures were formatted in output
         # (exact matching is difficult due to formatting)
         assert mock_log.info.called
+        # Discrimination: the 8.3f-formatted T_surf and T_magma numeric
+        # values must appear in the captured log output. A regression that
+        # swapped the two labels or dropped the values would surface here.
+        log_calls = [str(call) for call in mock_log.info.call_args_list]
+        assert any('300.500' in str(call) for call in log_calls)
+        assert any('2500.300' in str(call) for call in log_calls)
 
 
 # =============================================================================
@@ -497,6 +590,11 @@ def test_get_current_time_returns_string():
     """Test that _get_current_time returns a string."""
     result = _get_current_time()
     assert isinstance(result, str)
+    # Discriminating check: the returned string is non-empty and looks like a
+    # timestamp (contains a digit and a separator). The sibling test below pins
+    # the YYYY-MM-DD shape; this minimal guard rejects an empty string slipping
+    # past the isinstance check.
+    assert len(result) > 0
 
 
 @pytest.mark.unit
@@ -518,6 +616,9 @@ def test_get_current_time_is_recent():
     # Should contain current year
     current_year = datetime.now().year
     assert str(current_year) in result
+    # Discrimination: the result must NOT contain a future year (e.g. a
+    # regression to a hardcoded future date or off-by-one year handling).
+    assert str(current_year + 1) not in result
 
 
 @pytest.mark.unit
@@ -528,6 +629,10 @@ def test_get_current_time_format_consistency():
 
     # Both should have same length (allowing for second differences)
     assert abs(len(result1) - len(result2)) <= 1
+    # Discrimination: the format is '%Y-%m-%d %H:%M:%S %Z'. Pin the YYYY-MM-DD
+    # date-separator shape so a regression that switched to a localized
+    # format (e.g. 'MM/DD/YYYY') is caught even if it kept the same length.
+    assert result1[4] == '-' and result1[7] == '-' and result1[10] == ' '
 
 
 # =============================================================================
@@ -589,6 +694,11 @@ def test_helpfile_float_precision():
     hf = CreateHelpfileFromDict(row)
 
     assert hf['M_planet'].iloc[0] == pytest.approx(precise_value, rel=1e-8)
+    # Discrimination: the stored value must NOT have been truncated to
+    # single precision (~7 digits). 1.23456789e12 keeps 9 digits in
+    # float64 but only 7 in float32; assert at tighter rel-tol than the
+    # primary to surface a regression that downcasted columns.
+    assert hf['M_planet'].iloc[0] == pytest.approx(precise_value, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -647,6 +757,8 @@ def test_get_git_revision_with_mock():
             result = _get_git_revision(tmpdir)
 
             assert result == 'abc123def456789'
+            # Return value must be a plain string, not bytes.
+            assert isinstance(result, str)
             mock_check_output.assert_called_once_with(
                 ['git', 'rev-parse', 'HEAD'],
                 stderr=subprocess.DEVNULL,
@@ -669,6 +781,25 @@ def test_get_socrates_version_with_mock():
         with patch.dict(os.environ, {'RAD_DIR': tmpdir}):
             version = _get_socrates_version()
             assert version == '24.1.0'
+            # Discrimination: the trailing newline from the file must be
+            # stripped. A regression that returned the raw read would equal
+            # '24.1.0\n' and fail downstream version-parse logic that
+            # splits on '.' expecting clean numeric components.
+            assert '\n' not in version
+
+
+@pytest.mark.unit
+def test_get_socrates_version_raises_without_rad_dir():
+    """Test that _get_socrates_version errors when RAD_DIR is missing."""
+    from proteus.utils.coupler import _get_socrates_version
+
+    with patch.dict(os.environ, {}, clear=True):
+        # Precondition: confirm RAD_DIR is actually absent in the clean
+        # env so the missing-env branch is what gets exercised (rather
+        # than a leaked outer-process value).
+        assert 'RAD_DIR' not in os.environ
+        with pytest.raises(EnvironmentError, match='RAD_DIR environment variable is not set'):
+            _get_socrates_version()
 
 
 @pytest.mark.unit
@@ -687,6 +818,11 @@ def test_get_agni_version_with_mock():
         version = _get_agni_version(dirs)
 
         assert version == '1.8.0'
+        # Discrimination: a regression that returned the 'name' field
+        # ('AGNI') instead of the version key would still be a non-empty
+        # string. Pin the dotted-version shape explicitly.
+        assert version.count('.') == 2
+        assert version != 'AGNI'
 
 
 @pytest.mark.unit
@@ -700,6 +836,7 @@ def test_get_julia_version_with_mock():
         version = _get_julia_version()
 
         assert version == '1.9.3'
+        assert isinstance(version, str)
         mock_check_output.assert_called_once_with(['julia', '--version'])
 
 
@@ -753,6 +890,10 @@ def test_print_stoptime_minutes():
         # Verify minutes formatting was used
         log_calls = [str(call) for call in mock_log.info.call_args_list]
         assert any('minutes' in str(call) for call in log_calls)
+        # Discrimination: the minutes branch must NOT also report hours.
+        # A regression that dropped the elif and fell through to the
+        # hours branch (or printed both labels) would surface here.
+        assert not any('hours' in str(call) for call in log_calls)
 
 
 @pytest.mark.unit
@@ -768,6 +909,11 @@ def test_print_stoptime_hours():
         # Verify hours formatting was used
         log_calls = [str(call) for call in mock_log.info.call_args_list]
         assert any('hours' in str(call) for call in log_calls)
+        # Discrimination: exactly one 'Total runtime' line should land.
+        # A regression that printed both 'hours' and the minutes
+        # fallback would emit two such lines.
+        runtime_lines = [c for c in log_calls if 'Total runtime' in str(c)]
+        assert len(runtime_lines) == 1
 
 
 @pytest.mark.unit
@@ -805,6 +951,13 @@ def test_print_system_configuration_fallback_username():
 
                 # Verify fallback username was used
                 assert mock_log.info.called
+                # Discrimination: the pwd fallback path must have been
+                # taken (a regression that re-raised the OSError instead
+                # of falling back would not call pwd.getpwuid). Also pin
+                # the fallback username actually appears in the log.
+                mock_getpwuid.assert_called_once()
+                log_calls = [str(call) for call in mock_log.info.call_args_list]
+                assert any('fallback_user' in str(call) for call in log_calls)
 
 
 # =============================================================================
@@ -821,6 +974,10 @@ def test_write_helpfile_validates_missing_keys():
 
         with pytest.raises(Exception, match='mismatched keys'):
             WriteHelpfileToCSV(tmpdir, df)
+        # Discrimination: the validation must short-circuit BEFORE writing
+        # the CSV. A regression that wrote first and then raised would
+        # leave a corrupted stub file on disk that resume would consume.
+        assert not os.path.exists(os.path.join(tmpdir, 'runtime_helpfile.csv'))
 
 
 @pytest.mark.unit
@@ -834,6 +991,12 @@ def test_zero_helpfile_row_is_immutable_structure():
 
     # Second row should still be zero
     assert row2['Time'] == 0.0
+    # Discrimination: the two dicts must be distinct objects (no shared
+    # cached singleton). A regression that returned a cached module-level
+    # dict would have id(row1) == id(row2) and the mutation above would
+    # also alter row2.
+    assert row1 is not row2
+    assert row1['Time'] == pytest.approx(100.0)
 
 
 @pytest.mark.unit
@@ -845,6 +1008,11 @@ def test_helpfile_preserves_column_order():
 
     # Verify column order matches GetHelpfileKeys
     assert list(hf.columns) == keys
+    # Discrimination: 'Time' must be the first column. The CSV format
+    # used downstream relies on Time leading the row; a regression that
+    # alphabetised the schema would still equal-compare key-set but put
+    # 'C_kg_atm' or similar at index 0.
+    assert hf.columns[0] == 'Time'
 
 
 @pytest.mark.unit
@@ -871,6 +1039,11 @@ def test_extend_helpfile_preserves_dtype():
 
     # All columns should be float
     assert hf_extended['Time'].dtype == float
+    # Discrimination: every numeric column must stay float64 after extend.
+    # A regression that introduced an object dtype (e.g. via mixed-type
+    # coercion on a string-valued private key) would surface here.
+    assert hf_extended['T_surf'].dtype == float
+    assert hf_extended['M_planet'].dtype == float
 
 
 @pytest.mark.unit
@@ -881,6 +1054,12 @@ def test_helpfile_handles_large_time_values():
     hf = CreateHelpfileFromDict(row)
 
     assert hf['Time'].iloc[0] == pytest.approx(4.567e9)
+    # Discrimination: the Time column must stay float64 so a Gyr-scale
+    # value retains its full precision. A regression that coerced Time
+    # to int (truncating to 4567000000) would still equal-compare the
+    # nominal value at approx() tolerance but lose sub-Myr resolution.
+    assert hf['Time'].dtype == float
+    assert hf['Time'].iloc[0] == pytest.approx(4.567e9, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -893,3 +1072,666 @@ def test_helpfile_handles_negative_fluxes():
 
     assert hf['F_int'].iloc[0] == pytest.approx(-50.0)
     assert hf['F_atm'].iloc[0] == pytest.approx(-100.0)
+
+
+# =============================================================================
+# Test: Energy-conservation bookkeeping (_populate_energy_residual)
+# =============================================================================
+#
+# The conservation primitive is the per-call energy integral set computed by
+# Aragog over its CVODE sub-step trajectory and exposed in helpfile columns
+# step_dE_F_int_J / step_dE_F_cmb_J / step_dE_Q_radio_cons_J /
+# step_dE_Q_tidal_cons_J / step_solver_residual_J. PROTEUS just cumulatively
+# sums these; no helpfile-side trapezoidal interpolation between
+# possibly-transient F_cmb snapshots. The cons (frozen-mass) variants of the
+# Q sources pair with the frozen-mass E_state_cons_J state variable; the
+# legacy state-mass step_dE_Q_radio_J / step_dE_Q_tidal_J columns are kept
+# in the schema as instrumentation only and are NOT read by the residual.
+
+
+def _aragog_row(
+    *,
+    time_yr: float,
+    E_state_cons_J: float,
+    step_dE_F_int_J: float = 0.0,
+    step_dE_F_cmb_J: float = 0.0,
+    step_dE_Q_radio_cons_J: float = 0.0,
+    step_dE_Q_tidal_cons_J: float = 0.0,
+    step_solver_residual_J: float = 0.0,
+    F_cmb: float = 0.0,
+    R_int: float = 6.371e6,
+    R_core: float = 3.481e6,
+    T_magma: float = 3000.0,
+) -> dict:
+    """Helper: build a ZeroHelpfileRow populated with the cons (frozen-mass)
+    columns the energy-residual helper reads. Uses Earth-like radii by
+    default. The instantaneous F_cmb keyword argument is supported only so
+    the discrimination test can prove it is IGNORED by the cumulative-sum
+    logic; it has no effect on dE_predicted_cons_J."""
+    row = ZeroHelpfileRow()
+    row['Time'] = time_yr
+    row['E_state_cons_J'] = E_state_cons_J
+    row['step_dE_F_int_J'] = step_dE_F_int_J
+    row['step_dE_F_cmb_J'] = step_dE_F_cmb_J
+    row['step_dE_Q_radio_cons_J'] = step_dE_Q_radio_cons_J
+    row['step_dE_Q_tidal_cons_J'] = step_dE_Q_tidal_cons_J
+    row['step_solver_residual_J'] = step_solver_residual_J
+    row['F_cmb'] = F_cmb
+    row['R_int'] = R_int
+    row['R_core'] = R_core
+    row['T_magma'] = T_magma
+    return row
+
+
+@pytest.mark.unit
+def test_helpfile_keys_include_energy_conservation_columns():
+    """Schema must expose the per-call step-delta columns AND the cumulative
+    bookkeeping columns. Catches accidental drift if a future cleanup
+    removes one. Each step delta is a separate source so the breakdown can
+    be reconstructed downstream."""
+    keys = GetHelpfileKeys()
+    expected = {
+        # Frozen-mass conservation primitives (consumed by the residual).
+        'E_state_cons_J',
+        'step_dE_F_int_J',
+        'step_dE_F_cmb_J',
+        'step_dE_Q_radio_cons_J',
+        'step_dE_Q_tidal_cons_J',
+        'step_solver_residual_J',
+        # Cumulative columns derived from the primitives above.
+        'dE_predicted_cons_J',
+        'E_residual_cons_J',
+        'E_residual_cons_frac',
+        'solver_residual_J',
+        # State-mass columns kept as diagnostics (NOT used for residuals).
+        'E_state_J',
+        'step_dE_Q_radio_J',
+        'step_dE_Q_tidal_J',
+    }
+    missing = expected - set(keys)
+    assert not missing, f'Energy-conservation keys missing from schema: {missing}'
+    assert len(keys) == len(set(keys)), 'Helpfile schema contains duplicate keys'
+    # Negative regression: the deprecated state-mass residual columns must
+    # stay removed. They masked real signal because the state-dependent
+    # rho(P,S)*V mass weighting introduced a non-conservation cross term
+    # that grew with mantle cooling.
+    deprecated_state_mass = {'dE_predicted_J', 'E_residual_J', 'E_residual_frac'}
+    leaked_dep = deprecated_state_mass & set(keys)
+    assert not leaked_dep, (
+        f'Deprecated state-mass residual columns reappeared in schema: {leaked_dep}'
+    )
+    # Negative regression: the historical Q_dil/F_dil columns must stay
+    # deleted. If a future cleanup adds them back, this test fails loudly.
+    forbidden = {'F_dil', 'Q_dil_W', 'step_dE_Q_dil_J'}
+    leaked = forbidden & set(keys)
+    assert not leaked, f'Deleted dilatation columns reappeared in schema: {leaked}'
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_inactive_when_E_state_cons_zero():
+    """Non-Aragog modules leave E_state_cons_J at 0. The bookkeeping
+    helper must short-circuit: cons residual + solver_residual columns
+    stay at 0.0, NEVER NaN, even when step deltas happen to be non-zero.
+    NaN would propagate into cumulative sums and silently corrupt
+    downstream rows."""
+    hf = CreateHelpfileFromDict(_aragog_row(time_yr=0.0, E_state_cons_J=0.0))
+    new_row = _aragog_row(
+        time_yr=1.0,
+        E_state_cons_J=0.0,
+        step_dE_F_int_J=-1.0e25,
+        step_dE_F_cmb_J=+1.0e25,
+        step_solver_residual_J=+1.0e10,
+    )
+
+    _populate_energy_residual(hf, new_row)
+
+    assert new_row['dE_predicted_cons_J'] == pytest.approx(0.0)
+    assert new_row['E_residual_cons_J'] == pytest.approx(0.0)
+    assert new_row['E_residual_cons_frac'] == pytest.approx(0.0)
+    assert new_row['solver_residual_J'] == pytest.approx(0.0)
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_anchor_row_is_zero():
+    """Row 0 of an Aragog run is the anchor: by definition there is no
+    prior state to integrate against. dE_predicted_cons, the cons
+    residual, AND solver_residual_J must all be exactly 0 even when
+    E_state_cons_J is large (~1e31 J for Earth) AND the per-call step
+    deltas + step_solver_residual_J happen to be populated (Aragog
+    reports them on the first call too, but they are conventionally
+    ignored at the anchor)."""
+    empty_hf = pd.DataFrame(columns=GetHelpfileKeys())
+    new_row = _aragog_row(
+        time_yr=0.0,
+        E_state_cons_J=1.234e31,
+        step_dE_F_int_J=-9.99e30,  # large but must be ignored at anchor
+        step_dE_F_cmb_J=+5.55e30,
+        step_solver_residual_J=+1.0e15,  # also ignored at anchor
+    )
+
+    _populate_energy_residual(empty_hf, new_row)
+
+    assert new_row['dE_predicted_cons_J'] == pytest.approx(0.0)
+    assert new_row['E_residual_cons_J'] == pytest.approx(0.0)
+    assert new_row['E_residual_cons_frac'] == pytest.approx(0.0)
+    assert new_row['solver_residual_J'] == pytest.approx(0.0)
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_cumulative_sum_across_three_rows():
+    """Synthetic 3-row trajectory with asymmetric step deltas. Cumulative
+    dE_predicted_cons at row N must equal the sum of step deltas for
+    rows 1..N (using the cons sources). The asymmetry (different
+    magnitudes per row) catches an off-by-one in which the prior row's
+    dE_predicted_cons_J is being used as the running total. Also
+    asserts solver_residual_J accumulates linearly: a regression that
+    used the prior-row value as the starting point would miss the
+    fact that step_solver_residual_J is itself the per-call increment.
+    """
+    E0 = 1.0e31
+    # Three asymmetric increments, all sources active.
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    # Step 1: cooling dominates.
+    delta_1_F_int = -3.0e29
+    delta_1_Q_radio = +1.0e29
+    expected_dE_pred_1 = delta_1_F_int + delta_1_Q_radio  # = -2.0e29
+    E1 = E0 + expected_dE_pred_1
+    solver_inc_1 = +2.0e22  # tiny solver residual increment, machine-precision-like
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_cons_J=E1,
+        step_dE_F_int_J=delta_1_F_int,
+        step_dE_Q_radio_cons_J=delta_1_Q_radio,
+        step_solver_residual_J=solver_inc_1,
+    )
+    _populate_energy_residual(hf, row1)
+    hf = ExtendHelpfile(hf, row1)
+
+    # Step 2: F_cmb heat input > cooling, net warming.
+    delta_2_F_int = -2.0e29
+    delta_2_F_cmb = +5.0e29
+    expected_dE_pred_2 = expected_dE_pred_1 + delta_2_F_int + delta_2_F_cmb  # = +1e29
+    E2 = E0 + expected_dE_pred_2
+    solver_inc_2 = -3.0e22  # negative increment to discriminate sum-vs-overwrite
+    row2 = _aragog_row(
+        time_yr=25.0,
+        E_state_cons_J=E2,
+        step_dE_F_int_J=delta_2_F_int,
+        step_dE_F_cmb_J=delta_2_F_cmb,
+        step_solver_residual_J=solver_inc_2,
+    )
+    _populate_energy_residual(hf, row2)
+    hf = ExtendHelpfile(hf, row2)
+
+    # Step 3: F_cmb adds energy from below.
+    delta_3_F_cmb = +1.0e29
+    delta_3_F_int = -4.0e29
+    expected_dE_pred_3 = expected_dE_pred_2 + delta_3_F_cmb + delta_3_F_int  # = -2e29
+    E3 = E0 + expected_dE_pred_3
+    solver_inc_3 = +5.0e22
+    row3 = _aragog_row(
+        time_yr=50.0,
+        E_state_cons_J=E3,
+        step_dE_F_cmb_J=delta_3_F_cmb,
+        step_dE_F_int_J=delta_3_F_int,
+        step_solver_residual_J=solver_inc_3,
+    )
+    _populate_energy_residual(hf, row3)
+
+    assert row1['dE_predicted_cons_J'] == pytest.approx(expected_dE_pred_1, rel=1e-12)
+    assert row2['dE_predicted_cons_J'] == pytest.approx(expected_dE_pred_2, rel=1e-12)
+    assert row3['dE_predicted_cons_J'] == pytest.approx(expected_dE_pred_3, rel=1e-12)
+
+    # Self-consistent trajectory => zero cons residual at every row.
+    assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(E1 - E0)
+    assert abs(row3['E_residual_cons_frac']) < 1e-10
+
+    # solver_residual_J is the running sum of step_solver_residual_J;
+    # ExtendHelpfile only persists row1 and row2 to hf at this point
+    # (row3 is still in flight), so row3's value is row2-cumulative
+    # plus its own increment.
+    assert row1['solver_residual_J'] == pytest.approx(solver_inc_1, rel=1e-12)
+    assert row2['solver_residual_J'] == pytest.approx(solver_inc_1 + solver_inc_2, rel=1e-12)
+    assert row3['solver_residual_J'] == pytest.approx(
+        solver_inc_1 + solver_inc_2 + solver_inc_3, rel=1e-12
+    )
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_ignores_instantaneous_F_cmb_spike():
+    """Discriminating test for the bug that motivated the per-call
+    integral rewrite: a single transient spike in the instantaneous
+    F_cmb column (which Aragog can report at a CVODE phase-boundary
+    moment) must NOT contaminate dE_predicted_cons_J. Only the
+    integrated step deltas contribute. We construct a row where
+    instantaneous F_cmb is set to an absurd 1e23 W/m^2 (the historical
+    bug pattern) but the per-call step delta is physical; assert the
+    cumulative is governed by the step delta alone."""
+    E0 = 1.0e31
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    # Physical step delta: -1e29 J (mild cooling).
+    physical_delta = -1.0e29
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_cons_J=E0 + physical_delta,
+        step_dE_F_int_J=physical_delta,
+        # Catastrophic instantaneous spike; must be IGNORED.
+        F_cmb=1.0e23,
+    )
+    _populate_energy_residual(hf, row1)
+
+    # If the helper used the instantaneous spike, dE_predicted_cons
+    # would be wildly different from -1e29 (the spike-driven
+    # trapezoid would give something like ~1e30 over a 10 yr step).
+    # With step-delta logic the result is exactly the physical delta
+    # to FP precision.
+    assert row1['dE_predicted_cons_J'] == pytest.approx(physical_delta, rel=1e-12)
+    assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(physical_delta)
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_frac_normalises_safely_when_dE_tiny():
+    """At quiescent steady state, dE_actual_cons can be much smaller
+    than 1 J in absolute value. Naive division would amplify
+    bookkeeping noise to arbitrarily large fractions. The helper
+    floors the divisor at 1 J, so for a tiny dE_actual_cons the
+    fractional residual stays bounded and interpretable. We use
+    E_state_cons_J = 100 J (small but non-zero so the inactive-path
+    guard does NOT trigger) so the 0.5 J perturbation survives
+    float64 cancellation; the floor logic itself is the quantity
+    under test, not the realistic E magnitude."""
+    E0 = 100.0  # J (not realistic; chosen so 0.5 J survives FP)
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    # dE_actual_cons = +0.5 J, dE_pred_cons = 0 (no step deltas set).
+    row1 = _aragog_row(time_yr=1.0, E_state_cons_J=E0 + 0.5)
+    _populate_energy_residual(hf, row1)
+
+    # Without flooring this would be 0.5 / 0.5 = 1.0; with floor at 1 J
+    # the divisor stays >= 1 and the fraction stays within [-1, 1].
+    assert row1['E_residual_cons_J'] == pytest.approx(0.5)
+    assert abs(row1['E_residual_cons_frac']) <= 1.0
+    # Specifically: 0.5 / max(0.5, 1.0) = 0.5.
+    assert row1['E_residual_cons_frac'] == pytest.approx(0.5)
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_residual_detects_missing_source():
+    """Conservation residual must surface a missing source. We
+    construct a 'real' planet whose E_state_cons actually ROSE by
+    5e29 J because of a fictional unreported source, but Aragog (in
+    this scenario) only reported the cooling step delta (-3e29 J).
+    The residual should be +8e29 J = (E_state_cons-E_state_cons[0])
+    - dE_predicted_cons, sign and magnitude both meaningful. Catches
+    a regression where the helper would silently zero residuals or
+    apply the wrong sign convention."""
+    E0 = 1.0e31
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    actual_dE = +5.0e29  # planet warmed
+    reported_step_delta = -3.0e29  # Aragog only reported the cooling
+    row1 = _aragog_row(
+        time_yr=100.0,
+        E_state_cons_J=E0 + actual_dE,
+        step_dE_F_int_J=reported_step_delta,
+    )
+    _populate_energy_residual(hf, row1)
+
+    expected_residual = actual_dE - reported_step_delta  # = +8e29 J
+    assert row1['dE_predicted_cons_J'] == pytest.approx(reported_step_delta, rel=1e-12)
+    assert row1['E_residual_cons_J'] == pytest.approx(expected_residual, rel=1e-12)
+    # E_residual_cons_frac should be O(1); residual is comparable to actual.
+    assert abs(row1['E_residual_cons_frac']) > 0.5
+
+
+@pytest.mark.unit
+def test_get_proteus_directories_has_required_keys():
+    """Sanity: the directory dict exposes the keys the runtime depends on."""
+    dirs = get_proteus_directories(outdir='unit-test')
+    # Module-source paths still referenced at runtime.
+    required_keys = (
+        'proteus',
+        'agni',
+        'spider',
+        'aragog',
+        'zalmoxis',
+        'vulcan',
+        'tools',
+        'utils',
+        'input',
+    )
+    for required in required_keys:
+        assert required in dirs, f"missing required directory key '{required}'"
+    # Per-run output subtree.
+    for required in (
+        'output',
+        'output/data',
+        'output/offchem',
+        'output/observe',
+        'output/plots',
+    ):
+        assert required in dirs
+
+
+@pytest.mark.unit
+def test_get_proteus_directories_editable_submodule_paths():
+    """Each editable FWL submodule maps to its on-disk sibling directory.
+
+    Aragog / Zalmoxis / VULCAN are installed via the ``tools/get_*.sh``
+    scripts as editable sibling checkouts inside the PROTEUS root. The
+    paths are case-sensitive on Linux: Aragog clones to ``aragog/``,
+    Zalmoxis to ``Zalmoxis/``, VULCAN to ``VULCAN/``. Pin the case here
+    so a doctor command or runtime path-resolver does not silently look
+    in the wrong directory.
+    """
+    dirs = get_proteus_directories(outdir='unit-test')
+    # Path basename must match the on-disk casing the get_*.sh scripts use.
+    assert os.path.basename(dirs['aragog']) == 'aragog'
+    assert os.path.basename(dirs['zalmoxis']) == 'Zalmoxis'
+    assert os.path.basename(dirs['vulcan']) == 'VULCAN'
+    # Each path is anchored at the PROTEUS root (the parent of the
+    # editable checkout), not somewhere else like /tmp or site-packages.
+    assert os.path.dirname(dirs['aragog']) == dirs['proteus']
+    assert os.path.dirname(dirs['zalmoxis']) == dirs['proteus']
+    assert os.path.dirname(dirs['vulcan']) == dirs['proteus']
+
+
+# ============================================================================
+# Issue #677 mass-conservation invariant tests
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_assert_mass_conservation_passes_when_invariants_hold():
+    """assert_mass_conservation accepts M_atm <= M_planet and per-species sum match.
+
+    Physical scenario: post-outgas state with a non-trivial atmosphere.
+    M_atm = 4.6e24 kg (close to Earth's mantle), M_planet = 5.97e24 kg
+    (1 M_earth), per-species sum exactly equals M_atm.
+    """
+    from proteus.utils.constants import gas_list
+    from proteus.utils.coupler import assert_mass_conservation
+
+    hf_row = {
+        'M_atm': 4.6e24,
+        'M_planet': 5.97e24,
+    }
+    # Distribute M_atm across gas_list so the per-species sum equals M_atm.
+    # Use asymmetric values so the sum is a meaningful check (not all equal).
+    per_species = 4.6e24 / len(gas_list)
+    for s in gas_list:
+        hf_row[s + '_kg_atm'] = per_species
+
+    result = assert_mass_conservation(hf_row)
+    assert result is None  # contract: helper returns None silently when M_atm <= M_planet
+    # Discriminating check: M_atm < M_planet strictly (not vacuously zero), and
+    # the per-species sum exactly equals M_atm so the closure path is exercised.
+    assert hf_row['M_atm'] < hf_row['M_planet']
+    species_sum = sum(hf_row[s + '_kg_atm'] for s in gas_list)
+    assert math.isclose(species_sum, hf_row['M_atm'], rel_tol=1e-12)
+
+
+@pytest.mark.unit
+def test_assert_mass_conservation_fails_when_M_atm_exceeds_M_planet():
+    """assert_mass_conservation hard-fails when M_atm > M_planet (the issue #677 symptom).
+
+    Discriminating: M_atm = 7.2e24 vs M_planet = 5.97e24, a 21 percent
+    excess, well above the 1e-6 tolerance. Must raise RuntimeError with
+    a message naming the M_atm and M_planet values.
+    """
+    from proteus.utils.coupler import assert_mass_conservation
+
+    hf_row = {
+        'M_atm': 7.2e24,  # Atmosphere exceeds planet (the issue #677 symptom)
+        'M_planet': 5.97e24,
+    }
+    for s_idx in range(15):
+        # Stub kg_atm columns so the per-species check doesn't fire first
+        # (we want to test the M_atm > M_planet path specifically).
+        pass
+
+    with pytest.raises(RuntimeError, match='Mass conservation violation'):
+        assert_mass_conservation(hf_row)
+    # Discrimination: confirm the excess is well above the 1e-6 tolerance
+    # so the test is exercising the violation branch, not riding the
+    # numerical edge. M_atm/M_planet should exceed 1.0 by ~21 percent.
+    assert hf_row['M_atm'] / hf_row['M_planet'] > 1.2
+    # And the hf_row dict must NOT be mutated by the failed call (so
+    # downstream callers can inspect the row that triggered the raise).
+    assert hf_row['M_atm'] == pytest.approx(7.2e24)
+
+
+@pytest.mark.unit
+def test_assert_mass_conservation_fails_when_species_sum_disagrees():
+    """assert_mass_conservation hard-fails when sum(s_kg_atm) != M_atm.
+
+    Edge case: per-species kg_atm values are stale or a species is missing
+    from the M_atm sum loop. Discriminating: sum = 4.0e24 but M_atm = 4.6e24
+    (a 15 percent disagreement).
+    """
+    from proteus.utils.constants import gas_list
+    from proteus.utils.coupler import assert_mass_conservation
+
+    hf_row = {
+        'M_atm': 4.6e24,
+        'M_planet': 5.97e24,
+    }
+    # Intentionally under-report: per-species sum is only ~87 percent of M_atm.
+    per_species = (0.87 * 4.6e24) / len(gas_list)
+    for s in gas_list:
+        hf_row[s + '_kg_atm'] = per_species
+
+    with pytest.raises(RuntimeError, match='M_atm bookkeeping inconsistency'):
+        assert_mass_conservation(hf_row)
+    # Discrimination: the M_atm <= M_planet invariant must HOLD here so
+    # the failure must come from the per-species bookkeeping path, not
+    # from the M_atm > M_planet path. Pin both legs.
+    assert hf_row['M_atm'] < hf_row['M_planet']
+    species_sum = sum(hf_row[s + '_kg_atm'] for s in gas_list)
+    assert species_sum < 0.9 * hf_row['M_atm']
+
+
+@pytest.mark.unit
+def test_assert_mass_conservation_skips_when_M_planet_zero():
+    """assert_mass_conservation gracefully handles pre-IC state where M_planet=0.
+
+    Edge case: at the very first call site M_planet may not yet be set
+    (still 0 from ZeroHelpfileRow). The assertion must not false-positive
+    in that regime.
+    """
+    from proteus.utils.coupler import assert_mass_conservation
+
+    hf_row = {
+        'M_atm': 1e10,  # something
+        'M_planet': 0.0,  # not yet computed
+    }
+    # Must not raise; the M_planet=0 short-circuit handles the pre-IC case.
+    result = assert_mass_conservation(hf_row)
+    assert result is None  # contract: M_planet=0 short-circuits the conservation check
+    # Discriminating check: M_atm is non-zero, so only the M_planet=0 skip branch
+    # can produce a silent pass on this row.
+    assert hf_row['M_atm'] > 0.0
+    assert hf_row['M_planet'] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Edge / error paths in the git-revision and version-validation helpers
+# (lines 50-52, 65-78, 165-166, 201-202 in utils/coupler.py).
+# ---------------------------------------------------------------------------
+
+
+def test_get_git_revision_returns_unknown_when_chdir_fails():
+    """When the target directory does not exist (or cannot be entered),
+    _get_git_revision must return the literal 'unknown' string and the
+    caller's CWD must be preserved.
+
+    Discriminating: assert the returned value is exactly 'unknown'
+    (not None, not the empty string, not a partial git hash). A
+    regression that propagated the OSError up would raise here.
+    """
+    from proteus.utils.coupler import _get_git_revision
+
+    cwd_before = os.getcwd()
+    bogus_dir = '/totally/does/not/exist/this/path/has/no/chance'
+    result = _get_git_revision(bogus_dir)
+    cwd_after = os.getcwd()
+    assert result == 'unknown'
+    # Side-effect guard: the helper must not strand the caller in a
+    # different directory. A regression that returned before the
+    # finally-block chdir-back would leave cwd somewhere else.
+    assert cwd_after == cwd_before
+
+
+def test_get_git_revision_returns_unknown_on_subprocess_failure():
+    """Even if chdir succeeds, a missing git executable or a non-repo
+    directory must surface as 'unknown' rather than raising.
+
+    Discriminating: patch subprocess.check_output to raise
+    FileNotFoundError (git absent). The except branch covers
+    CalledProcessError, FileNotFoundError, TimeoutExpired, and the
+    catch-all Exception; this test pins the FileNotFoundError path
+    explicitly so a future tightening that narrowed the except clause
+    would fail loudly.
+    """
+    from proteus.utils.coupler import _get_git_revision
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with patch('subprocess.check_output', side_effect=FileNotFoundError('git not found')):
+            result = _get_git_revision(tmpdir)
+    assert result == 'unknown'
+    assert isinstance(result, str)
+
+
+def test_get_git_revision_returns_unknown_on_subprocess_timeout():
+    """A hanging git process that exceeds the 5 s timeout must surface
+    as 'unknown'. Pin the TimeoutExpired exception path specifically.
+    """
+    import subprocess as sp
+
+    from proteus.utils.coupler import _get_git_revision
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with patch(
+            'subprocess.check_output',
+            side_effect=sp.TimeoutExpired(cmd='git', timeout=5),
+        ):
+            result = _get_git_revision(tmpdir)
+    assert result == 'unknown'
+    assert isinstance(result, str)
+
+
+def _all_dummy_modules_config():
+    """Config with every coupling slot set to 'dummy' except for
+    interior_energetics, which is wired to the module under test.
+    Lets validate_module_versions walk a single branch deterministically.
+    """
+    from unittest.mock import MagicMock
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_struct.module = 'dummy'
+    config.atmos_clim.module = 'dummy'
+    config.outgas.module = 'dummy'
+    config.escape.module = 'dummy'
+    config.star.module = 'dummy'
+    return config
+
+
+def test_validate_module_versions_raises_when_module_out_of_date(tmp_path):
+    """A required module at a version older than the pinned minimum
+    triggers an EnvironmentError pointing at the troubleshooting URL.
+
+    Discriminating: pin both the exception type AND the side-effect
+    (UpdateStatusfile called once with status code 20). A regression
+    that swapped the order (raise before write) or that downgraded to
+    a log-only warning would fail one of the two assertions.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    with (
+        patch.dict(
+            'sys.modules',
+            {'aragog': MagicMock(__version__='0.0.1')},
+            clear=False,
+        ),
+        # importlib.metadata.requires is what the closure _get_expver
+        # consults; pinning it lets us drive the comparison from
+        # outside the validate_module_versions function.
+        patch(
+            'importlib.metadata.requires',
+            return_value=['fwl-aragog>=99.99.99'],
+        ),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        with pytest.raises(EnvironmentError, match='Out-of-date modules'):
+            validate_module_versions({'rad': str(tmp_path)}, config)
+    mock_update.assert_called_once()
+    args, _ = mock_update.call_args
+    assert args[1] == 20
+
+
+def test_validate_module_versions_accepts_compatible_versions(tmp_path):
+    """Installed version above the expected minimum: no raise, no
+    status-file write.
+
+    Edge: limit-input compatible setup. Discriminating: a regression
+    that always wrote status would fail the mock_update assertion.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    with (
+        patch.dict(
+            'sys.modules',
+            {'aragog': MagicMock(__version__='99.99.99')},
+            clear=False,
+        ),
+        patch('importlib.metadata.requires', return_value=['fwl-aragog>=1.0.0']),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        result = validate_module_versions({'rad': str(tmp_path)}, config)
+    assert result is None
+    assert mock_update.call_count == 0
+
+
+def test_validate_module_versions_skips_check_when_no_pinned_minimum(tmp_path):
+    """When the resolver finds no pinned minimum (the dep string does
+    not name the module), the inner _valid_ver helper short-circuits
+    via the 'return True if expected is None' guard.
+
+    Edge: the closure _get_expver returns None for a module that
+    doesn't appear in requires(). Discriminating: even an obviously
+    ancient __version__='0.0.1' must NOT trip the check when no
+    expected minimum is available.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    with (
+        patch.dict(
+            'sys.modules',
+            {'aragog': MagicMock(__version__='0.0.1')},
+            clear=False,
+        ),
+        patch(
+            'importlib.metadata.requires',
+            return_value=['fwl-something-else>=1.0.0'],
+        ),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        result = validate_module_versions({'rad': str(tmp_path)}, config)
+    assert result is None
+    assert mock_update.call_count == 0

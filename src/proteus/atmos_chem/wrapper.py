@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from proteus.atmos_chem.common import read_result
+from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -16,9 +17,9 @@ if TYPE_CHECKING:
 
 def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     """
-    Run atmospheric chemistry model offline, to postprocess final PROTEUS iteration.
+    Run atmospheric chemistry model (offline post-processing or online per-snapshot).
 
-    Results are saved to files on the disk, and returned as a DataFrame.
+    Results are saved to CSV files on disk and returned as a DataFrame.
 
     Parameters
     ----------
@@ -36,20 +37,54 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     """
 
     log.info('Running atmospheric chemistry...')
-    module = config.atmos_chem.module
 
-    if not module:
-        # no chemistry
+    module = config.atmos_chem.module
+    when = config.atmos_chem.when
+
+    # Guard: no module configured
+    if not module or module == 'none':
         log.warning('Cannot run atmospheric chemistry, no module specified')
         return None
 
-    elif module == 'vulcan':
-        log.debug('Using VULCAN kinetics model')
-        from proteus.atmos_chem.vulcan import run_vulcan_offline
+    # Guard: scheduling
+    if when == 'manually':
+        log.debug("Atmospheric chemistry set to 'manually'; skipping")
+        return None
 
-        run_vulcan_offline(dirs, config, hf_row)
-
+    # Resolve the runner function (lazy imports keep heavy backends optional)
+    if module == 'vulcan':
+        from proteus.atmos_chem.vulcan import run_vulcan as _run
+    elif module == 'dummy':
+        from proteus.atmos_chem.dummy import run_dummy_chem as _run
     else:
-        raise ValueError(f'Invalid atmos_chem module: {module}')
+        if dirs.get('output'):
+            UpdateStatusfile(dirs, 20)
+        raise ValueError(f"Invalid atmos_chem module: '{module}'")
 
-    return read_result(dirs['output'], module)
+    log.info(f'    Using {module} module, {when}')
+
+    # Dispatch based on scheduling mode:
+    #   'offline': run once after the simulation step, on the final state
+    #   'online':  run at every snapshot during the main simulation loop
+    filename = None
+    if when == 'offline':
+        log.debug('Running atmospheric chemistry in OFFLINE mode')
+        success = _run(dirs, config, hf_row)
+    elif when == 'online':
+        log.debug('Running atmospheric chemistry in ONLINE mode')
+        success = _run(dirs, config, hf_row, online=True)
+        filename = f'{module}_{int(hf_row["Time"])}.csv'
+    else:
+        if dirs.get('output'):
+            UpdateStatusfile(dirs, 20)
+        raise ValueError(f"Invalid atmos_chem.when value: '{when}'")
+
+    # Surface solver failure to the caller (e.g. wrong atmos module,
+    # missing output pickle, unrecognised network) so it isn't silently
+    # masked by a None DataFrame downstream.
+    if not success:
+        log.warning(f'{module} chemistry run did not produce output; skipping read')
+        return None
+
+    # Read the CSV output and return as DataFrame
+    return read_result(dirs['output'], module, filename=filename)

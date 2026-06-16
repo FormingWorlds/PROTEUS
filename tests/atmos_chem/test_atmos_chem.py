@@ -25,7 +25,7 @@ Mocking strategy:
 from __future__ import annotations
 
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -35,8 +35,8 @@ import pytest
 # We need to keep the mock in sys.modules throughout the test execution
 mock_vulcan_package = MagicMock()
 mock_vulcan_module = MagicMock()
-mock_run_vulcan_offline = MagicMock()
-mock_vulcan_module.run_vulcan_offline = mock_run_vulcan_offline
+mock_run_vulcan = MagicMock()
+mock_vulcan_module.run_vulcan = mock_run_vulcan
 
 # Put mocks in sys.modules before any imports (persist throughout test execution)
 sys.modules['vulcan'] = mock_vulcan_package
@@ -45,6 +45,8 @@ sys.modules['proteus.atmos_chem.vulcan'] = mock_vulcan_module
 # Imports must come after mocks are set up
 from proteus.atmos_chem.common import read_result  # noqa: E402
 from proteus.atmos_chem.wrapper import run_chemistry  # noqa: E402
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.mark.unit
@@ -78,7 +80,12 @@ def test_read_result_file_not_found(tmp_path):
     module = 'vulcan'
 
     result = read_result(outdir, module)
-    assert result is None
+    assert result is None  # missing-file branch must yield None silently
+    # Discriminating check: the directory genuinely does not exist on disk, so
+    # only the missing-file branch can have produced the None return.
+    import os
+
+    assert not os.path.exists(outdir)
 
 
 @pytest.mark.unit
@@ -116,6 +123,36 @@ def test_read_result_successful(tmp_path):
 
 
 @pytest.mark.unit
+def test_read_result_custom_filename(tmp_path):
+    """
+    Test read_result with explicit filename override (online mode per-snapshot files).
+
+    Physics: Online chemistry writes per-snapshot output files like vulcan_5000.csv.
+    The filename parameter allows reading these instead of the default vulcan.csv.
+    """
+    outdir = str(tmp_path / 'output')
+    offchem_dir = tmp_path / 'output' / 'offchem'
+    offchem_dir.mkdir(parents=True)
+
+    # Write per-snapshot file (online mode naming convention)
+    csv_file = offchem_dir / 'vulcan_5000.csv'
+    csv_content = (
+        'tmp\tp\tz\tH2O\tCO2\n300.0\t1.0\t5e4\t1e-3\t0.96\n400.0\t10.0\t3e4\t1e-3\t0.96\n'
+    )
+    csv_file.write_text(csv_content)
+
+    # Default filename (vulcan.csv) should NOT find the per-snapshot file
+    result_default = read_result(outdir, 'vulcan')
+    assert result_default is None
+
+    # Explicit filename should find the per-snapshot file
+    result_custom = read_result(outdir, 'vulcan', filename='vulcan_5000.csv')
+    assert isinstance(result_custom, pd.DataFrame)
+    assert len(result_custom) == 2
+    assert 'CO2' in result_custom.columns
+
+
+@pytest.mark.unit
 def test_read_result_preserves_whitespace_format(tmp_path):
     """
     Test read_result correctly parses whitespace-delimited CSV.
@@ -144,8 +181,11 @@ def test_read_result_preserves_whitespace_format(tmp_path):
     assert 'tmp' in result.columns
     assert 'CO' in result.columns
     # Check that pressure column has correct first value
-    assert pytest.approx(result['p'].iloc[0], rel=1e-3) == 1.0
+    assert result['p'].iloc[0] == pytest.approx(1.0, rel=1e-3)
 
+
+@pytest.mark.unit
+def test_run_chemistry_disabled_module():
     """
     Test run_chemistry when no module is specified (disabled mode).
 
@@ -162,29 +202,35 @@ def test_read_result_preserves_whitespace_format(tmp_path):
 
     # Should return None when chemistry is disabled
     assert result is None
+    # Discriminating check: the disabled-module branch was the only one that
+    # could have produced the None return; pin the input that selected it.
+    assert config.atmos_chem.module is None
 
 
 @pytest.mark.unit
-def test_run_chemistry_vulcan():
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_vulcan(patched_run_vulcan):
     """
     Test run_chemistry calls VULCAN when module='vulcan'.
 
     Physics: VULCAN performs kinetic chemistry calculations to determine
     final atmospheric composition after chemical reactions reach equilibrium.
     """
+    # The patch keeps the mock in place regardless of test_vulcan.py's
+    # sys.modules manipulation. A True return means the wrapper will
+    # proceed to read_result rather than short-circuiting.
+    patched_run_vulcan.return_value = True
+
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
 
     hf_row = {'Time': 1000.0, 'P_surf': 100.0}
 
-    # Mock VULCAN function and create expected output file for read_result
     import os
     import tempfile
 
-    # Use the mock that's already in sys.modules
-    mock_vulcan = mock_run_vulcan_offline
-    mock_vulcan.reset_mock()  # Reset call history for this test
     # Create the expected output file that read_result will read
     with tempfile.TemporaryDirectory() as tmpdir:
         dirs['output'] = tmpdir
@@ -232,19 +278,28 @@ def test_run_chemistry_invalid_module():
     # Should raise ValueError for unrecognized module
     with pytest.raises(ValueError, match='Invalid atmos_chem module'):
         run_chemistry(dirs, config, hf_row)
+    # Discrimination: the offending module value must appear in the raised
+    # message. A regression that raised a generic ValueError without echoing
+    # the bad input would silently regress the error contract.
+    with pytest.raises(ValueError, match='invalid_module'):
+        run_chemistry(dirs, config, hf_row)
 
 
 @pytest.mark.unit
-def test_run_chemistry_returns_dataframe():
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_returns_dataframe(patched_run_vulcan):
     """
     Test run_chemistry returns proper DataFrame from result reading.
 
     Physics: Chemistry model output must be DataFrame with species,
     VMR, and abundance columns for postprocessing.
     """
+    patched_run_vulcan.return_value = True
+
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
 
     hf_row = {'Time': 5000.0}
 
@@ -264,13 +319,9 @@ def test_run_chemistry_returns_dataframe():
         }
     )
 
-    # Mock VULCAN function and create expected output file for read_result
     import os
     import tempfile
 
-    # Use the mock that's already in sys.modules
-    mock_run_vulcan_offline.reset_mock()  # Reset call history for this test
-    # Create the expected output file that read_result will read
     with tempfile.TemporaryDirectory() as tmpdir:
         dirs['output'] = tmpdir
         offchem_dir = os.path.join(tmpdir, 'offchem')
@@ -288,16 +339,20 @@ def test_run_chemistry_returns_dataframe():
 
 
 @pytest.mark.unit
-def test_run_chemistry_vulcan_with_realistic_hf_row():
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_vulcan_with_realistic_hf_row(patched_run_vulcan):
     """
     Test run_chemistry with realistic helpfile row from atmosphere calculation.
 
     Physics: Typical atmospheric state includes surface pressure, temperature,
     mass fractions, and composition from previous modules (outgassing, interior).
     """
+    patched_run_vulcan.return_value = True
+
     dirs = {'output': '/tmp/test', 'input': '/tmp/input'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
 
     # Realistic helpfile row from atmosphere calculation
     hf_row = {
@@ -311,7 +366,6 @@ def test_run_chemistry_vulcan_with_realistic_hf_row():
         'H2_bar': 0.0,
     }
 
-    # Mock VULCAN function and create expected output file for read_result
     import os
     import tempfile
 
@@ -326,10 +380,6 @@ def test_run_chemistry_vulcan_with_realistic_hf_row():
             'N2': [3.5e-2, 3.5e-2, 3.5e-2, 3.5e-2, 3.5e-2],
         }
     )
-    # Use the mock that's already in sys.modules
-    mock_v = mock_run_vulcan_offline
-    mock_v.reset_mock()  # Reset call history for this test
-    # Create the expected output file that read_result will read
     with tempfile.TemporaryDirectory() as tmpdir:
         dirs['output'] = tmpdir
         offchem_dir = os.path.join(tmpdir, 'offchem')
@@ -345,29 +395,28 @@ def test_run_chemistry_vulcan_with_realistic_hf_row():
 
 
 @pytest.mark.unit
-def test_run_chemistry_preserves_config():
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_preserves_config(patched_run_vulcan):
     """
     Test run_chemistry passes config unchanged to chemistry solver.
 
     Physics: Config must be fully preserved during delegation to VULCAN
     to maintain physical constraints (temperature, pressure, mixing ratios).
     """
+    patched_run_vulcan.return_value = True
+
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
     config.atmos_chem.vulcan.dt = 1000.0  # Custom timestep
     config.atmos_chem.vulcan.num_iter = 100  # Custom iterations
 
     hf_row = {'Time': 1000.0}
 
-    # Mock VULCAN function and create expected output file for read_result
     import os
     import tempfile
 
-    # Use the mock that's already in sys.modules
-    mock_v = mock_run_vulcan_offline
-    mock_v.reset_mock()  # Reset call history for this test
-    # Create the expected output file that read_result will read
     with tempfile.TemporaryDirectory() as tmpdir:
         dirs['output'] = tmpdir
         offchem_dir = os.path.join(tmpdir, 'offchem')
@@ -380,5 +429,184 @@ def test_run_chemistry_preserves_config():
 
         run_chemistry(dirs, config, hf_row)
 
-        # Verify function completed without error
-        # (Config verification skipped as mock may not be called if real module is imported)
+        # The wrapper must pass the config through verbatim to the backend.
+        patched_run_vulcan.assert_called_once_with(dirs, config, hf_row)
+        assert patched_run_vulcan.call_args.args[1] is config
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_manually_mode(patched_run_vulcan):
+    """run_chemistry returns None and skips the backend when when='manually'.
+
+    In 'manually' mode the user invokes chemistry separately, so the wrapper
+    must not trigger the heavy VULCAN call inside the main coupling loop.
+    """
+    dirs = {'output': '/tmp/test'}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'manually'
+
+    hf_row = {'Time': 0.0}
+
+    result = run_chemistry(dirs, config, hf_row)
+
+    assert result is None
+    patched_run_vulcan.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_offline_mode(patched_run_vulcan, tmp_path):
+    """
+    Test run_chemistry calls run_vulcan (offline) when when='offline'.
+
+    Physics: Offline mode runs VULCAN as a post-processing step on the final
+    atmospheric state, computing equilibrium chemistry after the simulation.
+    """
+    dirs = {'output': str(tmp_path)}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
+
+    hf_row = {'Time': 1000.0}
+
+    # Create expected output file for read_result
+    offchem_dir = tmp_path / 'offchem'
+    offchem_dir.mkdir(parents=True, exist_ok=True)
+    csv_file = offchem_dir / 'vulcan.csv'
+    pd.DataFrame({'tmp': [185.0], 'p': [1.0], 'H2O': [8.9e-3]}).to_csv(
+        csv_file, sep='\t', index=False
+    )
+
+    result = run_chemistry(dirs, config, hf_row)
+
+    patched_run_vulcan.assert_called_once_with(dirs, config, hf_row)
+    assert isinstance(result, pd.DataFrame)
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_online_mode(patched_run_vulcan, tmp_path):
+    """
+    Test run_chemistry calls run_vulcan (online) when when='online'.
+
+    Physics: Online mode runs VULCAN at every snapshot during simulation,
+    coupling atmospheric chemistry to the evolving thermal state.
+    """
+    dirs = {'output': str(tmp_path)}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'online'
+
+    hf_row = {'Time': 500.0}
+
+    # Create expected output file for read_result
+    # Online mode writes per-snapshot files: vulcan_{year}.csv
+    offchem_dir = tmp_path / 'offchem'
+    offchem_dir.mkdir(parents=True, exist_ok=True)
+    csv_file = offchem_dir / 'vulcan_500.csv'
+    pd.DataFrame({'tmp': [200.0], 'p': [5.0], 'CO2': [0.96]}).to_csv(
+        csv_file, sep='\t', index=False
+    )
+
+    result = run_chemistry(dirs, config, hf_row)
+
+    patched_run_vulcan.assert_called_once_with(dirs, config, hf_row, online=True)
+    assert isinstance(result, pd.DataFrame)
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.wrapper.read_result')
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_returns_none_when_backend_fails_offline(
+    patched_run_vulcan, patched_read_result, tmp_path
+):
+    """run_chemistry must short-circuit when offline run_vulcan returns False.
+
+    A False return from the backend signals "no output pickle / unrecognised
+    network / wrong atmos module". The wrapper must surface that to the
+    caller as None, not silently masquerade as a successful but empty run
+    by hitting read_result on a file that was never written.
+    """
+    patched_run_vulcan.return_value = False
+    dirs = {'output': str(tmp_path)}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
+    hf_row = {'Time': 1000.0}
+
+    result = run_chemistry(dirs, config, hf_row)
+
+    assert result is None
+    # Verify the wrapper actually short-circuited rather than falling
+    # through to read_result; otherwise a future regression that drops
+    # the success-check would still pass this test trivially.
+    patched_read_result.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.wrapper.read_result')
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_returns_none_when_backend_fails_online(
+    patched_run_vulcan, patched_read_result, tmp_path
+):
+    """Same short-circuit applies in online mode."""
+    patched_run_vulcan.return_value = False
+    dirs = {'output': str(tmp_path)}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'online'
+    hf_row = {'Time': 750.0}
+
+    result = run_chemistry(dirs, config, hf_row)
+
+    assert result is None
+    patched_read_result.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.wrapper.read_result')
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_proceeds_when_backend_succeeds(
+    patched_run_vulcan, patched_read_result, tmp_path
+):
+    """Sanity check: a truthy backend return must still reach read_result."""
+    patched_run_vulcan.return_value = True
+    sentinel = pd.DataFrame({'tmp': [300.0]})
+    patched_read_result.return_value = sentinel
+
+    dirs = {'output': str(tmp_path)}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
+    hf_row = {'Time': 1000.0}
+
+    result = run_chemistry(dirs, config, hf_row)
+
+    patched_read_result.assert_called_once()
+    assert result is sentinel
+
+
+@pytest.mark.unit
+def test_run_chemistry_invalid_when():
+    """
+    Test run_chemistry raises ValueError for invalid 'when' value.
+
+    Physics: Only 'manually', 'offline', and 'online' are valid chemistry
+    scheduling modes; anything else is a configuration error.
+    """
+    dirs = {'output': '/tmp/test'}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'invalid_value'
+
+    hf_row = {'Time': 0.0}
+
+    with pytest.raises(ValueError, match='Invalid atmos_chem.when value'):
+        run_chemistry(dirs, config, hf_row)
+    # Discrimination: the rejected scheduling value must appear in the
+    # raised message so users can locate the misconfiguration. A regression
+    # to a generic ValueError without echoing the bad input would fail this.
+    with pytest.raises(ValueError, match='invalid_value'):
+        run_chemistry(dirs, config, hf_row)

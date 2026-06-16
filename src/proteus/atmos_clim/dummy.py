@@ -17,6 +17,13 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Run the dummy atmosphere module
 def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
+
+        # Gas composition for escape equal to surface composition
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
+
     log.debug('Running dummy atmosphere...')
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
@@ -24,6 +31,32 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     #    surface, relative to the surface temperature itself
     # Setting this to 0 will result in an entirely transparent atmosphere
     # Setting this to 1 will result in an OLR of zero
+
+    # Fixed-flux mode: bypass all grey-body computation
+    fixed_flux = getattr(config.atmos_clim.dummy, 'fixed_flux', -1.0)
+    if isinstance(fixed_flux, (int, float)) and fixed_flux > 0:
+        log.info('Using fixed atmospheric flux: %.3e W/m2', fixed_flux)
+        T_surf_atm = float(hf_row['T_magma'])
+        atm_H = const_R * T_surf_atm / (hf_row['atm_kg_per_mol'] * hf_row['gravity'])
+        R_obs = hf_row['R_int'] + atm_H * config.atmos_clim.dummy.height_factor
+        output = {
+            'T_surf': T_surf_atm,
+            'F_atm': fixed_flux,
+            'F_olr': fixed_flux,
+            'F_sct': 0.0,
+            'R_obs': R_obs,
+            'albedo': 0.0,
+            'p_xuv': hf_row['P_surf'],
+            'R_xuv': R_obs,
+            'p_obs': hf_row['P_surf'],
+            'T_obs': T_surf_atm,
+            'ocean_areacov': 0.0,
+            'ocean_maxdepth': 0.0,
+            'P_surf_clim': hf_row['P_surf'],
+        }
+        for g in gas_list:
+            hf_row[f'{g}_vmr_xuv'] = float(hf_row.get(f'{g}_vmr', 0.0))
+        return output
 
     # Parameters
     gamma = config.atmos_clim.dummy.gamma
@@ -57,7 +90,10 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     # fixed T_Surf
     if config.atmos_clim.surf_state == 'fixed':
         log.info('Calculating fluxes with dummy atmosphere')
-        T_surf_atm = T_magma
+        if config.interior_energetics.module == 'boundary':
+            T_surf_atm = hf_row['T_surf']
+        else:
+            T_surf_atm = T_magma
         fluxes = _calc_fluxes(T_surf_atm)
 
     # conductive lid
@@ -90,7 +126,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
 
     # Require that the net flux must be upward
     F_atm_lim = fluxes['fl_N']
-    if config.atmos_clim.prevent_warming:
+    if config.planet.prevent_warming:
         F_atm_lim = max(1.0e-8, F_atm_lim)
 
     # Print if a limit was applied
@@ -125,12 +161,6 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     output['ocean_areacov'] = 0.0
     output['ocean_maxdepth'] = 0.0
     output['P_surf_clim'] = hf_row['P_surf']
-
-    # Gas composition for escape equal to surface composition
-    if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-    else:
-        gas_list = vol_list + vap_list
 
     for g in gas_list:
         hf_row[f'{g}_vmr_xuv'] = float(hf_row.get(f'{g}_vmr', 0.0))

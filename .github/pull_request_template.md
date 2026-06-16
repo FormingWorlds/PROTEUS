@@ -13,7 +13,7 @@ Outline your test configuration; e.g. MacOS with Python 3.13.
 
 ## Checklist
 
-- [ ] I have followed the [contributing guidelines](https://proteus-framework.org/proteus/CONTRIBUTING.html#how-do-i-contribute)
+- [ ] I have followed the [contributing guidelines](https://proteus-framework.org/PROTEUS/CONTRIBUTING.html#how-do-i-contribute)
 - [ ] My code follows the style guidelines of this project
 - [ ] I have performed a self-review of my code
 - [ ] My changes generate no new warnings or errors
@@ -21,6 +21,3 @@ Outline your test configuration; e.g. MacOS with Python 3.13.
 - [ ] I have updated the docs, as appropriate
 - [ ] I have added tests for these changes, as appropriate
 - [ ] I have checked that all dependencies have been updated, as required
-
-## Relevant people
-Tag people who should know about this PR here

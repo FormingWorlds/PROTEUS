@@ -29,9 +29,24 @@ def print_termination_criteria(config: Config):
     _print_criterion(config.params.stop.escape.enabled, 'Volatile escape')
     _print_criterion(config.params.stop.time.enabled, 'Maximum time')
     _print_criterion(config.params.stop.iters.enabled, 'Maximum loops')
+    _print_criterion(config.params.stop.clock.enabled, 'Maximum runtime')
 
     # Always enabled:
     _print_criterion(True, 'Keepalive file')
+
+    # Re-emit the prevent_warming advisory in proteus_00.log. The same
+    # advisory fires from the config validator at config-load time (so it
+    # appears in stderr / launch logs), but the run logfile is opened
+    # later by setup_logger and would otherwise miss it.
+    if config.planet.prevent_warming:
+        log.warning(
+            'planet.prevent_warming = true: T_magma is forced to monotonically '
+            'decrease each iteration. This suppresses physical temperature '
+            'oscillations and can hide energy non-conservation (T_magma '
+            'latching, F_atm = F_int reported as convergence by clamp '
+            'consistency rather than radiative balance). Default is false; '
+            'enable only for known strictly-cooling regimes.'
+        )
 
 
 # Print message in common format
@@ -73,7 +88,7 @@ def _check_radeqm(handler: Proteus) -> bool:
         return True
 
     # Simulation when wants to warm up but cannot do so
-    if handler.config.atmos_clim.prevent_warming and (F_eps < 0):
+    if handler.config.planet.prevent_warming and (F_eps < 0):
         UpdateStatusfile(handler.directories, 14)
         _msg_termination('Planet is no longer cooling')
         return True
@@ -194,6 +209,17 @@ def _check_miniter(handler: Proteus, finished: bool) -> bool:
     return True
 
 
+# Maximum clock runtime
+def _check_clock(handler: Proteus) -> bool:
+    log.debug('Check maximum clock runtime')
+
+    if handler.hf_row['runtime'] >= handler.config.params.stop.clock.maximum:
+        UpdateStatusfile(handler.directories, 11)
+        _msg_termination('Maximum clock runtime reached')
+        return True
+    return False
+
+
 def _check_keepalive(handler: Proteus) -> bool:
     log.debug('Check keepalive file')
 
@@ -205,51 +231,70 @@ def _check_keepalive(handler: Proteus) -> bool:
 
 
 def check_termination(handler: Proteus) -> bool:
-    """
-    Decide if the model should stop or not.
+    """**Decide if the model should stop or not.**
 
-    The model will stop when two sequential iterations satisfy the convergence criteria.
-    This occurs when finished_prev = True  and  finished_both = True.
+    This function checks numerical and physical criteria for model termination.
+    It is called at the end of each iteration, and returns a boolean
+    indicating whether the model should terminate.
 
-    Parameters:
+    The criteria are evaluated in priority order, and the first criterion that
+    is satisfied will trigger termination.
+
+    The check can be performed 'strictly' or 'non-strictly'.
+    In strict mode, the model must satisfy the termination criteria for two
+    consecutive iterations before it will terminate.
+
+    Parameters
     --------------
-        handler: Proteus
-            Proteus instance
+    - handler: Proteus
+        Proteus instance
 
-    Returns:
+    Returns
     --------------
-        fininshed: bool
-            Should the model terminate now?
+    - finished: bool
+        Should the model terminate now?
     """
 
     # Quantify model state at this iteration
     finished = False
     handler.finished_both = False
 
-    # Check if keepalive file has been removed
-    #    This means that the model should exit ASAP, regardless of the other criteria.
+    # ------------------------
+    # 1) Should exit immediately if keepalive file is removed,
+    #    regardless of the other criteria.
+
     if _check_keepalive(handler):
         handler.finished_both = True
         handler.finished_prev = True
         return True
 
-    # Stop simulation when planet is completely solidified
+    # ------------------------
+    # 2) Check physical criteria which are enabled by user.
+    #    These correspond to measures for the 'real' state of the planet.
+
+    # Planet reached certain age (since initial time)
+    if handler.config.params.stop.time.enabled:
+        finished = finished or _check_maxtime(handler)
+
+    # Mantle solidified (global melt fraction below threshold)
     if handler.config.params.stop.solid.enabled:
         finished = finished or _check_solid(handler)
 
-    # Stop simulation when at global energy balance
+    # Radiative equilibrium (balance between production and net outgoing flux)
     if handler.config.params.stop.radeqm.enabled:
         finished = finished or _check_radeqm(handler)
 
-    # Atmosphere has escaped
+    # Atmosphere escaped (surface pressure below threshold)
     if handler.config.params.stop.escape.enabled:
         finished = finished or _check_escape(handler)
 
-    # Planet has disintegrated
+    # Two criteria for planet disintegration
     if handler.config.params.stop.disint.enabled:
+        # Orbiting within Roche limit (tidal disruption when close to star)
         if handler.config.params.stop.disint.roche_enabled:
             finished = finished or _check_separation(handler)
 
+        # Spinning faster than breakup rate (centrifugal disruption)
         if handler.config.params.stop.disint.spin_enabled:
             finished = finished or _check_spinrate(handler)
 
@@ -261,21 +306,34 @@ def check_termination(handler: Proteus) -> bool:
     # Maximum time reached
     if handler.config.params.stop.time.enabled:
         finished = finished or _check_maxtime(handler)
+    # ------------------------
+    # 3) Check resource-based criteria, set by user according to the
+    #    available the machine / job. These are not physical criteria.
 
     # Maximum loops reached
     if handler.config.params.stop.iters.enabled:
         finished = finished or _check_maxiter(handler)
 
-    # Minimum time reached
+    # Maximum clock runtime reached
+    if handler.config.params.stop.clock.enabled:
+        finished = finished or _check_clock(handler)
+
+    # ------------------------
+    # 4) Handle *minimum* criteria, which PREVENT model exiting until
+    #    they have been satisfied by the simulation.
+
+    # Minimum simulation physical time reached (since initial time)
     if handler.config.params.stop.time.enabled:
         finished = finished and _check_mintime(handler, finished)
 
-    # Minimum loops reached
+    # Minimum number of iterations reached (numerical check)
     if handler.config.params.stop.iters.enabled:
         finished = finished and _check_miniter(handler, finished)
 
-    # Non-strict check
+    # ------------------------
+    # Now, decide whether model should terminate 'strictly' or not.
     if not handler.config.params.stop.strict:
+        # This iteration satisfied the criteria
         if finished:
             handler.finished_prev = True
             handler.finished_both = True
@@ -283,27 +341,27 @@ def check_termination(handler: Proteus) -> bool:
             log.debug('Model will exit')
             return True
 
-    # Strict check
-    # Ensure that criteria are satisfied for two sequential iterations
+    # Strict check (criteria satisfied for two sequential iterations)
     else:
+        # previous iteration satisfied the criteria...
         if handler.finished_prev:
-            # previous iteration satisfied the criteria...
+            # this one also satisfied the criteria
             if finished:
-                # convergence is also satisfied at this iteration
                 handler.finished_both = True
                 log.info('Termination criteria satisfied twice')
                 log.debug('Model will exit')
                 return True
+
+            # convergence no longer satisfied - reset flags
             else:
-                # convergence no longer satisfied - reset flags
                 handler.finished_prev = False
                 log.warning('Termination criteria no longer satisfied')
+
+        # previous iteration DID NOT satisfy criteria...
         else:
-            # previous iteration DID NOT satisfy criteria...
             handler.finished_prev = finished
             if finished:
                 log.info('Termination criteria satisfied once')
 
-    # Reset statusfile to 'Running'
-    # UpdateStatusfile(handler.directories, 1)
+    # Did not satisfy the criteria for termination (model will continue)
     return False

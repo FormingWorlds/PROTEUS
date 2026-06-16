@@ -2,6 +2,18 @@ from __future__ import annotations
 
 from attrs import define, field, validators
 
+from ._converters import none_if_none
+
+
+def _reject_enabled_binodal(instance, attribute, value):
+    """Reject `h2_binodal = true` until the feature is production ready."""
+    if value:
+        raise ValueError(
+            '`outgas.h2_binodal = true` is not yet supported: the H2-silicate '
+            'binodal partitioning (Rogers et al. 2025) is not production '
+            'ready. Keep `h2_binodal = false`.'
+        )
+
 
 @define
 class Calliope:
@@ -9,8 +21,6 @@ class Calliope:
 
     Attributes
     ----------
-    T_floor: float
-        Temperature floor applied to chemistry calculation [K].
     include_H2O: bool
         If True, include H2O.
     include_CO2: bool
@@ -31,28 +41,42 @@ class Calliope:
         If True, include CH4.
     include_CO: bool
         If True, include CO.
-    rtol: float
-        Relative tolerance on solver for mass conservation.
-    xtol: float
-        Absolute tolerance on solver for mass conservation.
     solubility: bool
         Enable solubility of volatiles into melt.
+    nguess: int
+        Maximum number of initial-guess samples for the CALLIOPE
+        equilibrium solver. Default 1000.
+    nsolve: int
+        Maximum number of iterations of the CALLIOPE equilibrium
+        solver per call. Default 3000.
+    p_guess_max: float
+        Upper bound [bar] of the CALLIOPE Monte-Carlo cold-start surface-
+        pressure draw. Sets where the cold start samples, so raising it helps
+        the solver find a high-pressure (e.g. sub-Neptune) basin faster. It
+        does NOT raise the maximum pressure the solver can accept (CALLIOPE's
+        fixed 1e7 bar box), so it is bounded to (0, 1e7]. Default 1e5.
     """
 
-    T_floor: float = field(default=700.0, validator=validators.gt(0.0))
-    include_H2O: bool = True
-    include_CO2: bool = True
-    include_N2: bool = True
-    include_S2: bool = True
-    include_SO2: bool = True
-    include_H2S: bool = True
-    include_NH3: bool = True
-    include_H2: bool = True
-    include_CH4: bool = True
-    include_CO: bool = True
-    rtol: float = field(default=1e-4, validator=validators.gt(0.0))
-    xtol: float = field(default=1e-6, validator=validators.gt(0.0))
-    solubility: bool = True
+    include_H2O: bool = field(default=True)
+    include_CO2: bool = field(default=True)
+    include_N2: bool = field(default=True)
+    include_S2: bool = field(default=True)
+    include_SO2: bool = field(default=True)
+    include_H2S: bool = field(default=True)
+    include_NH3: bool = field(default=True)
+    include_H2: bool = field(default=True)
+    include_CH4: bool = field(default=True)
+    include_CO: bool = field(default=True)
+    solubility: bool = field(default=True)
+    nguess: int = field(default=int(1e3), validator=validators.gt(0))
+    nsolve: int = field(default=int(3e3), validator=validators.gt(0))
+    # Default 1e5 bar mirrors CALLIOPE's P_GUESS_MAX_BAR (so the default leaves
+    # the cold-start draw unchanged); the 1e7 upper bound mirrors CALLIOPE's
+    # P_CEILING_BAR solver box, above which a raised ceiling is unreachable
+    # (the solver rejects roots beyond the box). The le() bound also rejects inf.
+    p_guess_max: float = field(
+        default=1.0e5, validator=validators.and_(validators.gt(0), validators.le(1.0e7))
+    )
 
     def is_included(self, vol: str) -> bool:
         """Helper method for getting flag if `vol` is included in outgassing."""
@@ -61,15 +85,70 @@ class Calliope:
 
 @define
 class Atmodeller:
-    """Module parameters for Atmodeller.
+    """Module parameters for Atmodeller (Bower+2025, ApJ 995:59).
+
+    JAX-based volatile partitioning with real gas EOS, non-ideal
+    solubility laws, and condensation. Replaces CALLIOPE for
+    thermodynamically consistent magma-atmosphere equilibrium.
 
     Attributes
     ----------
-    some_parameter: str
-        Not used currently.
+    solver_mode : str
+        Root-finding mode: 'robust' (slower compile, better convergence)
+        or 'basic' (faster compile, less robust).
+    solver_max_steps : int
+        Maximum iterations for the root-finder.
+    solver_multistart : int
+        Number of random restarts for the root-finder.
+    include_condensates : bool
+        Enable condensate phases (graphite, etc.) in the equilibrium.
+    solubility_H2O : str
+        Solubility law for H2O. See atmodeller.solubility.library.
+    solubility_CO2 : str
+        Solubility law for CO2.
+    solubility_H2 : str
+        Solubility law for H2.
+    solubility_N2 : str
+        Solubility law for N2.
+    solubility_S2 : str
+        Solubility law for S2.
+    solubility_CO : str
+        Solubility law for CO. 'none' = no solubility.
+    solubility_CH4 : str
+        Solubility law for CH4. 'none' = no solubility.
+    eos_H2O : str
+        Real gas EOS for H2O. 'none' = ideal gas.
+    eos_CO2 : str
+        Real gas EOS for CO2. 'none' = ideal gas.
+    eos_H2 : str
+        Real gas EOS for H2. 'none' = ideal gas.
+    eos_CH4 : str
+        Real gas EOS for CH4. 'none' = ideal gas.
+    eos_CO : str
+        Real gas EOS for CO. 'none' = ideal gas.
     """
 
-    some_parameter: str = field(default='some_value')
+    solver_mode: str = field(
+        default='robust',
+        validator=validators.in_(('robust', 'basic')),
+    )
+    solver_max_steps: int = field(default=256, validator=validators.gt(0))
+    solver_multistart: int = field(default=10, validator=validators.gt(0))
+    include_condensates: bool = field(default=True)
+    solubility_H2O: str | None = field(default='H2O_peridotite_sossi23', converter=none_if_none)
+    solubility_CO2: str | None = field(default='CO2_basalt_dixon95', converter=none_if_none)
+    solubility_H2: str | None = field(default='H2_basalt_hirschmann12', converter=none_if_none)
+    solubility_N2: str | None = field(default='N2_basalt_dasgupta22', converter=none_if_none)
+    solubility_S2: str | None = field(
+        default='S2_sulfide_basalt_boulliung23', converter=none_if_none
+    )
+    solubility_CO: str | None = field(default='CO_basalt_yoshioka19', converter=none_if_none)
+    solubility_CH4: str | None = field(default='CH4_basalt_ardia13', converter=none_if_none)
+    eos_H2O: str | None = field(default=None, converter=none_if_none)
+    eos_CO2: str | None = field(default=None, converter=none_if_none)
+    eos_H2: str | None = field(default=None, converter=none_if_none)
+    eos_CH4: str | None = field(default=None, converter=none_if_none)
+    eos_CO: str | None = field(default=None, converter=none_if_none)
 
 
 @define
@@ -78,12 +157,22 @@ class Outgas:
 
     Attributes
     ----------
-    fO2_shift_IW: float
-        Homogeneous oxygen fugacity in the magma ocean used to represent redox state (log10 units relative to Iron-Wustite).
     module: str
-        Outgassing module to be used. Choices: 'calliope' only.
+        Outgassing module to be used. Choices: 'calliope', 'atmodeller', 'dummy'.
+    fO2_shift_IW: float
+        Oxygen fugacity relative to Iron-Wustite [log10 units].
     mass_thresh: float
         Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+    h2_binodal: bool
+        Enable binodal-controlled H2 partitioning between atmosphere and
+        magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model.
+    T_floor: float
+        Temperature floor [K]. The outgassing temperature is clamped to
+        this value from below before the chemistry solve.
+    solver_rtol: float
+        Relative tolerance for the volatile equilibrium solver.
+    solver_atol: float
+        Absolute tolerance for the volatile equilibrium solver.
     calliope: Calliope
         Parameters for CALLIOPE module.
     atmodeller: Atmodeller
@@ -93,11 +182,27 @@ class Outgas:
         lavatmos is called, otherwise the default vaplist in constants.py module is used
     """
 
-    fO2_shift_IW: float
-
-    module: str = field(validator=validators.in_(('calliope',)))
+    module: str = field(
+        default='calliope', validator=validators.in_(('calliope', 'atmodeller', 'dummy'))
+    )
+    fO2_shift_IW: float = field(
+        default=4.0, validator=[validators.ge(-12.0), validators.le(12.0)]
+    )
 
     mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
+    # H2-silicate binodal partitioning (Rogers et al. 2025). Not yet
+    # production ready: the H2 mass-fraction definition for multi-species
+    # inventories and the coupling to the structure side are unsettled,
+    # so enabling the flag is rejected at config load.
+    h2_binodal: bool = field(
+        default=False,
+        validator=_reject_enabled_binodal,
+    )
+
+    # Shared solver parameters (calliope + atmodeller)
+    T_floor: float = field(default=700.0, validator=validators.gt(0.0))
+    solver_rtol: float = field(default=1e-4, validator=validators.gt(0.0))
+    solver_atol: float = field(default=1e-6, validator=validators.gt(0.0))
 
     calliope: Calliope = field(factory=Calliope)
     atmodeller: Atmodeller = field(factory=Atmodeller)

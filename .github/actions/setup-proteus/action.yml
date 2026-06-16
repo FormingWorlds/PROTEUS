@@ -1,0 +1,481 @@
+name: 'Set up PROTEUS environment'
+description: >
+  Cross-platform PROTEUS environment setup. Installs Python + Julia, the
+  system packages SOCRATES needs, the editable Python submodules, the
+  AGNI clone (at the pinned ref), and primes the SOCRATES build + Julia
+  depot + FWL_DATA caches. Exports RAD_DIR, FWL_DATA, AGNI_DIR,
+  JULIA_DEPOT_PATH as workflow env vars.
+
+inputs:
+  python-version:
+    description: >
+      Python version to install. Keep aligned with the requires-python
+      ceiling in pyproject.toml (newest minor below the ceiling).
+    required: false
+    default: '3.12'
+  julia-version:
+    description: Julia version
+    required: false
+    default: '1.12.6'
+  install-editable-submodules:
+    description: >
+      Whether to clone MORS / aragog / JANUS / CALLIOPE / ZEPHYRUS / Zalmoxis
+      and pip install them editable. Set to 'false' to rely solely on the
+      PyPI / git URLs in pyproject.toml dependencies.
+    required: false
+    default: 'false'
+  full-data:
+    description: >
+      If 'true', download the integration-tier data set (ARAGOG tables,
+      melting curves, stellar tracks). If 'false', only the smoke-tier
+      data is downloaded (spectral file + minimal stellar spectrum).
+    required: false
+    default: 'false'
+
+outputs:
+  rad-dir:
+    description: 'Absolute path to the SOCRATES install (sets RAD_DIR).'
+    value: ${{ steps.export-env.outputs.rad_dir }}
+  fwl-data:
+    description: 'Absolute path to the FWL_DATA root.'
+    value: ${{ steps.export-env.outputs.fwl_data }}
+
+runs:
+  using: composite
+  steps:
+    # ------------------------------------------------------------------
+    # 0a. Supported runners
+    # ------------------------------------------------------------------
+    # Composite actions cannot declare OS support in their metadata, so
+    # fail fast here instead of partway through a long install.
+    - name: Check runner OS is supported
+      if: runner.os != 'Linux' && runner.os != 'macOS'
+      shell: bash
+      run: |
+        echo "This action supports Linux and macOS runners only (got $RUNNER_OS)." >&2
+        exit 1
+
+    # ------------------------------------------------------------------
+    # 0b. Reclaim disk on Linux runners
+    # ------------------------------------------------------------------
+    # GHA ubuntu-latest images ship with ~14 GB free and most of that
+    # gets eaten by Android SDK + .NET + ghc + CodeQL + Haskell tools
+    # that PROTEUS does not use. The aragog + atmodeller + Julia +
+    # FWL_DATA + SOCRATES install chain has been observed to push the
+    # remaining headroom to ~61 MB on integration-tier runs, which
+    # then trips Errno 28 during a downstream pip install. Pruning the
+    # unused preinstalled toolchains up front buys ~25 GB. macOS is
+    # untouched (different image layout, smaller pip wheels, and no
+    # observed disk pressure on this branch).
+    - name: Free disk space on Linux
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        echo "Before cleanup:"
+        df -h /
+        sudo rm -rf /usr/share/dotnet \
+                    /usr/local/lib/android \
+                    /opt/ghc \
+                    /opt/hostedtoolcache/CodeQL \
+                    /opt/hostedtoolcache/go \
+                    /opt/hostedtoolcache/PyPy \
+                    /opt/hostedtoolcache/Ruby \
+                    /usr/local/share/boost \
+                    "$AGENT_TOOLSDIRECTORY/Ruby" 2>/dev/null || true
+        echo "After cleanup:"
+        df -h /
+
+    # ------------------------------------------------------------------
+    # 1a. System packages (Linux)
+    # ------------------------------------------------------------------
+    - name: Install system packages (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends \
+          gfortran \
+          libnetcdff-dev \
+          netcdf-bin \
+          libssl-dev \
+          curl
+
+    # ------------------------------------------------------------------
+    # 1b. System packages (macOS)
+    # ------------------------------------------------------------------
+    # gcc provides the Fortran toolchain; netcdf-fortran provides
+    # nf-config for the SOCRATES build. The brew exit code needs
+    # special handling: on the macos-latest Sequoia images,
+    # ``brew install`` can exit 1 with all packages successfully
+    # poured when a post-install step emits the "did not complete
+    # successfully" warning. The packages themselves are functional,
+    # so verify each is on the prefix list before accepting the
+    # failure.
+    - name: Install system packages (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        set +e
+        brew install --quiet gcc netcdf netcdf-fortran openssl@3
+        brew_rc=$?
+        set -e
+        missing=()
+        for pkg in gcc netcdf netcdf-fortran openssl@3; do
+          brew list "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+        done
+        if [ ${#missing[@]} -gt 0 ]; then
+          echo "ERROR: brew install rc=$brew_rc and missing packages: ${missing[*]}" >&2
+          exit "${brew_rc:-1}"
+        fi
+        if [ "$brew_rc" -ne 0 ]; then
+          echo "brew install exited $brew_rc but all packages present; continuing"
+        fi
+
+    # Homebrew ships gfortran only as a versioned binary (e.g.
+    # gfortran-15) when gcc was pre-installed on the runner image, so
+    # the plain `gfortran` command can be absent. SOCRATES's build
+    # checks `command -v gfortran`; link the newest versioned binary
+    # to the plain name when needed.
+    - name: Provide the gfortran command (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v gfortran >/dev/null 2>&1; then
+          gfortran_bin="$(ls /opt/homebrew/bin/gfortran-* 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$gfortran_bin" ]; then
+            gfortran_bin="$(ls /usr/local/bin/gfortran-* 2>/dev/null | sort -V | tail -n 1)"
+          fi
+          if [ -z "$gfortran_bin" ]; then
+            echo "ERROR: no gfortran-* binary found after brew install gcc" >&2
+            ls -la /opt/homebrew/bin/gfortran* /usr/local/bin/gfortran* 2>/dev/null || true
+            exit 1
+          fi
+          target_dir="$(dirname "$gfortran_bin")"
+          ln -sf "$gfortran_bin" "$target_dir/gfortran"
+          echo "Linked $gfortran_bin -> $target_dir/gfortran"
+        fi
+        gfortran --version | head -n 1
+
+    # ------------------------------------------------------------------
+    # 1c. Cache brew downloads on macOS
+    # ------------------------------------------------------------------
+    - name: Cache Homebrew downloads (macOS)
+      if: runner.os == 'macOS'
+      uses: actions/cache@v5
+      with:
+        path: |
+          ~/Library/Caches/Homebrew/downloads
+        key: brew-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/actions/setup-proteus/action.yml') }}
+        restore-keys: |
+          brew-${{ runner.os }}-${{ runner.arch }}-
+
+    # ------------------------------------------------------------------
+    # 2. Miniforge + conda environment (matches the developer install)
+    # ------------------------------------------------------------------
+    # Conda-forge owns SUNDIALS + scikits.odes, which the production
+    # aragog CVODE path requires. Installing via pip would need SUNDIALS
+    # 7.x from source on Linux (apt ships 6.x) and an MPI build on
+    # macOS; conda-forge provides matched binaries on both platforms.
+    - name: Set up miniforge + proteus env
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        miniforge-version: latest
+        python-version: ${{ inputs.python-version }}
+        activate-environment: proteus
+        channels: conda-forge
+        channel-priority: strict
+        auto-activate-base: false
+
+    # Install the conda-side dependencies that need native libraries
+    # (SUNDIALS for CVODE, scikits.odes for the Python bindings). The
+    # rest of PROTEUS installs via pip into the same env in step 8.
+    - name: Install conda dependencies
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        mamba install -n proteus -c conda-forge -y sundials 'scikits.odes>=3.0.0'
+        python -c "import scikits.odes; print('scikits.odes OK, version', scikits.odes.__version__)"
+
+    # ------------------------------------------------------------------
+    # 3. Julia
+    # ------------------------------------------------------------------
+    - name: Set up Julia
+      uses: julia-actions/setup-julia@v2
+      with:
+        version: ${{ inputs.julia-version }}
+
+    # ------------------------------------------------------------------
+    # 4. Resolve pinned refs from pyproject.toml (for cache keys)
+    # ------------------------------------------------------------------
+    - name: Read module pins
+      id: pins
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        echo "agni_ref=$(python tools/_module_pins.py agni ref)" >> "$GITHUB_OUTPUT"
+        echo "agni_url=$(python tools/_module_pins.py agni url)" >> "$GITHUB_OUTPUT"
+        echo "socrates_ref=$(python tools/_module_pins.py socrates ref)" >> "$GITHUB_OUTPUT"
+
+    # ------------------------------------------------------------------
+    # 5. SOCRATES build cache
+    # ------------------------------------------------------------------
+    # CI builds SOCRATES with portable optimisation flags (the build step
+    # sets SOCRATES_PORTABLE_FLAGS=1), so the compiled tree runs on any
+    # CPU model in the hosted runner fleets, which mix processor
+    # generations within the same OS/arch label. One cache per OS/arch is
+    # therefore sufficient. The '-portable' key component separates these
+    # caches from any tree built with the default performance flags.
+    # No restore-keys: a prefix-restored tree would be deleted and rebuilt
+    # from scratch by get_socrates.sh anyway, so a partial restore is pure
+    # download cost.
+    - name: Cache SOCRATES build
+      id: cache-socrates
+      uses: actions/cache@v5
+      with:
+        path: socrates/
+        key: socrates-${{ runner.os }}-${{ runner.arch }}-portable-${{ steps.pins.outputs.socrates_ref }}-${{ hashFiles('tools/get_socrates.sh') }}
+
+    - name: Build SOCRATES (cache miss)
+      if: steps.cache-socrates.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Portable flags: cached trees are restored across runner machines
+        # with mixed CPU generations, so the binaries must not carry
+        # build-host CPU extensions.
+        export SOCRATES_PORTABLE_FLAGS=1
+        # Make the script's GitHub SSH probe (and any git-over-SSH it
+        # selects) non-interactive and fast-failing; the runner has no
+        # GitHub SSH key, so the probe fails and the script uses HTTPS.
+        export GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -o ConnectTimeout=1 -o BatchMode=yes'
+        # --force: never block on the dirty-tree guard; CI checkouts are
+        # disposable.
+        bash tools/get_socrates.sh --force
+
+    # ------------------------------------------------------------------
+    # 6. AGNI clone (the source tree itself; Julia depot is a separate cache)
+    # ------------------------------------------------------------------
+    - name: Cache AGNI clone
+      id: cache-agni
+      uses: actions/cache@v5
+      with:
+        path: AGNI/
+        key: agni-clone-${{ runner.os }}-${{ steps.pins.outputs.agni_ref }}
+        restore-keys: |
+          agni-clone-${{ runner.os }}-
+
+    - name: Clone AGNI (cache miss)
+      if: steps.cache-agni.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        rm -rf AGNI
+        git clone "${{ steps.pins.outputs.agni_url }}" AGNI
+        git -C AGNI checkout --quiet "${{ steps.pins.outputs.agni_ref }}"
+
+    - name: Pin AGNI to configured ref (cache hit reconcile)
+      if: steps.cache-agni.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Even on a cache hit, the cached clone may have been keyed under
+        # a restore-key fallback; reconcile by fetching + checking out the
+        # pinned ref so the AGNI tree always matches the manifest.
+        cur="$(git -C AGNI rev-parse HEAD 2>/dev/null || echo unknown)"
+        if [ "$cur" != "${{ steps.pins.outputs.agni_ref }}" ]; then
+          git -C AGNI fetch --quiet origin
+          git -C AGNI checkout --quiet "${{ steps.pins.outputs.agni_ref }}"
+        fi
+        echo "AGNI at $(git -C AGNI rev-parse --short HEAD)"
+
+    # ------------------------------------------------------------------
+    # 7. Julia depot cache (AGNI's Pkg.instantiate output)
+    # ------------------------------------------------------------------
+    - name: Cache Julia depot
+      id: cache-julia
+      uses: actions/cache@v5
+      with:
+        path: ~/.julia
+        key: julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.pins.outputs.agni_ref }}-${{ hashFiles('AGNI/Project.toml','AGNI/Manifest.toml') }}
+        restore-keys: |
+          julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.pins.outputs.agni_ref }}-
+          julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-
+
+    - name: Build AGNI (Pkg.instantiate)
+      shell: bash
+      run: |
+        set -euo pipefail
+        # AGNI's own src/get_agni.sh starts with `git pull`, which fails on
+        # the detached-HEAD checkout we pinned via tools/_module_pins.py.
+        # Run the build steps directly so we keep the pinned ref intact.
+        # RAD_DIR is exported by the later "Export environment" step but
+        # AGNI's deps/build.jl reads it inline, so we set it here too.
+        #
+        # Order matters: Pkg.instantiate must run BEFORE deps/build.jl,
+        # because deps/build.jl includes SOCRATES's clean_wrappers.jl
+        # which does `using Glob`. With AGNI's project activated and
+        # instantiated, Glob (and every other dep in the manifest) is
+        # available to the build script. Running the build first would
+        # invoke `using Glob` against Julia's default environment,
+        # which carries no AGNI deps and fails with
+        # "Package Glob not found in current path."
+        #
+        # AGNI ships no Manifest.toml; any manifest present here was
+        # carried over by the AGNI-clone cache from an earlier run.
+        # Keep it when it matches the running Julia (re-resolving on
+        # every run costs ~4 min even on a depot cache hit), but drop
+        # it when it was resolved under a different Julia minor: the
+        # stdlib set differs between minors (MbedTLS_jll is a stdlib
+        # JLL on 1.11 but a regular package on 1.12), and
+        # Pkg.instantiate honours the stale manifest instead of
+        # re-resolving, leaving those packages uninstalled.
+        export RAD_DIR="$GITHUB_WORKSPACE/socrates"
+        cd AGNI
+        if [ -f Manifest.toml ]; then
+          mver=$(grep -m1 '^julia_version' Manifest.toml | grep -oE '[0-9]+\.[0-9]+' | head -1)
+          jver=$(julia -e 'print(string(VERSION.major,".",VERSION.minor))')
+          if [ "$mver" != "$jver" ]; then
+            echo "Dropping cached Manifest.toml (resolved under Julia $mver, running $jver)"
+            rm Manifest.toml
+          fi
+        fi
+        julia --project=. -e 'using Pkg; Pkg.instantiate()'
+        julia --project=. deps/build.jl
+
+    # ------------------------------------------------------------------
+    # 8. PROTEUS pip install (resolves PyPI + git deps in pyproject.toml)
+    # ------------------------------------------------------------------
+    - name: Install PROTEUS
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        python -m pip install --upgrade pip
+        # Install the optional vulcan + atmodeller backends alongside the
+        # develop extras so their tests run in CI rather than skip. They
+        # are optional for end users (a standard run uses calliope).
+        pip install -e ".[develop,vulcan,atmodeller]"
+
+    # BOREAS is an optional dependency: users opt in via
+    # tools/get_boreas.sh. CI installs it explicitly (at the ref pinned
+    # in [tool.proteus.modules.boreas]) so the BOREAS escape tests run
+    # rather than skip.
+    - name: Install BOREAS (optional escape module)
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        b_url="$(python tools/_module_pins.py boreas url)"
+        b_ref="$(python tools/_module_pins.py boreas ref)"
+        pip install "boreas @ git+${b_url}@${b_ref}"
+
+    # ------------------------------------------------------------------
+    # 9. FWL_DATA cache + smoke / full data download
+    # ------------------------------------------------------------------
+    - name: Cache FWL_DATA
+      uses: actions/cache@v5
+      with:
+        path: ~/fwl_data
+        key: fwl-data-${{ runner.os }}-${{ hashFiles('.github/data-manifest.yaml') }}
+        restore-keys: |
+          fwl-data-${{ runner.os }}-
+
+    - name: Download smoke data
+      shell: bash -el {0}
+      env:
+        FWL_DATA: ${{ github.workspace }}/../fwl_data
+      run: |
+        set -euo pipefail
+        # The cache restored ~/fwl_data; symlink it to the workspace-local
+        # path the test fixtures expect, so we don't have to special-case
+        # absolute paths across platforms.
+        mkdir -p "$HOME/fwl_data"
+        export FWL_DATA="$HOME/fwl_data"
+        echo "FWL_DATA=$FWL_DATA" >> $GITHUB_ENV
+        python -c "
+        from proteus.utils.data import (
+            download_spectral_file,
+            download_stellar_spectra,
+            download_exoplanet_data,
+            download_massradius_data,
+        )
+        download_spectral_file('Dayspring', '16')
+        download_stellar_spectra(folders=('solar',))
+        download_exoplanet_data()
+        download_massradius_data()
+        "
+
+    - name: Download full integration data
+      if: inputs.full-data == 'true'
+      shell: bash -el {0}
+      env:
+        FWL_DATA: ${{ env.FWL_DATA }}
+      run: |
+        set -euo pipefail
+        python - <<'PY'
+        from proteus.config import read_config_object
+        from proteus.utils.data import download_sufficient_data, download_eos_dynamic
+
+        # Reference configs that drive the integration / slow tier downloads.
+        for cfg_path in ('input/all_options.toml',
+                         'tests/integration/aragog_janus.toml'):
+            try:
+                cfg = read_config_object(cfg_path)
+                if cfg_path.endswith('aragog_janus.toml'):
+                    cfg.atmos_clim.module = 'agni'
+                download_sufficient_data(cfg, clean=False)
+            except Exception as exc:
+                print(f'warning: download_sufficient_data({cfg_path}) -> {exc}')
+
+        try:
+            download_eos_dynamic('WolfBower2018_MgSiO3')
+        except Exception as exc:
+            print(f'warning: download_eos_dynamic -> {exc}')
+        PY
+
+    # ------------------------------------------------------------------
+    # 10. Final env export so calling jobs see RAD_DIR / FWL_DATA / AGNI_DIR
+    # ------------------------------------------------------------------
+    - name: Export environment
+      id: export-env
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        RAD_DIR="$GITHUB_WORKSPACE/socrates"
+        FWL_DATA="${FWL_DATA:-$HOME/fwl_data}"
+        AGNI_DIR="$GITHUB_WORKSPACE/AGNI"
+        echo "RAD_DIR=$RAD_DIR" >> $GITHUB_ENV
+        echo "FWL_DATA=$FWL_DATA" >> $GITHUB_ENV
+        echo "AGNI_DIR=$AGNI_DIR" >> $GITHUB_ENV
+        # Point juliapkg at the Julia we installed via setup-julia. Use
+        # PYTHON_JULIAPKG_EXE (the same variable the installer sets); juliacall
+        # 0.9.35 rejects a lone PYTHON_JULIACALL_* exe/bindir without a matching
+        # project, so the older PYTHON_JULIACALL_BINDIR form no longer works.
+        if command -v julia >/dev/null 2>&1; then
+          JULIA_BINDIR="$(dirname "$(command -v julia)")"
+          echo "JULIA_BINDIR=$JULIA_BINDIR" >> $GITHUB_ENV
+          echo "PYTHON_JULIAPKG_EXE=$JULIA_BINDIR/julia" >> $GITHUB_ENV
+          echo "PYTHON_JULIACALL_HANDLE_SIGNALS=yes" >> $GITHUB_ENV
+        fi
+        # juliacall matches the Julia OpenSSL_jll to the Python interpreter's
+        # OpenSSL; Julia 1.12 ships OpenSSL_jll 3.5+, so the environment must
+        # provide OpenSSL >= 3.5. conda-forge does; assert it so a future
+        # environment change surfaces here instead of as an opaque OpenSSL_jll
+        # resolve failure at the first "import proteus".
+        if ! python -c "import ssl, sys; sys.exit(0 if ssl.OPENSSL_VERSION_INFO[:2] >= (3, 5) else 1)"; then
+          echo "::error::Python links $(python -c 'import ssl; print(ssl.OPENSSL_VERSION)') but Julia 1.12 needs OpenSSL >= 3.5"
+          exit 1
+        fi
+        echo "rad_dir=$RAD_DIR" >> $GITHUB_OUTPUT
+        echo "fwl_data=$FWL_DATA" >> $GITHUB_OUTPUT
+        echo ""
+        echo "===== setup-proteus done ====="
+        echo "  RAD_DIR     = $RAD_DIR"
+        echo "  FWL_DATA    = $FWL_DATA"
+        echo "  AGNI_DIR    = $AGNI_DIR"
+        echo "  python      = $(command -v python)  $(python --version)"
+        echo "  julia       = $(command -v julia)   $(julia --version 2>&1 | head -1)"
+        echo "  gfortran    = $(command -v gfortran || true)"
+        echo "  nf-config   = $(command -v nf-config || true)"
+        echo "  socrates    = $(ls socrates/bin/radlib.a 2>/dev/null || echo MISSING)"

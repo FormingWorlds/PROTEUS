@@ -17,8 +17,8 @@ def param_edit(inputfile,fO2,orbdist,mass,Cppmw,silicates:bool):
     data["orbit"]["semimajoraxis"] = float(orbdist)
     data["outgas"]["fO2_shift_IW"] = float(fO2)
     data["outgas"]["silicates"] = silicates
-    data["struct"]["mass_tot"] = float(mass)
-    data["delivery"]["elements"]["C_ppmw"] = float(Cppmw)
+    data["planet"]["mass_tot"] = float(mass)
+    data["planet"]["elements"]["C_budget"] = float(Cppmw)
     # write back
     with open(inputfile, "w") as f:
         f.write(dumps(data))

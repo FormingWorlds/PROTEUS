@@ -7,12 +7,32 @@ import logging
 import os
 import re
 import shutil
+from pathlib import Path
 
 import numpy as np
 
 from proteus.utils.constants import element_list, element_mmw
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+def resolve_fwl_data_dir() -> Path:
+    """Return the FWL_DATA directory.
+
+    The single source of truth for the FWL data location: the ``FWL_DATA``
+    environment variable when set, otherwise a repo-local default
+    (``FWL_DATA`` alongside the proteus package source). Both the CLI and
+    ``utils.data`` resolve through this so the two cannot diverge.
+
+    Returns
+    -------
+    Path
+        Directory where FWL reference data is stored.
+    """
+    env = os.environ.get('FWL_DATA')
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parents[2] / 'FWL_DATA'
 
 
 def get_proteus_dir():
@@ -155,7 +175,7 @@ def CommentFromStatus(status: int):
         case 10:
             desc = 'Completed (solidified)'
         case 11:
-            desc = 'UNUSED_STATUS_CODE (11)'
+            desc = 'Completed (maximum clock runtime)'
         case 12:
             desc = 'Completed (maximum iterations)'
         case 13:

@@ -44,7 +44,7 @@ def _set_boreas_params(config: Config, hf_row: dict) -> boreas.ModelParams:
     if boreas is None:
         raise ModuleNotFoundError(
             "Optional dependency 'boreas' is not installed. "
-            "Install it (or skip BOREAS tests) to use escape.module='boreas'."
+            "Install it with `bash tools/get_boreas.sh` to use escape.module='boreas'."
         )
 
     # Set parameters for escape

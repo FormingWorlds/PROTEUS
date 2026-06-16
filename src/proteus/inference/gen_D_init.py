@@ -8,30 +8,43 @@ and saves the resulting dataset to disk for use as the initial data in the BO pi
 
 from __future__ import annotations
 
+import logging
 import os
-import pickle
 import time
-from glob import glob
 from multiprocessing import Pool
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import toml
 import torch
-from botorch.utils.transforms import normalize
 from scipy.stats.qmc import Halton
 
-from proteus.inference.objective import eval_obj, prot_builder
+from proteus.inference.objective import child_timeout_s, eval_obj, prot_builder
+from proteus.inference.transforms import normalize_parameters
+from proteus.inference.utils import save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
 from proteus.utils.helper import recursive_get
 
 # Use double precision for all tensor computations
 dtype = torch.double
+log = logging.getLogger('fwl.' + __name__)
 
 
 def create_init(config):
-    """
-    Create initial guess data file in output folder, using the specified method.
+    """Create the initial BO dataset using sampling or a precomputed grid.
+
+    Parameters
+    ----------
+    - config (dict): Inference config containing `init_grid`, `init_samps`,
+      parameter bounds, observables, output location, and seed.
+
+    Returns
+    ----------
+    - int: Number of initial samples written to `init.csv`.
+
+    Raises:
+        ValueError: If an explicit sample count is requested but < 2.
     """
 
     # validate options
@@ -47,8 +60,8 @@ def create_init(config):
 
     # create new initial guess data by sampling bounds
     if init_samps:
-        print('Source for initial guess: sampling parameter space')
-        print(f'    nsamp = {init_samps}')
+        log.info('Source for initial guess: sampling parameter space')
+        log.info(f'    nsamp = {init_samps}')
         n_init = sample_from_bounds(
             config['output'],
             config['ref_config'],
@@ -56,12 +69,14 @@ def create_init(config):
             config['observables'],
             init_samps,
             config['seed'],
+            config['n_workers'],
+            config['failure_codes'],
         )
 
     # read from grid
     else:
-        print('Source for initial guess: pre-computed grid')
-        print(f'    grid = {init_grid}')
+        log.info('Source for initial guess: pre-computed grid')
+        log.info(f'    grid = {init_grid}')
         n_init = sample_from_grid(
             config['output'], config['parameters'], config['observables'], init_grid
         )
@@ -70,23 +85,39 @@ def create_init(config):
 
 
 def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str):
-    """
-    Create initial guess data, using pre-computed grid of models as input
+    """Build initial BO data from an existing PROTEUS grid.
+
+    Reads `case_*` directories in `grid_dir`, extracts parameter values from
+    each `init_coupler.toml`, computes objective values from the final row of
+    each `runtime_helpfile.csv`, normalizes inputs to [0, 1], and writes
+    `init.csv` to the inference output directory.
+
+    Parameters
+    ----------
+    - output (str): Inference output directory (relative or absolute).
+    - params (dict): Parameter bounds used for normalization.
+    - observables (dict): Target observables used for objective evaluation.
+    - grid_dir (str): Directory containing `case_*` precomputed runs.
+
+    Returns
+    ----------
+    - int: Number of initial samples written.
     """
 
     # We need evaluate the objective function at each grid point to provide initial samples
     #     They are normalised to [0,1] within the bounds of each parameter's axis
 
     # First, read data and config files from the grid
-    cases = glob(grid_dir + '/case_*/')
+    grid_path = Path(grid_dir)
+    cases = sorted(grid_path.glob('case_*'))
     helps = []
     confs = []
     for c in cases:
         # Data
-        helps.append(pd.read_csv(c + 'runtime_helpfile.csv', delimiter=r'\s+'))
+        helps.append(pd.read_csv(c / 'runtime_helpfile.csv', delimiter=r'\s+'))
 
         # Config
-        with open(c + 'init_coupler.toml', 'r') as f:
+        with open(c / 'init_coupler.toml', 'r') as f:
             confs.append(toml.load(f))
 
     # List of parameter keys for ordering
@@ -114,7 +145,7 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
         raw_x = torch.tensor(raw_x, dtype=dtype)
 
         # Generate normalised INPUT parameters
-        nrm_x = normalize(raw_x, bounds).flatten()
+        nrm_x = normalize_parameters(raw_x, bounds, keys).flatten()
         X[i, :] = nrm_x[:]  # store (list of floats)
 
         # Get values of OUTPUT observables from grid point data (list of floats)
@@ -123,21 +154,30 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
         # Evaluate objective and store (float)
         Y[i] = eval_obj(obs_y, observables)
 
-    # Package into dataset dict, to be pickled
-    D = {'X': X, 'Y': Y}
-    print(f'Generated initial dataset with {nsamp} points in {dims}-dim space')
+    log.info(f'Generated initial dataset with {nsamp} points in {dims}-dim space')
 
     # Save dataset for use in BO pipeline
     proteus_out = get_proteus_directories(output)['output']
-    D_init_path = f'{proteus_out}/init.pkl'
-    with open(D_init_path, 'wb') as f_out:
-        pickle.dump(D, f_out)
+    D_init_path = Path(proteus_out) / 'init.csv'
+    save_dataset_csv(X, Y, str(D_init_path))
 
     # Return number of samples
     return len(Y.flatten())
 
 
 def f_aug(x, iter, builder_args):
+    """Evaluate a single initial sample using a temporary objective wrapper.
+
+    Parameters
+    ----------
+    - x (torch.Tensor): Candidate input of shape (1, d) in normalized space.
+    - iter (int): Iteration index used to namespace output files.
+    - builder_args (dict): Context forwarded to `prot_builder`.
+
+    Returns
+    ----------
+    - torch.Tensor: Objective value tensor with shape (1, 1).
+    """
     f = prot_builder(
         parameters=builder_args['parameters'],
         observables=builder_args['observables'],
@@ -145,17 +185,60 @@ def f_aug(x, iter, builder_args):
         iter=iter,
         ref_config=builder_args['ref_config'],
         output=builder_args['output'],
+        failure_codes=builder_args['failure_codes'],
     )
 
     return f(x)
 
 
+def _pool_timeout(n_tasks: int, n_workers: int) -> float | None:
+    """Total timeout for the initial-sampling pool, or None when disabled.
+
+    Each worker runs about ``ceil(n_tasks / n_workers)`` child PROTEUS runs in
+    sequence, each bounded by the per-child timeout, so the batch is allowed
+    that long plus a fixed margin.
+    """
+    per_child = child_timeout_s()
+    if per_child is None:
+        return None
+    per_worker = int(np.ceil(n_tasks / max(n_workers, 1)))
+    return per_worker * per_child + 300.0
+
+
 def sample_from_bounds(
-    output: str, ref_config: str, params: dict, observables: dict, nsamp: int, seed: int
-):
+    output: str,
+    ref_config: str,
+    params: dict,
+    observables: dict,
+    nsamp: int,
+    seed: int,
+    n_workers: int,
+    failure_codes: list[int],
+) -> int:
+    """Generate initial BO data by evaluating Halton samples in parameter space.
+
+    Parameters
+    ----------
+    - output (str): Inference output directory.
+    - ref_config (str): Reference PROTEUS config file.
+    - params (dict): Parameter bounds for inference.
+    - observables (dict): Target observables for objective evaluation.
+    - nsamp (int): Number of initial samples to evaluate.
+    - seed (int): RNG seed for Halton sequence generation.
+    - n_workers (int): Number of parallel workers to use for evaluation.
+    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
+
+    Returns
+    ----------
+    - int: Number of initial samples written.
     """
-    Create initial guess data, sampling the parameter space at random.
-    """
+
+    # Check number of workers
+    if n_workers < 1:
+        raise ValueError('Number of workers must be at least 1')
+    elif n_workers >= os.cpu_count():
+        n_workers = os.cpu_count() - 1
+        log.warning(f'Number of workers reduced to {n_workers}')
 
     # Build the PROTEUS-based objective function with fixed context
     #    This will be used to evaluate the objective function to provide initial samples
@@ -165,7 +248,11 @@ def sample_from_bounds(
 
     # prepare parallel proteus runs
     builder_args = dict(
-        parameters=params, observables=observables, ref_config=ref_config, output=output
+        parameters=params,
+        observables=observables,
+        ref_config=ref_config,
+        output=output,
+        failure_codes=failure_codes,
     )
 
     # Generate n random points in [0,1]^d and evaluate the objective
@@ -184,27 +271,27 @@ def sample_from_bounds(
 
     aug_args = [(x[None, :], i, builder_args) for i, x in enumerate(X)]
 
-    avail_cpus = os.cpu_count() - 1
     t0 = time.perf_counter()
-    with Pool(processes=avail_cpus) as pool:
-        results = pool.starmap(f_aug, aug_args)
+    with Pool(processes=n_workers) as pool:
+        async_result = pool.starmap_async(f_aug, aug_args)
+        # Bound the whole batch so a worker that wedges outside the per-child
+        # subprocess timeout cannot hang the run indefinitely. Leaving the Pool
+        # context terminates any still-running workers if this raises.
+        results = async_result.get(timeout=_pool_timeout(len(aug_args), n_workers))
     t1 = time.perf_counter()
 
-    print(f'Initial sampling took {(t1 - t0):.2f}s')
+    log.info(f'Initial sampling took {t1 - t0:.2f}s')
 
     Y = torch.vstack(results)
 
     # Y = torch.stack([f(x[None, :]) for x in X]).reshape(nsamp, 1)
 
-    # Package into dataset dict
-    D = {'X': X, 'Y': Y}
-    print(f'Generated initial dataset with {nsamp} points in {dims}-dim space')
+    log.info(f'Generated initial dataset with {nsamp} points in {dims}-dim space')
 
     # Save dataset for use in BO pipeline
     proteus_out = get_proteus_directories(output)['output']
-    D_init_path = f'{proteus_out}/init.pkl'
-    with open(D_init_path, 'wb') as f_out:
-        pickle.dump(D, f_out)
+    D_init_path = Path(proteus_out) / 'init.csv'
+    save_dataset_csv(X, Y, str(D_init_path))
 
     # Return number of samples
     return len(Y.flatten())

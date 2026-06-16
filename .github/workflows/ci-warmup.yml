@@ -1,0 +1,55 @@
+name: CI - Cache warmup
+
+# Weekly cron on main that runs the setup-proteus composite action and
+# nothing else. The purpose is to keep the actions/cache entries warm
+# under GitHub's 7-day inactivity eviction policy, so new branches keep
+# inheriting from a fresh main-branch cache (via restore-keys for most
+# entries; the SOCRATES cache matches on exact key only, one portable
+# build per OS/arch).
+#
+# Cost: one ~5 min run per week per platform (~10 min total compute).
+# Public repo billing: free.
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'   # Mondays 04:00 UTC (one hour after typical nightly)
+  workflow_dispatch:
+
+permissions:
+  contents: read    # checkout main; no commits, no comments, no artifacts
+
+defaults:
+  run:
+    shell: bash -el {0}
+
+jobs:
+  warmup:
+    name: Warm cache (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Set up PROTEUS environment
+        uses: ./.github/actions/setup-proteus
+        with:
+          full-data: 'true'
+
+      - name: Cache state sanity check
+        run: |
+          set -euo pipefail
+          echo "RAD_DIR     = ${RAD_DIR:-unset}"
+          echo "FWL_DATA    = ${FWL_DATA:-unset}"
+          echo "AGNI_DIR    = ${AGNI_DIR:-unset}"
+          ls socrates/bin/radlib.a 2>/dev/null && echo "OK: SOCRATES build is present" || (echo "FAIL: SOCRATES missing"; exit 1)
+          ls AGNI/Project.toml >/dev/null && echo "OK: AGNI is checked out"          || (echo "FAIL: AGNI missing"; exit 1)
+          ls "${FWL_DATA:-$HOME/fwl_data}" >/dev/null && echo "OK: FWL_DATA exists"  || (echo "FAIL: FWL_DATA missing"; exit 1)
+          python -c "import proteus; print('OK: proteus from', proteus.__file__)"

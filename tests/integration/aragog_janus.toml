@@ -8,25 +8,20 @@
 #   [params]   parameters for code execution, output files, time-stepping, convergence
 #   [star]     stellar parameters, model selection
 #   [orbit]    planetary orbital parameters
-#   [struct]   planetary structure (mass, radius)
-#   [atmos]    atmosphere parameters, model selection
-#   [escape]   escape parameters, model selection
-#   [interior] magma ocean model selection and parameters
-#   [outgas]   outgassing parameters (fO2) and included volatiles
-#   [delivery] initial volatile inventory, and delivery model selection
+#
+# Config file format version
+config_version = "3.0"
 
-# ----------------------------------------------------
-# Metadata
-version = "2.0"
-author  = "Harrison Nicholls, Tim Lichtenberg"
+[planet]
+    mass_tot = 1.0       # M_earth
+    volatile_mode = 'elements'        # "elements" | "volatiles"
+
+    prevent_warming = false      # do not allow the planet to heat up
 
 # ----------------------------------------------------
 # Parameters
-[params]
-    # output files
     [params.out]
         path        = "aragog_janus"
-        logging     = "ERROR"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
@@ -40,10 +35,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         starinst     = 1e1    # yr, interval to re-calculate the instellation
         method       = "maximum"  # proportional | adaptive | maximum
 
-        [params.dt.proportional]
             propconst    = 52.0   # Proportionality constant
 
-        [params.dt.adaptive]
             atol         = 0.02   # Step size atol
             rtol         = 0.11   # Step size rtol
 
@@ -76,7 +69,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             rtol    = 1e-3    # relative tolerance
 
         [params.stop.escape]
-            enabled   = false
+            enabled   = true
             p_stop    = 1.0  # bar, model will terminate with p_surf < p_stop
 
 
@@ -117,52 +110,44 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
 # Planetary structure - physics table
-[struct]
-    mass_tot    = 1.0       # M_earth
-    corefrac    = 0.55      # non-dim., radius fraction
+[interior_struct]
+    core_frac    = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = false      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
-    cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
     surf_state      = "fixed"   # surface scheme: "mixed_layer" | "fixed" | "skin"
     surf_greyalbedo  = 0.1      # surface grey albedo
     albedo_pl       = 0.0   	# Bond albedo (scattering)
     rayleigh        = true      # enable rayleigh scattering
     tmp_minimum     = 0.5           # temperature floor on solver
-    tmp_maximum     = 5000.0        # temperature ceiling on solver
 
     module  = "janus"           # Which atmosphere module to use
 
+    p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
+    p_obs           = 1.0e-3        # bar, observed pressure level
+    spectral_group  = "Frostflow"   # which gas opacities to include
+    spectral_bands  = "16"          # how many spectral bands?
+    overlap_method  = "ro"          # gas overlap method
+
     [atmos_clim.agni]
-        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Frostflow"   # which gas opacities to include
-        spectral_bands  = "48"          # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = false         # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-3          # solver absolute tolerance
         solution_rtol   = 2e-2          # solver relative tolerance
-        overlap_method  = "ee"          # gas overlap method
-        condensation    = true          # volatile condensation
         real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
-        p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
-        p_obs           = 1.0e-3        # bar, observed pressure level
-        spectral_group  = "Frostflow"   # which gas opacities to include
-        spectral_bands  = "16"          # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 130           # Number of atmospheric grid levels
         tropopause      = "skin"        # none | skin | dynamic
-        overlap_method  = "ro"          # gas overlap method
 
+        cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
+        tmp_maximum     = 5000.0        # temperature ceiling on solver
     [atmos_clim.dummy]
         gamma           = 0.8           # atmosphere opacity between 0 and 1
 
@@ -181,47 +166,20 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         rate        = 2.0e4         # Bulk unfractionated escape rate [kg s-1]
 
 # Interior - physics table
-[interior]
+[interior_energetics]
     grain_size      = 0.1           # crystal settling grain size [m]
-    F_initial       = 1e6           # Initial heat flux guess [W m-2]
-    radiogenic_heat = true          # enable radiogenic heat production
-    tidal_heat      = false         # enable tidal heat production
-    rheo_phi_loc    = 0.4           # Centre of rheological transition
-    rheo_phi_wid    = 0.15          # Width of rheological transition
-    bulk_modulus    = 260e9         # Bulk modulus [Pa]
-    melting_dir     = "Monteux-600" # Liquidus from Monteux+2016 and solidus=liquidus-600
+    flux_guess       = 1e6           # Initial heat flux guess [W m-2]
+    radio_tref = 4.55   # Reference age for concentrations [Gyr]
+    radio_K    = 310.0  # ppmw of potassium (all isotopes)
+    radio_U    = 0.031  # ppmw of uranium (all isotopes)
+    radio_Th   = 0.124  # ppmw of thorium (all isotopes)
+    heat_radiogenic = true          # enable radiogenic heat production
+    heat_tidal      = false         # enable tidal heat production
+    rfront_loc    = 0.4           # Centre of rheological transition
+    rfront_wid    = 0.15          # Width of rheological transition
 
     module = "aragog"               # Which interior module to use
 
-    [interior.spider]
-        num_levels      = 220       # Number of SPIDER grid levels
-        mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-10   # solver tolerance
-        tsurf_atol      = 30.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
-        ini_entropy     = 2700.0    # Surface entropy conditions [J K-1 kg-1]
-        ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
-
-    [interior.aragog]
-        logging                       = "ERROR"
-        num_levels                    = 90       # Number of Aragog grid levels
-        tolerance                     = 1.0e-7   # solver tolerance
-        ini_tmagma                    = 3000.0   # Initial magma surface temperature [K]
-        inner_boundary_condition      = 1        # 1 = core cooling model, 2=prescribed heatflux, 3 = prescribed temperature
-        inner_boundary_value          = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
-        conduction                    = true     # enable conductive heat transfer
-        convection                    = true     # enable convective heat transfer
-        gravitational_separation      = true     # enable gravitational separation
-        mixing                        = true     # enable mixing
-        tsurf_poststep_change         = 30       # threshold of maximum change on surface temperature, compares current and first Tsurf
-        event_triggering              = true    # enable events triggering to avoid abrupt jumps in surface temperature
-
-
-
-    [interior.dummy]
-        ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
-
-# Outgassing - physics table
 [outgas]
     fO2_shift_IW    = 2         # log10(ΔIW), atmosphere/interior boundary oxidation state
 
@@ -238,42 +196,33 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         include_H2   = true     # Include H2 compound
         include_CH4  = true     # Include CH4 compound
         include_CO   = true     # Include CO compound
-        T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
 
-    [outgas.atmodeller]
-        some_parameter = "some_value"
+[accretion]
 
-# Volatile delivery - physics table
-[delivery]
-
-    # Radionuclide parameters
-    radio_tref = 4.55   # Reference age for concentrations [Gyr]
-    radio_K    = 310.0  # ppmw of potassium (all isotopes)
-    radio_U    = 0.031  # ppmw of uranium (all isotopes)
-    radio_Th   = 0.124  # ppmw of thorium (all isotopes)
 
     # Which initial inventory to use?
-    initial = 'elements'        # "elements" | "volatiles"
 
     # No module for accretion as of yet
     module = "none"
 
     # Set initial volatile inventory by planetary element abundances
-    [delivery.elements]
-        H_oceans    = 6.0       # Hydrogen inventory in units of equivalent Earth oceans
-        # H_ppmw      = 0.0     # Hydrogen inventory in ppmw relative to mantle mass
+    [planet.elements]
+        O_mode   = "ic_chemistry"  # Issue #677: use CALLIOPE IC equilibrium to derive O budget
+        O_budget = 0.0           # ignored for ic_chemistry mode
+        H_mode          = "oceans"
+        H_budget        = 6.0
+        C_mode          = "C/H"
+        C_budget        = 1.0
+        N_mode          = "ppmw"
+        N_budget        = 2.0
+        S_mode          = "ppmw"
+        S_budget        = 200.0
 
-        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
 
-        # NH_ratio    = 0.0       # N/H mass ratio in mantle/atmosphere system
-        N_ppmw      = 2.0      # Nitrogen inventory in ppmw relative to mantle mass
 
-        # SH_ratio    = 0.0       # S/H mass ratio in mantle/atmosphere system
-        S_ppmw      = 200.0     # Sulfur inventory in ppmw relative to mantle mass
 
     # Set initial volatile inventory by partial pressures in atmosphere
-    [delivery.volatiles]
+    [planet.gas_prs]
         H2O  = 0.0          # partial pressure of H2O
         CO2  = 0.0          # partial pressure of CO2
         N2   = 0.0          # etc
