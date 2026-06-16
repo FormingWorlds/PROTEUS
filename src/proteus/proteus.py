@@ -329,6 +329,7 @@ class Proteus:
             print_stoptime,
             print_system_configuration,
             remove_excess_files,
+            select_resumable_snapshot,
             validate_module_versions,
         )
 
@@ -539,6 +540,35 @@ class Proteus:
                 UpdateStatusfile(self.directories, 20)
                 raise RuntimeError('Simulation is too short to be resumed')
 
+            # Extract archived data files before choosing a resume point, so
+            # the loose per-iteration snapshots are present on disk.
+            log.debug('Extracting archived data files')
+            self.extract_archives()
+
+            # Resume from the latest fully written snapshot pair. A crash
+            # mid-write can truncate the most recent _int.nc or _atm.nc
+            # independently of the (atomic) helpfile; drop any such
+            # incomplete trailing rows so the interior and atmosphere both
+            # load a complete state instead of aborting on the corrupt file.
+            require_atm = self.config.atmos_clim.module != 'dummy'
+            self.hf_all, dropped_snapshots = select_resumable_snapshot(
+                self.directories['output'], self.hf_all, require_atm=require_atm
+            )
+            if dropped_snapshots:
+                log.warning(
+                    'Resume: dropped %d trailing helpfile row(s) without a '
+                    'complete snapshot pair (times %s); resuming from the last '
+                    'complete state.',
+                    len(dropped_snapshots),
+                    dropped_snapshots,
+                )
+                if len(self.hf_all) <= self.loops['init_loops'] + 1:
+                    UpdateStatusfile(self.directories, 20)
+                    raise RuntimeError(
+                        'Simulation is too short to be resumed after dropping '
+                        'incomplete trailing snapshots'
+                    )
+
             # Get last row from helpfile dataframe
             self.hf_row = self.hf_all.iloc[-1].to_dict()
 
@@ -559,10 +589,6 @@ class Proteus:
 
             # Check if the planet is desiccated
             self.desiccated = check_desiccation(self.config, self.hf_row)
-
-            # Extract all archived data files
-            log.debug('Extracting archived data files')
-            self.extract_archives()
 
             # Interior initial condition
             self.interior_o.ic = 2

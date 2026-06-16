@@ -47,11 +47,13 @@ from proteus.utils.coupler import (
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
     _get_current_time,
+    _netcdf_readable,
     _populate_energy_residual,
     get_proteus_directories,
     print_citation,
     print_module_configuration,
     remove_excess_files,
+    select_resumable_snapshot,
     set_directories,
     variable_is_logarithmic,
 )
@@ -2340,3 +2342,169 @@ def test_remove_excess_files_without_spectra(monkeypatch):
 
     assert len(removed) == 3
     assert all('runtime.sf' not in p for p in removed)
+
+
+# =============================================================================
+# Test: resume snapshot-pair validation
+# =============================================================================
+
+
+def _write_valid_nc(path: str) -> str:
+    """Create a minimal, valid netCDF file at ``path``."""
+    from netCDF4 import Dataset
+
+    with Dataset(path, 'w') as ds:
+        ds.createDimension('x', 1)
+    return path
+
+
+def _write_corrupt_nc(path: str) -> str:
+    """Create a file that exists but does not open as netCDF (truncated write)."""
+    with open(path, 'wb') as fh:
+        fh.write(b'not a valid netcdf file')
+    return path
+
+
+def _hf_times(times):
+    """Minimal helpfile DataFrame carrying just the columns the selector reads."""
+    return pd.DataFrame({'Time': [float(t) for t in times], 'Phi_global': [0.9] * len(times)})
+
+
+@pytest.mark.unit
+def test_netcdf_readable_distinguishes_valid_corrupt_missing(tmp_path):
+    """_netcdf_readable is True only for a file that opens as netCDF.
+
+    Covers the three states the resume selector must tell apart: a complete
+    file, a file present but truncated mid-write, and an absent file.
+    """
+    valid = _write_valid_nc(str(tmp_path / 'ok.nc'))
+    corrupt = _write_corrupt_nc(str(tmp_path / 'bad.nc'))
+
+    assert _netcdf_readable(valid) is True
+    assert _netcdf_readable(corrupt) is False
+    assert _netcdf_readable(str(tmp_path / 'missing.nc')) is False
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_keeps_complete_latest(tmp_path):
+    """A complete latest pair leaves the helpfile and the data dir untouched."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20, 30):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30]))
+
+    assert dropped == []
+    assert len(out) == 3
+    assert int(out.iloc[-1]['Time']) == 30
+    # Discrimination guard: nothing was quarantined on the all-complete path.
+    assert not list(data.glob('*.incomplete'))
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_falls_back_on_corrupt_atm(tmp_path):
+    """A truncated latest _atm.nc trims to the prior pair and quarantines both halves.
+
+    The interior half being intact must not save the step: the atmosphere
+    half is required, so the row is dropped and both 30_*.nc files are moved
+    aside so the modules' latest-file globs land on time 20.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+    _write_valid_nc(str(data / '30_int.nc'))
+    _write_corrupt_nc(str(data / '30_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30]))
+
+    assert dropped == [30]
+    assert int(out.iloc[-1]['Time']) == 20
+    assert (data / '30_atm.nc.incomplete').exists()
+    assert (data / '30_int.nc.incomplete').exists()
+    assert not (data / '30_atm.nc').exists()
+    assert not (data / '30_int.nc').exists()
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_falls_back_on_corrupt_int(tmp_path):
+    """A truncated latest _int.nc (atmosphere intact) also triggers the fallback."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+    _write_corrupt_nc(str(data / '30_int.nc'))
+    _write_valid_nc(str(data / '30_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30]))
+
+    assert dropped == [30]
+    assert int(out.iloc[-1]['Time']) == 20
+    # Both halves of the incomplete pair are quarantined (symmetry with the
+    # corrupt-atm case): a stray valid 30_atm.nc must not be left for the
+    # atmosphere module's latest-file glob to pick up against a missing 30_int.
+    assert (data / '30_int.nc.incomplete').exists()
+    assert (data / '30_atm.nc.incomplete').exists()
+    assert not (data / '30_int.nc').exists()
+    assert not (data / '30_atm.nc').exists()
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_matches_writer_filename_conventions(tmp_path):
+    """Interior (truncated %d) and atmosphere (rounded %.0f) names can differ by 1.
+
+    Aragog writes <int(Time)>_int.nc and AGNI writes <round(Time)>_atm.nc, so
+    a fractional Time >= .5 puts the two halves at integer names one apart.
+    The selector must probe each half with its own convention and recognise
+    the pair as complete; a naive single-convention probe would miss the
+    atmosphere file and wrongly drop a valid latest snapshot.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+    # Time 30.7: interior truncates to 30, atmosphere rounds to 31.
+    _write_valid_nc(str(data / '30_int.nc'))
+    _write_valid_nc(str(data / '31_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30.7]))
+
+    # The offset pair is recognised as complete: nothing dropped, latest kept.
+    assert dropped == []
+    assert len(out) == 3
+    assert out.iloc[-1]['Time'] == pytest.approx(30.7)
+    assert not list(data.glob('*.incomplete'))
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_dummy_atm_requires_only_interior(tmp_path):
+    """With require_atm=False the selector ignores the (absent) atmosphere half."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20, 30):
+        _write_valid_nc(str(data / f'{t}_int.nc'))  # no _atm.nc written at all
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30]), require_atm=False
+    )
+
+    assert dropped == []
+    assert int(out.iloc[-1]['Time']) == 30
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_raises_when_no_complete_pair(tmp_path):
+    """No complete pair anywhere raises, so the caller can restart fresh."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_corrupt_nc(str(data / f'{t}_int.nc'))
+        _write_corrupt_nc(str(data / f'{t}_atm.nc'))
+
+    with pytest.raises(RuntimeError, match='No complete'):
+        select_resumable_snapshot(str(tmp_path), _hf_times([10, 20]))

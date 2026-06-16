@@ -1081,8 +1081,12 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
         current_hf.to_csv(tmp_path, index=False, sep='\t', float_format='%.10e')
         os.replace(tmp_path, fpath)
     except BaseException:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        # Best-effort temp cleanup; never let it mask the original error.
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
         raise
     return fpath
 
@@ -1095,6 +1099,130 @@ def ReadHelpfileFromCSV(output_dir: str):
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
     return pd.read_csv(fpath, sep=r'\s+')
+
+
+def _netcdf_readable(path: str) -> bool:
+    """Return True if ``path`` exists and opens as a valid netCDF file.
+
+    A disk-full or killed write can leave a snapshot file truncated: it
+    exists on disk but raises when opened. This check lets the resume path
+    skip an incomplete snapshot and fall back to the last complete one.
+    """
+    if not os.path.isfile(path):
+        return False
+    # Import outside the try so a missing netCDF4 (a core dependency) raises
+    # an honest ImportError instead of being silently reported as "every
+    # snapshot is unreadable", which would mask the real cause behind the
+    # selector's "no complete pair" error.
+    from netCDF4 import Dataset
+
+    try:
+        with Dataset(path):
+            return True
+    except Exception:
+        return False
+
+
+def _int_snapshot_name(time: float) -> str:
+    """Interior snapshot filename for a simulation time, matching the writer.
+
+    Aragog/SPIDER write the interior snapshot as ``'%d_int.nc' % Time``
+    (truncates toward zero).
+    """
+    return '%d_int.nc' % time
+
+
+def _atm_snapshot_name(time: float) -> str:
+    """Atmosphere snapshot filename for a simulation time, matching the writer.
+
+    AGNI writes the atmosphere snapshot as ``'%.0f_atm.nc' % Time`` (rounds
+    to nearest), so for a fractional Time it can differ by one from the
+    interior snapshot's truncated index. Probing with the writer's own
+    format keeps the selector from missing a present file.
+    """
+    return '%.0f_atm.nc' % time
+
+
+def select_resumable_snapshot(
+    output_dir: str, hf_all: pd.DataFrame, require_atm: bool = True
+) -> tuple[pd.DataFrame, list[int]]:
+    """Trim the helpfile to the latest row backed by a complete snapshot pair.
+
+    On resume the interior loads its snapshot keyed off ``hf_row['Time']``
+    and the atmosphere loads the latest ``*_atm.nc``. A crash mid-write can
+    truncate either half of the most recent pair independently of the
+    (atomic) helpfile, which then aborts the resume when a module opens the
+    corrupt file. Walk the helpfile from its last row backward to the first
+    row whose interior and (when ``require_atm``) atmosphere snapshots both
+    open as netCDF, move any incomplete trailing snapshot files aside
+    (``.incomplete`` suffix) so the modules' latest-file globs land on the
+    complete pair, and return the helpfile truncated to that row.
+
+    The two halves use different filename conventions for the same step:
+    the interior name truncates the time (``%d``) and the atmosphere name
+    rounds it (``%.0f``), so each half is probed with its own writer format
+    (see ``_int_snapshot_name`` / ``_atm_snapshot_name``).
+
+    Parameters
+    ----------
+    output_dir : str
+        Run output directory (contains ``data/``).
+    hf_all : pd.DataFrame
+        Full restored helpfile history.
+    require_atm : bool, optional
+        Whether an ``_atm.nc`` half is expected. False for the dummy
+        atmosphere, which writes no atmosphere snapshot.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, list[int]]
+        The (possibly trimmed) helpfile and the ascending list of dropped
+        snapshot times. The helpfile is returned unchanged and the list
+        empty when the latest pair is already complete.
+
+    Raises
+    ------
+    RuntimeError
+        If no row in the helpfile has a complete snapshot pair. Any files
+        quarantined during the scan are restored before this is raised, so
+        a later attempt still sees them.
+    """
+    data_dir = os.path.join(output_dir, 'data')
+    times = [float(t) for t in hf_all['Time'].to_numpy()]
+    dropped: list[int] = []
+    quarantined: list[tuple[str, str]] = []  # (moved_to, original) for rollback
+    keep_idx = None
+    for i in range(len(times) - 1, -1, -1):
+        t = times[i]
+        int_path = os.path.join(data_dir, _int_snapshot_name(t))
+        atm_path = os.path.join(data_dir, _atm_snapshot_name(t))
+        int_ok = _netcdf_readable(int_path)
+        atm_ok = (not require_atm) or _netcdf_readable(atm_path)
+        if int_ok and atm_ok:
+            keep_idx = i
+            break
+        # Incomplete pair: move whichever halves exist aside so the
+        # interior / atmosphere latest-file globs cannot pick them up.
+        for p in (int_path, atm_path):
+            if os.path.exists(p):
+                dst = p + '.incomplete'
+                os.replace(p, dst)
+                quarantined.append((dst, p))
+        dropped.append(int(t))
+
+    if keep_idx is None:
+        # Nothing resumable: undo the quarantine so a later attempt (or
+        # manual recovery) still has the files, then fail loudly.
+        for dst, original in quarantined:
+            if os.path.exists(dst):
+                os.replace(dst, original)
+        raise RuntimeError(
+            'No complete interior+atmosphere snapshot pair found in the '
+            'helpfile history; cannot resume from disk.'
+        )
+    if not dropped:
+        return hf_all, []
+    return hf_all.iloc[: keep_idx + 1].reset_index(drop=True), sorted(dropped)
 
 
 def variable_is_logarithmic(varname: str) -> bool:
