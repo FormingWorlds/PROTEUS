@@ -54,8 +54,9 @@ parameters = {
 
 if __name__ == "__main__":
 
-    temperatures=np.array([1500,1750,2000,2250,2500,2750,3000,3250,3500])
+    temperatures=np.array([1500,1600,1700,1800,2000])
     vmrfile='/data3/leoni/LavAtmos/FastChem/fastchem3/output/boa_chem.dat'
+
     chem_df = pd.read_csv(vmrfile, sep=r'\s+')
     print(chem_df)
     for T in temperatures:
@@ -67,4 +68,4 @@ if __name__ == "__main__":
         print(chem_df)
 
     chem_df = chem_df.iloc[1:].reset_index(drop=True) #drop first row since it just contains the setup data (random) and reindex the dataframe
-    chem_df.to_csv('/data3/leoni/PROTEUS/output/test_thermo_OG.csv', index=False)
+    chem_df.to_csv('/data3/leoni/PROTEUS/output/tests_thermolite/test_thermo_OG_cold.csv', index=False)

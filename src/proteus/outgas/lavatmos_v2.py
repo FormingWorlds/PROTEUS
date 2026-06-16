@@ -50,10 +50,14 @@ class paths_importer:
         # FastChem 3
         self.fastchem3_dir = os.environ.get("FC_DIR")
         print('fastchem directory:',self.fastchem3_dir)
-        #self.fastchem3_dir = self.wkdir+'FastChem/fastchem3/'
-        self.fastchem3_input = self.fastchem3_dir+'/input/'
+
+        self.fastchem3_input = self.fastchem3_dir + '/input/'
         self.fastchem3_config_template = self.fastchem3_input+'config_template.input'
-        self.element_abundance_template = self.fastchem3_input+'element_abundances/element_abundances_template2.dat' #for template element abundance file
+        self.element_abundance_template = self.fastchem3_input+'element_abundances/element_abundances_template2.dat',
+        self.species_data_file  = self.fastchem3_dir + '/input/logK/logK.dat',
+        self.species_data_file_cond = self.fastchem3_dir + '/input/logK/logK_condensates.dat'
+
+
         if dirs is not None: #create directory for output element abundances created by lavatmos if it does not exist yet
             os.makedirs(dirs['output']+'/element_abundances/', exist_ok=True)
             self.element_abundance_output=dirs['output']+'element_abundances/element_output_proteus.dat'
@@ -466,8 +470,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
 
 
     gas_list = vol_list + config.outgas.vaplist
-    fc_names = [sp.fc_name for sp in species_lib.values()]
-    print('fc names', fc_names)
+
 
 
     #update surface pressure:
@@ -475,8 +478,6 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
     log.info('new surface pressure :%.4f'%hf_row['P_surf'])
 
     for vol in gas_list:
-        print(vol)
-        print('species lib name for this vol', species_lib[vol].fc_name)
         if vol in species_lib.keys():
             vol_key= species_lib[vol].fc_name
         else:

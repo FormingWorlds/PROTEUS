@@ -133,19 +133,19 @@ species_lib = {}
 
 # neutral molecules
 species_lib['CO2'] = Species_db(name='CO2', fc_name='C1O2', weight=44.01)
-species_lib['H2O'] = Species_db(name='H2O', fc_name='H2O1', weight=18.0153)
+species_lib['H2O'] = Species_db(name='H2O', fc_name='O1H2', weight=18.0153)
 species_lib['CO'] = Species_db(name='CO', fc_name='C1O1', weight=28.01)
 species_lib['O2'] = Species_db(name='O2', fc_name='O2', weight=31.9988)
 species_lib['CH4'] = Species_db(name='CH4', fc_name='C1H4', weight=16.04)
 species_lib['HCN'] = Species_db(name='HCN', fc_name='H1C1N1', weight=27.0253)
-species_lib['NH3'] = Species_db(name='NH3', fc_name='N1H3', weight=17.031)
+species_lib['NH3'] = Species_db(name='NH3', fc_name='H3N', weight=17.031)
 species_lib['H2S'] = Species_db(name='H2S', fc_name='H2S1', weight=34.081)
 species_lib['PH3'] = Species_db(name='PH3', fc_name='P1H3', weight=33.99758)
 species_lib['O3'] = Species_db(name='O3', fc_name='O3', weight=47.9982)
 species_lib['O3_IR'] = Species_db(name='O3_IR', fc_name='O3', weight=47.9982)
 species_lib['O3_UV'] = Species_db(name='O3_UV', fc_name='O3', weight=47.9982)
 species_lib['NO'] = Species_db(name='NO', fc_name='N1O1', weight=30.01)
-species_lib['SO2'] = Species_db(name='SO2', fc_name='S1O2', weight=64.066)
+species_lib['SO2'] = Species_db(name='SO2', fc_name='O2S', weight=64.066)
 species_lib['HS'] = Species_db(name='HS', fc_name='H1S1', weight=33.073)
 species_lib['H2'] = Species_db(name='H2', fc_name='H2', weight=2.01588)
 species_lib['N2'] = Species_db(name='N2', fc_name='N2', weight=28.0134)
@@ -173,26 +173,26 @@ species_lib['HNO3'] = Species_db(name='HNO3', fc_name='H1N1O3', weight=63.01)
 species_lib['HNO2'] = Species_db(name='HNO2', fc_name='H1N1O2', weight=47.01)
 species_lib['SO3'] = Species_db(name='SO3', fc_name='S1O3', weight=80.066)
 species_lib['H2SO4'] = Species_db(name='H2SO4', fc_name='H2S1O4', weight=98.0785)
-species_lib['TiO'] = Species_db(name='TiO', fc_name='Ti1O1', weight=63.866)
-species_lib['TiO2'] = Species_db(name='TiO2', fc_name='Ti1O2', weight=79.87)
-species_lib['TiS'] = Species_db(name='TiS', fc_name='Ti1S1', weight=79.932)
-species_lib['TiH'] = Species_db(name='TiH', fc_name='Ti1H1', weight=48.87)
-species_lib['VO'] = Species_db(name='VO', fc_name='V1O1', weight=66.9409)
-species_lib['SiO'] = Species_db(name='SiO', fc_name='Si1O1', weight=44.08)
+species_lib['TiO'] = Species_db(name='TiO', fc_name='OTi', weight=63.866)
+species_lib['TiO2'] = Species_db(name='TiO2', fc_name='O2Ti', weight=79.87)
+species_lib['TiS'] = Species_db(name='TiS', fc_name='STi', weight=79.932)
+species_lib['TiH'] = Species_db(name='TiH', fc_name='HTi', weight=48.87)
+species_lib['VO'] = Species_db(name='VO', fc_name='OV', weight=66.9409)
+species_lib['SiO'] = Species_db(name='SiO', fc_name='OSi', weight=44.08)
 species_lib['AlO'] = Species_db(name='AlO', fc_name='Al1O1', weight=42.98)
 species_lib['CaO'] = Species_db(name='CaO', fc_name='Ca1O1', weight=56.0774)
 species_lib['PO'] = Species_db(name='PO', fc_name='P1O1', weight=46.97316)
 species_lib['PO2'] = Species_db(name='PO2', fc_name='P1O2', weight=62.97256)
-species_lib['SiH'] = Species_db(name='SiH', fc_name='Si1H1', weight=29.09344)
+species_lib['SiH'] = Species_db(name='SiH', fc_name='HSi', weight=29.09344)
 species_lib['CaH'] = Species_db(name='CaH', fc_name='Ca1H1', weight=41.085899)
 species_lib['AlH'] = Species_db(name='AlH', fc_name='Al1H1', weight=27.9889)
 species_lib['MgH'] = Species_db(name='MgH', fc_name='Mg1H1', weight=25.3129)
 species_lib['CrH'] = Species_db(name='CrH', fc_name='Cr1H1', weight=53.0040)
 species_lib['NaH'] = Species_db(name='NaH', fc_name='Na1H1', weight=23.99771)
-species_lib['SiO2'] = Species_db(name='SiO2', fc_name='Si1O2', weight=60.08)
-species_lib['SiS'] = Species_db(name='SiS', fc_name='Si1S1', weight=60.15)
+species_lib['SiO2'] = Species_db(name='SiO2', fc_name='O2Si', weight=60.08)
+species_lib['SiS'] = Species_db(name='SiS', fc_name='SSi', weight=60.15)
 species_lib['PS'] = Species_db(name='PS', fc_name='P1S1', weight=63.0388)
-species_lib['MgO'] = Species_db(name='MgO', fc_name='Mg1O1', weight=40.30440)
+species_lib['MgO'] = Species_db(name='MgO', fc_name='MgO', weight=40.30440)
 species_lib['CN'] = Species_db(name='CN', fc_name='C1N1', weight=26.0174)
 species_lib['H2CO'] = Species_db(name='H2CO', fc_name='H2C1O1', weight=30.027)
 species_lib['CH'] = Species_db(name='CH', fc_name='C1H1', weight=13.019)
@@ -208,13 +208,13 @@ species_lib['CaOH'] = Species_db(name='CaOH', fc_name='Ca1O1H1', weight=69.096)
 species_lib['FeH'] = Species_db(name='FeH', fc_name='Fe1H1', weight=56.853)
 species_lib['FeO'] = Species_db(name='FeO', fc_name='Fe1O1', weight=71.844)
 species_lib['KOH'] = Species_db(name='KOH', fc_name='K1O1H1', weight=56.109)
-species_lib['SiH2'] = Species_db(name='SiH2', fc_name='Si1H2', weight=30.10138)
-species_lib['SiH4'] = Species_db(name='SiH4', fc_name='Si1H4', weight=64.177)
+species_lib['SiH2'] = Species_db(name='SiH2', fc_name='H2Si', weight=30.10138)
+species_lib['SiH4'] = Species_db(name='SiH4', fc_name='H4Si', weight=64.177)
 species_lib['N2O'] = Species_db(name='N2O', fc_name='N2O1', weight=44.014)
 species_lib['NaOH'] = Species_db(name='NaOH', fc_name='Na1O1H1', weight=54.004)
 species_lib['N2'] = Species_db(name='N2', fc_name='N2', weight=28.014)
 species_lib['NaO'] = Species_db(name='NaO', fc_name='Na1O1', weight=38.99)
-species_lib['SiN'] = Species_db(name='SiN', fc_name='Si1N1', weight=74.152)
+species_lib['SiN'] = Species_db(name='SiN', fc_name='NSi', weight=74.152)
 species_lib['AlN'] = Species_db(name='AlN', fc_name='Al1N1', weight=40.988)
 species_lib['CaS'] = Species_db(name='CaS', fc_name='Ca1S1', weight=72.143)
 species_lib['HO2'] = Species_db(name='HO2', fc_name='H1O2', weight=33.007)
@@ -222,7 +222,7 @@ species_lib['KO'] = Species_db(name='KO', fc_name='K1O1', weight=55.098)
 species_lib['MgS'] = Species_db(name='MgS', fc_name='Mg1S1', weight=56.37)
 species_lib['NaO'] = Species_db(name='NaO', fc_name='Na1O1', weight=38.989)
 species_lib['FeO2H2'] = Species_db(name='FeO2H2', fc_name='Fe1O2H2', weight=89.86)
-species_lib['HAlO2'] = Species_db(name='HAlO2', fc_name='H1Al1O2', weight=59.99)
+species_lib['HAlO2'] = Species_db(name='HAlO2', fc_name='AlHO2', weight=59.99)
 species_lib['Al2O'] = Species_db(name='Al2O', fc_name='Al2O1', weight=69.96)
 species_lib['AlS'] = Species_db(name='AlS', fc_name='Al1S1', weight=59.05)
 species_lib['AlOH'] = Species_db(name='AlOH', fc_name='H1Al1O1', weight=43.99)
@@ -346,6 +346,8 @@ def edit_fastchem_configs(fastchem_dir,T,P,parameters):
             'output_abundance_fname' : 'output/boa_chem.dat',
             'element_abundance_file' : abundance_fname.replace('FastChem/','')
             }
+
+        print('config file:',config_path)
         for config in fastchem_config:
             configurations = configurations.replace(f'<<{config}>>', fastchem_config[config])
 
@@ -408,7 +410,7 @@ def read_in_element_fracs_normalized(input_path,parameters):
     return norm_dict
 
 
-def compute_silicate_outgassing(config: Config, hf_row: dict):
+def compute_silicate_outgassing(dirs:dict,config: Config, hf_row: dict):
     """
 
     This function runs the Thermoengine module Lavatmos. Outgassing of refractory species
@@ -526,6 +528,7 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     else:
         raise RuntimeError('cannot find fastchem output from lavatmos loop!')
 
+    print('pouput path for fastchem output from lavatmos loop: %s'%mmr_path)
 
     # update abundances in output file for next calliope run
     new_atmos_abundances = pd.read_csv(mmr_path, sep=r'\s+')
@@ -571,12 +574,27 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
 
 
     gas_list = vol_list + config.outgas.vaplist
+    fc_names = [sp.fc_name for sp in species_lib.values()]
+    print('fc names', fc_names)
+
+
+    #update surface pressure:
+    hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
+    log.info('new surface pressure :%.4f'%hf_row['P_surf'])
 
     for vol in gas_list:
-        new_pp = new_atmos_abundances[vol][0] * new_atmos_abundances['Pbar'][0]
+        if vol not in new_atmos_abundances.columns.tolist():
+            if vol in species_lib.keys():
+                vol_key= species_lib[vol].fc_name
+            else:
+                print('error !!!')
+        else:
+            vol_key= vol
+        new_pp = new_atmos_abundances[vol_key][0] * new_atmos_abundances['Pbar'][0]
+        hf_row[vol + '_vmr'] = new_atmos_abundances[vol_key][0]
         hf_row[vol + '_bar'] = new_pp
-        hf_row[vol + '_vmr'] = new_atmos_abundances[vol][0]
-        hf_row[vol + '_kg_atm'] = (new_atmos_abundances[vol][0] * M_atmo_new * species_lib[vol].weight / mu_outgassed )  # kg
+
+        hf_row[vol + '_kg_atm'] = (new_atmos_abundances[vol_key][0] * M_atmo_new * species_lib[vol].weight / mu_outgassed )  # kg
         hf_row[vol + '_kg_total'] = (hf_row[vol + '_kg_atm'] + hf_row[vol + '_kg_solid'] + hf_row[vol + '_kg_liquid'])
 
         hf_row[vol + '_mol_atm'] = hf_row[vol + '_kg_atm']/hf_row['atm_kg_per_mol']

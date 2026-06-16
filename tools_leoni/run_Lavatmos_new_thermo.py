@@ -12,7 +12,7 @@ import lavatmos3
 
 class paths_importer:
 
-    def __init__(self):
+    def __init__(self,dirs=None):
 
         '''
 
@@ -30,18 +30,30 @@ class paths_importer:
         self.lava_comps = self.input_dir+'lava_compositions/'
 
         # FastChem 3
-        self.fastchem3_dir = os.environ.get("FC_DIR")
+        self.fastchem3_dir = '/data3/leoni/LavAtmos/FastChem/fastchem3/'
         print('fastchem directory:',self.fastchem3_dir)
-        #self.fastchem3_dir = self.wkdir+'FastChem/fastchem3/'
-        self.fastchem3_input = self.fastchem3_dir+'/input/'
+
+        self.fastchem3_input = '/data3/leoni/PROTEUS/AGNI/fastchem/input/'
         self.fastchem3_config_template = self.fastchem3_input+'config_template.input'
-        self.element_abundances3 = self.fastchem3_input+'element_abundances/'
+        self.element_abundance_template = self.fastchem3_input+'element_abundances/element_abundances_template2.dat' #for template element abundance file
+        self.species_data_file  = '/data3/leoni/PROTEUS/AGNI/fastchem/input/logK/logK.dat'
+        self.species_data_file_cond = '/data3/leoni/PROTEUS/AGNI/fastchem/input/logK/logK_condensates.dat'
+
+
+        if dirs is not None: #create directory for output element abundances created by lavatmos if it does not exist yet
+            os.makedirs(dirs['output']+'/element_abundances/', exist_ok=True)
+            self.element_abundance_output=dirs['output']+'element_abundances/element_output_proteus.dat'
+            os.makedirs(dirs['output']+'/fastchem/', exist_ok=True)
+            self.fastchem3_output = dirs['output']+'fastchem/'
+        else:
+            self.fastchem3_output = self.fastchem3_dir + '/output/'
+            self.element_abundance_output= self.fastchem3_input+'element_abundances/element_abundances_output.dat'
         self.janafdata=self.wkdir+'data/'
+
 
 
 class set_magmaproperties:
     def __init__(self,parameters):
-
         '''
 
         reading in properties from the output file
@@ -86,7 +98,7 @@ parameters = {
 
     # Melt parameters
     'lava_comp' : 'BSE_palm',
-    'silicate_abundances' : 'lavatmos2', # 'lavatmos1', 'lavatmos2', 'manual'
+    'silicate_abundances' : 'lavatmos3', # 'lavatmos1', 'lavatmos2', 'manual'
 
     # Volatile parameters
     'P_volatile' : 10, # bar
@@ -119,8 +131,10 @@ if __name__ == "__main__":
 
         abundances,Tsurf,Pvol=get_input(grid,modelname)
         planet=model(abundances,Tsurf,Pvol)
-        temperatures=np.array([1500,1750,2000,2250,2500,2750,3000,3250,3500])
-        vmrfile='/data3/leoni/PROTEUS/AGNI/fastchem/output/boa_chem.dat'
+        temperatures=np.array([1500,1600,1700,1800,2000])
+
+        vmrfile='/data3/leoni/LavAtmos/FastChem/fastchem3/output/boa_chem.dat'
+
         parameters.update({'volatile_comp':abundances,'P_volatile':Pvol})
         Magma = set_magmaproperties(parameters)
         chem_df = pd.read_csv(vmrfile, sep=r'\s+')
@@ -141,9 +155,9 @@ if __name__ == "__main__":
 
         for temp in temperatures:
             system = lavatmos3.melt_vapor_system(paths)
-            lavatmos_output = system.vaporise(temp, Magma.P_volatile, melt_comp, abundances, Magma.elementfile, Magma.melt_fraction)
+            lavatmos_output = system.vaporise(temp, Magma.P_volatile, melt_comp, abundances, Magma.melt_fraction)
             df = pd.read_csv(vmrfile, sep=r'\s+')
             chem_df = pd.concat([chem_df, df], ignore_index=True)
 
         chem_df = chem_df.iloc[1:].reset_index(drop=True) #drop first row since it just contains the setup data (random) and reindex the dataframe
-        chem_df.to_csv('/data3/leoni/PROTEUS/output/test_thermo_lite.csv', index=False)
+        chem_df.to_csv('/data3/leoni/PROTEUS/output/tests_thermolite/test_thermo_lite_cold.csv', index=False)

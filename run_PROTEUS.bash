@@ -1,6 +1,6 @@
 #bash script to run multiple proteus runs one after other
 orb_dist=("0.016" "0.064" "0.032")
-fO2=("1" "-1" "5" "-5")
+fO2=("-1" "5" "-5")
 mass=("9.0" "2.0")
 silicates=("true")
 Cabund=("1090.0" "109.0" "3270.0")
