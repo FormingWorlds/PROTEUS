@@ -428,6 +428,7 @@ config_version = "3.0"
         heat_fusion_silicate      = 4.0e5        # latent heat of fusion for silicates [J/kg]
         nusselt_exponent          = 0.33         # Nusselt-Rayleigh scaling exponent
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
+        atm_heat_capacity_const   = true        #  always use fallback heat capacity?
         atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
         silicate_density          = 4103.0       # silicate density [kg/m^3]
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]

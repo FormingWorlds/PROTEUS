@@ -92,6 +92,7 @@ def mock_config():
         heat_fusion_silicate=4.0e5,  # J/kg
         nusselt_exponent=1.0 / 3.0,  # Rayleigh-Benard scaling
         silicate_heat_capacity=1.2e3,  # J/kg/K
+        atm_heat_capacity_const=False,
         atm_heat_capacity=1.7e4,  # J/kg/K
         silicate_density=4500.0,  # kg/m^3
         thermal_conductivity=4.2,  # W/m/K
