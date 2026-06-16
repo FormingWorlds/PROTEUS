@@ -659,6 +659,86 @@ def test_update_creates_prev_file(tmp_path):
     assert dirs['spider_mesh_prev'].endswith('.prev')
 
 
+@pytest.mark.unit
+def test_update_skips_self_copy_on_fallback_state(tmp_path):
+    """A restored-previous mesh state must not trigger a self-copy.
+
+    On the Zalmoxis-failure fall-back the previous structure is restored by
+    pointing both dirs['spider_mesh'] and dirs['spider_mesh_prev'] at the same
+    .prev file. The baseline snapshot then becomes a copy of a file onto
+    itself, which shutil.copy2 rejects with SameFileError. The abspath guard
+    must skip the copy so the update proceeds instead of aborting the run.
+
+    The stubbed copy reproduces shutil's real same-file rejection, so the test
+    fails if any copy in the update is a self-copy and passes only when every
+    such copy is guarded.
+    """
+    import shutil as _shutil_real
+
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    mesh_file = str(tmp_path / 'spider_mesh.dat')
+    with open(mesh_file, 'w') as fh:
+        fh.write('0.0 0.0 0.0 0.0\n')
+    (tmp_path / 'data').mkdir(exist_ok=True)
+
+    # Fall-back state: current mesh and its baseline point at the same file.
+    dirs = {
+        'output': str(tmp_path),
+        'spider': '/tmp/spider',
+        'spider_mesh': mesh_file,
+        'spider_mesh_prev': mesh_file,
+        'mesh_shift_active': False,
+        'mesh_convergence_steps': 0,
+    }
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o()
+
+    self_copies = []
+
+    def _reject_self_copy(src, dst, *args, **kwargs):
+        if os.path.abspath(src) == os.path.abspath(dst):
+            self_copies.append((src, dst))
+            raise _shutil_real.SameFileError(f'{src!r} and {dst!r} are the same file')
+        return dst
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, mesh_file),
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch(
+            'proteus.interior_energetics.wrapper.shutil.copy2',
+            side_effect=_reject_self_copy,
+        ),
+        patch(
+            'proteus.interior_energetics.spider.blend_mesh_files',
+            return_value=0.02,
+        ),
+        patch(
+            'proteus.interior_energetics.spider.get_all_output_times',
+            return_value=[],
+        ),
+        patch('proteus.interior_energetics.wrapper.gc.collect'),
+    ):
+        # Must complete without a SameFileError escaping the guard.
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+
+    # The guard prevented every self-copy attempt; none reached shutil.
+    assert self_copies == []
+    # The update still advanced and left a usable previous-mesh baseline.
+    assert result[0] == pytest.approx(1100.0, rel=1e-12)
+    assert dirs['spider_mesh_prev'] == mesh_file
+
+
 # ============================================================================
 # test phi_crit warning in solve_structure
 # ============================================================================

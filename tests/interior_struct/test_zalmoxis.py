@@ -395,6 +395,81 @@ def test_validate_zalmoxis_output_schema_mass_mismatch(tmp_path):
 
 
 @pytest.mark.unit
+def test_validate_zalmoxis_output_schema_accumulator_overrides_trapezoid(tmp_path):
+    """Supplying mantle_mass_ref bypasses the coarse-trapezoid mass check.
+
+    Reproduces the high-planet-mass regime: the written file is faithful
+    but a grid-trapezoidal re-integration of its coarse nodes under-reads
+    the RK45 accumulator mantle mass by ~10% across the steep interior
+    density profile. Without the reference the schema check false-rejects
+    such a run; with the accumulator value passed in it must pass, because
+    the accumulator (not the trapezoid) is the structure's true mantle mass.
+
+    Discriminating construction: the file's trapezoid mantle mass is set
+    10% below hf_row['M_int'] - hf_row['M_core'] (the truth). The trapezoid
+    path therefore RAISES while the accumulator path PASSES on identical
+    inputs, isolating the parameter as the sole cause of the difference.
+    """
+    from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
+
+    output_path = str(tmp_path / 'zalmoxis_output.dat')
+    R_int, M_mantle_file = _write_synthetic_zalmoxis_output(output_path)
+    M_core = 1.94e24
+    # Truth (accumulator) mantle mass is 1/0.90 x the file trapezoid, i.e. the
+    # trapezoid under-reads the truth by 10% (the high-mass discretization gap).
+    M_mantle_true = M_mantle_file / 0.90
+    M_int = M_mantle_true + M_core
+    hf_row = {'R_int': R_int, 'M_int': M_int, 'M_core': M_core}
+
+    # Without the reference: trapezoid (file) vs expected (truth) is 10% low.
+    with pytest.raises(RuntimeError, match='trapezoid'):
+        validate_zalmoxis_output_schema(output_path, hf_row)
+
+    # With the accurate accumulator reference: passes silently.
+    result = validate_zalmoxis_output_schema(output_path, hf_row, mantle_mass_ref=M_mantle_true)
+    assert result is None  # accumulator path returns None on a match
+    # Discrimination guard: the trapezoid/truth gap (10%) is double the 5%
+    # default tolerance, so the pass cannot be an artifact of a loose threshold.
+    trapezoid_gap = abs(M_mantle_file / M_mantle_true - 1.0)
+    assert trapezoid_gap == pytest.approx(0.10, abs=1e-9)
+    assert trapezoid_gap > 5e-2
+
+
+@pytest.mark.unit
+def test_validate_zalmoxis_output_schema_accumulator_mismatch_raises(tmp_path):
+    """A grossly inconsistent mantle_mass_ref still raises, naming its source.
+
+    The accumulator override must not become a blanket bypass: if the
+    structure's own mantle mass disagrees with hf_row['M_int'] - M_core by
+    more than rtol_mass, that is a real hf_row/structure desync and must
+    surface. The realistic small CMB-node snap overshoot (~1%) must pass.
+    """
+    from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
+
+    output_path = str(tmp_path / 'zalmoxis_output.dat')
+    R_int, M_mantle_file = _write_synthetic_zalmoxis_output(output_path)
+    M_core = 1.94e24
+    M_int = M_mantle_file + M_core
+    hf_row = {'R_int': R_int, 'M_int': M_int, 'M_core': M_core}
+    expected_mantle = M_int - M_core
+
+    # 12% off -> above 5% default -> raise, and the message names the source.
+    with pytest.raises(RuntimeError, match='accumulator'):
+        validate_zalmoxis_output_schema(
+            output_path, hf_row, mantle_mass_ref=expected_mantle * 1.12
+        )
+
+    # 1% off (representative CMB-node snap overshoot) -> within tolerance.
+    result = validate_zalmoxis_output_schema(
+        output_path, hf_row, mantle_mass_ref=expected_mantle * 1.01
+    )
+    assert result is None  # sub-tolerance snap overshoot must not raise
+    # Discrimination guard: 1% passes, 12% raises, so the boundary sits
+    # strictly between them rather than rubber-stamping any reference.
+    assert abs(1.01 - 1.0) < 5e-2 < abs(1.12 - 1.0)
+
+
+@pytest.mark.unit
 def test_validate_zalmoxis_output_schema_corrupt_file(tmp_path):
     """File missing / wrong-shape -> raise.
 

@@ -1746,7 +1746,13 @@ def update_structure_from_interior(
         if not prev_path:
             prev_path = current_mesh + '.prev'
             dirs['spider_mesh_prev'] = prev_path
-        shutil.copy2(current_mesh, prev_path)
+        # Skip the copy when src and dst already point to the same file. On
+        # the Zalmoxis-failure fall-back the previous structure is restored by
+        # pointing spider_mesh at its own .prev, so this snapshot would become
+        # a self copy and shutil.copy2 raises SameFileError. The .prev already
+        # holds the last-good baseline in that case, so skipping is correct.
+        if os.path.abspath(current_mesh) != os.path.abspath(prev_path):
+            shutil.copy2(current_mesh, prev_path)
 
     # Atomically capture zalmoxis_output.dat -> .prev BEFORE the call.
     # zalmoxis_solver also writes .prev (zalmoxis.py:1888) but only if
