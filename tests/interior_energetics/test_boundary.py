@@ -100,7 +100,6 @@ def mock_config():
         thermal_expansivity=2e-5,  # 1/K
         viscosity_model=1,  # Constant viscosity (default)
         eta_constant=1e2,  # Pa s (liquid mantle)
-        transition_width=0.2,  # dimensionless
         eta_solid_const=1e22,  # Pa s
         eta_melt_const=1e2,  # Pa s
         dynamic_viscosity=3.8e9,  # Pa s
@@ -113,6 +112,7 @@ def mock_config():
     interior_energetics = SimpleNamespace(
         boundary=boundary,
         rfront_loc=0.4,  # dimensionless
+        phase_transition_width=0.2,
         heat_radiogenic=False,
         heat_tidal=False,
         radio_tref=4.567,  # Gyr (Solar System age)

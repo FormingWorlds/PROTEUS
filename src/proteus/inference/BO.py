@@ -174,18 +174,24 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
     )
 
 
-def init_locs(D: dict, acqf: str = 'LogEI', kernel: str = 'RBF') -> torch.Tensor:
-    """Generate initial sample locations using batch acqf.
+def init_locs(
+    n_workers: int, D: dict, acqf: str = 'LogEI', kernel: str = 'RBF'
+) -> torch.Tensor:
+    """Generate initial sample locations for each worker using the configured acqf.
+
+    Calls optimize_acqf once per worker with q=1. Analytic acquisition functions
+    (UCB, LogEI, LogPI) require q=1 and cannot optimise a joint batch in one call.
 
     Parameters
     ----------
-    - D (dict): Shared dict with key 'X' to infer problem dimension.
+    - n_workers (int): Number of workers; one candidate is generated per worker.
+    - D (dict): Shared dict with keys 'X' and 'Y' containing observed data.
     - acqf (str): Name of the acquisition function to use.
     - kernel (str): Kernel type ('RBF', 'MAT1/2', 'MAT3/2', 'MAT5/2').
 
     Returns
     ----------
-    - torch.Tensor: Tensor of shape (1, d) in [0, 1]^d for initial sampling.
+    - torch.Tensor: Tensor of shape (n_workers, d) in [0, 1]^d.
     """
 
     X, Y = D['X'], D['Y']
@@ -213,19 +219,20 @@ def init_locs(D: dict, acqf: str = 'LogEI', kernel: str = 'RBF') -> torch.Tensor
         kwargs={'pick_best_of_all_attempts': True, 'max_attempts': 10},
     )
 
-    # build acquisition function
-    acqf_f = get_acqf(acqf, gp, best)
+    candidates = []
+    for _ in range(n_workers):
+        acqf_f = get_acqf(acqf, gp, best)
+        x_single, _ = optimize_acqf(
+            acq_function=acqf_f,
+            bounds=unit_bounds(d),
+            q=1,
+            num_restarts=10,
+            raw_samples=1000 * d,
+            options={'maxiter': 1000},
+        )
+        candidates.append(x_single)
 
-    x_batch, _ = optimize_acqf(
-        acq_function=acqf_f,
-        bounds=unit_bounds(d),
-        q=1,
-        num_restarts=10,
-        raw_samples=1000 * d,
-        options={'maxiter': 1000},
-    )
-
-    return x_batch  # (1, d)
+    return torch.cat(candidates, dim=0)  # (n_workers, d)
 
 
 def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):

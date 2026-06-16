@@ -62,7 +62,7 @@ init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEU
 # Parameters for Bayesian optimisation
 n_workers  = 7        # Number of parallel workers
 kernel     = "MAT3/2" # GP kernel: "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
-acqf       = "LogEI"  # Acquisition function: "UCB" | "LogEI" | "E-LogEI"
+acqf       = "LogEI"  # Acquisition function: "UCB" | "LogEI" | "LogPI"
 n_steps    = 30       # Total number of evaluations (i.e. BO steps)
 n_restarts = 10       # GP optimization restarts
 n_samples  = 1000     # Raw samples for acquisition optimization
