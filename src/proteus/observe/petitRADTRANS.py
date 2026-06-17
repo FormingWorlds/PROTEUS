@@ -177,7 +177,7 @@ def _get_atm_profile(outdir: str, hf_row: dict) -> dict:
     from proteus.atmos_clim.common import read_atmosphere_data
 
     atm_arr = read_atmosphere_data(
-        outdir, [hf_row['Time']], extra_keys=['tmpl', 'pl', 'rl', 'gl', 'x_gas']
+        outdir, [hf_row['Time']], extra_keys=['tmpl', 'pl', 'rl', 'g', 'x_gas']
     )
 
     if (len(atm_arr) == 0) or (atm_arr[-1] is None):
@@ -191,15 +191,15 @@ def _get_reference_prt_values(atm: dict, config: Config) -> tuple[float, float, 
 
     Uses the reference pressure from the config to find the closest matching layer.
     """
-    prs = np.asarray(atm['pl'], dtype=float)  # Pa
+    prs = np.asarray(atm['p'], dtype=float)  # Pa
     config_ref_pressure_pa = config.observe.reference_pressure * 1e5  # Convert bar to Pa
 
     # Find the index with closest pressure to config reference
     ref_idx = np.argmin(np.abs(prs - config_ref_pressure_pa))
 
     reference_pressure = float(prs[ref_idx] / 1e5)
-    reference_radius = float(np.asarray(atm['rl'], dtype=float)[ref_idx] * 100.0)
-    reference_gravity = float(np.asarray(atm['gl'], dtype=float)[ref_idx] * 100.0)
+    reference_radius = float(np.asarray(atm['r'], dtype=float)[ref_idx] * 100.0)
+    reference_gravity = float(np.asarray(atm['g'], dtype=float)[ref_idx] * 100.0)
     return reference_pressure, reference_radius, reference_gravity
 
 

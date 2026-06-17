@@ -85,8 +85,7 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     p = np.array(ds.variables['p'][:])
     pl = np.array(ds.variables['pl'][:])
 
-    g = np.array(ds.variables['g'][:])
-    gl = np.array(ds.variables['gl'][:])
+    g = np.array(ds.variables['gravity'][:])
 
     t = np.array(ds.variables['tmp'][:])
     tl = np.array(ds.variables['tmpl'][:])
@@ -112,7 +111,7 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     if combine_edges:
         out['p'] = [pl[0]]
         out['t'] = [tl[0]]
-        out['g'] = [gl[0]]
+        out['g'] = []
         out['z'] = [zl[0]]
         out['r'] = [rl[0]]
         for i in range(nlev_c):
@@ -123,7 +122,6 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
             out['t'].append(tl[i + 1])
 
             out['g'].append(g[i])
-            out['g'].append(gl[i + 1])
 
             out['z'].append(z[i])
             out['z'].append(zl[i + 1])
@@ -138,7 +136,6 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
         out['r'] = r
         out['pl'] = pl
         out['tmpl'] = tl
-        out['gl'] = gl
         out['zl'] = zl
         out['rl'] = rl
 
