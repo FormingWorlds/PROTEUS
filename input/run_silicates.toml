@@ -46,7 +46,7 @@ config_version = "3.0"
     [params.dt]
         minimum               = 1e4          # minimum time step [yr]
         minimum_rel           = 1e-5         # minimum relative time step
-        maximum               = 1e7          # maximum time step [yr]
+        maximum               = 1e6          # maximum time step [yr]
         initial               = 3e1          # initial step size [yr]
         starspec              = 1e8          # recalculate stellar spectrum interval [yr]
         starinst              = 1e2          # recalculate instellation interval [yr]
@@ -75,7 +75,7 @@ config_version = "3.0"
         [params.stop.time]                   # simulation time limits
             enabled           = true
             minimum           = 1.0e3        # run at least this long [yr]
-            maximum           = 6.0e+9       # stop after this time [yr]
+            maximum           = 5.0e+8       # stop after this time [yr]
 
         [params.stop.solid]                  # solidification criterion
             enabled           = true
