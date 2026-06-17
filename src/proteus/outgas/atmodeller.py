@@ -66,6 +66,72 @@ def _total_volatile_oxygen_kg(hf_row: dict, element_mmw: dict) -> float:
     return total
 
 
+# Atom counts per volatile species, used to split the per-species reservoir
+# masses into per-element reservoir masses (the generalisation of
+# `_total_volatile_oxygen_kg` to every element and reservoir).
+_VOLATILE_ELEMENT_STOICH = {
+    'H2O': {'H': 2, 'O': 1},
+    'CO2': {'C': 1, 'O': 2},
+    'O2': {'O': 2},
+    'H2': {'H': 2},
+    'CH4': {'C': 1, 'H': 4},
+    'CO': {'C': 1, 'O': 1},
+    'N2': {'N': 2},
+    'NH3': {'N': 1, 'H': 3},
+    'S2': {'S': 2},
+    'SO2': {'S': 1, 'O': 2},
+    'H2S': {'H': 2, 'S': 1},
+    'SiO': {'Si': 1, 'O': 1},
+}
+
+
+def _populate_volatile_element_reservoirs(hf_row: dict, element_mmw: dict) -> None:
+    """Derive per-element reservoir masses from the per-species inventory.
+
+    atmodeller solves for and writes per-species masses (``{sp}_kg_atm`` /
+    ``_kg_liquid`` / ``_kg_solid`` / ``_kg_total``) but not the per-element
+    totals that CALLIOPE writes natively. Three downstream consumers need the
+    per-element fields populated each call: the escape composition/debit (which
+    reads ``{e}_kg_atm`` under the default ``reservoir = "outgas"``), the
+    desiccation gate, and the ``M_ele`` aggregation. With them absent the escape
+    step sees a zero outgas reservoir, ``calc_new_elements`` returns a zeroed
+    inventory, and the per-element ``{e}_kg_total`` budget collapses; atmodeller
+    is then skipped for want of a mass constraint and the atmosphere freezes.
+
+    For each volatile element the mass in a reservoir is the sum over species of
+    the species mass in that reservoir times the element's mass fraction in the
+    species (atom count times atomic mass, divided by the species molar mass).
+    ``O_kg_total`` is written here too, but the caller overwrites it afterwards
+    with the authoritative O budget, so the order is significant.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row carrying per-species ``{sp}_kg_<reservoir>``; updated in
+        place with per-element ``{e}_kg_<reservoir>`` and ``{e}_kg_total``.
+    element_mmw : dict
+        Molar masses [kg/mol] keyed by element symbol.
+    """
+    reservoirs = ('atm', 'liquid', 'solid')
+    elements = {el for comp in _VOLATILE_ELEMENT_STOICH.values() for el in comp}
+    masses = {el: dict.fromkeys(reservoirs, 0.0) for el in elements}
+    for sp, comp in _VOLATILE_ELEMENT_STOICH.items():
+        sp_mmw = sum(n * element_mmw[el] for el, n in comp.items())
+        if sp_mmw <= 0.0:
+            continue
+        for r in reservoirs:
+            sp_mass = float(hf_row.get(f'{sp}_kg_{r}', 0.0))
+            if sp_mass <= 0.0:
+                continue
+            for el, n in comp.items():
+                masses[el][r] += sp_mass * (n * element_mmw[el] / sp_mmw)
+    for el, res in masses.items():
+        hf_row[f'{el}_kg_atm'] = res['atm']
+        hf_row[f'{el}_kg_liquid'] = res['liquid']
+        hf_row[f'{el}_kg_solid'] = res['solid']
+        hf_row[f'{el}_kg_total'] = res['atm'] + res['liquid'] + res['solid']
+
+
 def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     """Compute volatile partitioning using atmodeller.
 
@@ -436,6 +502,13 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         P_total,
         mmw * 1e3,
     )
+
+    # Populate per-element reservoir masses from the per-species inventory so
+    # the escape step (which reads {e}_kg_atm under reservoir="outgas"), the
+    # desiccation gate, and M_ele all see a live element budget under atmodeller,
+    # which CALLIOPE writes natively. Done before the authoritative O_kg_total
+    # write below, which intentionally supersedes the O total derived here.
+    _populate_volatile_element_reservoirs(hf_row, element_mmw)
 
     # Total volatile oxygen (atmospheric + melt-dissolved), summed over the
     # O-bearing volatile species. Computed for every fO2 source so the
