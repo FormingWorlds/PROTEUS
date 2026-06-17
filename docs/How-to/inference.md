@@ -33,52 +33,11 @@ The main configuration is done through a TOML-formatted configuration file. Ther
 1. Allowing PROTEUS to randomly sample the parameter space provided in the config.
 2. Using the result of a previously-computed grid of models.
 
-To apply case (1), set the config variable `init_samps=4` to use 4 initial samples. You can choose any number greater than 2, but ideally less than 10. Then set `init_grid='none'`.
+To apply case (1), set the config variable `init_samps=4` to use 4 initial samples. You can choose any number greater than 2, but ideally less than 10. Then set `init_grid='none'`. Set `init_samps=-1` to use the same value as `n_workers`.
 
 If you instead wish to initialise under case (2), where a pre-computed grid provides the initial samples, set the config variable `init_grid='outname'` where `outname` is the name of the folder containing the grid inside the shared PROTEUS output folder. Then set `init_samps='none'`.
 
-An example configuration file is shown below.
-
-```toml
-# Set seed for reproducibility
-seed = 2
-
-# Logging level
-logging = 'INFO'
-
-# Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "infer_demo/"
-
-# Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "input/dummy.toml"
-
-# Simulation statuses considered as a failure-state, with unfavourable objective
-failure_codes = [10, 15, 11] # solidified, escaped, max_runtime
-
-# Method for initialising the inference scheme (one of these must be 'none')
-init_samps = '2'         # Number of random samples if starting from scratch.
-init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
-
-# Parameters for Bayesian optimisation
-n_workers  = 7        # Number of parallel workers
-kernel     = "MAT3/2" # GP kernel: "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
-acqf       = "LogEI"  # Acquisition function: "UCB" | "LogEI" | "LogPI"
-n_steps    = 30       # Total number of evaluations (i.e. BO steps)
-n_restarts = 10       # GP optimization restarts
-n_samples  = 1000     # Raw samples for acquisition optimization
-
-# Parameters to optimize (with bounds)
-[parameters]
-"planet.mass_tot" = [0.7, 3.0]
-"interior_struct.core_frac" = [0.3, 0.9]
-"planet.elements.H_budget" = [6e3, 2e4]  # requires H_mode = "ppmw" in ref_config
-"outgas.fO2_shift_IW" = [-3.0, 5.0]
-
-# Target observables to match by optimisation
-[observables]
-"R_obs" = 7.9950245489e6
-"H2O_vmr" = 0.41
-```
+An example configuration file is available at `input/inference/example.infer.toml`.
 
 ## Usage
 
@@ -121,6 +80,28 @@ better fits, while smaller values (including negative ones) are worse fits.
 
 The optimization will run until `n_steps` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
 
+### Acqusition functions
+
+The `acqusition function' is an analytical function that is aware of the current state of the optimisation.
+It is used to evaluate the *potential* value of sampling a candidate particular point in the parameter space, to 
+help determine where the optimisation should next run PROTEUS. It helps balance the trade-off between exploring new areas and exploiting known good areas to optimize a black-box function efficiently.
+
+* `UCB` - upper confidence bound
+* `LogEI` - logarithm of the expected improvement
+* `LogPI` - logarithm of the probability of improvement (analogous to log-likelihood)
+
+See docs [here](https://botorch.readthedocs.io/en/latest/acquisition.html).
+
+### Kernels
+
+The kernel is an analytical function used by the Gaussian processes to represent the similarity between model behaviour as a function of the parameter space. It includes the underlying function by capturing the relationships and uncertainties/noise in the data.
+
+* `RBF` - radial basis function
+* `MAT1/2` - Materne kernel with $\nu = 1/2$ 
+* `MAT3/2` - Materne kernel with $\nu = 3/2$
+* `MAT5/2` - Materne kernel with $\nu = 5/2$
+
+See docs [here](https://botorch.readthedocs.io/en/latest/models.html#module-botorch.models.kernels.categorical).
 
 ## Output
 
