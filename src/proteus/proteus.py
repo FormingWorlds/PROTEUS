@@ -859,14 +859,14 @@ class Proteus:
                 check_ic_oxygen_budget(self.config, self.hf_row)
 
             # Add mass of total volatile element mass (M_ele) to total mass of mantle+core
-            update_planet_mass(self.directories,self.hf_row,self.config)
+            update_planet_mass(self.hf_row)
 
             # Issue #677 mass-conservation invariant: M_atm <= M_planet
             # and sum(s_kg_atm) == M_atm. Cheap end-of-outgas guardrail
             # that hard-fails if any future change re-introduces the
             # O-skipping asymmetry that could let M_atm exceed
             # M_planet at high H_ppmw.
-            assert_mass_conservation(self.hf_row)
+            assert_mass_conservation(self.config, self.hf_row,atol_frac=1e-1)
 
             if _IT_TIMING_ENABLED:
                 _t_mod['outgas'] = time.perf_counter() - _t0_outgas

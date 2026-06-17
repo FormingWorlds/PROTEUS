@@ -34,7 +34,7 @@ config_version = "3.0"
     [params.out]
         # Output folder inside PROTEUS/output/. Set "auto" for a unique timestamped
         # name (run_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
-        path                  = "grid_9.0Mearth_tmax1e6_tmin1e3_-5IW_0.016AU_cppmw1090.0_True"
+        path                  = "grid_9.0Mearth_tmax1e6_tmin1e3_-5IW_0.032AU_cppmw1090.0_True"
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 5            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
@@ -192,7 +192,7 @@ config_version = "3.0"
 
     # Orbit geometry and instellation
     instellation_method       = "distance"   # "distance" (semi-major axis) | "inst" (flux)
-    semimajoraxis             = 0.016          # semi-major axis [AU] (if method = "distance")
+    semimajoraxis             = 0.032          # semi-major axis [AU] (if method = "distance")
     instellationflux          = 1.0          # instellation [S_Earth] (if method = "inst")
     eccentricity              = 0.0          # orbital eccentricity
     zenith_angle              = 48.19        # characteristic zenith angle [degrees]
@@ -472,139 +472,139 @@ config_version = "3.0"
         eos_CO                = "none"       # none (no real gas EOS available)
 
 
-        # Atmosphere climate (radiative-convective structure)
-        [atmos_clim]
-            module                    = "agni"       # agni | janus | dummy
+# Atmosphere climate (radiative-convective structure)
+[atmos_clim]
+    module                    = "agni"       # agni | janus | dummy
 
-            # Grid and spectral setup (shared by agni + janus)
-            spectral_group            = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
-            spectral_bands            = "48"         # wavenumber bands in k-table
-            num_levels                = 50           # vertical atmosphere levels (min 15)
-            p_top                     = 1.0e-6       # top-of-atmosphere pressure [bar]
-            p_obs                     = 0.02         # observation pressure level [bar] (transit radius)
-            overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
+    # Grid and spectral setup (shared by agni + janus)
+    spectral_group            = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
+    spectral_bands            = "48"         # wavenumber bands in k-table
+    num_levels                = 50           # vertical atmosphere levels (min 15)
+    p_top                     = 1.0e-6       # top-of-atmosphere pressure [bar]
+    p_obs                     = 0.02         # observation pressure level [bar] (transit radius)
+    overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
-            # Radiative properties (agni, janus only)
-            rayleigh                  = true         # Rayleigh scattering
-            cloud_enabled             = false        # water cloud radiative effects
-            cloud_alpha               = 0.0          # condensate retention fraction (0 to 1)
-            aerosols_enabled          = false        # enable aerosol radiative effects (agni only)
-            albedo_pl                 = 0.0          # planetary bond albedo; float or path to CSV lookup
-            surf_greyalbedo           = 0.1          # grey surface albedo (used when agni.surf_material = "greybody")
+    # Radiative properties (agni, janus only)
+    rayleigh                  = true         # Rayleigh scattering
+    cloud_enabled             = false        # water cloud radiative effects
+    cloud_alpha               = 0.0          # condensate retention fraction (0 to 1)
+    aerosols_enabled          = false        # enable aerosol radiative effects (agni only)
+    albedo_pl                 = 0.0          # planetary bond albedo; float or path to CSV lookup
+    surf_greyalbedo           = 0.1          # grey surface albedo (used when agni.surf_material = "greybody")
 
-            # Surface boundary condition
-            surf_state                = "skin"       # energy balance: mixed_layer | fixed | skin
-            surface_d                 = 0.01         # conductive skin thickness [m]
-            surface_k                 = 2.0          # conductive skin conductivity [W/m/K]
+    # Surface boundary condition
+    surf_state                = "skin"       # energy balance: mixed_layer | fixed | skin
+    surface_d                 = 0.01         # conductive skin thickness [m]
+    surface_k                 = 2.0          # conductive skin conductivity [W/m/K]
 
-            # Solver limits (agni, janus only)
-            tmp_minimum               = 0.5          # temperature floor [K]
+    # Solver limits (agni, janus only)
+    tmp_minimum               = 0.5          # temperature floor [K]
 
-            [atmos_clim.agni]
-                # Physics switches
-                solve_energy          = true         # iterative energy-conserving T(p) profile
-                convection            = true         # convective adjustment (MLT)
-                conduction            = false        # conductive heat transport (Fourier)
-                sens_heat             = true         # sensible heat flux at surface
-                rainout               = true         # volatile condensation and evaporation
-                oceans                = true         # surface liquid water oceans
-                latent_heat           = false        # latent heat from condensation/evaporation
-                real_gas              = false        # real-gas EOS where available
-                chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem)
-                mlt_criterion         = "s"          # convection criterion: s (Schwarzschild) | l (Ledoux)
+    [atmos_clim.agni]
+        # Physics switches
+        solve_energy          = true         # iterative energy-conserving T(p) profile
+        convection            = true         # convective adjustment (MLT)
+        conduction            = false        # conductive heat transport (Fourier)
+        sens_heat             = true         # sensible heat flux at surface
+        rainout               = true         # volatile condensation and evaporation
+        oceans                = true         # surface liquid water oceans
+        latent_heat           = false        # latent heat from condensation/evaporation
+        real_gas              = false        # real-gas EOS where available
+        chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem)
+        mlt_criterion         = "s"          # convection criterion: s (Schwarzschild) | l (Ledoux)
 
-                # Surface properties
-                surf_material         = "greybody"   # surface scattering; "greybody" uses surf_greyalbedo
-                surf_roughness        = 1e-3         # characteristic roughness scale [m]
-                surf_windspeed        = 2.0          # characteristic wind speed [m/s]
+        # Surface properties
+        surf_material         = "greybody"   # surface scattering; "greybody" uses surf_greyalbedo
+        surf_roughness        = 1e-3         # characteristic roughness scale [m]
+        surf_windspeed        = 2.0          # characteristic wind speed [m/s]
 
-                # Condensation and clouds
-                phs_timescale         = 1e6          # phase change relaxation timescale [s]
-                evap_efficiency       = 0.01         # raindrop re-evaporation efficiency (0 to 1)
+        # Condensation and clouds
+        phs_timescale         = 1e6          # phase change relaxation timescale [s]
+        evap_efficiency       = 0.01         # raindrop re-evaporation efficiency (0 to 1)
 
-                # Solver tuning (rarely need to change)
-                solution_atol         = 0.5          # Newton solver absolute tolerance [W/m2]
-                solution_rtol         = 0.15         # Newton solver relative tolerance
-                psurf_thresh          = 0.1          # skip full RCE when P_surf below this [bar]
-                dx_max                = 35.0         # max Newton step per iteration [K]
-                dx_max_ini            = 50.0         # max Newton step during first few PROTEUS loops [K]
-                max_steps             = 200          # max Newton iterations per call
-                perturb_all           = false        # recompute full Jacobian each iteration
-                ini_profile           = "isothermal" # initial T(p) guess: isothermal | loglinear | dry_adiabat | analytic
-                ls_default            = 2            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking)
-                fdo                   = 2            # finite-difference order for Jacobian: 2 | 4
-                check_safe_gas        = true         # require at least one gas with opacity+thermo data
-                verbosity             = 1            # AGNI log level: 0 (silent) | 1 (info) | 2 (debug)
+        # Solver tuning (rarely need to change)
+        solution_atol         = 0.5          # Newton solver absolute tolerance [W/m2]
+        solution_rtol         = 0.15         # Newton solver relative tolerance
+        psurf_thresh          = 0.1          # skip full RCE when P_surf below this [bar]
+        dx_max                = 35.0         # max Newton step per iteration [K]
+        dx_max_ini            = 50.0         # max Newton step during first few PROTEUS loops [K]
+        max_steps             = 200          # max Newton iterations per call
+        perturb_all           = false        # recompute full Jacobian each iteration
+        ini_profile           = "isothermal" # initial T(p) guess: isothermal | loglinear | dry_adiabat | analytic
+        ls_default            = 2            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking)
+        fdo                   = 2            # finite-difference order for Jacobian: 2 | 4
+        check_safe_gas        = true         # require at least one gas with opacity+thermo data
+        verbosity             = 1            # AGNI log level: 0 (silent) | 1 (info) | 2 (debug)
 
-                # FastChem equilibrium chemistry (only used when chemistry = "eq")
-                fastchem_floor        = 1000.0       # min temperature sent to FastChem [K]
-                fastchem_maxiter_chem = 60000        # max FastChem iterations (chemistry)
-                fastchem_maxiter_solv = 20000        # max FastChem iterations (internal solver)
-                fastchem_xtol_chem    = 1e-4         # FastChem convergence tolerance (chemistry)
-                fastchem_xtol_elem    = 1e-4         # FastChem convergence tolerance (elemental)
+        # FastChem equilibrium chemistry (only used when chemistry = "eq")
+        fastchem_floor        = 1000.0       # min temperature sent to FastChem [K]
+        fastchem_maxiter_chem = 60000        # max FastChem iterations (chemistry)
+        fastchem_maxiter_solv = 20000        # max FastChem iterations (internal solver)
+        fastchem_xtol_chem    = 1e-4         # FastChem convergence tolerance (chemistry)
+        fastchem_xtol_elem    = 1e-4         # FastChem convergence tolerance (elemental)
 
-            [atmos_clim.janus]
-                F_atm_bc              = 0            # outgoing flux boundary: 0 (TOA) | 1 (surface)
-                tropopause            = "none"       # tropopause scheme: none | skin | dynamic
-                cloud_alpha           = 0.0          # condensate retention fraction (0 to 1)
-                tmp_maximum           = 5000.0       # solver temperature ceiling [K]
+    [atmos_clim.janus]
+        F_atm_bc              = 0            # outgoing flux boundary: 0 (TOA) | 1 (surface)
+        tropopause            = "none"       # tropopause scheme: none | skin | dynamic
+        cloud_alpha           = 0.0          # condensate retention fraction (0 to 1)
+        tmp_maximum           = 5000.0       # solver temperature ceiling [K]
 
-            [atmos_clim.dummy]
-                gamma                 = 0.5          # T_rad = T_surf * (1 - gamma); 0 = transparent, 1 = zero OLR
-                height_factor         = 3.0          # observed height / scale height
-                fixed_flux            = -1.0         # if > 0: return this constant F_atm [W/m2], bypassing grey-body
+    [atmos_clim.dummy]
+        gamma                 = 0.5          # T_rad = T_surf * (1 - gamma); 0 = transparent, 1 = zero OLR
+        height_factor         = 3.0          # observed height / scale height
+        fixed_flux            = -1.0         # if > 0: return this constant F_atm [W/m2], bypassing grey-body
 
-        # Atmospheric escape
-        [escape]
-            module                    = "zephyrus"   # zephyrus | dummy
-            reservoir                 = "outgas"     # reservoir setting escaping composition
+# Atmospheric escape
+[escape]
+    module                    = "zephyrus"   # zephyrus | dummy
+    reservoir                 = "outgas"     # reservoir setting escaping composition
 
-            [escape.zephyrus]
-                Pxuv                  = 5e-5         # XUV opacity pressure level [bar]
-                efficiency            = 0.1          # escape efficiency
-                tidal                 = false        # tidal contribution
+    [escape.zephyrus]
+        Pxuv                  = 5e-5         # XUV opacity pressure level [bar]
+        efficiency            = 0.1          # escape efficiency
+        tidal                 = false        # tidal contribution
 
-            [escape.dummy]
-                rate                  = 0.0          # bulk escape rate [kg s-1]
+    [escape.dummy]
+        rate                  = 0.0          # bulk escape rate [kg s-1]
 
-        # Late accretion
-        [accretion]
-            module                    = "none"       # not yet implemented
+# Late accretion
+[accretion]
+    module                    = "none"       # not yet implemented
 
-        # Atmospheric chemistry (post-processing)
-        [atmos_chem]
-            # Default off: VULCAN is an optional GPL-3.0 backend, install with
-            # `pip install "fwl-proteus[vulcan]"` then set module = "vulcan".
-            module                    = "none"       # none | vulcan | dummy
-            when                      = "manually"   # manually | offline | online
+# Atmospheric chemistry (post-processing)
+[atmos_chem]
+    # Default off: VULCAN is an optional GPL-3.0 backend, install with
+    # `pip install "fwl-proteus[vulcan]"` then set module = "vulcan".
+    module                    = "none"       # none | vulcan | dummy
+    when                      = "manually"   # manually | offline | online
 
-            # Transport processes
-            photo_on                  = true         # photochemistry
-            Kzz_on                    = true         # eddy diffusion
-            Kzz_const                 = "none"       # constant Kzz [cm2/s]; none = use computed profile
-            moldiff_on                = true         # molecular diffusion
-            updraft_const             = 0.0          # constant updraft velocity [cm/s]
+    # Transport processes
+    photo_on                  = true         # photochemistry
+    Kzz_on                    = true         # eddy diffusion
+    Kzz_const                 = "none"       # constant Kzz [cm2/s]; none = use computed profile
+    moldiff_on                = true         # molecular diffusion
+    updraft_const             = 0.0          # constant updraft velocity [cm/s]
 
-            [atmos_chem.vulcan]
-                # Setup
-                network               = "SNCHO"      # chemical network: CHO | NCHO | SNCHO
-                ini_mix               = "profile"    # initial mixing ratios: profile | outgas
-                fix_surf              = false        # hold surface mixing ratios fixed
-                make_funs             = true         # generate reaction network functions
+    [atmos_chem.vulcan]
+        # Setup
+        network               = "SNCHO"      # chemical network: CHO | NCHO | SNCHO
+        ini_mix               = "profile"    # initial mixing ratios: profile | outgas
+        fix_surf              = false        # hold surface mixing ratios fixed
+        make_funs             = true         # generate reaction network functions
 
-                # Convergence
-                yconv_cri             = 0.05         # convergence criterion (mixing ratios)
-                slope_cri             = 0.0001       # convergence criterion (rate of change)
+        # Convergence
+        yconv_cri             = 0.05         # convergence criterion (mixing ratios)
+        slope_cri             = 0.0001       # convergence criterion (rate of change)
 
-                # Numerical
-                clip_fl               = 1e-20        # stellar flux floor [erg/s/cm2/nm]
-                clip_vmr              = 1e-10        # neglect species below this VMR
-                save_frames           = false        # save plot frames during iterations
+        # Numerical
+        clip_fl               = 1e-20        # stellar flux floor [erg/s/cm2/nm]
+        clip_vmr              = 1e-10        # neglect species below this VMR
+        save_frames           = false        # save plot frames during iterations
 
-        # Synthetic observations
-        [observe]
-            synthesis                 = "none"       # none | platon
+# Synthetic observations
+[observe]
+    synthesis                 = "none"       # none | platon
 
-            [observe.platon]
-                downsample            = 8            # opacity downsample factor
-                clip_vmr              = 1e-8         # minimum VMR for inclusion
+    [observe.platon]
+        downsample            = 8            # opacity downsample factor
+        clip_vmr              = 1e-8         # minimum VMR for inclusion
