@@ -757,6 +757,7 @@ def GetHelpfileKeys(config=None):
         'M_atm',            # total mass of atmosphere [kg]
         'P_surf',           # volatile surface pressure [bar]
         'P_silicates',      #outgassed surface pressure [bar]
+        'M_silicates',      # outgassed rock vapour mass [kg]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
 
         # Iron-wustite buffer offset that the chemistry solver actually

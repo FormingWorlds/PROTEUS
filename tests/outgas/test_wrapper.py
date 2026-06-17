@@ -741,7 +741,8 @@ def test_expected_keys_includes_element_mass_ratios():
     from proteus.outgas.common import expected_keys
     from proteus.utils.constants import element_list
 
-    keys = expected_keys()
+    config = MagicMock()
+    keys = expected_keys(config)
     ratio_keys = [k for k in keys if '/' in k and k.endswith('_atm')]
 
     # 9 elements -> C(9, 2) = 36 unordered pairs.

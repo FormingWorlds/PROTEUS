@@ -27,7 +27,7 @@ import math
 import os
 import tempfile
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -333,7 +333,8 @@ def test_write_helpfile_to_csv_creates_file():
         hf = CreateHelpfileFromDict(row)
 
         # Write to CSV
-        fpath = WriteHelpfileToCSV(tmpdir, hf)
+        config = MagicMock()
+        fpath = WriteHelpfileToCSV(tmpdir, hf,config)
 
         # Verify file exists
         assert os.path.exists(fpath)
@@ -350,7 +351,8 @@ def test_write_helpfile_to_csv_contains_data():
         row['T_surf'] = 350.5
         hf = CreateHelpfileFromDict(row)
 
-        WriteHelpfileToCSV(tmpdir, hf)
+        config = MagicMock()
+        WriteHelpfileToCSV(tmpdir, hf,config)
 
         # Read back and verify
         fpath = os.path.join(tmpdir, 'runtime_helpfile.csv')
@@ -368,13 +370,15 @@ def test_write_helpfile_to_csv_overwrites_existing():
         row1 = ZeroHelpfileRow()
         row1['Time'] = 1.0
         hf1 = CreateHelpfileFromDict(row1)
-        WriteHelpfileToCSV(tmpdir, hf1)
+        config = MagicMock()
+        WriteHelpfileToCSV(tmpdir, hf1,config)
 
         # Write second helpfile (should overwrite)
         row2 = ZeroHelpfileRow()
         row2['Time'] = 2.0
         hf2 = CreateHelpfileFromDict(row2)
-        WriteHelpfileToCSV(tmpdir, hf2)
+        config = MagicMock()
+        WriteHelpfileToCSV(tmpdir, hf2,config)
 
         # Verify only latest data is in file
         fpath = os.path.join(tmpdir, 'runtime_helpfile.csv')
@@ -395,8 +399,9 @@ def test_write_and_read_helpfile_roundtrip():
         row['T_magma'] = 2500.0
         row['P_surf'] = 1.0
         row['F_int'] = 50.0
+        config = MagicMock()
         hf_original = CreateHelpfileFromDict(row)
-        WriteHelpfileToCSV(tmpdir, hf_original)
+        WriteHelpfileToCSV(tmpdir, hf_original,config)
 
         # Read back
         hf_read = ReadHelpfileFromCSV(tmpdir)
@@ -440,7 +445,8 @@ def test_write_helpfile_multiple_rows_roundtrip():
             hf = ExtendHelpfile(hf, row)
 
         # Write and read
-        WriteHelpfileToCSV(tmpdir, hf)
+        config = MagicMock()
+        WriteHelpfileToCSV(tmpdir, hf,config)
         hf_read = ReadHelpfileFromCSV(tmpdir)
 
         # Verify
@@ -711,7 +717,8 @@ def test_helpfile_scientific_notation_consistency():
         hf = CreateHelpfileFromDict(row)
 
         # Write and read back
-        WriteHelpfileToCSV(tmpdir, hf)
+        config=config = MagicMock()
+        WriteHelpfileToCSV(tmpdir, hf,config)
         hf_read = ReadHelpfileFromCSV(tmpdir)
 
         assert hf_read['Time'].iloc[0] == pytest.approx(1.234e8, rel=1e-5)
@@ -973,7 +980,8 @@ def test_write_helpfile_validates_missing_keys():
         df = pd.DataFrame({'Time': [1.0]})  # Missing all other required keys
 
         with pytest.raises(Exception, match='mismatched keys'):
-            WriteHelpfileToCSV(tmpdir, df)
+            config = MagicMock()
+            WriteHelpfileToCSV(tmpdir, df, config)
         # Discrimination: the validation must short-circuit BEFORE writing
         # the CSV. A regression that wrote first and then raised would
         # leave a corrupted stub file on disk that resume would consume.
