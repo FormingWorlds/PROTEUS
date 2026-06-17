@@ -158,6 +158,11 @@ omit = [
     "*/test_*.py",
     "*/__pycache__/*",
     "*/conftest.py",
+    # Third-party netCDF4 C-extension: its compiled `_netCDF4.pyx` has no
+    # source tree on the runner, so `coverage json` raises "No source for
+    # code" and fails the step. It is a dependency, not measured code, so
+    # exclude it specifically rather than blanket-ignoring report errors.
+    "*/netCDF4/*",
 ]
 
 [tool.coverage.paths]
