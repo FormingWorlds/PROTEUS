@@ -7,7 +7,7 @@ seed = 42
 logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "bayesopt_infer_sn/"
+output = "bayesopt_infer_sn_mat32_logei_10/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
 ref_config = "output/bayesopt_sn/init_coupler.toml"
