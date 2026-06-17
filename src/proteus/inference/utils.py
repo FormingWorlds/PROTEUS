@@ -333,6 +333,7 @@ def get_kernel(kernel: str, d: int) -> MaternKernel | RBFKernel:
         kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=2.5)
     else:
         raise ValueError('Unknown kernel, choices are RBF or MAT{1/2, 3/2, 5/2}')
+    return kernel
 
 
 def get_obs(out_csv, observables: list[str]):

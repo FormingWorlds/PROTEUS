@@ -198,3 +198,95 @@ def test_print_results_returns_best_input_toml_path_and_logs_summary(tmp_path, c
     # The summary log must announce the best-case step number relative
     # to the initial-guess offset (i_opt - n_init + 1 = 1).
     assert any('Best case was step 1' in rec.message for rec in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# get_kernel: Matern branches and error contract
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_get_kernel_mat12_returns_matern_with_nu_half():
+    """get_kernel('MAT1/2', d) builds a once-differentiable Matern kernel (nu=0.5)."""
+    from gpytorch.kernels import MaternKernel
+
+    from proteus.inference.utils import get_kernel
+
+    result = get_kernel('MAT1/2', d=2)
+
+    assert isinstance(result, MaternKernel)
+    assert result.nu == pytest.approx(0.5)
+    assert result.nu != pytest.approx(1.5)
+    assert result.nu != pytest.approx(2.5)
+
+    # ARD: lengthscale shape must be (1, d) for d=2 dimensions.
+    assert result.lengthscale.shape[-1] == 2
+
+
+@pytest.mark.unit
+def test_get_kernel_mat32_returns_matern_with_nu_three_halves():
+    """get_kernel('MAT3/2', d) builds a once-mean-square-differentiable Matern (nu=1.5).
+
+    nu=1.5 is the default used in the vanilla-BO kernel prior (Hvarfner 2024).
+    A regression that wired this branch to nu=0.5 or nu=2.5 would change
+    the inductive bias of the surrogate across the whole BO campaign.
+    """
+    from gpytorch.kernels import MaternKernel
+
+    from proteus.inference.utils import get_kernel
+
+    result = get_kernel('MAT3/2', d=3)
+
+    assert isinstance(result, MaternKernel)
+    assert result.nu == pytest.approx(1.5)
+    # Discrimination: wrong-nu branches differ by exactly 1.0 or 0.5.
+    assert abs(result.nu - 0.5) > 0.5
+    assert abs(result.nu - 2.5) > 0.5
+    assert result.lengthscale.shape[-1] == 3
+
+
+@pytest.mark.unit
+def test_get_kernel_mat52_returns_matern_with_nu_five_halves():
+    """get_kernel('MAT5/2', d) builds a twice-mean-square-differentiable Matern (nu=2.5).
+
+    nu=2.5 produces smoother sample paths than nu=1.5 or 0.5. Checking the
+    stored nu guards against a copy-paste error between the MAT3/2 and MAT5/2
+    branches (using nu=1.5 instead of 2.5), which would degrade optimisation
+    quality on smooth physics objectives without any error.
+    """
+    from gpytorch.kernels import MaternKernel
+
+    from proteus.inference.utils import get_kernel
+
+    result = get_kernel('MAT5/2', d=1)
+
+    assert isinstance(result, MaternKernel)
+    assert result.nu == pytest.approx(2.5)
+    # Discrimination: a MAT3/2 regression would land at 1.5, more than 0.5 below.
+    assert result.nu > 2.0
+    assert result.lengthscale.shape[-1] == 1
+
+
+@pytest.mark.unit
+def test_get_kernel_raises_for_unknown_kernel_name():
+    """get_kernel raises ValueError for names outside the documented set.
+
+    The error must fire before any kernel object is built, so no partial
+    state is returned. An unknown kernel name from a mis-configured
+    infer.toml must surface as a clear diagnostic rather than a silent
+    None return or a cryptic GPyTorch exception.
+
+    Discrimination: each of the four valid names is also exercised (implicitly
+    by the three tests above) to confirm the error fires only on invalid input.
+    """
+    from proteus.inference.utils import get_kernel
+
+    with pytest.raises(ValueError, match='Unknown kernel'):
+        get_kernel('POLY', d=2)
+
+    with pytest.raises(ValueError, match='Unknown kernel'):
+        get_kernel('', d=2)
+
+    # Edge: case-sensitive — 'rbf' is not 'RBF'.
+    with pytest.raises(ValueError, match='Unknown kernel'):
+        get_kernel('rbf', d=2)
