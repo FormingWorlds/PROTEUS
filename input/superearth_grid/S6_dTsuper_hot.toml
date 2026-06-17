@@ -9,7 +9,7 @@ offline = true
 [planet]
 mass_tot = 5.0
 temperature_mode = "liquidus_super"
-delta_T_super = 1000.0
+delta_T_super = 900.0
 volatile_mode = "elements"
 fO2_source = "user_constant"
 

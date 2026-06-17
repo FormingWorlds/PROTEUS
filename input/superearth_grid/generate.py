@@ -404,7 +404,7 @@ def build_S5(hosts=('sun', 'mdwarf'), axes=S5_AXES) -> list[str]:
 # exactly what dev4's T_cmb / energy-closure campaign is revising, so this run
 # is held until that fix lands.
 S6_CMFS = (0.2, 0.5, 0.7)
-S6_DELTA_T_HOT = 1000.0
+S6_DELTA_T_HOT = 900.0
 S6_DELTA_T_COLD = 100.0
 S6_TIDAL_ECC = 0.1
 
