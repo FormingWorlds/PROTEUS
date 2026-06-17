@@ -1030,7 +1030,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict, config: Config):
 
     # convert row to df, only including keys in the schema
     # which is defined by GetHelpfileKeys()
-    new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
+    new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(config), dtype=float)
 
     # Check for NaN values. Print warning if any are found and convert to zero.
     for col in new_row.columns:
