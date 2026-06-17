@@ -210,9 +210,6 @@ class Outgas:
     # LavAtmos / silicate coupling is opt-in: default to disabled.
     silicates: bool = field(default=False)
     # Path to FastChem output directory used by LavAtmos; must be set when silicate coupling is enabled.
-    fastchempath: str = field(default='')
-    # Path to FastChem input directory used by LavAtmos; must be set when silicate coupling is enabled.
-    elementfile: str = field(default='')
     # List of vapour species for LavAtmos; must be set when silicate coupling is enabled.
     vaplist: list = field(factory=list)
 
@@ -224,10 +221,6 @@ class Outgas:
         ensure that `fastchempath` and `vaplist` are explicitly configured.
         """
         if self.silicates:
-            if not self.fastchempath:
-                raise ValueError(
-                    'Outgas.fastchempath must be set when silicate (LavAtmos) coupling is enabled.'
-                )
             if not self.vaplist:
                 raise ValueError(
                     'Outgas.vaplist must be set when silicate (LavAtmos) coupling is enabled.'
