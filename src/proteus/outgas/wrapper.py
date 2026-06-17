@@ -394,14 +394,16 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
 
     log.debug('Outgassing complete, calculating atmospheric composition...')
     log.debug('comparison to H2S output by iterating over gas list')
-    log.debug('    %-6s     = %-9.2f bar (%.2e VMR)' % ('H2S', hf_row['H2S_bar'], hf_row['H2S_vmr']))
+    log.debug(
+        '    %-6s     = %-9.2f bar (%.2e VMR)' % ('H2S', hf_row['H2S_bar'], hf_row['H2S_vmr'])
+    )
 
     # calculate total atmosphere mass from sum of gas species
     hf_row['M_atm'] = 0.0
     for s in gas_list:
-        #log.info('species %s'%s)
-        #log.info('the mass of this species - if silicate should be zero: %s'%hf_row[s + '_kg_atm'])
-    #for s in vol_list:
+        # log.info('species %s'%s)
+        # log.info('the mass of this species - if silicate should be zero: %s'%hf_row[s + '_kg_atm'])
+        # for s in vol_list:
         hf_row['M_atm'] += hf_row[s + '_kg_atm']
 
     # Derive element mass ratios in atmosphere
@@ -427,7 +429,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
         else:
             # don't spam log with species of negligible abundance
             log.debug(_s)
-        #log.info('mass of this species: %s %4e'%s % hf_row[s + '_kg_atm'])
+        # log.info('mass of this species: %s %4e'%s % hf_row[s + '_kg_atm'])
 
     # print total pressure and mmw
     log.info('    total      = %-9.2f bar' % hf_row['P_surf'])
@@ -556,9 +558,7 @@ def run_desiccated(config: Config, hf_row: dict):
             hf_row[k] = 0.0
 
     if config.outgas.silicates:
-        compute_silicate_outgassing(config,hf_row)
-
-
+        compute_silicate_outgassing(config, hf_row)
 
 
 def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
@@ -576,34 +576,32 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
 
     gas_list = vol_list + config.outgas.vaplist
 
-    #reset all silicate masses to zero:
+    # reset all silicate masses to zero:
     for s in gas_list:
         if s in vol_list:
             continue
         else:
-            hf_row[s + '_bar'] =0.0
-            hf_row[s + '_vmr']=0.0
-            hf_row[s + '_kg_atm']=0.0
-            hf_row[s+ '_kg_tot']=0.0
+            hf_row[s + '_bar'] = 0.0
+            hf_row[s + '_vmr'] = 0.0
+            hf_row[s + '_kg_atm'] = 0.0
+            hf_row[s + '_kg_tot'] = 0.0
 
     for e in element_list:
-        if e in ['H','C','N','O','S','P']:
+        if e in ['H', 'C', 'N', 'O', 'S', 'P']:
             continue
         else:
-            hf_row[e + '_kg_atm']=0.0
-            hf_row[e+ '_kg_tot']=0.0
-
+            hf_row[e + '_kg_atm'] = 0.0
+            hf_row[e + '_kg_tot'] = 0.0
 
     run_outgassing(dirs, config, hf_row)
 
     if config.outgas.silicates:
-
-        #this needs to be commented out for runninglavatmos with the installation from github
-        #lavadir = os.environ.get("LAVATMOS_DIR")
-        #if lavadir:
-            #log.info('Lavatmos directory found: %s' % lavadir)
-        #else:
-            #log.warning('Lavatmos directory not found, did you set the LAVATMOS_DIR environment variable?')
+        # this needs to be commented out for runninglavatmos with the installation from github
+        # lavadir = os.environ.get("LAVATMOS_DIR")
+        # if lavadir:
+        # log.info('Lavatmos directory found: %s' % lavadir)
+        # else:
+        # log.warning('Lavatmos directory not found, did you set the LAVATMOS_DIR environment variable?')
         if hf_row['Phi_global'] > 0.00:
             compute_silicate_outgassing(dirs, config, hf_row)
         else:

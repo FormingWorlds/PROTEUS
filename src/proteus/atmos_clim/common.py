@@ -81,7 +81,7 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
         log.error(f"Could not find NetCDF file '{nc_fpath}'")
         return None
     ds = nc.Dataset(nc_fpath)
-    #print(ds.variables.keys())
+    # print(ds.variables.keys())
 
     p = np.array(ds.variables['p'][:])
     pl = np.array(ds.variables['pl'][:])
@@ -267,7 +267,7 @@ def get_oarr_from_parr(p_arr: list, o_arr: list, p_tgt: float) -> tuple:
     """
 
     p_close, idx = find_nearest(p_arr, p_tgt)
-    log.debug('pressure and corresponding radii:%.2e %.2e',float(p_close), float(o_arr[idx]))
+    log.debug('pressure and corresponding radii:%.2e %.2e', float(p_close), float(o_arr[idx]))
     return float(p_close), float(o_arr[idx])
 
 

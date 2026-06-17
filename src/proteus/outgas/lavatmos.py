@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 # Local packages and paths
-#sys.path.insert(1,'wkdir')
+# sys.path.insert(1,'wkdir')
 sys.path.append('/data3/leoni/PROTEUS/LavAtmos/')
 import lavatmos3
 
@@ -27,57 +27,61 @@ log = logging.getLogger('fwl.' + __name__)
 
 # species db class comes from HELIOS code Kitzmann+2017
 
+
 # Custom modules
 class paths_importer:
-
     def __init__(self, dirs=None):
-
-        '''
+        """
 
         Change the paths as needed. If you don't change the dir structure,
         it should be enough to only change the wkdir.
 
-        '''
+        """
 
         # General directory structure
         self.wkdir = '/data3/leoni/PROTEUS/LavAtmos/'
-        self.output_dir = self.wkdir+'output/'
-        self.input_dir = self.wkdir+'input/'
+        self.output_dir = self.wkdir + 'output/'
+        self.input_dir = self.wkdir + 'input/'
 
         # Inputs
-        self.lava_comps = self.input_dir+'lava_compositions/'
+        self.lava_comps = self.input_dir + 'lava_compositions/'
 
         # FastChem 3
-        self.fastchem3_dir = os.environ.get("FC_DIR")
-        print('fastchem directory:',self.fastchem3_dir)
+        self.fastchem3_dir = os.environ.get('FC_DIR')
+        print('fastchem directory:', self.fastchem3_dir)
 
         self.fastchem3_input = self.fastchem3_dir + '/input/'
         self.fastchem3_config_template = self.wkdir + 'input/fastchem3/config_template.input'
-        self.element_abundance_template = self.wkdir + 'input/fastchem3/element_abundances/element_abundances_template2.dat'
-        self.species_data_file  = self.fastchem3_dir + '/input/logK/logK.dat'
+        self.element_abundance_template = (
+            self.wkdir + 'input/fastchem3/element_abundances/element_abundances_template2.dat'
+        )
+        self.species_data_file = self.fastchem3_dir + '/input/logK/logK.dat'
         self.species_data_file_cond = self.fastchem3_dir + '/input/logK/logK_condensates.dat'
 
-
-        if dirs is not None: #create directory for output element abundances created by lavatmos if it does not exist yet
-            os.makedirs(dirs['output']+'/element_abundances/', exist_ok=True)
-            self.element_abundance_output=dirs['output']+'element_abundances/element_output_proteus.dat'
-            os.makedirs(dirs['output']+'/fastchem/', exist_ok=True)
-            self.fastchem3_output = dirs['output']+'fastchem/'
+        if (
+            dirs is not None
+        ):  # create directory for output element abundances created by lavatmos if it does not exist yet
+            os.makedirs(dirs['output'] + '/element_abundances/', exist_ok=True)
+            self.element_abundance_output = (
+                dirs['output'] + 'element_abundances/element_output_proteus.dat'
+            )
+            os.makedirs(dirs['output'] + '/fastchem/', exist_ok=True)
+            self.fastchem3_output = dirs['output'] + 'fastchem/'
         else:
             self.fastchem3_output = self.fastchem3_dir + '/output/'
-            self.element_abundance_output= self.fastchem3_input+'element_abundances/element_abundances_output.dat'
-        self.janafdata=self.wkdir+'data/'
+            self.element_abundance_output = (
+                self.fastchem3_input + 'element_abundances/element_abundances_output.dat'
+            )
+        self.janafdata = self.wkdir + 'data/'
 
 
 class set_magmaproperties:
-
-    def __init__(self,  config: Config, hf_row: dict, volatile_comp):
-
-        '''
+    def __init__(self, config: Config, hf_row: dict, volatile_comp):
+        """
 
         reading in properties from the output file
 
-        '''
+        """
 
         # General directory structure
         paths = paths_importer()
@@ -94,9 +98,8 @@ class set_magmaproperties:
         self.melt_fraction = 1.0
         self.volatile_comp = volatile_comp
         # Saving volatile comp to csv for so that LavAtmos can read it later
-        #need to find better way to read in volatile composition that from a parameter dictionary maybe ?
+        # need to find better way to read in volatile composition that from a parameter dictionary maybe ?
         print('volatile composition in set_magmaproperties', self.volatile_comp)
-
 
 
 class Species_db(object):
@@ -261,31 +264,27 @@ class FO2shift:
         """O'Neill and Eggins (2002) IW"""
         return 2 * (-244118 + 115.559 * T - 8.474 * T * np.log(T)) / (np.log(10) * 8.31441 * T)
 
-def read_in_element_fracs(input_path,time,parameters):
 
-
+def read_in_element_fracs(input_path, time, parameters):
     # read file (skip comment line, split on whitespace)
 
     df = pd.read_csv(
         input_path + parameters['elementfile'],
-        comment="#",      # ignore lines starting with #
-        sep=r"\s+",       # split on any whitespace
-        header=None
+        comment='#',  # ignore lines starting with #
+        sep=r'\s+',  # split on any whitespace
+        header=None,
     )
-    #shutil.copy(input_path + parameters['elementfile'], "/data3/leoni/PROTEUS/elementfiles/element_abundances_{}.dat".format(str(time)))
+    # shutil.copy(input_path + parameters['elementfile'], "/data3/leoni/PROTEUS/elementfiles/element_abundances_{}.dat".format(str(time)))
     # make first column the headers and second column the data row
     df = pd.DataFrame([df[1].values], columns=df[0].values)
 
-    df_frac = (10**(df - 12)).where(df != 0, 0)
-    #dataframe has been multiplied by 1e20, so need to renormalise to get real fractions
-    return df_frac/1e20
-
+    df_frac = (10 ** (df - 12)).where(df != 0, 0)
+    # dataframe has been multiplied by 1e20, so need to renormalise to get real fractions
+    return df_frac / 1e20
 
 
 def read_in_element_fracs_normalized(input_path):
-
-
-    '''constructs a dataframe with number element fractions of each element as computed by lavatmos
+    """constructs a dataframe with number element fractions of each element as computed by lavatmos
 
     input:
     - inputpath: path to the directory where the elemnt_abundance folder which contains the lavatmos output elements is located
@@ -295,39 +294,38 @@ def read_in_element_fracs_normalized(input_path):
     output:
     - dataframe with normalised element fractions ej/etot
 
-    '''
+    """
     # read file (skip comment line, split on whitespace)
 
     df = pd.read_csv(
         input_path,
-        comment="#",      # ignore lines starting with #
-        sep=r"\s+",
-        header=None       # split on any whitespace
+        comment='#',  # ignore lines starting with #
+        sep=r'\s+',
+        header=None,  # split on any whitespace
     )
 
-    #shutil.copy(input_path + parameters['elementfile'], "/data3/leoni/PROTEUS/elementfiles/element_abundances_{}.dat".format(str(time)))
+    # shutil.copy(input_path + parameters['elementfile'], "/data3/leoni/PROTEUS/elementfiles/element_abundances_{}.dat".format(str(time)))
     # make first column the headers and second column the data row
     abundance_dict = dict(zip(df[0], df[1]))
-    for key in  abundance_dict.keys():
+    for key in abundance_dict.keys():
         if abundance_dict[key] != 0.0:
-            abundance_dict[key]= 10**(abundance_dict[key] - 12) / 1e20
+            abundance_dict[key] = 10 ** (abundance_dict[key] - 12) / 1e20
         else:
-            abundance_dict[key]= 0.0
+            abundance_dict[key] = 0.0
 
     total = sum(abundance_dict.values())
 
-    #log.info('sum of all elements: %.8f'%total)
-    norm_dict= {k: v / total for k, v in abundance_dict.items()}
-    #if 'H' in norm_dict:
-        #norm_dict['H'] = max(norm_dict['H'],1e-20) #avoid that hydrogen has 0 abundance
-    #log.info('normalised dictionary %s'%norm_dict)
+    # log.info('sum of all elements: %.8f'%total)
+    norm_dict = {k: v / total for k, v in abundance_dict.items()}
+    # if 'H' in norm_dict:
+    # norm_dict['H'] = max(norm_dict['H'],1e-20) #avoid that hydrogen has 0 abundance
+    # log.info('normalised dictionary %s'%norm_dict)
 
     return norm_dict
 
 
 def run_lavatmos(dirs: dict, config: Config, hf_row: dict, volatile_fracs: dict):
-
-    '''
+    """
 
     This function effectively runs a bash command which calls
     singularity. Singularity opens the ThermoEngine docker and within
@@ -335,26 +333,28 @@ def run_lavatmos(dirs: dict, config: Config, hf_row: dict, volatile_fracs: dict)
     to a csv file. This csv file is read by this function and returned.
 
 
-    '''
+    """
     paths = paths_importer(dirs)
     melt_comp_path = paths.lava_comps
     Magma = set_magmaproperties(config, hf_row, volatile_fracs)
 
     # Import melt composition
-    melt_comp_fname = melt_comp_path + Magma.melt_comp_name +'.csv'
+    melt_comp_fname = melt_comp_path + Magma.melt_comp_name + '.csv'
     print(f'Magma composition read from: {melt_comp_fname}')
-    melt_comp_df = pd.read_csv(melt_comp_fname,names=['spec','abund'])
+    melt_comp_df = pd.read_csv(melt_comp_fname, names=['spec', 'abund'])
     melt_comp = {}
     for i in melt_comp_df.index:
         melt_comp[melt_comp_df['spec'].loc[i]] = float(melt_comp_df['abund'].loc[i])
 
     print(f'Volatile composition used to run lavatmos: {volatile_fracs}')
     system = lavatmos3.melt_vapor_system(paths)
-    lavatmos_output = system.vaporise(Magma.T_surf, Magma.P_volatile, melt_comp, volatile_fracs, Magma.melt_fraction)
+    lavatmos_output = system.vaporise(
+        Magma.T_surf, Magma.P_volatile, melt_comp, volatile_fracs, Magma.melt_fraction
+    )
 
     # Save results
     output_name = f'{Magma.run_name}.csv'
-    lavatmos_output.to_csv(paths.output_dir+output_name)
+    lavatmos_output.to_csv(paths.output_dir + output_name)
 
 
 def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
@@ -374,8 +374,8 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
     import os
 
     import numpy as np
-    paths = paths_importer(dirs)
 
+    paths = paths_importer(dirs)
 
     log.info('computing siicate outgassing with lavatmos')
     # set element fractions in atmosphere for lavatmos run
@@ -383,39 +383,37 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
 
     # lavatmos takes in the abudance fractions of element not mass fractions so divide by atomic number
 
-    molfracs={}
-    nfrac={'P': 0.0}
-    total_mols=0.0
+    molfracs = {}
+    nfrac = {'P': 0.0}
+    total_mols = 0.0
     for e in input_eles:
-       molfracs[e]= hf_row[e + '_kg_atm']/species_lib[e].weight
-       total_mols+= molfracs[e]
+        molfracs[e] = hf_row[e + '_kg_atm'] / species_lib[e].weight
+        total_mols += molfracs[e]
     for e in input_eles:
         if total_mols > 0:
-            if e=='H':
-                print('hydrogen mol fraction is: %.2e'%molfracs['H'])
-                #nfrac[e] = max(molfracs[e],1e-6) #avoid that hydrogen has 0 abundance
-                nfrac[e] = max(molfracs[e]/total_mols,1e-9)
-                print('hydrogenfraction is: %.2e'%nfrac['H'])
+            if e == 'H':
+                print('hydrogen mol fraction is: %.2e' % molfracs['H'])
+                # nfrac[e] = max(molfracs[e],1e-6) #avoid that hydrogen has 0 abundance
+                nfrac[e] = max(molfracs[e] / total_mols, 1e-9)
+                print('hydrogenfraction is: %.2e' % nfrac['H'])
             else:
-                nfrac[e]= molfracs[e]/total_mols
+                nfrac[e] = molfracs[e] / total_mols
         else:
-            if e=='H':
+            if e == 'H':
                 nfrac[e] = 1e-9
             else:
                 nfrac[e] = 0.0
-    log.info('volatile element fractions going as input to lavatmos : %s',nfrac)
-    log.info('volatile pressure given to lavatmos : %.2e',hf_row['P_surf'])
+    log.info('volatile element fractions going as input to lavatmos : %s', nfrac)
+    log.info('volatile pressure given to lavatmos : %.2e', hf_row['P_surf'])
 
+    # running lavatmos
+    run_lavatmos(dirs, config, hf_row, nfrac)
 
+    # convert the element abundances from lavatmos file to element fractions, normalized to unity
+    element_fracs = read_in_element_fracs_normalized(paths.element_abundance_output)
+    # elementfile = paths.element_abundance_output
 
-    #running lavatmos
-    run_lavatmos(dirs,config, hf_row, nfrac)
-
-    #convert the element abundances from lavatmos file to element fractions, normalized to unity
-    element_fracs=read_in_element_fracs_normalized(paths.element_abundance_output)
-    #elementfile = paths.element_abundance_output
-
-    log.info('element fraction after running lavatmos: %s'%element_fracs)
+    log.info('element fraction after running lavatmos: %s' % element_fracs)
     # read in boa chemistry from last iteration of fastchem and lavatmos
     output_fc = paths.fastchem3_output
     if os.path.exists(output_fc):
@@ -423,103 +421,123 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
     else:
         raise RuntimeError('cannot find fastchem output from lavatmos loop!')
 
-
     # update abundances in output file for next calliope run
     new_atmos_abundances = pd.read_csv(mmr_path, sep=r'\s+')
-    #make sure that the column names are consistent with the rest of the code
+    # make sure that the column names are consistent with the rest of the code
     if '#p(bar)' in new_atmos_abundances.columns:
-            new_atmos_abundances.rename(columns={'#p(bar)': 'Pbar'}, inplace=True)
+        new_atmos_abundances.rename(columns={'#p(bar)': 'Pbar'}, inplace=True)
     if 'm(u)' in new_atmos_abundances.columns:
-            new_atmos_abundances.rename(columns={'m(u)': 'mu'}, inplace=True)
+        new_atmos_abundances.rename(columns={'m(u)': 'mu'}, inplace=True)
 
-    print('new atmospheric abundances after running lavatmos: %s'%new_atmos_abundances.columns.tolist())
+    print(
+        'new atmospheric abundances after running lavatmos: %s'
+        % new_atmos_abundances.columns.tolist()
+    )
     mu_outgassed = new_atmos_abundances['mu'][0]
     # compute density for the previous run with calliope output from hf_row:
     kg_per_particle = hf_row['atm_kg_per_mol'] / particles_per_mol
 
     # hf_row['P_surf'] is in bar; convert to Pascals for use in the ideal gas law
     # 1bar = 100 kPa
-    P_surf_kPa = hf_row['P_surf'] * 100 #convert to kgPa
+    P_surf_kPa = hf_row['P_surf'] * 100  # convert to kgPa
     rho_old = kg_per_particle * P_surf_kPa / (kB * hf_row['T_magma'])
     M_atmo_old = hf_row['M_atm']
 
-    #log.info('old atmospheric mass:%.2e'%M_atmo_old)
-    #log.debug('old atmospheric density:%.4f'%rho_old)
-    #log.info('old atmospheric pressure:%.4f'%hf_row['P_surf'])
-    #log.debug('old mass per particle :%.4e'%kg_per_particle)
+    # log.info('old atmospheric mass:%.2e'%M_atmo_old)
+    # log.debug('old atmospheric density:%.4f'%rho_old)
+    # log.info('old atmospheric pressure:%.4f'%hf_row['P_surf'])
+    # log.debug('old mass per particle :%.4e'%kg_per_particle)
 
     # rho of armosphere after lavatmos
     # n=rho/mu*mp
     # 1bar = 100 kPa
-    kg_pp_new =  mu_outgassed * mp
-   # log.debug('new mass per particle :%.4e'%kg_pp_new)
-    P_new_kPa = new_atmos_abundances['Pbar'][0] * 100 #convert pressure to cgs
-    #log.info('atmospheric pressure :%.2e'%new_atmos_abundances['Pbar'][0])
-    rho_new = kg_pp_new * P_new_kPa / (kB * hf_row['T_magma']) # convert pressure in cgs to kg !
-    #log.debug('new atmospheric density:%.4f'%rho_new)
+    kg_pp_new = mu_outgassed * mp
+    # log.debug('new mass per particle :%.4e'%kg_pp_new)
+    P_new_kPa = new_atmos_abundances['Pbar'][0] * 100  # convert pressure to cgs
+    # log.info('atmospheric pressure :%.2e'%new_atmos_abundances['Pbar'][0])
+    rho_new = (
+        kg_pp_new * P_new_kPa / (kB * hf_row['T_magma'])
+    )  # convert pressure in cgs to kg !
+    # log.debug('new atmospheric density:%.4f'%rho_new)
 
-    if (M_atmo_old > 0.0):
-        M_atmo_new = (M_atmo_old / rho_old) * rho_new  # kg assuming volume does not change but only pressure
-    else: #compute shell volume and from there the new mass with the new density
-        Vshell= (4/3) * np.pi * (((hf_row['R_int']+ 1e2) **3) - ( hf_row['R_int'] **3)) #assume 1e2 m shell thickness (small shell)
+    if M_atmo_old > 0.0:
+        M_atmo_new = (
+            M_atmo_old / rho_old
+        ) * rho_new  # kg assuming volume does not change but only pressure
+    else:  # compute shell volume and from there the new mass with the new density
+        Vshell = (
+            (4 / 3) * np.pi * (((hf_row['R_int'] + 1e2) ** 3) - (hf_row['R_int'] ** 3))
+        )  # assume 1e2 m shell thickness (small shell)
         M_atmo_new = rho_new * Vshell
 
-
-    log.info('new atmospheric mass:%.2e'%M_atmo_new)
-    #log.info('new atmospheric density:%.4f'%rho_new)
-
+    log.info('new atmospheric mass:%.2e' % M_atmo_new)
+    # log.info('new atmospheric density:%.4f'%rho_new)
 
     gas_list = vol_list + config.outgas.vaplist
 
-
-
-    #update surface pressure:
+    # update surface pressure:
     hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
-    log.info('new surface pressure :%.4f'%hf_row['P_surf'])
+    log.info('new surface pressure :%.4f' % hf_row['P_surf'])
 
     for vol in gas_list:
         if vol in species_lib.keys():
-            vol_key= species_lib[vol].fc_name
+            vol_key = species_lib[vol].fc_name
         else:
-            vol_key= vol
+            vol_key = vol
         new_pp = new_atmos_abundances[vol_key][0] * new_atmos_abundances['Pbar'][0]
         hf_row[vol + '_vmr'] = new_atmos_abundances[vol_key][0]
         hf_row[vol + '_bar'] = new_pp
 
-        hf_row[vol + '_kg_atm'] = (new_atmos_abundances[vol_key][0] * M_atmo_new * species_lib[vol].weight / mu_outgassed )  # kg
-        hf_row[vol + '_kg_total'] = (hf_row[vol + '_kg_atm'] + hf_row[vol + '_kg_solid'] + hf_row[vol + '_kg_liquid'])
+        hf_row[vol + '_kg_atm'] = (
+            new_atmos_abundances[vol_key][0]
+            * M_atmo_new
+            * species_lib[vol].weight
+            / mu_outgassed
+        )  # kg
+        hf_row[vol + '_kg_total'] = (
+            hf_row[vol + '_kg_atm'] + hf_row[vol + '_kg_solid'] + hf_row[vol + '_kg_liquid']
+        )
 
-        hf_row[vol + '_mol_atm'] = hf_row[vol + '_kg_atm']/hf_row['atm_kg_per_mol']
-        hf_row[vol + '_mol_total'] = hf_row[vol + '_mol_atm'] + hf_row[vol + '_mol_solid'] + hf_row[vol + '_mol_liquid']
+        hf_row[vol + '_mol_atm'] = hf_row[vol + '_kg_atm'] / hf_row['atm_kg_per_mol']
+        hf_row[vol + '_mol_total'] = (
+            hf_row[vol + '_mol_atm'] + hf_row[vol + '_mol_solid'] + hf_row[vol + '_mol_liquid']
+        )
 
     log.info('H2 abundance now:%.3e', hf_row['H2_vmr'])
 
-
-
-    mmw_elements=0
+    mmw_elements = 0
     for e in element_fracs.keys():
         mmw_elements += element_fracs[e] * species_lib[e].weight
 
     for e in element_list:
-        log.info('element: %s,  %s',e, element_fracs[e])
-        log.debug('total mass of element before updating with lavatmos: %s',hf_row[e + '_kg_atm'])
-        if e in input_eles or e == 'O': # oxygen should not be added to M_silicates, since it is not counted in M_eles       #and e != 'O':
+        log.info('element: %s,  %s', e, element_fracs[e])
+        log.debug(
+            'total mass of element before updating with lavatmos: %s', hf_row[e + '_kg_atm']
+        )
+        if (
+            e in input_eles or e == 'O'
+        ):  # oxygen should not be added to M_silicates, since it is not counted in M_eles       #and e != 'O':
             log.debug('volatile species, no need to update from lavatmos')
             continue
         else:
-            hf_row[e + '_kg_atm'] = element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+            hf_row[e + '_kg_atm'] = (
+                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+            )
 
-            #don't update total element mass, other wise mass between mantle and atmosphere not conserved -> planet keeps increasing with time
-            hf_row[e + '_kg_total'] = (hf_row[e + '_kg_atm'] + hf_row[e + '_kg_solid'] + hf_row[e + '_kg_liquid'])
+            # don't update total element mass, other wise mass between mantle and atmosphere not conserved -> planet keeps increasing with time
+            hf_row[e + '_kg_total'] = (
+                hf_row[e + '_kg_atm'] + hf_row[e + '_kg_solid'] + hf_row[e + '_kg_liquid']
+            )
             hf_row['M_silicates'] += hf_row[e + '_kg_total']
 
-
     # saving new oxygen fugacity from lavatmos run, which is computed as log10 of the partial pressure of O2, to compare with the iron wustite buffer
-    log10_fO2 = np.log10(new_atmos_abundances['O2'][0]) + np.log10(new_atmos_abundances['Pbar'][0])  # is this really partical pressure ? Maybe this is actually abundances
+    log10_fO2 = np.log10(new_atmos_abundances['O2'][0]) + np.log10(
+        new_atmos_abundances['Pbar'][0]
+    )  # is this really partical pressure ? Maybe this is actually abundances
 
     fO2_shift = FO2shift()
     hf_row['fO2_shift_LavAtmos'] = fO2_shift(hf_row['T_magma'], log10_fO2)
 
-    log.debug('shift compared to iron wustite buffer: %.6f'%hf_row['fO2_shift_LavAtmos'])
+    log.debug('shift compared to iron wustite buffer: %.6f' % hf_row['fO2_shift_LavAtmos'])
 
-    #update  hf_row['atm_kg_per_mol']
+    # update  hf_row['atm_kg_per_mol']

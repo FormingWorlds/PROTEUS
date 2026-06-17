@@ -55,7 +55,7 @@ def plot_escape(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
         col = get_colour(e)
 
         # Plot planetary inventory of this element
-        y = np.array(hf_crop[e+"_kg_total"])/M_uval
+        y = np.array(hf_crop[e + '_kg_total']) / M_uval
         if y.ndim == 2:
             y = y[:, 0]
         ax0.plot(time, y, lw=_lw, ls='dotted', color=col)

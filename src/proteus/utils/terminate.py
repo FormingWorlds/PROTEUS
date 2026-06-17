@@ -111,6 +111,7 @@ def _check_escape(handler: Proteus) -> bool:
 
     return False
 
+
 def _check_evap(handler: Proteus) -> bool:
     log.debug('Check evaporation of planet')
 
@@ -124,6 +125,7 @@ def _check_evap(handler: Proteus) -> bool:
         return True
 
     return False
+
 
 # Planet has disintegrated
 def _check_separation(handler: Proteus) -> bool:
@@ -297,7 +299,6 @@ def check_termination(handler: Proteus) -> bool:
         # Spinning faster than breakup rate (centrifugal disruption)
         if handler.config.params.stop.disint.spin_enabled:
             finished = finished or _check_spinrate(handler)
-
 
     if handler.config.params.stop.evap.enabled:
         finished = finished or _check_evap(handler)

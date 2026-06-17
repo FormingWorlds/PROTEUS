@@ -1,6 +1,7 @@
 """
 Tests for proteus.escape module
 """
+
 from __future__ import annotations
 
 

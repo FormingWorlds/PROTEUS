@@ -482,7 +482,9 @@ class Proteus:
                 raise RuntimeError('Simulation is too short to be resumed')
 
             # Get last row from helpfile dataframe
-            self.hf_row = self.hf_all.iloc[-1].to_dict() #row is copied from last row so need to reset somehow all the silicate masses !
+            self.hf_row = (
+                self.hf_all.iloc[-1].to_dict()
+            )  # row is copied from last row so need to reset somehow all the silicate masses !
 
             for s in gas_list:
                 if s not in vol_list:
@@ -893,7 +895,7 @@ class Proteus:
             # that hard-fails if any future change re-introduces the
             # O-skipping asymmetry that could let M_atm exceed
             # M_planet at high H_ppmw.
-            assert_mass_conservation(self.config, self.hf_row,atol_frac=1e-1)
+            assert_mass_conservation(self.config, self.hf_row, atol_frac=1e-1)
 
             if _IT_TIMING_ENABLED:
                 _t_mod['outgas'] = time.perf_counter() - _t0_outgas

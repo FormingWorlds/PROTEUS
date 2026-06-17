@@ -304,6 +304,7 @@ class StopDisint:
     spin_enabled: bool = field(default=True)
     offset_spin: float = field(default=0)
 
+
 @define
 class StopEvap:
     """Parameters for evaporation stopping criteria.

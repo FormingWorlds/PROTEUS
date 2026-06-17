@@ -526,7 +526,6 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     # composition
     vol_dict = _construct_voldict(hf_row, dirs, config)
 
-
     # set condensation
     condensates = []
     if config.atmos_clim.agni.oceans or config.atmos_clim.agni.rainout:
@@ -552,7 +551,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
 
     # Boundary pressures
     if config.outgas.silicates:
-        p_surf=hf_row['P_surf'] + hf_row['P_silicates']
+        p_surf = hf_row['P_surf'] + hf_row['P_silicates']
     else:
         p_surf = hf_row['P_surf']
     p_top = config.atmos_clim.p_top

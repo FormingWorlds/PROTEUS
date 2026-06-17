@@ -39,7 +39,7 @@ def calculate_core_mass(hf_row: dict, config: Config):
     )
 
 
-def update_planet_mass(dirs: dict,hf_row: dict,config: Config):
+def update_planet_mass(dirs: dict, hf_row: dict, config: Config):
     """
     Calculate total planet mass, as sum of dry+wet parts.
     """
@@ -52,18 +52,16 @@ def update_planet_mass(dirs: dict,hf_row: dict,config: Config):
         hf_row['M_ele'] += hf_row[e + '_kg_total']
 
     if config.outgas.silicates:
-        hf_row['M_planet'] = hf_row['M_int'] + hf_row['M_ele'] - hf_row['M_silicates'] # subtracted outgassed silicates from interior mass
-        #with the additional tracking of M_silicates, this avoids too strong changes in M_int such that spider can still run.
-        #However this also means that the interior evolution still neglects the decrease in planetary mass.
+        hf_row['M_planet'] = (
+            hf_row['M_int'] + hf_row['M_ele'] - hf_row['M_silicates']
+        )  # subtracted outgassed silicates from interior mass
+        # with the additional tracking of M_silicates, this avoids too strong changes in M_int such that spider can still run.
+        # However this also means that the interior evolution still neglects the decrease in planetary mass.
         if hf_row['M_silicates'] > hf_row['M_int']:
             log.error('Outgassed silicate mass exceeds interior mass! Setting M_planet = M_ele')
             UpdateStatusfile(dirs, 29)
     else:
-        hf_row['M_planet'] = hf_row['M_int'] + hf_row['M_ele'] # Add to total planet mass
-
-
-
-
+        hf_row['M_planet'] = hf_row['M_int'] + hf_row['M_ele']  # Add to total planet mass
 
 
 def get_nlevb(config: Config):
@@ -121,7 +119,7 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
         calc_target_elemental_inventories(dirs, config, hf_row)
 
         # Get total planet mass
-        update_planet_mass(dirs,hf_row,config)
+        update_planet_mass(dirs, hf_row, config)
 
         # Calculate residual
         res = hf_row['M_planet'] - M_target
@@ -321,7 +319,7 @@ def run_interior(
     hf_row['M_int'] = hf_row['M_mantle'] + hf_row['M_core']
 
     # Update planet mass
-    update_planet_mass(dirs,hf_row, config)
+    update_planet_mass(dirs, hf_row, config)
 
     # Apply step limiters
     if hf_row['Time'] > 0:
