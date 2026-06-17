@@ -404,7 +404,6 @@ config_version = "3.0"
         thermal_expansivity       = 2.0e-5       # thermal expansivity [1/K]
         viscosity_model           = 2            # 1=constant | 2=aggregate smooth | 3=Arrhenius
         eta_constant              = 1.0e2        # constant viscosity for model 1 [Pa s]
-        transition_width          = 0.2          # width of viscosity transition (melt-fraction units)
         eta_solid_const           = 1.0e22       # solid-end viscosity for aggregate model [Pa s]
         eta_melt_const            = 1.0e2        # melt-end viscosity for aggregate model [Pa s]
         dynamic_viscosity         = 3.8e9        # Arrhenius solid reference dynamic viscosity [Pa s]
