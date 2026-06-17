@@ -334,7 +334,7 @@ def test_write_helpfile_to_csv_creates_file():
 
         # Write to CSV
         config = MagicMock()
-        fpath = WriteHelpfileToCSV(tmpdir, hf,config)
+        fpath = WriteHelpfileToCSV(tmpdir, hf, config)
 
         # Verify file exists
         assert os.path.exists(fpath)
@@ -352,7 +352,7 @@ def test_write_helpfile_to_csv_contains_data():
         hf = CreateHelpfileFromDict(row)
 
         config = MagicMock()
-        WriteHelpfileToCSV(tmpdir, hf,config)
+        WriteHelpfileToCSV(tmpdir, hf, config)
 
         # Read back and verify
         fpath = os.path.join(tmpdir, 'runtime_helpfile.csv')
@@ -371,14 +371,14 @@ def test_write_helpfile_to_csv_overwrites_existing():
         row1['Time'] = 1.0
         hf1 = CreateHelpfileFromDict(row1)
         config = MagicMock()
-        WriteHelpfileToCSV(tmpdir, hf1,config)
+        WriteHelpfileToCSV(tmpdir, hf1, config)
 
         # Write second helpfile (should overwrite)
         row2 = ZeroHelpfileRow()
         row2['Time'] = 2.0
         hf2 = CreateHelpfileFromDict(row2)
         config = MagicMock()
-        WriteHelpfileToCSV(tmpdir, hf2,config)
+        WriteHelpfileToCSV(tmpdir, hf2, config)
 
         # Verify only latest data is in file
         fpath = os.path.join(tmpdir, 'runtime_helpfile.csv')
@@ -401,7 +401,7 @@ def test_write_and_read_helpfile_roundtrip():
         row['F_int'] = 50.0
         config = MagicMock()
         hf_original = CreateHelpfileFromDict(row)
-        WriteHelpfileToCSV(tmpdir, hf_original,config)
+        WriteHelpfileToCSV(tmpdir, hf_original, config)
 
         # Read back
         hf_read = ReadHelpfileFromCSV(tmpdir)
@@ -446,7 +446,7 @@ def test_write_helpfile_multiple_rows_roundtrip():
 
         # Write and read
         config = MagicMock()
-        WriteHelpfileToCSV(tmpdir, hf,config)
+        WriteHelpfileToCSV(tmpdir, hf, config)
         hf_read = ReadHelpfileFromCSV(tmpdir)
 
         # Verify
@@ -717,8 +717,8 @@ def test_helpfile_scientific_notation_consistency():
         hf = CreateHelpfileFromDict(row)
 
         # Write and read back
-        config=config = MagicMock()
-        WriteHelpfileToCSV(tmpdir, hf,config)
+        config = config = MagicMock()
+        WriteHelpfileToCSV(tmpdir, hf, config)
         hf_read = ReadHelpfileFromCSV(tmpdir)
 
         assert hf_read['Time'].iloc[0] == pytest.approx(1.234e8, rel=1e-5)
