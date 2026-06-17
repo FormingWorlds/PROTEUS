@@ -34,7 +34,7 @@ config_version = "3.0"
     [params.out]
         # Output folder inside PROTEUS/output/. Set "auto" for a unique timestamped
         # name (run_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
-        path                  = "grid_9.0Mearth_tmax1e6_tmin1e3_5IW_0.016AU_cppmw1090.0_True"
+        path                  = "grid_9.0Mearth_tmax1e6_tmin1e3_-5IW_0.064AU_cppmw1090.0_True"
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 5            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
@@ -192,7 +192,7 @@ config_version = "3.0"
 
     # Orbit geometry and instellation
     instellation_method       = "distance"   # "distance" (semi-major axis) | "inst" (flux)
-    semimajoraxis             = 0.016          # semi-major axis [AU] (if method = "distance")
+    semimajoraxis             = 0.064          # semi-major axis [AU] (if method = "distance")
     instellationflux          = 1.0          # instellation [S_Earth] (if method = "inst")
     eccentricity              = 0.0          # orbital eccentricity
     zenith_angle              = 48.19        # characteristic zenith angle [degrees]
@@ -419,7 +419,7 @@ config_version = "3.0"
 # Outgassing (volatile partitioning between interior and atmosphere)
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = 5.0         # atmosphere/interior boundary oxidation state [log10(ΔIW)]
+    fO2_shift_IW    = -5.0         # atmosphere/interior boundary oxidation state [log10(ΔIW)]
 
     silicates = true
     vaplist = ["SiO", "SiO2", "Si", "Na", "K", "Ti", "TiO", "TiO2", "Mg", "MgO", "Al", "HAlO2", "SiH", "SiH4", "Fe", "FeO"]
