@@ -301,11 +301,6 @@ def check_termination(handler: Proteus) -> bool:
 
     if handler.config.params.stop.evap.enabled:
         finished = finished or _check_evap(handler)
-
-
-    # Maximum time reached
-    if handler.config.params.stop.time.enabled:
-        finished = finished or _check_maxtime(handler)
     # ------------------------
     # 3) Check resource-based criteria, set by user according to the
     #    available the machine / job. These are not physical criteria.

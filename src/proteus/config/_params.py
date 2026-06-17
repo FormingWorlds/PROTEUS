@@ -316,6 +316,7 @@ class StopEvap:
 
     enabled: bool = field(default=True)
 
+
 @define
 class StopClock:
     """Parameters for maximum clock runtime stopping criteria.

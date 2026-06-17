@@ -291,13 +291,9 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     # forbids the combination with O_mode = "ic_chemistry", where this
     # value would not be available.
     target = {}
-    #for e in element_list:
-        #if e != 'O':
-            #target[e] = hf_row[e + '_kg_total']
-    vol_elements=['H','C','N','S']
-    for e in vol_elements:
-        target[e] = hf_row[e + '_kg_total']
-
+    for e in element_list:
+        if e != 'O':
+            target[e] = hf_row[e + '_kg_total']
     if config.planet.fO2_source == 'from_O_budget':
         if 'O_kg_total' not in hf_row:
             raise ValueError(

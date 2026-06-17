@@ -76,7 +76,6 @@ def _resolve_oxygen_budget(config: Config, hf_row: dict) -> float | None:
             raise ValueError(f"Unknown O_mode '{elem.O_mode}'")
 
 
-
 def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
     """
     Calculate total amount of volatile elements in the planet.

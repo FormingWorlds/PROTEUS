@@ -979,7 +979,6 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict, config: Config):
     """
     log.debug('Extending helpfile with new row')
 
-
     # ── Energy-conservation cumulative bookkeeping ─────────────────────
     # Compute dE_predicted_cons_J / E_residual_cons_J / E_residual_cons_frac
     # / solver_residual_J for the new row from the prior-row state stored

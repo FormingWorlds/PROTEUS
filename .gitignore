@@ -288,7 +288,6 @@ tests/validation/
 src/proteus/_version.py
 
 # Claude AI files
-<<<<<<< HEAD
 CLAUDE.md
 .claude/
 
@@ -300,7 +299,8 @@ ThermoEngineLite
 ThermoEngine
 thermoenginelite
 thermoengine
-=======
+
+
 # Note: the repo-root CLAUDE.md is a tracked symlink to .github/copilot-instructions.md;
 # the .github/.claude/rules/ directory is tracked and shared across collaborators.
 # Personal session state (anything under the top-level .claude/ that is not the tracked
@@ -311,4 +311,3 @@ thermoengine
 # Editor / IDE
 .vscode/
 .pip-cache
->>>>>>> main

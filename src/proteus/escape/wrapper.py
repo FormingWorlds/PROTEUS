@@ -297,8 +297,6 @@ def calc_new_elements(
     # all elements proportionally rather than concentrated on H+C+N+S).
     res: dict[str, float] = {}
     for e in element_list:
-        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
-            continue
         res[e] = float(hf_row.get(f'{e}{key}', 0.0))
 
     log.debug('Total mass of hydrogen in atmosphere before escape: %e kg'%hf_row.get('H_kg_atm', 0.0))

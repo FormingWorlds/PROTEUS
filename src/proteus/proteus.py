@@ -505,6 +505,21 @@ class Proteus:
             )
             log.info('=' * 60)
 
+            # Resume banner: since proteus_00.log is opened in append mode on
+            # resume, every prior session's banner + output stays in the file
+            # with no visible marker of where the new session picks up. A
+            # self-contained three-line resume banner makes log triage
+            # (grep, tail -f, monitor cron filters) tractable. This is
+            # cosmetic only; no state is changed.
+            log.info('=' * 60)
+            log.info(
+                '=== RESUME at helpfile row %d, t = %.3e yr, Phi = %.4f',
+                len(self.hf_all),
+                float(self.hf_row.get('Time', 0.0)),
+                float(self.hf_row.get('Phi_global', float('nan'))),
+            )
+            log.info('=' * 60)
+
             # Check if the planet is desiccated
             self.desiccated = check_desiccation(self.config, self.hf_row)
 
@@ -858,6 +873,18 @@ class Proteus:
 
                 check_ic_oxygen_budget(self.config, self.hf_row)
 
+                # Issue #677 IC consistency check. Fires once at the first
+                # outgas call (subsequent init_stage calls find the sentinel
+                # set to -1 and skip). Compares the user-supplied O_budget
+                # against CALLIOPE's equilibrium-derived O_kg_total; hard-
+                # fails on >50% divergence. Skipped when O_mode='ic_chemistry'
+                # or when planet.fO2_source != 'user_constant' (a derived
+                # fO2 makes the user O budget authoritative, so there is
+                # no divergence).
+                from proteus.outgas.wrapper import check_ic_oxygen_budget
+
+                check_ic_oxygen_budget(self.config, self.hf_row)
+
             # Add mass of total volatile element mass (M_ele) to total mass of mantle+core
             update_planet_mass(self.hf_row)
 
@@ -1007,9 +1034,6 @@ class Proteus:
                 # first iter => generate new HF from dict
                 self.hf_all = CreateHelpfileFromDict(self.hf_row, self.config)
 
-            # Write helpfile to disk
-            if multiple(self.loops['total'], self.config.params.out.write_mod):
-                WriteHelpfileToCSV(self.directories['output'], self.hf_all, self.config)
             # Write helpfile to disk (gated by is_snapshot, which
             # combines write_mod iteration check and dt_write time check)
             if is_snapshot:
@@ -1070,6 +1094,22 @@ class Proteus:
         # Write conditions at the end of simulation
         log.info('Writing data')
         WriteHelpfileToCSV(self.directories['output'], self.hf_all, self.config)
+
+        # Ensure the final interior state is on disk so resume can find it.
+        # dt_write_rel may have suppressed the write on the last iteration.
+        if (
+            self.config.interior_energetics.module == 'aragog'
+            and self.interior_o.aragog_solver is not None
+        ):
+            from proteus.interior_energetics.aragog import AragogRunner
+
+            out = self.interior_o.aragog_solver.get_state()
+            AragogRunner._write_output_ncdf(
+                self.directories['output'],
+                self.hf_row['Time'],
+                out,
+                T_surf_coupled=self.hf_row.get('T_surf'),
+            )
 
         # Ensure the final interior state is on disk so resume can find it.
         # dt_write_rel may have suppressed the write on the last iteration.
