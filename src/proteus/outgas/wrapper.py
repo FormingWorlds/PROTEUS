@@ -7,9 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.outgas.common import expected_keys
-from proteus.outgas.lavatmos_v2 import compute_silicate_outgassing
-
-#from proteus.outgas.lavatmos import compute_silicate_outgassing
+from proteus.outgas.lavatmos import compute_silicate_outgassing
 from proteus.utils.constants import element_list, element_mmw, secs_per_year, vap_list, vol_list
 
 if TYPE_CHECKING:

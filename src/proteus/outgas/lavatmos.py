@@ -3,20 +3,26 @@ from __future__ import annotations
 
 import logging
 import os
-import subprocess
+import sys
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
-if TYPE_CHECKING:
-    from proteus.config import Config
-
+# Local packages and paths
+#sys.path.insert(1,'wkdir')
+sys.path.append('/data3/leoni/PROTEUS/LavAtmos/')
+import lavatmos3
 
 from proteus.utils.constants import element_list, vol_list
 
-log = logging.getLogger('fwl.' + __name__)
+sys.path.append(os.getcwd())
+wkdir = '/data3/leoni/PROTEUS/LavAtmos/'
+os.chdir(wkdir)
+if TYPE_CHECKING:
+    from proteus.config import Config
 
+log = logging.getLogger('fwl.' + __name__)
 
 
 # species db class comes from HELIOS code Kitzmann+2017
@@ -24,7 +30,7 @@ log = logging.getLogger('fwl.' + __name__)
 # Custom modules
 class paths_importer:
 
-    def __init__(self):
+    def __init__(self, dirs=None):
 
         '''
 
@@ -34,92 +40,63 @@ class paths_importer:
         '''
 
         # General directory structure
-        self.wkdir = '/data3/leoni/LavAtmos/'
-        self.output_dir = self.wkdir + 'output/'
-        self.input_dir = self.wkdir + 'input/'
+        self.wkdir = '/data3/leoni/PROTEUS/LavAtmos/'
+        self.output_dir = self.wkdir+'output/'
+        self.input_dir = self.wkdir+'input/'
 
         # Inputs
         self.lava_comps = self.input_dir+'lava_compositions/'
 
-        # LavAtmos
-        self.lavatmos_run = self.wkdir+'ThermoEngine/LavAtmos/lavatmos_run.py'
-
         # FastChem 3
-        self.fastchem3_dir = '/data3/leoni/LavAtmos/FastChem/fastchem3/'
-        #self.fastchem3_dir = self.wkdir+'FastChem/fastchem3/'
-        self.fastchem3_input = self.wkdir+'input/fastchem3/'
+        self.fastchem3_dir = os.environ.get("FC_DIR")
+        print('fastchem directory:',self.fastchem3_dir)
+
+        self.fastchem3_input = self.fastchem3_dir + '/input/'
         self.fastchem3_config_template = self.fastchem3_input+'config_template.input'
-        self.element_abundances3 = self.fastchem3_input+'element_abundances/'
-
-        # Singularity
-        self.singularity_cache = self.wkdir+'singularity/'
-
+        self.element_abundance_template = self.fastchem3_input+'element_abundances/element_abundances_template2.dat'
+        self.species_data_file  = self.fastchem3_dir + '/input/logK/logK.dat'
+        self.species_data_file_cond = self.fastchem3_dir + '/input/logK/logK_condensates.dat'
 
 
-class container_lavatmos():
+        if dirs is not None: #create directory for output element abundances created by lavatmos if it does not exist yet
+            os.makedirs(dirs['output']+'/element_abundances/', exist_ok=True)
+            self.element_abundance_output=dirs['output']+'element_abundances/element_output_proteus.dat'
+            os.makedirs(dirs['output']+'/fastchem/', exist_ok=True)
+            self.fastchem3_output = dirs['output']+'fastchem/'
+        else:
+            self.fastchem3_output = self.fastchem3_dir + '/output/'
+            self.element_abundance_output= self.fastchem3_input+'element_abundances/element_abundances_output.dat'
+        self.janafdata=self.wkdir+'data/'
 
-    def __init__(self, parameters):
+
+class set_magmaproperties:
+
+    def __init__(self,  config: Config, hf_row: dict, volatile_comp):
 
         '''
 
-        Imports parameters and paths needed for the LavAtmos run.
-
-        - Parameters are passed in dictionary format.
+        reading in properties from the output file
 
         '''
 
-        # Parameters
-        self.silicate_abundances = parameters['silicate_abundances']
-        self.P_volatile = parameters['P_volatile']
-        self.comp_melt_name = parameters['lava_comp']
-        self.volatile_comp = parameters['volatile_comp']
-        self.run_name = parameters['run_name']
-        self.melt_fraction = parameters['melt_fraction']
-        self.elementfile = parameters['elementfile']
-
-        # Paths
-        self.paths = paths_importer()
-
+        # General directory structure
+        paths = paths_importer()
+        # Import input
+        if hf_row['T_magma'] > 1500:
+            self.T_surf = hf_row['T_magma']
+        else:
+            self.T_surf = 1500
+        self.P_volatile = hf_row['P_surf']
+        self.melt_comp_name = 'BSE_palm'
+        self.output_dir = paths.output_dir
+        self.lavatmos_version = 'lavatmos3'
+        self.run_name = 'proteus_run'
+        self.melt_fraction = 1.0
+        self.volatile_comp = volatile_comp
         # Saving volatile comp to csv for so that LavAtmos can read it later
-        if parameters['volatile_comp'] != 'None':
-            comp_vol = pd.Series(parameters['volatile_comp'])
-            comp_vol.to_csv(f'{self.paths.input_dir}volatile_comp.csv',\
-                             header=['mole_fraction'])
+        #need to find better way to read in volatile composition that from a parameter dictionary maybe ?
+        print('volatile composition in set_magmaproperties', self.volatile_comp)
 
-
-    def run_lavatmos(self,T_boa):
-
-        '''
-
-        This function effectively runs a bash command which calls
-        singularity. Singularity opens the ThermoEngine docker and within
-        this runs lavatmos_run.py. When LavAtmos is done, it writes the results
-        to a csv file. This csv file is read by this function and returned.
-
-        - T_boa: T at the "bottom of atmosphere" for which to run LavAtmos [K].
-
-        '''
-
-        T_boa = int(T_boa)
-
-        os.system(f'export APPTAINER_CACHEDIR="{self.paths.singularity_cache}"')
-        os.system(f'singularity exec --bind {self.paths.wkdir} \
-                    {self.paths.wkdir}thermoengine_master.sif \
-                    python {self.paths.lavatmos_run} \
-                    {T_boa}\
-                    {self.P_volatile}\
-                    {self.comp_melt_name}\
-                    {self.paths.output_dir}\
-                    {self.silicate_abundances}\
-                    {self.run_name}\
-                    {self.melt_fraction}\
-                    {self.elementfile}')
-
-        # Read LavAtmos output
-        # partial_pressures = pd.read_csv(self.run_output_dir+'lavatmos/degassed_partial_pressure.csv',\
-        #                                 index_col=0)
-
-        # return partial_pressures
 
 
 class Species_db(object):
@@ -133,19 +110,19 @@ species_lib = {}
 
 # neutral molecules
 species_lib['CO2'] = Species_db(name='CO2', fc_name='C1O2', weight=44.01)
-species_lib['H2O'] = Species_db(name='H2O', fc_name='O1H2', weight=18.0153)
+species_lib['H2O'] = Species_db(name='H2O', fc_name='H2O1', weight=18.0153)
 species_lib['CO'] = Species_db(name='CO', fc_name='C1O1', weight=28.01)
 species_lib['O2'] = Species_db(name='O2', fc_name='O2', weight=31.9988)
 species_lib['CH4'] = Species_db(name='CH4', fc_name='C1H4', weight=16.04)
 species_lib['HCN'] = Species_db(name='HCN', fc_name='H1C1N1', weight=27.0253)
-species_lib['NH3'] = Species_db(name='NH3', fc_name='H3N', weight=17.031)
+species_lib['NH3'] = Species_db(name='NH3', fc_name='H3N1', weight=17.031)
 species_lib['H2S'] = Species_db(name='H2S', fc_name='H2S1', weight=34.081)
 species_lib['PH3'] = Species_db(name='PH3', fc_name='P1H3', weight=33.99758)
 species_lib['O3'] = Species_db(name='O3', fc_name='O3', weight=47.9982)
 species_lib['O3_IR'] = Species_db(name='O3_IR', fc_name='O3', weight=47.9982)
 species_lib['O3_UV'] = Species_db(name='O3_UV', fc_name='O3', weight=47.9982)
 species_lib['NO'] = Species_db(name='NO', fc_name='N1O1', weight=30.01)
-species_lib['SO2'] = Species_db(name='SO2', fc_name='O2S', weight=64.066)
+species_lib['SO2'] = Species_db(name='SO2', fc_name='O2S1', weight=64.066)
 species_lib['HS'] = Species_db(name='HS', fc_name='H1S1', weight=33.073)
 species_lib['H2'] = Species_db(name='H2', fc_name='H2', weight=2.01588)
 species_lib['N2'] = Species_db(name='N2', fc_name='N2', weight=28.0134)
@@ -171,34 +148,34 @@ species_lib['NO2'] = Species_db(name='NO2', fc_name='N1O2', weight=46.0055)
 species_lib['N2O'] = Species_db(name='N2O', fc_name='N2O1', weight=44.013)
 species_lib['HNO3'] = Species_db(name='HNO3', fc_name='H1N1O3', weight=63.01)
 species_lib['HNO2'] = Species_db(name='HNO2', fc_name='H1N1O2', weight=47.01)
-species_lib['SO3'] = Species_db(name='SO3', fc_name='S1O3', weight=80.066)
-species_lib['H2SO4'] = Species_db(name='H2SO4', fc_name='H2S1O4', weight=98.0785)
-species_lib['TiO'] = Species_db(name='TiO', fc_name='OTi', weight=63.866)
-species_lib['TiO2'] = Species_db(name='TiO2', fc_name='O2Ti', weight=79.87)
-species_lib['TiS'] = Species_db(name='TiS', fc_name='STi', weight=79.932)
-species_lib['TiH'] = Species_db(name='TiH', fc_name='HTi', weight=48.87)
-species_lib['VO'] = Species_db(name='VO', fc_name='OV', weight=66.9409)
-species_lib['SiO'] = Species_db(name='SiO', fc_name='OSi', weight=44.08)
+species_lib['SO3'] = Species_db(name='SO3', fc_name='O3S1', weight=80.066)
+species_lib['H2SO4'] = Species_db(name='H2SO4', fc_name='O4S1H2', weight=98.0785)
+species_lib['TiO'] = Species_db(name='TiO', fc_name='O1Ti1', weight=63.866)
+species_lib['TiO2'] = Species_db(name='TiO2', fc_name='O2Ti1', weight=79.87)
+species_lib['TiS'] = Species_db(name='TiS', fc_name='S1Ti1', weight=79.932)
+species_lib['TiH'] = Species_db(name='TiH', fc_name='H1Ti1', weight=48.87)
+species_lib['VO'] = Species_db(name='VO', fc_name='O1V1', weight=66.9409)
+species_lib['SiO'] = Species_db(name='SiO', fc_name='O1Si1', weight=44.08)
 species_lib['AlO'] = Species_db(name='AlO', fc_name='Al1O1', weight=42.98)
 species_lib['CaO'] = Species_db(name='CaO', fc_name='Ca1O1', weight=56.0774)
 species_lib['PO'] = Species_db(name='PO', fc_name='P1O1', weight=46.97316)
 species_lib['PO2'] = Species_db(name='PO2', fc_name='P1O2', weight=62.97256)
-species_lib['SiH'] = Species_db(name='SiH', fc_name='HSi', weight=29.09344)
-species_lib['CaH'] = Species_db(name='CaH', fc_name='Ca1H1', weight=41.085899)
-species_lib['AlH'] = Species_db(name='AlH', fc_name='Al1H1', weight=27.9889)
-species_lib['MgH'] = Species_db(name='MgH', fc_name='Mg1H1', weight=25.3129)
-species_lib['CrH'] = Species_db(name='CrH', fc_name='Cr1H1', weight=53.0040)
-species_lib['NaH'] = Species_db(name='NaH', fc_name='Na1H1', weight=23.99771)
-species_lib['SiO2'] = Species_db(name='SiO2', fc_name='O2Si', weight=60.08)
-species_lib['SiS'] = Species_db(name='SiS', fc_name='SSi', weight=60.15)
-species_lib['PS'] = Species_db(name='PS', fc_name='P1S1', weight=63.0388)
-species_lib['MgO'] = Species_db(name='MgO', fc_name='MgO', weight=40.30440)
-species_lib['CN'] = Species_db(name='CN', fc_name='C1N1', weight=26.0174)
-species_lib['H2CO'] = Species_db(name='H2CO', fc_name='H2C1O1', weight=30.027)
-species_lib['CH'] = Species_db(name='CH', fc_name='C1H1', weight=13.019)
-species_lib['PC'] = Species_db(name='PC', fc_name='P1C1', weight=42.984)
-species_lib['H2O2'] = Species_db(name='H2O2', fc_name='H2O2', weight=34.016)
-species_lib['NH'] = Species_db(name='NH', fc_name='N1H1', weight=15.015)
+species_lib['SiH'] = Species_db(name='SiH', fc_name='H1Si1', weight=29.09344)
+species_lib['CaH'] = Species_db(name='CaH', fc_name='H1Ca1', weight=41.085899)
+species_lib['AlH'] = Species_db(name='AlH', fc_name='H1Al1', weight=27.9889)
+species_lib['MgH'] = Species_db(name='MgH', fc_name='H1Mg1', weight=25.3129)
+species_lib['CrH'] = Species_db(name='CrH', fc_name='H1Cr1', weight=53.0040)
+species_lib['NaH'] = Species_db(name='NaH', fc_name='H1Na1', weight=23.99771)
+species_lib['SiO2'] = Species_db(name='SiO2', fc_name='O2Si1', weight=60.08)
+species_lib['SiS'] = Species_db(name='SiS', fc_name='S1Si1', weight=60.15)
+species_lib['PS'] = Species_db(name='PS', fc_name='S1P1', weight=63.0388)
+species_lib['MgO'] = Species_db(name='MgO', fc_name='Mg1O1', weight=40.30440)
+species_lib['CN'] = Species_db(name='CN', fc_name='N1C1', weight=26.0174)
+species_lib['H2CO'] = Species_db(name='H2CO', fc_name='O1C2H2', weight=30.027)
+species_lib['CH'] = Species_db(name='CH', fc_name='H1C1', weight=13.019)
+species_lib['PC'] = Species_db(name='PC', fc_name='C1P1', weight=42.984)
+species_lib['H2O2'] = Species_db(name='H2O2', fc_name='O2H2', weight=34.016)
+species_lib['NH'] = Species_db(name='NH', fc_name='H1N1', weight=15.015)
 species_lib['NS'] = Species_db(name='NS', fc_name='N1S1', weight=46.067)
 species_lib['PH'] = Species_db(name='PH', fc_name='P1H1', weight=31.9817)
 species_lib['PN'] = Species_db(name='PN', fc_name='P1N1', weight=44.98)
@@ -208,13 +185,13 @@ species_lib['CaOH'] = Species_db(name='CaOH', fc_name='Ca1O1H1', weight=69.096)
 species_lib['FeH'] = Species_db(name='FeH', fc_name='Fe1H1', weight=56.853)
 species_lib['FeO'] = Species_db(name='FeO', fc_name='Fe1O1', weight=71.844)
 species_lib['KOH'] = Species_db(name='KOH', fc_name='K1O1H1', weight=56.109)
-species_lib['SiH2'] = Species_db(name='SiH2', fc_name='H2Si', weight=30.10138)
-species_lib['SiH4'] = Species_db(name='SiH4', fc_name='H4Si', weight=64.177)
+species_lib['SiH2'] = Species_db(name='SiH2', fc_name='H2Si1', weight=30.10138)
+species_lib['SiH4'] = Species_db(name='SiH4', fc_name='H4Si1', weight=64.177)
 species_lib['N2O'] = Species_db(name='N2O', fc_name='N2O1', weight=44.014)
 species_lib['NaOH'] = Species_db(name='NaOH', fc_name='Na1O1H1', weight=54.004)
 species_lib['N2'] = Species_db(name='N2', fc_name='N2', weight=28.014)
 species_lib['NaO'] = Species_db(name='NaO', fc_name='Na1O1', weight=38.99)
-species_lib['SiN'] = Species_db(name='SiN', fc_name='NSi', weight=74.152)
+species_lib['SiN'] = Species_db(name='SiN', fc_name='Si1N1', weight=74.152)
 species_lib['AlN'] = Species_db(name='AlN', fc_name='Al1N1', weight=40.988)
 species_lib['CaS'] = Species_db(name='CaS', fc_name='Ca1S1', weight=72.143)
 species_lib['HO2'] = Species_db(name='HO2', fc_name='H1O2', weight=33.007)
@@ -222,10 +199,10 @@ species_lib['KO'] = Species_db(name='KO', fc_name='K1O1', weight=55.098)
 species_lib['MgS'] = Species_db(name='MgS', fc_name='Mg1S1', weight=56.37)
 species_lib['NaO'] = Species_db(name='NaO', fc_name='Na1O1', weight=38.989)
 species_lib['FeO2H2'] = Species_db(name='FeO2H2', fc_name='Fe1O2H2', weight=89.86)
-species_lib['HAlO2'] = Species_db(name='HAlO2', fc_name='AlHO2', weight=59.99)
+species_lib['HAlO2'] = Species_db(name='HAlO2', fc_name='Al1H1O2', weight=59.99)
 species_lib['Al2O'] = Species_db(name='Al2O', fc_name='Al2O1', weight=69.96)
 species_lib['AlS'] = Species_db(name='AlS', fc_name='Al1S1', weight=59.05)
-species_lib['AlOH'] = Species_db(name='AlOH', fc_name='H1Al1O1', weight=43.99)
+species_lib['AlOH'] = Species_db(name='AlOH', fc_name='Al1H1O1', weight=43.99)
 species_lib['MgO2H2'] = Species_db(name='MgO2H2', fc_name='Mg1O2H2', weight=58.32)
 species_lib['MgOH'] = Species_db(name='MgOH', fc_name='Mg1O1H1', weight=41.31)
 species_lib['CaO2H2'] = Species_db(name='CaO2H2', fc_name='Ca1O2H2', weight=74.09)
@@ -303,71 +280,9 @@ def read_in_element_fracs(input_path,time,parameters):
     #dataframe has been multiplied by 1e20, so need to renormalise to get real fractions
     return df_frac/1e20
 
-def edit_fastchem_configs(fastchem_dir,T,P,parameters):
-
-        '''copied from lavatmos3'''
 
 
-        # print(T,P)
-        # print(f'Running FastChem for single point at T: {T[0]} [K] and P: {P[0]:.3e} [bar]')
-         # Open parameter template file
-        tp_point_path = 'input/tp_point.dat'
-        #tp_file = open(self.fastchem_dir+tp_point_path, 'w')
-        tp_file = open(fastchem_dir+tp_point_path, 'w')
-        tp_file.write(f'P\tT\n{P[0]:.6e}\t{T[0]:.6e}')
-        tp_file.close()
-
-        '''
-        Editing config file
-        '''
-        # print('\nEditing FastChem config')
-
-
-        abundances_location = '/data3/leoni/LavAtmos/input/fastchem3/element_abundances3'
-        #fastchem_column_names = ['Pbar','Tk','n_<tot>','n_g','mu']
-
-        config_path = fastchem_dir+'input/config.input'
-        param_path = fastchem_dir+'input/parameters.dat'
-
-        # Config file
-        template_path_config = fastchem_dir+'input/config_template.input'
-
-        # Open parameter template file
-        template = open(template_path_config)
-        configurations = template.read()
-        template.close()
-
-        abundance_fname=abundances_location + parameters['elementfile']
-        #print(self.abundance_fname.replace('FastChem/',''))
-
-        fastchem_config = {
-            'param_path' : param_path,
-            'tp_grid_path' : tp_point_path,
-            'output_abundance_fname' : 'output/boa_chem.dat',
-            'element_abundance_file' : abundance_fname.replace('FastChem/','')
-            }
-
-        print('config file:',config_path)
-        for config in fastchem_config:
-            configurations = configurations.replace(f'<<{config}>>', fastchem_config[config])
-
-        # Save config file
-        config_file = open(config_path, 'w')
-        config_file.write(configurations)
-        config_file.close()
-
-
-def run_fastchem(fastchem_dir):
-        # Check call instead of call can catch the error
-        try:
-            subprocess.check_call(['./fastchem input/config.input'],\
-                                  shell=True,\
-                                  cwd=f'{fastchem_dir}/',stdout=subprocess.DEVNULL)
-        except subprocess.CalledProcessError:
-            print('\nFastChem cannot run properly.')
-            print(f'Try compile it by running make under {fastchem_dir}\n')
-
-def read_in_element_fracs_normalized(input_path,parameters):
+def read_in_element_fracs_normalized(input_path):
 
 
     '''constructs a dataframe with number element fractions of each element as computed by lavatmos
@@ -384,7 +299,7 @@ def read_in_element_fracs_normalized(input_path,parameters):
     # read file (skip comment line, split on whitespace)
 
     df = pd.read_csv(
-        input_path + parameters['elementfile'],
+        input_path,
         comment="#",      # ignore lines starting with #
         sep=r"\s+",
         header=None       # split on any whitespace
@@ -410,7 +325,39 @@ def read_in_element_fracs_normalized(input_path,parameters):
     return norm_dict
 
 
-def compute_silicate_outgassing(dirs:dict,config: Config, hf_row: dict):
+def run_lavatmos(dirs: dict, config: Config, hf_row: dict, volatile_fracs: dict):
+
+    '''
+
+    This function effectively runs a bash command which calls
+    singularity. Singularity opens the ThermoEngine docker and within
+    this runs lavatmos_run.py. When LavAtmos is done, it writes the results
+    to a csv file. This csv file is read by this function and returned.
+
+
+    '''
+    paths = paths_importer(dirs)
+    melt_comp_path = paths.lava_comps
+    Magma = set_magmaproperties(config, hf_row, volatile_fracs)
+
+    # Import melt composition
+    melt_comp_fname = melt_comp_path + Magma.melt_comp_name +'.csv'
+    print(f'Magma composition read from: {melt_comp_fname}')
+    melt_comp_df = pd.read_csv(melt_comp_fname,names=['spec','abund'])
+    melt_comp = {}
+    for i in melt_comp_df.index:
+        melt_comp[melt_comp_df['spec'].loc[i]] = float(melt_comp_df['abund'].loc[i])
+
+    print(f'Volatile composition used to run lavatmos: {volatile_fracs}')
+    system = lavatmos3.melt_vapor_system(paths)
+    lavatmos_output = system.vaporise(Magma.T_surf, Magma.P_volatile, melt_comp, volatile_fracs, Magma.melt_fraction)
+
+    # Save results
+    output_name = f'{Magma.run_name}.csv'
+    lavatmos_output.to_csv(paths.output_dir+output_name)
+
+
+def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
     """
 
     This function runs the Thermoengine module Lavatmos. Outgassing of refractory species
@@ -425,12 +372,9 @@ def compute_silicate_outgassing(dirs:dict,config: Config, hf_row: dict):
 
     """
     import os
-    import sys
 
     import numpy as np
-
-    sys.path.insert(1, '/data3/leoni/LavAtmos')
-    from lavatmos_goot_runner import container_lavatmos
+    paths = paths_importer(dirs)
 
 
     log.info('computing siicate outgassing with lavatmos')
@@ -464,107 +408,55 @@ def compute_silicate_outgassing(dirs:dict,config: Config, hf_row: dict):
 
 
 
-    parameters = {
-        # General parameters
-        'run_name': 'proteus_run',
-        # Melt parameters
-        'lava_comp': 'BSE_palm',
-        'silicate_abundances': 'lavatmos3',  # 'lavatmos1', 'lavatmos2', 'manual'
-        # Volatile parameters
-        'P_volatile': hf_row['P_surf'],  # bar
-        'oxygen_abundance': 'degassed',  # 'degassed', 'manual',
-        'volatile_comp': nfrac,
-        'melt_fraction': 1.0,
-        'elementfile': 'element_output_proteus.dat',
-        'P_silicates': hf_row['P_silicates']
-    }
+    #running lavatmos
+    run_lavatmos(dirs,config, hf_row, nfrac)
 
-
-    # make sure that surface temperature is at least 1500K, otherwise lavatmos crashes
-    if hf_row['T_magma'] > 1500:
-        Toutgas = hf_row['T_magma']
-    else:
-        Toutgas = 1500
-
-    #create a tiuny fake atmosphere for lavatmos to run ? - not sure if this is necessary
-
-
-    #paragraph below is for modelling speed purposes -> runs lavatmos 1 instead of lavatmos 3 to save time
-    if parameters['P_volatile'] < 1e-3:  #when lavatmos1 results start to become surface pressure dependent - not sure if this is
-        parameters['P_volatile']= 1e-3  #this avoids that at some point in lavatmos division by zero happens
-        #parameters['silicate_abundances'] = 'lavatmos1'
-        #parameters['P_volatile'] = hf_row['P_silicates'] # use pressure of silicates from last iteration as surface pressure
-        #log.info('volatile pressure below 1e-3bar, run lavatmos1 ')
-
-
-        #lavatmos_instance = container_lavatmos(parameters)
-        #lavatmos_instance.run_lavatmos(Toutgas)
-
-        #'Ehere also run fastchem!!!'
-
-        #fastchem_dir = '/data3/leoni/LavAtmos/FastChem/fastchem3/'
-        #edit_fastchem_configs(fastchem_dir,Toutgas, hf_row['P_silicates'])
-        #run_fastchem(fastchem_dir)
-
-    #else:
-
-
-    #system = lavatmos3.melt_vapor_system(paths)
-    #lavatmos_output = system.vaporise(parameters['T_surf'], parameters['P_volatile'], parameters['melt_comp'], parameters['volatile_comp'] ,parameters['elementfile'], parameters['melt_fraction'])
-    # Save results
-    #output_name = f'{parameters['run_name']}.csv'
-    #lavatmos_output.to_csv(paths.output_dir+output_name)
-
-    lavatmos_instance = container_lavatmos(parameters)
-    lavatmos_instance.run_lavatmos(Toutgas) #call run_lavatmos form the ocntainer class
     #convert the element abundances from lavatmos file to element fractions, normalized to unity
-    element_fracs=read_in_element_fracs_normalized(config.outgas.elementfile, parameters)
+    element_fracs=read_in_element_fracs_normalized(paths.element_abundance_output)
+    #elementfile = paths.element_abundance_output
 
     log.info('element fraction after running lavatmos: %s'%element_fracs)
     # read in boa chemistry from last iteration of fastchem and lavatmos
-    output_fc = config.outgas.fastchempath + 'output/'
+    output_fc = paths.fastchem3_output
     if os.path.exists(output_fc):
         mmr_path = os.path.join(output_fc, 'boa_chem.dat')
     else:
         raise RuntimeError('cannot find fastchem output from lavatmos loop!')
 
-    print('pouput path for fastchem output from lavatmos loop: %s'%mmr_path)
 
     # update abundances in output file for next calliope run
     new_atmos_abundances = pd.read_csv(mmr_path, sep=r'\s+')
-    mu_outgassed = new_atmos_abundances['mu'][0]
+    #make sure that the column names are consistent with the rest of the code
+    if '#p(bar)' in new_atmos_abundances.columns:
+            new_atmos_abundances.rename(columns={'#p(bar)': 'Pbar'}, inplace=True)
+    if 'm(u)' in new_atmos_abundances.columns:
+            new_atmos_abundances.rename(columns={'m(u)': 'mu'}, inplace=True)
 
+    print('new atmospheric abundances after running lavatmos: %s'%new_atmos_abundances.columns.tolist())
+    mu_outgassed = new_atmos_abundances['mu'][0]
     # compute density for the previous run with calliope output from hf_row:
     kg_per_particle = hf_row['atm_kg_per_mol'] / particles_per_mol
 
     # hf_row['P_surf'] is in bar; convert to Pascals for use in the ideal gas law
     # 1bar = 100 kPa
-    P_vol_kPa = hf_row['P_surf'] * 100 - hf_row['P_silicates']  #make sure that surface pressure is reset to only volatile  P_surf in helpfile is only Pvolatile
-    #before outgassed pressure is updated
-    rho_old = kg_per_particle * P_vol_kPa / (kB * hf_row['T_magma'])
+    P_surf_kPa = hf_row['P_surf'] * 100 #convert to kgPa
+    rho_old = kg_per_particle * P_surf_kPa / (kB * hf_row['T_magma'])
     M_atmo_old = hf_row['M_atm']
 
+    #log.info('old atmospheric mass:%.2e'%M_atmo_old)
+    #log.debug('old atmospheric density:%.4f'%rho_old)
+    #log.info('old atmospheric pressure:%.4f'%hf_row['P_surf'])
+    #log.debug('old mass per particle :%.4e'%kg_per_particle)
 
     # rho of armosphere after lavatmos
     # n=rho/mu*mp
     # 1bar = 100 kPa
     kg_pp_new =  mu_outgassed * mp
-
+   # log.debug('new mass per particle :%.4e'%kg_pp_new)
     P_new_kPa = new_atmos_abundances['Pbar'][0] * 100 #convert pressure to cgs
-    Poutgas =  new_atmos_abundances['Pbar'][0] - hf_row['P_surf'] #comput ehow much silicates are outgassed
-
-    # update outgassed preessure
-
-    log.info('pressure of outgassed species before updating, i.e. from last iteration: %.4e'%hf_row['P_silicates'])
-    hf_row['P_silicates'] = Poutgas
-
-    log.info('surface pressure after outgassing by lavatmos: %.4e'%hf_row['P_surf'])
-    log.info('make sure that the surface pressure of volatiles in  the next time step is not taken from this value!!')
-    #log.info('volatile surface pressure should stay the same: %.4e'%hf_row['P_surf'])
-    #log.info('new pressure of outgassed species after updating :%.4e'%hf_row['P_silicates'])
-
-
+    #log.info('atmospheric pressure :%.2e'%new_atmos_abundances['Pbar'][0])
     rho_new = kg_pp_new * P_new_kPa / (kB * hf_row['T_magma']) # convert pressure in cgs to kg !
+    #log.debug('new atmospheric density:%.4f'%rho_new)
 
     if (M_atmo_old > 0.0):
         M_atmo_new = (M_atmo_old / rho_old) * rho_new  # kg assuming volume does not change but only pressure
@@ -573,9 +465,12 @@ def compute_silicate_outgassing(dirs:dict,config: Config, hf_row: dict):
         M_atmo_new = rho_new * Vshell
 
 
+    log.info('new atmospheric mass:%.2e'%M_atmo_new)
+    #log.info('new atmospheric density:%.4f'%rho_new)
+
+
     gas_list = vol_list + config.outgas.vaplist
-    fc_names = [sp.fc_name for sp in species_lib.values()]
-    print('fc names', fc_names)
+
 
 
     #update surface pressure:
@@ -583,11 +478,8 @@ def compute_silicate_outgassing(dirs:dict,config: Config, hf_row: dict):
     log.info('new surface pressure :%.4f'%hf_row['P_surf'])
 
     for vol in gas_list:
-        if vol not in new_atmos_abundances.columns.tolist():
-            if vol in species_lib.keys():
-                vol_key= species_lib[vol].fc_name
-            else:
-                print('error !!!')
+        if vol in species_lib.keys():
+            vol_key= species_lib[vol].fc_name
         else:
             vol_key= vol
         new_pp = new_atmos_abundances[vol_key][0] * new_atmos_abundances['Pbar'][0]
@@ -629,3 +521,5 @@ def compute_silicate_outgassing(dirs:dict,config: Config, hf_row: dict):
     hf_row['fO2_shift_LavAtmos'] = fO2_shift(hf_row['T_magma'], log10_fO2)
 
     log.debug('shift compared to iron wustite buffer: %.6f'%hf_row['fO2_shift_LavAtmos'])
+
+    #update  hf_row['atm_kg_per_mol']
