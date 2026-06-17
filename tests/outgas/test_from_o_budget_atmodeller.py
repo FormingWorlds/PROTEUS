@@ -223,6 +223,48 @@ def test_legacy_path_keeps_4_element_mass_constraints_and_fO2_buffer():
     assert isinstance(fug_kwargs['O2_g'], IronWustiteBuffer)
 
 
+@pytest.mark.unit
+def test_wrapper_reuses_model_until_species_network_changes():
+    """The wrapper builds one EquilibriumModel across solves with the same active
+    species set, and a new one only when the network changes.
+
+    This is the regression surface of the JIT-recompile out-of-memory fix:
+    atmodeller caches its compiled solver on the model instance, so building a
+    fresh model every solve recompiled the solver until the job was killed.
+    Two solves with identical budgets must construct the model exactly once
+    (the second reuses the cached compiled solver). Dropping sulfur below the
+    mass threshold removes the S-bearing species, shrinks the network, changes
+    the cache signature, and must construct a second model. A regression that
+    rebuilt the model every call would show three constructions; one that never
+    rebuilt on a network change would show one.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    dirs = {'output': '/tmp/test'}
+    config = _make_from_o_budget_config()
+
+    builds = []
+
+    def _make_model(*args, **kwargs):
+        m = MagicMock()
+        m.output = _fake_atmodeller_output()
+        builds.append(m)
+        return m
+
+    with patch('atmodeller.EquilibriumModel', side_effect=_make_model):
+        # Two solves, identical active-species network -> built once, then reused.
+        calc_surface_pressures_atmodeller(dirs, config, _earth_hf_row(O_kg_total=1.0e22))
+        calc_surface_pressures_atmodeller(dirs, config, _earth_hf_row(O_kg_total=1.0e22))
+        assert len(builds) == 1  # reused; atmodeller's compiled solver not rebuilt
+
+        # Sulfur drops below the mass threshold -> S2/SO2/H2S leave the network
+        # -> different signature -> a new model (and a fresh solver) is built.
+        hf_no_s = _earth_hf_row(O_kg_total=1.0e22)
+        hf_no_s['S_kg_total'] = 0.0
+        calc_surface_pressures_atmodeller(dirs, config, hf_no_s)
+        assert len(builds) == 2  # network shrank -> rebuilt exactly once more
+
+
 # ---------------------------------------------------------------------------
 # Helpfile plumbing: fO2_shift_IW_derived comes from atmodeller's output
 # ---------------------------------------------------------------------------

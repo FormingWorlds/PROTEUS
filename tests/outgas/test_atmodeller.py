@@ -293,4 +293,11 @@ def test_model_cache_builds_once_per_species_network():
     # The original network is still cached (not evicted by the new one).
     assert _cached_model(sig_full, build) is m1
     assert len(builds) == 2
+
+    # Boundary: the empty species network (no active species) is a legal,
+    # distinct key and is cached like any other.
+    empty = _cached_model((), build)
+    assert empty is not m1
+    assert _cached_model((), build) is empty
+    assert len(builds) == 3
     _MODEL_CACHE.clear()

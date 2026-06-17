@@ -94,16 +94,28 @@ assert set(_VOLATILE_ELEMENT_STOICH) == set(vol_list), (
     f'extra={set(_VOLATILE_ELEMENT_STOICH) - set(vol_list)}'
 )
 
-# Cache of atmodeller EquilibriumModel instances, keyed by the species-network
-# signature (the tuple of species names). atmodeller compiles its JIT solver
-# lazily on the first solve and caches it on the model as ``_solver``, intending
-# the model to be reused across solves. Constructing a fresh model every
-# outgassing step discards that cache, so the solver is recompiled on every
-# solve; the per-solve LLVM compilation memory then accumulates until the job is
-# killed (out-of-memory) after a few dozen steps. Reusing one model per species
+# Cache of atmodeller EquilibriumModel instances. atmodeller compiles its JIT
+# solver lazily on the first solve and caches it on the model as ``_solver``,
+# intending the model to be reused across solves. Constructing a fresh model
+# every outgassing step discards that cache, so the solver is recompiled on
+# every solve; the per-solve LLVM compilation memory then accumulates until the
+# job is killed (out-of-memory) after a few dozen steps. Reusing one model per
 # signature compiles the solver once and makes every later solve with the same
-# network a cache hit. The cache holds at most one entry per distinct active
-# species set (a handful over a run as minor elements cross the mass threshold).
+# signature a cache hit.
+#
+# The key is everything the compiled solver's structure depends on: the species
+# network (tuple of species names), the fugacity source, and the solver mode.
+# Active-vs-inactive elements within a fixed network are handled by atmodeller
+# as traced (NaN-masked) values, not as shape, so they do not need to be in the
+# key; the species network shrinks in lockstep when an element drops below the
+# mass threshold, which changes the key. fugacity source and solver mode are
+# fixed per run, so within one run the key reduces to the species network; they
+# are included so a future in-process path that varied them could not reuse a
+# solver compiled for the other structure. The cached model also carries the
+# last solve's ``_output``; the wrapper reads it immediately after each solve in
+# the same call, so the shared instance is safe under that discipline. The cache
+# holds at most one entry per distinct active species set (a handful over a run
+# as minor elements cross the mass threshold).
 _MODEL_CACHE: dict = {}
 
 
@@ -339,11 +351,18 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         except Exception:
             pass  # Graphite not available in all versions
 
-    # Reuse one EquilibriumModel per species network so atmodeller's JIT solver
-    # (cached on the model as ._solver) is compiled once, not rebuilt every solve.
-    species_signature = tuple(s.name for s in species_list)
+    # Reuse one EquilibriumModel per (species network, fugacity source, solver
+    # mode) so atmodeller's JIT solver (cached on the model as ._solver) is
+    # compiled once, not rebuilt every solve. The latter two are fixed per run;
+    # they are in the key so a reused model can never carry a solver compiled for
+    # a different structure.
+    model_signature = (
+        tuple(s.name for s in species_list),
+        fO2_source,
+        atm_config.solver_mode,
+    )
     model = _cached_model(
-        species_signature,
+        model_signature,
         lambda: EquilibriumModel(SpeciesNetwork(tuple(species_list))),
     )
 
