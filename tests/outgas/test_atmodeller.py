@@ -209,3 +209,50 @@ def test_element_budget_survives_outgas_reservoir_escape():
     tgt_bug = calc_new_elements(bug_row, dt=dt, reservoir='outgas')
     assert tgt_bug['H'] == 0.0
     assert all(v == 0.0 for v in tgt_bug.values())
+
+
+@pytest.mark.physics_invariant
+def test_o2_endpoint_keeps_live_budget_no_false_desiccation():
+    """A desiccated-to-O2 atmosphere keeps a live budget (no false refusal).
+
+    The T1 desiccation endpoint: H/C/N/S deplete and the atmosphere becomes
+    nearly pure O2. O2 is pure oxygen, so the reservoir reconstruction maps its
+    whole mass to O_kg_atm. Escape's outgas reservoir then sees a non-empty O
+    reservoir and debits it normally; the per-element budget does NOT collapse to
+    zero, which is what previously zeroed the whole inventory and made the
+    desiccation gate read a spurious 'unexplained loss' on the O2 endpoint.
+    """
+    hf_row = {
+        'O2_kg_atm': 9.0e21,
+        'O2_kg_liquid': 0.0,
+        'O2_kg_solid': 0.0,
+        # H/C/N/S species depleted to trace amounts (below mass_thresh).
+        'H2O_kg_atm': 1.0e2,
+        'H2O_kg_liquid': 0.0,
+        'H2O_kg_solid': 0.0,
+        'esc_rate_total': 1.0e3,  # kg/s, modest escape
+    }
+    _populate_volatile_element_reservoirs(hf_row, element_mmw)
+
+    # O2 is pure oxygen, so its whole mass maps to the O atmospheric reservoir.
+    assert hf_row['O_kg_atm'] == pytest.approx(9.0e21, rel=1e-12)
+    # H is only the trace water, far below the O inventory (asymmetric endpoint).
+    assert hf_row['H_kg_atm'] < 1.0e2
+
+    # Whole-planet budget = reservoir sum; escape then debits without collapse.
+    for e in ('O', 'H'):
+        hf_row[f'{e}_kg_total'] = _element_total(hf_row, e)
+    tgt = calc_new_elements(hf_row, dt=1.0, reservoir='outgas')
+
+    # The O budget survives the escape call (does NOT collapse to zero); this is
+    # the mechanism that keeps the desiccation gate from a spurious refusal at
+    # the O2 endpoint.
+    assert tgt['O'] > 0.99 * 9.0e21
+
+    # Discrimination: the pre-fix state (no O reservoir) collapses the budget,
+    # which is the false-refusal / livelock the fix removes.
+    bug_row = dict(hf_row)
+    for e in element_mmw:
+        bug_row[f'{e}_kg_atm'] = 0.0
+    tgt_bug = calc_new_elements(bug_row, dt=1.0, reservoir='outgas')
+    assert tgt_bug['O'] == 0.0
