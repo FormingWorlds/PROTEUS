@@ -25,13 +25,13 @@ def test_create_init_rejects_small_sample_count():
     """``create_init`` rejects ``init_samps < 2`` because the GP needs at
     least two distinct samples for a meaningful prior fit.
     """
-    config = {'init_grid': 'none', 'init_samps': 1}
+    config = {'init_grid': 'none', 'init_samps': 1, 'output': 'out'}
     with pytest.raises(ValueError, match='must contain >1 sample'):
         init_mod.create_init(config)
     # Discrimination: init_samps=2 must clear the >1 guard. Without this
     # counter-case a regression that raised for every init_samps would
     # still pass the above.
-    config_ok = {'init_grid': 'none', 'init_samps': 0}
+    config_ok = {'init_grid': 'none', 'init_samps': 0, 'output': 'out'}
     with pytest.raises(ValueError, match='must contain >1 sample'):
         init_mod.create_init(config_ok)
 

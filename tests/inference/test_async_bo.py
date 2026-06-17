@@ -247,7 +247,7 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
             :n_workers
         ],
     )
-    monkeypatch.setattr(async_mod, 'get_kernel_w_prior', lambda **kwargs: object())
+    monkeypatch.setattr(async_mod, 'get_kernel', lambda **kwargs: object())
 
     D_final, logs, elapsed = async_mod.parallel_process(
         objective_builder=lambda **kwargs: lambda x: x,
