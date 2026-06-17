@@ -11,20 +11,13 @@ import pandas as pd
 
 # Local packages and paths
 # sys.path.insert(1,'wkdir')
-sys.path.append('/data3/leoni/PROTEUS/LavAtmos/')
-import lavatmos3
-
 from proteus.utils.constants import element_list, vol_list
 
 sys.path.append(os.getcwd())
-wkdir = '/data3/leoni/PROTEUS/LavAtmos/'
-os.chdir(wkdir)
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
-
-
 # species db class comes from HELIOS code Kitzmann+2017
 
 
@@ -39,7 +32,8 @@ class paths_importer:
         """
 
         # General directory structure
-        self.wkdir = '/data3/leoni/PROTEUS/LavAtmos/'
+        self.lavatmos_dir =os.environ.get('LAVA_DIR')
+        self.wkdir = os.environ.get('LAVA_DIR')
         self.output_dir = self.wkdir + 'output/'
         self.input_dir = self.wkdir + 'input/'
 
@@ -48,13 +42,12 @@ class paths_importer:
 
         # FastChem 3
         self.fastchem3_dir = os.environ.get('FC_DIR')
+
         print('fastchem directory:', self.fastchem3_dir)
 
-        self.fastchem3_input = self.fastchem3_dir + '/input/'
+        self.fastchem3_input = self.fastchem3_dir + 'input/'
         self.fastchem3_config_template = self.wkdir + 'input/fastchem3/config_template.input'
-        self.element_abundance_template = (
-            self.wkdir + 'input/fastchem3/element_abundances/element_abundances_template2.dat'
-        )
+        self.element_abundance_template = self.wkdir + 'input/fastchem3/element_abundances/element_abundances_template2.dat'
         self.species_data_file = self.fastchem3_dir + '/input/logK/logK.dat'
         self.species_data_file_cond = self.fastchem3_dir + '/input/logK/logK_condensates.dat'
 
@@ -335,6 +328,10 @@ def run_lavatmos(dirs: dict, config: Config, hf_row: dict, volatile_fracs: dict)
 
     """
     paths = paths_importer(dirs)
+    paths=paths_importer()
+    sys.path.append(paths.lavatmos_dir)
+    import lavatmos3
+
     melt_comp_path = paths.lava_comps
     Magma = set_magmaproperties(config, hf_row, volatile_fracs)
 
