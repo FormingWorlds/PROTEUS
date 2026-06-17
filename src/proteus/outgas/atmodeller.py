@@ -94,6 +94,41 @@ assert set(_VOLATILE_ELEMENT_STOICH) == set(vol_list), (
     f'extra={set(_VOLATILE_ELEMENT_STOICH) - set(vol_list)}'
 )
 
+# Cache of atmodeller EquilibriumModel instances, keyed by the species-network
+# signature (the tuple of species names). atmodeller compiles its JIT solver
+# lazily on the first solve and caches it on the model as ``_solver``, intending
+# the model to be reused across solves. Constructing a fresh model every
+# outgassing step discards that cache, so the solver is recompiled on every
+# solve; the per-solve LLVM compilation memory then accumulates until the job is
+# killed (out-of-memory) after a few dozen steps. Reusing one model per species
+# signature compiles the solver once and makes every later solve with the same
+# network a cache hit. The cache holds at most one entry per distinct active
+# species set (a handful over a run as minor elements cross the mass threshold).
+_MODEL_CACHE: dict = {}
+
+
+def _cached_model(signature: tuple, build):
+    """Return the cached model for ``signature``, building it once on a miss.
+
+    Parameters
+    ----------
+    signature : tuple
+        Hashable identity of the species network (the tuple of species names).
+    build : callable
+        Zero-argument factory that constructs the model; called only on a cache
+        miss so the JIT solver compiles once per distinct species network.
+
+    Returns
+    -------
+    object
+        The cached model instance for this signature.
+    """
+    model = _MODEL_CACHE.get(signature)
+    if model is None:
+        model = build()
+        _MODEL_CACHE[signature] = model
+    return model
+
 
 def _populate_volatile_element_reservoirs(hf_row: dict, element_mmw: dict) -> None:
     """Derive per-element reservoir masses from the per-species inventory.
@@ -304,8 +339,13 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         except Exception:
             pass  # Graphite not available in all versions
 
-    species = SpeciesNetwork(tuple(species_list))
-    model = EquilibriumModel(species)
+    # Reuse one EquilibriumModel per species network so atmodeller's JIT solver
+    # (cached on the model as ._solver) is compiled once, not rebuilt every solve.
+    species_signature = tuple(s.name for s in species_list)
+    model = _cached_model(
+        species_signature,
+        lambda: EquilibriumModel(SpeciesNetwork(tuple(species_list))),
+    )
 
     # Build planet state
     M_planet = float(hf_row.get('M_planet', 1.0 * M_earth))

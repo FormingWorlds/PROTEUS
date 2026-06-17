@@ -256,3 +256,41 @@ def test_o2_endpoint_keeps_live_budget_no_false_desiccation():
         bug_row[f'{e}_kg_atm'] = 0.0
     tgt_bug = calc_new_elements(bug_row, dt=1.0, reservoir='outgas')
     assert tgt_bug['O'] == 0.0
+
+
+def test_model_cache_builds_once_per_species_network():
+    """The solver model is built once per species network and then reused.
+
+    atmodeller compiles its JIT solver on first build and caches it on the model
+    instance; constructing a fresh model every solve forces a recompile whose
+    compilation memory accumulates to an out-of-memory kill after a few dozen
+    steps. The cache must return the identical instance for a repeated species
+    signature (built once) and build a fresh instance only when the active
+    network changes, while keeping earlier networks cached (not evicted).
+    """
+    from proteus.outgas.atmodeller import _MODEL_CACHE, _cached_model
+
+    _MODEL_CACHE.clear()
+    builds = []
+
+    def build():
+        builds.append(1)
+        return object()
+
+    sig_full = ('H2O', 'CO2', 'O2')
+    m1 = _cached_model(sig_full, build)
+    m2 = _cached_model(sig_full, build)  # repeat signature -> cache hit
+    assert m1 is m2  # same instance reused (solver not rebuilt)
+    assert len(builds) == 1  # built exactly once for the repeated network
+
+    # A reduced network (an element dropped below threshold) builds a distinct
+    # model; the build runs again only for the new signature.
+    sig_reduced = ('H2O', 'O2')
+    m3 = _cached_model(sig_reduced, build)
+    assert m3 is not m1
+    assert len(builds) == 2
+
+    # The original network is still cached (not evicted by the new one).
+    assert _cached_model(sig_full, build) is m1
+    assert len(builds) == 2
+    _MODEL_CACHE.clear()
