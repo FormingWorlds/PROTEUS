@@ -52,8 +52,8 @@ class paths_importer:
         print('fastchem directory:',self.fastchem3_dir)
 
         self.fastchem3_input = self.fastchem3_dir + '/input/'
-        self.fastchem3_config_template = self.fastchem3_input+'config_template.input'
-        self.element_abundance_template = self.fastchem3_input+'element_abundances/element_abundances_template2.dat'
+        self.fastchem3_config_template = self.wkdir + 'input/fastchem3/config_template.input'
+        self.element_abundance_template = self.wkdir + 'input/fastchem3/element_abundances/element_abundances_template2.dat'
         self.species_data_file  = self.fastchem3_dir + '/input/logK/logK.dat'
         self.species_data_file_cond = self.fastchem3_dir + '/input/logK/logK_condensates.dat'
 
