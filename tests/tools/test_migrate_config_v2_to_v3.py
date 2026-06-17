@@ -101,7 +101,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.boundary.Tsurf_event_change',
         'interior_energetics.boundary.activation_energy',
         'interior_energetics.boundary.atm_heat_capacity',
-        'interor_energetics.boundary.atm_heat_capacity_const',
+        'interior_energetics.boundary.atm_heat_capacity_const',
         'interior_energetics.boundary.atol',
         'interior_energetics.boundary.creep_parameter',
         'interior_energetics.boundary.critical_rayleigh_number',
