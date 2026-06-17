@@ -28,6 +28,7 @@ def _cfg(**kwargs: Any) -> Any:
         solid=ns(enabled=True, phi_crit=0.3),
         radeqm=ns(enabled=True, rtol=0.1, atol=1.0),
         escape=ns(enabled=True, p_stop=1.0),
+        evap=ns(enabled=True),
         disint=ns(
             enabled=True,
             roche_enabled=True,

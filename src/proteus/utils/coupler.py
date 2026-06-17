@@ -596,7 +596,7 @@ def CreateLockFile(output_dir: str):
     return keepalive_file
 
 
-def GetHelpfileKeys(config: Config):
+def GetHelpfileKeys(config=None):
     """
     Variables to be held in the helpfile.
 
@@ -857,7 +857,7 @@ def GetHelpfileKeys(config: Config):
     return keys
 
 
-def CreateHelpfileFromDict(d: dict, config: Config):
+def CreateHelpfileFromDict(d: dict, config=None):
     """
     Create helpfile to hold output variables.
     """
@@ -865,7 +865,7 @@ def CreateHelpfileFromDict(d: dict, config: Config):
     return pd.DataFrame([d], columns=GetHelpfileKeys(config), dtype=float)
 
 
-def ZeroHelpfileRow(config: Config):
+def ZeroHelpfileRow(config=None):
     """
     Get a dictionary with same keys as helpfile but with values of zero
     """

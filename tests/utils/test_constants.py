@@ -296,11 +296,11 @@ def test_vol_list_excludes_vap_list():
 
 
 def test_element_list_contains_expected_elements():
-    """element_list contains the 9 elements tracked by PROTEUS.
+    """element_list contains the 13 elements tracked by PROTEUS.
 
     At minimum: H, O, C, N, S.
     """
-    assert len(element_list) == 9
+    assert len(element_list) == 13
     for elem in ('H', 'O', 'C', 'N', 'S'):
         assert elem in element_list
 

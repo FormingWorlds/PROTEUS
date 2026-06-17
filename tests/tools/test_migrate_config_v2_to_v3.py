@@ -77,8 +77,7 @@ _DROP_PREFIXES = (
 # this set and not in OVERRIDES fails test_new_field_classified, forcing a
 # decision: pin it (OVERRIDES) or certify it neutral (add it here).
 _REVIEWED_NEUTRAL = frozenset(
-    {
-        'atmos_clim.aerosols_enabled',
+    {'atmos_clim.aerosols_enabled',
         'atmos_clim.agni.grey_opacity_lw',
         'atmos_clim.agni.grey_opacity_sw',
         'atmos_clim.agni.spectral_file',
@@ -204,8 +203,9 @@ _REVIEWED_NEUTRAL = frozenset(
         'planet.tcenter_init',
         'planet.tcmb_init',
         'planet.volatile_reservoir',
-    }
-)
+        'outgas.silicates',
+        'outgas.vaplist',
+        'params.stop.evap.enabled'})
 
 
 def test_map_completeness():
