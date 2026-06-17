@@ -32,7 +32,7 @@ class paths_importer:
         """
 
         # General directory structure
-        self.lavatmos_dir =os.environ.get('LAVA_DIR')
+        self.lavatmos_dir = os.environ.get('LAVA_DIR')
         self.wkdir = os.environ.get('LAVA_DIR')
         self.output_dir = self.wkdir + 'output/'
         self.input_dir = self.wkdir + 'input/'
@@ -47,7 +47,9 @@ class paths_importer:
 
         self.fastchem3_input = self.fastchem3_dir + 'input/'
         self.fastchem3_config_template = self.wkdir + 'input/fastchem3/config_template.input'
-        self.element_abundance_template = self.wkdir + 'input/fastchem3/element_abundances/element_abundances_template2.dat'
+        self.element_abundance_template = (
+            self.wkdir + 'input/fastchem3/element_abundances/element_abundances_template2.dat'
+        )
         self.species_data_file = self.fastchem3_dir + '/input/logK/logK.dat'
         self.species_data_file_cond = self.fastchem3_dir + '/input/logK/logK_condensates.dat'
 
@@ -69,7 +71,7 @@ class paths_importer:
 
 
 class set_magmaproperties:
-    def __init__(self, config: Config, hf_row: dict, volatile_comp,dirs: dict):
+    def __init__(self, config: Config, hf_row: dict, volatile_comp, dirs: dict):
         """
 
         reading in properties from the output file
