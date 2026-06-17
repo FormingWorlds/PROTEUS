@@ -320,7 +320,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party=["proteus"]
-known-third-party=["zalmoxis"]
+known-third-party=["aragog", "atmodeller", "zalmoxis"]
 required-imports = ["from __future__ import annotations"]
 
 [tool.ruff.format]
