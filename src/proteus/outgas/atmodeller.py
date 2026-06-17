@@ -351,21 +351,6 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         except Exception:
             pass  # Graphite not available in all versions
 
-    # Reuse one EquilibriumModel per (species network, fugacity source, solver
-    # mode) so atmodeller's JIT solver (cached on the model as ._solver) is
-    # compiled once, not rebuilt every solve. The latter two are fixed per run;
-    # they are in the key so a reused model can never carry a solver compiled for
-    # a different structure.
-    model_signature = (
-        tuple(s.name for s in species_list),
-        fO2_source,
-        atm_config.solver_mode,
-    )
-    model = _cached_model(
-        model_signature,
-        lambda: EquilibriumModel(SpeciesNetwork(tuple(species_list))),
-    )
-
     # Build planet state
     M_planet = float(hf_row.get('M_planet', 1.0 * M_earth))
     R_int = float(hf_row.get('R_int', 6.371e6))
@@ -450,6 +435,22 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         rtol=config.outgas.solver_rtol,
         max_steps=atm_config.solver_max_steps,
         multistart=atm_config.solver_multistart,
+    )
+
+    # Reuse one EquilibriumModel per (species network, fugacity source, solver
+    # mode) so atmodeller's JIT solver (cached on the model as ._solver) is
+    # compiled once, not rebuilt every solve. The latter two are fixed per run;
+    # they are in the key so a reused model can never carry a solver compiled for
+    # a different structure. Built here, after the skip/validation guards, so a
+    # skipped or rejected call never constructs a model.
+    model_signature = (
+        tuple(s.name for s in species_list),
+        fO2_source,
+        atm_config.solver_mode,
+    )
+    model = _cached_model(
+        model_signature,
+        lambda: EquilibriumModel(SpeciesNetwork(tuple(species_list))),
     )
 
     # Solve equilibrium
