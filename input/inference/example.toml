@@ -48,8 +48,8 @@ config_version = "3.0"
     [params.dt]
         minimum               = 1e3          # minimum time step [yr]
         minimum_rel           = 0.9         # minimum relative time step
-        maximum               = 2e8          # maximum time step [yr]
-        maximum_rel  = 0.7   # relative maximum time-step [dimensionless]
+        maximum               = 1e8          # maximum time step [yr]
+        maximum_rel  = 0.6   # relative maximum time-step [dimensionless]
         initial               = 2e2          # initial step size [yr]
         starspec              = 9e9          # recalculate stellar spectrum interval [yr]
         starinst              = 1e2          # recalculate instellation interval [yr]
@@ -160,8 +160,8 @@ config_version = "3.0"
         C_budget        = 2.5     # TR
 
 
-        N_mode                = "N/H"        # N/H mass ratio | ppmw | kg
-        N_budget              = 0.5          # unit defined by N_mode
+        N_mode                = "ppmw"        # N/H mass ratio | ppmw | kg
+        N_budget              = 2.01          # unit defined by N_mode
 
         S_mode                = "S/H"        # S/H mass ratio | ppmw | kg
 
@@ -506,7 +506,7 @@ config_version = "3.0"
     # Grid and spectral setup (shared by agni + janus)
     # spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
     # spectral_bands            = "16"         # wavenumber bands in k-table
-    num_levels                = 35           # vertical atmosphere levels (min 15)
+    num_levels                = 30           # vertical atmosphere levels (min 15)
     p_top                     = 1.0e-3       # top-of-atmosphere pressure [bar]
     p_obs                     = 1.0e-2         # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
