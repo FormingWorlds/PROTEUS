@@ -8,8 +8,6 @@ if TYPE_CHECKING:
 
 from proteus.utils.constants import element_list, vap_list, vol_list
 
-# from proteus.outgas.wrapper import get_gaslist
-
 
 def expected_keys(config: Config):
     copy_keys = [
