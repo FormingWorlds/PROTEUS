@@ -27,6 +27,7 @@ def expected_keys(config: Config):
         gas_list = vol_list + config.outgas.vaplist
     else:
         gas_list = vol_list + vap_list
+
     # gases
     for s in gas_list:
         copy_keys.append(f'{s}_bar')

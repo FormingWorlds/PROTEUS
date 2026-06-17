@@ -29,8 +29,6 @@ from proteus.utils.constants import (
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
 
-# from proteus.outgas.wrapper import get_gaslist
-
 if TYPE_CHECKING:
     from proteus.config import Config
 
