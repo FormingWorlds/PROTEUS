@@ -116,8 +116,8 @@ config_version = "3.0"
 
     # THE_PLANETS
     # mass_tot     = 3.0   # SN
-    #  mass_tot     = 2.0   # SE
-    mass_tot     = 1.1   # TR
+    #  mass_tot     = 1.8   # SE
+    mass_tot     = 1.0   # TR
 
     # Initial temperature profile
     temperature_mode          = "adiabatic"  # default; other modes: isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
@@ -148,16 +148,16 @@ config_version = "3.0"
         H_mode                = "ppmw"     # oceans | ppmw | kg
 
         # THE_PLANETS
-        # H_budget      = 8e3 # SN
-        #  H_budget      = 6e3  # SE
+        # H_budget      = 1e4 # SN
+        #  H_budget      = 8e3  # SE
         H_budget      = 2e3   # TR
 
         C_mode                = "C/H"        # C/H mass ratio | ppmw | kg
 
         # THE_PLANETS
         # C_budget      = 0.5       # SN
-        #  C_budget      = 1.0     # SE
-        C_budget        = 2.0     # TR
+        #  C_budget      = 0.5     # SE
+        C_budget        = 2.5     # TR
 
 
         N_mode                = "N/H"        # N/H mass ratio | ppmw | kg
@@ -167,8 +167,8 @@ config_version = "3.0"
 
         # THE_PLANETS
         # S_budget      = 0.8      # SN
-        #  S_budget      = 3.0    # SE
-        S_budget      = 1.5    # TR
+        # S_budget      = 2.0    # SE
+        S_budget      = 0.8    # TR
 
         use_metallicity       = false        # scale C/N/S from solar metallicity; replaces C/N/S budgets
         metallicity           = 1000         # metallicity relative to solar [by mass]
@@ -506,9 +506,9 @@ config_version = "3.0"
     # Grid and spectral setup (shared by agni + janus)
     # spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
     # spectral_bands            = "16"         # wavenumber bands in k-table
-    num_levels                = 32           # vertical atmosphere levels (min 15)
+    num_levels                = 35           # vertical atmosphere levels (min 15)
     p_top                     = 1.0e-3       # top-of-atmosphere pressure [bar]
-    p_obs                     = 0.02         # observation pressure level [bar] (transit radius)
+    p_obs                     = 1.0e-2         # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
     # Radiative properties (agni, janus only)
