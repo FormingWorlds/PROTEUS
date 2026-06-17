@@ -4414,7 +4414,23 @@ def test_resume_settling_guard_allows_resolve_while_structure_moving():
     with s as mock_solver, ns, cp:
         update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
 
+    # Structure still moving (dR two orders of magnitude above tol) -> proceed.
     mock_solver.assert_called_once()
+
+    # Discrimination control: identical armed window and dT/T trigger, but a
+    # CONVERGED dR (below tol) -> the guard suppresses. Flipping only dR flips
+    # the outcome, proving the guard keys on dR, not merely on the window.
+    dirs_ctrl = _mock_dirs()
+    dirs_ctrl['_resume_struct_settle_loops'] = 50
+    dirs_ctrl['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_ctrl:
+        update_structure_from_interior(
+            dirs_ctrl, config, hf_row, _mock_interior_o(), lt, lT, lP
+        )
+    mock_ctrl.assert_not_called()
 
 
 @pytest.mark.unit
@@ -4491,13 +4507,16 @@ def test_resume_settling_guard_backstop_tracks_active_dphi_trigger():
     # converged structure is NOT re-solved: this is the dead-zone fix.
     mock_solver.assert_not_called()
     assert result == (lt, 3000.0, last_Phi)
-    # Discrimination: 0.03 is strictly above the previous fixed 0.02 backstop,
-    # so the old logic would have re-solved here; the config-tied backstop
-    # (0.05) is what makes the suppression correct.
-    assert 0.03 > 0.02
-    assert 0.03 < min(
+    # Discrimination tied to the live config: the suppressed Phi move is a
+    # real, non-negligible change (0.03) that nonetheless sits below the
+    # effective backstop, which tracks update_dphi_abs rather than a fixed
+    # value. A guard with a fixed 0.02 backstop would have re-solved here.
+    dphi_suppressed = hf_row['Phi_global'] - last_Phi
+    effective_backstop = min(
         config.interior_struct.zalmoxis.update_dphi_abs, _RESUME_STRUCT_DPHI_BACKSTOP_CAP
     )
+    assert effective_backstop == pytest.approx(0.05, rel=1e-12)
+    assert dphi_suppressed < effective_backstop
 
 
 @pytest.mark.unit
@@ -4518,7 +4537,23 @@ def test_resume_settling_guard_disengages_when_window_expired():
     with s as mock_solver, ns, cp:
         update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
 
+    # Window exhausted (0) -> guard disengaged -> re-solve proceeds normally.
     mock_solver.assert_called_once()
+
+    # Discrimination control: identical converged state but the window still
+    # armed (50) -> the guard suppresses. Flipping only the window counter
+    # flips the outcome, isolating window expiry as the cause.
+    dirs_ctrl = _mock_dirs()
+    dirs_ctrl['_resume_struct_settle_loops'] = 50
+    dirs_ctrl['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_ctrl:
+        update_structure_from_interior(
+            dirs_ctrl, config, hf_row, _mock_interior_o(), lt, lT, lP
+        )
+    mock_ctrl.assert_not_called()
 
 
 @pytest.mark.unit
