@@ -56,7 +56,7 @@ class paths_importer:
         ):  # create directory for output element abundances created by lavatmos if it does not exist yet
             os.makedirs(dirs['output'] + '/element_abundances/', exist_ok=True)
             self.element_abundance_output = (
-                dirs['output'] + 'element_abundances/element_output_proteus.dat'
+                dirs['output'] + 'element_abundances/element_abundances_output.dat'
             )
             os.makedirs(dirs['output'] + '/fastchem/', exist_ok=True)
             self.fastchem3_output = dirs['output'] + 'fastchem/'
@@ -69,7 +69,7 @@ class paths_importer:
 
 
 class set_magmaproperties:
-    def __init__(self, config: Config, hf_row: dict, volatile_comp):
+    def __init__(self, config: Config, hf_row: dict, volatile_comp,dirs: dict):
         """
 
         reading in properties from the output file
@@ -77,7 +77,7 @@ class set_magmaproperties:
         """
 
         # General directory structure
-        paths = paths_importer()
+        paths = paths_importer(dirs)
         # Import input
         if hf_row['T_magma'] > 1500:
             self.T_surf = hf_row['T_magma']
@@ -328,12 +328,11 @@ def run_lavatmos(dirs: dict, config: Config, hf_row: dict, volatile_fracs: dict)
 
     """
     paths = paths_importer(dirs)
-    paths=paths_importer()
     sys.path.append(paths.lavatmos_dir)
     import lavatmos3
 
     melt_comp_path = paths.lava_comps
-    Magma = set_magmaproperties(config, hf_row, volatile_fracs)
+    Magma = set_magmaproperties(config, hf_row, volatile_fracs, dirs)
 
     # Import melt composition
     melt_comp_fname = melt_comp_path + Magma.melt_comp_name + '.csv'
