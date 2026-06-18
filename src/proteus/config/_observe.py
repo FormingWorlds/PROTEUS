@@ -41,7 +41,7 @@ class Observe:
         Reference pressure for synthetic spectrum generation [bar].
     """
 
-    module: str = field(
+    module: str | None = field(
         default='none',
         validator=in_((None, 'petitRADTRANS')),
         converter=none_if_none,

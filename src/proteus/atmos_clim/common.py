@@ -85,7 +85,11 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     p = np.array(ds.variables['p'][:])
     pl = np.array(ds.variables['pl'][:])
 
-    g = np.array(ds.variables['gravity'][:])
+    if 'gravity' in ds.variables:
+        g = np.array(ds.variables['gravity'][:])
+    else:
+        log.warning("NetCDF file '%s' has no 'gravity' variable; using NaNs", nc_fpath)
+        g = np.full_like(p, np.nan, dtype=float)
 
     t = np.array(ds.variables['tmp'][:])
     tl = np.array(ds.variables['tmpl'][:])

@@ -236,6 +236,7 @@ def test_spectrum_wavelength_ordering_from_petitradtrans_output(monkeypatch):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
 def test_reference_pinned_transit_depth_from_vmr_normalization(monkeypatch):
     """Reference-pinned test: VMR normalization affects transit depth through
     mean molar mass, which should follow a predictable pattern.
@@ -248,13 +249,12 @@ def test_reference_pinned_transit_depth_from_vmr_normalization(monkeypatch):
     """
     mod = _import_backend(monkeypatch)
 
-    # H2/He mixture at reference ratios
+    # Use unnormalised VMR magnitudes (same ratio) so the normalization step is exercised.
     gases = ['H2', 'He']
     vmrs = [
-        np.array([0.85, 0.85, 0.85]),  # H2
-        np.array([0.15, 0.15, 0.15]),  # He
+        np.array([8.5, 8.5, 8.5]),  # H2
+        np.array([1.5, 1.5, 1.5]),  # He
     ]
-
     mass_fractions, mean_molar_masses = mod._vmrs_to_mass_fractions(gases, vmrs)
 
     # Reference calculation for H2/He 85/15
@@ -278,14 +278,11 @@ def test_reference_pinned_transit_depth_from_vmr_normalization(monkeypatch):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_reference_spectrum_rayleigh_dependence_vmr_composition(monkeypatch):
-    """Reference-pinned test: transit spectrum wavelength dependence should
-    follow λ^-4 for Rayleigh scattering in a molecular atmosphere.
+@pytest.mark.reference_pinned
+def test_reference_pinned_mean_molar_mass_increases_with_helium_vmr(monkeypatch):
+    """Reference-pinned: H2/He mean molar mass increases with He VMR.
 
-    Physics: For a pure H2/He atmosphere at constant pressure/temperature,
-    Rayleigh scattering cross-section scales as σ ∝ λ^-4, so transit depth
-    should increase toward shorter wavelengths. This test validates that the
-    VMR composition and mass fraction computation lead to expected spectral shapes.
+    Reference: Solar-like 85/15 gives M_mean ≈ 2.3 g/mol; 75/25 gives ≈ 2.5 g/mol.
     """
     mod = _import_backend(monkeypatch)
 
