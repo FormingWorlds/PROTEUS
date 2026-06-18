@@ -44,9 +44,9 @@ nav:
   - Explanations:
       - Scientific background:
           - Model description: Explanations/model.md
-          - Coupling loop: Explanations/coupling_loop.md
       - Software design:
           - Code architecture: Explanations/code_architecture.md
+          - Coupling loop: Explanations/coupling_loop.md
           - Dummy modules: Explanations/dummy_modules.md
           - Test framework: Explanations/test_framework.md
 
