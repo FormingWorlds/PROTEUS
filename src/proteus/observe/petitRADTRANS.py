@@ -44,8 +44,13 @@ def _get_input_data_path(input_data_path: str | None) -> str:
 
     import petitRADTRANS
 
-    package_dir = Path(petitRADTRANS.__file__).resolve().parent.parent
-    candidate = package_dir / 'input_data'
+    pkg_dir = Path(petitRADTRANS.__file__).resolve().parent
+    candidate = pkg_dir / 'input_data'
+    if candidate.is_dir():
+        return str(candidate)
+
+    # Editable checkout layout (repo root is one level above the package dir)
+    candidate = pkg_dir.parent / 'input_data'
     if candidate.is_dir():
         return str(candidate)
 
@@ -442,7 +447,7 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
     X = np.array(X).T
     log.debug('Writing transit depth spectrum')
     np.savetxt(
-        get_transit_fpath(outdir, source, 'observe'),
+        get_transit_fpath(outdir, source, 'synthesis'),
         X,
         delimiter='\t',
         fmt='%.8e',
@@ -562,9 +567,8 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
 
     # write file
     X = np.array(X).T
-    log.debug('Writing eclipse depth spectra')
     np.savetxt(
-        get_eclipse_fpath(outdir, source, 'observe'),
+        get_eclipse_fpath(outdir, source, 'synthesis'),
         X,
         delimiter='\t',
         fmt='%.8e',
