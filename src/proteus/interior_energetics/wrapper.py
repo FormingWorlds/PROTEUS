@@ -2204,8 +2204,20 @@ def update_structure_from_interior(
     # Composition change: check dissolved volatile fractions.
     # When the binodal or CALLIOPE changes how much H2/H2O is dissolved,
     # the mantle density profile shifts, requiring a structure update.
+    #
+    # The composition trigger is held off whenever the super-liquidus adiabat IC
+    # applies. A composition-driven re-solve regenerates the P-S EOS tables for
+    # the new composition and integrates them against a running-minimum radius
+    # set at the previous composition; the cross-table mismatch returns a
+    # spurious radius up-step that the monotonic-radius guard rejects, pinning
+    # the structure and stalling the coupled loop. Thermal (dT/T) and
+    # melt-fraction (Phi) triggers still drive the structure here and rebuild the
+    # density profile from the current dissolved-volatile fractions, but without
+    # the composition-keyed EOS regeneration, so they contract cleanly.
+    # Composition-driven structure coupling is otherwise not applied while this
+    # IC is in effect.
     comp_changed = False
-    if not triggered:
+    if not triggered and not _use_superliquidus_adiabat_ic(config):
         M_mantle = float(hf_row.get('M_mantle', 0.0))
         if M_mantle > 0:
             for species in ('H2O', 'H2'):
@@ -2728,6 +2740,10 @@ def update_structure_from_interior(
     # tables, (iii) bounds-check the cached _last_entropy against the
     # new [S_min, S_max] range. Dry runs do not need this; it is a
     # precondition for quantitative wet-run work.
+    #
+    # comp_changed is structurally False under the super-liquidus adiabat IC (the
+    # composition trigger that sets it is gated off above), so this regeneration
+    # is inert in that regime.
     if comp_changed and config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 

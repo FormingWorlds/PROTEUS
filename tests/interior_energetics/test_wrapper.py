@@ -322,6 +322,140 @@ def test_force_baseline_suppresses_composition_eos_regeneration():
 
 
 @pytest.mark.unit
+def test_composition_trigger_suppressed_under_superliquidus_ic():
+    """The composition (d_w) trigger is gated off under the super-liquidus IC.
+
+    A composition-driven re-solve in the super-liquidus regime integrates the
+    new-composition P-S tables against a running-minimum radius set at the
+    previous composition; the cross-table mismatch yields a spurious radius
+    up-step that the monotonic-radius guard rejects, pinning the structure. The
+    composition trigger is held off while the super-liquidus adiabat IC applies,
+    which also cuts the composition-driven EOS regeneration (gated on the same
+    comp_changed flag), so neither the solver nor the table regeneration runs.
+
+    Discriminating positive control: the IDENTICAL composition delta fires both
+    the solver and the EOS regeneration on a non-super-liquidus config, so the
+    not-called assertions prove the super-liquidus gate suppresses them, not that
+    the inputs never trigger.
+    """
+    config = _mock_config(update_interval=1.0e9, update_min_interval=0.0)
+    config.interior_energetics.module = 'aragog'
+    config.interior_struct.zalmoxis.update_dw_comp_abs = 0.01
+    # Super-liquidus IC active: zalmoxis structure + liquidus_super + non-spider.
+    config.interior_struct.module = 'zalmoxis'
+    config.planet.temperature_mode = 'liquidus_super'
+
+    dirs, hf_row = _dirs_hf_with_composition_delta()
+    interior_o = _mock_interior_o()
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_solver,
+        patch(
+            'proteus.interior_struct.zalmoxis.generate_spider_tables',
+            return_value=None,
+        ) as mock_gen,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80
+        )
+    # Gate: a composition-only change neither re-solves nor regenerates the EOS.
+    assert result[0] == pytest.approx(0.0, abs=1e-12)  # last_struct_time unchanged
+    mock_solver.assert_not_called()
+    mock_gen.assert_not_called()
+
+    # Positive control: identical delta on a non-super-liquidus config fires both.
+    config.planet.temperature_mode = 'isothermal'
+    dirs_ctrl, hf_row_ctrl = _dirs_hf_with_composition_delta()
+    interior_ctrl = _mock_interior_o()
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_solver_ctrl,
+        patch(
+            'proteus.interior_struct.zalmoxis.generate_spider_tables',
+            return_value=None,
+        ) as mock_gen_ctrl,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        result_ctrl = update_structure_from_interior(
+            dirs_ctrl, config, hf_row_ctrl, interior_ctrl, 0.0, 3000.0, 0.80
+        )
+    assert result_ctrl[0] == pytest.approx(100.0, rel=1e-12)  # triggered
+    mock_solver_ctrl.assert_called_once()
+    mock_gen_ctrl.assert_called_once()
+
+
+@pytest.mark.unit
+def test_thermal_trigger_preserved_under_superliquidus_ic():
+    """Thermal (dT/T) re-solves still fire under the super-liquidus IC.
+
+    The super-liquidus gate suppresses only the composition trigger; the
+    temperature trigger keeps the composition fixed and stays consistent, so it
+    must continue to drive the structure re-solve that produces the R_int(Phi)
+    thermal contraction (the validated structure treatment).
+
+    Discriminating control: with no temperature change (and no other trigger)
+    the same super-liquidus config does not re-solve, so the called assertion
+    proves the dT/T trigger fired rather than an unrelated path.
+    """
+    config = _mock_config(
+        update_interval=1.0e9, update_min_interval=0.0, update_dtmagma_frac=0.03
+    )
+    config.interior_energetics.module = 'aragog'
+    config.interior_struct.module = 'zalmoxis'
+    config.planet.temperature_mode = 'liquidus_super'
+    config.interior_struct.zalmoxis.update_dw_comp_abs = 0.01
+
+    dirs = _mock_dirs()
+    interior_o = _mock_interior_o()
+    # 4% T_magma drop crosses the 3% threshold; Phi unchanged.
+    hf_row = {
+        'Time': 200.0,
+        'T_magma': 2880.0,
+        'Phi_global': 0.80,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80
+        )
+    assert result[0] == pytest.approx(200.0, rel=1e-12)  # thermal triggered
+    mock_solver.assert_called_once()
+
+    # Control: no temperature change -> no trigger -> no re-solve under SL.
+    hf_row_flat = {
+        'Time': 200.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.80,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_solver_flat:
+        result_flat = update_structure_from_interior(
+            dirs, config, hf_row_flat, _mock_interior_o(), 0.0, 3000.0, 0.80
+        )
+    assert result_flat[0] == pytest.approx(0.0, abs=1e-12)  # not triggered
+    mock_solver_flat.assert_not_called()
+
+
+@pytest.mark.unit
 def test_force_baseline_lands_on_unclamped_callable_mesh():
     """The forced baseline disables per-update mesh-shift clamping.
 
