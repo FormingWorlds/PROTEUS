@@ -24,6 +24,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
+import pandas as pd
 import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -79,6 +80,29 @@ def _import_backend(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setitem(sys.modules, 'proteus.observe.petitRADTRANS', module)
     spec.loader.exec_module(module)
     return module
+
+
+def _make_config(
+    *,
+    line_opacity_mode: str = 'c-k',
+    include_rayleigh: bool = False,
+    include_cia: bool = False,
+    input_data_path: str | None = None,
+):
+    return types.SimpleNamespace(
+        observe=types.SimpleNamespace(
+            module='petitRADTRANS',
+            clip_vmr=1e-8,
+            reference_pressure=10.0,
+            petitRADTRANS=types.SimpleNamespace(
+                input_data_path=input_data_path,
+                line_opacity_mode=line_opacity_mode,
+                include_rayleigh=include_rayleigh,
+                include_cia=include_cia,
+            ),
+        ),
+        atmos_chem=types.SimpleNamespace(module='vulcan'),
+    )
 
 
 def test_get_reference_prt_values_uses_closest_config_pressure(monkeypatch):
@@ -164,6 +188,340 @@ def test_load_stellar_toa_flux_reads_saved_sflux_and_interpolates(monkeypatch, t
     flux = mod._load_stellar_toa_flux(str(tmp_path), {'Time': 42}, target_wavelength_nm)
 
     assert np.allclose(flux, np.array([1.5e7, 3.0e7]))
+
+
+def test_get_input_data_path_prefers_fwl_data_directory(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    data_path = tmp_path / 'prt' / 'input_data'
+    data_path.mkdir(parents=True)
+    monkeypatch.setattr(mod, 'FWL_DATA_DIR', tmp_path)
+
+    assert mod._get_input_data_path(None) == str(data_path)
+
+
+def test_get_input_data_path_falls_back_to_package_layout(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    pkg_root = tmp_path / 'pkg'
+    package_dir = pkg_root / 'petitRADTRANS'
+    package_input = pkg_root / 'input_data'
+    package_dir.mkdir(parents=True)
+    package_input.mkdir(parents=True)
+
+    fake_pkg = sys.modules['petitRADTRANS']
+    fake_pkg.__file__ = str(package_dir / '__init__.py')
+    monkeypatch.setattr(mod, 'FWL_DATA_DIR', tmp_path / 'does_not_exist')
+
+    assert mod._get_input_data_path(None) == str(package_input)
+
+
+def test_get_input_data_path_raises_when_missing_everywhere(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    fake_pkg = sys.modules['petitRADTRANS']
+    fake_pkg.__file__ = str(tmp_path / 'pkg' / 'petitRADTRANS' / '__init__.py')
+    monkeypatch.setattr(mod, 'FWL_DATA_DIR', tmp_path / 'does_not_exist')
+
+    with pytest.raises(FileNotFoundError):
+        mod._get_input_data_path(None)
+
+
+def test_supported_species_helpers_filter_and_include(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    input_data_path = tmp_path / 'input_data'
+    (input_data_path / 'opacities' / 'lines' / 'correlated_k' / 'H2O').mkdir(parents=True)
+    (input_data_path / 'opacities' / 'lines' / 'correlated_k' / 'CH4').mkdir(parents=True)
+
+    monkeypatch.setattr(mod, 'petitRADTRANS_IGNORED_GASES', {'skipme'})
+    monkeypatch.setattr(mod, 'petitRADTRANS_RAYLEIGH_SPECIES', {'Ray'})
+    monkeypatch.setattr(mod, 'petitRADTRANS_CIA_SPECIES', ('H2--He', 'H2--N2'))
+
+    line_species = mod._get_supported_line_species(
+        ['H2O', 'skipme', 'Ray', 'CH4', 'CO2'], str(input_data_path)
+    )
+    assert line_species == ['H2O', 'CH4']
+    assert mod._get_supported_rayleigh_species(['H2O', 'Ray'], False) == []
+    assert mod._get_supported_rayleigh_species(['H2O', 'Ray'], True) == ['Ray']
+    assert mod._get_supported_cia_species(['H2', 'He'], False) == []
+    assert mod._get_supported_cia_species(['H2', 'He'], True) == ['H2--He']
+
+
+def test_vmrs_to_mass_fractions_handles_empty_and_zero_total(monkeypatch):
+    mod = _import_backend(monkeypatch)
+
+    mass_fractions, mean_molar_masses = mod._vmrs_to_mass_fractions(['H2'], [])
+    assert mass_fractions == {}
+    assert mean_molar_masses.size == 0
+
+    monkeypatch.setattr(mod, 'eval_gas_mmw', lambda gas: 0.0)
+    with pytest.raises(ValueError, match='zero total mass fraction'):
+        mod._vmrs_to_mass_fractions(['H2', 'He'], [np.array([1.0, 1.0]), np.array([0.0, 0.0])])
+
+
+def test_get_mix_handles_outgas_profile_and_offchem(monkeypatch):
+    mod = _import_backend(monkeypatch)
+    monkeypatch.setattr(mod, 'petitRADTRANS_GASES', ('H2', 'CH4', 'He'))
+
+    hf_row = {'H2_vmr': 0.8, 'CH4_vmr': 0.1, 'He_vmr': 0.1}
+    atm_profile = {
+        'pl': np.array([1.0e5, 1.0e4]),
+        'H2_vmr': np.array([0.7, 0.6]),
+        'CH4_vmr': np.array([0.2, 0.3]),
+        'He_vmr': np.array([0.1, 0.1]),
+    }
+    atm_offchem = {
+        'pl': np.array([1.0e5, 1.0e4]),
+        'H2': np.array([0.7, 0.6]),
+        'CH4': np.array([0.2, 0.3]),
+        'He': np.array([0.1, 0.1]),
+    }
+
+    gases_outgas, vmrs_outgas = mod._get_mix(hf_row, atm_profile, 'outgas', 1e-8)
+    gases_profile, vmrs_profile = mod._get_mix(hf_row, atm_profile, 'profile', 1e-8)
+    gases_offchem, vmrs_offchem = mod._get_mix(hf_row, atm_offchem, 'offchem', 1e-8)
+
+    assert gases_outgas == ['H2', 'CH4', 'He']
+    assert np.allclose(vmrs_outgas[0], np.array([0.8, 0.8]))
+    assert gases_profile == ['H2', 'CH4', 'He']
+    assert np.allclose(vmrs_profile[1], np.array([0.2, 0.2, 0.3]))
+    assert gases_offchem == ['H2', 'CH4', 'He']
+    assert np.allclose(vmrs_offchem[2], np.array([0.1, 0.1]))
+
+
+def test_atm_profile_and_offchem_helpers(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    fake_atmos_clim_common = types.ModuleType('proteus.atmos_clim.common')
+    fake_atmos_clim_common.read_atmosphere_data = lambda *_a, **_k: [
+        {'p': np.array([1.0]), 'marker': 1}
+    ]
+    fake_atmos_clim = types.ModuleType('proteus.atmos_clim')
+    fake_atmos_clim.__path__ = []
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_clim', fake_atmos_clim)
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_clim.common', fake_atmos_clim_common)
+
+    fake_atmos_chem = types.ModuleType('proteus.atmos_chem')
+    fake_atmos_chem.__path__ = []
+    fake_atmos_chem_common = types.ModuleType('proteus.atmos_chem.common')
+    fake_atmos_chem_common.read_result = lambda *_a, **_k: pd.DataFrame(
+        {'tmp': [300.0], 'p': [1.0e5], 'z': [0.0], 'H2': [0.7]}
+    )
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_chem', fake_atmos_chem)
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_chem.common', fake_atmos_chem_common)
+
+    outdir = str(tmp_path)
+    assert mod._get_atm_profile(outdir, {'Time': 1}) == {'p': np.array([1.0]), 'marker': 1}
+    offchem = mod._get_atm_offchem(outdir, {'R_int': 10.0}, 'vulcan')
+    assert list(offchem.columns) == ['tmpl', 'pl', 'rl', 'H2']
+    assert offchem['rl'].iloc[0] == pytest.approx(10.0)
+
+
+def test_get_atm_profile_returns_none_when_no_data(monkeypatch):
+    mod = _import_backend(monkeypatch)
+
+    fake_atmos_clim_common = types.ModuleType('proteus.atmos_clim.common')
+    fake_atmos_clim_common.read_atmosphere_data = lambda *_a, **_k: []
+    fake_atmos_clim = types.ModuleType('proteus.atmos_clim')
+    fake_atmos_clim.__path__ = []
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_clim', fake_atmos_clim)
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_clim.common', fake_atmos_clim_common)
+
+    assert mod._get_atm_profile('/out', {'Time': 1}) is None
+
+
+def test_get_atm_offchem_returns_none_when_no_result(monkeypatch):
+    mod = _import_backend(monkeypatch)
+
+    fake_atmos_chem_common = types.ModuleType('proteus.atmos_chem.common')
+    fake_atmos_chem_common.read_result = lambda *_a, **_k: None
+    fake_atmos_chem = types.ModuleType('proteus.atmos_chem')
+    fake_atmos_chem.__path__ = []
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_chem', fake_atmos_chem)
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_chem.common', fake_atmos_chem_common)
+
+    assert mod._get_atm_offchem('/out', {'R_int': 10.0}, 'vulcan') is None
+
+
+def test_load_stellar_toa_flux_raises_when_missing_files(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    with pytest.raises(FileNotFoundError):
+        mod._load_stellar_toa_flux(str(tmp_path), {'Time': 1}, np.array([450.0]))
+
+
+def test_transit_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    monkeypatch.setattr(mod, '_get_atm_profile', lambda *_a, **_k: None)
+    monkeypatch.setattr(mod, '_get_input_data_path', lambda _path: str(tmp_path))
+    fake_common = types.ModuleType('proteus.observe.common')
+    fake_common.get_transit_fpath = lambda *_a, **_k: str(tmp_path / 'unused.csv')
+    monkeypatch.setitem(sys.modules, 'proteus.observe.common', fake_common)
+    config = _make_config(input_data_path=str(tmp_path))
+
+    assert mod.transit_depth({'Time': 1, 'R_star': 1.0}, str(tmp_path), config, 'profile') is None
+
+
+def test_eclipse_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    monkeypatch.setattr(mod, '_get_atm_profile', lambda *_a, **_k: None)
+    monkeypatch.setattr(mod, '_get_input_data_path', lambda _path: str(tmp_path))
+    fake_common = types.ModuleType('proteus.observe.common')
+    fake_common.get_eclipse_fpath = lambda *_a, **_k: str(tmp_path / 'unused.csv')
+    monkeypatch.setitem(sys.modules, 'proteus.observe.common', fake_common)
+    config = _make_config(input_data_path=str(tmp_path))
+
+    assert (
+        mod.eclipse_depth(
+            {'Time': 1, 'R_star': 1.0, 'T_star': 1.0, 'separation': 1.0},
+            str(tmp_path),
+            config,
+            'profile',
+        )
+        is None
+    )
+
+
+def test_transit_depth_prioritizes_methane_and_writes_output(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+    monkeypatch.setattr(mod, 'petitRADTRANS_GASES', ('H2O', 'CH4', 'H2'))
+    monkeypatch.setattr(mod, 'petitRADTRANS_RAYLEIGH_SPECIES', set())
+    monkeypatch.setattr(mod, 'petitRADTRANS_CIA_SPECIES', ())
+    monkeypatch.setattr(
+        mod,
+        'eval_gas_mmw',
+        lambda gas: {'H2O': 18e-3, 'CH4': 16e-3, 'H2': 2e-3}[gas],
+    )
+
+    input_data_path = tmp_path / 'input_data'
+    for species in ['H2O', 'CH4']:
+        (input_data_path / 'opacities' / 'lines' / 'correlated_k' / species).mkdir(parents=True)
+
+    fake_common = types.ModuleType('proteus.observe.common')
+    def _get_transit_fpath(outdir, source, kind):
+        path = Path(outdir) / 'observe' / f'transit_{source}_{kind}.csv'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return str(path)
+
+    fake_common.get_transit_fpath = _get_transit_fpath
+    monkeypatch.setitem(sys.modules, 'proteus.observe.common', fake_common)
+
+    fake_atm = {
+        'pl': np.array([1.0e5, 1.0e4]),
+        'tmpl': np.array([300.0, 200.0]),
+        'rl': np.array([7.0e6, 7.1e6]),
+        'p': np.array([1.0e5, 1.0e4]),
+        'r': np.array([7.0e6, 7.1e6]),
+        'g': np.array([10.0, 11.0]),
+    }
+    monkeypatch.setattr(mod, '_get_atm_profile', lambda *_a, **_k: fake_atm)
+    monkeypatch.setattr(mod, '_get_input_data_path', lambda _path: str(input_data_path))
+
+    class FakeRadtrans:
+        last_init = None
+
+        def __init__(self, **kwargs):
+            FakeRadtrans.last_init = kwargs
+
+        def calculate_transit_radii(self, **kwargs):
+            return np.array([1.0e-4, 2.0e-4]), np.array([7.2e8, 7.3e8]), None
+
+    monkeypatch.setattr(sys.modules['petitRADTRANS.radtrans'], 'Radtrans', FakeRadtrans)
+
+    config = _make_config(input_data_path=str(input_data_path))
+    hf_row = {
+        'Time': 1,
+        'R_star': 7.0e8,
+        'H2O_vmr': 0.7,
+        'CH4_vmr': 0.2,
+        'H2_vmr': 0.1,
+    }
+
+    result = mod.transit_depth(hf_row, str(tmp_path), config, 'outgas')
+
+    assert result.shape == (2, 2)
+    assert FakeRadtrans.last_init['line_species'][0] == 'CH4'
+    assert Path(tmp_path / 'observe' / 'transit_outgas_synthesis.csv').is_file()
+
+
+def test_eclipse_depth_offchem_uses_latest_sflux_and_writes_output(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+    monkeypatch.setattr(mod, 'petitRADTRANS_GASES', ('H2O', 'CH4', 'H2'))
+    monkeypatch.setattr(mod, 'petitRADTRANS_RAYLEIGH_SPECIES', set())
+    monkeypatch.setattr(mod, 'petitRADTRANS_CIA_SPECIES', ())
+    monkeypatch.setattr(
+        mod,
+        'eval_gas_mmw',
+        lambda gas: {'H2O': 18e-3, 'CH4': 16e-3, 'H2': 2e-3}[gas],
+    )
+
+    input_data_path = tmp_path / 'input_data'
+    for species in ['H2O', 'CH4']:
+        (input_data_path / 'opacities' / 'lines' / 'correlated_k' / species).mkdir(parents=True)
+
+    observe_common = types.ModuleType('proteus.observe.common')
+    def _get_eclipse_fpath(outdir, source, kind):
+        path = Path(outdir) / 'observe' / f'eclipse_{source}_{kind}.csv'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return str(path)
+
+    observe_common.get_eclipse_fpath = _get_eclipse_fpath
+    monkeypatch.setitem(sys.modules, 'proteus.observe.common', observe_common)
+
+    atmos_chem_common = types.ModuleType('proteus.atmos_chem.common')
+    atmos_chem_common.read_result = lambda *_a, **_k: pd.DataFrame(
+        {
+            'tmp': [300.0, 200.0],
+            'p': [1.0e5, 1.0e4],
+            'z': [0.0, 1000.0],
+            'H2O': [0.7, 0.6],
+            'CH4': [0.2, 0.3],
+            'H2': [0.1, 0.1],
+        }
+    )
+    atmos_chem_pkg = types.ModuleType('proteus.atmos_chem')
+    atmos_chem_pkg.__path__ = []
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_chem', atmos_chem_pkg)
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_chem.common', atmos_chem_common)
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True)
+    (data_dir / '1.sflux').write_text('wl flux\n400 1\n500 2\n600 3\n')
+    (data_dir / '42.sflux').write_text('wl flux\n400 10\n500 20\n600 30\n')
+
+    fake_atm = {
+        'pl': np.array([1.0e5, 1.0e4]),
+        'tmpl': np.array([300.0, 200.0]),
+        'rl': np.array([7.0e6, 7.1e6]),
+        'p': np.array([1.0e5, 1.0e4]),
+        'r': np.array([7.0e6, 7.1e6]),
+        'g': np.array([10.0, 11.0]),
+    }
+    monkeypatch.setattr(mod, '_get_atm_profile', lambda *_a, **_k: fake_atm)
+    monkeypatch.setattr(mod, '_get_input_data_path', lambda _path: str(input_data_path))
+
+    class FakeRadtrans:
+        last_init = None
+
+        def __init__(self, **kwargs):
+            FakeRadtrans.last_init = kwargs
+
+        def calculate_flux(self, **kwargs):
+            return np.array([1.0e-4, 2.0e-4]), np.array([1.0, 2.0]), None
+
+    monkeypatch.setattr(sys.modules['petitRADTRANS.radtrans'], 'Radtrans', FakeRadtrans)
+
+    config = _make_config(input_data_path=str(input_data_path), include_cia=False, include_rayleigh=False)
+    hf_row = {'Time': 1, 'R_star': 7.0e8, 'T_star': 1000.0, 'separation': 1.0e11, 'R_int': 7.0e6}
+
+    result = mod.eclipse_depth(hf_row, str(tmp_path), config, 'offchem')
+
+    assert result.shape == (2, 2)
+    assert FakeRadtrans.last_init['line_species'][0] == 'CH4'
+    assert Path(tmp_path / 'observe' / 'eclipse_offchem_synthesis.csv').is_file()
 
 
 # ============================================================================
