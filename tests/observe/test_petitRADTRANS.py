@@ -85,9 +85,9 @@ def test_get_reference_prt_values_uses_closest_config_pressure(monkeypatch):
     mod = _import_backend(monkeypatch)
 
     atm = {
-        'pl': np.array([1.0e5, 1.0e6, 1.0e7, 1.0e8]),
-        'rl': np.array([7.00e6, 7.10e6, 7.20e6, 7.30e6]),
-        'gl': np.array([9.00, 9.10, 9.20, 9.30]),
+        'p': np.array([1.0e5, 1.0e6, 1.0e7, 1.0e8]),
+        'r': np.array([7.00e6, 7.10e6, 7.20e6, 7.30e6]),
+        'g': np.array([9.00, 9.10, 9.20, 9.30]),
     }
     config = MagicMock()
     config.observe.reference_pressure = 11.5  # bar, closest to the 10 bar layer
@@ -160,7 +160,7 @@ def test_load_stellar_toa_flux_reads_saved_sflux_and_interpolates(monkeypatch, t
         '6.00000000e+02\t4.00000000e+00\n'
     )
 
-    target_wavelength_nm = np.array([4.50000000e+02, 5.50000000e+02])
+    target_wavelength_nm = np.array([4.50000000e02, 5.50000000e02])
     flux = mod._load_stellar_toa_flux(str(tmp_path), {'Time': 42}, target_wavelength_nm)
 
     assert np.allclose(flux, np.array([1.5e7, 3.0e7]))
@@ -196,12 +196,17 @@ def test_transit_radii_ratio_gives_bounded_transit_depths(monkeypatch):
 
     # Check physics invariants
     assert np.all(transit_depths_ppm > 0), 'Transit depths must be positive'
-    assert np.all(transit_depths_ppm < 1e6), 'Transit depths must be < 1e6 ppm (geometric limit)'
-    assert np.all(np.isfinite(transit_depths_ppm)), 'Transit depths must be finite (no NaN or Inf)'
+    assert np.all(transit_depths_ppm < 1e6), (
+        'Transit depths must be < 1e6 ppm (geometric limit)'
+    )
+    assert np.all(np.isfinite(transit_depths_ppm)), (
+        'Transit depths must be finite (no NaN or Inf)'
+    )
 
     # Check that transit depths increase monotonically with transit radius
-    assert np.all(np.diff(transit_depths_ppm) > 0), \
+    assert np.all(np.diff(transit_depths_ppm) > 0), (
         'Transit depths must increase monotonically with transit radius'
+    )
 
 
 @pytest.mark.unit
@@ -257,8 +262,9 @@ def test_reference_pinned_transit_depth_from_vmr_normalization(monkeypatch):
     M_mean_expected = 2.3  # g/mol
 
     # Check reference spectrum
-    assert np.allclose(mean_molar_masses, M_mean_expected, rtol=0.02), \
+    assert np.allclose(mean_molar_masses, M_mean_expected, rtol=0.02), (
         f'Mean molar mass {mean_molar_masses[0]} should match reference {M_mean_expected} g/mol'
+    )
 
     # Check that transit depth scales correctly with composition
     # For reference: higher mean molar mass → smaller scale height → smaller transit depth
@@ -267,8 +273,7 @@ def test_reference_pinned_transit_depth_from_vmr_normalization(monkeypatch):
     # Verify mass fractions sum to 1 and scale correctly
     mass_frac_h2 = mass_fractions['H2']
     mass_frac_he = mass_fractions['He']
-    assert np.allclose(mass_frac_h2 + mass_frac_he, 1.0), \
-        'Mass fractions must sum to 1'
+    assert np.allclose(mass_frac_h2 + mass_frac_he, 1.0), 'Mass fractions must sum to 1'
 
 
 @pytest.mark.unit
@@ -304,11 +309,12 @@ def test_reference_spectrum_rayleigh_dependence_vmr_composition(monkeypatch):
 
     # He-richer composition has higher mean molar mass (smaller scale height)
     # → smaller transit depth
-    assert np.all(mmw_2 > mmw_1), \
-        'Higher He content should increase mean molar mass'
+    assert np.all(mmw_2 > mmw_1), 'Higher He content should increase mean molar mass'
 
     # Check reference values (in g/mol)
-    assert np.allclose(mmw_1[0], 2.3, rtol=0.02), \
+    assert np.allclose(mmw_1[0], 2.3, rtol=0.02), (
         'Reference: 85% H2 + 15% He should give M_mean ≈ 2.3 g/mol'
-    assert np.allclose(mmw_2[0], 2.5, rtol=0.02), \
+    )
+    assert np.allclose(mmw_2[0], 2.5, rtol=0.02), (
         'Reference: 75% H2 + 25% He should give M_mean ≈ 2.5 g/mol'
+    )

@@ -112,7 +112,9 @@ def test_calc_synthetic_spectra_calls_both_transit_and_eclipse(monkeypatch):
     monkeypatch.setattr(backend, 'transit_depth', mock_transit)
     monkeypatch.setattr(backend, 'eclipse_depth', mock_eclipse)
 
-    config = _make_config(module='petitRADTRANS', atmos_clim_module='janus', atmos_chem_module='vulcan')
+    config = _make_config(
+        module='petitRADTRANS', atmos_clim_module='janus', atmos_chem_module='vulcan'
+    )
     hf_row = {}
     outdir = '/fake/output'
 
@@ -149,7 +151,9 @@ def test_calc_synthetic_spectra_skips_profile_when_dummy_atmos(monkeypatch):
     monkeypatch.setattr(backend, 'transit_depth', mock_transit)
     monkeypatch.setattr(backend, 'eclipse_depth', mock_eclipse)
 
-    config = _make_config(module='petitRADTRANS', atmos_clim_module='dummy', atmos_chem_module='vulcan')
+    config = _make_config(
+        module='petitRADTRANS', atmos_clim_module='dummy', atmos_chem_module='vulcan'
+    )
     calc_synthetic_spectra(hf_row={}, outdir='/fake', config=config)
 
     assert mock_transit.call_count == 2
@@ -178,7 +182,9 @@ def test_calc_synthetic_spectra_skips_offchem_when_no_chem(monkeypatch):
     monkeypatch.setattr(backend, 'transit_depth', mock_transit)
     monkeypatch.setattr(backend, 'eclipse_depth', mock_eclipse)
 
-    config = _make_config(module='petitRADTRANS', atmos_clim_module='janus', atmos_chem_module=None)
+    config = _make_config(
+        module='petitRADTRANS', atmos_clim_module='janus', atmos_chem_module=None
+    )
     calc_synthetic_spectra(hf_row={}, outdir='/fake', config=config)
 
     assert mock_transit.call_count == 2
@@ -228,7 +234,9 @@ def test_calc_synthetic_spectra_calls_petitradtrans_backend(monkeypatch):
     monkeypatch.setattr(backend, 'transit_depth', transit_mock)
     monkeypatch.setattr(backend, 'eclipse_depth', eclipse_mock)
 
-    config = _make_config(module='petitRADTRANS', atmos_clim_module='janus', atmos_chem_module='vulcan')
+    config = _make_config(
+        module='petitRADTRANS', atmos_clim_module='janus', atmos_chem_module='vulcan'
+    )
 
     calc_synthetic_spectra(hf_row={}, outdir='/fake/output', config=config)
 

@@ -24,9 +24,10 @@ class PetitRADTRANS:
     """
 
     input_data_path: str = field(default=None, converter=none_if_none)
-    line_opacity_mode: str = field(default="c-k", validator=in_(("c-k", "lbl")))
+    line_opacity_mode: str = field(default='c-k', validator=in_(('c-k', 'lbl')))
     include_rayleigh: bool = field(default=True)
     include_cia: bool = field(default=True)
+
 
 @define
 class Observe:

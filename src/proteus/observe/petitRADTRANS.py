@@ -109,9 +109,7 @@ def _vmrs_to_mass_fractions(
     # Normalize VMRs to sum to 1 (after clip_vmr they may not sum to 1)
     vmr_sum = np.sum(vmr_arr, axis=0)
     if np.any(vmr_sum <= 0.0):
-        raise ValueError(
-            'Atmospheric composition has zero total VMR at one or more layers'
-        )
+        raise ValueError('Atmospheric composition has zero total VMR at one or more layers')
     vmr_arr = vmr_arr / vmr_sum
 
     molar_masses = np.array([eval_gas_mmw(gas) for gas in gases], dtype=float)  # kg mol-1
@@ -556,7 +554,7 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
         * (reference_radius / Rs_cm) ** 2
         * 1e6
     )
-    wl = (wl_cm * 1e4)
+    wl = wl_cm * 1e4
     X = [wl, de]
     header = ''
     header += str('Wavelength/um').ljust(14, ' ') + '\t'

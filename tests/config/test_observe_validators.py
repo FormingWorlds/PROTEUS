@@ -56,3 +56,25 @@ def test_observe_module_petitradtrans_accepted():
     # Discrimination: the validator must reject the removed PLATON option.
     with pytest.raises((ValueError, TypeError)):
         Observe(module='platon')
+
+
+@pytest.mark.unit
+def test_petitradtrans_defaults():
+    """Test the nested PetitRADTRANS config defaults."""
+    from proteus.config._observe import PetitRADTRANS
+
+    prt = PetitRADTRANS()
+    assert prt.input_data_path is None
+    assert prt.line_opacity_mode == 'c-k'
+    assert prt.include_rayleigh is True
+    assert prt.include_cia is True
+
+
+@pytest.mark.unit
+def test_petitradtrans_line_opacity_mode_validator():
+    """Test PetitRADTRANS line_opacity_mode accepts only the supported modes."""
+    from proteus.config._observe import PetitRADTRANS
+
+    assert PetitRADTRANS(line_opacity_mode='lbl').line_opacity_mode == 'lbl'
+    with pytest.raises((ValueError, TypeError)):
+        PetitRADTRANS(line_opacity_mode='invalid')

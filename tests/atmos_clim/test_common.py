@@ -85,6 +85,7 @@ def test_read_ncdf_profile(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -108,6 +109,7 @@ def test_read_ncdf_profile(mock_ds, mock_isfile):
     assert result['p'][1] == pytest.approx(100.0, rel=1e-12)  # first element of p
     assert result['p'][2] == pytest.approx(90.0, rel=1e-12)  # second element of pl
     assert result['t'][1] == pytest.approx(300.0, rel=1e-12)  # Temperature
+    assert result['g'] == pytest.approx(np.array([9.8, 9.8, 9.8]), rel=1e-12)
 
     # The function converts all outputs to float arrays, even booleans
     assert result['transparent'] == pytest.approx(1.0, rel=1e-12)
@@ -140,6 +142,7 @@ def test_read_ncdf_profile_without_combining_edges(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0, 80.0]),
         'pl': np.array([110.0, 90.0, 70.0]),
+        'gravity': np.array([9.8, 9.6]),
         'tmp': np.array([500.0, 450.0]),
         'tmpl': np.array([520.0, 470.0, 430.0]),
         'z': np.array([1.0e4, 2.0e4]),
@@ -152,6 +155,7 @@ def test_read_ncdf_profile_without_combining_edges(mock_ds, mock_isfile):
 
     np.testing.assert_allclose(result['p'], np.array([100.0, 80.0]))
     np.testing.assert_allclose(result['pl'], np.array([110.0, 90.0, 70.0]))
+    np.testing.assert_allclose(result['g'], np.array([9.8, 9.6]))
     np.testing.assert_allclose(result['t'], np.array([500.0, 450.0]))
     np.testing.assert_allclose(result['tmpl'], np.array([520.0, 470.0, 430.0]))
 
@@ -184,6 +188,7 @@ def test_read_ncdf_profile_with_aerosols(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -274,6 +279,7 @@ def test_read_ncdf_profile_gases_list(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -320,6 +326,7 @@ def test_read_ncdf_profile_aerosols_list_only(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -365,6 +372,7 @@ def test_read_ncdf_profile_no_aerosols_in_file(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -403,6 +411,7 @@ def test_read_ncdf_profile_with_clouds(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0, 200.0]),
         'pl': np.array([110.0, 150.0, 190.0]),
+        'gravity': np.array([9.8, 9.7]),
         'tmp': np.array([300.0, 280.0]),
         'tmpl': np.array([310.0, 290.0, 270.0]),
         'r': np.array([6.4e6, 6.3e6]),
