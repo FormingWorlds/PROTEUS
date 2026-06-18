@@ -1030,7 +1030,6 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict, config: Config):
     new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(config), dtype=float)
     # Check for NaN values. Print warning if any are found and convert to zero.
     for col in new_row.columns:
-
         if new_row[col].isna().any():
             log.warning(
                 'hf_row[%s] is NaN at t=%.2e years; setting to zero.',

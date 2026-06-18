@@ -524,7 +524,7 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     )
 
 
-def run_desiccated(dirs:dict, config: Config, hf_row: dict):
+def run_desiccated(dirs: dict, config: Config, hf_row: dict):
     """
     Handle desiccation of the planet. This substitutes for run_outgassing when the planet
     has lost its entire volatile inventory.
@@ -558,7 +558,7 @@ def run_desiccated(dirs:dict, config: Config, hf_row: dict):
             hf_row[k] = 0.0
 
     if config.outgas.silicates:
-        compute_silicate_outgassing(dirs,config, hf_row)
+        compute_silicate_outgassing(dirs, config, hf_row)
 
 
 def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
