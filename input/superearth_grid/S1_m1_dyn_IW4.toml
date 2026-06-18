@@ -101,7 +101,7 @@ spectrum_source = "solar"
 [interior_struct.zalmoxis]
 core_eos = "PALEOS:iron"
 mantle_eos = "PALEOS:MgSiO3"
-num_levels = 150
+num_levels = 300
 outer_solver = "newton"
 use_jax = true
 dry_mantle = true
