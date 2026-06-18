@@ -361,7 +361,9 @@ def test_transit_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_pat
     monkeypatch.setitem(sys.modules, 'proteus.observe.common', fake_common)
     config = _make_config(input_data_path=str(tmp_path))
 
-    assert mod.transit_depth({'Time': 1, 'R_star': 1.0}, str(tmp_path), config, 'profile') is None
+    assert (
+        mod.transit_depth({'Time': 1, 'R_star': 1.0}, str(tmp_path), config, 'profile') is None
+    )
 
 
 def test_eclipse_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_path):
@@ -401,6 +403,7 @@ def test_transit_depth_prioritizes_methane_and_writes_output(monkeypatch, tmp_pa
         (input_data_path / 'opacities' / 'lines' / 'correlated_k' / species).mkdir(parents=True)
 
     fake_common = types.ModuleType('proteus.observe.common')
+
     def _get_transit_fpath(outdir, source, kind):
         path = Path(outdir) / 'observe' / f'transit_{source}_{kind}.csv'
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -463,6 +466,7 @@ def test_eclipse_depth_offchem_uses_latest_sflux_and_writes_output(monkeypatch, 
         (input_data_path / 'opacities' / 'lines' / 'correlated_k' / species).mkdir(parents=True)
 
     observe_common = types.ModuleType('proteus.observe.common')
+
     def _get_eclipse_fpath(outdir, source, kind):
         path = Path(outdir) / 'observe' / f'eclipse_{source}_{kind}.csv'
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -514,8 +518,16 @@ def test_eclipse_depth_offchem_uses_latest_sflux_and_writes_output(monkeypatch, 
 
     monkeypatch.setattr(sys.modules['petitRADTRANS.radtrans'], 'Radtrans', FakeRadtrans)
 
-    config = _make_config(input_data_path=str(input_data_path), include_cia=False, include_rayleigh=False)
-    hf_row = {'Time': 1, 'R_star': 7.0e8, 'T_star': 1000.0, 'separation': 1.0e11, 'R_int': 7.0e6}
+    config = _make_config(
+        input_data_path=str(input_data_path), include_cia=False, include_rayleigh=False
+    )
+    hf_row = {
+        'Time': 1,
+        'R_star': 7.0e8,
+        'T_star': 1000.0,
+        'separation': 1.0e11,
+        'R_int': 7.0e6,
+    }
 
     result = mod.eclipse_depth(hf_row, str(tmp_path), config, 'offchem')
 
