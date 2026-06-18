@@ -48,3 +48,13 @@
 .logo-dark { display: none; }
 [data-md-color-scheme="slate"] .logo-light { display: none; }
 [data-md-color-scheme="slate"] .logo-dark { display: inline; }
+
+/* Grid cards: make the last paragraph in each card stick to the bottom of the card */
+.md-typeset .grid.cards > ul > li {
+  display: flex;
+  flex-direction: column;
+}
+
+.md-typeset .grid.cards > ul > li > p:last-child {
+  margin-top: auto;
+}
