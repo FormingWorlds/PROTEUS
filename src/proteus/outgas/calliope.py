@@ -54,10 +54,9 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
 
     # Planet properties
     if config.interior_energetics.module == 'boundary':
-         M_mantle = _upper_mantle_mass(hf_row)
+        M_mantle = _upper_mantle_mass(hf_row)
     else:
-         M_mantle = float(hf_row['M_mantle'])
-
+        M_mantle = float(hf_row['M_mantle'])
     solvevol_inp['M_mantle'] = M_mantle
     solvevol_inp['gravity'] = hf_row['gravity']
     solvevol_inp['radius'] = hf_row['R_int']

@@ -178,14 +178,14 @@ class BoundaryRunner:
         self.viscosity_model = config.interior_energetics.boundary.viscosity_model
 
         # Constant viscosity model parameters
-        self.eta_constant = config.interior_energetics.const_log10visc  # Pa s
+        self.eta_constant = 10 ** config.interior_energetics.const_log10visc  # Pa s
 
         # Aggregate viscosity parameters
         self.transition_width = (
             config.interior_energetics.phase_transition_width
         )  # dimensionless
-        self.eta_solid_const = config.interior_energetics.solid_log10visc  # Pa s
-        self.eta_melt_const = config.interior_energetics.melt_log10visc  # Pa s
+        self.eta_solid_const = 10 ** config.interior_energetics.solid_log10visc  # Pa s
+        self.eta_melt_const = 10 ** config.interior_energetics.melt_log10visc  # Pa s
 
         # Arrhenius solid mantle parameters
         self.dynamic_viscosity = config.interior_energetics.boundary.dynamic_viscosity  # Pa s
@@ -513,14 +513,14 @@ class BoundaryRunner:
 
         if phi >= 1.0:
             return (
-                self.core_radius
+                self.upper_mantle_radius
             )  # Fully molten, solidification radius at core-mantle boundary
         elif phi <= 0.0:
             return self.planet_radius  # Fully solid, solidification radius at surface
         else:
             # Linear interpolation between core and surface based on melt fraction
             return (
-                self.planet_radius**3 - phi * (self.planet_radius**3 - self.core_radius**3)
+                self.planet_radius**3 - phi * (self.planet_radius**3 - self.upper_mantle_radius**3)
             ) ** (1 / 3)
 
     def dT_pdt(self, T_p: float, T_surf: float, t: float) -> float:
@@ -565,7 +565,7 @@ class BoundaryRunner:
         else:
             latent_heat_term = 0.0
 
-        denominator = self.upper_mantle_mass * self.silicate_heat_capacity + latent_heat_term
+        denominator = self.upper_mantle_mass * self.silicate_heat_capacity - latent_heat_term
 
         dT_pdt_val = numerator / denominator
 
@@ -715,6 +715,7 @@ class BoundaryRunner:
         phi_final = self.melt_fraction(T_p_final)
         visc_final = self.viscosity(T_p_final, T_surf_final, phi_final)
         f_radio_final = self.radioactive_heating(t_final) * self.upper_mantle_mass
+        r_s_fin = self.r_s(T_p_final)
 
         # Log final timestep values to CSV
         if self.logging:
@@ -753,7 +754,7 @@ class BoundaryRunner:
             'Phi_global': phi_final,
             'Phi_global_vol': phi_final,
             'F_radio': f_radio_final / (4 * np.pi * self.planet_radius**2),
-            'RF_depth': phi_final * (1.0 - self.core_frac),
+            'RF_depth': r_s_fin/self.mantle_radius,
             'M_mantle_liquid': m_liquid,
             'M_mantle_solid': m_solid,
             'F_tidal': self.tidal_term * self.upper_mantle_mass / (4 * np.pi * self.planet_radius**2)
