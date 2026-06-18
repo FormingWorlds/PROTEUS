@@ -757,7 +757,6 @@ def GetHelpfileKeys(config: Config):
         'M_atm',            # total mass of atmosphere [kg]
         'P_surf',           # volatile surface pressure [bar]
         'P_silicates',      #outgassed surface pressure [bar]
-        'M_silicates',      # outgassed rock vapour mass [kg]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
 
         # Iron-wustite buffer offset that the chemistry solver actually
@@ -788,10 +787,6 @@ def GetHelpfileKeys(config: Config):
         # resume preserves the gate's state.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
         'esc_kg_cumulative', # cumulative escaped mass [kg]
-
-        # Stellar
-        "M_star", "R_star", "age_star", # [kg], [m], [yr]
-        "T_star", # [K]
         ]
 
     if config.outgas.silicates:
@@ -815,10 +810,11 @@ def GetHelpfileKeys(config: Config):
 
     # quantities for each element
     for e in element_list:
-        keys.append(e + '_kg_atm')      # mass outgassed to atmosphere [kg]
-        keys.append(e + '_kg_solid')    # mass in solid mantle [kg]
-        keys.append(e + '_kg_liquid')   # mass in liquid mantle [kg]
-        keys.append(e + '_kg_total')    # mass in whole planet [kg]
+        if e not in gas_list:
+            keys.append(e + '_kg_atm')      # mass outgassed to atmosphere [kg]
+            keys.append(e + '_kg_solid')    # mass in solid mantle [kg]
+            keys.append(e + '_kg_liquid')   # mass in liquid mantle [kg]
+            keys.append(e + '_kg_total')    # mass in whole planet [kg]
 
     # element mass ratios in atmosphere
     for e1 in element_list:
@@ -1039,6 +1035,8 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict, config: Config):
     log.info('Helpfile row created with %d columns', len(new_row.columns))
     # Check for NaN values. Print warning if any are found and convert to zero.
     for col in new_row.columns:
+        log.info('columns name: %s',col)
+        log.info('column values are: %s',new_row[col])
         if new_row[col].isna().any():
             log.warning(
                 'hf_row[%s] is NaN at t=%.2e years; setting to zero.',
