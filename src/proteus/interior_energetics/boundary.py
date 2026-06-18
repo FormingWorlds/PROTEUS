@@ -97,14 +97,16 @@ class BoundaryRunner:
         elif config.interior_struct.core_frac_mode == 'mass':
             core_density = hf_row.get('core_density', config.interior_struct.core_density)
             if core_density == 'self':
-                core_density = hf_row.get('core_density', config.interior_energetics.boundary.core_density)
+                core_density = hf_row.get(
+                    'core_density', config.interior_energetics.boundary.core_density
+                )
             core_radius = (
                 3.0 * float(self.core_mass) / (4.0 * np.pi * float(core_density))
             ) ** (1.0 / 3.0)
         else:
             raise ValueError(
                 "interior_struct.core_frac_mode must be 'mass' or 'radius'; "
-                f"got {config.interior_struct.core_frac_mode!r}"
+                f'got {config.interior_struct.core_frac_mode!r}'
             )
 
         self.core_radius = float(core_radius)
@@ -123,8 +125,12 @@ class BoundaryRunner:
             self.mantle_mass = self.planet_mass - self.core_mass
             self.mantle_bulk_density = self.mantle_mass / self.mantle_volume
 
-        self.upper_mantle_radius = self.planet_radius - self.mantle_radius / 2.0  # 1/2 of mantle thickness
-        self.upper_mantle_volume = (4 / 3) * np.pi * (self.planet_radius**3 - self.upper_mantle_radius**3)
+        self.upper_mantle_radius = (
+            self.planet_radius - self.mantle_radius / 2.0
+        )  # 1/2 of mantle thickness
+        self.upper_mantle_volume = (
+            (4 / 3) * np.pi * (self.planet_radius**3 - self.upper_mantle_radius**3)
+        )
         self.upper_mantle_mass = self.mantle_bulk_density * self.upper_mantle_volume
 
         log.debug(
@@ -151,9 +157,7 @@ class BoundaryRunner:
         self.critical_rayleigh_number = (
             config.interior_energetics.boundary.critical_rayleigh_number
         )  # dimensionless
-        self.heat_fusion_silicate = (
-            config.interior_energetics.latent_heat_of_fusion
-        )  # J/kg
+        self.heat_fusion_silicate = config.interior_energetics.latent_heat_of_fusion  # J/kg
         self.nusselt_exponent = (
             config.interior_energetics.boundary.nusselt_exponent
         )  # dimensionless
@@ -178,14 +182,14 @@ class BoundaryRunner:
         self.viscosity_model = config.interior_energetics.boundary.viscosity_model
 
         # Constant viscosity model parameters
-        self.eta_constant = 10 ** config.interior_energetics.const_log10visc  # Pa s
+        self.eta_constant = 10**config.interior_energetics.const_log10visc  # Pa s
 
         # Aggregate viscosity parameters
         self.transition_width = (
             config.interior_energetics.phase_transition_width
         )  # dimensionless
-        self.eta_solid_const = 10 ** config.interior_energetics.solid_log10visc  # Pa s
-        self.eta_melt_const = 10 ** config.interior_energetics.melt_log10visc  # Pa s
+        self.eta_solid_const = 10**config.interior_energetics.solid_log10visc  # Pa s
+        self.eta_melt_const = 10**config.interior_energetics.melt_log10visc  # Pa s
 
         # Arrhenius solid mantle parameters
         self.dynamic_viscosity = config.interior_energetics.boundary.dynamic_viscosity  # Pa s
@@ -520,7 +524,8 @@ class BoundaryRunner:
         else:
             # Linear interpolation between core and surface based on melt fraction
             return (
-                self.planet_radius**3 - phi * (self.planet_radius**3 - self.upper_mantle_radius**3)
+                self.planet_radius**3
+                - phi * (self.planet_radius**3 - self.upper_mantle_radius**3)
             ) ** (1 / 3)
 
     def dT_pdt(self, T_p: float, T_surf: float, t: float) -> float:
@@ -561,7 +566,14 @@ class BoundaryRunner:
         if r_s_val < self.planet_radius:
             volume_diff = self.planet_radius**3 - self.upper_mantle_radius**3
             T_range = self.T_liquidus - self.T_solidus
-            latent_heat_term = - 4 * np.pi * self.heat_fusion_silicate * self.mantle_bulk_density * (volume_diff) / (3 * T_range)
+            latent_heat_term = (
+                -4
+                * np.pi
+                * self.heat_fusion_silicate
+                * self.mantle_bulk_density
+                * (volume_diff)
+                / (3 * T_range)
+            )
         else:
             latent_heat_term = 0.0
 
@@ -754,10 +766,12 @@ class BoundaryRunner:
             'Phi_global': phi_final,
             'Phi_global_vol': phi_final,
             'F_radio': f_radio_final / (4 * np.pi * self.planet_radius**2),
-            'RF_depth': r_s_fin/self.mantle_radius,
+            'RF_depth': r_s_fin / self.mantle_radius,
             'M_mantle_liquid': m_liquid,
             'M_mantle_solid': m_solid,
-            'F_tidal': self.tidal_term * self.upper_mantle_mass / (4 * np.pi * self.planet_radius**2)
+            'F_tidal': self.tidal_term
+            * self.upper_mantle_mass
+            / (4 * np.pi * self.planet_radius**2)
             if self.use_tidal_heating
             else 0.0,
             'M_mantle': self.mantle_mass,

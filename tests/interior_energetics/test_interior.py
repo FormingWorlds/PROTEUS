@@ -708,10 +708,7 @@ def test_run_dummy_int_rf_depth_scaling():
     assert output['Phi_global'] == pytest.approx(0.5)
     upper_mantle_radius = 0.5 * (hf_row['R_int'] + hf_row['R_core'])
     expected_rf_depth = 1.0 - (
-        (
-            hf_row['R_int'] ** 3
-            - 0.5 * (hf_row['R_int'] ** 3 - upper_mantle_radius ** 3)
-        )
+        (hf_row['R_int'] ** 3 - 0.5 * (hf_row['R_int'] ** 3 - upper_mantle_radius**3))
         ** (1.0 / 3.0)
         / hf_row['R_int']
     )
