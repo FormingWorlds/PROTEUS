@@ -55,8 +55,7 @@ def main(argv: list[str]) -> int:
     entry = modules[module]
     if field not in entry:
         print(
-            f"Module '{module}' has no field '{field}'. Available: "
-            f"{', '.join(sorted(entry))}",
+            f"Module '{module}' has no field '{field}'. Available: {', '.join(sorted(entry))}",
             file=sys.stderr,
         )
         return 1

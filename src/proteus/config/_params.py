@@ -306,6 +306,22 @@ class StopDisint:
 
 
 @define
+class StopClock:
+    """Parameters for maximum clock runtime stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable criteria if True
+    maximum: float
+        Model will terminate when runtime exceeds this value [s].
+    """
+
+    enabled: bool = field(default=True)
+    maximum: float = field(default=60 * 60 * 24 * 7, validator=gt(0))
+
+
+@define
 class StopParams:
     """Parameters for termination criteria.
 
@@ -325,6 +341,8 @@ class StopParams:
         Parameters for escape criteria.
     disint: StopDisint
         Parameters for planet disintegration criteria.
+    clock: StopClock
+        Parameters for maximum clock runtime criteria.
     """
 
     iters: StopIters = field(factory=StopIters)
@@ -333,6 +351,7 @@ class StopParams:
     radeqm: StopRadeqm = field(factory=StopRadeqm)
     escape: StopEscape = field(factory=StopEscape)
     disint: StopDisint = field(factory=StopDisint)
+    clock: StopClock = field(factory=StopClock)
 
     strict: bool = field(default=False)
 

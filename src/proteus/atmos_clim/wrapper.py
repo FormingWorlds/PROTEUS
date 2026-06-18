@@ -29,6 +29,7 @@ def run_atmosphere(
     update_stellar_spectrum: bool,
     hf_all: pd.DataFrame,
     hf_row: dict,
+    write_data: bool = True,
 ):
     """Run Atmosphere submodule.
 
@@ -55,6 +56,8 @@ def run_atmosphere(
             Dataframe containing simulation variables (now and historic)
         hf_row : dict
             Dictionary containing simulation variables for current iteration
+        write_data : bool, optional
+            Whether to write data to files, by default True
 
     """
 
@@ -176,7 +179,12 @@ def run_atmosphere(
 
         # Run solver
         atmos_o._atm, atm_output = run_agni(
-            atmos_o._atm, loop_counter['total'], dirs, config, hf_row
+            atmos_o._atm,
+            loop_counter['total'],
+            dirs,
+            config,
+            hf_row,
+            write_data=write_data,
         )
 
     elif config.atmos_clim.module == 'dummy':

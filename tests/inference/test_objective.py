@@ -101,7 +101,7 @@ def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     monkeypatch.setattr(objective_mod.subprocess, 'run', lambda *args, **kwargs: None)
 
     parameters = {}
-    obs = objective_mod.run_proteus(
+    obs, status = objective_mod.run_proteus(
         parameters=parameters,
         worker=1,
         iter=2,
@@ -113,6 +113,7 @@ def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     assert obs['P_surf'] == pytest.approx(0.0)
     assert obs['atm_kg_per_mol'] == pytest.approx(0.0)
     assert len(updates) == 2
+    assert status == 20
 
 
 @pytest.mark.unit
@@ -230,7 +231,7 @@ def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
     # Discrimination: a valid observable on the same helpfile must
     # complete normally. This rules out a regression that hard-raises
     # KeyError on every input regardless of the observables list.
-    obs = objective_mod.run_proteus(
+    obs, status = objective_mod.run_proteus(
         parameters={},
         worker=0,
         iter=0,
@@ -239,6 +240,7 @@ def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
         output='dummy_output',
     )
     assert obs['P_surf'] == pytest.approx(1.0)
+    assert status == 20
 
 
 @pytest.mark.unit
@@ -281,6 +283,30 @@ def test_eval_obj_mixes_log_and_linear_variables(monkeypatch):
 
 
 @pytest.mark.unit
+def test_eval_obj_handles_zero_true_value():
+    """Zero-valued observables should use an EPS_CLIP offset denominator
+    to avoid division-by-zero.
+
+    Discrimination: a denominator of exactly 0.0 would produce +inf or NaN;
+    the EPS_CLIP offset must make the result finite.
+    """
+    sim = {'R_obs': 2.0}
+    tru = {'R_obs': 0.0}
+
+    value = objective_mod.eval_obj(sim, tru)
+
+    denom = 0.0 + objective_mod.EPS_CLIP
+    expected_sq = (1.0 - 2.0 / denom) ** 2
+    expected = -torch.log10(
+        torch.tensor([[expected_sq + objective_mod.EPS_CLIP]], dtype=torch.double)
+    )
+    assert value.item() == pytest.approx(expected.item())
+    # Without EPS_CLIP the result would be +inf or NaN; finite output
+    # is the key contract of the zero-denominator guard.
+    assert torch.isfinite(value).all()
+
+
+@pytest.mark.unit
 def test_prot_builder_unnormalizes_and_calls_J(monkeypatch):
     """``prot_builder`` returns a closure that un-normalises an x in
     [0, 1]^d to the physical parameter ranges (so x=0.5 with bounds
@@ -302,6 +328,7 @@ def test_prot_builder_unnormalizes_and_calls_J(monkeypatch):
         iter=9,
         output='out_dir',
         ref_config='ref.toml',
+        failure_codes=[0, 1],
     )
 
     y = f(torch.tensor([[0.5, 0.25]], dtype=torch.double))
@@ -309,3 +336,30 @@ def test_prot_builder_unnormalizes_and_calls_J(monkeypatch):
     assert y.item() == pytest.approx(5.0)
     assert captured['x'][0, 0].item() == pytest.approx(5.0)
     assert captured['x'][0, 1].item() == pytest.approx(2.5)
+
+
+@pytest.mark.unit
+def test_prot_builder_unnormalizes_log_scaled_parameter(monkeypatch):
+    """Surface pressure spans orders of magnitude, so log scaling must round-trip."""
+    captured = {}
+
+    def fake_J(x, **kwargs):
+        captured['x'] = x
+        return torch.tensor([[1.0]], dtype=torch.double)
+
+    monkeypatch.setattr(objective_mod, 'J', fake_J)
+
+    f = objective_mod.prot_builder(
+        parameters={'P_surf': [1e-3, 1e3], 'struct.mass_tot': [1.0, 3.0]},
+        observables={'obs': 1.0},
+        worker=0,
+        iter=0,
+        output='out_dir',
+        ref_config='ref.toml',
+        failure_codes=[0, 1],
+    )
+
+    f(torch.tensor([[0.5, 0.25]], dtype=torch.double))
+
+    assert captured['x'][0, 0].item() == pytest.approx(1.0)
+    assert captured['x'][0, 1].item() == pytest.approx(1.5)

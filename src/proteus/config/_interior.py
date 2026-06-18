@@ -239,6 +239,8 @@ class InteriorBoundary:
         Nusselt-Rayleigh scaling exponent [-].
     silicate_heat_capacity: float
         Silicate heat capacity [J/kg/K].
+    atm_heat_capacity_const: bool
+        Always use fallback atmosphere heat capacity?
     atm_heat_capacity: float
         Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].
     silicate_density: float
@@ -253,8 +255,6 @@ class InteriorBoundary:
         Viscosity parameterisation model. Choices: 1 (constant), 2 (aggregate smooth transition), 3 (Arrhenius temperature-dependent).
     eta_constant: float
         Constant viscosity value [Pa s] for model 1.
-    transition_width: float
-        Width of viscosity transition in melt fraction space [-] for aggregate model.
     eta_solid_const: float
         Constant solid viscosity for aggregate formulation [Pa s].
     eta_melt_const: float
@@ -285,6 +285,7 @@ class InteriorBoundary:
     heat_fusion_silicate: float = field(default=4.0e5, validator=gt(0))  # J/kg
     nusselt_exponent: float = field(default=0.33, validator=gt(0))  # -
     silicate_heat_capacity: float = field(default=1.2e3, validator=gt(0))  # J/kg/K
+    atm_heat_capacity_const: bool = field(default=True)
     atm_heat_capacity: float = field(default=1.7e4, validator=gt(0))  # J/kg/K
     silicate_density: float = field(default=4103.0, validator=gt(0))  # kg/m^3
     thermal_conductivity: float = field(default=4.2, validator=gt(0))  # W/m/K
@@ -298,7 +299,6 @@ class InteriorBoundary:
     eta_constant: float = field(default=1e2, validator=gt(0))  # Pa s, for model 1
 
     # Aggregate viscosity parameters
-    transition_width: float = field(default=0.2, validator=(gt(0), lt(1)))  # -
     eta_solid_const: float = field(default=1e22, validator=gt(0))  # Pa s
     eta_melt_const: float = field(default=1e2, validator=gt(0))  # Pa s
 

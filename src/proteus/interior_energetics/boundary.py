@@ -23,6 +23,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
+ATM_MASS_MIN = 1.0  # min atmosphere mass
+DELTA_MIN = 1e-3  # min CBL thickness
+
 
 class BoundaryRunner:
     def __init__(
@@ -45,26 +48,45 @@ class BoundaryRunner:
             'M_int', 0.0
         )  # Use M_planet if available, otherwise will be calculated from core and mantle masses
         self.core_mass = hf_row['M_core']
-        self.m_atm = hf_row.get('M_atm', 0.0)  # Atmospheric mass, default to 0 if not available
+        self.m_atm = hf_row.get('M_atm', ATM_MASS_MIN)  # Atmospheric mass
         self.f_atm = hf_row['F_atm']
 
-        cp_layer = getattr(getattr(atmos_o, '_atm', None), 'layer_cp', None)
-        if cp_layer is not None:
-            cp_arr = np.asarray(cp_layer, dtype=float).ravel()
-            valid = np.isfinite(cp_arr)
-            if np.any(valid):
-                # Use profile-mean atmospheric heat capacity across all valid layers.
-                self.atmosphere_heat_capacity = float(np.mean(cp_arr[valid]))  # J/kg/K
-            else:
-                # All-NaN layer_cp: fall back to the configured constant.
-                # InteriorBoundary defines atm_heat_capacity.
-                self.atmosphere_heat_capacity = (
-                    config.interior_energetics.boundary.atm_heat_capacity
-                )
-        else:
+        # Attempt to obtain cp and ma from atmos object
+        if config.interior_energetics.boundary.atm_heat_capacity_const:
             self.atmosphere_heat_capacity = (
                 config.interior_energetics.boundary.atm_heat_capacity
             )
+
+        else:
+            cp_layer = getattr(
+                getattr(atmos_o, '_atm', None),
+                'layer_cp',
+                [config.interior_energetics.boundary.atm_heat_capacity],
+            )
+            ma_layer = getattr(
+                getattr(atmos_o, '_atm', None),
+                'layer_σ',
+                [ATM_MASS_MIN],
+            )
+
+            # Get extracted values
+            cp_arr = np.array(cp_layer, dtype=float)
+            ma_arr = np.array(ma_layer, dtype=float)
+
+            # Skip NaN values
+            valid = np.isfinite(cp_arr) & np.isfinite(ma_arr)
+            cp_arr = cp_arr[valid]
+            ma_arr = ma_arr[valid]
+
+            # Handle zero-length arrays after filtering
+            if len(cp_arr) == 0 or len(ma_arr) == 0 or np.sum(ma_arr) < 1e-9:
+                self.atmosphere_heat_capacity = (
+                    config.interior_energetics.boundary.atm_heat_capacity
+                )
+
+            # Store mass-weighted cp average
+            else:
+                self.atmosphere_heat_capacity = float(np.average(cp_arr, weights=ma_arr))
 
         # Prefer Zalmoxis-derived CMB radius when available.
         # Fall back to corefrac-based radius for non-Zalmoxis runs.
@@ -146,7 +168,7 @@ class BoundaryRunner:
 
         # Aggregate viscosity parameters
         self.transition_width = (
-            config.interior_energetics.boundary.transition_width
+            config.interior_energetics.phase_transition_width
         )  # dimensionless
         self.eta_solid_const = config.interior_energetics.boundary.eta_solid_const  # Pa s
         self.eta_melt_const = config.interior_energetics.boundary.eta_melt_const  # Pa s
@@ -372,12 +394,15 @@ class BoundaryRunner:
         float
             Thermal boundary layer thickness [m]
         """
-        if T_p == T_surf:
-            # Small temperature difference to avoid division by zero
-            delta = 1e-3
-        else:
-            q_m_val = self.q_m(T_p, T_surf, phi)
-            delta = self.thermal_conductivity * (T_p - T_surf) / q_m_val
+
+        # calculate heat flux
+        q_m_val = self.q_m(T_p, T_surf, phi)
+        q_m_val = max(q_m_val, 1e-6)
+
+        # calculate boundary layer thickness using Fourier's law
+        delta = self.thermal_conductivity * (T_p - T_surf) / q_m_val
+        if delta < DELTA_MIN or np.isnan(delta) or np.isinf(delta):
+            delta = DELTA_MIN
 
         return delta
 
@@ -588,10 +613,8 @@ class BoundaryRunner:
         phi = self.melt_fraction(T_p)
         q_m_val = self.q_m(T_p, T_surf, phi)
 
-        if T_p == T_surf:
-            delta = 1e-3  # Small temperature difference to avoid division by zero
-        else:
-            delta = self.thermal_conductivity * (T_p - T_surf) / q_m_val
+        # Calculate thickness of boundary layer
+        delta = self.boundary_layer_thickness(T_p, T_surf, phi)
 
         numerator = 4 * np.pi * self.planet_radius**2 * (q_m_val - self.f_atm)
         denominator = self.atmosphere_heat_capacity * self.m_atm + (
@@ -695,13 +718,25 @@ class BoundaryRunner:
             events=tsurf_change_event,
         )
 
+        # time-step
+        t_final = sol.t[-1]
+        dt_actual = t_final - t_span[0]
+        sim_time = t_final / secs_per_year  # convert back to years
+
+        # Check reason for solver termination
+        if sol.status == 1:
+            log.warning(
+                f'Tsurf event truncated timestep: dt={dt_actual / secs_per_year:.1e} years'
+            )
+        elif sol.status == -1:
+            log.warning('Boundary layer interior failed to integrate - solver error')
+            log.warning(f'    solver msg: {sol.message}')
+
         # Extract results
         T_p_final = sol.y[0, -1]
         T_surf_final = sol.y[1, -1]
-        t_final = sol.t[-1]
         phi_final = self.melt_fraction(T_p_final)
         r_s_final = self.r_s(T_p_final)
-        sim_time = t_final / secs_per_year  # convert back to years
         phi_final = self.melt_fraction(T_p_final)
         visc_final = self.viscosity(T_p_final, T_surf_final, phi_final)
         f_radio_final = self.radioactive_heating(t_final) * self.mantle_mass

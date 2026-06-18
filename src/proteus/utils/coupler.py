@@ -651,10 +651,10 @@ def GetHelpfileKeys():
         'F_sct',            # outgoing shortwave radiation [W m-2]
         'F_ins',            # incoming instellation flux [W m-2]
         'F_xuv',            # incoming XUV radiation flux [W m-2]
-        'tau_atm_TOA',      # band-mean optical depth at TOA [1]
-        'tau_atm_surface',  # band-mean optical depth at surface [1]
+        'tau_atm_TOA',      # optical depth at TOA, at ref wavelength [1]
+        'tau_atm_surface',  # optical depth at surface, at ref wavelength [1]
         'atm_Ra_max',      # maximum Rayleigh number across levels [1]
-        'atm_t_conv_over_t_rad',  # convective vs radiative timescale ratio at the RCB [1]
+        'atm_t_conv_over_t_rad',  # convective vs radiative timescale ratio [1]
         'F_tidal',          # tidal heat flux arising at surface [W m-2]
         'F_radio',          # radiogenic heat flux arising at surface [W m-2]
         'F_cmb',             # heat flux at the CMB (signed, +out-of-core) [W m-2]
@@ -1001,8 +1001,19 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
             sorted(unknown_keys),
         )
 
-    # convert row to df
+    # convert row to df, only including keys in the schema
+    # which is defined by GetHelpfileKeys()
     new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
+
+    # Check for NaN values. Print warning if any are found and convert to zero.
+    for col in new_row.columns:
+        if new_row[col].isna().any():
+            log.warning(
+                'hf_row[%s] is NaN at t=%.2e years; setting to zero.',
+                col,
+                new_row['Time'].iloc[0],
+            )
+            new_row[col] = new_row[col].fillna(0.0)
 
     # concatenate and return
     return pd.concat([current_hf, new_row], ignore_index=True)
@@ -1067,7 +1078,12 @@ def variable_is_logarithmic(varname: str) -> bool:
         'semimajorax',
         'eccentricity',
         'params.stop.time.maximum',
+        'planet.elements.H_budget',
+        'planet.elements.C_budget',
+        'planet.elements.S_budget',
+        'planet.elements.N_budget',
         'orbit.semimajoraxis',
+        'atm_kg_per_mol',
     ):
         out = True
 
@@ -1243,6 +1259,9 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
             plot_chem_atmosphere(
                 output_dir, config.atmos_chem.module, plot_format=config.params.out.plot_fmt
             )
+            atm_data = read_atmosphere_data(output_dir, plot_times)
+            plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
+            plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
 
         # Visualise planet and star
         if agni:

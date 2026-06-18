@@ -200,4 +200,18 @@ echo "You must now run the following command:"
 echo "    export RAD_DIR='$socpath'"
 echo " "
 echo "You should also add this command to your shell rc file (e.g. ~/.bashrc)"
+
+# Re-cloning the SOCRATES tree deleted the build products AGNI writes into it:
+# the generated wrappers under socrates/julia/gen and the compiled libSOCRATES
+# under socrates/julia/lib. AGNI fails to precompile until they are rebuilt.
+# proteus install-all and proteus update-all rebuild AGNI in a later step, so
+# this note is for users who ran the script on its own.
+if [ -d "$root/AGNI" ]; then
+    echo " "
+    echo "NOTE: this rebuild removed AGNI's compiled SOCRATES wrappers under"
+    echo "      socrates/julia. If you ran this script directly (not via"
+    echo "      proteus install-all / update-all, which rebuild AGNI for you),"
+    echo "      regenerate them before running PROTEUS:"
+    echo "          RAD_DIR=\"$socpath\" bash \"$root/tools/get_agni.sh\" 0"
+fi
 exit 0

@@ -5,8 +5,6 @@
 # Config file format version
 config_version = "3.0"
 
-author  = "Harrison Nicholls, Tim Lichtenberg"
-
 # ----------------------------------------------------
 # Parameters
     [params.out]

@@ -33,9 +33,9 @@ import pytest
 import toml
 
 import proteus.inference.plot as plot_mod
+import proteus.inference.transforms as transforms_mod
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -407,7 +407,9 @@ def test_plot_result_objective_normal_path_two_parameters(tmp_path, monkeypatch)
     plt_mock.subplots.return_value = (fig, axs)
     monkeypatch.setattr(plot_mod, 'plt', plt_mock)
     # Stub the unnormalize call: return X unchanged.
-    monkeypatch.setattr(plot_mod, 'unnormalize', lambda X, bounds: np.asarray(X, dtype=float))
+    monkeypatch.setattr(
+        transforms_mod, 'unnormalize_parameters', lambda X, bounds: np.asarray(X, dtype=float)
+    )
     monkeypatch.setattr(plot_mod, 'variable_is_logarithmic', lambda k: False)
     (tmp_path / 'plots').mkdir()
 
@@ -450,7 +452,9 @@ def test_plot_result_objective_y_clipping_branch_fires(tmp_path, monkeypatch):
     axs.__getitem__.side_effect = lambda key: cells[key]
     plt_mock.subplots.return_value = (fig, axs)
     monkeypatch.setattr(plot_mod, 'plt', plt_mock)
-    monkeypatch.setattr(plot_mod, 'unnormalize', lambda X, bounds: np.asarray(X, dtype=float))
+    monkeypatch.setattr(
+        transforms_mod, 'unnormalize_parameters', lambda X, bounds: np.asarray(X, dtype=float)
+    )
     monkeypatch.setattr(plot_mod, 'variable_is_logarithmic', lambda k: False)
     (tmp_path / 'plots').mkdir()
 
@@ -496,7 +500,9 @@ def test_plot_result_objective_logarithmic_x_axis_branch(tmp_path, monkeypatch):
     axs.__getitem__.side_effect = lambda key: cells[key]
     plt_mock.subplots.return_value = (fig, axs)
     monkeypatch.setattr(plot_mod, 'plt', plt_mock)
-    monkeypatch.setattr(plot_mod, 'unnormalize', lambda X, bounds: np.asarray(X, dtype=float))
+    monkeypatch.setattr(
+        transforms_mod, 'unnormalize_parameters', lambda X, bounds: np.asarray(X, dtype=float)
+    )
     monkeypatch.setattr(plot_mod, 'variable_is_logarithmic', lambda k: k == 'a')
     (tmp_path / 'plots').mkdir()
 

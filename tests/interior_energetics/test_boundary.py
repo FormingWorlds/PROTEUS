@@ -92,6 +92,7 @@ def mock_config():
         heat_fusion_silicate=4.0e5,  # J/kg
         nusselt_exponent=1.0 / 3.0,  # Rayleigh-Benard scaling
         silicate_heat_capacity=1.2e3,  # J/kg/K
+        atm_heat_capacity_const=False,
         atm_heat_capacity=1.7e4,  # J/kg/K
         silicate_density=4500.0,  # kg/m^3
         thermal_conductivity=4.2,  # W/m/K
@@ -99,7 +100,6 @@ def mock_config():
         thermal_expansivity=2e-5,  # 1/K
         viscosity_model=1,  # Constant viscosity (default)
         eta_constant=1e2,  # Pa s (liquid mantle)
-        transition_width=0.2,  # dimensionless
         eta_solid_const=1e22,  # Pa s
         eta_melt_const=1e2,  # Pa s
         dynamic_viscosity=3.8e9,  # Pa s
@@ -112,6 +112,7 @@ def mock_config():
     interior_energetics = SimpleNamespace(
         boundary=boundary,
         rfront_loc=0.4,  # dimensionless
+        phase_transition_width=0.2,
         heat_radiogenic=False,
         heat_tidal=False,
         radio_tref=4.567,  # Gyr (Solar System age)
@@ -174,6 +175,7 @@ def mock_atmos():
     return SimpleNamespace(
         _atm=SimpleNamespace(
             layer_cp=np.array([1.7e4, 1.7e4, 1.7e4]),  # J/kg/K for H2 layers
+            layer_σ=np.array([1e18, 1e18, 1e18]),  # kg for H2 layers
         ),
     )
 
@@ -1279,6 +1281,7 @@ def test_boundary_runner_all_nan_layer_cp_falls_back_to_atm_heat_capacity(
 
     # Force the all-NaN branch.
     mock_atmos._atm.layer_cp = np.array([np.nan, np.nan, np.nan])
+    mock_atmos._atm.layer_σ = np.array([1.0, 1.0, 1.0])
 
     with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
         runner = BoundaryRunner(
@@ -1304,6 +1307,7 @@ def test_boundary_runner_partial_nan_layer_cp_averages_finite_values(
     mock_config.interior_energetics.boundary.atm_heat_capacity = 9999.9
 
     mock_atmos._atm.layer_cp = np.array([1.0e4, np.nan, 2.0e4, np.nan, 3.0e4])
+    mock_atmos._atm.layer_σ = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
 
     with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
         runner = BoundaryRunner(
@@ -1495,6 +1499,7 @@ def test_run_solver_writes_csv_log_when_logging_enabled(
     fake_sol = SimpleNamespace(
         t=np.array([0.0, 1.0e3]),
         y=np.array([[3500.0, 3490.0], [1600.0, 1605.0]]),
+        status=0,
     )
     with patch('proteus.interior_energetics.boundary.solve_ivp', return_value=fake_sol):
         # run_solver signature: (hf_row, interior_o, dirs)
@@ -1509,3 +1514,158 @@ def test_run_solver_writes_csv_log_when_logging_enabled(
     assert 'rayleigh_number' in text
     # At least one data row was written.
     assert text.count('\n') >= 2
+
+
+# =============================================================================
+# Tests: atm_heat_capacity_const=True branch (new config flag)
+# =============================================================================
+
+
+def test_boundary_runner_uses_config_heat_capacity_when_const_flag_true(
+    mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
+):
+    """When atm_heat_capacity_const=True, BoundaryRunner must read
+    atmosphere_heat_capacity directly from config and ignore the
+    per-layer arrays in atmos_o._atm.
+    """
+    mock_config.interior_energetics.boundary.atm_heat_capacity_const = True
+    mock_config.interior_energetics.boundary.atm_heat_capacity = 3.0e4
+
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        runner = BoundaryRunner(
+            mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
+        )
+
+    # Must use the config value, not the per-layer average (1.7e4).
+    assert runner.atmosphere_heat_capacity == pytest.approx(3.0e4)
+
+    # Discrimination: the per-layer average would be 1.7e4; the gap is
+    # 1.3e4, more than 10 % of the expected value.
+    assert abs(runner.atmosphere_heat_capacity - 1.7e4) > 1e4
+
+
+# =============================================================================
+# Tests: run_solver solver-status warnings
+# =============================================================================
+
+
+def test_run_solver_logs_warning_when_tsurf_event_terminates_step(
+    boundary_runner, mock_interior, mock_dirs, mock_hf_row, caplog
+):
+    """run_solver logs a warning when the ODE integrator stops early because
+    the surface-temperature event fired (sol.status == 1).
+    """
+    fake_sol = SimpleNamespace(
+        t=np.array([0.0, 500.0]),
+        y=np.array([[3500.0, 3490.0], [1600.0, 1650.0]]),
+        status=1,  # event triggered
+        message='A termination event occurred.',
+    )
+    import logging
+
+    with patch('proteus.interior_energetics.boundary.solve_ivp', return_value=fake_sol):
+        with caplog.at_level(
+            logging.WARNING, logger='fwl.proteus.interior_energetics.boundary'
+        ):
+            boundary_runner.run_solver(mock_hf_row, mock_interior, mock_dirs)
+
+    warning_texts = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any('Tsurf event' in msg for msg in warning_texts), (
+        'Expected a warning about Tsurf event termination when sol.status==1'
+    )
+    # Discrimination: the status==-1 error message must NOT appear here.
+    assert not any('failed to integrate' in msg for msg in warning_texts)
+
+
+def test_run_solver_logs_warning_when_integration_fails(
+    boundary_runner, mock_interior, mock_dirs, mock_hf_row, caplog
+):
+    """run_solver logs a warning when solve_ivp reports a solver error
+    (sol.status == -1).
+
+    The status==-1 branch at boundary.py:731-733 records a two-line warning
+    that includes the solver message. Verify both lines appear.
+
+    Discriminating: status==1 and status==0 each take different branches;
+    pin the -1 warning text and confirm the status==1 message is absent.
+    """
+    fake_sol = SimpleNamespace(
+        t=np.array([0.0, 100.0]),
+        y=np.array([[3500.0, 3499.0], [1600.0, 1600.5]]),
+        status=-1,
+        message='Required step size is less than spacing between numbers.',
+    )
+    import logging
+
+    with patch('proteus.interior_energetics.boundary.solve_ivp', return_value=fake_sol):
+        with caplog.at_level(
+            logging.WARNING, logger='fwl.proteus.interior_energetics.boundary'
+        ):
+            boundary_runner.run_solver(mock_hf_row, mock_interior, mock_dirs)
+
+    warning_texts = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any('failed to integrate' in msg for msg in warning_texts)
+    assert any('Required step size' in msg for msg in warning_texts), (
+        'Expected the solver message to appear in the second warning line'
+    )
+    # Discrimination: the Tsurf-event message must NOT appear for status==-1.
+    assert not any('Tsurf event' in msg for msg in warning_texts)
+
+
+# =============================================================================
+# Tests: tsurf_change_event function (closure defined inside run_solver)
+# =============================================================================
+
+
+def test_tsurf_change_event_returns_zero_at_threshold(
+    boundary_runner, mock_interior, mock_dirs, mock_hf_row
+):
+    """The tsurf_change_event callback inside run_solver evaluates to zero
+    exactly when |T_surf - T_surf_0| == Tsurf_event_change, and to a
+    negative value below the threshold.
+
+    Physics: the event triggers solve_ivp termination when the surface
+    temperature deviates from its recently-initialised value by more than Tsurf_event_change.
+    This prevents large changes during a single integration of the BL model.
+    """
+    captured = {}
+
+    fake_sol = SimpleNamespace(
+        t=np.array([0.0, 1.0e3]),
+        y=np.array([[3500.0, 3490.0], [1600.0, 1605.0]]),
+        status=0,
+        message='',
+    )
+
+    def _capture_solve_ivp(fun, t_span, y0, **kwargs):
+        captured['events'] = kwargs.get('events')
+        return fake_sol
+
+    with patch(
+        'proteus.interior_energetics.boundary.solve_ivp',
+        side_effect=_capture_solve_ivp,
+    ):
+        boundary_runner.run_solver(mock_hf_row, mock_interior, mock_dirs)
+
+    event_fn = captured.get('events')
+    assert event_fn is not None, 'solve_ivp was not called with an events kwarg'
+
+    T_surf_0 = boundary_runner.T_surf_0
+    delta = boundary_runner.Tsurf_event_change
+
+    # At the threshold: |T_surf - T_surf_0| == delta → event value == 0.
+    val_at_threshold = event_fn(0.0, [3000.0, T_surf_0 + delta])
+    assert val_at_threshold == pytest.approx(0.0, abs=1e-12)
+
+    # Below threshold: event value is negative (event has not fired).
+    val_below = event_fn(0.0, [3000.0, T_surf_0 + 0.5 * delta])
+    assert val_below < 0.0
+
+    # Above threshold: event value is positive (event fires).
+    val_above = event_fn(0.0, [3000.0, T_surf_0 + 2.0 * delta])
+    assert val_above > 0.0
+
+    # Discrimination: the event must depend on y[1] (T_surf), not y[0] (T_p).
+    # Varying T_p while keeping T_surf fixed must leave the event value unchanged.
+    val_tp_high = event_fn(0.0, [5000.0, T_surf_0 + 0.5 * delta])
+    assert val_tp_high == pytest.approx(val_below, abs=1e-12)
