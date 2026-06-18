@@ -57,7 +57,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 @pytest.mark.unit
 def test_get_helpfile_keys_returns_list(config):
     """Test that GetHelpfileKeys returns a non-empty list."""
-    config=MagicMock()
+    config = MagicMock()
     keys = GetHelpfileKeys(config)
     assert isinstance(keys, list)
     assert len(keys) > 0
@@ -66,7 +66,7 @@ def test_get_helpfile_keys_returns_list(config):
 @pytest.mark.unit
 def test_get_helpfile_keys_contains_required_keys():
     """Test that GetHelpfileKeys includes all required output variables."""
-    config=MagicMock()
+    config = MagicMock()
     keys = GetHelpfileKeys(config)
 
     # Basic tracking
@@ -92,7 +92,7 @@ def test_get_helpfile_keys_contains_required_keys():
 @pytest.mark.unit
 def test_get_helpfile_keys_includes_gas_species():
     """Test that GetHelpfileKeys includes species from gas_list."""
-    config=MagicMock()
+    config = MagicMock()
     keys = GetHelpfileKeys(config)
 
     # Check for at least H2O and CO2
@@ -106,7 +106,7 @@ def test_get_helpfile_keys_includes_gas_species():
 @pytest.mark.unit
 def test_get_helpfile_keys_includes_element_masses():
     """Test that GetHelpfileKeys includes element masses from element_list."""
-    config=MagicMock()
+    config = MagicMock()
     keys = GetHelpfileKeys(config)
 
     # Check for at least C, H, O
@@ -120,7 +120,7 @@ def test_get_helpfile_keys_includes_element_masses():
 @pytest.mark.unit
 def test_get_helpfile_keys_no_duplicates():
     """Test that GetHelpfileKeys contains no duplicate keys."""
-    config=MagicMock()
+    config = MagicMock()
     keys = GetHelpfileKeys(config)
     assert len(keys) == len(set(keys)), 'Duplicate keys found in helpfile'
     # Discrimination: a regression that returned an empty list would also
@@ -137,7 +137,7 @@ def test_get_helpfile_keys_no_duplicates():
 @pytest.mark.unit
 def test_zero_helpfile_row_returns_dict():
     """Test that ZeroHelpfileRow returns a dictionary."""
-    config=MagicMock()
+    config = MagicMock()
     row = ZeroHelpfileRow(config)
     assert isinstance(row, dict)
     # Discriminating check: the row is non-empty (carries every helpfile column
@@ -150,7 +150,7 @@ def test_zero_helpfile_row_returns_dict():
 @pytest.mark.unit
 def test_zero_helpfile_row_all_values_are_zero():
     """Test that ZeroHelpfileRow initializes all values to 0.0."""
-    config=MagicMock()
+    config = MagicMock()
     row = ZeroHelpfileRow(config)
     for key, value in row.items():
         assert value == 0.0, f'Key {key} has value {value}, expected 0.0'
@@ -164,7 +164,7 @@ def test_zero_helpfile_row_all_values_are_zero():
 @pytest.mark.unit
 def test_zero_helpfile_row_has_correct_keys():
     """Test that ZeroHelpfileRow has all keys from GetHelpfileKeys."""
-    config=MagicMock()
+    config = MagicMock()
     row = ZeroHelpfileRow(config)
     keys = GetHelpfileKeys(config)
 
@@ -178,12 +178,12 @@ def test_zero_helpfile_row_has_correct_keys():
 @pytest.mark.unit
 def test_create_helpfile_from_dict_creates_dataframe():
     """Test that CreateHelpfileFromDict creates a pandas DataFrame."""
-    config=MagicMock()
+    config = MagicMock()
     row = ZeroHelpfileRow(config)
     row['Time'] = 1.0
     row['T_surf'] = 300.0
 
-    hf = CreateHelpfileFromDict(row,config)
+    hf = CreateHelpfileFromDict(row, config)
     assert isinstance(hf, pd.DataFrame)
     assert len(hf) == 1
 
@@ -191,13 +191,13 @@ def test_create_helpfile_from_dict_creates_dataframe():
 @pytest.mark.unit
 def test_create_helpfile_from_dict_preserves_values():
     """Test that CreateHelpfileFromDict preserves input values."""
-    config=MagicMock()
+    config = MagicMock()
     row = ZeroHelpfileRow(config)
     row['Time'] = 1.5e9
     row['T_surf'] = 350.0
     row['P_surf'] = 100.0
 
-    hf = CreateHelpfileFromDict(row,config)
+    hf = CreateHelpfileFromDict(row, config)
 
     assert hf['Time'].iloc[0] == pytest.approx(1.5e9, rel=1e-12)
     assert hf['T_surf'].iloc[0] == pytest.approx(350.0, rel=1e-12)
@@ -207,9 +207,9 @@ def test_create_helpfile_from_dict_preserves_values():
 @pytest.mark.unit
 def test_create_helpfile_from_dict_has_all_keys():
     """Test that CreateHelpfileFromDict includes all helpfile keys."""
-    config=MagicMock()
+    config = MagicMock()
     row = ZeroHelpfileRow(config)
-    hf = CreateHelpfileFromDict(row,config)
+    hf = CreateHelpfileFromDict(row, config)
 
     keys = GetHelpfileKeys(config)
     for key in keys:
@@ -229,16 +229,16 @@ def test_create_helpfile_from_dict_has_all_keys():
 def test_extend_helpfile_appends_row():
     """Test that ExtendHelpfile appends a new row to helpfile."""
     # Create initial helpfile
-    config=MagicMock()
+    config = MagicMock()
     row1 = ZeroHelpfileRow(config)
     row1['Time'] = 0.0
-    hf = CreateHelpfileFromDict(row1,config)
+    hf = CreateHelpfileFromDict(row1, config)
 
     # Extend with new row
     row2 = ZeroHelpfileRow(config)
     row2['Time'] = 1.0
     row2['T_surf'] = 300.0
-    hf_extended = ExtendHelpfile(hf, row2,config)
+    hf_extended = ExtendHelpfile(hf, row2, config)
 
     assert len(hf_extended) == 2
     assert hf_extended['Time'].iloc[0] == pytest.approx(0.0)
@@ -249,10 +249,10 @@ def test_extend_helpfile_appends_row():
 @pytest.mark.unit
 def test_extend_helpfile_multiple_rows():
     """Test that ExtendHelpfile works with multiple sequential extensions."""
-    config=MagicMock()
+    config = MagicMock()
     row1 = ZeroHelpfileRow(config)
     row1['Time'] = 0.0
-    hf = CreateHelpfileFromDict(row1,config)
+    hf = CreateHelpfileFromDict(row1, config)
 
     # Add 5 more rows
     for i in range(1, 6):
@@ -269,15 +269,15 @@ def test_extend_helpfile_multiple_rows():
 @pytest.mark.unit
 def test_extend_helpfile_validates_keys():
     """Test that ExtendHelpfile raises error for missing keys."""
-    config=MagicMock()
+    config = MagicMock()
     row1 = ZeroHelpfileRow(config)
-    hf = CreateHelpfileFromDict(row1,config)
+    hf = CreateHelpfileFromDict(row1, config)
 
     # Create a row with missing keys
     row2 = {'Time': 1.0}  # Missing other keys
 
     with pytest.raises(Exception, match='missing expected keys'):
-        ExtendHelpfile(hf, row2,config)
+        ExtendHelpfile(hf, row2, config)
     # Discrimination: the raise must happen BEFORE the helpfile gets a new
     # row appended. A regression that appended first and then raised would
     # leave the helpfile growing on every failed call.
@@ -291,12 +291,13 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     keys are intentionally skipped. Explicitly-allowlisted non-schema keys
     like ``core_state_initial`` are also skipped."""
     import logging
-    config=MagicMock()
+
+    config = MagicMock()
     row = ZeroHelpfileRow(config)
     row['_structure_stale'] = True  # private transient key: must not warn
     row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
     row['nonsense_future_key'] = 1.0  # genuine drift: must warn
-    hf = CreateHelpfileFromDict(ZeroHelpfileRow(config),config)
+    hf = CreateHelpfileFromDict(ZeroHelpfileRow(config), config)
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
         ExtendHelpfile(hf, row)
@@ -311,10 +312,10 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
 @pytest.mark.unit
 def test_extend_helpfile_preserves_dataframe_order():
     """Test that ExtendHelpfile preserves row order."""
-    config=MagicMock()
+    config = MagicMock()
     row1 = ZeroHelpfileRow(config)
     row1['Time'] = 0.0
-    hf = CreateHelpfileFromDict(row1,config)
+    hf = CreateHelpfileFromDict(row1, config)
 
     times = [1.0, 2.0, 3.0, 4.0]
     for t in times:
@@ -342,11 +343,11 @@ def test_write_helpfile_to_csv_creates_file():
     """Test that WriteHelpfileToCSV creates a CSV file."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create helpfile
-        config=MagicMock()
+        config = MagicMock()
         row = ZeroHelpfileRow(config)
         row['Time'] = 1.0
         row['T_surf'] = 300.0
-        hf = CreateHelpfileFromDict(row,config)
+        hf = CreateHelpfileFromDict(row, config)
 
         # Write to CSV
         config = MagicMock()
@@ -361,12 +362,12 @@ def test_write_helpfile_to_csv_creates_file():
 @pytest.mark.unit
 def test_write_helpfile_to_csv_contains_data():
     """Test that WriteHelpfileToCSV writes correct data to file."""
-    config=MagicMock()
+    config = MagicMock()
     with tempfile.TemporaryDirectory() as tmpdir:
         row = ZeroHelpfileRow(config)
         row['Time'] = 1.5
         row['T_surf'] = 350.5
-        hf = CreateHelpfileFromDict(row,config)
+        hf = CreateHelpfileFromDict(row, config)
 
         config = MagicMock()
         WriteHelpfileToCSV(tmpdir, hf, config)
@@ -382,19 +383,19 @@ def test_write_helpfile_to_csv_contains_data():
 @pytest.mark.unit
 def test_write_helpfile_to_csv_overwrites_existing():
     """Test that WriteHelpfileToCSV overwrites existing file."""
-    config=MagicMock()
+    config = MagicMock()
     with tempfile.TemporaryDirectory() as tmpdir:
         # Write first helpfile
         row1 = ZeroHelpfileRow(config)
         row1['Time'] = 1.0
-        hf1 = CreateHelpfileFromDict(row1,config)
+        hf1 = CreateHelpfileFromDict(row1, config)
         config = MagicMock()
         WriteHelpfileToCSV(tmpdir, hf1, config)
 
         # Write second helpfile (should overwrite)
         row2 = ZeroHelpfileRow(config)
         row2['Time'] = 2.0
-        hf2 = CreateHelpfileFromDict(row2,config)
+        hf2 = CreateHelpfileFromDict(row2, config)
         config = MagicMock()
         WriteHelpfileToCSV(tmpdir, hf2, config)
 
@@ -418,7 +419,7 @@ def test_write_and_read_helpfile_roundtrip():
         row['T_magma'] = 2500.0
         row['P_surf'] = 1.0
         row['F_int'] = 50.0
-        hf_original = CreateHelpfileFromDict(row,config)
+        hf_original = CreateHelpfileFromDict(row, config)
         WriteHelpfileToCSV(tmpdir, hf_original, config)
 
         # Read back
@@ -450,7 +451,7 @@ def test_read_helpfile_from_csv_missing_file():
 @pytest.mark.unit
 def test_write_helpfile_multiple_rows_roundtrip():
     """Test that multiple rows survive write and read cycle."""
-    config=MagicMock()
+    config = MagicMock()
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create helpfile with multiple rows
         row1 = ZeroHelpfileRow(config)
@@ -684,7 +685,7 @@ def test_helpfile_with_realistic_earth_values():
     row['F_int'] = 47.0  # W/m2, internal heat flow
     row['F_atm'] = 170.0  # W/m2, net atmospheric heat flux
 
-    hf = CreateHelpfileFromDict(row,config)
+    hf = CreateHelpfileFromDict(row, config)
 
     assert hf['T_surf'].iloc[0] == pytest.approx(288.0)
     assert hf['P_surf'].iloc[0] == pytest.approx(1.01325, rel=1e-4)
@@ -705,7 +706,7 @@ def test_helpfile_with_extreme_values():
     # Low-mass planet
     row['M_planet'] = 1.0e23  # kg, ~2 Earth masses
 
-    hf = CreateHelpfileFromDict(row,config)
+    hf = CreateHelpfileFromDict(row, config)
 
     assert hf['T_surf'].iloc[0] == pytest.approx(1500.0)
     assert hf['P_surf'].iloc[0] == pytest.approx(10000.0)
@@ -1039,7 +1040,7 @@ def test_helpfile_preserves_column_order():
     config = MagicMock()
     keys = GetHelpfileKeys(config)
     row = ZeroHelpfileRow(config)
-    hf = CreateHelpfileFromDict(row,config)
+    hf = CreateHelpfileFromDict(row, config)
 
     # Verify column order matches GetHelpfileKeys
     assert list(hf.columns) == keys
@@ -1215,7 +1216,7 @@ def test_populate_energy_residual_inactive_when_E_state_cons_zero():
     NaN would propagate into cumulative sums and silently corrupt
     downstream rows."""
     config = MagicMock()
-    hf = CreateHelpfileFromDict(_aragog_row(time_yr=0.0, E_state_cons_J=0.0),config)
+    hf = CreateHelpfileFromDict(_aragog_row(time_yr=0.0, E_state_cons_J=0.0), config)
     new_row = _aragog_row(
         time_yr=1.0,
         E_state_cons_J=0.0,
@@ -1291,7 +1292,7 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
         step_solver_residual_J=solver_inc_1,
     )
     _populate_energy_residual(hf, row1)
-    hf = ExtendHelpfile(hf, row1,config)
+    hf = ExtendHelpfile(hf, row1, config)
 
     # Step 2: F_cmb heat input > cooling, net warming.
     delta_2_F_int = -2.0e29
@@ -1356,7 +1357,7 @@ def test_populate_energy_residual_ignores_instantaneous_F_cmb_spike():
     E0 = 1.0e31
     config = MagicMock()
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
-    hf = CreateHelpfileFromDict(row0,config)
+    hf = CreateHelpfileFromDict(row0, config)
 
     # Physical step delta: -1e29 J (mild cooling).
     physical_delta = -1.0e29
@@ -1418,7 +1419,7 @@ def test_populate_energy_residual_residual_detects_missing_source():
     E0 = 1.0e31
     config = MagicMock()
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
-    hf = CreateHelpfileFromDict(row0,config)
+    hf = CreateHelpfileFromDict(row0, config)
 
     actual_dE = +5.0e29  # planet warmed
     reported_step_delta = -3.0e29  # Aragog only reported the cooling
@@ -1503,6 +1504,7 @@ def test_assert_mass_conservation_passes_when_invariants_hold():
     """
     from proteus.utils.constants import gas_list
     from proteus.utils.coupler import assert_mass_conservation
+
     config = MagicMock()
 
     hf_row = {
@@ -1515,7 +1517,7 @@ def test_assert_mass_conservation_passes_when_invariants_hold():
     for s in gas_list:
         hf_row[s + '_kg_atm'] = per_species
 
-    result = assert_mass_conservation(hf_row,config)
+    result = assert_mass_conservation(hf_row, config)
     assert result is None  # contract: helper returns None silently when M_atm <= M_planet
     # Discriminating check: M_atm < M_planet strictly (not vacuously zero), and
     # the per-species sum exactly equals M_atm so the closure path is exercised.
@@ -1533,6 +1535,7 @@ def test_assert_mass_conservation_fails_when_M_atm_exceeds_M_planet():
     a message naming the M_atm and M_planet values.
     """
     from proteus.utils.coupler import assert_mass_conservation
+
     config = MagicMock()
 
     hf_row = {
@@ -1545,7 +1548,7 @@ def test_assert_mass_conservation_fails_when_M_atm_exceeds_M_planet():
         pass
 
     with pytest.raises(RuntimeError, match='Mass conservation violation'):
-        assert_mass_conservation(hf_row,config)
+        assert_mass_conservation(hf_row, config)
     # Discrimination: confirm the excess is well above the 1e-6 tolerance
     # so the test is exercising the violation branch, not riding the
     # numerical edge. M_atm/M_planet should exceed 1.0 by ~21 percent.
@@ -1576,7 +1579,7 @@ def test_assert_mass_conservation_fails_when_species_sum_disagrees():
         hf_row[s + '_kg_atm'] = per_species
     config = MagicMock()
     with pytest.raises(RuntimeError, match='M_atm bookkeeping inconsistency'):
-        assert_mass_conservation(hf_row,config)
+        assert_mass_conservation(hf_row, config)
     # Discrimination: the M_atm <= M_planet invariant must HOLD here so
     # the failure must come from the per-species bookkeeping path, not
     # from the M_atm > M_planet path. Pin both legs.
