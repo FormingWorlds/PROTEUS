@@ -48,6 +48,9 @@ by domain. Arrows between modules indicate the quantities exchanged through
 block to jump to the relevant section of
 [`proteus.py`](https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py).
 
+<p style="text-align:right;margin-bottom:0.25rem;font-size:0.85rem">
+  <a href="../assets/proteus_architecture_viewer.html" target="_blank" rel="noopener">Open full size ↗</a>
+</p>
 <object type="image/svg+xml" data="../assets/proteus_architecture.svg" class="arch-diagram arch-diagram--light"></object>
 <object type="image/svg+xml" data="../assets/proteus_architecture_darkmode.svg" class="arch-diagram arch-diagram--dark"></object>
 
