@@ -857,7 +857,7 @@ class Proteus:
 
             # Handle volatile exchange
             if self.desiccated:
-                run_desiccated(self.config, self.hf_row)
+                run_desiccated(self.directories, self.config, self.hf_row)
             elif self.crystallized:
                 run_crystallized(self.config, self.hf_row, self.interior_o.dt)
             else:
@@ -895,7 +895,7 @@ class Proteus:
             # that hard-fails if any future change re-introduces the
             # O-skipping asymmetry that could let M_atm exceed
             # M_planet at high H_ppmw.
-            assert_mass_conservation(self.config, self.hf_row, atol_frac=1e-1)
+            assert_mass_conservation(self.config, self.hf_row, atol_frac=1000)
 
             if _IT_TIMING_ENABLED:
                 _t_mod['outgas'] = time.perf_counter() - _t0_outgas

@@ -57,7 +57,6 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 @pytest.mark.unit
 def test_get_helpfile_keys_returns_list(config):
     """Test that GetHelpfileKeys returns a non-empty list."""
-    config = MagicMock()
     keys = GetHelpfileKeys(config)
     assert isinstance(keys, list)
     assert len(keys) > 0
