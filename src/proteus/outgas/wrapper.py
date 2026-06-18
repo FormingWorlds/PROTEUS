@@ -584,14 +584,14 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
             hf_row[s + '_bar'] = 0.0
             hf_row[s + '_vmr'] = 0.0
             hf_row[s + '_kg_atm'] = 0.0
-            hf_row[s + '_kg_tot'] = 0.0
+            hf_row[s + '_kg_total'] = 0.0
 
     for e in element_list:
         if e in ['H', 'C', 'N', 'O', 'S', 'P']:
             continue
         else:
             hf_row[e + '_kg_atm'] = 0.0
-            hf_row[e + '_kg_tot'] = 0.0
+            hf_row[e + '_kg_total'] = 0.0
 
     run_outgassing(dirs, config, hf_row)
 

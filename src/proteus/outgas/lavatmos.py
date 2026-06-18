@@ -34,10 +34,12 @@ class paths_importer:
         # General directory structure
         self.lavatmos_dir = os.environ.get('LAVA_DIR')
         self.wkdir = os.environ.get('LAVA_DIR')
+
+        log.info('Work directory set as: %s' % self.wkdir)
         self.output_dir = self.wkdir + 'output/'
         self.input_dir = self.wkdir + 'input/'
-
-        # Inputs
+        #
+        log.info('Output directory set as: %s' % self.output_dir)
         self.lava_comps = self.input_dir + 'lava_compositions/'
 
         # FastChem 3
@@ -50,8 +52,8 @@ class paths_importer:
         self.element_abundance_template = (
             self.wkdir + 'input/fastchem3/element_abundances/element_abundances_template2.dat'
         )
-        self.species_data_file = self.fastchem3_dir + '/input/logK/logK.dat'
-        self.species_data_file_cond = self.fastchem3_dir + '/input/logK/logK_condensates.dat'
+        self.species_data_file = self.fastchem3_dir + 'input/logK/logK.dat'
+        self.species_data_file_cond = self.fastchem3_dir + 'input/logK/logK_condensates.dat'
 
         if (
             dirs is not None

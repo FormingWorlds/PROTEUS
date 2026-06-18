@@ -852,7 +852,6 @@ def GetHelpfileKeys(config: Config):
 
     # Simulation's computational variables
     keys.append('runtime')          # Simulation wall-clock runtime [s]
-
     keys.append("fO2_shift_LavAtmos") #relative to IW buffer
 
     return keys
@@ -999,8 +998,12 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict, config: Config):
     #   and string-valued fields (core_state_initial) don't break runs.
     # Private (underscore-prefixed) keys are intentionally transient and
     # are excluded from both checks.
+
     schema = set(GetHelpfileKeys(config))
+    log.info('schema keys are: %s',schema)
+
     row_keys = {k for k in new_row.keys() if not k.startswith('_')}
+    log.info('row keys are: %s',row_keys)
     # Known non-numeric / non-persistent keys that are written into hf_row
     # but deliberately not tracked in the helpfile CSV schema.
     _ALLOWED_NON_SCHEMA_KEYS = frozenset(
@@ -1031,7 +1034,9 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict, config: Config):
     # convert row to df, only including keys in the schema
     # which is defined by GetHelpfileKeys()
     new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(config), dtype=float)
+    log.info('new row %s', new_row)
 
+    log.info('Helpfile row created with %d columns', len(new_row.columns))
     # Check for NaN values. Print warning if any are found and convert to zero.
     for col in new_row.columns:
         if new_row[col].isna().any():
