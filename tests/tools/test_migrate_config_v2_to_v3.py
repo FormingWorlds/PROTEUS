@@ -505,7 +505,9 @@ def test_radius_int_converts_earth_radii_to_metres():
 def test_clean_spider_config_warns_only_about_legacy_observe_synthesis():
     """A clean SPIDER config only warns about the legacy observe.synthesis field."""
     _, report = _translate(_minimal_spider_v2())
-    assert report.warnings == ['Unmapped 2.0 field (left out): observe.synthesis'], report.warnings
+    assert report.warnings == ['Unmapped 2.0 field (left out): observe.synthesis'], (
+        report.warnings
+    )
 
 
 def test_grid_axis_renames():
