@@ -114,6 +114,7 @@ theme:
   custom_dir: docs/overrides
   features:
     - navigation.tabs
+    - navigation.footer
     - navigation.tabs.sticky
     - navigation.expand
     - content.code.copy
