@@ -111,7 +111,7 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     if combine_edges:
         out['p'] = [pl[0]]
         out['t'] = [tl[0]]
-        out['g'] = []
+        out['g'] = [g[0]]  # Edge 0: use first cell centre value as fallback
         out['z'] = [zl[0]]
         out['r'] = [rl[0]]
         for i in range(nlev_c):
@@ -121,7 +121,8 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
             out['t'].append(t[i])
             out['t'].append(tl[i + 1])
 
-            out['g'].append(g[i])
+            out['g'].append(g[i])  # Cell centre i
+            out['g'].append(g[i])  # Edge i+1: use current cell centre value
 
             out['z'].append(z[i])
             out['z'].append(zl[i + 1])

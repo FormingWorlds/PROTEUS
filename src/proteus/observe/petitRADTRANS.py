@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
+import platformdirs
 from scipy.interpolate import PchipInterpolator
 
 from proteus.utils.constants import (
@@ -26,6 +28,7 @@ petitRADTRANS_GASES = tuple(prt_gases)
 petitRADTRANS_RAYLEIGH_SPECIES = tuple(prt_rayleigh_species)
 petitRADTRANS_CIA_SPECIES = tuple(prt_cia_species)
 petitRADTRANS_IGNORED_GASES = set(prt_ignored_gases)
+FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 
 def _get_input_data_path(input_data_path: str | None) -> str:
@@ -33,6 +36,11 @@ def _get_input_data_path(input_data_path: str | None) -> str:
 
     if input_data_path is not None:
         return input_data_path
+
+    # Check FWL_DATA_DIR / 'prt' / 'input_data' first
+    candidate = FWL_DATA_DIR / 'prt' / 'input_data'
+    if candidate.is_dir():
+        return str(candidate)
 
     import petitRADTRANS
 
@@ -42,8 +50,8 @@ def _get_input_data_path(input_data_path: str | None) -> str:
         return str(candidate)
 
     raise FileNotFoundError(
-        'Could not locate a petitRADTRANS input_data directory next to the installed '
-        'petitRADTRANS package.'
+        'Could not locate a petitRADTRANS input_data directory in '
+        f'{FWL_DATA_DIR / "prt" / "input_data"} or next to the installed petitRADTRANS package.'
     )
 
 
@@ -146,6 +154,15 @@ def _build_prt_composition(
     )
 
 
+def _prioritize_methane_species(line_species: list[str]) -> list[str]:
+    """Move CH4 to the front of the line-species list when present. This avoids issues with opacity table overlap"""
+
+    if 'CH4' not in line_species or not line_species:
+        return line_species
+
+    return ['CH4'] + [species for species in line_species if species != 'CH4']
+
+
 def _interpolate_prt_profiles(
     prs: np.ndarray, tmp: np.ndarray, vmrs: list[np.ndarray], n_points: int = 100
 ) -> tuple[np.ndarray, np.ndarray, list[np.ndarray]]:
@@ -177,7 +194,7 @@ def _get_atm_profile(outdir: str, hf_row: dict) -> dict:
     from proteus.atmos_clim.common import read_atmosphere_data
 
     atm_arr = read_atmosphere_data(
-        outdir, [hf_row['Time']], extra_keys=['tmpl', 'pl', 'rl', 'g', 'x_gas']
+        outdir, [hf_row['Time']], extra_keys=['tmpl', 'pl', 'rl', 'x_gas']
     )
 
     if (len(atm_arr) == 0) or (atm_arr[-1] is None):
@@ -297,15 +314,28 @@ def _get_ptr(
 def _load_stellar_toa_flux(
     outdir: str, hf_row: dict, target_wavelength_nm: np.ndarray
 ) -> np.ndarray:
-    """Load the PROTEUS-written stellar spectrum from ``data/<Time>.sflux``.
+    """Load the PROTEUS-written stellar spectrum from the latest ``data/<Number>.sflux`` file.
 
     The spectrum is already scaled to the top of the planet atmosphere, so it
     can be used directly in the eclipse-depth denominator.
+    Selects the .sflux file with the largest numeric prefix in the filename.
     """
 
-    spectrum_path = Path(outdir) / 'data' / f"{int(hf_row['Time'])}.sflux"
-    if not spectrum_path.is_file():
-        raise FileNotFoundError(f"Stellar spectrum file '{spectrum_path}' not found.")
+    data_dir = Path(outdir) / 'data'
+
+    # Find all .sflux files
+    sflux_files = list(data_dir.glob('*.sflux'))
+    if not sflux_files:
+        raise FileNotFoundError(f"No stellar spectrum files (*.sflux) found in '{data_dir}'")
+
+    # Extract numeric part from filename and find the largest
+    def get_numeric_prefix(fpath):
+        try:
+            return float(fpath.stem)
+        except ValueError:
+            return -1
+
+    spectrum_path = max(sflux_files, key=get_numeric_prefix)
 
     star_data = np.loadtxt(spectrum_path, skiprows=1).T
     stellar_wavelength_nm = np.array(star_data[0], dtype=float)
@@ -375,6 +405,7 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
         include_cia,
         input_data_path,
     )
+    line_species = _prioritize_methane_species(line_species)
 
     prs, tmp, _, vmrs = _get_ptr(atm, vmrs)
     prs, tmp, vmrs = _interpolate_prt_profiles(prs, tmp, vmrs, n_points=100)
@@ -488,6 +519,7 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
         include_cia,
         input_data_path,
     )
+    line_species = _prioritize_methane_species(line_species)
 
     prs, tmp, _, vmrs = _get_ptr(atm, vmrs)
     prs, tmp, vmrs = _interpolate_prt_profiles(prs, tmp, vmrs, n_points=100)
