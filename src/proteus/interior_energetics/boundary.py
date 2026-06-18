@@ -89,10 +89,25 @@ class BoundaryRunner:
                 self.atmosphere_heat_capacity = float(np.average(cp_arr, weights=ma_arr))
 
         # Prefer Zalmoxis-derived CMB radius when available.
-        # Fall back to corefrac-based radius for non-Zalmoxis runs.
-        self.core_radius = float(
-            hf_row.get('R_core', config.interior_struct.core_frac * self.planet_radius)
-        )
+        # Otherwise interpret `core_frac` according to the configured mode.
+        if 'R_core' in hf_row:
+            core_radius = hf_row['R_core']
+        elif config.interior_struct.core_frac_mode == 'radius':
+            core_radius = config.interior_struct.core_frac * self.planet_radius
+        elif config.interior_struct.core_frac_mode == 'mass':
+            core_density = hf_row.get('core_density', config.interior_struct.core_density)
+            if core_density == 'self':
+                core_density = hf_row.get('core_density', config.interior_energetics.boundary.core_density)
+            core_radius = (
+                3.0 * float(self.core_mass) / (4.0 * np.pi * float(core_density))
+            ) ** (1.0 / 3.0)
+        else:
+            raise ValueError(
+                "interior_struct.core_frac_mode must be 'mass' or 'radius'; "
+                f"got {config.interior_struct.core_frac_mode!r}"
+            )
+
+        self.core_radius = float(core_radius)
         self.core_frac = self.core_radius / self.planet_radius
 
         self.mantle_radius = self.planet_radius - self.core_radius
@@ -108,37 +123,36 @@ class BoundaryRunner:
             self.mantle_mass = self.planet_mass - self.core_mass
             self.mantle_bulk_density = self.mantle_mass / self.mantle_volume
 
+        self.upper_mantle_radius = self.planet_radius - self.mantle_radius / 2.0  # 1/2 of mantle thickness
+        self.upper_mantle_volume = (4 / 3) * np.pi * (self.planet_radius**3 - self.upper_mantle_radius**3)
+        self.upper_mantle_mass = self.mantle_bulk_density * self.upper_mantle_volume
+
         log.debug(
-            f'Initialized BoundaryRunner with planet mass {self.planet_mass:.2e} kg, bulk density {self.mantle_bulk_density:.2f} kg/m^3, mantle mass {self.mantle_mass:.2e} kg'
+            f'Initialized BoundaryRunner with planet mass {self.planet_mass:.2e} kg, bulk density {self.mantle_bulk_density:.2f} kg/m^3, upper mantle mass {self.upper_mantle_mass:.2e} kg'
         )
         self.surface_gravity = const_G * self.planet_mass / self.planet_radius**2
 
-        self.rtol = config.interior_energetics.boundary.rtol
-        self.atol = config.interior_energetics.boundary.atol
+        self.rtol = config.interior_energetics.rtol
+        self.atol = config.interior_energetics.atol
 
-        if interior_o.ic == 2 or config.interior_struct.module == 'zalmoxis':
+        if interior_o.ic == 2:
             self.T_p_0 = hf_row.get('T_magma')
             self.T_surf_0 = hf_row.get('T_surf')
         else:
-            self.T_p_0 = config.interior_energetics.boundary.T_p_0
+            self.T_p_0 = config.planet.tsurf_init
             self.T_surf_0 = self.T_p_0
-
-        if self.T_surf_0 > self.T_p_0:
-            self.T_surf_0 = (
-                self.T_p_0 - 1.0
-            )  # Ensure initial surface temperature does not exceed potential temperature
 
         self.T_solidus = config.interior_energetics.boundary.T_solidus
         self.T_liquidus = config.interior_energetics.boundary.T_liquidus
         self.critical_melt_fraction = config.interior_energetics.rfront_loc
-        self.Tsurf_event_change = config.interior_energetics.boundary.Tsurf_event_change
+        self.Tsurf_event_change = config.interior_energetics.tmagma_atol
 
         # Material constants
         self.critical_rayleigh_number = (
             config.interior_energetics.boundary.critical_rayleigh_number
         )  # dimensionless
         self.heat_fusion_silicate = (
-            config.interior_energetics.boundary.heat_fusion_silicate
+            config.interior_energetics.latent_heat_of_fusion
         )  # J/kg
         self.nusselt_exponent = (
             config.interior_energetics.boundary.nusselt_exponent
@@ -164,14 +178,14 @@ class BoundaryRunner:
         self.viscosity_model = config.interior_energetics.boundary.viscosity_model
 
         # Constant viscosity model parameters
-        self.eta_constant = config.interior_energetics.boundary.eta_constant  # Pa s
+        self.eta_constant = config.interior_energetics.const_log10visc  # Pa s
 
         # Aggregate viscosity parameters
         self.transition_width = (
             config.interior_energetics.phase_transition_width
         )  # dimensionless
-        self.eta_solid_const = config.interior_energetics.boundary.eta_solid_const  # Pa s
-        self.eta_melt_const = config.interior_energetics.boundary.eta_melt_const  # Pa s
+        self.eta_solid_const = config.interior_energetics.solid_log10visc  # Pa s
+        self.eta_melt_const = config.interior_energetics.melt_log10visc  # Pa s
 
         # Arrhenius solid mantle parameters
         self.dynamic_viscosity = config.interior_energetics.boundary.dynamic_viscosity  # Pa s
@@ -509,32 +523,6 @@ class BoundaryRunner:
                 self.planet_radius**3 - phi * (self.planet_radius**3 - self.core_radius**3)
             ) ** (1 / 3)
 
-    def drs_dTp(self, T_p: float) -> float:
-        """
-        Calculate the derivative of solidification radius with respect to potential temperature.
-
-        Parameters
-        ----------
-        T_p : float
-            Potential temperature of the mantle [K]
-
-        Returns
-        -------
-        float
-            Derivative dr_s/dT_p [m/K]
-        """
-
-        # Compute r_s
-        r_s = self.r_s(T_p)
-
-        # Compute dr_s/dT_p using the chain rule as derived in drs_dt
-        volume_diff = self.planet_radius**3 - self.core_radius**3
-        T_range = self.T_liquidus - self.T_solidus
-
-        dr_s_dT_p = -(volume_diff) / (3 * T_range * r_s**2)
-
-        return dr_s_dT_p
-
     def dT_pdt(self, T_p: float, T_surf: float, t: float) -> float:
         """
         Calculate the rate of change of potential temperature of the mantle.
@@ -563,32 +551,21 @@ class BoundaryRunner:
         Q_val = self.radioactive_heating(t)
 
         # Energy balance numerator: heat loss - radiogenic heating
-        numerator = -4 * np.pi * self.planet_radius**2 * q_m_val + self.mantle_mass * (
+        numerator = -4 * np.pi * self.planet_radius**2 * q_m_val + self.upper_mantle_mass * (
             Q_val + self.tidal_term
         )
 
-        r_s_val = self.r_s(T_p)  # Update r_s_val based on current T_p
+        r_s_val = self.r_s(T_p)
 
-        # Calculate dr_s/dT_p for the latent heat term
-        dr_s_dT_p = self.drs_dTp(T_p)
-
-        # Energy balance denominator: sensible heat + latent heat
+        # calculate heat release due to latent heat of fusion if solidification is occurring
         if r_s_val < self.planet_radius:
-            denominator = (
-                (4 / 3)
-                * np.pi
-                * self.mantle_bulk_density
-                * self.silicate_heat_capacity
-                * (self.planet_radius**3 - r_s_val**3)
-                - 4
-                * np.pi
-                * r_s_val** 2
-                * self.mantle_bulk_density
-                * self.heat_fusion_silicate
-                * dr_s_dT_p
-            )
+            volume_diff = self.planet_radius**3 - self.upper_mantle_radius**3
+            T_range = self.T_liquidus - self.T_solidus
+            latent_heat_term = - 4 * np.pi * self.heat_fusion_silicate * self.mantle_bulk_density * (volume_diff) / (3 * T_range)
         else:
-            denominator = self.silicate_heat_capacity * self.mantle_mass
+            latent_heat_term = 0.0
+
+        denominator = self.upper_mantle_mass * self.silicate_heat_capacity + latent_heat_term
 
         dT_pdt_val = numerator / denominator
 
@@ -736,10 +713,8 @@ class BoundaryRunner:
         T_p_final = sol.y[0, -1]
         T_surf_final = sol.y[1, -1]
         phi_final = self.melt_fraction(T_p_final)
-        r_s_final = self.r_s(T_p_final)
-        phi_final = self.melt_fraction(T_p_final)
         visc_final = self.viscosity(T_p_final, T_surf_final, phi_final)
-        f_radio_final = self.radioactive_heating(t_final) * self.mantle_mass
+        f_radio_final = self.radioactive_heating(t_final) * self.upper_mantle_mass
 
         # Log final timestep values to CSV
         if self.logging:
@@ -764,9 +739,7 @@ class BoundaryRunner:
                     }
                 )
 
-        m_liquid = (
-            (4 / 3) * np.pi * self.mantle_bulk_density * (self.planet_radius**3 - r_s_final**3)
-        )
+        m_liquid = self.upper_mantle_mass * phi_final
         m_solid = self.mantle_mass - m_liquid
 
         # Calculate boundary layer thickness
@@ -783,7 +756,7 @@ class BoundaryRunner:
             'RF_depth': phi_final * (1.0 - self.core_frac),
             'M_mantle_liquid': m_liquid,
             'M_mantle_solid': m_solid,
-            'F_tidal': self.tidal_term * self.mantle_mass / (4 * np.pi * self.planet_radius**2)
+            'F_tidal': self.tidal_term * self.upper_mantle_mass / (4 * np.pi * self.planet_radius**2)
             if self.use_tidal_heating
             else 0.0,
             'M_mantle': self.mantle_mass,

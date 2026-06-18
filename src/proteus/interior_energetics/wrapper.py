@@ -1484,10 +1484,7 @@ def run_interior(
         dT_delta_magma = config.interior_energetics.tmagma_atol
         dT_delta_magma += config.interior_energetics.tmagma_rtol * T_magma_prev
 
-        if config.interior_energetics.module == 'boundary':
-            dT_delta_surf = float(config.interior_energetics.boundary.Tsurf_event_change)
-        else:
-            dT_delta_surf = dT_delta_magma
+        dT_delta_surf = dT_delta_magma
 
         if hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
             log.warning('Prevented large increase to T_magma!')
