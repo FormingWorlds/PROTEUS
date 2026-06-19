@@ -13,8 +13,8 @@ navigation bar.
 
 ## Quick path
 
-1. **Prepare your local machine**
-    Set up your local environment (compilers, package managers). <br>
+1. **Prepare your local machine:**
+    set up your local environment (compilers, package managers). <br>
     → [Local machine guide](How-to/local_machine_guide.md)
 
     !!! warning "HPC clusters"
@@ -23,16 +23,16 @@ navigation bar.
         [Habrok](How-to/habrok_cluster_guide.md), or
         [Snellius](How-to/snellius_cluster_guide.md) cluster guide instead.
 
-2. **Install PROTEUS**
-   Set up the code and required dependencies. <br>
+2. **Install PROTEUS:**
+   set up the code and required dependencies. <br>
    → [Installation guide](How-to/installation.md)
 
-3. **Run the quick start tutorial**
-   Verify the installation and understand the code flow with an all-dummy run. <br>
+3. **Run the quick start tutorial:**
+   verify the installation and understand the code flow with an all-dummy run. <br>
    → [Quick start tutorial](Tutorials/quick_start_dummy.md)
 
-4. **Run an Earth analogue**
-   A production-quality simulation with real physics modules. <br>
+4. **Run an Earth analogue:**
+   a production-quality simulation with real physics modules. <br>
    → [Earth analogue tutorial](Tutorials/earth_analogue.md)
 
 ---
