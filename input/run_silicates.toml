@@ -44,7 +44,7 @@ config_version = "3.0"
         remove_sf             = false        # remove spectral file when done
 
     [params.dt]
-        minimum               = 1e4          # minimum time step [yr]
+        minimum               = 1e3          # minimum time step [yr]
         minimum_rel           = 1e-5         # minimum relative time step
         maximum               = 1e6          # maximum time step [yr]
         initial               = 3e1          # initial step size [yr]
@@ -78,17 +78,17 @@ config_version = "3.0"
             maximum           = 5.0e+8       # stop after this time [yr]
 
         [params.stop.solid]                  # solidification criterion
-            enabled           = true
+            enabled           = false
             phi_crit          = 0.01         # stop when global melt fraction < phi_crit
             freeze_volatiles  = false        # freeze mantle volatiles at solidification
 
         [params.stop.radeqm]                 # radiative equilibrium criterion
-            enabled           = true
+            enabled           = false
             atol              = 1.0          # |F_int - F_atm| tolerance [W m-2]
             rtol              = 1e-3         # relative tolerance
 
         [params.stop.escape]                 # atmosphere loss criterion
-            enabled           = true
+            enabled           = false
             p_stop            = 3.0          # stop when surface pressure < p_stop [bar]
 
         [params.stop.disint]                 # planetary disintegration criterion

@@ -38,7 +38,7 @@ max_mem  = 15       # max memory per CPU [GB]
 # Planet mass [M_earth]
 ["planet.mass_tot"]
     method = "direct"
-    values = [9.0]
+    values = [9.0, 2.0]
 
 # Hydrogen inventory [ppmw] (requires H_mode = "ppmw" in base config)
 #["planet.elements.H_budget"]

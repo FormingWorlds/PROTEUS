@@ -471,6 +471,11 @@ class Proteus:
 
         else:
             # Resuming from disk
+            if self.config.outgas.silicates:
+                gas_list = vol_list + self.config.outgas.vaplist
+            else:
+                gas_list = vol_list + vap_list
+
             log.info('Resuming the simulation from the disk')
 
             # Read helpfile from disk

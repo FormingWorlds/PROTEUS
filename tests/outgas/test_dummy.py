@@ -86,10 +86,11 @@ def test_dummy_outgas_sets_all_expected_keys():
 
     M_atm is set by the wrapper, not by the dummy module.
     """
+    config=MagicMock()
     hf_row = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=1e18, S_kg=1e17, Phi_global=0.3)
     _run(hf_row)
 
-    missing = [k for k in expected_keys() if k != 'M_atm' and k not in hf_row]
+    missing = [k for k in expected_keys(config) if k != 'M_atm' and k not in hf_row]
     assert missing == [], f'Missing keys after dummy outgas: {missing}'
     # Discrimination guard: M_atm itself must remain absent, since the
     # dummy module's contract is to leave it for the wrapper. A regression
