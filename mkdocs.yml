@@ -6,9 +6,9 @@ repo_name: GitHub
 copyright: '© 2023-2026 <a href="https://formingworlds.space">Forming Worlds Lab</a>'
 
 nav:
-  - Home:
-      - About: index.md
-      - Quick path: getting_started.md
+  - Home: index.md
+
+  - Get started: getting_started.md
 
   - How-to guides:
       - Getting started:

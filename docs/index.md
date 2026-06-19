@@ -94,6 +94,8 @@ billions of years.
 
 </div>
 
+Need the full picture? See the [get started guide](getting_started.md).
+
 ## Citation and credit
 
 If you make use of PROTEUS, please reference the scientific manuscripts
@@ -107,5 +109,5 @@ PROTEUS is released under the [Apache 2.0 license](https://github.com/FormingWor
 
 !!! info "Licenses across the PROTEUS framework"
     Different components within the PROTEUS framework carry different licenses. Please find information about the use of licenses within the PROTEUS framework on the website's [license page](https://proteus-framework.org/license/).
-    
+
 </div>
