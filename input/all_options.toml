@@ -595,6 +595,7 @@ config_version = "3.0"
 [observe]
     module                    = "none"       # none | petitRADTRANS
     clip_vmr                  =  1e-8        # minimum VMR for inclusion
+    reference_pressure        = 10           # used to calculate the synthetic spectrum [bar]
 
     [observe.petitRADTRANS]
         input_data_path       = "none"       # path to petitRADTRANS `input_data` folder. If `None`, the installed package location will be used.
