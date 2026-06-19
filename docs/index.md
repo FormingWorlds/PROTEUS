@@ -95,3 +95,10 @@ If you make use of PROTEUS, please reference the scientific manuscripts
 outlined in the [Bibliography](Reference/bibliography.md), state the code
 version used, and include an acknowledgement. We provide a suggested
 acknowledgement in the [contributing page](Community/CONTRIBUTING.md#licensing-and-credit).
+
+## License
+
+PROTEUS is released under the [Apache 2.0 license](https://github.com/FormingWorlds/PROTEUS/blob/main/LICENSE.txt).
+
+!!! info "Licenses across the PROTEUS framework"
+    Different components within the PROTEUS framework carry different licenses. Please find information about the use of licenses within the PROTEUS framework on the website's [license page](https://proteus-framework.org/license/).
