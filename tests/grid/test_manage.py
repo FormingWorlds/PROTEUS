@@ -764,6 +764,74 @@ class TestSlurmConfig:
         assert '%2' in contents
         assert '%99' not in contents
 
+    def test_slurm_script_omits_jax_cache_by_default(self, grid_with_mocks, monkeypatch):
+        """Without the opt-in the script writes no JAX cache environment, so the
+        default behaviour is unchanged and no cache is created on disk.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        g.slurm_config(max_jobs=2, test_run=True, max_days=1, max_mem=4)
+        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        # No cache env vars at all on the default path.
+        assert 'JAX_COMPILATION_CACHE_DIR' not in contents
+        assert 'JAX_COMPILATION_CACHE_MAX_SIZE' not in contents
+        # The dispatch body is still emitted, so this is a real script.
+        assert 'i=$SLURM_ARRAY_TASK_ID' in contents
+
+    def test_slurm_script_includes_bounded_jax_cache_when_enabled(
+        self, grid_with_mocks, monkeypatch
+    ):
+        """With the opt-in enabled the script turns on the persistent cache
+        under the grid output directory AND pins the LRU size bound. A
+        regression that enabled the cache without the bound, the failure mode
+        that filled the filesystem, would fail this test.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        g.slurm_config(max_jobs=2, test_run=True, max_days=1, max_mem=4, jax_cache=True)
+        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        expected_dir = os.path.join(g.outdir, 'jax_cache')
+        # Cache directory lives under the grid outdir (self-contained).
+        assert f'export JAX_COMPILATION_CACHE_DIR={expected_dir}' in contents
+        # The LRU size bound MUST be present: an unbounded cache (no max-size)
+        # is exactly the regression that filled scratch. 80 GiB in bytes.
+        assert 'export JAX_COMPILATION_CACHE_MAX_SIZE=85899345920' in contents
+        # Trivial compiles are kept out so the cache holds only what is costly.
+        assert 'export JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=1' in contents
+        assert 'export JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES=4096' in contents
+        # The work loop still follows the env block.
+        assert 'i=$SLURM_ARRAY_TASK_ID' in contents
+
 
 # ---------------------------------------------------------------------------
 # Grid.run

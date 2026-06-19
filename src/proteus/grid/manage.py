@@ -529,7 +529,12 @@ class Grid:
         )
 
     def slurm_config(
-        self, max_jobs: int, test_run: bool = False, max_days: int = 1, max_mem: int = 12
+        self,
+        max_jobs: int,
+        test_run: bool = False,
+        max_days: int = 1,
+        max_mem: int = 12,
+        jax_cache: bool = False,
     ):
         """Write slurm config file.
 
@@ -546,6 +551,13 @@ class Grid:
             Maximum number of days to run
         max_mem : int
             Maximum memory per CPU in GB
+        jax_cache : bool
+            If true, the generated script enables a bounded JAX persistent
+            compilation cache shared across the array tasks (stored under the
+            grid output directory) so compiled executables are reused and JIT
+            recompiles are cut. An LRU size bound caps the cache so it cannot
+            fill the filesystem. Default false: no cache environment variables
+            are written and the script behaves exactly as before.
         """
 
         max_days = int(max_days)  # ensure integer
@@ -570,6 +582,22 @@ class Grid:
 
         log_file = os.path.join(self.logdir, 'proteus-%A_%a.log')
 
+        # Optional bounded JAX persistent compilation cache. The size bound uses
+        # JAX's own LRU eviction so the cache plateaus instead of growing without
+        # limit; the min-compile-time and min-entry-size thresholds keep trivial
+        # compilations out of it. Disabled by default so the generated script is
+        # unchanged unless the cache is explicitly requested.
+        if jax_cache:
+            jax_cache_dir = os.path.join(self.outdir, 'jax_cache')
+            jax_env = (
+                f'export JAX_COMPILATION_CACHE_DIR={jax_cache_dir}\n'
+                'export JAX_COMPILATION_CACHE_MAX_SIZE=85899345920\n'
+                'export JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=1\n'
+                'export JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES=4096\n'
+            )
+        else:
+            jax_env = ''
+
         string = f"""#!/bin/sh
 #SBATCH -J proteus.grid.array
 #SBATCH --export=ALL
@@ -579,7 +607,7 @@ class Grid:
 #SBATCH -o {log_file}
 #SBATCH --array=0-{self.size - 1}%{max_jobs}
 
-i=$SLURM_ARRAY_TASK_ID
+{jax_env}i=$SLURM_ARRAY_TASK_ID
 
 while [ $i -lt {self.size} ]; do
     printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}.toml" $((i))
@@ -644,6 +672,10 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     max_days = int(config['max_days'])  # maximum number of days to run (e.g. 1)
     max_mem = int(config['max_mem'])  # maximum memory per CPU in GB (e.g. 3)
 
+    # Optional bounded JAX persistent compilation cache (Slurm runs only).
+    # Absent or false leaves the generated script cache-free.
+    jax_cache = bool(config.get('jax_cache', False))
+
     # Base config file
     cfg_base = os.path.join(PROTEUS_DIR, str(config['ref_config']))
 
@@ -697,7 +729,13 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     # Run the grid
     if use_slurm:
         # Generate Slurm batch file, use `sbatch` to submit
-        pg.slurm_config(max_jobs, test_run=test_run, max_days=max_days, max_mem=max_mem)
+        pg.slurm_config(
+            max_jobs,
+            test_run=test_run,
+            max_days=max_days,
+            max_mem=max_mem,
+            jax_cache=jax_cache,
+        )
     else:
         # Alternatively, let grid_proteus.py manage the jobs
         pg.run(max_jobs, test_run=test_run, check_interval=check_interval)
