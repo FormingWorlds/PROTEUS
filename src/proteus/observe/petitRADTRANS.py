@@ -35,7 +35,12 @@ def _get_input_data_path(input_data_path: str | None) -> str:
     """Return a local petitRADTRANS input-data directory."""
 
     if input_data_path is not None:
-        return input_data_path
+        candidate = Path(input_data_path).expanduser()
+        if candidate.is_dir():
+            return str(candidate)
+        raise FileNotFoundError(
+            f'petitRADTRANS input_data_path is not a directory: {candidate}'
+        )
 
     # Check FWL_DATA_DIR / 'prt' / 'input_data' first
     candidate = FWL_DATA_DIR / 'prt' / 'input_data'
@@ -158,7 +163,9 @@ def _build_prt_composition(
 
 
 def _prioritize_methane_species(line_species: list[str]) -> list[str]:
-    """Move CH4 to the front of the line-species list when present. This avoids issues with opacity table overlap"""
+    """Move CH4 to the front of the line-species list when present.
+
+    This avoids issues with opacity table overlap"""
 
     if 'CH4' not in line_species or not line_species:
         return line_species
@@ -200,7 +207,7 @@ def _get_atm_profile(outdir: str, hf_row: dict) -> dict:
         outdir, [hf_row['Time']], extra_keys=['tmpl', 'pl', 'rl', 'x_gas']
     )
 
-    if (len(atm_arr) == 0) or (atm_arr[-1] is None):
+    if not atm_arr or atm_arr[-1] is None:
         log.warning(f"Could not read atmosphere data from '{outdir}'")
         return None
     return atm_arr[-1]
