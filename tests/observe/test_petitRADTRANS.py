@@ -187,6 +187,7 @@ def test_load_stellar_toa_flux_reads_saved_sflux_and_interpolates(monkeypatch, t
     target_wavelength_nm = np.array([4.50000000e02, 5.50000000e02])
     flux = mod._load_stellar_toa_flux(str(tmp_path), {'Time': 42}, target_wavelength_nm)
 
+    assert flux.shape == (2,)
     assert np.allclose(flux, np.array([1.5e7, 3.0e7]))
 
 
@@ -197,7 +198,9 @@ def test_get_input_data_path_prefers_fwl_data_directory(monkeypatch, tmp_path):
     data_path.mkdir(parents=True)
     monkeypatch.setattr(mod, 'FWL_DATA_DIR', tmp_path)
 
-    assert mod._get_input_data_path(None) == str(data_path)
+    result = mod._get_input_data_path(None)
+    assert result == str(data_path)
+    assert Path(result).is_dir()
 
 
 def test_get_input_data_path_falls_back_to_package_layout(monkeypatch, tmp_path):
@@ -213,7 +216,9 @@ def test_get_input_data_path_falls_back_to_package_layout(monkeypatch, tmp_path)
     fake_pkg.__file__ = str(package_dir / '__init__.py')
     monkeypatch.setattr(mod, 'FWL_DATA_DIR', tmp_path / 'does_not_exist')
 
-    assert mod._get_input_data_path(None) == str(package_input)
+    result = mod._get_input_data_path(None)
+    assert result == str(package_input)
+    assert Path(result).is_dir()
 
 
 def test_get_input_data_path_raises_when_missing_everywhere(monkeypatch, tmp_path):
@@ -223,8 +228,9 @@ def test_get_input_data_path_raises_when_missing_everywhere(monkeypatch, tmp_pat
     fake_pkg.__file__ = str(tmp_path / 'pkg' / 'petitRADTRANS' / '__init__.py')
     monkeypatch.setattr(mod, 'FWL_DATA_DIR', tmp_path / 'does_not_exist')
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(FileNotFoundError) as excinfo:
         mod._get_input_data_path(None)
+    assert 'input_data' in str(excinfo.value)
 
 
 def test_supported_species_helpers_filter_and_include(monkeypatch, tmp_path):
@@ -312,7 +318,9 @@ def test_atm_profile_and_offchem_helpers(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, 'proteus.atmos_chem.common', fake_atmos_chem_common)
 
     outdir = str(tmp_path)
-    assert mod._get_atm_profile(outdir, {'Time': 1}) == {'p': np.array([1.0]), 'marker': 1}
+    profile = mod._get_atm_profile(outdir, {'Time': 1})
+    assert profile['marker'] == 1
+    np.testing.assert_allclose(profile['p'], np.array([1.0]))
     offchem = mod._get_atm_offchem(outdir, {'R_int': 10.0}, 'vulcan')
     assert list(offchem.columns) == ['tmpl', 'pl', 'rl', 'H2']
     assert offchem['rl'].iloc[0] == pytest.approx(10.0)
@@ -322,33 +330,38 @@ def test_get_atm_profile_returns_none_when_no_data(monkeypatch):
     mod = _import_backend(monkeypatch)
 
     fake_atmos_clim_common = types.ModuleType('proteus.atmos_clim.common')
-    fake_atmos_clim_common.read_atmosphere_data = lambda *_a, **_k: []
+    fake_atmos_clim_common.read_atmosphere_data = MagicMock(return_value=[])
     fake_atmos_clim = types.ModuleType('proteus.atmos_clim')
     fake_atmos_clim.__path__ = []
     monkeypatch.setitem(sys.modules, 'proteus.atmos_clim', fake_atmos_clim)
     monkeypatch.setitem(sys.modules, 'proteus.atmos_clim.common', fake_atmos_clim_common)
 
-    assert mod._get_atm_profile('/out', {'Time': 1}) is None
+    result = mod._get_atm_profile('/out', {'Time': 1})
+    assert result is None
+    fake_atmos_clim_common.read_atmosphere_data.assert_called_once()
 
 
 def test_get_atm_offchem_returns_none_when_no_result(monkeypatch):
     mod = _import_backend(monkeypatch)
 
     fake_atmos_chem_common = types.ModuleType('proteus.atmos_chem.common')
-    fake_atmos_chem_common.read_result = lambda *_a, **_k: None
+    fake_atmos_chem_common.read_result = MagicMock(return_value=None)
     fake_atmos_chem = types.ModuleType('proteus.atmos_chem')
     fake_atmos_chem.__path__ = []
     monkeypatch.setitem(sys.modules, 'proteus.atmos_chem', fake_atmos_chem)
     monkeypatch.setitem(sys.modules, 'proteus.atmos_chem.common', fake_atmos_chem_common)
 
-    assert mod._get_atm_offchem('/out', {'R_int': 10.0}, 'vulcan') is None
+    result = mod._get_atm_offchem('/out', {'R_int': 10.0}, 'vulcan')
+    assert result is None
+    fake_atmos_chem_common.read_result.assert_called_once()
 
 
 def test_load_stellar_toa_flux_raises_when_missing_files(monkeypatch, tmp_path):
     mod = _import_backend(monkeypatch)
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(FileNotFoundError) as excinfo:
         mod._load_stellar_toa_flux(str(tmp_path), {'Time': 1}, np.array([450.0]))
+    assert 'No stellar spectrum files' in str(excinfo.value)
 
 
 def test_transit_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_path):
@@ -361,9 +374,9 @@ def test_transit_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_pat
     monkeypatch.setitem(sys.modules, 'proteus.observe.common', fake_common)
     config = _make_config(input_data_path=str(tmp_path))
 
-    assert (
-        mod.transit_depth({'Time': 1, 'R_star': 1.0}, str(tmp_path), config, 'profile') is None
-    )
+    result = mod.transit_depth({'Time': 1, 'R_star': 1.0}, str(tmp_path), config, 'profile')
+    assert result is None
+    assert sys.modules['petitRADTRANS.radtrans'].Radtrans.call_count == 0
 
 
 def test_eclipse_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_path):
@@ -376,15 +389,14 @@ def test_eclipse_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_pat
     monkeypatch.setitem(sys.modules, 'proteus.observe.common', fake_common)
     config = _make_config(input_data_path=str(tmp_path))
 
-    assert (
-        mod.eclipse_depth(
-            {'Time': 1, 'R_star': 1.0, 'T_star': 1.0, 'separation': 1.0},
-            str(tmp_path),
-            config,
-            'profile',
-        )
-        is None
+    result = mod.eclipse_depth(
+        {'Time': 1, 'R_star': 1.0, 'T_star': 1.0, 'separation': 1.0},
+        str(tmp_path),
+        config,
+        'profile',
     )
+    assert result is None
+    assert sys.modules['petitRADTRANS.radtrans'].Radtrans.call_count == 0
 
 
 def test_transit_depth_prioritizes_methane_and_writes_output(monkeypatch, tmp_path):
