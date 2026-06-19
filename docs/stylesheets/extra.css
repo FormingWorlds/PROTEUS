@@ -14,7 +14,7 @@
    Each diagram carries its own aspect ratio, taken from the source viewBox,
    matched on its file name in the object data attribute. */
 .arch-diagram[data*="modules_schematic"] {
-  aspect-ratio: 682 / 497;
+  aspect-ratio: 682 / 497; /* 682x497 */
 }
 
 .arch-diagram[data*="proteus_architecture"] {
@@ -57,4 +57,11 @@
 
 .md-typeset .grid.cards > ul > li > p:last-child {
   margin-top: auto;
+}
+
+/* Narrow and center the homepage intro tagline */
+.md-typeset .home-text {
+  max-width: 1100px;
+  margin: 1.5rem auto;
+  text-align: left;
 }
