@@ -7,7 +7,7 @@ seed = 42
 logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "bayesopt_infer_se_mat12_lei_5_100/"
+output = "bayesopt_infer_se_mat12_ucb_5_100/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
 ref_config = "output/bayesopt_se/init_coupler.toml"
@@ -23,7 +23,7 @@ failure_codes = [11, ] # solidified (10), escaped (15), max_runtime (11)
 # Parameters for Bayesian optimisation
 n_workers  = 5        # Number of parallel workers
 kernel     = "MAT1/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
-acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI" | "LogPI"
+acqf       = "UCB"  # Acquisition function, "UCB" | "LogEI" | "LogPI"
 n_steps    = 100       # Total number of evaluations (i.e. BO steps)
 
 # Parameters to optimize (with bounds)
