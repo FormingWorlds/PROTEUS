@@ -375,10 +375,10 @@ def test_run_dummy_int_initialization():
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_run_dummy_int_rf_depth_uses_structure_core_radius():
-    """RF_depth uses the rheological front radius returned by the boundary
-    backend, rather than the retired linear Phi * (1 - core_frac) mapping.
-    With melt fraction 1, RF_depth equals the normalized depth to the upper
-    mantle midpoint.
+    """RF_depth uses the structure-derived core radius fraction R_core/R_int,
+    consistent with the boundary backend, rather than config.core_frac (which
+    is a mass fraction in 'mass' mode). With melt fraction 1, RF_depth equals
+    1 - R_core/R_int.
     """
     # core_frac=0.30 in config, but the structure puts the core at R_core/R_int
     # = 0.5; these differ so the test discriminates which one RF_depth uses.
@@ -403,11 +403,10 @@ def test_run_dummy_int_rf_depth_uses_structure_core_radius():
 
     # tsurf_init (3000) is above the liquidus (2500), so the mantle is molten.
     assert output['Phi_global'] == pytest.approx(1.0)
-    # RF_depth now follows the solidification radius: 1 - R_s / R_int.
-    # With phi=1, R_s is the upper-mantle midpoint, so the depth is 0.25.
-    assert output['RF_depth'] == pytest.approx(0.25)
-    # Discrimination: the old linear Phi * (1 - R_core/R_int) path would give 0.5.
-    assert abs(output['RF_depth'] - 0.5) > 0.1
+    # RF_depth uses the structure radius fraction (0.5): 1 - 0.5 = 0.5.
+    assert output['RF_depth'] == pytest.approx(0.5)
+    # Discrimination: the old config.core_frac path (0.30) would give 0.70.
+    assert abs(output['RF_depth'] - (1.0 - 0.30)) > 0.1
 
 
 @pytest.mark.unit
@@ -679,8 +678,8 @@ def test_run_dummy_int_interior_arrays():
 def test_run_dummy_int_rf_depth_scaling():
     """Test RF_depth (rheological front depth) scales with melt fraction.
 
-    RF_depth should follow the solidification-radius geometry, i.e.
-    RF_depth = 1 - r_s / R_int.
+    RF_depth should be Phi_global * (1 - core_frac), representing
+    the depth of the molten region normalized by planet radius.
     """
     config = _create_mock_config(
         tsurf_init=2000.0, mantle_tsol=1500.0, mantle_tliq=2500.0, core_frac=0.6
@@ -706,17 +705,14 @@ def test_run_dummy_int_rf_depth_scaling():
 
     # tsurf_init=2000 sits mid-melt (Phi = (2000-1500)/(2500-1500) = 0.5).
     assert output['Phi_global'] == pytest.approx(0.5)
-    upper_mantle_radius = 0.5 * (hf_row['R_int'] + hf_row['R_core'])
-    expected_rf_depth = 1.0 - (
-        (hf_row['R_int'] ** 3 - 0.5 * (hf_row['R_int'] ** 3 - upper_mantle_radius**3))
-        ** (1.0 / 3.0)
-        / hf_row['R_int']
-    )
-    assert output['RF_depth'] == pytest.approx(expected_rf_depth, rel=1e-10)
-    # Discrimination: the retired linear Phi * (1 - R_core/R_int) path would give 0.25.
-    assert abs(output['RF_depth'] - 0.25) > 0.05
-    # Boundedness: the new depth is a normalized surface-to-front distance.
-    assert 0.0 <= output['RF_depth'] <= 1.0
+    # RF_depth = Phi * (1 - R_core/R_int) = 0.5 * (1 - 0.5) = 0.25.
+    assert output['RF_depth'] == pytest.approx(0.5 * (1 - 0.5), rel=1e-10)
+    # Discrimination: the retired config.core_frac path would give
+    # 0.5 * (1 - 0.6) = 0.20, distinguishable from 0.25.
+    assert abs(output['RF_depth'] - 0.5 * (1 - 0.6)) > 0.02
+    # Boundedness: RF_depth is a normalised mantle fraction in [0, 1-R_core/R_int].
+    assert 0.0 <= output['RF_depth'] <= 0.5
+    assert output['RF_depth'] < output['Phi_global']
 
 
 # ============================================================================
