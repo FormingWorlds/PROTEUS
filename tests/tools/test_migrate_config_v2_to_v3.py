@@ -114,6 +114,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.boundary.nusselt_exponent',
         'interior_energetics.boundary.rtol',
         'interior_energetics.boundary.silicate_density',
+        'interior_energetics.boundary.core_density',
         'interior_energetics.boundary.silicate_heat_capacity',
         'interior_energetics.boundary.thermal_conductivity',
         'interior_energetics.boundary.thermal_diffusivity',
