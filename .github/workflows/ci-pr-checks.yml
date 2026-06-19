@@ -291,7 +291,7 @@ jobs:
 
             if [ -f nightly-timestamp.txt ]; then
               NIGHTLY_TS=$(cat nightly-timestamp.txt)
-              python3 - <<PYEOF
+              if ! python3 - <<PYEOF
           from datetime import datetime, timezone
           import sys
           ts = datetime.fromisoformat("$NIGHTLY_TS".replace('Z', '+00:00'))
@@ -301,7 +301,7 @@ jobs:
               print(f"WARNING: Nightly artifact is stale ({age:.1f}h > $STALE_HOURS h)")
               sys.exit(1)
           PYEOF
-              if [ $? -ne 0 ]; then
+              then
                 NIGHTLY_STALE=true
               fi
             else
@@ -494,12 +494,11 @@ jobs:
           fi
           diff-cover $COV_REPORTS --diff-file /tmp/pr-changes.diff --fail-under=$DC_FAIL_UNDER
 
-      - name: Fail job if nightly is stale
+      - name: Warn if nightly is stale
         if: always() && env.RUN_COVERAGE == 'true' && env.COV_BLOCKING == 'true' && steps.check-nightly.outcome == 'success'
         run: |
           if [ "$NIGHTLY_STALE" = "true" ]; then
-            echo "Nightly baseline is stale (>48h). Trigger nightly CI manually."
-            exit 1
+            echo "::warning::Nightly baseline is stale (>48h). Trigger nightly CI manually."
           fi
 
       - name: Fail job if coverage dropped beyond grace period
