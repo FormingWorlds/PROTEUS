@@ -1,4 +1,9 @@
-# Quick path
+---
+hide:
+  - navigation
+---
+
+# Get started
 
 !!! tip "New to PROTEUS?"
     Start with the [Quick start tutorial](Tutorials/quick_start_dummy.md):
@@ -37,7 +42,7 @@ navigation bar.
 
 ---
 
-## What do you want to do?
+## Jump straight to:
 
 <div class="grid cards" markdown>
 
