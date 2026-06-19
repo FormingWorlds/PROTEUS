@@ -855,6 +855,185 @@ def test_r_s_decreases_with_temperature_in_partially_molten_regime(boundary_runn
     assert boundary_runner.core_radius < r_s_hotter < boundary_runner.planet_radius
 
 
+# =============================================================================
+# Tests: Core Radius Determination (Branch Coverage for lines 93-111)
+# =============================================================================
+
+
+def test_core_frac_mode_radius_without_r_core(
+    mock_config, mock_dirs, mock_interior, mock_atmos
+):
+    """
+    Test core_radius calculation when core_frac_mode='radius' and R_core not in hf_row.
+
+    **Physical Scenario**: Core radius determined by core_frac * planet_radius.
+    This tests the elif branch at line 95-96 in boundary.py.
+    """
+    # Create hf_row WITHOUT 'R_core' to test the elif branch
+    hf_row = {
+        'Time': 0.01,
+        'R_int': 6.371e6,
+        'M_core': 0.55 * M_earth,
+        'M_atm': 1e18,
+        'F_atm': 100.0,
+        'T_magma': 3500.0,
+        'T_surf': 1600.0,
+        'P_surf': 1e8,
+        # NOTE: 'R_core' is deliberately omitted to test the elif branch
+    }
+
+    # Set core_frac_mode to 'radius'
+    mock_config.interior_struct.core_frac_mode = 'radius'
+    mock_config.interior_struct.core_frac = 0.55
+
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        boundary_runner = BoundaryRunner(
+            config=mock_config,
+            dirs=mock_dirs,
+            hf_row=hf_row,
+            hf_all=None,
+            interior_o=mock_interior,
+            atmos_o=mock_atmos,
+        )
+
+    # Verify core_radius was calculated as core_frac * planet_radius
+    expected_core_radius = 0.55 * 6.371e6
+    assert boundary_runner.core_radius == pytest.approx(expected_core_radius, rel=1e-10)
+    assert boundary_runner.core_frac == pytest.approx(0.55, rel=1e-10)
+
+
+def test_core_frac_mode_mass_without_r_core(mock_config, mock_dirs, mock_interior, mock_atmos):
+    """
+    Test core_radius calculation when core_frac_mode='mass' and R_core not in hf_row.
+
+    **Physical Scenario**: Core radius calculated from core_mass, core_density, and
+    the volume formula r = (3*M / (4*π*ρ))^(1/3).
+    This tests the elif branch at line 97-107 in boundary.py.
+    """
+    # Create hf_row WITHOUT 'R_core' to test the mass-mode branch
+    hf_row = {
+        'Time': 0.01,
+        'R_int': 6.371e6,
+        'M_core': 0.55 * M_earth,
+        'M_atm': 1e18,
+        'F_atm': 100.0,
+        'T_magma': 3500.0,
+        'T_surf': 1600.0,
+        'P_surf': 1e8,
+        'core_density': 11000.0,  # Explicitly provided
+        # NOTE: 'R_core' is deliberately omitted to test the elif branch
+    }
+
+    # Set core_frac_mode to 'mass'
+    mock_config.interior_struct.core_frac_mode = 'mass'
+    mock_config.interior_struct.core_density = 10500.0  # Should be overridden by hf_row value
+
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        boundary_runner = BoundaryRunner(
+            config=mock_config,
+            dirs=mock_dirs,
+            hf_row=hf_row,
+            hf_all=None,
+            interior_o=mock_interior,
+            atmos_o=mock_atmos,
+        )
+
+    # Verify core_radius was calculated from mass and density
+    # r = (3*M / (4*π*ρ))^(1/3)
+    core_mass = 0.55 * M_earth
+    core_density = 11000.0
+    expected_core_radius = (3.0 * core_mass / (4.0 * np.pi * core_density)) ** (1.0 / 3.0)
+    assert boundary_runner.core_radius == pytest.approx(expected_core_radius, rel=1e-10)
+
+
+def test_core_frac_mode_mass_with_self_density(
+    mock_config, mock_dirs, mock_interior, mock_atmos
+):
+    """
+    Test core_radius calculation when core_frac_mode='mass' and no core_density in hf_row.
+
+    **Physical Scenario**: When core_density is not in hf_row, the density falls back to the
+    config.interior_struct.core_density value (first default). The second check for 'self'
+    would only trigger if core_density were explicitly set to 'self' in hf_row, but the
+    code has a logic issue where it would still get 'self' from hf_row.get().
+    This tests the density fallback logic at lines 98-102 in boundary.py.
+    """
+    # Create hf_row WITHOUT core_density to test the fallback chain
+    hf_row = {
+        'Time': 0.01,
+        'R_int': 6.371e6,
+        'M_core': 0.55 * M_earth,
+        'M_atm': 1e18,
+        'F_atm': 100.0,
+        'T_magma': 3500.0,
+        'T_surf': 1600.0,
+        'P_surf': 1e8,
+        # NOTE: core_density is deliberately omitted to test the fallback branch
+        # NOTE: 'R_core' is deliberately omitted to test the elif branch
+    }
+
+    # Set core_frac_mode to 'mass'
+    mock_config.interior_struct.core_frac_mode = 'mass'
+    struct_core_density = 11500.0  # Fallback density from interior_struct
+    mock_config.interior_struct.core_density = struct_core_density
+
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        boundary_runner = BoundaryRunner(
+            config=mock_config,
+            dirs=mock_dirs,
+            hf_row=hf_row,
+            hf_all=None,
+            interior_o=mock_interior,
+            atmos_o=mock_atmos,
+        )
+
+    # Verify core_radius was calculated using struct density (first fallback)
+    core_mass = 0.55 * M_earth
+    expected_core_radius = (3.0 * core_mass / (4.0 * np.pi * struct_core_density)) ** (
+        1.0 / 3.0
+    )
+    assert boundary_runner.core_radius == pytest.approx(expected_core_radius, rel=1e-10)
+
+
+def test_core_frac_mode_invalid_raises_valueerror(
+    mock_config, mock_dirs, mock_interior, mock_atmos
+):
+    """
+    Test that invalid core_frac_mode raises ValueError.
+
+    **Physical Scenario**: User misconfigures core_frac_mode to an unsupported value.
+    This tests the else branch at line 108-111 in boundary.py.
+    """
+    # Create hf_row WITHOUT 'R_core' to reach the else branch
+    hf_row = {
+        'Time': 0.01,
+        'R_int': 6.371e6,
+        'M_core': 0.55 * M_earth,
+        'M_atm': 1e18,
+        'F_atm': 100.0,
+        'T_magma': 3500.0,
+        'T_surf': 1600.0,
+        'P_surf': 1e8,
+        # NOTE: 'R_core' is deliberately omitted to reach the else branch
+    }
+
+    # Set core_frac_mode to an invalid value
+    mock_config.interior_struct.core_frac_mode = 'invalid_mode'
+
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        with pytest.raises(
+            ValueError, match="interior_struct.core_frac_mode must be 'mass' or 'radius'"
+        ):
+            BoundaryRunner(
+                config=mock_config,
+                dirs=mock_dirs,
+                hf_row=hf_row,
+                hf_all=None,
+                interior_o=mock_interior,
+                atmos_o=mock_atmos,
+            )
+
+
 @pytest.mark.physics_invariant
 def test_dT_pdt_heat_loss_dominates(boundary_runner):
     """
