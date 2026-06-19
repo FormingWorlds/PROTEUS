@@ -1,3 +1,9 @@
+---
+title: PROTEUS submodules
+hide: 
+  - toc
+---
+
 # PROTEUS submodules
 
 PROTEUS is a modular simulation framework: the physics is split across several submodules, shown in the schematic below. Click any module in the diagram to open its documentation, or navigate to it from the sidebar.
