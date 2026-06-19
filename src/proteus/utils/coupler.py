@@ -628,6 +628,7 @@ def GetHelpfileKeys():
         'core_density',     # core density from structure solver [kg m-3]
         'core_heatcap',     # core heat capacity [J kg-1 K-1]
         'X_H2_int',         # H2 mass fraction in interior (sub-Neptune mode) [1]
+        'struct_mass_desync_frac',  # |trapezoid - ODE accumulator| / accumulator structure mass self-consistency [1]
 
         # Temperatures
         'T_surf',           # global surface temperature [K]

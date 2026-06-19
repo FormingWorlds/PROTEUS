@@ -13,6 +13,7 @@ Functions tested:
 - write_spider_mesh_file(): Interpolate Zalmoxis profiles onto SPIDER mesh
 - load_zalmoxis_configuration(): Build config dict from PROTEUS config
 - load_zalmoxis_solidus_liquidus_functions(): Load melting curves by EOS type
+- compute_structure_mass_desync(): Mass self-consistency diagnostic (issue #68)
 """
 
 from __future__ import annotations
@@ -22,7 +23,10 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from proteus.interior_struct.zalmoxis import write_spider_mesh_file
+from proteus.interior_struct.zalmoxis import (
+    compute_structure_mass_desync,
+    write_spider_mesh_file,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -1192,3 +1196,80 @@ def test_zalmoxis_solver_retry_replaces_density_and_gravity(tmp_path, monkeypatc
     assert rho_mock.call_count == 0
     assert 0.0 < hf_row['M_core'] < hf_row['M_int']
     assert 0.0 < cmb_radius < hf_row['R_int']
+
+
+@pytest.mark.physics_invariant
+def test_structure_mass_desync_near_zero_for_self_consistent_sphere():
+    """A physically self-consistent structure reads near-zero mass desync.
+
+    Build a uniform-density sphere and feed the analytic sphere mass
+    ``4/3 pi R^3 rho`` as the ODE accumulator total. The trapezoid of
+    ``4 pi r^2 rho`` over a fine radial grid integrates to the same analytic
+    mass to within O(h^2) discretisation error, so the metric (mass-closure
+    invariant: two independent estimates of one conserved total) must be far
+    below the ~1% worst-case production desync. R = 6e6 m and a non-trivial
+    rho = 4000 kg/m^3 keep the absolute mass at a realistic super-Earth scale
+    so a units slip would not hide in the ratio.
+    """
+    rho0 = 4000.0  # kg m-3, silicate-mantle scale
+    radius = 6.0e6  # m
+    radii = np.linspace(0.0, radius, 2000)
+    density = np.full_like(radii, rho0)
+    analytic_total = 4.0 / 3.0 * np.pi * radius**3 * rho0  # kg
+    mass_enclosed = np.array([analytic_total])
+
+    desync = compute_structure_mass_desync(radii, density, mass_enclosed)
+
+    # 2000-node trapezoid of r^2 differs from the analytic integral by ~1e-7,
+    # far under 1e-4; a self-consistent profile reads ~0.
+    assert desync == pytest.approx(0.0, abs=1.0e-4)
+    # Boundedness: a relative magnitude is non-negative regardless of input.
+    assert desync >= 0.0
+
+
+@pytest.mark.physics_invariant
+def test_structure_mass_desync_reports_known_accumulator_mismatch():
+    """A known accumulator-vs-trapezoid gap is reported as that fraction.
+
+    Set the ODE accumulator total 5% heavier than the trapezoid of the same
+    converged profile (the worst-case desync magnitude seen in production).
+    The metric must read ``0.05 / 1.05`` because it normalises by the
+    accumulator total, not by the trapezoid.
+    """
+    rho0 = 4000.0  # kg m-3
+    radius = 6.0e6  # m
+    radii = np.linspace(0.0, radius, 4000)
+    density = np.full_like(radii, rho0)
+    trapezoid_total = float(np.trapezoid(4.0 * np.pi * radii**2 * density, radii))
+    # Accumulator 5% heavier than the density-integral total.
+    mass_enclosed = np.array([trapezoid_total * 1.05])
+
+    desync = compute_structure_mass_desync(radii, density, mass_enclosed)
+
+    # |T - 1.05 T| / (1.05 T) = 0.05 / 1.05 = 0.047619...
+    assert desync == pytest.approx(0.05 / 1.05, rel=1.0e-6)
+    # Discrimination guard: a regression normalising by the trapezoid instead
+    # of the accumulator would read exactly 0.05, which differs from 0.0476 by
+    # more than the tolerance.
+    assert abs(desync - 0.05) > 1.0e-3
+    # Sign guard: the magnitude is strictly positive for a real mismatch; a
+    # dropped abs() would go negative because the trapezoid is the lighter side.
+    assert desync > 0.0
+
+
+def test_structure_mass_desync_guards_nonpositive_accumulator():
+    """A degenerate or failed structure solve returns 0.0, not a ZeroDivision.
+
+    When the accumulator total is non-positive (empty or failed profile) the
+    metric is undefined; the guard returns 0.0 so the helpfile column stays a
+    finite number rather than propagating a division by zero. Exercises the
+    error-contract edge case.
+    """
+    radii = np.linspace(0.0, 1.0e6, 16)
+    density = np.full_like(radii, 3000.0)
+
+    zero_total = compute_structure_mass_desync(radii, density, np.array([0.0]))
+    negative_total = compute_structure_mass_desync(radii, density, np.array([-1.0e20]))
+
+    assert zero_total == pytest.approx(0.0, abs=0.0)
+    assert negative_total == pytest.approx(0.0, abs=0.0)

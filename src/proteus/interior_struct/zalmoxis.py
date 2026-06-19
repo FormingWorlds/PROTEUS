@@ -1716,6 +1716,44 @@ def generate_spider_tables(config: Config, outdir: str):
     }
 
 
+def compute_structure_mass_desync(radii, density, mass_enclosed) -> float:
+    """Relative divergence between the density-profile mass integral and the
+    structure ODE accumulator total.
+
+    The Zalmoxis structure ODE accumulates the enclosed mass with an RK45
+    integrator (``mass_enclosed[-1]``). A direct trapezoid of the shell mass
+    ``4 pi r^2 rho`` over the converged ``(radii, density)`` profile is an
+    independent estimate of the same total. The two agree only when the
+    density Picard iteration and the structure ODE are fully co-converged;
+    their relative divergence is the mass self-consistency diagnostic tracked
+    for issue #68.
+
+    Parameters
+    ----------
+    radii : array_like
+        Radial node positions from the converged structure solve [m].
+    density : array_like
+        Density at each radial node [kg m-3].
+    mass_enclosed : array_like
+        Cumulative enclosed mass from the structure ODE; the last element is
+        the accumulator total [kg].
+
+    Returns
+    -------
+    float
+        ``|trapezoid - accumulator| / accumulator``, or 0.0 when the
+        accumulator total is non-finite or non-positive (degenerate or empty
+        profile), which keeps the metric defined for a failed structure solve.
+    """
+    accumulator_total = float(mass_enclosed[-1])
+    if not np.isfinite(accumulator_total) or accumulator_total <= 0.0:
+        return 0.0
+    r = np.asarray(radii, dtype=float)
+    rho = np.asarray(density, dtype=float)
+    shell_mass_trapezoid = float(np.trapezoid(4.0 * np.pi * r**2 * rho, r))
+    return abs(shell_mass_trapezoid - accumulator_total) / accumulator_total
+
+
 def zalmoxis_solver(
     config: Config,
     outdir: str,
@@ -2209,6 +2247,18 @@ def zalmoxis_solver(
 
     # Calculate the average density of the planet using the calculated mass and radius
     average_density = mass_enclosed[-1] / (4 / 3 * np.pi * radii[-1] ** 3)
+
+    # Mass self-consistency diagnostic (issue #68): record how far the density
+    # profile's trapezoid mass integral diverges from the structure ODE
+    # accumulator total, so the helpfile carries the desync as a quantified
+    # per-run metric rather than only the pass/fail output-schema guard.
+    hf_row['struct_mass_desync_frac'] = compute_structure_mass_desync(
+        radii, density, mass_enclosed
+    )
+    log.info(
+        'Structure mass self-consistency desync: %.2e',
+        hf_row['struct_mass_desync_frac'],
+    )
 
     # Cache density for next call's Picard seeding. Used by both numpy
     # and JAX paths when use_anderson=False (Anderson + warm-start
