@@ -25,26 +25,6 @@ log = logging.getLogger('fwl.' + __name__)
 mass_ocean = ocean_moles * molar_mass['H2']
 
 
-def _upper_mantle_mass(hf_row: dict) -> float:
-    """Estimate the mass above the midpoint between core radius and R_int."""
-
-    M_mantle = float(hf_row['M_mantle'])
-    R_int = float(hf_row.get('R_int', 0.0))
-    R_core = float(hf_row.get('R_core', 0.0))
-
-    if R_int <= 0.0 or R_core <= 0.0 or R_int <= R_core:
-        return M_mantle
-
-    r_mid = 0.5 * (R_core + R_int)
-    mantle_volume = R_int**3 - R_core**3
-    upper_mantle_volume = R_int**3 - r_mid**3
-
-    if mantle_volume <= 0.0:
-        return M_mantle
-
-    return M_mantle * upper_mantle_volume / mantle_volume
-
-
 def construct_options(dirs: dict, config: Config, hf_row: dict):
     """
     Construct CALLIOPE options dictionary
@@ -53,11 +33,7 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     solvevol_inp = {}
 
     # Planet properties
-    if config.interior_energetics.module == 'boundary':
-        M_mantle = _upper_mantle_mass(hf_row)
-    else:
-        M_mantle = float(hf_row['M_mantle'])
-    solvevol_inp['M_mantle'] = M_mantle
+    solvevol_inp['M_mantle'] = hf_row['M_mantle']
     solvevol_inp['gravity'] = hf_row['gravity']
     solvevol_inp['radius'] = hf_row['R_int']
 
@@ -95,10 +71,11 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     elem = config.planet.elements
 
     # Reservoir mass for ppmw calculations
+    M_mantle = hf_row['M_mantle']
     if config.planet.volatile_reservoir == 'mantle+core':
         M_reservoir = hf_row['M_int']  # M_mantle + M_core
     else:
-        M_reservoir = float(hf_row['M_mantle'])
+        M_reservoir = M_mantle
 
     # Hydrogen inventory [kg]
     match elem.H_mode:
