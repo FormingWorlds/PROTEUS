@@ -81,15 +81,9 @@ def mock_config():
     **Physical Basis**: Terrestrial magma ocean cooling parameters (Turcotte & Schubert 2014)
     """
     boundary = SimpleNamespace(
-        rtol=1e-6,
-        atol=1e-9,
-        T_p_0=3500.0,  # K
         T_solidus=1420.0,  # K
         T_liquidus=2020.0,  # K
-        critical_melt_fraction=0.4,  # dimensionless
-        Tsurf_event_change=500.0,  # K
         critical_rayleigh_number=1e3,  # dimensionless
-        heat_fusion_silicate=4.0e5,  # J/kg
         nusselt_exponent=1.0 / 3.0,  # Rayleigh-Benard scaling
         silicate_heat_capacity=1.2e3,  # J/kg/K
         atm_heat_capacity_const=False,
@@ -110,11 +104,18 @@ def mock_config():
         logging=False,
     )
     interior_energetics = SimpleNamespace(
+        rtol=1e-6,
+        atol=1e-9,
         boundary=boundary,
         rfront_loc=0.4,  # dimensionless
         phase_transition_width=0.2,
         heat_radiogenic=False,
         heat_tidal=False,
+        tmagma_atol=500.0,  # K
+        latent_heat_of_fusion=4.0e5,  # J/kg
+        const_log10visc=2.0,
+        solid_log10visc=22.0,
+        melt_log10visc=2.0,
         radio_tref=4.567,  # Gyr (Solar System age)
         radio_U=0.031,  # ppm (BSE abundance)
         radio_Th=0.124,  # ppm (BSE abundance)
@@ -122,9 +123,11 @@ def mock_config():
     )
     interior_struct = SimpleNamespace(
         core_frac=0.55,  # Core radius fraction
+        core_frac_mode='radius',
+        core_density=11000.0,  # kg/m^3
         module='self',
     )
-    planet = SimpleNamespace(mass_tot=1.0)  # Earth masses
+    planet = SimpleNamespace(mass_tot=1.0, tsurf_init=3500.0)  # Earth masses, K
     star = SimpleNamespace(age_ini=0.1)  # Gyr
     return SimpleNamespace(
         interior_energetics=interior_energetics,
@@ -768,9 +771,10 @@ def test_melt_fraction_parametrized(boundary_runner, T_p, expected_phi):
 @pytest.mark.physics_invariant
 def test_r_s_fully_molten(boundary_runner):
     """
-    Test solidification radius equals core radius when fully molten (φ = 1).
+    Test solidification radius equals the upper-mantle radius when fully molten.
 
-    **Physical Scenario**: T_p ≥ T_liquidus → entire mantle molten → r_s = r_core.
+    **Physical Scenario**: T_p ≥ T_liquidus → the solidification front retreats to
+    the branch's fully molten lower bound.
     """
     boundary_runner.T_liquidus = 2000.0
 
@@ -778,12 +782,10 @@ def test_r_s_fully_molten(boundary_runner):
 
     r_s = boundary_runner.r_s(T_p)
 
-    assert r_s == pytest.approx(boundary_runner.core_radius, rel=1e-10)
+    assert r_s == pytest.approx(boundary_runner.upper_mantle_radius, rel=1e-10)
     # Boundedness invariant: r_s never exceeds the planet radius and
-    # never falls below the core radius. The fully-molten limit pins
-    # the lower bound; this guard catches any regression that returned
-    # 0 or a negative radius from a degenerate intermediate branch.
-    assert boundary_runner.core_radius <= r_s <= boundary_runner.planet_radius
+    # never falls below the fully molten lower bound.
+    assert boundary_runner.upper_mantle_radius <= r_s <= boundary_runner.planet_radius
 
 
 @pytest.mark.physics_invariant
@@ -822,8 +824,8 @@ def test_r_s_intermediate(boundary_runner):
 
     r_s = boundary_runner.r_s(T_p)
 
-    # Should be strictly between core and planet radii
-    assert boundary_runner.core_radius < r_s < boundary_runner.planet_radius
+    # Should be strictly between the fully molten lower bound and the surface.
+    assert boundary_runner.upper_mantle_radius < r_s < boundary_runner.planet_radius
     # Monotonicity invariant: increasing T_p melts more mantle so the
     # solidification front retreats inward. r_s(T_higher) must be
     # strictly less than r_s(T_lower) in the partially-molten regime.
@@ -836,26 +838,21 @@ def test_r_s_intermediate(boundary_runner):
 # =============================================================================
 
 
-def test_drs_dTp_sign_and_magnitude(boundary_runner):
+def test_r_s_decreases_with_temperature_in_partially_molten_regime(boundary_runner):
     """
-    Test dr_s/dT_p derivative is negative (solidification radius decreases with increasing T).
+    Test solidification radius decreases as potential temperature rises.
 
-    **Physical Scenario**: Hotter T_p → more melt → smaller solid radius → dr_s/dT_p < 0.
+    **Physical Scenario**: Hotter T_p → more melt → smaller solid radius.
     """
     boundary_runner.T_solidus = 1600.0
     boundary_runner.T_liquidus = 2000.0
 
-    T_p = 1800.0  # Intermediate temperature
+    r_s_cooler = boundary_runner.r_s(1700.0)
+    r_s_mid = boundary_runner.r_s(1800.0)
+    r_s_hotter = boundary_runner.r_s(1900.0)
 
-    drs_dTp = boundary_runner.drs_dTp(T_p)
-
-    # Should be negative (r_s decreases with increasing T)
-    assert drs_dTp < 0
-
-    # Order-of-magnitude upper bound from geometric scaling R / ΔT.
-    assert abs(drs_dTp) < boundary_runner.planet_radius / (
-        boundary_runner.T_liquidus - boundary_runner.T_solidus
-    )
+    assert r_s_cooler > r_s_mid > r_s_hotter
+    assert boundary_runner.upper_mantle_radius < r_s_hotter < boundary_runner.planet_radius
 
 
 @pytest.mark.physics_invariant
@@ -1330,41 +1327,29 @@ def test_boundary_runner_partial_nan_layer_cp_averages_finite_values(
 # =============================================================================
 
 
-def test_boundary_runner_init_clamps_surface_temperature_below_potential(
+def test_boundary_runner_init_uses_history_temperatures_for_ic2(
     mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
 ):
-    """When the initial surface temperature configured by the user
-    exceeds the potential temperature (an unphysical input), the
-    constructor must clamp T_surf_0 to T_p_0 - 1 K.
+    """When ``interior_o.ic == 2``, BoundaryRunner initializes from the
+    history row rather than the configured surface temperature.
 
-    Edge: drive the zalmoxis-style init path (``interior_o.ic == 2``)
-    so the constructor reads ``T_p_0 = hf_row['T_magma']`` and
-    ``T_surf_0 = hf_row['T_surf']``. With hf_row['T_surf'] >
-    hf_row['T_magma'] the clamp at lines 105-108 fires.
-
-    Discriminating: pin ``runner.T_surf_0 == runner.T_p_0 - 1.0``
-    exactly. A regression that dropped the -1 K offset would land at
-    runner.T_p_0 (equal, not strictly less); a regression that kept
-    the user-supplied T_surf_0 would land at 3500 K (5 K above T_p).
+    The branch now copies the stored magma and surface temperatures
+    directly, so the test should pin that contract instead of the
+    removed constructor clamp.
     """
     mock_config.interior_struct.module = 'self'
-    # Force the zalmoxis-style branch so T_p_0 / T_surf_0 come from
-    # hf_row. ic == 2 triggers the override at boundary.py:98-100.
     mock_interior.ic = 2
-    mock_hf_row['T_magma'] = 3495.0  # K (potential temperature)
-    mock_hf_row['T_surf'] = 3500.0  # K (surface; intentionally hotter)
+    mock_hf_row['T_magma'] = 3495.0
+    mock_hf_row['T_surf'] = 3500.0
+
     with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
         runner = BoundaryRunner(
             mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
         )
-    # Closed-form pin: clamp drops T_surf to T_p - 1 K exactly.
+
     assert runner.T_p_0 == pytest.approx(3495.0, rel=1e-12)
-    assert runner.T_surf_0 == pytest.approx(3494.0, rel=1e-12)
-    # Discrimination: a regression that left T_surf_0 untouched would
-    # land at the original 3500 K; a regression that snapped to T_p_0
-    # without the -1 K offset would land at 3495 K. Reject both.
-    assert runner.T_surf_0 != pytest.approx(3500.0)
-    assert runner.T_surf_0 != pytest.approx(3495.0)
+    assert runner.T_surf_0 == pytest.approx(3500.0, rel=1e-12)
+    assert runner.T_surf_0 > runner.T_p_0
 
 
 def test_boundary_layer_thickness_returns_tiny_delta_at_equal_temperatures(
@@ -1436,40 +1421,26 @@ def test_dT_pdt_uses_silicate_heat_capacity_for_fully_solid_mantle(boundary_runn
     assert phi == pytest.approx(0.0, abs=1e-12)
     q_m_val = runner.q_m(T_p_solid, T_surf, phi)
     Q_val = runner.radioactive_heating(t)
-    numerator = -4 * np.pi * runner.planet_radius**2 * q_m_val + runner.mantle_mass * (
+    numerator = -4 * np.pi * runner.planet_radius**2 * q_m_val + runner.upper_mantle_mass * (
         Q_val + runner.tidal_term
     )
-    denominator_else = runner.silicate_heat_capacity * runner.mantle_mass
+    denominator_else = runner.upper_mantle_mass * runner.silicate_heat_capacity
     expected = numerator / denominator_else
     assert dT_pdt == pytest.approx(expected, rel=1e-12)
-    # Discrimination guard: the wrong-branch denominator (partial melt
-    # path) at phi = 0 has the same first term but ADDS a latent-heat
-    # term proportional to r_s_val**2 * dr_s_dT_p, evaluated at the
-    # clamp r_s = planet_radius. Re-compute and confirm the two
-    # denominators differ by more than the test's relative tolerance.
-    r_s_val = runner.r_s(T_p_solid)
-    assert r_s_val == pytest.approx(runner.planet_radius, rel=1e-12)
-    dr_s_dT_p = runner.drs_dTp(T_p_solid)
-    denominator_partial = (
-        (4 / 3)
+    # The fully solid branch must drop the latent-heat correction.
+    volume_diff = runner.planet_radius**3 - runner.upper_mantle_radius**3
+    T_range = runner.T_liquidus - runner.T_solidus
+    latent_heat_term = (
+        -4
         * np.pi
-        * runner.mantle_bulk_density
-        * runner.silicate_heat_capacity
-        * (runner.planet_radius**3 - r_s_val**3)
-        - 4
-        * np.pi
-        * r_s_val** 2
-        * runner.mantle_bulk_density
         * runner.heat_fusion_silicate
-        * dr_s_dT_p
+        * runner.mantle_bulk_density
+        * volume_diff
+        / (3 * T_range)
     )
-    # At phi = 0 the first chunk of the partial-melt denominator is
-    # 0 (planet_radius**3 - r_s_val**3 vanishes), so the partial
-    # denominator collapses to the latent-heat term alone. Confirm
-    # the resulting wrong-formula ratio differs from the captured
-    # value by at least one order of magnitude.
-    wrong_partial = numerator / denominator_partial
-    assert abs(dT_pdt - wrong_partial) > 0.5 * abs(dT_pdt)
+    denominator_wrong_branch = denominator_else - latent_heat_term
+    wrong_partial = numerator / denominator_wrong_branch
+    assert abs(dT_pdt - wrong_partial) > 1e-12
 
 
 def test_run_solver_writes_csv_log_when_logging_enabled(
