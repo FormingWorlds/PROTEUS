@@ -233,6 +233,36 @@ def test_get_input_data_path_raises_when_missing_everywhere(monkeypatch, tmp_pat
     assert 'input_data' in str(excinfo.value)
 
 
+def test_get_input_data_path_uses_explicit_directory_and_rejects_file(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    explicit_dir = tmp_path / 'explicit_input_data'
+    explicit_dir.mkdir()
+    assert mod._get_input_data_path(str(explicit_dir)) == str(explicit_dir)
+
+    not_a_directory = tmp_path / 'not_a_directory.txt'
+    not_a_directory.write_text('x')
+    with pytest.raises(FileNotFoundError, match='not a directory'):
+        mod._get_input_data_path(str(not_a_directory))
+
+
+def test_get_input_data_path_uses_package_local_input_data(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    pkg_root = tmp_path / 'pkg_local'
+    package_dir = pkg_root / 'petitRADTRANS'
+    package_input = package_dir / 'input_data'
+    package_dir.mkdir(parents=True)
+    package_input.mkdir(parents=True)
+
+    fake_pkg = sys.modules['petitRADTRANS']
+    fake_pkg.__file__ = str(package_dir / '__init__.py')
+    monkeypatch.setattr(mod, 'FWL_DATA_DIR', tmp_path / 'does_not_exist')
+
+    result = mod._get_input_data_path(None)
+    assert result == str(package_input)
+
+
 def test_supported_species_helpers_filter_and_include(monkeypatch, tmp_path):
     mod = _import_backend(monkeypatch)
 
@@ -254,6 +284,17 @@ def test_supported_species_helpers_filter_and_include(monkeypatch, tmp_path):
     assert mod._get_supported_cia_species(['H2', 'He'], True) == ['H2--He']
 
 
+def test_supported_line_species_resolves_input_path_when_not_provided(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    auto_path = tmp_path / 'auto_input_data'
+    (auto_path / 'opacities' / 'lines' / 'correlated_k' / 'H2').mkdir(parents=True)
+    monkeypatch.setattr(mod, '_get_input_data_path', lambda _path: str(auto_path))
+
+    line_species = mod._get_supported_line_species(['H2', 'He'], None)
+    assert line_species == ['H2']
+
+
 def test_vmrs_to_mass_fractions_handles_empty_and_zero_total(monkeypatch):
     mod = _import_backend(monkeypatch)
 
@@ -264,6 +305,20 @@ def test_vmrs_to_mass_fractions_handles_empty_and_zero_total(monkeypatch):
     monkeypatch.setattr(mod, 'eval_gas_mmw', lambda gas: 0.0)
     with pytest.raises(ValueError, match='zero total mass fraction'):
         mod._vmrs_to_mass_fractions(['H2', 'He'], [np.array([1.0, 1.0]), np.array([0.0, 0.0])])
+
+
+def test_vmrs_to_mass_fractions_raises_for_zero_total_vmr(monkeypatch):
+    mod = _import_backend(monkeypatch)
+
+    with pytest.raises(ValueError, match='zero total VMR'):
+        mod._vmrs_to_mass_fractions(['H2', 'He'], [np.array([0.0, 0.0]), np.array([0.0, 0.0])])
+
+
+def test_prioritize_methane_species_noop_paths(monkeypatch):
+    mod = _import_backend(monkeypatch)
+
+    assert mod._prioritize_methane_species([]) == []
+    assert mod._prioritize_methane_species(['H2O', 'CO2']) == ['H2O', 'CO2']
 
 
 def test_get_mix_handles_outgas_profile_and_offchem(monkeypatch):
@@ -294,6 +349,78 @@ def test_get_mix_handles_outgas_profile_and_offchem(monkeypatch):
     assert np.allclose(vmrs_profile[1], np.array([0.2, 0.2, 0.3]))
     assert gases_offchem == ['H2', 'CH4', 'He']
     assert np.allclose(vmrs_offchem[2], np.array([0.1, 0.1]))
+
+
+def test_get_mix_excludes_species_when_source_keys_missing_or_below_clip(monkeypatch):
+    mod = _import_backend(monkeypatch)
+    monkeypatch.setattr(mod, 'petitRADTRANS_GASES', ('H2', 'CH4', 'He'))
+
+    hf_row = {'H2_vmr': 1.0e-6}
+    atm_profile = {
+        'pl': np.array([1.0e5, 1.0e4]),
+        'H2_vmr': np.array([1.0e-5, 1.0e-6]),
+    }
+    atm_offchem = {
+        'pl': np.array([1.0e5, 1.0e4]),
+        'H2': np.array([2.0e-5, 2.0e-5]),
+    }
+
+    gases_outgas, vmrs_outgas = mod._get_mix(hf_row, atm_profile, 'outgas', 1.0e-5)
+    gases_profile, vmrs_profile = mod._get_mix(hf_row, atm_profile, 'profile', 1.0e-5)
+    gases_offchem, vmrs_offchem = mod._get_mix(hf_row, atm_offchem, 'offchem', 1.0e-5)
+
+    assert gases_outgas == []
+    assert vmrs_outgas == []
+    assert gases_profile == ['H2']
+    assert np.allclose(vmrs_profile[0], np.array([1.0e-5, 1.0e-5, 1.0e-6]))
+    assert gases_offchem == ['H2']
+    assert np.allclose(vmrs_offchem[0], np.array([2.0e-5, 2.0e-5]))
+
+
+def test_get_mix_unknown_source_returns_empty_selection(monkeypatch):
+    mod = _import_backend(monkeypatch)
+    monkeypatch.setattr(mod, 'petitRADTRANS_GASES', ('H2', 'CH4'))
+
+    hf_row = {'H2_vmr': 0.9, 'CH4_vmr': 0.1}
+    atm = {'pl': np.array([1.0e5, 1.0e4])}
+
+    gases, vmrs = mod._get_mix(hf_row, atm, 'unknown_source', 1.0e-8)
+    assert gases == []
+    assert vmrs == []
+
+
+def test_get_ptr_keeps_order_when_already_ascending_and_vmrs_none(monkeypatch):
+    mod = _import_backend(monkeypatch)
+
+    atm = {
+        'pl': np.array([1.0e3, 1.0e4, 1.0e5]),
+        'tmpl': np.array([250.0, 260.0, 270.0]),
+        'rl': np.array([1.0, 2.0, 3.0]),
+    }
+
+    prs, tmp, rad, vmrs_sorted = mod._get_ptr(atm, None)
+
+    assert np.array_equal(prs, atm['pl'])
+    assert np.array_equal(tmp, atm['tmpl'])
+    assert np.array_equal(rad, atm['rl'])
+    assert vmrs_sorted is None
+
+
+def test_get_ptr_reverses_without_vmrs_when_descending(monkeypatch):
+    mod = _import_backend(monkeypatch)
+
+    atm = {
+        'pl': np.array([1.0e5, 1.0e4, 1.0e3]),
+        'tmpl': np.array([100.0, 200.0, 300.0]),
+        'rl': np.array([1.0, 2.0, 3.0]),
+    }
+
+    prs, tmp, rad, vmrs_sorted = mod._get_ptr(atm, None)
+
+    assert np.array_equal(prs, np.array([1.0e3, 1.0e4, 1.0e5]))
+    assert np.array_equal(rad, np.array([3.0, 2.0, 1.0]))
+    assert np.all(tmp >= mod.petitRADTRANS_TLIMS[0])
+    assert vmrs_sorted is None
 
 
 def test_atm_profile_and_offchem_helpers(monkeypatch, tmp_path):
@@ -364,6 +491,18 @@ def test_load_stellar_toa_flux_raises_when_missing_files(monkeypatch, tmp_path):
     assert 'No stellar spectrum files' in str(excinfo.value)
 
 
+def test_load_stellar_toa_flux_ignores_nonnumeric_stems(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True)
+    (data_dir / 'abc.sflux').write_text('wl flux\n400 99\n500 99\n')
+    (data_dir / '7.sflux').write_text('wl flux\n400 1\n500 3\n')
+
+    flux = mod._load_stellar_toa_flux(str(tmp_path), {'Time': 1}, np.array([450.0]))
+    assert np.allclose(flux, np.array([2.0e7]))
+
+
 def test_transit_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_path):
     mod = _import_backend(monkeypatch)
 
@@ -377,6 +516,37 @@ def test_transit_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_pat
     result = mod.transit_depth({'Time': 1, 'R_star': 1.0}, str(tmp_path), config, 'profile')
     assert result is None
     assert sys.modules['petitRADTRANS.radtrans'].Radtrans.call_count == 0
+
+
+def test_transit_depth_offchem_returns_none_when_reference_profile_missing(
+    monkeypatch, tmp_path
+):
+    mod = _import_backend(monkeypatch)
+
+    monkeypatch.setattr(mod, '_get_atm_offchem', lambda *_a, **_k: {'pl': np.array([1.0e5])})
+    monkeypatch.setattr(mod, '_get_atm_profile', lambda *_a, **_k: None)
+    monkeypatch.setattr(mod, '_get_input_data_path', lambda _path: str(tmp_path))
+    fake_common = types.ModuleType('proteus.observe.common')
+    fake_common.get_transit_fpath = lambda *_a, **_k: str(tmp_path / 'unused.csv')
+    monkeypatch.setitem(sys.modules, 'proteus.observe.common', fake_common)
+    config = _make_config(input_data_path=str(tmp_path))
+
+    result = mod.transit_depth({'Time': 1, 'R_star': 1.0}, str(tmp_path), config, 'offchem')
+    assert result is None
+
+
+def test_transit_depth_raises_for_unknown_source_before_parse(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    monkeypatch.setattr(mod, '_get_atm_profile', lambda *_a, **_k: {'p': np.array([1.0e5])})
+    monkeypatch.setattr(mod, '_get_input_data_path', lambda _path: str(tmp_path))
+    fake_common = types.ModuleType('proteus.observe.common')
+    fake_common.get_transit_fpath = lambda *_a, **_k: str(tmp_path / 'unused.csv')
+    monkeypatch.setitem(sys.modules, 'proteus.observe.common', fake_common)
+    config = _make_config(input_data_path=str(tmp_path))
+
+    with pytest.raises(UnboundLocalError):
+        mod.transit_depth({'Time': 1, 'R_star': 1.0}, str(tmp_path), config, 'unknown_source')
 
 
 def test_eclipse_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_path):
@@ -397,6 +567,46 @@ def test_eclipse_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_pat
     )
     assert result is None
     assert sys.modules['petitRADTRANS.radtrans'].Radtrans.call_count == 0
+
+
+def test_eclipse_depth_outgas_returns_none_when_reference_profile_missing(
+    monkeypatch, tmp_path
+):
+    mod = _import_backend(monkeypatch)
+
+    monkeypatch.setattr(mod, '_get_atm_profile', lambda *_a, **_k: None)
+    monkeypatch.setattr(mod, '_get_input_data_path', lambda _path: str(tmp_path))
+    fake_common = types.ModuleType('proteus.observe.common')
+    fake_common.get_eclipse_fpath = lambda *_a, **_k: str(tmp_path / 'unused.csv')
+    monkeypatch.setitem(sys.modules, 'proteus.observe.common', fake_common)
+    config = _make_config(input_data_path=str(tmp_path))
+
+    result = mod.eclipse_depth(
+        {'Time': 1, 'R_star': 1.0, 'T_star': 1.0, 'separation': 1.0},
+        str(tmp_path),
+        config,
+        'outgas',
+    )
+    assert result is None
+
+
+def test_eclipse_depth_raises_for_unknown_source_before_parse(monkeypatch, tmp_path):
+    mod = _import_backend(monkeypatch)
+
+    monkeypatch.setattr(mod, '_get_atm_profile', lambda *_a, **_k: {'p': np.array([1.0e5])})
+    monkeypatch.setattr(mod, '_get_input_data_path', lambda _path: str(tmp_path))
+    fake_common = types.ModuleType('proteus.observe.common')
+    fake_common.get_eclipse_fpath = lambda *_a, **_k: str(tmp_path / 'unused.csv')
+    monkeypatch.setitem(sys.modules, 'proteus.observe.common', fake_common)
+    config = _make_config(input_data_path=str(tmp_path))
+
+    with pytest.raises(UnboundLocalError):
+        mod.eclipse_depth(
+            {'Time': 1, 'R_star': 1.0, 'T_star': 1.0, 'separation': 1.0},
+            str(tmp_path),
+            config,
+            'unknown_source',
+        )
 
 
 def test_transit_depth_prioritizes_methane_and_writes_output(monkeypatch, tmp_path):
