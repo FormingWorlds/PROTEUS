@@ -7,10 +7,10 @@ seed = 42
 logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "bayesopt_infer_tr_mat12_lei_5_100/"
+output = "bayesopt_infer_se_mat12_lei_5_100/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "output/bayesopt_tr/init_coupler.toml"
+ref_config = "output/bayesopt_se/init_coupler.toml"
 # ref_config = "input/inference/example.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
@@ -53,23 +53,23 @@ n_steps    = 100       # Total number of evaluations (i.e. BO steps)
 # "O/H_atm" = 1.6218905121e-01
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
-# extracted at index: 25, time: 5.000e+09 years
-# [observables]
-# "R_obs" = 8.8319858645e+06
-# "T_obs" = 4.1340366690e+02
-# "g_obs" = 9.4133694372e+00
-# "atm_kg_per_mol" = 1.9433862962e-02
-# "C/O_atm" = 3.6671102451e-01
-# "S/O_atm" = 7.8584998516e-01
-# "O/H_atm" = 3.5922008393e+00
+# extracted at index: 24, time: 5.000e+09 years
+[observables]
+"R_obs" = 9.0989554779e+06
+"T_obs" = 4.0177917746e+02
+"g_obs" = 9.2981453399e+00
+"atm_kg_per_mol" = 1.4887487382e-02
+"C/O_atm" = 9.7003375663e-01
+"S/O_atm" = 1.1289437141e+00
+"O/H_atm" = 1.5098906629e+00
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_tr/runtime_helpfile.csv
 # extracted at index: 19, time: 1.000e+08 years
-[observables]
-"R_obs" = 6.8402356796e+06
-"T_obs" = 5.8248419999e+02
-"g_obs" = 8.5802612746e+00
-"atm_kg_per_mol" = 2.5754849004e-02
-"C/O_atm" = 1.8980497971e-01
-"S/O_atm" = 1.2046901115e-01
-"O/H_atm" = 1.3032972420e+01
+# [observables]
+# "R_obs" = 6.8402356796e+06
+# "T_obs" = 5.8248419999e+02
+# "g_obs" = 8.5802612746e+00
+# "atm_kg_per_mol" = 2.5754849004e-02
+# "C/O_atm" = 1.8980497971e-01
+# "S/O_atm" = 1.2046901115e-01
+# "O/H_atm" = 1.3032972420e+01
