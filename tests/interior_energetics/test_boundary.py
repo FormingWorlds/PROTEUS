@@ -771,7 +771,7 @@ def test_melt_fraction_parametrized(boundary_runner, T_p, expected_phi):
 @pytest.mark.physics_invariant
 def test_r_s_fully_molten(boundary_runner):
     """
-    Test solidification radius equals the upper-mantle radius when fully molten.
+    Test solidification radius equals the core radius when fully molten.
 
     **Physical Scenario**: T_p ≥ T_liquidus → the solidification front retreats to
     the branch's fully molten lower bound.
@@ -782,10 +782,10 @@ def test_r_s_fully_molten(boundary_runner):
 
     r_s = boundary_runner.r_s(T_p)
 
-    assert r_s == pytest.approx(boundary_runner.upper_mantle_radius, rel=1e-10)
+    assert r_s == pytest.approx(boundary_runner.core_radius, rel=1e-10)
     # Boundedness invariant: r_s never exceeds the planet radius and
     # never falls below the fully molten lower bound.
-    assert boundary_runner.upper_mantle_radius <= r_s <= boundary_runner.planet_radius
+    assert boundary_runner.core_radius <= r_s <= boundary_runner.planet_radius
 
 
 @pytest.mark.physics_invariant
@@ -825,7 +825,7 @@ def test_r_s_intermediate(boundary_runner):
     r_s = boundary_runner.r_s(T_p)
 
     # Should be strictly between the fully molten lower bound and the surface.
-    assert boundary_runner.upper_mantle_radius < r_s < boundary_runner.planet_radius
+    assert boundary_runner.core_radius < r_s < boundary_runner.planet_radius
     # Monotonicity invariant: increasing T_p melts more mantle so the
     # solidification front retreats inward. r_s(T_higher) must be
     # strictly less than r_s(T_lower) in the partially-molten regime.
@@ -852,7 +852,7 @@ def test_r_s_decreases_with_temperature_in_partially_molten_regime(boundary_runn
     r_s_hotter = boundary_runner.r_s(1900.0)
 
     assert r_s_cooler > r_s_mid > r_s_hotter
-    assert boundary_runner.upper_mantle_radius < r_s_hotter < boundary_runner.planet_radius
+    assert boundary_runner.core_radius < r_s_hotter < boundary_runner.planet_radius
 
 
 @pytest.mark.physics_invariant
@@ -1421,14 +1421,14 @@ def test_dT_pdt_uses_silicate_heat_capacity_for_fully_solid_mantle(boundary_runn
     assert phi == pytest.approx(0.0, abs=1e-12)
     q_m_val = runner.q_m(T_p_solid, T_surf, phi)
     Q_val = runner.radioactive_heating(t)
-    numerator = -4 * np.pi * runner.planet_radius**2 * q_m_val + runner.upper_mantle_mass * (
+    numerator = -4 * np.pi * runner.planet_radius**2 * q_m_val + runner.mantle_mass * (
         Q_val + runner.tidal_term
     )
-    denominator_else = runner.upper_mantle_mass * runner.silicate_heat_capacity
+    denominator_else = runner.mantle_mass * runner.silicate_heat_capacity
     expected = numerator / denominator_else
     assert dT_pdt == pytest.approx(expected, rel=1e-12)
     # The fully solid branch must drop the latent-heat correction.
-    volume_diff = runner.planet_radius**3 - runner.upper_mantle_radius**3
+    volume_diff = runner.planet_radius**3 - runner.core_radius**3
     T_range = runner.T_liquidus - runner.T_solidus
     latent_heat_term = (
         -4
