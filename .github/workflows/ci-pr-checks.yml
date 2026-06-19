@@ -291,7 +291,7 @@ jobs:
 
             if [ -f nightly-timestamp.txt ]; then
               NIGHTLY_TS=$(cat nightly-timestamp.txt)
-              if ! python3 - <<PYEOF
+              python3 - <<PYEOF
           from datetime import datetime, timezone
           import sys
           ts = datetime.fromisoformat("$NIGHTLY_TS".replace('Z', '+00:00'))
@@ -301,7 +301,7 @@ jobs:
               print(f"WARNING: Nightly artifact is stale ({age:.1f}h > $STALE_HOURS h)")
               sys.exit(1)
           PYEOF
-              then
+              if [ $? -ne 0 ]; then
                 NIGHTLY_STALE=true
               fi
             else
@@ -494,10 +494,13 @@ jobs:
           fi
           diff-cover $COV_REPORTS --diff-file /tmp/pr-changes.diff --fail-under=$DC_FAIL_UNDER
 
-      - name: Warn if nightly is stale
-        if: always() && env.RUN_COVERAGE == 'true' && env.NIGHTLY_STALE == 'true'
+      - name: Fail job if nightly is stale
+        if: always() && env.RUN_COVERAGE == 'true' && env.COV_BLOCKING == 'true' && steps.check-nightly.outcome == 'success'
         run: |
-          echo "::warning::Nightly baseline is stale (>48h). Trigger nightly CI manually."
+          if [ "$NIGHTLY_STALE" = "true" ]; then
+            echo "Nightly baseline is stale (>48h). Trigger nightly CI manually."
+            exit 1
+          fi
 
       - name: Fail job if coverage dropped beyond grace period
         if: always() && env.RUN_COVERAGE == 'true' && env.COV_BLOCKING == 'true' && steps.coverage-validation.outputs.coverage_status == 'fail'
@@ -895,7 +898,7 @@ jobs:
               macos_non_test_fail = macos_job_result == "failure" and macos_unit != "failure"
               cov_fail = cov_status == "fail"
 
-              if any_test_fail or lint == "failure" or linux_non_test_fail or macos_non_test_fail or cov_fail:
+              if any_test_fail or lint == "failure" or linux_non_test_fail or macos_non_test_fail or cov_fail or nightly_stale:
                   f.write("\n---\n## PR did not pass checks\n\n")
                   if any_test_fail:
                       f.write("Unit tests failed. See logs above.\n\n")
@@ -905,6 +908,8 @@ jobs:
                       f.write("Linux job failed on non-test step.\n\n")
                   if cov_fail:
                       f.write(f"Coverage dropped too much ({cov_drop:.2f}% below threshold).\n\n")
+                  if nightly_stale:
+                      f.write("Nightly baseline is stale.\n\n")
           PY
 
       - name: Fail if any checks failed
