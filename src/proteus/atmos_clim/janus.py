@@ -293,13 +293,16 @@ def RunJANUS(
     # observables
     p_obs = float(config.atmos_clim.p_obs) * 1e5  # converted to Pa
     r_arr = np.array(atm.z[:], copy=True, dtype=float) + hf_row['R_int']
+    g_arr = np.array(atm.grav_z[:], copy=True, dtype=float)
     t_arr = np.array(atm.tmp[:], copy=True, dtype=float)
     if atm.height_error:
         log.error('Hydrostatic integration failed in JANUS!')
+        g_obs = float(hf_row['gravity'])
         r_obs = float(hf_row['R_int'])
         t_obs = float(hf_row['T_surf'])
     else:
         # find observed level [m] at p ~ p_obs
+        _, g_obs = get_oarr_from_parr(atm.p, g_arr, p_obs)
         _, r_obs = get_oarr_from_parr(atm.p, r_arr, p_obs)
         _, t_obs = get_oarr_from_parr(atm.p, t_arr, p_obs)  # [Pa], [m]
 
@@ -323,6 +326,7 @@ def RunJANUS(
     output['p_obs'] = p_obs / 1e5  # observed level [bar]
     output['T_obs'] = t_obs  # observed level [K]
     output['R_obs'] = r_obs  # observed level [m]
+    output['g_obs'] = g_obs  # observed gravity [m/s^2]
     output['p_xuv'] = p_xuv  # Closest pressure to Pxuv [bar]
     output['R_xuv'] = r_xuv  # Radius at Pxuv [m]
     output['P_surf_clim'] = P_surf_clim  # calculated surface pressure [bar]

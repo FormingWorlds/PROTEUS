@@ -48,8 +48,8 @@ config_version = "3.0"
     [params.dt]
         minimum               = 1e3          # minimum time step [yr]
         minimum_rel           = 0.9         # minimum relative time step
-        maximum               = 1e8          # maximum time step [yr]
-        maximum_rel  = 0.6   # relative maximum time-step [dimensionless]
+        maximum               = 5e7          # maximum time step [yr]
+        maximum_rel  = 0.7   # relative maximum time-step [dimensionless]
         initial               = 2e2          # initial step size [yr]
         starspec              = 9e9          # recalculate stellar spectrum interval [yr]
         starinst              = 1e2          # recalculate instellation interval [yr]
@@ -156,7 +156,7 @@ config_version = "3.0"
 
         # THE_PLANETS
         # C_budget      = 0.5       # SN
-        #  C_budget      = 0.5     # SE
+        #  C_budget      = 1.0     # SE
         C_budget        = 2.5     # TR
 
 
@@ -539,7 +539,7 @@ config_version = "3.0"
         rainout               = false         # volatile condensation and evaporation
         oceans                = false         # surface liquid water oceans
         latent_heat           = false        # latent heat from condensation/evaporation
-        real_gas              = false        # real-gas EOS where available
+        real_gas              = true        # real-gas EOS where available
         chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem)
         thermo_functions      = false        # use T-dependent thermo functions
         mlt_criterion         = "s"          # convection criterion: s (Schwarzschild) | l (Ledoux)

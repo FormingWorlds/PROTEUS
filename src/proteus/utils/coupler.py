@@ -732,6 +732,7 @@ def GetHelpfileKeys():
         'p_obs',            # transit pressure level [bar]
         'R_obs',            # transit radius [m]
         'T_obs',            # transit temperature [K]
+        'g_obs',            # transit gravity [m s-2]
         'rho_obs',          # transit bulk density [kg m-3]
         'transit_depth',    # primary transit light curve depth [1]
         'eclipse_depth',    # secondary eclipse light curve depth [1]

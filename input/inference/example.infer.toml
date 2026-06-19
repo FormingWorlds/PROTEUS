@@ -7,10 +7,10 @@ seed = 42
 logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "bayesopt_infer_se_rbf_lei_5_100/"
+output = "bayesopt_infer_tr_mat12_lei_5_100/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "output/bayesopt_se/init_coupler.toml"
+ref_config = "output/bayesopt_tr/init_coupler.toml"
 # ref_config = "input/inference/example.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
@@ -22,7 +22,7 @@ failure_codes = [11, ] # solidified (10), escaped (15), max_runtime (11)
 
 # Parameters for Bayesian optimisation
 n_workers  = 5        # Number of parallel workers
-kernel     = "RBF"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
+kernel     = "MAT1/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
 acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI" | "LogPI"
 n_steps    = 100       # Total number of evaluations (i.e. BO steps)
 
@@ -44,26 +44,32 @@ n_steps    = 100       # Total number of evaluations (i.e. BO steps)
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_sn/runtime_helpfile.csv
 # extracted at index: 22, time: 1.000e+09 years
 # [observables]
-# "R_obs" = 1.1314686418e+07
-# "T_obs" = 3.1366163864e+02
-# "atm_kg_per_mol" = 4.1181490000e-03
-# "C/O_atm" = 3.2970718533e+00
-# "S/O_atm" = 1.0047318533e+00
+# "R_obs" = 1.2227601049e+07
+# "T_obs" = 3.1306404106e+02
+# "g_obs" = 8.0918693165e+00
+# "atm_kg_per_mol" = 4.0917808871e-03
+# "C/O_atm" = 3.1927819502e+00
+# "S/O_atm" = 1.0676983970e+00
+# "O/H_atm" = 1.6218905121e-01
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
 # extracted at index: 25, time: 5.000e+09 years
-[observables]
-"R_obs" = 8.4024629735e+06
-"T_obs" = 4.1101969624e+02
-"atm_kg_per_mol" = 1.8633960456e-02
-"C/O_atm" = 1.6336723646e-01
-"S/O_atm" = 7.7501860471e-01
+# [observables]
+# "R_obs" = 8.8319858645e+06
+# "T_obs" = 4.1340366690e+02
+# "g_obs" = 9.4133694372e+00
+# "atm_kg_per_mol" = 1.9433862962e-02
+# "C/O_atm" = 3.6671102451e-01
+# "S/O_atm" = 7.8584998516e-01
+# "O/H_atm" = 3.5922008393e+00
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_tr/runtime_helpfile.csv
 # extracted at index: 19, time: 1.000e+08 years
-# [observables]
-# "R_obs" = 6.7105832675e+06
-# "T_obs" = 5.7581141953e+02
-# "atm_kg_per_mol" = 2.9402566363e-02
-# "C/O_atm" = 2.5588268297e-01
-# "S/O_atm" = 8.2759995202e-02
+[observables]
+"R_obs" = 6.8402356796e+06
+"T_obs" = 5.8248419999e+02
+"g_obs" = 8.5802612746e+00
+"atm_kg_per_mol" = 2.5754849004e-02
+"C/O_atm" = 1.8980497971e-01
+"S/O_atm" = 1.2046901115e-01
+"O/H_atm" = 1.3032972420e+01
