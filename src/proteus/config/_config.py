@@ -280,17 +280,6 @@ def boundary_requires_fixed_surface_state(instance, attribute, value):
         )
 
 
-def boundary_zalmoxis_incompatible(instance, attribute, value):
-    """Boundary backend is not yet wired up to the Zalmoxis structure refresh."""
-    if (instance.interior_energetics.module == 'boundary') and (
-        instance.interior_struct.module == 'zalmoxis'
-    ):
-        raise ValueError(
-            'Boundary interior module cannot currently be used with the '
-            'zalmoxis structure module'
-        )
-
-
 @define
 class Config:
     """Root config parameters.
@@ -344,7 +333,6 @@ class Config:
         validator=(
             tides_enabled_orbit,
             boundary_requires_fixed_surface_state,
-            boundary_zalmoxis_incompatible,
         ),
     )
     outgas: Outgas = field(factory=Outgas)

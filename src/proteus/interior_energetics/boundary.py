@@ -89,10 +89,27 @@ class BoundaryRunner:
                 self.atmosphere_heat_capacity = float(np.average(cp_arr, weights=ma_arr))
 
         # Prefer Zalmoxis-derived CMB radius when available.
-        # Fall back to corefrac-based radius for non-Zalmoxis runs.
-        self.core_radius = float(
-            hf_row.get('R_core', config.interior_struct.core_frac * self.planet_radius)
-        )
+        # Otherwise interpret `core_frac` according to the configured mode.
+        if 'R_core' in hf_row:
+            core_radius = hf_row['R_core']
+        elif config.interior_struct.core_frac_mode == 'radius':
+            core_radius = config.interior_struct.core_frac * self.planet_radius
+        elif config.interior_struct.core_frac_mode == 'mass':
+            core_density = hf_row.get('core_density', config.interior_struct.core_density)
+            if core_density == 'self':
+                core_density = hf_row.get(
+                    'core_density', config.interior_energetics.boundary.core_density
+                )
+            core_radius = (
+                3.0 * float(self.core_mass) / (4.0 * np.pi * float(core_density))
+            ) ** (1.0 / 3.0)
+        else:
+            raise ValueError(
+                "interior_struct.core_frac_mode must be 'mass' or 'radius'; "
+                f'got {config.interior_struct.core_frac_mode!r}'
+            )
+
+        self.core_radius = float(core_radius)
         self.core_frac = self.core_radius / self.planet_radius
 
         self.mantle_radius = self.planet_radius - self.core_radius
@@ -113,33 +130,26 @@ class BoundaryRunner:
         )
         self.surface_gravity = const_G * self.planet_mass / self.planet_radius**2
 
-        self.rtol = config.interior_energetics.boundary.rtol
-        self.atol = config.interior_energetics.boundary.atol
+        self.rtol = config.interior_energetics.rtol
+        self.atol = config.interior_energetics.atol
 
-        if interior_o.ic == 2 or config.interior_struct.module == 'zalmoxis':
+        if interior_o.ic == 2:
             self.T_p_0 = hf_row.get('T_magma')
             self.T_surf_0 = hf_row.get('T_surf')
         else:
-            self.T_p_0 = config.interior_energetics.boundary.T_p_0
+            self.T_p_0 = config.planet.tsurf_init
             self.T_surf_0 = self.T_p_0
-
-        if self.T_surf_0 > self.T_p_0:
-            self.T_surf_0 = (
-                self.T_p_0 - 1.0
-            )  # Ensure initial surface temperature does not exceed potential temperature
 
         self.T_solidus = config.interior_energetics.boundary.T_solidus
         self.T_liquidus = config.interior_energetics.boundary.T_liquidus
         self.critical_melt_fraction = config.interior_energetics.rfront_loc
-        self.Tsurf_event_change = config.interior_energetics.boundary.Tsurf_event_change
+        self.Tsurf_event_change = config.interior_energetics.tmagma_atol
 
         # Material constants
         self.critical_rayleigh_number = (
             config.interior_energetics.boundary.critical_rayleigh_number
         )  # dimensionless
-        self.heat_fusion_silicate = (
-            config.interior_energetics.boundary.heat_fusion_silicate
-        )  # J/kg
+        self.heat_fusion_silicate = config.interior_energetics.latent_heat_of_fusion  # J/kg
         self.nusselt_exponent = (
             config.interior_energetics.boundary.nusselt_exponent
         )  # dimensionless
@@ -164,14 +174,14 @@ class BoundaryRunner:
         self.viscosity_model = config.interior_energetics.boundary.viscosity_model
 
         # Constant viscosity model parameters
-        self.eta_constant = config.interior_energetics.boundary.eta_constant  # Pa s
+        self.eta_constant = 10**config.interior_energetics.const_log10visc  # Pa s
 
         # Aggregate viscosity parameters
         self.transition_width = (
             config.interior_energetics.phase_transition_width
         )  # dimensionless
-        self.eta_solid_const = config.interior_energetics.boundary.eta_solid_const  # Pa s
-        self.eta_melt_const = config.interior_energetics.boundary.eta_melt_const  # Pa s
+        self.eta_solid_const = 10**config.interior_energetics.solid_log10visc  # Pa s
+        self.eta_melt_const = 10**config.interior_energetics.melt_log10visc  # Pa s
 
         # Arrhenius solid mantle parameters
         self.dynamic_viscosity = config.interior_energetics.boundary.dynamic_viscosity  # Pa s
@@ -736,10 +746,9 @@ class BoundaryRunner:
         T_p_final = sol.y[0, -1]
         T_surf_final = sol.y[1, -1]
         phi_final = self.melt_fraction(T_p_final)
-        r_s_final = self.r_s(T_p_final)
-        phi_final = self.melt_fraction(T_p_final)
         visc_final = self.viscosity(T_p_final, T_surf_final, phi_final)
         f_radio_final = self.radioactive_heating(t_final) * self.mantle_mass
+        r_s_fin = self.r_s(T_p_final)
 
         # Log final timestep values to CSV
         if self.logging:
@@ -765,7 +774,7 @@ class BoundaryRunner:
                 )
 
         m_liquid = (
-            (4 / 3) * np.pi * self.mantle_bulk_density * (self.planet_radius**3 - r_s_final**3)
+            (4 / 3) * np.pi * self.mantle_bulk_density * (self.planet_radius**3 - r_s_fin**3)
         )
         m_solid = self.mantle_mass - m_liquid
 

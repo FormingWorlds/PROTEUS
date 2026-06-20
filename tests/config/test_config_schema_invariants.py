@@ -41,7 +41,6 @@ from proteus.config import read_config_object
 from proteus.config._config import (
     boreas_requires_atmosphere,
     boundary_requires_fixed_surface_state,
-    boundary_zalmoxis_incompatible,
     check_module_dependencies,
     instmethod_evolve,
     planet_fO2_source_compat,
@@ -700,45 +699,6 @@ def test_boundary_requires_fixed_surface_state_passes_with_fixed():
     # boundary; only the 'fixed' branch can produce a silent pass here.
     assert instance.interior_energetics.module == 'boundary'
     assert instance.atmos_clim.surf_state == 'fixed'
-
-
-@pytest.mark.unit
-def test_boundary_zalmoxis_incompatible_rejects_combo():
-    """``interior_energetics.module='boundary'`` with
-    ``interior_struct.module='zalmoxis'`` is an unsupported coupling and
-    must raise with a message naming ``zalmoxis``.
-    """
-    instance = _make_config_instance(
-        **{
-            'interior_energetics.module': 'boundary',
-            'interior_struct.module': 'zalmoxis',
-        }
-    )
-    with pytest.raises(ValueError, match=r'zalmoxis') as excinfo:
-        boundary_zalmoxis_incompatible(instance, None, None)
-    # Discrimination: the message must also name 'boundary' to identify BOTH
-    # sides of the incompatible combo. A regression that dropped the interior
-    # backend name (so the user only sees 'zalmoxis cannot be used') would fail.
-    assert 'boundary' in str(excinfo.value).lower() or 'Boundary' in str(excinfo.value)
-
-
-@pytest.mark.unit
-def test_boundary_zalmoxis_incompatible_passes_with_dummy_struct():
-    """Boundary energetics with the dummy structure backend is allowed;
-    the incompatibility is specific to the zalmoxis combo above.
-    """
-    instance = _make_config_instance(
-        **{
-            'interior_energetics.module': 'boundary',
-            'interior_struct.module': 'dummy',
-        }
-    )
-    result = boundary_zalmoxis_incompatible(instance, None, None)
-    assert result is None  # contract: boundary + non-zalmoxis struct is accepted silently
-    # Discriminating check: struct.module='zalmoxis' would have raised; only the
-    # non-zalmoxis branch can produce a silent pass here.
-    assert instance.interior_energetics.module == 'boundary'
-    assert instance.interior_struct.module != 'zalmoxis'
 
 
 # ---------------------------------------------------------------------------
