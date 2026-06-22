@@ -31,6 +31,7 @@ from proteus.interior_energetics.wrapper import (
     _RESUME_STRUCT_DPHI_BACKSTOP_CAP,
     _RESUME_STRUCT_DR_REL_TOL,
     _prevent_warming_clamp_active,
+    _refresh_composition_sentinels,
     update_structure_from_interior,
 )
 
@@ -4635,3 +4636,259 @@ def test_resume_settling_monotonic_noop_records_zero_dr():
     # (or leaving the prior 2e-4) would keep the guard above tolerance forever.
     # Zero is what lets the next dT/T trigger skip.
     assert dirs['_last_resolve_dR_rel'] < _RESUME_STRUCT_DR_REL_TOL
+
+
+# ============================================================================
+# Composition-sentinel refresh on the super-liquidus monotonic-radius no-op
+#
+# The dissolved-volatile composition trigger compares the live mass fraction
+# w = {species}_kg_liquid / M_mantle against the stored baseline
+# _last_w_{species}_liquid. Under the super-liquidus adiabat IC a comp-driven
+# re-solve is a representation-artifact radius up-step that the monotonic-radius
+# guard rejects, returning early BEFORE the success-path sentinel refresh. With
+# the baseline frozen and outgassing still moving the live fraction, the same
+# delta re-fires every loop and the coupled clock never commits (the IWp3_oxauth
+# livelock). The fix refreshes the baseline on the reject path too, through the
+# shared _refresh_composition_sentinels helper, WITHOUT gating the trigger (so
+# the crystallization-driving down-step re-solves and their EOS regeneration are
+# untouched). These exercise that refresh.
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_refresh_composition_sentinels_sets_both_species_in_unit_interval():
+    """The helper writes w = {species}_kg_liquid / M_mantle for BOTH H2O and H2.
+
+    Boundedness invariant: a dissolved-volatile mass fraction is in [0, 1]
+    (the dissolved mass cannot exceed the mantle mass). Both species baselines
+    must satisfy it and must take the distinct values their distinct liquid
+    masses imply.
+
+    Discrimination: H2O (5e21 kg) and H2 (1e20 kg) give baselines ~50x apart, so
+    a regression collapsing the two species, or dividing by a whole-planet mass
+    (5e24) instead of the mantle mass (3e24), would miss at least one pin well
+    beyond tolerance.
+    """
+    hf_row = {'M_mantle': 3.0e24, 'H2O_kg_liquid': 5.0e21, 'H2_kg_liquid': 1.0e20}
+    # Stale seeds, distinct from the current fractions, so the refresh is visible.
+    dirs = {'_last_w_H2O_liquid': 1.0e21 / 3.0e24, '_last_w_H2_liquid': 0.0}
+
+    _refresh_composition_sentinels(dirs, hf_row)
+
+    w_h2o = dirs['_last_w_H2O_liquid']
+    w_h2 = dirs['_last_w_H2_liquid']
+    assert w_h2o == pytest.approx(5.0e21 / 3.0e24, rel=1e-12)
+    assert w_h2 == pytest.approx(1.0e20 / 3.0e24, rel=1e-12)
+    # Boundedness invariant for both species.
+    assert 0.0 <= w_h2o <= 1.0
+    assert 0.0 <= w_h2 <= 1.0
+    # Distinct species: H2O baseline is ~50x the H2 baseline here.
+    assert w_h2o > 10.0 * w_h2
+    # Discrimination against a wrong (whole-planet) denominator: dividing the
+    # same liquid mass by a 5e24 kg planet mass instead of the 3e24 kg mantle
+    # gives 1.0e-3, which differs from the correct 1.667e-3 by 6.7e-4, far above
+    # the 1e-12 pin tolerance.
+    assert abs(w_h2o - 5.0e21 / 5.0e24) > 1e-4
+
+    # Upper-bound edge plus first-call (empty dirs) path: a fully dissolved
+    # species (liquid mass == mantle mass) pins the fraction at exactly 1.0,
+    # exercising the boundedness invariant at its edge, and an empty dirs gets
+    # the sentinels created rather than raising, so the first reject after t=0
+    # has a baseline to set.
+    dirs_full = {}
+    _refresh_composition_sentinels(
+        dirs_full, {'M_mantle': 3.0e24, 'H2O_kg_liquid': 3.0e24, 'H2_kg_liquid': 0.0}
+    )
+    assert dirs_full['_last_w_H2O_liquid'] == pytest.approx(1.0, rel=1e-12)
+    assert 0.0 <= dirs_full['_last_w_H2O_liquid'] <= 1.0
+    assert dirs_full['_last_w_H2_liquid'] == pytest.approx(0.0, abs=1e-30)
+
+
+@pytest.mark.unit
+def test_refresh_composition_sentinels_zero_mantle_leaves_baseline_untouched():
+    """A non-positive mantle mass leaves the sentinels untouched.
+
+    The trigger skips the dw comparison when M_mantle <= 0, so the refresh must
+    not write a divide-by-zero or 0/0 baseline that would later fire a spurious
+    composition trigger. Edge case: M_mantle = 0 with non-zero liquid masses.
+    """
+    dirs = {'_last_w_H2O_liquid': 4.2e-4, '_last_w_H2_liquid': 7.0e-5}
+
+    _refresh_composition_sentinels(
+        dirs, {'M_mantle': 0.0, 'H2O_kg_liquid': 5.0e21, 'H2_kg_liquid': 1.0e20}
+    )
+
+    # Untouched: the prior baselines survive intact (no zero/NaN written).
+    assert dirs['_last_w_H2O_liquid'] == pytest.approx(4.2e-4, rel=1e-12)
+    assert dirs['_last_w_H2_liquid'] == pytest.approx(7.0e-5, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_monotonic_noop_advances_composition_sentinels():
+    """A rejected super-liquidus up-step refreshes BOTH composition sentinels.
+
+    The reject path returns before the success-path refresh, so without the fix
+    the dissolved-volatile baseline stays frozen while outgassing keeps moving
+    the live fraction; the growing delta re-fires the composition trigger every
+    step and the coupled clock never commits. After the no-op the baselines must
+    equal the current dissolved fractions even though the structure was retained.
+
+    Discrimination: the stale seeds (distinct from the current fractions) are
+    gone, BOTH species advance (the H2 sentinel moves off its 0.0 seed, so a
+    regression refreshing only H2O would be caught), and the values match
+    kg_liquid / M_mantle, not the prior baseline.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    # dT/T is the trigger here; add composition so the reject-path refresh has
+    # data and the comp baselines are demonstrably advanced by a NON-comp trigger.
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    dirs['_last_w_H2O_liquid'] = 1.0e21 / 3.0e24  # stale, distinct from current
+    dirs['_last_w_H2_liquid'] = 0.0  # stale
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        # Up-step past the running minimum -> rejected as a cross-table artifact.
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    assert dirs['_last_w_H2O_liquid'] == pytest.approx(5.0e21 / 3.0e24, rel=1e-9)
+    assert dirs['_last_w_H2_liquid'] == pytest.approx(1.0e20 / 3.0e24, rel=1e-9)
+    # Discrimination: the stale baseline (which the livelock would persist) is
+    # gone, and the H2 sentinel left its 0.0 seed.
+    assert dirs['_last_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
+    assert dirs['_last_w_H2_liquid'] > 0.0
+
+
+@pytest.mark.unit
+def test_superliquidus_does_not_gate_composition_trigger():
+    """Under the super-liquidus IC the composition trigger STILL fires.
+
+    Regression guard: the livelock fix advances the sentinel on the reject path
+    and must NOT gate the trigger off under the super-liquidus predicate. Gating
+    it (the reverted cb3f8582 behaviour) re-freezes crystallization because the
+    accepted down-step re-solves that drive solidification, and their EOS
+    regeneration, never run. With composition the SOLE trigger and the
+    super-liquidus predicate active, the solver must be CALLED (not short-circuit
+    to a no-update return).
+
+    Discrimination: if the trigger were gated under super-liquidus, ``triggered``
+    would stay False, the function would return the no-update sentinel, and the
+    solver would never be called.
+    """
+    config = _mock_config(update_interval=1e99, update_dtmagma_frac=1.0, update_dphi_abs=1.0)
+    config.interior_struct.zalmoxis.update_dw_comp_abs = 0.05
+    config.interior_struct.zalmoxis.global_miscibility = False
+
+    hf_row = {
+        'Time': 500.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.5,
+        'R_int': 6.371e6,
+        'M_int': 5e24,
+        'M_core': 2e24,
+        'M_mantle': 3.0e24,
+        'P_surf': 1e5,
+        'R_core': 3.5e6,
+        'P_center': 3.6e11,
+        'P_cmb': 1.4e11,
+        'rho_avg': 5500.0,
+        'gravity': 9.81,
+        'H2O_kg_liquid': 3.0e21,
+        'H2_kg_liquid': 0.0,
+    }
+    dirs = _mock_dirs()
+    # Stale baseline -> dw = |1e-3 - 6.67e-4| / 6.67e-4 = 0.5 >= 0.05 threshold.
+    dirs['_last_w_H2O_liquid'] = 2.0e21 / 3.0e24
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
+
+    # The composition trigger fired under super-liquidus: the solver ran.
+    mock_solver.assert_called_once()
+    # The up-step was rejected and the previous structure retained (so the reject
+    # path, not the success path, was taken): R_int is restored to its pre-solve
+    # value, not the +1e-3 up-step the solver wrote.
+    assert hf_row['R_int'] == pytest.approx(r_prev, rel=1e-12)
+    # And the reject path then refreshed the baseline to the current fraction,
+    # so the same dw cannot re-fire next loop (the livelock break).
+    assert dirs['_last_w_H2O_liquid'] == pytest.approx(3.0e21 / 3.0e24, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_accepted_resolve_advances_composition_sentinels_on_success_path():
+    """An ACCEPTED (down-step) re-solve refreshes both composition sentinels.
+
+    The reject-path refresh and the success-path refresh share one helper, so
+    this guards the success path independently: a regression dropping the
+    success-path helper call would leave the baseline stale after a normal
+    accepted re-solve and silently re-arm the composition trigger. A cooling
+    interior shrinks R_int (a down-step the monotonic-radius guard accepts), so
+    the call reaches the success path rather than the reject path.
+
+    Discrimination: the stale seeds (distinct from the current fractions) are
+    gone for BOTH species, R_int reflects the accepted shrink (not the retained
+    previous value), and the values match kg_liquid / M_mantle.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    dirs = _mock_dirs()  # forward run: no resume window, so the solve proceeds
+    dirs['_last_w_H2O_liquid'] = 1.0e21 / 3.0e24  # stale, distinct from current
+    dirs['_last_w_H2_liquid'] = 0.0  # stale
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _shrink_radius(*args, **kwargs):
+        # Cooling contracts the radius: a down-step the guard accepts, so the
+        # call reaches the success-path sentinel refresh.
+        args[2]['R_int'] = r_prev * (1.0 - 5e-4)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_shrink_radius)
+    with s as mock_solver, ns, cp:
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    # Accepted down-step: R_int is the shrunk value, not the retained previous one.
+    assert hf_row['R_int'] == pytest.approx(r_prev * (1.0 - 5e-4), rel=1e-9)
+    # Success path refreshed both baselines to the current fractions.
+    assert dirs['_last_w_H2O_liquid'] == pytest.approx(5.0e21 / 3.0e24, rel=1e-9)
+    assert dirs['_last_w_H2_liquid'] == pytest.approx(1.0e20 / 3.0e24, rel=1e-9)
+    # Discrimination: the stale seeds are gone for both species.
+    assert dirs['_last_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
+    assert dirs['_last_w_H2_liquid'] > 0.0

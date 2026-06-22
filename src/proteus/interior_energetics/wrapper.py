@@ -56,6 +56,13 @@ _ZALMOXIS_MASS_ANCHOR_TOL = 3e-3
 # minimum, and a genuine representation up-step is rejected.
 _MONOTONIC_RINT_REL_TOL = 1e-9
 
+# Dissolved-volatile species whose mantle mass fraction drives the
+# composition-change structure trigger. Single source of truth: the trigger that
+# reads these fractions and the sentinel refresh that records them iterate this
+# same tuple, so the comparison baseline can never cover a different species set
+# than the trigger checks.
+_COMPOSITION_SENTINEL_SPECIES = ('H2O', 'H2')
+
 # Abort threshold for consecutive SPIDER CVode failures during time
 # evolution; the counter resets on each successful SPIDER call.
 _SPIDER_MAX_CONSECUTIVE_FAILS = 3
@@ -2063,6 +2070,45 @@ def run_interior(
     # equilibration sees the final zalmoxis_output.dat.
 
 
+def _refresh_composition_sentinels(dirs: dict, hf_row: dict) -> None:
+    """Refresh the dissolved-volatile composition sentinels to the current state.
+
+    The composition trigger in :func:`update_structure_from_interior` fires when
+    a per-species dissolved mass fraction ``w = {species}_kg_liquid / M_mantle``
+    drifts from its stored baseline ``dirs['_last_w_{species}_liquid']`` by more
+    than the configured threshold. Both the accepted-re-solve success path and
+    the super-liquidus monotonic-radius reject path advance that baseline to the
+    current fractions through this helper, so the two sites cannot drift apart.
+
+    Parameters
+    ----------
+    dirs : dict
+        Per-run scratch dictionary holding the ``_last_w_{species}_liquid``
+        sentinels for ``H2O`` and ``H2``.
+    hf_row : dict
+        Current helpfile row; supplies ``M_mantle`` and ``{species}_kg_liquid``.
+
+    Returns
+    -------
+    None
+        ``dirs`` is mutated in place: the ``_last_w_{species}_liquid`` keys are
+        set for each species in ``_COMPOSITION_SENTINEL_SPECIES`` (or left
+        untouched when ``M_mantle <= 0``).
+
+    Notes
+    -----
+    A non-positive mantle mass leaves the sentinels untouched, matching the
+    trigger, which also skips the comparison when ``M_mantle <= 0``; no spurious
+    zero baseline is written.
+    """
+    M_mantle = float(hf_row.get('M_mantle', 0.0))
+    if M_mantle > 0:
+        for species in _COMPOSITION_SENTINEL_SPECIES:
+            dirs[f'_last_w_{species}_liquid'] = (
+                float(hf_row.get(f'{species}_kg_liquid', 0.0)) / M_mantle
+            )
+
+
 def update_structure_from_interior(
     dirs: dict,
     config: Config,
@@ -2208,7 +2254,7 @@ def update_structure_from_interior(
     if not triggered:
         M_mantle = float(hf_row.get('M_mantle', 0.0))
         if M_mantle > 0:
-            for species in ('H2O', 'H2'):
+            for species in _COMPOSITION_SENTINEL_SPECIES:
                 w_new = float(hf_row.get(f'{species}_kg_liquid', 0.0)) / M_mantle
                 w_old = dirs.get(f'_last_w_{species}_liquid', w_new)
                 if w_old > 1e-6:
@@ -2509,6 +2555,18 @@ def update_structure_from_interior(
             # as converged and suppresses further spurious dT/T re-solves (a
             # rejected cross-table up-step recurs every step otherwise).
             dirs['_last_resolve_dR_rel'] = 0.0
+            # Advance the dissolved-volatile composition sentinels exactly as the
+            # success path does. This reject path returns before the success-path
+            # refresh, so without it the baseline _last_w_{species}_liquid stays
+            # frozen at the pre-reject fractions while outgassing keeps moving the
+            # live fractions; the growing delta re-fires the composition trigger
+            # every step, each firing an inert molten up-step re-solve that is
+            # rejected again, and the coupled clock never commits. Refreshing the
+            # baseline here de-duplicates the rejected no-op so Time advances
+            # through the molten phase; once crystallization begins the radius
+            # contracts, the down-step re-solve is accepted, and EOS regeneration
+            # resumes on the success path.
+            _refresh_composition_sentinels(dirs, hf_row)
             return (
                 current_time,
                 float(hf_row['T_magma']),
@@ -2745,12 +2803,7 @@ def update_structure_from_interior(
                 )
 
     # Update composition sentinels for next trigger check
-    M_mantle = float(hf_row.get('M_mantle', 0.0))
-    if M_mantle > 0:
-        for species in ('H2O', 'H2'):
-            dirs[f'_last_w_{species}_liquid'] = (
-                float(hf_row.get(f'{species}_kg_liquid', 0.0)) / M_mantle
-            )
+    _refresh_composition_sentinels(dirs, hf_row)
 
     log.info(
         'Structure updated: R_int=%.3e m, gravity=%.3f m/s^2',
