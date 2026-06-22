@@ -157,6 +157,34 @@ class Proteus:
             self.agni_deadlock_count = 0
             return
 
+        # The atmosphere optical-depth radius extends past the Hill radius
+        # while AGNI cannot converge: the plane-parallel geometry no longer
+        # holds and further iterations cannot recover. Terminate immediately
+        # with a labelled reason rather than grinding through the generic
+        # deadlock counter for several more multi-hour iterations. R_hill is
+        # computed from the dry interior mass, so this is a conservative
+        # lower bound on the true Hill radius.
+        r_atm = max(
+            float(self.hf_row.get('R_obs', 0.0)),
+            float(self.hf_row.get('R_xuv', 0.0)),
+        )
+        r_hill = float(self.hf_row.get('hill_radius', 0.0))
+        if r_hill > 0.0 and r_atm > r_hill:
+            log.error(
+                'Unphysical planetary regime: the atmosphere optical-depth '
+                'radius exceeds the Hill radius (R_atm=%.3e m > R_hill=%.3e m) '
+                'and AGNI cannot converge on the plane-parallel geometry. '
+                'Terminating this cell.',
+                r_atm,
+                r_hill,
+            )
+            UpdateStatusfile(self.directories, 22)
+            raise RuntimeError(
+                'Unphysical planetary regime: atmosphere optical-depth radius '
+                f'exceeds the Hill radius (R_atm={r_atm:.3e} m > '
+                f'R_hill={r_hill:.3e} m) and AGNI cannot converge.'
+            )
+
         self.agni_deadlock_count += 1
         log.warning(
             'AGNI did not converge AND interior state is frozen '

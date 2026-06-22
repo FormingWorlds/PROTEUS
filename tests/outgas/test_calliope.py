@@ -20,7 +20,7 @@ Testing standards:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -29,6 +29,7 @@ pytest.importorskip('calliope')
 
 from proteus.outgas.calliope import (
     _resolve_element,
+    calc_surface_pressures,
     construct_guess,
     flag_included_volatiles,
 )
@@ -212,3 +213,56 @@ def test_flag_included_volatiles_zero_pressure_excludes():
     assert result['CO2'] is True
     # O2 always included
     assert result['O2'] is True
+
+
+# -----------------------------------------------------------------------
+# calc_surface_pressures: graceful, labelled handling of a CALLIOPE
+# volatile-equilibrium non-convergence.
+# -----------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_calc_surface_pressures_labels_calliope_nonconvergence(tmp_path):
+    """A CALLIOPE non-convergence is relabelled and given outgassing status 27.
+
+    When CALLIOPE cannot find a volatile-equilibrium solution, the wrapper
+    must catch the bare 'max attempts' RuntimeError, write outgassing-error
+    status 27, and re-raise a RuntimeError whose message names the
+    unphysical-regime cause, so a degenerate cell is identifiable for
+    exclusion instead of producing an opaque crash.
+
+    Discriminating: the underlying CALLIOPE error carries only the generic
+    'max attempts' wording; the wrapper's message must instead match the
+    labelled 'Unphysical planetary regime' phrasing AND the status code must
+    be 27 (outgassing), not propagated unlabelled. The status-write happens
+    before the re-raise so an unattended grid cell leaves a parseable status.
+    """
+    from collections import defaultdict
+
+    config = MagicMock()
+    config.planet.fO2_source = 'calc'  # not 'from_O_budget' -> equilibrium_atmosphere path
+    config.outgas.T_floor = 1000.0
+    config.outgas.mass_thresh = 1e10
+    hf_row = {e + '_kg_total': 1e20 for e in element_list}
+    dirs = {'output': str(tmp_path)}
+
+    with (
+        patch('proteus.outgas.calliope.construct_options', return_value={'T_magma': 4200.0}),
+        patch('proteus.outgas.calliope.construct_guess', return_value=None),
+        patch(
+            'proteus.outgas.calliope.flag_included_volatiles',
+            return_value=defaultdict(int),
+        ),
+        patch(
+            'proteus.outgas.calliope.equilibrium_atmosphere',
+            side_effect=RuntimeError(
+                'Could not find solution for volatile abundances (max attempts, 1000)'
+            ),
+        ),
+        patch('proteus.outgas.calliope.UpdateStatusfile') as mock_update,
+    ):
+        with pytest.raises(RuntimeError, match='Unphysical planetary regime'):
+            calc_surface_pressures(dirs, config, hf_row)
+    mock_update.assert_called_once()
+    args, _ = mock_update.call_args
+    assert args[1] == 27  # outgassing-model error status code

@@ -368,6 +368,99 @@ def test_check_atmosphere_deadlock_f_atm_tolerance_boundary(tmp_path):
     assert p.agni_deadlock_count == 0
 
 
+def test_check_atmosphere_deadlock_terminates_immediately_when_atmosphere_unbound(tmp_path):
+    """An AGNI failure with a frozen interior AND an atmosphere extending
+    beyond the Hill radius is a gravitationally-unbound envelope. The
+    detector must terminate immediately with atmosphere status 22, before
+    the generic 3-strike counter, and name the unbound-atmosphere cause.
+
+    Discriminating: the counter starts at 0 (first frozen iteration), well
+    below agni_deadlock_max=3, so the generic deadlock path would NOT raise
+    here. The raise proves the fast beyond-Hill termination; the counter
+    staying at 0 proves it did not route through the generic increment path.
+    """
+    p = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
+        hf_row={
+            'F_atm': 100.0,
+            'T_magma': 3000.0,
+            'Phi_global': 1.0,
+            'R_obs': 2.0e8,
+            'R_xuv': 1.5e8,
+            'hill_radius': 1.0e8,  # atmosphere extends beyond the Hill radius
+        },
+    )
+    p.agni_deadlock_max = 3
+    p.agni_deadlock_count = 0
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        with pytest.raises(RuntimeError, match='optical-depth radius exceeds the Hill radius'):
+            p._check_atmosphere_deadlock()
+    mock_update.assert_called_once()
+    args, _ = mock_update.call_args
+    assert args[1] == 22  # atmosphere-model status code
+    assert p.agni_deadlock_count == 0  # did not take the generic increment path
+
+
+def test_check_atmosphere_deadlock_bound_atmosphere_uses_generic_path(tmp_path):
+    """A frozen-interior AGNI failure with the atmosphere INSIDE the Hill
+    radius must NOT take the fast unbound-termination path; it falls through
+    to the generic deadlock counter, incrementing without raising.
+
+    Discriminating: identical to the unbound test except the atmosphere
+    radius is below the Hill radius. The counter reaches 1 and no exception
+    is raised, proving the beyond-Hill branch is gated on the radius
+    comparison and not merely on a frozen interior.
+    """
+    p = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
+        hf_row={
+            'F_atm': 100.0,
+            'T_magma': 3000.0,
+            'Phi_global': 1.0,
+            'R_obs': 5.0e7,
+            'R_xuv': 4.0e7,
+            'hill_radius': 1.0e8,  # atmosphere well inside the Hill radius
+        },
+    )
+    p.agni_deadlock_max = 3
+    p.agni_deadlock_count = 0
+    p._check_atmosphere_deadlock()  # must not raise
+    assert p.agni_deadlock_count == 1  # generic frozen-interior path incremented
+
+
+def test_check_atmosphere_deadlock_missing_hill_radius_does_not_terminate(tmp_path):
+    """When the Hill radius is unknown (absent or zero), the beyond-Hill
+    branch must NOT fire on a spurious comparison; it falls through to the
+    generic counter.
+
+    Edge case: the orbit step may not have populated hill_radius (it
+    defaults to 0.0 via .get). The `r_hill > 0.0` guard must prevent a
+    false unbound termination when the Hill radius is not yet known, even
+    though R_obs is large. A regression dropping that guard would terminate
+    every frozen-interior cell whose hill_radius defaulted to zero.
+    """
+    p = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
+        hf_row={
+            'F_atm': 100.0,
+            'T_magma': 3000.0,
+            'Phi_global': 1.0,
+            'R_obs': 2.0e8,  # large, but hill_radius is unknown
+            # 'hill_radius' deliberately absent -> defaults to 0.0
+        },
+    )
+    p.agni_deadlock_max = 3
+    p.agni_deadlock_count = 0
+    p._check_atmosphere_deadlock()  # must not raise on an unknown Hill radius
+    assert p.agni_deadlock_count == 1  # generic path incremented, no termination
+
+
 # ---------------------------------------------------------------------------
 # Proteus.observe() and Proteus.offline_chemistry(): postprocessing methods.
 # Target lines 1055-1098 of proteus.py.

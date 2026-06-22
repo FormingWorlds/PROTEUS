@@ -355,9 +355,23 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
                 opt_solver=False,
             )
     except RuntimeError as e:
-        log.error('Outgassing calculation with CALLIOPE failed')
+        # CALLIOPE could not find a volatile-equilibrium solution. This is
+        # reached by the volatile-rich, high-pressure surface states of
+        # degenerate cells, which sit outside the solvable range. Terminate
+        # the cell with a labelled reason so it can be identified and excluded.
+        t_magma = float(opts.get('T_magma', hf_row.get('T_magma', 0.0)))
+        log.error(
+            'Unphysical planetary regime: the outgassing equilibrium did not '
+            'converge (CALLIOPE) at T_magma=%.1f K; the volatile-rich surface '
+            'state is outside the solvable range. Terminating this cell.',
+            t_magma,
+        )
         UpdateStatusfile(dirs, 27)
-        raise e
+        raise RuntimeError(
+            'Unphysical planetary regime: outgassing equilibrium did not '
+            f'converge (CALLIOPE) at T_magma={t_magma:.1f} K; the volatile-rich '
+            'surface state is outside the solvable range.'
+        ) from e
 
     # Get result
     for k in expected_keys():

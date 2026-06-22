@@ -18,6 +18,7 @@ from proteus.utils.constants import (
     element_list,
 )
 from proteus.utils.data import get_zalmoxis_eos_dir, get_zalmoxis_melting_curves
+from proteus.utils.helper import UpdateStatusfile
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
@@ -1450,6 +1451,31 @@ def zalmoxis_solver(
     config_params = load_zalmoxis_configuration(
         config, hf_row, temperature_mode_override=temperature_mode_override
     )
+
+    # Reject a non-positive dry mass before the structure solve. The dry
+    # mass is the total planet mass minus the volatile inventory; it goes
+    # non-positive when the volatile envelope mass meets or exceeds the
+    # planet mass, leaving no condensed mantle and core to build a structure.
+    # This is the volatile-rich regime that has no interior solution.
+    # On the time-evolution call site the RuntimeError is caught and the
+    # previous structure is reused; at the initial solve it terminates the
+    # cell with a labelled, greppable reason.
+    planet_mass = float(config_params['planet_mass'])
+    if planet_mass <= 0.0:
+        log.error(
+            'Unphysical planetary regime: the volatile inventory leaves a '
+            'non-positive dry mass (M_dry=%.3e kg) for the interior structure; '
+            'the volatile envelope mass meets or exceeds the planet mass. '
+            'Terminating this cell.',
+            planet_mass,
+        )
+        UpdateStatusfile({'output': outdir}, 20)
+        raise RuntimeError(
+            'Unphysical planetary regime: non-positive dry mass '
+            f'(M_dry={planet_mass:.3e} kg); the volatile envelope mass meets '
+            'or exceeds the planet mass, so the interior structure has no '
+            'solution.'
+        )
 
     # Build volatile profile from dissolved volatile masses (if available).
     # This enables phi(r)-weighted volatile blending inside the Zalmoxis ODE.

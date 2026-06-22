@@ -761,3 +761,68 @@ def test_dry_mass_target_excludes_only_undissolved_volatiles():
     # unit error (g vs kg) or a doubled subtraction would breach this.
     assert 0.999 * M_earth < dry['planet_mass'] < M_earth
     assert 0.999 * M_earth < wet['planet_mass'] < M_earth
+
+
+@pytest.mark.unit
+def test_zalmoxis_solver_rejects_negative_dry_mass(tmp_path):
+    """A negative dry mass terminates the cell before the structure solve.
+
+    When the volatile envelope mass exceeds the planet mass, the dry mass
+    handed to the solver is negative and there is no interior to build.
+    zalmoxis_solver must write configuration-error status 20 and raise a
+    labelled RuntimeError before invoking the Zalmoxis solve, so a degenerate
+    grid cell fails fast with a greppable reason instead of crashing deep in
+    the structure solver.
+
+    Discriminating: the mocked configuration returns a negative planet_mass,
+    so the guard must fire and the run must NOT reach the solver. The status
+    code is pinned to 20 (configuration), not 21/22/27, and the
+    status-before-raise ordering is pinned so an unattended cell leaves a
+    parseable status on disk.
+    """
+    from unittest.mock import patch
+
+    from proteus.interior_struct.zalmoxis import zalmoxis_solver
+
+    config = MagicMock()
+    hf_row = {'Time': 0.0}
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_configuration',
+            return_value={'planet_mass': -1.0e24},
+        ),
+        patch('proteus.interior_struct.zalmoxis.UpdateStatusfile') as mock_update,
+    ):
+        with pytest.raises(RuntimeError, match='non-positive dry mass'):
+            zalmoxis_solver(config, str(tmp_path), hf_row)
+    mock_update.assert_called_once()
+    args, _ = mock_update.call_args
+    assert args[1] == 20  # configuration-error status code, not an interior code
+
+
+@pytest.mark.unit
+def test_zalmoxis_solver_rejects_zero_dry_mass_boundary(tmp_path):
+    """A dry mass of exactly zero is rejected: the guard is inclusive at zero.
+
+    Boundary case M_dry = 0: a planet whose volatiles exactly equal its mass
+    has no condensed interior. The guard uses ``<= 0``, so the zero case must
+    raise just like the negative case. A regression to a strict ``< 0`` would
+    let a zero-mass structure through to the solver.
+    """
+    from unittest.mock import patch
+
+    from proteus.interior_struct.zalmoxis import zalmoxis_solver
+
+    config = MagicMock()
+    hf_row = {'Time': 0.0}
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_configuration',
+            return_value={'planet_mass': 0.0},
+        ),
+        patch('proteus.interior_struct.zalmoxis.UpdateStatusfile') as mock_update,
+    ):
+        with pytest.raises(RuntimeError, match='non-positive dry mass'):
+            zalmoxis_solver(config, str(tmp_path), hf_row)
+    mock_update.assert_called_once()
+    assert mock_update.call_args[0][1] == 20
