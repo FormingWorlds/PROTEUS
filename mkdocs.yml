@@ -21,6 +21,7 @@ nav:
               - Initial thermal conditions: How-to/usage_initial_conditions.md
               - Parameter grids: How-to/usage_grids.md
               - Postprocessing and chemistry: How-to/usage_postprocessing.md
+              - Choose stellar spectrum: How-to/switch_spectrum.md
           - Troubleshooting: How-to/troubleshooting.md
           - Run on a local machine: How-to/local_machine_guide.md
       - Advanced usage:
