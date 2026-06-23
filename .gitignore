@@ -2,6 +2,8 @@
 ############
 *.pyc
 
+.nfs*
+
 # Installer logs
 install_*.log
 proteus_doctor*.log
@@ -41,6 +43,9 @@ JANUS
 agni
 Agni
 AGNI
+prt/
+pRT/
+petitRADTRANS/
 calliope
 Calliope
 CALLIOPE
