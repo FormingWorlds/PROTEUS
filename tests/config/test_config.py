@@ -130,10 +130,10 @@ def test_factory_defaults_from_minimal_config():
     assert cfg.escape.module == 'zephyrus'
     assert cfg.accretion.module is None
     assert cfg.observe.module is None
-    assert cfg.observe.petitRADTRANS.input_data_path is None
     assert cfg.observe.petitRADTRANS.line_opacity_mode == 'c-k'
     assert cfg.observe.petitRADTRANS.include_rayleigh is True
     assert cfg.observe.petitRADTRANS.include_cia is True
+    assert cfg.observe.petitRADTRANS.silent is False
     assert cfg.atmos_chem.module is None
     assert cfg.interior_energetics.module == 'aragog'
     assert cfg.star.module == 'mors'

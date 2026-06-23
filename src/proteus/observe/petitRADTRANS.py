@@ -1,13 +1,14 @@
 # Function and classes used to run petitRADTRANS
 from __future__ import annotations
 
+import io
 import logging
-import os
+import re
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-import platformdirs
 from scipy.interpolate import PchipInterpolator
 
 from proteus.utils.constants import (
@@ -24,57 +25,41 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 petitRADTRANS_TLIMS = (100.0 + 0.5, 4000.0 - 0.5)
-petitRADTRANS_GASES = tuple(prt_gases)
-petitRADTRANS_RAYLEIGH_SPECIES = tuple(prt_rayleigh_species)
-petitRADTRANS_CIA_SPECIES = tuple(prt_cia_species)
-petitRADTRANS_IGNORED_GASES = set(prt_ignored_gases)
-FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 
-def _get_input_data_path(input_data_path: str | None) -> str:
-    """Return a local petitRADTRANS input-data directory."""
+def _get_input_data_path(dirs: dict[str, str]) -> str:
+    """Return the petitRADTRANS input-data directory from the startup dirs dict.
 
-    if input_data_path is not None:
-        candidate = Path(input_data_path).expanduser()
-        if candidate.is_dir():
-            return str(candidate)
-        raise FileNotFoundError(
-            f'petitRADTRANS input_data_path is not a directory: {candidate}'
-        )
+    Returns
+    -------
+    str
+        Path to petitRADTRANS input_data directory in $FWL_DATA/prt/input_data
 
-    # Check FWL_DATA_DIR / 'prt' / 'input_data' first
-    candidate = FWL_DATA_DIR / 'prt' / 'input_data'
-    if candidate.is_dir():
-        return str(candidate)
+    Raises
+    ------
+    FileNotFoundError
+        If the input_data directory cannot be found
+    """
+    if 'fwl' not in dirs:
+        raise KeyError("Missing required 'fwl' key in dirs dictionary")
 
-    import petitRADTRANS
-
-    pkg_dir = Path(petitRADTRANS.__file__).resolve().parent
-    candidate = pkg_dir / 'input_data'
-    if candidate.is_dir():
-        return str(candidate)
-
-    # Editable checkout layout (repo root is one level above the package dir)
-    candidate = pkg_dir.parent / 'input_data'
+    candidate = Path(dirs['fwl']) / 'prt' / 'input_data'
     if candidate.is_dir():
         return str(candidate)
 
     raise FileNotFoundError(
-        'Could not locate a petitRADTRANS input_data directory in '
-        f'{FWL_DATA_DIR / "prt" / "input_data"} or next to the installed petitRADTRANS package.'
+        f'Could not locate petitRADTRANS input_data directory at {candidate}. '
+        'Please ensure dirs["fwl"] points to a valid FWL_DATA directory.'
     )
 
 
-def _get_supported_line_species(gases: list[str], input_data_path: str | None) -> list[str]:
+def _get_supported_line_species(gases: list[str], input_data_path: str) -> list[str]:
     """Return gases that have line-opacity tables in the configured pRT data tree."""
-
-    if input_data_path is None:
-        input_data_path = _get_input_data_path(None)
 
     lines_root = Path(input_data_path) / 'opacities' / 'lines' / 'correlated_k'
     supported = []
     for gas in gases:
-        if gas in petitRADTRANS_IGNORED_GASES or gas in petitRADTRANS_RAYLEIGH_SPECIES:
+        if gas in prt_ignored_gases or gas in prt_rayleigh_species:
             continue
         if (lines_root / gas).is_dir():
             supported.append(gas)
@@ -86,7 +71,7 @@ def _get_supported_line_species(gases: list[str], input_data_path: str | None) -
 def _get_supported_rayleigh_species(gases: list[str], include_rayleigh: bool) -> list[str]:
     if not include_rayleigh:
         return []
-    return [gas for gas in gases if gas in petitRADTRANS_RAYLEIGH_SPECIES]
+    return [gas for gas in gases if gas in prt_rayleigh_species]
 
 
 def _get_supported_cia_species(gases: list[str], include_cia: bool) -> list[str]:
@@ -94,7 +79,7 @@ def _get_supported_cia_species(gases: list[str], include_cia: bool) -> list[str]
         return []
 
     available = []
-    for cia_species in petitRADTRANS_CIA_SPECIES:
+    for cia_species in prt_cia_species:
         components = [c for c in cia_species.split('--') if c]
         if all(component in gases for component in components):
             available.append(cia_species)
@@ -134,7 +119,7 @@ def _vmrs_to_mass_fractions(
     mass_fractions = {
         gas: mass_contrib[i] / total_mass
         for i, gas in enumerate(gases)
-        if gas not in petitRADTRANS_IGNORED_GASES
+        if gas not in prt_ignored_gases
     }
     mean_molar_masses = total_mass / 1.0e-3  # pRT expects amu (g mol-1)
     return mass_fractions, mean_molar_masses
@@ -147,7 +132,7 @@ def _build_prt_composition(
     clip_vmr: float,
     include_rayleigh: bool,
     include_cia: bool,
-    input_data_path: str | None,
+    input_data_path: str,
 ) -> tuple:
     gases, vmrs = _get_mix(hf_row, atm, source, clip_vmr)
     line_species = _get_supported_line_species(gases, input_data_path)
@@ -162,15 +147,60 @@ def _build_prt_composition(
     )
 
 
-def _prioritize_methane_species(line_species: list[str]) -> list[str]:
-    """Move CH4 to the front of the line-species list when present.
+def _get_line_species_coverage(
+    species: str, input_data_path: str
+) -> tuple[float, float] | None:
+    """Return the wavelength coverage for a line species, if discoverable.
 
-    This avoids issues with opacity table overlap"""
+    The coverage is parsed from petitRADTRANS opacity filenames such as
+    ``14N-1H3__CoYuTe.R1000_0.3-50mu.ktable.petitRADTRANS.h5``.
+    """
 
-    if 'CH4' not in line_species or not line_species:
+    species_dir = Path(input_data_path) / 'opacities' / 'lines' / 'correlated_k' / species
+    if not species_dir.is_dir():
+        return None
+
+    best: tuple[float, float] | None = None
+    # pRT stores many tables under isotopologue subdirectories, e.g.
+    # CH4/12C-1H4/<file>.ktable.petitRADTRANS.h5, so search recursively.
+    for path in species_dir.rglob('*.ktable.petitRADTRANS.h5'):
+        match = re.search(
+            r'_([0-9]*\.?[0-9]+)-([0-9]*\.?[0-9]+)mu\.ktable\.petitRADTRANS\.h5$', path.name
+        )
+        if match is None:
+            continue
+        start_um = float(match.group(1))
+        end_um = float(match.group(2))
+        if end_um <= start_um:
+            continue
+        candidate = (start_um, end_um)
+        if (best is None) or ((candidate[1] - candidate[0]) > (best[1] - best[0])):
+            best = candidate
+    return best
+
+
+def _prioritize_broadest_coverage_species(
+    line_species: list[str], input_data_path: str
+) -> list[str]:
+    """Move the line species with the broadest opacity coverage to the front."""
+
+    if not line_species:
         return line_species
 
-    return ['CH4'] + [species for species in line_species if species != 'CH4']
+    coverages = [
+        (_get_line_species_coverage(species, input_data_path), species)
+        for species in line_species
+    ]
+    valid_coverages = [
+        (coverage, species) for coverage, species in coverages if coverage is not None
+    ]
+    if not valid_coverages:
+        return line_species
+
+    _, best_species = max(valid_coverages, key=lambda item: item[0][1] - item[0][0])
+    prioritized = [best_species]
+    prioritized.extend(species for species in line_species if species != best_species)
+    return prioritized
 
 
 def _interpolate_prt_profiles(
@@ -195,6 +225,20 @@ def _interpolate_prt_profiles(
         vmr_grid.append(np.clip(interp, a_min=0.0, a_max=None))
 
     return pressure_grid, temp_grid, vmr_grid
+
+
+def _init_radtrans(radtrans_cls, config: Config, **kwargs):
+    """Construct a Radtrans object, optionally silencing its console output."""
+
+    prt_config = getattr(config.observe, 'petitRADTRANS', None)
+    silent = getattr(prt_config, 'silent', None)
+    if silent is None:
+        silent = getattr(config.observe, 'silent_petitradtrans', False)
+
+    if silent:
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            return radtrans_cls(**kwargs)
+    return radtrans_cls(**kwargs)
 
 
 def _get_atm_profile(outdir: str, hf_row: dict) -> dict:
@@ -273,7 +317,7 @@ def _get_mix(hf_row: dict, atm: dict, source: str, clip_vmr: float) -> tuple:
     nlev_l = len(atm['pl'])
 
     # For all potentially supported gases...
-    for gas in petitRADTRANS_GASES:
+    for gas in prt_gases:
         key = gas + '_vmr'
         vmr = np.zeros(nlev_l)  # default to zero abundance
 
@@ -354,7 +398,7 @@ def _load_stellar_toa_flux(
     return stellar_flux * 1.0e7  # erg cm-2 s-1 nm-1 -> erg cm-2 s-1 cm-1
 
 
-def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
+def transit_depth(hf_row: dict, config: Config, source: str, dirs: dict[str, str]):
     """
     Computes the transit depth spectrum using petitRADTRANS.
 
@@ -362,8 +406,6 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
     ----------
     hf_row : dict
         The row of the helpfile for the current time-step.
-    outdir : str
-        The output directory for the PROTEUS run.
     config : Config
         PROTEUS config object.
     source : str
@@ -372,6 +414,8 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
     from petitRADTRANS.radtrans import Radtrans
 
     from proteus.observe.common import get_transit_fpath
+
+    outdir = dirs['output']
 
     # All planet quantities in SI
     Rs = hf_row['R_star']  # Radius of star [m]
@@ -388,7 +432,7 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
     include_rayleigh = config.observe.petitRADTRANS.include_rayleigh
     include_cia = config.observe.petitRADTRANS.include_cia
     include_vmr_clipping = config.observe.clip_vmr
-    input_data_path = _get_input_data_path(config.observe.petitRADTRANS.input_data_path)
+    input_data_path = _get_input_data_path(dirs)
 
     # Parse
     if (atm is None) or (atm_reference is None):
@@ -415,43 +459,90 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
         include_cia,
         input_data_path,
     )
-    line_species = _prioritize_methane_species(line_species)
+    line_species = _prioritize_broadest_coverage_species(line_species, input_data_path)
+    log.debug('Using line species: %s', ', '.join(line_species) if line_species else 'None')
 
     prs, tmp, _, vmrs = _get_ptr(atm, vmrs)
     prs, tmp, vmrs = _interpolate_prt_profiles(prs, tmp, vmrs, n_points=100)
     mass_fractions, mean_molar_masses = _vmrs_to_mass_fractions(gases, vmrs)
 
-    # create a Radtrans object
+    def _compute_transit_column(
+        gases_local: list[str],
+        vmrs_local: list[np.ndarray],
+        line_species_local: list[str],
+        rayleigh_local: list[str],
+        cia_local: list[str],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        mass_fractions_local, mean_molar_masses_local = _vmrs_to_mass_fractions(
+            gases_local, vmrs_local
+        )
+        radtrans = _init_radtrans(
+            Radtrans,
+            config,
+            pressures=np.array(prs, dtype=float) / 1e5,
+            line_species=_prioritize_broadest_coverage_species(
+                line_species_local, input_data_path
+            ),
+            gas_continuum_contributors=cia_local,
+            rayleigh_species=rayleigh_local,
+            line_opacity_mode=config.observe.petitRADTRANS.line_opacity_mode,
+            path_input_data=input_data_path,
+        )
+        wl_cm_local, transit_radii_local, _ = radtrans.calculate_transit_radii(
+            temperatures=np.array(tmp, dtype=float),
+            mass_fractions=mass_fractions_local,
+            mean_molar_masses=mean_molar_masses_local,
+            reference_gravity=reference_gravity,
+            reference_pressure=reference_pressure,
+            planet_radius=reference_radius,
+            frequencies_to_wavelengths=True,
+        )
+        wl_local = np.array(wl_cm_local, dtype=float) * 1e4
+        de_local = (np.array(transit_radii_local, dtype=float) / Rs_cm) ** 2 * 1e6
+        return wl_local, de_local
+
     log.debug('Compute transit depth spectra')
-    radtrans = Radtrans(
-        pressures=np.array(prs, dtype=float) / 1e5,
-        line_species=line_species,
-        gas_continuum_contributors=gas_continuum_contributors,
-        rayleigh_species=rayleigh_species,
-        line_opacity_mode=config.observe.petitRADTRANS.line_opacity_mode,
-        path_input_data=input_data_path,
+    wl, base_depth = _compute_transit_column(
+        gases,
+        vmrs,
+        line_species,
+        rayleigh_species,
+        gas_continuum_contributors,
     )
 
-    # compute full spectrum
-    wl_cm, transit_radii, _ = radtrans.calculate_transit_radii(
-        temperatures=np.array(tmp, dtype=float),
-        mass_fractions=mass_fractions,
-        mean_molar_masses=mean_molar_masses,
-        reference_gravity=reference_gravity,
-        reference_pressure=reference_pressure,
-        planet_radius=reference_radius,
-        frequencies_to_wavelengths=True,
-    )
+    columns: list[np.ndarray] = [wl, base_depth]
+    headers: list[str] = ['Wavelength/um', 'None/ppm']
+    remove_one_gas = getattr(config.observe, 'remove_one_gas', True)
 
-    wl = np.array(wl_cm, dtype=float) * 1e4  # cm -> um
-    de = (np.array(transit_radii, dtype=float) / Rs_cm) ** 2 * 1e6
-    X = [wl, de]
-    header = ''
-    header += str('Wavelength/um').ljust(14, ' ') + '\t'
-    header += str('None/ppm').ljust(14, ' ') + '\t'
+    if remove_one_gas:
+        for idx, gas_removed in enumerate(gases):
+            gases_removed = [g for j, g in enumerate(gases) if j != idx]
+            vmrs_removed = [v for j, v in enumerate(vmrs) if j != idx]
+            if len(gases_removed) == 0:
+                continue
+
+            line_removed = _get_supported_line_species(gases_removed, input_data_path)
+            rayleigh_removed = _get_supported_rayleigh_species(gases_removed, include_rayleigh)
+            cia_removed = _get_supported_cia_species(gases_removed, include_cia)
+
+            wl_removed, depth_removed = _compute_transit_column(
+                gases_removed,
+                vmrs_removed,
+                line_removed,
+                rayleigh_removed,
+                cia_removed,
+            )
+
+            if wl_removed.shape != wl.shape or not np.allclose(wl_removed, wl):
+                depth_removed = np.interp(wl, wl_removed, depth_removed)
+
+            columns.append(depth_removed)
+            headers.append(f'{gas_removed}_removed/ppm')
+
+    X = np.column_stack(columns)
+    header = '\t'.join(name.ljust(14, ' ') for name in headers)
 
     # write file
-    X = np.array(X).T
     log.debug('Writing transit depth spectrum')
     np.savetxt(
         get_transit_fpath(outdir, source, 'synthesis'),
@@ -462,10 +553,10 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
         comments='',
     )
 
-    return X
+    return np.column_stack([wl, base_depth])
 
 
-def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
+def eclipse_depth(hf_row: dict, config: Config, source: str, dirs: dict[str, str]):
     """
     Computes the eclipse depth spectrum using petitRADTRANS.
 
@@ -473,8 +564,6 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
     ----------
     hf_row : dict
         The row of the helpfile for the current time-step.
-    outdir : str
-        The output directory for the PROTEUS run.
     config : Config
         PROTEUS config object.
     source : str
@@ -483,6 +572,8 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
     from petitRADTRANS.radtrans import Radtrans
 
     from proteus.observe.common import get_eclipse_fpath
+
+    outdir = dirs['output']
 
     # All planet quantities in SI
     Rs = hf_row['R_star']  # Radius of star [m]
@@ -494,7 +585,7 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
     include_rayleigh = config.observe.petitRADTRANS.include_rayleigh
     include_cia = config.observe.petitRADTRANS.include_cia
     include_vmr_clipping = config.observe.clip_vmr
-    input_data_path = _get_input_data_path(config.observe.petitRADTRANS.input_data_path)
+    input_data_path = _get_input_data_path(dirs)
 
     # Get profile from the required source
     if source == 'offchem':
@@ -529,51 +620,97 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
         include_cia,
         input_data_path,
     )
-    line_species = _prioritize_methane_species(line_species)
+    line_species = _prioritize_broadest_coverage_species(line_species, input_data_path)
 
     prs, tmp, _, vmrs = _get_ptr(atm, vmrs)
     prs, tmp, vmrs = _interpolate_prt_profiles(prs, tmp, vmrs, n_points=100)
-    mass_fractions, mean_molar_masses = _vmrs_to_mass_fractions(gases, vmrs)
 
-    # create a Radtrans object
+    def _compute_eclipse_column(
+        gases_local: list[str],
+        vmrs_local: list[np.ndarray],
+        line_species_local: list[str],
+        rayleigh_local: list[str],
+        cia_local: list[str],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        mass_fractions_local, mean_molar_masses_local = _vmrs_to_mass_fractions(
+            gases_local, vmrs_local
+        )
+        radtrans = _init_radtrans(
+            Radtrans,
+            config,
+            pressures=np.array(prs, dtype=float) / 1e5,
+            line_species=_prioritize_broadest_coverage_species(
+                line_species_local, input_data_path
+            ),
+            gas_continuum_contributors=cia_local,
+            rayleigh_species=rayleigh_local,
+            line_opacity_mode=config.observe.petitRADTRANS.line_opacity_mode,
+            path_input_data=input_data_path,
+        )
+        wl_cm_local, planet_flux_local, _ = radtrans.calculate_flux(
+            temperatures=np.array(tmp, dtype=float),
+            mass_fractions=mass_fractions_local,
+            mean_molar_masses=mean_molar_masses_local,
+            reference_gravity=reference_gravity,
+            planet_radius=reference_radius,
+            star_effective_temperature=Ts,
+            star_radius=Rs_cm,
+            orbit_semi_major_axis=sep_cm,
+            frequencies_to_wavelengths=True,
+        )
+        wl_local = np.array(wl_cm_local, dtype=float) * 1e4
+        stellar_wavelength_nm = np.array(wl_cm_local, dtype=float) * 1.0e7
+        stellar_surface_flux = _load_stellar_toa_flux(outdir, hf_row, stellar_wavelength_nm)
+        depth_local = (
+            np.array(planet_flux_local, dtype=float)
+            / stellar_surface_flux
+            * (reference_radius / Rs_cm) ** 2
+            * 1e6
+        )
+        return wl_local, depth_local
+
     log.debug('Compute eclipse depth spectrum')
-    radtrans = Radtrans(
-        pressures=np.array(prs, dtype=float) / 1e5,
-        line_species=line_species,
-        gas_continuum_contributors=gas_continuum_contributors,
-        rayleigh_species=rayleigh_species,
-        line_opacity_mode=config.observe.petitRADTRANS.line_opacity_mode,
-        path_input_data=input_data_path,
+    wl, base_depth = _compute_eclipse_column(
+        gases,
+        vmrs,
+        line_species,
+        rayleigh_species,
+        gas_continuum_contributors,
     )
 
-    # compute full spectrum
-    wl_cm, planet_flux, _ = radtrans.calculate_flux(
-        temperatures=np.array(tmp, dtype=float),
-        mass_fractions=mass_fractions,
-        mean_molar_masses=mean_molar_masses,
-        reference_gravity=reference_gravity,
-        planet_radius=reference_radius,
-        star_effective_temperature=Ts,
-        star_radius=Rs_cm,
-        orbit_semi_major_axis=sep_cm,
-        frequencies_to_wavelengths=True,
-    )
-    stellar_wavelength_nm = wl_cm * 1.0e7
-    stellar_surface_flux = _load_stellar_toa_flux(outdir, hf_row, stellar_wavelength_nm)
-    de = (
-        np.array(planet_flux, dtype=float)
-        / stellar_surface_flux
-        * (reference_radius / Rs_cm) ** 2
-        * 1e6
-    )
-    wl = wl_cm * 1e4
-    X = [wl, de]
-    header = ''
-    header += str('Wavelength/um').ljust(14, ' ') + '\t'
-    header += str('None/ppm').ljust(14, ' ') + '\t'
+    columns: list[np.ndarray] = [wl, base_depth]
+    headers: list[str] = ['Wavelength/um', 'None/ppm']
+    remove_one_gas = getattr(config.observe, 'remove_one_gas', True)
+
+    if remove_one_gas:
+        for idx, gas_removed in enumerate(gases):
+            gases_removed = [g for j, g in enumerate(gases) if j != idx]
+            vmrs_removed = [v for j, v in enumerate(vmrs) if j != idx]
+            if len(gases_removed) == 0:
+                continue
+
+            line_removed = _get_supported_line_species(gases_removed, input_data_path)
+            rayleigh_removed = _get_supported_rayleigh_species(gases_removed, include_rayleigh)
+            cia_removed = _get_supported_cia_species(gases_removed, include_cia)
+
+            wl_removed, depth_removed = _compute_eclipse_column(
+                gases_removed,
+                vmrs_removed,
+                line_removed,
+                rayleigh_removed,
+                cia_removed,
+            )
+
+            if wl_removed.shape != wl.shape or not np.allclose(wl_removed, wl):
+                depth_removed = np.interp(wl, wl_removed, depth_removed)
+
+            columns.append(depth_removed)
+            headers.append(f'{gas_removed}_removed/ppm')
+
+    X = np.column_stack(columns)
+    header = '\t'.join(name.ljust(14, ' ') for name in headers)
 
     # write file
-    X = np.array(X).T
     np.savetxt(
         get_eclipse_fpath(outdir, source, 'synthesis'),
         X,
@@ -583,4 +720,4 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
         comments='',
     )
 
-    return X
+    return np.column_stack([wl, base_depth])

@@ -35,13 +35,21 @@ def _make_config(
     module: str = 'petitRADTRANS',
     atmos_clim_module: str = 'janus',
     atmos_chem_module: str | None = 'vulcan',
+    source: str = 'all',
+    spectrum_type: str = 'both',
 ) -> MagicMock:
     """Build a minimal mock config for observe tests."""
     config = MagicMock()
     config.observe.module = module
+    config.observe.source = source
+    config.observe.spectrum_type = spectrum_type
     config.atmos_clim.module = atmos_clim_module
     config.atmos_chem.module = atmos_chem_module
     return config
+
+
+def _make_dirs() -> dict[str, str]:
+    return {'fwl': '/fake/fwl/', 'output': '/fake/output'}
 
 
 def _install_fake_petitradtrans(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -76,7 +84,7 @@ def test_calc_synthetic_spectra_unknown_synthesis_raises(monkeypatch):
     config = _make_config(module='nonexistent_synth')
     hf_row = {'T_surf': 3000.0}
     with pytest.raises(ValueError, match='Unknown synthesis module'):
-        calc_synthetic_spectra(hf_row=hf_row, outdir='/fake', config=config)
+        calc_synthetic_spectra(hf_row=hf_row, config=config, dirs=_make_dirs())
     assert hf_row['T_surf'] == pytest.approx(3000.0, rel=1e-12)  # no side effect
 
     # Adjacent-valid: petitRADTRANS must NOT raise (it imports the backend)
@@ -90,7 +98,7 @@ def test_calc_synthetic_spectra_unknown_synthesis_raises(monkeypatch):
     monkeypatch.setattr(backend, 'eclipse_depth', eclipse_mock)
 
     config_valid = _make_config(module='petitRADTRANS')
-    calc_synthetic_spectra(hf_row={}, outdir='/fake', config=config_valid)
+    calc_synthetic_spectra(hf_row={}, config=config_valid, dirs=_make_dirs())
 
 
 # -----------------------------------------------------------------------
@@ -116,16 +124,15 @@ def test_calc_synthetic_spectra_calls_both_transit_and_eclipse(monkeypatch):
         module='petitRADTRANS', atmos_clim_module='janus', atmos_chem_module='vulcan'
     )
     hf_row = {}
-    outdir = '/fake/output'
 
-    calc_synthetic_spectra(hf_row, outdir, config)
+    calc_synthetic_spectra(hf_row, config, _make_dirs())
 
     # transit_depth and eclipse_depth called once per source (3 sources)
     assert mock_transit.call_count == 3
     assert mock_eclipse.call_count == 3
 
     # Verify the sources passed in order
-    transit_sources = [c.args[3] for c in mock_transit.call_args_list]
+    transit_sources = [c.args[2] for c in mock_transit.call_args_list]
     assert 'outgas' in transit_sources
     assert 'profile' in transit_sources
     assert 'offchem' in transit_sources
@@ -154,10 +161,10 @@ def test_calc_synthetic_spectra_skips_profile_when_dummy_atmos(monkeypatch):
     config = _make_config(
         module='petitRADTRANS', atmos_clim_module='dummy', atmos_chem_module='vulcan'
     )
-    calc_synthetic_spectra(hf_row={}, outdir='/fake', config=config)
+    calc_synthetic_spectra(hf_row={}, config=config, dirs=_make_dirs())
 
     assert mock_transit.call_count == 2
-    transit_sources = [c.args[3] for c in mock_transit.call_args_list]
+    transit_sources = [c.args[2] for c in mock_transit.call_args_list]
     assert 'profile' not in transit_sources
     assert 'outgas' in transit_sources
     assert 'offchem' in transit_sources
@@ -185,10 +192,10 @@ def test_calc_synthetic_spectra_skips_offchem_when_no_chem(monkeypatch):
     config = _make_config(
         module='petitRADTRANS', atmos_clim_module='janus', atmos_chem_module=None
     )
-    calc_synthetic_spectra(hf_row={}, outdir='/fake', config=config)
+    calc_synthetic_spectra(hf_row={}, config=config, dirs=_make_dirs())
 
     assert mock_transit.call_count == 2
-    transit_sources = [c.args[3] for c in mock_transit.call_args_list]
+    transit_sources = [c.args[2] for c in mock_transit.call_args_list]
     assert 'offchem' not in transit_sources
     assert 'outgas' in transit_sources
     assert 'profile' in transit_sources
@@ -207,11 +214,11 @@ def test_run_observe_delegates_to_calc_synthetic_spectra(mock_calc):
     """
     config = _make_config()
     hf_row = {'T_surf': 3000.0}
-    outdir = '/fake/output'
 
-    run_observe(hf_row, outdir, config)
+    dirs = _make_dirs()
+    run_observe(hf_row, config, dirs)
 
-    mock_calc.assert_called_once_with(hf_row, outdir, config)
+    mock_calc.assert_called_once_with(hf_row, config, dirs)
     assert hf_row['T_surf'] == pytest.approx(3000.0, rel=1e-12)  # passthrough, no mutation
 
 
@@ -238,9 +245,76 @@ def test_calc_synthetic_spectra_calls_petitradtrans_backend(monkeypatch):
         module='petitRADTRANS', atmos_clim_module='janus', atmos_chem_module='vulcan'
     )
 
-    calc_synthetic_spectra(hf_row={}, outdir='/fake/output', config=config)
+    calc_synthetic_spectra(hf_row={}, config=config, dirs=_make_dirs())
 
     assert transit_mock.call_count == 3
     assert eclipse_mock.call_count == 3
-    sources = [call.args[3] for call in transit_mock.call_args_list]
+    sources = [call.args[2] for call in transit_mock.call_args_list]
     assert sources == ['outgas', 'profile', 'offchem']
+
+
+def test_calc_synthetic_spectra_single_selected_source(monkeypatch):
+    """When observe.source is explicit, only that source is synthesized."""
+    _install_fake_petitradtrans(monkeypatch)
+    backend = importlib.import_module('proteus.observe.petitRADTRANS')
+    transit_mock = MagicMock(name='transit_depth')
+    eclipse_mock = MagicMock(name='eclipse_depth')
+    monkeypatch.setattr(backend, 'transit_depth', transit_mock)
+    monkeypatch.setattr(backend, 'eclipse_depth', eclipse_mock)
+
+    config = _make_config(source='offchem', atmos_chem_module='vulcan')
+    calc_synthetic_spectra(hf_row={}, config=config, dirs=_make_dirs())
+
+    assert transit_mock.call_count == 1
+    assert eclipse_mock.call_count == 1
+    assert transit_mock.call_args_list[0].args[2] == 'offchem'
+
+
+def test_calc_synthetic_spectra_selected_profile_raises_with_dummy_atmos(monkeypatch):
+    """Explicit profile source should error when no resolved atmosphere exists."""
+    _install_fake_petitradtrans(monkeypatch)
+    config = _make_config(source='profile', atmos_clim_module='dummy')
+
+    with pytest.raises(ValueError, match="observe.source = 'profile'"):
+        calc_synthetic_spectra(hf_row={}, config=config, dirs=_make_dirs())
+
+
+def test_calc_synthetic_spectra_selected_offchem_raises_without_chem(monkeypatch):
+    """Explicit offchem source should error when atmos_chem is disabled."""
+    _install_fake_petitradtrans(monkeypatch)
+    config = _make_config(source='offchem', atmos_chem_module=None)
+
+    with pytest.raises(ValueError, match="observe.source = 'offchem'"):
+        calc_synthetic_spectra(hf_row={}, config=config, dirs=_make_dirs())
+
+
+def test_calc_synthetic_spectra_transit_only(monkeypatch):
+    """When observe.spectrum_type is transit, only transit spectra are computed."""
+    _install_fake_petitradtrans(monkeypatch)
+    backend = importlib.import_module('proteus.observe.petitRADTRANS')
+    transit_mock = MagicMock(name='transit_depth')
+    eclipse_mock = MagicMock(name='eclipse_depth')
+    monkeypatch.setattr(backend, 'transit_depth', transit_mock)
+    monkeypatch.setattr(backend, 'eclipse_depth', eclipse_mock)
+
+    config = _make_config(spectrum_type='transit')
+    calc_synthetic_spectra(hf_row={}, config=config, dirs=_make_dirs())
+
+    assert transit_mock.call_count == 3
+    assert eclipse_mock.call_count == 0
+
+
+def test_calc_synthetic_spectra_eclipse_only(monkeypatch):
+    """When observe.spectrum_type is eclipse, only eclipse spectra are computed."""
+    _install_fake_petitradtrans(monkeypatch)
+    backend = importlib.import_module('proteus.observe.petitRADTRANS')
+    transit_mock = MagicMock(name='transit_depth')
+    eclipse_mock = MagicMock(name='eclipse_depth')
+    monkeypatch.setattr(backend, 'transit_depth', transit_mock)
+    monkeypatch.setattr(backend, 'eclipse_depth', eclipse_mock)
+
+    config = _make_config(spectrum_type='eclipse')
+    calc_synthetic_spectra(hf_row={}, config=config, dirs=_make_dirs())
+
+    assert transit_mock.call_count == 0
+    assert eclipse_mock.call_count == 3

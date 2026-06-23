@@ -30,6 +30,24 @@ def test_observe_clip_vmr_valid():
 
 
 @pytest.mark.unit
+def test_observe_remove_one_gas_default_and_override():
+    """Top-level Observe.remove_one_gas defaults to True and is user-overridable."""
+    from proteus.config._observe import Observe
+
+    assert Observe().remove_one_gas is True
+    assert Observe(remove_one_gas=False).remove_one_gas is False
+
+
+@pytest.mark.unit
+def test_petitradtrans_silent_default_and_override():
+    """PetitRADTRANS.silent defaults to False and can be enabled."""
+    from proteus.config._observe import PetitRADTRANS
+
+    assert PetitRADTRANS().silent is False
+    assert PetitRADTRANS(silent=True).silent is True
+
+
+@pytest.mark.unit
 def test_observe_module_none_accepted():
     """Test Observe module can accept None."""
     # Import inside test to avoid linter issues
@@ -64,7 +82,6 @@ def test_petitradtrans_defaults():
     from proteus.config._observe import PetitRADTRANS
 
     prt = PetitRADTRANS()
-    assert prt.input_data_path is None
     assert prt.line_opacity_mode == 'c-k'
     assert prt.include_rayleigh is True
     assert prt.include_cia is True
@@ -78,3 +95,30 @@ def test_petitradtrans_line_opacity_mode_validator():
     assert PetitRADTRANS(line_opacity_mode='lbl').line_opacity_mode == 'lbl'
     with pytest.raises((ValueError, TypeError)):
         PetitRADTRANS(line_opacity_mode='invalid')
+
+
+@pytest.mark.unit
+def test_observe_source_validator():
+    """Observe.source accepts all and individual source names only."""
+    from proteus.config._observe import Observe
+
+    assert Observe().source == 'all'
+    assert Observe(source='outgas').source == 'outgas'
+    assert Observe(source='profile').source == 'profile'
+    assert Observe(source='offchem').source == 'offchem'
+
+    with pytest.raises((ValueError, TypeError)):
+        Observe(source='invalid_source')
+
+
+@pytest.mark.unit
+def test_observe_spectrum_type_validator():
+    """Observe.spectrum_type accepts both, transit, and eclipse only."""
+    from proteus.config._observe import Observe
+
+    assert Observe().spectrum_type == 'both'
+    assert Observe(spectrum_type='transit').spectrum_type == 'transit'
+    assert Observe(spectrum_type='eclipse').spectrum_type == 'eclipse'
+
+    with pytest.raises((ValueError, TypeError)):
+        Observe(spectrum_type='invalid')

@@ -12,7 +12,40 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
-def calc_synthetic_spectra(hf_row: dict, outdir: str, config: Config):
+def _source_available(source: str, config: Config) -> bool:
+    if (source == 'profile') and (config.atmos_clim.module == 'dummy'):
+        return False
+    if (source == 'offchem') and (config.atmos_chem.module is None):
+        return False
+    return True
+
+
+def _get_observe_sources(config: Config) -> list[str]:
+    selected = getattr(config.observe, 'source', 'all')
+    sources = list(OBS_SOURCES) if selected == 'all' else [selected]
+
+    available: list[str] = []
+    for source in sources:
+        if _source_available(source, config):
+            available.append(source)
+            continue
+
+        if selected == 'all':
+            continue
+
+        if source == 'profile':
+            raise ValueError("observe.source = 'profile' requires atmos_clim.module != 'dummy'")
+        if source == 'offchem':
+            raise ValueError("observe.source = 'offchem' requires atmos_chem.module != none")
+
+    return available
+
+
+def _get_observe_spectrum_type(config: Config) -> str:
+    return getattr(config.observe, 'spectrum_type', 'both')
+
+
+def calc_synthetic_spectra(hf_row: dict, config: Config, dirs: dict[str, str]):
     """
     Calculate "perfect" synthetic spectra. Does not model instrumentation.
 
@@ -22,10 +55,10 @@ def calc_synthetic_spectra(hf_row: dict, outdir: str, config: Config):
     ----------
     hf_row : dict
         The row of the helpfile for the current time-step.
-    outdir : str
-        The output directory for the PROTEUS run.
     config : Config
         PROTEUS config object.
+    dirs : dict[str, str]
+        Directories dictionary created during startup.
     """
 
     if config.observe.module == 'petitRADTRANS':
@@ -34,21 +67,18 @@ def calc_synthetic_spectra(hf_row: dict, outdir: str, config: Config):
         raise ValueError(f"Unknown synthesis module '{config.observe.module}'")
 
     # First, run synthetic observations
-    for source in OBS_SOURCES:
-        # Can we use this source?
-        if (source == 'profile') and (config.atmos_clim.module == 'dummy'):
-            continue
-        if (source == 'offchem') and (config.atmos_chem.module is None):
-            continue
-
+    spectrum_type = _get_observe_spectrum_type(config)
+    for source in _get_observe_sources(config):
         log.debug(f"Synthesising observations for atmosphere set by '{source}'")
 
-        # Compute transit and eclipse depth spectra
-        transit_depth(hf_row, outdir, config, source)
-        eclipse_depth(hf_row, outdir, config, source)
+        # Compute selected transit and/or eclipse spectra.
+        if spectrum_type in ('both', 'transit'):
+            transit_depth(hf_row, config, source, dirs)
+        if spectrum_type in ('both', 'eclipse'):
+            eclipse_depth(hf_row, config, source, dirs)
 
 
-def run_observe(hf_row: dict, outdir: str, config: Config):
+def run_observe(hf_row: dict, config: Config, dirs: dict[str, str]):
     """
     Observe the planet!
 
@@ -59,16 +89,16 @@ def run_observe(hf_row: dict, outdir: str, config: Config):
     ----------
     hf_row : dict
         The row of the helpfile for the current time-step.
-    outdir : str
-        The output directory for the PROTEUS run.
     config : Config
         PROTEUS config object.
+    dirs : dict[str, str]
+        Directories dictionary created during startup.
     """
 
     log.info('Observing the planet...')
 
     # Synthetic spectra
-    calc_synthetic_spectra(hf_row, outdir, config)
+    calc_synthetic_spectra(hf_row, config, dirs)
 
     # Telescope simulators go here
     # TODO: add telescope simulators

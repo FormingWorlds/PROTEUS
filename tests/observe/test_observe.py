@@ -265,13 +265,12 @@ def test_calc_synthetic_spectra_dummy_atmos_skips_profile():
     config.atmos_chem.module = 'vulcan'  # Chemistry enabled
 
     hf_row = {'Time': 0.0}
-    outdir = '/tmp/output'
 
     with (
         patch('proteus.observe.petitRADTRANS.transit_depth') as mock_transit,
         patch('proteus.observe.petitRADTRANS.eclipse_depth') as mock_eclipse,
     ):
-        calc_synthetic_spectra(hf_row, outdir, config)
+        calc_synthetic_spectra(hf_row, config, {'fwl': '/tmp/fwl/', 'output': '/tmp/output'})
 
         # Should process 'outgas' and 'offchem' but skip 'profile'
         # Two sources processed: outgas and offchem
@@ -300,13 +299,12 @@ def test_calc_synthetic_spectra_no_chemistry_skips_offchem():
     config.atmos_chem.module = None  # Chemistry disabled
 
     hf_row = {'Time': 0.0}
-    outdir = '/tmp/output'
 
     with (
         patch('proteus.observe.petitRADTRANS.transit_depth') as mock_transit,
         patch('proteus.observe.petitRADTRANS.eclipse_depth') as mock_eclipse,
     ):
-        calc_synthetic_spectra(hf_row, outdir, config)
+        calc_synthetic_spectra(hf_row, config, {'fwl': '/tmp/fwl/', 'output': '/tmp/output'})
 
         # Should process 'outgas' and 'profile' but skip 'offchem'
         assert mock_transit.call_count == 2  # outgas, profile
@@ -332,13 +330,12 @@ def test_calc_synthetic_spectra_all_sources_available():
     config.atmos_chem.module = 'vulcan'  # Chemistry enabled
 
     hf_row = {'Time': 100.0}
-    outdir = '/tmp/output'
 
     with (
         patch('proteus.observe.petitRADTRANS.transit_depth') as mock_transit,
         patch('proteus.observe.petitRADTRANS.eclipse_depth') as mock_eclipse,
     ):
-        calc_synthetic_spectra(hf_row, outdir, config)
+        calc_synthetic_spectra(hf_row, config, {'fwl': '/tmp/fwl/', 'output': '/tmp/output'})
 
         # All three sources: outgas, profile, offchem
         assert mock_transit.call_count == 3
@@ -363,10 +360,9 @@ def test_calc_synthetic_spectra_invalid_synthesis_module():
     config.atmos_chem.module = 'vulcan'
 
     hf_row = {'Time': 0.0}
-    outdir = '/tmp/output'
 
     with pytest.raises(ValueError, match='Unknown synthesis module') as excinfo:
-        calc_synthetic_spectra(hf_row, outdir, config)
+        calc_synthetic_spectra(hf_row, config, {'fwl': '/tmp/fwl/', 'output': '/tmp/output'})
     # Identity guard: the error message must name the offending module
     # name so the operator sees the typo, not a generic message.
     assert 'unknown_module' in str(excinfo.value)
@@ -379,7 +375,7 @@ def test_calc_synthetic_spectra_invalid_synthesis_module():
         patch('proteus.observe.petitRADTRANS.transit_depth'),
         patch('proteus.observe.petitRADTRANS.eclipse_depth'),
     ):
-        calc_synthetic_spectra(hf_row, outdir, config)
+        calc_synthetic_spectra(hf_row, config, {'fwl': '/tmp/fwl/', 'output': '/tmp/output'})
 
 
 @pytest.mark.unit
@@ -400,13 +396,13 @@ def test_run_observe_calls_synthetic_spectra():
     config.atmos_chem.module = 'vulcan'
 
     hf_row = {'Time': 50.0}
-    outdir = '/tmp/output'
 
     with patch('proteus.observe.wrapper.calc_synthetic_spectra') as mock_calc:
-        run_observe(hf_row, outdir, config)
+        dirs = {'fwl': '/tmp/fwl/', 'output': '/tmp/output'}
+        run_observe(hf_row, config, dirs)
 
         # Verify calc_synthetic_spectra was called with correct arguments
-        mock_calc.assert_called_once_with(hf_row, outdir, config)
+        mock_calc.assert_called_once_with(hf_row, config, dirs)
         # Argument-identity guard: the call must pass through the same
         # hf_row dict object (not a copy) so downstream side effects on
         # hf_row are visible to the caller. A regression that copied

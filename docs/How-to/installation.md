@@ -449,7 +449,8 @@ bash tools/get_lovepy.sh
 ### Synthetic observations (petitRADTRANS)
 
 [petitRADTRANS](https://petitradtrans.readthedocs.io/en/latest/) generates
-synthetic transmission and secondary eclipse spectra.
+synthetic transmission and secondary eclipse spectra. It will download the
+opacity data into the formal worlds data directory.
 
 ```console
 bash tools/get_prt.sh

@@ -228,7 +228,6 @@ def _make_config_instance(**overrides):
         observe=SimpleNamespace(
             module=None,
             petitRADTRANS=SimpleNamespace(
-                input_data_path=None,
                 line_opacity_mode='c-k',
                 include_rayleigh=True,
                 include_cia=True,
