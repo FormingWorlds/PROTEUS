@@ -50,12 +50,18 @@ Invariants asserted:
 - Earth-scale R_int (5.5e6-6.5e6 m for 1 M_Earth).
 - Cross-cutting mass + stability helpers.
 
-Runtime budget: ~6 min macOS GHA (~3 min Zalmoxis setup + EOS load,
-~2 min Aragog setup, ~1 min coupled iteration), ~25 min Linux GHA
-(JAX/CVode setup tax on x86 plus Zalmoxis EOS table load). The
-single IC-only structure solve keeps the run well inside the
-7200 s timeout; the per-row dynamic refresh path is exercised
-separately by the structure-update unit tests.
+Runtime: this end-to-end real-binary test is dominated by the Aragog
+first-call JAX setup (CVode factory plus RHS and Jacobian compile,
+~14 min on the ubuntu GHA runner) and the Zalmoxis structure solves.
+It completes in roughly 80 min on the macOS GHA runner and up to
+~133 min on the slower ubuntu runner. The per-test timeout is 9000 s
+(150 min), which keeps headroom above that real runtime; the slow-tier
+job cap is set higher (180 min) so that setup time plus the per-test
+timeout still fit inside the job, letting a genuine hang trip pytest's
+per-test timeout (with a faulthandler traceback) before the job-level
+cancellation. The single IC-only structure solve (update_interval = 0)
+keeps the coupled cost bounded; the per-row dynamic refresh path is
+exercised separately by the structure-update unit tests.
 
 See also:
 - docs/How-to/test_infrastructure.md
@@ -73,7 +79,7 @@ from tests.integration.conftest import (
     validate_stability,
 )
 
-pytestmark = [pytest.mark.slow, pytest.mark.timeout(7200)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(9000)]
 
 
 @pytest.mark.slow

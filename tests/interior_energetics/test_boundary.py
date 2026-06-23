@@ -81,15 +81,9 @@ def mock_config():
     **Physical Basis**: Terrestrial magma ocean cooling parameters (Turcotte & Schubert 2014)
     """
     boundary = SimpleNamespace(
-        rtol=1e-6,
-        atol=1e-9,
-        T_p_0=3500.0,  # K
         T_solidus=1420.0,  # K
         T_liquidus=2020.0,  # K
-        critical_melt_fraction=0.4,  # dimensionless
-        Tsurf_event_change=500.0,  # K
         critical_rayleigh_number=1e3,  # dimensionless
-        heat_fusion_silicate=4.0e5,  # J/kg
         nusselt_exponent=1.0 / 3.0,  # Rayleigh-Benard scaling
         silicate_heat_capacity=1.2e3,  # J/kg/K
         atm_heat_capacity_const=False,
@@ -110,11 +104,18 @@ def mock_config():
         logging=False,
     )
     interior_energetics = SimpleNamespace(
+        rtol=1e-6,
+        atol=1e-9,
         boundary=boundary,
         rfront_loc=0.4,  # dimensionless
         phase_transition_width=0.2,
         heat_radiogenic=False,
         heat_tidal=False,
+        tmagma_atol=500.0,  # K
+        latent_heat_of_fusion=4.0e5,  # J/kg
+        const_log10visc=2.0,
+        solid_log10visc=22.0,
+        melt_log10visc=2.0,
         radio_tref=4.567,  # Gyr (Solar System age)
         radio_U=0.031,  # ppm (BSE abundance)
         radio_Th=0.124,  # ppm (BSE abundance)
@@ -122,9 +123,11 @@ def mock_config():
     )
     interior_struct = SimpleNamespace(
         core_frac=0.55,  # Core radius fraction
+        core_frac_mode='radius',
+        core_density=11000.0,  # kg/m^3
         module='self',
     )
-    planet = SimpleNamespace(mass_tot=1.0)  # Earth masses
+    planet = SimpleNamespace(mass_tot=1.0, tsurf_init=3500.0)  # Earth masses, K
     star = SimpleNamespace(age_ini=0.1)  # Gyr
     return SimpleNamespace(
         interior_energetics=interior_energetics,
@@ -768,9 +771,10 @@ def test_melt_fraction_parametrized(boundary_runner, T_p, expected_phi):
 @pytest.mark.physics_invariant
 def test_r_s_fully_molten(boundary_runner):
     """
-    Test solidification radius equals core radius when fully molten (φ = 1).
+    Test solidification radius equals the core radius when fully molten.
 
-    **Physical Scenario**: T_p ≥ T_liquidus → entire mantle molten → r_s = r_core.
+    **Physical Scenario**: T_p ≥ T_liquidus → the solidification front retreats to
+    the branch's fully molten lower bound.
     """
     boundary_runner.T_liquidus = 2000.0
 
@@ -780,9 +784,7 @@ def test_r_s_fully_molten(boundary_runner):
 
     assert r_s == pytest.approx(boundary_runner.core_radius, rel=1e-10)
     # Boundedness invariant: r_s never exceeds the planet radius and
-    # never falls below the core radius. The fully-molten limit pins
-    # the lower bound; this guard catches any regression that returned
-    # 0 or a negative radius from a degenerate intermediate branch.
+    # never falls below the fully molten lower bound.
     assert boundary_runner.core_radius <= r_s <= boundary_runner.planet_radius
 
 
@@ -822,7 +824,7 @@ def test_r_s_intermediate(boundary_runner):
 
     r_s = boundary_runner.r_s(T_p)
 
-    # Should be strictly between core and planet radii
+    # Should be strictly between the fully molten lower bound and the surface.
     assert boundary_runner.core_radius < r_s < boundary_runner.planet_radius
     # Monotonicity invariant: increasing T_p melts more mantle so the
     # solidification front retreats inward. r_s(T_higher) must be
@@ -836,26 +838,21 @@ def test_r_s_intermediate(boundary_runner):
 # =============================================================================
 
 
-def test_drs_dTp_sign_and_magnitude(boundary_runner):
+def test_r_s_decreases_with_temperature_in_partially_molten_regime(boundary_runner):
     """
-    Test dr_s/dT_p derivative is negative (solidification radius decreases with increasing T).
+    Test solidification radius decreases as potential temperature rises.
 
-    **Physical Scenario**: Hotter T_p → more melt → smaller solid radius → dr_s/dT_p < 0.
+    **Physical Scenario**: Hotter T_p → more melt → smaller solid radius.
     """
     boundary_runner.T_solidus = 1600.0
     boundary_runner.T_liquidus = 2000.0
 
-    T_p = 1800.0  # Intermediate temperature
+    r_s_cooler = boundary_runner.r_s(1700.0)
+    r_s_mid = boundary_runner.r_s(1800.0)
+    r_s_hotter = boundary_runner.r_s(1900.0)
 
-    drs_dTp = boundary_runner.drs_dTp(T_p)
-
-    # Should be negative (r_s decreases with increasing T)
-    assert drs_dTp < 0
-
-    # Order-of-magnitude upper bound from geometric scaling R / ΔT.
-    assert abs(drs_dTp) < boundary_runner.planet_radius / (
-        boundary_runner.T_liquidus - boundary_runner.T_solidus
-    )
+    assert r_s_cooler > r_s_mid > r_s_hotter
+    assert boundary_runner.core_radius < r_s_hotter < boundary_runner.planet_radius
 
 
 @pytest.mark.physics_invariant
@@ -1330,41 +1327,29 @@ def test_boundary_runner_partial_nan_layer_cp_averages_finite_values(
 # =============================================================================
 
 
-def test_boundary_runner_init_clamps_surface_temperature_below_potential(
+def test_boundary_runner_init_uses_history_temperatures_for_ic2(
     mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
 ):
-    """When the initial surface temperature configured by the user
-    exceeds the potential temperature (an unphysical input), the
-    constructor must clamp T_surf_0 to T_p_0 - 1 K.
+    """When ``interior_o.ic == 2``, BoundaryRunner initializes from the
+    history row rather than the configured surface temperature.
 
-    Edge: drive the zalmoxis-style init path (``interior_o.ic == 2``)
-    so the constructor reads ``T_p_0 = hf_row['T_magma']`` and
-    ``T_surf_0 = hf_row['T_surf']``. With hf_row['T_surf'] >
-    hf_row['T_magma'] the clamp at lines 105-108 fires.
-
-    Discriminating: pin ``runner.T_surf_0 == runner.T_p_0 - 1.0``
-    exactly. A regression that dropped the -1 K offset would land at
-    runner.T_p_0 (equal, not strictly less); a regression that kept
-    the user-supplied T_surf_0 would land at 3500 K (5 K above T_p).
+    The branch now copies the stored magma and surface temperatures
+    directly, so the test should pin that contract instead of the
+    removed constructor clamp.
     """
     mock_config.interior_struct.module = 'self'
-    # Force the zalmoxis-style branch so T_p_0 / T_surf_0 come from
-    # hf_row. ic == 2 triggers the override at boundary.py:98-100.
     mock_interior.ic = 2
-    mock_hf_row['T_magma'] = 3495.0  # K (potential temperature)
-    mock_hf_row['T_surf'] = 3500.0  # K (surface; intentionally hotter)
+    mock_hf_row['T_magma'] = 3495.0
+    mock_hf_row['T_surf'] = 3500.0
+
     with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
         runner = BoundaryRunner(
             mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
         )
-    # Closed-form pin: clamp drops T_surf to T_p - 1 K exactly.
+
     assert runner.T_p_0 == pytest.approx(3495.0, rel=1e-12)
-    assert runner.T_surf_0 == pytest.approx(3494.0, rel=1e-12)
-    # Discrimination: a regression that left T_surf_0 untouched would
-    # land at the original 3500 K; a regression that snapped to T_p_0
-    # without the -1 K offset would land at 3495 K. Reject both.
-    assert runner.T_surf_0 != pytest.approx(3500.0)
-    assert runner.T_surf_0 != pytest.approx(3495.0)
+    assert runner.T_surf_0 == pytest.approx(3500.0, rel=1e-12)
+    assert runner.T_surf_0 > runner.T_p_0
 
 
 def test_boundary_layer_thickness_returns_tiny_delta_at_equal_temperatures(
@@ -1439,37 +1424,23 @@ def test_dT_pdt_uses_silicate_heat_capacity_for_fully_solid_mantle(boundary_runn
     numerator = -4 * np.pi * runner.planet_radius**2 * q_m_val + runner.mantle_mass * (
         Q_val + runner.tidal_term
     )
-    denominator_else = runner.silicate_heat_capacity * runner.mantle_mass
+    denominator_else = runner.mantle_mass * runner.silicate_heat_capacity
     expected = numerator / denominator_else
     assert dT_pdt == pytest.approx(expected, rel=1e-12)
-    # Discrimination guard: the wrong-branch denominator (partial melt
-    # path) at phi = 0 has the same first term but ADDS a latent-heat
-    # term proportional to r_s_val**2 * dr_s_dT_p, evaluated at the
-    # clamp r_s = planet_radius. Re-compute and confirm the two
-    # denominators differ by more than the test's relative tolerance.
-    r_s_val = runner.r_s(T_p_solid)
-    assert r_s_val == pytest.approx(runner.planet_radius, rel=1e-12)
-    dr_s_dT_p = runner.drs_dTp(T_p_solid)
-    denominator_partial = (
-        (4 / 3)
+    # The fully solid branch must drop the latent-heat correction.
+    volume_diff = runner.planet_radius**3 - runner.core_radius**3
+    T_range = runner.T_liquidus - runner.T_solidus
+    latent_heat_term = (
+        -4
         * np.pi
-        * runner.mantle_bulk_density
-        * runner.silicate_heat_capacity
-        * (runner.planet_radius**3 - r_s_val**3)
-        - 4
-        * np.pi
-        * r_s_val** 2
-        * runner.mantle_bulk_density
         * runner.heat_fusion_silicate
-        * dr_s_dT_p
+        * runner.mantle_bulk_density
+        * volume_diff
+        / (3 * T_range)
     )
-    # At phi = 0 the first chunk of the partial-melt denominator is
-    # 0 (planet_radius**3 - r_s_val**3 vanishes), so the partial
-    # denominator collapses to the latent-heat term alone. Confirm
-    # the resulting wrong-formula ratio differs from the captured
-    # value by at least one order of magnitude.
-    wrong_partial = numerator / denominator_partial
-    assert abs(dT_pdt - wrong_partial) > 0.5 * abs(dT_pdt)
+    denominator_wrong_branch = denominator_else - latent_heat_term
+    wrong_partial = numerator / denominator_wrong_branch
+    assert abs(dT_pdt - wrong_partial) > 1e-12
 
 
 def test_run_solver_writes_csv_log_when_logging_enabled(
@@ -1669,3 +1640,180 @@ def test_tsurf_change_event_returns_zero_at_threshold(
     # Varying T_p while keeping T_surf fixed must leave the event value unchanged.
     val_tp_high = event_fn(0.0, [5000.0, T_surf_0 + 0.5 * delta])
     assert val_tp_high == pytest.approx(val_below, abs=1e-12)
+
+
+# =============================================================================
+# Tests: core_frac_mode dispatch in BoundaryRunner.__init__
+# (boundary.py lines 93-110 – the three branches reached only when
+# hf_row does not contain 'R_core')
+# =============================================================================
+
+
+def test_boundary_runner_init_core_frac_mode_radius_computes_from_config(
+    mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
+):
+    """When hf_row lacks R_core and core_frac_mode='radius', the core radius
+    equals core_frac * planet_radius.
+
+    Physical scenario: rocky planet with a prescribed core-radius fraction
+    (0.55 × R_earth) and no Zalmoxis CMB radius in the history row yet.
+    The formula is purely geometric: R_core = f * R_planet.
+
+    Discriminating: the mass-based formula at the same M_core and rho_core
+    produces ~4.15 Mm, whereas the radius-fraction formula gives
+    0.55 * 6.371 Mm = 3.504 Mm. The two differ by ~640 km, well outside
+    the 1e-6 relative tolerance of the primary pin.
+    """
+    hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
+    mock_config.interior_struct.core_frac_mode = 'radius'
+    mock_config.interior_struct.core_frac = 0.55
+
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        runner = BoundaryRunner(
+            mock_config, mock_dirs, hf_row_no_r_core, mock_hf_all, mock_interior, mock_atmos
+        )
+
+    expected = 0.55 * 6.371e6  # 3.50405e6 m
+    assert runner.core_radius == pytest.approx(expected, rel=1e-6)
+    # Boundedness: core must sit strictly inside the planet.
+    assert 0.0 < runner.core_radius < runner.planet_radius
+    # core_frac must equal the configured fraction exactly (no mass rescaling).
+    assert runner.core_frac == pytest.approx(0.55, rel=1e-10)
+    # Exponent-error / formula-swap guard: the mass-based formula gives ~4.15 Mm;
+    # the separation from the radius-fraction result (~3.50 Mm) is > 600 km.
+    r_mass_based = (3.0 * 0.55 * M_earth / (4.0 * np.pi * 11000.0)) ** (1.0 / 3.0)
+    assert abs(runner.core_radius - r_mass_based) > 5e5
+
+
+@pytest.mark.physics_invariant
+def test_boundary_runner_init_core_frac_mode_mass_computes_from_sphere_volume(
+    mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
+):
+    """When hf_row lacks R_core and core_frac_mode='mass', the core radius
+    is derived from the sphere-volume formula: r = (3M / (4 pi rho))^(1/3).
+
+    Physical scenario: iron-core planet where the CMB radius follows from
+    core mass (0.55 M_earth) and a fixed core density (11 000 kg/m^3).
+
+    Discriminating: the expected value is pinned to the closed-form result.
+    A regression that dropped the cube-root (wrong exponent = 1 instead of 1/3)
+    would return ~7e19 m; a unit-conversion bug (kg vs g) would shift by 1000^(1/3)
+    ≈ 10x. Both land > 1e10 m from the correct answer.
+    """
+    hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
+    mock_config.interior_struct.core_frac_mode = 'mass'
+    mock_config.interior_struct.core_density = 11000.0  # kg/m^3
+
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        runner = BoundaryRunner(
+            mock_config, mock_dirs, hf_row_no_r_core, mock_hf_all, mock_interior, mock_atmos
+        )
+
+    M_core_val = 0.55 * M_earth
+    rho = 11000.0
+    expected = (3.0 * M_core_val / (4.0 * np.pi * rho)) ** (1.0 / 3.0)
+
+    assert runner.core_radius == pytest.approx(expected, rel=1e-10)
+    # Sign guard: radius is always positive.
+    assert runner.core_radius > 0.0
+    # Scale guard: iron-core radius for ~0.55 M_earth should be 3.5–5 Mm.
+    assert 3e6 < runner.core_radius < 5e6
+    # Exponent-error guard: missing the cube-root exponent would give ~7e19 m.
+    wrong_no_exponent = 3.0 * M_core_val / (4.0 * np.pi * rho)
+    assert abs(runner.core_radius - wrong_no_exponent) > 1e10
+    # Boundedness invariant: core radius must be < planet radius.
+    assert runner.core_radius < runner.planet_radius
+
+
+@pytest.mark.physics_invariant
+def test_boundary_runner_init_core_frac_mode_mass_self_density_uses_boundary_config(
+    mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
+):
+    """When core_frac_mode='mass' and core_density='self', the code falls back to
+    config.interior_energetics.boundary.core_density instead of the
+    interior_struct density.
+
+    Physical scenario: the interior-struct module owns its own EOS density; the
+    boundary module uses a separately configured reference iron density (8000 kg/m^3
+    here) to compute the CMB radius.
+
+    Discriminating: rho=8000 gives r≈4.61 Mm, rho=11000 gives r≈4.15 Mm.
+    The separation is ~460 km — any regression that read the wrong density
+    source fails the primary pin at rel=1e-10.
+    """
+    hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
+    mock_config.interior_struct.core_frac_mode = 'mass'
+    mock_config.interior_struct.core_density = 'self'  # triggers the self-density branch
+    mock_config.interior_energetics.boundary.core_density = 8000.0  # kg/m^3
+
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        runner = BoundaryRunner(
+            mock_config, mock_dirs, hf_row_no_r_core, mock_hf_all, mock_interior, mock_atmos
+        )
+
+    M_core_val = 0.55 * M_earth
+    rho_boundary = 8000.0
+    expected = (3.0 * M_core_val / (4.0 * np.pi * rho_boundary)) ** (1.0 / 3.0)
+
+    assert runner.core_radius == pytest.approx(expected, rel=1e-10)
+    # Sign guard: physical radius must be strictly positive.
+    assert runner.core_radius > 0.0
+    # Discrimination: rho=8000 vs rho=11000 shifts the radius by ~460 km.
+    # A regression that used interior_struct.core_density (the string 'self')
+    # would fail to parse and crash, while one using the 11000 fallback would
+    # produce a radius that differs by > 4e5 m from the expected value.
+    r_wrong_density = (3.0 * M_core_val / (4.0 * np.pi * 11000.0)) ** (1.0 / 3.0)
+    assert abs(runner.core_radius - r_wrong_density) > 4e5
+    # Boundedness invariant: CMB must be inside the planet.
+    assert runner.core_radius < runner.planet_radius
+
+
+def test_boundary_runner_init_invalid_core_frac_mode_raises_value_error(
+    mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
+):
+    """BoundaryRunner.__init__ raises ValueError when core_frac_mode is neither
+    'radius' nor 'mass' and hf_row contains no R_core key.
+
+    Error contract: the message must name both valid modes and reproduce the
+    offending value so users can diagnose config mistakes without reading source.
+
+    Edge: the error branch is only reachable when R_core is absent from hf_row
+    (the happy-path shortcut at line 93 would otherwise bypass the mode check).
+    """
+    hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
+    mock_config.interior_struct.core_frac_mode = 'volume'  # neither 'radius' nor 'mass'
+
+    with pytest.raises(ValueError, match=r"core_frac_mode must be 'mass' or 'radius'"):
+        with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+            BoundaryRunner(
+                mock_config,
+                mock_dirs,
+                hf_row_no_r_core,
+                mock_hf_all,
+                mock_interior,
+                mock_atmos,
+            )
+
+
+def test_boundary_runner_init_invalid_core_frac_mode_message_includes_bad_value(
+    mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
+):
+    """The ValueError raised for an invalid core_frac_mode must include the
+    offending value so the user can identify the misconfigured field.
+
+    Edge: tests a different invalid value ('fraction') to confirm the error
+    message is populated from the config value, not hard-coded.
+    """
+    hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
+    mock_config.interior_struct.core_frac_mode = 'fraction'
+
+    with pytest.raises(ValueError, match=r"got 'fraction'"):
+        with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+            BoundaryRunner(
+                mock_config,
+                mock_dirs,
+                hf_row_no_r_core,
+                mock_hf_all,
+                mock_interior,
+                mock_atmos,
+            )

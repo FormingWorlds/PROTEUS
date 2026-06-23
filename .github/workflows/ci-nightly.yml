@@ -235,7 +235,7 @@ jobs:
               tests/integration/test_integration_dummy.py
               tests/helpers/test_smoke_invariants.py
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 150   # per-shard cap; zalmoxis-coupled/ubuntu hits ~100-130 min depending on GHA runner load
+    timeout-minutes: 180   # per-shard cap; exceeds setup (~11 min) + the 150 min per-test pytest timeout so a hung test trips pytest's faulthandler before the job is cancelled. zalmoxis-coupled/ubuntu runs ~130 min.
     env:
       COVERAGE_FILE: .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
       USER: "ci-runner"

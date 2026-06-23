@@ -1475,19 +1475,12 @@ def run_interior(
         # Do not allow massive increases to T_magma or T_surf.
         #
         # T_magma uses the SPIDER/Aragog/dummy tolerance formula for
-        # every backend. T_surf uses Tsurf_event_change ONLY in the
-        # boundary backend (Calder's BL model has a terminal ODE event
-        # at |T_surf - T_surf_0| = Tsurf_event_change, so reusing that
-        # threshold here keeps the outer-loop cap consistent with the
-        # inner-loop event). For all other backends T_surf shares the
+        # every backend. For all backends T_surf shares the
         # T_magma budget.
         dT_delta_magma = config.interior_energetics.tmagma_atol
         dT_delta_magma += config.interior_energetics.tmagma_rtol * T_magma_prev
 
-        if config.interior_energetics.module == 'boundary':
-            dT_delta_surf = float(config.interior_energetics.boundary.Tsurf_event_change)
-        else:
-            dT_delta_surf = dT_delta_magma
+        dT_delta_surf = dT_delta_magma
 
         if hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
             log.warning('Prevented large increase to T_magma!')

@@ -1756,57 +1756,6 @@ def test_run_interior_t_surf_runaway_warning_fires():
 
 
 @pytest.mark.unit
-def test_run_interior_boundary_module_splits_dT_delta_per_field():
-    """The Boundary backend uses Tsurf_event_change ONLY for the T_surf
-    cap. T_magma keeps the tmagma_atol/rtol budget shared with the
-    other backends.
-
-    This pins down the semantic distinction: Tsurf_event_change is the
-    threshold of Calder's BL terminal ODE event on |T_surf - T_surf_0|.
-    T_magma (T_p) evolves on a different timescale than T_surf in the
-    boundary-layer model and is governed by the shared
-    tmagma_atol/rtol budget.
-    """
-    from proteus.interior_energetics.wrapper import run_interior
-
-    config = _make_run_interior_config(prevent_warming=False, module='boundary')
-    # tmagma_atol = 20 (from _make_run_interior_config); Tsurf_event_change = 25.
-    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
-    out = {
-        # T_magma jump = 50 K, T_surf jump = 50 K.
-        'T_magma': 3050.0,
-        'T_surf': 2850.0,
-        'Phi_global': 0.7,
-        'F_int': 0.15,
-        'M_mantle': 4.0e24,
-        'M_mantle_liquid': 1.0e24,
-        'M_mantle_solid': 3.0e24,
-        'M_core': 2.0e24,
-    }
-
-    interior_o = MagicMock(spec=Interior_t)
-    interior_o.ic = 2
-    interior_o.dt = 10.0
-    atmos_o = MagicMock()
-
-    boundary_runner = MagicMock()
-    boundary_runner.run_solver.return_value = (110.0, out)
-    with (
-        patch(
-            'proteus.interior_energetics.boundary.BoundaryRunner',
-            return_value=boundary_runner,
-        ),
-        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
-    ):
-        run_interior({}, config, hf_all, hf_row, interior_o, atmos_o, verbose=False)
-
-    # T_magma uses tmagma_atol = 20 -> capped at 3000 + 20 = 3020.
-    assert hf_row['T_magma'] == pytest.approx(3020.0)
-    # T_surf uses Tsurf_event_change = 25 -> capped at 2800 + 25 = 2825.
-    assert hf_row['T_surf'] == pytest.approx(2825.0)
-
-
-@pytest.mark.unit
 def test_run_interior_non_boundary_module_shares_dT_delta_between_caps():
     """For the non-boundary backends, T_magma and T_surf share the same
     tmagma_atol/rtol-derived budget. Pinned by this test to make sure
