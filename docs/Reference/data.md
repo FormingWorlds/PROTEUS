@@ -33,7 +33,7 @@ To configure a Zenodo API token, see the
 
 The spectrum source is set via `star.mors.spectrum_source` and
 `star.mors.star_name` (or `star.mors.star_path` for a custom file).
-See [Switch and choose a stellar spectrum](switch_stellar_spectrum.md)
+See [Switch and choose a stellar spectrum](../How-to/switch_spectrum.md)
 for full usage instructions.
 
 ### Solar spectra
