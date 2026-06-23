@@ -82,7 +82,7 @@ photochemistry and escape calculations.
 ```
 
 The full list of available stars is in the
-[Reference data](../Reference/data.md#using-a-mega-muscles-observed-spectrum)
+[Reference data](../Reference/data.md#muscles-mega-muscles-spectra)
 page. `star_name` is case-insensitive; the names listed in the reference
 catalog are the canonical forms (e.g. `gj551` for Proxima Centauri,
 `v-eps-eri` for Epsilon Eridani).
