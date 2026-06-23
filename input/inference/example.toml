@@ -48,8 +48,8 @@ config_version = "3.0"
     [params.dt]
         minimum               = 1e3          # minimum time step [yr]
         minimum_rel           = 0.9         # minimum relative time step
-        maximum               = 5e7          # maximum time step [yr]
-        maximum_rel  = 0.7   # relative maximum time-step [dimensionless]
+        maximum               = 5e6          # maximum time step [yr]
+        maximum_rel           = 0.6   # relative maximum time-step [dimensionless]
         initial               = 2e2          # initial step size [yr]
         starspec              = 9e9          # recalculate stellar spectrum interval [yr]
         starinst              = 1e2          # recalculate instellation interval [yr]
@@ -85,7 +85,7 @@ config_version = "3.0"
 
             # THE_PLANETS
             # maximum = 1e9   # SN
-             maximum = 5e9   # SE
+             maximum = 2e9   # SE
             # maximum = 1e8   # TR
 
         [params.stop.solid]                  # solidification criterion
@@ -149,7 +149,7 @@ config_version = "3.0"
 
         # THE_PLANETS
         # H_budget      = 1e4 # SN
-         H_budget      = 8e3  # SE
+         H_budget      = 1e4  # SE
         # H_budget      = 2e3   # TR
 
         C_mode                = "C/H"        # C/H mass ratio | ppmw | kg
@@ -167,7 +167,7 @@ config_version = "3.0"
 
         # THE_PLANETS
         # S_budget      = 0.8      # SN
-        S_budget      = 1.5    # SE
+        S_budget      = 2.0    # SE
         # S_budget      = 0.8    # TR
 
         use_metallicity       = false        # scale C/N/S from solar metallicity; replaces C/N/S budgets
@@ -453,7 +453,7 @@ config_version = "3.0"
 
     # THE_PLANETS
     # fO2_shift_IW    = -3.0    # SN
-     fO2_shift_IW    = 0.0     # SE
+     fO2_shift_IW    = 0.5     # SE
     # fO2_shift_IW    = 3.0     # TR
 
     mass_thresh               = 1e16         # minimum volatile mass threshold [kg]
