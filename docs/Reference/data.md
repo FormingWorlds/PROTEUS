@@ -3,8 +3,7 @@
 This page documents the reference datasets that PROTEUS uses at runtime:
 where they come from, what they contain, and how they are identified in
 config files. For instructions on switching between spectrum sources, see
-[Switch and choose a stellar spectrum](switch_stellar_spectrum.md).
-
+[Switch and choose a stellar spectrum](../How-to/switch_spectrum.md).
 ## Automatic data download
 
 PROTEUS downloads reference data from
