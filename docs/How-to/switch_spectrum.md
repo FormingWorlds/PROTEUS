@@ -176,4 +176,4 @@ Your spectrum file must be:
 
 - A **two-column ASCII** file (comments with `#`)
 - Column 1: wavelength in **nm**
-- Column 2: flux in **erg s$^{-1}$ cm$^{-2}$ nm$^{-2}$**, **scaled to 1 AU**
+- Column 2: flux in **erg s$^{-1}$ cm$^{-2}$ nm$^{-1}$**, **scaled to 1 AU**
