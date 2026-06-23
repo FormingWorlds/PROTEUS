@@ -117,7 +117,6 @@ theme:
     - navigation.tabs
     - navigation.footer
     - navigation.tabs.sticky
-    - navigation.expand
     - content.code.copy
     - content.tabs.link
 
