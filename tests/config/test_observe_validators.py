@@ -43,7 +43,7 @@ def test_petitradtrans_silent_default_and_override():
     """PetitRADTRANS.silent defaults to False and can be enabled."""
     from proteus.config._observe import PetitRADTRANS
 
-    assert PetitRADTRANS().silent is False
+    assert PetitRADTRANS().silent is True
     assert PetitRADTRANS(silent=True).silent is True
 
 

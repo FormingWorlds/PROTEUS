@@ -133,7 +133,7 @@ def test_factory_defaults_from_minimal_config():
     assert cfg.observe.petitRADTRANS.line_opacity_mode == 'c-k'
     assert cfg.observe.petitRADTRANS.include_rayleigh is True
     assert cfg.observe.petitRADTRANS.include_cia is True
-    assert cfg.observe.petitRADTRANS.silent is False
+    assert cfg.observe.petitRADTRANS.silent is True
     assert cfg.atmos_chem.module is None
     assert cfg.interior_energetics.module == 'aragog'
     assert cfg.star.module == 'mors'

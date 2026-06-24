@@ -120,7 +120,7 @@ def plot_spectra(
     axb.xaxis.set_major_formatter(FormatStrFormatter('%g'))
 
     fig.subplots_adjust(hspace=0.01)
-    fpath = os.path.join(output_dir, 'plots', 'plot_spectra.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_spectra_{source}.{plot_format}')
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 

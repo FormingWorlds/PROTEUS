@@ -516,18 +516,18 @@ def transit_depth(hf_row: dict, config: Config, source: str, dirs: dict[str, str
 
     if remove_one_gas:
         for idx, gas_removed in enumerate(gases):
-            gases_removed = [g for j, g in enumerate(gases) if j != idx]
-            vmrs_removed = [v for j, v in enumerate(vmrs) if j != idx]
-            if len(gases_removed) == 0:
+            gases_opacity = [g for j, g in enumerate(gases) if j != idx]
+            if len(gases_opacity) == 0:
                 continue
 
-            line_removed = _get_supported_line_species(gases_removed, input_data_path)
-            rayleigh_removed = _get_supported_rayleigh_species(gases_removed, include_rayleigh)
-            cia_removed = _get_supported_cia_species(gases_removed, include_cia)
+            # Keep bulk composition fixed and only remove the selected gas from opacity terms.
+            line_removed = _get_supported_line_species(gases_opacity, input_data_path)
+            rayleigh_removed = _get_supported_rayleigh_species(gases_opacity, include_rayleigh)
+            cia_removed = _get_supported_cia_species(gases_opacity, include_cia)
 
             wl_removed, depth_removed = _compute_transit_column(
-                gases_removed,
-                vmrs_removed,
+                gases,
+                vmrs,
                 line_removed,
                 rayleigh_removed,
                 cia_removed,
@@ -684,18 +684,18 @@ def eclipse_depth(hf_row: dict, config: Config, source: str, dirs: dict[str, str
 
     if remove_one_gas:
         for idx, gas_removed in enumerate(gases):
-            gases_removed = [g for j, g in enumerate(gases) if j != idx]
-            vmrs_removed = [v for j, v in enumerate(vmrs) if j != idx]
-            if len(gases_removed) == 0:
+            gases_opacity = [g for j, g in enumerate(gases) if j != idx]
+            if len(gases_opacity) == 0:
                 continue
 
-            line_removed = _get_supported_line_species(gases_removed, input_data_path)
-            rayleigh_removed = _get_supported_rayleigh_species(gases_removed, include_rayleigh)
-            cia_removed = _get_supported_cia_species(gases_removed, include_cia)
+            # Keep bulk composition fixed and only remove the selected gas from opacity terms.
+            line_removed = _get_supported_line_species(gases_opacity, input_data_path)
+            rayleigh_removed = _get_supported_rayleigh_species(gases_opacity, include_rayleigh)
+            cia_removed = _get_supported_cia_species(gases_opacity, include_cia)
 
             wl_removed, depth_removed = _compute_eclipse_column(
-                gases_removed,
-                vmrs_removed,
+                gases,
+                vmrs,
                 line_removed,
                 rayleigh_removed,
                 cia_removed,

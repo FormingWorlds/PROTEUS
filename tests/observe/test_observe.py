@@ -261,6 +261,7 @@ def test_calc_synthetic_spectra_dummy_atmos_skips_profile():
     # Create mock config with dummy atmos_clim but valid other modules
     config = MagicMock()
     config.observe.module = 'petitRADTRANS'
+    config.observe.source = 'all'
     config.atmos_clim.module = 'dummy'  # Use dummy atmospheric model
     config.atmos_chem.module = 'vulcan'  # Chemistry enabled
 
@@ -295,6 +296,7 @@ def test_calc_synthetic_spectra_no_chemistry_skips_offchem():
     # Create mock config with chemistry disabled
     config = MagicMock()
     config.observe.module = 'petitRADTRANS'
+    config.observe.source = 'all'
     config.atmos_clim.module = 'janus'  # Detailed atmospheric model
     config.atmos_chem.module = None  # Chemistry disabled
 
@@ -326,6 +328,7 @@ def test_calc_synthetic_spectra_all_sources_available():
     # Create mock config with all modules enabled
     config = MagicMock()
     config.observe.module = 'petitRADTRANS'
+    config.observe.source = 'all'
     config.atmos_clim.module = 'janus'  # Detailed model
     config.atmos_chem.module = 'vulcan'  # Chemistry enabled
 
@@ -340,6 +343,38 @@ def test_calc_synthetic_spectra_all_sources_available():
         # All three sources: outgas, profile, offchem
         assert mock_transit.call_count == 3
         assert mock_eclipse.call_count == 3
+
+
+@pytest.mark.unit
+def test_calc_synthetic_spectra_single_selected_source_only():
+    """
+    Test calc_synthetic_spectra runs only the explicitly selected source.
+
+    Physics: Users can request one source (e.g., offchem) instead of
+    synthesizing all three source types.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from proteus.observe.wrapper import calc_synthetic_spectra
+
+    config = MagicMock()
+    config.observe.module = 'petitRADTRANS'
+    config.observe.source = 'offchem'
+    config.atmos_clim.module = 'janus'
+    config.atmos_chem.module = 'vulcan'
+
+    hf_row = {'Time': 100.0}
+
+    with (
+        patch('proteus.observe.petitRADTRANS.transit_depth') as mock_transit,
+        patch('proteus.observe.petitRADTRANS.eclipse_depth') as mock_eclipse,
+    ):
+        calc_synthetic_spectra(hf_row, config, {'fwl': '/tmp/fwl/', 'output': '/tmp/output'})
+
+        assert mock_transit.call_count == 1
+        assert mock_eclipse.call_count == 1
+        assert mock_transit.call_args.args[2] == 'offchem'
+        assert mock_eclipse.call_args.args[2] == 'offchem'
 
 
 @pytest.mark.unit
