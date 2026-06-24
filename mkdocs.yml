@@ -11,8 +11,12 @@ nav:
   - Get started: getting_started.md
 
   - How-to guides:
+      - Install PROTEUS:
+          - Quick installation: How-to/installation.md
+          - Manual installation: How-to/manual_installation.md
+          - Optional modules: How-to/optionalmodules_installation.md
+          - Run on a local machine: How-to/local_machine_guide.md
       - Getting started:
-          - Install PROTEUS: How-to/installation.md
           - Diagnose and update: How-to/doctor.md
           - Configure PROTEUS: How-to/config.md
           - Usage:
@@ -23,7 +27,6 @@ nav:
               - Postprocessing and chemistry: How-to/usage_postprocessing.md
               - Choose stellar spectrum: How-to/switch_spectrum.md
           - Troubleshooting: How-to/troubleshooting.md
-          - Run on a local machine: How-to/local_machine_guide.md
       - Advanced usage:
           - Bayesian inference: How-to/inference.md
       - Cluster guides:
@@ -162,6 +165,9 @@ markdown_extensions:
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+      toc_depth: 3
 
 # footer:
 extra:
