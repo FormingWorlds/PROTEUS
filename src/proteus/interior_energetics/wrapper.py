@@ -2109,6 +2109,62 @@ def _refresh_composition_sentinels(dirs: dict, hf_row: dict) -> None:
             )
 
 
+def _eos_grid_extent_up_step(eos_path: str, hf_row: dict) -> bool:
+    """Report whether a regenerated EOS mesh's outer radius up-steps past tolerance.
+
+    A composition-triggered structure re-solve under the super-liquidus adiabat IC
+    can write a ``zalmoxis_output.dat`` whose radial grid extends a few km beyond
+    the retained ``R_int`` while the scalar ``hf_row['R_int']`` itself stays at the
+    running minimum. The scalar monotonic-radius guard compares only that scalar,
+    so it stays silent, and the inconsistent mesh reaches Aragog, whose
+    ``solver.entropy_solver._validate_eos_radius_range`` then raises
+    ``External EOS radius range [...] inconsistent with mesh bounds [...]`` on the
+    ``er[-1] > outer + atol`` branch. This predicate reproduces that exact
+    comparison on the just-written file so the structure-resolve guard can reject
+    the same states Aragog would crash on, before Aragog loads them.
+
+    Parameters
+    ----------
+    eos_path : str
+        Path to the regenerated ``zalmoxis_output.dat`` (column 0 is the radial
+        grid ``r`` in metres, ascending from the CMB to the surface).
+    hf_row : dict
+        Helpfile row carrying the retained ``R_int`` (mesh outer bound) and
+        ``R_core`` (mesh inner bound) the next Aragog solve will use.
+
+    Returns
+    -------
+    bool
+        ``True`` only when the file's outer grid radius exceeds the retained
+        ``R_int`` by more than Aragog's tolerance ``max(1 m, 1e-9 * span)``, i.e.
+        the cross-table representation artifact. ``False`` for a consistent grid,
+        an unreadable or degenerate file, or a non-positive ``R_int`` (the caller
+        then takes the unchanged success path: pure pass-through).
+    """
+    try:
+        er = np.loadtxt(eos_path, usecols=0)
+    except (OSError, ValueError):
+        # An unreadable or malformed file is not the artifact this guard targets;
+        # let the existing failure handling deal with it, never a spurious reject.
+        return False
+    er = np.asarray(er, dtype=float).ravel()
+    if er.size < 2:
+        return False
+    outer = float(hf_row.get('R_int', 0.0) or 0.0)
+    inner = float(hf_row.get('R_core', 0.0) or 0.0)
+    if not (outer > 0.0):
+        return False
+    # Mirror aragog's _validate_eos_radius_range atol exactly: a span-relative
+    # tolerance with a 1 m floor, so single-ULP resume drift is absorbed while a
+    # km-scale up-step is caught. Only the outer-extent up-step is the
+    # super-liquidus artifact; the inner-bound and span-shrink branches of the
+    # Aragog validator are left to Aragog (they are not the monotonic-radius
+    # representation artifact and must not be silently restored here).
+    span_mesh = outer - inner
+    atol = max(1.0, 1.0e-9 * max(span_mesh, 1.0))
+    return float(er[-1]) > outer + atol
+
+
 def update_structure_from_interior(
     dirs: dict,
     config: Config,
@@ -2494,20 +2550,40 @@ def update_structure_from_interior(
         # _use_superliquidus_adiabat_ic so regimes with genuine re-inflation
         # (tidal reheating, volatile re-dissolution) are never clamped.
         _R_int_new = float(hf_row.get('R_int', 0.0) or 0.0)
-        if (
-            _use_superliquidus_adiabat_ic(config)
-            and R_int_prev > 0.0
-            and _R_int_new > R_int_prev * (1.0 + _MONOTONIC_RINT_REL_TOL)
+        _scalar_radius_up_step = R_int_prev > 0.0 and _R_int_new > R_int_prev * (
+            1.0 + _MONOTONIC_RINT_REL_TOL
+        )
+        # The scalar guard above compares only hf_row['R_int']. A re-solve can
+        # leave that at the running minimum yet write a zalmoxis_output.dat whose
+        # radial grid extends km beyond it (the extreme high-redox oxauth cases);
+        # the scalar check stays silent and the inconsistent mesh reaches Aragog,
+        # whose _validate_eos_radius_range then crashes on er[-1] > outer + atol.
+        # Reject that grid-extent up-step here through the identical restore path,
+        # so a single release closes both the scalar and the grid-extent artifact.
+        _grid_extent_up_step = _eos_grid_extent_up_step(_output_zalmoxis_path, hf_row)
+        if _use_superliquidus_adiabat_ic(config) and (
+            _scalar_radius_up_step or _grid_extent_up_step
         ):
-            log.info(
-                'Rejected representation-artifact radius increase under the '
-                'super-liquidus adiabat IC: re-solve R_int=%.6e m > running '
-                'minimum %.6e m (rel +%.3e). Retaining the previous structure; '
-                'this is a clean no-op, not a solver failure.',
-                _R_int_new,
-                R_int_prev,
-                _R_int_new / R_int_prev - 1.0,
-            )
+            if _scalar_radius_up_step:
+                log.info(
+                    'Rejected representation-artifact radius increase under the '
+                    'super-liquidus adiabat IC: re-solve R_int=%.6e m > running '
+                    'minimum %.6e m (rel +%.3e). Retaining the previous structure; '
+                    'this is a clean no-op, not a solver failure.',
+                    _R_int_new,
+                    R_int_prev,
+                    _R_int_new / R_int_prev - 1.0,
+                )
+            else:
+                log.info(
+                    'Rejected EOS-grid-extent up-step under the super-liquidus '
+                    'adiabat IC: the regenerated zalmoxis_output.dat outer grid '
+                    'radius exceeds the retained R_int=%.6e m beyond the Aragog '
+                    'mesh-bounds tolerance while the scalar R_int stayed at the '
+                    'running minimum. Retaining the previous structure; this is a '
+                    'clean no-op, not a solver failure.',
+                    _R_int_new,
+                )
             # Restore hf_row structure keys exactly like the mass-anchor
             # rollback, but WITHOUT incrementing zalmoxis_fail_count or setting
             # _structure_stale: a retained previous structure is consistent, not

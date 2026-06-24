@@ -19,6 +19,7 @@ Functions tested:
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -30,6 +31,7 @@ from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
     _RESUME_STRUCT_DPHI_BACKSTOP_CAP,
     _RESUME_STRUCT_DR_REL_TOL,
+    _eos_grid_extent_up_step,
     _prevent_warming_clamp_active,
     _refresh_composition_sentinels,
     update_structure_from_interior,
@@ -4892,3 +4894,187 @@ def test_accepted_resolve_advances_composition_sentinels_on_success_path():
     # Discrimination: the stale seeds are gone for both species.
     assert dirs['_last_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
     assert dirs['_last_w_H2_liquid'] > 0.0
+
+
+# ============================================================================
+# EOS-grid-extent guard (_eos_grid_extent_up_step)
+# ============================================================================
+
+
+def _write_eos_dat(path, r):
+    """Write a 5-column zalmoxis_output.dat (r, P, rho, g, T) with radius col 0.
+
+    Mirrors the real on-disk format so the guard's ``usecols=0`` extraction is
+    exercised: the non-radius columns carry distinct constants, so a wrong-column
+    read would surface as a wrong extent and fail the radius assertions.
+    """
+    # Write with plain file I/O, NOT np.savetxt: the integration test patches
+    # proteus.interior_energetics.wrapper.np.savetxt, and because np is a shared
+    # module object that patch also mocks numpy.savetxt here, which would silently
+    # drop the file. open() is never patched, so the guard's real np.loadtxt reads
+    # a genuine on-disk mesh in both the predicate and the end-to-end tests.
+    r = np.atleast_1d(np.asarray(r, dtype=float))
+    with open(str(path), 'w') as fh:
+        for ri in r:
+            fh.write(f'{ri:.18e} {1.0e11:.18e} {5.0e3:.18e} {10.0:.18e} {3.0e3:.18e}\n')
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_eos_grid_extent_up_step_detects_km_scale_outer_artifact(tmp_path):
+    """A km-scale outer-grid up-step at a fixed scalar R_int is caught.
+
+    Reproduces the high-redox oxauth artifact: a re-solve regenerates a
+    zalmoxis_output.dat whose radial grid outer node sits +4 km beyond the
+    retained R_int while the scalar R_int is unchanged, so the scalar
+    monotonic-radius guard stays silent. Aragog's _validate_eos_radius_range
+    would raise on this mesh; the grid-extent guard must reject it. The
+    monotonicity invariant: a cooling planet's grid extent is non-increasing, so
+    an outer up-step is a representation artifact to reject.
+    """
+    eos = tmp_path / 'zalmoxis_output.dat'
+    R_int = 6.371e6
+    R_core = 3.48e6
+    hf_row = {'R_int': R_int, 'R_core': R_core}
+    # Ascending CMB -> surface grid whose outer node is 4 km past R_int.
+    _write_eos_dat(eos, np.linspace(R_core, R_int + 4.0e3, 200))
+    assert _eos_grid_extent_up_step(str(eos), hf_row) is True
+    # Discrimination guard: the same grid capped exactly at R_int is consistent,
+    # so the True above is driven by the +4 km excess, not by always returning
+    # True. A guard that ignored the grid (only the scalar) would pass both.
+    _write_eos_dat(eos, np.linspace(R_core, R_int, 200))
+    assert _eos_grid_extent_up_step(str(eos), hf_row) is False
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_eos_grid_extent_up_step_mirrors_aragog_atol_floor(tmp_path):
+    """Sub-metre drift passes; a metre-scale up-step beyond the 1 m floor rejects.
+
+    The guard mirrors Aragog's ``atol = max(1 m, 1e-9 * span)`` tolerance so that
+    single-metre resume drift between the saved mesh and the live R_int is
+    absorbed (pure pass-through) while a real up-step beyond the floor is caught.
+    Pins both sides of the 1 m floor: a wrong tolerance (0 m, or a km-scale
+    window) would flip at least one assertion.
+    """
+    eos = tmp_path / 'zalmoxis_output.dat'
+    R_int = 6.371e6
+    R_core = 3.48e6
+    hf_row = {'R_int': R_int, 'R_core': R_core}
+    # span = 2.891e6 m -> 1e-9 * span = 2.9e-3 m, so the 1 m floor governs.
+    # 0.5 m drift is within tolerance -> pass-through (no reject).
+    _write_eos_dat(eos, np.linspace(R_core, R_int + 0.5, 200))
+    assert _eos_grid_extent_up_step(str(eos), hf_row) is False
+    # 1.5 m up-step exceeds the 1 m floor -> reject.
+    _write_eos_dat(eos, np.linspace(R_core, R_int + 1.5, 200))
+    assert _eos_grid_extent_up_step(str(eos), hf_row) is True
+
+
+@pytest.mark.unit
+def test_eos_grid_extent_up_step_degenerate_inputs_pass_through(tmp_path):
+    """Unreadable, single-point, and non-positive-R_int inputs never reject.
+
+    These are not the monotonic-radius artifact, so the guard returns False and
+    the caller keeps the unchanged success path rather than restoring a previous
+    structure that does not apply. Exercises the error-contract paths (the
+    OSError/ValueError guard, the < 2-point guard, the R_int <= 0 guard).
+    """
+    eos = tmp_path / 'zalmoxis_output.dat'
+    R_int = 6.371e6
+    R_core = 3.48e6
+    # Absent file -> caught by the OSError guard.
+    assert (
+        _eos_grid_extent_up_step(
+            str(tmp_path / 'absent.dat'), {'R_int': R_int, 'R_core': R_core}
+        )
+        is False
+    )
+    # Single grid point -> too small to bound an extent.
+    _write_eos_dat(eos, np.array([R_int + 1.0e4]))
+    assert _eos_grid_extent_up_step(str(eos), {'R_int': R_int, 'R_core': R_core}) is False
+    # Non-positive R_int -> no valid mesh outer bound, even with a wide grid the
+    # guard cannot judge an up-step, so it must pass through (not reject).
+    _write_eos_dat(eos, np.linspace(R_core, R_int + 4.0e3, 200))
+    assert _eos_grid_extent_up_step(str(eos), {'R_int': 0.0, 'R_core': R_core}) is False
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_grid_extent_up_step_rejected_through_real_wrapper(tmp_path, caplog):
+    """A grid-extent up-step at a fixed scalar R_int is rejected end-to-end.
+
+    Exercises the wiring the predicate test cannot reach: a re-solve leaves the
+    scalar R_int at the running minimum (so the scalar monotonic-radius guard
+    stays silent) but writes a zalmoxis_output.dat whose outer grid node is +4 km
+    past R_int. update_structure_from_interior must take the new grid-extent
+    branch of the guard, restore zalmoxis_output.dat from .prev, advance the
+    composition sentinels, and return the no-op sentinel without counting a
+    solver failure. The monotonic invariant: a cooling planet's grid extent
+    cannot increase, so the inconsistent mesh is discarded rather than handed to
+    Aragog.
+
+    Discrimination: the grid-extent log line fires while the scalar-up-step log
+    line does NOT, so the test proves the grid branch (not the pre-existing
+    scalar branch) drove the rejection; a guard that only checked the scalar
+    R_int would leave both logs silent and pass the inconsistent mesh through.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['R_core'] = 3.5e6
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    r_prev = hf_row['R_int']
+
+    outdir = tmp_path
+    (outdir / 'data').mkdir()
+    eos_path = outdir / 'data' / 'zalmoxis_output.dat'
+    # Pre-call .prev holds the retained, consistent grid (outer node at R_int).
+    # The reject restores zalmoxis_output.dat from it; without an existing .prev
+    # the wrapper best-effort skips the restore (the first-call case).
+    _write_eos_dat(str(eos_path) + '.prev', np.linspace(hf_row['R_core'], r_prev, 200))
+
+    dirs = _mock_dirs()
+    dirs['output'] = str(outdir)
+    dirs['_last_w_H2O_liquid'] = 1.0e21 / 3.0e24  # stale, distinct from current
+    dirs['_last_w_H2_liquid'] = 0.0
+    interior_o = _mock_interior_o()
+
+    def _grid_up_step_no_scalar(*args, **kwargs):
+        # R_int stays at the running minimum (no scalar up-step), but the
+        # regenerated mesh outer node sits 4 km past it.
+        hr = args[2]
+        hr['R_int'] = r_prev
+        _write_eos_dat(eos_path, np.linspace(hr['R_core'], r_prev + 4.0e3, 200))
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_grid_up_step_no_scalar)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp as mock_copy2,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    msgs = [r.message for r in caplog.records]
+    # The grid-extent branch fired ...
+    assert any(
+        'Rejected EOS-grid-extent up-step under the super-liquidus adiabat IC:' in m
+        for m in msgs
+    ), 'grid-extent reject log must fire when the outer grid up-steps past R_int'
+    # ... and the scalar branch did NOT (R_int was held at the running minimum).
+    assert not any('Rejected representation-artifact radius increase' in m for m in msgs), (
+        'the scalar up-step log must stay silent: R_int did not up-step'
+    )
+    # The reject restored zalmoxis_output.dat from its pre-call .prev snapshot.
+    mock_copy2.assert_any_call(str(eos_path) + '.prev', str(eos_path))
+    # A rejected up-step is a clean no-op, not a solver failure.
+    assert interior_o.zalmoxis_fail_count == 0
+    # The composition sentinel advanced off its stale seed (reject-path refresh).
+    assert dirs['_last_w_H2O_liquid'] == pytest.approx(5.0e21 / 3.0e24, rel=1e-9)
+    assert dirs['_last_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
