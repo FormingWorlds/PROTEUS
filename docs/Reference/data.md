@@ -119,7 +119,7 @@ Parameters defining the PHOENIX grid:
 |---|---|---|---|
 | Effective temperature | `phoenix_Teff` | K | Derived from MORS tracks |
 | Surface gravity | `phoenix_log_g` | log$_{10}$ (cgs) | Derived from MORS tracks |
-| Stellar radius | `phoenix_radius` | R☉ | Derived from MORS tracks |
+| Stellar radius | `phoenix_radius` | R$_\odot$ | Derived from MORS tracks |
 | Metallicity | `phoenix_FeH` | [Fe/H] dex | 0.0 (solar) |
 | Alpha enhancement | `phoenix_alpha` | [α/Fe] dex | 0.0 (solar) |
 
@@ -190,3 +190,9 @@ Obtained from the DACE PlanetS database
 ## Mass-radius relations
 
 Obtained from [Zeng et al. (2016)](https://iopscience.iop.org/article/10.3847/0004-637X/819/2/127/meta).
+
+---
+
+## Equations of state 
+
+The interior structure solver of PROTEUS, Zalmoxis, uses equation-of-state tables by [Seager et al. (2007)](https://iopscience.iop.org/article/10.1086/521346), and from [PALEOS](https://github.com/maraattia/PALEOS) by [Attia et al. (2026)](https://ui.adsabs.harvard.edu/abs/2026arXiv260503741A/abstract). An overview of equation of state tables can be found [here](https://proteus-framework.org/Zalmoxis/Reference/data.html#data-inventory).
