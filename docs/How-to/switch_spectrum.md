@@ -141,8 +141,8 @@ solar. To override any of these:
 
     | Track (`star.mors.tracks`) | Valid range |
     |---|---|
-    | `spada` | 0.10 – 1.25 M☉ |
-    | `baraffe` | 0.01 – 1.40 M☉ |
+    | `spada` | 0.10 – 1.25 M$_\odot$ |
+    | `baraffe` | 0.01 – 1.40 M$_\odot$ |
 
 ### Downloading PHOENIX spectra
 
