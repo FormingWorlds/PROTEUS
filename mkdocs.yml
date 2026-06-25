@@ -26,6 +26,7 @@ nav:
               - Parameter grids: How-to/usage_grids.md
               - Postprocessing and chemistry: How-to/usage_postprocessing.md
               - Choose stellar spectrum: How-to/switch_spectrum.md
+          - Stabilise simulations: How-to/stabilise_run.md
           - Troubleshooting: How-to/troubleshooting.md
       - Advanced usage:
           - Bayesian inference: How-to/inference.md
