@@ -118,14 +118,42 @@ def test_plot_spectra_full_path_both_panels_populated(monkeypatch, tmp_path):
 
     mock_plt, mock_fig, mock_axt, mock_axb = _install_mock_plt(monkeypatch)
 
-    spectra_mod.plot_spectra(output_dir=str(tmp_path), plot_format='pdf', wlmin=0.5, wlmax=20.0)
+    spectra_mod.plot_spectra(
+        output_dir=str(tmp_path),
+        plot_format='pdf',
+        wlmin=0.5,
+        wlmax=20.0,
+        source='profile',
+    )
 
     # Discrimination: both panels get exactly one line each
     assert mock_axt.plot.call_count == 1
     assert mock_axb.plot.call_count == 1
     assert mock_fig.savefig.call_count == 1
     saved_path = mock_fig.savefig.call_args.args[0]
-    assert saved_path.endswith('plot_spectra.pdf')
+    assert saved_path.endswith('plot_spectra_profile.pdf')
+
+
+def test_plot_spectra_uses_source_in_output_filename(monkeypatch, tmp_path):
+    """Saved plot filename should include the selected atmospheric source.
+
+    New naming contract is plot_spectra_{source}.{ext}.
+    """
+    plots_dir = tmp_path / 'plots'
+    plots_dir.mkdir()
+    transit_df = _make_spectrum_df(label='all')
+    eclipse_df = _make_spectrum_df(label='all')
+    monkeypatch.setattr(spectra_mod, 'read_transit', MagicMock(return_value=transit_df))
+    monkeypatch.setattr(spectra_mod, 'read_eclipse', MagicMock(return_value=eclipse_df))
+
+    mock_plt, mock_fig, _, _ = _install_mock_plt(monkeypatch)
+
+    spectra_mod.plot_spectra(output_dir=str(tmp_path), plot_format='png', source='offchem')
+
+    assert mock_plt.subplots.call_count == 1
+    assert mock_fig.savefig.call_count == 1
+    saved_path = mock_fig.savefig.call_args.args[0]
+    assert saved_path.endswith('plot_spectra_offchem.png')
 
 
 def test_plot_spectra_full_path_label_none_special_styling(monkeypatch, tmp_path):

@@ -262,6 +262,7 @@ def test_calc_synthetic_spectra_dummy_atmos_skips_profile():
     config = MagicMock()
     config.observe.module = 'petitRADTRANS'
     config.observe.source = 'all'
+    config.observe.spectrum_type = 'both'
     config.atmos_clim.module = 'dummy'  # Use dummy atmospheric model
     config.atmos_chem.module = 'vulcan'  # Chemistry enabled
 
@@ -297,6 +298,7 @@ def test_calc_synthetic_spectra_no_chemistry_skips_offchem():
     config = MagicMock()
     config.observe.module = 'petitRADTRANS'
     config.observe.source = 'all'
+    config.observe.spectrum_type = 'both'
     config.atmos_clim.module = 'janus'  # Detailed atmospheric model
     config.atmos_chem.module = None  # Chemistry disabled
 
@@ -329,6 +331,7 @@ def test_calc_synthetic_spectra_all_sources_available():
     config = MagicMock()
     config.observe.module = 'petitRADTRANS'
     config.observe.source = 'all'
+    config.observe.spectrum_type = 'both'
     config.atmos_clim.module = 'janus'  # Detailed model
     config.atmos_chem.module = 'vulcan'  # Chemistry enabled
 
@@ -360,6 +363,7 @@ def test_calc_synthetic_spectra_single_selected_source_only():
     config = MagicMock()
     config.observe.module = 'petitRADTRANS'
     config.observe.source = 'offchem'
+    config.observe.spectrum_type = 'both'
     config.atmos_clim.module = 'janus'
     config.atmos_chem.module = 'vulcan'
 
@@ -378,6 +382,70 @@ def test_calc_synthetic_spectra_single_selected_source_only():
 
 
 @pytest.mark.unit
+def test_calc_synthetic_spectra_transit_only_selected_source():
+    """
+    Test calc_synthetic_spectra can generate transit-only spectra.
+
+    Physics: observe.spectrum_type='transit' should compute only transit
+    depth for the configured source and skip eclipse synthesis.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from proteus.observe.wrapper import calc_synthetic_spectra
+
+    config = MagicMock()
+    config.observe.module = 'petitRADTRANS'
+    config.observe.source = 'profile'
+    config.observe.spectrum_type = 'transit'
+    config.atmos_clim.module = 'janus'
+    config.atmos_chem.module = 'vulcan'
+
+    hf_row = {'Time': 100.0}
+
+    with (
+        patch('proteus.observe.petitRADTRANS.transit_depth') as mock_transit,
+        patch('proteus.observe.petitRADTRANS.eclipse_depth') as mock_eclipse,
+    ):
+        calc_synthetic_spectra(hf_row, config, {'fwl': '/tmp/fwl/', 'output': '/tmp/output'})
+
+        assert mock_transit.call_count == 1
+        assert mock_eclipse.call_count == 0
+        assert mock_transit.call_args.args[2] == 'profile'
+
+
+@pytest.mark.unit
+def test_calc_synthetic_spectra_eclipse_only_selected_source():
+    """
+    Test calc_synthetic_spectra can generate eclipse-only spectra.
+
+    Physics: observe.spectrum_type='eclipse' should compute only eclipse
+    depth for the configured source and skip transit synthesis.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from proteus.observe.wrapper import calc_synthetic_spectra
+
+    config = MagicMock()
+    config.observe.module = 'petitRADTRANS'
+    config.observe.source = 'outgas'
+    config.observe.spectrum_type = 'eclipse'
+    config.atmos_clim.module = 'janus'
+    config.atmos_chem.module = 'vulcan'
+
+    hf_row = {'Time': 100.0}
+
+    with (
+        patch('proteus.observe.petitRADTRANS.transit_depth') as mock_transit,
+        patch('proteus.observe.petitRADTRANS.eclipse_depth') as mock_eclipse,
+    ):
+        calc_synthetic_spectra(hf_row, config, {'fwl': '/tmp/fwl/', 'output': '/tmp/output'})
+
+        assert mock_transit.call_count == 0
+        assert mock_eclipse.call_count == 1
+        assert mock_eclipse.call_args.args[2] == 'outgas'
+
+
+@pytest.mark.unit
 def test_calc_synthetic_spectra_invalid_synthesis_module():
     """
     Test calc_synthetic_spectra raises ValueError for invalid synthesis module.
@@ -391,6 +459,8 @@ def test_calc_synthetic_spectra_invalid_synthesis_module():
 
     config = MagicMock()
     config.observe.module = 'unknown_module'  # Invalid
+    config.observe.source = 'outgas'
+    config.observe.spectrum_type = 'both'
     config.atmos_clim.module = 'janus'
     config.atmos_chem.module = 'vulcan'
 
