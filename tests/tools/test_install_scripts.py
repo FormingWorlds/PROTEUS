@@ -497,14 +497,19 @@ def test_installation_md_does_not_clone_aragog_or_zalmoxis():
     documented dependency pinning.
     """
     repo_root = Path(__file__).resolve().parents[2]
-    text = (repo_root / 'docs' / 'How-to' / 'installation.md').read_text(encoding='utf-8')
+
+    installation_text = (repo_root / 'docs' / 'How-to' / 'installation.md').read_text(encoding='utf-8')
+    manual_text = ( repo_root / 'docs' / 'How-to' / 'manual_installation.md').read_text(encoding='utf-8')
+
+    combined = installation_text + '\n' + manual_text
+
     # Match `git clone <url>/<aragog|Zalmoxis>` or `pip install -e <aragog|Zalmoxis>`.
     forbidden = re.compile(
         r'(git\s+clone[^\n]*?(aragog|Zalmoxis))'
         r'|(pip\s+install\s+-e\s+(aragog|Zalmoxis))',
         re.IGNORECASE,
     )
-    matches = forbidden.findall(text)
+    matches = forbidden.findall(combined)
     assert not matches, (
         f'installation.md re-introduced editable-install of Aragog/Zalmoxis: {matches!r}'
     )
@@ -513,7 +518,7 @@ def test_installation_md_does_not_clone_aragog_or_zalmoxis():
     # silently delete the install instructions; pin the canonical PyPI
     # package name as evidence the file still documents the supported
     # path.
-    assert 'fwl-aragog' in text or 'pip install -e ".[develop]"' in text
+    assert 'fwl-aragog' in combined or 'pip install -e ".[develop]"' in combined
 
 
 @pytest.mark.unit
