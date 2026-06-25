@@ -23,9 +23,10 @@ and `dummy.py` inside `interior_energetics/`).
 The central orchestrator,
 [`proteus.py`](https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py),
 couples these modules together and advances the simulation, with modules
-exchanging information at each timestep through the `hf_row` dictionary. See
-[Coupling loop](coupling_loop.md) for details on the execution order and data
-flow.
+exchanging state at each timestep through a shared dictionary called `hf_row`.
+The next page, [Coupling loop](coupling_loop.md), explains how these modules run
+at runtime: the fixed execution order within each timestep, the full `hf_row`
+data bus, and the adaptive time-stepping and termination logic.
 
 ## Supporting directories
 
@@ -40,10 +41,16 @@ Beyond the physics modules, the source tree contains:
 
 ## Architecture diagram
 
-The diagram below gives a high-level view of the PROTEUS code architecture. Click
-any module to jump to its source on the [main branch](https://github.com/FormingWorlds/PROTEUS/tree/main),
-or any loop block to jump to the relevant section of [`proteus.py`](https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py).
+The diagram below shows the static layout: each box is a physics module, coloured
+by domain. Arrows between modules indicate the quantities exchanged through
+`hf_row` at each timestep. Click any module to jump to its source on the
+[main branch](https://github.com/FormingWorlds/PROTEUS/tree/main), or any loop
+block to jump to the relevant section of
+[`proteus.py`](https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py).
 
+<p style="text-align:right;margin-bottom:0.25rem;font-size:0.85rem">
+  <a href="../assets/proteus_architecture_viewer.html" target="_blank" rel="noopener">Open full size ↗</a>
+</p>
 <object type="image/svg+xml" data="../assets/proteus_architecture.svg" class="arch-diagram arch-diagram--light"></object>
 <object type="image/svg+xml" data="../assets/proteus_architecture_darkmode.svg" class="arch-diagram arch-diagram--dark"></object>
 

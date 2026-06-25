@@ -23,7 +23,7 @@ settings are:
   500 ppmw S.
 - **Star**: fixed solar luminosity (no evolution)
 - **Orbit**: 0.5 AU, weak tidal heating
-- **Interior structure**: Noack & Lasbleis (2020)[^cite-noack2020] analytical
+- **Interior structure**: Noack & Lasbleis (2020) [^cite-noack2020] analytical
   scaling laws
 - **Interior energetics**: heat-capacity integrator with prescribed solidus
   (1700 K) and liquidus (2700 K)
@@ -127,4 +127,4 @@ series. Key columns:
 
 **See also:** [Model description](../Explanations/model.md) | [Dummy modules](../Explanations/dummy_modules.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)
 
-[^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).
+ [^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).
