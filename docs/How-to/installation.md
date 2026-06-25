@@ -136,4 +136,4 @@ a guided walkthrough.
     bash tools/get_spider.sh
     ```
 
-    See [SPIDER installation](#11-optional-setup-petsc) below for details.
+    See [SPIDER installation](optionalmodules_installation#optional-setup-petsc) for details.

@@ -3,7 +3,7 @@
 !!! info "Install PROTEUS first"
     Please follow the [quick installation guide](installation.md) or [manual installation guide](manual_installation.md) before installing optional modules.
 
-## SPIDER and PETSc {#11-optional-setup-petsc}
+## SPIDER and PETSc {#optional-setup-petsc}
 
 SPIDER is a C-based interior thermal evolution solver. It requires PETSc
 (a numerical computing library) and a C compiler. Most configurations use
