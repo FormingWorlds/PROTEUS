@@ -127,7 +127,7 @@ def boreas_requires_atmosphere(instance, attribute, value):
 
 def observe_resolved_atmosphere(instance, attribute, value):
     # Synthetic observations require a spatially resolved atmosphere profile
-    if (instance.observe.synthesis is not None) and (instance.atmos_clim.module == 'dummy'):
+    if (instance.observe.module is not None) and (instance.atmos_clim.module == 'dummy'):
         raise ValueError('Observational synthesis requires that atmos_clim != dummy')
 
 

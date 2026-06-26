@@ -224,7 +224,14 @@ def _make_config_instance(**overrides):
         atmos_clim=SimpleNamespace(module='agni', surf_state='fixed'),
         interior_energetics=SimpleNamespace(module='aragog'),
         interior_struct=SimpleNamespace(module='zalmoxis'),
-        observe=SimpleNamespace(synthesis=None),
+        observe=SimpleNamespace(
+            module=None,
+            petitRADTRANS=SimpleNamespace(
+                line_opacity_mode='c-k',
+                include_rayleigh=True,
+                include_cia=True,
+            ),
+        ),
         orbit=SimpleNamespace(
             module='dummy',
             instellation_method='separation',

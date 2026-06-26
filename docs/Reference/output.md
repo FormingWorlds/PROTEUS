@@ -26,9 +26,13 @@ output/<run_name>/
         spider_eos/         # Cached EOS lookup tables (if Aragog/SPIDER)
         ...
     observe/                # Synthetic observations (if enabled)
-        transit_*.csv       # Transit depth spectra
-        eclipse_*.csv       # Eclipse depth spectra
+        transit_<source>_synthesis.csv   # Transit depth spectra
+        eclipse_<source>_synthesis.csv   # Eclipse depth spectra
 ```
+
+`<source>` is `outgas`, `profile`, or `offchem`, depending on
+`observe.source`. With `observe.source = "all"` (default), PROTEUS writes one
+pair of files per available source.
 
 ## Status codes
 
@@ -235,6 +239,18 @@ For each element (H, C, N, O, S):
 | `T_solvus` | K | Temperature at the solvus |
 | `X_H2_int` | 1 | H$_2$ mass fraction in the interior |
 
+## Synthetic observation CSV columns
+
+Files in `observe/` are tab-separated. They always contain:
+
+- `Wavelength/um`
+- `None/ppm` (baseline spectrum with all included gases)
+
+When `observe.remove_one_gas = true`, additional columns are
+included:
+
+- `<SPECIES>_removed/ppm` for each leave-one-out run
+
 ### Accretion mode columns (when `temperature_mode = 'accretion'`)
 
 | Column | Units | Description |
@@ -254,6 +270,45 @@ For each element (H, C, N, O, S):
 | `Q_radio_W` | W | Instantaneous radiogenic power |
 | `Q_tidal_W` | W | Instantaneous tidal power |
 | `solver_residual_J` | J | ODE solver energy residual per call |
+
+## Synthetic observation output files
+
+When `observe.module = "petitRADTRANS"`, PROTEUS writes CSV files to
+`observe/` for each composition source (`outgas`, `profile`, `offchem`).
+Files are named `transit_<source>_synthesis.csv` and
+`eclipse_<source>_synthesis.csv`.
+
+The set of files is controlled by `observe.spectrum_type`:
+
+- `both`: writes both transit and eclipse files
+- `transit`: writes transit files only
+- `eclipse`: writes eclipse files only
+
+All CSV files are tab-separated with a one-line header. The first column is
+always the wavelength grid; subsequent columns are depth values in ppm:
+
+| Column | Description |
+|--------|-------------|
+| `Wavelength/um` | Wavelength [μm] on a log-spaced grid |
+| `None/ppm` | Baseline depth [ppm] — all detected line species included |
+| `<SPECIES>_removed/ppm` | Depth [ppm] with `<SPECIES>` removed (one column per line species found in the gas mixture) |
+
+The number of `*_removed` columns varies depending on which species have
+opacity tables present in `$FWL_DATA/prt/input_data` and exceed the
+`clip_vmr` threshold at the time of the calculation.
+
+The `plot_spectra` diagnostic overlays all columns on a two-panel figure:
+the upper panel shows transit depths, the lower shows eclipse depths.
+The baseline (`None/ppm`) is drawn in black; each removed-species line is
+coloured by species identity.
+
+<figure markdown="span">
+  ![Example synthetic spectrum: transit and eclipse depth with per-species overlays](../assets/example_spectrum.png)
+  <figcaption><b>Example <code>plot_spectra</code> output.</b>
+  Upper panel: primary transit depth [ppm]. Lower panel: secondary eclipse depth [ppm].
+  The black line is the baseline (all species present); coloured lines show the spectrum
+  with each gas removed in turn.</figcaption>
+</figure>
 
 ## Diagnostic plots
 
@@ -278,5 +333,5 @@ PROTEUS generates diagnostic plots at intervals controlled by
 | `plot_orbit` | Semi-major axis and eccentricity evolution |
 | `plot_population` | Mass-radius diagram with exoplanet population overlay |
 | `plot_visual` | Rendered disk image of planet and star |
-| `plot_spectra` | Transit and eclipse depth spectra |
+| `plot_spectra` | Transit and eclipse depth spectra (baseline + per-species removed overlays) |
 | `plot_chem_atmosphere` | Atmospheric chemical species mixing ratios |

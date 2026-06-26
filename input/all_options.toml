@@ -586,8 +586,15 @@ config_version = "3.0"
 
 # Synthetic observations
 [observe]
-    synthesis                 = "none"       # none | platon
+    module                    = "none"       # none | petitRADTRANS
+    source                    = "all"        # all | outgas | profile | offchem
+    spectrum_type             = "both"       # both | transit | eclipse
+    remove_one_gas            = true         # generate additional leave-one-out spectra (one gas removed per run)
+    clip_vmr                  =  1e-8        # minimum VMR for inclusion
+    reference_pressure        = 10           # used to calculate the synthetic spectrum [bar]
 
-    [observe.platon]
-        downsample            = 8            # opacity downsample factor
-        clip_vmr              = 1e-8         # minimum VMR for inclusion
+    [observe.petitRADTRANS]
+        line_opacity_mode     = 'c-k'        # opacity treatment: 'c-k' (correlated-k) or 'lbl' (line-by-line).
+        include_rayleigh      = true         # include Rayleigh scattering contributions.
+        include_cia           = true         # include collision-induced absorption contributions.
+        silent                = true        # suppress petitRADTRANS stdout/stderr during Radtrans initialization
