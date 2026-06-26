@@ -1,20 +1,33 @@
+/* Modules diagram: size and show light/dark versions based on color scheme */
+
+.mod-diagram {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 682 / 497;
+  display: none;
+}
+[data-md-color-scheme="default"] .mod-diagram--light {
+  display: block;
+}
+[data-md-color-scheme="slate"] .mod-diagram--dark {
+  display: block;
+}
+.mod-diagram:focus,
+.mod-diagram:focus-visible {
+  outline: none !important;
+}
+
+/* Architecture diagram: size and show light/dark versions based on color scheme
+   The aspect-ratio is set to a default reserved box so a diagram whose file name
+   is not matched below still reserves space instead of collapsing while the SVG
+   loads. Add a per-diagram rule below with the exact source-viewBox ratio when
+   adding a new diagram. */
+
 .arch-diagram {
   width: 100%;
   height: auto;
-  /* Default reserved box so a diagram whose file name is not matched below
-     still reserves space instead of collapsing while the SVG loads. Add a
-     per-diagram rule below with the exact source-viewBox ratio when adding a
-     new diagram. */
   aspect-ratio: 3 / 2;
   display: none;
-}
-
-/* Reserve the correct box size from CSS so the diagram renders at full size
-   immediately, rather than collapsing small until the SVG finishes loading.
-   Each diagram carries its own aspect ratio, taken from the source viewBox,
-   matched on its file name in the object data attribute. */
-.arch-diagram[data*="modules_schematic"] {
-  aspect-ratio: 682 / 497; /* 682x497 */
 }
 
 .arch-diagram[data*="proteus_architecture"] {
