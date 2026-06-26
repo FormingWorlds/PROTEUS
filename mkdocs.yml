@@ -6,13 +6,17 @@ repo_name: GitHub
 copyright: '© 2023-2026 <a href="https://formingworlds.space">Forming Worlds Lab</a>'
 
 nav:
-  - Home:
-      - About: index.md
-      - Quick path: getting_started.md
+  - Home: index.md
+
+  - Get started: getting_started.md
 
   - How-to guides:
+      - Install PROTEUS:
+          - Quick installation: How-to/installation.md
+          - Manual installation: How-to/manual_installation.md
+          - Optional modules: How-to/optionalmodules_installation.md
+          - Run on a local machine: How-to/local_machine_guide.md
       - Getting started:
-          - Install PROTEUS: How-to/installation.md
           - Diagnose and update: How-to/doctor.md
           - Configure PROTEUS: How-to/config.md
           - Usage:
@@ -21,8 +25,9 @@ nav:
               - Initial thermal conditions: How-to/usage_initial_conditions.md
               - Parameter grids: How-to/usage_grids.md
               - Postprocessing and chemistry: How-to/usage_postprocessing.md
+              - Choose stellar spectrum: How-to/switch_spectrum.md
+          - Stabilise simulations: How-to/stabilise_run.md
           - Troubleshooting: How-to/troubleshooting.md
-          - Run on a local machine: How-to/local_machine_guide.md
       - Advanced usage:
           - Bayesian inference: How-to/inference.md
       - Cluster guides:
@@ -44,9 +49,9 @@ nav:
   - Explanations:
       - Scientific background:
           - Model description: Explanations/model.md
-          - Coupling loop: Explanations/coupling_loop.md
       - Software design:
           - Code architecture: Explanations/code_architecture.md
+          - Coupling loop: Explanations/coupling_loop.md
           - Dummy modules: Explanations/dummy_modules.md
           - Test framework: Explanations/test_framework.md
 
@@ -114,8 +119,8 @@ theme:
   custom_dir: docs/overrides
   features:
     - navigation.tabs
+    - navigation.footer
     - navigation.tabs.sticky
-    - navigation.expand
     - content.code.copy
     - content.tabs.link
 
@@ -161,6 +166,9 @@ markdown_extensions:
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+      toc_depth: 3
 
 # footer:
 extra:
@@ -186,6 +194,7 @@ extra_javascript:
 extra_css:
   - stylesheets/extra.css
   - stylesheets/proteus_theme.css
+  - stylesheets/footnotes.css
 
 plugins:
   - search

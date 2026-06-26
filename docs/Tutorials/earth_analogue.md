@@ -2,7 +2,7 @@
 
 This tutorial simulates the thermal and atmospheric evolution of an
 Earth-mass planet at 1 AU from a Sun-like star, reproducing the nominal
-Earth case from the CHILI intercomparison[^cite-lichtenberg2026].
+Earth case from the CHILI intercomparison [^cite-lichtenberg2026].
 
 It uses the production-quality module combination:
 [Aragog](https://proteus-framework.org/aragog/) (interior energetics),
@@ -73,7 +73,7 @@ Monitor progress with `tail -f output/tutorial_earth/proteus_00.log`
 
 The config at `input/tutorials/tutorial_earth.toml` sets:
 
-- **Star**: Sun on Spada[^cite-spada2013] tracks starting at 50 Myr. The solar
+- **Star**: Sun on Spada [^cite-spada2013] tracks starting at 50 Myr. The solar
   spectrum is used for radiative transfer. Stellar luminosity, radius, and
   XUV flux evolve with age.
 - **Interior**: Aragog solves the mantle energy equation on an 80-node radial
@@ -177,6 +177,6 @@ because of its lower solubility in silicate melt at IW+4.
 
 **See also:** [Model description](../Explanations/model.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)
 
-[^cite-lichtenberg2026]: Lichtenberg, T., Schaefer, L., Krissansen-Totton, J., et al., *[Coupled atmosHere Interior modeL Intercomparison (CHILI): Protocol Version 1.0](https://doi.org/10.3847/PSJ/ae593b)*, The Planetary Science Journal, 7, 108, 2026. [SciX](https://scixplorer.org/abs/2026PSJ.....7..108L/abstract).
+ [^cite-lichtenberg2026]: Lichtenberg, T., Schaefer, L., Krissansen-Totton, J., et al., *[Coupled atmosHere Interior modeL Intercomparison (CHILI): Protocol Version 1.0](https://doi.org/10.3847/PSJ/ae593b)*, The Planetary Science Journal, 7, 108, 2026. [SciX](https://scixplorer.org/abs/2026PSJ.....7..108L/abstract).
 
-[^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).
+ [^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).

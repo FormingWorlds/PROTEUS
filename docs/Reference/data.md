@@ -1,643 +1,198 @@
 # Reference data
 
+This page documents the reference datasets that PROTEUS uses at runtime:
+where they come from, what they contain, and how they are identified in
+config files. For instructions on switching between spectrum sources, see
+[Switch and choose a stellar spectrum](../How-to/switch_spectrum.md).
 ## Automatic data download
 
-PROTEUS automatically downloads large reference data files from [Zenodo](https://zenodo.org/communities/proteus_framework/) on first run. This includes stellar spectra, opacities, equations of state, and other tabulated data.
+PROTEUS downloads reference data from
+[Zenodo](https://zenodo.org/communities/proteus_framework/) on first run.
+If Zenodo is unavailable, each dataset falls back automatically to its
+corresponding project on the [Open Science Framework](https://osf.io/)
+(OSF). A Zenodo API token is optional; without one, public access is used
+with lower rate limits.
 
-- **Token is optional**: The code works without a Zenodo API token, using public access.
-- **Higher limits**: Optional API token provides higher rate limits if you download often.
-- **OSF Fallback**: If Zenodo is unavailable, data downloads automatically from [OSF](https://osf.io/8dumn/).
+| Dataset | Downloaded by |
+|---|---|
+| Stellar spectra (solar, MUSCLES) | `proteus get solar`, `proteus get muscles` |
+| PHOENIX synthetic spectra | `proteus get phoenix` |
+| Stellar evolution tracks | `proteus get stellar` |
+| Spectral k-tables | `proteus get spectral` |
+| Surface albedos | `proteus get surfaces` |
+| Scattering properties | `proteus get scattering` |
+| Exoplanet populations, mass-radius curves | `proteus get reference` |
+| Interior EOS tables, melting curves | `proteus get interiordata` |
 
-To optionally configure your token, see the [Troubleshooting guide](../How-to/troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
+To configure a Zenodo API token, see the
+[Troubleshooting guide](../How-to/troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
+
+---
 
 ## Stellar spectra
 
-PROTEUS can use:
+The spectrum source is set via `star.mors.spectrum_source` and
+`star.mors.star_name` (or `star.mors.star_path` for a custom file).
+See [Switch and choose a stellar spectrum](../How-to/switch_spectrum.md)
+for full usage instructions.
 
-- **Observed spectra** from MUSCLES / Mega-MUSCLES and NREL (for the Sun)
-- **Synthetic PHOENIX spectra**
+### Solar spectra
 
-By default, observed spectra are searched in:
+Observed solar spectra are stored under `$FWL_DATA/stellar_spectra/solar/`.
+The modern spectrum is from [Gueymard (2003)](https://www.sciencedirect.com/science/article/pii/S0038092X03003967)
+via [NREL](https://www.nrel.gov/grid/solar-resource/spectra.html).
+Historical and future spectra are from
+[Claire et al. (2012)](https://iopscience.iop.org/article/10.1088/0004-637X/757/1/95).
 
-- `$FWL_DATA/stellar_spectra/MUSCLES`  - MUSCLES / Mega-MUSCLES stars
-- `$FWL_DATA/stellar_spectra/solar`    - solar spectra (modern, past, future)
+| `star_name` | Description | Age of Sun |
+|---|---|---|
+| `sun` | Modern NREL spectrum | 4.6 Gyr |
+| `SunModern` | Alternative modern solar spectrum | 4.6 Gyr |
+| `Sun0.6Ga` | 0.6 Gyr ago | ~4.0 Gyr |
+| `Sun1.8Ga` | 1.8 Gyr ago | ~2.8 Gyr |
+| `Sun2.4Ga` | 2.4 Gyr ago | ~2.2 Gyr |
+| `Sun2.7Ga` | 2.7 Gyr ago | ~1.9 Gyr |
+| `Sun3.8Ga` | 3.8 Gyr ago | ~800 Myr |
+| `Sun4.4Ga` | 4.4 Gyr ago | ~200 Myr |
+| `Sun5.6Gyr` | Future Sun | 5.6 Gyr |
 
-To see which files you have installed, run for example:
+`star_name` matching is case-insensitive.
 
-```console
-ls $FWL_DATA/stellar_spectra/MUSCLES
-ls $FWL_DATA/stellar_spectra/solar
-```
+### MUSCLES / Mega-MUSCLES spectra
 
-For PHOENIX spectra, files are stored under: `$FWL_DATA/stellar_spectra/PHOENIX`, where each subdirectory corresponds to a metallicity / alpha combination, e.g. FeH-0.5_alpha+0.0/.
-
-### Using solar spectra
-
-To use the modern NREL observed spectrum of the Sun, set `spectrum_source = "solar"` or do not set the parameter at all, and set `star_name = "sun"`.
-
-To use a different solar spectrum, for example a **'young sun'** spectrum, there are [VPL spectra](https://live-vpl-test.pantheonsite.io/models/evolution-of-solar-flux/) available by Claire et al. (2012). In this case, set `spectrum_source = "solar"` and choose one of the following options for `star_name`:
-
-- `Sun0.6Ga` A young sun of 0.6 Gyr ago (age ~ 4.0 Gyr)
-- `Sun1.8Ga` A young sun of 1.8 Gyr ago (age ~ 2.8 Gyr)
-- `Sun2.4Ga` A young sun of 2.4 Gyr ago (age ~ 2.2 Gyr)
-- `Sun2.7Ga` A young sun of 2.7 Gyr ago (age ~ 1.9 Gyr)
-- `Sun3.8Ga` A young sun of 3.8 Gyr ago (age ~ 800 Myr)
-- `Sun4.4Ga` A young sun of 4.4 Gyr ago (age ~ 200 Myr)
-- `Sun5.6Gyr` A future sun of an age of 5.6 Gyr
-- `SunModern` A modern solar spectrum, can be chosen as an alternative to the NREL spectrum listed above.
-
-
-####  The Sun
-
-* **Star name:**  `sun`
-* **URL:** https://en.wikipedia.org/wiki/Sun
-* **Spectral type:**  G2V
-* **Teff:**  5772 K
-* **Age:**   4.6 Gyr
-* **Luminosity:**   1.0 L☉
-* **Mass:**     1.0 M☉
-* **Radius:**     1.0 R☉
-* **Source:** [Gueymard 2003](https://www.sciencedirect.com/science/article/pii/S0038092X03003967), [NREL](https://www.nrel.gov/grid/solar-resource/spectra.html), [Claire et al. 2012](https://iopscience.iop.org/article/10.1088/0004-637X/757/1/95)
-
-### Using a (Mega-)MUSCLES observed spectrum
-
-PROTEUS can use observed stellar spectra from the MUSCLES and Mega-MUSCLES surveys. To use one of these observed spectra:
-
-- Set `spectrum_source = "muscles"`
-- Set `star_name` to one of the keys listed below (these names **must match** the installed spectrum filenames / dataset keys; many targets have multiple common aliases, but PROTEUS expects the specific `star_name` string shown here).
-
-By default, PROTEUS looks for MUSCLES/Mega-MUSCLES spectra under:
-
-- `$FWL_DATA/stellar_spectra/MUSCLES`
-
-Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
+Observed UV–optical–IR spectra from the
+[MUSCLES](https://archive.stsci.edu/prepds/muscles/) and
+[Mega-MUSCLES](https://archive.stsci.edu/prepds/mega-muscles/) surveys,
+stored under `$FWL_DATA/stellar_spectra/MUSCLES/` as `<star_name>.txt`.
+`star_name` matching is case-insensitive.
 
 ??? info "Full star catalog"
 
-    **Epsilon Eridani**
-
-    - **Star name:** `v-eps-eri`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/eps%20Eri
-    - **Spectral type:** K2V
-    - **Teff:** 5020 K
-    - **Age:** 400-800 Myr
-    - **Luminosity:** 0.32 L☉
-    - **Mass:** 0.82 M☉
-    - **Radius:** 0.759 R☉
-    - **Source:** MUSCLES
-
-    ---
-
-    **GJ 1132**
-
-    - **Star name:** `gj1132`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201132
-    - **Spectral type:** M4.5 V
-    - **Teff:** 3229 K
-    - **Age:** ?
-    - **Luminosity:** 0.005 L☉
-    - **Mass:** 0.195 M☉
-    - **Radius:** 0.221 R☉
-    - **Source:** Mega-MUSCLES
-
-    ---
-
-    **GJ 1214**
-
-    - **Star name:** `gj1214`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201214
-    - **Spectral type:** M4 V
-    - **Teff:** 3100 K
-    - **Age:** 5-10 Gyr
-    - **Luminosity:** 0.00351 L☉
-    - **Mass:** 0.182 M☉
-    - **Radius:** 0.216 R☉
-    - **Source:** MUSCLES
-
-    ---
-
-    **HD 85512**
-
-    - **Star name:** `hd85512`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HD%2085512
-    - **Spectral type:** M0V
-    - **Teff:** ~4400 K
-    - **Age:** ~6 Gyr
-    - **Luminosity:** 0.17 L☉
-    - **Mass:** 0.69 M☉
-    - **Radius:** 0.69 R☉
-    - **Source:** MUSCLES
-
-    ---
-
-    **HD 97658**
-
-    - **Star name:** `hd97658`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HD%2097658%20b#planet_HD-97658-b_collapsible
-    - **Spectral type:** K1V
-    - **Teff:** 5212 K
-    - **Age:** 3.9 Gyr
-    - **Luminosity:** 0.351 L☉
-    - **Mass:** 0.773 M☉
-    - **Radius:** 0.728 R☉
-    - **Source:** MUSCLES
-
-    ---
-
-    **L 98-59**
-
-    - **Star name:** `l-98-59`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/L%2098-59
-    - **Spectral type:** M3V
-    - **Teff:** 3415 K
-    - **Age:** ~5 Gyr
-    - **Luminosity:** 0.012 L☉
-    - **Mass:** 0.292 M☉
-    - **Radius:** 0.316 R☉
-    - **Source:** Mega-MUSCLES
-
-    ---
-
-    **TRAPPIST-1**
-
-    - **Star name:** `trappist-1`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/TRAPPIST-1
-    - **Spectral type:** M8V
-    - **Teff:** 2566 K
-    - **Age:** ~8 Gyr
-    - **Luminosity:** 0.000553 L☉
-    - **Mass:** 0.0898 M☉
-    - **Radius:** 0.1192 R☉
-    - **Source:** Mega-MUSCLES
-
-    ---
-
-    **GJ 849**
-
-    - **Star name:** `gj849`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20849
-    - **Spectral type:** M3.5V
-    - **Teff:** 3467 K
-    - **Age:** >3 Gyr
-    - **Luminosity:** 0.02887 L☉
-    - **Mass:** 0.45 M☉
-    - **Radius:** 0.45 R☉
-    - **Source:** Mega-MUSCLES
-
-    ---
-
-    **WASP-43**
-
-    - **Star name:** `wasp-43`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/WASP-43
-    - **Spectral type:** K7V
-    - **Teff:** ~4100 K
-    - **Age:** ~7 Gyr
-    - **Luminosity:** ~0.15 L☉
-    - **Mass:** ~0.65 M☉
-    - **Radius:** ~0.76 R☉
-    - **Source:** MUSCLES extension
-
-    ---
-
-    **WASP-77 A**
-
-    - **Star name:** `wasp-77a`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/WASP-77%20A
-    - **Spectral type:** G8V
-    - **Teff:** ~5600 K
-    - **Age:** ~6 Gyr
-    - **Luminosity:** ~0.74 L☉
-    - **Mass:** ~0.90 M☉
-    - **Radius:** ~0.91 R☉
-    - **Source:** MUSCLES extension
-
-    ---
-
-    **GJ 15 A**
-
-    - **Star name:** `gj15a`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%2015
-    - **Spectral type:** M1-M2V
-    - **Teff:** ~3700 K
-    - **Age:** ?
-    - **Luminosity:** ~0.021 L☉
-    - **Mass:** ~0.40 M☉
-    - **Radius:** ~0.38 R☉
-    - **Source:** Mega-MUSCLES
-
-    ---
-
-    **GJ 163**
-
-    - **Star name:** `gj163`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/gj%20163%20b
-    - **Spectral type:** M3.5V
-    - **Teff:** ~3300-3500 K
-    - **Age:** ~2-10 Gyr
-    - **Luminosity:** ~0.02 L☉
-    - **Mass:** ~0.40 M☉
-    - **Radius:** ~0.41 R☉
-    - **Source:** Mega-MUSCLES
-
-    ---
-
-    **GJ 176 (HD 285968)**
-
-    - **Star name:** `gj176`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HD%20285968
-    - **Spectral type:** M2.5V
-    - **Teff:** ~3700 K
-    - **Age:** ~4 Gyr
-    - **Luminosity:** 0.034 L☉
-    - **Mass:** 0.51 M☉
-    - **Radius:** 0.48 R☉
-    - **Source:** MUSCLES
-
-    ---
-
-    **GJ 436**
-
-    - **Star name:** `gj436`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20436
-    - **Spectral type:** M2.5-M3V
-    - **Teff:** ~3600 K
-    - **Age:** ~6-15 Gyr
-    - **Luminosity:** 0.023 L☉
-    - **Mass:** 0.44 M☉
-    - **Radius:** 0.42 R☉
-    - **Source:** MUSCLES
-
-    ---
-
-    **GJ 551 (Proxima Centauri)**
-
-    - **Star name:** `gj551`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/alpha%20Cen
-    - **Spectral type:** M5.5Ve
-    - **Teff:** ~2900-3000 K
-    - **Age:** ~4.8 Gyr
-    - **Luminosity:** 0.0015 L☉
-    - **Mass:** 0.12 M☉
-    - **Radius:** 0.14 R☉
-    - **Source:** MUSCLES
-
-    ---
-
-    **GJ 581**
-
-    - **Star name:** `gj581`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20581
-    - **Spectral type:** M3V
-    - **Teff:** ~3500 K
-    - **Age:** ~4 Gyr
-    - **Luminosity:** ~0.012 L☉
-    - **Mass:** ~0.30 M☉
-    - **Radius:** ~0.30 R☉
-    - **Source:** MUSCLES
-
-    ---
-
-    **GJ 649**
-
-    - **Star name:** `gj649`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20649
-    - **Spectral type:** M1-M2V
-    - **Teff:** ~3700 K
-    - **Age:** ?
-    - **Luminosity:** ~0.044 L☉
-    - **Mass:** 0.51 M☉
-    - **Radius:** 0.50 R☉
-    - **Source:** Mega-MUSCLES
-
-    ---
-
-    **GJ 667 C**
-
-    - **Star name:** `gj667c`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20667C
-    - **Spectral type:** M1.5V
-    - **Teff:** ~3700 K
-    - **Age:** >2 Gyr
-    - **Luminosity:** ~0.014 L☉
-    - **Mass:** ~0.33 M☉
-    - **Radius:** ~0.32-0.42 R☉
-    - **Source:** MUSCLES
-
-    ---
-
-    **GJ 674**
-
-    - **Star name:** `gj674`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20674
-    - **Spectral type:** M2.5V
-    - **Teff:** ~3400-3600 K
-    - **Age:** ~0.5-3 Gyr
-    - **Luminosity:** 0.017 L☉
-    - **Mass:** 0.35 M☉
-    - **Radius:** 0.36 R☉
-    - **Source:** Mega-MUSCLES
-
-    ---
-
-    **GJ 676 A**
-
-    - **Star name:** `gj676a`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20676A
-    - **Spectral type:** M0V
-    - **Teff:** ~3800-4000 K
-    - **Age:** ?
-    - **Luminosity:** 0.083 L☉
-    - **Mass:** 0.63 M☉
-    - **Radius:** 0.65 R☉
-    - **Source:** Mega-MUSCLES
-
-    ---
-
-    **GJ 699 (Barnard’s Star)**
-
-    - **Star name:** `gj699`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/barnard's%20star
-    - **Spectral type:** M3.5-4.0V
-    - **Teff:** ~3200-3300 K
-    - **Age:** ~10 Gyr
-    - **Luminosity:** 0.0035 L☉
-    - **Mass:** ~0.16 M☉
-    - **Radius:** ~0.19 R☉
-    - **Source:** Mega-MUSCLES
-
-    ---
-
-    **GJ 729 (Ross 154)**
-
-    - **Star name:** `gj729`
-    - **URL:** https://simbad.cds.unistra.fr/simbad/sim-id?Ident=GJ+729
-    - **Spectral type:** M3.5V
-    - **Teff:** ~3200-3300 K
-    - **Age:** <1-2 Gyr
-    - **Luminosity:** ~0.004-0.005 L☉
-    - **Mass:** ~0.18 M☉
-    - **Radius:** ~0.20 R☉
-    - **Source:** Mega-MUSCLES
-
-    ---
-
-    **GJ 832**
-
-    - **Star name:** `gj832`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HIP%20106440
-    - **Spectral type:** M1-M3V
-    - **Teff:** ~3500-3500 K
-    - **Age:** ~4-12 Gyr
-    - **Luminosity:** ~0.03 L☉
-    - **Mass:** 0.45 M☉
-    - **Radius:** 0.45 R☉
-    - **Source:** MUSCLES
-
-    ---
-
-    **GJ 876**
-
-    - **Star name:** `gj876`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20876
-    - **Spectral type:** M2-4V
-    - **Teff:** ~3200-3300 K
-    - **Age:** ~2-15 Gyr
-    - **Luminosity:** ~0.013 L☉
-    - **Mass:** ~0.37 M☉
-    - **Radius:** ~0.37 R☉
-    - **Source:** MUSCLES
-
-    ---
-
-    **HAT-P-12**
-
-    - **Star name:** `hat-p-12`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-12
-    - **Spectral type:** K4V
-    - **Teff:** 4500-4800 K
-    - **Age:** 2-14 Gyr
-    - **Luminosity:** ~0.20 L☉
-    - **Mass:** 0.74 M☉
-    - **Radius:** 0.70 R☉
-    - **Source:** MUSCLES extension
-
-    ---
-
-    **HAT-P-26**
-
-    - **Star name:** `hat-p-26`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-26
-    - **Spectral type:** K1V
-    - **Teff:** ~5050 K
-    - **Age:** 4-12 Gyr
-    - **Luminosity:** ~0.44 L☉
-    - **Mass:** 0.85 M☉
-    - **Radius:** 0.86 R☉
-    - **Source:** MUSCLES extension
-
-    ---
-
-    **HD 149026**
-
-    - **Star name:** `hd-149026`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HD%20149026%20b#planet_HD-149026
-    - **Spectral type:** G0V
-    - **Teff:** ~6100-6200 K
-    - **Age:** ~2-3 Gyr
-    - **Luminosity:** ~2.6 L☉
-    - **Mass:** ~1.14 M☉
-    - **Radius:** ~1.46 R☉
-    - **Source:** MUSCLES extension
-
-    ---
-
-    **HD 40307**
-
-    - **Star name:** `hd40307`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HD%2040307
-    - **Spectral type:** K2.5V
-    - **Teff:** ~4800-5000 K
-    - **Age:** ~2-5 Gyr
-    - **Luminosity:** ~0.22 L☉
-    - **Mass:** ~0.79 M☉
-    - **Radius:** ~0.71 R☉
-    - **Source:** MUSCLES
-
-    ---
-
-    **L 678-39 (GJ 357)**
-
-    - **Star name:** `l-678-39`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20357
-    - **Spectral type:** M2.5V
-    - **Teff:** ~3500 K
-    - **Age:** ?
-    - **Luminosity:** 0.0017 L☉
-    - **Mass:** ~0.34 M☉
-    - **Radius:** ~0.34 R☉
-    - **Source:** MUSCLES extension
-
-    ---
-
-    **L 980-5**
-
-    - **Star name:** `l-980-5`
-    - **URL:** https://simbad.u-strasbg.fr/simbad/sim-id?Ident=l+980-5
-    - **Spectral type:** M4V
-    - **Teff:** ?
-    - **Age:** ?
-    - **Luminosity:** ?
-    - **Mass:** ?
-    - **Radius:** ?
-    - **Source:** Mega-MUSCLES
-
-    ---
-
-    **LHS 2686**
-
-    - **Star name:** `lhs-2686`
-    - **URL:** https://simbad.cds.unistra.fr/simbad/sim-id?Ident=LHS+2686
-    - **Spectral type:** M5V
-    - **Teff:** ?
-    - **Age:** ?
-    - **Luminosity:** ?
-    - **Mass:** ?
-    - **Radius:** ?
-    - **Source:** Mega-MUSCLES
-
-    ---
-
-    **LP 791-18**
-
-    - **Star name:** `lp-791-18`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/LP%20791-18
-    - **Spectral type:** M6V
-    - **Teff:** ~2960 K
-    - **Age:** > 0.5 Gyr
-    - **Luminosity:** ~0.002 L☉
-    - **Mass:** 0.139 M☉
-    - **Radius:** 0.182 R☉
-    - **Source:** MUSCLES extension
-
-    ---
-
-    **TOI-193 (LTT 9779)**
-
-    - **Star name:** `toi-193`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/LTT%209779
-    - **Spectral type:** G7V
-    - **Teff:** ~5400-5500 K
-    - **Age:** ~2 Gyr
-    - **Luminosity:** ~ 0.7 L☉
-    - **Mass:** ~1.0 M☉
-    - **Radius:** ~0.95 R☉
-    - **Source:** MUSCLES extension
-
-    ---
-
-    **WASP-127**
-
-    - **Star name:** `wasp-127`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/WASP-127
-    - **Spectral type:** G5 (subgiant-like)
-    - **Teff:** ~5600-5800 K
-    - **Age:** ~10-12 Gyr
-    - **Luminosity:** ~1.8 L☉
-    - **Mass:** ~0.95-1.10 M☉
-    - **Radius:** ~1.3 R☉
-    - **Source:** MUSCLES extension
-
-    ---
-
-    **WASP-17**
-
-    - **Star name:** `wasp-17`
-    - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/WASP-17
-    - **Spectral type:** F4-F6V
-    - **Teff:** ~6550 K
-    - **Age:** ~3 Gyr
-    - **Luminosity:** ~4 L☉
-    - **Mass:** 1.35 M☉
-    - **Radius:** 1.57 R☉
-    - **Source:** MUSCLES extension
-
-#### Downloading MUSCLES spectra
-
-MUSCLES spectra are automatically downloaded when you run PROTEUS and set `spectrum_source` to 'muscles'. You can also use the CLI:
-
-```bash
-proteus get muscles --star trappist-1
-```
-or
-```bash
-proteus get muscles --all
-```
-for all available MUSCLES spectra.
-
-### Using a PHOENIX synthetic spectrum
-
-To use a Med-Res PHOENIX synthetic spectrum, set:
-
-- `spectrum_source = "phoenix"`
-
-PHOENIX spectra are stored under:
-- `$FWL_DATA/stellar_spectra/PHOENIX/`
-
-Each subdirectory corresponds to a metallicity / alpha combination, e.g.
-`FeH-0.5_alpha+0.0/`.
-
-#### Parameters
-
-PHOENIX models are defined on a grid in:
-
-- `Teff` (K): effective temperature
-- `log_g` (dex): surface gravity
-- `FeH` (dex): metallicity (0.0 for solar)
-- `alpha` (dex): alpha enhancement (0.0 for solar)
-
-You can set these under `star.mors` in your config file.
-
-!!! info "Defaults"
-    If the metallicity `FeH` and/or alpha fraction `alpha` are not set, they **default to solar values (0.0).**  If `Teff`, `log_g`, and/or `radius` are not set, they are estimated by the stellar evolution module MORS from the stellar mass.
-
-In addition, PROTEUS needs the stellar radius:
-
-- `radius` (R☉)
-
-This is used to scale the model spectrum (surface flux) to the flux at 1 AU.
-
-#### Downloading PHOENIX spectra
-
-PHOENIX spectra are automatically downloaded when you run PROTEUS and set `spectrum_source` to 'phoenix'. You can also use the CLI:
-
-```bash
-proteus get phoenix --feh 0.0 --alpha 0.0 --teff 3500
-```
-
-Here `teff` is optional, but helps to find the right alpha fraction (for some effective temperatures, only a solar alpha fraction is available).
-
-### Using a custom stellar spectrum
-
-If you prefer to use your own stellar spectrum, you can input its filepath under the parameter `star_path`. Make sure you input its absolute path, or use `$FWL_DATA` if it is in the $FWL_DATA directory.
-
-!!! warning "Note"
-    This parameter will override all other stellar spectrum config parameters!
-
-There are a few things to take into account when using a custom stellar spectrum:
-
-- The file should be a two-column ASCII file, with the first column the **wavelength** in **nm**, and the second column the **flux** in **erg/s/cm^2/nm**. Headers should be indicated with `#`.
-- The spectrum must be **scaled to 1 AU**.
+    | Star | `star_name` | Type | Teff (K) | Age | L (L☉) | M (M☉) | R (R☉) | Survey |
+    |---|---|---|---|---|---|---|---|---|
+    | [Epsilon Eridani](https://exoplanetarchive.ipac.caltech.edu/overview/eps%20Eri) | `v-eps-eri` | K2V | 5020 | 400–800 Myr | 0.32 | 0.82 | 0.759 | MUSCLES |
+    | [GJ 1132](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201132) | `gj1132` | M4.5V | 3229 | — | 0.005 | 0.195 | 0.221 | Mega-MUSCLES |
+    | [GJ 1214](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201214) | `gj1214` | M4V | 3100 | 5–10 Gyr | 0.00351 | 0.182 | 0.216 | MUSCLES |
+    | [GJ 15 A](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%2015) | `gj15a` | M1–M2V | ~3700 | — | ~0.021 | ~0.40 | ~0.38 | Mega-MUSCLES |
+    | [GJ 163](https://exoplanetarchive.ipac.caltech.edu/overview/gj%20163%20b) | `gj163` | M3.5V | ~3300–3500 | ~2–10 Gyr | ~0.02 | ~0.40 | ~0.41 | Mega-MUSCLES |
+    | [GJ 176](https://exoplanetarchive.ipac.caltech.edu/overview/HD%20285968) | `gj176` | M2.5V | ~3700 | ~4 Gyr | 0.034 | 0.51 | 0.48 | MUSCLES |
+    | [GJ 436](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20436) | `gj436` | M2.5–M3V | ~3600 | ~6–15 Gyr | 0.023 | 0.44 | 0.42 | MUSCLES |
+    | [GJ 551 (Proxima Cen)](https://exoplanetarchive.ipac.caltech.edu/overview/alpha%20Cen) | `gj551` | M5.5Ve | ~2900–3000 | ~4.8 Gyr | 0.0015 | 0.12 | 0.14 | MUSCLES |
+    | [GJ 581](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20581) | `gj581` | M3V | ~3500 | ~4 Gyr | ~0.012 | ~0.30 | ~0.30 | MUSCLES |
+    | [GJ 649](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20649) | `gj649` | M1–M2V | ~3700 | — | ~0.044 | 0.51 | 0.50 | Mega-MUSCLES |
+    | [GJ 667 C](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20667C) | `gj667c` | M1.5V | ~3700 | >2 Gyr | ~0.014 | ~0.33 | ~0.32–0.42 | MUSCLES |
+    | [GJ 674](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20674) | `gj674` | M2.5V | ~3400–3600 | ~0.5–3 Gyr | 0.017 | 0.35 | 0.36 | Mega-MUSCLES |
+    | [GJ 676 A](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20676A) | `gj676a` | M0V | ~3800–4000 | — | 0.083 | 0.63 | 0.65 | Mega-MUSCLES |
+    | [GJ 699 (Barnard's Star)](https://exoplanetarchive.ipac.caltech.edu/overview/barnard's%20star) | `gj699` | M3.5–4V | ~3200–3300 | ~10 Gyr | 0.0035 | ~0.16 | ~0.19 | Mega-MUSCLES |
+    | [GJ 729 (Ross 154)](https://simbad.cds.unistra.fr/simbad/sim-id?Ident=GJ+729) | `gj729` | M3.5V | ~3200–3300 | <1–2 Gyr | ~0.004–0.005 | ~0.18 | ~0.20 | Mega-MUSCLES |
+    | [GJ 832](https://exoplanetarchive.ipac.caltech.edu/overview/HIP%20106440) | `gj832` | M1–M3V | ~3500 | ~4–12 Gyr | ~0.03 | 0.45 | 0.45 | MUSCLES |
+    | GJ 832 (synthetic) | `gj832_synth` | M1–M3V | ~3500 | ~4–12 Gyr | ~0.03 | 0.45 | 0.45 | MUSCLES |
+    | [GJ 849](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20849) | `gj849` | M3.5V | 3467 | >3 Gyr | 0.02887 | 0.45 | 0.45 | Mega-MUSCLES |
+    | [GJ 876](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20876) | `gj876` | M2–4V | ~3200–3300 | ~2–15 Gyr | ~0.013 | ~0.37 | ~0.37 | MUSCLES |
+    | [HAT-P-12](https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-12) | `hat-p-12` | K4V | 4500–4800 | 2–14 Gyr | ~0.20 | 0.74 | 0.70 | MUSCLES ext. |
+    | [HAT-P-26](https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-26) | `hat-p-26` | K1V | ~5050 | 4–12 Gyr | ~0.44 | 0.85 | 0.86 | MUSCLES ext. |
+    | [HD 40307](https://exoplanetarchive.ipac.caltech.edu/overview/HD%2040307) | `hd40307` | K2.5V | ~4800–5000 | ~2–5 Gyr | ~0.22 | ~0.79 | ~0.71 | MUSCLES |
+    | [HD 85512](https://exoplanetarchive.ipac.caltech.edu/overview/HD%2085512) | `hd85512` | M0V | ~4400 | ~6 Gyr | 0.17 | 0.69 | 0.69 | MUSCLES |
+    | [HD 97658](https://exoplanetarchive.ipac.caltech.edu/overview/HD%2097658%20b) | `hd97658` | K1V | 5212 | 3.9 Gyr | 0.351 | 0.773 | 0.728 | MUSCLES |
+    | [HD 149026](https://exoplanetarchive.ipac.caltech.edu/overview/HD%20149026%20b) | `hd-149026` | G0V | ~6100–6200 | ~2–3 Gyr | ~2.6 | ~1.14 | ~1.46 | MUSCLES ext. |
+    | [L 98-59](https://exoplanetarchive.ipac.caltech.edu/overview/L%2098-59) | `l-98-59` | M3V | 3415 | ~5 Gyr | 0.012 | 0.292 | 0.316 | Mega-MUSCLES |
+    | [L 678-39 (GJ 357)](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20357) | `l-678-39` | M2.5V | ~3500 | — | 0.0017 | ~0.34 | ~0.34 | MUSCLES ext. |
+    | [L 980-5](https://simbad.u-strasbg.fr/simbad/sim-id?Ident=l+980-5) | `l-980-5` | M4V | — | — | — | — | — | Mega-MUSCLES |
+    | [LHS 2686](https://simbad.cds.unistra.fr/simbad/sim-id?Ident=LHS+2686) | `lhs-2686` | M5V | — | — | — | — | — | Mega-MUSCLES |
+    | [LP 791-18](https://exoplanetarchive.ipac.caltech.edu/overview/LP%20791-18) | `lp-791-18` | M6V | ~2960 | >0.5 Gyr | ~0.002 | 0.139 | 0.182 | MUSCLES ext. |
+    | [TOI-193 (LTT 9779)](https://exoplanetarchive.ipac.caltech.edu/overview/LTT%209779) | `toi-193` | G7V | ~5400–5500 | ~2 Gyr | ~0.7 | ~1.0 | ~0.95 | MUSCLES ext. |
+    | [TRAPPIST-1](https://exoplanetarchive.ipac.caltech.edu/overview/TRAPPIST-1) | `trappist-1` | M8V | 2566 | ~8 Gyr | 0.000553 | 0.0898 | 0.1192 | Mega-MUSCLES |
+    | [WASP-17](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-17) | `wasp-17` | F4–F6V | ~6550 | ~3 Gyr | ~4 | 1.35 | 1.57 | MUSCLES ext. |
+    | [WASP-43](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-43) | `wasp-43` | K7V | ~4100 | ~7 Gyr | ~0.15 | ~0.65 | ~0.76 | MUSCLES ext. |
+    | [WASP-77 A](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-77%20A) | `wasp-77a` | G8V | ~5600 | ~6 Gyr | ~0.74 | ~0.90 | ~0.91 | MUSCLES ext. |
+    | [WASP-127](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-127) | `wasp-127` | G5 | ~5600–5800 | ~10–12 Gyr | ~1.8 | ~0.95–1.10 | ~1.3 | MUSCLES ext. |
+
+### PHOENIX synthetic spectra
+
+Med-resolution synthetic spectra from the PHOENIX library, stored under
+`$FWL_DATA/stellar_spectra/PHOENIX/<FeH>_<alpha>/`. Each subdirectory
+corresponds to one metallicity–alpha combination (e.g. `FeH-0.5_alpha+0.0/`).
+
+Parameters defining the PHOENIX grid:
+
+| Parameter | Config key | Unit | Default |
+|---|---|---|---|
+| Effective temperature | `phoenix_Teff` | K | Derived from MORS tracks |
+| Surface gravity | `phoenix_log_g` | log$_{10}$ (cgs) | Derived from MORS tracks |
+| Stellar radius | `phoenix_radius` | R$_\odot$ | Derived from MORS tracks |
+| Metallicity | `phoenix_FeH` | [Fe/H] dex | 0.0 (solar) |
+| Alpha enhancement | `phoenix_alpha` | [α/Fe] dex | 0.0 (solar) |
+
+Any parameter set to `"none"` in the config is derived from the MORS
+stellar evolution tracks using `star.mass`. Grid inputs are automatically
+rounded to the nearest available grid point.
+
+### Custom stellar spectrum
+
+A user-supplied spectrum is loaded when `star.mors.star_path` is set. It
+overrides `spectrum_source`, `star_name`, and all `phoenix_*` parameters.
+Environment variables (e.g. `$FWL_DATA`, `$HOME`) in the path are expanded
+at load time.
+
+**Required file format:**
+
+| Column | Quantity | Unit |
+|---|---|---|
+| 1 | Wavelength | nm |
+| 2 | Flux | erg s$^{-1}$ cm$^{-2}$ nm$^{-1}$ |
+
+The spectrum must be scaled to a distance of 1 AU. Comment lines begin
+with `#`.
+
+---
+
+## Spectral files
+
+Correlated-k opacity tables used by the atmosphere climate modules
+(AGNI, JANUS). Selected via `atmos_clim.spectral_group` and
+`atmos_clim.spectral_bands` in the config. Stored under
+`$FWL_DATA/spectral_files/<group>/<bands>/`.
+For a full description of each group's spectral coverage and gas
+species, see `docs/assets/spectral_files.pdf` in the PROTEUS repository.
+
+| Group | Available band counts | Notes |
+|---|---|---|
+| `Honeyside` | 16, 48, 256, 4096 | Default; broad gas coverage |
+| `Dayspring` | 16, 48, 256, 4096 | |
+| `Frostflow` | 16, 48, 256, 4096 | |
+| `Oak` | 318 | |
+
+The default configuration uses `Honeyside` / `48`. Higher band counts
+increase spectral resolution and runtime cost.
+
+---
 
 ## Surfaces
-Single-scattering albedo data taken from Hammond et al., (2024): [Zenodo data](https://zenodo.org/records/13691960).
-Available options can be found by running the command:
+
+Single-scattering albedo data from Hammond et al. (2024):
+[Zenodo record 13691960](https://zenodo.org/records/13691960).
+
+Available surface types can be listed with:
+
 ```console
 ls $FWL_DATA/surface_albedos/Hammond24
 ```
 
+---
+
 ## Exoplanet population data
-These are obtained from the DACE PlanetS database ([Parc et al., 2024](https://arxiv.org/abs/2406.04311)).
+
+Obtained from the DACE PlanetS database
+([Parc et al., 2024](https://arxiv.org/abs/2406.04311)).
+
+---
 
 ## Mass-radius relations
-These are obtained from [Zeng et al., 2019](https://iopscience.iop.org/article/10.3847/0004-637X/819/2/127/meta).
+
+Obtained from [Zeng et al. (2016)](https://iopscience.iop.org/article/10.3847/0004-637X/819/2/127/meta).
+
+---
+
+## Equations of state 
+
+The interior structure solver of PROTEUS, Zalmoxis, uses equation-of-state tables by [Seager et al. (2007)](https://iopscience.iop.org/article/10.1086/521346), and from [PALEOS](https://github.com/maraattia/PALEOS) by [Attia et al. (2026)](https://ui.adsabs.harvard.edu/abs/2026arXiv260503741A/abstract). An overview of equation of state tables can be found [here](https://proteus-framework.org/Zalmoxis/Reference/data.html#data-inventory).
