@@ -28,13 +28,13 @@ config_version = "3.0"
 
 # Code execution, outputs, time-stepping, convergence
 [params]
-    resume                    = false       # resume from previous run
+    resume                    = false        # resume from previous run
     offline                   = false        # offline mode (no data downloads)
 
     [params.out]
         # Output folder inside PROTEUS/output/. Set "auto" for a unique timestamped
         # name (run_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
-        path                  = "test_comp_changed_tolparms"
+        path                  = "gridruns"
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 5            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
@@ -44,16 +44,16 @@ config_version = "3.0"
         remove_sf             = false        # remove spectral file when done
 
     [params.dt]
-        minimum               = 1e3          # minimum time step [yr]
+        minimum               = 1e4          # minimum time step [yr]
         minimum_rel           = 1e-5         # minimum relative time step
-        maximum               = 1e6          # maximum time step [yr]
+        maximum               = 1e7          # maximum time step [yr]
         initial               = 3e1          # initial step size [yr]
         starspec              = 1e8          # recalculate stellar spectrum interval [yr]
         starinst              = 1e2          # recalculate instellation interval [yr]
         method                = "adaptive"   # proportional | adaptive | maximum
         propconst             = 52.0         # proportionality constant (proportional method)
         atol                  = 0.02         # step size absolute tolerance (adaptive method)
-        rtol                  = 0.07        # step size relative tolerance (adaptive method)
+        rtol                  = 0.07       # step size relative tolerance (adaptive method)
         scale_incr            = 1.6          # growth factor on successful adaptive step
         scale_decr            = 0.8          # shrink factor on rejected adaptive step
         window                = 3            # lookback window for adaptive comparison [steps]
@@ -74,8 +74,8 @@ config_version = "3.0"
 
         [params.stop.time]                   # simulation time limits
             enabled           = true
-            minimum           = 1.0e3        # run at least this long [yr]
-            maximum           = 1.0e+7       # stop after this time [yr]
+            minimum           = 1.0e+3        # run at least this long [yr]
+            maximum           = 5.0e+8       # stop after this time [yr]
 
         [params.stop.solid]                  # solidification criterion
             enabled           = false
@@ -132,7 +132,7 @@ config_version = "3.0"
         H_mode                = "ppmw"     # oceans | ppmw | kg
         H_budget              = 109.0          # unit defined by H_mode
         C_mode                = "ppmw"        # C/H mass ratio | ppmw | kg
-        C_budget              = 1090.0          # unit defined by C_mode
+        C_budget              = 109.0          # unit defined by C_mode
         N_mode                = "ppmw"        # N/H mass ratio | ppmw | kg
         N_budget              = 0.5          # unit defined by N_mode
         S_mode                = "ppmw"        # S/H mass ratio | ppmw | kg
@@ -419,14 +419,14 @@ config_version = "3.0"
 # Outgassing (volatile partitioning between interior and atmosphere)
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = 2        # atmosphere/interior boundary oxidation state [log10(ΔIW)]
+    fO2_shift_IW    = 1.0        # atmosphere/interior boundary oxidation state [log10(ΔIW)]
 
     silicates = true
     vaplist = ["SiO", "SiO2", "Si", "Na", "K", "Ti", "TiO", "TiO2", "Mg", "MgO", "Al", "HAlO2", "SiH", "SiH4", "Fe", "FeO"]
 
     module = "calliope"         # Which outgassing module to use
 
-    mass_thresh               = 1e10         # minimum volatile mass threshold [kg]
+    mass_thresh               = 1e9         # minimum volatile mass threshold [kg]
     h2_binodal                = false        # H2 binodal partitioning; true is rejected at config load (not production ready)
 
     # Shared solver parameters (calliope + atmodeller)
@@ -487,7 +487,7 @@ config_version = "3.0"
     cloud_enabled             = false        # water cloud radiative effects
     cloud_alpha               = 0.0          # condensate retention fraction (0 to 1)
     aerosols_enabled          = false        # enable aerosol radiative effects (agni only)
-    albedo_pl                 = 0.0          # planetary bond albedo; float or path to CSV lookup
+    albedo_pl                 = 0.0           # planetary bond albedo; float or path to CSV lookup
     surf_greyalbedo           = 0.1          # grey surface albedo (used when agni.surf_material = "greybody")
 
     # Surface boundary condition

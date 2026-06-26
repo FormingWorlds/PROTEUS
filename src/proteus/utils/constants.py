@@ -50,6 +50,7 @@ gas_list = vol_list + vap_list
 
 # Supported elements
 element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K']
+vol_element_list=['H', 'O', 'C', 'N', 'S']
 
 element_mmw = {
     'H': 1.008000000e-03,

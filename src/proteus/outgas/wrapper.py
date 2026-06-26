@@ -7,8 +7,15 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.outgas.common import expected_keys
-from proteus.outgas.lavatmos import compute_silicate_outgassing
-from proteus.utils.constants import element_list, element_mmw, secs_per_year, vap_list, vol_list
+from proteus.outgas.lavatmos_v2 import compute_silicate_outgassing
+from proteus.utils.constants import (
+    element_list,
+    element_mmw,
+    secs_per_year,
+    vap_list,
+    vol_element_list,
+    vol_list,
+)
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -121,7 +128,7 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
     # produces from the fO2 buffer, closing the asymmetry. Defensive
     # .get() default lets the sum survive pre-IC hf_row states.
     hf_row['M_ele'] = 0.0
-    for e in element_list:
+    for e in vol_element_list:
         hf_row['M_ele'] += float(hf_row.get(e + '_kg_total', 0.0))
 
 
@@ -264,7 +271,7 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # CALLIOPE drives O_kg_total to near-zero once H/C/N/S vanish, so this
     # change rarely affects the desiccation timing, but it keeps the
     # semantics honest under whole-planet O accounting.
-    for e in element_list:
+    for e in vol_element_list:
         if float(hf_row.get(e + '_kg_total', 0.0)) > config.outgas.mass_thresh:
             log.info(
                 'Not desiccated, %s = %.2e kg' % (e, float(hf_row.get(e + '_kg_total', 0.0)))
@@ -284,7 +291,7 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
 
     # Issue #677 fix: include O in cur_m_ele to match the M_vol_initial
     # baseline (which is now also summed over the full element_list).
-    cur_m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
+    cur_m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in vol_element_list)
     lost = m_init - cur_m_ele
     esc_cum = float(hf_row.get('esc_kg_cumulative', 0.0))
 
@@ -575,8 +582,8 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
     """
 
     gas_list = vol_list + config.outgas.vaplist
-
     # reset all silicate masses to zero:
+    hf_row['M_silicates'] = 0.0
     for s in gas_list:
         if s in vol_list:
             continue

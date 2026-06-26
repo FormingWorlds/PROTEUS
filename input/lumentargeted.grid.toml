@@ -23,22 +23,22 @@ output = "auto"
 symlink = ""
 
 # Base config file (relative to PROTEUS root)
-ref_config = "input/run_silicates.toml"
+ref_config = "input/run_silicates_gridinput.toml"
 
 # SLURM settings
 use_slurm = false
-max_jobs = 20       # max concurrent tasks (e.g. 500 on Habrok)
-max_days = 2        # max walltime [days]
-max_mem  = 15       # max memory per CPU [GB]
+max_jobs = 64       # max concurrent tasks (e.g. 500 on Habrok)
+max_days = 30        # max walltime [days]
+max_mem  = 2      # max memory per CPU [GB]
 
 # -------------------------------------------------------
 # Grid axes
 # -------------------------------------------------------
 
 # Planet mass [M_earth]
-["planet.mass_tot"]
-    method = "direct"
-    values = [2.0, 9.0]
+#["planet.mass_tot"]
+    #method = "direct"
+    #values = [9.0]
 
 # Hydrogen inventory [ppmw] (requires H_mode = "ppmw" in base config)
 #["planet.elements.H_budget"]
@@ -49,23 +49,23 @@ max_mem  = 15       # max memory per CPU [GB]
 
 #Carbon inventory [ppmw] (requires H_mode = "ppmw" in base config)
 ["planet.elements.C_budget"]
-    method = "arange"
-    start  = 1000
-    stop   = 11000
-    step   = 5000
+    method = "logspace"
+    start  = 100
+    stop   = 10000
+    count   = 3
 
 
 # Mantle redox state [log10(delta_IW)]
  ["outgas.fO2_shift_IW"]
      method = "direct"
-     values = [-4, -2, -1 , 1, 2, 4]
+     values = [-4, -2 ,0, 2, 4]
 
 
 
 # orbital distance
 ["orbit.semimajoraxis"]
     method = "direct"
-    values = [0.008, 0.016, 0.032, 0.064, 0.128]
+    values = [0.008, 0.016, 0.064, 0.128]
 
 
 # S/H mass ratio (requires S_mode = "S/H" in base config)

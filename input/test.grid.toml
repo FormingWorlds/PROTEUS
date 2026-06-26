@@ -58,7 +58,7 @@ max_mem  = 15       # max memory per CPU [GB]
 # Mantle redox state [log10(delta_IW)]
  ["outgas.fO2_shift_IW"]
      method = "direct"
-     values = [-1]
+     values = [-3.5,]
 
 
 

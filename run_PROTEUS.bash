@@ -1,9 +1,9 @@
 #bash script to run multiple proteus runs one after other
 orb_dist=("0.016")
-fO2=("5") #"1", "-1"
+fO2=("-1") #"1", "-1"
 mass=("9.0") #2.0
 silicates=("true")
-Cabund=("1090.0") # "109.0" "3270.0")
+Cabund=("109.0") # "109.0" "3270.0")
 input_file=input/run_silicates.toml
 
 # make directories for each composition and make fastchem grids for all compositions that don't have grids yet

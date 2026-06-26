@@ -16,7 +16,14 @@ from calliope.solve import (
 )
 
 from proteus.outgas.common import expected_keys
-from proteus.utils.constants import C_solar, N_solar, S_solar, element_list, vol_list
+from proteus.utils.constants import (
+    C_solar,
+    N_solar,
+    S_solar,
+    element_list,
+    vol_element_list,
+    vol_list,
+)
 from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger('fwl.' + __name__)
@@ -218,7 +225,7 @@ def construct_guess(hf_row: dict, target: dict, mass_thresh: float) -> dict | No
     for s in vol_list:
         # check if any of the elements are zero in the planet
         is_zero = False
-        for e in element_list:
+        for e in vol_element_list:
             if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
                 continue
             if (e in s) and (target[e] < mass_thresh):  # kg
@@ -290,7 +297,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     # value would not be available.
     target = {}
     for e in element_list:
-        if e != 'O':
+        if e in vol_element_list:
             target[e] = hf_row[e + '_kg_total']
     if config.planet.fO2_source == 'from_O_budget':
         if 'O_kg_total' not in hf_row:

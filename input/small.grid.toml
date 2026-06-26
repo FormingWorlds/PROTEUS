@@ -27,18 +27,18 @@ ref_config = "input/run_silicates.toml"
 
 # SLURM settings
 use_slurm = false
-max_jobs = 20       # max concurrent tasks (e.g. 500 on Habrok)
-max_days = 2        # max walltime [days]
-max_mem  = 15       # max memory per CPU [GB]
+max_jobs = 12       # max concurrent tasks (e.g. 500 on Habrok)
+max_days = 30        # max walltime [days]
+max_mem  = 10      # max memory per CPU [GB]
 
 # -------------------------------------------------------
 # Grid axes
 # -------------------------------------------------------
 
 # Planet mass [M_earth]
-["planet.mass_tot"]
-    method = "direct"
-    values = [2.0, 9.0]
+#["planet.mass_tot"]
+    #method = "direct"
+    #values = [9.0]
 
 # Hydrogen inventory [ppmw] (requires H_mode = "ppmw" in base config)
 #["planet.elements.H_budget"]
@@ -49,23 +49,23 @@ max_mem  = 15       # max memory per CPU [GB]
 
 #Carbon inventory [ppmw] (requires H_mode = "ppmw" in base config)
 ["planet.elements.C_budget"]
-    method = "arange"
-    start  = 1000
-    stop   = 11000
-    step   = 5000
+    method = "logspace"
+    start  = 10
+    stop   = 1000
+    count   = 3
 
 
 # Mantle redox state [log10(delta_IW)]
  ["outgas.fO2_shift_IW"]
      method = "direct"
-     values = [-4, -2, -1 , 1, 2, 4]
+     values = [-2, 2]
 
 
 
 # orbital distance
 ["orbit.semimajoraxis"]
     method = "direct"
-    values = [0.008, 0.016, 0.032, 0.064, 0.128]
+    values = [0.016, 0.128]
 
 
 # S/H mass ratio (requires S_mode = "S/H" in base config)
