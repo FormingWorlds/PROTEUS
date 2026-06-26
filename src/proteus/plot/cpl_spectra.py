@@ -18,6 +18,26 @@ log = logging.getLogger('fwl.' + __name__)
 WAVE_KEY = 'Wavelength/um'
 
 
+def _column_species_label(colname: str) -> tuple[str, bool]:
+    """Return a normalized species label and whether it is the baseline spectrum."""
+
+    stem = str(colname).split('/')[0]
+
+    # Legacy format used in tests and older output tables.
+    if stem.startswith('depth_'):
+        stem = stem[len('depth_') :]
+
+    if stem == 'None':
+        return 'None', True
+
+    # New leave-one-out format: <SPECIES>_removed/ppm
+    if stem.endswith('_removed'):
+        return stem[: -len('_removed')], False
+
+    # Fallback for any other non-baseline series.
+    return stem, False
+
+
 def plot_spectra(
     output_dir: str,
     plot_format: str = 'pdf',
@@ -74,8 +94,8 @@ def plot_spectra(
         wl = df[WAVE_KEY]
         for key in df.keys():
             if key != WAVE_KEY:
-                lbl = key.split('_')[-1].split('/')[0]
-                if lbl == 'None':
+                lbl, is_baseline = _column_species_label(key)
+                if is_baseline:
                     zorder = 6
                     color = 'black'
                 else:
@@ -100,7 +120,7 @@ def plot_spectra(
     axb.xaxis.set_major_formatter(FormatStrFormatter('%g'))
 
     fig.subplots_adjust(hspace=0.01)
-    fpath = os.path.join(output_dir, 'plots', 'plot_spectra.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_spectra_{source}.{plot_format}')
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 

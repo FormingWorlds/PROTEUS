@@ -160,6 +160,16 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_struct.zalmoxis.update_stale_ceiling',
         'interior_struct.zalmoxis.use_anderson',
         'interior_struct.zalmoxis.use_jax',
+        'observe.clip_vmr',
+        'observe.module',
+        'observe.remove_one_gas',
+        'observe.petitRADTRANS.include_cia',
+        'observe.petitRADTRANS.include_rayleigh',
+        'observe.petitRADTRANS.line_opacity_mode',
+        'observe.petitRADTRANS.silent',
+        'observe.reference_pressure',
+        'observe.source',
+        'observe.spectrum_type',
         'outgas.atmodeller.eos_CH4',
         'outgas.atmodeller.eos_CO',
         'outgas.atmodeller.eos_CO2',
@@ -226,6 +236,8 @@ def test_map_completeness():
         if path.startswith('delivery.volatiles.'):  # mapped to planet.gas_prs.*
             continue
         if path in mig.REMOVED:
+            continue
+        if path == 'observe.synthesis':
             continue
         if path.startswith(_DROP_PREFIXES) or path == 'struct.zalmoxis':
             continue
@@ -486,10 +498,12 @@ def test_radius_int_converts_earth_radii_to_metres():
     assert any('radius-specified' in w for w in report.warnings)
 
 
-def test_no_warnings_on_clean_spider_config():
-    """A clean SPIDER config translates without warnings."""
+def test_clean_spider_config_warns_only_about_legacy_observe_synthesis():
+    """A clean SPIDER config only warns about the legacy observe.synthesis field."""
     _, report = _translate(_minimal_spider_v2())
-    assert report.warnings == [], report.warnings
+    assert report.warnings == ['Unmapped 2.0 field (left out): observe.synthesis'], (
+        report.warnings
+    )
 
 
 def test_grid_axis_renames():

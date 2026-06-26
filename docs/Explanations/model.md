@@ -46,6 +46,7 @@ atmosphere), enabling hierarchical model intercomparison.
 | Escape | [ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS), dummy | Atmospheric escape |
 | Outgassing | [CALLIOPE](https://proteus-framework.org/CALLIOPE/), [atmodeller](https://github.com/djbower/atmodeller), dummy | Volatile exchange between interior and atmosphere |
 | Orbit | [Obliqua](https://github.com/FormingWorlds/Obliqua), dummy | Orbital evolution and tidal heating |
+| Observations | [petitRADTRANS](https://petitradtrans.readthedocs.io/), none | Synthetic transit and eclipse spectra |
 
 Each module is maintained in its own repository and can be used as a standalone package outside of PROTEUS. The following sections describe each module's physical role and how PROTEUS couples to it.
 
@@ -117,6 +118,33 @@ Config section: `[outgas]`. Reference: [Escape and outgassing configuration](../
 
 Config section: `[orbit]`. Reference: [Star and orbit configuration](../Reference/config/star_orbit.md).
 
+## Synthetic observations: petitRADTRANS
+
+**[petitRADTRANS](https://petitradtrans.readthedocs.io/)** (Python) is a radiative transfer code for computing exoplanet transmission and emission spectra. PROTEUS uses petitRADTRANS as a forward model to synthesise what an observer would measure given the simulated atmospheric state.
+
+For each active composition source PROTEUS runs two calculations:
+
+- **Transit depth**: wavelength-dependent $(R_\mathrm{transit}/R_\star)^2$ in ppm, computed from the atmospheric scale height via `Radtrans.calculate_transit_radii`.
+- **Eclipse depth**: wavelength-dependent thermal emission contrast $(F_\mathrm{planet}/F_\star)$ in ppm, computed via `Radtrans.calculate_flux`.
+
+After computing the full-atmosphere baseline spectrum, PROTEUS can optionally
+repeat the calculation once per included line species with that species
+removed. This leave-one-out procedure quantifies the spectral contribution of
+each gas and produces additional columns in the output CSV files.
+
+The active source set is configured by `observe.source` (`all`, `outgas`,
+`profile`, `offchem`). Leave-one-out spectra are controlled by
+`observe.remove_one_gas`.
+Whether transit, eclipse, or both products are generated is controlled by
+`observe.spectrum_type`.
+
+The atmosphere profile is interpolated onto a 100-point log-spaced pressure grid before being passed to petitRADTRANS, and temperature is clipped to the valid table range [100.5 K, 3999.5 K].
+
+Before constructing the `Radtrans` object, PROTEUS moves the species with the
+broadest opacity wavelength coverage to the front of the line-species list.
+
+Config section: `[observe]`. Reference: [Observations configuration](../Reference/config/observe.md).
+
 ## Dummy modules
 
 Every module slot has a **dummy** implementation for testing, debugging, and
@@ -166,6 +194,7 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
 - [Coupling loop](coupling_loop.md): how the modules exchange data at each timestep
 - [Code architecture](code_architecture.md): source code layout and module patterns
 - [Configuration reference](../Reference/config/params.md): all configuration parameters
+- [Observations configuration](../Reference/config/observe.md): synthetic spectrum options
 - [Tutorials](../Tutorials/quick_start_dummy.md): worked examples from dummy to production
 - [Bibliography](../Reference/bibliography.md): published references for PROTEUS and its modules
 

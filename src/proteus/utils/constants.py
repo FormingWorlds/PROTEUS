@@ -44,6 +44,42 @@ B_ein = 2.5
 
 # Supported gases
 vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
+prt_gases = [
+    'C2H2',
+    'C2H4',
+    'CH4',
+    'CO',
+    'CO2',
+    'H2',
+    'H2O',
+    'H2S',
+    'HCN',
+    'NH3',
+    'O',
+    'O2',
+    'O3',
+    'OH',
+    'SH',
+    'Si',
+    'Si_+',
+    'SiO',
+    'SiO2',
+    'SO2',
+]
+prt_rayleigh_species = ['H2', 'He', 'H']
+prt_cia_species = [
+    'CO2--CO2',
+    'H2--H2',
+    'H2--He',
+    'H2O--H2O',
+    'H2O--N2',
+    'N2--H2',
+    'N2--He',
+    'N2--N2',
+    'N2--O2',
+    'O2--O2',
+]
+prt_ignored_gases = {'e-', 'MMW', 'nabla_ad'}
 vap_list = ['SiO']  # just one for now
 gas_list = vol_list + vap_list
 

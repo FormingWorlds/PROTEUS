@@ -408,12 +408,12 @@ def _helpfile_df_multi_row():
 
 def test_observe_dispatches_to_run_observe_with_last_helpfile_row(tmp_path):
     """Proteus.observe() must read the helpfile, take the last row,
-    and dispatch to run_observe with (hf_row, output_dir, config).
+    and dispatch to run_observe with (hf_row, config, directories).
 
     Discriminating: pin the kwargs of the run_observe call. A
     regression that passed the entire DataFrame instead of just the
     last row would fail the dict-type check; a regression that
-    swapped (hf_row, output_dir) order would fail the path check.
+    swapped (hf_row, config) order would fail the config identity check.
     """
     p = _make_proteus_instance(tmp_path)
     p.directories['output'] = str(tmp_path)
@@ -435,8 +435,11 @@ def test_observe_dispatches_to_run_observe_with_last_helpfile_row(tmp_path):
     # land at T_magma=3000 / F_atm=500. Reject both.
     assert args[0]['T_magma'] != pytest.approx(3500.0)
     assert args[0]['T_magma'] != pytest.approx(3000.0)
-    # Second arg is the output directory path.
-    assert args[1] == str(tmp_path)
+    # Second arg is the config object.
+    assert args[1] is p.config
+    # Third arg is the directories mapping.
+    assert isinstance(args[2], dict)
+    assert args[2]['output'] == str(tmp_path)
 
 
 def test_observe_raises_on_empty_helpfile(tmp_path):

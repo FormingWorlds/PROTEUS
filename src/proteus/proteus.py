@@ -1082,13 +1082,17 @@ class Proteus:
                 run_chemistry(self.directories, self.config, self.hf_row)
 
         # Synthetic observations
-        if self.config.observe.synthesis is not None:
+        if self.config.observe.module is not None:
             log.info(' ')
             PrintSeparator()
             if self.desiccated:
                 log.warning('Cannot observe planet after desiccation')
             else:
-                run_observe(self.hf_row, self.directories['output'], self.config)
+                run_observe(
+                    self.hf_row,
+                    self.config,
+                    self.directories,
+                )
 
         # Make final plots
         if self.config.params.out.plot_mod is not None:
@@ -1144,7 +1148,7 @@ class Proteus:
         # Run observations pipeline, typically invoked via CLI
         from proteus.observe.wrapper import run_observe
 
-        run_observe(hf_row, self.directories['output'], self.config)
+        run_observe(hf_row, self.config, self.directories)
 
     def offline_chemistry(self):
         # Extract archived data
