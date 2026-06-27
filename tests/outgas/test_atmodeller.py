@@ -32,14 +32,24 @@ See ``docs/How-to/test_infrastructure.md``, ``docs/How-to/test_building.md``,
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
+import numpy as np
 import pytest
 
 from proteus.escape.wrapper import calc_new_elements
 from proteus.outgas.atmodeller import (
     _VOLATILE_ELEMENT_STOICH,
     _populate_volatile_element_reservoirs,
+    calc_surface_pressures_atmodeller,
 )
-from proteus.utils.constants import element_mmw, secs_per_year, vol_list
+from proteus.utils.constants import element_mmw, gas_list, secs_per_year, vol_list
+
+# NOTE: do NOT importorskip('atmodeller') at module scope. The helper tests below
+# exercise only pure-Python reconstruction (`_populate_volatile_element_reservoirs`,
+# `_cached_model`, the stoichiometry table) and must stay collectable on CI
+# runners that omit atmodeller. The end-to-end tests that patch
+# `atmodeller.EquilibriumModel` call `importorskip` locally instead.
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -301,3 +311,346 @@ def test_model_cache_builds_once_per_species_network():
     assert _cached_model((), build) is empty
     assert len(builds) == 3
     _MODEL_CACHE.clear()
+
+
+# ---------------------------------------------------------------------------
+# Atmospheric-mass sourcing + species-key mapping regression
+# (calc_surface_pressures_atmodeller end-to-end with atmodeller mocked)
+# ---------------------------------------------------------------------------
+
+
+def _species_mass_frac(stoich: dict, el: str) -> float:
+    """Mass fraction of element ``el`` in a species, from ``element_mmw``."""
+    sp_mmw = sum(n * element_mmw[e] for e, n in stoich.items())
+    return stoich.get(el, 0) * element_mmw[el] / sp_mmw
+
+
+# proteus name -> (atmodeller output key, stoichiometry). Sulfur dioxide is
+# keyed 'O2S_g' by atmodeller (Hill notation), the case the wrapper must map.
+_SP_INFO = {
+    'H2O': ('H2O_g', {'H': 2, 'O': 1}),
+    'H2': ('H2_g', {'H': 2}),
+    'S2': ('S2_g', {'S': 2}),
+    'SO2': ('O2S_g', {'S': 1, 'O': 2}),
+    'O2': ('O2_g', {'O': 2}),
+}
+
+# Single partial pressure fed for every species, deliberately inconsistent with
+# the gas masses so the p*A/g reconstruction cannot reproduce the conserving
+# split (see _build_conserving_output).
+_FIXED_PRESSURE_BAR = 5.0
+
+# Each scenario hand-builds the species distribution that atmodeller's solver
+# WOULD produce at the named redox regime (the solver itself is mocked, so the
+# IW label documents which speciation the case represents, it is not computed
+# from fO2 here; the real solver-driven fO2 sweep is covered by the integration
+# test test_atmodeller_dummy_two_timesteps). Reducing keeps S in S2 and H in H2;
+# oxidising moves H into H2O and S into the Hill-keyed SO2 ('O2S_g'); the middle
+# case mixes both. Each species' assigned element mass and atmosphere/melt split
+# set its atmodeller ``gas_mass`` / ``dissolved_mass`` so the per-element split
+# must sum back to the budget.
+_REGRESSION_SCENARIOS = {
+    'reducing_IWm2': {
+        'fO2': -2.0,
+        # proteus_name: (primary_element, element_mass_assigned, atm_fraction)
+        'assign': {
+            'H2': ('H', 1.2e22, 0.6),
+            'S2': ('S', 1.92e21, 0.6),
+        },
+    },
+    'mid_IW0': {
+        'fO2': 0.0,
+        'assign': {
+            'H2O': ('H', 0.5 * 1.2e22, 0.6),
+            'H2': ('H', 0.5 * 1.2e22, 0.6),
+            'S2': ('S', 0.4 * 1.92e21, 0.6),
+            'SO2': ('S', 0.6 * 1.92e21, 0.6),
+        },
+    },
+    'oxidising_IWp4': {
+        'fO2': 4.0,
+        'assign': {
+            'H2O': ('H', 1.2e22, 0.6),
+            'SO2': ('S', 1.92e21, 0.6),
+        },
+    },
+}
+
+_H_BUDGET = 1.2e22
+_S_BUDGET = 1.92e21
+
+
+def _make_user_constant_config(fO2_shift_IW: float):
+    """MagicMock Config for the atmodeller backend under user_constant fO2."""
+    config = MagicMock()
+    config.outgas.module = 'atmodeller'
+    config.outgas.fO2_shift_IW = fO2_shift_IW
+    config.outgas.T_floor = 1200.0
+    config.outgas.mass_thresh = 1e8
+    config.outgas.solver_atol = 1e-8
+    config.outgas.solver_rtol = 1e-5
+    config.outgas.atmodeller.solver_max_steps = 100
+    config.outgas.atmodeller.solver_multistart = 1
+    config.outgas.atmodeller.solver_mode = 'robust'
+    config.outgas.atmodeller.include_condensates = False
+    for name in ('H2O', 'CO2', 'H2', 'N2', 'S2', 'CO', 'CH4'):
+        setattr(config.outgas.atmodeller, f'solubility_{name}', None)
+    for name in ('H2O', 'CO2', 'H2', 'CH4', 'CO'):
+        setattr(config.outgas.atmodeller, f'eos_{name}', None)
+    config.planet.fO2_source = 'user_constant'
+    config.interior_struct.core_frac = 0.3
+    return config
+
+
+def _hf_row_with_HS_budget() -> dict:
+    """Helpfile row seeded up to the outgas call, only H and S above threshold."""
+    hf: dict = {
+        'M_planet': 5.97e24,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'T_magma': 2200.0,
+        'Phi_global': 1.0,
+    }
+    for e in element_mmw:
+        hf[f'{e}_kg_total'] = 0.0
+    hf['H_kg_total'] = _H_BUDGET
+    hf['S_kg_total'] = _S_BUDGET
+    for s in gas_list:
+        for r in ('atm', 'liquid', 'solid'):
+            hf[f'{s}_kg_{r}'] = 0.0
+        hf[f'{s}_bar'] = 0.0
+        hf[f'{s}_vmr'] = 0.0
+    return hf
+
+
+def _build_conserving_output(assign: dict, fixed_pressure: float = _FIXED_PRESSURE_BAR):
+    """Build a fake atmodeller output that conserves the assigned element budgets.
+
+    For each species the assigned element mass divided by that element's mass
+    fraction gives the species total mass; the atmosphere/melt split sets
+    ``gas_mass`` / ``dissolved_mass``. Partial pressures are deliberately a
+    single fixed value, INDEPENDENT of the masses, so a regression that reverts
+    to the p*A/g reconstruction (which would assign every species the same
+    column mass) cannot reproduce the conserving split.
+    """
+    asdict: dict = {'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)}}
+    quick_look: dict = {'O2_g': np.array(1.0e-6)}
+    # Record the intended gas_mass per proteus species for the test's asserts.
+    gas_by_species: dict = {}
+    for proteus_name, (element, el_mass, atm_frac) in assign.items():
+        atmod_key, stoich = _SP_INFO[proteus_name]
+        sp_total = el_mass / _species_mass_frac(stoich, element)
+        gas = atm_frac * sp_total
+        dissolved = (1.0 - atm_frac) * sp_total
+        asdict[atmod_key] = {
+            'gas_mass': np.array(gas),
+            'dissolved_mass': np.array(dissolved),
+        }
+        quick_look[atmod_key] = np.array(fixed_pressure)
+        gas_by_species[proteus_name] = gas
+    out = MagicMock()
+    out.quick_look.return_value = quick_look
+    out.total_pressure.return_value = np.array(fixed_pressure * len(quick_look))
+    out.asdict.return_value = asdict
+    return out, gas_by_species
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('scenario', sorted(_REGRESSION_SCENARIOS), ids=lambda s: s)
+def test_element_split_closes_against_budget_across_redox(scenario):
+    """The per-element reservoir split closes to the conserved budget across fO2.
+
+    Regression for two atmospheric-mass bugs in the atmodeller wrapper:
+
+    1. ``{sp}_kg_atm`` is sourced from atmodeller's per-species ``gas_mass``,
+       not the thin-atmosphere reconstruction ``p*1e5*A/g``. That
+       reconstruction recovers the species' MOLE-fraction share of the column
+       (``x_i * M_atm``), mis-weighting each species by ``mu_mean / mu_i``, so
+       the per-element split would not close against the conserved element
+       budget. The reducing case (H carried by light H2) is where the
+       mis-weighting is largest.
+    2. Sulfur dioxide is keyed ``'O2S_g'`` by atmodeller (Hill notation), so the
+       wrapper must map ``SO2 -> 'O2S'``. With the stale ``'SO2'`` key the
+       species' atmospheric mass is silently dropped and S under-counts in an
+       SO2-dominated oxidising atmosphere (the IW+4 case here).
+
+    Verifies for H and S (the constrained elements; their ``{e}_kg_total`` is
+    the input budget, NOT recomputed by the wrapper under user_constant):
+    - ``{e}_kg_atm + {e}_kg_liquid + {e}_kg_solid == {e}_kg_total`` to 1e-9.
+    - O closure as a guard (its total IS recomputed, so closure is consistency).
+    - Discrimination guard 1: the p*A/g reconstruction for an H-carrying species
+      differs from the sourced ``gas_mass`` by far more than the closure
+      tolerance, so a revert to p*A/g would break closure.
+    - Discrimination guard 2 (oxidising/mid): ``SO2_kg_atm`` is non-zero, i.e.
+      the Hill-keyed species was captured rather than dropped.
+    - Every assigned species' ``{sp}_kg_atm`` equals its ``gas_mass`` (pins the
+      gas/dissolved partition per species, not just the per-element total, so a
+      gas<->dissolved swap on any single species is caught).
+    """
+    pytest.importorskip('atmodeller')  # patches atmodeller.EquilibriumModel below
+    spec = _REGRESSION_SCENARIOS[scenario]
+    config = _make_user_constant_config(spec['fO2'])
+    hf_row = _hf_row_with_HS_budget()
+    fake_out, gas_by_species = _build_conserving_output(spec['assign'])
+
+    fake_model = MagicMock()
+    fake_model.output = fake_out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    # A static-network mock would otherwise be served from a prior scenario's
+    # cached model (the active element set {H, S} is identical across scenarios).
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    # Per-element closure on the constrained elements. The equality form (tight
+    # rel) discriminates a factor / exponent error in the split.
+    for el, budget in (('H', _H_BUDGET), ('S', _S_BUDGET)):
+        split = sum(float(hf_row[f'{el}_kg_{r}']) for r in ('atm', 'liquid', 'solid'))
+        assert split == pytest.approx(budget, rel=1e-9), (
+            f'{scenario}: {el} split {split:.6e} != budget {budget:.6e}'
+        )
+
+    # O closure: O_kg_total is recomputed by the wrapper from the same species
+    # masses, so the split must agree with it (internal consistency guard). O is
+    # present at least as the buffer O2 floor in every scenario.
+    o_split = sum(float(hf_row[f'O_kg_{r}']) for r in ('atm', 'liquid', 'solid'))
+    assert o_split == pytest.approx(float(hf_row['O_kg_total']), rel=1e-9)
+    assert float(hf_row['O_kg_total']) > 0.0  # O-bearing species present
+
+    # Per-species pin: every assigned species' atmospheric mass equals its
+    # gas_mass, so a gas<->dissolved swap on any single species (which preserves
+    # the species total and would slip past the per-element closure above) is
+    # caught. This covers S2 in the reducing case, which the closure alone leaves
+    # unpinned.
+    for sp_name, gas_mass in gas_by_species.items():
+        assert hf_row[f'{sp_name}_kg_atm'] == pytest.approx(gas_mass, rel=1e-9), (
+            f'{scenario}: {sp_name}_kg_atm != sourced gas_mass'
+        )
+
+    # Discrimination 1: the sourced atmospheric mass is gas_mass, and the p*A/g
+    # reconstruction would differ by >> the closure tolerance. Pick an
+    # H-carrying species present in this scenario.
+    h_species = next(s for s in spec['assign'] if 'H' in _SP_INFO[s][1])
+    area = 4.0 * np.pi * hf_row['R_int'] ** 2
+    recon = _FIXED_PRESSURE_BAR * 1e5 * area / hf_row['gravity']
+    gas_mass = gas_by_species[h_species]
+    assert abs(gas_mass - recon) > 0.1 * gas_mass, (
+        f'{scenario}: p*A/g recon {recon:.3e} too close to gas_mass {gas_mass:.3e} '
+        'to discriminate the fix'
+    )
+
+    # Discrimination 2: when S sits in SO2, its Hill-keyed atmospheric mass must
+    # be captured (non-zero), not dropped by a stale 'SO2_g' lookup.
+    if 'SO2' in spec['assign']:
+        assert hf_row['SO2_kg_atm'] > 0.0
+
+
+@pytest.mark.physics_invariant
+def test_atm_mass_falls_back_to_thin_atm_recon_when_gas_mass_absent(caplog):
+    """When atmodeller omits gas_mass, the wrapper falls back to p*A/g and warns.
+
+    The primary path sources ``{sp}_kg_atm`` from ``gas_mass``; the fallback
+    (kept for an atmodeller output-schema change that drops the field) must
+    reconstruct the column mass as ``p*1e5*A/g`` and emit a warning so the
+    degraded, mis-weighted accounting is not silent. Exercises the branch that
+    the conserving-output tests never hit (they always supply gas_mass).
+    """
+    import logging
+
+    pytest.importorskip('atmodeller')
+    config = _make_user_constant_config(0.0)
+    hf_row = _hf_row_with_HS_budget()
+
+    # H2O present with a partial pressure but NO gas_mass field -> fallback.
+    out = MagicMock()
+    out.quick_look.return_value = {'H2O_g': np.array(40.0), 'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(40.0)
+    out.asdict.return_value = {
+        'H2O_g': {'dissolved_mass': np.array(1.0e20)},  # no 'gas_mass'
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.atmodeller'):
+        with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+            calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    area = 4.0 * np.pi * hf_row['R_int'] ** 2
+    expected = 40.0 * 1e5 * area / hf_row['gravity']  # p*1e5*A/g
+    assert hf_row['H2O_kg_atm'] == pytest.approx(expected, rel=1e-9)
+    # The fallback must be loud, not silent.
+    assert any(
+        "missing 'gas_mass'" in r.getMessage() and 'p*A/g' in r.getMessage()
+        for r in caplog.records
+    ), 'fallback to p*A/g did not emit the expected warning'
+    # Discrimination: the reconstruction is NOT a no-op zero and NOT the dissolved
+    # mass; it is the column mass from the partial pressure.
+    assert hf_row['H2O_kg_atm'] > 0.0
+    assert hf_row['H2O_kg_atm'] != pytest.approx(1.0e20, rel=1e-3)
+
+
+@pytest.mark.physics_invariant
+def test_condensed_mass_enters_solid_reservoir_and_closes_carbon():
+    """Condensed (graphite) carbon is routed to C_kg_solid so C still closes.
+
+    atmodeller reports condensed-phase mass separately (``element_C.
+    condensed_mass``); the gas-species inventory does not carry it. Without
+    folding it into the solid reservoir, ``C_kg_atm + C_kg_liquid + C_kg_solid``
+    would under-count the carbon budget exactly like the SO2 atmospheric drop.
+    Here graphite holds part of the carbon budget; the split must still close.
+    """
+    pytest.importorskip('atmodeller')
+    mC, mO = element_mmw['C'], element_mmw['O']
+    c_frac_co2 = mC / (mC + 2 * mO)
+    C_BUDGET = 5.0e21
+    # Split the carbon budget: 30% in gas/dissolved CO2, 70% condensed graphite.
+    co2_total = 0.3 * C_BUDGET / c_frac_co2
+    co2_gas = 0.6 * co2_total
+    co2_dissolved = 0.4 * co2_total
+    condensed_C = 0.7 * C_BUDGET
+
+    config = _make_user_constant_config(0.0)
+    config.outgas.atmodeller.include_condensates = True
+    hf_row = _hf_row_with_HS_budget()
+    hf_row['H_kg_total'] = 0.0  # carbon-only so the active network is C-bearing
+    hf_row['S_kg_total'] = 0.0
+    hf_row['C_kg_total'] = C_BUDGET
+
+    out = MagicMock()
+    out.quick_look.return_value = {'CO2_g': np.array(20.0), 'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(20.0)
+    out.asdict.return_value = {
+        'CO2_g': {'gas_mass': np.array(co2_gas), 'dissolved_mass': np.array(co2_dissolved)},
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+        'element_C': {'condensed_mass': np.array(condensed_C)},
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    # The condensed carbon lands in the solid reservoir.
+    assert hf_row['C_kg_solid'] == pytest.approx(condensed_C, rel=1e-9)
+    # Full closure: atmosphere + melt + solid == the carbon budget.
+    c_split = sum(float(hf_row[f'C_kg_{r}']) for r in ('atm', 'liquid', 'solid'))
+    assert c_split == pytest.approx(C_BUDGET, rel=1e-9), (
+        f'C split {c_split:.6e} != budget {C_BUDGET:.6e}'
+    )
+    # Discrimination: dropping the condensed term (the pre-fix state) under-counts
+    # by the graphite mass, i.e. the gas+liquid part alone misses 70% of carbon.
+    c_gas_liquid = float(hf_row['C_kg_atm']) + float(hf_row['C_kg_liquid'])
+    assert c_gas_liquid == pytest.approx(0.3 * C_BUDGET, rel=1e-6)
+    assert abs(c_gas_liquid - C_BUDGET) > 0.5 * C_BUDGET

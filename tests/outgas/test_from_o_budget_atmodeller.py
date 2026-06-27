@@ -102,8 +102,15 @@ def _earth_hf_row(O_kg_total: float = 1.0e22) -> dict:
 def _fake_atmodeller_output(log10dIW: float = -0.1):
     """Build a MagicMock that mimics ``EquilibriumModel.solve(...)`` ->
     ``model.output`` chain. The output's ``asdict()`` populates the keys
-    the wrapper reads (``O2_g.log10dIW_1_bar`` and per-species
+    the wrapper reads (``O2_g.log10dIW_1_bar`` and per-species ``gas_mass`` /
     ``dissolved_mass``); ``quick_look()`` provides partial pressures.
+
+    Each species carries ``gas_mass`` (the atmospheric mass the wrapper now
+    sources directly, rather than reconstructing it from the partial pressure
+    via p*A/g) so these dispatch / plumbing tests exercise the primary
+    atmospheric-mass path. The values are independent of the partial pressures
+    on purpose: a regression that reverted to the p*A/g reconstruction would
+    produce different ``{sp}_kg_atm`` here.
     """
     out = MagicMock()
     out.quick_look.return_value = {
@@ -115,9 +122,11 @@ def _fake_atmodeller_output(log10dIW: float = -0.1):
     }
     out.total_pressure.return_value = np.array(56.5)
     out.asdict.return_value = {
-        'O2_g': {'log10dIW_1_bar': np.array(log10dIW)},
-        'H2O_g': {'dissolved_mass': np.array(2.0e19)},
-        'CO2_g': {'dissolved_mass': np.array(1.0e18)},
+        'O2_g': {'log10dIW_1_bar': np.array(log10dIW), 'gas_mass': np.array(4.0e12)},
+        'H2O_g': {'gas_mass': np.array(3.0e20), 'dissolved_mass': np.array(2.0e19)},
+        'CO2_g': {'gas_mass': np.array(3.0e19), 'dissolved_mass': np.array(1.0e18)},
+        'N2_g': {'gas_mass': np.array(5.0e18)},
+        'S2_g': {'gas_mass': np.array(2.5e18)},
         'state': {'temperature': np.array(1800.0), 'pressure': np.array(56.5)},
     }
     return out
