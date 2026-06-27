@@ -65,13 +65,17 @@ from tests.integration.conftest import (
     validate_stability,
 )
 
-# Linux exercises the production Zalmoxis path end-to-end. The IC
-# solve via `solve_structure` is the only Zalmoxis call exercised
-# in this test; the test overrides below disable the
-# `equilibrate_initial_state` loop (up to 15 more solves) and the
-# per-iteration `update_structure_from_interior` refresh. With those
-# off the test lands well inside the standard 3600 s slow-tier
-# budget on GHA ubuntu-latest.
+# Linux exercises the production Zalmoxis path end-to-end at the production
+# 150-level resolution, where the structure self-consistency check holds. The
+# overrides below disable the `equilibrate_initial_state` loop and the
+# per-iteration `update_structure_from_interior` refresh, but the initial-
+# condition solve plus the one-time baseline hand-off still drive the Newton
+# mass-radius search through full-resolution structure integrations. This is
+# the same IC solve the sibling zalmoxis + aragog + calliope test runs (~133
+# min there, with real aragog and calliope on top); with only dummy backends
+# around it this test costs less, so the shared 9000 s timeout gives the real
+# solve ample headroom without coarsening the mesh below the resolution the
+# self-consistency check requires.
 #
 # On macOS arm64 the same test path is markedly slower (JAX +
 # diffrax PALEOS solve runs far slower on Apple Silicon); the test
@@ -79,7 +83,7 @@ from tests.integration.conftest import (
 # investigated at the wrapper or library level (TODO).
 pytestmark = [
     pytest.mark.slow,
-    pytest.mark.timeout(3600),
+    pytest.mark.timeout(9000),
     pytest.mark.skipif(
         sys.platform == 'darwin',
         reason='Zalmoxis + JAX PALEOS solve is markedly slower on macOS arm64; Linux covers production path',

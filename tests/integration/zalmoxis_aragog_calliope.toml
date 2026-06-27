@@ -89,13 +89,14 @@ config_version = "3.0"
         update_dtmagma_frac  = 0.999
         update_dw_comp_abs   = 0.999
         update_stale_ceiling = 0
-        # Coarse structure resolution keeps each Newton integration cheap so
-        # the slow-tier walltime stays under budget. The asserted invariants
-        # (Earth-scale R_int, mass closure, the one-time baseline hand-off) are
-        # insensitive to radial resolution at this level; production runs use
-        # the 150-level / 100-inner-iteration defaults.
-        num_levels            = 48
-        solver_max_iter_inner = 50
+        # Production structure resolution (150 levels, 100 inner iterations).
+        # The mantle-mass self-consistency check converges only at this
+        # resolution; coarsening the mesh inflates the mass residual past the
+        # 5% gate and the IC solve aborts. The slow-tier walltime budget
+        # (9000 s, set in the test module) covers the full-resolution Newton
+        # search instead of trading the check away for speed.
+        num_levels            = 150
+        solver_max_iter_inner = 100
 
 # Interior energetics: real Aragog (entropy ODE, JAX-derived RHS with
 # analytic Jacobian).

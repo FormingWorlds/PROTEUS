@@ -217,13 +217,6 @@ def minimal_zalmoxis_overrides() -> dict:
         'interior_struct__zalmoxis__update_dtmagma_frac': 0.999,
         'interior_struct__zalmoxis__update_dw_comp_abs': 0.999,
         'interior_struct__zalmoxis__update_stale_ceiling': 0,
-        # Coarse structure resolution and a lower inner-Picard cap keep each
-        # Newton structure integration cheap so the slow-tier walltime stays
-        # well under the 3600 s ceiling. These tests assert Earth-scale R_int
-        # and coupling invariants, which are insensitive to radial resolution
-        # at this level; the production default is 150 levels / 100 inner iters.
-        'interior_struct__zalmoxis__num_levels': 32,
-        'interior_struct__zalmoxis__solver_max_iter_inner': 40,
     }
 
 
