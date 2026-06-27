@@ -138,7 +138,7 @@ The active source set is configured by `observe.source` (`all`, `outgas`,
 Whether transit, eclipse, or both products are generated is controlled by
 `observe.spectrum_type`.
 
-The atmosphere profile is interpolated onto a 100-point log-spaced pressure grid before being passed to petitRADTRANS, and temperature is clipped to the valid table range [100.5 K, 3999.5 K].
+The atmosphere profile is interpolated onto a 100-point log-spaced pressure grid before being passed to petitRADTRANS, and temperature is clipped to the valid table range \[100.5 K, 3999.5 K\].
 
 Before constructing the `Radtrans` object, PROTEUS moves the species with the
 broadest opacity wavelength coverage to the front of the line-species list.
