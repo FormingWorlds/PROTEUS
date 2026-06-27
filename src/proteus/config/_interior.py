@@ -237,6 +237,10 @@ class InteriorBoundary:
         Silicate density [kg/m^3]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F).
     core_density: float
         Core density [kg/m^3].
+    core_shear: float
+        Core shear modulus [Pa].
+    core_bulk: float
+        Core bulk modulus [Pa].
     thermal_conductivity: float
         Thermal conductivity [W/m/K].
     thermal_diffusivity: float
@@ -266,6 +270,8 @@ class InteriorBoundary:
     nusselt_exponent: float = field(default=0.33, validator=gt(0))  # -
     silicate_heat_capacity: float = field(default=1.2e3, validator=gt(0))  # J/kg/K
     core_density: float = field(default=10738.0, validator=gt(0))  # kg/m^3
+    core_shear: float = field(default=1.0e-1, validator=gt(0))  # Pa
+    core_bulk: float = field(default=5e11, validator=gt(0))  # Pa
     atm_heat_capacity_const: bool = field(default=True)
     atm_heat_capacity: float = field(default=1.7e4, validator=gt(0))  # J/kg/K
     silicate_density: float = field(default=4103.0, validator=gt(0))  # kg/m^3

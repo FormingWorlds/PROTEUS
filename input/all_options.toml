@@ -188,12 +188,12 @@ config_version = "3.0"
 
 # Planetary orbit & tides
 [orbit]
-    module                    = "none"       # tidal heating module: none | dummy | lovepy
-
-    # Orbit geometry and instellation
+    # Orbit instellation
     instellation_method       = "distance"   # "distance" (semi-major axis) | "inst" (flux)
-    semimajoraxis             = 1.0          # semi-major axis [AU] (if method = "distance")
     instellationflux          = 1.0          # instellation [S_Earth] (if method = "inst")
+
+    # Orbit geometry
+    semimajoraxis             = 1.0          # semi-major axis [AU] (if method = "distance")
     eccentricity              = 0.0          # orbital eccentricity
     zenith_angle              = 48.19        # characteristic zenith angle [degrees]
     s0_factor                 = 0.375        # instellation geometric scale factor
@@ -202,10 +202,17 @@ config_version = "3.0"
     evolve                    = false        # evolve semi-major axis and eccentricity
     axial_period              = "none"       # day length [hours]; none = tidally locked
 
-    # Satellite (moon)
+    perturber                 = "star"       # perturbing object ("star", "satellite") to induce tides on the primairy (planet)
+
+    # Satellite
     satellite                 = false        # include satellite
     mass_sat                  = 7.347e+22    # satellite mass [kg]
-    semimajoraxis_sat         = 3e8          # satellite orbit semi-major axis [m]
+    orbital_period_sat        = 2.36e6       # satellite orbital period [s]
+    semimajoraxis_sat         = 3.0e8        # satellite orbit semi-major axis [m]
+    eccentricity_sat          = 0.0          # satellite initial orbital eccentricity [dimensionless]
+    love_number_sat           = "none"       # satellite love number spectrum, provide absolute path to file. (Can be pre-genrated by Obliqua.)
+
+    module                    = "none"       # tidal heating module: none | dummy | lovepy | obliqua
 
     [orbit.dummy]
         H_tide                = 1e-7         # fixed tidal power density [W kg-1]
@@ -217,34 +224,79 @@ config_version = "3.0"
         ncalc                 = 1000         # grid points for tidal calculation
 
     [orbit.obliqua]
-        min_frac    = 0.02      # Minimal segment radius fraction before smoothing [dimensionless]
-        visc_l      = 1e2       # Pure liquid viscosity [Pa s]
-        visc_lus    = 5e2       # Liquidus viscosity to use [Pa s]
-        visc_s      = 1e21      # Pure solid visosity [Pa s]
-        visc_sus    = 5e13      # Solidus viscosity to use [Pa s]
-        n           = 2         # Power of the radial factor (goes with (r/a)^{n}, since r<<a only n=2 contributes significantly)
-        m           = 2         # Harmonic of the true anomaly. m=2 corresponds to the semidiurnal tide, m=1 diurnal tide
-        N_sigma     = 10        # Number probe frequencies to evaluate k2 at
-        k_min       = -30       # Minimum tidal mode range (k is the Fourier index in mean anomaly)
-        k_max       = 40        # Maximum tidal mode range (k is the Fourier index in mean anomaly)
-        p_min       = -20       # Minimum period for orbital and axial frequencies [log(kyr)] i.e. forcing occurion over minimal 1e-17 yr interval
-        p_max       = 6         # Maximum period for orbital and axial frequencies [log(kyr)] i.e. forcing occurion over maximal 1e9   yr interval
-        material    = "andrade" # Material type for complex shear modulus ("andrade", "maxwell")
-        alpha       = 0.3       # Power-law exponent, only for Andrade rheology (free parameter)
-        strain      = true      # Strategy for obtaining heating profile
+        min_frac              = 0.02         # minimum segment radius fraction before smoothing [dimensionless]
+        visc_l                = 1e2          # pure liquid viscosity [Pa s]
+        visc_lus              = 5e5          # liquidus viscosity to use [Pa s]
+        visc_s                = 1e22         # pure solid visosity [Pa s]
+        visc_sus              = 5e5          # solidus viscosity to use [Pa s]
+        n                     = [2]          # power of the radial factor (goes with (r/a)^{n}, since r<<a only n=2 contributes significantly)
+        m                     = [0, 2]       # harmonic of the true anomaly. m=2 corresponds to the semidiurnal tide, m=1 diurnal tide
+        spectrum              = "adaptive"   # obtain k2 spectrum for whole spectrum ("full") or region of interest ("adaptive")
+        N_sigma               = 20           # number probe frequencies to evaluate k2 at
+        p_min                 = -8           # minimum period for orbital and axial frequencies [log(kyr)] i.e. forcing occurion over minimal 1e-17 yr interval
+        p_max                 = 4            # maximum period for orbital and axial frequencies [log(kyr)] i.e. forcing occurion over maximal 1e9   yr interval
+        s_min                 = "none"       # minimum tidal mode range (k is the Fourier index in mean anomaly), set <nothing> to obtain tidal mode range from eccentricity relation
+        s_max                 = "none"       # maximum tidal mode range (k is the Fourier index in mean anomaly), set <nothing> to obtain tidal mode range from eccentricity relation
 
-        module_solid = "solid1d" # Options: ("none", "solid0d", "solid1d", "solid1d-mush")
+        material_mu           = "andrade"    # material type for complex shear modulus ("andrade", "maxwell", "elastic")
+        material_k            = "andrade"    # material type for complex bulk modulus ("andrade", "maxwell", "elastic")
+        alpha                 = 0.3          # power-law exponent, only for Andrade rheology (free parameter)
 
-        module_fluid = "fluid1d" # Options: ("none", "fluid0d", "fluid1d")
+        # Solid interior model
+        # Controls how the solid portion of the interior responds to tidal forcing.
+        # - "none"                : No solid interior model.
+        # - "solid0d"             : Zero-dimensional solid model. The solid region is treated as a single
+        #                           effective layer with averaged mechanical properties. Fast but cannot
+        #                           resolve radial structure in deformation or dissipation.
+        # - "solid1d"             : Radially resolved solid model. Solves the tidal response through a
+        #                           layered solid interior. Allows realistic rigidity, density, and
+        #                           rheology profiles.
+        # - "solid1d-relax"       : Same as solid1d, but uses the relaxation method to obtain a solution
+        #                           (instead of the shooting method) which is generally more stable.
+        #                           However, this method is generally slower.
+        # - "solid1d-mush"        : Same as solid1d but includes a partially molten/porous ("mushy") region
+        #                           with evolving rheology between solid and liquid behavior.
+        # - "solid1d-mush-relax"  : Same as solid1d_relax but includes a partially molten/porous ("mushy") region
+        #                           with evolving rheology between solid and liquid behavior.
+        module_solid = "solid1d-relax"
+
+        # Mushy layer model
+        # Controls how partially molten regions are treated.
+        # - "none"                : No explicit mush layer treatment.
+        # - "interp"              : Rheological properties transition smoothly between solid and fluid
+        #                           regimes using interpolation across the melt fraction range.
+        module_mushy = "none"
+
+        # Fluid layer model
+        # Controls how the fluid (e.g., magma ocean or atmosphere) responds to tidal forcing.
+        # - "none"                : No fluid layer.
+        # - "fluid0d"             : Zero-dimensional fluid model. The fluid region is treated as a single
+        #                           effective layer with averaged mechanical properties. Fast but cannot
+        #                           resolve radial structure in deformation or dissipation.
+        # - "fluid1d"             : Same as fluid0d but allows for user specified heating distribution.
+        module_fluid = "none"
 
         [orbit.obliqua.solid]
-            ncalc       = 1000      # Number of sublayers to use for dim=1 solid tides
-            bulk_l      = 1e9       # Liquid bulk modulus [Pa]
-            permea      = 1e-7      # Permeability [m^2]
-            porosity_thresh = 1e-5  # Porosity threshold, below this value no mush. [dimensionless]
+            ncalc             = 100          # number of sublayers to use for dim=1 solid tides (for shooting method)
+            dr_min            = 300          # minimum spacing between grid points (for relaxation method) [m]
+            dr_max            = 3000         # maximum spacing between grid points (for relaxation method) [m]
+            core              = "liquid"     # core solution to use as CMB boundary condition, options: "liquid", "solid", "inertial"
+            bulk_l            = 1e9          # liquid bulk modulus [Pa]
+            permea            = 1e-7         # permeability [m^2]
+            dbulk_power       = 1            # drained bulk modulus powerlaw scaling exponent
+            porosity_thresh   = 3e-2         # percolation threshold, at which there is a first‐order transition from fully connected to fully isolated pore space [dimensionless]
 
         [orbit.obliqua.fluid]
-            sigma_R     = 1e-3      # Rayleigh drag coefficient [dimensionless]
+            sigma_R           = 1e-4         # rayleigh drag coefficient at interface [dimensionless]
+            sigma_R_inf       = 1e-7         # rayleigh drag coefficient in pure fluid [dimensionless]
+            sigma_R_prf       = "dynamic"    # heating profile distribution ("uniform", "exp", "linear", "quadratic", "dynamic")
+            H_R               = 1e5          # heating profile scale height [m]
+            efficiency        = 1e-2         # rayleigh drag efficiency at core interface [dimensionless]
+
+        [orbit.obliqua.mushy]
+            b_width           = 5e-1         # fraction of segment height as standard deviation for lower dissipation peak
+            t_width           = 3e-2         # fraction of segment height as standard deviation for upper dissipation peak
+
 
 
 # ----------------------------------------------------
@@ -426,6 +478,8 @@ config_version = "3.0"
         atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
         silicate_density          = 4103.0       # silicate density [kg/m^3]
         core_density              = 10738        # core density if not defined by structure module [kg/m^3]
+        core_shear                = 1.0e-1       # core shear modulus [Pa]
+        core_bulk                 = 5.0e11       # core bulk modulus [Pa]
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]
         thermal_diffusivity       = 1.0e-6       # thermal diffusivity [m^2/s]
         thermal_expansivity       = 2.0e-5       # thermal expansivity [1/K]

@@ -58,17 +58,66 @@ class Lovepy:
 
 @define
 class ObliquaSolid:
-    """Solid-tide configuration for Obliqua tides."""
+    """Solid-tide configuration for Obliqua tides.
+
+    Attributes
+    ----------
+    ncalc: int
+        Number of interpolated interior levels to use for solving tidal heating rates (shooting method).
+    dr_min: float
+        Minimum radial grid spacing [m] (Henyey/relaxation method).
+    dr_max: float
+        Maximum radial grid spacing [m] (Henyey/relaxation method).
+    core: str
+        Core solution vector ("liquid", "solid", or "inertial").
+    bulk_l: float
+        Bulk modulus of the liquid phase [Pa].
+    porosity_thresh: float
+        Porosity threshold, hard cutoff below which melt fraction is set to zero [dimensionless].
+    dbulk_power: int
+        Drained bulk modulus powerlaw scaling exponent [dimensionless].
+    """
     ncalc: int              = field(default=1000, validator=gt(100))
+    dr_min: float           = field(default=300, validator=gt(0))
+    dr_max: float           = field(default=3000, validator=gt(dr_min))
+    core: str               = field(default="liquid", validator=in_(("liquid", "solid", "inertial")))
     bulk_l: float           = field(default=1e9, validator=gt(0))
-    permea: float           = field(default=1e-7, validator=gt(0))
-    porosity_thresh: float  = field(default=1e-5, validator=gt(0))
-    mush: bool              = field(default=False)
+    porosity_thresh: float  = field(default=3e-2, validator=gt(0))
+    dbulk_power: int        = field(default=1, validator=gt(0))
+
+@define
+class ObliquaMushy:
+    """Mushy-tide configuration for Obliqua tides.
+
+    Attributes
+    ----------
+    b_width: float
+        Scale width of the bottom heating decay profile [dimensionless].
+    t_width: float
+        Scale width of the top heating decay profile [dimensionless].
+    """
+    b_width: float      = field(default=5e-1)
+    t_width: float      = field(default=3e-2)
 
 @define
 class ObliquaFluid:
-    """Fluid-tide configuration for Obliqua tides."""
+    """Fluid-tide configuration for Obliqua tides.
+
+    Attributes
+    ----------
+    sigma_R: float
+        Rayleigh drag in the fluid-mush/solid boundary layers [1/s].
+    sigma_R_inf: float
+        Rayleigh drag in the pure fluid [1/s].
+    sigma_R_prf: str
+        Radial heating distribution profile [dimensionless].
+    H_R: float
+        Scale height to be used by heating profile [m].
+    efficiency: float
+        Rayleigh drag efficiency at core interface [dimensionless].
+    """
     sigma_R: float      = field(default=1e-3, validator=gt(0))
+    sigma_R_inf: float  = field(default=1e-7, validator=gt(0))
     sigma_R_prf: str    = field(default="exp", validator=in_(("uniform", "exp", "linear", "quadratic", "dynamic")))
     H_R: float          = field(default=1e4, validator=gt(0))
     efficiency: float   = field(default=0.3, validator=gt(0))
@@ -110,45 +159,55 @@ class Obliqua:
     """
 
     # global configuration
-    dim: int = field(default=1, validator=in_((0, 1)))
     min_frac: float = field(default=0.02, validator=gt(0))
 
-    visc_l: float = field(default=1e2, validator=gt(0))
-    visc_lus: float = field(default=5e2, validator=gt(0))
-    visc_s: float = field(default=1e21, validator=gt(0))
-    visc_sus: float = field(default=5e13, validator=gt(0))
+    visc_l: float   = field(default=1e2, validator=gt(0))
+    visc_lus: float = field(default=5e5, validator=gt(0))
+    visc_s: float   = field(default=1e22, validator=gt(0))
+    visc_sus: float = field(default=5e5, validator=gt(0))
 
-    n: int = field(default=2, validator=gt(0))
-    m: int = field(default=2, validator=gt(0))
+    n: list = field(default=[2])
+    m: list = field(default=[0, 2])
+
+    spectrum: str = field(
+        default="adaptive",
+        validator=in_(("full", "adaptive"))
+    )
 
     N_sigma: int = field(default=10, validator=gt(0))
-    k_min: int = field(default=-30)
-    k_max: int = field(default=40)
-
     p_min: float = field(default=-20)
     p_max: float = field(default=6)
 
-    material: str = field(
+    k_min: int | str = field(default="none")
+    k_max: int | str = field(default="none")
+
+    material_mu: str = field(
         default="andrade",
-        validator=in_(("andrade", "maxwell"))
+        validator=in_(("andrade", "maxwell", "elastic"))
+    )
+    material_k: str = field(
+        default="andrade",
+        validator=in_(("andrade", "maxwell", "elastic"))
     )
     alpha: float = field(default=0.3, validator=gt(0))
-    strain: bool = field(default=True)
 
     # module selection
     module_solid: str = field(
         default="solid0d",
-        validator=in_(("none", "solid0d", "solid1d", "solid1d-mush")),
-        converter=none_if_none
+        validator=in_(("none", "solid0d", "solid1d", "solid1d-relax", "solid1d-mush", "solid1d-mush-relax"))
+    )
+    module_mushy: str = field(
+        default="none",
+        validator=in_(("none", "interp"))
     )
     module_fluid: str = field(
         default="fluid0d",
-        validator=in_(("none", "fluid0d", "fluid1d")),
-        converter=none_if_none
+        validator=in_(("none", "fluid0d", "fluid1d"))
     )
 
     # submodules
     solid: ObliquaSolid = field(factory=ObliquaSolid)
+    mushy: ObliquaMushy = field(factory=ObliquaMushy)
     fluid: ObliquaFluid = field(factory=ObliquaFluid)
 
 def ax_valid(instance, attribute, value):
@@ -188,17 +247,23 @@ class Orbit:
 
     satellite: bool
         Model a satellite (moon) orbiting the planet and solve for its orbit?
+    mass_sat: float
+        Satellite mass [kg]
+    orbital_period_sat: float
+        Satellite orbital period [s]
     semimajoraxis_sat: float
-        Satellit initial semi-major axis  [m]
+        Satellite initial semi-major axis  [m]
+    eccentricity_sat: float
+        Satellite initial orbital eccentricity [dimensionless]
+    love_number_sat: str | None
+        Satellite love number spectrum, provide absolute path to file.
+
+    orbit_model: str | None
+        Select orbit module to use. Choices: 'none', 'dummy', 'pla_sat_evec',
 
     module: str | None
-        Select orbit module to use. Choices: 'none', 'dummy', 'lovepy', 'obliqua'.
+        Select tides module to use. Choices: 'none', 'dummy', 'lovepy', 'obliqua'.
     """
-
-    # Tidal heating modules
-    module: str | None = field(
-        default='none', validator=in_((None, 'dummy', 'lovepy', 'obliqua')), converter=none_if_none
-    )
 
     # Planet initial orbital parameter
     semimajoraxis: float = field(default=1.0, validator=gt(0))
@@ -209,7 +274,6 @@ class Orbit:
             lt(1),
         ),
     )
-
     # Climate parameters set by rotation of planet
     zenith_angle: float = field(
         default=48.19,
@@ -220,21 +284,31 @@ class Orbit:
     )
     s0_factor: float = field(default=0.375, validator=gt(0))
 
-    # Allow the planet's orbit to evolve based on eccentricity tides?
-    evolve: bool = field(default=False)
-
+    # Allow the planet's orbit to evolve based on tides?
+    evolve: bool          = field(default=False)
     # Initial day length for planet [hours]
-    # If none, assume 1:1 spin orbit resonance
+    # If none, assume 1:1 spin orbit synchronization and use orbital period as day length
     axial_period = field(default=None, validator=ax_valid, converter=none_if_none)
 
+    # Perturber to induce tides on the planet. Options: 'star', 'satellite'.
+    perturber: str | None = field(default=None, validator=in_((None, 'star', 'satellite')), converter=none_if_none)
+
     # Satellite orbit
-    satellite: bool = field(default=False)
-    mass_sat: float = field(default=7.347e22, validator=gt(0))
-    semimajoraxis_sat: float = field(default=3e8, validator=gt(0))
+    satellite: bool             = field(default=False)
+    mass_sat: float             = field(default=7.347e22, validator=gt(0))
+    orbital_period_sat: float   = field(default=2.36e6, validator=gt(0))
+    semimajoraxis_sat: float    = field(default=3e8, validator=gt(0))
+    eccentricity_sat: float     = field(default=0.0, validator=ge(0))
+    love_number_sat: str | None = field(default=None, converter=none_if_none)
+
+    # Tidal heating modules
+    module: str | None = field(
+        default='none', validator=in_((None, 'dummy', 'lovepy', 'obliqua')), converter=none_if_none
+    )
 
     dummy:  OrbitDummy  = field(factory=OrbitDummy)
     lovepy: Lovepy      = field(factory=Lovepy)
     obliqua: Obliqua    = field(factory=Obliqua)
 
     instellation_method: str = field(default='distance', validator=in_(('distance', 'inst')))
-    instellationflux: float = field(default=1.0, validator=gt(0))
+    instellationflux: float  = field(default=1.0, validator=gt(0))
