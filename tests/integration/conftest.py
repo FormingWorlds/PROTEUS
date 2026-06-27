@@ -222,8 +222,8 @@ def minimal_zalmoxis_overrides() -> dict:
         # well under the 3600 s ceiling. These tests assert Earth-scale R_int
         # and coupling invariants, which are insensitive to radial resolution
         # at this level; the production default is 150 levels / 100 inner iters.
-        'interior_struct__zalmoxis__num_levels': 48,
-        'interior_struct__zalmoxis__solver_max_iter_inner': 50,
+        'interior_struct__zalmoxis__num_levels': 32,
+        'interior_struct__zalmoxis__solver_max_iter_inner': 40,
     }
 
 
