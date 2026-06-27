@@ -289,9 +289,9 @@ always the wavelength grid; subsequent columns are depth values in ppm:
 
 | Column | Description |
 |--------|-------------|
-| `Wavelength/um` | Wavelength [μm] on a log-spaced grid |
-| `None/ppm` | Baseline depth [ppm] — all detected line species included |
-| `<SPECIES>_removed/ppm` | Depth [ppm] with `<SPECIES>` removed (one column per line species found in the gas mixture) |
+| `Wavelength/um` | Wavelength \[μm\] on a log-spaced grid |
+| `None/ppm` | Baseline depth \[ppm\] — all detected line species included |
+| `<SPECIES>_removed/ppm` | Depth \[ppm\] with `<SPECIES>` removed (one column per line species found in the gas mixture) |
 
 The number of `*_removed` columns varies depending on which species have
 opacity tables present in `$FWL_DATA/prt/input_data` and exceed the
@@ -305,7 +305,7 @@ coloured by species identity.
 <figure markdown="span">
   ![Example synthetic spectrum: transit and eclipse depth with per-species overlays](../assets/example_spectrum.png)
   <figcaption><b>Example <code>plot_spectra</code> output.</b>
-  Upper panel: primary transit depth [ppm]. Lower panel: secondary eclipse depth [ppm].
+  Upper panel: primary transit depth \[ppm\]. Lower panel: secondary eclipse depth \[ppm\].
   The black line is the baseline (all species present); coloured lines show the spectrum
   with each gas removed in turn.</figcaption>
 </figure>
