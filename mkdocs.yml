@@ -114,6 +114,7 @@ nav:
       - Atmodeller: https://atmodeller.readthedocs.io/en/latest/
       - FastChem: https://newstrangeworlds.github.io/FastChem/
       - SOCRATES: https://github.com/FormingWorlds/SOCRATES/
+      - PetitRADTRANS: https://petitradtrans.readthedocs.io/en/latest/
 
 theme:
   name: material
