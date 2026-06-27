@@ -114,8 +114,9 @@ def test_zalmoxis_aragog_calliope_two_timesteps(proteus_multi_timestep_run):
     - ``Phi_global`` in [0, 1].
     - Cross-step continuity: |dT_magma| < 1000 K, |dPhi_global| <
       0.5.
-    - R_int stable across rows (structure refresh disabled,
-      update_interval = 0).
+    - R_int does a single bounded baseline contraction then stays
+      stable (refresh disabled, update_interval = 0; the one-time
+      baseline hand-off is the only structure change).
     - Cross-cutting mass + stability helpers.
     """
     runner = proteus_multi_timestep_run(
@@ -162,15 +163,33 @@ def test_zalmoxis_aragog_calliope_two_timesteps(proteus_multi_timestep_run):
     assert np.all(r_int > 5.5e6), f'R_int below Earth scale: min={r_int.min():.3e} m'
     assert np.all(r_int < 6.5e6), f'R_int above Earth scale: max={r_int.max():.3e} m'
 
-    # R_int stable across rows: structure refresh is disabled
-    # (update_interval = 0), so Zalmoxis solves once at IC and the
-    # radius is held fixed. Any cross-row variation is a spurious
-    # re-solve.
+    # R_int follows the one-time baseline structure hand-off, then settles.
+    # With update_interval = 0 the per-iteration refresh triggers are off, so
+    # the only structure change is the baseline re-solve on the first non-init
+    # step (which hands the structure off to the energetics-module temperature
+    # profile and contracts R_int once); R_int is then constant. The assertions
+    # encode "one bounded contraction then stable", which still discriminates a
+    # per-step re-solve (more than one change) and a runaway collapse or
+    # expansion (magnitude / sign guards).
     if len(r_int) >= 2:
-        rel_drift = np.max(np.abs(np.diff(r_int))) / r_int[0]
-        assert rel_drift < 1e-6, (
-            f'R_int drifted across rows despite update_interval = 0; '
-            f'max rel drift = {rel_drift:.3e}'
+        step_drift = np.abs(np.diff(r_int)) / r_int[0]
+        # At most one significant per-step change: the baseline hand-off. A
+        # refresh trigger misfiring every step would show more than one; a
+        # frozen structure shows none.
+        n_significant = int(np.sum(step_drift > 1e-4))
+        assert n_significant <= 1, (
+            f'R_int changed on more than one step (n={n_significant}); expected a '
+            f'single baseline hand-off, per-step rel drifts = {step_drift}'
+        )
+        # The hand-off contracts the structure; R_int must not expand, and the
+        # one-time change is bounded well below a runaway collapse.
+        net_change = (r_int[0] - r_int[-1]) / r_int[0]
+        assert -1e-6 <= net_change < 0.10, (
+            f'R_int net change {net_change:.3e} outside [0, 10%): expected a '
+            f'bounded one-time baseline contraction, not expansion or collapse'
+        )
+        assert np.all(np.diff(r_int) <= 1e-6 * r_int[0]), (
+            f'R_int expanded on some step; per-step diffs = {np.diff(r_int)}'
         )
 
     final = hf.iloc[-1]

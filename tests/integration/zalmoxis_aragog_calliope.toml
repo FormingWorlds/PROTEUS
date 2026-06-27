@@ -89,6 +89,13 @@ config_version = "3.0"
         update_dtmagma_frac  = 0.999
         update_dw_comp_abs   = 0.999
         update_stale_ceiling = 0
+        # Coarse structure resolution keeps each Newton integration cheap so
+        # the slow-tier walltime stays under budget. The asserted invariants
+        # (Earth-scale R_int, mass closure, the one-time baseline hand-off) are
+        # insensitive to radial resolution at this level; production runs use
+        # the 150-level / 100-inner-iteration defaults.
+        num_levels            = 48
+        solver_max_iter_inner = 50
 
 # Interior energetics: real Aragog (entropy ODE, JAX-derived RHS with
 # analytic Jacobian).
