@@ -64,7 +64,9 @@ Install the required system libraries for your platform. See the
 **Compute clusters**: use the dedicated guides instead
 ([Kapteyn](kapteyn_cluster_guide.md),
 [Habrok](habrok_cluster_guide.md),
-[Snellius](snellius_cluster_guide.md)).
+[Snellius](snellius_cluster_guide.md),
+[Cambridge IoA](ioa_cluster_guide)).
+
 
 ## 2. Clone PROTEUS and create conda environment
 
