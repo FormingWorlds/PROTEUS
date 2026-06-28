@@ -838,6 +838,16 @@ class AragogRunner:
                 and os.path.isfile(liquid_eos)
             )
 
+            # Aragog's per-phase P-T property tables are built from the
+            # two-phase solid/liquid tables whenever they are available, for
+            # BOTH mantle_eos = "PALEOS:MgSiO3" (unified structure) and
+            # "PALEOS-2phase:MgSiO3". So for the default unified config the
+            # structure solve uses the unified table while Aragog's densities
+            # come from these two-phase tables. The "already exist" path below
+            # reuses the cached per-run aragog_pt tables (generated once from
+            # the two-phase source). Only when no two-phase tables are present
+            # does Aragog fall back to building its tables from the unified
+            # table, where solid and melt share one source surface.
             if has_2phase:
                 if not (LOOK_UP_DIR / 'density_melt.dat').is_file():
                     from zalmoxis.eos_export import generate_aragog_pt_tables_2phase

@@ -38,11 +38,28 @@ Chabrier, or Seager 2007). It supports 2-layer (core + mantle) and 3-layer
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `core_eos` | str | `"PALEOS:iron"` | Core EOS as `"<source>:<material>"` |
-| `mantle_eos` | str | `"PALEOS:MgSiO3"` | Mantle EOS as `"<source>:<material>"` |
+| `mantle_eos` | str | `"PALEOS:MgSiO3"` | Mantle EOS as `"<source>:<material>"`; `PALEOS:` uses the unified table, `PALEOS-2phase:` uses separate solid and liquid tables (see the PALEOS mantle EOS notes below) |
 | `ice_layer_eos` | str or none | `none` | Ice/water layer EOS; `none` = 2-layer model |
-| `mushy_zone_factor` | float | `0.8` | Solidus/liquidus depression factor \[0.7, 1.0] (PALEOS only) |
+| `mushy_zone_factor` | float | `0.8` | Solidus depression $T_\mathrm{sol}=f\,T_\mathrm{liq}$ \[0.7, 1.0]; the default 0.8 is the Stixrude (2014) solidus-to-liquidus ratio for MgSiO$_3$. Applies to `PALEOS:` unified only; for `PALEOS-2phase:` it is treated as 1.0 |
 | `mantle_mass_fraction` | float | `0` | Mantle mass fraction for 3-layer models; `0` = auto ($1 - \mathrm{core\_frac}$) |
 | `dry_mantle` | bool | `true` | Structure EOS assumes a dry mantle. `false` (melt-fraction-aware dissolved-volatile mixing in the mantle density) is rejected at config load until the pinned Zalmoxis release supports per-shell volatile profiles |
+
+**How the PALEOS mantle EOS is applied**
+
+The MgSiO$_3$ mantle EOS resolves through two distinct paths depending on the `<source>` prefix of `mantle_eos`.
+
+With `mantle_eos = "PALEOS:MgSiO3"` (the default), the hydrostatic structure solve uses the PALEOS *unified* MgSiO$_3$ table for the density profile.
+The phase-specific property surfaces used by Aragog (density, heat capacity, thermal expansion, adiabatic gradient) and the pressure-entropy lookup tables are built from the PALEOS *two-phase* solid and liquid tables shipped with Zalmoxis when those tables are present, which keeps the properties well resolved across the melting-curve discontinuity that a single unified table interpolates through.
+If the two-phase tables are not available, the property surfaces are built from the unified table alone, and the entropy near the melting curve is less reliable.
+The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005 below 2.55 GPa, Fei et al. 2021 above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8), the constant solidus-to-liquidus ratio of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization.
+The melt fraction then follows from the lever rule between this solidus and liquidus.
+
+With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the solid and liquid tables define the phase boundaries directly.
+`mushy_zone_factor` is treated as 1.0 so the solidus coincides with the liquidus, and the latent-heat gap is supplied by the entropy difference between the solid and liquid tables rather than by a fixed temperature depression.
+
+!!! note "Two-phase table versions"
+    Two versions of the PALEOS two-phase MgSiO$_3$ tables are in circulation: the set shipped in the Zalmoxis data directory, and the finer-grid set on Zenodo that the reference-data manifest fetches.
+    They are generated from the same PALEOS EOS but on different grids, so for exact reproducibility record which set a run used (the shipped tables resolve through the Zalmoxis material registry; the fetched tables land under `FWL_DATA`).
 
 **Grid and solver**
 
@@ -303,3 +320,5 @@ with prescribed solidus and liquidus and parameterised convective heat transport
  [^cite-bower2018]: Bower, D.J., Sanan, P. & Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
 
  [^cite-schaefer2016]: Schaefer, L., Wordsworth, R.D., Berta-Thompson, Z. & Sasselov, D., *[Predictions of the atmospheric composition of GJ 1132b](https://doi.org/10.3847/0004-637X/829/2/63)*, The Astrophysical Journal, 829, 63, 2016. [SciX](https://scixplorer.org/abs/2016ApJ...829...63S/abstract).
+
+ [^cite-stixrude2014]: Stixrude, L., *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014. [SciX](https://scixplorer.org/abs/2014RSPTA.37230076S/abstract).

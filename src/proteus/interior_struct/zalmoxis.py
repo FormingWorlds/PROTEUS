@@ -93,12 +93,20 @@ _VOLATILE_EOS_MAP = {
 def _make_derived_solidus(liquidus_func, mushy_zone_factor: float):
     """Create a solidus function as T_sol(P) = T_liq(P) * mushy_zone_factor.
 
+    The PALEOS unified path has no tabulated solidus, so the solidus is
+    derived as a constant fraction of the liquidus. The default factor of
+    0.8 is the solidus-to-liquidus ratio of the Stixrude (2014) MgSiO3
+    melting parametrisation (doi:10.1098/rsta.2013.0076), so the derived
+    solidus tracks that experimental melting relation rather than being an
+    arbitrary depression.
+
     Parameters
     ----------
     liquidus_func : callable
         P [Pa] -> T_liquidus [K].
     mushy_zone_factor : float
-        Cryoscopic depression factor in [0.7, 1.0].
+        Cryoscopic depression factor in [0.7, 1.0]. Default 0.8 follows
+        Stixrude (2014).
 
     Returns
     -------
@@ -1345,7 +1353,7 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
             from zalmoxis.melting_curves import get_solidus_liquidus_functions
 
             _, liquidus_func = get_solidus_liquidus_functions(
-                solidus_id='Stixrude14-solidus',  # unused, but API requires it
+                solidus_id='Stixrude14-solidus',  # required by API but unused; solidus is built below as mushy_zone_factor * liquidus (default 0.8 = the Stixrude 2014 solidus/liquidus ratio)
                 liquidus_id='PALEOS-liquidus',
             )
             mzf = config.interior_struct.zalmoxis.mushy_zone_factor
@@ -1473,9 +1481,14 @@ def generate_spider_tables(config: Config, outdir: str):
 
     Supports two PALEOS layouts:
 
-    1. ``paleos_unified`` (e.g. ``PALEOS:MgSiO3``): single P-T table covering
-       both phases plus mushy zone. Solidus is derived from
-       ``mushy_zone_factor * liquidus``.
+    1. ``paleos_unified`` (e.g. ``PALEOS:MgSiO3``): the structural backbone is
+       the single unified P-T table covering both phases plus mushy zone, while
+       the per-phase property surfaces are built from the sibling two-phase
+       solid + liquid tables when those are present (see the unified branch
+       below), so the densities stay resolved across the melting-curve
+       discontinuity. The solidus is derived from ``mushy_zone_factor *
+       liquidus`` (default 0.8, the Stixrude 2014 solidus/liquidus ratio); the
+       liquidus is the analytic PALEOS Belonoshko+2005 / Fei+2021 curve.
     2. ``PALEOS-2phase:<solid>`` (e.g. ``PALEOS-2phase:MgSiO3``): separate
        solid + liquid PALEOS tables. Phase boundaries are sampled at the
        PALEOS-liquidus temperature from each phase table directly. The
@@ -1560,6 +1573,12 @@ def generate_spider_tables(config: Config, outdir: str):
         # curve discontinuity in the unified table). Use the API-aware
         # helper so PALEOS-API unified runs pull API 2-phase tables
         # rather than silently pulling shipped Zenodo ones.
+        # Net effect for PALEOS:MgSiO3: the structure solve uses the unified
+        # table, but the per-phase property/density surfaces are taken from
+        # these two-phase tables when present. If they are absent the code
+        # below falls back to the unified table alone (entropy near the
+        # melting curve is then less reliable). The solidus stays synthetic
+        # (mushy_zone_factor * liquidus) in both cases.
         solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
 
     solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
