@@ -56,22 +56,18 @@ official installer:
 ```console
 curl -fsSL https://install.julialang.org | sh
 ```
+After installing, pin to Julia 1.12, which is the version exercised by CI:
+
+```console
+juliaup add 1.12
+juliaup default 1.12
+```
 
 !!! warning "Do **not** use your package manager"
     Package managers often install the wrong Julia version. Use only the
     official installer. If you previously installed Julia another way,
     uninstall the old version first and remove old Julia entries from your
     `PATH`.
-
-!!! warning "Pin Julia to a supported version"
-    Julia 1.11.x and 1.12.x are supported; newer releases (including
-    the 1.13 release candidates) are untested. After installing, pin
-    to 1.12, which is the version exercised by CI:
-
-    ```console
-    juliaup add 1.12
-    juliaup default 1.12
-    ```
 
 Set the Julia environment variable:
 
