@@ -74,7 +74,7 @@
 
 /* Narrow and center the homepage intro tagline */
 .md-typeset .home-text {
-  max-width: 1200px;
+  max-width: 85%;
   margin: 1.5rem auto;
   text-align: left;
 }

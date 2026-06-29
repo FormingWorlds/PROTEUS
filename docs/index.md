@@ -44,7 +44,7 @@ escape, and stellar evolution into a self-consistent time-stepping loop,
 tracking the planet from a molten magma ocean to a solidified surface over
 billions of years.
 
-<div align="center" style="max-width: 60%; margin: 0 auto;">
+<div align="center" style="max-width: 70%; margin: 0 auto;">
   <object type="image/svg+xml" data="assets/proteus_modules_schematic.svg" class="mod-diagram mod-diagram--light" aria-label="PROTEUS module schematic (light mode)">PROTEUS module schematic (light mode)</object>
   <object type="image/svg+xml" data="assets/proteus_modules_schematic_darkmode.svg" class="mod-diagram mod-diagram--dark" aria-label="PROTEUS module schematic (dark mode)">PROTEUS module schematic (dark mode)</object>
 </div>
