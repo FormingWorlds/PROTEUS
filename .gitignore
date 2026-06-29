@@ -301,8 +301,8 @@ thermoenginelite
 thermoengine
 
 #julia installation
-./julia
-./juliaup
+.julia
+.juliaup
 
 # Note: the repo-root CLAUDE.md is a tracked symlink to .github/copilot-instructions.md;
 # the .github/.claude/rules/ directory is tracked and shared across collaborators.
