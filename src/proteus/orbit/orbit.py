@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from scipy.integrate import solve_ivp
 
+from proteus.orbit.common import Tides_t
 from proteus.utils.constants import AU, const_G
 
 if TYPE_CHECKING:
@@ -14,43 +15,32 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
-def de_dt(a, e, params):
-    """
-    ODE describing evolution of orbital eccentricity based on Eq. 16 of
-    Driscoll and Barnes (2015), Astrobiology 15, 739 (DOI 10.1089/ast.2015.1325).
+def evolve_orbit_star(hf_row: dict, config: Config, tides_o: Tides_t, dt: float):
+    """Evolve the planet's orbital parameters.
 
-    Sign convention note: in the paper, Im(k2) is negative for tidal
-    dissipation (Eq. 4 expresses -Im(k2) as the positive dissipation
-    efficiency). The current PROTEUS callers (dummy and lovepy backends)
-    feed a positive Imk2, which under the formula below produces a
-    positive de/dt and so EXPANDS the orbit rather than circularizing it.
-    The paper convention would require Imk2 < 0 to obtain the physical
-    circularization direction. Treat the sign as a known science item;
-    do not invert it without first checking every Imk2 producer
-    (proteus.orbit.dummy, proteus.orbit.lovepy, and any Imk2-dependent
-    test) so the change propagates consistently.
-    """
-    Imk2, Mst, G, Rpl, Mpl = params
-    return (21 / 2) * Imk2 * Mst**1.5 * G**0.5 * Rpl**5 / (Mpl * a**6.5) * e
+        Parameters
+        ----------
+            hf_row : dict
+                Dictionary of current runtime variables
+            config : dict
+                Dictionary of configuration options
+            tides_o : Tides_t
+                Tides object containing tidal interactions
+            dt : float
+                Time interval over which escape is occuring [yr]
+        """
 
+    model = config.orbit.star_planet_model
 
-def da_dt(a, e, params):
-    """
-    ODE describing evolution of semimajor axis based on Eq. 15 of
-    Driscoll and Barnes (2015), Astrobiology 15, 739.
-    """
-    return 2 * a * e * de_dt(a, e, params)
+    # Update orbit
+    if model == 'sp0d':
+        sp0d(hf_row, config, dt)
+
+    # elif model == 'sp1d':
+        # sp1d(hf_row, config, tides_o, orbit_o, dt)
 
 
-def orbitals(t, z, params):
-    """
-    Helper function for solving coupled ODEs.
-    """
-    a, e = z
-    return [da_dt(a, e, params), de_dt(a, e, params)]
-
-
-def evolve_orbital(hf_row: dict, config: Config, dt: float):
+def sp0d(hf_row: dict, config: Config, dt: float):
     """Evolve the planet's orbital parameters module.
 
     Updates the semi-major axis and eccentricity.
@@ -61,9 +51,48 @@ def evolve_orbital(hf_row: dict, config: Config, dt: float):
             Dictionary of current runtime variables
         config : dict
             Dictionary of configuration options
+        tides_o : Tides_t
+            Tides object containing tidal interactions
         dt : float
             Time interval over which escape is occuring [yr]
     """
+
+    def de_dt(a, e, params):
+        """
+        ODE describing evolution of orbital eccentricity based on Eq. 16 of
+        Driscoll and Barnes (2015), Astrobiology 15, 739 (DOI 10.1089/ast.2015.1325).
+
+        Sign convention note: in the paper, Im(k2) is negative for tidal
+        dissipation (Eq. 4 expresses -Im(k2) as the positive dissipation
+        efficiency). The current PROTEUS callers (dummy and lovepy backends)
+        feed a positive Imk2, which under the formula below produces a
+        positive de/dt and so EXPANDS the orbit rather than circularizing it.
+        The paper convention would require Imk2 < 0 to obtain the physical
+        circularization direction. Treat the sign as a known science item;
+        do not invert it without first checking every Imk2 producer
+        (proteus.orbit.dummy, proteus.orbit.lovepy, and any Imk2-dependent
+        test) so the change propagates consistently.
+        """
+        Imk2, Mst, G, Rpl, Mpl = params
+        return (21 / 2) * Imk2 * Mst**1.5 * G**0.5 * Rpl**5 / (Mpl * a**6.5) * e
+
+
+    def da_dt(a, e, params):
+        """
+        ODE describing evolution of semimajor axis based on Eq. 15 of
+        Driscoll and Barnes (2015), Astrobiology 15, 739.
+        """
+        return 2 * a * e * de_dt(a, e, params)
+
+
+    def orbitals(t, z, params):
+        """
+        Helper function for solving coupled ODEs.
+        """
+        a, e = z
+        return [da_dt(a, e, params), de_dt(a, e, params)]
+
+
     Imk2 = hf_row['Imk2']
 
     Rpl = hf_row['R_int']
