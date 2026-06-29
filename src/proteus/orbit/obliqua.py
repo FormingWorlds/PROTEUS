@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING
 
 import juliacall
 import numpy as np
 from juliacall import Main as jl
 
 from proteus.interior_energetics.common import Interior_t
+from proteus.orbit.common import Tides_t
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -33,10 +34,11 @@ def _jlsca(sca: float):
     return juliacall.convert(jl.Obliqua.prec, sca)
 
 
-def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides_t, config: Config) -> float:
     """Run the Obliqua tidal heating module.
 
-    Sets the interior tidal heating and returns k-love number.
+    Sets the interior tidal heating and returns k-love number. All tidal love-numbers
+    are stored in the tides_o object for the specific perturber.
 
     Parameters
     ----------
@@ -46,18 +48,14 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config
             Dictionary of directories.
         interior_o: Interior_t
             Struct containing interior arrays at current time.
+        tides_o: Tides_t
+            Struct containing tidal arrays at current time.
         config: Config
             PROTEUS config object
     Returns
     ----------
-        nmk: np.ndarray
-            Tidal degree, order, and harmonnic index for each frequency.
-        σ_range: np.ndarray
-            Forcing frequency for each tidal mode.
-        Hansen: np.ndarray
-            Hansen coefficient for each tidal mode.
-        LNk: np.ndarray
-            Complex k love number for each tidal mode.
+        Imk: float
+            Averaged imaginary part of the k love numbers.
     """
 
     # Calculate axial frequency of rotation
@@ -187,8 +185,6 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config
                 "core_bulk": config.interior_energetics.boundary.core_bulk,
             }
         }
-
-
     }
 
     # Calculate heating using obliqua
@@ -207,7 +203,7 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config
         bulkd     = jl.get_drained_bulk(bulk, phi, cfg)
 
         # Run Obliqua to get tidal heating profile and love number
-        power_prf, power_blk, nmk, σ_range, Hansen, LNk = \
+        power_prf, power_blk, nmk, sigma, Hansen, LNk = \
             jl.run_tides(
                 omega,
                 axial,
@@ -244,5 +240,11 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config
         power_blk /= np.sum(lov["mass"])
         log.debug("    power from bulk calc: %.3e W kg-1"%power_blk)
 
-    # Return the frequency dependent LNk spectrum with harmonnic indices, forcing frequencies, and Hansen coefficients
-    return np.array(nmk), np.array(σ_range), np.array(Hansen), np.array(LNk)
+    # Store results in tides_o structure
+    storage = tides_o.add(primary="planet", perturber=config.orbit.perturber)
+    storage.nmk    = nmk
+    storage.sigma  = sigma
+    storage.LNk    = LNk
+    storage.Hansen = Hansen
+
+    return np.mean(np.imag(LNk))
