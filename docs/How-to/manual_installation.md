@@ -39,13 +39,44 @@ Install the required system packages for your platform before proceeding.
 
 ## 2. Set up a Python environment
 
-Python **3.12** is required. Install it via
+Python **3.12** is required, and is installed via
 [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
-or [miniforge](https://github.com/conda-forge/miniforge).
+or [miniforge](https://github.com/conda-forge/miniforge). If you do not have [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
+or [miniforge](https://github.com/conda-forge/miniforge) installed yet:
 
-```console
-curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
-bash Miniforge3-$(uname)-$(uname -m).sh
+=== "macOS (Homebrew)"
+
+    ```console
+    curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+    bash Miniforge3-$(uname)-$(uname -m).sh
+    ```
+
+=== "Debian / Ubuntu"
+
+    ```console
+    mkdir -p ~/miniconda3
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+    bash ~/miniconda3/miniconda.sh
+    rm ~/miniconda3/miniconda.sh
+    ```
+
+=== "Fedora / RHEL"
+
+    ```console
+    mkdir -p ~/miniconda3
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+    bash ~/miniconda3/miniconda.sh
+    rm ~/miniconda3/miniconda.sh
+    ```
+
+!!! note "Install miniconda/miniforge in your personal directory"
+    Installing miniconda/miniforge in your personal directory gives you full control over your environment and is recommended even on clusters (see the cluster guides: [Kapteyn](kapteyn_cluster_guide.md), [Habrok](habrok_cluster_guide.md), [Snellius](snellius_cluster_guide.md), [Cambridge IoA](ioa_cluster_guide)). 
+
+Then create a conda environment with Python 3.12:
+
+```console 
+conda create -n proteus python=3.12
+conda activate proteus
 ```
 
 ## 3. Install Julia
@@ -106,13 +137,11 @@ reference data. This variable must always be set.
     source "$HOME/.zshrc"
     ```
 
-Clone the repository and create the conda environment:
+Clone the repository:
 
 ```console
 git clone git@github.com:FormingWorlds/PROTEUS.git
 cd PROTEUS
-conda create -n proteus python=3.12
-conda activate proteus
 ```
 
 ## 5. Install SOCRATES (radiative transfer)
