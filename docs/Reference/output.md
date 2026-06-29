@@ -44,7 +44,7 @@ description. The codes are:
 | 0 | Started |
 | 1 | Running |
 | 10 | Completed: mantle solidified |
-| 11 | Unused |
+| 11 | Completed: maximum clock runtime |
 | 12 | Completed: maximum iterations reached |
 | 13 | Completed: target time reached |
 | 14 | Completed: net flux is small (radiative equilibrium) |
