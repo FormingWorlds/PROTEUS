@@ -34,6 +34,7 @@ nav:
           - Run on Kapteyn: How-to/kapteyn_cluster_guide.md
           - Run on Snellius: How-to/snellius_cluster_guide.md
           - Run on Habrok: How-to/habrok_cluster_guide.md
+          - Run on Cambridge IoA: How-to/ioa_cluster_guide.md
       - Development:
           - Testing: How-to/testing.md
           - Development standards: How-to/development_standards.md
@@ -113,6 +114,7 @@ nav:
       - Atmodeller: https://atmodeller.readthedocs.io/en/latest/
       - FastChem: https://newstrangeworlds.github.io/FastChem/
       - SOCRATES: https://github.com/FormingWorlds/SOCRATES/
+      - PetitRADTRANS: https://petitradtrans.readthedocs.io/en/latest/
 
 theme:
   name: material

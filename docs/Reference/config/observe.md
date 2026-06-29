@@ -16,7 +16,7 @@ implemented).
 | `spectrum_type` | str | `"both"` | Spectrum products to generate: `both`, `transit`, or `eclipse` |
 | `remove_one_gas` | bool | `true` | Generate leave-one-out spectra (`<SPECIES>_removed/ppm` columns) |
 | `clip_vmr` | float | `1e-8` | Minimum VMR below which a species is excluded from the radiative transfer |
-| `reference_pressure` | float | `10` | Reference pressure level used to set the planet radius baseline [bar] |
+| `reference_pressure` | float | `10` | Reference pressure level used to set the planet radius baseline \[bar\] |
 
 ### petitRADTRANS `[observe.petitRADTRANS]`
 
@@ -79,7 +79,7 @@ in the actual gas mixture.
 Before calling petitRADTRANS, the temperature and VMR profiles are
 interpolated onto a uniform 100-point log-spaced pressure grid using PCHIP
 splines. Temperature values are clipped to the range
-[100.5 K, 3999.5 K] to stay within petitRADTRANS table bounds.
+\[100.5 K, 3999.5 K\] to stay within petitRADTRANS table bounds.
 If the atmosphere profile is stored with decreasing pressure (surface first),
 it is reversed to ascending order before interpolation.
 

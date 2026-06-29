@@ -3,6 +3,8 @@ hide:
   - navigation
 ---
 
+<div style="padding-left: 1em" markdown="1">
+
 # Get started
 
 !!! tip "New to PROTEUS?"
@@ -94,4 +96,5 @@ navigation bar.
 
     [Go to developers](https://proteus-framework.org/people)
 
+</div>
 </div>
