@@ -4,7 +4,7 @@ hide:
   - toc
 ---
 
-<div style="padding-left: 1em">
+<div style="padding-left: 1em; padding-right: 1em">
 <h1>PROTEUS Funding Sources</h1>
 <p>
   We are thankful for the continuous support of the larger scientific community
