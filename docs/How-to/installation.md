@@ -21,20 +21,6 @@ configuration, some steps may differ. If you run into problems, check the
 !!! note "macOS users"
     macOS Catalina (10.15) and later uses `zsh` as the default shell. Replace `.bashrc` with `.zshrc` throughout these instructions if you are using the default shell.
 
-!!! tip "CLI alternative: `proteus install-all`"
-    If PROTEUS is already importable in your environment, `proteus install-all`
-    performs the same setup from the CLI: it installs PROTEUS and the required
-    submodules (SOCRATES, AGNI), downloads reference data, checks for sufficient
-    disk space, creates `FWL_DATA` if needed, and sets the environment variables. 
-
-    - Pass `--export-env` to write the environment variables to your shell rc file. 
-    - To refresh an existing installation later, use `proteus update-all` (see [Diagnose and update](doctor.md)). 
-    
-    Both commands operate on the PROTEUS source tree, which they locate from the
-    installed package (editable installs) or, for a plain wheel install, from
-    the current directory when it is a PROTEUS clone; with neither available
-    they exit with an error.
-
 ---
 
 ## 1. System packages
@@ -67,15 +53,12 @@ Install the required system libraries for your platform. See the
 [Snellius](snellius_cluster_guide.md),
 [Cambridge IoA](ioa_cluster_guide)).
 
+## 2. Clone PROTEUS and set up Python environment
 
-## 2. Clone PROTEUS and create conda environment
-
-Conda (via miniforge or miniconda) is required. If you followed the
-[Local machine guide](local_machine_guide.md) it is already installed.
-If not, install
-[miniforge](https://github.com/conda-forge/miniforge) (macOS) or
+Python **3.12** is required, and is installed via
 [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
-(Linux) before proceeding:
+or [miniforge](https://github.com/conda-forge/miniforge). If you do not have [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
+or [miniforge](https://github.com/conda-forge/miniforge) installed yet:
 
 === "macOS (Homebrew)"
 
@@ -102,7 +85,10 @@ If not, install
     rm ~/miniconda3/miniconda.sh
     ```
 
-With miniconda/miniforge installed, clone PROTEUS and create a conda environment:
+!!! note "Install miniconda/miniforge in your personal directory"
+    Installing miniconda/miniforge in your personal directory gives you full control over your environment and is recommended even on clusters (see the cluster guides: [Kapteyn](kapteyn_cluster_guide.md), [Habrok](habrok_cluster_guide.md), [Snellius](snellius_cluster_guide.md), [Cambridge IoA](ioa_cluster_guide)). 
+
+Then clone PROTEUS and create a conda environment with Python 3.12:
 
 ```console
 git clone git@github.com:FormingWorlds/PROTEUS.git
@@ -139,6 +125,20 @@ phases.
 | `--all-data` | Download all reference data (~10-20 GB) instead of the essential set (~2 GB) |
 | `--no-data` | Skip data downloads entirely (download later with `proteus get`) |
 | `-i` / `--interactive` | Interactive mode (prompt for choices; default is non-interactive) |
+
+!!! tip "CLI alternative: `proteus install-all`"
+    If PROTEUS is already importable in your environment, `proteus install-all`
+    performs the same setup from the CLI: it installs PROTEUS and the required
+    submodules (SOCRATES, AGNI), downloads reference data, checks for sufficient
+    disk space, creates `FWL_DATA` if needed, and sets the environment variables. 
+
+    - Pass `--export-env` to write the environment variables to your shell rc file. 
+    - To refresh an existing installation later, use `proteus update-all` (see [Diagnose and update](doctor.md)). 
+    
+    Both commands operate on the PROTEUS source tree, which they locate from the
+    installed package (editable installs) or, for a plain wheel install, from
+    the current directory when it is a PROTEUS clone; with neither available
+    they exit with an error.
 
 ## 4. Verify and run
 
