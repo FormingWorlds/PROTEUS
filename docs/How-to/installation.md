@@ -103,6 +103,10 @@ conda activate proteus
 bash install.sh
 ```
 
+!!! warning "Remove old Julia installations"
+    Issues might arise if you already have Julia installed via your system manager (and not the official installer). In that case, please uninstall Julia _before running the installer_ and remove old Julia entries from your `PATH`.
+
+
 The installer runs through the following phases automatically:
 
 1. Pre-flight checks (OS, disk space, Python version, system dependencies)
