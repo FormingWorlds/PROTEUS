@@ -53,7 +53,7 @@ bash tools/get_prt.sh
 ```
 
 !!! note
-    PetitRADTRANS downloads a few GB of opacity data on first use.
+    PetitRADTRANS downloads around 2 GB of opacity data on first use.
 
 ## Alternative outgassing (atmodeller)
 
