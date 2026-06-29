@@ -75,7 +75,34 @@ Conda (via miniforge or miniconda) is required. If you followed the
 If not, install
 [miniforge](https://github.com/conda-forge/miniforge) (macOS) or
 [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
-(Linux) before proceeding.
+(Linux) before proceeding:
+
+=== "macOS (Homebrew)"
+
+    ```console
+    curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+    bash Miniforge3-$(uname)-$(uname -m).sh
+    ```
+
+=== "Debian / Ubuntu"
+
+    ```console
+    mkdir -p ~/miniconda3
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+    bash ~/miniconda3/miniconda.sh
+    rm ~/miniconda3/miniconda.sh
+    ```
+
+=== "Fedora / RHEL"
+
+    ```console
+    mkdir -p ~/miniconda3
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+    bash ~/miniconda3/miniconda.sh
+    rm ~/miniconda3/miniconda.sh
+    ```
+
+With miniconda/miniforge installed, clone PROTEUS and create a conda environment:
 
 ```console
 git clone git@github.com:FormingWorlds/PROTEUS.git
