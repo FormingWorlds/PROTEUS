@@ -611,8 +611,11 @@ def GetHelpfileKeys():
         # Satellite system
         'perigee',          # lowest point in orbit [m]
         'semimajorax_sat',  # semi-major axis [m]
+        'orbital_period_sat', # orbital duration [s]
+        'eccentricity_sat', # orbital eccentricity of satellite [1]
         'M_sat',            # mass of satellite [kg]
         'plan_sat_am',      # angular momentum of sat+pla [kg m2 s-1],
+        'axial_period_sat', # day length of satellite around its axis [s]
 
         # Planet structure
         'R_int',            # interior radius [m]

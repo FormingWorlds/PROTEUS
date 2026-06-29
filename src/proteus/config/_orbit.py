@@ -284,8 +284,8 @@ class Orbit:
     )
     s0_factor: float = field(default=0.375, validator=gt(0))
 
-    # Allow the planet's orbit to evolve based on tides?
-    evolve: bool          = field(default=False)
+    # Orbital model to use for star-planet orbit evolution based on tides
+    star_planet_model: str | None = field(default='none', validator=in_((None, 'none', 'sp0dae')), converter=none_if_none)
     # Initial day length for planet [hours]
     # If none, assume 1:1 spin orbit synchronization and use orbital period as day length
     axial_period = field(default=None, validator=ax_valid, converter=none_if_none)
@@ -300,6 +300,9 @@ class Orbit:
     semimajoraxis_sat: float    = field(default=3e8, validator=gt(0))
     eccentricity_sat: float     = field(default=0.0, validator=ge(0))
     love_number_sat: str | None = field(default=None, converter=none_if_none)
+
+    # Orbital model to use for planet-satellite orbit evolution based on tides
+    planet_satellite_model: str | None = field(default='none', validator=in_((None, 'none', 'ps0d_evec')), converter=none_if_none)
 
     # Tidal heating modules
     module: str | None = field(

@@ -199,7 +199,7 @@ config_version = "3.0"
     s0_factor                 = 0.375        # instellation geometric scale factor
 
     # Tidal evolution and rotation
-    evolve                    = false        # evolve semi-major axis and eccentricity
+    star_planet_model         = "none"       # evolve star-planet orbital parameters (semi-major axis and eccentricity); options = "none" | "sp0dae"
     axial_period              = "none"       # day length [hours]; none = tidally locked
 
     perturber                 = "star"       # perturbing object ("star", "satellite") to induce tides on the primairy (planet)
@@ -211,6 +211,8 @@ config_version = "3.0"
     semimajoraxis_sat         = 3.0e8        # satellite orbit semi-major axis [m]
     eccentricity_sat          = 0.0          # satellite initial orbital eccentricity [dimensionless]
     love_number_sat           = "none"       # satellite love number spectrum, provide absolute path to file. (Can be pre-genrated by Obliqua.)
+
+    planet_satellite_model    = "none"       # evolve planet-satellite orbital parameters (semi-major axis and eccentricity); options = "none" | "ps0d_evec"
 
     module                    = "none"       # tidal heating module: none | dummy | lovepy | obliqua
 
