@@ -4,12 +4,14 @@ hide:
   - toc
 ---
 
+<div style="padding-left: 1em">
 <h1>PROTEUS Funding Sources</h1>
 <p>
   We are thankful for the continuous support of the larger scientific community
   and funding by the public of fundamental research. The development of PROTEUS
   has been made possible by the invaluable support of the following organisations:
 </p>
+</div>
 <div style="
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
