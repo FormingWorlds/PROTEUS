@@ -755,8 +755,9 @@ def GetHelpfileKeys(config: Config):
         # Atmospheric composition from outgassing
         'M_ele',            # total mass of tracked elements (utils.constants.element_list) rock vapour and volatile
         'M_atm',            # total mass of atmosphere [kg]
-        'P_surf',           # volatile surface pressure [bar]
+        'P_surf',           # total surface pressure [bar]
         'P_silicates',      #outgassed surface pressure [bar]
+        'P_vol',      # volatile pressure [bar]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
 
         # Iron-wustite buffer offset that the chemistry solver actually

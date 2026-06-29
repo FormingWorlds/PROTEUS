@@ -468,8 +468,9 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
     # do not update surface pressure!
     Poutgas =  new_atmos_abundances['Pbar'][0] - hf_row['P_surf'] #comput ehow much silicates are outgassed
     log.info('pressure of outgassed species: %.4f'%Poutgas)
-    log.info('pressure of volatiles: %.4f'%hf_row['P_surf'])
+    log.info('pressure of volatiles before outgassing: %.4f'%hf_row['P_surf'])
 
+    hf_row['P_vol'] = hf_row['P_surf']
     hf_row['P_silicates'] = Poutgas
 
     for vol in gas_list:
@@ -529,6 +530,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
 
     fO2_shift = FO2shift()
     hf_row['fO2_shift_LavAtmos'] = fO2_shift(hf_row['T_magma'], log10_fO2)
+    hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
 
     log.debug('shift compared to iron wustite buffer: %.6f' % hf_row['fO2_shift_LavAtmos'])
 

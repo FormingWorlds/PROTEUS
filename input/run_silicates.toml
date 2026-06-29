@@ -34,7 +34,7 @@ config_version = "3.0"
     [params.out]
         # Output folder inside PROTEUS/output/. Set "auto" for a unique timestamped
         # name (run_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
-        path                  = "test_comp_changed_tolparms"
+        path                  = "test_new_pressuresettings"
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 5            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
@@ -75,7 +75,7 @@ config_version = "3.0"
         [params.stop.time]                   # simulation time limits
             enabled           = true
             minimum           = 1.0e3        # run at least this long [yr]
-            maximum           = 1.0e+7       # stop after this time [yr]
+            maximum           = 1.0e+8       # stop after this time [yr]
 
         [params.stop.solid]                  # solidification criterion
             enabled           = false
@@ -88,8 +88,8 @@ config_version = "3.0"
             rtol              = 1e-3         # relative tolerance
 
         [params.stop.escape]                 # atmosphere loss criterion
-            enabled           = false
-            p_stop            = 3.0          # stop when surface pressure < p_stop [bar]
+            enabled           = true
+            p_stop            = 1e-4          # stop when surface pressure < p_stop [bar]
 
         [params.stop.disint]                 # planetary disintegration criterion
             enabled           = false
@@ -123,7 +123,7 @@ config_version = "3.0"
     volatile_reservoir        = "mantle"     # ppmw reference mass: mantle | mantle+core
 
     # Cooling constraint
-    prevent_warming           = false        # require monotonic cooling
+    prevent_warming           = true       # require monotonic cooling
 
     # Element abundances (used when volatile_mode = 'elements')
     [planet.elements]
@@ -478,7 +478,7 @@ config_version = "3.0"
     spectral_group            = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
     spectral_bands            = "48"         # wavenumber bands in k-table
     num_levels                = 50           # vertical atmosphere levels (min 15)
-    p_top                     = 1.0e-8       # top-of-atmosphere pressure [bar]
+    p_top                     = 1.0e-4       # top-of-atmosphere pressure [bar]
     p_obs                     = 0.02         # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
