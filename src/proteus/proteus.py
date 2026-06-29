@@ -230,7 +230,7 @@ class Proteus:
         from proteus.observe.wrapper import run_observe
 
         #    orbit
-        from proteus.orbit.common import Tides_t
+        from proteus.orbit.common import Orbit_t, Tides_t
         from proteus.orbit.wrapper import init_orbit, run_orbit
 
         #    outgassing
@@ -357,8 +357,8 @@ class Proteus:
         # Initialise tides object
         self.tides_o  = Tides_t()
 
-        # Initialise tides object
-        self.tides_o  = Tides_t()
+        # Initialise orbit object
+        self.orbit_o  = Orbit_t()
 
         # Is the model resuming from a previous state?
         if not self.config.params.resume:
@@ -727,7 +727,7 @@ class Proteus:
             ############### ORBIT AND TIDES
             PrintHalfSeparator()
             _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-            run_orbit(self.hf_row, self.config, self.directories, self.tides_o, self.interior_o)
+            run_orbit(self.hf_row, self.config, self.directories, self.tides_o, self.orbit_o, self.interior_o)
             if _IT_TIMING_ENABLED:
                 _t_mod['orbit'] = time.perf_counter() - _t0
 

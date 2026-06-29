@@ -176,11 +176,11 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
     log.info('Evolve orbit and tides...')
 
     # Set semimajor axis and eccentricity, through the desired method...
-    if config.orbit.evolve:
+    if config.orbit.star_planet_model is not None:
         # set by orbital evolution, based on tidal love number
-        from proteus.orbit.orbit import evolve_orbital
+        from proteus.orbit.orbit import evolve_orbit_star
 
-        evolve_orbital(hf_row, config, interior_o.dt)
+        evolve_orbit_star(hf_row, config, tides_o, interior_o.dt)
 
     else:
         # orbital parameters are held constant over time
@@ -207,11 +207,11 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
 
     log.info('    Orb period = %.5f days' % (hf_row['orbital_period'] / secs_per_day))
 
-    if config.orbit.satellite:
+    if config.orbit.satellite is not None:
         # set by orbital evolution, based on tidal love number
-        from proteus.orbit.satellite import update_satellite
+        from proteus.orbit.satellite import evolve_orbit_satellite
 
-        update_satellite(hf_row, config, interior_o.dt)
+        evolve_orbit_satellite(hf_row, config, tides_o, interior_o.dt)
 
     else:
         # Satellite SMA
@@ -253,31 +253,37 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
 
     # Call tides module, calculates heating rates and new love number
     if config.orbit.module == 'dummy':
-        from proteus.orbit.dummy import run_dummy_orbit
+        from proteus.orbit.dummy import run_dummy_tides
 
-        hf_row['Imk2'] = run_dummy_orbit(config, interior_o)
+        hf_row['Imk2'] = run_dummy_tides(config, interior_o)
 
     elif config.orbit.module == 'lovepy':
         from proteus.orbit.lovepy import run_lovepy
 
-        hf_row['Imk2'] = run_lovepy(hf_row, dirs, interior_o, config)
+        hf_row['Imk2'] = run_lovepy(hf_row, dirs, interior_o, tides_o, config)
 
     elif config.orbit.module == 'Obliqua':
         from proteus.orbit.obliqua import run_obliqua
-        sigma, Imk2 = run_obliqua(hf_row, dirs, interior_o, config)
+        Imk = run_obliqua(hf_row, dirs, interior_o, tides_o, config)
 
-        tides_o.sigma = np.array(sigma)
-        tides_o.Imk2  = np.array(Imk2)
-
-        hf_row["Imk2"] = 0.0  # handled internally in Obliqua
+        if config.orbit.obliqua.n == 2:
+            hf_row['Imk2'] = Imk
+        else:
+            hf_row["Imk2"] = None
+        # Since Obliqua returns the frequency dependent Love number for arbitrary
+        # degree (n), we set Imk2 to either the mean value (if n=2) or None to
+        # avoid confusion with other degrees (Imk3, Imk4, etc.). Note, the user
+        # can access the Love number(s) from the tides_o object along with the
+        # corresponding forcing frequencies and modes.
 
     else:
-        hf_row['Imk2'] = 0.0
+        hf_row['Imk2'] = None
 
     # Print info
-    if config.orbit.module is not None:
+    if config.orbit.module == 'Obliqua':
+        log.info('    Pla H_tide = %.1e W kg-1 (mean) ' % np.mean(interior_o.tides))
+        log.info('    Pla Im(k)  = %.1e ' % np.mean(np.imag(tides_o.get("planet", config.orbit.perturber).LNk)))
+
+    elif config.orbit.module is not None:
         log.info('    Pla H_tide = %.1e W kg-1 (mean) ' % np.mean(interior_o.tides))
         log.info('    Pla Im(k2) = %.1e ' % hf_row['Imk2'])
-
-    # Call tides module for satellite, calculates heating rates and new love number
-    # To Do
