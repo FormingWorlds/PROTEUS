@@ -43,17 +43,17 @@ written in Julia.
 bash tools/get_lovepy.sh
 ```
 
-## Synthetic observations (PLATON)
+## Synthetic observations (PetitRADTRANS)
 
-[PLATON](https://platon.readthedocs.io/en/latest/intro.html) generates
+[PetitRADTRANS](https://petitradtrans.readthedocs.io/en/latest/) generates
 synthetic transmission and secondary eclipse spectra.
 
 ```console
-bash tools/get_platon.sh
+bash tools/get_prt.sh
 ```
 
 !!! note
-    PLATON downloads ~10 GB of opacity data on first use.
+    PetitRADTRANS downloads around 2 GB of opacity data on first use.
 
 ## Alternative outgassing (atmodeller)
 

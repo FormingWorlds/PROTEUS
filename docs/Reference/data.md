@@ -120,8 +120,8 @@ Parameters defining the PHOENIX grid:
 | Effective temperature | `phoenix_Teff` | K | Derived from MORS tracks |
 | Surface gravity | `phoenix_log_g` | log$_{10}$ (cgs) | Derived from MORS tracks |
 | Stellar radius | `phoenix_radius` | R$_\odot$ | Derived from MORS tracks |
-| Metallicity | `phoenix_FeH` | [Fe/H] dex | 0.0 (solar) |
-| Alpha enhancement | `phoenix_alpha` | [α/Fe] dex | 0.0 (solar) |
+| Metallicity | `phoenix_FeH` | \[Fe/H\] dex | 0.0 (solar) |
+| Alpha enhancement | `phoenix_alpha` | \[α/Fe\] dex | 0.0 (solar) |
 
 Any parameter set to `"none"` in the config is derived from the MORS
 stellar evolution tracks using `star.mass`. Grid inputs are automatically

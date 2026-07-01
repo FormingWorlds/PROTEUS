@@ -101,9 +101,9 @@ Both files are tab-separated with the following column layout:
 
 | Column | Description |
 |--------|-------------|
-| `Wavelength/um` | Wavelength [μm] |
-| `None/ppm` | Baseline depth [ppm] with all species present |
-| `<SPECIES>_removed/ppm` | Depth [ppm] with that species removed (one column per line species in the mix) |
+| `Wavelength/um` | Wavelength \[μm\] |
+| `None/ppm` | Baseline depth \[ppm\] with all species present |
+| `<SPECIES>_removed/ppm` | Depth \[ppm\] with that species removed (one column per line species in the mix) |
 
 Set `observe.remove_one_gas = false` to disable the
 `<SPECIES>_removed/ppm` columns and write baseline-only spectra.
@@ -126,7 +126,7 @@ removed spectra (coloured by species). The figure is saved to
 <figure markdown="span">
   ![Example synthetic spectrum: transit and eclipse depth with per-species overlays](../assets/example_spectrum.png)
   <figcaption><b>Example <code>plot_spectra</code> output.</b>
-  Upper panel: primary transit depth [ppm]. Lower panel: secondary eclipse depth [ppm].
+  Upper panel: primary transit depth \[ppm\]. Lower panel: secondary eclipse depth \[ppm\].
   The black line is the baseline (all species present); coloured lines show the spectrum
   with each gas removed in turn.</figcaption>
 </figure>
