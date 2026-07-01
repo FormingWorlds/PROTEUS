@@ -695,8 +695,8 @@ def GetHelpfileKeys():
         # check: the discrete flux divergence telescopes to the boundary
         # fluxes, so it is machine-zero by construction and a non-zero
         # value flags a divergence-assembly bug, not time-integration
-        # quality. ``E_th_mantle`` is the legacy ``m × Cp_apparent × T``
-        # proxy with phase-dependent jumps in the mushy zone -- not for
+        # quality. ``E_th_mantle`` is the ``m × Cp_apparent × T`` proxy
+        # with phase-dependent jumps in the mushy zone, not for
         # conservation use. ``Q_radio_W`` / ``Q_tidal_W`` are instantaneous
         # mantle-integrated source powers in watts (do NOT integrate
         # trapezoidally; spike-prone at CVODE phase-boundary moments).
@@ -708,7 +708,7 @@ def GetHelpfileKeys():
         #   step_dE_Q_*_J          = +∫ Q_* dt             [J] (state-mass)
         #   step_dE_Q_*_cons_J     = +∫ Q_* dt             [J] (frozen-mass)
         #   step_solver_residual_J = ∫ (LHS - RHS) dt      [J]
-        'E_th_mantle',      # legacy thermal-energy proxy [J] (do not use for conservation)
+        'E_th_mantle',      # thermal-energy proxy [J] (do not use for conservation)
         'E_state_J',         # state-mass integrated mantle enthalpy [J] (diagnostic only)
         'E_state_cons_J',    # frozen-mass integrated mantle enthalpy [J] (diagnostic only)
         'Q_radio_W',         # instantaneous mantle-integrated radiogenic power [W]

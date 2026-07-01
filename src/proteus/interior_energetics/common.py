@@ -250,9 +250,9 @@ def compute_initial_entropy(
     # curve at the most-constraining depth, so the initial condition is robust
     # to the liquidus parameterisation and to planet mass instead of relying on
     # a fixed surface temperature or entropy value (see
-    # zalmoxis.solve_superliquidus_adiabat). This replaces the former CMB
-    # liquidus anchor, which extrapolated the melting curve past calibration at
-    # high mass and produced a cold-surface, energy-non-conserving IC.
+    # zalmoxis.solve_superliquidus_adiabat). Anchoring at the CMB liquidus
+    # instead extrapolates the melting curve past its calibration at high mass
+    # and yields a cold-surface, energy-non-conserving IC.
     if config.planet.temperature_mode == 'liquidus_super':
         from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 

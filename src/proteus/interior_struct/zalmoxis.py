@@ -522,7 +522,8 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     property of the adiabat-vs-liquidus slope ordering, not a guarantee: for a
     steeper liquidus the binding can migrate toward the core-mantle boundary, in
     which case the solve logs a warning (the surface anchor is then weakly
-    constrained and approaches the deprecated CMB-liquidus anchor).
+    constrained and approaches a CMB-liquidus anchor in the melting curve's
+    extrapolated regime).
 
     Parameters
     ----------
@@ -721,11 +722,11 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     if final['binding_P'] > FEI2021_LIQUIDUS_P_CALIB_PA:
         # The tightest superheat is set where the liquidus is an extrapolation
         # (beyond its calibration). The margin there is uncertain and the
-        # construction approaches the deprecated CMB-liquidus anchor that
-        # produced the cold-surface IC; warn so a melting-curve swap that moves
-        # the binding into the extrapolated regime does not silently reintroduce
-        # it. (A binding that is fractionally deep but below the calibration,
-        # as for a low-mass planet whose whole mantle is shallow, is fine.)
+        # construction approaches a CMB-liquidus anchor, which gives a
+        # cold-surface IC; warn so a melting-curve swap that moves the binding
+        # into the extrapolated regime does not silently land there. (A binding
+        # that is fractionally deep but below the calibration, as for a
+        # low-mass planet whose whole mantle is shallow, is fine.)
         log.warning(
             'liquidus_super: the minimum-superheat depth (binding P=%.0f GPa) '
             'is beyond the liquidus calibration (~%.0f GPa), so the superheat '
