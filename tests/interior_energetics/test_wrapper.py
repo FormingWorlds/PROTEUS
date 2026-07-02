@@ -4884,6 +4884,60 @@ def test_monotonic_guard_rejects_up_step_on_first_solve_infinite_reference(caplo
     assert result[0] == pytest.approx(500.0, rel=1e-12)
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize('entry_stale', [False, True])
+def test_monotonic_guard_reject_preserves_structure_stale_flag(entry_stale, caplog):
+    """The reject path leaves _structure_stale paired with the retained structure.
+
+    A rejected representation-artifact up-step retains the entry structure
+    (_saved_structure), so it must leave _structure_stale exactly as it found it:
+    it is neither a convergence failure (which would raise the flag) nor a
+    committed re-solve (which would clear it). Consumers read _structure_stale to
+    decide whether Aragog is integrating on a fresh or a stale mesh, so the flag
+    must keep describing the structure actually in hf_row.
+
+    Contract invariant: the reject preserves the entry flag in BOTH states. Entry
+    True (a genuine prior non-convergence never re-solved) must stay True so the
+    stale-step counter keeps advancing; entry False (a committed structure) must
+    stay False so a healthy guard no-op is not miscounted as a stale mesh. The
+    True case discriminates: a reject that wrongly cleared the flag would silently
+    reset the stale-mesh accounting.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()  # cooling: 3000 -> 2800 K
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    hf_row['_structure_stale'] = entry_stale
+    dirs = _mock_dirs()
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    # The reject fired: the running-minimum structure is restored, not the up-step.
+    assert hf_row['R_int'] == pytest.approx(r_prev, rel=1e-12)
+    assert hf_row['R_int'] < r_prev * (1.0 + 1.0e-3)
+    # The stale flag is preserved exactly, neither cleared (as on a committed
+    # re-solve) nor raised (as on a convergence fall-back).
+    assert hf_row['_structure_stale'] is entry_stale
+
+
 # ============================================================================
 # Composition-sentinel refresh on the super-liquidus monotonic-radius no-op
 #
