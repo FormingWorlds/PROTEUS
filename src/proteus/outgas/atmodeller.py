@@ -412,10 +412,14 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             # An inactive noble gas is not in the solve; clear its stale
             # atmospheric reservoir so it does not leak into P_surf, the mean
             # molar mass, or a later resurrection of its total, and leave its
-            # escape-owned element total untouched.
+            # escape-owned element total untouched. The mixing ratio is cleared
+            # too: it was already recomputed from the stale partial pressure
+            # above, so it must be reset or it would still feed the mean molar
+            # mass sum.
             hf_row[f'{proteus_name}_kg_liquid'] = 0.0
             hf_row[f'{proteus_name}_kg_atm'] = 0.0
             hf_row[f'{proteus_name}_bar'] = 0.0
+            hf_row[f'{proteus_name}_vmr'] = 0.0
         else:
             # Reactive species not present in the atmodeller output (e.g.
             # excluded from the solve): keep the pressure-derived atmospheric

@@ -790,7 +790,8 @@ def test_atmodeller_clears_stale_reservoir_for_inactive_noble():
     hf_row['He_kg_total'] = 0.0  # fully escaped
     hf_row['He_kg_atm'] = 5.0e15  # stale from a prior iteration
     hf_row['He_kg_liquid'] = 0.0
-    hf_row['He_bar'] = 0.01  # stale
+    hf_row['He_bar'] = 5.0  # stale partial pressure
+    hf_row['He_vmr'] = 0.09  # stale mixing ratio from a prior iteration
 
     fake_model = MagicMock()
     fake_model.output = _fake_atmodeller_output(log10dIW=-0.5)
@@ -802,3 +803,8 @@ def test_atmodeller_clears_stale_reservoir_for_inactive_noble():
     assert hf_row['He_kg_total'] == 0.0
     assert hf_row['He_kg_atm'] == 0.0
     assert hf_row['He_bar'] == 0.0
+    # The mixing ratio is cleared too, so a fully-escaped noble gas does not
+    # leak a stale partial pressure into the mean molar mass.
+    assert hf_row['He_vmr'] == 0.0
+    # atm_kg_per_mol reflects only the reactive gases (helium contributes none).
+    assert hf_row['atm_kg_per_mol'] > 0.0

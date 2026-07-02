@@ -548,8 +548,16 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             UpdateStatusfile(dirs, 20)
             raise FileNotFoundError(surface_material)
 
-    # Boundary pressures
+    # Boundary pressures. The noble gases carry surface pressure but are
+    # excluded from the composition above, which AGNI renormalizes to a unit
+    # sum. Scale the surface pressure by the non-noble mixing-ratio fraction so
+    # that after renormalization each reactive gas keeps its true partial
+    # pressure. The fraction is one when no noble gas is present, so a
+    # noble-free run is unchanged.
     p_surf = hf_row['P_surf']
+    vol_frac = sum(vol_dict.values())
+    if vol_frac > 0.0:
+        p_surf *= vol_frac
     p_top = config.atmos_clim.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
