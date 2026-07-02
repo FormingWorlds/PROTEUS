@@ -27,9 +27,9 @@ ref_config = "input/run_silicates.toml"
 
 # SLURM settings
 use_slurm = false
-max_jobs = 12       # max concurrent tasks (e.g. 500 on Habrok)
+max_jobs = 36       # max concurrent tasks (e.g. 500 on Habrok)
 max_days = 30        # max walltime [days]
-max_mem  = 10      # max memory per CPU [GB]
+max_mem  = 3      # max memory per CPU [GB]
 
 # -------------------------------------------------------
 # Grid axes
@@ -58,14 +58,14 @@ max_mem  = 10      # max memory per CPU [GB]
 # Mantle redox state [log10(delta_IW)]
  ["outgas.fO2_shift_IW"]
      method = "direct"
-     values = [-2, 2]
+     values = [-4, 0, 4]
 
 
 
 # orbital distance
 ["orbit.semimajoraxis"]
     method = "direct"
-    values = [0.016, 0.128]
+    values = [0.016, 0.128, 0.032, 0.064]
 
 
 # S/H mass ratio (requires S_mode = "S/H" in base config)
