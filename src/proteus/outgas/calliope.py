@@ -279,8 +279,12 @@ def construct_guess(hf_row: dict, target: dict, mass_thresh: float) -> dict | No
     # gases are tracked as element masses, not as radiative gas species), so a
     # warm guess cannot supply them. When any noble gas is active, defer to
     # CALLIOPE's own two-stage cold start rather than hand it an incomplete
-    # guess that would omit the required noble pressures.
-    if any(target.get(gas, 0.0) > mass_thresh for gas in noble_gases):
+    # guess that would omit the required noble pressures. The trigger is any
+    # positive noble inventory, not a mass_thresh comparison: noble budgets are
+    # intrinsically trace and routinely sit below the major-volatile threshold,
+    # so a threshold test would miss an active noble gas and let an incomplete
+    # warm guess reach CALLIOPE.
+    if any(target.get(gas, 0.0) > 0.0 for gas in noble_gases):
         log.debug('    noble gas active; providing None for a full cold start')
         return None
 

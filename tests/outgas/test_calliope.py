@@ -291,7 +291,7 @@ def test_resolve_noble_unknown_mode_raises():
 # -----------------------------------------------------------------------
 
 
-def _element_mode_config(noble_included, He_mode='kg', He_budget=0.0):
+def _element_mode_config(noble_included, He_mode='kg', He_budget=0.0, reservoir='mantle'):
     """Minimal element-mode config for construct_options with noble control.
 
     `noble_included` maps a noble gas symbol to its include flag. Only the
@@ -301,7 +301,7 @@ def _element_mode_config(noble_included, He_mode='kg', He_budget=0.0):
     config.outgas.fO2_shift_IW = 4.0
     config.outgas.calliope.solubility = True
     config.planet.volatile_mode = 'elements'
-    config.planet.volatile_reservoir = 'mantle'
+    config.planet.volatile_reservoir = reservoir
     config.planet.gas_prs.get_pressure = lambda s: 0.0
 
     def _is_included(s):
@@ -389,6 +389,33 @@ def test_construct_options_solar_mode_scales_with_hydrogen():
     assert opts['He_ppmw'] == pytest.approx(expected_ppmw, rel=1e-9)
 
 
+def test_construct_options_ppmw_mode_uses_selected_reservoir():
+    """In 'ppmw' mode with volatile_reservoir='mantle+core', the He budget is
+    ppmw relative to the mantle-plus-core mass, then re-expressed as a
+    mantle-relative ppmw for CALLIOPE. This exercises the reservoir-selection
+    branch that the kg and solar tests bypass.
+    """
+    config = _element_mode_config(
+        {'He': True}, He_mode='ppmw', He_budget=10.0, reservoir='mantle+core'
+    )
+    opts = construct_options({}, config, dict(_HF_ROW))
+
+    # He_kg = 10 ppmw of M_int; the mantle-relative ppmw CALLIOPE receives is
+    # 1e6 * He_kg / M_mantle, which equals the input ppmw scaled by M_int/M_mantle.
+    he_kg = 10.0 * 1e-6 * _HF_ROW['M_int']
+    expected = 1e6 * he_kg / _HF_ROW['M_mantle']
+    assert opts['He_included'] == 1
+    assert opts['He_ppmw'] == pytest.approx(expected, rel=1e-9)
+    assert opts['He_ppmw'] == pytest.approx(
+        10.0 * _HF_ROW['M_int'] / _HF_ROW['M_mantle'], rel=1e-9
+    )
+    # Discrimination: a reservoir swap that used M_mantle instead of M_int
+    # would give exactly the input 10.0 ppmw (the mantle factors cancel), so
+    # the mantle-plus-core result must differ from 10.0 by the M_int/M_mantle
+    # ratio (about 12.5 percent here).
+    assert opts['He_ppmw'] != pytest.approx(10.0, rel=1e-3)
+
+
 def test_construct_guess_defers_to_cold_start_when_noble_active():
     """When a noble gas has a positive target, construct_guess returns None
     so CALLIOPE runs its own cold start, because the helpfile does not carry
@@ -401,6 +428,14 @@ def test_construct_guess_defers_to_cold_start_when_noble_active():
     target['He'] = 3.0e16  # He is active
 
     assert construct_guess(hf_row, target, mass_thresh=1.0) is None
+
+    # A trace noble inventory, far below the major-volatile mass threshold,
+    # still defers to the cold start. This is the realistic regime (Earth-like
+    # helium is orders of magnitude below the 1e16 kg threshold); a condition
+    # that keyed on mass_thresh would miss it and hand CALLIOPE a warm guess
+    # with no helium pressure.
+    target['He'] = 3.0e12
+    assert construct_guess(hf_row, target, mass_thresh=1.0e16) is None
 
     # Discrimination: with no active noble gas the same call returns a dict.
     target['He'] = 0.0
