@@ -23,7 +23,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Custom modules
 class paths_importer:
-    def __init__(self, dirs=None):
+    def __init__(self, dirs):
         """
 
         Change the paths as needed. If you don't change the dir structure,
@@ -42,31 +42,22 @@ class paths_importer:
         # FastChem 3
         self.fastchem3_dir = os.environ.get('FC_DIR')
 
-        self.fastchem3_input = self.fastchem3_dir + 'input/'
-        self.fastchem3_config_template = self.wkdir + 'input/fastchem3/config_template.input'
-        self.element_abundance_template = (
-            self.wkdir + 'input/fastchem3/element_abundances/element_abundances_template2.dat'
+        self.fastchem3_input = os.path.join(self.fastchem3_dir, 'input/')
+        self.fastchem3_config_template = os.path.join(self.wkdir, 'input/fastchem3/config_template.input')
+        self.element_abundance_template = os.path.join(
+            self.wkdir,'input/fastchem3/element_abundances/element_abundances_template2.dat'
         )
-        self.species_data_file = self.fastchem3_dir + 'input/logK/logK.dat'
-        self.species_data_file_cond = self.fastchem3_dir + 'input/logK/logK_condensates.dat'
+        self.species_data_file = os.path.join(self.fastchem3_dir ,'input/logK/logK.dat')
+        self.species_data_file_cond = os.path.join(self.fastchem3_dir , 'input/logK/logK_condensates.dat')
 
-        if (
-            dirs is not None
-        ):  # create directory for output element abundances created by lavatmos if it does not exist yet
-            os.makedirs(dirs['output'] + '/element_abundances/', exist_ok=True)
-            self.element_abundance_output = (
-                dirs['output'] + 'element_abundances/element_abundances_output.dat'
-            )
-            os.makedirs(dirs['output'] + '/fastchem/', exist_ok=True)
-            self.fastchem3_output = dirs['output'] + 'fastchem/'
-            self.output_dir = dirs['output'] + 'fastchem/'
-        else:
-            self.output_dir = self.wkdir + 'output/'
-            self.fastchem3_output = self.fastchem3_dir + '/output/'
-            self.element_abundance_output = (
-                self.fastchem3_input + 'element_abundances/element_abundances_output.dat'
-            )
-        self.janafdata = self.wkdir + 'data/'
+        # create directory for output element abundances created by lavatmos if it does not exist yet
+        os.makedirs(dirs['output'] + '/element_abundances/', exist_ok=True)
+        self.element_abundance_output = os.path.join(dirs['output'] , 'element_abundances/element_abundances_output.dat')
+        os.makedirs(dirs['output'] + '/fastchem/', exist_ok=True)
+        self.fastchem3_output = os.path.join(dirs['output'] , 'fastchem/')
+        self.output_dir = os.path.join(dirs['output'] , 'fastchem/')
+
+        self.janafdata = os.path.join(self.wkdir , 'data/')
         log.info('Output directory set as: %s' % self.output_dir)
 
 
