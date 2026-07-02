@@ -737,3 +737,68 @@ def test_no_noble_budget_leaves_atmodeller_species_unchanged():
     for gas in noble_gases:
         assert gas not in mass_kwargs
         assert hf_row.get(f'{gas}_kg_total', 0.0) == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_atmodeller_restores_escape_owned_noble_total():
+    """The noble gas element total is escape-owned, so after the solve the
+    wrapper restores the pre-solve total rather than the solver's total_mass
+    (which drifts by the solver residual). The atmosphere and melt split still
+    come from the solve, so the reservoirs stay consistent.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    config = _make_from_o_budget_config()
+    hf_row = _earth_hf_row(O_kg_total=1.0e22)
+    hf_row['He_kg_total'] = 3.0e16  # escape-authoritative pre-solve value
+    for gas in noble_gases:
+        hf_row[f'{gas}_bar'] = 0.0
+
+    out = _fake_atmodeller_output(log10dIW=-0.5)
+    ql = dict(out.quick_look.return_value)
+    ql['He_g'] = np.array(0.02)
+    out.quick_look.return_value = ql
+    ad = dict(out.asdict.return_value)
+    # Solver total_mass drifts slightly above the constraint (its residual).
+    ad['He_g'] = {'total_mass': np.array(3.03e16), 'dissolved_mass': np.array(1.0e16)}
+    out.asdict.return_value = ad
+
+    fake_model = MagicMock()
+    fake_model.output = out
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+
+    # Restored to the pre-solve value, not the drifted solver total.
+    assert hf_row['He_kg_total'] == pytest.approx(3.0e16, rel=1e-12)
+    assert hf_row['He_kg_total'] != pytest.approx(3.03e16, rel=1e-3)
+    # The atmosphere and melt split still come from the solve.
+    assert hf_row['He_kg_liquid'] == pytest.approx(1.0e16, rel=1e-9)
+    assert hf_row['He_kg_atm'] == pytest.approx(3.03e16 - 1.0e16, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_atmodeller_clears_stale_reservoir_for_inactive_noble():
+    """A noble gas that escape has driven to zero is not in the solve, so its
+    stale atmospheric reservoir from a prior iteration is cleared rather than
+    resurrected into its element total.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    config = _make_from_o_budget_config()
+    hf_row = _earth_hf_row(O_kg_total=1.0e22)
+    hf_row['He_kg_total'] = 0.0  # fully escaped
+    hf_row['He_kg_atm'] = 5.0e15  # stale from a prior iteration
+    hf_row['He_kg_liquid'] = 0.0
+    hf_row['He_bar'] = 0.01  # stale
+
+    fake_model = MagicMock()
+    fake_model.output = _fake_atmodeller_output(log10dIW=-0.5)
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+
+    # He was not in the solve; its stale reservoir is cleared and the
+    # escape-owned total stays zero rather than being resurrected.
+    assert hf_row['He_kg_total'] == 0.0
+    assert hf_row['He_kg_atm'] == 0.0
+    assert hf_row['He_bar'] == 0.0

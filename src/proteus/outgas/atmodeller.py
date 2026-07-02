@@ -367,9 +367,18 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         except (TypeError, ValueError):
             return None
 
+    # Snapshot the escape-authoritative noble gas element totals before the
+    # output overwrites them. For a noble gas the species and the element are
+    # the same key, and {gas}_kg_total is owned by the escape pipeline (which
+    # debits it each step). The solver's total_mass equals this constraint only
+    # to its residual, so the total is restored below rather than overwritten,
+    # mirroring how the oxygen element total is preserved.
+    noble_total_in = {g: float(hf_row.get(f'{g}_kg_total', 0.0)) for g in noble_gases}
+
     for proteus_name, atm_name in _atm_gas_species.items():
         if proteus_name not in gas_list and proteus_name not in noble_gases:
             continue
+        is_noble = proteus_name in noble_gases
         species_key = f'{atm_name}_g'
         species_data = output_dict.get(species_key, {})
         if not isinstance(species_data, dict):
@@ -392,11 +401,25 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             liquid = min(max(0.0, dissolved_kg if dissolved_kg is not None else 0.0), total_kg)
             hf_row[f'{proteus_name}_kg_liquid'] = liquid
             hf_row[f'{proteus_name}_kg_atm'] = max(0.0, total_kg - liquid)
-            hf_row[f'{proteus_name}_kg_total'] = total_kg
+            # A noble gas element total is escape-owned; restore the pre-solve
+            # value so the solver's residual cannot drift the tracked budget
+            # across iterations. Its atmosphere and melt split are still taken
+            # from the solve.
+            hf_row[f'{proteus_name}_kg_total'] = (
+                noble_total_in[proteus_name] if is_noble else total_kg
+            )
+        elif is_noble:
+            # An inactive noble gas is not in the solve; clear its stale
+            # atmospheric reservoir so it does not leak into P_surf, the mean
+            # molar mass, or a later resurrection of its total, and leave its
+            # escape-owned element total untouched.
+            hf_row[f'{proteus_name}_kg_liquid'] = 0.0
+            hf_row[f'{proteus_name}_kg_atm'] = 0.0
+            hf_row[f'{proteus_name}_bar'] = 0.0
         else:
-            # Species not present in the atmodeller output (e.g. excluded from
-            # the solve): keep the pressure-derived atmospheric mass from the
-            # first loop and treat it as gas-only.
+            # Reactive species not present in the atmodeller output (e.g.
+            # excluded from the solve): keep the pressure-derived atmospheric
+            # mass from the first loop and treat it as gas-only.
             hf_row[f'{proteus_name}_kg_liquid'] = (
                 max(0.0, dissolved_kg) if dissolved_kg is not None else 0.0
             )

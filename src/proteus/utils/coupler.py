@@ -19,7 +19,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
+from proteus.utils.constants import (
+    element_list,
+    gas_list,
+    noble_gases,
+    secs_per_hour,
+    secs_per_minute,
+)
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
 
@@ -544,8 +550,12 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
 
     # Invariant 2: M_atm stays in sync with the per-species kg_atm fields it
     # is summed from. This guards against a future reordering that mutates a
-    # species kg_atm after M_atm is computed without refreshing M_atm.
-    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
+    # species kg_atm after M_atm is computed without refreshing M_atm. The
+    # noble gases are included because their atmospheric mass now counts toward
+    # M_atm (they contribute to the surface pressure and mean molar mass).
+    summed = sum(
+        float(hf_row.get(s + '_kg_atm', 0.0)) for s in list(gas_list) + list(noble_gases)
+    )
     if M_atm > 0.0:
         rel = abs(summed - M_atm) / M_atm
         if rel > atol_frac:

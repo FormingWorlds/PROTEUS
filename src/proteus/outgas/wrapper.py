@@ -394,9 +394,13 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
         apply_binodal_h2(hf_row, config)
 
     # calculate total atmosphere mass (from sum of volatile masses)
+    # M_atm is the total atmospheric mass, including the noble gases, so it
+    # stays consistent with the surface pressure and mean molar mass, which
+    # both count them. The crystallized-mantle escape debit reads M_atm, so a
+    # noble-free M_atm there would over-deplete the atmosphere.
     hf_row['M_atm'] = 0.0
-    for s in gas_list:
-        hf_row['M_atm'] += hf_row[s + '_kg_atm']
+    for s in list(gas_list) + list(noble_gases):
+        hf_row['M_atm'] += float(hf_row.get(s + '_kg_atm', 0.0))
 
     # Derive element mass ratios in atmosphere
     for e1 in element_list:
