@@ -230,7 +230,9 @@ def test_resolve_noble_kg_mode_is_pass_through():
     """In 'kg' mode the noble gas mass is the budget itself, independent of
     the hydrogen inventory or the reservoir mass.
     """
-    result = _resolve_element(mode='kg', budget=3.0e16, H_kg=1.5e20, M_reservoir=4e24, name='He')
+    result = _resolve_element(
+        mode='kg', budget=3.0e16, H_kg=1.5e20, M_reservoir=4e24, name='He'
+    )
     assert result == pytest.approx(3.0e16, rel=1e-12)
     # Pass-through: changing H_kg and M_reservoir must not change the result.
     result2 = _resolve_element(mode='kg', budget=3.0e16, H_kg=9e99, M_reservoir=9e99, name='He')
