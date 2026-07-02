@@ -365,8 +365,6 @@ def _construct_voldict(hf_row: dict, dirs: dict, config: Config):
     else:
         gas_list = vol_list + vap_list
 
-    log.debug('list of gases used by agni: %s', gas_list)
-
     # get from hf_row
     vol_dict = {}
     vol_sum = 0.0
@@ -379,9 +377,6 @@ def _construct_voldict(hf_row: dict, dirs: dict, config: Config):
         UpdateStatusfile(dirs, 20)
         raise ValueError('All volatiles have a volume mixing ratio of zero')
 
-    log.info('vmr h2O: %.3e' % vol_dict['H2O'])
-    log.info('vmr ch4: %.3e' % vol_dict['CH4'])
-    log.info('vmr h2: %.3e' % vol_dict['H2'])
     return vol_dict
 
 

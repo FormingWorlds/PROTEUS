@@ -12,6 +12,7 @@ import pandas as pd
 # Local packages and paths
 # sys.path.insert(1,'wkdir')
 from proteus.utils.constants import element_list, vol_list
+from proteus.utils.coupler import UpdateStatusFile
 
 sys.path.append(os.getcwd())
 if TYPE_CHECKING:
@@ -364,7 +365,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
 
     paths = paths_importer(dirs)
 
-    log.info('computing siicate outgassing with lavatmos')
+    log.debug('Computing rock vapourisation with LavAtmos')
     # set element fractions in atmosphere for lavatmos run
     input_eles = ['H', 'C', 'N', 'S', 'O']
 
@@ -387,8 +388,8 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
                 nfrac[e] = 1e-9
             else:
                 nfrac[e] = 0.0
-    log.info('volatile element fractions going as input to lavatmos : %s', nfrac)
-    log.info('volatile pressure given to lavatmos : %.4e', hf_row['P_surf'])
+    log.debug('volatile element fractions going as input to lavatmos : %s', nfrac)
+    log.debug('volatile pressure given to lavatmos : %.4e', hf_row['P_surf'])
 
     # running lavatmos
     run_lavatmos(dirs, config, hf_row, nfrac)
@@ -399,12 +400,13 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
     #shutil.copy(paths.element_abundance_output, dirs['output'] + 'element_abundances/element_abundances_output'+'_'+ str(hf_row['Time']) +'_.dat')
     # elementfile = paths.element_abundance_output
 
-    log.info('element fraction after running lavatmos: %s' % element_fracs)
+    log.debug('element fraction after running lavatmos: %s' % element_fracs)
     # read in boa chemistry from last iteration of fastchem and lavatmos
     output_fc = paths.fastchem3_output
     if os.path.exists(output_fc):
         mmr_path = os.path.join(output_fc, 'boa_chem.dat')
     else:
+        UpdateStatusFile(dirs, 27)
         raise RuntimeError('cannot find fastchem output from lavatmos loop!')
 
     # update abundances in output file for next calliope run
@@ -415,10 +417,6 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
     if 'm(u)' in new_atmos_abundances.columns:
         new_atmos_abundances.rename(columns={'m(u)': 'mu'}, inplace=True)
 
-    print(
-        'new atmospheric abundances after running lavatmos: %s'
-        % new_atmos_abundances.columns.tolist()
-    )
     mu_outgassed = new_atmos_abundances['mu'][0]
     # compute density for the previous run with calliope output from hf_row:
     kg_per_particle = hf_row['atm_kg_per_mol'] / particles_per_mol
