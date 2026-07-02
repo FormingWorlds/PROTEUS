@@ -61,12 +61,12 @@ _MONOTONIC_RINT_REL_TOL = 1e-9
 # interior is cooling over the step, so a genuine re-inflation driven by active
 # heating (tidal deposition, exothermic volatile re-dissolution) is not clamped.
 # The interior counts as re-inflating when the mantle is heating: T_magma has
-# risen beyond _COOLING_TMAGMA_REL_TOL relative to the last structure decision,
+# risen beyond _REINFLATE_TMAGMA_REL_TOL relative to the last structure decision,
 # or the global melt fraction Phi has risen beyond _REINFLATE_PHI_ABS_TOL as
 # melt returns. Both thresholds sit above solver step-to-step noise and well
 # below the re-solve trigger deltas (dT/T ~ 0.03, dPhi ~ 0.05), so real heating
 # is caught while numerical jitter is not.
-_COOLING_TMAGMA_REL_TOL = 1e-4
+_REINFLATE_TMAGMA_REL_TOL = 1e-4
 _REINFLATE_PHI_ABS_TOL = 1e-3
 
 # Dissolved-volatile species whose mantle mass fraction drives the
@@ -2584,13 +2584,14 @@ def update_structure_from_interior(
         # Runtime cooling discriminator. An up-step is a representation artifact
         # only while the interior is cooling. If active heating is re-inflating
         # the mantle (T_magma rising, or Phi rising as melt returns) the up-step
-        # is physical and must be accepted, not clamped. A valid prior thermal
-        # reference is required; without one (last_Tmagma <= 0) the conservative
-        # default treats the step as cooling and rejects.
+        # is physical and must be accepted, not clamped. A finite prior thermal
+        # reference is required: before the first committed structure the
+        # reference is the +inf sentinel, so neither comparison below can hold
+        # and the up-step is rejected by the conservative default.
         _Tmagma_now = float(hf_row.get('T_magma', 0.0) or 0.0)
         _Phi_now = float(hf_row.get('Phi_global', 0.0) or 0.0)
-        _interior_reinflating = last_Tmagma > 0.0 and (
-            _Tmagma_now > last_Tmagma * (1.0 + _COOLING_TMAGMA_REL_TOL)
+        _interior_reinflating = np.isfinite(last_Tmagma) and (
+            _Tmagma_now > last_Tmagma * (1.0 + _REINFLATE_TMAGMA_REL_TOL)
             or _Phi_now > last_Phi + _REINFLATE_PHI_ABS_TOL
         )
         if _superliq and _is_up_step and _interior_reinflating:
@@ -2644,6 +2645,14 @@ def update_structure_from_interior(
                     log.info(
                         'Monotonic-radius no-op: restored %s from %s',
                         _output_zalmoxis_path,
+                        _output_prev,
+                    )
+                else:
+                    log.warning(
+                        'Monotonic-radius no-op: no %s snapshot to restore, so '
+                        'the retained hf_row R_int and the on-disk '
+                        'zalmoxis_output.dat outer radius can disagree until the '
+                        'next successful re-solve rewrites the file.',
                         _output_prev,
                     )
             except Exception as _exc:
