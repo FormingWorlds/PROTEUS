@@ -910,10 +910,9 @@ def load_zalmoxis_configuration(
     # implicitly via the PALEOS density tables; we do not double-count it.
     # With dry_mantle the full inventory is excluded (the mantle EOS
     # represents bare silicate). When the mantle EOS carries dissolved
-    # volatiles (dry_mantle = false, gated until the Zalmoxis pin supports
-    # it), only the atmospheric inventory may be excluded: the dissolved
-    # mass is already part of the wet-mantle EOS, and subtracting it again
-    # would remove it twice. Escaped mass is already debited from the
+    # volatiles (dry_mantle = false), only the atmospheric inventory may
+    # be excluded: the dissolved mass is already part of the wet-mantle
+    # EOS, and subtracting it again would remove it twice. Escaped mass is already debited from the
     # *_kg_* inventories and needs no separate term.
     # Defensive .get(): some pre-IC paths invoke Zalmoxis before
     # calc_target_elemental_inventories has populated all element columns.

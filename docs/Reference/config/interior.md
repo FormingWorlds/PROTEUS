@@ -42,7 +42,7 @@ Chabrier, or Seager 2007). It supports 2-layer (core + mantle) and 3-layer
 | `ice_layer_eos` | str or none | `none` | Ice/water layer EOS; `none` = 2-layer model |
 | `mushy_zone_factor` | float | `0.8` | Solidus depression $T_\mathrm{sol}=f\,T_\mathrm{liq}$ \[0.7, 1.0]; the default 0.8 is the Stixrude (2014) solidus-to-liquidus ratio for MgSiO$_3$. Applies to `PALEOS:` unified only; for `PALEOS-2phase:` it is treated as 1.0 |
 | `mantle_mass_fraction` | float | `0` | Mantle mass fraction for 3-layer models; `0` = auto ($1 - \mathrm{core\_frac}$) |
-| `dry_mantle` | bool | `true` | Structure EOS assumes a dry mantle. `false` (melt-fraction-aware dissolved-volatile mixing in the mantle density) is rejected at config load until the pinned Zalmoxis release supports per-shell volatile profiles |
+| `dry_mantle` | bool | `true` | Structure EOS assumes a dry mantle. Set `false` for melt-fraction-aware dissolved-volatile mixing in the mantle density (per-shell volatile profile). When `false`, only the atmospheric inventory is excluded from the dry-mass target; the dissolved mass stays inside the interior |
 
 **How the PALEOS mantle EOS is applied**
 
@@ -133,7 +133,7 @@ against it, so point it at storage sized for the campaign.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `global_miscibility` | bool | `false` | Enable H$_2$-silicate binodal-aware radial structure. `true` is rejected at config load: it requires `dry_mantle = false`, which the pinned Zalmoxis release does not support yet |
+| `global_miscibility` | bool | `false` | Enable H$_2$-silicate binodal-aware radial structure. `true` is rejected at config load: it requires the H$_2$-silicate binodal handoff on the Zalmoxis side (Zalmoxis tracker #64), which is not yet implemented |
 | `miscibility_max_iter` | int | `10` | Maximum miscibility iterations |
 | `miscibility_tol` | float | `0.01` | Miscibility convergence tolerance |
 
