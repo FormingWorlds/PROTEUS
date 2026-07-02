@@ -4821,6 +4821,69 @@ def test_monotonic_guard_clamps_up_step_under_cooling(caplog):
     assert result[0] == pytest.approx(500.0, rel=1e-12)
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_monotonic_guard_rejects_up_step_on_first_solve_infinite_reference(caplog):
+    """A first-solve R_int up-step is rejected because no finite reference exists.
+
+    Before the first structure is committed the caller seeds the last-decision
+    thermal state with the +inf sentinel (last_Tmagma = last_Phi = +inf). The
+    +inf last_Phi makes the absolute-Phi trigger fire (|Phi - inf| = inf), so the
+    solve runs and reaches the guard, but the reinflation discriminator needs a
+    finite prior reference: np.isfinite(+inf) is False, so neither the T_magma
+    nor the Phi comparison can hold and the up-step falls to the conservative
+    reject default.
+
+    Monotonicity invariant: R_int is non-increasing unless a finite prior
+    structure demonstrates heating. Discrimination: the identical +1e-3 up-step
+    is accepted once a finite heating reference exists (the heating-accept test),
+    so rejection here is driven by the missing reference, not the step size, which
+    pins the first-solve default the heating and cooling tests do not exercise.
+    """
+    config, hf_row, lt, _lT, _lP = _dtmagma_scenario()
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    # First solve: no committed structure yet, so the references are the +inf
+    # sentinels the caller initialises (proteus.py last_struct_Tmagma/Phi).
+    lT = np.inf
+    lP = np.inf
+    dirs = _mock_dirs()
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        result = update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    msgs = [r.message for r in caplog.records]
+    # No finite reference: the conservative default rejects, accept log silent.
+    assert any('Rejected representation-artifact radius increase' in m for m in msgs)
+    assert not any('Accepted R_int increase under active interior heating' in m for m in msgs)
+    # The pre-solve (smaller) structure is restored, not the up-stepped radius.
+    assert hf_row['R_int'] == pytest.approx(r_prev, rel=1e-12)
+    assert hf_row['R_int'] < r_prev * (1.0 + 1.0e-3)
+    # Recorded as zero radius change: a retained-structure no-op, not a failure.
+    assert dirs['_last_resolve_dR_rel'] == 0.0
+    assert interior_o.zalmoxis_fail_count == 0
+    # The no-op sentinel returns the current thermal state at current_time.
+    assert result[0] == pytest.approx(500.0, rel=1e-12)
+
+
 # ============================================================================
 # Composition-sentinel refresh on the super-liquidus monotonic-radius no-op
 #
