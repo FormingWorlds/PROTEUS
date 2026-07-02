@@ -12,7 +12,7 @@ import pandas as pd
 # Local packages and paths
 # sys.path.insert(1,'wkdir')
 from proteus.utils.constants import element_list, vol_list
-from proteus.utils.coupler import UpdateStatusFile
+from proteus.utils.coupler import UpdateStatusfile
 
 sys.path.append(os.getcwd())
 if TYPE_CHECKING:
@@ -311,7 +311,8 @@ def read_in_element_fracs_normalized(input_path):
     return norm_dict
 
 
-def run_lavatmos(dirs: dict, config: Config, hf_row: dict, volatile_fracs: dict):
+def run_lavatmos(dirs: dict, config: Config, hf_row: dict, 
+                 volatile_fracs: dict, first_iter: bool):
     """
 
     This function effectively runs a bash command which calls
@@ -335,9 +336,23 @@ def run_lavatmos(dirs: dict, config: Config, hf_row: dict, volatile_fracs: dict)
     for i in melt_comp_df.index:
         melt_comp[melt_comp_df['spec'].loc[i]] = float(melt_comp_df['abund'].loc[i])
 
+    # Pressure used for melt activities [bar]
+    P_melt = 0.01
+
+    # Guess for fO2 [bar]
+    fO2_initial_guess = 10 ** hf_row['log10_fO2_vapourise']
+
+    # Lavatmos tolerance
+    xatol = 1e-5
+
     system = lavatmos3.melt_vapor_system(paths)
     lavatmos_output = system.vaporise(
-        Magma.T_surf, Magma.P_volatile, melt_comp, volatile_fracs, Magma.melt_fraction
+        Magma.T_surf, Magma.P_volatile, melt_comp, volatile_fracs, 
+        melt_fraction=Magma.melt_fraction,
+        P_melt=P_melt,
+        fO2_initial_guess=fO2_initial_guess,
+        fO2_tries_from_last=bool(not first_iter),
+        xatol=xatol
     )
 
     # Save results
@@ -345,24 +360,21 @@ def run_lavatmos(dirs: dict, config: Config, hf_row: dict, volatile_fracs: dict)
     lavatmos_output.to_csv(paths.output_dir + output_name)
 
 
-def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
+def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     """
 
     This function runs the Thermoengine module Lavatmos. Outgassing of refractory species
     are computed from a melt temperature and atmospheric pressure.
 
     Parameters:
+        dirs : dict
+            Dictionary of directories
         config : Config
             Configuration object
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
-        obudget: oxygen budget already present in the atmosphere before running the outgassing
 
     """
-    import os
-
-    import numpy as np
-
     paths = paths_importer(dirs)
 
     log.debug('Computing rock vapourisation with LavAtmos')
@@ -392,7 +404,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
     log.debug('volatile pressure given to lavatmos : %.4e', hf_row['P_surf'])
 
     # running lavatmos
-    run_lavatmos(dirs, config, hf_row, nfrac)
+    run_lavatmos(dirs, config, hf_row, nfrac, first_iter)
 
     # convert the element abundances from lavatmos file to element fractions, normalized to unity
     element_fracs = read_in_element_fracs_normalized(paths.element_abundance_output)
@@ -518,9 +530,10 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict):
     )  # is this really partical pressure ? Maybe this is actually abundances
 
     fO2_shift = FO2shift()
-    hf_row['fO2_shift_LavAtmos'] = fO2_shift(hf_row['T_magma'], log10_fO2)
+    hf_row['log10_fO2_vapourise'] = log10_fO2
+    hf_row['log10_fO2_shift_vapourise'] = fO2_shift(hf_row['T_magma'], log10_fO2)
     hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
 
-    log.debug('shift compared to iron wustite buffer: %.6f' % hf_row['fO2_shift_LavAtmos'])
+    log.debug('log10 fO2 shift compared to IW buffer: %.6f' % hf_row['log10_fO2_shift_vapourise'])
 
     # update  hf_row['atm_kg_per_mol']

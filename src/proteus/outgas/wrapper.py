@@ -531,17 +531,21 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     )
 
 
-def run_desiccated(dirs: dict, config: Config, hf_row: dict):
+def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     """
     Handle desiccation of the planet. This substitutes for run_outgassing when the planet
     has lost its entire volatile inventory.
 
     Parameters
     ----------
+        dirs : dict
+            Dictionary of directory paths
         config : Config
             Configuration object
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
+        first_iter : bool
+            True if this is the first iteration of the simulation, False otherwise
     """
 
     # if desiccated, set all gas masses to zero
@@ -565,12 +569,14 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict):
             hf_row[k] = 0.0
 
     if config.outgas.silicates:
-        compute_silicate_outgassing(dirs, config, hf_row)
+        compute_silicate_outgassing(dirs, config, hf_row, first_iter)
 
 
-def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
-    """function which runs lavatmos and calliope in a loop until they have converged.
-    This allows for a consistentt computation of melt outgassing and dissolution
+def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
+    """Runs lavatmos and calliope together and combines the results.
+
+    This allows for a consistent computation of melt outgassing and dissolution.
+
     Parameters
     ----------
         dirs : dict
@@ -579,6 +585,8 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
             Configuration object
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
+        first_iter : bool
+            True if this is the first iteration of the simulation, False otherwise
     """
 
     gas_list = vol_list + config.outgas.vaplist
@@ -610,6 +618,6 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
         # else:
         # log.warning('Lavatmos directory not found, did you set the LAVATMOS_DIR environment variable?')
         if hf_row['Phi_global'] > 0.00:
-            compute_silicate_outgassing(dirs, config, hf_row)
+            compute_silicate_outgassing(dirs, config, hf_row, first_iter)
         else:
             log.info('planet has solidified, no silicate outgassing occurs')

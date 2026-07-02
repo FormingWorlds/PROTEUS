@@ -36,7 +36,7 @@ config_version = "3.0"
         # name (run_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
         path                  = "test_new_pressuresettings"
         logging               = "DEBUG"       # INFO | DEBUG | ERROR | WARNING
-        plot_mod              = 5            # 0: at end | n: every n iters | none: never
+        plot_mod              = 1            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
         write_mod             = 1            # 0: at end | n: every n iters
         dt_write_rel          = 1e-3         # min write interval as fraction of elapsed simulation time (0: off)
@@ -472,7 +472,7 @@ config_version = "3.0"
 
 # Atmosphere climate (radiative-convective structure)
 [atmos_clim]
-    module                    = "agni"       # agni | janus | dummy
+    module                    = "dummy"       # agni | janus | dummy
 
     # Grid and spectral setup (shared by agni + janus)
     spectral_group            = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
@@ -483,7 +483,7 @@ config_version = "3.0"
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
     # Radiative properties (agni, janus only)
-    rayleigh                  = true         # Rayleigh scattering
+    rayleigh                  = false         # Rayleigh scattering
     cloud_enabled             = false        # water cloud radiative effects
     cloud_alpha               = 0.0          # condensate retention fraction (0 to 1)
     aerosols_enabled          = false        # enable aerosol radiative effects (agni only)

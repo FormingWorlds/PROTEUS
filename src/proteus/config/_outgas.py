@@ -177,7 +177,6 @@ class Outgas:
         Parameters for CALLIOPE module.
     atmodeller: Atmodeller
         Parameters for atmodeller module.
-    fastchempath: path to where the fastchem directory in the lavatmos directory is located
     vaplist: list of gases which are not purely from volatile species and are to be included: needs to be specified only when
         lavatmos is called, otherwise the default vaplist in constants.py module is used
     """

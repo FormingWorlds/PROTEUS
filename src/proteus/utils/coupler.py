@@ -849,7 +849,8 @@ def GetHelpfileKeys(config: Config):
 
     # Simulation's computational variables
     keys.append('runtime')          # Simulation wall-clock runtime [s]
-    keys.append("fO2_shift_LavAtmos") #relative to IW buffer
+    keys.append("log10_fO2_vapourise") #relative to IW buffer
+    keys.append("log10_fO2_shift_vapourise") #relative to IW buffer
 
     return keys
 

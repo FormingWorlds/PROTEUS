@@ -861,12 +861,13 @@ class Proteus:
                     self.desiccated = check_desiccation(self.config, self.hf_row)
 
             # Handle volatile exchange
+            first_iter = bool(self.loops['total'] <= self.loops['init_loops'])
             if self.desiccated:
-                run_desiccated(self.directories, self.config, self.hf_row)
+                run_desiccated(self.directories, self.config, self.hf_row, first_iter)
             elif self.crystallized:
                 run_crystallized(self.config, self.hf_row, self.interior_o.dt)
             else:
-                lavatmos_calliope_run(self.directories, self.config, self.hf_row)
+                lavatmos_calliope_run(self.directories, self.config, self.hf_row, first_iter)
 
                 # Issue #677 IC consistency check. Fires once at the first
                 # outgas call (subsequent init_stage calls find the sentinel
