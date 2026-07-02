@@ -4640,6 +4640,187 @@ def test_resume_settling_monotonic_noop_records_zero_dr():
     assert dirs['_last_resolve_dR_rel'] < _RESUME_STRUCT_DR_REL_TOL
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_monotonic_guard_permits_up_step_under_active_heating(caplog):
+    """A genuine R_int up-step is kept when the interior is actively heating.
+
+    The monotonic-radius guard rejects a cross-table radius INCREASE only while a
+    super-liquidus interior cools. Once tidal or volatile-re-dissolution heating
+    re-inflates the mantle the increase is physical, so the guard must accept it.
+    Here T_magma rises 2800 -> 3000 K over the step (the mantle is heating), the
+    re-solve up-steps R_int by +1e-3 relative, and the guard keeps the new,
+    larger structure instead of restoring the running minimum.
+
+    Monotonicity invariant, correct boundary: R_int may increase only while the
+    interior heats; this pins the heating branch. Discrimination: the identical
+    up-step is clamped when the same interior cools
+    (test_monotonic_guard_clamps_up_step_under_cooling), so acceptance here is
+    driven by the thermal trend, not by the up-step magnitude.
+    """
+    config, hf_row, lt, _lT_cooling, lP = _dtmagma_scenario()
+    # Override the thermal trend to HEATING: last decision at 2800 K, now 3000 K.
+    # dT/T = |3000-2800|/2800 = 0.071 still triggers the re-solve.
+    lT = 2800.0
+    hf_row['T_magma'] = 3000.0
+    hf_row['Phi_global'] = 0.80  # flat; the T_magma rise alone drives acceptance
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    dirs = _mock_dirs()
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        # Genuine re-inflation: the re-solve raises R_int above the running min.
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    msgs = [r.message for r in caplog.records]
+    # The heating-accept path fired ...
+    assert any('Accepted R_int increase under active interior heating' in m for m in msgs), (
+        'a genuine up-step under active heating must be accepted, not clamped'
+    )
+    # ... and neither reject path fired.
+    assert not any('Rejected representation-artifact radius increase' in m for m in msgs)
+    assert not any('Rejected EOS-grid-extent up-step' in m for m in msgs)
+    # The larger structure is KEPT: R_int retains the up-stepped value, not the
+    # restored running minimum. This is the discriminating observable between
+    # accept and reject (both return the same (time, T, Phi) tuple).
+    assert hf_row['R_int'] == pytest.approx(r_prev * (1.0 + 1.0e-3), rel=1e-12)
+    assert hf_row['R_int'] > r_prev
+    # An accepted re-solve records a non-zero radius change; a reject records 0.
+    assert dirs['_last_resolve_dR_rel'] > _RESUME_STRUCT_DR_REL_TOL
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_monotonic_guard_permits_up_step_under_remelting(caplog):
+    """A re-melting interior (Phi rising, T_magma flat) keeps the R_int up-step.
+
+    Re-inflation can be driven by melt returning at near-constant T_magma across
+    the latent-heat plateau, so the heating test must also fire on a rising melt
+    fraction, not T_magma alone. Here Phi rises 0.80 -> 0.86 (the sole re-solve
+    trigger) while T_magma is flat, and the up-step is accepted.
+
+    Discrimination: with T_magma flat the T_magma branch of the heating test is
+    silent, so acceptance proves the Phi branch drives it; a guard keying only on
+    T_magma would wrongly clamp this genuine re-melting inflation.
+    """
+    config, hf_row, lt, lT, _lP_flat = _dtmagma_scenario()
+    # T_magma flat (no dT/T trigger, no T-branch heating); Phi rises past the
+    # 0.05 abs re-solve trigger and past the guard's re-melt threshold.
+    lT = 3000.0
+    hf_row['T_magma'] = 3000.0
+    lP = 0.80
+    hf_row['Phi_global'] = 0.86
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    dirs = _mock_dirs()
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    msgs = [r.message for r in caplog.records]
+    # Acceptance via the Phi (re-melting) branch, with T_magma flat.
+    assert any('Accepted R_int increase under active interior heating' in m for m in msgs), (
+        'a genuine up-step under rising melt fraction must be accepted'
+    )
+    assert not any('Rejected representation-artifact radius increase' in m for m in msgs)
+    # The up-stepped radius is kept.
+    assert hf_row['R_int'] == pytest.approx(r_prev * (1.0 + 1.0e-3), rel=1e-12)
+    assert hf_row['R_int'] > r_prev
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_monotonic_guard_clamps_up_step_under_cooling(caplog):
+    """A representation-artifact R_int up-step is clamped while the interior cools.
+
+    The counterpart to the heating-accept tests: with T_magma falling 3000 ->
+    2800 K and Phi flat (the interior is cooling), an identical +1e-3 R_int
+    up-step from the re-solve is a cross-table artifact and must be rejected, the
+    previous smaller structure restored, and the step recorded as zero radius
+    change so the resume-settling guard can suppress the spurious re-solve.
+
+    Monotonicity invariant: R_int is non-increasing while a super-liquidus
+    interior cools. Discrimination: the accept-path log stays silent and the
+    reject-path log fires, and R_int is restored to the running minimum rather
+    than kept at the up-stepped value, isolating the cooling branch from the
+    heating branch that keeps the same up-step.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()  # cooling: 3000 -> 2800 K
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    dirs = _mock_dirs()
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        result = update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    msgs = [r.message for r in caplog.records]
+    # The cooling branch rejects: reject log fires, accept log stays silent.
+    assert any('Rejected representation-artifact radius increase' in m for m in msgs)
+    assert not any('Accepted R_int increase under active interior heating' in m for m in msgs)
+    # The previous (smaller) structure is restored, not the up-stepped radius.
+    assert hf_row['R_int'] == pytest.approx(r_prev, rel=1e-12)
+    assert hf_row['R_int'] < r_prev * (1.0 + 1.0e-3)
+    # Recorded as zero radius change (retained structure) and a clean no-op.
+    assert dirs['_last_resolve_dR_rel'] == 0.0
+    assert interior_o.zalmoxis_fail_count == 0
+    # The no-op sentinel returns the current thermal state at current_time.
+    assert result[0] == pytest.approx(500.0, rel=1e-12)
+
+
 # ============================================================================
 # Composition-sentinel refresh on the super-liquidus monotonic-radius no-op
 #

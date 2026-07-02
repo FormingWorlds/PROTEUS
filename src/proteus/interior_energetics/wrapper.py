@@ -56,6 +56,19 @@ _ZALMOXIS_MASS_ANCHOR_TOL = 3e-3
 # minimum, and a genuine representation up-step is rejected.
 _MONOTONIC_RINT_REL_TOL = 1e-9
 
+# Runtime cooling discriminator for the monotonic-radius guard. The guard
+# rejects an R_int up-step under the super-liquidus adiabat IC only when the
+# interior is cooling over the step, so a genuine re-inflation driven by active
+# heating (tidal deposition, exothermic volatile re-dissolution) is not clamped.
+# The interior counts as re-inflating when the mantle is heating: T_magma has
+# risen beyond _COOLING_TMAGMA_REL_TOL relative to the last structure decision,
+# or the global melt fraction Phi has risen beyond _REINFLATE_PHI_ABS_TOL as
+# melt returns. Both thresholds sit above solver step-to-step noise and well
+# below the re-solve trigger deltas (dT/T ~ 0.03, dPhi ~ 0.05), so real heating
+# is caught while numerical jitter is not.
+_COOLING_TMAGMA_REL_TOL = 1e-4
+_REINFLATE_PHI_ABS_TOL = 1e-3
+
 # Dissolved-volatile species whose mantle mass fraction drives the
 # composition-change structure trigger. Single source of truth: the trigger that
 # reads these fractions and the sentinel refresh that records them iterate this
@@ -2536,19 +2549,24 @@ def update_structure_from_interior(
                 )
 
         # Monotonic-radius guard for the super-liquidus adiabat IC. A fully
-        # molten super-liquidus start can only cool and crystallise, so the
-        # solid-body R_int is physically non-increasing. The IC structure is
-        # solved on the true P-T adiabat, while a dynamic re-solve integrates
-        # against Aragog's evolved P-S interior_o.temp; the cross-table mismatch
-        # can let a re-solve raise R_int slightly above the running minimum,
-        # which is a representation artifact, not real re-inflation. Reject such
-        # an up-step: restore the previous structure (hf_row keys AND the on-disk
-        # zalmoxis_output.dat snapshot) and return the no-update sentinel. This
-        # is a clean no-op, NOT a solver failure: the consecutive-failure counter
-        # is left untouched (a rejected up-step must not count toward the abort
-        # budget) and the stale flag is not raised. The guard is gated on
-        # _use_superliquidus_adiabat_ic so regimes with genuine re-inflation
-        # (tidal reheating, volatile re-dissolution) are never clamped.
+        # molten super-liquidus start solved on the true P-T adiabat cools and
+        # crystallises against Aragog's evolved P-S interior_o.temp; the
+        # cross-table mismatch can let a re-solve raise R_int slightly above the
+        # running minimum while the interior is in fact cooling, which is a
+        # representation artifact, not real re-inflation. The guard rejects an
+        # up-step ONLY when the interior is cooling over the step, i.e. neither
+        # T_magma nor the melt fraction Phi is rising relative to the last
+        # structure decision. When active heating genuinely re-inflates the
+        # mantle (tidal deposition or exothermic volatile re-dissolution raising
+        # T_magma, or Phi rising as melt returns) the up-step is physical and is
+        # accepted. A reject restores the previous structure (hf_row keys AND the
+        # on-disk zalmoxis_output.dat snapshot) and returns the no-update
+        # sentinel: a clean no-op, NOT a solver failure, so the consecutive-
+        # failure counter is left untouched (a rejected up-step must not count
+        # toward the abort budget) and the stale flag is not raised. The guard is
+        # confined to _use_superliquidus_adiabat_ic runs, where the monotone-
+        # cooling baseline makes an artifact up-step identifiable; other ICs carry
+        # no such expectation and are never clamped.
         _R_int_new = float(hf_row.get('R_int', 0.0) or 0.0)
         _scalar_radius_up_step = R_int_prev > 0.0 and _R_int_new > R_int_prev * (
             1.0 + _MONOTONIC_RINT_REL_TOL
@@ -2561,9 +2579,36 @@ def update_structure_from_interior(
         # Reject that grid-extent up-step here through the identical restore path,
         # so a single release closes both the scalar and the grid-extent artifact.
         _grid_extent_up_step = _eos_grid_extent_up_step(_output_zalmoxis_path, hf_row)
-        if _use_superliquidus_adiabat_ic(config) and (
-            _scalar_radius_up_step or _grid_extent_up_step
-        ):
+        _is_up_step = _scalar_radius_up_step or _grid_extent_up_step
+        _superliq = _use_superliquidus_adiabat_ic(config)
+        # Runtime cooling discriminator. An up-step is a representation artifact
+        # only while the interior is cooling. If active heating is re-inflating
+        # the mantle (T_magma rising, or Phi rising as melt returns) the up-step
+        # is physical and must be accepted, not clamped. A valid prior thermal
+        # reference is required; without one (last_Tmagma <= 0) the conservative
+        # default treats the step as cooling and rejects.
+        _Tmagma_now = float(hf_row.get('T_magma', 0.0) or 0.0)
+        _Phi_now = float(hf_row.get('Phi_global', 0.0) or 0.0)
+        _interior_reinflating = last_Tmagma > 0.0 and (
+            _Tmagma_now > last_Tmagma * (1.0 + _COOLING_TMAGMA_REL_TOL)
+            or _Phi_now > last_Phi + _REINFLATE_PHI_ABS_TOL
+        )
+        if _superliq and _is_up_step and _interior_reinflating:
+            log.info(
+                'Accepted R_int increase under active interior heating on the '
+                'super-liquidus adiabat IC: re-solve R_int=%.6e m rose above the '
+                'running minimum %.6e m while the mantle is heating (T_magma '
+                '%.1f -> %.1f K, Phi %.4f -> %.4f). Genuine re-inflation (tidal '
+                'or volatile re-dissolution), not a cross-table artifact, so the '
+                'new structure is kept.',
+                _R_int_new,
+                R_int_prev,
+                last_Tmagma,
+                _Tmagma_now,
+                last_Phi,
+                _Phi_now,
+            )
+        if _superliq and _is_up_step and not _interior_reinflating:
             if _scalar_radius_up_step:
                 log.info(
                     'Rejected representation-artifact radius increase under the '
