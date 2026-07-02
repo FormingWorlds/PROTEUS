@@ -2558,10 +2558,10 @@ def update_structure_from_interior(
         # representation artifact, not real re-inflation. The guard rejects an
         # up-step ONLY when the interior is cooling over the step, i.e. neither
         # T_magma nor the melt fraction Phi is rising relative to the last
-        # structure decision. When active heating genuinely re-inflates the
-        # mantle (tidal deposition or exothermic volatile re-dissolution raising
-        # T_magma, or Phi rising as melt returns) the up-step is physical and is
-        # accepted. A reject restores the previous structure (hf_row keys AND the
+        # structure decision. When the mantle is genuinely heating (T_magma
+        # rising, or Phi rising as melt returns) the up-step is physical and is
+        # accepted; the accept criterion is the observed thermal change, not an
+        # assumed mechanism. A reject restores the previous structure (hf_row keys AND the
         # on-disk zalmoxis_output.dat snapshot) and returns the no-update
         # sentinel: a clean no-op, NOT a solver failure, so the consecutive-
         # failure counter is left untouched (a rejected up-step must not count
@@ -2601,8 +2601,8 @@ def update_structure_from_interior(
                 'Accepted R_int increase under active interior heating on the '
                 'super-liquidus adiabat IC: re-solve R_int=%.6e m rose above the '
                 'running minimum %.6e m while the mantle is heating (T_magma '
-                '%.1f -> %.1f K, Phi %.4f -> %.4f). Genuine re-inflation (tidal '
-                'or volatile re-dissolution), not a cross-table artifact, so the '
+                '%.1f -> %.1f K, Phi %.4f -> %.4f). The observed thermal rise '
+                'marks genuine re-inflation, not a cross-table artifact, so the '
                 'new structure is kept.',
                 _R_int_new,
                 R_int_prev,
