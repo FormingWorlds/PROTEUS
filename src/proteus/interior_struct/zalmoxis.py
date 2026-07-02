@@ -349,8 +349,9 @@ def build_volatile_profile(hf_row: dict, mantle_eos: str):
     ----------
     hf_row : dict
         Current helpfile row with volatile mass keys (e.g. ``H2O_kg_liquid``,
-        ``H2O_kg_solid``) and mantle mass keys (``M_mantle_liquid``,
-        ``M_mantle_solid``).
+        ``H2O_kg_solid``) and mantle mass keys: ``M_mantle`` with
+        ``Phi_global`` (preferred, structural), or ``M_mantle_liquid`` and
+        ``M_mantle_solid`` as a fallback.
     mantle_eos : str
         Primary mantle EOS identifier (e.g. ``'PALEOS:MgSiO3'``).
 
@@ -361,8 +362,24 @@ def build_volatile_profile(hf_row: dict, mantle_eos: str):
     """
     from zalmoxis.mixing import VolatileProfile
 
-    M_liq = float(hf_row.get('M_mantle_liquid', 0.0))
-    M_sol = float(hf_row.get('M_mantle_solid', 0.0))
+    # Denominators: the melt concentration must be taken against the same
+    # reservoir the chemistry used and the structure carries. CALLIOPE
+    # dissolves into M_mantle * Phi_global, and the structure integrates
+    # the (structural) mantle mass, so split the structural M_mantle by
+    # Phi_global. Aragog's M_mantle_liquid/M_mantle_solid use its PALEOS
+    # EOS cell masses instead, ~7% denser than the wet structural mantle,
+    # which diluted w_liquid and lost the same fraction of dissolved
+    # water from the structure. Fall back to the per-phase masses when
+    # the structural fields are absent (e.g. minimal test rows).
+    M_mantle = float(hf_row.get('M_mantle', 0.0))
+    Phi_global = float(hf_row.get('Phi_global', float('nan')))
+    if M_mantle > 0 and np.isfinite(Phi_global):
+        Phi_global = min(max(Phi_global, 0.0), 1.0)
+        M_liq = Phi_global * M_mantle
+        M_sol = (1.0 - Phi_global) * M_mantle
+    else:
+        M_liq = float(hf_row.get('M_mantle_liquid', 0.0))
+        M_sol = float(hf_row.get('M_mantle_solid', 0.0))
 
     # Need mantle mass data to compute fractions
     if M_liq + M_sol <= 0:

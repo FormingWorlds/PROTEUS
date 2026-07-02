@@ -1837,3 +1837,44 @@ def test_extend_mantle_eos_with_volatiles():
     assert extend_mantle_eos_with_volatiles('PALEOS:MgSiO3', None) == 'PALEOS:MgSiO3'
     composite = 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1'
     assert extend_mantle_eos_with_volatiles(composite, profile) == composite
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_build_volatile_profile_uses_structural_mantle_mass():
+    """The melt concentration divides CALLIOPE's dissolved kg by the same
+    reservoir CALLIOPE dissolved into, Phi_global * M_mantle (structural).
+    Aragog's M_mantle_liquid is computed from its PALEOS EOS cell masses,
+    ~7% denser than the wet structural mantle; using it diluted w_liquid
+    and lost the same fraction of dissolved water from the structure
+    (the -6.4% residual of the wire_wet_1Me_aragog verification run).
+    """
+    from proteus.interior_struct.zalmoxis import build_volatile_profile
+
+    hf_row = {
+        'M_mantle': 4.0e24,
+        'Phi_global': 1.0,
+        'M_mantle_liquid': 4.3e24,  # PALEOS-density mass, must be ignored
+        'M_mantle_solid': 0.0,
+        'H2O_kg_liquid': 3.32e23,
+        'H2O_kg_solid': 0.0,
+    }
+    prof = build_volatile_profile(hf_row, 'PALEOS:MgSiO3')
+    assert prof is not None
+    assert prof.w_liquid['PALEOS:H2O'] == pytest.approx(3.32e23 / 4.0e24, rel=1e-12)
+
+    # Fallback: without the structural fields, the per-phase masses apply.
+    hf_fallback = {
+        'M_mantle_liquid': 4.3e24,
+        'M_mantle_solid': 0.0,
+        'H2O_kg_liquid': 3.32e23,
+        'H2O_kg_solid': 0.0,
+    }
+    prof = build_volatile_profile(hf_fallback, 'PALEOS:MgSiO3')
+    assert prof.w_liquid['PALEOS:H2O'] == pytest.approx(3.32e23 / 4.3e24, rel=1e-12)
+
+    # Partially molten: the split follows Phi_global.
+    hf_mixed = dict(hf_row, Phi_global=0.5, H2O_kg_solid=1.0e22)
+    prof = build_volatile_profile(hf_mixed, 'PALEOS:MgSiO3')
+    assert prof.w_liquid['PALEOS:H2O'] == pytest.approx(3.32e23 / 2.0e24, rel=1e-12)
+    assert prof.w_solid['PALEOS:H2O'] == pytest.approx(1.0e22 / 2.0e24, rel=1e-12)
