@@ -419,6 +419,13 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         'NH3': 17.03e-3,
     }
     mmw = sum(float(hf_row.get(f'{s}_vmr', 0.0)) * _mmw.get(s, 28.0e-3) for s in gas_list)
+    # Noble gases contribute to the total surface pressure and therefore to the
+    # mean molar mass. Their mole fraction is their partial pressure over the
+    # total (which already includes them), so fold them in here to keep the
+    # mean molar mass consistent with P_surf, matching the CALLIOPE backend.
+    if P_total > 0:
+        for gas in noble_gases:
+            mmw += (float(hf_row.get(f'{gas}_bar', 0.0)) / P_total) * element_mmw[gas]
     if mmw > 0:
         hf_row['atm_kg_per_mol'] = mmw
 

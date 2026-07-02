@@ -33,7 +33,7 @@ pytest.importorskip(
     reason='atmodeller package not installed; from_O_budget atmodeller wrapper tests skipped',
 )
 
-from proteus.utils.constants import element_list, gas_list  # noqa: E402
+from proteus.utils.constants import element_list, gas_list, noble_gases  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -657,3 +657,83 @@ def test_atmodeller_propagates_solver_exception(caplog):
     ):
         calc_surface_pressures_atmodeller(dirs, config, hf_row)
     assert any('Atmodeller solve failed' in rec.message for rec in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Noble gas wiring (mocked solver)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_noble_gas_passed_as_mass_constraint_and_uses_total_mass_output():
+    """A helium inventory reaches atmodeller as its own element mass
+    constraint, and the wrapper reads the per-species reservoir masses from
+    atmodeller's conserved total_mass output rather than the pressure formula.
+
+    Discriminating: the mass constraint carries the exact He budget; the
+    tracked He total equals atmodeller's total_mass and the atmospheric mass
+    is total minus dissolved, so the pressure-derived value (which would
+    misweight the light noble gas) is not used.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    config = _make_from_o_budget_config()
+    hf_row = _earth_hf_row(O_kg_total=1.0e22)
+    hf_row['He_kg_total'] = 3.0e16  # a helium inventory switches He on
+    for gas in noble_gases:
+        hf_row[f'{gas}_bar'] = 0.0
+
+    out = _fake_atmodeller_output(log10dIW=-0.5)
+    # He partial pressure plus atmodeller's conserved masses for helium.
+    ql = dict(out.quick_look.return_value)
+    ql['He_g'] = np.array(0.02)
+    out.quick_look.return_value = ql
+    ad = dict(out.asdict.return_value)
+    ad['He_g'] = {'total_mass': np.array(3.0e16), 'dissolved_mass': np.array(1.0e16)}
+    out.asdict.return_value = ad
+
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+
+    # He is a mass constraint with the supplied budget.
+    mass_kwargs = fake_model.solve.call_args.kwargs['mass_constraints']
+    assert 'He' in mass_kwargs
+    assert mass_kwargs['He'] == pytest.approx(3.0e16)
+
+    # The tracked reservoirs come from atmodeller's total_mass (conserved) and
+    # dissolved_mass, not the mole-fraction pressure formula.
+    assert hf_row['He_kg_total'] == pytest.approx(3.0e16, rel=1e-9)
+    assert hf_row['He_kg_liquid'] == pytest.approx(1.0e16, rel=1e-9)
+    assert hf_row['He_kg_atm'] == pytest.approx(2.0e16, rel=1e-9)
+    assert hf_row['He_kg_atm'] + hf_row['He_kg_liquid'] == pytest.approx(3.0e16, rel=1e-9)
+    # Discrimination: the pressure formula p*1e5*area/g at p=0.02 bar would
+    # give ~2.6e16 kg for the atmospheric part alone and a total above the
+    # 3e16 budget, so the total-mass path is what keeps He conserved.
+    assert hf_row['He_kg_total'] < 3.1e16
+
+
+@pytest.mark.unit
+def test_no_noble_budget_leaves_atmodeller_species_unchanged():
+    """With no noble inventory, no noble gas is added to the species network
+    or the mass constraints, so a run without a noble budget is unaffected by
+    the noble gas wiring.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    config = _make_from_o_budget_config()
+    hf_row = _earth_hf_row(O_kg_total=1.0e22)  # no noble budget
+
+    fake_model = MagicMock()
+    fake_model.output = _fake_atmodeller_output(log10dIW=-0.5)
+
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+
+    mass_kwargs = fake_model.solve.call_args.kwargs['mass_constraints']
+    for gas in noble_gases:
+        assert gas not in mass_kwargs
+        assert hf_row.get(f'{gas}_kg_total', 0.0) == 0.0

@@ -7,7 +7,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.outgas.common import expected_keys
-from proteus.utils.constants import element_list, element_mmw, gas_list, secs_per_year
+from proteus.utils.constants import (
+    element_list,
+    element_mmw,
+    gas_list,
+    noble_gases,
+    secs_per_year,
+)
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -487,7 +493,12 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     # Scale the atmospheric reservoirs by the retained fraction. Uniform
     # scaling preserves composition, so `*_vmr` and `atm_kg_per_mol` (mmw)
     # are left unchanged.
-    for s in gas_list:
+    # Scale the reactive gas reservoirs and the noble gases together. The noble
+    # gases are tracked as element masses, so their atmospheric mass must
+    # shrink with the reactive volatiles when the frozen atmosphere escapes;
+    # otherwise a later escape step that debits the noble total would leave the
+    # noble atmospheric mass stale and larger than the total.
+    for s in list(gas_list) + list(noble_gases):
         hf_row[f'{s}_kg_atm'] = hf_row.get(f'{s}_kg_atm', 0.0) * retained
         hf_row[f'{s}_bar'] = hf_row.get(f'{s}_bar', 0.0) * retained
     hf_row['P_surf'] = hf_row.get('P_surf', 0.0) * retained
