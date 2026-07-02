@@ -296,13 +296,21 @@ def test_vol_list_excludes_vap_list():
 
 
 def test_element_list_contains_expected_elements():
-    """element_list contains the 9 elements tracked by PROTEUS.
+    """element_list contains the volatile-forming elements, the refractory
+    elements, and the five noble gases tracked by PROTEUS.
 
-    At minimum: H, O, C, N, S.
+    At minimum the volatile-forming H, O, C, N, S and the noble gases
+    He, Ne, Ar, Kr, Xe must be present.
     """
-    assert len(element_list) == 9
-    for elem in ('H', 'O', 'C', 'N', 'S'):
+    for elem in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'):
         assert elem in element_list
+    # Noble gases are tracked as elements for the whole-planet mass balance.
+    for gas in ('He', 'Ne', 'Ar', 'Kr', 'Xe'):
+        assert gas in element_list
+    # The noble gases follow the refractory block, so the list has grown to 14.
+    assert len(element_list) == 14
+    # Discrimination guard: no accidental duplicates in the element list.
+    assert len(set(element_list)) == len(element_list)
 
 
 def test_element_mmw_all_positive():

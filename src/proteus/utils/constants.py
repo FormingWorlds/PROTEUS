@@ -83,8 +83,16 @@ prt_ignored_gases = {'e-', 'MMW', 'nabla_ad'}
 vap_list = ['SiO']  # just one for now
 gas_list = vol_list + vap_list
 
-# Supported elements
-element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na']
+# Noble gases. Chemically inert, tracked as elements (each is its own gas
+# species). Partitioned by CALLIOPE's Henry's-law noble gas solubility and
+# carried through the whole-planet mass accounting.
+noble_gases = ['He', 'Ne', 'Ar', 'Kr', 'Xe']
+
+# Supported elements. Noble gases are appended so they are tracked in the
+# helpfile schema and the whole-planet mass balance; they are opt-in per
+# gas via the outgassing config, so a run without a noble budget carries
+# them as zero.
+element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'] + noble_gases
 
 # Masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/
 element_mmw = {
@@ -183,6 +191,21 @@ Teff_sun = 5780.0  # Effective temperature of the sun [K]
 C_solar = 2.884e-4  # Solar C/H ratio
 N_solar = 6.761e-5  # Solar N/H ratio
 S_solar = 1.318e-5  # Solar S/H ratio
+
+# Protosolar noble gas abundances, expressed as X/H mass ratios, derived from
+# the Lodders (2003) protosolar abundances (ApJ 591:1220). These drive the
+# noble gas 'solar' budget mode. They are approximate reference values (the
+# neon and argon solar abundances in particular carry real uncertainty), and
+# planetary bodies are depleted in noble gases by orders of magnitude relative
+# to solar, so the solar mode is an upper-bound scaling rather than a
+# realistic default budget.
+noble_solar_mass_ratio = {
+    'He': 3.79e-1,
+    'Ne': 2.25e-3,
+    'Ar': 1.25e-4,
+    'Kr': 1.48e-7,
+    'Xe': 2.32e-8,
+}
 
 # Radionuclide values below are from Ruedas (2017), via SPIDER
 # Natural concentrations (provided in config file) can

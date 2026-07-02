@@ -16,7 +16,15 @@ from calliope.solve import (
 )
 
 from proteus.outgas.common import expected_keys
-from proteus.utils.constants import C_solar, N_solar, S_solar, element_list, vol_list
+from proteus.utils.constants import (
+    C_solar,
+    N_solar,
+    S_solar,
+    element_list,
+    noble_gases,
+    noble_solar_mass_ratio,
+    vol_list,
+)
 from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger('fwl.' + __name__)
@@ -62,6 +70,16 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
         if (s in ('H2O', 'CO2', 'N2', 'S2')) and not included:
             UpdateStatusfile(dirs, 20)
             raise ValueError(f'Missing required volatile {s}')
+
+    # Noble gases default to excluded with no pressure and no budget. The
+    # element-abundance branch below overrides the inclusion flag and the
+    # ppmw budget for any noble gas the user has switched on. Noble gases are
+    # not yet supported through the partial-pressure (gas_prs) mode, so they
+    # stay excluded there.
+    for gas in noble_gases:
+        solvevol_inp[f'{gas}_included'] = 0
+        solvevol_inp[f'{gas}_initial_bar'] = 0.0
+        solvevol_inp[f'{gas}_ppmw'] = 0.0
 
     # Set by partial pressures?
     if config.planet.volatile_mode == 'gas_prs':
@@ -121,7 +139,60 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     solvevol_inp['nitrogen_ppmw'] = N_ppmw
     solvevol_inp['sulfur_ppmw'] = S_ppmw
 
+    # Noble gas inventories. A gas is passed to CALLIOPE only when it is both
+    # switched on in the outgassing config and carries a positive budget. Its
+    # budget is converted to ppmw relative to the mantle mass, the unit
+    # CALLIOPE expects for the noble gases.
+    for gas in noble_gases:
+        if not config.outgas.calliope.is_included(gas):
+            continue
+        mode = getattr(elem, f'{gas}_mode')
+        budget = float(getattr(elem, f'{gas}_budget'))
+        gas_kg = _resolve_noble(mode, budget, H_kg, M_reservoir, gas)
+        if gas_kg <= 0.0:
+            continue
+        solvevol_inp[f'{gas}_included'] = 1
+        solvevol_inp[f'{gas}_ppmw'] = 1e6 * gas_kg / M_mantle if M_mantle > 0 else 0.0
+
     return solvevol_inp
+
+
+def _resolve_noble(
+    mode: str, budget: float, H_kg: float, M_reservoir: float, name: str
+) -> float:
+    """Convert a noble gas mode + budget to an absolute mass [kg].
+
+    Parameters
+    ----------
+    mode : str
+        'kg' (absolute), 'ppmw' (relative to M_reservoir), or 'solar' (a
+        multiple of the protosolar X/H mass ratio applied to the hydrogen
+        inventory).
+    budget : float
+        The value in the units defined by mode.
+    H_kg : float
+        Hydrogen mass [kg], used by the 'solar' mode.
+    M_reservoir : float
+        Reservoir mass [kg] for the 'ppmw' mode.
+    name : str
+        Noble gas symbol (for the solar reference ratio and error messages).
+
+    Returns
+    -------
+    float
+        Noble gas mass [kg].
+    """
+    match mode:
+        case 'kg':
+            return budget
+        case 'ppmw':
+            return budget * 1e-6 * M_reservoir
+        case 'solar':
+            return budget * noble_solar_mass_ratio[name] * H_kg
+        case _:
+            raise ValueError(
+                f"Unknown {name}_mode: '{mode}'. Expected 'kg', 'ppmw', or 'solar'."
+            )
 
 
 def _resolve_element(
@@ -202,6 +273,15 @@ def construct_guess(hf_row: dict, target: dict, mass_thresh: float) -> dict | No
     # During initial phase, allow CALLIOPE to make its own guess
     if hf_row['Time'] < 1:
         log.debug('    providing None, allowing CALLIOPE to guess')
+        return None
+
+    # Noble gas partial pressures are not carried in the helpfile (the noble
+    # gases are tracked as element masses, not as radiative gas species), so a
+    # warm guess cannot supply them. When any noble gas is active, defer to
+    # CALLIOPE's own two-stage cold start rather than hand it an incomplete
+    # guess that would omit the required noble pressures.
+    if any(target.get(gas, 0.0) > mass_thresh for gas in noble_gases):
+        log.debug('    noble gas active; providing None for a full cold start')
         return None
 
     # Dictionary of partial pressures [bar] for H2O, CO2, N2, S2

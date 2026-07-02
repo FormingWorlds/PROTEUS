@@ -87,6 +87,32 @@ the unit) and a budget (the value in that unit).
     `all_options.toml` (e.g., `H_budget = 1.0`) show recommended starting
     points for a typical rocky planet.
 
+#### Noble gases
+
+The noble gases He, Ne, Ar, Kr, and Xe are opt-in. A noble gas contributes
+only when its inclusion flag in `[outgas.calliope]` (`include_He`, ...) is
+`true` and its budget below is positive; a run with no noble budget is
+unchanged. Each noble gas is partitioned between the magma ocean and the
+atmosphere by a Henry's-law solubility and tracked in the whole-planet mass
+balance.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `He_mode` | str | `"kg"` | `kg`, `ppmw` (relative to the volatile reservoir), or `solar` |
+| `He_budget` | float | `0.0` | Helium inventory (units depend on the mode) |
+| `Ne_mode`, `Ar_mode`, `Kr_mode`, `Xe_mode` | str | `"kg"` | As `He_mode` |
+| `Ne_budget`, `Ar_budget`, `Kr_budget`, `Xe_budget` | float | `0.0` | As `He_budget` |
+
+In `solar` mode the budget is a multiple of the protosolar X/H mass ratio, so
+the inventory is `budget * (X/H)_solar * H_kg`; a value of `1.0` gives a
+protosolar noble gas complement.
+
+!!! warning
+    The `solar` mode is an upper-bound reference, not a realistic default.
+    Planetary bodies are depleted in noble gases by orders of magnitude
+    relative to solar, so realistic budgets use `solar` with a value far below
+    one, or set the inventory directly in `kg` or `ppmw`.
+
 ### Partial pressures `[planet.gas_prs]`
 
 Used when `volatile_mode = "gas_prs"`. Sets the initial atmosphere directly
