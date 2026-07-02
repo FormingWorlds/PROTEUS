@@ -632,6 +632,15 @@ class Proteus:
             # no Zalmoxis-generated EOS tables are available`. Same issue
             # bites Aragog when it needs the P-S tables at re-init.
             eos_dir_restored = os.path.join(self.directories['output'], 'data', 'spider_eos')
+            if not os.path.isdir(eos_dir_restored):
+                # Runs launched with PROTEUS_PS_CACHE_DIR keep the tables in the
+                # shared cache, not under the run directory. Follow the pointer
+                # left at table generation so resume finds them there.
+                from proteus.interior_struct.zalmoxis import read_ps_cache_pointer
+
+                pointed = read_ps_cache_pointer(self.directories['output'])
+                if pointed and os.path.isdir(pointed):
+                    eos_dir_restored = pointed
             if os.path.isdir(eos_dir_restored):
                 self.directories['spider_eos_dir'] = eos_dir_restored
                 solidus_ps = os.path.join(eos_dir_restored, 'solidus_P-S.dat')

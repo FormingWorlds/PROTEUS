@@ -1273,3 +1273,109 @@ def test_structure_mass_desync_guards_nonpositive_accumulator():
 
     assert zero_total == pytest.approx(0.0, abs=0.0)
     assert negative_total == pytest.approx(0.0, abs=0.0)
+
+
+# ---------------------------------------------------------------------------
+# PROTEUS_PS_CACHE_DIR pointer (resume support for shared-cache runs)
+# ---------------------------------------------------------------------------
+
+
+def test_ps_cache_pointer_roundtrip_records_absolute_cache_dir(tmp_path):
+    """The pointer written for a shared-cache run round-trips to the absolute
+    cache directory, so a resumed run can follow the tables out of the run
+    directory into PROTEUS_PS_CACHE_DIR.
+
+    Discrimination: the reader must return the absolute cache path even when
+    the writer is handed a non-absolute one, because the resume consumer
+    joins nothing onto the result; a regression that stored the raw relative
+    string would resolve against the wrong working directory on resume.
+    """
+    from proteus.interior_struct.zalmoxis import (
+        PS_CACHE_POINTER_NAME,
+        _write_ps_cache_pointer,
+        read_ps_cache_pointer,
+    )
+
+    outdir = tmp_path / 'run'
+    (outdir / 'data').mkdir(parents=True)
+    cache_dir = tmp_path / 'shared_cache' / 'P_max-1p0e13'
+    cache_dir.mkdir(parents=True)
+
+    # Hand the writer a relative path; it must persist the absolute form
+    import os as _os
+
+    rel_cache = _os.path.relpath(cache_dir, tmp_path)
+    prev = _os.getcwd()
+    try:
+        _os.chdir(tmp_path)
+        _write_ps_cache_pointer(str(outdir), rel_cache)
+    finally:
+        _os.chdir(prev)
+
+    pointer = outdir / 'data' / PS_CACHE_POINTER_NAME
+    assert pointer.is_file()
+    result = read_ps_cache_pointer(str(outdir))
+    # Discrimination: absolute, and equal to the real cache dir (not the rel str)
+    assert _os.path.isabs(result)
+    assert _os.path.realpath(result) == _os.path.realpath(str(cache_dir))
+
+
+def test_read_ps_cache_pointer_none_when_absent_or_empty(tmp_path):
+    """The reader returns None both when no pointer exists (a normal per-run
+    layout) and when the pointer is present but empty (a truncated write).
+
+    Both must be None so the resume path falls through to its per-run
+    output/<run>/data/spider_eos lookup rather than setting
+    dirs['spider_eos_dir'] to '' and mis-reporting a cache hit. Exercises
+    the empty-string guard, an error-contract edge.
+    """
+    from proteus.interior_struct.zalmoxis import (
+        PS_CACHE_POINTER_NAME,
+        read_ps_cache_pointer,
+    )
+
+    outdir = tmp_path / 'run'
+    (outdir / 'data').mkdir(parents=True)
+
+    # No pointer at all
+    assert read_ps_cache_pointer(str(outdir)) is None
+
+    # Present but empty (and whitespace-only) must also be None
+    pointer = outdir / 'data' / PS_CACHE_POINTER_NAME
+    pointer.write_text('   \n', encoding='utf-8')
+    assert read_ps_cache_pointer(str(outdir)) is None
+
+
+def test_read_ps_cache_pointer_returns_recorded_path_even_if_missing(tmp_path):
+    """The reader reports the recorded directory verbatim without checking it
+    exists: validating the directory is the resume caller's job (it guards
+    with os.path.isdir before use).
+
+    Discrimination: if the cache directory was evicted between the run and the
+    resume, the reader still returns the recorded path (non-None), and the
+    caller, not the reader, decides to skip it. A regression that silently
+    dropped a dangling pointer would hide an evicted-cache resume from the
+    caller's isdir guard.
+    """
+    from proteus.interior_struct.zalmoxis import (
+        _write_ps_cache_pointer,
+        read_ps_cache_pointer,
+    )
+
+    outdir = tmp_path / 'run'
+    (outdir / 'data').mkdir(parents=True)
+    evicted = tmp_path / 'was_here'  # never created
+
+    _write_ps_cache_pointer(str(outdir), str(evicted))
+    result = read_ps_cache_pointer(str(outdir))
+
+    import os as _os
+
+    assert result == _os.path.abspath(str(evicted))
+    # Confirm the discrimination premise: the recorded dir really is absent
+    assert not _os.path.isdir(result)
+
+
+# ---------------------------------------------------------------------------
+# Shared PROTEUS_PS_CACHE_DIR concurrency primitives (atomic publish + marker)
+# ---------------------------------------------------------------------------

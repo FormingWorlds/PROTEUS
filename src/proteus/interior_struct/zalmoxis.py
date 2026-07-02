@@ -1472,6 +1472,68 @@ def write_spider_mesh_file(
     return mesh_path
 
 
+# Name of the pointer file that records a shared PROTEUS_PS_CACHE_DIR table
+# location inside a run's output/<run>/data directory. A resumed run rebuilds
+# dirs['spider_eos_dir'] from the per-run output/<run>/data/spider_eos path,
+# which a shared-cache run never populates; the pointer lets resume follow the
+# tables to the shared cache without re-deriving the cache key.
+PS_CACHE_POINTER_NAME = 'spider_eos_cache.txt'
+
+
+def _write_ps_cache_pointer(outdir: str, cache_dir: str) -> None:
+    """Record a shared PS-cache table location for resume.
+
+    Writes the absolute `cache_dir` into ``<outdir>/data`` under
+    :data:`PS_CACHE_POINTER_NAME`. Silent on I/O error: the pointer is a
+    resume convenience, not a correctness requirement for the current run.
+
+    Parameters
+    ----------
+    outdir : str
+        The run output directory.
+    cache_dir : str
+        The shared PROTEUS_PS_CACHE_DIR table directory to record.
+    """
+
+    pointer = os.path.join(outdir, 'data', PS_CACHE_POINTER_NAME)
+    try:
+        os.makedirs(os.path.dirname(pointer), exist_ok=True)
+        with open(pointer, 'w') as f:
+            f.write(os.path.abspath(cache_dir))
+    except OSError:
+        pass
+
+
+def read_ps_cache_pointer(outdir: str) -> str | None:
+    """Return the shared PS-cache table directory recorded for `outdir`.
+
+    Reads the pointer written by :func:`_write_ps_cache_pointer`. Used by
+    the resume path to locate PROTEUS_PS_CACHE_DIR tables that live outside
+    the run directory.
+
+    Parameters
+    ----------
+    outdir : str
+        The run output directory.
+
+    Returns
+    -------
+    str or None
+        The recorded table directory, or None when the pointer is absent,
+        unreadable, or empty.
+    """
+
+    pointer = os.path.join(outdir, 'data', PS_CACHE_POINTER_NAME)
+    if not os.path.isfile(pointer):
+        return None
+    try:
+        with open(pointer) as f:
+            cache_dir = f.read().strip()
+    except OSError:
+        return None
+    return cache_dir or None
+
+
 def generate_spider_tables(config: Config, outdir: str):
     """Generate P-S EOS tables and phase boundaries from PALEOS data.
 
@@ -1660,6 +1722,10 @@ def generate_spider_tables(config: Config, outdir: str):
         _safe_key = cache_key.replace('.', 'p').replace('=', '-').replace('+', '')
         spider_eos_dir = os.path.join(_ps_cache_root, _safe_key)
         os.makedirs(spider_eos_dir, exist_ok=True)
+        # The shared-cache tables live outside the run directory, so a resumed
+        # run cannot find them via the per-run output/<run>/data/spider_eos
+        # path. Leave a pointer so resume can follow the tables to the cache.
+        _write_ps_cache_pointer(outdir, spider_eos_dir)
     else:
         spider_eos_dir = os.path.join(outdir, 'data', 'spider_eos')
 
