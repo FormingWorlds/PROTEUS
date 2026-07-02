@@ -23,16 +23,18 @@ import pytest
 
 pytest.importorskip('calliope')
 
-from calliope.constants import noble_gases as _cal_noble
-
-# Skip the whole module on a CALLIOPE that predates noble gas support, so the
-# PR gate (which installs the released CALLIOPE) stays green.
-if 'He' not in _cal_noble:
-    pytest.skip('installed CALLIOPE has no noble gas support', allow_module_level=True)
-
+import calliope.constants as _cal_constants
 from calliope.solve import equilibrium_atmosphere, get_target_from_params
 
 from proteus.utils.constants import noble_gases
+
+# Skip the whole module on a CALLIOPE that predates noble gas support, so the
+# PR gate (which installs the released CALLIOPE) stays green. Detect the
+# capability with getattr rather than a direct import, because importing a name
+# that does not exist yet on the released CALLIOPE crashes collection instead
+# of skipping the module.
+if 'He' not in getattr(_cal_constants, 'noble_gases', ()):
+    pytest.skip('installed CALLIOPE has no noble gas support', allow_module_level=True)
 
 pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
 
