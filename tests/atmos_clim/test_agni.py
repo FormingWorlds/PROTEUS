@@ -1209,20 +1209,40 @@ def test_construct_voldict_raises_on_zero_vmr(monkeypatch):
     assert update_calls == [20]
 
 
-def test_construct_voldict_returns_vmr_dict():
-    """_construct_voldict returns a dict of {gas: vmr} and the sum is
-    above the threshold.
+def test_construct_voldict_excludes_noble_gases():
+    """_construct_voldict returns {gas: vmr} for the radiatively active gases
+    only. The noble gases are tracked as a mass reservoir and have no
+    thermodynamic data in AGNI, so they are excluded from the composition
+    handed to the radiative-convective solve.
 
-    Discrimination: the returned dict must have exactly the gas_list
-    keys, not a subset or superset.
+    Discrimination: the returned dict has exactly the non-noble gas_list keys
+    even when noble VMRs are present, so a noble gas never reaches AGNI.
     """
     hf_row = {}
     for g in agni_mod.gas_list:
         hf_row[g + '_vmr'] = 0.01
 
     vol_dict = agni_mod._construct_voldict(hf_row, {'output': '/tmp'})
-    assert set(vol_dict.keys()) == set(agni_mod.gas_list)
-    assert sum(vol_dict.values()) == pytest.approx(0.01 * len(agni_mod.gas_list), rel=1e-12)
+    expected = [g for g in agni_mod.gas_list if g not in agni_mod.noble_gases]
+    assert set(vol_dict.keys()) == set(expected)
+    for gas in agni_mod.noble_gases:
+        assert gas not in vol_dict
+    assert sum(vol_dict.values()) == pytest.approx(0.01 * len(expected), rel=1e-12)
+
+
+def test_construct_voldict_raises_when_only_noble_gases_present():
+    """A composition with no radiatively active gas (only noble gases) has a
+    zero mixing-ratio sum once the noble gases are excluded, so the solve
+    cannot proceed and the function raises rather than handing AGNI an empty
+    atmosphere.
+    """
+    hf_row = {g + '_vmr': 0.0 for g in agni_mod.gas_list}
+    for gas in agni_mod.noble_gases:
+        hf_row[gas + '_vmr'] = 0.2  # noble-only atmosphere
+
+    with patch.object(agni_mod, 'UpdateStatusfile'):
+        with pytest.raises(ValueError, match='volatiles'):
+            agni_mod._construct_voldict(hf_row, {'output': '/tmp'})
 
 
 # ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ from juliacall import convert
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_oarr_from_parr, get_spfile_path
-from proteus.utils.constants import gas_list
+from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
     create_tmp_folder,
@@ -365,10 +365,14 @@ def activate_julia(dirs: dict, verbosity: int):
 
 
 def _construct_voldict(hf_row: dict, dirs: dict):
-    # get from hf_row
+    # get from hf_row. The noble gases are tracked as a mass reservoir but are
+    # not radiatively active and have no thermodynamic data in AGNI, so they
+    # are not part of the composition handed to the radiative-convective solve.
     vol_dict = {}
     vol_sum = 0.0
     for vol in gas_list:
+        if vol in noble_gases:
+            continue
         vol_dict[vol] = hf_row[vol + '_vmr']
         vol_sum += vol_dict[vol]
 
@@ -969,6 +973,8 @@ def _solve_once(atmos, config: Config):
     #    condensation above
     if config.atmos_clim.agni.rainout:
         for gas in gas_list:
+            if gas in noble_gases:
+                continue  # noble gases are not part of the AGNI composition
             jl.AGNI.setpt.saturation_b(atmos, str(gas))
     #    temperature floor in stratosphere
     jl.AGNI.setpt.stratosphere_b(atmos, 0.5)
