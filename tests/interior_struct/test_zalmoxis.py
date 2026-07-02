@@ -1379,3 +1379,90 @@ def test_read_ps_cache_pointer_returns_recorded_path_even_if_missing(tmp_path):
 # ---------------------------------------------------------------------------
 # Shared PROTEUS_PS_CACHE_DIR concurrency primitives (atomic publish + marker)
 # ---------------------------------------------------------------------------
+
+
+def test_atomic_write_text_publishes_complete_and_overwrites(tmp_path):
+    """The atomic marker writer replaces the target in one rename and leaves no
+    temporary file behind, whether the target is new or already present.
+
+    Discrimination: after writing, the destination directory must contain
+    exactly the target (no stray .tmp-* files); a non-atomic implementation
+    that wrote in place or left its scratch file would fail the count. The
+    overwrite case pins that a stale marker is fully replaced, not appended
+    to, so a second run's key does not concatenate onto the first.
+    """
+    from proteus.interior_struct.zalmoxis import _atomic_write_text
+
+    dest = tmp_path / '.cache_info.txt'
+    _atomic_write_text(str(dest), 'P_max-1p0e13_nP-200_nS-200')
+    assert dest.read_text() == 'P_max-1p0e13_nP-200_nS-200'
+
+    # Overwrite with a different key: content is replaced, not appended
+    _atomic_write_text(str(dest), 'P_max-2p0e13_nP-400_nS-400')
+    assert dest.read_text() == 'P_max-2p0e13_nP-400_nS-400'
+
+    # No scratch files leaked into the directory
+    leftovers = [p.name for p in tmp_path.iterdir() if p.name.startswith('.tmp-')]
+    assert leftovers == []
+    assert sorted(p.name for p in tmp_path.iterdir()) == ['.cache_info.txt']
+
+
+def test_publish_ps_tables_moves_all_and_overwrites_existing(tmp_path):
+    """Publishing a staging directory relocates every table into the shared
+    cache directory, emptying the staging dir and overwriting any file a
+    competing writer already placed there.
+
+    Discrimination: a pre-existing file in the destination carries stale
+    content; after publish it must hold the freshly staged bytes, proving
+    os.replace overwrote it rather than skipping an existing name. The
+    staging dir must end empty so the caller's cleanup has nothing to prune,
+    and the destination must hold exactly the staged set.
+    """
+    from proteus.interior_struct.zalmoxis import _publish_ps_tables
+
+    src = tmp_path / 'staging'
+    dest = tmp_path / 'cache_key'
+    src.mkdir()
+    dest.mkdir()
+
+    # Stage three tables; one name already exists in dest with stale content
+    (src / 'solidus_P-S.dat').write_text('NEW-solidus')
+    (src / 'density_melt.dat').write_text('NEW-density')
+    (src / '.cache_info.txt').write_text('NEW-key')
+    (dest / 'density_melt.dat').write_text('STALE-density')
+
+    _publish_ps_tables(str(src), str(dest))
+
+    # Staging emptied
+    assert sorted(p.name for p in src.iterdir()) == []
+    # Destination holds exactly the staged set
+    assert sorted(p.name for p in dest.iterdir()) == [
+        '.cache_info.txt',
+        'density_melt.dat',
+        'solidus_P-S.dat',
+    ]
+    # The pre-existing file was overwritten with staged content
+    assert (dest / 'density_melt.dat').read_text() == 'NEW-density'
+    assert (dest / 'solidus_P-S.dat').read_text() == 'NEW-solidus'
+
+
+def test_publish_ps_tables_empty_staging_is_noop(tmp_path):
+    """An empty staging directory publishes nothing and leaves the destination
+    untouched, the degenerate edge where generation produced no files.
+
+    Discrimination: a destination file present before the call must survive
+    unchanged, confirming publish neither clears the destination nor errors
+    on an empty source.
+    """
+    from proteus.interior_struct.zalmoxis import _publish_ps_tables
+
+    src = tmp_path / 'staging'
+    dest = tmp_path / 'cache_key'
+    src.mkdir()
+    dest.mkdir()
+    (dest / 'existing.dat').write_text('keep-me')
+
+    _publish_ps_tables(str(src), str(dest))
+
+    assert sorted(p.name for p in dest.iterdir()) == ['existing.dat']
+    assert (dest / 'existing.dat').read_text() == 'keep-me'

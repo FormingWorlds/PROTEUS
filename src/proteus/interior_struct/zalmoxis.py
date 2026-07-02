@@ -4,6 +4,8 @@ from __future__ import annotations
 import logging
 import math
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -1534,6 +1536,56 @@ def read_ps_cache_pointer(outdir: str) -> str | None:
     return cache_dir or None
 
 
+def _publish_ps_tables(src_dir: str, dest_dir: str) -> None:
+    """Move every file from a staging dir into the shared cache dir atomically.
+
+    Each entry is relocated with :func:`os.replace`, an atomic rename within
+    one filesystem, so a concurrent reader of `dest_dir` sees each table
+    either absent or complete, never half-written. Entries are published in
+    sorted order for deterministic behaviour; the caller writes the cache
+    marker only after this returns so the marker's presence implies every
+    table is in place.
+
+    Parameters
+    ----------
+    src_dir : str
+        Staging directory holding freshly generated tables.
+    dest_dir : str
+        Shared cache directory to publish into; must exist.
+    """
+
+    for name in sorted(os.listdir(src_dir)):
+        os.replace(os.path.join(src_dir, name), os.path.join(dest_dir, name))
+
+
+def _atomic_write_text(path: str, text: str) -> None:
+    """Write `text` to `path` so readers never observe a partial file.
+
+    The content is written to a uniquely named temporary file in the same
+    directory and then moved into place with :func:`os.replace`, an atomic
+    rename within one filesystem. Concurrent runs sharing the destination
+    therefore either see the previous file or a complete new one, never a
+    truncated write.
+
+    Parameters
+    ----------
+    path : str
+        Destination file path.
+    text : str
+        Content to write.
+    """
+
+    dest_dir = os.path.dirname(path)
+    fd, tmp = tempfile.mkstemp(prefix='.tmp-', dir=dest_dir)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(text)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
 def generate_spider_tables(config: Config, outdir: str):
     """Generate P-S EOS tables and phase boundaries from PALEOS data.
 
@@ -1754,51 +1806,72 @@ def generate_spider_tables(config: Config, outdir: str):
                     'liquidus_path': liquidus_path,
                 }
 
-    # Generate phase boundaries
-    log.info(
-        'Generating PALEOS-derived P-S phase boundaries (%d P points)...',
-        nP,
-    )
-    pb_result = generate_spider_phase_boundaries(
-        solidus_func=solidus_func,
-        liquidus_func=liquidus_func,
-        eos_file=eos_file,
-        P_range=(1e5, P_max),
-        n_P=nP,
-        output_dir=spider_eos_dir,
-        solid_eos_file=solid_eos,
-        liquid_eos_file=liquid_eos,
-    )
+    # Choose where to generate. For a shared PROTEUS_PS_CACHE_DIR the tables are
+    # written into a private staging directory on the same filesystem and then
+    # published into spider_eos_dir with per-file atomic renames, so two cluster
+    # runs that miss the cache marker at the same moment cannot interleave
+    # partial writes into the shared table directory. For a per-run directory
+    # there is no sharing, so tables are generated in place as before.
+    if _ps_cache_root:
+        gen_dir = tempfile.mkdtemp(prefix='.gen-', dir=os.path.dirname(spider_eos_dir))
+    else:
+        gen_dir = spider_eos_dir
 
-    # Generate full EOS tables
-    log.info(
-        'Generating PALEOS-derived P-S EOS tables (%d x %d)...',
-        nP,
-        nS,
-    )
-    generate_spider_eos_tables(
-        eos_file=eos_file,
-        solidus_func=solidus_func,
-        liquidus_func=liquidus_func,
-        P_range=(1e5, P_max),
-        n_P=nP,
-        n_S=nS,
-        output_dir=spider_eos_dir,
-        solid_eos_file=solid_eos,
-        liquid_eos_file=liquid_eos,
-    )
-
-    # Write cache marker so subsequent calls skip regeneration
     try:
-        with open(cache_marker, 'w') as f:
-            f.write(cache_key)
+        # Generate phase boundaries
+        log.info(
+            'Generating PALEOS-derived P-S phase boundaries (%d P points)...',
+            nP,
+        )
+        generate_spider_phase_boundaries(
+            solidus_func=solidus_func,
+            liquidus_func=liquidus_func,
+            eos_file=eos_file,
+            P_range=(1e5, P_max),
+            n_P=nP,
+            output_dir=gen_dir,
+            solid_eos_file=solid_eos,
+            liquid_eos_file=liquid_eos,
+        )
+
+        # Generate full EOS tables
+        log.info(
+            'Generating PALEOS-derived P-S EOS tables (%d x %d)...',
+            nP,
+            nS,
+        )
+        generate_spider_eos_tables(
+            eos_file=eos_file,
+            solidus_func=solidus_func,
+            liquidus_func=liquidus_func,
+            P_range=(1e5, P_max),
+            n_P=nP,
+            n_S=nS,
+            output_dir=gen_dir,
+            solid_eos_file=solid_eos,
+            liquid_eos_file=liquid_eos,
+        )
+
+        # Publish staged tables into the shared cache with atomic renames.
+        if gen_dir != spider_eos_dir:
+            _publish_ps_tables(gen_dir, spider_eos_dir)
+    finally:
+        if gen_dir != spider_eos_dir:
+            shutil.rmtree(gen_dir, ignore_errors=True)
+
+    # Write the cache marker last, atomically, so a concurrent reader only
+    # trusts the directory once every table file is already in place.
+    try:
+        _atomic_write_text(cache_marker, cache_key)
     except OSError:
         pass
 
+    # File names match the writer in zalmoxis.eos_export, which emits
+    # solidus_P-S.dat / liquidus_P-S.dat; use the published locations.
     return {
         'eos_dir': spider_eos_dir,
-        'solidus_path': pb_result['solidus_path'],
-        'liquidus_path': pb_result['liquidus_path'],
+        'solidus_path': os.path.join(spider_eos_dir, 'solidus_P-S.dat'),
+        'liquidus_path': os.path.join(spider_eos_dir, 'liquidus_P-S.dat'),
     }
 
 
