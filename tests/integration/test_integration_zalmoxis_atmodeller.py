@@ -285,10 +285,14 @@ def test_atmodeller_whole_element_totals_in_hf_row_schema_under_zalmoxis():
     Fe, Na) are pinned together because the dry-mass subtraction
     treats them uniformly.
     """
-    from proteus.utils.constants import element_list
+    from proteus.utils.constants import element_list, noble_gases
     from proteus.utils.coupler import GetHelpfileKeys, ZeroHelpfileRow
 
-    assert set(element_list) == {'H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'}
+    # The reactive and rock-forming elements plus the opt-in noble gases, which
+    # are tracked as elements in the whole-planet mass balance.
+    assert set(element_list) == {'H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'} | set(
+        noble_gases
+    )
     keys = GetHelpfileKeys()
     for e in element_list:
         col = f'{e}_kg_total'
