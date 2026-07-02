@@ -395,7 +395,8 @@ def build_S5(hosts=('sun', 'mdwarf'), axes=S5_AXES) -> list[str]:
 #       reachable within the EOS table at 5 M_earth (the IC solve raises if not).
 #   S6_TIDAL_ECC : eccentricity for the tidal-on run. Eccentricity tides vanish
 #       at the fiducial e=0, so a non-zero value is required for lovepy to
-#       deposit heat; 0.1 is a placeholder pending sign-off.
+#       deposit heat into the interior energy balance; 0.1 sets a moderate
+#       forcing at the closest-in M-dwarf cell.
 #
 # DEFERRED: the core-thermal-reservoir run. The knob is
 # interior_struct.core_heatcap (and core_density), currently 'self'
@@ -425,11 +426,15 @@ def build_S6() -> list[str]:
         write_run(name, _fiducial_run(name, {'planet.delta_T_super': float(dts)}))
         names.append(name)
     # Tidal heating on at the closest-in M-dwarf cell (ties to S5 mdwarf 0.1 AU).
+    # heat_tidal must be true for the interior to receive the lovepy power;
+    # lovepy + a non-zero eccentricity alone compute it diagnostically but
+    # deposit nothing while heat_tidal stays at its schema default (false).
     name = 'S6_tidal_on'
     ov = {
         'orbit.module': 'lovepy',
         'orbit.eccentricity': S6_TIDAL_ECC,
         'orbit.semimajoraxis': 0.1,
+        'interior_energetics.heat_tidal': True,
         **_mdwarf_overrides(),
     }
     write_run(name, _fiducial_run(name, ov))
