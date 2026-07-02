@@ -205,7 +205,6 @@ _REVIEWED_NEUTRAL = frozenset(
         'planet.tcmb_init',
         'planet.volatile_reservoir',
         'outgas.silicates',
-        'outgas.vaplist',
         'params.stop.evap.enabled',
     }
 )

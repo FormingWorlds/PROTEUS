@@ -11,7 +11,7 @@ import pandas as pd
 
 # Local packages and paths
 # sys.path.insert(1,'wkdir')
-from proteus.utils.constants import element_list, vol_list
+from proteus.utils.constants import element_list, vap_list, vol_list
 from proteus.utils.coupler import UpdateStatusfile
 
 sys.path.append(os.getcwd())
@@ -44,21 +44,27 @@ class paths_importer:
         self.fastchem3_dir = os.environ.get('FC_DIR')
 
         self.fastchem3_input = os.path.join(self.fastchem3_dir, 'input/')
-        self.fastchem3_config_template = os.path.join(self.wkdir, 'input/fastchem3/config_template.input')
-        self.element_abundance_template = os.path.join(
-            self.wkdir,'input/fastchem3/element_abundances/element_abundances_template2.dat'
+        self.fastchem3_config_template = os.path.join(
+            self.wkdir, 'input/fastchem3/config_template.input'
         )
-        self.species_data_file = os.path.join(self.fastchem3_dir ,'input/logK/logK.dat')
-        self.species_data_file_cond = os.path.join(self.fastchem3_dir , 'input/logK/logK_condensates.dat')
+        self.element_abundance_template = os.path.join(
+            self.wkdir, 'input/fastchem3/element_abundances/element_abundances_template2.dat'
+        )
+        self.species_data_file = os.path.join(self.fastchem3_dir, 'input/logK/logK.dat')
+        self.species_data_file_cond = os.path.join(
+            self.fastchem3_dir, 'input/logK/logK_condensates.dat'
+        )
 
         # create directory for output element abundances created by lavatmos if it does not exist yet
         os.makedirs(dirs['output'] + '/element_abundances/', exist_ok=True)
-        self.element_abundance_output = os.path.join(dirs['output'] , 'element_abundances/element_abundances_output.dat')
+        self.element_abundance_output = os.path.join(
+            dirs['output'], 'element_abundances/element_abundances_output.dat'
+        )
         os.makedirs(dirs['output'] + '/fastchem/', exist_ok=True)
-        self.fastchem3_output = os.path.join(dirs['output'] , 'fastchem/')
-        self.output_dir = os.path.join(dirs['output'] , 'fastchem/')
+        self.fastchem3_output = os.path.join(dirs['output'], 'fastchem/')
+        self.output_dir = os.path.join(dirs['output'], 'fastchem/')
 
-        self.janafdata = os.path.join(self.wkdir , 'data/')
+        self.janafdata = os.path.join(self.wkdir, 'data/')
         log.info('Output directory set as: %s' % self.output_dir)
 
 
@@ -311,8 +317,9 @@ def read_in_element_fracs_normalized(input_path):
     return norm_dict
 
 
-def run_lavatmos(dirs: dict, config: Config, hf_row: dict, 
-                 volatile_fracs: dict, first_iter: bool):
+def run_lavatmos(
+    dirs: dict, config: Config, hf_row: dict, volatile_fracs: dict, first_iter: bool
+):
     """
 
     This function effectively runs a bash command which calls
@@ -347,12 +354,15 @@ def run_lavatmos(dirs: dict, config: Config, hf_row: dict,
 
     system = lavatmos3.melt_vapor_system(paths)
     lavatmos_output = system.vaporise(
-        Magma.T_surf, Magma.P_volatile, melt_comp, volatile_fracs, 
+        Magma.T_surf,
+        Magma.P_volatile,
+        melt_comp,
+        volatile_fracs,
         melt_fraction=Magma.melt_fraction,
         P_melt=P_melt,
         fO2_initial_guess=fO2_initial_guess,
         fO2_tries_from_last=bool(not first_iter),
-        xatol=xatol
+        xatol=xatol,
     )
 
     # Save results
@@ -408,8 +418,8 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
 
     # convert the element abundances from lavatmos file to element fractions, normalized to unity
     element_fracs = read_in_element_fracs_normalized(paths.element_abundance_output)
-    #import shutil
-    #shutil.copy(paths.element_abundance_output, dirs['output'] + 'element_abundances/element_abundances_output'+'_'+ str(hf_row['Time']) +'_.dat')
+    # import shutil
+    # shutil.copy(paths.element_abundance_output, dirs['output'] + 'element_abundances/element_abundances_output'+'_'+ str(hf_row['Time']) +'_.dat')
     # elementfile = paths.element_abundance_output
 
     log.debug('element fraction after running lavatmos: %s' % element_fracs)
@@ -418,7 +428,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     if os.path.exists(output_fc):
         mmr_path = os.path.join(output_fc, 'boa_chem.dat')
     else:
-        UpdateStatusFile(dirs, 27)
+        UpdateStatusfile(dirs, 27)
         raise RuntimeError('cannot find fastchem output from lavatmos loop!')
 
     # update abundances in output file for next calliope run
@@ -462,14 +472,15 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
         M_atmo_new = rho_new * Vshell
 
     log.info('new atmospheric mass:%.2e' % M_atmo_new)
-    # log.info('new atmospheric density:%.4f'%rho_new)
 
-    gas_list = vol_list + config.outgas.vaplist
+    gas_list = vol_list + vap_list
 
     # do not update surface pressure!
-    Poutgas =  new_atmos_abundances['Pbar'][0] - hf_row['P_surf'] #comput ehow much silicates are outgassed
-    log.info('pressure of outgassed species: %.4f'%Poutgas)
-    log.info('pressure of volatiles before outgassing: %.4f'%hf_row['P_surf'])
+    Poutgas = (
+        new_atmos_abundances['Pbar'][0] - hf_row['P_surf']
+    )  # comput ehow much silicates are outgassed
+    log.info('pressure of outgassed species: %.4f' % Poutgas)
+    log.info('pressure of volatiles before outgassing: %.4f' % hf_row['P_surf'])
 
     hf_row['P_vol'] = hf_row['P_surf']
     hf_row['P_silicates'] = Poutgas
@@ -497,7 +508,6 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
         hf_row[vol + '_mol_total'] = (
             hf_row[vol + '_mol_atm'] + hf_row[vol + '_mol_solid'] + hf_row[vol + '_mol_liquid']
         )
-
 
     mmw_elements = 0
     for e in element_fracs.keys():
@@ -534,6 +544,8 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     hf_row['log10_fO2_shift_vapourise'] = fO2_shift(hf_row['T_magma'], log10_fO2)
     hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
 
-    log.debug('log10 fO2 shift compared to IW buffer: %.6f' % hf_row['log10_fO2_shift_vapourise'])
+    log.debug(
+        'log10 fO2 shift compared to IW buffer: %.6f' % hf_row['log10_fO2_shift_vapourise']
+    )
 
     # update  hf_row['atm_kg_per_mol']

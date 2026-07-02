@@ -45,12 +45,29 @@ B_ein = 2.5
 
 # Supported gases
 vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
-vap_list = ['SiO']  # just one for now
+vap_list = [
+    'SiO',
+    'SiO2',
+    'Si',
+    'Na',
+    'K',
+    'Ti',
+    'TiO',
+    'TiO2',
+    'Mg',
+    'MgO',
+    'Al',
+    'HAlO2',
+    'SiH',
+    'SiH4',
+    'Fe',
+    'FeO',
+]
 gas_list = vol_list + vap_list
 
 # Supported elements
 element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K']
-vol_element_list=['H', 'O', 'C', 'N', 'S']
+vol_element_list = ['H', 'O', 'C', 'N', 'S']
 
 element_mmw = {
     'H': 1.008000000e-03,

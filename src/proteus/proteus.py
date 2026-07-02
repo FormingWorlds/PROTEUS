@@ -417,9 +417,9 @@ class Proteus:
             inc_gases = []
 
             if self.config.outgas.silicates:
-                gas_list = vol_list + self.config.outgas.vaplist
-            else:
                 gas_list = vol_list + vap_list
+            else:
+                gas_list = vol_list
 
             for s in vol_list:
                 if s != 'O2':
@@ -472,9 +472,9 @@ class Proteus:
         else:
             # Resuming from disk
             if self.config.outgas.silicates:
-                gas_list = vol_list + self.config.outgas.vaplist
-            else:
                 gas_list = vol_list + vap_list
+            else:
+                gas_list = vol_list
 
             log.info('Resuming the simulation from the disk')
 
@@ -490,12 +490,6 @@ class Proteus:
             self.hf_row = (
                 self.hf_all.iloc[-1].to_dict()
             )  # row is copied from last row so need to reset somehow all the silicate masses !
-
-            for s in gas_list:
-                if s not in vol_list:
-                    self.hf_row[s + '_bar'] = 0.0
-                    self.hf_row[s + '_kg_tot'] = 0.0
-                    self.hf_row[s + '_kg_atm'] = 0.0
 
             # Resume banner: since proteus_00.log is opened in append mode on
             # resume, every prior session's banner + output stays in the file

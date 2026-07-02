@@ -422,6 +422,7 @@ config_version = "3.0"
     fO2_shift_IW              = 4            # redox state [log10(delta_IW)]
     mass_thresh               = 1e16         # minimum volatile mass threshold [kg]
     h2_binodal                = false        # H2 binodal partitioning; true is rejected at config load (not production ready)
+    silicates                 = false        # include rock vapour species
 
     # Shared solver parameters (calliope + atmodeller)
     T_floor                   = 700.0        # outgassing temperature floor [K]; clamped from below

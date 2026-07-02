@@ -86,7 +86,7 @@ def test_dummy_outgas_sets_all_expected_keys():
 
     M_atm is set by the wrapper, not by the dummy module.
     """
-    config=MagicMock()
+    config = MagicMock()
     hf_row = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=1e18, S_kg=1e17, Phi_global=0.3)
     _run(hf_row)
 

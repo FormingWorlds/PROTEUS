@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import vap_list, vol_list
-from proteus.utils.plot import get_colour, latexify
+from proteus.utils.plot import get_colour, get_linestyle, latexify
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -60,9 +60,9 @@ def plot_global(
     vol_intpart = {}  # Partitioning into int
 
     if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-    else:
         gas_list = vol_list + vap_list
+    else:
+        gas_list = vol_list
 
     for vol in gas_list:
         # Check vmr for presence
@@ -271,6 +271,7 @@ def plot_global(
             hf['Time'],
             vol_vmr[vol] * 100.0,
             color=get_colour(vol),
+            ls=get_linestyle(vol),
             lw=lw,
             alpha=al,
             label=latexify(vol),

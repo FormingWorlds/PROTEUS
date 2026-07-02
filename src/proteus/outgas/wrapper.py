@@ -354,9 +354,10 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     log.info('Solving outgassing...')
 
     if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-    else:
         gas_list = vol_list + vap_list
+    else:
+        gas_list = vol_list
+
     # Default the derived-fO2 helpfile columns to the user-configured
     # buffer offset before the backend dispatch. Each backend overrides
     # the default as appropriate for its chemistry. Under fO2_source =
@@ -477,11 +478,9 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     # the point that relies on the assumption.
 
     if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-        log.info('lavatmos should be running')
-    else:
-        log.info('lavatmos should not be running')
         gas_list = vol_list + vap_list
+    else:
+        gas_list = vol_list
 
     reservoir = getattr(config.escape, 'reservoir', 'outgas')
     if reservoir not in ('outgas', 'bulk'):
@@ -552,11 +551,9 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     log.info('Desiccation has occurred - no volatiles remaining')
 
     if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-        log.info('lavatmos should be running')
-    else:
-        log.info('lavatmos should not be running')
         gas_list = vol_list + vap_list
+    else:
+        gas_list = vol_list
 
     # Do not set these to zero - avoid divide by zero elsewhere in the code
     excepted_keys = ['atm_kg_per_mol']
@@ -589,7 +586,8 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict, first_iter: 
             True if this is the first iteration of the simulation, False otherwise
     """
 
-    gas_list = vol_list + config.outgas.vaplist
+    gas_list = vol_list + vap_list
+
     # reset all silicate masses to zero:
     hf_row['M_silicates'] = 0.0
     for s in gas_list:

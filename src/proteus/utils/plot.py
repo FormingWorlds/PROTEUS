@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.utils.archive import archive_exists
+from proteus.utils.constants import vap_list
 from proteus.utils.helper import mol_to_ele
 
 log = logging.getLogger('fwl.' + __name__)
@@ -161,6 +162,17 @@ def get_colour(thing: str):
         colour = _generate_colour(thing)
 
     return colour
+
+
+def get_linestyle(thing: str):
+    """
+    Get a linestyle for something which needs one (e.g. for plotting a particular gas)
+    """
+
+    if thing in vap_list:
+        return 'dashed'
+    else:
+        return 'solid'
 
 
 def latexify(gas: str):

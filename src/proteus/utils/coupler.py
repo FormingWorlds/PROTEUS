@@ -526,9 +526,9 @@ def assert_mass_conservation(config: Config, hf_row: dict, atol_frac: float = 1e
     """
 
     if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-    else:
         gas_list = vol_list + vap_list
+    else:
+        gas_list = vol_list
 
     M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
@@ -791,9 +791,9 @@ def GetHelpfileKeys(config: Config):
         ]
 
     if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-    else:
         gas_list = vol_list + vap_list
+    else:
+        gas_list = vol_list
 
     # gases from outgassing
     for s in gas_list:

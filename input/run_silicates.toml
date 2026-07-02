@@ -422,7 +422,6 @@ config_version = "3.0"
     fO2_shift_IW    = 2        # atmosphere/interior boundary oxidation state [log10(ΔIW)]
 
     silicates = true
-    vaplist = ["SiO", "SiO2", "Si", "Na", "K", "Ti", "TiO", "TiO2", "Mg", "MgO", "Al", "HAlO2", "SiH", "SiH4", "Fe", "FeO"]
 
     module = "calliope"         # Which outgassing module to use
 

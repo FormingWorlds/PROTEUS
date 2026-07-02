@@ -361,9 +361,9 @@ def activate_julia(dirs: dict, verbosity: int):
 
 def _construct_voldict(hf_row: dict, dirs: dict, config: Config):
     if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-    else:
         gas_list = vol_list + vap_list
+    else:
+        gas_list = vol_list
 
     # get from hf_row
     vol_dict = {}
@@ -545,9 +545,9 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             raise FileNotFoundError(surface_material)
 
     # Boundary pressures
-    #if config.outgas.silicates:
-        #p_surf = hf_row['P_surf'] + hf_row['P_silicates']
-    #else:
+    # if config.outgas.silicates:
+    # p_surf = hf_row['P_surf'] + hf_row['P_silicates']
+    # else:
     p_surf = hf_row['P_surf']
     p_top = config.atmos_clim.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
@@ -968,9 +968,9 @@ def _solve_once(atmos, config: Config):
 
     # set included vapur species
     if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-    else:
         gas_list = vol_list + vap_list
+    else:
+        gas_list = vol_list
     # set temperature profile
     #    rainout volatiles at surface
     rained = jl.AGNI.chemistry.calc_composition_b(
@@ -1199,9 +1199,9 @@ def run_agni(
     output['P_surf_clim'] = float(atmos.p_boa) / 1e5  # Calculated Psurf [bar]
 
     if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-    else:
         gas_list = vol_list + vap_list
+    else:
+        gas_list = vol_list
 
     for g in gas_list:
         if g in list(atmos.gas_names):

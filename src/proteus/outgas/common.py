@@ -22,9 +22,9 @@ def expected_keys(config: Config):
     res_list = ('atm', 'liquid', 'solid', 'total')
 
     if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-    else:
         gas_list = vol_list + vap_list
+    else:
+        gas_list = vol_list
 
     # gases
     for s in gas_list:

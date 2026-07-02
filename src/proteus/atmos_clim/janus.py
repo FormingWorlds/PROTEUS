@@ -331,9 +331,9 @@ def RunJANUS(
 
     # set composition at Pxuv
     if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-    else:
         gas_list = vol_list + vap_list
+    else:
+        gas_list = vol_list
 
     for g in gas_list:
         if g in atm.x_gas.keys():
