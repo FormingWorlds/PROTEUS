@@ -57,9 +57,11 @@ _ZALMOXIS_MASS_ANCHOR_TOL = 3e-3
 _MONOTONIC_RINT_REL_TOL = 1e-9
 
 # Runtime cooling discriminator for the monotonic-radius guard. The guard
-# rejects an R_int up-step under the super-liquidus adiabat IC only when the
-# interior is cooling over the step, so a genuine re-inflation driven by active
-# heating (tidal deposition, exothermic volatile re-dissolution) is not clamped.
+# rejects an R_int up-step under the super-liquidus adiabat IC only while the
+# interior is cooling over the step. The up-step is accepted instead when the
+# discriminator detects heating between structure decisions, so a genuine
+# re-inflation is not clamped as a representation artifact. The accept criterion
+# is purely the observed thermal change below, not an assumed heating mechanism.
 # The interior counts as re-inflating when the mantle is heating: T_magma has
 # risen beyond _REINFLATE_TMAGMA_REL_TOL relative to the last structure decision,
 # or the global melt fraction Phi has risen beyond _REINFLATE_PHI_ABS_TOL as
@@ -2631,9 +2633,14 @@ def update_structure_from_interior(
                     _R_int_new,
                 )
             # Restore hf_row structure keys exactly like the mass-anchor
-            # rollback, but WITHOUT incrementing zalmoxis_fail_count or setting
-            # _structure_stale: a retained previous structure is consistent, not
-            # stale, and a rejected up-step is not a convergence failure.
+            # rollback, but leave _structure_stale untouched and do not increment
+            # zalmoxis_fail_count. A rejected up-step is not a convergence
+            # failure, so it must not raise the stale flag; and it commits no new
+            # structure, so it must not clear the flag either. The reject restores
+            # the very structure the flag described on entry, so leaving the flag
+            # paired with it stays consistent: a fresh entry structure stays
+            # not-stale, and a stale fall-back structure that was never re-solved
+            # stays stale.
             hf_row.update(_saved_structure)
             # Restore zalmoxis_output.dat from its pre-call .prev snapshot so the
             # next solver reads the retained previous geometry, not the rejected
