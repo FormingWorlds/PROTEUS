@@ -29,7 +29,6 @@ pytest.importorskip('calliope')
 
 from proteus.outgas.calliope import (
     _resolve_element,
-    _resolve_noble,
     construct_guess,
     construct_options,
     flag_included_volatiles,
@@ -222,7 +221,7 @@ def test_flag_included_volatiles_zero_pressure_excludes():
 
 
 # -----------------------------------------------------------------------
-# _resolve_noble
+# _resolve_element (noble gas modes)
 # -----------------------------------------------------------------------
 
 
@@ -231,10 +230,10 @@ def test_resolve_noble_kg_mode_is_pass_through():
     """In 'kg' mode the noble gas mass is the budget itself, independent of
     the hydrogen inventory or the reservoir mass.
     """
-    result = _resolve_noble(mode='kg', budget=3.0e16, H_kg=1.5e20, M_reservoir=4e24, name='He')
+    result = _resolve_element(mode='kg', budget=3.0e16, H_kg=1.5e20, M_reservoir=4e24, name='He')
     assert result == pytest.approx(3.0e16, rel=1e-12)
     # Pass-through: changing H_kg and M_reservoir must not change the result.
-    result2 = _resolve_noble(mode='kg', budget=3.0e16, H_kg=9e99, M_reservoir=9e99, name='He')
+    result2 = _resolve_element(mode='kg', budget=3.0e16, H_kg=9e99, M_reservoir=9e99, name='He')
     assert result2 == pytest.approx(3.0e16, rel=1e-12)
 
 
@@ -246,7 +245,7 @@ def test_resolve_noble_ppmw_mode_scales_with_reservoir():
     the 'kg' mode with the same budget would give 5 kg, and the 'solar' mode
     would scale by the protosolar Ar/H ratio instead, both far from 2e19.
     """
-    result = _resolve_noble(mode='ppmw', budget=5.0, H_kg=1.5e20, M_reservoir=4e24, name='Ar')
+    result = _resolve_element(mode='ppmw', budget=5.0, H_kg=1.5e20, M_reservoir=4e24, name='Ar')
     assert result == pytest.approx(5.0 * 1e-6 * 4e24, rel=1e-12)
     assert 1e19 < result < 1e20
     # Wrong-mode guard: kg mode would return 5.0, off by ~19 orders.
@@ -260,15 +259,15 @@ def test_resolve_noble_solar_mode_uses_protosolar_ratio():
     hydrogen inventory.
     """
     H_kg = 1.5e20
-    result = _resolve_noble(mode='solar', budget=1.0, H_kg=H_kg, M_reservoir=4e24, name='He')
+    result = _resolve_element(mode='solar', budget=1.0, H_kg=H_kg, M_reservoir=4e24, name='He')
     expected = noble_solar_mass_ratio['He'] * H_kg
     assert result == pytest.approx(expected, rel=1e-12)
     # A budget of 0.5 is half solar, and the mode is linear in the budget.
-    half = _resolve_noble(mode='solar', budget=0.5, H_kg=H_kg, M_reservoir=4e24, name='He')
+    half = _resolve_element(mode='solar', budget=0.5, H_kg=H_kg, M_reservoir=4e24, name='He')
     assert half == pytest.approx(0.5 * expected, rel=1e-12)
     # Discrimination: the solar mass ratios are distinct per gas, so Xe must
     # give a far smaller inventory than He at the same budget and H.
-    xe = _resolve_noble(mode='solar', budget=1.0, H_kg=H_kg, M_reservoir=4e24, name='Xe')
+    xe = _resolve_element(mode='solar', budget=1.0, H_kg=H_kg, M_reservoir=4e24, name='Xe')
     assert xe < 1e-4 * result
 
 
@@ -277,11 +276,11 @@ def test_resolve_noble_unknown_mode_raises():
     the valid modes, so a config typo fails loudly rather than silently.
     """
     with pytest.raises(ValueError, match='Unknown He_mode'):
-        _resolve_noble(mode='oceans', budget=1.0, H_kg=1e20, M_reservoir=4e24, name='He')
+        _resolve_element(mode='oceans', budget=1.0, H_kg=1e20, M_reservoir=4e24, name='He')
     # Adjacent-valid: all three real modes return a non-negative mass.
     for mode, budget in [('kg', 1e16), ('ppmw', 5.0), ('solar', 1.0)]:
         assert (
-            _resolve_noble(mode=mode, budget=budget, H_kg=1e20, M_reservoir=4e24, name='He')
+            _resolve_element(mode=mode, budget=budget, H_kg=1e20, M_reservoir=4e24, name='He')
             >= 0
         )
 

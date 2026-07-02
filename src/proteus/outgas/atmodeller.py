@@ -325,7 +325,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         if proteus_name is None:
             log.debug('Atmodeller quick_look key %r not in species map; skipping', atm_name)
             continue
-        if proteus_name not in gas_list and proteus_name not in noble_gases:
+        if proteus_name not in gas_list:
             continue
         p_val = float(np.squeeze(p_bar))
         hf_row[f'{proteus_name}_bar'] = p_val
@@ -376,7 +376,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     noble_total_in = {g: float(hf_row.get(f'{g}_kg_total', 0.0)) for g in noble_gases}
 
     for proteus_name, atm_name in _atm_gas_species.items():
-        if proteus_name not in gas_list and proteus_name not in noble_gases:
+        if proteus_name not in gas_list:
             continue
         is_noble = proteus_name in noble_gases
         species_key = f'{atm_name}_g'
@@ -427,7 +427,10 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                 hf_row.get(f'{proteus_name}_kg_atm', 0.0)
             ) + float(hf_row[f'{proteus_name}_kg_liquid'])
 
-    # Mean molecular weight (approximate from VMRs)
+    # Mean molecular weight (approximate from VMRs). The noble gases are
+    # gas_list members with their own VMRs, so they enter this sum directly;
+    # their molar mass is the element molar mass since the species and the
+    # element are the same monatomic entity.
     _mmw = {
         'H2O': 18.015e-3,
         'CO2': 44.01e-3,
@@ -440,15 +443,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         'O2': 32.0e-3,
         'H2S': 34.08e-3,
         'NH3': 17.03e-3,
+        **{gas: element_mmw[gas] for gas in noble_gases},
     }
     mmw = sum(float(hf_row.get(f'{s}_vmr', 0.0)) * _mmw.get(s, 28.0e-3) for s in gas_list)
-    # Noble gases contribute to the total surface pressure and therefore to the
-    # mean molar mass. Their mole fraction is their partial pressure over the
-    # total (which already includes them), so fold them in here to keep the
-    # mean molar mass consistent with P_surf, matching the CALLIOPE backend.
-    if P_total > 0:
-        for gas in noble_gases:
-            mmw += (float(hf_row.get(f'{gas}_bar', 0.0)) / P_total) * element_mmw[gas]
     if mmw > 0:
         hf_row['atm_kg_per_mol'] = mmw
 

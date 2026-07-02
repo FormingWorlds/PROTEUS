@@ -551,11 +551,9 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     # Invariant 2: M_atm stays in sync with the per-species kg_atm fields it
     # is summed from. This guards against a future reordering that mutates a
     # species kg_atm after M_atm is computed without refreshing M_atm. The
-    # noble gases are included because their atmospheric mass now counts toward
-    # M_atm (they contribute to the surface pressure and mean molar mass).
-    summed = sum(
-        float(hf_row.get(s + '_kg_atm', 0.0)) for s in list(gas_list) + list(noble_gases)
-    )
+    # noble gases are members of gas_list, so their atmospheric mass is
+    # counted here and in M_atm alike.
+    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
     if M_atm > 0.0:
         rel = abs(summed - M_atm) / M_atm
         if rel > atol_frac:
@@ -799,8 +797,12 @@ def GetHelpfileKeys():
         keys.append(s + '_bar')         # partial surface pressure [bar]
         keys.append(s + '_vmr_xuv')     # volume mixing ratio at XUV level [1]
 
-    # quantities for each element
+    # quantities for each element. A noble gas is also a gas species, so its
+    # mass columns are already emitted by the gas-species loop above; skip it
+    # here to avoid duplicating them.
     for e in element_list:
+        if e in noble_gases:
+            continue
         keys.append(e + '_kg_atm')      # mass outgassed to atmosphere [kg]
         keys.append(e + '_kg_solid')    # mass in solid mantle [kg]
         keys.append(e + '_kg_liquid')   # mass in liquid mantle [kg]

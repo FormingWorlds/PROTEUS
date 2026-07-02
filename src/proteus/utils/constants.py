@@ -81,17 +81,19 @@ prt_cia_species = [
 ]
 prt_ignored_gases = {'e-', 'MMW', 'nabla_ad'}
 vap_list = ['SiO']  # just one for now
-gas_list = vol_list + vap_list
 
-# Noble gases. Chemically inert, tracked as elements (each is its own gas
-# species). Partitioned by CALLIOPE's Henry's-law noble gas solubility and
-# carried through the whole-planet mass accounting.
+# Noble gases. Each is chemically inert, and its gas species and its element
+# are the same monatomic entity. They are full members of both gas_list (the
+# modelled gas species) and element_list (the supported elements), so they are
+# tracked in the helpfile schema, the surface pressure, and the whole-planet
+# mass balance without special-casing. They are opt-in per gas via the
+# outgassing config, so a run with no noble budget carries them as zero.
 noble_gases = ['He', 'Ne', 'Ar', 'Kr', 'Xe']
 
-# Supported elements. Noble gases are appended so they are tracked in the
-# helpfile schema and the whole-planet mass balance; they are opt-in per
-# gas via the outgassing config, so a run without a noble budget carries
-# them as zero.
+gas_list = vol_list + vap_list + noble_gases
+
+# Supported elements: the reactive and rock-forming elements plus the inert
+# noble gases.
 element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'] + noble_gases
 
 # Masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/

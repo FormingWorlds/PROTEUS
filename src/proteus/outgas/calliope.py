@@ -148,7 +148,7 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
             continue
         mode = getattr(elem, f'{gas}_mode')
         budget = float(getattr(elem, f'{gas}_budget'))
-        gas_kg = _resolve_noble(mode, budget, H_kg, M_reservoir, gas)
+        gas_kg = _resolve_element(mode, budget, H_kg, M_reservoir, gas)
         if gas_kg <= 0.0:
             continue
         solvevol_inp[f'{gas}_included'] = 1
@@ -157,61 +157,31 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     return solvevol_inp
 
 
-def _resolve_noble(
-    mode: str, budget: float, H_kg: float, M_reservoir: float, name: str
-) -> float:
-    """Convert a noble gas mode + budget to an absolute mass [kg].
-
-    Parameters
-    ----------
-    mode : str
-        'kg' (absolute), 'ppmw' (relative to M_reservoir), or 'solar' (a
-        multiple of the protosolar X/H mass ratio applied to the hydrogen
-        inventory).
-    budget : float
-        The value in the units defined by mode.
-    H_kg : float
-        Hydrogen mass [kg], used by the 'solar' mode.
-    M_reservoir : float
-        Reservoir mass [kg] for the 'ppmw' mode.
-    name : str
-        Noble gas symbol (for the solar reference ratio and error messages).
-
-    Returns
-    -------
-    float
-        Noble gas mass [kg].
-    """
-    match mode:
-        case 'kg':
-            return budget
-        case 'ppmw':
-            return budget * 1e-6 * M_reservoir
-        case 'solar':
-            return budget * noble_solar_mass_ratio[name] * H_kg
-        case _:
-            raise ValueError(
-                f"Unknown {name}_mode: '{mode}'. Expected 'kg', 'ppmw', or 'solar'."
-            )
-
-
 def _resolve_element(
     mode: str, budget: float, H_kg: float, M_reservoir: float, name: str
 ) -> float:
-    """Convert element mode+budget to absolute mass [kg].
+    """Convert an element mode+budget to absolute mass [kg].
+
+    Handles both the reacting elements and the noble gases; the two share
+    the 'ppmw' and 'kg' modes and differ only in the ratio mode. A reacting
+    element uses the 'X/H' mode, where the mode string is '<name>/H' and the
+    budget is the mass ratio to hydrogen directly. A noble gas uses the
+    'solar' mode, where the budget is a multiple of the fixed protosolar X/H
+    mass ratio for that gas.
 
     Parameters
     ----------
     mode : str
-        'X/H' (mass ratio to H), 'ppmw' (relative to M_reservoir), or 'kg'.
+        '<name>/H' (mass ratio to H), 'solar' (multiple of the protosolar X/H
+        ratio, noble gases only), 'ppmw' (relative to M_reservoir), or 'kg'.
     budget : float
         The value in the units defined by mode.
     H_kg : float
-        Hydrogen mass [kg] (for X/H mode).
+        Hydrogen mass [kg] (for the 'X/H' and 'solar' modes).
     M_reservoir : float
         Reservoir mass [kg] for ppmw (M_mantle or M_int).
     name : str
-        Element name (for error messages).
+        Element or noble gas symbol (for the solar ratio and error messages).
 
     Returns
     -------
@@ -222,13 +192,16 @@ def _resolve_element(
     match mode:
         case _ if mode == ratio_key:
             return float(budget) * H_kg
+        case 'solar':
+            return float(budget) * noble_solar_mass_ratio[name] * H_kg
         case 'ppmw':
             return float(budget) * 1e-6 * M_reservoir
         case 'kg':
             return float(budget)
         case _:
             raise ValueError(
-                f"Unknown {name}_mode: '{mode}'. Expected '{ratio_key}', 'ppmw', or 'kg'"
+                f"Unknown {name}_mode: '{mode}'. "
+                f"Expected '{ratio_key}', 'solar', 'ppmw', or 'kg'"
             )
 
 
