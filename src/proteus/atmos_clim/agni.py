@@ -361,14 +361,14 @@ def activate_julia(dirs: dict, verbosity: int):
 
 def _construct_voldict(hf_row: dict, dirs: dict, config: Config):
     if config.outgas.vapourise:
-        gas_list = vol_list + vap_list
+        incl_gas_list = vol_list + vap_list
     else:
-        gas_list = vol_list
+        incl_gas_list = vol_list
 
     # get from hf_row
     vol_dict = {}
     vol_sum = 0.0
-    for vol in gas_list:
+    for vol in incl_gas_list:
         vol_dict[vol] = hf_row[vol + '_vmr']
         vol_sum += vol_dict[vol]
 
@@ -965,9 +965,9 @@ def _solve_once(atmos, config: Config):
 
     # set included vapur species
     if config.outgas.vapourise:
-        gas_list = vol_list + vap_list
+        incl_gas_list = vol_list + vap_list
     else:
-        gas_list = vol_list
+        incl_gas_list = vol_list
     # set temperature profile
     #    rainout volatiles at surface
     rained = jl.AGNI.chemistry.calc_composition_b(
@@ -981,7 +981,7 @@ def _solve_once(atmos, config: Config):
     jl.AGNI.setpt.dry_adiabat_b(atmos)
     #    condensation above
     if config.atmos_clim.agni.rainout:
-        for gas in gas_list:
+        for gas in incl_gas_list:
             jl.AGNI.setpt.saturation_b(atmos, str(gas))
     #    temperature floor in stratosphere
     jl.AGNI.setpt.stratosphere_b(atmos, 0.5)
