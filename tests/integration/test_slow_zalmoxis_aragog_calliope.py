@@ -53,15 +53,16 @@ Invariants asserted:
 Runtime: this end-to-end real-binary test is dominated by the Aragog
 first-call JAX setup (CVode factory plus RHS and Jacobian compile,
 ~14 min on the ubuntu GHA runner) and the Zalmoxis structure solves.
-It completes in roughly 80 min on the macOS GHA runner and up to
-~150 min on the slower ubuntu runner, varying with runner speed. The
-per-test timeout is 10800 s (180 min), which keeps generous headroom
-above that real runtime for runner-to-runner variance; the slow-tier
+It completes in roughly 80 min on the macOS GHA runner and about
+137 min on the slower ubuntu runner, varying with runner speed. The
+per-test timeout is 10800 s (180 min), about 30 percent above the
+ubuntu runtime, which absorbs runner-to-runner variance; the slow-tier
 job cap is set higher (210 min) so that setup time plus the per-test
-timeout still fit inside the job, letting a genuine hang trip pytest's
-per-test timeout (with a faulthandler traceback) before the job-level
-cancellation. The single IC-only structure solve (update_interval = 0)
-keeps the coupled cost bounded; the per-row dynamic refresh path is
+timeout still fit inside the job, letting a genuine hang trip
+pytest-timeout's per-test timer (which dumps every thread's stack)
+before the job-level cancellation. The single IC-only structure
+solve (update_interval = 0) keeps the coupled cost bounded; the
+per-row dynamic refresh path is
 exercised separately by the structure-update unit tests.
 
 See also:
