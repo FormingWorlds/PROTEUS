@@ -400,12 +400,6 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
 
         apply_binodal_h2(hf_row, config)
 
-    log.debug('Outgassing complete, calculating atmospheric composition...')
-    log.debug('comparison to H2S output by iterating over gas list')
-    log.debug(
-        '    %-6s     = %-9.2f bar (%.2e VMR)' % ('H2S', hf_row['H2S_bar'], hf_row['H2S_vmr'])
-    )
-
     # calculate total atmosphere mass from sum of gas species
     hf_row['M_atm'] = 0.0
     for s in gas_list:
@@ -606,10 +600,12 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict, first_iter: 
             hf_row[e + '_kg_atm'] = 0.0
             hf_row[e + '_kg_total'] = 0.0
 
+    # Do outgassing without rock vapours first
     run_outgassing(dirs, config, hf_row)
 
+    # Now do rock vapours
     if config.outgas.silicates:
         if hf_row['Phi_global'] > 0.00:
             compute_silicate_outgassing(dirs, config, hf_row, first_iter)
         else:
-            log.info('planet has solidified, no silicate outgassing occurs')
+            log.info('Planet has solidified, no silicate outgassing occurs')
