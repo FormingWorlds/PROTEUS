@@ -284,6 +284,16 @@ ref = "0174edb04558a92a8f0b47cbd994964787f495aa"
 url = "https://github.com/nichollsh/LovePy"
 ref = "main"
 
+[tool.proteus.modules.thermoenginelite]
+# Multi-phase thermodynamics engine (c++ and Python)
+url = "https://github.com/FormingWorlds/ThermoEngineLite"
+ref = "main"
+
+[tool.proteus.modules.lavatmos]
+# Rock vapourisation code (python)
+url = "https://github.com/FormingWorlds/LavAtmos"
+ref = "main"
+
 [tool.proteus.modules.petsc]
 # Pre-built PETSc archive on OSF. Required by SPIDER. tools/get_petsc.sh
 # downloads and validates by SHA-256.
