@@ -59,7 +59,7 @@ def plot_global(
     vol_mol_tot = {}  # Moles in total
     vol_intpart = {}  # Partitioning into int
 
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list

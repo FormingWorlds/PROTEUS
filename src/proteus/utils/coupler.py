@@ -21,9 +21,9 @@ import pandas as pd
 
 from proteus.utils.constants import (
     element_list,
+    gas_list,
     secs_per_hour,
     secs_per_minute,
-    vap_list,
     vol_list,
 )
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
@@ -498,11 +498,11 @@ def print_stoptime(start_time):
     log.info(' ')
 
 
-def assert_mass_conservation(config: Config, hf_row: dict, atol_frac: float = 1e-6) -> None:
+def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     """Runtime invariant: M_atm <= M_planet and sum of per-species kg_atm
     matches M_atm.
 
-    Issue #677 invariant. M_atm sums atmospheric oxygen (over gas_list of
+    Issue #677 invariant. M_atm sums atmospheric oxygen (over vol_list of
     *_kg_atm, including the O atoms in H2O / CO2 / SO2), and M_planet =
     M_int + M_ele counts the same oxygen in M_ele, so whole-planet O
     accounting keeps the two sides symmetric and M_atm <= M_planet holds
@@ -525,11 +525,6 @@ def assert_mass_conservation(config: Config, hf_row: dict, atol_frac: float = 1e
         If M_atm > M_planet (by more than ``atol_frac`` of M_planet) or
         the per-species sum disagrees with M_atm by more than that.
     """
-
-    if config.outgas.silicates:
-        gas_list = vol_list + vap_list
-    else:
-        gas_list = vol_list
 
     M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
@@ -557,7 +552,7 @@ def assert_mass_conservation(config: Config, hf_row: dict, atol_frac: float = 1e
     # Invariant 2: M_atm stays in sync with the per-species kg_atm fields it
     # is summed from. This guards against a future reordering that mutates a
     # species kg_atm after M_atm is computed without refreshing M_atm.
-    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
+    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_list)
     if M_atm > 0.0:
         rel = abs(summed - M_atm) / M_atm
         if rel > atol_frac:
@@ -567,6 +562,62 @@ def assert_mass_conservation(config: Config, hf_row: dict, atol_frac: float = 1e
                 f'{rel * 100:.3f}%). One of the gas-species kg_atm fields '
                 f'is stale or the M_atm sum loop is missing a species.'
             )
+
+
+def assert_surface_pressure_consistency(
+    config: Config, hf_row: dict, atol_frac: float = 1e-6
+) -> None:
+    """Runtime invariant: P_surf == P_vol + P_vap, and P_vap == 0 when rock
+    vapour outgassing is disabled.
+
+    P_vol is the volatile-only surface pressure (CALLIOPE/atmodeller/dummy
+    output) and P_vap is the rock-vapour contribution added by LavAtmos
+    (`outgas.vapourise = True`). P_surf is the total the atmosphere modules
+    use as their lower boundary condition, so the two partial pressures must
+    always sum back to it.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row at the end of an outgassing call (run_outgassing,
+        compute_silicate_outgassing, run_desiccated, or run_crystallized).
+    atol_frac : float
+        Relative tolerance against max(|P_surf|, |P_vol + P_vap|).
+
+    Raises
+    ------
+    RuntimeError
+        If P_vap is nonzero while `outgas.vapourise` is False, or if
+        P_surf disagrees with P_vol + P_vap by more than `atol_frac`.
+    """
+
+    P_surf = float(hf_row.get('P_surf', 0.0))
+    P_vol = float(hf_row.get('P_vol', 0.0))
+    P_vap = float(hf_row.get('P_vap', 0.0))
+
+    if not config.outgas.vapourise and P_vap != 0.0:
+        raise RuntimeError(
+            f'P_vap={P_vap:.3e} bar is nonzero but outgas.vapourise=False: '
+            'rock-vapour pressure must stay at zero when vapourisation is '
+            'disabled. Check that the code path that set P_vap is gated on '
+            'config.outgas.vapourise.'
+        )
+
+    total = P_vol + P_vap
+    scale = max(abs(P_surf), abs(total))
+    if scale <= 0.0:
+        # Pre-IC / no atmosphere yet: nothing meaningful to compare.
+        return
+
+    rel = abs(P_surf - total) / scale
+    if rel > atol_frac:
+        raise RuntimeError(
+            f'Surface pressure inconsistency: P_surf={P_surf:.6e} bar but '
+            f'P_vol+P_vap={total:.6e} bar (P_vol={P_vol:.6e}, '
+            f'P_vap={P_vap:.6e}, relative difference {rel * 100:.3f}%). '
+            'One of the outgassing code paths updated P_surf without '
+            'keeping P_vol/P_vap in sync.'
+        )
 
 
 def PrintCurrentState(hf_row: dict):
@@ -597,7 +648,7 @@ def CreateLockFile(output_dir: str):
     return keepalive_file
 
 
-def GetHelpfileKeys(config: Config):
+def GetHelpfileKeys():
     """
     Variables to be held in the helpfile.
 
@@ -632,7 +683,7 @@ def GetHelpfileKeys(config: Config):
         'R_int',            # interior radius [m]
         'M_int',            # interior mass [kg]
         'M_planet',         # total planet wet+dry mass [kg]
-        'M_silicates',      # outgassed rock vapour mass , w/o oxygen [kg]
+        'M_vaps',           # outgassed rock vapour mass , w/o oxygen [kg]
         'R_core',           # core radius [m]
         'R_solvus',         # solvus radius for global_miscibility mode [m]
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]
@@ -791,11 +842,6 @@ def GetHelpfileKeys(config: Config):
         'esc_kg_cumulative', # cumulative escaped mass [kg]
         ]
 
-    if config.outgas.silicates:
-        gas_list = vol_list + vap_list
-    else:
-        gas_list = vol_list
-
     # gases from outgassing
     for s in gas_list:
         keys.append(s + '_mol_atm')     # number outgassed to atmosphere [mol]
@@ -856,20 +902,20 @@ def GetHelpfileKeys(config: Config):
     return keys
 
 
-def CreateHelpfileFromDict(d: dict, config: Config):
+def CreateHelpfileFromDict(d: dict):
     """
     Create helpfile to hold output variables.
     """
     log.debug('Creating new helpfile from dict')
-    return pd.DataFrame([d], columns=GetHelpfileKeys(config), dtype=float)
+    return pd.DataFrame([d], columns=GetHelpfileKeys(), dtype=float)
 
 
-def ZeroHelpfileRow(config: Config):
+def ZeroHelpfileRow():
     """
     Get a dictionary with same keys as helpfile but with values of zero
     """
     out = {}
-    for k in GetHelpfileKeys(config):
+    for k in GetHelpfileKeys():
         out[k] = 0.0
     return out
 
@@ -998,7 +1044,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict, config: Config):
     # Private (underscore-prefixed) keys are intentionally transient and
     # are excluded from both checks.
 
-    schema = set(GetHelpfileKeys(config))
+    schema = set(GetHelpfileKeys())
 
     row_keys = {k for k in new_row.keys() if not k.startswith('_')}
     # Known non-numeric / non-persistent keys that are written into hf_row
@@ -1021,7 +1067,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict, config: Config):
         raise Exception('Helpfile row is missing expected keys: %s' % missing_keys)
     if unknown_keys:
         log.warning(
-            'Helpfile row contains keys not declared in GetHelpfileKeys(config) '
+            'Helpfile row contains keys not declared in GetHelpfileKeys() '
             '(they will be silently dropped from the CSV): %s. '
             'Either add them to the schema or explicitly allowlist them in '
             '_ALLOWED_NON_SCHEMA_KEYS.',
@@ -1029,8 +1075,8 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict, config: Config):
         )
 
     # convert row to df, only including keys in the schema
-    # which is defined by GetHelpfileKeys(config)
-    new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(config), dtype=float)
+    # which is defined by GetHelpfileKeys()
+    new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
     # Check for NaN values. Print warning if any are found and convert to zero.
     for col in new_row.columns:
         if new_row[col].isna().any():
@@ -1052,7 +1098,7 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame, config: Config
     log.debug('Writing helpfile to CSV file')
 
     # check for invalid or missing keys
-    difference = set(GetHelpfileKeys(config)) - set(current_hf.keys())
+    difference = set(GetHelpfileKeys()) - set(current_hf.keys())
     if len(difference) > 0:
         raise Exception('There are mismatched keys in helpfile: ' + str(difference))
 

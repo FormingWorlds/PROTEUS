@@ -51,13 +51,13 @@ def update_planet_mass(dirs: dict, hf_row: dict, config: Config):
             continue
         hf_row['M_ele'] += hf_row[e + '_kg_total']
 
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         hf_row['M_planet'] = (
-            hf_row['M_int'] + hf_row['M_ele'] - hf_row['M_silicates']
+            hf_row['M_int'] + hf_row['M_ele'] - hf_row['M_vaps']
         )  # subtracted outgassed silicates from interior mass
-        # with the additional tracking of M_silicates, this avoids too strong changes in M_int such that spider can still run.
+        # with the additional tracking of M_vaps, this avoids too strong changes in M_int such that spider can still run.
         # However this also means that the interior evolution still neglects the decrease in planetary mass.
-        if hf_row['M_silicates'] > hf_row['M_int']:
+        if hf_row['M_vaps'] > hf_row['M_int']:
             log.error('Outgassed silicate mass exceeds interior mass! Setting M_planet = M_ele')
             UpdateStatusfile(dirs, 29)
     else:

@@ -12,6 +12,8 @@ from proteus.utils.constants import element_list, vap_list, vol_list
 def expected_keys(config: Config):
     copy_keys = [
         'P_surf',
+        'P_vol',
+        'P_vap',
         'M_atm',
         'atm_kg_per_mol',
         'fO2_shift_IW_derived',
@@ -21,7 +23,7 @@ def expected_keys(config: Config):
     # reservoirs
     res_list = ('atm', 'liquid', 'solid', 'total')
 
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
@@ -43,10 +45,17 @@ def expected_keys(config: Config):
     # "from_O_budget", so the escape debit chain is preserved across
     # iterations. Under user_constant the solver's O_kg_total IS the
     # authoritative value, so the copy is the correct write.
+    # Some vap_list species are monatomic (e.g. 'Si', 'Na', 'Fe') and share
+    # their string with the matching element_list symbol, so the gas loop
+    # above already appended f'{e}_kg_{r}' for those elements. Skip keys
+    # already present instead of appending a duplicate for the same
+    # hf_row slot.
     for e in element_list:
         for r in res_list:
             if (r != 'total') or (e == 'O'):
-                copy_keys.append(f'{e}_kg_{r}')
+                key = f'{e}_kg_{r}'
+                if key not in copy_keys:
+                    copy_keys.append(key)
 
     # element mass ratios in atmosphere (must mirror the unordered-pair
     # registration in coupler.GetHelpfileKeys so run_desiccated zeros

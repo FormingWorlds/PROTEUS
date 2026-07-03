@@ -178,7 +178,7 @@ def test_run_outgassing_calliope_calculation():
 
     # Setup hf_row with gas masses and VMR (typical early Earth steam atmosphere)
     hf_row = {}
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
@@ -235,7 +235,7 @@ def test_run_outgassing_atmosphere_mass_conservation():
         1e10,
     ]
 
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
@@ -270,7 +270,7 @@ def test_run_outgassing_disabled_module():
 
     # Setup with fixed gas masses
     hf_row = {}
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
@@ -305,7 +305,7 @@ def test_run_desiccated_zeros_outgassing_keys():
 
     # Setup hf_row with outgassing data
     hf_row = {}
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
@@ -351,7 +351,7 @@ def test_run_desiccated_preserves_critical_keys():
     }
 
     # Add VMR and mass for all gases in gas_list
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
@@ -392,7 +392,7 @@ def test_run_outgassing_zero_atmosphere_mass():
 
     # All gases have zero mass
     hf_row = {}
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
@@ -471,7 +471,7 @@ def test_run_outgassing_mixed_species_dominance():
         'FeO2_kg_atm': 0.0,
     }
 
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list

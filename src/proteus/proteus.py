@@ -259,6 +259,7 @@ class Proteus:
             WriteHelpfileToCSV,
             ZeroHelpfileRow,
             assert_mass_conservation,
+            assert_surface_pressure_consistency,
             print_citation,
             print_header,
             print_module_configuration,
@@ -416,7 +417,7 @@ class Proteus:
             # Store partial pressures and list of included volatiles
             inc_gases = []
 
-            if self.config.outgas.silicates:
+            if self.config.outgas.vapourise:
                 gas_list = vol_list + vap_list
             else:
                 gas_list = vol_list
@@ -471,7 +472,7 @@ class Proteus:
 
         else:
             # Resuming from disk
-            if self.config.outgas.silicates:
+            if self.config.outgas.vapourise:
                 gas_list = vol_list + vap_list
             else:
                 gas_list = vol_list
@@ -896,6 +897,12 @@ class Proteus:
             # O-skipping asymmetry that could let M_atm exceed
             # M_planet at high H_ppmw.
             assert_mass_conservation(self.config, self.hf_row, atol_frac=1000)
+
+            # P_surf = P_vol + P_vap, and P_vap == 0 when rock vapour
+            # outgassing is disabled. Cheap end-of-outgas guardrail against
+            # a code path updating P_surf without keeping the partial
+            # pressures in sync.
+            assert_surface_pressure_consistency(self.config, self.hf_row)
 
             if _IT_TIMING_ENABLED:
                 _t_mod['outgas'] = time.perf_counter() - _t0_outgas

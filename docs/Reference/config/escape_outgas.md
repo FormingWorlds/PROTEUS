@@ -53,6 +53,7 @@ planetary surface conditions.
 | `T_floor` | float | `700.0` | Clamp the outgassing temperature to this floor \[K] before the chemistry solve |
 | `solver_rtol` | float | `1e-4` | Relative mass/equilibrium tolerance |
 | `solver_atol` | float | `1e-6` | Absolute mass/equilibrium tolerance |
+| `vapourise` | bool | `false` | Enable rock vapour outgassing (LavAtmos/ThermoEngineLite). Requires `LAVA_DIR` and `FC_DIR`; see [Installation: optional modules](../../How-to/optionalmodules_installation.md#rock-vapours-lavatmos-thermoenginelite) |
 
 ### CALLIOPE `[outgas.calliope]`
 
