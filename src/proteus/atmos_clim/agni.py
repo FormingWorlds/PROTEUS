@@ -28,7 +28,9 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Constant
 AGNI_LOGFILE_NAME = 'agni_recent.log'
-ALWAYS_DRY = ('CO', 'N2', 'H2')
+# Gases kept out of the condensate set. The noble gases are chemically inert
+# and are tracked as conserved reservoirs, so they never rain out.
+ALWAYS_DRY = ('CO', 'N2', 'H2', *noble_gases)
 
 # Fields PROTEUS expects to find on the Julia Atmos_t struct after
 # `atmosphere.allocate_b` succeeds. The list mirrors what `agni.py` and
@@ -365,14 +367,12 @@ def activate_julia(dirs: dict, verbosity: int):
 
 
 def _construct_voldict(hf_row: dict, dirs: dict):
-    # get from hf_row. The noble gases are tracked as a mass reservoir but are
-    # not radiatively active and have no thermodynamic data in AGNI, so they
-    # are not part of the composition handed to the radiative-convective solve.
+    # Volume mixing ratio of every modelled gas, read from hf_row. AGNI
+    # recognises the noble gases as species, so they enter the composition
+    # handed to the radiative-convective solve like any other gas.
     vol_dict = {}
     vol_sum = 0.0
     for vol in gas_list:
-        if vol in noble_gases:
-            continue
         vol_dict[vol] = hf_row[vol + '_vmr']
         vol_sum += vol_dict[vol]
 
@@ -548,16 +548,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             UpdateStatusfile(dirs, 20)
             raise FileNotFoundError(surface_material)
 
-    # Boundary pressures. The noble gases carry surface pressure but are
-    # excluded from the composition above, which AGNI renormalizes to a unit
-    # sum. Scale the surface pressure by the non-noble mixing-ratio fraction so
-    # that after renormalization each reactive gas keeps its true partial
-    # pressure. The fraction is one when no noble gas is present, so a
-    # noble-free run is unchanged.
+    # Boundary pressures.
     p_surf = hf_row['P_surf']
-    vol_frac = sum(vol_dict.values())
-    if vol_frac > 0.0:
-        p_surf *= vol_frac
     p_top = config.atmos_clim.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
@@ -982,7 +974,9 @@ def _solve_once(atmos, config: Config):
     if config.atmos_clim.agni.rainout:
         for gas in gas_list:
             if gas in noble_gases:
-                continue  # noble gases are not part of the AGNI composition
+                # Noble gases are chemically inert and tracked as conserved
+                # reservoirs, so they are never rained out of the atmosphere.
+                continue
             jl.AGNI.setpt.saturation_b(atmos, str(gas))
     #    temperature floor in stratosphere
     jl.AGNI.setpt.stratosphere_b(atmos, 0.5)
