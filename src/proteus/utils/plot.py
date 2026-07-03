@@ -55,6 +55,12 @@ _preset_colours = {
     'K': '#2e8b57',
     'Al': '#5e2172',
     'Ca': '#167A9B',
+    # Noble gases (each is both a gas species and an element)
+    'He': '#7f7f7f',
+    'Ne': '#e6550d',
+    'Ar': '#3182bd',
+    'Kr': '#31a354',
+    'Xe': '#756bb1',
     # GLobal energy fluxes
     'OLR': '#dc143c',
     'ASF': '#4169e1',

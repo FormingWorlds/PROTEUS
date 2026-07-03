@@ -75,6 +75,11 @@ fO$_2$ buffering.
 | `include_H2` | `true` | H$_2$ |
 | `include_CH4` | `true` | CH$_4$ |
 | `include_CO` | `true` | CO |
+| `include_He` | `false` | He (noble gas; budget in `[planet.elements]`) |
+| `include_Ne` | `false` | Ne (noble gas; budget in `[planet.elements]`) |
+| `include_Ar` | `false` | Ar (noble gas; budget in `[planet.elements]`) |
+| `include_Kr` | `false` | Kr (noble gas; budget in `[planet.elements]`) |
+| `include_Xe` | `false` | Xe (noble gas; budget in `[planet.elements]`) |
 | `solubility` | `true` | Enable melt-gas partitioning (`false` = all volatiles in atmosphere) |
 
 **Solver**

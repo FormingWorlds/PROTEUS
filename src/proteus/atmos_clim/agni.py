@@ -12,8 +12,13 @@ from juliacall import convert
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_oarr_from_parr, get_spfile_path
-from proteus.utils.constants import vap_list, vol_list
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, multiple, safe_rm
+from proteus.utils.constants import gas_list, noble_gases
+from proteus.utils.helper import (
+    UpdateStatusfile,
+    create_tmp_folder,
+    multiple,
+    safe_rm,
+)
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 if TYPE_CHECKING:
@@ -23,7 +28,9 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Constant
 AGNI_LOGFILE_NAME = 'agni_recent.log'
-ALWAYS_DRY = ('CO', 'N2', 'H2')
+# Gases kept out of the condensate set. The noble gases are chemically inert
+# and are tracked as conserved reservoirs, so they never rain out.
+ALWAYS_DRY = ('CO', 'N2', 'H2', *noble_gases)
 
 # Fields PROTEUS expects to find on the Julia Atmos_t struct after
 # `atmosphere.allocate_b` succeeds. The list mirrors what `agni.py` and
@@ -360,15 +367,10 @@ def activate_julia(dirs: dict, verbosity: int):
 
 
 def _construct_voldict(hf_row: dict, dirs: dict, config: Config):
-    if config.outgas.vapourise:
-        incl_gas_list = vol_list + vap_list
-    else:
-        incl_gas_list = vol_list
-
     # get from hf_row
     vol_dict = {}
     vol_sum = 0.0
-    for vol in incl_gas_list:
+    for vol in gas_list:
         vol_dict[vol] = hf_row[vol + '_vmr']
         vol_sum += vol_dict[vol]
 
@@ -544,7 +546,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             UpdateStatusfile(dirs, 20)
             raise FileNotFoundError(surface_material)
 
-    # Boundary pressures
+    # Boundary pressures.
     p_surf = hf_row['P_surf']
     p_top = config.atmos_clim.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
@@ -963,11 +965,6 @@ def _solve_once(atmos, config: Config):
             Atmosphere struct
     """
 
-    # set included vapur species
-    if config.outgas.vapourise:
-        incl_gas_list = vol_list + vap_list
-    else:
-        incl_gas_list = vol_list
     # set temperature profile
     #    rainout volatiles at surface
     rained = jl.AGNI.chemistry.calc_composition_b(
@@ -981,7 +978,11 @@ def _solve_once(atmos, config: Config):
     jl.AGNI.setpt.dry_adiabat_b(atmos)
     #    condensation above
     if config.atmos_clim.agni.rainout:
-        for gas in incl_gas_list:
+        for gas in gas_list:
+            if gas in noble_gases:
+                # Noble gases are chemically inert and tracked as conserved
+                # reservoirs, so they are never rained out of the atmosphere.
+                continue
             jl.AGNI.setpt.saturation_b(atmos, str(gas))
     #    temperature floor in stratosphere
     jl.AGNI.setpt.stratosphere_b(atmos, 0.5)
@@ -1194,11 +1195,6 @@ def run_agni(
     output['ocean_areacov'] = float(atmos.ocean_areacov)
     output['ocean_maxdepth'] = float(atmos.ocean_maxdepth)
     output['P_surf_clim'] = float(atmos.p_boa) / 1e5  # Calculated Psurf [bar]
-
-    if config.outgas.vapourise:
-        gas_list = vol_list + vap_list
-    else:
-        gas_list = vol_list
 
     for g in gas_list:
         if g in list(atmos.gas_names):

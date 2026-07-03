@@ -21,7 +21,7 @@ from __future__ import annotations
 import pytest
 
 from proteus.outgas.common import expected_keys
-from proteus.utils.constants import element_list, gas_list
+from proteus.utils.constants import element_list, gas_list, noble_gases
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -40,8 +40,8 @@ def test_expected_keys_contains_gas_bar_and_vmr():
     for gas in gas_list:
         assert f'{gas}_bar' in keys, f'Missing {gas}_bar key'
         assert f'{gas}_vmr' in keys, f'Missing {gas}_vmr key'
-    # Discrimination: gas_list has 15 species (11 vol + 4 vap),
-    # so there should be at least 30 bar+vmr keys
+    # Discrimination: every gas_list species contributes exactly one _bar and
+    # one _vmr key, so the counts match the species list one for one.
     bar_keys = [k for k in keys if k.endswith('_bar')]
     vmr_keys = [k for k in keys if k.endswith('_vmr')]
     assert len(bar_keys) == len(gas_list)
@@ -49,18 +49,23 @@ def test_expected_keys_contains_gas_bar_and_vmr():
 
 
 def test_expected_keys_contains_gas_reservoir_keys():
-    """Every gas has '_kg_<reservoir>' and '_mol_<reservoir>' keys
-    for all four reservoirs: atm, liquid, solid, total.
-
-    This ensures the full mass/mole accounting is copied from the
-    solver output.
+    """Every gas has '_mol_<reservoir>' keys for all four reservoirs and
+    '_kg_<reservoir>' for atm, liquid and solid. A reactive species also
+    carries '_kg_total', but a noble gas does not: a noble gas is also an
+    element, so its '_kg_total' is escape-owned rather than copied from the
+    outgassing backend.
     """
     keys = expected_keys()
     reservoirs = ('atm', 'liquid', 'solid', 'total')
     for gas in gas_list:
         for res in reservoirs:
-            assert f'{gas}_kg_{res}' in keys, f'Missing {gas}_kg_{res}'
             assert f'{gas}_mol_{res}' in keys, f'Missing {gas}_mol_{res}'
+            if res == 'total' and gas in noble_gases:
+                assert f'{gas}_kg_{res}' not in keys, (
+                    f'{gas}_kg_total is escape-owned and must not be copied'
+                )
+            else:
+                assert f'{gas}_kg_{res}' in keys, f'Missing {gas}_kg_{res}'
 
 
 def test_expected_keys_contains_element_reservoir_keys():

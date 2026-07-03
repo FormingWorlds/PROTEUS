@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.escape.common import calc_unfract_fluxes
-from proteus.utils.constants import M_sun, element_list, secs_per_year
+from proteus.utils.constants import M_sun, element_list, noble_gases, secs_per_year
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -333,8 +333,13 @@ def calc_new_elements(
         log.info(e)
         log.info('element total before escape: %s' % old_total)
         new_total = old_total - lost
-        log.info('element total after escape: %s' % new_total)
-        if new_total < min_thresh:
+        # The desiccation floor treats a major volatile that drops below
+        # min_thresh as fully depleted. Noble gases are intrinsically trace
+        # (Earth-like whole-planet inventories sit orders of magnitude below
+        # min_thresh), so applying the same absolute floor would zero a
+        # realistic noble inventory on the first escape step. Exempt them and
+        # only clamp to non-negative.
+        if e not in noble_gases and new_total < min_thresh:
             new_total = 0.0
         tgt[e] = max(0.0, new_total)
 

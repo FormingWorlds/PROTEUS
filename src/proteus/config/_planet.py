@@ -92,6 +92,27 @@ class Elements:
     use_metallicity: bool = field(default=False)
     metallicity: float = field(default=1000.0, validator=ge(0))
 
+    # Noble gases (He, Ne, Ar, Kr, Xe). Opt-in per gas: a gas contributes
+    # only when its inclusion flag is set in outgas.calliope and its budget
+    # is positive. Each mode is one of:
+    #   'kg':    budget in kg (absolute).
+    #   'ppmw':  budget in ppmw relative to volatile_reservoir mass.
+    #   'solar': budget is a multiple of the protosolar X/H mass ratio, so
+    #            the inventory is budget * (X/H)_solar * H_kg. A value of 1.0
+    #            gives a protosolar noble gas complement, which is an
+    #            upper-bound reference rather than a realistic planetary
+    #            budget (planetary bodies are strongly noble-gas depleted).
+    He_mode: str = field(default='kg', validator=in_(('kg', 'ppmw', 'solar')))
+    He_budget: float = field(default=0.0, validator=ge(0))
+    Ne_mode: str = field(default='kg', validator=in_(('kg', 'ppmw', 'solar')))
+    Ne_budget: float = field(default=0.0, validator=ge(0))
+    Ar_mode: str = field(default='kg', validator=in_(('kg', 'ppmw', 'solar')))
+    Ar_budget: float = field(default=0.0, validator=ge(0))
+    Kr_mode: str = field(default='kg', validator=in_(('kg', 'ppmw', 'solar')))
+    Kr_budget: float = field(default=0.0, validator=ge(0))
+    Xe_mode: str = field(default='kg', validator=in_(('kg', 'ppmw', 'solar')))
+    Xe_budget: float = field(default=0.0, validator=ge(0))
+
 
 @define
 class GasPrs:

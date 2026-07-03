@@ -1,7 +1,7 @@
 # Shared code for outgassing wrapper
 from __future__ import annotations
 
-from proteus.utils.constants import element_list, gas_list
+from proteus.utils.constants import element_list, gas_list, noble_gases
 
 
 def expected_keys():
@@ -23,7 +23,11 @@ def expected_keys():
         copy_keys.append(f'{s}_bar')
         copy_keys.append(f'{s}_vmr')
         for r in res_list:
-            copy_keys.append(f'{s}_kg_{r}')
+            # A noble gas is also an element; its _kg_total is escape-owned
+            # (like every non-O element total), so it is not copied from the
+            # backend here. Its atm/liquid/solid reservoirs are.
+            if not (r == 'total' and s in noble_gases):
+                copy_keys.append(f'{s}_kg_{r}')
             copy_keys.append(f'{s}_mol_{r}')
 
     # elements. The `_kg_total` slot is owned by escape (which debits
@@ -41,6 +45,8 @@ def expected_keys():
     # already present instead of appending a duplicate for the same
     # hf_row slot.
     for e in element_list:
+        if e in noble_gases:
+            continue  # noble reservoirs are handled in the gas-species loop
         for r in res_list:
             if (r != 'total') or (e == 'O'):
                 key = f'{e}_kg_{r}'
