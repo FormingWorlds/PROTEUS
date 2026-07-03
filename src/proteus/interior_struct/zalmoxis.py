@@ -929,8 +929,15 @@ def load_zalmoxis_configuration(
     # represents bare silicate). When the mantle EOS carries dissolved
     # volatiles (dry_mantle = false), only the atmospheric inventory may
     # be excluded: the dissolved mass is already part of the wet-mantle
-    # EOS, and subtracting it again would remove it twice. Escaped mass is already debited from the
-    # *_kg_* inventories and needs no separate term.
+    # EOS, and subtracting it again would remove it twice. Note this
+    # keeps ALL dissolved species inside the target, while the EOS blend
+    # only represents those in _VOLATILE_EOS_MAP (H2O in practice); the
+    # dissolved mass of unmapped species (CO2, CH4, N2, S2) lands in the
+    # silicate remainder fraction and is packed at silicate density.
+    # Mass stays exact, compressibility is misrepresented; the radius
+    # error scales as (dissolved mass fraction) x (density contrast) and
+    # is negligible at typical inventories. Escaped mass is already
+    # debited from the *_kg_* inventories and needs no separate term.
     # Defensive .get(): some pre-IC paths invoke Zalmoxis before
     # calc_target_elemental_inventories has populated all element columns.
     dry_mantle = config.interior_struct.zalmoxis.dry_mantle
