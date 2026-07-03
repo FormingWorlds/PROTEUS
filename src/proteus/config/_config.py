@@ -47,7 +47,7 @@ def instmethod_evolve(instance, attribute, value):
 
 def satellite_evolve(instance, attribute, value):
     # Planetary orbital evolution not supported when also modelling satellite
-    if instance.orbit.satellite and instance.orbit.evolve:
+    if instance.orbit.star_planet_model is not None and instance.orbit.planet_satellite_model is not None:
         raise ValueError(
             'Planet orbital evolution cannot be used simultaneously with a satellite'
         )

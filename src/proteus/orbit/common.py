@@ -2,17 +2,17 @@
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
 import netCDF4 as nc
 import numpy as np
 from numpy.typing import NDArray
+from scipy.fft import fft, fftshift
 
 log = logging.getLogger("fwl."+__name__)
 
-# Tides structure class
+
 @dataclass
 class TidalInteraction:
     primary: Any
@@ -21,7 +21,6 @@ class TidalInteraction:
     nmk: Optional[NDArray[np.floating]] = None
     sigma: Optional[NDArray[np.floating]] = None
     LNk: Optional[NDArray[np.floating]] = None
-    Hansen: Optional[NDArray[np.floating]] = None
 
 
 @dataclass
@@ -43,182 +42,164 @@ class Tides_t:
         raise KeyError(f"No tidal interaction: {primary} <- {perturber}")
 
     def add_from_file(self, primary, perturber, file_path: str):
-        # Get existing interaction or create a new one
         interaction = self.add(primary, perturber)
 
-        # Open the NetCDF file and extract the arrays
         with nc.Dataset(file_path, 'r') as ds:
-            # Using [:] converts the netCDF4 variable directly into a NumPy array
-            interaction.nmk = ds.variables['nmk'][:]
+            n = ds.variables["n"][:]
+            m = ds.variables["m"][:]
+            k = ds.variables["k"][:]
+
+            interaction.nmk = np.column_stack([n, m, k]).astype(int)
             interaction.sigma = ds.variables['sigma'][:]
-            interaction.LNk = ds.variables['LNk'][:]
-            interaction.Hansen = ds.variables['Hansen'][:]
+            interaction.LNk = (
+                ds.variables["LNk_real"][:]
+                + 1j * ds.variables["LNk_imag"][:]
+            )
 
         return interaction
 
-# Orbit structure class
-@dataclass
-class Orbit:
-    primary: Any      # Central body (e.g. star, planet)
-    secondary: Any    # Orbiting body (e.g. planet, moon)
 
-    semimajor_axis: Optional[float] = None
-    eccentricity: Optional[float] = None
-    inclination: Optional[float] = None
-    argument_periapsis: Optional[float] = None
-    longitude_ascending_node: Optional[float] = None
-    mean_anomaly: Optional[float] = None
+def nextpow2_int(x):
+    """Return the integer p such that 2^p >= x.
 
-
-@dataclass
-class Orbit_t:
-    orbits: List[Orbit] = field(default_factory=list)
-
-    def add(self, primary, secondary):
-        orbit = Orbit(primary, secondary)
-        self.orbits.append(orbit)
-        return orbit
-
-    def get(self, primary, secondary):
-        for orbit in self.orbits:
-            if orbit.primary is primary and orbit.secondary is secondary:
-                return orbit
-        raise KeyError(f"No orbit found for {secondary} around {primary}")
-
-
-def read_ncdf_profile(nc_fpath:str):
-    """Read data from tides NetCDF output file.
-
-    Automatically reads forcing frequency (σ) and imaginary part of k2 Love number (Imk2) arrays.
-
-    Parameters
+    Attributes
     ----------
-        nc_fpath : str
-            Path to NetCDF file.
+    x : int
+        Input value.
 
     Returns
-    ----------
-        out : dict
-            Dictionary containing numpy arrays of data from the file.
+    -------
+    p : int
+        The smallest integer p such that 2^p >= x.
     """
-
-    import netCDF4 as nc
-
-    # open file
-    if not os.path.isfile(nc_fpath):
-        log.error(f"Could not find NetCDF file '{nc_fpath}'")
-        return None
-    ds = nc.Dataset(nc_fpath)
-
-    σ    = np.array(ds.variables["σ"][:])
-    Imk2 = np.array(ds.variables["Imk2"][:])
-
-    # read data into dictionary values
-    out = {}
-    out["sigma"] = σ
-    out["Imk2"]  = Imk2
-
-    # close file
-    ds.close()
-
-    # convert to np arrays
-    for key in out.keys():
-        out[key] = np.array(out[key], dtype=float)
-
-    return out
-
-
-def read_orbit_data(output_dir:str, times:list):
-    """
-    Read all Imk2 spectra from NetCDF files in a PROTEUS output folder.
-    """
-    profiles = [
-        read_ncdf_profile(os.path.join(output_dir, "data", "%.0f_orb.nc"%t))
-        for t in times
-    ]
-    if None in profiles:
-        log.warning("One or more NetCDF files could not be found")
-        if os.path.exists(os.path.join(output_dir,"data","data.tar")):
-            log.warning("You may need to extract archived data files")
-        return
-
-    return profiles
-
-
-def nextpow2_int(x: int) -> int:
     return int(np.ceil(np.log2(x))) if x > 0 else 0
 
 
-def kepler_newton(M, e: float):
+def kepler_newton(M, e):
     """
-    Solve Kepler's equation E - e*sin(E) = M
-    M is expected to be a 2D column vector for broadcasting.
-    """
-    E = np.copy(M)
-    if e > 0:
-        E = M + e * np.sin(M) / (1.0 - np.sin(M + e) + np.sin(M))
+    Solve Kepler's equation E - e*sin(E) = M using Newton iteration.
 
+    Attributes
+    ----------
+    M : array_like
+        Mean anomaly in radians.
+    e : float
+        Orbital eccentricity (0 <= e < 1).
+
+    Returns
+    -------
+    E : ndarray
+        Eccentric anomaly in radians, same shape as M.
+    """
+    M = np.array(M, dtype=float)
+    E = np.copy(M)
+
+    # Danby-style improved initial guess
+    if e > 0:
+        E = M + (e * np.sin(M)) / (1 - np.sin(M + e) + np.sin(M))
+
+    # Newton iterations
     for _ in range(10):
         f = E - e * np.sin(E) - M
-        fp = 1.0 - e * np.cos(E)
+        fp = 1 - e * np.cos(E)
         dE = -f / fp
         E += dE
-
         if np.max(np.abs(dE)) < 1e-13:
             break
 
     return np.mod(E, 2 * np.pi)
 
+def hansen_fft(n, m, e, kmin, kmax, N=None):
+    """Compute Hansen coefficients X_k^{n,m}(e) using FFT on mean anomaly.
 
-def get_all_hansen(power: int, m_max: int, e: float, kmin: int, kmax: int, N: int = None):
-    """
-    Computes Hansen coefficients X_k^{power, m}(e) for all m in [-m_max, ..., m_max]
-    simultaneously using 2D array broadcasting and a single vectorized FFT.
+    Attributes
+    ----------
+    n : int
+        Degree of the Hansen coefficient.
+    m : int
+        Order of the Hansen coefficient.
+    e : float
+        Orbital eccentricity (0 <= e < 1).
+    kmin : int
+        Minimum k value for which to compute the coefficient.
+    kmax : int
+        Maximum k value for which to compute the coefficient.
+    N : int, optional
+        Number of points for FFT. If None, it will be chosen adaptively.
 
-    Returns:
-        k_indices (1D array): The integer k-indices.
-        X_dict (dict): A dictionary mapping an integer m to its 1D array of Hansen coefficients.
+    Returns
+    -------
+    k : ndarray
+        Array of k values from kmin to kmax.
+    Xkm : ndarray
+        Corresponding Hansen coefficients X_k^{n,m}(e).
     """
+    # Choose FFT size adaptively
     if N is None:
         width = max(64, 4 * (kmax - kmin + 1))
-        target = width * max(8, int(np.ceil(16.0 / (1.0 - e + np.finfo(float).eps))))
+        target = width * max(8, int(np.ceil(16 / (1 - e + np.finfo(float).eps))))
         p = max(12, int(np.ceil(np.log2(target))))
         N = 2**p
     else:
         p = nextpow2_int(N)
         N = 2**p
 
-    # 1. Setup grids: M as a column vector (N, 1) to broadcast against m (1, 2*m_max + 1)
+    # Mean anomaly grid
     M = np.arange(N) * (2 * np.pi / N)
-    M_col = M[:, np.newaxis]
 
-    # 2. Solve geometry ONCE for all m
-    E_col = kepler_newton(M_col, e)
-    ce = np.cos(E_col)
-    se = np.sin(E_col)
+    # Solve Kepler
+    E = kepler_newton(M, e)
 
-    r_over_a = 1.0 - e * ce
-    v_col = np.arctan2(np.sqrt(1.0 - e**2) * se, ce - e)
+    ce = np.cos(E)
+    se = np.sin(E)
+    r_over_a = 1 - e * ce
+    v = np.arctan2(np.sqrt(1 - e**2) * se, ce - e) # true anomaly
 
-    # 3. Setup m as a row vector to trigger 2D broadcasting
-    m_row = np.arange(-m_max, m_max + 1)[np.newaxis, :]
+    # Hansen integrand
+    f = (r_over_a**n) * np.exp(1j * m * v)
 
-    # 4. Hansen integrand: (N, 1) * (N, 2*m_max + 1) -> Broadcasts to shape (N, 2*m_max + 1)
-    f = (r_over_a ** power) * np.exp(1j * m_row * v_col)
+    # FFT, normalized like Python’s fft(f)/N
+    F = fftshift(fft(f.astype(complex))) / N
 
-    # 5. 1D FFT over the anomaly axis (axis=0) for all m columns simultaneously
-    F = np.fft.fftshift(np.fft.fft(f, axis=0), axes=0) / N
-
-    # 6. Extract the requested k bounds
     k_all = np.arange(-N // 2, N // 2)
     mask = (k_all >= kmin) & (k_all <= kmax)
-    k_indices = k_all[mask]
 
-    # 7. Package neatly into a dictionary mapped by m
-    X_sliced = np.real(F[mask, :])
-    X_dict = {
-        m: X_sliced[:, i]
-        for i, m in enumerate(range(-m_max, m_max + 1))
-    }
+    k = k_all[mask]
+    Zk = F[mask]
+    Xkm = np.real(Zk)
 
-    return k_indices, X_dict
+    return k, Xkm
+
+def get_all_m_hansen(ecc, n, k_min, k_max):
+    """
+    Computes Hansen coefficients for all m = -n to n.
+    Returns a dictionary where keys are m and values are (k, Xkm).
+
+    Attributes
+    ----------
+    ecc : float
+        Orbital eccentricity (0 <= ecc < 1).
+    n : int
+        Degree of the Hansen coefficient.
+    k_min : int
+        Minimum k value for which to compute the coefficient.
+    k_max : int
+        Maximum k value for which to compute the coefficient.
+
+    Returns
+    -------
+    k_range : ndarray
+        Array of k values from k_min to k_max.
+    results : dict
+        Dictionary where keys are m and values are corresponding Hansen coefficients X_k^{n,m}(ecc).
+    """
+    results = {}
+
+    # We loop through all required values of m
+    for m in range(-n, n + 1):
+        # We use the same logic as your original wrapper,
+        # but iterate m from -n to n
+        k_range, X = hansen_fft(-(n + 1), m, ecc, k_min, k_max, N=2**18)
+        results[m] = X
+
+    return k_range, results

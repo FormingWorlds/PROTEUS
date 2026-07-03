@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.integrate import solve_ivp
 
-from proteus.orbit.common import Tides_t, get_all_hansen
-from proteus.utils.constants import const_G, secs_per_hour
+from proteus.interior_energetics.common import Interior_t
+from proteus.orbit.common import Tides_t, get_all_m_hansen
+from proteus.utils.constants import const_G
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -16,44 +17,81 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
-def evolve_orbit_satellite(hf_row: dict, config: Config, tides_o: Tides_t, dt: float):
+def evolve_orbit_satellite(hf_row: dict, config: Config, tides_o: Tides_t, interior_o: Interior_t):
     """Evolve the planet's orbital parameters.
 
-        Parameters
-        ----------
-            hf_row : dict
-                Dictionary of current runtime variables
-            config : dict
-                Dictionary of configuration options
-            tides_o : Tides_t
-                Tides object containing tidal interactions
-            dt : float
-                Time interval over which escape is occuring [yr]
-        """
-
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        config : dict
+            Dictionary of configuration options
+        tides_o : Tides_t
+            Tides object containing tidal interactions
+        interior_o : Interior_t
+            Interior object containing interior arrays
+    """
     model = config.orbit.planet_satellite_model
 
     if model == 'ps0d':
         # Call the ps0d function to evolve the satellite's orbital parameters
-        ps0d(hf_row, config, dt)
+        ps0d(hf_row, config, interior_o.dt)
 
     elif model == 'ps1d_evec':
-        # Ensure that the tidal Love-numbers for the satellite are loaded into the tides_o object. If not, load them from the specified file.
-        if tides_o.get(primary="satellite", perturber="planet").LNk is None:
-            # Get the satellite tidal data file path from the configuration
-            satellite_tides_data_path = config.orbit.love_number_sat
-
-            # Check if the file path is provided; if not, raise an error
-            if satellite_tides_data_path is None:
-                raise ValueError("Satellite tidal data file path is not specified in the configuration.")
-
-            # Load the tidal Love-numbers for the satellite from the specified file into the tides_o object
-            tides_o.add_from_file(primary="satellite", perturber="planet", file_path=satellite_tides_data_path)
+        # Compute planet principal moment of inertia (C_planet)
+        get_C_planet(hf_row, config, interior_o)
 
         # Call the ps1d_evec function to evolve the satellite's orbital parameters
-        ps1d_evec(hf_row, config, tides_o, dt)
+        ps1d_evec(hf_row, config, tides_o, interior_o.dt)
 
     pass
+
+
+def get_C_planet(hf_row: dict, config: Config, interior_o: Interior_t):
+    """Compute the planet's principal moment of inertia (C_planet) based on the interior structure.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        config : Config
+            Model configuration.
+        interior_o : Interior_t
+            Interior object containing interior arrays
+    """
+    # Calculate the planet's principal moment of inertia (C_planet)
+    # Assuming a spherically symmetric mass distribution, we can use the formula:
+    # C = (8/3) * pi * integral_0^R (rho(r) * r^4 dr)
+    # where rho(r) is the density profile and R is the radius of the planet.
+
+    # Get the radial grid and density profile from the interior object
+    arr_keys = ("density", "radius")
+    lov = {k:np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}
+
+    # Reverse arrays if using SPIDER
+    #  Such that i=0 is at the CMB
+    if config.interior_energetics.module == "spider":
+        for k in arr_keys:
+            lov[k] = lov[k][::-1]
+
+    r_edges = lov["radius"]      # length N+1
+    rho = lov["density"]         # length N
+
+    r0 = r_edges[:-1]
+    r1 = r_edges[1:]
+
+    integral = np.sum(
+        rho * (r1**5 - r0**5) / 5.0
+    )
+
+    C_planet = (8*np.pi/3.0) * integral
+
+    # Store C_planet in the helpfile row for later use
+    hf_row['C_planet'] = C_planet
+
+    # Check if C_planet is physically reasonable
+    C_factor_planet = C_planet / (hf_row['M_int'] * hf_row['R_int']**2)
+    log.info(f"Computed C_planet: {C_planet:.3e} kg.m^2, C_factor_planet: {C_factor_planet:.3f}")
 
 
 def ps0d(hf_row, config, dt):
@@ -180,8 +218,15 @@ def ps0d(hf_row, config, dt):
         return [da_dt(a, ω, params), dω_dt(a, ω, params)]
 
 
+    # Set parameters from helpfile
     Rpl = hf_row['R_int']
     Mpl = hf_row['M_int']
+    Msa = hf_row['M_sat']
+
+    sma = float(hf_row['semimajorax_sat'])
+    omega = 2 * np.pi / float(hf_row['axial_period'])
+
+    L = hf_row['plan_sat_am']
 
     # Calculate bulk tidal power
     dE_tidal = hf_row['F_tidal'] * 4 * np.pi * Rpl**2  # Js-1
@@ -192,44 +237,18 @@ def ps0d(hf_row, config, dt):
     # Time step
     current_time = float(hf_row['Time'])
 
-    # Use config parameters as initial guess
-    if current_time <= 1:
-        # Set satellite semimajor axis, satellite mass, and planet rotation frequency from config.
-        hf_row['semimajorax_sat'] = float(config.orbit.semimajoraxis_sat)  # m
-        hf_row['M_sat'] = float(config.orbit.mass_sat)  # kg
-
-        Msa = hf_row['M_sat']
-
-        if config.orbit.axial_period is None:
-            # set by user to 'none', use 1:1 SOR
-            hf_row['axial_period'] = float(hf_row['orbital_period'])
-        else:
-            hf_row['axial_period'] = float(config.orbit.axial_period) * secs_per_hour
-
+    # On the first run of this orbital module, instantiate the system angular-momentum
+    if current_time <= 10 and L == 0:
         # Calculate the system angular-momentum integration constant
         # via the dedicated ``Ltot`` helper above, which implements
         # Korenaga (2023) Eq. 60 with the satellite-mass prefactor in
         # the orbital sqrt. Using the helper avoids duplicating the
         # formula and keeps any future revision in one place.
-        sma = float(hf_row['semimajorax_sat'])
-        omega = 2 * np.pi / float(hf_row['axial_period'])
+        L = Ltot(omega, sma, (hf_row['C_planet'], 0, const_G, Mpl, Msa, 0))
+        hf_row['plan_sat_am'] = L
 
-        am_params = (I, None, const_G, Mpl, Msa, None)
-        hf_row['plan_sat_am'] = Ltot(omega, sma, am_params)
-        log.info('    sys.am = %.5f kg.m2.s-1' % (hf_row['plan_sat_am']))
-
-        return
-    else:
-        # Find previous_time from which to evolve orbit to current_time
-        previous_time = current_time - dt
-
-    # Set semimajor axis, rotation frequency, satellite mass, and system AM from config.
-    sma = float(hf_row['semimajorax_sat'])
-    omega = 2 * np.pi / float(hf_row['axial_period'])
-    Msa = hf_row['M_sat']
-
-    # Could be allowed to vary to mimic resonance effects
-    L = hf_row['plan_sat_am']
+    # Find previous_time from which to evolve orbit to current_time
+    previous_time = current_time - dt
 
     # Collect system parameters at previous_time
     params = (I, L, const_G, Mpl, Msa, dE_tidal)
@@ -263,21 +282,31 @@ def ps1d_evec(hf_row, config, tides_o, dt):
             Time interval over which escape is occuring [yr]
     """
 
+    # Orbital parameters from helpfile
+    axial_p = 2 * np.pi / float(hf_row['axial_period'])
+    axial_s = 2 * np.pi / float(hf_row['axial_period_sat'])
+    sma = float(hf_row['semimajorax_sat'])
+    ecc = float(hf_row['eccentricity_sat'])
+    aps_prec_angle = float(hf_row['aps_prec_angle'])
+
     # Setup Initial State and Parameters
     y0 = [
-        2 * np.pi / hf_row['axial_period'],
-        2 * np.pi / hf_row['axial_period_sat'],
-        hf_row['semimajorax_sat'],
-        hf_row['eccentricity_sat'],
-        hf_row['aps_prec_angle']
+        axial_p,
+        axial_s,
+        sma,
+        ecc,
+        aps_prec_angle # evec_angle
     ]
+
+    # Mean motion of star-planet system
+    n_star = np.sqrt(const_G * (hf_row['M_star'] + hf_row['M_planet']) / hf_row['semimajorax']**3)
 
     params = {
         'M_p': hf_row['M_planet'], 'M_s': hf_row['M_sat'],
         'R_p': hf_row['R_int'],    'R_s': hf_row['R_sat'],
-        'C_p': hf_row['C_planet'], 'C_s': hf_row['C_sat'],   # <-- need to be computed at some point!!!
-        'n_star': 2 * np.pi / float(hf_row['axial_period']), # <-- check this!!!
-        'J_struc': 0.4                                       # <-- How is this computed? ~0.3 - 0.5 depending on structure
+        'C_p': hf_row['C_planet'], 'C_s': hf_row['C_sat'],
+        'n_star': n_star,
+        'J_struc': 0.313          # <-- How is this computed? ~0.3 - 0.5 depending on structure
     }
 
 
@@ -350,7 +379,7 @@ def ps1d_evec(hf_row, config, tides_o, dt):
         LNk_s = tides_o.get(primary="satellite", perturber="planet").LNk
 
         kmin, kmax = np.min(nmk_p[:,2]), np.max(nmk_p[:,2])
-        k, X_all = get_all_hansen(power=-3, m_max=2, e=e_safe, kmin=kmin, kmax=kmax)
+        k, X_all = get_all_m_hansen(e_safe, 2, kmin, kmax)
 
         # Convert your arrays into a dictionary mapping (n, m, k) -> Complex Love Number
         love_dict_p = {tuple(nmk): ln for nmk, ln in zip(nmk_p, LNk_p)}
@@ -369,10 +398,10 @@ def ps1d_evec(hf_row, config, tides_o, dt):
 
             # Fetch complex Love number components (A = Real, K = -Imaginary)
             # Look up the complex values, defaulting to 0.0 + 0j if not found
-            val_p0 = love_dict_p.get((2, 0, k), 0.0 + 0.0j)
-            val_p2 = love_dict_p.get((2, 2, k), 0.0 + 0.0j)
-            val_s0 = love_dict_s.get((2, 0, k), 0.0 + 0.0j)
-            val_s2 = love_dict_s.get((2, 2, k), 0.0 + 0.0j)
+            val_p0 = love_dict_p.get((2, 0, s), 0.0 + 0.0j)
+            val_p2 = love_dict_p.get((2, 2, s), 0.0 + 0.0j)
+            val_s0 = love_dict_s.get((2, 0, s), 0.0 + 0.0j)
+            val_s2 = love_dict_s.get((2, 2, s), 0.0 + 0.0j)
 
             # Extract real and imaginary parts
             A_p0, K_p0 = val_p0.real, -val_p0.imag
@@ -425,7 +454,7 @@ def ps1d_evec(hf_row, config, tides_o, dt):
     hf_row['axial_period']     = 2 * np.pi / sol.y[0][-1]
     hf_row['axial_period_sat'] = 2 * np.pi / sol.y[1][-1]
     hf_row['semimajorax_sat']  = sol.y[2][-1]
-    hf_row['eccentricity_sat'] = 2 * np.pi / sol.y[3][-1]
+    hf_row['eccentricity_sat'] = sol.y[3][-1]
     hf_row['aps_prec_angle']   = sol.y[4][-1]
 
     pass

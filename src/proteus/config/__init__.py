@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import tomllib
 from pathlib import Path
+from typing import Literal, Union
 
 import cattrs
 
@@ -10,6 +11,15 @@ from ._config import Config
 from .orphans import check_config_orphan_free
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+def structure_k_val(val, cls):
+    if val == "none":
+        return "none"
+    return int(val)
+
+# Register this for the specific Union type
+cattrs.register_structure_hook(Union[int, Literal["none"]], structure_k_val)
 
 
 def read_config(path: Path | str) -> dict:

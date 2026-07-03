@@ -607,6 +607,7 @@ def GetHelpfileKeys():
         'eccentricity',     # orbital eccentricity [1]
         'Imk2',             # Imaginary part of k2 Love Number [1]
         'axial_period',     # day length of planet around its axis [s]
+        'n_star',           # mean motion of star [s-1]
 
         # Satellite system
         'perigee',          # lowest point in orbit [m]
@@ -614,14 +615,18 @@ def GetHelpfileKeys():
         'orbital_period_sat', # orbital duration [s]
         'eccentricity_sat', # orbital eccentricity of satellite [1]
         'M_sat',            # mass of satellite [kg]
+        'R_sat',            # radius of satellite [m]
+        'C_sat',            # principal moment of inertia of satellite [kg m2]
         'plan_sat_am',      # angular momentum of sat+pla [kg m2 s-1],
         'axial_period_sat', # day length of satellite around its axis [s]
+        'aps_prec_angle',   # apsidal precession angle [rad]
 
         # Planet structure
         'R_int',            # interior radius [m]
         'M_int',            # interior mass [kg]
         'M_planet',         # total planet wet+dry mass [kg]
         'R_core',           # core radius [m]
+        'C_planet',         # principal moment of inertia of planet [kg m2]
         'R_solvus',         # solvus radius for global_miscibility mode [m]
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]
         'T_solvus',         # solvus temperature for global_miscibility mode [K]
@@ -1176,7 +1181,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
 
     # Planet and satellite orbit parameters
-    if config.orbit.evolve or config.orbit.satellite:
+    if config.orbit.star_planet_model is not None or config.orbit.planet_satellite_model is not None:
         plot_orbit(hf_all, output_dir, config.params.out.plot_fmt)
 
     # Which times do we have atmosphere data for?

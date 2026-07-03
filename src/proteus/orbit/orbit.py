@@ -18,18 +18,17 @@ log = logging.getLogger('fwl.' + __name__)
 def evolve_orbit_star(hf_row: dict, config: Config, tides_o: Tides_t, dt: float):
     """Evolve the planet's orbital parameters.
 
-        Parameters
-        ----------
-            hf_row : dict
-                Dictionary of current runtime variables
-            config : dict
-                Dictionary of configuration options
-            tides_o : Tides_t
-                Tides object containing tidal interactions
-            dt : float
-                Time interval over which escape is occuring [yr]
-        """
-
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        config : dict
+            Dictionary of configuration options
+        tides_o : Tides_t
+            Tides object containing tidal interactions
+        dt : float
+            Time interval over which escape is occuring [yr]
+    """
     model = config.orbit.star_planet_model
 
     # Update orbit

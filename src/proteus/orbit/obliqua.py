@@ -23,13 +23,31 @@ def import_obliqua():
     jl.seval("using Obliqua")
 
 
+def to_julia_dict(obj):
+    """Recursively convert Python dict/list to native Julia Dict/Vector."""
+    if isinstance(obj, dict):
+        jd = jl.Dict()
+        for k, v in obj.items():
+            jd[k] = to_julia_dict(v)
+        return jd
+    elif isinstance(obj, list):
+        return [to_julia_dict(v) for v in obj]
+    else:
+        return obj
+
+
 def _jlarr(arr: np.ndarray):
     # Make copy of array, reverse order, and convert to Julia type
     cop = np.array(arr, copy=True, dtype=float).flatten()
     return juliacall.convert(jl.Array[jl.Obliqua.prec, 1], cop)
 
 
-def _jlsca(sca: float):
+def _jlsca_float(sca: float):
+    # Make a copy of a scalar, and convert to Julia type
+    return juliacall.convert(jl.Obliqua.Float64, sca)
+
+
+def _jlsca_prec(sca: float):
     # Make a copy of a scalar, and convert to Julia type
     return juliacall.convert(jl.Obliqua.prec, sca)
 
@@ -59,29 +77,29 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides
     """
 
     # Calculate axial frequency of rotation
-    axial  = _jlsca(2 * np.pi / hf_row["axial_period"])
+    axial  = _jlsca_prec(2 * np.pi / hf_row["axial_period"])
 
     if config.orbit.perturber == 'star':
         log.debug("Running Obliqua for star-planet tides...")
 
         # Calculate orbital frequency of rotation
-        omega  = _jlsca(2 * np.pi / hf_row["orbital_period"])
+        omega  = _jlsca_prec(2 * np.pi / hf_row["orbital_period"])
 
         # Convert planet-star orbital eccentricity, semi-major axis, and mass
-        ecc    = _jlsca(hf_row["eccentricity"])
-        sma    = _jlsca(hf_row["semimajorax"])
-        M_pert = _jlsca(hf_row["M_star"])
+        ecc    = _jlsca_float(hf_row["eccentricity"])
+        sma    = _jlsca_float(hf_row["semimajorax"])
+        M_pert = _jlsca_float(hf_row["M_star"])
 
     elif config.orbit.perturber == 'satellite':
         log.debug("Running Obliqua for satellite-planet tides...")
 
         # Calculate orbital frequency of rotation
-        omega  = _jlsca(2 * np.pi / hf_row["orbital_period_sat"])
+        omega  = _jlsca_prec(2 * np.pi / hf_row["orbital_period_sat"])
 
         # Convert planet-satellite orbital eccentricity, semi-major axis, and mass
-        ecc    = _jlsca(hf_row["eccentricity_sat"])
-        sma    = _jlsca(hf_row["semimajorax_sat"])
-        M_pert = _jlsca(hf_row["M_sat"])
+        ecc    = _jlsca_float(hf_row["eccentricity_sat"])
+        sma    = _jlsca_float(hf_row["semimajorax_sat"])
+        M_pert = _jlsca_float(hf_row["M_sat"])
 
 
     # Copy arrays
@@ -120,8 +138,19 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides
 
     # Create configuration dictionary for Obliqua
     cfg = {
+        "title": "PROTEUS_run_"+str(round(hf_row["Time"])),
+
+        "params": {
+            "out": {
+                "path": dirs['output/data'],
+                "time": round(hf_row["Time"]),
+            },
+        },
+
         "orbit": {
             "obliqua": {
+                "store_3D": config.orbit.obliqua.store_3D,
+
                 "min_frac": config.orbit.obliqua.min_frac,
 
                 "visc_l": config.orbit.obliqua.visc_l,
@@ -132,12 +161,14 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides
                 "n": config.orbit.obliqua.n,
                 "m": config.orbit.obliqua.m,
 
+                "spectrum": "adaptive", # Note that this is fixed, since spectrum = full is not useful for the current implementation of Obliqua in PROTEUS.
+
                 "N_sigma": config.orbit.obliqua.N_sigma,
                 "p_min": config.orbit.obliqua.p_min,
                 "p_max": config.orbit.obliqua.p_max,
 
-                "k_min": config.orbit.obliqua.k_min,
-                "k_max": config.orbit.obliqua.k_max,
+                "s_min": config.orbit.obliqua.k_min,
+                "s_max": config.orbit.obliqua.k_max,
 
                 "material_mu": config.orbit.obliqua.material_mu,
                 "material_k": config.orbit.obliqua.material_k,
@@ -153,6 +184,7 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides
                     "dr_max": config.orbit.obliqua.solid.dr_max,
                     "core": config.orbit.obliqua.solid.core,
                     "bulk_l": config.orbit.obliqua.solid.bulk_l,
+                    "permea": "will be removed",
                     "porosity_thresh": config.orbit.obliqua.solid.porosity_thresh,
                     "dbulk_power": config.orbit.obliqua.solid.dbulk_power,
                 },
@@ -178,33 +210,36 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides
 
         "interior_energetics": {
             "grain_size": config.interior_energetics.grain_size,
+        },
 
-            "boundary": {
-                "core_density": config.interior_energetics.boundary.core_density,
-                "core_shear": config.interior_energetics.boundary.core_shear,
-                "core_bulk": config.interior_energetics.boundary.core_bulk,
-            }
+        "struct": {
+            "core_density": config.interior_energetics.boundary.core_density,
+            "core_shear": config.interior_energetics.boundary.core_shear,
+            "core_bulk": config.interior_energetics.boundary.core_bulk,
         }
+
     }
+
+    cfg = to_julia_dict(cfg)
 
     # Calculate heating using obliqua
     try:
         # Extract arrays
-        rho     = lov["density"],
-        radius  = lov["radius"],
-        visc    = lov["visc"],
-        shear   = lov["shear"],
-        bulk    = lov["bulk"],
+        rho     = lov["density"]
+        radius  = lov["radius"]
+        visc    = lov["visc"]
+        shear   = lov["shear"]
+        bulk    = lov["bulk"]
         phi     = lov["phi"]
 
         # Add permeability and drained bulk modulus and limit porosity
-        perm      = jl.get_permeability(phi, cfg)
-        perm, phi = jl.limit_porosity(perm, phi, cfg)
-        bulkd     = jl.get_drained_bulk(bulk, phi, cfg)
+        perm      = jl.Obliqua.interior.get_permeability(phi, cfg)
+        perm, phi = jl.Obliqua.interior.limit_porosity(perm, phi, cfg)
+        bulkd     = jl.Obliqua.interior.get_drained_bulk(bulk, phi, cfg)
 
         # Run Obliqua to get tidal heating profile and love number
-        power_prf, power_blk, nmk, sigma, Hansen, LNk = \
-            jl.run_tides(
+        power_prf, power_blk, nmk, sigma, LNk = \
+            jl.Obliqua.run_tides(
                 omega,
                 axial,
                 ecc,
@@ -242,9 +277,77 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides
 
     # Store results in tides_o structure
     storage = tides_o.add(primary="planet", perturber=config.orbit.perturber)
-    storage.nmk    = nmk
+    storage.nmk    = np.vstack(nmk).astype(int)
     storage.sigma  = sigma
     storage.LNk    = LNk
-    storage.Hansen = Hansen
 
     return np.mean(np.imag(LNk))
+
+
+def LN_from_lookup(hf_row: dict, tides_o: Tides_t, config: Config):
+    """Extract and populate Love numbers for a satellite from a pre-generated lookup table.
+
+    Since Hansen coefficients dictate which modes are relevant for tidal forcing and depend
+    only on orbital eccentricity, this function interpolates/matches the Love numbers (LNk)
+    for relevant modes from an Obliqua lookup file spanning a broad frequency range.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        tides_o: Tides_t
+            Struct containing tidal arrays at current time.
+        config: Config
+            PROTEUS config object
+    """
+    # Fetch relevant modes from planet-side forcing
+    nmk_p = np.asarray(tides_o.get(primary="planet", perturber="satellite").nmk)
+
+    # Vectorized calculation of forcing frequencies (sigma_s = m * omega_rot - k * omega_orb)
+    axial_freq_s = 2.0 * np.pi / hf_row["axial_period_sat"]
+    orbit_freq_s = 2.0 * np.pi / hf_row["orbital_period_sat"]
+
+    # nmk_p[:, 1] is 'm', nmk_p[:, 2] is 'k'
+    sigma_s = nmk_p[:, 1] * axial_freq_s - nmk_p[:, 2] * orbit_freq_s
+
+    # Retrieve or load satellite lookup data
+    try:
+        lookup = tides_o.get(primary="satellite_dict", perturber="planet")
+    except KeyError:
+        file_path = config.orbit.satellite.love_number_sat
+        if not file_path:
+            raise ValueError("Satellite tidal data file path (`config.orbit.satellite.love_number_sat`) is not specified.")
+
+        tides_o.add_from_file(primary="satellite_dict", perturber="planet", file_path=file_path)
+        lookup = tides_o.get(primary="satellite_dict", perturber="planet")
+
+    # Extract lookup arrays
+    sigma_s_lookup = np.asarray(lookup.sigma)
+    nmk_s_lookup = np.asarray(lookup.nmk)
+    LNk_s_lookup = np.asarray(lookup.LNk)
+
+    # Pre-index lookup table by degree n
+    unique_n = np.unique(nmk_p[:, 0])
+    lookup_by_n = {}
+    for n_val in unique_n:
+        mask = (nmk_s_lookup[:, 0] == n_val)
+        if not np.any(mask):
+            raise ValueError(f"Lookup table does not contain tidal data for degree n = {int(n_val)}.")
+        lookup_by_n[n_val] = (sigma_s_lookup[mask], LNk_s_lookup[mask])
+
+    # Nearest-neighbor frequency matching
+    LNk_s = np.empty(len(nmk_p), dtype=LNk_s_lookup.dtype)
+
+    for i, (n, _, _) in enumerate(nmk_p):
+        sigma_filtered, LNk_filtered = lookup_by_n[n]
+        # Find the index of the closest forcing frequency
+        idx = np.argmin(np.abs(sigma_filtered - sigma_s[i]))
+        LNk_s[i] = LNk_filtered[idx]
+
+    # Store computed values back into the tides object
+    storage = tides_o.add(primary="satellite", perturber="planet")
+    storage.nmk = nmk_p
+    storage.sigma = sigma_s
+    storage.LNk = LNk_s
+
+    pass
