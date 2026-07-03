@@ -35,7 +35,7 @@ config_version = "3.0"
         # Output folder inside PROTEUS/output/. Set "auto" for a unique timestamped
         # name (run_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
         path                  = "test_new_pressuresettings"
-        logging               = "DEBUG"       # INFO | DEBUG | ERROR | WARNING
+        logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 1            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
         write_mod             = 1            # 0: at end | n: every n iters
@@ -75,7 +75,7 @@ config_version = "3.0"
         [params.stop.time]                   # simulation time limits
             enabled           = true
             minimum           = 1.0e3        # run at least this long [yr]
-            maximum           = 1.0e+8       # stop after this time [yr]
+            maximum           = 5.0e+8       # stop after this time [yr]
 
         [params.stop.solid]                  # solidification criterion
             enabled           = false
@@ -89,7 +89,7 @@ config_version = "3.0"
 
         [params.stop.escape]                 # atmosphere loss criterion
             enabled           = true
-            p_stop            = 1e-4          # stop when surface pressure < p_stop [bar]
+            p_stop            = 1e-3          # stop when surface pressure < p_stop [bar]
 
         [params.stop.disint]                 # planetary disintegration criterion
             enabled           = false
