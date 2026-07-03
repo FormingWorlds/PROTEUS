@@ -359,7 +359,7 @@ class Proteus:
             self.interior_o.ic = 1
 
             # Create an empty initial row for helpfile
-            self.hf_row = ZeroHelpfileRow(self.config)
+            self.hf_row = ZeroHelpfileRow()
 
             # Stellar mass
             update_stellar_mass(self.hf_row, self.config)
@@ -896,7 +896,7 @@ class Proteus:
             # that hard-fails if any future change re-introduces the
             # O-skipping asymmetry that could let M_atm exceed
             # M_planet at high H_ppmw.
-            assert_mass_conservation(self.config, self.hf_row, atol_frac=1000)
+            assert_mass_conservation(self.hf_row, atol_frac=1000)
 
             # P_surf = P_vol + P_vap, and P_vap == 0 when rock vapour
             # outgassing is disabled. Cheap end-of-outgas guardrail against

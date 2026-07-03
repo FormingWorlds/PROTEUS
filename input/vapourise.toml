@@ -387,14 +387,9 @@ config_version = "3.0"
 
     # Boundary backend (Schaefer+2016 0-D box model with prescribed solidus/liquidus)
     [interior_energetics.boundary]
-        rtol                      = 1.0e-4       # ODE solver relative tolerance
-        atol                      = 1.0e-8       # ODE solver absolute tolerance
-        T_p_0                     = 3500.0       # initial potential temperature if Zalmoxis is not active [K]
         T_solidus                 = 1420.0       # mantle solidus [K]
         T_liquidus                = 2020.0       # mantle liquidus [K]
-        Tsurf_event_change        = 20.0         # max surface-T jump per iteration before triggering an event [K]
         critical_rayleigh_number  = 1100.0       # critical Rayleigh number for onset of convection
-        heat_fusion_silicate      = 4.0e5        # latent heat of fusion for silicates [J/kg]
         nusselt_exponent          = 0.33         # Nusselt-Rayleigh scaling exponent
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
         atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
@@ -403,10 +398,6 @@ config_version = "3.0"
         thermal_diffusivity       = 1.0e-6       # thermal diffusivity [m^2/s]
         thermal_expansivity       = 2.0e-5       # thermal expansivity [1/K]
         viscosity_model           = 2            # 1=constant | 2=aggregate smooth | 3=Arrhenius
-        eta_constant              = 1.0e2        # constant viscosity for model 1 [Pa s]
-        transition_width          = 0.2          # width of viscosity transition (melt-fraction units)
-        eta_solid_const           = 1.0e22       # solid-end viscosity for aggregate model [Pa s]
-        eta_melt_const            = 1.0e2        # melt-end viscosity for aggregate model [Pa s]
         dynamic_viscosity         = 3.8e9        # Arrhenius solid reference dynamic viscosity [Pa s]
         activation_energy         = 3.5e5        # Arrhenius solid activation energy [J/mol]
         creep_parameter           = 26.0         # Arrhenius creep parameter
@@ -600,8 +591,15 @@ config_version = "3.0"
 
 # Synthetic observations
 [observe]
-    synthesis                 = "none"       # none | platon
+    module                    = "none"       # none | petitRADTRANS
+    source                    = "all"        # all | outgas | profile | offchem
+    spectrum_type             = "both"       # both | transit | eclipse
+    remove_one_gas            = true         # generate additional leave-one-out spectra (one gas removed per run)
+    clip_vmr                  =  1e-8        # minimum VMR for inclusion
+    reference_pressure        = 10           # used to calculate the synthetic spectrum [bar]
 
-    [observe.platon]
-        downsample            = 8            # opacity downsample factor
-        clip_vmr              = 1e-8         # minimum VMR for inclusion
+    [observe.petitRADTRANS]
+        line_opacity_mode     = 'c-k'        # opacity treatment: 'c-k' (correlated-k) or 'lbl' (line-by-line).
+        include_rayleigh      = true         # include Rayleigh scattering contributions.
+        include_cia           = true         # include collision-induced absorption contributions.
+        silent                = true        # suppress petitRADTRANS stdout/stderr during Radtrans initialization
