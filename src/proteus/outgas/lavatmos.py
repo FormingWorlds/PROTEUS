@@ -520,7 +520,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
         )
         if (
             e in input_eles
-        ):  # oxygen should not be added to M_silicates, since it is not counted in M_eles       #and e != 'O':
+        ):  # oxygen should not be added to M_vaps, since it is not counted in M_eles       #and e != 'O':
             log.debug('volatile species, no need to update from lavatmos')
             continue
         else:
@@ -532,7 +532,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
             hf_row[e + '_kg_total'] = (
                 hf_row[e + '_kg_atm'] + hf_row[e + '_kg_solid'] + hf_row[e + '_kg_liquid']
             )
-            hf_row['M_silicates'] += hf_row[e + '_kg_total']
+            hf_row['M_vaps'] += hf_row[e + '_kg_total']
 
     # saving new oxygen fugacity from lavatmos run, which is computed as log10 of the partial pressure of O2, to compare with the iron wustite buffer
     log10_fO2 = np.log10(new_atmos_abundances['O2'][0]) + np.log10(

@@ -595,7 +595,7 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict, first_iter: 
     gas_list = vol_list + vap_list
 
     # reset all silicate masses to zero:
-    hf_row['M_silicates'] = 0.0
+    hf_row['M_vaps'] = 0.0
     for s in gas_list:
         if s in vol_list:
             continue

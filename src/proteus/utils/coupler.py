@@ -683,7 +683,7 @@ def GetHelpfileKeys():
         'R_int',            # interior radius [m]
         'M_int',            # interior mass [kg]
         'M_planet',         # total planet wet+dry mass [kg]
-        'M_silicates',      # outgassed rock vapour mass , w/o oxygen [kg]
+        'M_vaps',           # outgassed rock vapour mass , w/o oxygen [kg]
         'R_core',           # core radius [m]
         'R_solvus',         # solvus radius for global_miscibility mode [m]
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]

@@ -115,11 +115,11 @@ def _check_escape(handler: Proteus) -> bool:
 def _check_evap(handler: Proteus) -> bool:
     log.debug('Check evaporation of planet')
 
-    M_silicates = handler.hf_row['M_silicates']
+    M_vaps = handler.hf_row['M_vaps']
     M_interior = handler.hf_row['M_int']
-    log.debug('    val, req = %.3e, %.3e  kg' % (M_silicates, M_interior))
+    log.debug('    val, req = %.3e, %.3e  kg' % (M_vaps, M_interior))
 
-    if M_silicates >= M_interior:
+    if M_vaps >= M_interior:
         UpdateStatusfile(handler.directories, 29)
         _msg_termination('The interior has fully evaporated')
         return True
