@@ -88,4 +88,3 @@ echo " "
 echo "You must now run the following command:"
 echo "    export LAVA_DIR='$workpath'"
 echo "You should also add this command to your shell rc file (e.g. ~/.bashrc)"
-
