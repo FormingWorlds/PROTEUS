@@ -322,11 +322,11 @@ def run_lavatmos(
 ):
     """
 
-    This function effectively runs a bash command which calls
-    singularity. Singularity opens the ThermoEngine docker and within
-    this runs lavatmos_run.py. When LavAtmos is done, it writes the results
-    to a csv file. This csv file is read by this function and returned.
-
+    This function imports the LavAtmos package from `LAVA_DIR` in-process and
+    runs the melt-vapour equilibrium solve directly (no subprocess or
+    container). The result is written to a csv file for diagnostics; the
+    caller (`compute_silicate_outgassing`) instead reads the element
+    abundances and FastChem output that LavAtmos writes as a side effect.
 
     """
     paths = paths_importer(dirs)
@@ -483,7 +483,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     log.info('pressure of volatiles before outgassing: %.4f' % hf_row['P_surf'])
 
     hf_row['P_vol'] = hf_row['P_surf']
-    hf_row['P_silicates'] = Poutgas
+    hf_row['P_vap'] = Poutgas
 
     for vol in gas_list:
         if vol in species_lib.keys():

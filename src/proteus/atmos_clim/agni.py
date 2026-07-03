@@ -360,7 +360,7 @@ def activate_julia(dirs: dict, verbosity: int):
 
 
 def _construct_voldict(hf_row: dict, dirs: dict, config: Config):
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
@@ -964,7 +964,7 @@ def _solve_once(atmos, config: Config):
     """
 
     # set included vapur species
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
@@ -1195,7 +1195,7 @@ def run_agni(
     output['ocean_maxdepth'] = float(atmos.ocean_maxdepth)
     output['P_surf_clim'] = float(atmos.p_boa) / 1e5  # Calculated Psurf [bar]
 
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list

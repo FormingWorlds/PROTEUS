@@ -110,6 +110,8 @@ The outgassing module computes the thermodynamic equilibrium partitioning of vol
 
 **[atmodeller](https://github.com/djbower/atmodeller)** (Python/JAX) is an alternative outgassing backend that uses a real-gas equation of state and a more detailed thermochemical treatment [^cite-bower2025]. atmodeller provides an independent cross-check on CALLIOPE for the same volatile partitioning problem.
 
+**[LavAtmos](https://github.com/FormingWorlds/LavAtmos)** (Python) is an optional addition, enabled with `outgas.vapourise = true`, that computes the thermodynamic vapourisation equilibrium of the surface melt and adds the resulting rock-vapour species (e.g. SiO, Na, Fe-bearing gases) to the outgassed atmosphere, alongside whichever volatile module (CALLIOPE or atmodeller) is selected. It uses the FastChem equilibrium chemistry solver and requires [ThermoEngineLite](https://github.com/FormingWorlds/ThermoEngineLite) for melt thermodynamics. Not installed by default; see [Installation: optional modules](../How-to/optionalmodules_installation.md#rock-vapours-lavatmos-thermoenginelite).
+
 Config section: `[outgas]`. Reference: [Escape and outgassing configuration](../Reference/config/escape_outgas.md).
 
 ## Orbital evolution: Obliqua

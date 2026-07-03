@@ -353,7 +353,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
 
     log.info('Solving outgassing...')
 
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
@@ -399,6 +399,14 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
         from proteus.outgas.binodal import apply_binodal_h2
 
         apply_binodal_h2(hf_row, config)
+
+    # P_surf here is the volatile-only total (rock vapours, if enabled, are
+    # added on top by compute_silicate_outgassing). Track it as P_vol and
+    # reset P_vap so the two partial pressures stay in sync with P_surf
+    # even on iterations where compute_silicate_outgassing does not run
+    # (vapourise=False, or the mantle has solidified).
+    hf_row['P_vol'] = hf_row['P_surf']
+    hf_row['P_vap'] = 0.0
 
     # calculate total atmosphere mass from sum of gas species
     hf_row['M_atm'] = 0.0
@@ -471,7 +479,7 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     # composition and require per-species debiting, so refuse it explicitly at
     # the point that relies on the assumption.
 
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
@@ -514,6 +522,10 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
         hf_row[f'{s}_kg_atm'] = hf_row.get(f'{s}_kg_atm', 0.0) * retained
         hf_row[f'{s}_bar'] = hf_row.get(f'{s}_bar', 0.0) * retained
     hf_row['P_surf'] = hf_row.get('P_surf', 0.0) * retained
+    # Keep the volatile/vapour partial-pressure split consistent with the
+    # rescaled total (same uniform, composition-preserving scaling as above).
+    hf_row['P_vol'] = hf_row.get('P_vol', 0.0) * retained
+    hf_row['P_vap'] = hf_row.get('P_vap', 0.0) * retained
     hf_row['M_atm'] = m_atm * retained
 
     log.info(
@@ -544,7 +556,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     # if desiccated, set all gas masses to zero
     log.info('Desiccation has occurred - no volatiles remaining')
 
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
@@ -559,7 +571,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
         if k not in excepted_keys:
             hf_row[k] = 0.0
 
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         compute_silicate_outgassing(dirs, config, hf_row, first_iter)
 
 
@@ -604,7 +616,7 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict, first_iter: 
     run_outgassing(dirs, config, hf_row)
 
     # Now do rock vapours
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         if hf_row['Phi_global'] > 0.00:
             compute_silicate_outgassing(dirs, config, hf_row, first_iter)
         else:

@@ -526,7 +526,7 @@ def assert_mass_conservation(config: Config, hf_row: dict, atol_frac: float = 1e
         the per-species sum disagrees with M_atm by more than that.
     """
 
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
@@ -567,6 +567,62 @@ def assert_mass_conservation(config: Config, hf_row: dict, atol_frac: float = 1e
                 f'{rel * 100:.3f}%). One of the gas-species kg_atm fields '
                 f'is stale or the M_atm sum loop is missing a species.'
             )
+
+
+def assert_surface_pressure_consistency(
+    config: Config, hf_row: dict, atol_frac: float = 1e-6
+) -> None:
+    """Runtime invariant: P_surf == P_vol + P_vap, and P_vap == 0 when rock
+    vapour outgassing is disabled.
+
+    P_vol is the volatile-only surface pressure (CALLIOPE/atmodeller/dummy
+    output) and P_vap is the rock-vapour contribution added by LavAtmos
+    (`outgas.vapourise = True`). P_surf is the total the atmosphere modules
+    use as their lower boundary condition, so the two partial pressures must
+    always sum back to it.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row at the end of an outgassing call (run_outgassing,
+        compute_silicate_outgassing, run_desiccated, or run_crystallized).
+    atol_frac : float
+        Relative tolerance against max(|P_surf|, |P_vol + P_vap|).
+
+    Raises
+    ------
+    RuntimeError
+        If P_vap is nonzero while `outgas.vapourise` is False, or if
+        P_surf disagrees with P_vol + P_vap by more than `atol_frac`.
+    """
+
+    P_surf = float(hf_row.get('P_surf', 0.0))
+    P_vol = float(hf_row.get('P_vol', 0.0))
+    P_vap = float(hf_row.get('P_vap', 0.0))
+
+    if not config.outgas.vapourise and P_vap != 0.0:
+        raise RuntimeError(
+            f'P_vap={P_vap:.3e} bar is nonzero but outgas.vapourise=False: '
+            'rock-vapour pressure must stay at zero when vapourisation is '
+            'disabled. Check that the code path that set P_vap is gated on '
+            'config.outgas.vapourise.'
+        )
+
+    total = P_vol + P_vap
+    scale = max(abs(P_surf), abs(total))
+    if scale <= 0.0:
+        # Pre-IC / no atmosphere yet: nothing meaningful to compare.
+        return
+
+    rel = abs(P_surf - total) / scale
+    if rel > atol_frac:
+        raise RuntimeError(
+            f'Surface pressure inconsistency: P_surf={P_surf:.6e} bar but '
+            f'P_vol+P_vap={total:.6e} bar (P_vol={P_vol:.6e}, '
+            f'P_vap={P_vap:.6e}, relative difference {rel * 100:.3f}%). '
+            'One of the outgassing code paths updated P_surf without '
+            'keeping P_vol/P_vap in sync.'
+        )
 
 
 def PrintCurrentState(hf_row: dict):
@@ -791,7 +847,7 @@ def GetHelpfileKeys(config: Config):
         'esc_kg_cumulative', # cumulative escaped mass [kg]
         ]
 
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list

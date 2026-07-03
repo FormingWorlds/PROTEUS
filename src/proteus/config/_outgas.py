@@ -177,6 +177,10 @@ class Outgas:
         Parameters for CALLIOPE module.
     atmodeller: Atmodeller
         Parameters for atmodeller module.
+    vapourise: bool
+        Enable rock vapour outgassing via LavAtmos/ThermoEngineLite. Requires
+        `LAVA_DIR` and `FC_DIR` to be set; see the optional modules
+        installation guide.
     """
 
     module: str = field(
@@ -205,4 +209,4 @@ class Outgas:
     atmodeller: Atmodeller = field(factory=Atmodeller)
 
     # LavAtmos / silicate coupling is opt-in: default to disabled.
-    silicates: bool = field(default=False)
+    vapourise: bool = field(default=False)

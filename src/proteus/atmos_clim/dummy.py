@@ -18,7 +18,7 @@ log = logging.getLogger('fwl.' + __name__)
 # Run the dummy atmosphere module
 def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     # Gas composition for escape equal to surface composition
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list

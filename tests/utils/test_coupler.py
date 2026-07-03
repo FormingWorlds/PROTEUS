@@ -1619,6 +1619,131 @@ def test_assert_mass_conservation_skips_when_M_planet_zero():
     assert hf_row['M_planet'] == 0.0
 
 
+# ============================================================================
+# P_surf = P_vol + P_vap surface-pressure invariant tests
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_passes_when_vapourise_disabled():
+    """P_surf == P_vol with P_vap == 0 is accepted when rock vapour is off.
+
+    Physical scenario: an ordinary CALLIOPE/atmodeller outgas step with
+    outgas.vapourise = False. P_vol mirrors P_surf exactly (no vapour
+    contribution), which is the state run_outgassing leaves hf_row in.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+
+    hf_row = {'P_surf': 120.0, 'P_vol': 120.0, 'P_vap': 0.0}
+
+    result = assert_surface_pressure_consistency(config, hf_row)
+    assert result is None  # contract: silent pass when the invariant holds
+    # Discriminating check: P_vol is non-trivially large (not a vacuous 0/0
+    # pass) and exactly equals P_surf, isolating the "vapourise off" branch.
+    assert hf_row['P_vol'] == pytest.approx(hf_row['P_surf'])
+    assert hf_row['P_vap'] == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_passes_when_vapourise_enabled():
+    """P_surf == P_vol + P_vap is accepted with a nonzero rock-vapour term.
+
+    Physical scenario: LavAtmos has run (outgas.vapourise = True) and added
+    a rock-vapour partial pressure on top of the volatile total, mirroring
+    compute_silicate_outgassing's P_vol/P_vap/P_surf bookkeeping.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = True
+
+    # Asymmetric split (not a 50/50 coincidence) so the sum genuinely
+    # exercises both terms rather than passing via a degenerate value.
+    hf_row = {'P_surf': 137.5, 'P_vol': 90.0, 'P_vap': 47.5}
+
+    result = assert_surface_pressure_consistency(config, hf_row)
+    assert result is None
+    assert hf_row['P_vap'] > 0.0
+    assert hf_row['P_vol'] + hf_row['P_vap'] == pytest.approx(hf_row['P_surf'])
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_rejects_nonzero_P_vap_when_disabled():
+    """P_vap must be exactly zero whenever outgas.vapourise is False.
+
+    Regression scenario this guards against: a stale rock-vapour pressure
+    (e.g. left over from a prior iteration, or written by a code path that
+    forgot to gate on the config flag) surviving into an iteration where
+    vapourise is disabled. Must raise before the P_surf==P_vol+P_vap check
+    even runs, since that check alone (100.0 == 95.0 + 5.0) would otherwise
+    pass and mask the real bug.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+
+    hf_row = {'P_surf': 100.0, 'P_vol': 95.0, 'P_vap': 5.0}
+
+    with pytest.raises(RuntimeError, match='outgas.vapourise=False'):
+        assert_surface_pressure_consistency(config, hf_row)
+    # Discrimination: P_surf == P_vol + P_vap holds exactly here (100 == 95 + 5),
+    # so a weaker implementation that only checked the sum would wrongly pass
+    # this row. Pin that the sum-consistent row is exactly what makes this a
+    # useful regression test, not an artifact of an already-broken sum.
+    assert hf_row['P_vol'] + hf_row['P_vap'] == pytest.approx(hf_row['P_surf'])
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_rejects_mismatched_total():
+    """P_surf disagreeing with P_vol + P_vap by more than the tolerance raises.
+
+    Discriminating: P_surf=150.0 but P_vol+P_vap=100.0, a 33 percent
+    disagreement, far above the default 1e-6 relative tolerance. Models a
+    code path (e.g. run_crystallized's escape scaling) that rescaled
+    P_surf without rescaling P_vol/P_vap in step.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = True
+
+    hf_row = {'P_surf': 150.0, 'P_vol': 80.0, 'P_vap': 20.0}
+
+    with pytest.raises(RuntimeError, match='Surface pressure inconsistency'):
+        assert_surface_pressure_consistency(config, hf_row)
+    # Discrimination: the mismatch (50.0) is far above what float rounding
+    # could produce, confirming the raise is the real bookkeeping check and
+    # not a numerical-noise false positive.
+    assert abs(hf_row['P_surf'] - (hf_row['P_vol'] + hf_row['P_vap'])) > 1.0
+
+
+@pytest.mark.unit
+def test_assert_surface_pressure_consistency_skips_pre_ic():
+    """No atmosphere yet (all pressures zero) short-circuits without raising.
+
+    Edge case: at the very first call, before any outgassing has run,
+    P_surf/P_vol/P_vap are all still at their ZeroHelpfileRow default.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = True
+
+    hf_row = {'P_surf': 0.0, 'P_vol': 0.0, 'P_vap': 0.0}
+
+    result = assert_surface_pressure_consistency(config, hf_row)
+    assert result is None
+    assert hf_row['P_surf'] == 0.0
+
+
 # ---------------------------------------------------------------------------
 # Edge / error paths in the git-revision and version-validation helpers
 # (lines 50-52, 65-78, 165-166, 201-202 in utils/coupler.py).

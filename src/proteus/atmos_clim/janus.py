@@ -330,7 +330,7 @@ def RunJANUS(
     output['ocean_maxdepth'] = 0.0
 
     # set composition at Pxuv
-    if config.outgas.silicates:
+    if config.outgas.vapourise:
         gas_list = vol_list + vap_list
     else:
         gas_list = vol_list
