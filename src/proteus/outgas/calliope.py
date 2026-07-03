@@ -21,9 +21,9 @@ from proteus.utils.constants import (
     N_solar,
     S_solar,
     element_list,
-    vol_element_list,
     noble_gases,
     noble_solar_mass_ratio,
+    vol_element_list,
     vol_list,
 )
 from proteus.utils.helper import UpdateStatusfile

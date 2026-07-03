@@ -417,11 +417,6 @@ class Proteus:
             # Store partial pressures and list of included volatiles
             inc_gases = []
 
-            if self.config.outgas.vapourise:
-                gas_list = vol_list + vap_list
-            else:
-                gas_list = vol_list
-
             for s in vol_list:
                 if s != 'O2':
                     pp_val = self.config.planet.gas_prs.get_pressure(s)
@@ -483,11 +478,6 @@ class Proteus:
 
         else:
             # Resuming from disk
-            if self.config.outgas.vapourise:
-                gas_list = vol_list + vap_list
-            else:
-                gas_list = vol_list
-
             log.info('Resuming the simulation from the disk')
 
             # Read helpfile from disk

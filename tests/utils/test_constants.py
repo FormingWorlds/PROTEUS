@@ -301,8 +301,26 @@ def test_element_list_contains_expected_elements():
     """element_list contains the volatile-forming elements, the refractory
     elements, and the five noble gases tracked by PROTEUS.
     """
-    for elem in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 
-                 'Na', 'Al', 'Ti', 'Ca', 'K', 'He', 'Ne', 'Ar', 'Kr', 'Xe'):
+    for elem in (
+        'H',
+        'O',
+        'C',
+        'N',
+        'S',
+        'Si',
+        'Mg',
+        'Fe',
+        'Na',
+        'Al',
+        'Ti',
+        'Ca',
+        'K',
+        'He',
+        'Ne',
+        'Ar',
+        'Kr',
+        'Xe',
+    ):
         assert elem in element_list
 
     # Noble gases are tracked as elements for the whole-planet mass balance.
