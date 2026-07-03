@@ -609,12 +609,6 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict, first_iter: 
     run_outgassing(dirs, config, hf_row)
 
     if config.outgas.silicates:
-        # this needs to be commented out for runninglavatmos with the installation from github
-        # lavadir = os.environ.get("LAVATMOS_DIR")
-        # if lavadir:
-        # log.info('Lavatmos directory found: %s' % lavadir)
-        # else:
-        # log.warning('Lavatmos directory not found, did you set the LAVATMOS_DIR environment variable?')
         if hf_row['Phi_global'] > 0.00:
             compute_silicate_outgassing(dirs, config, hf_row, first_iter)
         else:
