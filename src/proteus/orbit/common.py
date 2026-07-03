@@ -109,6 +109,7 @@ def kepler_newton(M, e):
 
     return np.mod(E, 2 * np.pi)
 
+
 def hansen_fft(n, m, e, kmin, kmax, N=None):
     """Compute Hansen coefficients X_k^{n,m}(e) using FFT on mean anomaly.
 
@@ -169,6 +170,7 @@ def hansen_fft(n, m, e, kmin, kmax, N=None):
     Xkm = np.real(Zk)
 
     return k, Xkm
+
 
 def get_all_m_hansen(ecc, n, k_min, k_max):
     """

@@ -149,10 +149,6 @@ class Obliqua:
         Power of the radial factor (r/a)^n.
     m : int
         Tidal harmonic (m=2 semidiurnal, m=1 diurnal).
-    N_sigma : int
-        Number of probe frequencies for k2 evaluation (full spectrum).
-    p_min, p_max : int
-        Log10 period range [kyr] (full spectrum).
     k_min, k_max : int
         Fourier index range in mean anomaly (adaptive spectrum).
     material_mu : str
@@ -187,10 +183,6 @@ class Obliqua:
 
     n: list = field(default=[2])
     m: list = field(default=[0, 2])
-
-    N_sigma: int = field(default=10, validator=gt(0))
-    p_min: float = field(default=-20)
-    p_max: float = field(default=6)
 
     k_min: Union[int, Literal["none"]] = field(default="none")
     k_max: Union[int, Literal["none"]] = field(default="none")

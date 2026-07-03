@@ -210,15 +210,15 @@ config_version = "3.0"
 
     # Satellite
     [orbit.satellite]
-        satellite                 = false        # include satellite
-        mass_sat                  = 0.012        # satellite mass [M_earth]
-        radius_sat                = 0.273        # satellite radius [R_earth]
-        axial_period_sat          = "none"       # day length [hours]; none = tidally locked
-        semimajoraxis_sat         = 1.33e-4      # satellite orbit semi-major axis [AU]
-        eccentricity_sat          = 0.0          # satellite initial orbital eccentricity [dimensionless]
-        aps_prec_angle            = 0.0          # apsidal precession angle [degrees]
-        c_factor_sat              = 0.4          # satellite normalized moment of inertia factor [dimensionless] (Note: 0.4 = uniform density sphere, < 0.4 = differentiated body; see https://en.wikipedia.org/wiki/Moment_of_inertia_factor)
-        love_number_sat           = "none"       # satellite love number spectrum, provide absolute path to file. (Can be pre-genrated by Obliqua.)
+        include_satellite     = false        # include satellite
+        mass_sat              = 0.012        # satellite mass [M_earth]
+        radius_sat            = 0.273        # satellite radius [R_earth]
+        axial_period_sat      = "none"       # day length [hours]; none = tidally locked
+        semimajoraxis_sat     = 1.33e-4      # satellite orbit semi-major axis [AU]
+        eccentricity_sat      = 0.0          # satellite initial orbital eccentricity [dimensionless]
+        aps_prec_angle        = 0.0          # apsidal precession angle [degrees]
+        c_factor_sat          = 0.4          # satellite normalized moment of inertia factor [dimensionless] (Note: 0.4 = uniform density sphere, < 0.4 = differentiated body; see https://en.wikipedia.org/wiki/Moment_of_inertia_factor)
+        love_number_sat       = "none"       # satellite love number spectrum, provide absolute path to file. (Can be pre-genrated by Obliqua.)
 
     # Tidal heating
     [orbit.dummy]
@@ -238,10 +238,6 @@ config_version = "3.0"
         visc_sus              = 5e5          # solidus viscosity to use [Pa s]
         n                     = [2]          # power of the radial factor (goes with (r/a)^{n}, since r<<a only n=2 contributes significantly)
         m                     = [0, 2]       # harmonic of the true anomaly. m=2 corresponds to the semidiurnal tide, m=1 diurnal tide
-        spectrum              = "adaptive"   # obtain k2 spectrum for whole spectrum ("full") or region of interest ("adaptive")
-        N_sigma               = 20           # number probe frequencies to evaluate k2 at
-        p_min                 = -8           # minimum period for orbital and axial frequencies [log(kyr)] i.e. forcing occurion over minimal 1e-17 yr interval
-        p_max                 = 4            # maximum period for orbital and axial frequencies [log(kyr)] i.e. forcing occurion over maximal 1e9   yr interval
         s_min                 = "none"       # minimum tidal mode range (k is the Fourier index in mean anomaly), set <nothing> to obtain tidal mode range from eccentricity relation
         s_max                 = "none"       # maximum tidal mode range (k is the Fourier index in mean anomaly), set <nothing> to obtain tidal mode range from eccentricity relation
 
@@ -270,12 +266,12 @@ config_version = "3.0"
         # Mushy layer model
         # Controls how partially molten regions are treated.
         # - "none"                : No explicit mush layer treatment.
-        # - "interp"              : Rheological properties transition smoothly between solid and fluid
-        #                           regimes using interpolation across the melt fraction range.
+        # - "interp"              : Heating profile and imaginary part of k Lovenumber transition smoothly between
+        #                           solid and fluid regimes using interpolation across the melt fraction range.
         module_mushy = "none"
 
         # Fluid layer model
-        # Controls how the fluid (e.g., magma ocean or atmosphere) responds to tidal forcing.
+        # Controls how the fluid magma ocean responds to tidal forcing.
         # - "none"                : No fluid layer.
         # - "fluid0d"             : Zero-dimensional fluid model. The fluid region is treated as a single
         #                           effective layer with averaged mechanical properties. Fast but cannot
@@ -284,7 +280,7 @@ config_version = "3.0"
         module_fluid = "none"
 
         [orbit.obliqua.solid]
-            ncalc             = 100          # number of sublayers to use for dim=1 solid tides (for shooting method)
+            ncalc             = 1000         # number of sublayers to use for dim=1 solid tides (for shooting method)
             dr_min            = 300          # minimum spacing between grid points (for relaxation method) [m]
             dr_max            = 3000         # maximum spacing between grid points (for relaxation method) [m]
             core              = "liquid"     # core solution to use as CMB boundary condition, options: "liquid", "solid", "inertial"
