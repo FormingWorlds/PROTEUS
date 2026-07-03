@@ -16,7 +16,7 @@ Functions tested:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 import numpy as np
 import pytest
@@ -47,6 +47,7 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.aragog.phi_step_cap = 0.0
     config.interior_energetics.aragog.temperature_step_cap = 0.0
     config.interior_energetics.aragog.entropy_step_cap = 0.0
+    config.interior_energetics.aragog.phase_boundary_entropy_margin = 200.0
     config.interior_energetics.spider.matprop_smooth_width = 0.0
     config.interior_energetics.const_properties = False
     config.interior_energetics.heat_radiogenic = False
@@ -445,3 +446,176 @@ def test_effective_temperature_and_entropy_step_caps_auto_enable_for_zalmoxis():
     # auto-enabled defaults must aggressively suppress jumps (non-zero, finite)
     assert _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP > 0.0
     assert _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP > 0.0
+
+
+# ---------------------------------------------------------------------------
+# Phase-boundary entropy margin: wrapper threading and version-skew guard.
+#
+# These stand-in signatures stay independent of the installed Aragog so the
+# assertions hold on CI, where the pip-installed Aragog may predate the field.
+# create_autospec copies each stub's signature, which is what the wrapper's
+# version-skew guard inspects to decide whether the field is supported.
+# ---------------------------------------------------------------------------
+
+
+def _paired_energy_stub(
+    *,
+    temperature_step_cap=None,
+    entropy_step_cap=None,
+    phase_boundary_entropy_margin=None,
+    **rest,
+):
+    """Signature of a paired Aragog: it accepts all three managed stepping
+    controls, so the guard treats phase_boundary_entropy_margin as supported
+    and threads the value straight through."""
+    return MagicMock()
+
+
+def _caps_only_energy_stub(
+    *,
+    temperature_step_cap=None,
+    entropy_step_cap=None,
+    **rest,
+):
+    """Signature of an Aragog that accepts the step caps but predates
+    phase_boundary_entropy_margin, so the guard must drop only the margin."""
+    return MagicMock()
+
+
+def _spider_fallback_scaffold(tmp_path):
+    """Build the (hf_row, interior_o) inputs and the legacy EOS/melting dirs a
+    spider-stack setup_solver needs to reach the _EnergyParameters call."""
+    hf_row = {
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+    }
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    spider_eos_dir = tmp_path / 'spider_eos'
+    spider_eos_dir.mkdir(parents=True)
+    interior_o._spider_eos_dir = str(spider_eos_dir)
+
+    legacy_dir = (
+        tmp_path
+        / 'interior_lookup_tables'
+        / '1TPa-dK09-elec-free'
+        / 'MgSiO3_Wolf_Bower_2018_1TPa'
+    )
+    legacy_dir.mkdir(parents=True)
+    (legacy_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    (tmp_path / 'interior_lookup_tables' / 'Melting_curves').mkdir(parents=True)
+    return hf_row, interior_o
+
+
+@pytest.mark.unit
+def test_setup_solver_threads_phase_boundary_margin(tmp_path):
+    """setup_solver passes phase_boundary_entropy_margin into _EnergyParameters
+    verbatim when the installed Aragog accepts it.
+
+    This pins the passthrough the release gate depends on: the omitted/default
+    knob must reach Aragog as 200.0 (bit-identical to the previously hard-coded
+    band), and a user override must arrive unchanged rather than being clamped
+    or ignored. A supported field must never trigger the version-skew warning.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    outdir = str(tmp_path)
+    threaded = {}
+    for requested in (200.0, 350.0):
+        config = _make_aragog_config(struct_module='spider')
+        config.interior_energetics.aragog.phase_boundary_entropy_margin = requested
+        hf_row, interior_o = _spider_fallback_scaffold(tmp_path / f'run_{requested}')
+        mock_ep = create_autospec(_paired_energy_stub)
+        with (
+            patch(
+                'proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / f'run_{requested}'
+            ),
+            patch('proteus.interior_energetics.aragog.Parameters'),
+            patch('proteus.interior_energetics.aragog.EntropySolver'),
+            patch('proteus.interior_energetics.aragog.EntropyEOS'),
+            patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
+            patch('proteus.interior_energetics.aragog.log') as mock_log,
+        ):
+            AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+        assert mock_ep.called
+        threaded[requested] = mock_ep.call_args.kwargs['phase_boundary_entropy_margin']
+        # A supported field is never dropped, so the guard warning must stay
+        # silent even for a non-default value.
+        assert not any(
+            'phase_boundary_entropy_margin' in str(c) for c in mock_log.warning.call_args_list
+        )
+
+    # The value arrives unchanged at both the default and an override.
+    assert threaded[200.0] == pytest.approx(200.0)
+    assert threaded[350.0] == pytest.approx(350.0)
+    # Discrimination: a wrapper that hard-coded or ignored the knob would send
+    # the same number twice; the two requests must remain distinct.
+    assert threaded[350.0] != pytest.approx(threaded[200.0])
+
+
+@pytest.mark.unit
+def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
+    """The version-skew guard drops phase_boundary_entropy_margin, and only it,
+    when the installed Aragog predates the field.
+
+    An Aragog that still accepts the step caps but lacks the margin must not
+    crash on an unexpected keyword: the wrapper pops the margin from the kwargs.
+    It warns only when the user set a non-default band (a dropped 200.0 is a
+    silent no-op because Aragog's built-in default is also 200.0), so a default
+    config degrades quietly while a meaningful override is surfaced once.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    outdir = str(tmp_path)
+
+    # Non-default margin on an old Aragog: dropped AND warned about.
+    config = _make_aragog_config(struct_module='spider')
+    config.interior_energetics.aragog.phase_boundary_entropy_margin = 350.0
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path / 'nondefault')
+    mock_ep = create_autospec(_caps_only_energy_stub)
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / 'nondefault'),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog.EntropyEOS'),
+        patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
+        patch('proteus.interior_energetics.aragog.log') as mock_log,
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+    kwargs = mock_ep.call_args.kwargs
+    # The unsupported margin is removed so construction cannot raise; the caps
+    # the old Aragog does accept are left in place.
+    assert 'phase_boundary_entropy_margin' not in kwargs
+    assert 'temperature_step_cap' in kwargs
+    assert 'entropy_step_cap' in kwargs
+    # A non-default band that was silently discarded is surfaced exactly once.
+    margin_warnings = [
+        c for c in mock_log.warning.call_args_list if 'phase_boundary_entropy_margin' in str(c)
+    ]
+    assert len(margin_warnings) == 1
+
+    # Default margin on the same old Aragog: still dropped, but no warning,
+    # because Aragog's built-in 200.0 reproduces the requested band.
+    config = _make_aragog_config(struct_module='spider')
+    config.interior_energetics.aragog.phase_boundary_entropy_margin = 200.0
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path / 'default')
+    mock_ep = create_autospec(_caps_only_energy_stub)
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / 'default'),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog.EntropyEOS'),
+        patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
+        patch('proteus.interior_energetics.aragog.log') as mock_log,
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+    assert 'phase_boundary_entropy_margin' not in mock_ep.call_args.kwargs
+    assert not any(
+        'phase_boundary_entropy_margin' in str(c) for c in mock_log.warning.call_args_list
+    )

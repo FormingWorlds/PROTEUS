@@ -44,6 +44,13 @@ if TYPE_CHECKING:
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
+# Aragog's built-in phase-boundary entropy margin [J/kg/K], applied when a
+# config omits the knob or an installed Aragog is too old to accept it. This
+# mirrors the PROTEUS schema default in config/_interior.py and Aragog's own
+# _DEFAULT_PHASE_BOUNDARY_ENTROPY_MARGIN; keep the three in step so the
+# omitted-key and default paths stay a no-op relative to prior behaviour.
+_ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN = 200.0
+
 
 _entropy_eos_cache: dict = {}
 _entropy_eos_jax_cache: dict = {}
@@ -684,19 +691,30 @@ class AragogRunner:
             phi_step_cap=phi_step_cap,
             temperature_step_cap=temperature_step_cap,
             entropy_step_cap=entropy_step_cap,
+            phase_boundary_entropy_margin=float(ar.phase_boundary_entropy_margin),
         )
-        # The temperature/entropy step caps require a paired Aragog. Pass them
-        # only when the installed Aragog accepts them, so an older Aragog
-        # degrades to no caps with a clear warning instead of crashing on an
-        # unexpected keyword.
+        # The temperature/entropy step caps and the phase-boundary entropy
+        # margin require a paired Aragog. Pass them only when the installed
+        # Aragog accepts them, so an older Aragog degrades gracefully (no caps,
+        # its built-in 200 J/kg/K margin) with a clear warning instead of
+        # crashing on an unexpected keyword.
         _energy_fields = set(inspect.signature(_EnergyParameters).parameters)
-        _unsupported = {'temperature_step_cap', 'entropy_step_cap'} - _energy_fields
-        if _unsupported and (temperature_step_cap > 0.0 or entropy_step_cap > 0.0):
+        _unsupported = {
+            'temperature_step_cap',
+            'entropy_step_cap',
+            'phase_boundary_entropy_margin',
+        } - _energy_fields
+        _caps_requested = temperature_step_cap > 0.0 or entropy_step_cap > 0.0
+        _nondefault_margin_dropped = (
+            'phase_boundary_entropy_margin' in _unsupported
+            and float(ar.phase_boundary_entropy_margin) != _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN
+        )
+        if _unsupported and (_caps_requested or _nondefault_margin_dropped):
             log.warning(
-                'Installed Aragog does not support %s; per-cell %s step cap(s) '
-                'are disabled. Update Aragog to enable them.',
+                'Installed Aragog does not support %s; the affected interior '
+                'stepping control(s) fall back to Aragog defaults. Update '
+                'Aragog to enable them.',
                 ', '.join(sorted(_unsupported)),
-                ' and '.join(sorted(_unsupported)),
             )
         for _key in _unsupported:
             energy_kwargs.pop(_key, None)

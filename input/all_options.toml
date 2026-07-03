@@ -371,6 +371,14 @@ config_version = "3.0"
         solver_method                 = "cvode"  # cvode (SUNDIALS) | radau (scipy) | bdf (scipy)
         atol_temperature_equivalent   = 1.0e-8   # CVODE atol [K]
         phase_smoothing               = "tanh"   # phase-boundary smoothing: tanh | cubic_hermite
+        # Proximity band [J/kg/K] within which a cell counts as near a solidus/liquidus
+        # crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase
+        # RHS. Solver-accuracy control, not a cosmetic step-size knob: lowering it below the
+        # default can under-resolve a real crossing and shift the converged state. Modestly
+        # widening does not move a converged result, but a value far above the default clamps
+        # the integrator to 1 yr steps (max_step = 1 yr vs 100 yr) every step and can stall
+        # the run; keep it of order a few hundred.
+        phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
 
     # SPIDER-only parameters
     [interior_energetics.spider]

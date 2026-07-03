@@ -211,6 +211,25 @@ class Aragog:
     variable; same role as temperature_step_cap without an EOS lookup in the
     root function. Default 0.0 (disabled)."""
 
+    phase_boundary_entropy_margin: float = field(default=200.0, validator=gt(0))
+    """Phase-boundary proximity band [J/kg/K] within which a staggered cell
+    counts as near a solidus or liquidus crossing, tightening the integrator
+    max_step so CVODE resolves the stiff two-phase RHS across the boundary.
+    This is a solver-accuracy control, not a cosmetic step-size knob: at the
+    default it reproduces the fixed band and the converged trajectory is
+    unchanged, but lowering it below the default can under-resolve a real
+    phase crossing and shift the converged state, because CVODE's local error
+    control can accept an over-large step across the near-discontinuous RHS.
+    Keeping the default reproduces current behaviour, and modestly widening the
+    band does not move a converged result because tighter steps only refine an
+    adaptive integrator; but a value orders of magnitude above the default makes
+    every cell count as near a boundary at all times, clamping the integrator to
+    1 yr steps (max_step = 1 yr, versus 100 yr otherwise) for the whole run and
+    stalling it, so keep the band of order a few hundred J/kg/K. Default 200.0,
+    matching Aragog's own default;
+    a positive value is required (0 or negative is not a valid disabled state
+    for a proximity band)."""
+
     tolerance_struct: float = field(default=1e2, validator=gt(0))
     """Absolute mass tolerance [kg] for the secant solver in
     determine_interior_radius. Default 100 kg; pairs with Spider's
