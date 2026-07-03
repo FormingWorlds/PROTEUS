@@ -48,7 +48,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     from atmodeller.solubility import get_solubility_models
     from atmodeller.thermodata import IronWustiteBuffer
 
-    from proteus.utils.constants import M_earth, element_mmw, gas_list
+    from proteus.utils.constants import M_earth, element_mmw, gas_list, noble_gases
 
     atm_config = config.outgas.atmodeller
     solubility_models = get_solubility_models()
@@ -82,6 +82,12 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # Remove None entries (solubility disabled for that species)
     _sol_map = {k: v for k, v in _sol_map.items() if v is not None}
 
+    # Noble gases dissolve by the Jambon, Weill and Braun (1986) Henry's law,
+    # the same calibration CALLIOPE uses, so the two backends agree on noble
+    # gas solubility. The models ship with atmodeller.
+    for gas in noble_gases:
+        _sol_map[gas] = f'{gas}_basalt_jambon86'
+
     # Only include species whose constituent elements ALL have non-zero budgets.
     # Atmodeller's solver fails when the species network introduces elements
     # with no mass constraint (under-determined system -> no convergence).
@@ -100,6 +106,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         'H2S': {'H', 'S'},
         'O2': set(),  # always included for fO2
     }
+    # Each noble gas is its own element and species.
+    for gas in noble_gases:
+        _species_elements[gas] = {gas}
 
     # Determine which elements have budgets above threshold. Under
     # planet.fO2_source = "from_O_budget" the user O budget
@@ -115,6 +124,13 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         key = f'{element}_kg_total'
         if float(hf_row.get(key, 0.0)) > config.outgas.mass_thresh:
             active_elements.add(element)
+
+    # Noble gases join the active set on any positive inventory. Their budgets
+    # are intrinsically trace and sit below the major-volatile mass threshold,
+    # so gating them on mass_thresh would drop a realistic noble inventory.
+    for gas in noble_gases:
+        if float(hf_row.get(f'{gas}_kg_total', 0.0)) > 0.0:
+            active_elements.add(gas)
 
     # A species is included only if ALL its required elements have budgets
     active_species = set()
@@ -135,6 +151,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         'H2S': 'H2S',
         'O2': 'O2',
     }
+    # Noble gases map to their own atmodeller species names.
+    for gas in noble_gases:
+        _atm_gas_species[gas] = gas
 
     for proteus_name, atm_name in _atm_gas_species.items():
         if proteus_name not in active_species:
@@ -222,6 +241,14 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         mass_kg = float(hf_row.get(key, 0.0))
         if mass_kg > config.outgas.mass_thresh:
             mass_constraints[element] = mass_kg
+
+    # Noble gas mass constraints. A noble gas is included on any positive
+    # inventory, matching the active-species selection above, so a trace noble
+    # budget is not dropped by the major-volatile threshold.
+    for gas in noble_gases:
+        mass_kg = float(hf_row.get(f'{gas}_kg_total', 0.0))
+        if mass_kg > 0.0:
+            mass_constraints[gas] = mass_kg
 
     if fO2_source == 'user_constant':
         fugacity_constraints['O2_g'] = IronWustiteBuffer(config.outgas.fO2_shift_IW)
@@ -331,45 +358,83 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     except Exception:
         output_dict = {}
 
+    def _as_mass(value):
+        """Squeeze an atmodeller mass output to a float, or None on failure."""
+        if value is None:
+            return None
+        try:
+            return float(np.squeeze(value))
+        except (TypeError, ValueError):
+            return None
+
+    # Snapshot the escape-authoritative noble gas element totals before the
+    # output overwrites them. For a noble gas the species and the element are
+    # the same key, and {gas}_kg_total is owned by the escape pipeline (which
+    # debits it each step). The solver's total_mass equals this constraint only
+    # to its residual, so the total is restored below rather than overwritten,
+    # mirroring how the oxygen element total is preserved.
+    noble_total_in = {g: float(hf_row.get(f'{g}_kg_total', 0.0)) for g in noble_gases}
+
     for proteus_name, atm_name in _atm_gas_species.items():
         if proteus_name not in gas_list:
             continue
+        is_noble = proteus_name in noble_gases
         species_key = f'{atm_name}_g'
         species_data = output_dict.get(species_key, {})
-        dissolved_val = (
-            species_data.get('dissolved_mass', None) if isinstance(species_data, dict) else None
-        )
+        if not isinstance(species_data, dict):
+            species_data = {}
 
-        if dissolved_val is not None:
-            try:
-                dissolved_kg = float(np.squeeze(dissolved_val))
-                hf_row[f'{proteus_name}_kg_liquid'] = max(0.0, dissolved_kg)
-            except (TypeError, ValueError):
-                # JAX-array conversion failed: no honest fallback exists
-                # for this iteration's dissolved mass, so set to zero
-                # (the species's atmospheric mass remains valid). A
-                # subtraction fallback against a prior iteration's
-                # _kg_total would propagate stale partitioning forward.
-                hf_row[f'{proteus_name}_kg_liquid'] = 0.0
-        else:
-            # Species without a solubility law and no atmodeller-reported
-            # dissolved mass; treated as gas-only.
-            hf_row[f'{proteus_name}_kg_liquid'] = 0.0
+        dissolved_kg = _as_mass(species_data.get('dissolved_mass'))
+        total_kg = _as_mass(species_data.get('total_mass'))
+
         hf_row[f'{proteus_name}_kg_solid'] = 0.0
 
-        # Maintain the per-species kg_total = kg_atm + kg_liquid invariant
-        # that CALLIOPE provides natively via its solver output dict. The
-        # downstream code (and the helpfile schema) expects this slot to
-        # be populated each iteration; leaving it stale from a prior
-        # iteration would produce systematically wrong totals if a future
-        # consumer reads {sp}_kg_total instead of summing the parts.
-        hf_row[f'{proteus_name}_kg_total'] = (
-            float(hf_row.get(f'{proteus_name}_kg_atm', 0.0))
-            + float(hf_row[f'{proteus_name}_kg_liquid'])
-            + float(hf_row[f'{proteus_name}_kg_solid'])
-        )
+        if total_kg is not None:
+            # atmodeller's per-species total_mass is the conserved mass
+            # constraint, and its dissolved_mass is the melt share. Deriving
+            # the atmospheric mass as total minus dissolved keeps the tracked
+            # inventory conserved and correctly mass-weighted per species. The
+            # pressure-derived atmospheric mass from the first loop distributes
+            # the column by mole fraction, which misweights a species whose
+            # molar mass differs from the mean (badly for a light noble gas),
+            # so it is overwritten here whenever atmodeller reports the total.
+            liquid = min(max(0.0, dissolved_kg if dissolved_kg is not None else 0.0), total_kg)
+            hf_row[f'{proteus_name}_kg_liquid'] = liquid
+            hf_row[f'{proteus_name}_kg_atm'] = max(0.0, total_kg - liquid)
+            # A noble gas element total is escape-owned; restore the pre-solve
+            # value so the solver's residual cannot drift the tracked budget
+            # across iterations. Its atmosphere and melt split are still taken
+            # from the solve.
+            hf_row[f'{proteus_name}_kg_total'] = (
+                noble_total_in[proteus_name] if is_noble else total_kg
+            )
+        elif is_noble:
+            # An inactive noble gas is not in the solve; clear its stale
+            # atmospheric reservoir so it does not leak into P_surf, the mean
+            # molar mass, or a later resurrection of its total, and leave its
+            # escape-owned element total untouched. The mixing ratio is cleared
+            # too: it was already recomputed from the stale partial pressure
+            # above, so it must be reset or it would still feed the mean molar
+            # mass sum.
+            hf_row[f'{proteus_name}_kg_liquid'] = 0.0
+            hf_row[f'{proteus_name}_kg_atm'] = 0.0
+            hf_row[f'{proteus_name}_bar'] = 0.0
+            hf_row[f'{proteus_name}_vmr'] = 0.0
+        else:
+            # Reactive species not present in the atmodeller output (e.g.
+            # excluded from the solve): keep the pressure-derived atmospheric
+            # mass from the first loop and treat it as gas-only.
+            hf_row[f'{proteus_name}_kg_liquid'] = (
+                max(0.0, dissolved_kg) if dissolved_kg is not None else 0.0
+            )
+            hf_row[f'{proteus_name}_kg_total'] = float(
+                hf_row.get(f'{proteus_name}_kg_atm', 0.0)
+            ) + float(hf_row[f'{proteus_name}_kg_liquid'])
 
-    # Mean molecular weight (approximate from VMRs)
+    # Mean molecular weight (approximate from VMRs). The noble gases are
+    # gas_list members with their own VMRs, so they enter this sum directly;
+    # their molar mass is the element molar mass since the species and the
+    # element are the same monatomic entity.
     _mmw = {
         'H2O': 18.015e-3,
         'CO2': 44.01e-3,
@@ -382,6 +447,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         'O2': 32.0e-3,
         'H2S': 34.08e-3,
         'NH3': 17.03e-3,
+        **{gas: element_mmw[gas] for gas in noble_gases},
     }
     mmw = sum(float(hf_row.get(f'{s}_vmr', 0.0)) * _mmw.get(s, 28.0e-3) for s in gas_list)
     if mmw > 0:

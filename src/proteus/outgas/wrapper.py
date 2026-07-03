@@ -388,9 +388,12 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
         apply_binodal_h2(hf_row, config)
 
     # calculate total atmosphere mass (from sum of volatile masses)
+    # M_atm is the total atmospheric mass, summed over every modelled gas
+    # species. The noble gases are members of gas_list, so they enter here and
+    # in the surface pressure and mean molar mass consistently.
     hf_row['M_atm'] = 0.0
     for s in gas_list:
-        hf_row['M_atm'] += hf_row[s + '_kg_atm']
+        hf_row['M_atm'] += float(hf_row.get(s + '_kg_atm', 0.0))
 
     # Derive element mass ratios in atmosphere
     for e1 in element_list:
@@ -487,6 +490,11 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     # Scale the atmospheric reservoirs by the retained fraction. Uniform
     # scaling preserves composition, so `*_vmr` and `atm_kg_per_mol` (mmw)
     # are left unchanged.
+    # Scale every gas reservoir by the retained fraction when the frozen
+    # atmosphere escapes. The noble gases are members of gas_list, so their
+    # atmospheric mass shrinks with the reactive volatiles; otherwise a later
+    # escape step that debits the noble total would leave the noble
+    # atmospheric mass stale and larger than the total.
     for s in gas_list:
         hf_row[f'{s}_kg_atm'] = hf_row.get(f'{s}_kg_atm', 0.0) * retained
         hf_row[f'{s}_bar'] = hf_row.get(f'{s}_bar', 0.0) * retained

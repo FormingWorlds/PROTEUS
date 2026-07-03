@@ -67,6 +67,14 @@ class Calliope:
     include_H2: bool = field(default=True)
     include_CH4: bool = field(default=True)
     include_CO: bool = field(default=True)
+    # Noble gases are opt-in and default off, so a run with no noble budget is
+    # unchanged. A noble gas contributes to the solve only when its flag is
+    # true and its element budget in planet.elements is positive.
+    include_He: bool = field(default=False)
+    include_Ne: bool = field(default=False)
+    include_Ar: bool = field(default=False)
+    include_Kr: bool = field(default=False)
+    include_Xe: bool = field(default=False)
     solubility: bool = field(default=True)
     nguess: int = field(default=int(1e3), validator=validators.gt(0))
     nsolve: int = field(default=int(3e3), validator=validators.gt(0))

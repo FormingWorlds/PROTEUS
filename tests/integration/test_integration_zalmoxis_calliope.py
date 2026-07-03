@@ -171,16 +171,23 @@ def test_calliope_include_field_count_and_name_set_under_zalmoxis_pair():
         'include_H2',
         'include_CH4',
         'include_CO',
+        # The opt-in noble gases each carry an include_* flag as well.
+        'include_He',
+        'include_Ne',
+        'include_Ar',
+        'include_Kr',
+        'include_Xe',
     }
-    assert len(include_fields) == 10
+    assert len(include_fields) == 15
 
 
 def test_calliope_include_flags_independent_default_true_round_trip_some_off():
-    """Every ``Calliope.include_*`` field defaults to True. A subset
-    can be flipped to False at construction time independently of the
-    others; the schema does not couple them.
+    """Every reactive ``Calliope.include_*`` field defaults to True (the
+    opt-in noble gas flags default to False). A subset can be flipped to
+    False at construction time independently of the others; the schema does
+    not couple them.
 
-    Discrimination: verify the default is True for ALL ten fields,
+    Discrimination: verify the default is True for all ten reactive fields,
     then flip three to False and confirm the other seven remain
     True. A regression that introduced a hidden coupling (e.g. forced
     all-or-nothing) would fail the per-field assertion.
@@ -399,9 +406,13 @@ def test_element_list_includes_oxygen_under_calliope_pair():
     Discrimination: set equality fails on both addition and removal
     of any element.
     """
-    from proteus.utils.constants import element_list
+    from proteus.utils.constants import element_list, noble_gases
 
-    assert set(element_list) == {'H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'}
+    # The reactive and rock-forming elements plus the opt-in noble gases, which
+    # are tracked as elements in the whole-planet mass balance.
+    assert set(element_list) == {'H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'} | set(
+        noble_gases
+    )
     # The volatile species CALLIOPE partitions must all be present.
     for vol in ('H', 'O', 'C', 'N', 'S'):
         assert vol in element_list, (

@@ -235,7 +235,7 @@ jobs:
               tests/integration/test_integration_dummy.py
               tests/helpers/test_smoke_invariants.py
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 180   # per-shard cap; exceeds setup (~11 min) + the 150 min per-test pytest timeout so a hung test trips pytest's faulthandler before the job is cancelled. zalmoxis-coupled/ubuntu runs ~130 min.
+    timeout-minutes: 210   # job cap for the slow-tier matrix, sized by its longest shard (zalmoxis-coupled/ubuntu, ~137 min plus ~11 min setup); above the 180 min per-test pytest-timeout so a hung single test trips pytest-timeout's per-test timer before the job is cancelled.
     env:
       COVERAGE_FILE: .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
       USER: "ci-runner"
@@ -251,6 +251,7 @@ jobs:
           pytest -m "slow and not unit and not smoke and not integration" \
             ${{ matrix.files }} \
             -p no:faulthandler \
+            --durations=10 \
             --junitxml=junit-slow-${{ matrix.shard }}-${{ matrix.os }}.xml \
             --cov=proteus \
             --cov-report=xml:coverage-slow-${{ matrix.shard }}-${{ matrix.os }}.xml \
