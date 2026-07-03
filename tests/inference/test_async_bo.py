@@ -243,11 +243,11 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
     monkeypatch.setattr(
         async_mod,
         'init_locs',
-        lambda n_workers, _D_shared: torch.tensor([[0.2], [0.8]], dtype=torch.double)[
-            :n_workers
-        ],
+        lambda n_workers, _D_shared, acqf='LogEI': torch.tensor(
+            [[0.2], [0.8]], dtype=torch.double
+        )[:n_workers],
     )
-    monkeypatch.setattr(async_mod, 'get_kernel_w_prior', lambda **kwargs: object())
+    monkeypatch.setattr(async_mod, 'get_kernel', lambda *args, **kwargs: object())
 
     D_final, logs, elapsed = async_mod.parallel_process(
         objective_builder=lambda **kwargs: lambda x: x,

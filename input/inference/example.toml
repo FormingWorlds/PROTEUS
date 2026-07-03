@@ -85,12 +85,12 @@ config_version = "3.0"
 
             # THE_PLANETS
             # maximum = 1e9   # SN
-            #  maximum = 2e9   # SE
+            #  maximum = 5e9   # SE
             maximum = 1e8   # TR
 
         [params.stop.solid]                  # solidification criterion
             enabled           = true
-            phi_crit          = 0.01         # stop when global melt fraction < phi_crit
+            phi_crit          = 0.05         # stop when global melt fraction < phi_crit
             freeze_volatiles  = false        # freeze mantle volatiles at solidification
 
         [params.stop.radeqm]                 # radiative equilibrium criterion
@@ -100,7 +100,7 @@ config_version = "3.0"
 
         [params.stop.escape]                 # atmosphere loss criterion
             enabled           = true
-            p_stop            = 3.0          # stop when surface pressure < p_stop [bar]
+            p_stop            = 1.0          # stop when surface pressure < p_stop [bar]
 
         [params.stop.disint]                 # planetary disintegration criterion
             enabled           = false
@@ -117,7 +117,7 @@ config_version = "3.0"
     # THE_PLANETS
     # mass_tot     = 3.0   # SN
     #  mass_tot     = 2.0   # SE
-    mass_tot     = 1.0   # TR
+    mass_tot     = 1.1   # TR
 
     # Initial temperature profile
     temperature_mode          = "adiabatic"  # default; other modes: isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
@@ -145,12 +145,12 @@ config_version = "3.0"
         O_mode                = "ic_chemistry"  # ic_chemistry | ppmw | kg | FeO_mantle_wt_pct
         O_budget              = 0.0          # ignored for ic_chemistry mode
 
-        H_mode                = "oceans"     # oceans | ppmw | kg
+        H_mode                = "ppmw"     # oceans | ppmw | kg
 
         # THE_PLANETS
-        # H_budget      = 700.0 # SN
-        #  H_budget      = 500.0  # SE
-        H_budget      = 150.0   # TR
+        # H_budget      = 8e3 # SN
+        #  H_budget      = 6e3  # SE
+        H_budget      = 2e3   # TR
 
         C_mode                = "C/H"        # C/H mass ratio | ppmw | kg
 
@@ -166,9 +166,9 @@ config_version = "3.0"
         S_mode                = "S/H"        # S/H mass ratio | ppmw | kg
 
         # THE_PLANETS
-        # S_budget      = 1.0      # SN
+        # S_budget      = 0.8      # SN
         #  S_budget      = 3.0    # SE
-        S_budget      = 2.0    # TR
+        S_budget      = 1.5    # TR
 
         use_metallicity       = false        # scale C/N/S from solar metallicity; replaces C/N/S budgets
         metallicity           = 1000         # metallicity relative to solar [by mass]
@@ -250,9 +250,9 @@ config_version = "3.0"
     core_frac_mode            = "radius"       # radius | mass; zalmoxis always uses mass (radius is ignored with a warning)
 
     # THE_PLANETS
-    # core_frac     = 0.3     # SN
-    #  core_frac     = 0.7     # SE
-    core_frac     = 0.5     # TR
+    # core_frac     = 0.35     # SN
+    #  core_frac     = 0.4     # SE
+    core_frac     = 0.55     # TR
 
     core_density              = 12244.0       # core density [kg m-3]; "self" = from zalmoxis/dummy
     core_heatcap              = 880.0       # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis/dummy
@@ -358,8 +358,8 @@ config_version = "3.0"
     radio_Th                  = 0.124        # Th [ppmw of element]; BSE value
 
     # Rheology and convection
-    rfront_loc                = 0.50         # rheological front centre [melt fraction]
-    rfront_wid                = 0.20         # rheological front width [melt fraction]
+    rfront_loc                = 0.30         # rheological front centre [melt fraction]
+    rfront_wid                = 0.15         # rheological front width [melt fraction]
     grain_size                = 0.1          # crystal grain size [m]
     mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
     kappah_floor              = 10.0         # eddy diffusivity floor [m2/s]; prevents MLT freeze
@@ -418,24 +418,24 @@ config_version = "3.0"
 
     # Boundary backend (Schaefer+2016 0-D box model with prescribed solidus/liquidus)
     [interior_energetics.boundary]
-        rtol                      = 1.0e-4       # ODE solver relative tolerance
+        rtol                      = 1.0e-5       # ODE solver relative tolerance
         atol                      = 1.0e-8       # ODE solver absolute tolerance
         T_p_0                     = 3200.0       # initial potential temperature if Zalmoxis is not active [K]
         T_solidus                 = 1420.0       # mantle solidus [K]
         T_liquidus                = 2020.0       # mantle liquidus [K]
-        Tsurf_event_change        = 400.0         # max surface-T jump per iteration before triggering an event [K]
+        Tsurf_event_change        = 300.0         # max surface-T jump per iteration before triggering an event [K]
         critical_rayleigh_number  = 1100.0       # critical Rayleigh number for onset of convection
         heat_fusion_silicate      = 4.0e5        # latent heat of fusion for silicates [J/kg]
         nusselt_exponent          = 0.33         # Nusselt-Rayleigh scaling exponent
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
+        atm_heat_capacity_const   = true        #  always use fallback heat capacity?
         atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
         silicate_density          = 4103.0       # silicate density [kg/m^3]
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]
         thermal_diffusivity       = 1.0e-6       # thermal diffusivity [m^2/s]
         thermal_expansivity       = 2.0e-5       # thermal expansivity [1/K]
-        viscosity_model           = 2            # 1=constant | 2=aggregate smooth | 3=Arrhenius
+        viscosity_model           = 3            # 1=constant | 2=aggregate smooth | 3=Arrhenius
         eta_constant              = 1.0e2        # constant viscosity for model 1 [Pa s]
-        transition_width          = 0.15          # width of viscosity transition (melt-fraction units)
         eta_solid_const           = 5.0e22       # solid-end viscosity for aggregate model [Pa s]
         eta_melt_const            = 1.0e2        # melt-end viscosity for aggregate model [Pa s]
         dynamic_viscosity         = 3.8e9        # Arrhenius solid reference dynamic viscosity [Pa s]
@@ -454,7 +454,7 @@ config_version = "3.0"
     # THE_PLANETS
     # fO2_shift_IW    = -3.0    # SN
     #  fO2_shift_IW    = 1.0     # SE
-    fO2_shift_IW    = 4.0     # TR
+    fO2_shift_IW    = 3.0     # TR
 
     mass_thresh               = 1e16         # minimum volatile mass threshold [kg]
     h2_binodal                = false        # H2 binodal partitioning; true is rejected at config load (not production ready)
@@ -506,13 +506,13 @@ config_version = "3.0"
     # Grid and spectral setup (shared by agni + janus)
     # spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
     # spectral_bands            = "16"         # wavenumber bands in k-table
-    num_levels                = 30           # vertical atmosphere levels (min 15)
+    num_levels                = 32           # vertical atmosphere levels (min 15)
     p_top                     = 1.0e-3       # top-of-atmosphere pressure [bar]
     p_obs                     = 0.02         # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
     # Radiative properties (agni, janus only)
-    rayleigh                  = false         # Rayleigh scattering
+    rayleigh                  = true         # Rayleigh scattering
     cloud_enabled             = false        # water cloud radiative effects
     cloud_alpha               = 0.0          # condensate retention fraction (0 to 1)
     aerosols_enabled          = false        # enable aerosol radiative effects (agni only)
@@ -541,7 +541,7 @@ config_version = "3.0"
         latent_heat           = false        # latent heat from condensation/evaporation
         real_gas              = false        # real-gas EOS where available
         chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem)
-        thermo_functions      = true
+        thermo_functions      = false        # use T-dependent thermo functions
         mlt_criterion         = "s"          # convection criterion: s (Schwarzschild) | l (Ledoux)
 
         # Surface properties
@@ -554,7 +554,7 @@ config_version = "3.0"
         evap_efficiency       = 0.01         # raindrop re-evaporation efficiency (0 to 1)
 
         # Solver tuning (rarely need to change)
-        solution_atol         = 5.0          # Newton solver absolute tolerance [W/m2]
+        solution_atol         = 8.0          # Newton solver absolute tolerance [W/m2]
         solution_rtol         = 0.5          # Newton solver relative tolerance
         psurf_thresh          = 0.1          # skip full RCE when P_surf below this [bar]
         dx_max                = 100.0         # max Newton step per iteration [K]

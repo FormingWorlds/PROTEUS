@@ -219,30 +219,24 @@ class InteriorBoundary:
 
     Attributes
     ----------
-    rtol: float
-        ODE solver relative tolerance.
-    atol: float
-        ODE solver absolute tolerance.
-    T_p_0: float
-        Initial potential temperature [K] for boundary solver if zalmoxis module is not used.
     T_solidus: float
         Mantle solidus temperature [K].
     T_liquidus: float
         Mantle liquidus temperature [K].
-    Tsurf_event_change: float
-        Maximum change in surface temperature allowed during a single interior iteration before triggering an event [K].
     critical_rayleigh_number: float
         Critical Rayleigh number for onset of convection [-].
-    heat_fusion_silicate: float
-        Latent heat of fusion for silicates [J/kg].
     nusselt_exponent: float
         Nusselt-Rayleigh scaling exponent [-].
     silicate_heat_capacity: float
         Silicate heat capacity [J/kg/K].
+    atm_heat_capacity_const: bool
+        Always use fallback atmosphere heat capacity?
     atm_heat_capacity: float
         Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].
     silicate_density: float
         Silicate density [kg/m^3]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F).
+    core_density: float
+        Core density [kg/m^3].
     thermal_conductivity: float
         Thermal conductivity [W/m/K].
     thermal_diffusivity: float
@@ -251,18 +245,12 @@ class InteriorBoundary:
         Thermal expansivity [1/K].
     viscosity_model: int
         Viscosity parameterisation model. Choices: 1 (constant), 2 (aggregate smooth transition), 3 (Arrhenius temperature-dependent).
-    eta_constant: float
-        Constant viscosity value [Pa s] for model 1.
-    transition_width: float
-        Width of viscosity transition in melt fraction space [-] for aggregate model.
-    eta_solid_const: float
-        Constant solid viscosity for aggregate formulation [Pa s].
-    eta_melt_const: float
-        Constant melt viscosity for aggregate formulation [Pa s].
     dynamic_viscosity: float
         Reference dynamic viscosity [Pa s] for Arrhenius solid mantle model.
     activation_energy: float
         Activation energy [J/mol] for Arrhenius solid mantle model.
+    creep_parameter: float
+        Creep parameter [-] for Arrhenius solid mantle model.
     viscosity_prefactor: float
         Viscosity prefactor [Pa s] for Vogel-Fulcher-Tammann magma ocean model.
     viscosity_activation_temp: float
@@ -271,20 +259,14 @@ class InteriorBoundary:
         Whether to create diagnostic CSV data files from boundary interior module.
     """
 
-    rtol: float = field(default=1e-6, validator=gt(0))
-    atol: float = field(default=1e-9, validator=gt(0))
-
-    T_p_0: float = field(default=3500.0, validator=ge(0))
-
     T_solidus: float = field(default=1420.0, validator=ge(0))
     T_liquidus: float = field(default=2020.0, validator=gt(0))
 
-    Tsurf_event_change: float = field(default=20.0, validator=gt(0))  # K
-
     critical_rayleigh_number: float = field(default=1.1e3, validator=gt(0))  # -
-    heat_fusion_silicate: float = field(default=4.0e5, validator=gt(0))  # J/kg
     nusselt_exponent: float = field(default=0.33, validator=gt(0))  # -
     silicate_heat_capacity: float = field(default=1.2e3, validator=gt(0))  # J/kg/K
+    core_density: float = field(default=10738.0, validator=gt(0))  # kg/m^3
+    atm_heat_capacity_const: bool = field(default=True)
     atm_heat_capacity: float = field(default=1.7e4, validator=gt(0))  # J/kg/K
     silicate_density: float = field(default=4103.0, validator=gt(0))  # kg/m^3
     thermal_conductivity: float = field(default=4.2, validator=gt(0))  # W/m/K
@@ -295,12 +277,6 @@ class InteriorBoundary:
     viscosity_model: int = field(
         default=2, validator=in_((1, 2, 3))
     )  # 1=constant, 2=aggregate, 3=Arrhenius
-    eta_constant: float = field(default=1e2, validator=gt(0))  # Pa s, for model 1
-
-    # Aggregate viscosity parameters
-    transition_width: float = field(default=0.2, validator=(gt(0), lt(1)))  # -
-    eta_solid_const: float = field(default=1e22, validator=gt(0))  # Pa s
-    eta_melt_const: float = field(default=1e2, validator=gt(0))  # Pa s
 
     # Arrhenius solid mantle parameters
     dynamic_viscosity: float = field(default=3.8e9, validator=gt(0))  # Pa s

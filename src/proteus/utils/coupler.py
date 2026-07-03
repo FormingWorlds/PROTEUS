@@ -375,11 +375,12 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info('Atmos_chem module %s' % config.atmos_chem.module)
 
     # Observations synthesis module
-    write = 'Observe module    %s' % config.observe.synthesis
-    if config.observe.synthesis == 'platon':
-        from platon import __version__ as platon_version
+    write = 'Observe module    %s' % config.observe.module
+    if config.observe.module == 'petitRADTRANS':
+        from petitRADTRANS import __version__ as obs_version
 
-        write += ' version ' + platon_version
+        write += ' version ' + obs_version
+
     log.info(write)
 
     # End spacer
@@ -458,9 +459,9 @@ def print_citation(config: Config):
             pass
 
     # Observations synthesis module
-    match config.observe.synthesis:
-        case 'platon':
-            _cite('Zhang et al. (2024)', 'https://doi.org/10.48550/arXiv.2410.22398')
+    match config.observe.module:
+        case 'petitRADTRANS':
+            _cite('Mollière et al. (2019)', 'https://doi.org/10.1051/0004-6361/201935470')
         case _:
             pass
 
@@ -1103,7 +1104,12 @@ def variable_is_logarithmic(varname: str) -> bool:
         'semimajorax',
         'eccentricity',
         'params.stop.time.maximum',
+        'planet.elements.H_budget',
+        'planet.elements.C_budget',
+        'planet.elements.S_budget',
+        'planet.elements.N_budget',
         'orbit.semimajoraxis',
+        'atm_kg_per_mol',
     ):
         out = True
 
@@ -1169,10 +1175,9 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
     dummy_int = config.interior_energetics.module == 'dummy'
-    # agni = config.atmos_clim.module == 'agni'
     spider = config.interior_energetics.module == 'spider'
     aragog = config.interior_energetics.module == 'aragog'
-    observed = bool(config.observe.synthesis is not None)
+    observed = bool(config.observe.module is not None)
 
     # Get all output times
     output_times = []
@@ -1281,10 +1286,6 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
             atm_data = read_atmosphere_data(output_dir, plot_times)
             plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
             plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
-
-        # Visualise planet and star
-        # if agni:
-        # plot_visual(hf_all, output_dir, idx=-1, plot_format=config.params.out.plot_fmt)
 
         # Check that the simulation ran for long enough to make useful plots
         if len(hf_all['Time']) >= 3:

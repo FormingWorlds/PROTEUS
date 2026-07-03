@@ -25,13 +25,17 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 import tempfile
+import types
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
+import proteus.utils.coupler as coupler_mod
 from proteus.utils.constants import element_list
 from proteus.utils.coupler import (
     CreateHelpfileFromDict,
@@ -45,6 +49,11 @@ from proteus.utils.coupler import (
     _get_current_time,
     _populate_energy_residual,
     get_proteus_directories,
+    print_citation,
+    print_module_configuration,
+    remove_excess_files,
+    set_directories,
+    variable_is_logarithmic,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -1785,3 +1794,445 @@ def test_validate_module_versions_skips_check_when_no_pinned_minimum(tmp_path):
         result = validate_module_versions({'rad': str(tmp_path)}, config)
     assert result is None
     assert mock_update.call_count == 0
+
+
+@pytest.mark.unit
+def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypatch):
+    """Cover print_module_configuration branches for spider/agni/calliope/boreas/mors/lovepy."""
+    config = types.SimpleNamespace(
+        interior_energetics=types.SimpleNamespace(module='spider'),
+        atmos_clim=types.SimpleNamespace(module='agni'),
+        outgas=types.SimpleNamespace(module='calliope'),
+        escape=types.SimpleNamespace(module='boreas'),
+        star=types.SimpleNamespace(module='mors'),
+        orbit=types.SimpleNamespace(module='lovepy'),
+        accretion=types.SimpleNamespace(module='dummy'),
+        atmos_chem=types.SimpleNamespace(module='vulcan'),
+        observe=types.SimpleNamespace(module='petitRADTRANS'),
+    )
+    dirs = {
+        'proteus': '/tmp/proteus',
+        'output': '/tmp/out',
+        'rad': '/tmp/rad',
+    }
+
+    monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'abc123')
+    monkeypatch.setattr(coupler_mod, '_get_agni_version', lambda _d: '1.8.0')
+    monkeypatch.setattr(coupler_mod, '_get_socrates_version', lambda: '24.1.0')
+    monkeypatch.setattr(coupler_mod, '_get_julia_version', lambda: '1.9.3')
+    monkeypatch.setitem(sys.modules, 'calliope', types.SimpleNamespace(__version__='1.2.3'))
+    monkeypatch.setitem(sys.modules, 'boreas', types.SimpleNamespace(__version__='2.3.4'))
+    monkeypatch.setitem(sys.modules, 'mors', types.SimpleNamespace(__version__='3.4.5'))
+    monkeypatch.setitem(
+        sys.modules, 'petitRADTRANS', types.SimpleNamespace(__version__='4.5.6')
+    )
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        print_module_configuration(dirs, config, '/tmp/cfg.toml')
+        messages = [str(call) for call in mock_log.info.call_args_list]
+        assert any('PROTEUS version' in m for m in messages)
+        assert any('Interior module   spider version' in m for m in messages)
+        assert any('PETSc' in m for m in messages)
+        assert any('Atmos_clim module agni version' in m for m in messages)
+        assert any('Outgas module     calliope version' in m for m in messages)
+        assert any('Escape module     boreas version' in m for m in messages)
+        assert any('Star module       mors version' in m for m in messages)
+        assert any('Observe module    petitRADTRANS version' in m for m in messages)
+
+
+@pytest.mark.unit
+def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monkeypatch):
+    """Cover print_module_configuration branches for aragog/janus/zephyrus."""
+    config = types.SimpleNamespace(
+        interior_energetics=types.SimpleNamespace(module='aragog'),
+        atmos_clim=types.SimpleNamespace(module='janus'),
+        outgas=types.SimpleNamespace(module='dummy'),
+        escape=types.SimpleNamespace(module='zephyrus'),
+        star=types.SimpleNamespace(module='dummy'),
+        orbit=types.SimpleNamespace(module='dummy'),
+        accretion=types.SimpleNamespace(module='dummy'),
+        atmos_chem=types.SimpleNamespace(module='dummy'),
+        observe=types.SimpleNamespace(module='dummy'),
+    )
+    dirs = {'proteus': '/tmp/proteus', 'output': '/tmp/out', 'rad': '/tmp/rad'}
+
+    monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'def456')
+    monkeypatch.setattr(coupler_mod, '_get_socrates_version', lambda: '24.1.0')
+    monkeypatch.setitem(sys.modules, 'aragog', types.SimpleNamespace(__version__='0.7.0'))
+    monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='0.5.0'))
+    monkeypatch.setitem(sys.modules, 'zephyrus', types.SimpleNamespace(__version__='0.6.0'))
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        print_module_configuration(dirs, config, '/tmp/cfg.toml')
+        messages = [str(call) for call in mock_log.info.call_args_list]
+        assert any('Interior module   aragog version' in m for m in messages)
+        assert any('Atmos_clim module janus version' in m for m in messages)
+        assert any('Escape module     zephyrus version' in m for m in messages)
+
+
+@pytest.mark.unit
+def test_print_citation_covers_module_specific_citations_with_when_set(monkeypatch):
+    """Cover print_citation branches for module-specific citations and chemistry gate."""
+    config = types.SimpleNamespace(
+        atmos_clim=types.SimpleNamespace(module='janus'),
+        interior_energetics=types.SimpleNamespace(module='spider'),
+        outgas=types.SimpleNamespace(module='calliope'),
+        star=types.SimpleNamespace(module='mors'),
+        orbit=types.SimpleNamespace(module='lovepy'),
+        accretion=types.SimpleNamespace(module='dummy'),
+        observe=types.SimpleNamespace(module='petitRADTRANS'),
+        atmos_chem=types.SimpleNamespace(module='vulcan', when='runtime'),
+    )
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        print_citation(config)
+        messages = [str(call) for call in mock_log.info.call_args_list]
+        assert any('Lichtenberg et al. (2021)' in m for m in messages)
+        assert any('Graham et al. (2021)' in m for m in messages)
+        assert any('Bower et al. (2021)' in m for m in messages)
+        assert any('Johnstone et al. (2021)' in m for m in messages)
+        assert any('Hay & Matsuyama (2019)' in m for m in messages)
+        assert any('Mollière et al. (2019)' in m for m in messages)
+        assert any('Tsai et al. (2021)' in m for m in messages)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'name,expected',
+    [
+        ('P_surf', True),
+        ('X_vmr', True),
+        ('CO2_bar', True),
+        ('T_surf', False),
+    ],
+)
+def test_variable_is_logarithmic_covers_membership_and_suffix_branches(name, expected):
+    assert variable_is_logarithmic(name) is expected
+
+
+@pytest.mark.unit
+def test_extend_helpfile_replaces_nan_values_with_zero(caplog):
+    """Cover NaN sanitization branch in ExtendHelpfile."""
+    import logging
+
+    hf = CreateHelpfileFromDict(ZeroHelpfileRow())
+    row = ZeroHelpfileRow()
+    row['Time'] = np.nan
+    row['T_surf'] = np.nan
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
+        out = ExtendHelpfile(hf, row)
+
+    assert out['Time'].iloc[-1] == pytest.approx(0.0)
+    assert out['T_surf'].iloc[-1] == pytest.approx(0.0)
+    assert any('setting to zero' in rec.message for rec in caplog.records)
+
+
+@pytest.mark.unit
+def test_remove_excess_files_includes_spectral_files_when_requested(monkeypatch):
+    """Cover remove_excess_files branch that optionally removes spectral files."""
+    removed = []
+    monkeypatch.setattr('proteus.utils.coupler.safe_rm', lambda p: removed.append(p))
+
+    remove_excess_files('/tmp/out', rm_spectralfiles=True)
+
+    assert any(p.endswith('/keepalive') for p in removed)
+    assert any(p.endswith('/runtime.sf') for p in removed)
+    assert any(p.endswith('/runtime.sf_k') for p in removed)
+
+
+def _install_updateplots_fakes(monkeypatch, calls):
+    """Install fake modules imported by UpdatePlots and record function calls."""
+
+    def rec(name):
+        return lambda *a, **k: calls.append((name, len(a), tuple(sorted(k.keys()))))
+
+    # Utility modules imported inside UpdatePlots
+    atm_common = types.ModuleType('proteus.atmos_clim.common')
+    atm_common.read_atmosphere_data = lambda *_a, **_k: [{'ok': True}]
+    int_wrap = types.ModuleType('proteus.interior_energetics.wrapper')
+    int_wrap.read_interior_data = lambda *_a, **_k: {'int': True}
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_clim.common', atm_common)
+    monkeypatch.setitem(sys.modules, 'proteus.interior_energetics.wrapper', int_wrap)
+
+    # Output-time providers
+    aragog_mod = types.ModuleType('proteus.interior_energetics.aragog')
+    aragog_mod.get_all_output_times = lambda _o: [1000, 2000, 3000]
+    spider_mod = types.ModuleType('proteus.interior_energetics.spider')
+    spider_mod.get_all_output_times = lambda _o: [1000, 2000, 3000]
+    monkeypatch.setitem(sys.modules, 'proteus.interior_energetics.aragog', aragog_mod)
+    monkeypatch.setitem(sys.modules, 'proteus.interior_energetics.spider', spider_mod)
+
+    # Plot modules
+    plot_map = {
+        'proteus.plot.cpl_atmosphere': 'plot_atmosphere',
+        'proteus.plot.cpl_bolometry': 'plot_bolometry',
+        'proteus.plot.cpl_chem_atmosphere': 'plot_chem_atmosphere',
+        'proteus.plot.cpl_emission': 'plot_emission',
+        'proteus.plot.cpl_escape': 'plot_escape',
+        'proteus.plot.cpl_fluxes_atmosphere': 'plot_fluxes_atmosphere',
+        'proteus.plot.cpl_fluxes_global': 'plot_fluxes_global',
+        'proteus.plot.cpl_global': 'plot_global',
+        'proteus.plot.cpl_interior': 'plot_interior',
+        'proteus.plot.cpl_interior_cmesh': 'plot_interior_cmesh',
+        'proteus.plot.cpl_orbit': 'plot_orbit',
+        'proteus.plot.cpl_sflux': 'plot_sflux',
+        'proteus.plot.cpl_sflux_cross': 'plot_sflux_cross',
+        'proteus.plot.cpl_spectra': 'plot_spectra',
+        'proteus.plot.cpl_structure': 'plot_structure',
+        'proteus.plot.cpl_visual': 'plot_visual',
+    }
+    for mod_name, fn_name in plot_map.items():
+        mod = types.ModuleType(mod_name)
+        setattr(mod, fn_name, rec(fn_name))
+        monkeypatch.setitem(sys.modules, mod_name, mod)
+
+    pop_mod = types.ModuleType('proteus.plot.cpl_population')
+    pop_mod.plot_population_mass_radius = rec('plot_population_mass_radius')
+    pop_mod.plot_population_time_density = rec('plot_population_time_density')
+    monkeypatch.setitem(sys.modules, 'proteus.plot.cpl_population', pop_mod)
+
+
+@pytest.mark.unit
+def test_update_plots_covers_runtime_and_end_branches(monkeypatch, tmp_path):
+    """Cover the large UpdatePlots path with mocked plotting backends."""
+    calls = []
+    _install_updateplots_fakes(monkeypatch, calls)
+
+    monkeypatch.setattr(
+        'proteus.utils.coupler.sample_times', lambda *_a, **_k: ([1000, 2000], None)
+    )
+    monkeypatch.setattr(
+        'proteus.utils.coupler.glob.glob',
+        lambda _p: [
+            str(tmp_path / 'data' / '1000_atm.nc'),
+            str(tmp_path / 'data' / '2000_atm.nc'),
+            str(tmp_path / 'data' / '3000_atm.nc'),
+        ],
+    )
+
+    cfg = types.SimpleNamespace(
+        atmos_clim=types.SimpleNamespace(module='agni'),
+        interior_energetics=types.SimpleNamespace(module='aragog'),
+        observe=types.SimpleNamespace(module='petitRADTRANS'),
+        orbit=types.SimpleNamespace(evolve=True, satellite=False),
+        star=types.SimpleNamespace(module='mors', mors=types.SimpleNamespace(age_now=4.5)),
+        atmos_chem=types.SimpleNamespace(module='vulcan'),
+        params=types.SimpleNamespace(out=types.SimpleNamespace(plot_fmt='png')),
+    )
+    hf_all = pd.DataFrame({'Time': [1.0, 2.0, 3.0, 4.0]})
+    dirs = {'output': str(tmp_path), 'fwl': str(tmp_path / 'fwl')}
+
+    from proteus.utils.coupler import UpdatePlots
+
+    UpdatePlots(hf_all, dirs, cfg, end=True, num_snapshots=2)
+
+    called_names = [c[0] for c in calls]
+    assert 'plot_global' in called_names
+    assert 'plot_escape' in called_names
+    assert 'plot_orbit' in called_names
+    assert 'plot_interior' in called_names
+    assert 'plot_atmosphere' in called_names
+    assert 'plot_structure' in called_names
+    assert 'plot_fluxes_global' in called_names
+    assert 'plot_spectra' in called_names
+    assert 'plot_visual' in called_names
+    assert 'plot_emission' in called_names
+
+
+@pytest.mark.unit
+def test_set_directories_errors_without_fwl_data(monkeypatch):
+    """Cover set_directories failure when FWL_DATA is absent."""
+    cfg = types.SimpleNamespace(
+        params=types.SimpleNamespace(out=types.SimpleNamespace(path='run1', logging='INFO')),
+        atmos_clim=types.SimpleNamespace(module='dummy'),
+    )
+    monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
+    monkeypatch.delenv('FWL_DATA', raising=False)
+
+    with patch('proteus.utils.coupler.UpdateStatusfile') as mock_update:
+        with pytest.raises(EnvironmentError, match='FWL_DATA'):
+            set_directories(cfg)
+        mock_update.assert_called_once()
+
+
+@pytest.mark.unit
+def test_set_directories_auto_path_and_debug_temp(monkeypatch):
+    """Cover set_directories auto-output branch and DEBUG temp-dir behavior."""
+    cfg = types.SimpleNamespace(
+        params=types.SimpleNamespace(out=types.SimpleNamespace(path='auto', logging='DEBUG')),
+        atmos_clim=types.SimpleNamespace(module='dummy'),
+    )
+    monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
+    monkeypatch.setenv('FWL_DATA', '/tmp/fwl_data')
+    monkeypatch.setattr('secrets.token_hex', lambda _n: 'beef')
+
+    dirs = set_directories(cfg)
+
+    assert cfg.params.out.path.startswith('run_')
+    assert cfg.params.out.path.endswith('_beef')
+    assert dirs['temp'] == dirs['output']
+    assert dirs['fwl'].endswith('/tmp/fwl_data/')
+
+
+@pytest.mark.unit
+def test_set_directories_requires_rad_dir_for_agni(monkeypatch):
+    """Cover set_directories AGNI/JANUS RAD_DIR required branch."""
+    cfg = types.SimpleNamespace(
+        params=types.SimpleNamespace(out=types.SimpleNamespace(path='run2', logging='INFO')),
+        atmos_clim=types.SimpleNamespace(module='agni'),
+    )
+    monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
+    monkeypatch.setenv('FWL_DATA', '/tmp/fwl_data')
+    monkeypatch.delenv('RAD_DIR', raising=False)
+    monkeypatch.setattr('proteus.utils.coupler.create_tmp_folder', lambda: '/tmp/tmpwork')
+
+    with patch('proteus.utils.coupler.UpdateStatusfile') as mock_update:
+        with pytest.raises(EnvironmentError, match='RAD_DIR'):
+            set_directories(cfg)
+        mock_update.assert_called_once()
+
+
+@pytest.mark.unit
+def test_set_directories_sets_rad_and_temp_for_non_debug(monkeypatch):
+    """Cover set_directories success path with AGNI and non-DEBUG temp folder."""
+    cfg = types.SimpleNamespace(
+        params=types.SimpleNamespace(out=types.SimpleNamespace(path='run3', logging='INFO')),
+        atmos_clim=types.SimpleNamespace(module='agni'),
+    )
+    monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
+    monkeypatch.setenv('FWL_DATA', '/tmp/fwl_data')
+    monkeypatch.setenv('RAD_DIR', '/tmp/rad_dir')
+    monkeypatch.setattr('proteus.utils.coupler.create_tmp_folder', lambda: '/tmp/tmpwork')
+
+    dirs = set_directories(cfg)
+
+    assert dirs['rad'].endswith('/tmp/rad_dir/')
+    assert dirs['temp'].endswith('/tmp/tmpwork/')
+    assert dirs['output'].endswith('/tmp/proteus/output/run3/')
+
+
+@pytest.mark.unit
+def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypatch, tmp_path):
+    """Cover spider/zalmoxis/janus/calliope/zephyrus/mors pass branches plus unpinned deps."""
+    from proteus.utils.coupler import validate_module_versions
+
+    config = types.SimpleNamespace(
+        interior_energetics=types.SimpleNamespace(module='spider'),
+        interior_struct=types.SimpleNamespace(module='zalmoxis'),
+        atmos_clim=types.SimpleNamespace(module='janus'),
+        outgas=types.SimpleNamespace(module='calliope'),
+        escape=types.SimpleNamespace(module='zephyrus'),
+        star=types.SimpleNamespace(module='mors'),
+    )
+    monkeypatch.setitem(sys.modules, 'zalmoxis', types.SimpleNamespace(__version__='1.2'))
+    monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='1.2'))
+    monkeypatch.setitem(sys.modules, 'calliope', types.SimpleNamespace(__version__='1.2'))
+    monkeypatch.setitem(sys.modules, 'zephyrus', types.SimpleNamespace(__version__='1.2'))
+    monkeypatch.setitem(sys.modules, 'mors', types.SimpleNamespace(__version__='1.2'))
+
+    with (
+        patch(
+            'importlib.metadata.requires',
+            return_value=[
+                'numpy',
+                'fwl-zalmoxis>=1.0',
+                'fwl-janus>=1.0',
+                'fwl-calliope>=1.0',
+                'fwl-zephyrus>=1.0',
+                'fwl-mors>=1.0',
+            ],
+        ),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        validate_module_versions({'rad': str(tmp_path)}, config)
+    assert mock_update.call_count == 0
+
+
+@pytest.mark.unit
+def test_validate_module_versions_raises_for_old_janus_in_spider_stack(monkeypatch, tmp_path):
+    """Cover out-of-date log/raise path with spider interior and old janus."""
+    from proteus.utils.coupler import validate_module_versions
+
+    config = types.SimpleNamespace(
+        interior_energetics=types.SimpleNamespace(module='spider'),
+        interior_struct=types.SimpleNamespace(module='dummy'),
+        atmos_clim=types.SimpleNamespace(module='janus'),
+        outgas=types.SimpleNamespace(module='dummy'),
+        escape=types.SimpleNamespace(module='dummy'),
+        star=types.SimpleNamespace(module='dummy'),
+    )
+    monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='0.1.0'))
+
+    with (
+        patch('importlib.metadata.requires', return_value=['fwl-janus>=1.0.0']),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        with pytest.raises(EnvironmentError, match='Out-of-date modules'):
+            validate_module_versions({'rad': str(tmp_path)}, config)
+    mock_update.assert_called_once()
+
+
+@pytest.mark.unit
+def test_print_citation_agni_and_manual_mode_cover_noop_cases():
+    """Cover print_citation match-case no-op arms and chemistry manual gate."""
+    config = types.SimpleNamespace(
+        atmos_clim=types.SimpleNamespace(module='agni'),
+        interior_energetics=types.SimpleNamespace(module='aragog'),
+        outgas=types.SimpleNamespace(module='atmodeller'),
+        star=types.SimpleNamespace(module='dummy'),
+        orbit=types.SimpleNamespace(module='dummy'),
+        accretion=types.SimpleNamespace(module='dummy'),
+        observe=types.SimpleNamespace(module='dummy'),
+        atmos_chem=types.SimpleNamespace(module='vulcan', when='manually'),
+    )
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        print_citation(config)
+        messages = [str(call) for call in mock_log.info.call_args_list]
+        assert any('Nicholls et al. (2025)' in m for m in messages)
+        assert not any('Mollière et al. (2019)' in m for m in messages)
+        assert not any('Tsai et al. (2021)' in m for m in messages)
+
+
+@pytest.mark.unit
+def test_update_plots_spider_dummy_atm_covers_skip_branches(monkeypatch, tmp_path):
+    """Cover UpdatePlots branches when atmosphere is dummy and orbit is not evolving."""
+    calls = []
+    _install_updateplots_fakes(monkeypatch, calls)
+    monkeypatch.setattr('proteus.utils.coupler.sample_times', lambda *_a, **_k: ([500], None))
+
+    cfg = types.SimpleNamespace(
+        atmos_clim=types.SimpleNamespace(module='dummy'),
+        interior_energetics=types.SimpleNamespace(module='spider'),
+        observe=types.SimpleNamespace(module=None),
+        orbit=types.SimpleNamespace(evolve=False, satellite=False),
+        star=types.SimpleNamespace(module='dummy', mors=types.SimpleNamespace(age_now=4.5)),
+        atmos_chem=types.SimpleNamespace(module='dummy'),
+        params=types.SimpleNamespace(out=types.SimpleNamespace(plot_fmt='png')),
+    )
+    hf_all = pd.DataFrame({'Time': [1.0, 2.0]})
+    dirs = {'output': str(tmp_path), 'fwl': str(tmp_path / 'fwl')}
+
+    from proteus.utils.coupler import UpdatePlots
+
+    UpdatePlots(hf_all, dirs, cfg, end=True, num_snapshots=1)
+
+    called_names = [c[0] for c in calls]
+    assert 'plot_global' in called_names
+    assert 'plot_escape' in called_names
+    assert 'plot_interior' in called_names
+    assert 'plot_orbit' not in called_names
+    assert 'plot_atmosphere' not in called_names
+    assert 'plot_spectra' not in called_names
+
+
+@pytest.mark.unit
+def test_remove_excess_files_without_spectra(monkeypatch):
+    removed = []
+    monkeypatch.setattr('proteus.utils.coupler.safe_rm', lambda p: removed.append(p))
+
+    remove_excess_files('/tmp/out', rm_spectralfiles=False)
+
+    assert len(removed) == 3
+    assert all('runtime.sf' not in p for p in removed)

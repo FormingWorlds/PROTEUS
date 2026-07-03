@@ -4,6 +4,7 @@
 
 prt/
 prt
+.nfs*
 
 # Installer logs
 install_*.log
@@ -44,6 +45,9 @@ JANUS
 agni
 Agni
 AGNI
+prt/
+pRT/
+petitRADTRANS/
 calliope
 Calliope
 CALLIOPE
@@ -73,9 +77,9 @@ lovepy
 Lovepy
 LOVEPY
 LovePy
-platon
-Platon
-PLATON
+prt
+petitradtrans
+petitRADTRANS
 Love.jl/
 BOREAS
 boreas
@@ -102,6 +106,7 @@ tools/grid_proteus_SNS*
 *.odg#
 *.ods#
 *.odp#
+*.h5
 md5sums.txt
 zenodo*.log
 
@@ -242,7 +247,7 @@ ENV/
 env.bak/
 venv.bak/
 
-# Platon temp/downloaded files
+# Synthesis temp/downloaded files
 *.zip
 transit_depth.png
 eclipse_depth.png

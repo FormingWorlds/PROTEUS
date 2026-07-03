@@ -205,12 +205,10 @@ def test_bo_converges_on_off_center_quadratic():
 # ---------------------------------------------------------------------------
 # Acquisition-function selection
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize('acqf', ['LogEI', 'UCB', 'E-LogEI'])
+@pytest.mark.parametrize('acqf', ['LogEI', 'UCB', 'LogPI'])
 def test_bo_converges_with_each_acquisition_function(acqf):
     """All three documented acquisition functions must converge on the
-    centered quadratic. The two-worker B emulation in `_run_bo_loop`
-    supports the X_pending shape that E-LogEI's `qLogExpectedImprovement`
-    expects (worker 1 acts as a static pending point).
+    centered quadratic.
     """
     target = torch.tensor([0.5, 0.5], dtype=torch.double)
     objective = make_quadratic_objective(target)
@@ -302,12 +300,12 @@ def test_bo_step_rejects_unknown_acquisition():
     documented acquisitions."""
     target = torch.tensor([0.5, 0.5], dtype=torch.double)
     objective = make_quadratic_objective(target)
-    with pytest.raises(ValueError, match=r'Unknown acquisition function'):
+    with pytest.raises(ValueError, match=r'Unsupported acquisition function: not-a-real-acqf'):
         _run_bo_loop(objective, d=2, n_init=3, n_iter=1, acqf='not-a-real-acqf', seed=4)
     # Discrimination: a known-good acqf in the same harness must complete
     # without raising AND grow the dataset by exactly one iteration.
     # Without this paired call, a regression that raised
-    # `ValueError('Unknown acquisition function')` for EVERY acqf would
+    # `ValueError('Unsupported acquisition function')` for EVERY acqf would
     # still pass the test above; without the shape pin, a regression that
     # returned an empty X tensor would also pass.
     X_ok, _ = _run_bo_loop(objective, d=2, n_init=3, n_iter=1, acqf='LogEI', seed=4)

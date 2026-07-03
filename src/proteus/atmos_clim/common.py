@@ -86,6 +86,10 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     p = np.array(ds.variables['p'][:])
     pl = np.array(ds.variables['pl'][:])
 
+    if 'gravity' not in ds.variables:
+        raise KeyError(f"NetCDF file '{nc_fpath}' is missing required variable 'gravity'")
+    g = np.array(ds.variables['gravity'][:])
+
     t = np.array(ds.variables['tmp'][:])
     tl = np.array(ds.variables['tmpl'][:])
 
@@ -105,11 +109,12 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
 
     nlev_c = len(p)
 
-    # read pressure, temperature, height data into dictionary values
+    # read pressure, temperature, gravity and height data into dictionary values
     out = {}
     if combine_edges:
         out['p'] = [pl[0]]
         out['t'] = [tl[0]]
+        out['g'] = [g[0]]  # Edge 0: use first cell centre value as fallback
         out['z'] = [zl[0]]
         out['r'] = [rl[0]]
         for i in range(nlev_c):
@@ -119,6 +124,9 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
             out['t'].append(t[i])
             out['t'].append(tl[i + 1])
 
+            out['g'].append(g[i])  # Cell centre i
+            out['g'].append(g[i])  # Edge i+1: use current cell centre value
+
             out['z'].append(z[i])
             out['z'].append(zl[i + 1])
 
@@ -127,6 +135,7 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     else:
         out['p'] = p
         out['t'] = t
+        out['g'] = g
         out['z'] = z
         out['r'] = r
         out['pl'] = pl

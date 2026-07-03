@@ -38,7 +38,7 @@ reference points.
 | `linear` | `tsurf_init`, `tcenter_init` | Linear gradient from center to surface |
 | `adiabatic` | `tsurf_init` | Adiabat anchored at the surface, integrated downward |
 | `adiabatic_from_cmb` | `tcmb_init` | Adiabat anchored at the CMB at a fixed temperature, integrated upward |
-| `liquidus_super` | `delta_T_super` | Adiabat anchored at $T_\mathrm{liq}(P_\mathrm{cmb}) + \Delta T_\mathrm{super}$ (default), using the Fei et al. (2021)[^cite-fei2021] MgSiO$_3$ liquidus. Setting $\Delta T_\mathrm{super} = 0$ places the IC exactly on the liquidus. |
+| `liquidus_super` | `delta_T_super` | Adiabat anchored at $T_\mathrm{liq}(P_\mathrm{cmb}) + \Delta T_\mathrm{super}$ (default), using the Fei et al. (2021) [^cite-fei2021] MgSiO$_3$ liquidus. Setting $\Delta T_\mathrm{super} = 0$ places the IC exactly on the liquidus. |
 | `accretion` | `f_accretion`, `f_differentiation` | Temperature from gravitational accretion and core-mantle differentiation energy retention (White and Li, 2025) |
 | `isentropic` | `ini_entropy`, `ini_dsdr` | Entropy-based IC; the interior solver maps $S \to T(P)$ via its EOS table |
 
@@ -109,4 +109,4 @@ by surface partial pressure for each gas species.
 
 **See also:** [Model description](../../Explanations/model.md) | [Earth analogue tutorial](../../Tutorials/earth_analogue.md)
 
-[^cite-fei2021]: Fei, Y., Seagle, C.T., Townsend, J.P., et al., *[Melting and density of MgSiO3 determined by shock compression of bridgmanite to 1254 GPa](https://doi.org/10.1038/s41467-021-21170-y)*, Nature Communications, 12, 876, 2021. [SciX](https://scixplorer.org/abs/2021NatCo..12..876F/abstract).
+ [^cite-fei2021]: Fei, Y., Seagle, C.T., Townsend, J.P., et al., *[Melting and density of MgSiO3 determined by shock compression of bridgmanite to 1254 GPa](https://doi.org/10.1038/s41467-021-21170-y)*, Nature Communications, 12, 876, 2021. [SciX](https://scixplorer.org/abs/2021NatCo..12..876F/abstract).

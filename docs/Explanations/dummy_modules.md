@@ -31,7 +31,7 @@ feedbacks, or calibrated parameterisations of the production modules.
 
 ### Structure: dummy (`interior_struct.module = 'dummy'`)
 
-Uses the Noack & Lasbleis (2020)[^cite-noack2020] analytical scaling laws
+Uses the Noack & Lasbleis (2020) [^cite-noack2020] analytical scaling laws
 for rocky planet interior structure. Given a total planet mass and iron
 mass fraction, the scaling laws return the core radius, mantle thickness,
 CMB pressure, surface gravity, and radial profiles of density, pressure,
@@ -145,4 +145,4 @@ running the full LovePy viscoelastic solver.
 
 **See also:** [Model description](model.md) | [Quick start tutorial](../Tutorials/quick_start_dummy.md) | [Configuration reference](../Reference/config/params.md)
 
-[^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).
+ [^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).

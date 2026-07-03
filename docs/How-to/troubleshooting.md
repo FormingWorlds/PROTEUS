@@ -10,6 +10,7 @@ step-by-step guide or the advice below,
 | Error / symptom | Section |
 |---|---|
 | `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
+| Simulation fails to converge (general) | [Stabilise a simulation](stabilise_run.md) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
 | `Out-of-date modules detected` | [Module updates](#out-of-date-modules-detected) |
 | Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
@@ -40,6 +41,8 @@ nohup proteus start -c <cfg.toml> --offline --deterministic \
 The flag intercepts itself in `sys.argv` *before* any heavy imports, sets `JAX_ENABLE_X64=1` and `XLA_FLAGS=--xla_cpu_enable_fast_math=false`, and self-re-execs once. PROTEUS already pins BLAS thread counts at import time; `--deterministic` adds the JAX/XLA layer that BLAS pinning alone does not cover.
 
 Do not enable by default; the flag has a small per-step cost. Use only when a config shows noise-floor divergence between launches.
+
+For broader convergence problems,see [stabilising simulations](stabilise_run.md).
 
 ### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}
 

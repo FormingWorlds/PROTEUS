@@ -54,7 +54,10 @@ See the [atmosphere and chemistry reference](../Reference/config/atmosphere.md) 
 
 ## Synthetic observations
 
-PROTEUS results can be postprocessed to generate synthetic observations. Transmission and emission spectra are produced from the modelled temperature-pressure profile and atmospheric composition. The composition can be set by the output of the offline chemistry calculation (see the configuration file).
+PROTEUS can generate synthetic transit and eclipse depth spectra from the
+simulated atmospheric state using [petitRADTRANS](https://petitradtrans.readthedocs.io/).
+Spectra are produced as "perfect" observations — no telescope noise model is
+applied — so they represent the intrinsic planetary signal.
 
 Access the synthetic-observation functionality via the CLI:
 
@@ -62,7 +65,75 @@ Access the synthetic-observation functionality via the CLI:
 proteus observe -c [cfgfile]
 ```
 
-PROTEUS will perform this step automatically if it is enabled in the configuration file. See the [observations reference](../Reference/config/observe.md) for the available options.
+PROTEUS also runs this step automatically at the end of a simulation when
+`observe.module = "petitRADTRANS"` is set in the configuration file.
+
+### Composition sources
+
+Spectra are computed from composition sources controlled by `observe.source`:
+
+- `all` (default): run all available sources below
+- `outgas`, `profile`, or `offchem`: run only that source
+
+Available sources:
+
+| Source | Description | Skipped when |
+|--------|-------------|--------------|
+| `outgas` | Constant-with-height VMR from the outgassing module | Never |
+| `profile` | Full T(p) + VMR profile from the atmosphere NetCDF | `atmos_clim.module = "dummy"` |
+| `offchem` | Photochemical mixing ratios from VULCAN | `atmos_chem.module` is `none` |
+
+### Output files
+
+For each source, two CSV files are written to `observe/` inside the run
+directory:
+
+- `transit_<source>_synthesis.csv` — primary transit depth
+- `eclipse_<source>_synthesis.csv` — secondary eclipse depth
+
+Use `observe.spectrum_type` to choose which products are written:
+
+- `both` (default): writes both files above
+- `transit`: writes only `transit_<source>_synthesis.csv`
+- `eclipse`: writes only `eclipse_<source>_synthesis.csv`
+
+Both files are tab-separated with the following column layout:
+
+| Column | Description |
+|--------|-------------|
+| `Wavelength/um` | Wavelength \[μm\] |
+| `None/ppm` | Baseline depth \[ppm\] with all species present |
+| `<SPECIES>_removed/ppm` | Depth \[ppm\] with that species removed (one column per line species in the mix) |
+
+Set `observe.remove_one_gas = false` to disable the
+`<SPECIES>_removed/ppm` columns and write baseline-only spectra.
+
+The baseline column uses the full set of line species found in the
+petitRADTRANS opacity table directory (`$FWL_DATA/prt/input_data`). Species
+below the `clip_vmr` threshold are excluded.
+
+### Plotting
+
+The `plot_spectra` diagnostic produces a two-panel PDF figure:
+
+- **Upper panel**: primary transit depth as a function of wavelength.
+- **Lower panel**: secondary eclipse depth as a function of wavelength.
+
+Both panels overlay the baseline spectrum (black) with all per-species
+removed spectra (coloured by species). The figure is saved to
+`plots/plot_spectra.pdf` (or `.png` depending on `params.out.plot_fmt`).
+
+<figure markdown="span">
+  ![Example synthetic spectrum: transit and eclipse depth with per-species overlays](../assets/example_spectrum.png)
+  <figcaption><b>Example <code>plot_spectra</code> output.</b>
+  Upper panel: primary transit depth \[ppm\]. Lower panel: secondary eclipse depth \[ppm\].
+  The black line is the baseline (all species present); coloured lines show the spectrum
+  with each gas removed in turn.</figcaption>
+</figure>
+
+See the [Observations configuration reference](../Reference/config/observe.md)
+for all available options.
+
 
 ## Multiprofile analysis with AGNI
 

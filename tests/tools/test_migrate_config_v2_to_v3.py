@@ -96,28 +96,21 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.solver_method',
         'interior_energetics.aragog.tolerance_struct',
         'interior_energetics.boundary.T_liquidus',
-        'interior_energetics.boundary.T_p_0',
         'interior_energetics.boundary.T_solidus',
-        'interior_energetics.boundary.Tsurf_event_change',
         'interior_energetics.boundary.activation_energy',
         'interior_energetics.boundary.atm_heat_capacity',
-        'interior_energetics.boundary.atol',
+        'interior_energetics.boundary.atm_heat_capacity_const',
         'interior_energetics.boundary.creep_parameter',
         'interior_energetics.boundary.critical_rayleigh_number',
         'interior_energetics.boundary.dynamic_viscosity',
-        'interior_energetics.boundary.eta_constant',
-        'interior_energetics.boundary.eta_melt_const',
-        'interior_energetics.boundary.eta_solid_const',
-        'interior_energetics.boundary.heat_fusion_silicate',
         'interior_energetics.boundary.logging',
         'interior_energetics.boundary.nusselt_exponent',
-        'interior_energetics.boundary.rtol',
         'interior_energetics.boundary.silicate_density',
+        'interior_energetics.boundary.core_density',
         'interior_energetics.boundary.silicate_heat_capacity',
         'interior_energetics.boundary.thermal_conductivity',
         'interior_energetics.boundary.thermal_diffusivity',
         'interior_energetics.boundary.thermal_expansivity',
-        'interior_energetics.boundary.transition_width',
         'interior_energetics.boundary.viscosity_activation_temp',
         'interior_energetics.boundary.viscosity_model',
         'interior_energetics.boundary.viscosity_prefactor',
@@ -167,6 +160,16 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_struct.zalmoxis.update_stale_ceiling',
         'interior_struct.zalmoxis.use_anderson',
         'interior_struct.zalmoxis.use_jax',
+        'observe.clip_vmr',
+        'observe.module',
+        'observe.remove_one_gas',
+        'observe.petitRADTRANS.include_cia',
+        'observe.petitRADTRANS.include_rayleigh',
+        'observe.petitRADTRANS.line_opacity_mode',
+        'observe.petitRADTRANS.silent',
+        'observe.reference_pressure',
+        'observe.source',
+        'observe.spectrum_type',
         'outgas.atmodeller.eos_CH4',
         'outgas.atmodeller.eos_CO',
         'outgas.atmodeller.eos_CO2',
@@ -235,6 +238,8 @@ def test_map_completeness():
         if path.startswith('delivery.volatiles.'):  # mapped to planet.gas_prs.*
             continue
         if path in mig.REMOVED:
+            continue
+        if path == 'observe.synthesis':
             continue
         if path.startswith(_DROP_PREFIXES) or path == 'struct.zalmoxis':
             continue
@@ -495,10 +500,12 @@ def test_radius_int_converts_earth_radii_to_metres():
     assert any('radius-specified' in w for w in report.warnings)
 
 
-def test_no_warnings_on_clean_spider_config():
-    """A clean SPIDER config translates without warnings."""
+def test_clean_spider_config_warns_only_about_legacy_observe_synthesis():
+    """A clean SPIDER config only warns about the legacy observe.synthesis field."""
     _, report = _translate(_minimal_spider_v2())
-    assert report.warnings == [], report.warnings
+    assert report.warnings == ['Unmapped 2.0 field (left out): observe.synthesis'], (
+        report.warnings
+    )
 
 
 def test_grid_axis_renames():
