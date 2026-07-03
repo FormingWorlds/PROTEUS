@@ -180,7 +180,6 @@ def calc_target_masses(dirs: dict, config: Config, hf_row: dict):
         solvevol_target = get_target_from_pressures(solvevol_inp)
 
     # store in hf_row as elements
-    log.info('elements in target dictionary of calliope %s' % solvevol_target.keys())
     for e in solvevol_target.keys():
         hf_row[e + '_kg_total'] = solvevol_target[e]
 
@@ -237,8 +236,6 @@ def construct_guess(hf_row: dict, target: dict, mass_thresh: float) -> dict | No
             p_guess[s] = 0.0
             log.debug('    %s: guess set to zero' % s)
 
-        # log.info('    %s: guess = %.2e bar' % (s, p_guess[s]))
-    # log.info('target elemental inventories for guess: %s' % target)
     return p_guess
 
 
@@ -309,7 +306,6 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
             )
         target['O'] = hf_row['O_kg_total']
 
-    log.info('amount of available elements for calliope computations: %s', target)
     # construct guess for CALLIOPE
     p_guess = construct_guess(hf_row, target, config.outgas.mass_thresh)
 
@@ -372,7 +368,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         raise e
 
     # Get result
-    for k in expected_keys(config):
+    for k in expected_keys():
         if k in solvevol_result:
             hf_row[k] = solvevol_result[k]
 

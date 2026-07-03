@@ -567,7 +567,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
         excepted_keys.append(f'{g}_vmr')
 
     # Set most values to zero
-    for k in expected_keys(config):
+    for k in expected_keys():
         if k not in excepted_keys:
             hf_row[k] = 0.0
 

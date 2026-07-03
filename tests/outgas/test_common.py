@@ -18,21 +18,12 @@ Testing standards:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from proteus.outgas.common import expected_keys
 from proteus.utils.constants import element_list, gas_list
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
-# expected_keys() branches on config.outgas.vapourise to decide whether the
-# rock-vapour species (vap_list) are included alongside the volatiles
-# (vol_list); a MagicMock is truthy, so this exercises the combined
-# vol_list + vap_list branch that gas_list (imported above) already assumes.
-_CONFIG = MagicMock()
-
 
 # -----------------------------------------------------------------------
 # Key completeness
@@ -45,7 +36,7 @@ def test_expected_keys_contains_gas_bar_and_vmr():
     These hold the surface partial pressure [bar] and volume mixing
     ratio for each gas species.
     """
-    keys = expected_keys(_CONFIG)
+    keys = expected_keys()
     for gas in gas_list:
         assert f'{gas}_bar' in keys, f'Missing {gas}_bar key'
         assert f'{gas}_vmr' in keys, f'Missing {gas}_vmr key'
@@ -64,7 +55,7 @@ def test_expected_keys_contains_gas_reservoir_keys():
     This ensures the full mass/mole accounting is copied from the
     solver output.
     """
-    keys = expected_keys(_CONFIG)
+    keys = expected_keys()
     reservoirs = ('atm', 'liquid', 'solid', 'total')
     for gas in gas_list:
         for res in reservoirs:
@@ -81,7 +72,7 @@ def test_expected_keys_contains_element_reservoir_keys():
     other elements' _kg_total is owned by escape and must NOT be in
     this list.
     """
-    keys = expected_keys(_CONFIG)
+    keys = expected_keys()
     for e in element_list:
         for res in ('atm', 'liquid', 'solid'):
             assert f'{e}_kg_{res}' in keys, f'Missing {e}_kg_{res}'
@@ -106,7 +97,7 @@ def test_expected_keys_no_duplicates():
     itself (harmless but wasteful) and could mask a naming collision
     between gas and element keys.
     """
-    keys = expected_keys(_CONFIG)
+    keys = expected_keys()
     assert len(keys) == len(set(keys)), (
         f'Duplicate keys found: {[k for k in keys if keys.count(k) > 1]}'
     )
@@ -128,7 +119,7 @@ def test_expected_keys_contains_scalar_diagnostics():
     entry) resets the volatile/vapour partial-pressure split together
     with the total, instead of leaving one of the three stale.
     """
-    keys = expected_keys(_CONFIG)
+    keys = expected_keys()
     for k in (
         'P_surf',
         'P_vol',
@@ -154,7 +145,7 @@ def test_expected_keys_contains_element_ratio_keys():
     The function generates one key per unordered pair (not both
     orderings), so the total count is C(n, 2) = n*(n-1)/2.
     """
-    keys = expected_keys(_CONFIG)
+    keys = expected_keys()
     n = len(element_list)
     expected_pair_count = n * (n - 1) // 2
     ratio_keys = [k for k in keys if k.endswith('_atm') and '/' in k]

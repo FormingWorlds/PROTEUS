@@ -1,15 +1,10 @@
 # Shared code for outgassing wrapper
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from proteus.config import Config
-
-from proteus.utils.constants import element_list, vap_list, vol_list
+from proteus.utils.constants import element_list, gas_list
 
 
-def expected_keys(config: Config):
+def expected_keys():
     copy_keys = [
         'P_surf',
         'P_vol',
@@ -22,11 +17,6 @@ def expected_keys(config: Config):
 
     # reservoirs
     res_list = ('atm', 'liquid', 'solid', 'total')
-
-    if config.outgas.vapourise:
-        gas_list = vol_list + vap_list
-    else:
-        gas_list = vol_list
 
     # gases
     for s in gas_list:

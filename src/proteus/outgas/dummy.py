@@ -67,7 +67,7 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
         saved_element_kg[element] = float(hf_row.get(f'{element}_kg_total', 0.0))
 
     # Initialize all expected keys to zero (M_atm is set by wrapper)
-    for key in expected_keys(config):
+    for key in expected_keys():
         if key != 'M_atm':
             hf_row[key] = 0.0
 
