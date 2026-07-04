@@ -1,6 +1,6 @@
 # Test framework
 
-[![codecov](https://img.shields.io/codecov/c/github/FormingWorlds/PROTEUS/main?label=coverage&logo=codecov)](https://app.codecov.io/gh/FormingWorlds/PROTEUS){target="_blank" rel="noopener"}
+[![codecov](https://img.shields.io/codecov/c/github/FormingWorlds/PROTEUS?label=coverage&logo=codecov)](https://app.codecov.io/gh/FormingWorlds/PROTEUS){target="_blank" rel="noopener"}
 [![Unit Tests](https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-pr-checks.yml?label=Unit%20Tests)](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml){target="_blank" rel="noopener"}
 [![Integration Tests](https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-nightly.yml?branch=main&label=Integration%20Tests)](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml){target="_blank" rel="noopener"}
 [![tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/FormingWorlds/PROTEUS/badges/tests-total.json)](https://proteus-framework.org/testing){target="_blank" rel="noopener"}
