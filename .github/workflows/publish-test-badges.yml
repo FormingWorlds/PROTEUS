@@ -31,7 +31,13 @@ concurrency:
 
 defaults:
   run:
-    shell: bash -el {0}
+    # Use a non-login shell by default. A login shell runs its logout
+    # profile on exit, which on Ubuntu calls clear_console; on a runner with
+    # no console that returns non-zero and overrides the step's exit status,
+    # so any step that ends with an explicit exit reports failure even when
+    # it succeeded. Only the generator step needs the conda environment, and
+    # it opts back into the login shell explicitly.
+    shell: bash
 
 jobs:
   refresh-badges:
@@ -64,6 +70,9 @@ jobs:
           full-data: 'false'
 
       - name: Regenerate badge JSON files
+        # The generator imports proteus and every optional submodule, so it
+        # needs the conda environment that the login shell activates.
+        shell: bash -el {0}
         run: |
           python tools/generate_test_badges.py --out badge_payload/
 
