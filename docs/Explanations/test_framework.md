@@ -1,8 +1,10 @@
 # Test framework
 
-[![tests](../badges/tests-total.svg)](../How-to/testing.md){target="_blank" rel="noopener"}
-[![unit tests](../badges/tests-unit.svg)](../How-to/testing.md){target="_blank" rel="noopener"}
-[![integration tests](../badges/tests-integration.svg)](../How-to/testing.md){target="_blank" rel="noopener"}
+[![tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/FormingWorlds/PROTEUS/badges/tests-total.json)](https://proteus-framework.org/testing){target="_blank" rel="noopener"}
+[![unit tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/FormingWorlds/PROTEUS/badges/tests-unit.json)](https://proteus-framework.org/testing){target="_blank" rel="noopener"}
+[![integration tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/FormingWorlds/PROTEUS/badges/tests-integration.json)](https://proteus-framework.org/testing){target="_blank" rel="noopener"}
+
+These counts refresh automatically: the `Refresh test count badges` workflow regenerates the JSON on the `badges` branch on every push to `main`, and shields.io reads it live.
 
 PROTEUS is scientific simulation software where incorrect results can
 propagate silently through coupled modules. The testing framework is
