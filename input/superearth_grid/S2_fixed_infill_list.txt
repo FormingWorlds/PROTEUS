@@ -1,6 +1,0 @@
-input/superearth_grid/S2_m5_IWm5_fixed.toml
-input/superearth_grid/S2_m5_IWm3_fixed.toml
-input/superearth_grid/S2_m5_IWm1_fixed.toml
-input/superearth_grid/S2_m5_IWp1_fixed.toml
-input/superearth_grid/S2_m5_IWp3_fixed.toml
-input/superearth_grid/S2_m5_IWp5_fixed.toml

@@ -22,7 +22,8 @@ pytest.importorskip('zalmoxis')
 
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
-_GRID = 'input/superearth_grid'
+# Self-contained fixture configs for the pinned super-liquidus solves.
+_GRID = os.path.join(os.path.dirname(__file__), 'data', 'superliquidus')
 
 
 def _cfg(name: str):

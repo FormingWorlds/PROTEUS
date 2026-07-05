@@ -1,9 +1,0 @@
-input/superearth_grid/S3_T1_m3.toml
-input/superearth_grid/S3_T1_m5.toml
-input/superearth_grid/S3_T1_m10.toml
-input/superearth_grid/S3_T3_m3.toml
-input/superearth_grid/S3_T3_m5.toml
-input/superearth_grid/S3_T3_m10.toml
-input/superearth_grid/S3_T4_m3.toml
-input/superearth_grid/S3_T4_m5.toml
-input/superearth_grid/S3_T4_m10.toml

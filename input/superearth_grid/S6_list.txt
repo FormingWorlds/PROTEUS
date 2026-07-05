@@ -1,6 +1,0 @@
-input/superearth_grid/S6_cmf0p2.toml
-input/superearth_grid/S6_cmf0p5.toml
-input/superearth_grid/S6_cmf0p7.toml
-input/superearth_grid/S6_dTsuper_hot.toml
-input/superearth_grid/S6_dTsuper_cold.toml
-input/superearth_grid/S6_tidal_on.toml

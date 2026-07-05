@@ -1,3 +1,0 @@
-input/superearth_grid/S2_m5_IWm6_oxauth.toml
-input/superearth_grid/S2_m5_IWm4_oxauth.toml
-input/superearth_grid/S2_m5_IWm2_oxauth.toml
