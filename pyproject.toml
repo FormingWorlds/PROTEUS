@@ -50,8 +50,8 @@ dependencies = [
     "fwl-mors>=26.01.02",
     "fwl-calliope>=26.06.01",
     "fwl-zephyrus>=25.03.11",
-    "fwl-aragog>=26.05.13",
-    "fwl-zalmoxis>=26.05.13",
+    "fwl-aragog>=26.07.04",
+    "fwl-zalmoxis>=26.07.03",
     # The default Aragog interior solver runs on JAX: its eos/phase/solver
     # modules are equinox Modules, so jax, jaxlib, and equinox are needed by
     # a standard run, not only by the optional atmodeller backend. The stack
