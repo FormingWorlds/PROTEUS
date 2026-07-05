@@ -366,8 +366,10 @@ def activate_julia(dirs: dict, verbosity: int):
     log.debug("AGNI will log to '%s'" % logpath)
 
 
-def _construct_voldict(hf_row: dict, dirs: dict, config: Config):
-    # get from hf_row
+def _construct_voldict(hf_row: dict, dirs: dict):
+    # Volume mixing ratio of every modelled gas, read from hf_row. AGNI
+    # recognises the noble gases as species, so they enter the composition
+    # handed to the radiative-convective solve like any other gas.
     vol_dict = {}
     vol_sum = 0.0
     for vol in gas_list:
@@ -521,7 +523,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     log.info(f'Temporary-file working dir: {io_dir}')
 
     # composition
-    vol_dict = _construct_voldict(hf_row, dirs, config)
+    vol_dict = _construct_voldict(hf_row, dirs)
 
     # set condensation
     condensates = []
@@ -709,7 +711,7 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
 
     # ---------------------
     # Update compositions
-    vol_dict = _construct_voldict(hf_row, dirs, config)
+    vol_dict = _construct_voldict(hf_row, dirs)
     for g in vol_dict.keys():
         atmos.gas_vmr[g][:] = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]
