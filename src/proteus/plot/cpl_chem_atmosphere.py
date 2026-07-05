@@ -11,7 +11,7 @@ from matplotlib.ticker import LogLocator
 
 from proteus.atmos_chem.common import read_result
 from proteus.atmos_clim.common import read_ncdf_profile
-from proteus.utils.constants import vol_list
+from proteus.utils.constants import gas_list
 from proteus.utils.helper import natural_sort
 from proteus.utils.plot import get_colour, latexify
 
@@ -80,7 +80,7 @@ def plot_chem_atmosphere(
     # Default species.
     #     Ensure that members of gas_list are first
     if not plot_gases:
-        plot_gases = list(vol_list) + list(GASES_STANDARD)
+        plot_gases = list(gas_list) + list(GASES_STANDARD)
 
     # Remove duplicates, preserving order
     plot_gases = list(dict.fromkeys(plot_gases))
@@ -127,7 +127,7 @@ def plot_chem_atmosphere(
         vmr = 0.0
 
         _lw = lw
-        if gas in vol_list:
+        if gas in gas_list:
             _lw *= 1.25
 
         # plot from netCDF (dashed lines). The prepend of ``xarr[0]``

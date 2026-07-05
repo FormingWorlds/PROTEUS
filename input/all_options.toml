@@ -139,6 +139,18 @@ config_version = "3.0"
         S_budget              = 1.0          # unit defined by S_mode
         use_metallicity       = false        # scale C/N/S from solar metallicity; replaces C/N/S budgets
         metallicity           = 1000         # metallicity relative to solar [by mass]
+        # Noble gases (opt-in per gas via outgas.calliope.include_*). Mode is
+        # kg | ppmw | solar; solar = multiple of the protosolar X/H mass ratio.
+        He_mode               = "kg"         # kg | ppmw | solar
+        He_budget             = 0.0          # unit defined by He_mode
+        Ne_mode               = "kg"
+        Ne_budget             = 0.0
+        Ar_mode               = "kg"
+        Ar_budget             = 0.0
+        Kr_mode               = "kg"
+        Kr_budget             = 0.0
+        Xe_mode               = "kg"
+        Xe_budget             = 0.0
 
     # Partial pressures (used when volatile_mode = 'gas_prs') [bar]
     [planet.gas_prs]
@@ -440,6 +452,12 @@ config_version = "3.0"
         include_H2            = true
         include_CH4           = true
         include_CO            = true
+        # Noble gases (opt-in; budgets set in planet.elements). Default off.
+        include_He            = false
+        include_Ne            = false
+        include_Ar            = false
+        include_Kr            = false
+        include_Xe            = false
         solubility            = true         # melt-gas partitioning (false = all in atmosphere)
 
     [outgas.atmodeller]

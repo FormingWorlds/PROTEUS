@@ -44,6 +44,12 @@ _preset_colours = {
     'Si': '#aa2277',
     'Mg': '#996633',
     'Na': '#ccff00',
+    # Noble gases (each is both a gas species and an element)
+    'He': '#7f7f7f',
+    'Ne': '#e6550d',
+    'Ar': '#3182bd',
+    'Kr': '#31a354',
+    'Xe': '#756bb1',
     # GLobal energy fluxes
     'OLR': '#dc143c',
     'ASF': '#4169e1',

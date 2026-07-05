@@ -112,7 +112,11 @@ def _make_from_o_budget_config(fO2_shift_IW: float = 4.0):
     config.outgas.calliope.solubility = True
     for s in vol_list:
         setattr(config.outgas.calliope, f'include_{s}', True)
-    config.outgas.calliope.is_included = lambda s: True
+    # Noble gases are opt-in and off in this fixture, so is_included is true
+    # only for the reaction-network volatiles it configures.
+    for gas in ('He', 'Ne', 'Ar', 'Kr', 'Xe'):
+        setattr(config.outgas.calliope, f'include_{gas}', False)
+    config.outgas.calliope.is_included = lambda s: s in vol_list
     config.planet.fO2_source = 'from_O_budget'
     config.planet.volatile_mode = 'elements'
     config.planet.volatile_reservoir = 'mantle'

@@ -61,14 +61,14 @@ roughly 80 min on the macOS GHA runner and is gated to macOS
 (``skipif`` on linux): the unified PALEOS mantle has no JAX structure
 path, so the full-resolution coupled run on the numpy fallback
 exceeds the slow-tier walltime on the x86 ubuntu runner. The per-test
-timeout is 9000 s (150 min), which keeps headroom above the macOS
-runtime; the slow-tier job cap is set higher (180 min) so that setup
-time plus the per-test timeout still fit inside the job, letting a
-genuine hang trip pytest's per-test timeout (with a faulthandler
-traceback) before the job-level cancellation. The single IC-only
-structure solve (update_interval = 0) keeps the coupled cost bounded;
-the per-row dynamic refresh path is exercised separately by the
-structure-update unit tests.
+timeout is 10800 s (180 min), the slow-tier standard, leaving generous
+headroom above the macOS runtime; the slow-tier job cap is set higher
+(210 min) so that setup time plus the per-test timeout still fit
+inside the job, letting a genuine hang trip pytest-timeout's per-test
+timer (which dumps every thread's stack) before the job-level
+cancellation. The single IC-only structure solve (update_interval = 0)
+keeps the coupled cost bounded; the per-row dynamic refresh path is
+exercised separately by the structure-update unit tests.
 
 See also:
 - docs/How-to/test_infrastructure.md
@@ -88,7 +88,7 @@ from tests.integration.conftest import (
     validate_stability,
 )
 
-pytestmark = [pytest.mark.slow, pytest.mark.timeout(9000)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(10800)]
 
 
 @pytest.mark.slow

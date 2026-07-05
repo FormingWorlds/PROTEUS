@@ -1,8 +1,13 @@
 # Test framework
 
-[![tests](../badges/tests-total.svg)](../How-to/testing.md){target="_blank" rel="noopener"}
-[![unit tests](../badges/tests-unit.svg)](../How-to/testing.md){target="_blank" rel="noopener"}
-[![integration tests](../badges/tests-integration.svg)](../How-to/testing.md){target="_blank" rel="noopener"}
+[![codecov](https://img.shields.io/codecov/c/github/FormingWorlds/PROTEUS?label=coverage&logo=codecov)](https://app.codecov.io/gh/FormingWorlds/PROTEUS){target="_blank" rel="noopener"}
+[![Unit Tests](https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-pr-checks.yml?label=Unit%20Tests)](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml){target="_blank" rel="noopener"}
+[![Integration Tests](https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-nightly.yml?branch=main&label=Integration%20Tests)](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml){target="_blank" rel="noopener"}
+[![tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/FormingWorlds/PROTEUS/badges/tests-total.json)](https://proteus-framework.org/testing){target="_blank" rel="noopener"}
+[![unit tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/FormingWorlds/PROTEUS/badges/tests-unit.json)](https://proteus-framework.org/testing){target="_blank" rel="noopener"}
+[![integration tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/FormingWorlds/PROTEUS/badges/tests-integration.json)](https://proteus-framework.org/testing){target="_blank" rel="noopener"}
+
+These counts refresh automatically: the `Refresh test count badges` workflow regenerates the JSON on the `badges` branch on every push to `main`, and shields.io reads it live.
 
 PROTEUS is scientific simulation software where incorrect results can
 propagate silently through coupled modules. The testing framework is
@@ -39,7 +44,7 @@ validate against published benchmarks and cross-implementation checks (e.g.
 SPIDER vs Aragog for the same initial conditions). These are the most
 expensive tests and run only in the nightly CI.
 
-The badges at the top of this page report how many tests the suite collects in each category: the total, the unit tier, and the combined smoke, integration, and slow tiers. The documentation deploy counts the tests from `pytest --collect-only` and writes the badges as static SVGs into the published site under `badges/`, so they refresh on every documentation build and load without a third-party request.
+The badge row at the top of this page carries three kinds of badge. The coverage badge reports the line coverage that codecov records for the main branch. The two status badges report the outcome of the latest pull-request checks and the latest nightly run. The three count badges report how many tests the suite collects in each category: the total, the unit tier, and the combined smoke, integration, and slow tiers. The counts come from `pytest --collect-only`, so they track the real suite as it grows.
 
 ## Functional tests vs physics tests
 

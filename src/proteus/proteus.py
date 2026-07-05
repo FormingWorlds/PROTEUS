@@ -14,7 +14,7 @@ from juliacall import Main  # noqa: F401
 
 import proteus.utils.archive as archive
 from proteus.config import check_config_orphan_free, read_config, read_config_object
-from proteus.utils.constants import vap_list, vol_list
+from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -497,13 +497,25 @@ class Proteus:
             for s in vap_list:
                 inc_gases.append(s)
                 self.hf_row[s + '_bar'] = 0.0
+            # Noble gases carry an elemental budget rather than a gas-phase
+            # pressure, so their surface pressure starts at zero and is filled
+            # by the first outgassing call. Include only the opted-in ones.
+            for s in noble_gases:
+                if self.config.outgas.calliope.is_included(s):
+                    inc_gases.append(s)
+                self.hf_row[s + '_bar'] = 0.0
 
             # Inform user
             log.info("Initial inventory set by '%s'" % self.config.planet.volatile_mode)
             log.info('Included gases:')
             for s in inc_gases:
                 write = '    '
-                write += 'vapour  ' if s in vap_list else 'volatile'
+                if s in vap_list:
+                    write += 'vapour  '
+                elif s in noble_gases:
+                    write += 'noble   '
+                else:
+                    write += 'volatile'
                 write += '  %-8s' % s
                 if self.config.planet.volatile_mode == 'gas_prs':
                     write += ' : %6.2f bar' % self.hf_row[s + '_bar']
