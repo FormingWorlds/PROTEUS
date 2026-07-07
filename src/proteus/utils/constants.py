@@ -13,7 +13,6 @@ M_earth = 5.972e24  # kg
 R_earth = 6.335439e6  # m
 R_core_earth = 3485000.0  # m
 M_core_earth = 1.94e24  # kg
-mol = 6.02214076e23  # mol definition
 
 # Earth heat flux, globally averaged [W m-2]
 # https://se.copernicus.org/articles/1/5/2010/
@@ -41,7 +40,12 @@ const_k = 1.38065812e-23  # Boltzman thermodynamic constant
 const_sigma = 5.67051196e-8  # Stefan-Boltzman constant
 const_G = 6.67428e-11  # Gravitational constant (2006 measurements)
 const_Nav = 6.02214076e23  # Avogadro's constant [mol-1]
+const_mp = 1.6726231e-27  # Proton mass [kg]
 B_ein = 2.5
+
+# CODATA electron rest mass, expressed as a molar mass [g mol-1]; not an
+# element, so it doesn't belong in element_mmw.
+electron_molar_mass = 5.4858e-4
 
 # Supported gases
 vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
