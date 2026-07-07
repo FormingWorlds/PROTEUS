@@ -39,15 +39,15 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     hf_row : dict
         Current helpfile row (modified in place).
     """
+    from atmodeller.solubility import get_solubility_models
+    from atmodeller.thermodata import IronWustiteBuffer
+
     from atmodeller import (
         ChemicalSpecies,
         EquilibriumModel,
         Planet,
         SpeciesNetwork,
     )
-    from atmodeller.solubility import get_solubility_models
-    from atmodeller.thermodata import IronWustiteBuffer
-
     from proteus.utils.constants import M_earth, element_mmw, gas_list, noble_gases
 
     atm_config = config.outgas.atmodeller
