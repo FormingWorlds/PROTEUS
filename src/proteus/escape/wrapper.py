@@ -330,8 +330,6 @@ def calc_new_elements(
     for e in res:
         lost = esc_mass * emr[e]
         old_total = float(hf_row.get(f'{e}_kg_total', 0.0))
-        log.info(e)
-        log.info('element total before escape: %s' % old_total)
         new_total = old_total - lost
         # The desiccation floor treats a major volatile that drops below
         # min_thresh as fully depleted. Noble gases are intrinsically trace

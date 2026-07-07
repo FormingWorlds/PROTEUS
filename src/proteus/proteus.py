@@ -14,6 +14,7 @@ from juliacall import Main  # noqa: F401
 
 import proteus.utils.archive as archive
 from proteus.config import check_config_orphan_free, read_config, read_config_object
+from proteus.outgas.wrapper import run_outgassing
 from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
@@ -233,9 +234,9 @@ class Proteus:
         from proteus.outgas.wrapper import (
             calc_target_elemental_inventories,
             check_desiccation,
-            lavatmos_calliope_run,
             run_crystallized,
             run_desiccated,
+            run_outgassing_and_vapourisation,
         )
 
         #   stellar spectrum and evolution
@@ -857,13 +858,27 @@ class Proteus:
                     self.desiccated = check_desiccation(self.config, self.hf_row)
 
             # Handle volatile exchange
+            log.info('Solving for atmosphere composition...')
             first_iter = bool(self.loops['total'] <= self.loops['init_loops'])
             if self.desiccated:
+                # no volatiles
                 run_desiccated(self.directories, self.config, self.hf_row, first_iter)
+
             elif self.crystallized:
+                # post solidification
                 run_crystallized(self.config, self.hf_row, self.interior_o.dt)
+
             else:
-                lavatmos_calliope_run(self.directories, self.config, self.hf_row, first_iter)
+                # magma ocean regime
+
+                if self.config.outgas.vapourise:
+                    # with rock vapours
+                    run_outgassing_and_vapourisation(
+                        self.directories, self.config, self.hf_row, first_iter
+                    )
+                else:
+                    # without rock vapours
+                    run_outgassing(self.directories, self.config, self.hf_row)
 
                 # Issue #677 IC consistency check. Fires once at the first
                 # outgas call (subsequent init_stage calls find the sentinel
@@ -1039,16 +1054,16 @@ class Proteus:
             # Update full helpfile
             if self.loops['total'] > 1:
                 # append row
-                self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row, self.config)
+                self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row)
             else:
                 # first iter => generate new HF from dict
-                self.hf_all = CreateHelpfileFromDict(self.hf_row, self.config)
+                self.hf_all = CreateHelpfileFromDict(self.hf_row)
 
             # Write helpfile to disk (gated by is_snapshot, which
             # combines write_mod iteration check and dt_write time check)
             if is_snapshot:
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                WriteHelpfileToCSV(self.directories['output'], self.hf_all, self.config)
+                WriteHelpfileToCSV(self.directories['output'], self.hf_all)
                 if _IT_TIMING_ENABLED:
                     _t_mod['write'] = time.perf_counter() - _t0
                 self.last_write_time = self.hf_row.get('Time', 0.0)
@@ -1103,7 +1118,7 @@ class Proteus:
 
         # Write conditions at the end of simulation
         log.info('Writing data')
-        WriteHelpfileToCSV(self.directories['output'], self.hf_all, self.config)
+        WriteHelpfileToCSV(self.directories['output'], self.hf_all)
 
         # Ensure the final interior state is on disk so resume can find it.
         # dt_write_rel may have suppressed the write on the last iteration.

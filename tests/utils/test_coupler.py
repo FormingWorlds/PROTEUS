@@ -181,12 +181,12 @@ def test_zero_helpfile_row_has_correct_keys():
 @pytest.mark.unit
 def test_create_helpfile_from_dict_creates_dataframe():
     """Test that CreateHelpfileFromDict creates a pandas DataFrame."""
-    config = MagicMock()
+    MagicMock()
     row = ZeroHelpfileRow()
     row['Time'] = 1.0
     row['T_surf'] = 300.0
 
-    hf = CreateHelpfileFromDict(row, config)
+    hf = CreateHelpfileFromDict(row)
     assert isinstance(hf, pd.DataFrame)
     assert len(hf) == 1
 
@@ -194,13 +194,13 @@ def test_create_helpfile_from_dict_creates_dataframe():
 @pytest.mark.unit
 def test_create_helpfile_from_dict_preserves_values():
     """Test that CreateHelpfileFromDict preserves input values."""
-    config = MagicMock()
+    MagicMock()
     row = ZeroHelpfileRow()
     row['Time'] = 1.5e9
     row['T_surf'] = 350.0
     row['P_surf'] = 100.0
 
-    hf = CreateHelpfileFromDict(row, config)
+    hf = CreateHelpfileFromDict(row)
 
     assert hf['Time'].iloc[0] == pytest.approx(1.5e9, rel=1e-12)
     assert hf['T_surf'].iloc[0] == pytest.approx(350.0, rel=1e-12)
@@ -231,16 +231,16 @@ def test_create_helpfile_from_dict_has_all_keys():
 def test_extend_helpfile_appends_row():
     """Test that ExtendHelpfile appends a new row to helpfile."""
     # Create initial helpfile
-    config = MagicMock()
+    MagicMock()
     row1 = ZeroHelpfileRow()
     row1['Time'] = 0.0
-    hf = CreateHelpfileFromDict(row1, config)
+    hf = CreateHelpfileFromDict(row1)
 
     # Extend with new row
     row2 = ZeroHelpfileRow()
     row2['Time'] = 1.0
     row2['T_surf'] = 300.0
-    hf_extended = ExtendHelpfile(hf, row2, config)
+    hf_extended = ExtendHelpfile(hf, row2)
 
     assert len(hf_extended) == 2
     assert hf_extended['Time'].iloc[0] == pytest.approx(0.0)
@@ -251,10 +251,10 @@ def test_extend_helpfile_appends_row():
 @pytest.mark.unit
 def test_extend_helpfile_multiple_rows():
     """Test that ExtendHelpfile works with multiple sequential extensions."""
-    config = MagicMock()
+    MagicMock()
     row1 = ZeroHelpfileRow()
     row1['Time'] = 0.0
-    hf = CreateHelpfileFromDict(row1, config)
+    hf = CreateHelpfileFromDict(row1)
 
     # Add 5 more rows
     for i in range(1, 6):
@@ -271,15 +271,15 @@ def test_extend_helpfile_multiple_rows():
 @pytest.mark.unit
 def test_extend_helpfile_validates_keys():
     """Test that ExtendHelpfile raises error for missing keys."""
-    config = MagicMock()
+    MagicMock()
     row1 = ZeroHelpfileRow()
-    hf = CreateHelpfileFromDict(row1, config)
+    hf = CreateHelpfileFromDict(row1)
 
     # Create a row with missing keys
     row2 = {'Time': 1.0}  # Missing other keys
 
     with pytest.raises(Exception, match='missing expected keys'):
-        ExtendHelpfile(hf, row2, config)
+        ExtendHelpfile(hf, row2)
     # Discrimination: the raise must happen BEFORE the helpfile gets a new
     # row appended. A regression that appended first and then raised would
     # leave the helpfile growing on every failed call.
@@ -294,12 +294,12 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     like ``core_state_initial`` are also skipped."""
     import logging
 
-    config = MagicMock()
+    MagicMock()
     row = ZeroHelpfileRow()
     row['_structure_stale'] = True  # private transient key: must not warn
     row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
     row['nonsense_future_key'] = 1.0  # genuine drift: must warn
-    hf = CreateHelpfileFromDict(ZeroHelpfileRow(), config)
+    hf = CreateHelpfileFromDict(ZeroHelpfileRow())
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
         ExtendHelpfile(hf, row)
@@ -314,16 +314,16 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
 @pytest.mark.unit
 def test_extend_helpfile_preserves_dataframe_order():
     """Test that ExtendHelpfile preserves row order."""
-    config = MagicMock()
+    MagicMock()
     row1 = ZeroHelpfileRow()
     row1['Time'] = 0.0
-    hf = CreateHelpfileFromDict(row1, config)
+    hf = CreateHelpfileFromDict(row1)
 
     times = [1.0, 2.0, 3.0, 4.0]
     for t in times:
         row = ZeroHelpfileRow()
         row['Time'] = t
-        hf = ExtendHelpfile(hf, row, config)
+        hf = ExtendHelpfile(hf, row)
 
     expected_times = [0.0] + times
     for i, expected_t in enumerate(expected_times):
@@ -345,15 +345,15 @@ def test_write_helpfile_to_csv_creates_file():
     """Test that WriteHelpfileToCSV creates a CSV file."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create helpfile
-        config = MagicMock()
+        MagicMock()
         row = ZeroHelpfileRow()
         row['Time'] = 1.0
         row['T_surf'] = 300.0
-        hf = CreateHelpfileFromDict(row, config)
+        hf = CreateHelpfileFromDict(row)
 
         # Write to CSV
-        config = MagicMock()
-        fpath = WriteHelpfileToCSV(tmpdir, hf, config)
+        MagicMock()
+        fpath = WriteHelpfileToCSV(tmpdir, hf)
 
         # Verify file exists
         assert os.path.exists(fpath)
@@ -364,15 +364,15 @@ def test_write_helpfile_to_csv_creates_file():
 @pytest.mark.unit
 def test_write_helpfile_to_csv_contains_data():
     """Test that WriteHelpfileToCSV writes correct data to file."""
-    config = MagicMock()
+    MagicMock()
     with tempfile.TemporaryDirectory() as tmpdir:
         row = ZeroHelpfileRow()
         row['Time'] = 1.5
         row['T_surf'] = 350.5
-        hf = CreateHelpfileFromDict(row, config)
+        hf = CreateHelpfileFromDict(row)
 
-        config = MagicMock()
-        WriteHelpfileToCSV(tmpdir, hf, config)
+        MagicMock()
+        WriteHelpfileToCSV(tmpdir, hf)
 
         # Read back and verify
         fpath = os.path.join(tmpdir, 'runtime_helpfile.csv')
@@ -385,21 +385,21 @@ def test_write_helpfile_to_csv_contains_data():
 @pytest.mark.unit
 def test_write_helpfile_to_csv_overwrites_existing():
     """Test that WriteHelpfileToCSV overwrites existing file."""
-    config = MagicMock()
+    MagicMock()
     with tempfile.TemporaryDirectory() as tmpdir:
         # Write first helpfile
         row1 = ZeroHelpfileRow()
         row1['Time'] = 1.0
-        hf1 = CreateHelpfileFromDict(row1, config)
-        config = MagicMock()
-        WriteHelpfileToCSV(tmpdir, hf1, config)
+        hf1 = CreateHelpfileFromDict(row1)
+        MagicMock()
+        WriteHelpfileToCSV(tmpdir, hf1)
 
         # Write second helpfile (should overwrite)
         row2 = ZeroHelpfileRow()
         row2['Time'] = 2.0
-        hf2 = CreateHelpfileFromDict(row2, config)
-        config = MagicMock()
-        WriteHelpfileToCSV(tmpdir, hf2, config)
+        hf2 = CreateHelpfileFromDict(row2)
+        MagicMock()
+        WriteHelpfileToCSV(tmpdir, hf2)
 
         # Verify only latest data is in file
         fpath = os.path.join(tmpdir, 'runtime_helpfile.csv')
@@ -412,7 +412,7 @@ def test_write_helpfile_to_csv_overwrites_existing():
 @pytest.mark.unit
 def test_write_and_read_helpfile_roundtrip():
     """Test that helpfile survives write and read cycle."""
-    config = MagicMock()
+    MagicMock()
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create and write
         row = ZeroHelpfileRow()
@@ -421,8 +421,8 @@ def test_write_and_read_helpfile_roundtrip():
         row['T_magma'] = 2500.0
         row['P_surf'] = 1.0
         row['F_int'] = 50.0
-        hf_original = CreateHelpfileFromDict(row, config)
-        WriteHelpfileToCSV(tmpdir, hf_original, config)
+        hf_original = CreateHelpfileFromDict(row)
+        WriteHelpfileToCSV(tmpdir, hf_original)
 
         # Read back
         hf_read = ReadHelpfileFromCSV(tmpdir)
@@ -453,7 +453,7 @@ def test_read_helpfile_from_csv_missing_file():
 @pytest.mark.unit
 def test_write_helpfile_multiple_rows_roundtrip():
     """Test that multiple rows survive write and read cycle."""
-    config = MagicMock()
+    MagicMock()
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create helpfile with multiple rows
         row1 = ZeroHelpfileRow()
@@ -467,8 +467,8 @@ def test_write_helpfile_multiple_rows_roundtrip():
             hf = ExtendHelpfile(hf, row)
 
         # Write and read
-        config = MagicMock()
-        WriteHelpfileToCSV(tmpdir, hf, config)
+        MagicMock()
+        WriteHelpfileToCSV(tmpdir, hf)
         hf_read = ReadHelpfileFromCSV(tmpdir)
 
         # Verify
@@ -674,7 +674,7 @@ def test_get_current_time_format_consistency():
 @pytest.mark.unit
 def test_helpfile_with_realistic_earth_values():
     """Test helpfile with realistic modern Earth values."""
-    config = MagicMock()
+    MagicMock()
     row = ZeroHelpfileRow()
 
     # Modern Earth parameters
@@ -687,7 +687,7 @@ def test_helpfile_with_realistic_earth_values():
     row['F_int'] = 47.0  # W/m2, internal heat flow
     row['F_atm'] = 170.0  # W/m2, net atmospheric heat flux
 
-    hf = CreateHelpfileFromDict(row, config)
+    hf = CreateHelpfileFromDict(row)
 
     assert hf['T_surf'].iloc[0] == pytest.approx(288.0)
     assert hf['P_surf'].iloc[0] == pytest.approx(1.01325, rel=1e-4)
@@ -697,7 +697,7 @@ def test_helpfile_with_realistic_earth_values():
 @pytest.mark.unit
 def test_helpfile_with_extreme_values():
     """Test helpfile with extreme but physically valid values."""
-    config = MagicMock()
+    MagicMock()
     row = ZeroHelpfileRow()
 
     # Ultra-hot planet
@@ -708,7 +708,7 @@ def test_helpfile_with_extreme_values():
     # Low-mass planet
     row['M_planet'] = 1.0e23  # kg, ~2 Earth masses
 
-    hf = CreateHelpfileFromDict(row, config)
+    hf = CreateHelpfileFromDict(row)
 
     assert hf['T_surf'].iloc[0] == pytest.approx(1500.0)
     assert hf['P_surf'].iloc[0] == pytest.approx(10000.0)
@@ -739,14 +739,14 @@ def test_helpfile_float_precision():
 def test_helpfile_scientific_notation_consistency():
     """Test that scientific notation values are consistent."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        config = MagicMock()
+        MagicMock()
         row = ZeroHelpfileRow()
         row['Time'] = 1.234e8  # yr
         row['M_planet'] = 5.972e24  # kg
         hf = CreateHelpfileFromDict(row)
 
         # Write and read back
-        WriteHelpfileToCSV(tmpdir, hf, config)
+        WriteHelpfileToCSV(tmpdir, hf)
         hf_read = ReadHelpfileFromCSV(tmpdir)
 
         assert hf_read['Time'].iloc[0] == pytest.approx(1.234e8, rel=1e-5)
@@ -1008,8 +1008,8 @@ def test_write_helpfile_validates_missing_keys():
         df = pd.DataFrame({'Time': [1.0]})  # Missing all other required keys
 
         with pytest.raises(Exception, match='mismatched keys'):
-            config = MagicMock()
-            WriteHelpfileToCSV(tmpdir, df, config)
+            MagicMock()
+            WriteHelpfileToCSV(tmpdir, df)
         # Discrimination: the validation must short-circuit BEFORE writing
         # the CSV. A regression that wrote first and then raised would
         # leave a corrupted stub file on disk that resume would consume.
@@ -1215,8 +1215,8 @@ def test_populate_energy_residual_inactive_when_E_state_cons_zero():
     stay at 0.0, NEVER NaN, even when step deltas happen to be non-zero.
     NaN would propagate into cumulative sums and silently corrupt
     downstream rows."""
-    config = MagicMock()
-    hf = CreateHelpfileFromDict(_aragog_row(time_yr=0.0, E_state_cons_J=0.0), config)
+    MagicMock()
+    hf = CreateHelpfileFromDict(_aragog_row(time_yr=0.0, E_state_cons_J=0.0))
     new_row = _aragog_row(
         time_yr=1.0,
         E_state_cons_J=0.0,
@@ -1271,11 +1271,11 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
     fact that step_solver_residual_J is itself the per-call increment.
     """
 
-    config = MagicMock()
+    MagicMock()
     E0 = 1.0e31
     # Three asymmetric increments, all sources active.
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
-    hf = CreateHelpfileFromDict(row0.config)
+    hf = CreateHelpfileFromDict(row0)
 
     # Step 1: cooling dominates.
     delta_1_F_int = -3.0e29
@@ -1291,7 +1291,7 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
         step_solver_residual_J=solver_inc_1,
     )
     _populate_energy_residual(hf, row1)
-    hf = ExtendHelpfile(hf, row1, config)
+    hf = ExtendHelpfile(hf, row1)
 
     # Step 2: F_cmb heat input > cooling, net warming.
     delta_2_F_int = -2.0e29
@@ -1307,7 +1307,7 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
         step_solver_residual_J=solver_inc_2,
     )
     _populate_energy_residual(hf, row2)
-    hf = ExtendHelpfile(hf, row2, config)
+    hf = ExtendHelpfile(hf, row2)
 
     # Step 3: F_cmb adds energy from below.
     delta_3_F_cmb = +1.0e29
@@ -1354,9 +1354,9 @@ def test_populate_energy_residual_ignores_instantaneous_F_cmb_spike():
     bug pattern) but the per-call step delta is physical; assert the
     cumulative is governed by the step delta alone."""
     E0 = 1.0e31
-    config = MagicMock()
+    MagicMock()
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
-    hf = CreateHelpfileFromDict(row0, config)
+    hf = CreateHelpfileFromDict(row0)
 
     # Physical step delta: -1e29 J (mild cooling).
     physical_delta = -1.0e29
@@ -1416,9 +1416,9 @@ def test_populate_energy_residual_residual_detects_missing_source():
     a regression where the helper would silently zero residuals or
     apply the wrong sign convention."""
     E0 = 1.0e31
-    config = MagicMock()
+    MagicMock()
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
-    hf = CreateHelpfileFromDict(row0, config)
+    hf = CreateHelpfileFromDict(row0)
 
     actual_dE = +5.0e29  # planet warmed
     reported_step_delta = -3.0e29  # Aragog only reported the cooling

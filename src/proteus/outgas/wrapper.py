@@ -327,6 +327,8 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
             Dictionary of helpfile variables, at this iteration only
     """
 
+    log.info('Calculating volatile outgassing at surface')
+
     # planet.fO2_source dispatch. Two runtime paths are wired today:
     # 'user_constant' (fO2 buffered to the configured IW offset) for
     # every backend, and 'from_O_budget' (authoritative-O chemistry)
@@ -350,8 +352,6 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
             'planet.fO2_source = "from_O_budget" requires chemistry to '
             'invert against; outgas.module = "dummy" has none.'
         )
-
-    log.info('Solving outgassing...')
 
     if config.outgas.vapourise:
         gas_list = vol_list + vap_list
@@ -424,9 +424,9 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
                 hf_row[key] = hf_row[f'{e2}_kg_atm'] / hf_row[f'{e1}_kg_atm']
 
     # print outgassed partial pressures (in order of descending abundance)
-    mask = [hf_row[s + '_vmr'] for s in gas_list]
+    mask = [hf_row[s + '_vmr'] for s in vol_list]
     for i in np.argsort(mask)[::-1]:
-        s = gas_list[i]
+        s = vol_list[i]
         _p = hf_row[s + '_bar']
         _x = hf_row[s + '_vmr']
         _s = '    %-6s     = %-9.2f bar (%.2e VMR)' % (s, _p, _x)
@@ -576,8 +576,10 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
         compute_silicate_outgassing(dirs, config, hf_row, first_iter)
 
 
-def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
-    """Runs lavatmos and calliope together and combines the results.
+def run_outgassing_and_vapourisation(
+    dirs: dict, config: Config, hf_row: dict, first_iter: bool
+):
+    """Runs volatile outgassing and rock vapourisation together and combines the results.
 
     This allows for a consistent computation of melt outgassing and dissolution.
 
@@ -617,8 +619,11 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict, first_iter: 
     run_outgassing(dirs, config, hf_row)
 
     # Now do rock vapours
-    if config.outgas.vapourise:
-        if hf_row['Phi_global'] > 0.00:
+    if not config.outgas.vapourise:
+        log.warning('Rock vapourisation is disabled, skipping rock vapourisation step')
+    else:
+        if hf_row['Phi_global'] > config.params.stop.solid.phi_crit:
+            log.info('Calculating rock vapourisation at surface')
             compute_silicate_outgassing(dirs, config, hf_row, first_iter)
         else:
             log.info('Planet has solidified, no silicate outgassing occurs')

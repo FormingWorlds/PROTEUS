@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+from calliope.oxygen_fugacity import OxygenFugacity
 
 # Local packages and paths
 # sys.path.insert(1,'wkdir')
@@ -18,6 +19,7 @@ from proteus.utils.constants import (
     electron_molar_mass,
     element_list,
     element_mmw,
+    gas_list,
     vap_list,
     vol_list,
 )
@@ -46,7 +48,7 @@ class paths_importer:
         self.lavatmos_dir = os.environ.get('LAVA_DIR')
         self.wkdir = os.environ.get('LAVA_DIR')
 
-        log.info('Work directory set as: %s' % self.wkdir)
+        log.debug('LavAtmos Work directory set as: %s' % self.wkdir)
         self.input_dir = self.wkdir + 'input/'
         self.lava_comps = self.input_dir + 'lava_compositions/'
 
@@ -75,7 +77,7 @@ class paths_importer:
         self.output_dir = os.path.join(dirs['output'], 'fastchem/')
 
         self.janafdata = os.path.join(self.wkdir, 'data/')
-        log.info('Output directory set as: %s' % self.output_dir)
+        log.debug('LavAtmos output directory set as: %s' % self.output_dir)
 
 
 class set_magmaproperties:
@@ -102,7 +104,7 @@ class set_magmaproperties:
         self.volatile_comp = volatile_comp
         # Saving volatile comp to csv for so that LavAtmos can read it later
         # need to find better way to read in volatile composition that from a parameter dictionary maybe ?
-        log.info('volatile composition in set_magmaproperties', self.volatile_comp)
+        log.debug('volatile composition in set_magmaproperties: ' + str(self.volatile_comp))
 
 
 class Species_db(object):
@@ -255,24 +257,17 @@ species_lib = {
 # don't forget the electrons! (they may be tiny but they are important)
 species_lib['e-'] = Species_db(name='e-', fc_name='e-', weight=electron_molar_mass)
 
-
-class FO2shift:
-    """models are taken from caliope. oxygen fugacity pO2 need to be in log10"""
-
-    def __init__(self, model='oneill'):
-        self.callmodel = getattr(self, model)
-
-    def __call__(self, T, log10pO2):
-        """Return log10 fO2"""
-        return log10pO2 - self.callmodel(T)
-
-    def fischer(self, T):
-        """Fischer et al. (2011) IW"""
-        return 6.94059 - 28.1808 * 1e3 / T
-
-    def oneill(self, T):
-        """O'Neill and Eggins (2002) IW"""
-        return 2 * (-244118 + 115.559 * T - 8.474 * T * np.log(T)) / (np.log(10) * 8.31441 * T)
+# Back-fill any element_list/gas_list entry not already covered above (e.g. a
+# noble gas added to those lists without a matching curated table row). This
+# is a best-effort fallback: it assumes name is itself a valid FastChem
+# formula, which only holds for single-symbol elements -- multi-atom species
+# should get a real row in _SPECIES_TABLE instead, since FastChem's element
+# ordering in fc_name is not generally derivable from the plain formula.
+for _name in element_list + gas_list:
+    if _name not in species_lib:
+        species_lib[_name] = Species_db(
+            name=_name, fc_name=_name, weight=_fastchem_weight(_name)
+        )
 
 
 def read_in_element_fracs(input_path, time, parameters):
@@ -404,12 +399,10 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     """
     paths = paths_importer(dirs)
 
-    log.debug('Computing rock vapourisation with LavAtmos')
     # set element fractions in atmosphere for lavatmos run
     input_eles = ['H', 'C', 'N', 'S', 'O']
 
     # lavatmos takes in the abudance fractions of element not mass fractions so divide by atomic number
-
     molfracs = {}
     nfrac = {'P': 0.0}
     total_mols = 0.0
@@ -488,7 +481,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
         )  # assume 1e2 m shell thickness (small shell)
         M_atmo_new = rho_new * Vshell
 
-    log.info('new atmospheric mass:%.2e' % M_atmo_new)
+    log.debug('new atmospheric mass:%.2e' % M_atmo_new)
 
     gas_list = vol_list + vap_list
 
@@ -496,8 +489,8 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     Poutgas = (
         new_atmos_abundances['Pbar'][0] - hf_row['P_surf']
     )  # comput ehow much silicates are outgassed
-    log.info('pressure of outgassed species: %.4f' % Poutgas)
-    log.info('pressure of volatiles before outgassing: %.4f' % hf_row['P_surf'])
+    log.debug('pressure of outgassed species: %.4f' % Poutgas)
+    log.debug('pressure of volatiles before outgassing: %.4f' % hf_row['P_surf'])
 
     hf_row['P_vol'] = hf_row['P_surf']
     hf_row['P_vap'] = Poutgas
@@ -531,10 +524,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
         mmw_elements += element_fracs[e] * species_lib[e].weight
 
     for e in element_list:
-        log.info('element: %s,  %s', e, element_fracs[e])
-        log.debug(
-            'total mass of element before updating with lavatmos: %s', hf_row[e + '_kg_atm']
-        )
+        log.debug('element frac:  %s,  %s', e, element_fracs[e])
         if (
             e in input_eles
         ):  # oxygen should not be added to M_vaps, since it is not counted in M_eles       #and e != 'O':
@@ -556,13 +546,31 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
         new_atmos_abundances['Pbar'][0]
     )  # is this really partical pressure ? Maybe this is actually abundances
 
-    fO2_shift = FO2shift()
+    # OxygenFugacity(T, fO2_shift=0) returns the absolute buffer value
+    # IW(T); the shift relative to that buffer is log10_fO2 - IW(T).
+    iw_buffer = OxygenFugacity(model='oneill')
     hf_row['log10_fO2_vapourise'] = log10_fO2
-    hf_row['log10_fO2_shift_vapourise'] = fO2_shift(hf_row['T_magma'], log10_fO2)
+    hf_row['log10_fO2_shift_vapourise'] = log10_fO2 - iw_buffer(hf_row['T_magma'])
     hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
 
     log.debug(
         'log10 fO2 shift compared to IW buffer: %.6f' % hf_row['log10_fO2_shift_vapourise']
     )
 
-    # update  hf_row['atm_kg_per_mol']
+    # print vapourised partial pressures (in order of descending abundance)
+    mask = [hf_row[s + '_vmr'] for s in vap_list]
+    for i in np.argsort(mask)[::-1]:
+        s = vap_list[i]
+        _p = hf_row[s + '_bar']
+        _x = hf_row[s + '_vmr']
+        _s = '    %-6s     = %-9.2f bar (%.2e VMR)' % (s, _p, _x)
+        if _p > 0.01:
+            log.info(_s)
+        else:
+            # don't spam log with species of negligible abundance
+            log.debug(_s)
+        # log.info('mass of this species: %s %4e'%s % hf_row[s + '_kg_atm'])
+
+    # print total pressure and mmw
+    log.info('    total      = %-9.2f bar' % hf_row['P_surf'])
+    log.info('    mmw        = %-9.5f g mol-1' % (hf_row['atm_kg_per_mol'] * 1e3))

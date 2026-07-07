@@ -22,7 +22,6 @@ import pandas as pd
 from proteus.utils.constants import (
     element_list,
     gas_list,
-    noble_gases,
     secs_per_hour,
     secs_per_minute,
 )
@@ -858,11 +857,10 @@ def GetHelpfileKeys():
         keys.append(s + '_bar')         # partial surface pressure [bar]
         keys.append(s + '_vmr_xuv')     # volume mixing ratio at XUV level [1]
 
-    # quantities for each element. A noble gas is also a gas species, so its
-    # mass columns are already emitted by the gas-species loop above; skip it
-    # here to avoid duplicating them.
+    # quantities for each element. Some elements are also gas species in
+    # their own right (all noble gases, plus rock-forming elements)
     for e in element_list:
-        if e in noble_gases:
+        if e in gas_list:
             continue
         keys.append(e + '_kg_atm')      # mass outgassed to atmosphere [kg]
         keys.append(e + '_kg_solid')    # mass in solid mantle [kg]
@@ -1020,7 +1018,7 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     new_row['solver_residual_J'] = solver_resid_prev + solver_inc
 
 
-def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict, config: Config):
+def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     """
     Extend helpfile with new row of variables
 
@@ -1082,21 +1080,24 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict, config: Config):
     # convert row to df, only including keys in the schema
     # which is defined by GetHelpfileKeys()
     new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
+
     # Check for NaN values. Print warning if any are found and convert to zero.
-    for col in new_row.columns:
-        if new_row[col].isna().any():
+    time_val = new_row['Time'].iloc[0]
+    for i, col in enumerate(new_row.columns):
+        col_data = new_row.iloc[:, i]
+        if col_data.isna().any():
             log.warning(
                 'hf_row[%s] is NaN at t=%.2e years; setting to zero.',
                 col,
-                new_row['Time'].iloc[0],
+                time_val,
             )
-            new_row[col] = new_row[col].fillna(0.0)
+            new_row.iloc[:, i] = col_data.fillna(0.0)
 
     # concatenate and return
     return pd.concat([current_hf, new_row], ignore_index=True)
 
 
-def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame, config: Config):
+def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     """
     Write helpfile to a CSV file
     """
