@@ -87,7 +87,17 @@ jobs:
             --cov-fail-under=0 \
             -v --tb=short
       - name: Upload unit + smoke artifacts
+        id: upload-unit
         if: always()
+        # These artifacts carry this tier's coverage data and test results.
+        # The Linux run is combined into the canonical nightly-coverage
+        # report that PR runs union against, so a transient artifact-service
+        # reset is retried once before the shard is left out rather than
+        # dropped on the first blip. The retry sets overwrite so a
+        # half-registered first attempt does not block it. If both attempts
+        # fail the tier stays green (its tests passed) and coverage-aggregate
+        # degrades to the tolerated missing-shard path.
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: tier-unit-${{ matrix.os }}
@@ -99,6 +109,22 @@ jobs:
             junit-smoke-${{ matrix.os }}.xml
           if-no-files-found: ignore
           include-hidden-files: true
+          retention-days: 14
+      - name: Retry unit + smoke artifact upload
+        if: always() && steps.upload-unit.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: tier-unit-${{ matrix.os }}
+          path: |
+            .coverage.unit.${{ matrix.os }}
+            coverage-unit-${{ matrix.os }}.xml
+            coverage-smoke-${{ matrix.os }}.xml
+            junit-unit-${{ matrix.os }}.xml
+            junit-smoke-${{ matrix.os }}.xml
+          if-no-files-found: ignore
+          include-hidden-files: true
+          overwrite: true
           retention-days: 14
 
   # ============================================================
@@ -137,7 +163,11 @@ jobs:
             --cov-fail-under=0 \
             -v --tb=short
       - name: Upload integration artifacts
+        id: upload-int
         if: always()
+        # See the unit tier upload: retry a transient reset once, then
+        # tolerate a dropped shard rather than reddening a passing tier.
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: tier-int-${{ matrix.os }}
@@ -147,6 +177,20 @@ jobs:
             junit-int-${{ matrix.os }}.xml
           if-no-files-found: ignore
           include-hidden-files: true
+          retention-days: 14
+      - name: Retry integration artifact upload
+        if: always() && steps.upload-int.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: tier-int-${{ matrix.os }}
+          path: |
+            .coverage.integration.${{ matrix.os }}
+            coverage-int-${{ matrix.os }}.xml
+            junit-int-${{ matrix.os }}.xml
+          if-no-files-found: ignore
+          include-hidden-files: true
+          overwrite: true
           retention-days: 14
 
   # ============================================================
@@ -261,7 +305,13 @@ jobs:
             --log-cli-format='%(asctime)s %(levelname)s %(name)s: %(message)s' \
             -v --tb=short
       - name: Upload slow shard artifacts
+        id: upload-slow
         if: always()
+        # See the unit tier upload. On Linux this shard is the only source
+        # for lines no faster tier reaches, so losing it understates the
+        # nightly coverage the PR runs union against. Retry a transient
+        # reset once before tolerating a dropped shard.
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: tier-slow-${{ matrix.shard }}-${{ matrix.os }}
@@ -271,6 +321,20 @@ jobs:
             junit-slow-${{ matrix.shard }}-${{ matrix.os }}.xml
           if-no-files-found: ignore
           include-hidden-files: true
+          retention-days: 14
+      - name: Retry slow shard artifact upload
+        if: always() && steps.upload-slow.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: tier-slow-${{ matrix.shard }}-${{ matrix.os }}
+          path: |
+            .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
+            coverage-slow-${{ matrix.shard }}-${{ matrix.os }}.xml
+            junit-slow-${{ matrix.shard }}-${{ matrix.os }}.xml
+          if-no-files-found: ignore
+          include-hidden-files: true
+          overwrite: true
           retention-days: 14
 
   # ============================================================
@@ -470,7 +534,15 @@ jobs:
           flags: nightly
           name: nightly-full-suite
       - name: Upload nightly-coverage artifact
+        id: upload-nightly-cov
         if: always()
+        # This is the canonical artifact the PR runs download for the
+        # estimated-total and diff-cover gates. Retry a transient reset
+        # once so a network blip does not red the aggregate on passing
+        # science. If both attempts fail the PR side already tolerates a
+        # missing nightly artifact and falls back to the unit-only
+        # estimate, so tolerate rather than red.
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: nightly-coverage
@@ -481,6 +553,21 @@ jobs:
             coverage-integration-only.json
             nightly-timestamp.txt
           if-no-files-found: ignore
+          retention-days: 30
+      - name: Retry nightly-coverage upload
+        if: always() && steps.upload-nightly-cov.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: nightly-coverage
+          path: |
+            coverage.xml
+            coverage-branch-nightly.json
+            coverage-by-type.json
+            coverage-integration-only.json
+            nightly-timestamp.txt
+          if-no-files-found: ignore
+          overwrite: true
           retention-days: 30
 
   # ============================================================
