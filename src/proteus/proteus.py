@@ -568,6 +568,7 @@ class Proteus:
                 self.hf_all,
                 require_atm=require_atm,
                 interior_module=self.config.interior_energetics.module,
+                atmos_module=self.config.atmos_clim.module,
             )
             if dropped_snapshots:
                 log.warning(

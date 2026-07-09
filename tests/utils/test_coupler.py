@@ -2463,9 +2463,10 @@ def test_select_resumable_snapshot_matches_writer_filename_conventions(tmp_path)
 
     Aragog writes <int(Time)>_int.nc and AGNI writes <round(Time)>_atm.nc, so
     a fractional Time >= .5 puts the two halves at integer names one apart.
-    The selector must probe each half with its own convention and recognise
-    the pair as complete; a naive single-convention probe would miss the
-    atmosphere file and wrongly drop a valid latest snapshot.
+    The selector must probe each half with its own writer's convention: the
+    Aragog interior at 30 and the AGNI atmosphere at 31 for Time 30.7. Probing
+    the interior name for the atmosphere half would miss the rounded file and
+    wrongly drop a valid latest snapshot.
     """
     data = tmp_path / 'data'
     data.mkdir()
@@ -2552,20 +2553,31 @@ def test_interior_snapshot_names_track_each_writer_convention():
 
 
 @pytest.mark.unit
-def test_atm_snapshot_names_accept_truncated_and_rounded():
-    """The atmosphere probe accepts both the JANUS (truncated) and AGNI (rounded) name.
+def test_atm_snapshot_names_single_convention_per_writer():
+    """The atmosphere probe uses exactly the active writer's rounding convention.
 
-    JANUS writes ``str(int(Time))_atm.nc`` while AGNI writes
-    ``%.0f_atm.nc``. For a fractional Time the two integer stems differ, so
-    both must be probed; for an integer Time they coincide and collapse to a
-    single candidate (no redundant probe).
+    Only one atmosphere module is active per run, so the probe must return that
+    writer's single filename, not both integer names. JANUS writes
+    ``str(int(Time))_atm.nc`` (truncates) while AGNI writes ``%.0f_atm.nc``
+    (rounds). For a fractional Time the two stems differ; probing both would let
+    a fractional row's truncated name collide with an adjacent row's rounded
+    name, so the single-convention rule is what prevents the cross-row mismatch.
     """
-    # Time 30.7: JANUS truncates to 30, AGNI rounds to 31; both are candidates.
-    assert _atm_snapshot_names(30.7) == ['30_atm.nc', '31_atm.nc']
-    # Time 30.2: JANUS -> 30, AGNI -> 30; identical, collapses to one name.
-    assert _atm_snapshot_names(30.2) == ['30_atm.nc']
-    # Integer Time: single candidate, no duplicate.
-    assert _atm_snapshot_names(30.0) == ['30_atm.nc']
+    # Time 30.7: JANUS truncates to 30, AGNI rounds to 31. Each writer yields
+    # its own single candidate, never both.
+    assert _atm_snapshot_names(30.7, 'janus') == ['30_atm.nc']
+    assert _atm_snapshot_names(30.7, 'agni') == ['31_atm.nc']
+    # Discrimination guard: the two conventions disagree at this fractional Time,
+    # which is exactly the collision (30.7 truncated == 30.2 rounded == 30) that
+    # probing both names would reintroduce.
+    assert _atm_snapshot_names(30.7, 'janus') != _atm_snapshot_names(30.7, 'agni')
+    # Integer Time: both conventions coincide, so the choice of writer is moot.
+    assert _atm_snapshot_names(30.0, 'janus') == ['30_atm.nc']
+    assert _atm_snapshot_names(30.0, 'agni') == ['30_atm.nc']
+    # Unknown or empty module falls back to the AGNI (rounded) default rather
+    # than crashing; 30.7 rounds to 31 under that fall-back.
+    assert _atm_snapshot_names(30.7, 'other') == ['31_atm.nc']
+    assert _atm_snapshot_names(30.7, '') == ['31_atm.nc']
 
 
 @pytest.mark.unit
@@ -2664,8 +2676,9 @@ def test_select_resumable_snapshot_accepts_truncated_janus_atm(tmp_path):
 
     JANUS writes ``str(int(Time))_atm.nc`` (truncates), so at Time 30.7 it
     writes ``30_atm.nc`` while the rounded AGNI convention would look for
-    ``31_atm.nc``. Probing only the rounded name drops the valid row and
-    orphans the JANUS file; the selector must accept the truncated candidate.
+    ``31_atm.nc``. With ``atmos_module='janus'`` the selector probes the
+    truncated name and accepts the valid row; the default AGNI convention would
+    look for the absent ``31_atm.nc`` and wrongly drop it.
     """
     data = tmp_path / 'data'
     data.mkdir()
@@ -2676,7 +2689,9 @@ def test_select_resumable_snapshot_accepts_truncated_janus_atm(tmp_path):
     _write_valid_nc(str(data / '30_int.nc'))
     _write_valid_nc(str(data / '30_atm.nc'))  # JANUS truncated name, NOT 31
 
-    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30.7]))
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30.7]), atmos_module='janus'
+    )
 
     assert dropped == []
     assert len(out) == 3
@@ -2685,3 +2700,57 @@ def test_select_resumable_snapshot_accepts_truncated_janus_atm(tmp_path):
     # accepted rather than treated as a missing rounded 31_atm.nc.
     assert not list(data.glob('*.incomplete'))
     assert (data / '30_atm.nc').exists()
+    # Under the default AGNI (rounded) convention the same layout finds no
+    # 31_atm.nc for Time 30.7 and drops the row, so the writer selection is
+    # what accepts the truncated file rather than a probe of both names. The
+    # JANUS probe above accepted 30.7 and quarantined nothing, so the files are
+    # untouched for this second probe.
+    out_agni, dropped_agni = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30.7]), atmos_module='agni'
+    )
+    assert dropped_agni == [30]
+    assert out_agni.iloc[-1]['Time'] == pytest.approx(20)
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_rejects_cross_row_atm_collision(tmp_path):
+    """A row's missing atmosphere is not satisfied by an adjacent row's file.
+
+    SPIDER writes rounded ``'%.0f.json'`` interiors and AGNI writes rounded
+    ``'%.0f_atm.nc'`` atmospheres. Time 30.2 rounds to 30 for both halves and
+    Time 30.7 rounds to 31. If Time 30.7's own ``31_atm.nc`` never landed while
+    Time 30.2's ``30_atm.nc`` is on disk, a probe that also accepted the
+    truncated ``30_atm.nc`` for Time 30.7 would pair 30.7's interior with
+    30.2's atmosphere and resume from a mismatched state. The single AGNI
+    convention probes only ``31_atm.nc`` for 30.7, so the row is dropped and
+    30.2's valid pair is left in place.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    # Time 30.2: complete SPIDER-JSON + AGNI pair (both round to 30).
+    _write_valid_json(str(data / '30.json'))
+    _write_valid_nc(str(data / '30_atm.nc'))
+    # Time 30.7: interior present (rounds to 31); its own atmosphere is absent.
+    _write_valid_json(str(data / '31.json'))
+    # 31_atm.nc deliberately not written.
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path),
+        _hf_times([30.2, 30.7]),
+        interior_module='spider',
+        atmos_module='agni',
+    )
+
+    # 30.7 is rejected (its own atmosphere is missing); resume falls to 30.2.
+    assert dropped == [30]
+    assert len(out) == 1
+    assert out.iloc[-1]['Time'] == pytest.approx(30.2)
+    # 30.2's valid pair must survive untouched: neither file is a candidate for
+    # 30.7 under the single rounded convention, so the collision cannot consume
+    # them.
+    assert (data / '30_atm.nc').exists()
+    assert (data / '30.json').exists()
+    # 30.7's orphaned interior is quarantined so SPIDER's latest-json glob
+    # cannot load it against the 30.2-trimmed helpfile.
+    assert (data / '31.json.incomplete').exists()
+    assert not (data / '31.json').exists()
