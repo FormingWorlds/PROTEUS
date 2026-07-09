@@ -58,7 +58,7 @@ config_version = "3.0"
         scale_decr            = 0.8          # shrink factor on rejected adaptive step
         window                = 3            # lookback window for adaptive comparison [steps]
         max_growth_factor     = 0.0          # cap on dt growth ratio between consecutive steps; 0 = disabled
-        mushy_maximum         = 0.0          # max dt [yr] while stop.solid.phi_crit < Phi < mushy_upper; 0 = disabled
+        mushy_maximum         = 1.0e6        # max dt [yr] while stop.solid.phi_crit < Phi < mushy_upper (0 = disabled); caps steps through the mushy band so the integrator resolves the solidification front rather than overstepping it
         mushy_upper           = 0.99         # mushy regime upper bound (melt fraction)
         hysteresis_iters      = 0            # suppress speed-up for N iters after a slow-down; 0 = disabled
         hysteresis_sfinc      = 1.1          # gentler speed-up factor while hysteresis active
@@ -109,7 +109,7 @@ config_version = "3.0"
     tsurf_init                = 4000         # surface temperature [K] (isothermal, linear, adiabatic)
     tcmb_init                 = 6000         # CMB temperature [K] (adiabatic_from_cmb)
     tcenter_init              = 6000         # center temperature [K] (linear only)
-    delta_T_super             = 500.0        # min superheat above the liquidus [K] (liquidus_super)
+    delta_T_super             = 100.0        # min superheat above the liquidus [K] (liquidus_super); small value starts the interior near the liquidus for a stable default run
     ini_entropy               = 3900.0       # initial specific entropy [J/kg/K] (isentropic only)
     ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (isentropic only)
     f_accretion               = 0.04         # accretion heat retention [0-1] (accretion only)
@@ -535,7 +535,7 @@ config_version = "3.0"
         solution_atol         = 0.5          # Newton solver absolute tolerance [W/m2]
         solution_rtol         = 0.15         # Newton solver relative tolerance
         psurf_thresh          = 0.1          # skip full RCE when P_surf below this [bar]
-        dx_max                = 35.0         # max Newton step per iteration [K]
+        dx_max                = 200.0        # max Newton step per iteration [K]; wide cap lets the RCE solve reach equilibrium from a hot start within max_steps
         dx_max_ini            = 50.0         # max Newton step during first few PROTEUS loops [K]
         max_steps             = 200          # max Newton iterations per call
         perturb_all           = false        # recompute full Jacobian each iteration
