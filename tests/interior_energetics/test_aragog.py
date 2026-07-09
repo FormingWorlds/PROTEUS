@@ -450,17 +450,16 @@ def test_effective_temperature_and_entropy_step_caps_auto_enable_for_zalmoxis():
 
 @pytest.mark.unit
 def test_negative_step_cap_disables_even_on_zalmoxis():
-    """A negative step cap is an explicit off switch that beats the auto-enable.
+    """The -1.0 off sentinel beats the zalmoxis auto-enable and never leaks through.
 
     The zalmoxis auto-enable promotes the 0.0 schema default so a user who never
-    touches the field is protected. A user who deliberately sets a negative value
-    is opting out, and the resolver must honour that by returning 0.0 (no cap)
-    even on zalmoxis, where the plain 0.0 default would instead be promoted. The
-    negative sentinel must never reach Aragog as a literal negative cap, so every
-    branch resolves to exactly 0.0. Discrimination guards contrast the disabled
-    result against the auto-enabled default and against a positive override so a
-    regression that lets the negative promote, leak through, or clamp to the
-    default is caught.
+    touches the field is protected. A user who sets the -1.0 sentinel is opting
+    out, and the resolver must honour that by returning 0.0 (no cap) even on
+    zalmoxis, where the plain 0.0 default would instead be promoted. The sentinel
+    must never reach Aragog as a literal negative cap, so every branch resolves
+    to exactly 0.0. Discrimination guards contrast the disabled result against
+    the auto-enabled default and against a positive override so a regression that
+    lets the sentinel promote, leak through, or clamp to the default is caught.
     """
     from proteus.interior_energetics.aragog import (
         _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP,
@@ -479,13 +478,13 @@ def test_negative_step_cap_disables_even_on_zalmoxis():
         c.interior_energetics.aragog.entropy_step_cap = s_cap
         return c
 
-    # negative on zalmoxis -> disabled (0.0), overriding the auto-enable
+    # -1.0 sentinel on zalmoxis -> disabled (0.0), overriding the auto-enable
     off = cfg('zalmoxis', -1.0, -1.0, -1.0)
     assert _effective_phi_step_cap(off) == 0.0
     assert _effective_temperature_step_cap(off) == 0.0
     assert _effective_entropy_step_cap(off) == 0.0
-    # negative on a non-zalmoxis interior is also disabled, never negative
-    off_spider = cfg('spider', -0.5, -10.0, -10.0)
+    # the sentinel on a non-zalmoxis interior is also disabled, never negative
+    off_spider = cfg('spider', -1.0, -1.0, -1.0)
     assert _effective_phi_step_cap(off_spider) == 0.0
     assert _effective_temperature_step_cap(off_spider) == 0.0
     assert _effective_entropy_step_cap(off_spider) == 0.0
@@ -494,7 +493,7 @@ def test_negative_step_cap_disables_even_on_zalmoxis():
     assert _ZALMOXIS_DEFAULT_PHI_STEP_CAP > 0.0
     assert _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP > 0.0
     assert _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP > 0.0
-    # a positive override still wins, confirming only the sign controls the switch
+    # a positive override still wins over the auto-enable default
     on = cfg('zalmoxis', 0.05, 250.0, 75.0)
     assert _effective_phi_step_cap(on) == pytest.approx(0.05)
     assert _effective_temperature_step_cap(on) == pytest.approx(250.0)
@@ -502,24 +501,42 @@ def test_negative_step_cap_disables_even_on_zalmoxis():
 
 
 @pytest.mark.unit
-def test_aragog_schema_accepts_negative_step_caps_but_not_negative_margin():
-    """The step-cap off switch requires the schema to admit negative values.
+def test_aragog_schema_admits_off_sentinel_rejects_other_negatives():
+    """Only -1.0 disables the step caps; any other negative, NaN, or inf raises.
 
-    The resolver reads the negative sentinel, so the schema must stop rejecting
-    it: a negative step cap has to construct and round-trip unchanged. The
-    relaxation is scoped to the three step caps; phase_boundary_entropy_margin
-    is a proximity band with no meaningful disabled state, so its positive-only
-    guard must stay in force. The paired assertions pin both sides so a
-    regression that re-tightens the caps or loosens the margin is caught.
+    The resolver reads a single canonical off value (-1.0), so the schema admits
+    exactly that among the negatives and round-trips it unchanged while rejecting
+    every other out-of-range value loudly. A malformed cap that silently disabled
+    the crystallisation-onset guard is the failure this prevents. The proximity
+    band phase_boundary_entropy_margin keeps its positive-only contract, so its
+    0.0 and negatives still raise; the paired assertions pin both sides so a
+    regression that loosens either is caught.
     """
     from proteus.config._interior import Aragog
 
-    caps = Aragog(phi_step_cap=-1.0, temperature_step_cap=-2.0, entropy_step_cap=-3.0)
+    # -1.0 is the one admitted negative and round-trips unchanged.
+    caps = Aragog(phi_step_cap=-1.0, temperature_step_cap=-1.0, entropy_step_cap=-1.0)
     assert caps.phi_step_cap == pytest.approx(-1.0)
-    assert caps.temperature_step_cap == pytest.approx(-2.0)
-    assert caps.entropy_step_cap == pytest.approx(-3.0)
-    # zero remains valid (the auto-enable default), so the caps span >= and < 0
+    assert caps.temperature_step_cap == pytest.approx(-1.0)
+    assert caps.entropy_step_cap == pytest.approx(-1.0)
+    # zero remains valid (the auto-enable default) and positive is verbatim.
     assert Aragog(phi_step_cap=0.0).phi_step_cap == 0.0
+    assert Aragog(temperature_step_cap=150.0).temperature_step_cap == pytest.approx(150.0)
+    # The sentinel is an exact match, so even a near-miss like -1.0001 raises;
+    # that is what makes -1.0 a single canonical off value rather than a band.
+    for bad in (-2.0, -0.5, -1.0001):
+        with pytest.raises(ValueError):
+            Aragog(phi_step_cap=bad)
+        with pytest.raises(ValueError):
+            Aragog(temperature_step_cap=bad)
+        with pytest.raises(ValueError):
+            Aragog(entropy_step_cap=bad)
+    # NaN and the infinities are malformed caps and raise on every field.
+    for bad in (float('nan'), float('inf'), float('-inf')):
+        with pytest.raises(ValueError):
+            Aragog(phi_step_cap=bad)
+        with pytest.raises(ValueError):
+            Aragog(entropy_step_cap=bad)
     # the proximity band keeps its positive-only contract
     with pytest.raises(ValueError):
         Aragog(phase_boundary_entropy_margin=-1.0)
@@ -698,3 +715,49 @@ def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
     assert not any(
         'phase_boundary_entropy_margin' in str(c) for c in mock_log.warning.call_args_list
     )
+
+
+def test_setup_or_update_solver_tracks_stale_structure_steps():
+    """The stale-structure counter increments while stale and resets when fresh.
+
+    On the update branch (solver already built) ``setup_or_update_solver`` reads
+    ``interior_o.structure_stale`` to run a consecutive-stale-step counter: each
+    call on a stale Zalmoxis mesh increments it and any call on a fresh mesh
+    resets it to zero. That counter feeds the operator-visible stale-mesh
+    window, so a regression that fails to increment (silent stale drift) or
+    fails to reset (a false persistent-stale reading after recovery) must be
+    caught. The structure/solver updates are mocked so only the counter branch
+    is exercised.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    interior_o = MagicMock()
+    interior_o.aragog_solver = MagicMock()  # non-None: take the update branch
+    interior_o.ic = 0  # else-branch: update_structure + update_solver, both mocked
+    interior_o._last_entropy = None  # skip the entropy-restore tail
+    interior_o._stale_struct_steps = 0
+    config = MagicMock()
+    hf_row = {'R_int': 1.0e6, 'M_int': 1.0e23}
+    # The update branch never dereferences dirs for a non-IC step; a plain
+    # placeholder keeps the call signature satisfied without touching disk.
+    dirs = {'output': 'unused'}
+
+    with (
+        patch.object(AragogRunner, 'update_structure'),
+        patch.object(AragogRunner, 'update_solver'),
+    ):
+        # Stale mesh: the counter climbs by one on each successive call.
+        interior_o.structure_stale = True
+        AragogRunner.setup_or_update_solver(config, hf_row, interior_o, 1.0, dirs)
+        assert interior_o._stale_struct_steps == 1
+        AragogRunner.setup_or_update_solver(config, hf_row, interior_o, 1.0, dirs)
+        assert interior_o._stale_struct_steps == 2
+        # Fresh mesh: the counter resets to zero, not merely decrements.
+        interior_o.structure_stale = False
+        AragogRunner.setup_or_update_solver(config, hf_row, interior_o, 1.0, dirs)
+        assert interior_o._stale_struct_steps == 0
+        # Recovery then a new failure restarts the count from one, confirming the
+        # reset is a true clear and the increment is not a running total.
+        interior_o.structure_stale = True
+        AragogRunner.setup_or_update_solver(config, hf_row, interior_o, 1.0, dirs)
+        assert interior_o._stale_struct_steps == 1

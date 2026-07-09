@@ -225,28 +225,36 @@ def test_aragog_defaults():
     )
     # Per-call step caps: schema defaults 0.0 keep existing behaviour and the
     # non-zalmoxis bit-parity invariant (the wrapper auto-enables non-zero
-    # values only for the zalmoxis stack). Validators reject negatives.
+    # values only for the zalmoxis stack). -1.0 is the single off sentinel;
+    # any other negative, NaN, or infinity is rejected at load.
     assert a.phi_step_cap == pytest.approx(0.0)
     assert a.temperature_step_cap == pytest.approx(0.0)
     assert a.entropy_step_cap == pytest.approx(0.0)
+    # The -1.0 sentinel is admitted and round-trips unchanged.
+    assert Aragog(phi_step_cap=-1.0).phi_step_cap == pytest.approx(-1.0)
+    assert Aragog(temperature_step_cap=-1.0).temperature_step_cap == pytest.approx(-1.0)
+    assert Aragog(entropy_step_cap=-1.0).entropy_step_cap == pytest.approx(-1.0)
+    # A non-sentinel negative (differs from -1.0 by well over any tolerance) is
+    # rejected on every step-cap field, so a malformed value cannot silently
+    # disable the guard.
     with pytest.raises(ValueError):
         Aragog(phi_step_cap=-0.01)
     with pytest.raises(ValueError):
-        Aragog(temperature_step_cap=-1.0)
+        Aragog(temperature_step_cap=-5.0)
     with pytest.raises(ValueError):
-        Aragog(entropy_step_cap=-1.0)
+        Aragog(entropy_step_cap=-5.0)
     # Positive values persist.
     assert Aragog(phi_step_cap=0.05).phi_step_cap == pytest.approx(0.05)
     assert Aragog(temperature_step_cap=150.0).temperature_step_cap == pytest.approx(150.0)
     assert Aragog(entropy_step_cap=80.0).entropy_step_cap == pytest.approx(80.0)
     # Phase-boundary entropy margin: a positive-float proximity band whose
     # default 200.0 matches Aragog's own default, so a config that omits the
-    # key is bit-identical to current behaviour. Unlike the step caps (ge(0),
-    # 0 = disabled) this uses gt(0): 0 is not a valid disabled state for a
-    # proximity band, so both 0.0 and negatives are rejected.
+    # key is bit-identical to current behaviour. Unlike the step caps (which
+    # admit the -1.0 off sentinel and 0.0) this uses gt(0): a proximity band
+    # has no meaningful disabled state, so both 0.0 and negatives are rejected.
     # Pinning the exact 200.0 band is itself the discrimination guard: it
-    # rejects the step-cap 0.0 sentinel that would silently switch off the
-    # near-boundary max_step tightening this knob exists to control.
+    # rejects a 0.0 that would silently switch off the near-boundary max_step
+    # tightening this band controls.
     assert a.phase_boundary_entropy_margin == pytest.approx(200.0)
     with pytest.raises(ValueError):
         Aragog(phase_boundary_entropy_margin=0.0)
