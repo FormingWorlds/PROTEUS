@@ -54,15 +54,14 @@ dependencies = [
     "fwl-zalmoxis>=26.07.03",
     # The default Aragog interior solver runs on JAX: its eos/phase/solver
     # modules are equinox Modules, so jax, jaxlib, and equinox are needed by
-    # a standard run, not only by the optional atmodeller backend. The stack
-    # is pinned to the tested combination: equinox 0.13.2 calls
-    # jax.core.mapped_aval, which JAX removed in 0.10, so jax and jaxlib are
-    # held below 0.10. Lifting any of these bounds requires revalidating the
-    # default Aragog numerics (atmodeller pins the same equinox==0.13.2, so
-    # the optional backend stays consistent).
+    # a standard run, not only by the optional atmodeller backend. The three
+    # are held to the combination the default Aragog numerics are validated
+    # against: equinox 0.13.8 on jax and jaxlib below 0.10. Lifting any of
+    # these bounds requires revalidating the Aragog entropy solve against the
+    # current pin before the newer versions are trusted for grid production.
     "jax<0.10",
     "jaxlib<0.10",
-    "equinox==0.13.2",
+    "equinox==0.13.8",
     "cmcrameri",
     # Pinned >=0.9.35: 0.9.33-0.9.34 mis-resolve the PythonCall.jl dev-path on
     # conda envs, and 0.9.35 restores resolution by registered version.
@@ -109,7 +108,7 @@ changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 #
 # atmodeller: alternative outgassing backend (Bower+2025, ApJ 995:59),
 # selected via outgas.module = "atmodeller". Pulls JAX + equinox.
-atmodeller = ["atmodeller>=1.0.0"]
+atmodeller = ["atmodeller>=1.0.2"]
 # vulcan: atmospheric photochemistry backend, selected via
 # atmos_chem.module = "vulcan". Also installable editable via
 # tools/get_vulcan.sh.
