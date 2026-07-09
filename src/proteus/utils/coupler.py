@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import glob
+import json
 import logging
 import os
 import subprocess
@@ -681,40 +682,43 @@ def GetHelpfileKeys():
         'T_pot',            # characteristic mantle potential temperature [K]
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
-        # Energy-conservation columns (Aragog A1+A2 + per-call integrals).
-        # ``E_state_cons_J`` is the canonical conservation-grade integrated
-        # mantle enthalpy: ``Σ h(P,S) × ρ_struct × V`` with the FROZEN
-        # structural mass weighting from ``mesh.staggered_effective_density
-        # × volume``. Pairs with ``dE_predicted_cons_J`` (cumulative sum
-        # of ``step_dE_F_int_J + step_dE_F_cmb_J + step_dE_Q_radio_cons_J
-        # + step_dE_Q_tidal_cons_J``) for the running residual:
-        #   E_residual_cons_J  = (E_state_cons - E_state_cons[0]) - dE_predicted_cons_J
-        #   E_residual_cons_frac = E_residual_cons_J / max(|ΔE_state_cons|, 1 J)
-        # A few percent of total cooling on smooth single-phase segments;
-        # it grows at the crystallisation-front and structure-remesh
-        # steps. The state-mass enthalpy
-        # ``E_state_J`` is reported as a diagnostic snapshot only; do
-        # NOT use it for residual checks. State-dependent ``ρ(P,S) × V``
-        # mass weighting introduces a non-conservation cross term that
-        # grows with mantle cooling, so a residual built on
-        # ``E_state_J`` would conflate that frame artefact with real
-        # numerical drift.
+        # Energy-conservation columns: per-call integrals plus their
+        # cumulative residual. The residual pairs the entropy-transported
+        # heat (state side) against the boundary-flux and source prediction
+        # (predicted side), both in the live EOS density frame ``ρ(P,S)``:
+        #   E_state_heat_cons_J = Σ step_dE_state_heat_J across rows [J]
+        #   dE_predicted_cons_J = Σ (step_dE_F_int_J + step_dE_F_cmb_J
+        #                            + step_dE_Q_radio_J + step_dE_Q_tidal_J)
+        #   E_residual_cons_J   = E_state_heat_cons_J - dE_predicted_cons_J
+        #   E_residual_cons_frac = E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J)
+        # This closes to about a percent of the cumulative cooling (largest
+        # near full melt and at crystallisation-front / structure-remesh
+        # steps), not to machine precision; that floor is the lever-rule
+        # vs tanh-blended phase density difference. The ``_cons`` suffix on
+        # these column names pairs them for readability and does not mean
+        # they use the frozen-mass ``step_dE_Q_*_cons_J`` variants.
+        # ``E_state_cons_J`` (frozen-mass enthalpy) and ``E_state_J``
+        # (state-mass enthalpy) are diagnostic snapshots only; do NOT build a
+        # residual on either. ``E_state_cons_J`` also indicates whether an
+        # EOS-aware interior module ran (non-zero), which populates the
+        # residual columns.
         # ``solver_residual_J`` is the entropy-equation self-consistency
         # check: the discrete flux divergence telescopes to the boundary
         # fluxes, so it is machine-zero by construction and a non-zero
-        # value flags a divergence-assembly bug, not time-integration
-        # quality. ``E_th_mantle`` is the ``m × Cp_apparent × T`` proxy
-        # with phase-dependent jumps in the mushy zone, not for
-        # conservation use. ``Q_radio_W`` / ``Q_tidal_W`` are instantaneous
-        # mantle-integrated source powers in watts (do NOT integrate
-        # trapezoidally; spike-prone at CVODE phase-boundary moments).
-        # ``F_cmb`` is the analogous instantaneous CMB heat flux. The
-        # conservation primitive is the per-call integral set computed by
+        # value flags a divergence-assembly bug; it carries the
+        # machine-precision conservation guarantee. ``E_th_mantle`` is the
+        # ``m × Cp_apparent × T`` proxy with phase-dependent jumps in the
+        # mushy zone, not for conservation use. ``Q_radio_W`` / ``Q_tidal_W``
+        # are instantaneous mantle-integrated source powers in watts (do NOT
+        # integrate trapezoidally; spike-prone at CVODE phase-boundary
+        # moments). ``F_cmb`` is the analogous instantaneous CMB heat flux.
+        # The conservation primitive is the per-call integral set computed by
         # Aragog over its CVODE sub-step trajectory:
         #   step_dE_F_int_J        = -∫ F_int * A_int dt   [J]
         #   step_dE_F_cmb_J        = +∫ F_cmb * A_cmb dt   [J]
-        #   step_dE_Q_*_J          = +∫ Q_* dt             [J] (state-mass)
+        #   step_dE_Q_*_J          = +∫ Q_* dt             [J] (live-density)
         #   step_dE_Q_*_cons_J     = +∫ Q_* dt             [J] (frozen-mass)
+        #   step_dE_state_heat_J   = ∫ Σ ρ T dS            [J]
         #   step_solver_residual_J = ∫ (LHS - RHS) dt      [J]
         'E_th_mantle',      # thermal-energy proxy [J] (do not use for conservation)
         'E_state_J',         # state-mass integrated mantle enthalpy [J] (diagnostic only)
@@ -723,15 +727,15 @@ def GetHelpfileKeys():
         'Q_tidal_W',         # instantaneous mantle-integrated tidal power [W]
         'step_dE_F_int_J',   # per-call ∫ -F_int*A_int dt [J]
         'step_dE_F_cmb_J',   # per-call ∫ +F_cmb*A_cmb dt [J]
-        'step_dE_Q_radio_J', # per-call ∫ +Q_radio dt [J] (state-mass, instrumentation)
-        'step_dE_Q_tidal_J', # per-call ∫ +Q_tidal dt [J] (state-mass, instrumentation)
-        'step_dE_Q_radio_cons_J',  # per-call ∫ +Q_radio dt [J] (frozen-mass)
-        'step_dE_Q_tidal_cons_J',  # per-call ∫ +Q_tidal dt [J] (frozen-mass)
+        'step_dE_Q_radio_J', # per-call ∫ +Q_radio dt [J] (live-density, predicted side)
+        'step_dE_Q_tidal_J', # per-call ∫ +Q_tidal dt [J] (live-density, predicted side)
+        'step_dE_Q_radio_cons_J',  # per-call ∫ +Q_radio dt [J] (frozen-mass, diagnostic)
+        'step_dE_Q_tidal_cons_J',  # per-call ∫ +Q_tidal dt [J] (frozen-mass, diagnostic)
         'step_solver_residual_J',  # per-call entropy-ODE LHS-RHS [J]
         'step_dE_compression_J',  # per-call structure-re-solve compression work [J] (diagnostic)
         'step_dE_state_heat_J',  # per-call entropy-transported heat content change [J]
         'E_state_heat_cons_J',  # cumulative sum of step_dE_state_heat_J across rows [J]
-        'dE_predicted_cons_J',  # cumulative sum of step_dE_*_cons_J across rows [J]
+        'dE_predicted_cons_J',  # cumulative sum of boundary fluxes + live-density step_dE_Q_*_J [J]
         'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
         'E_residual_cons_frac', # E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J) [1]
         'solver_residual_J',    # cumulative entropy-ODE LHS-RHS residual [J]
@@ -878,16 +882,24 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
 
         step_dE_F_int_J        = -∫ F_int * A_int dt   [J]
         step_dE_F_cmb_J        = +∫ F_cmb * A_cmb dt   [J]
-        step_dE_Q_*_cons_J     = +∫ Q_* dt             [J] (frozen-mass)
+        step_dE_Q_radio_J      = +∫ Q_radio dt         [J] (live-density)
+        step_dE_Q_tidal_J      = +∫ Q_tidal dt         [J] (live-density)
 
     and the state side is the entropy-transported heat content change
 
         step_dE_state_heat_J   = ∫ Σ rho T dS over the call [J].
 
+    The heating sources use the live-density (state-mass) Q variants so
+    they share the ``rho(P,S)`` frame the state side integrates; the
+    frozen-mass ``step_dE_Q_*_cons_J`` variants are not summed here.
     ``dE_predicted_cons_J`` and ``E_state_heat_cons_J`` are the running
     sums of the predicted and state increments across rows, and
 
         E_residual_cons_J = E_state_heat_cons_J - dE_predicted_cons_J.
+
+    The ``_cons`` suffix on ``dE_predicted_cons_J`` is a naming convention
+    that pairs it with the residual columns; it does not mean the sum uses
+    the frozen-mass ``_cons`` heating variants.
 
     ``E_residual_cons_frac`` normalises by ``max(|E_state_heat_cons_J|, 1 J)``
     so it stays bounded when both numerator and denominator are tiny
@@ -1018,7 +1030,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     # - Unknown keys (new_row has but schema doesn't) are silently dropped
     #   by `columns=GetHelpfileKeys()` in the DataFrame construction, which
     #   means resume would lose those values. We WARN here rather than raise
-    #   so existing hf_row private/transient fields (_structure_stale, etc.)
+    #   so existing hf_row private/transient fields (_T_magma_raw, etc.)
     #   and string-valued fields (core_state_initial) don't break runs.
     # Private (underscore-prefixed) keys are intentionally transient and
     # are excluded from both checks.
@@ -1136,28 +1148,70 @@ def _netcdf_readable(path: str) -> bool:
         return False
 
 
-def _int_snapshot_name(time: float) -> str:
-    """Interior snapshot filename for a simulation time, matching the writer.
+def _snapshot_readable(path: str) -> bool:
+    """Whether a snapshot file exists and opens as a complete file.
 
-    Aragog/SPIDER write the interior snapshot as ``'%d_int.nc' % Time``
-    (truncates toward zero).
+    A disk-full or killed write can leave a snapshot truncated: it exists on
+    disk but raises when opened. NetCDF halves (interior ``_int.nc``,
+    atmosphere ``_atm.nc``) are validated with :func:`_netcdf_readable`;
+    SPIDER's interior half (``.json``) is validated by a full ``json.load``,
+    which fails on a partially written file. This lets the resume path skip
+    an incomplete snapshot and fall back to the last complete one.
     """
-    return '%d_int.nc' % time
+    if path.endswith('.json'):
+        if not os.path.isfile(path):
+            return False
+        try:
+            with open(path) as fh:
+                json.load(fh)
+            return True
+        except Exception:
+            return False
+    return _netcdf_readable(path)
 
 
-def _atm_snapshot_name(time: float) -> str:
-    """Atmosphere snapshot filename for a simulation time, matching the writer.
+def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
+    """Interior snapshot filename candidates for a simulation time, per writer.
 
-    AGNI writes the atmosphere snapshot as ``'%.0f_atm.nc' % Time`` (rounds
-    to nearest), so for a fractional Time it can differ by one from the
-    interior snapshot's truncated index. Probing with the writer's own
-    format keeps the selector from missing a present file.
+    Each interior module names its snapshot with its own convention, so the
+    resume probe must match the active writer:
+
+    - Aragog writes ``'%d_int.nc' % Time`` (truncates toward zero).
+    - SPIDER writes ``'%.0f.json' % Time`` (rounds to nearest).
+    - The dummy and boundary interiors write no interior snapshot, so resume
+      imposes no interior constraint (empty list).
+
+    An unrecognised module falls back to the Aragog convention, the default
+    interior for this branch.
     """
-    return '%.0f_atm.nc' % time
+    module = (interior_module or '').lower()
+    if module == 'spider':
+        return ['%.0f.json' % time]
+    if module in ('dummy', 'boundary'):
+        return []
+    return ['%d_int.nc' % time]
+
+
+def _atm_snapshot_names(time: float) -> list[str]:
+    """Atmosphere snapshot filename candidates for a simulation time.
+
+    Atmosphere writers round the time differently: AGNI writes
+    ``'%.0f_atm.nc' % Time`` (rounds to nearest) while JANUS writes
+    ``str(int(Time)) + '_atm.nc'`` (truncates toward zero). For a fractional
+    Time the two land on integer names one apart, so the probe accepts both
+    the truncated and the rounded candidate and recognises whichever the
+    active writer produced. An integer Time collapses the two to one name.
+    """
+    trunc = '%d_atm.nc' % time
+    rounded = '%.0f_atm.nc' % time
+    return [trunc] if trunc == rounded else [trunc, rounded]
 
 
 def select_resumable_snapshot(
-    output_dir: str, hf_all: pd.DataFrame, require_atm: bool = True
+    output_dir: str,
+    hf_all: pd.DataFrame,
+    require_atm: bool = True,
+    interior_module: str = 'aragog',
 ) -> tuple[pd.DataFrame, list[int]]:
     """Trim the helpfile to the latest row backed by a complete snapshot pair.
 
@@ -1166,15 +1220,19 @@ def select_resumable_snapshot(
     truncate either half of the most recent pair independently of the
     (atomic) helpfile, which then aborts the resume when a module opens the
     corrupt file. Walk the helpfile from its last row backward to the first
-    row whose interior and (when ``require_atm``) atmosphere snapshots both
-    open as netCDF, move any incomplete trailing snapshot files aside
-    (``.incomplete`` suffix) so the modules' latest-file globs land on the
-    complete pair, and return the helpfile truncated to that row.
+    row whose interior (when the interior module writes one) and atmosphere
+    (when ``require_atm``) snapshots both open cleanly, move any incomplete
+    trailing snapshot files aside (``.incomplete`` suffix) so the modules'
+    latest-file globs land on the complete pair, and return the helpfile
+    truncated to that row.
 
-    The two halves use different filename conventions for the same step:
-    the interior name truncates the time (``%d``) and the atmosphere name
-    rounds it (``%.0f``), so each half is probed with its own writer format
-    (see ``_int_snapshot_name`` / ``_atm_snapshot_name``).
+    Each half is probed with its own writer's filename convention. The
+    interior name depends on the module: Aragog writes ``'%d_int.nc'``
+    (truncated), SPIDER writes ``'%.0f.json'`` (rounded), and the dummy and
+    boundary interiors write no snapshot at all (no interior constraint). The
+    atmosphere half is probed with both the truncated (JANUS) and rounded
+    (AGNI) integer name so either writer's file is recognised. See
+    ``_interior_snapshot_names`` / ``_atm_snapshot_names``.
 
     Parameters
     ----------
@@ -1185,6 +1243,11 @@ def select_resumable_snapshot(
     require_atm : bool, optional
         Whether an ``_atm.nc`` half is expected. False for the dummy
         atmosphere, which writes no atmosphere snapshot.
+    interior_module : str, optional
+        The active ``interior_energetics.module`` (``'aragog'``, ``'spider'``,
+        ``'dummy'``, ``'boundary'``). Selects the interior filename
+        convention; ``'dummy'`` and ``'boundary'`` write no interior snapshot
+        so the interior half imposes no constraint.
 
     Returns
     -------
@@ -1207,16 +1270,22 @@ def select_resumable_snapshot(
     keep_idx = None
     for i in range(len(times) - 1, -1, -1):
         t = times[i]
-        int_path = os.path.join(data_dir, _int_snapshot_name(t))
-        atm_path = os.path.join(data_dir, _atm_snapshot_name(t))
-        int_ok = _netcdf_readable(int_path)
-        atm_ok = (not require_atm) or _netcdf_readable(atm_path)
+        int_paths = [
+            os.path.join(data_dir, n) for n in _interior_snapshot_names(t, interior_module)
+        ]
+        atm_paths = (
+            [os.path.join(data_dir, n) for n in _atm_snapshot_names(t)] if require_atm else []
+        )
+        # An empty interior candidate list means the interior module writes no
+        # snapshot (dummy/boundary): that half imposes no resume constraint.
+        int_ok = (not int_paths) or any(_snapshot_readable(p) for p in int_paths)
+        atm_ok = (not require_atm) or any(_snapshot_readable(p) for p in atm_paths)
         if int_ok and atm_ok:
             keep_idx = i
             break
-        # Incomplete pair: move whichever halves exist aside so the
+        # Incomplete pair: move whichever candidate halves exist aside so the
         # interior / atmosphere latest-file globs cannot pick them up.
-        for p in (int_path, atm_path):
+        for p in int_paths + atm_paths:
             if os.path.exists(p):
                 dst = p + '.incomplete'
                 os.replace(p, dst)

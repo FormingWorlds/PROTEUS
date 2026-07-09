@@ -23,6 +23,7 @@ Fixtures from conftest.py:
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import sys
@@ -46,9 +47,12 @@ from proteus.utils.coupler import (
     ReadHelpfileFromCSV,
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
+    _atm_snapshot_names,
     _get_current_time,
+    _interior_snapshot_names,
     _netcdf_readable,
     _populate_energy_residual,
+    _snapshot_readable,
     get_proteus_directories,
     print_citation,
     print_module_configuration,
@@ -290,7 +294,7 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     import logging
 
     row = ZeroHelpfileRow()
-    row['_structure_stale'] = True  # private transient key: must not warn
+    row['_T_magma_raw'] = 3000.0  # private transient key: must not warn
     row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
     row['nonsense_future_key'] = 1.0  # genuine drift: must warn
     hf = CreateHelpfileFromDict(ZeroHelpfileRow())
@@ -301,7 +305,7 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
     joined = '\n'.join(r.message for r in warns)
     assert 'nonsense_future_key' in joined, f'Expected unknown-key warning, got: {joined!r}'
-    assert '_structure_stale' not in joined, 'Private key leaked into warning'
+    assert '_T_magma_raw' not in joined, 'Private key leaked into warning'
     assert 'core_state_initial' not in joined, 'Allowlisted key triggered warning'
 
 
@@ -2508,3 +2512,176 @@ def test_select_resumable_snapshot_raises_when_no_complete_pair(tmp_path):
 
     with pytest.raises(RuntimeError, match='No complete'):
         select_resumable_snapshot(str(tmp_path), _hf_times([10, 20]))
+
+
+def _write_valid_json(path: str) -> str:
+    """Create a minimal, valid SPIDER-style interior JSON snapshot."""
+    with open(path, 'w') as fh:
+        json.dump({'data': {'S': [1.0, 2.0]}}, fh)
+    return path
+
+
+def _write_corrupt_json(path: str) -> str:
+    """Create a truncated JSON file (present but not parseable)."""
+    with open(path, 'w') as fh:
+        fh.write('{"data": {"S": [1.0, 2.')  # cut off mid-write
+    return path
+
+
+@pytest.mark.unit
+def test_interior_snapshot_names_track_each_writer_convention():
+    """Each interior module's probe uses that writer's own filename format.
+
+    Aragog truncates (``%d_int.nc``) and SPIDER rounds (``%.0f.json``), so at
+    a fractional Time the two land on integer stems one apart; the dummy and
+    boundary interiors write no snapshot at all. A probe that assumed the
+    Aragog name for every module would miss the SPIDER file and wrongly
+    quarantine a valid resume point.
+    """
+    # Time 30.7: Aragog truncates to 30, SPIDER rounds to 31.
+    assert _interior_snapshot_names(30.7, 'aragog') == ['30_int.nc']
+    assert _interior_snapshot_names(30.7, 'spider') == ['31.json']
+    # Discrimination guard: the two conventions disagree on both stem and
+    # extension, so a single-convention probe cannot cover both.
+    assert _interior_snapshot_names(30.7, 'aragog') != _interior_snapshot_names(30.7, 'spider')
+    # Dummy and boundary write no interior snapshot: empty constraint.
+    assert _interior_snapshot_names(30.7, 'dummy') == []
+    assert _interior_snapshot_names(30.7, 'boundary') == []
+    # Unknown module falls back to the Aragog default rather than crashing.
+    assert _interior_snapshot_names(30.7, 'other') == ['30_int.nc']
+
+
+@pytest.mark.unit
+def test_atm_snapshot_names_accept_truncated_and_rounded():
+    """The atmosphere probe accepts both the JANUS (truncated) and AGNI (rounded) name.
+
+    JANUS writes ``str(int(Time))_atm.nc`` while AGNI writes
+    ``%.0f_atm.nc``. For a fractional Time the two integer stems differ, so
+    both must be probed; for an integer Time they coincide and collapse to a
+    single candidate (no redundant probe).
+    """
+    # Time 30.7: JANUS truncates to 30, AGNI rounds to 31; both are candidates.
+    assert _atm_snapshot_names(30.7) == ['30_atm.nc', '31_atm.nc']
+    # Time 30.2: JANUS -> 30, AGNI -> 30; identical, collapses to one name.
+    assert _atm_snapshot_names(30.2) == ['30_atm.nc']
+    # Integer Time: single candidate, no duplicate.
+    assert _atm_snapshot_names(30.0) == ['30_atm.nc']
+
+
+@pytest.mark.unit
+def test_snapshot_readable_dispatches_json_and_netcdf(tmp_path):
+    """_snapshot_readable validates a .json half by parse and an .nc half by open.
+
+    SPIDER's interior half is JSON; a truncated write parses as invalid. The
+    netCDF halves keep the existing open-check. Covers valid, corrupt, and
+    absent for both extensions.
+    """
+    good_json = _write_valid_json(str(tmp_path / 'ok.json'))
+    bad_json = _write_corrupt_json(str(tmp_path / 'bad.json'))
+    good_nc = _write_valid_nc(str(tmp_path / 'ok.nc'))
+
+    assert _snapshot_readable(good_json) is True
+    assert _snapshot_readable(bad_json) is False
+    assert _snapshot_readable(str(tmp_path / 'missing.json')) is False
+    # netCDF dispatch unchanged.
+    assert _snapshot_readable(good_nc) is True
+    assert _snapshot_readable(str(tmp_path / 'missing.nc')) is False
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_resumes_spider_json_history(tmp_path):
+    """A SPIDER interior (JSON snapshots) resumes; the Aragog-only probe would not.
+
+    SPIDER writes ``'%.0f.json'`` interior snapshots and no ``_int.nc``. With
+    ``interior_module='spider'`` the selector must recognise the JSON half and
+    keep the latest row; a probe hard-coded to the Aragog ``_int.nc`` name
+    would find no interior half on any row and raise the no-complete-pair
+    error, a regression against a SPIDER resume that worked before.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20, 30):
+        _write_valid_json(str(data / f'{t:.0f}.json'))
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30]), require_atm=False, interior_module='spider'
+    )
+
+    assert dropped == []
+    assert int(out.iloc[-1]['Time']) == 30
+    # Discrimination guard: the Aragog-name probe sees no interior half here,
+    # so it would raise rather than return the valid latest row.
+    with pytest.raises(RuntimeError, match='No complete'):
+        select_resumable_snapshot(
+            str(tmp_path), _hf_times([10, 20, 30]), require_atm=False, interior_module='aragog'
+        )
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_falls_back_on_corrupt_spider_json(tmp_path):
+    """A truncated latest SPIDER JSON trims to the prior complete snapshot."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_json(str(data / f'{t:.0f}.json'))
+    _write_corrupt_json(str(data / '30.json'))
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30]), require_atm=False, interior_module='spider'
+    )
+
+    assert dropped == [30]
+    assert int(out.iloc[-1]['Time']) == 20
+    # The incomplete latest half is quarantined so SPIDER's latest-json glob
+    # lands on time 20, not the truncated 30.json.
+    assert (data / '30.json.incomplete').exists()
+    assert not (data / '30.json').exists()
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_dummy_interior_trusts_helpfile(tmp_path):
+    """Dummy/boundary interiors write no snapshot, so resume trusts the helpfile.
+
+    With ``interior_module='dummy'`` and no atmosphere half, no snapshot file
+    exists on disk at all; the selector must impose no interior constraint and
+    keep the latest helpfile row rather than raise for a missing ``_int.nc``.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()  # deliberately empty: dummy interior + dummy atm write nothing
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30]), require_atm=False, interior_module='dummy'
+    )
+
+    assert dropped == []
+    assert int(out.iloc[-1]['Time']) == 30
+    assert not list(data.glob('*.incomplete'))
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_accepts_truncated_janus_atm(tmp_path):
+    """A fractional-Time JANUS atmosphere (truncated name) is recognised, not quarantined.
+
+    JANUS writes ``str(int(Time))_atm.nc`` (truncates), so at Time 30.7 it
+    writes ``30_atm.nc`` while the rounded AGNI convention would look for
+    ``31_atm.nc``. Probing only the rounded name drops the valid row and
+    orphans the JANUS file; the selector must accept the truncated candidate.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+    # Time 30.7: interior truncates to 30; JANUS atmosphere also truncates to 30.
+    _write_valid_nc(str(data / '30_int.nc'))
+    _write_valid_nc(str(data / '30_atm.nc'))  # JANUS truncated name, NOT 31
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30.7]))
+
+    assert dropped == []
+    assert len(out) == 3
+    assert out.iloc[-1]['Time'] == pytest.approx(30.7)
+    # Discrimination guard: nothing quarantined; the truncated atm name was
+    # accepted rather than treated as a missing rounded 31_atm.nc.
+    assert not list(data.glob('*.incomplete'))
+    assert (data / '30_atm.nc').exists()
