@@ -1,9 +1,11 @@
 # Zalmoxis interior module
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -45,10 +47,61 @@ _SUPERLIQ_DEFAULT_MUSHY = 0.8  # fallback solidus = factor * liquidus
 # deterministic; tests clear it between cases (see _clear_superliquidus_cache).
 _SUPERLIQ_CACHE: dict = {}
 
+# CMB temperature [K] of the most recently solved super-liquidus adiabat. A
+# structure solve driven by an external temperature source discards this anchor
+# (the external T(r) is the temperature source), so those calls reuse the value
+# the internal-dispatch initial-condition solve already produced instead of
+# repeating the scan-and-bisection at a drifted P_cmb. None until the first
+# solve completes.
+_SUPERLIQ_LAST_ANCHOR: float | None = None
+
+# Set once a run has reported that the Zalmoxis JAX structure path is not
+# viable for the configured EOS, so the numpy-fallback provenance is logged a
+# single time instead of on every re-solve.
+_JAX_NONVIABLE_LOGGED: bool = False
+
 
 def _clear_superliquidus_cache() -> None:
     """Drop the cached super-liquidus solves (used by tests to avoid leakage)."""
+    global _SUPERLIQ_LAST_ANCHOR, _JAX_NONVIABLE_LOGGED
     _SUPERLIQ_CACHE.clear()
+    _SUPERLIQ_LAST_ANCHOR = None
+    _JAX_NONVIABLE_LOGGED = False
+
+
+def _log_jax_nonviable_once(core_eos: str, mantle_eos: str) -> bool:
+    """Report the JAX to numpy structure fallback once per run.
+
+    The Zalmoxis logger is not attached to the run's file handlers, so a
+    JAX-path fallback inside Zalmoxis reaches stderr but never the run log.
+    This surfaces the fallback from the PROTEUS side, where the fwl logger is
+    wired, so the run log records why structure solves used the numpy ODE path.
+    The message is emitted only on the first non-viable solve; later solves in
+    the same run stay silent to keep the log readable.
+
+    Parameters
+    ----------
+    core_eos : str
+        Configured Zalmoxis core equation of state.
+    mantle_eos : str
+        Resolved Zalmoxis mantle equation of state.
+
+    Returns
+    -------
+    bool
+        True if this call emitted the message, False if it was already logged.
+    """
+    global _JAX_NONVIABLE_LOGGED
+    if _JAX_NONVIABLE_LOGGED:
+        return False
+    log.info(
+        'Zalmoxis JAX structure path is not viable for the configured EOS '
+        '(core=%s, mantle=%s); structure solves use the numpy ODE path.',
+        core_eos,
+        mantle_eos,
+    )
+    _JAX_NONVIABLE_LOGGED = True
+    return True
 
 
 # Module-level cache for density seeding between Zalmoxis calls.
@@ -262,7 +315,7 @@ def validate_zalmoxis_output_schema(
     expected_mantle = M_int_hf - M_core_hf
     if expected_mantle > 0:
         m_rel = abs(mantle_mass / expected_mantle - 1.0)
-        log.info(
+        log.debug(
             'zalmoxis mass-closure: mantle split m_rel=%.3e (%s, rtol_mass=%.1e)',
             m_rel,
             mass_source,
@@ -470,7 +523,12 @@ def _resolve_zalmoxis_temperature_mode(mode: str) -> str:
     return mode
 
 
-def _resolve_zalmoxis_cmb_temperature(config: Config, hf_row: dict, mode: str) -> float:
+def _resolve_zalmoxis_cmb_temperature(
+    config: Config,
+    hf_row: dict,
+    mode: str,
+    external_temperature_source: bool = False,
+) -> float:
     """Resolve cmb_temperature for the Zalmoxis structure call.
 
     For 'liquidus_super', returns the CMB temperature of the solved
@@ -481,10 +539,38 @@ def _resolve_zalmoxis_cmb_temperature(config: Config, hf_row: dict, mode: str) -
     Zalmoxis P_cmb, so any first-call P_cmb mismatch is self-correcting after
     one round-trip.
 
+    When ``external_temperature_source`` is set the structure solve is driven
+    by an evolved T(r) profile (or the super-liquidus adiabat callable during
+    the IC re-solve) rather than the internal temperature-mode dispatch, so the
+    super-liquidus CMB anchor is not the temperature source for this call and
+    the solved value is discarded. Those calls reuse the anchor the
+    internal-dispatch IC solve already produced and skip the scan-and-bisection;
+    before any solve has run they fall back to ``config.planet.tcmb_init``. This
+    avoids re-solving (and possibly raising the unreachable-superheat error) on
+    every evolution re-solve over a value nothing consumes.
+
     For all other modes, returns config.planet.tcmb_init verbatim.
     """
     if mode != 'liquidus_super':
         return config.planet.tcmb_init
+
+    if external_temperature_source:
+        anchor = _SUPERLIQ_LAST_ANCHOR
+        if anchor is not None:
+            log.debug(
+                'liquidus_super: structure solve uses an external temperature '
+                'source; reusing the last solved CMB anchor T_cmb=%.0f K and '
+                'skipping the super-liquidus re-solve.',
+                anchor,
+            )
+            return float(anchor)
+        log.debug(
+            'liquidus_super: structure solve uses an external temperature '
+            'source before any super-liquidus solve; using tcmb_init=%.0f K as '
+            'the unconsumed CMB anchor.',
+            float(config.planet.tcmb_init),
+        )
+        return float(config.planet.tcmb_init)
 
     # Anchor the Zalmoxis structure-solve adiabat at the CMB temperature of the
     # solved super-liquidus adiabat the energetics IC uses, so both share the
@@ -586,9 +672,12 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
 
     mantle_eos = config.interior_struct.zalmoxis.mantle_eos
     P_surface = 1e5  # 1 bar surface anchor for the adiabat
+    global _SUPERLIQ_LAST_ANCHOR
     _cache_key = (round(P_cmb / 1e6), round(delta, 3), str(mantle_eos))
     if _cache_key in _SUPERLIQ_CACHE:
-        return dict(_SUPERLIQ_CACHE[_cache_key])
+        cached = dict(_SUPERLIQ_CACHE[_cache_key])
+        _SUPERLIQ_LAST_ANCHOR = float(cached['cmb_T'])
+        return cached
 
     mat_dicts = load_zalmoxis_material_dictionaries()
     solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
@@ -760,6 +849,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
         'P_cmb': P_cmb,
     }
     _SUPERLIQ_CACHE[_cache_key] = dict(out)
+    _SUPERLIQ_LAST_ANCHOR = float(out['cmb_T'])
     return out
 
 
@@ -767,6 +857,7 @@ def load_zalmoxis_configuration(
     config: Config,
     hf_row: dict,
     temperature_mode_override: str | None = None,
+    external_temperature_source: bool = False,
 ):
     """Loads the model configuration for Zalmoxis and calculates the dry mass of the planet based on the total mass and the mass of volatiles.
     Args:
@@ -777,6 +868,12 @@ def load_zalmoxis_configuration(
             structure-solve mode (e.g. 'adiabatic' for SPIDER coupling with
             T-dependent mantle EOS) without mutating the shared Config object.
             When None, falls back to ``config.planet.temperature_mode``.
+        external_temperature_source: True when the caller passes an external
+            temperature function or array so the structure solve follows an
+            evolved T(r) instead of the internal temperature-mode dispatch. In
+            'liquidus_super' mode this lets ``cmb_temperature`` reuse the last
+            solved super-liquidus anchor rather than re-solving it, since the
+            anchor is not consumed when an external source drives the solve.
     Returns:
         dict: A dictionary containing the Zalmoxis configuration parameters.
     """
@@ -796,7 +893,7 @@ def load_zalmoxis_configuration(
     # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg]
     total_planet_mass = config.planet.mass_tot * M_earth
 
-    log.info(
+    log.debug(
         'Total target planet mass (dry mass + volatiles): %s kg '
         'with EOS: core=%s, mantle=%s, ice=%s',
         total_planet_mass,
@@ -828,7 +925,7 @@ def load_zalmoxis_configuration(
         else:
             M_volatiles += float(hf_row.get(e + '_kg_atm', 0.0))
 
-    log.info(f'Volatile mass: {M_volatiles} kg')
+    log.debug(f'Volatile mass: {M_volatiles} kg')
     log.debug(
         'Mass budget: total=%.6e kg (%.4f M_earth), volatiles=%.6e kg (%.2f%%)',
         total_planet_mass,
@@ -840,7 +937,7 @@ def load_zalmoxis_configuration(
     # Calculate the target planet mass (dry mass) by subtracting the mass of volatiles from the total planet mass
     planet_mass = total_planet_mass - M_volatiles
 
-    log.info(f'Target planet mass (dry mass): {planet_mass} kg ')
+    log.debug(f'Target planet mass (dry mass): {planet_mass} kg ')
 
     # Build per-layer EOS config dict from PROTEUS config fields
     layer_eos_config = {
@@ -912,6 +1009,7 @@ def load_zalmoxis_configuration(
             config,
             hf_row,
             temperature_mode_override or config.planet.temperature_mode,
+            external_temperature_source=external_temperature_source,
         ),
         'center_temperature': config.planet.tcenter_init,
         'temp_profile_file': None,
@@ -1586,6 +1684,59 @@ def _atomic_write_text(path: str, text: str) -> None:
             os.remove(tmp)
 
 
+def _ps_cache_key(
+    *,
+    P_max: float,
+    nP: int,
+    nS: int,
+    mzf: float,
+    layout: str,
+    mantle_eos: str,
+    eos_file: str | None,
+    solid_eos: str | None,
+    liquid_eos: str | None,
+) -> str:
+    """Build the identity string for a generated P-S EOS table set.
+
+    The key is stored in the table directory's ``.cache_info.txt`` marker and,
+    under ``PROTEUS_PS_CACHE_DIR``, sanitised into the cache subdirectory name.
+    It must encode every input that changes the table contents so that a shared
+    cache never serves tables built from a different mantle EOS. The resolved
+    EOS file paths are folded in through a short digest; two configs that share
+    ``P_max``/``nP``/``nS``/``mzf``/``layout`` but resolve to different EOS
+    files therefore land on distinct keys and cannot cross-reuse tables.
+
+    Parameters
+    ----------
+    P_max : float
+        Upper pressure bound of the lookup grid, in Pa.
+    nP, nS : int
+        Pressure and entropy grid resolutions.
+    mzf : float
+        Mushy-zone factor relating the synthetic solidus to the liquidus.
+    layout : str
+        ``'unified'`` or ``'2phase'`` PALEOS table layout.
+    mantle_eos : str
+        Registry name of the mantle EOS, kept as a readable label in the key.
+    eos_file, solid_eos, liquid_eos : str or None
+        Resolved paths of the tables that seed the generation. These
+        distinguish EOS that share a registry name but resolve to different
+        files (e.g. distinct PALEOS-API table versions).
+
+    Returns
+    -------
+    str
+        Deterministic cache-identity string.
+    """
+    eos_identity = '|'.join(str(p) for p in (mantle_eos, eos_file, solid_eos, liquid_eos))
+    eos_digest = hashlib.sha1(eos_identity.encode()).hexdigest()[:12]
+    eos_name = re.sub(r'[^A-Za-z0-9]+', '-', str(mantle_eos)).strip('-')
+    return (
+        f'P_max={P_max:.6e}_nP={nP}_nS={nS}_mzf={mzf}'
+        f'_layout={layout}_eos={eos_name}-{eos_digest}'
+    )
+
+
 def generate_spider_tables(config: Config, outdir: str):
     """Generate P-S EOS tables and phase boundaries from PALEOS data.
 
@@ -1761,14 +1912,25 @@ def generate_spider_tables(config: Config, outdir: str):
     nS = config.interior_struct.zalmoxis.lookup_nS
 
     layout = '2phase' if is_twophase else 'unified'
-    cache_key = f'P_max={P_max:.6e}_nP={nP}_nS={nS}_mzf={mzf}_layout={layout}'
+    cache_key = _ps_cache_key(
+        P_max=P_max,
+        nP=nP,
+        nS=nS,
+        mzf=mzf,
+        layout=layout,
+        mantle_eos=mantle_eos,
+        eos_file=eos_file,
+        solid_eos=solid_eos,
+        liquid_eos=liquid_eos,
+    )
 
     # Table location. Default: per-run output/<run>/data/spider_eos. When
     # PROTEUS_PS_CACHE_DIR is set, the directory is keyed by cache_key so that
-    # independent runs with the same planet mass and table resolution reuse one
-    # generated table instead of each rebuilding the slow full-resolution PALEOS
-    # P-S table. The cache_key already encodes everything that changes the table
-    # (P_max, nP, nS, mushy_zone_factor, layout), so reuse is exact.
+    # independent runs with the same planet mass, table resolution, and mantle
+    # EOS reuse one generated table instead of each rebuilding the slow
+    # full-resolution PALEOS P-S table. The cache_key encodes everything that
+    # changes the table (P_max, nP, nS, mushy_zone_factor, layout, and the
+    # resolved EOS identity), so reuse is exact.
     _ps_cache_root = os.environ.get('PROTEUS_PS_CACHE_DIR')
     if _ps_cache_root:
         _safe_key = cache_key.replace('.', 'p').replace('=', '-').replace('+', '')
@@ -1968,9 +2130,19 @@ def zalmoxis_solver(
         Path to the SPIDER mesh file, or None if ``num_spider_nodes == 0``.
     """
 
-    # Load the Zalmoxis configuration parameters
+    # Load the Zalmoxis configuration parameters. Flag an external temperature
+    # source so 'liquidus_super' skips re-solving the super-liquidus CMB anchor
+    # on this call: an evolved T(r) (or the IC adiabat callable) drives the
+    # structure here, so the anchor is discarded and reusing the last solved
+    # value avoids the scan-and-bisection on every re-solve.
+    external_temperature_source = (
+        temperature_function is not None or temperature_arrays is not None
+    )
     config_params = load_zalmoxis_configuration(
-        config, hf_row, temperature_mode_override=temperature_mode_override
+        config,
+        hf_row,
+        temperature_mode_override=temperature_mode_override,
+        external_temperature_source=external_temperature_source,
     )
 
     # Build volatile profile from dissolved volatile masses (if available).
@@ -1980,7 +2152,7 @@ def zalmoxis_solver(
     mantle_eos = config.interior_struct.zalmoxis.mantle_eos
     if config.interior_struct.zalmoxis.dry_mantle:
         volatile_profile = None
-        log.info(
+        log.debug(
             'Structure solver: dry_mantle=True, skipping VolatileProfile '
             '(mantle EOS uses %s tables only).',
             mantle_eos,
@@ -2042,7 +2214,7 @@ def zalmoxis_solver(
     # (~70 s each, ~2-4 calls) is negligible against a 3-4 h full run.
     if temperature_function is None and temperature_arrays is None:
         if config_params.get('use_jax') or config_params.get('use_anderson'):
-            log.info(
+            log.debug(
                 'Zalmoxis call has no temperature_function or '
                 'temperature_arrays: disabling use_jax and use_anderson '
                 'for this call (the internal T-dispatch path collapses '
@@ -2074,20 +2246,23 @@ def zalmoxis_solver(
     _jax_viable = _zalmoxis_jax_structure_viable(
         mat_dicts, config.interior_struct.zalmoxis.core_eos, mantle_eos
     )
+    # Surface a JAX->numpy fallback once from the PROTEUS side (see helper).
+    if _use_jax_active and not _jax_viable:
+        _log_jax_nonviable_once(config.interior_struct.zalmoxis.core_eos, mantle_eos)
     _drop_callable = _use_jax_active and temperature_arrays is not None and _jax_viable
     _tf_effective = None if _drop_callable else temperature_function
     if _drop_callable:
-        log.info(
+        log.debug(
             'Structure-solve T source: temperature_arrays via the Zalmoxis '
             'JAX path; external callable withheld for this call.'
         )
     elif temperature_function is not None:
-        log.info(
+        log.debug(
             'Structure-solve T source: external temperature_function '
             '(consumed by the numpy path).'
         )
     else:
-        log.info(
+        log.debug(
             'Structure-solve T source: internal %r mode dispatch.',
             config_params.get('temperature_mode'),
         )
@@ -2394,7 +2569,7 @@ def zalmoxis_solver(
             _rho_fixed[_i] = float(_rho) if _rho is not None else float(density[_i])
         density = _rho_fixed
         temperature = _T_fixed
-        log.info(
+        log.debug(
             'Rebuilt density/temperature against T_aragog (JAX path). '
             'density: CMB=%.1f kg/m^3, surface=%.1f kg/m^3. '
             'T: CMB=%.1f K, surface=%.1f K.',
@@ -2414,7 +2589,7 @@ def zalmoxis_solver(
     hf_row['struct_mass_desync_frac'] = compute_structure_mass_desync(
         radii, density, mass_enclosed
     )
-    log.info(
+    log.debug(
         'Structure mass self-consistency desync: %.2e',
         hf_row['struct_mass_desync_frac'],
     )
@@ -2426,27 +2601,41 @@ def zalmoxis_solver(
     _density_cache['radii'] = np.asarray(radii).copy()
     _density_cache['key'] = _structure_cache_key(config)
 
-    # Final results of the Zalmoxis interior model
-    log.info('Found solution for interior structure with Zalmoxis')
+    # Final results of the Zalmoxis interior model. One summary line at INFO so
+    # a long coupled run stays readable across hundreds of re-solves; the
+    # per-field breakdown drops to debug for when a single solve is inspected.
     log.info(
+        'Zalmoxis interior solved: R=%.3f R_earth, dry M=%.3f M_earth, '
+        'core R_frac=%.4f, converged=%s (P=%s, rho=%s, M=%s)',
+        planet_radius / R_earth,
+        mass_enclosed[-1] / M_earth,
+        cmb_radius / planet_radius,
+        converged,
+        converged_pressure,
+        converged_density,
+        converged_mass,
+    )
+    log.debug(
         f'Interior (dry calculated mass) mass: {mass_enclosed[-1]} kg or approximately {mass_enclosed[-1] / M_earth:.2f} M_earth'
     )
-    log.info(f'Interior radius: {planet_radius:.2e} m or {planet_radius / R_earth:.2f} R_earth')
-    log.info(f'Core radius: {cmb_radius:.2e} or {cmb_radius / R_earth:.2f} R_earth')
-    log.info(f'Core-mantle boundary mass: {mass_enclosed[cmb_index]:.2e} kg')
-    log.info(f'Mantle density at the core-mantle boundary: {density[cmb_index]:.2e} kg/m^3')
-    log.info(f'Core density at the core-mantle boundary: {density[cmb_index - 1]:.2e} kg/m^3')
-    log.info(f'Pressure at the core-mantle boundary: {pressure[cmb_index]:.2e} Pa')
-    log.info(f'Pressure at the center: {pressure[0]:.2e} Pa')
-    log.info(f'Average density: {average_density:.2e} kg/m^3')
-    log.info(
+    log.debug(
+        f'Interior radius: {planet_radius:.2e} m or {planet_radius / R_earth:.2f} R_earth'
+    )
+    log.debug(f'Core radius: {cmb_radius:.2e} or {cmb_radius / R_earth:.2f} R_earth')
+    log.debug(f'Core-mantle boundary mass: {mass_enclosed[cmb_index]:.2e} kg')
+    log.debug(f'Mantle density at the core-mantle boundary: {density[cmb_index]:.2e} kg/m^3')
+    log.debug(f'Core density at the core-mantle boundary: {density[cmb_index - 1]:.2e} kg/m^3')
+    log.debug(f'Pressure at the core-mantle boundary: {pressure[cmb_index]:.2e} Pa')
+    log.debug(f'Pressure at the center: {pressure[0]:.2e} Pa')
+    log.debug(f'Average density: {average_density:.2e} kg/m^3')
+    log.debug(
         f'Core-mantle boundary mass fraction: {mass_enclosed[cmb_index] / mass_enclosed[-1]:.3f}'
     )
-    log.info(f'Core radius fraction: {cmb_radius / planet_radius:.4f}')
-    log.info(
+    log.debug(f'Core radius fraction: {cmb_radius / planet_radius:.4f}')
+    log.debug(
         f'Inner mantle radius fraction: {radii[np.argmax(mass_enclosed >= core_mantle_mass)] / planet_radius:.4f}'
     )
-    log.info(
+    log.debug(
         f'Overall Convergence Status: {converged} with Pressure: {converged_pressure}, Density: {converged_density}, Mass: {converged_mass}'
     )
 
@@ -2622,7 +2811,7 @@ def zalmoxis_solver(
     cfg_heatcap = config.interior_struct.core_heatcap
     hf_row['core_heatcap'] = 450.0 if cfg_heatcap == 'self' else float(cfg_heatcap)
 
-    log.info(f'Saving Zalmoxis output to {output_zalmoxis}')
+    log.debug(f'Saving Zalmoxis output to {output_zalmoxis}')
 
     # Select mantle arrays (to match the mesh needed for Aragog)
     mantle_radii = radii[cmb_index:]

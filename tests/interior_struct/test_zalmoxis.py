@@ -1466,3 +1466,175 @@ def test_publish_ps_tables_empty_staging_is_noop(tmp_path):
 
     assert sorted(p.name for p in dest.iterdir()) == ['existing.dat']
     assert (dest / 'existing.dat').read_text() == 'keep-me'
+
+
+def test_ps_cache_key_distinguishes_mantle_eos_and_resolved_paths():
+    """Two P-S table sets built from different mantle EOS must land on distinct
+    cache keys even when every other table parameter is identical.
+
+    A shared PROTEUS_PS_CACHE_DIR keys its subdirectories on this string, so a
+    key that ignored the EOS identity would serve one run tables built from a
+    different mantle EOS. Three discriminations are checked:
+
+    - Different EOS registry names with the same P_max/nP/nS/mzf/layout produce
+      keys whose non-EOS prefix is byte-identical; only the trailing ``_eos=``
+      token differs. That common prefix is exactly the old key, so the pair
+      would have collided before the EOS identity was folded in.
+    - The same registry name resolving to different table files still produces
+      distinct keys. A fix that folded in only the display name (not the
+      resolved paths) would pass the first check but fail this one.
+    - Identical inputs produce an identical key, so a genuine cache hit is still
+      recognised; a key made unique per call would disable caching entirely.
+    """
+    import re as _re
+
+    from proteus.interior_struct.zalmoxis import _ps_cache_key
+
+    common = dict(P_max=1.4e12, nP=200, nS=200, mzf=0.8, layout='unified')
+
+    key_a = _ps_cache_key(
+        **common,
+        mantle_eos='PALEOS:MgSiO3',
+        eos_file='/data/mgsio3/unified.dat',
+        solid_eos=None,
+        liquid_eos=None,
+    )
+    key_b = _ps_cache_key(
+        **common,
+        mantle_eos='PALEOS:Fe2SiO4',
+        eos_file='/data/fe2sio4/unified.dat',
+        solid_eos=None,
+        liquid_eos=None,
+    )
+
+    # Distinct EOS -> distinct keys, but identical non-EOS prefix (the old key).
+    assert key_a != key_b
+    prefix_a, _, tail_a = key_a.partition('_eos=')
+    prefix_b, _, tail_b = key_b.partition('_eos=')
+    assert prefix_a == prefix_b  # would have collided before the fix
+    assert tail_a and tail_b and tail_a != tail_b
+
+    # Same display name, different resolved file -> still distinct. Guards
+    # against a name-only fix that leaves cross-version reuse open.
+    key_same_name_1 = _ps_cache_key(
+        **common,
+        mantle_eos='PALEOS:MgSiO3',
+        eos_file='/cache/api/v1/mgsio3.dat',
+        solid_eos=None,
+        liquid_eos=None,
+    )
+    key_same_name_2 = _ps_cache_key(
+        **common,
+        mantle_eos='PALEOS:MgSiO3',
+        eos_file='/cache/api/v2/mgsio3.dat',
+        solid_eos=None,
+        liquid_eos=None,
+    )
+    assert key_same_name_1 != key_same_name_2
+
+    # Idempotence: identical inputs -> identical key (cache hits still work).
+    key_a_again = _ps_cache_key(
+        **common,
+        mantle_eos='PALEOS:MgSiO3',
+        eos_file='/data/mgsio3/unified.dat',
+        solid_eos=None,
+        liquid_eos=None,
+    )
+    assert key_a_again == key_a
+
+    # The raw key uses only characters the production dir sanitiser can map to
+    # a filesystem-safe name (it rewrites '.', '=', '+'; everything else must
+    # already be safe). A stray path separator would nest the cache directory.
+    assert _re.fullmatch(r'[A-Za-z0-9._=+-]+', key_a)
+    assert '/' not in key_a
+
+
+def test_ps_cache_key_sanitises_names_and_tolerates_missing_paths():
+    """The key stays filesystem-safe for awkward EOS names and unresolved paths.
+
+    Registry names carry a colon (``PALEOS-2phase:MgSiO3``) and the dummy /
+    unresolved layouts pass ``None`` for every table path. The key must remain a
+    single path segment in both situations, and two different names must still
+    separate even when all resolved paths are ``None``.
+    """
+    from proteus.interior_struct.zalmoxis import _ps_cache_key
+
+    common = dict(P_max=1.4e12, nP=128, nS=128, mzf=1.0, layout='2phase')
+
+    key = _ps_cache_key(
+        **common,
+        mantle_eos='PALEOS-2phase:MgSiO3',
+        eos_file=None,
+        solid_eos=None,
+        liquid_eos=None,
+    )
+    # Colon and any other path-hostile characters are stripped from the label.
+    assert ':' not in key
+    assert '/' not in key
+    assert 'PALEOS-2phase-MgSiO3' in key
+
+    # All-None resolved paths must not crash and must still separate distinct
+    # EOS names (the boundary/dummy layouts hit this path).
+    key_other = _ps_cache_key(
+        **common,
+        mantle_eos='PALEOS-2phase:Fe2SiO4',
+        eos_file=None,
+        solid_eos=None,
+        liquid_eos=None,
+    )
+    assert key != key_other
+
+
+def test_jax_nonviable_fallback_logs_once_per_run(caplog):
+    """The JAX to numpy structure fallback is announced once, not per re-solve.
+
+    A run whose EOS cannot take the Zalmoxis JAX inner path falls back to the
+    numpy ODE integrator on every structure solve. Reporting that on each of the
+    hundreds of re-solves buries the run log, so the provenance line is emitted
+    only on the first non-viable solve and suppressed thereafter. A fresh run
+    (cache cleared) must announce it again so a later run is not left silent.
+    """
+    import logging
+
+    from proteus.interior_struct.zalmoxis import (
+        _clear_superliquidus_cache,
+        _log_jax_nonviable_once,
+    )
+
+    # Start from a clean run state so a leaked flag from another test cannot
+    # make the first call return False and hide a real regression.
+    _clear_superliquidus_cache()
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_struct.zalmoxis'):
+        first = _log_jax_nonviable_once('PALEOS:Fe', 'PALEOS:MgSiO3')
+        second = _log_jax_nonviable_once('PALEOS:Fe', 'PALEOS:MgSiO3')
+        third = _log_jax_nonviable_once('PALEOS:Fe', 'PALEOS:MgSiO3')
+
+    # Only the first call emits; the guard return suppresses the rest.
+    assert first is True
+    assert second is False
+    assert third is False
+
+    fallback_records = [
+        r for r in caplog.records if 'not viable for the configured EOS' in r.message
+    ]
+    assert len(fallback_records) == 1, (
+        f'Expected exactly one fallback line, got {len(fallback_records)}'
+    )
+    # The single line must carry both EOS labels so the run log identifies which
+    # configuration declined the JAX path.
+    assert fallback_records[0].levelno == logging.INFO
+    assert 'PALEOS:Fe' in fallback_records[0].message
+    assert 'PALEOS:MgSiO3' in fallback_records[0].message
+
+    # A new run resets the one-shot flag; otherwise a second simulation in the
+    # same process would never record why it used the numpy path.
+    caplog.clear()
+    _clear_superliquidus_cache()
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_struct.zalmoxis'):
+        after_reset = _log_jax_nonviable_once('PALEOS:Fe', 'PALEOS:MgSiO3')
+    assert after_reset is True
+    assert sum('not viable for the configured EOS' in r.message for r in caplog.records) == 1
+
+    # Leave the module flag clean for any later test in this session.
+    _clear_superliquidus_cache()

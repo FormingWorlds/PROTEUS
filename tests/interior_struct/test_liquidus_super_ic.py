@@ -206,6 +206,109 @@ class TestResolveZalmoxisCMBTemperature:
         assert seen['hf_row'] == {'P_cmb': 6.7e11}
 
 
+class TestExternalTemperatureSourceSkipsResolve:
+    """A structure solve driven by an external temperature source reuses the
+    last solved super-liquidus CMB anchor instead of re-solving it.
+
+    On evolution re-solves the structure follows an evolved Aragog/SPIDER T(r),
+    so the super-liquidus anchor is not the temperature source and its value is
+    discarded. The resolver must skip the scan-and-bisection on those calls,
+    while the internal-dispatch initial-condition path still solves the anchor.
+    """
+
+    @staticmethod
+    def _counting_solve(calls, cmb_T=8765.0):
+        """Stand-in solve that counts invocations and returns a fixed anchor."""
+
+        def fake_solve(config, hf_row):
+            calls['n'] += 1
+            return {
+                'surface_T': 4241.0,
+                'S_target': 10591.0,
+                'cmb_T': cmb_T,
+                'achieved_superheat': 500.0,
+                'binding_P': 1.2e11,
+                'P_cmb': 6.7e11,
+            }
+
+        return fake_solve
+
+    def test_external_source_reuses_last_anchor(self, monkeypatch):
+        """An external-T re-solve returns the last solved anchor without calling
+        the super-liquidus solve, even after P_cmb has drifted since that solve.
+        """
+        import proteus.interior_struct.zalmoxis as zmod
+
+        calls = {'n': 0}
+        monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', self._counting_solve(calls))
+        # Simulate the internal-dispatch IC solve having recorded the anchor.
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+        cfg = _make_minimal_config(tcmb_init=6000.0)
+
+        # P_cmb has drifted from the 6.7e11 the anchor was solved at; the
+        # external path must not re-solve regardless of the drift.
+        T = zmod._resolve_zalmoxis_cmb_temperature(
+            cfg,
+            {'P_cmb': 6.73e11},
+            'liquidus_super',
+            external_temperature_source=True,
+        )
+        assert calls['n'] == 0, 'the super-liquidus solve must be skipped on the external path'
+        assert T == pytest.approx(8765.0)
+        # Discrimination: the reused value is the solved anchor, not the much
+        # cooler tcmb_init fallback (a >2700 K gap here).
+        assert abs(T - 6000.0) > 100.0
+
+    def test_external_source_before_any_solve_falls_back_to_tcmb_init(self, monkeypatch):
+        """Edge case: with no anchor solved yet, an external-T call uses
+        ``tcmb_init`` as the unconsumed anchor and still skips the solve.
+        """
+        import proteus.interior_struct.zalmoxis as zmod
+
+        calls = {'n': 0}
+        monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', self._counting_solve(calls))
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', None)
+        cfg = _make_minimal_config(tcmb_init=6000.0)
+
+        T = zmod._resolve_zalmoxis_cmb_temperature(
+            cfg,
+            {'P_cmb': 6.7e11},
+            'liquidus_super',
+            external_temperature_source=True,
+        )
+        assert calls['n'] == 0, 'the solve must be skipped even with no cached anchor'
+        assert T == pytest.approx(6000.0)
+        # Discrimination: the fallback is tcmb_init, not the 8765 K the solve
+        # would have produced had it run.
+        assert abs(T - 8765.0) > 100.0
+
+    def test_internal_dispatch_solves_despite_cached_anchor(self, monkeypatch):
+        """The skip is gated on the external-source flag, not on a cached
+        anchor: an internal-dispatch call re-solves even when an anchor exists,
+        so the initial condition is never silently short-circuited.
+        """
+        import proteus.interior_struct.zalmoxis as zmod
+
+        calls = {'n': 0}
+        monkeypatch.setattr(
+            zmod, 'solve_superliquidus_adiabat', self._counting_solve(calls, cmb_T=8765.0)
+        )
+        # A stale anchor is present, but the internal path must ignore it.
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 9999.0)
+        cfg = _make_minimal_config(tcmb_init=6000.0)
+
+        T = zmod._resolve_zalmoxis_cmb_temperature(
+            cfg,
+            {'P_cmb': 6.7e11},
+            'liquidus_super',
+            external_temperature_source=False,
+        )
+        assert calls['n'] == 1, 'internal dispatch must re-solve the anchor'
+        assert T == pytest.approx(8765.0)
+        # Discrimination: the freshly solved value, not the stale cached anchor.
+        assert abs(T - 9999.0) > 100.0
+
+
 # ----------------------------------------------------------------------
 # (2b) The super-liquidus solve itself (logic, with a mocked adiabat)
 # ----------------------------------------------------------------------
@@ -504,6 +607,47 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         cp = load_zalmoxis_configuration(config, _make_hf_row(P_cmb=135e9))
         assert cp['temperature_mode'] == 'adiabatic'  # isentropic -> adiabatic
         assert cp['cmb_temperature'] == pytest.approx(4321.0)
+
+    def test_external_source_reuses_anchor_end_to_end(self, monkeypatch):
+        """An external temperature source plumbs through the config builder: the
+        returned cmb_temperature reuses the last solved anchor and the
+        super-liquidus solve is not invoked for this structure build.
+        """
+        import proteus.interior_struct.zalmoxis as zmod
+        from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+
+        config = _make_full_mock_config(
+            temperature_mode='liquidus_super',
+            tcmb_init=6000.0,  # deliberately != the solved anchor
+        )
+        _stub_target_surface_pressure(monkeypatch)
+        calls = {'n': 0}
+
+        def counting_solve(config, hf_row):
+            calls['n'] += 1
+            return {
+                'surface_T': 4241.0,
+                'S_target': 10591.0,
+                'cmb_T': 8765.0,
+                'achieved_superheat': 500.0,
+                'binding_P': 1.2e11,
+                'P_cmb': 6.7e11,
+            }
+
+        monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', counting_solve)
+        # The internal-dispatch IC solve has already recorded the anchor.
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+
+        cp = load_zalmoxis_configuration(
+            config,
+            _make_hf_row(P_cmb=135e9),
+            external_temperature_source=True,
+        )
+        assert calls['n'] == 0, 'external source must not trigger the super-liquidus solve'
+        assert cp['temperature_mode'] == 'adiabatic_from_cmb'
+        # The reused anchor, not tcmb_init.
+        assert cp['cmb_temperature'] == pytest.approx(8765.0)
+        assert cp['cmb_temperature'] != pytest.approx(6000.0)
 
 
 # ----------------------------------------------------------------------
