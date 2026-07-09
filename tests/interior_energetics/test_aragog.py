@@ -448,6 +448,85 @@ def test_effective_temperature_and_entropy_step_caps_auto_enable_for_zalmoxis():
     assert _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP > 0.0
 
 
+@pytest.mark.unit
+def test_negative_step_cap_disables_even_on_zalmoxis():
+    """A negative step cap is an explicit off switch that beats the auto-enable.
+
+    The zalmoxis auto-enable promotes the 0.0 schema default so a user who never
+    touches the field is protected. A user who deliberately sets a negative value
+    is opting out, and the resolver must honour that by returning 0.0 (no cap)
+    even on zalmoxis, where the plain 0.0 default would instead be promoted. The
+    negative sentinel must never reach Aragog as a literal negative cap, so every
+    branch resolves to exactly 0.0. Discrimination guards contrast the disabled
+    result against the auto-enabled default and against a positive override so a
+    regression that lets the negative promote, leak through, or clamp to the
+    default is caught.
+    """
+    from proteus.interior_energetics.aragog import (
+        _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP,
+        _ZALMOXIS_DEFAULT_PHI_STEP_CAP,
+        _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP,
+        _effective_entropy_step_cap,
+        _effective_phi_step_cap,
+        _effective_temperature_step_cap,
+    )
+
+    def cfg(module, phi, t_cap, s_cap):
+        c = MagicMock()
+        c.interior_struct.module = module
+        c.interior_energetics.aragog.phi_step_cap = phi
+        c.interior_energetics.aragog.temperature_step_cap = t_cap
+        c.interior_energetics.aragog.entropy_step_cap = s_cap
+        return c
+
+    # negative on zalmoxis -> disabled (0.0), overriding the auto-enable
+    off = cfg('zalmoxis', -1.0, -1.0, -1.0)
+    assert _effective_phi_step_cap(off) == 0.0
+    assert _effective_temperature_step_cap(off) == 0.0
+    assert _effective_entropy_step_cap(off) == 0.0
+    # negative on a non-zalmoxis interior is also disabled, never negative
+    off_spider = cfg('spider', -0.5, -10.0, -10.0)
+    assert _effective_phi_step_cap(off_spider) == 0.0
+    assert _effective_temperature_step_cap(off_spider) == 0.0
+    assert _effective_entropy_step_cap(off_spider) == 0.0
+    # discrimination: the disabled result differs from the value the same 0.0
+    # default would have promoted to, so the off switch is not a silent no-op
+    assert _ZALMOXIS_DEFAULT_PHI_STEP_CAP > 0.0
+    assert _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP > 0.0
+    assert _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP > 0.0
+    # a positive override still wins, confirming only the sign controls the switch
+    on = cfg('zalmoxis', 0.05, 250.0, 75.0)
+    assert _effective_phi_step_cap(on) == pytest.approx(0.05)
+    assert _effective_temperature_step_cap(on) == pytest.approx(250.0)
+    assert _effective_entropy_step_cap(on) == pytest.approx(75.0)
+
+
+@pytest.mark.unit
+def test_aragog_schema_accepts_negative_step_caps_but_not_negative_margin():
+    """The step-cap off switch requires the schema to admit negative values.
+
+    The resolver reads the negative sentinel, so the schema must stop rejecting
+    it: a negative step cap has to construct and round-trip unchanged. The
+    relaxation is scoped to the three step caps; phase_boundary_entropy_margin
+    is a proximity band with no meaningful disabled state, so its positive-only
+    guard must stay in force. The paired assertions pin both sides so a
+    regression that re-tightens the caps or loosens the margin is caught.
+    """
+    from proteus.config._interior import Aragog
+
+    caps = Aragog(phi_step_cap=-1.0, temperature_step_cap=-2.0, entropy_step_cap=-3.0)
+    assert caps.phi_step_cap == pytest.approx(-1.0)
+    assert caps.temperature_step_cap == pytest.approx(-2.0)
+    assert caps.entropy_step_cap == pytest.approx(-3.0)
+    # zero remains valid (the auto-enable default), so the caps span >= and < 0
+    assert Aragog(phi_step_cap=0.0).phi_step_cap == 0.0
+    # the proximity band keeps its positive-only contract
+    with pytest.raises(ValueError):
+        Aragog(phase_boundary_entropy_margin=-1.0)
+    with pytest.raises(ValueError):
+        Aragog(phase_boundary_entropy_margin=0.0)
+
+
 # ---------------------------------------------------------------------------
 # Phase-boundary entropy margin: wrapper threading and version-skew guard.
 #

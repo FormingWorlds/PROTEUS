@@ -539,6 +539,14 @@ def get_file_tides(outdir: str):
     return os.path.join(outdir, 'data', 'tides_recent.dat')
 
 
+# Path to location at which to persist the stale-structure flag. The flag is a
+# per-run interior-state bit that must survive a resume: a run that fell back to
+# the previous structure on a Zalmoxis non-convergence, then crashed, must come
+# back knowing its on-disk mesh is stale rather than assuming it is fresh.
+def get_file_structure_stale(outdir: str):
+    return os.path.join(outdir, 'data', 'structure_stale.dat')
+
+
 # Structure for holding interior variables at the current time-step
 class Interior_t:
     def __init__(self, nlev_b: int, spider_dir=None, eos_dir=None):
@@ -557,6 +565,16 @@ class Interior_t:
         self.zalmoxis_fail_count = 0
         self.spider_fail_count = 0
         self.aragog_fail_count = 0
+
+        # True when the interior is running on a fallback (previous-step)
+        # structure because the last Zalmoxis re-solve did not converge; set on
+        # that fall-back and cleared on the next successful re-solve. Downstream
+        # consumers (Aragog's stale-mesh visibility counter, the baseline-commit
+        # guard) read it here rather than from hf_row so it stays out of the
+        # floats-only helpfile schema. Persisted to disk (write_structure_stale)
+        # and restored on resume (resume_structure_stale) so a crash right after
+        # a fall-back does not resume believing the on-disk mesh is fresh.
+        self.structure_stale = False
 
         # Cumulative SPIDER time [yr]. Used by the CVode failure
         # fallback path (wrapper.py) to keep bookkeeping consistent
@@ -596,7 +614,7 @@ class Interior_t:
         self.aragog_solver = None
 
         # Counter for consecutive Aragog steps integrated on a stale
-        # Zalmoxis structure (i.e. with hf_row['_structure_stale']=True
+        # Zalmoxis structure (i.e. with self.structure_stale=True
         # set by a Zalmoxis fall-back). Resets to 0 on every successful
         # structure refresh. Used by setup_or_update_solver to log how
         # long Aragog has been running on a frozen mesh, surfacing the
@@ -739,6 +757,29 @@ class Interior_t:
             # for each level...
             for i in range(self.nlev_s):
                 hdl.write('%.7e %.7e \n' % (self.phi[i], self.tides[i]))
+
+    def write_structure_stale(self, outdir: str):
+        # Persist the stale-structure flag so a resumed run recovers it. Written
+        # whenever the flag changes (the Zalmoxis success and fall-back paths in
+        # wrapper.py), so the on-disk value tracks the in-memory one.
+        with open(get_file_structure_stale(outdir), 'w') as hdl:
+            hdl.write('%d\n' % (1 if self.structure_stale else 0))
+
+    def resume_structure_stale(self, outdir: str):
+        # Restore the stale-structure flag from disk on resume. A missing file
+        # means no fall-back was recorded, so the mesh
+        # is fresh and the flag stays False. A malformed file is treated the
+        # same way rather than aborting the resume over a visibility bit.
+        path = get_file_structure_stale(outdir)
+        if not os.path.exists(path):
+            self.structure_stale = False
+            return
+        try:
+            with open(path) as hdl:
+                self.structure_stale = bool(int(hdl.read().strip()))
+        except (ValueError, OSError):
+            log.warning('Could not parse stale-structure flag file; assuming fresh')
+            self.structure_stale = False
 
     def update_rheology(self, visc: bool = False):
         # Update shear and bulk moduli arrays based on the melt fraction at each layer.

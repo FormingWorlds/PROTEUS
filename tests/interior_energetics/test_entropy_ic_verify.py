@@ -581,13 +581,12 @@ def test_aragog_verify_runs_and_overrides_on_warn(tmp_path):
 @pytest.mark.unit
 def test_aragog_verify_logs_on_large_mismatch_but_does_not_raise(tmp_path, caplog):
     """
-    10 % discrepancy is logged (as a WARN about table boundary drift)
-    but does NOT raise. The Aragog full-profile cross-check was found
-    to fire on every production run at M>=2.0 Earth masses because the
-    PALEOS P-T and regenerated P-S tables drift by up to ~10% at high
-    P (memory pitfall 50). The cross-check is therefore advisory only;
-    the scalar surface check in _set_entropy_ic is the authoritative
-    IC sanity check.
+    A 10 % discrepancy is logged as a debug note about table boundary
+    drift but does NOT raise. The Aragog full-profile cross-check fires
+    on production runs at M>=2.0 Earth masses because the PALEOS P-T and
+    regenerated P-S tables drift by up to ~10% at high pressure, so it is
+    advisory only; the scalar surface check in _set_entropy_ic is the
+    authoritative IC sanity check.
     """
     import logging
 
@@ -611,7 +610,7 @@ def test_aragog_verify_logs_on_large_mismatch_but_does_not_raise(tmp_path, caplo
         'S_target': 7081.0,
     }
 
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.aragog'):
+    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.aragog'):
         with (
             patch(
                 'zalmoxis.eos_export.compute_entropy_adiabat',
@@ -631,7 +630,7 @@ def test_aragog_verify_logs_on_large_mismatch_but_does_not_raise(tmp_path, caplo
             ),
             patch('os.path.isfile', return_value=True),
         ):
-            # Must not raise. Must log the mismatch at WARNING level.
+            # Must not raise. Must log the mismatch at debug level.
             AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
 
     joined = '\n'.join(r.message for r in caplog.records)

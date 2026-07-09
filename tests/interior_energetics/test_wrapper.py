@@ -110,6 +110,10 @@ def _mock_interior_o(n_stag=49):
     interior_o.zalmoxis_fail_count = 0
     interior_o.spider_fail_count = 0
     interior_o.aragog_fail_count = 0
+    # structure_stale is an instance attribute set in Interior_t.__init__, so
+    # spec=Interior_t does not expose it; seed the fresh-run state explicitly
+    # so read-before-set paths (a rejected up-step) return a real bool.
+    interior_o.structure_stale = False
     return interior_o
 
 
@@ -1393,23 +1397,25 @@ def test_solve_structure_invalid_module():
 
 @pytest.mark.unit
 def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
-    """Successful zalmoxis_solver call clears hf_row['_structure_stale'].
+    """Successful zalmoxis_solver call clears interior_o.structure_stale.
 
-    Contract: ``hf_row['_structure_stale']`` is the signal that downstream
+    Contract: ``interior_o.structure_stale`` is the signal that downstream
     consumers (notably Aragog) use to distinguish a fresh structure from
     a stale one carried over from a prior fall-back. A successful
-    re-solve must set the key to False so consumers can rely on it.
+    re-solve must set the flag to False and persist it so consumers,
+    including a resumed run, can rely on it.
 
     Edge cases covered:
     - Flag was True at entry (simulating prior fall-back) -> must be False after.
-    - Flag was missing at entry (legacy hf_row) -> must be False after (set,
-      not just not-True), so downstream consumers can rely on the key.
+    - Flag was False at entry (fresh run) -> stays False, and the success path
+      still persists it so the on-disk value tracks memory.
     """
     config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
     dirs = _mock_dirs()
     interior_o = _mock_interior_o()
 
     # Case A: flag was True at entry (post-fall-back state)
+    interior_o.structure_stale = True
     hf_row_A = {
         'Time': 1100.0,
         'T_magma': 3000.0,
@@ -1417,7 +1423,6 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
         'R_int': 6.371e6,
         'gravity': 9.81,
         'M_int': 5.972e24,
-        '_structure_stale': True,
     }
     with (
         patch(
@@ -1432,14 +1437,17 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
         ),
     ):
         update_structure_from_interior(dirs, config, hf_row_A, interior_o, 0.0, 3000.0, 0.8)
-    # Flag must be present and False after a successful call.
-    assert '_structure_stale' in hf_row_A, 'flag must be set, not absent'
-    assert hf_row_A['_structure_stale'] is False, (
-        'flag must be cleared (False) on Zalmoxis success, was %r'
-        % hf_row_A['_structure_stale']
+    # Flag must be False after a successful call, and the flag must never
+    # leak into the floats-only helpfile row.
+    assert interior_o.structure_stale is False, (
+        'flag must be cleared (False) on Zalmoxis success, was %r' % interior_o.structure_stale
     )
+    assert '_structure_stale' not in hf_row_A, 'flag must not be written to hf_row'
+    interior_o.write_structure_stale.assert_called_with(dirs['output'])
 
-    # Case B: flag was missing at entry (legacy hf_row never touched by fall-back)
+    # Case B: flag was False at entry (fresh run) -> success still persists it.
+    interior_o.structure_stale = False
+    interior_o.write_structure_stale.reset_mock()
     hf_row_B = {
         'Time': 1100.0,
         'T_magma': 3000.0,
@@ -1447,7 +1455,6 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
         'R_int': 6.371e6,
         'gravity': 9.81,
         'M_int': 5.972e24,
-        # No '_structure_stale' key at entry
     }
     with (
         patch(
@@ -1462,18 +1469,20 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
         ),
     ):
         update_structure_from_interior(dirs, config, hf_row_B, interior_o, 0.0, 3000.0, 0.8)
-    assert hf_row_B.get('_structure_stale') is False, (
-        'success path must set flag to False even if it was absent on entry'
+    assert interior_o.structure_stale is False, (
+        'success path must keep the flag False on a fresh run'
     )
+    interior_o.write_structure_stale.assert_called_with(dirs['output'])
 
 
 @pytest.mark.unit
 def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
-    """Zalmoxis RuntimeError sets hf_row['_structure_stale'] = True.
+    """Zalmoxis RuntimeError sets interior_o.structure_stale = True.
 
     Documents the canonical fall-back contract. Anti-happy-path: also
     checks that the failure does NOT clear the flag if it was already
-    True (i.e. consecutive failures keep it set).
+    True (i.e. consecutive failures keep it set) and that the flag is
+    persisted on every fall-back.
     """
 
     config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
@@ -1487,14 +1496,15 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
         'R_int': 6.371e6,
         'gravity': 9.81,
         'M_int': 5.972e24,
-        # Flag absent at entry
     }
     with patch(
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         side_effect=RuntimeError('mock convergence failure'),
     ):
         update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
-    assert hf_row.get('_structure_stale') is True, 'fall-back path must set flag to True'
+    assert interior_o.structure_stale is True, 'fall-back path must set flag to True'
+    assert '_structure_stale' not in hf_row, 'flag must not be written to hf_row'
+    interior_o.write_structure_stale.assert_called_with(dirs['output'])
 
     # Second consecutive failure: flag stays True (not toggled or cleared).
     with patch(
@@ -1502,7 +1512,7 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
         side_effect=RuntimeError('mock convergence failure 2'),
     ):
         update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
-    assert hf_row.get('_structure_stale') is True
+    assert interior_o.structure_stale is True
 
     # Reset for any downstream tests.
     interior_o.zalmoxis_fail_count = 0
@@ -1575,8 +1585,8 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
         update_structure_from_interior(
             dirs_over, config, hf_row_over, interior_o, 0.0, 3000.0, 0.8
         )
-    assert hf_row_over.get('_structure_stale') is True, (
-        'mass-anchor violation must trigger fall-back (-> _structure_stale=True)'
+    assert interior_o.structure_stale is True, (
+        'mass-anchor violation must trigger fall-back (-> structure_stale=True)'
     )
     assert interior_o.zalmoxis_fail_count == 1, (
         'mass-anchor violation must increment _zalmoxis_fail_count (got %d)'
@@ -1604,9 +1614,9 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
         update_structure_from_interior(
             dirs_under, config, hf_row_under, interior_o, 0.0, 3000.0, 0.8
         )
-    assert hf_row_under.get('_structure_stale') is False, (
+    assert interior_o.structure_stale is False, (
         'sub-tolerance drift must NOT trigger fall-back '
-        '(_structure_stale=%r)' % hf_row_under.get('_structure_stale')
+        '(structure_stale=%r)' % interior_o.structure_stale
     )
     assert interior_o.zalmoxis_fail_count == 0
 
@@ -1639,7 +1649,7 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
         )
     # Must not raise, must not fall-back (graceful degrade for legacy
     # callers that haven't been updated to write M_int_target).
-    assert hf_row_no_target.get('_structure_stale') is False
+    assert interior_o.structure_stale is False
     assert interior_o.zalmoxis_fail_count == 0
 
     interior_o.zalmoxis_fail_count = 0  # cleanup
@@ -1756,6 +1766,10 @@ def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
     config = _mock_config(update_interval=5e4, update_min_interval=0.0)
     config.interior_struct.zalmoxis.update_stale_ceiling = 2.5e4
     dirs = _mock_dirs()
+    # Real Interior_t persists the stale flag under output/data; point at
+    # tmp_path so the sidecar write lands in the auto-cleaned test dir.
+    dirs['output'] = str(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
 
     # Real Interior_t so last_successful_struct_time attribute lookup works
     interior_o = Interior_t(50)
@@ -1851,6 +1865,10 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
     config = _mock_config(update_interval=1e3, update_min_interval=0.0)
     config.interior_struct.zalmoxis.update_stale_ceiling = 0.0  # disable stale-aware ceiling
     dirs = _mock_dirs()
+    # Real Interior_t persists the stale flag under output/data; point at
+    # tmp_path so the sidecar write lands in the auto-cleaned test dir.
+    dirs['output'] = str(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
 
     interior_o = Interior_t(50)
     interior_o.last_successful_struct_time = 5e4
@@ -4226,7 +4244,7 @@ def test_composition_change_trigger_does_not_fire_below_threshold():
 def test_fallback_restores_saved_structure_on_zalmoxis_failure():
     """When zalmoxis_solver raises RuntimeError, the fallback block
     must restore hf_row from _saved_structure and set
-    _structure_stale=True.
+    interior_o.structure_stale=True.
 
     Discrimination: after restore, hf_row must hold the pre-call
     values, not any values written by a partial Zalmoxis run.
@@ -4242,20 +4260,25 @@ def test_fallback_restores_saved_structure_on_zalmoxis_failure():
         'P_center': 3.6e11,
         'rho_avg': 5500.0,
     }
+    from types import SimpleNamespace
+
     hf_row = dict(saved)
     # Simulate Zalmoxis partially writing new values before crashing
     hf_row['R_int'] = 7.0e6  # partially updated
     hf_row['M_int'] = 6e24
 
-    # The restore logic from wrapper.py L1887-1889
+    # The restore logic from the wrapper fall-back block: structure keys are
+    # rolled back on hf_row while the stale flag is raised on interior_o.
+    interior_o = SimpleNamespace(structure_stale=False)
     _saved_structure = dict(saved)
     hf_row.update(_saved_structure)
-    hf_row['_structure_stale'] = True
+    interior_o.structure_stale = True
 
     # Verify restore
     assert hf_row['R_int'] == pytest.approx(6.371e6, rel=1e-12)
     assert hf_row['M_int'] == pytest.approx(5e24, rel=1e-12)
-    assert hf_row['_structure_stale'] is True
+    assert interior_o.structure_stale is True
+    assert '_structure_stale' not in hf_row, 'flag must not live on hf_row'
     # Discrimination: the partially-updated values are gone
     assert hf_row['R_int'] != pytest.approx(7.0e6)
     assert hf_row['M_int'] != pytest.approx(6e24)
@@ -4887,12 +4910,12 @@ def test_monotonic_guard_rejects_up_step_on_first_solve_infinite_reference(caplo
 @pytest.mark.unit
 @pytest.mark.parametrize('entry_stale', [False, True])
 def test_monotonic_guard_reject_preserves_structure_stale_flag(entry_stale, caplog):
-    """The reject path leaves _structure_stale paired with the retained structure.
+    """The reject path leaves structure_stale paired with the retained structure.
 
     A rejected representation-artifact up-step retains the entry structure
-    (_saved_structure), so it must leave _structure_stale exactly as it found it:
-    it is neither a convergence failure (which would raise the flag) nor a
-    committed re-solve (which would clear it). Consumers read _structure_stale to
+    (_saved_structure), so it must leave interior_o.structure_stale exactly as it
+    found it: it is neither a convergence failure (which would raise the flag) nor
+    a committed re-solve (which would clear it). Consumers read structure_stale to
     decide whether Aragog is integrating on a fresh or a stale mesh, so the flag
     must keep describing the structure actually in hf_row.
 
@@ -4907,9 +4930,9 @@ def test_monotonic_guard_reject_preserves_structure_stale_flag(entry_stale, capl
     hf_row['M_mantle'] = 3.0e24
     hf_row['H2O_kg_liquid'] = 5.0e21
     hf_row['H2_kg_liquid'] = 1.0e20
-    hf_row['_structure_stale'] = entry_stale
     dirs = _mock_dirs()
     interior_o = _mock_interior_o()
+    interior_o.structure_stale = entry_stale
     r_prev = hf_row['R_int']
 
     def _up_step(*args, **kwargs):
@@ -4935,7 +4958,8 @@ def test_monotonic_guard_reject_preserves_structure_stale_flag(entry_stale, capl
     assert hf_row['R_int'] < r_prev * (1.0 + 1.0e-3)
     # The stale flag is preserved exactly, neither cleared (as on a committed
     # re-solve) nor raised (as on a convergence fall-back).
-    assert hf_row['_structure_stale'] is entry_stale
+    assert interior_o.structure_stale is entry_stale
+    assert '_structure_stale' not in hf_row, 'flag must not live on hf_row'
 
 
 # ============================================================================

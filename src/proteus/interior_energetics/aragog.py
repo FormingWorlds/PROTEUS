@@ -157,13 +157,17 @@ _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP = 100.0
 def _effective_phi_step_cap(config: Config) -> float:
     """Resolve the melt-fraction step cap passed to Aragog.
 
-    Returns the configured ``interior_energetics.aragog.phi_step_cap`` when it
-    is positive. Otherwise, for the coupled zalmoxis interior stack, promotes
-    the disabled schema default (0.0) to :data:`_ZALMOXIS_DEFAULT_PHI_STEP_CAP`
-    so the crystallisation-onset core-temperature discontinuity is guarded by
-    default. Non-zalmoxis interiors keep the configured value unchanged.
+    A positive configured ``interior_energetics.aragog.phi_step_cap`` is used
+    verbatim on any interior. A negative value is an explicit off switch: it
+    resolves to 0.0 (no cap) even on the coupled zalmoxis stack, letting a user
+    override the auto-enabled default. The schema default 0.0 is promoted to
+    :data:`_ZALMOXIS_DEFAULT_PHI_STEP_CAP` for the zalmoxis interior stack so the
+    crystallisation-onset core-temperature discontinuity is guarded by default;
+    on non-zalmoxis interiors 0.0 stays 0.0 (no cap).
     """
     cap = float(config.interior_energetics.aragog.phi_step_cap)
+    if cap < 0.0:
+        return 0.0
     if cap <= 0.0 and config.interior_struct.module == 'zalmoxis':
         return _ZALMOXIS_DEFAULT_PHI_STEP_CAP
     return cap
@@ -174,12 +178,16 @@ def _effective_temperature_step_cap(config: Config) -> float:
 
     The melt-fraction cap cannot bound the core-temperature drop once a cell
     is fully solid (its melt fraction can no longer move), so for the coupled
-    zalmoxis interior stack the disabled schema default (0.0) is promoted to
+    zalmoxis interior stack the schema default (0.0) is promoted to
     :data:`_ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP`, which bounds the per-cell
     temperature change on the solid adiabat below the solidus. A configured
-    positive value overrides; non-zalmoxis interiors keep the configured value.
+    positive value is used verbatim on any interior; a negative value is an
+    explicit off switch that resolves to 0.0 (no cap) even on zalmoxis, so a
+    user can disable the auto-enabled default.
     """
     cap = float(config.interior_energetics.aragog.temperature_step_cap)
+    if cap < 0.0:
+        return 0.0
     if cap <= 0.0 and config.interior_struct.module == 'zalmoxis':
         return _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP
     return cap
@@ -188,13 +196,16 @@ def _effective_temperature_step_cap(config: Config) -> float:
 def _effective_entropy_step_cap(config: Config) -> float:
     """Resolve the per-cell entropy step cap [J/kg/K] passed to Aragog.
 
-    Auto-enabled for the coupled zalmoxis interior stack (disabled schema
-    default 0.0 promoted to :data:`_ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP`),
-    bounding the per-cell entropy change in the native solver variable. A
-    configured positive value overrides; non-zalmoxis interiors keep the
-    configured value.
+    Auto-enabled for the coupled zalmoxis interior stack (schema default 0.0
+    promoted to :data:`_ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP`), bounding the
+    per-cell entropy change in the native solver variable. A configured positive
+    value is used verbatim on any interior; a negative value is an explicit off
+    switch that resolves to 0.0 (no cap) even on zalmoxis, so a user can disable
+    the auto-enabled default.
     """
     cap = float(config.interior_energetics.aragog.entropy_step_cap)
+    if cap < 0.0:
+        return 0.0
     if cap <= 0.0 and config.interior_struct.module == 'zalmoxis':
         return _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP
     return cap
@@ -485,13 +496,13 @@ class AragogRunner:
                 )
         else:
             # Track how long Aragog has been integrating on a stale
-            # Zalmoxis structure. The _structure_stale flag is set by the
-            # wrapper's fall-back path on Zalmoxis non-convergence and
+            # Zalmoxis structure. The interior_o.structure_stale flag is set
+            # by the wrapper's fall-back path on Zalmoxis non-convergence and
             # cleared on the next successful Zalmoxis call. Surfacing this
             # counter at INFO makes the silent-stale-mesh window visible in
             # proteus_00.log; the hard-fail policy lives in the
             # wrapper's _ZALMOXIS_MAX_CONSECUTIVE_FAILS budget.
-            if hf_row.get('_structure_stale', False):
+            if interior_o.structure_stale:
                 interior_o._stale_struct_steps += 1
                 log.info(
                     'Aragog re-running on stale Zalmoxis structure '
@@ -657,12 +668,21 @@ class AragogRunner:
         phi_step_cap = _effective_phi_step_cap(config)
         temperature_step_cap = _effective_temperature_step_cap(config)
         entropy_step_cap = _effective_entropy_step_cap(config)
-        if (
-            phi_step_cap != ar.phi_step_cap
-            or temperature_step_cap != ar.temperature_step_cap
-            or entropy_step_cap != ar.entropy_step_cap
-        ):
-            log.info(
+        # Only a genuine promotion (schema default 0.0 lifted to a positive
+        # zalmoxis default) is an auto-enable. An explicit negative off switch
+        # resolves to 0.0 and differs from the configured value too, so the
+        # notice requires a positive effective cap to avoid mislabelling a
+        # deliberate disable as an auto-enable.
+        _promoted = (
+            (phi_step_cap > 0.0 and phi_step_cap != ar.phi_step_cap)
+            or (temperature_step_cap > 0.0 and temperature_step_cap != ar.temperature_step_cap)
+            or (entropy_step_cap > 0.0 and entropy_step_cap != ar.entropy_step_cap)
+        )
+        if _promoted:
+            # Fires every solve and is fully determined by the config, so it is
+            # provenance rather than per-step signal; keep it at debug so the
+            # per-solve INFO summary stays uncluttered.
+            log.debug(
                 'Auto-enabling step caps for the zalmoxis interior stack: '
                 'phi=%.3g, T=%.3g K, S=%.3g J/kg/K',
                 phi_step_cap,
@@ -1683,7 +1703,7 @@ class AragogRunner:
                         'adiabatic (surface-anchored) initial condition for '
                         'this planet mass.'
                     )
-                log.warning(
+                log.debug(
                     'Entropy IC full-profile cross-check > %.1f%% '
                     '(max %.1f K / %.2f%% at depth). Diagnostic only; benign '
                     'PALEOS P-T vs regenerated P-S table drift (P_cmb=%.0f GPa, '
@@ -2248,7 +2268,7 @@ class AragogRunner:
             'Cp_eff': out.Cp_eff,
             'F_radio': F_radio,
             'F_tidal': F_tidal,
-            # Energy-conservation diagnostic columns (Aragog A1+A2).
+            # Energy-conservation diagnostic columns.
             # E_state is the EOS-consistent integrated mantle enthalpy
             # from the precomputed h(P,S) table; F_cmb is the CMB heat
             # flux signed positive-out-of-core; Q_*_W are mantle-mass-
@@ -2260,23 +2280,23 @@ class AragogRunner:
             'F_cmb': out.F_cmb,
             'Q_radio_W': out.Q_radio_total,
             'Q_tidal_W': out.Q_tidal_total,
-            # Per-call energy contributions [J] integrated over the
-            # CVODE sub-step trajectory. Replaces helpfile-side
-            # trapezoidal interpolation of end-of-step F_cmb snapshots
-            # (which were prone to phase-boundary spikes at single
-            # sub-step boundaries). The cumulative ``dE_predicted_cons_J``
-            # is now sum_n step_dE_*_J across all rows in the helpfile.
-            # The state-mass ``step_dE_Q_*_J`` are kept as instrumentation
-            # diagnostics; the residual itself uses ``step_dE_Q_*_cons_J``.
+            # Per-call energy contributions [J] integrated over the CVODE
+            # sub-step trajectory (rather than from end-of-step F_cmb
+            # snapshots, which spike at phase boundaries). The cumulative
+            # ``dE_predicted_cons_J`` in the coupler sums the boundary fluxes
+            # and the live-density (state-mass) ``step_dE_Q_radio_J`` and
+            # ``step_dE_Q_tidal_J`` below, so the predicted side shares the
+            # ``rho(P,S)`` frame the entropy-transported state side integrates.
             'step_dE_F_int_J': out.step_dE_F_int_J,
             'step_dE_F_cmb_J': out.step_dE_F_cmb_J,
             'step_dE_Q_radio_J': out.step_dE_Q_radio_J,
             'step_dE_Q_tidal_J': out.step_dE_Q_tidal_J,
-            # Conservation-grade variants: same per-call integrals but
-            # with frozen-mass weighting on the volumetric source
-            # terms (Q_radio, Q_tidal). Together with E_state_cons_J
-            # they give a Lagrangian-frame budget that closes against
-            # the entropy ODE to numerical precision.
+            # Frozen-mass variants of the per-call source integrals, retained
+            # as a Lagrangian-frame comparison diagnostic. They are NOT summed
+            # into the conservation residual (which uses the live-density
+            # variants above); ``E_state_cons_J`` is likewise an enthalpy
+            # diagnostic, not the conservation-grade quantity. Machine-precision
+            # conservation is carried by the solver-residual column below.
             'step_dE_Q_radio_cons_J': out.step_dE_Q_radio_cons_J,
             'step_dE_Q_tidal_cons_J': out.step_dE_Q_tidal_cons_J,
             # Per-call entropy-equation self-consistency residual [J].

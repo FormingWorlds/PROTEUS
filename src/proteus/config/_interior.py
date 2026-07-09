@@ -186,36 +186,41 @@ class Aragog:
     Aragog's per-node gravity path interpolates to that scalar everywhere.
     False by default; set True only when running a paired scalar-gravity
     comparison."""
-    phi_step_cap: float = field(default=0.0, validator=ge(0.0))
+    phi_step_cap: float = field(default=0.0)
     """Per-call melt-fraction step cap. When > 0 and any staggered cell is in
     or near the two-phase window at solve() entry, a CVODE root function (and
     the equivalent scipy event) returns control at the exact time the larger
     of the global mass-weighted |ΔΦ| and the maximum single-cell |Δφ| reaches
     this cap. The per-cell term bounds how far one deep cell may cross the
     mushy window in a single call, which removes the discontinuous
-    core-temperature drop at crystallisation onset. Schema default 0.0; the
-    Aragog wrapper auto-enables a non-zero default for the coupled zalmoxis
-    interior stack, and an explicit value here overrides that."""
+    core-temperature drop at crystallisation onset. Schema default 0.0, which
+    the Aragog wrapper promotes to a non-zero default for the coupled zalmoxis
+    interior stack; a positive value here overrides that. A negative value is an
+    explicit off switch that keeps the cap disabled even on zalmoxis."""
 
-    temperature_step_cap: float = field(default=0.0, validator=ge(0.0))
+    temperature_step_cap: float = field(default=0.0)
     """Per-call per-cell temperature step cap [K]. Shares the same root
     function as phi_step_cap and fires on the maximum single-cell |ΔT| since
     solve() entry. It bounds the core-temperature drop on the solid adiabat
     just below the solidus, where the melt-fraction cap goes blind because a
-    fully solid cell's melt fraction can no longer move. Schema default 0.0;
-    the Aragog wrapper auto-enables a non-zero default for the coupled
-    zalmoxis stack, and an explicit value overrides that."""
+    fully solid cell's melt fraction can no longer move. Schema default 0.0,
+    which the Aragog wrapper promotes to a non-zero default for the coupled
+    zalmoxis stack; a positive value overrides that. A negative value is an
+    explicit off switch that keeps the cap disabled even on zalmoxis."""
 
-    entropy_step_cap: float = field(default=0.0, validator=ge(0.0))
+    entropy_step_cap: float = field(default=0.0)
     """Per-call per-cell entropy step cap [J/kg/K], in the native solver
     variable; same role as temperature_step_cap without an EOS lookup in the
-    root function. Default 0.0 (disabled)."""
+    root function. Schema default 0.0, which the Aragog wrapper promotes to a
+    non-zero default for the coupled zalmoxis stack; a positive value overrides
+    that. A negative value is an explicit off switch that keeps the cap disabled
+    even on zalmoxis."""
 
     phase_boundary_entropy_margin: float = field(default=200.0, validator=gt(0))
     """Phase-boundary proximity band [J/kg/K] within which a staggered cell
     counts as near a solidus or liquidus crossing, tightening the integrator
     max_step so CVODE resolves the stiff two-phase RHS across the boundary.
-    This is a solver-accuracy control, not a cosmetic step-size knob: at the
+    This is a solver-accuracy control, not a cosmetic step-size setting: at the
     default it reproduces the fixed band and the converged trajectory is
     unchanged, but lowering it below the default can under-resolve a real
     phase crossing and shift the converged state, because CVODE's local error

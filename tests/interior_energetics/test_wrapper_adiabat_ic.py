@@ -1179,7 +1179,8 @@ def test_monotonic_radius_guard_rejects_representation_up_step(tmp_path):
     assert interior_o.zalmoxis_fail_count == 0
     # The retained structure is consistent, so the stale flag is not raised
     # (which would otherwise force Aragog onto a frozen-mesh recovery path).
-    assert hf_row.get('_structure_stale') in (None, False)
+    assert interior_o.structure_stale is False
+    assert '_structure_stale' not in hf_row, 'flag must not live on hf_row'
     # Consistency: gravity is reverted in lockstep with R_int, not left at the
     # rejected up-step value. After the no-op gravity must match G*M/R_int**2 for
     # the restored R_int (the bug: gravity left ~2e-4 high from the up-step).

@@ -770,7 +770,10 @@ def _make_baseline_proteus(tmp_path, *, module='zalmoxis', init_stage=False, don
     p.init_stage = init_stage
     p._baseline_structure_done = done
     p.interior_o = MagicMock()
-    p.hf_row = {'_structure_stale': False}
+    # The baseline retry check reads interior_o.structure_stale; seed the fresh-run
+    # value so a bare MagicMock attribute does not read truthy and skip the solve.
+    p.interior_o.structure_stale = False
+    p.hf_row = {}
     p.last_struct_time = 0.0
     p.last_struct_Tmagma = float('inf')
     p.last_struct_Phi = float('inf')
@@ -835,17 +838,18 @@ def test_structure_baseline_retries_after_failed_solve(tmp_path):
     the IC-internal-adiabat radius for the rest of the run, silently re-adding
     the representation offset to the dynamic-vs-static comparison.
 
-    Discriminating: the solver signals failure by setting hf_row
-    _structure_stale True; the test asserts the flag stays False (retry) AND
-    the sentinels are NOT advanced from their defaults, distinguishing a real
-    fall-back from a committed solve.
+    Discriminating: the solver signals failure by setting
+    interior_o.structure_stale True; the test asserts the baseline is not
+    latched (retry) AND the sentinels are NOT advanced from their defaults,
+    distinguishing a real fall-back from a committed solve.
     """
 
-    def _failed_solve(directories, config, hf_row, *args, **kwargs):
-        # Mirror the wrapper fall-back: flag the structure stale, return the
-        # unchanged sentinels (last_struct_time/Tmagma/Phi are args[2:5] here).
-        hf_row['_structure_stale'] = True
-        return (args[1], args[2], args[3])
+    def _failed_solve(directories, config, hf_row, interior_o, *args, **kwargs):
+        # Mirror the wrapper fall-back: flag the structure stale on interior_o,
+        # return the unchanged sentinels (last_struct_time/Tmagma/Phi are
+        # args[0:3] here).
+        interior_o.structure_stale = True
+        return (args[0], args[1], args[2])
 
     p = _make_baseline_proteus(tmp_path)
     with patch(_BASELINE_TARGET, side_effect=_failed_solve) as mock_update:

@@ -2529,7 +2529,7 @@ def update_structure_from_interior(
         # _ZALMOXIS_MASS_ANCHOR_TOL after every successful Zalmoxis call.
         # Raise RuntimeError on violation so the except-block
         # fall-back path runs (restore _saved_structure, set
-        # _structure_stale=True, increment interior_o.zalmoxis_fail_count). This
+        # interior_o.structure_stale=True, increment interior_o.zalmoxis_fail_count). This
         # treats a too-loose-converged Zalmoxis result the same as a
         # non-converged one.
         _M_target = float(hf_row.get('M_int_target', 0.0) or 0.0)
@@ -2633,8 +2633,8 @@ def update_structure_from_interior(
                     _R_int_new,
                 )
             # Restore hf_row structure keys exactly like the mass-anchor
-            # rollback, but leave _structure_stale untouched and do not increment
-            # zalmoxis_fail_count. A rejected up-step is not a convergence
+            # rollback, but leave interior_o.structure_stale untouched and do not
+            # increment zalmoxis_fail_count. A rejected up-step is not a convergence
             # failure, so it must not raise the stale flag; and it commits no new
             # structure, so it must not clear the flag either. The reject restores
             # the very structure the flag described on entry, so leaving the flag
@@ -2726,7 +2726,10 @@ def update_structure_from_interior(
         # (Aragog setup_or_update_solver) can rely on it. The flag is
         # set to True on fall-back and cleared here on success, so
         # Aragog can tell whether it is running on a fresh or stale mesh.
-        hf_row['_structure_stale'] = False
+        # It lives on interior_o (not hf_row) to stay out of the floats-only
+        # helpfile schema, and is persisted so a resume recovers it.
+        interior_o.structure_stale = False
+        interior_o.write_structure_stale(dirs['output'])
         # Record the relative radius change this accepted re-solve produced.
         # The resume-settling guard reads it next loop: a value below the
         # tolerance means the structure has converged and a further
@@ -2766,7 +2769,8 @@ def update_structure_from_interior(
             raise
         # Restore previous structure values
         hf_row.update(_saved_structure)
-        hf_row['_structure_stale'] = True
+        interior_o.structure_stale = True
+        interior_o.write_structure_stale(dirs['output'])
         # Prefer the .prev snapshot written before the failed Zalmoxis
         # call (line ~1232) rather than dirs['spider_mesh'], which may
         # point to the partial file Zalmoxis was writing when it

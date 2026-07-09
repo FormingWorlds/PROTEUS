@@ -248,7 +248,7 @@ class Proteus:
 
         # Commit the baseline only when the solve converged. On a fall-back the
         # structure is the stale initial-condition one; retry on the next step.
-        if self.hf_row.get('_structure_stale', False):
+        if self.interior_o.structure_stale:
             return
 
         self.last_struct_time = new_time
@@ -564,7 +564,10 @@ class Proteus:
             # load a complete state instead of aborting on the corrupt file.
             require_atm = self.config.atmos_clim.module != 'dummy'
             self.hf_all, dropped_snapshots = select_resumable_snapshot(
-                self.directories['output'], self.hf_all, require_atm=require_atm
+                self.directories['output'],
+                self.hf_all,
+                require_atm=require_atm,
+                interior_module=self.config.interior_energetics.module,
             )
             if dropped_snapshots:
                 log.warning(
@@ -608,6 +611,11 @@ class Proteus:
             # Restore tides data
             if self.config.orbit.module is not None:
                 self.interior_o.resume_tides(self.directories['output'])
+
+            # Restore the stale-structure flag so a resume that lands on a
+            # fall-back Zalmoxis mesh keeps the stale-step accounting instead of
+            # silently reading fresh.
+            self.interior_o.resume_structure_stale(self.directories['output'])
 
             # Set loop counters
             self.loops['total'] = len(self.hf_all)
