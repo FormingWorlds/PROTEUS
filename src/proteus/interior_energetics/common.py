@@ -761,9 +761,16 @@ class Interior_t:
     def write_structure_stale(self, outdir: str):
         # Persist the stale-structure flag so a resumed run recovers it. Written
         # whenever the flag changes (the Zalmoxis success and fall-back paths in
-        # wrapper.py), so the on-disk value tracks the in-memory one.
-        with open(get_file_structure_stale(outdir), 'w') as hdl:
-            hdl.write('%d\n' % (1 if self.structure_stale else 0))
+        # wrapper.py), so the on-disk value tracks the in-memory one. A write
+        # failure (disk full, absent data/ directory) must not abort the run or,
+        # on the fall-back path, skip the mesh and zalmoxis_output.dat rollback
+        # that follows this call: the flag is only a resume-visibility bit, so
+        # log and continue rather than propagate.
+        try:
+            with open(get_file_structure_stale(outdir), 'w') as hdl:
+                hdl.write('%d\n' % (1 if self.structure_stale else 0))
+        except OSError as exc:
+            log.warning('Could not persist stale-structure flag file: %s', exc)
 
     def resume_structure_stale(self, outdir: str):
         # Restore the stale-structure flag from disk on resume. A missing file

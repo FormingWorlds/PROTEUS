@@ -566,6 +566,59 @@ def test_resume_structure_stale_missing_or_malformed_file_defaults_fresh(tmp_pat
     )
 
 
+def test_write_structure_stale_swallows_oserror_without_propagating(
+    tmp_path, caplog, monkeypatch
+):
+    """A failed stale-flag write is logged and swallowed, never propagated.
+
+    Contract: ``write_structure_stale`` is called on the Zalmoxis fall-back path
+    in ``wrapper.py`` immediately before the mesh and ``zalmoxis_output.dat``
+    rollback. The flag is only a resume-visibility bit, so a write failure (an
+    absent ``data/`` directory, a full disk) must not abort the run; propagating
+    the error here would skip the rollback that follows the call and strand the
+    run on a half-committed structure. The guard logs and returns instead.
+
+    Two directions, both of which would raise out of the call if the
+    ``except OSError`` guard were removed:
+    """
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    # Direction 1 (absent data/ dir): the realistic failure. ``tmp_path`` has no
+    # ``data/`` subdirectory, so the underlying ``open(..., 'w')`` raises
+    # ``FileNotFoundError`` (an ``OSError`` subclass). Discrimination: assert the
+    # directory really is missing, then assert the guarded call still returns.
+    target = get_file_structure_stale(str(tmp_path))
+    assert not os.path.exists(os.path.dirname(target)), 'data/ must be absent for this branch'
+    interior = Interior_t(5)
+    interior.structure_stale = True
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        result = interior.write_structure_stale(str(tmp_path))
+    assert result is None, 'the call must return normally, not propagate the write error'
+    assert not os.path.exists(target), 'a failed write must not leave a partial flag file'
+    assert any('stale-structure flag' in r.message for r in caplog.records), (
+        'a swallowed write failure must still emit a warning for provenance'
+    )
+
+    # Direction 2 (generic OSError): the ``data/`` directory now exists, so the
+    # only failure source is a patched ``open`` that raises a bare ``OSError``
+    # (the disk-full case named in the source comment). This discriminates that
+    # the guard catches ``OSError`` broadly, not merely the missing-dir subclass.
+    (tmp_path / 'data').mkdir()
+
+    def _raise_oserror(*args, **kwargs):
+        raise OSError('simulated disk-full')
+
+    monkeypatch.setattr('builtins.open', _raise_oserror)
+    caplog.clear()
+    disk_full = Interior_t(5)
+    disk_full.structure_stale = False
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        assert disk_full.write_structure_stale(str(tmp_path)) is None
+    assert any('stale-structure flag' in r.message for r in caplog.records), (
+        'a bare OSError must be caught and logged, not only FileNotFoundError'
+    )
+
+
 def test_resume_tides_length_mismatch_logs_error_but_does_not_raise(tmp_path, caplog):
     """Writing nlev_s=3 data then resuming with nlev_s=4 logs an error
     but leaves the call free of exceptions (best-effort resume)."""
