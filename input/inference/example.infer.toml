@@ -28,8 +28,6 @@ n_steps    = 100       # Total number of evaluations (i.e. BO steps)
 
 # Parameters to optimize (with bounds)
 [parameters]
-# "params.stop.time.maximum"  = [1e7,     3e9] # for SN only
-# "orbit.semimajoraxis"       = [0.05,    0.2] # for SN only
 # "interior_energetics.boundary.T_p_0"   = [2500.0,  4000.0]
 # "planet.mass_tot"           = [1.0,     4.0]
 "interior_struct.core_frac" = [0.3,     0.7]
@@ -73,3 +71,4 @@ n_steps    = 100       # Total number of evaluations (i.e. BO steps)
 # "C/O_atm" = 1.8980497971e-01
 # "S/O_atm" = 1.2046901115e-01
 # "O/H_atm" = 1.3032972420e+01
+
