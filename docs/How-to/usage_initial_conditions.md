@@ -41,21 +41,22 @@ The initial profile is selected by `planet.temperature_mode`. Each mode anchors
 the profile at a different reference point and reads a different companion
 parameter:
 
-| Mode | Anchored at | Companion parameter(s) |
-|------|-------------|------------------------|
-| `liquidus_super` (default) | core-mantle boundary, above the liquidus | `delta_T_super` |
-| `adiabatic_from_cmb` | core-mantle boundary, fixed temperature | `tcmb_init` |
-| `adiabatic` | surface | `tsurf_init` |
-| `isothermal` | uniform | `tsurf_init` |
-| `linear` | surface and centre | `tsurf_init`, `tcenter_init` |
+| Mode | Sets the profile by | Companion parameter(s) |
+|------|---------------------|------------------------|
+| `liquidus_super` (default) | a fully molten adiabat, superheated above the liquidus | `delta_T_super` |
+| `adiabatic_from_cmb` | an adiabat anchored at a fixed CMB temperature | `tcmb_init` |
+| `adiabatic` | an adiabat anchored at the surface | `tsurf_init` |
+| `isothermal` | a uniform temperature | `tsurf_init` |
+| `linear` | a surface-to-centre gradient | `tsurf_init`, `tcenter_init` |
 | `accretion` | accretion energetics | `f_accretion`, `f_differentiation` |
-| `isentropic` | entropy directly | `ini_entropy`, `ini_dsdr` |
+| `isentropic` | the specific entropy directly | `ini_entropy`, `ini_dsdr` |
 
-The two core-mantle-boundary (CMB) modes anchor the adiabat at the base of the
-mantle and integrate it upward to the surface. The surface modes do the
-opposite, anchoring at the surface and integrating downward. The remaining
-modes set the profile from accretion energetics (White & Li, 2025) or from
-the specific entropy itself.
+The default `liquidus_super` solves for the single adiabat that is fully molten
+throughout the mantle with a controlled superheat margin (see below). The
+`adiabatic_from_cmb` mode anchors an adiabat at the base of the mantle and
+integrates it upward to the surface; the surface modes anchor at the surface
+and integrate downward; the remaining modes set the profile from accretion
+energetics (White & Li, 2025) or from the specific entropy itself.
 
 The default needs nothing beyond the mode name, because `delta_T_super` already
 defaults to 500 K:
@@ -68,25 +69,26 @@ defaults to 500 K:
 
 ## What to favour
 
-**Use the default `liquidus_super` for most runs.** It anchors the CMB
-temperature a fixed margin above the silicate liquidus:
+**Use the default `liquidus_super` for most runs.** It starts the mantle on the
+coolest single adiabat that is fully molten everywhere, with at least
+$\Delta T_\mathrm{super}$ (`delta_T_super`, in K) of superheat above the
+silicate liquidus:
 
-$$T_\mathrm{cmb} = T_\mathrm{liq}(P_\mathrm{cmb}) + \Delta T_\mathrm{super}$$
+$$\min_{P}\,\bigl[\,T_\mathrm{ad}(P) - T_\mathrm{liq}(P)\,\bigr] = \Delta T_\mathrm{super}$$
 
-where $T_\mathrm{liq}$ is the Fei et al. (2021) MgSiO$_3$ melting curve and
-$\Delta T_\mathrm{super}$ is the superliquidus offset (`delta_T_super`, in K).
-Anchoring at the core-mantle boundary, where the pressure and therefore the
-melting temperature are highest, and integrating the adiabat upward guarantees
-that the whole mantle column starts molten. Because the anchor is set by a
-third-party melting curve rather than by a fixed temperature, the mode is
-EOS-agnostic: it does not bake in a particular entropy convention. That makes
-it robust both for cross-code comparisons and for larger super-Earths, where a
-fixed CMB temperature may not clear the elevated high-pressure liquidus.
+where $T_\mathrm{ad}$ is the (isentropic) initial adiabat and $T_\mathrm{liq}$
+is the configured silicate liquidus. PROTEUS solves for the surface temperature,
+and hence the uniform initial entropy, that satisfies this at the
+most-constraining depth, checking the superheat against the liquidus actually in
+use. This guarantees a fully molten initial state with a known margin for any
+planet mass and any melting-curve parameterisation, without you choosing a
+surface temperature or entropy by hand. Because the binding depth is shallow,
+the solved entropy is essentially independent of planet mass, so a mass grid
+starts on a common adiabat.
 
-The default `delta_T_super = 500` K is a heuristic margin that places the CMB
-anchor above the liquidus for Earth-mass to few-Earth-mass mantles. Setting
-`delta_T_super = 0` anchors the initial adiabat exactly on the liquidus, the
-coolest fully molten start.
+The default `delta_T_super = 500` K gives a comfortably molten start across the
+Earth-mass to ten-Earth-mass range. Setting `delta_T_super = 0` makes the mantle
+marginally molten, just touching the liquidus at the binding depth.
 
 !!! note "Requires the silicate liquidus"
     `liquidus_super` evaluates the Fei et al. (2021) liquidus through the
@@ -94,15 +96,16 @@ coolest fully molten start.
     installation. For a run built only from placeholder modules, use
     `adiabatic_from_cmb` instead, which needs no melting-curve lookup.
 
-!!! warning "Large super-Earths"
-    The Fei et al. (2021) liquidus is calibrated to about 500 GPa. For large
-    super-Earths whose core-mantle-boundary pressure exceeds that, the anchor
-    relies on extrapolation and PROTEUS logs a warning; treat the initial
-    condition as approximate in that regime.
+!!! note "Very deep mantles"
+    A sufficiently deep mantle cannot be made molten with an arbitrarily large
+    superheat: past a point the deep adiabat would exceed the equation-of-state
+    table. If the requested `delta_T_super` cannot be reached, PROTEUS raises
+    with the largest achievable superheat rather than using an unphysical
+    initial condition; lower `delta_T_super` (or the planet mass) in that case.
 
-**Use `adiabatic_from_cmb` for a fixed CMB temperature.** This mode is identical
-to `liquidus_super` except that the anchor is the user-set `tcmb_init` rather
-than a liquidus-relative value:
+**Use `adiabatic_from_cmb` for a fixed CMB temperature.** This mode anchors the
+adiabat at a user-set core-mantle-boundary temperature `tcmb_init` and
+integrates it upward to the surface:
 
 ```toml
 [planet]
@@ -116,9 +119,11 @@ quick-start configuration, which runs without any external structure solver.
 **Avoid the surface-anchored modes unless you have a specific reason.** Under
 the current equation of state, an adiabat pinned at the surface (`adiabatic`,
 `isothermal`) can drop the deep mantle below its liquidus at `t = 0`, leaving a
-partially solid base that is not a clean magma-ocean start. The CMB-anchored
-modes avoid this by construction. The `linear` mode is likewise intended for
-controlled tests where you set the surface and centre temperatures directly.
+partially solid base that is not a clean magma-ocean start. The default
+`liquidus_super` avoids this by solving for full melt directly, and
+`adiabatic_from_cmb` avoids it when you supply a hot enough `tcmb_init`. The
+`linear` mode is intended for controlled tests where you set the surface and
+centre temperatures directly.
 
 !!! note "Matching a published interior protocol"
     The `isentropic` mode sets the initial specific entropy directly through

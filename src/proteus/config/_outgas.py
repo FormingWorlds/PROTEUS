@@ -140,7 +140,7 @@ class Atmodeller:
         default='robust',
         validator=validators.in_(('robust', 'basic')),
     )
-    solver_max_steps: int = field(default=256, validator=validators.gt(0))
+    solver_max_steps: int = field(default=1024, validator=validators.gt(0))
     solver_multistart: int = field(default=10, validator=validators.gt(0))
     include_condensates: bool = field(default=True)
     solubility_H2O: str | None = field(default='H2O_peridotite_sossi23', converter=none_if_none)

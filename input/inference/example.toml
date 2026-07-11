@@ -480,7 +480,7 @@ config_version = "3.0"
 
     [outgas.atmodeller]
         solver_mode           = "robust"     # robust (better convergence) | basic (faster)
-        solver_max_steps      = 256          # root-finder max iterations
+        solver_max_steps      = 1024         # root-finder max iterations
         solver_multistart     = 10           # number of random restarts
         include_condensates   = true         # graphite condensation
         # Solubility law per species ("none" = no dissolution, gas stays in atmosphere)

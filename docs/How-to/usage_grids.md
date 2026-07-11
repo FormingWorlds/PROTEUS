@@ -25,6 +25,7 @@ The top-level settings are:
 | `use_slurm` | Whether to dispatch through Slurm (see below). |
 | `max_jobs` | Maximum number of cases running concurrently. |
 | `max_days`, `max_mem` | Per-job walltime (days) and memory (GB) limits, used when dispatching through Slurm. |
+| `jax_cache` | Share a JAX compilation cache across Slurm array tasks (see below). Default `false`; only affects Slurm dispatch. |
 
 Each parameter axis is a TOML table whose **name is the dotted path of the config field to vary**. For example, `["planet.mass_tot"]` sweeps `config.planet.mass_tot`, and `["outgas.fO2_shift_IW"]` sweeps the mantle redox offset. Any field documented in `input/all_options.toml` (or the [configuration reference](config.md)) can serve as an axis. The grid manager treats every top-level key containing a dot as an axis, and every key without one as a setting, so axis names must always be given as the full dotted path.
 
@@ -47,6 +48,7 @@ use_slurm  = false
 max_jobs   = 10
 max_days   = 1
 max_mem    = 12
+jax_cache  = false
 
 # Planet mass [M_earth]: four explicit values
 ["planet.mass_tot"]
@@ -102,6 +104,8 @@ To dispatch your grid via Slurm, you **must then run** the command `sbatch <path
 
 Monitor your running jobs with `squeue -u $USER`. To cancel **all** of your running jobs, use `scancel -u $USER`.
 The original PROTEUS process does not need to stay open when using Slurm to manage the subprocesses.
+
+Set `jax_cache = true` to add a shared JAX compilation cache to the dispatch script. Each job then exports `JAX_COMPILATION_CACHE_DIR` pointing at a `jax_cache/` subdirectory of the grid output, so array tasks reuse each other's compiled kernels instead of recompiling the same interior solver per task. The cache is bounded at 80 GiB (`JAX_COMPILATION_CACHE_MAX_SIZE`), with a 1 s minimum compile time and a 4 KiB minimum entry size so only worthwhile kernels are stored. These exports are written into the Slurm dispatch script only; a local grid run (`use_slurm = false`) spawns subprocesses without them.
 
 The cluster guides give site-specific Slurm settings: [Habrok](habrok_cluster_guide.md), [Snellius](snellius_cluster_guide.md), and [Kapteyn](kapteyn_cluster_guide.md).
 

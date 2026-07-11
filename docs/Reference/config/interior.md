@@ -38,11 +38,28 @@ Chabrier, or Seager 2007). It supports 2-layer (core + mantle) and 3-layer
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `core_eos` | str | `"PALEOS:iron"` | Core EOS as `"<source>:<material>"` |
-| `mantle_eos` | str | `"PALEOS:MgSiO3"` | Mantle EOS as `"<source>:<material>"` |
+| `mantle_eos` | str | `"PALEOS:MgSiO3"` | Mantle EOS as `"<source>:<material>"`; `PALEOS:` uses the unified table, `PALEOS-2phase:` uses separate solid and liquid tables (see the PALEOS mantle EOS notes below) |
 | `ice_layer_eos` | str or none | `none` | Ice/water layer EOS; `none` = 2-layer model |
-| `mushy_zone_factor` | float | `0.8` | Solidus/liquidus depression factor \[0.7, 1.0] (PALEOS only) |
+| `mushy_zone_factor` | float | `0.8` | Solidus depression $T_\mathrm{sol}=f\,T_\mathrm{liq}$ \[0.7, 1.0]; the default 0.8 is the Stixrude (2014) solidus-to-liquidus ratio for MgSiO$_3$. Applies to `PALEOS:` unified only; for `PALEOS-2phase:` it is treated as 1.0 |
 | `mantle_mass_fraction` | float | `0` | Mantle mass fraction for 3-layer models; `0` = auto ($1 - \mathrm{core\_frac}$) |
 | `dry_mantle` | bool | `true` | Structure EOS assumes a dry mantle. `false` (melt-fraction-aware dissolved-volatile mixing in the mantle density) is rejected at config load until the pinned Zalmoxis release supports per-shell volatile profiles |
+
+**How the PALEOS mantle EOS is applied**
+
+The MgSiO$_3$ mantle EOS resolves through two distinct paths depending on the `<source>` prefix of `mantle_eos`.
+
+With `mantle_eos = "PALEOS:MgSiO3"` (the default), the hydrostatic structure solve uses the PALEOS *unified* MgSiO$_3$ table for the density profile.
+The phase-specific property surfaces used by Aragog (density, heat capacity, thermal expansion, adiabatic gradient) and the pressure-entropy lookup tables are built from the PALEOS *two-phase* solid and liquid tables shipped with Zalmoxis when those tables are present, which keeps the properties well resolved across the melting-curve discontinuity that a single unified table interpolates through.
+If the two-phase tables are not available, the property surfaces are built from the unified table alone, and the entropy near the melting curve is less reliable.
+The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005 below 2.55 GPa, Fei et al. 2021 above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8), the constant solidus-to-liquidus ratio of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization.
+The melt fraction then follows from the lever rule between this solidus and liquidus.
+
+With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the solid and liquid tables define the phase boundaries directly.
+`mushy_zone_factor` is treated as 1.0 so the solidus coincides with the liquidus, and the latent-heat gap is supplied by the entropy difference between the solid and liquid tables rather than by a fixed temperature depression.
+
+!!! note "Two-phase table versions"
+    Two versions of the PALEOS two-phase MgSiO$_3$ tables are in circulation: the set shipped in the Zalmoxis data directory, and the finer-grid set on Zenodo that the reference-data manifest fetches.
+    They are generated from the same PALEOS EOS but on different grids, so for exact reproducibility record which set a run used (the shipped tables resolve through the Zalmoxis material registry; the fetched tables land under `FWL_DATA`).
 
 **Grid and solver**
 
@@ -99,6 +116,18 @@ provide the entropy-to-temperature mapping used by Aragog and SPIDER.
 |-----------|------|---------|-------------|
 | `lookup_nP` | int | `1350` | Pressure grid points in lookup tables |
 | `lookup_nS` | int | `280` | Entropy grid points in lookup tables |
+
+By default each run derives its own copy of these tables under its output
+`data/` directory. Set the `PROTEUS_PS_CACHE_DIR` environment variable to an
+absolute path to instead share one derived copy across runs: tables are stored
+in a subdirectory keyed by pressure ceiling, resolution, mantle-mass fraction,
+table layout, and the resolved mantle-EOS identity, so a run reuses the cache
+only when every one of those matches and different equations of state never
+collide. This is the mitigation for the per-run disk duplication that a grid or
+batch of same-EOS runs would otherwise incur, since all such runs then read one
+shared copy. The cache directory is not size-limited or auto-pruned; it grows
+with the number of distinct pressure, resolution, and EOS combinations run
+against it, so point it at storage sized for the campaign.
 
 **Miscibility** (experimental, not production-ready)
 
@@ -236,7 +265,10 @@ Jacobians for robust convergence.
 | `core_bc` | str | `"energy_balance"` | Core-mantle boundary condition: `energy_balance` (SPIDER bit-parity), `quasi_steady`, `gradient`, or `bower2018` (experimental) |
 | `tolerance_struct` | float | `100` | Absolute mass tolerance \[kg] for the interior-radius secant solver |
 | `scalar_gravity_override` | bool | `false` | Overwrite the mesh gravity column with a uniform surface scalar; set `true` only for paired scalar-gravity comparisons |
-| `phi_step_cap` | float | `0.0` | Per-call melt-fraction step cap; `0.0` disables, `> 0` clamps the integration window so projected $|\Delta\Phi|$ stays within the cap |
+| `phi_step_cap` | float | `0.0` | Per-call melt-fraction step cap. A CVODE root function returns control at the exact time the larger of the global mass-weighted $|\Delta\Phi|$ and the maximum single-cell $|\Delta\varphi|$ reaches this cap, which removes the discontinuous core-temperature drop at crystallisation onset. `0.0` is the schema default and the Aragog wrapper promotes it to `0.1` on the coupled Zalmoxis stack; a positive value overrides that promotion, and `-1.0` is the single off sentinel that keeps the cap off even on Zalmoxis; any other negative, NaN, or infinity is rejected at load |
+| `temperature_step_cap` | float | `0.0` | Per-call per-cell temperature step cap \[K]. Shares the same root function as `phi_step_cap` and fires on the maximum single-cell $|\Delta T|$, bounding the core-temperature drop on the solid adiabat just below the solidus where the melt-fraction cap goes blind. `0.0` promotes to `100.0` on the Zalmoxis stack; positive overrides, `-1.0` keeps it off; any other negative, NaN, or infinity is rejected at load |
+| `entropy_step_cap` | float | `0.0` | Per-call per-cell entropy step cap \[J kg$^{-1}$ K$^{-1}$] in the native solver variable; same role as `temperature_step_cap` without an EOS lookup in the root function. `0.0` promotes to `100.0` on the Zalmoxis stack; positive overrides, `-1.0` keeps it off; any other negative, NaN, or infinity is rejected at load |
+| `phase_boundary_entropy_margin` | float | `200.0` | Phase-boundary proximity band \[J kg$^{-1}$ K$^{-1}$] within which a staggered cell counts as near a solidus or liquidus crossing, tightening the integrator `max_step` so CVODE resolves the stiff two-phase RHS. A positive value is required. Keep it of order a few hundred; a value orders of magnitude above the default makes every cell count as near a boundary at all times, clamping the integrator to 1 yr steps for the whole run and stalling it |
 
 ### SPIDER `[interior_energetics.spider]`
 
@@ -303,3 +335,5 @@ with prescribed solidus and liquidus and parameterised convective heat transport
  [^cite-bower2018]: Bower, D.J., Sanan, P. & Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
 
  [^cite-schaefer2016]: Schaefer, L., Wordsworth, R.D., Berta-Thompson, Z. & Sasselov, D., *[Predictions of the atmospheric composition of GJ 1132b](https://doi.org/10.3847/0004-637X/829/2/63)*, The Astrophysical Journal, 829, 63, 2016. [SciX](https://scixplorer.org/abs/2016ApJ...829...63S/abstract).
+
+ [^cite-stixrude2014]: Stixrude, L., *[Melting in super-earths](https://doi.org/10.1098/rsta.2013.0076)*, Philosophical Transactions of the Royal Society A, 372, 20130076, 2014. [SciX](https://scixplorer.org/abs/2014RSPTA.37230076S/abstract).

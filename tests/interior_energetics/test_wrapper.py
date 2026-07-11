@@ -19,6 +19,7 @@ Functions tested:
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -28,7 +29,11 @@ import pytest
 
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.wrapper import (
+    _RESUME_STRUCT_DPHI_BACKSTOP_CAP,
+    _RESUME_STRUCT_DR_REL_TOL,
+    _eos_grid_extent_up_step,
     _prevent_warming_clamp_active,
+    _refresh_composition_sentinels,
     update_structure_from_interior,
 )
 
@@ -105,6 +110,10 @@ def _mock_interior_o(n_stag=49):
     interior_o.zalmoxis_fail_count = 0
     interior_o.spider_fail_count = 0
     interior_o.aragog_fail_count = 0
+    # structure_stale is an instance attribute set in Interior_t.__init__, so
+    # spec=Interior_t does not expose it; seed the fresh-run state explicitly
+    # so read-before-set paths (a rejected up-step) return a real bool.
+    interior_o.structure_stale = False
     return interior_o
 
 
@@ -134,6 +143,244 @@ def test_update_disabled():
     # and then discarded its output (which would still return the
     # unchanged tuple but burn CPU and pollute the mesh files).
     mock_solver.assert_not_called()
+
+
+# ============================================================================
+# test force=True init baseline (callable-representation structure at init)
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_force_baseline_solves_when_dynamic_updates_disabled():
+    """force=True solves once even when dynamic updates are disabled.
+
+    At the init/evolution boundary the structure is solved once in the
+    interior-fed callable representation for BOTH dynamic and static runs,
+    so a static configuration (update_interval=0) must still take the
+    baseline solve. This is the discriminating contrast to
+    test_update_disabled: the SAME update_interval=0 config skips the solver
+    entirely when force is left at its default False.
+    """
+    config = _mock_config(update_interval=0)
+    dirs = _mock_dirs()
+    hf_row = {
+        'Time': 200.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.80,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o()
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 9999.0, 0.999, force=True
+        )
+
+    # The forced baseline MUST invoke the solver despite update_interval=0.
+    mock_solver.assert_called_once()
+    # It MUST return the current state, not the stale sentinel passed in.
+    # Pinning all three discriminates a no-op regression (which would return
+    # the (0.0, 9999.0, 0.999) input tuple) from a real baseline solve.
+    assert result[0] == pytest.approx(200.0, rel=1e-12)
+    assert result[1] == pytest.approx(3000.0, rel=1e-12)
+    assert result[2] == pytest.approx(0.80, rel=1e-12)
+    assert result != (0.0, 9999.0, 0.999)
+
+
+@pytest.mark.unit
+def test_force_baseline_ignores_unmet_triggers():
+    """force=True bypasses change-based triggers that would otherwise skip.
+
+    With Phi and T_magma unchanged from the last update and elapsed time
+    below update_min_interval, the normal (force=False) path returns
+    unchanged without solving. The forced baseline must solve regardless,
+    proving it bypasses the floor and every change trigger, not only the
+    update_interval guard.
+    """
+    # Dynamic config, but nothing changed and we sit inside the min-interval
+    # floor, so the non-forced path must not trigger.
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    dirs = _mock_dirs()
+    hf_row = {
+        'Time': 50.0,  # elapsed = 50 < min_interval 100 -> floor blocks
+        'T_magma': 3000.0,
+        'Phi_global': 0.80,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o()
+
+    # Control: force=False with these unchanged inputs must NOT solve.
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_unforced:
+        unforced = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80
+        )
+    mock_unforced.assert_not_called()
+    assert unforced == (0.0, 3000.0, 0.80)
+
+    # Treatment: force=True with identical unchanged inputs MUST solve once.
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_forced,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        forced = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80, force=True
+        )
+    mock_forced.assert_called_once()
+    assert forced[0] == pytest.approx(50.0, rel=1e-12)
+
+
+def _dirs_hf_with_composition_delta():
+    """Build dirs + hf_row carrying a dissolved-H2O fraction change that is
+    above the composition trigger threshold (w 1.0e-3 -> 2.0e-3, dw = 100%)."""
+    dirs = _mock_dirs()
+    dirs['_last_w_H2O_liquid'] = 1.0e-3
+    dirs['_last_w_H2_liquid'] = 0.0
+    hf_row = {
+        'Time': 100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.80,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'M_mantle': 4.0e24,
+        'H2O_kg_liquid': 8.0e21,  # / M_mantle -> w_new = 2.0e-3
+        'H2_kg_liquid': 0.0,
+    }
+    return dirs, hf_row
+
+
+@pytest.mark.unit
+def test_force_baseline_suppresses_composition_eos_regeneration():
+    """The forced baseline skips composition-driven EOS regeneration.
+
+    A baseline solve is a representation change, not a composition change, so
+    comp_changed must stay False and the SPIDER/Aragog P-S EOS tables must not
+    be regenerated (doing so would desync Aragog's in-memory EntropyEOS from
+    the on-disk tables, the documented wet-run gap).
+
+    Discriminating via a positive control: the IDENTICAL composition delta
+    drives a regeneration on the non-forced path, so the not-called assertion
+    on the forced path proves force suppresses it, not that the inputs never
+    fire regeneration.
+    """
+    config = _mock_config(
+        update_interval=1.0e9,
+        update_min_interval=0.0,
+        update_dtmagma_frac=1.0,
+        update_dphi_abs=1.0,
+    )
+    config.interior_energetics.module = 'aragog'
+    config.interior_struct.zalmoxis.update_dw_comp_abs = 0.01
+
+    # Positive control: no force, composition trigger reachable -> regen fires.
+    dirs, hf_row = _dirs_hf_with_composition_delta()
+    interior_o = _mock_interior_o()
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ),
+        patch(
+            'proteus.interior_struct.zalmoxis.generate_spider_tables',
+            return_value=None,
+        ) as mock_gen_ctrl,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80)
+    mock_gen_ctrl.assert_called_once()
+
+    # Treatment: force=True with the identical composition delta must NOT regen.
+    dirs, hf_row = _dirs_hf_with_composition_delta()
+    interior_o = _mock_interior_o()
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_solver,
+        patch(
+            'proteus.interior_struct.zalmoxis.generate_spider_tables',
+            return_value=None,
+        ) as mock_gen_forced,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 9999.0, 0.999, force=True
+        )
+    # Reached the solver (not a vacuous pass) but suppressed the regeneration.
+    mock_solver.assert_called_once()
+    mock_gen_forced.assert_not_called()
+
+
+@pytest.mark.unit
+def test_force_baseline_lands_on_unclamped_callable_mesh():
+    """The forced baseline disables per-update mesh-shift clamping.
+
+    Per-step blending protects Aragog's entropy remap during evolution, but a
+    static run never re-solves to reconcile a clamped intermediate mesh against
+    the reported R_int. The baseline must therefore land directly on the full
+    callable mesh and leave no pending convergence, so a frozen static run is
+    self-consistent (on-disk mesh == reported R_int).
+
+    Discriminating: the blend receives an infinite max_shift on the forced path
+    (no clamp at any magnitude) versus the configured 0.05 on a triggered path,
+    and mesh_shift_active is cleared even though the raw shift (30%) far exceeds
+    the configured 5% limit.
+    """
+    config = _mock_config(update_interval=0, mesh_max_shift=0.05)
+    dirs = _mock_dirs()
+    hf_row = {
+        'Time': 100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.80,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o()
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, '/tmp/test_mesh.dat'),
+        ),
+        # 30% raw shift, far above the configured 5% clamp.
+        patch(
+            'proteus.interior_energetics.spider.blend_mesh_files',
+            return_value=0.30,
+        ) as mock_blend,
+        patch(
+            'proteus.interior_energetics.spider.get_all_output_times',
+            return_value=[],
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 9999.0, 0.999, force=True
+        )
+
+    mock_blend.assert_called_once()
+    # Clamp disabled on the baseline: the full callable mesh is kept at any shift.
+    assert mock_blend.call_args.kwargs['max_shift'] == float('inf')
+    # No pending convergence despite the 30% raw shift, so a frozen static run
+    # integrates on the same mesh its reported R_int describes.
+    assert dirs['mesh_shift_active'] is False
 
 
 # ============================================================================
@@ -389,6 +636,147 @@ def test_no_mesh_resets_convergence():
     # No mesh file returned → convergence state reset
     assert dirs['mesh_shift_active'] is False
     assert dirs['mesh_convergence_steps'] == 0
+
+
+# ============================================================================
+# test T(r) hand-off construction (node-ordering conventions)
+# ============================================================================
+
+
+def _capture_handoff(radius, temp):
+    """Run a triggered structure update and capture the T(r) hand-off.
+
+    Builds the minimal trigger context (ceiling trigger fires), mocks
+    ``zalmoxis_solver``, and returns the ``temperature_function`` callable
+    and ``temperature_arrays`` tuple that ``update_structure_from_interior``
+    passed to it.
+
+    Parameters
+    ----------
+    radius : np.ndarray
+        Basic-node radii in metres, in the interior module's native order.
+    temp : np.ndarray
+        Staggered-node temperatures in K, ordered consistently with
+        ``radius`` (one element fewer).
+
+    Returns
+    -------
+    tuple
+        ``(temperature_function, (r_array, T_array))`` as received by the
+        mocked solver.
+    """
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    dirs = _mock_dirs()
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o(n_stag=len(temp))
+    interior_o.radius = np.asarray(radius, dtype=float)
+    interior_o.temp = np.asarray(temp, dtype=float)
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_solver,
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+    mock_solver.assert_called_once()
+    kwargs = mock_solver.call_args.kwargs
+    return kwargs['temperature_function'], kwargs['temperature_arrays']
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_handoff_callable_anchors_cmb_for_aragog_ascending_profile():
+    """Aragog-ordered (CMB-first ascending) profiles anchor the callable at the CMB.
+
+    Aragog stores ``interior_o.radius`` ascending with the CMB at index 0
+    and ``interior_o.temp`` on staggered nodes in the same order. The
+    hand-off callable must return the innermost (hottest) staggered
+    temperature for the core region, not the near-surface value, and must
+    interpolate the evolved profile across the mantle.
+    """
+    n_basic = 50
+    # CMB at 3000 km, surface at 6000 km; T falls from 7740 K (deep,
+    # solidified at high rho) to 2500 K near the surface, mirroring the
+    # cooled m10 profile where the pre-sort hand-off fed 2500 K instead
+    # of 7740 K at the CMB.
+    radius = np.linspace(3.0e6, 6.0e6, n_basic)
+    temp = np.linspace(7740.0, 2500.0, n_basic - 1)
+    r_stag = 0.5 * (radius[:-1] + radius[1:])
+
+    tf, (r_arr, T_arr) = _capture_handoff(radius, temp)
+
+    # Core-region clamp: r = 0 (deep edge case) and r exactly at the
+    # innermost staggered node (clamp-branch boundary) both return the
+    # true CMB temperature.
+    assert tf(0.0, 0.0) == pytest.approx(7740.0, rel=1e-12)
+    assert tf(float(r_stag[0]), 0.0) == pytest.approx(7740.0, rel=1e-12)
+    # Discrimination guard: an ordering-blind hand-off returns the
+    # near-surface staggered value (2500 K) at the CMB; the correct
+    # anchor differs from it by far more than the tolerance.
+    assert abs(tf(0.0, 0.0) - float(temp[-1])) > 5.0e3
+
+    # Mid-mantle interpolation reproduces the linear evolved profile:
+    # probe halfway between two staggered nodes.
+    r_probe = 0.5 * (r_stag[20] + r_stag[21])
+    T_expected = 0.5 * (temp[20] + temp[21])
+    assert tf(float(r_probe), 0.0) == pytest.approx(float(T_expected), rel=1e-12)
+
+    # Above-surface limit input: np.interp clamps to the outermost value.
+    assert tf(1.0e8, 0.0) == pytest.approx(2500.0, rel=1e-12)
+
+    # The arrays handed to the JAX path are strictly ascending in r and
+    # preserve the monotonic cooling of the profile (T decreasing
+    # outward, all values positive).
+    assert np.all(np.diff(r_arr) > 0.0)
+    assert np.all(np.diff(T_arr) < 0.0)
+    assert np.all(T_arr > 0.0)
+    assert T_arr[0] == pytest.approx(7740.0, rel=1e-12)
+    assert T_arr[-1] == pytest.approx(2500.0, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_handoff_profile_invariant_to_node_ordering():
+    """The hand-off is identical for SPIDER- and Aragog-ordered input profiles.
+
+    The same physical T(r) handed over in SPIDER order (surface-first
+    descending radius, T_cmb at temp[-1]) and Aragog order (CMB-first
+    ascending radius, T_cmb at temp[0]) must yield identical callables
+    and identical ascending temperature arrays: the node-ordering
+    convention is a storage detail, not a physical degree of freedom.
+    """
+    n_basic = 50
+    radius_asc = np.linspace(3.0e6, 6.0e6, n_basic)
+    temp_asc = np.linspace(7740.0, 2500.0, n_basic - 1)
+
+    tf_aragog, (r_a, T_a) = _capture_handoff(radius_asc, temp_asc)
+    tf_spider, (r_s, T_s) = _capture_handoff(radius_asc[::-1], temp_asc[::-1])
+
+    np.testing.assert_allclose(r_a, r_s, rtol=1e-14)
+    np.testing.assert_allclose(T_a, T_s, rtol=1e-14)
+
+    # Probe the callable across the full domain, including the core
+    # clamp (r = 0), the CMB boundary, mid-mantle, and beyond the
+    # surface (limit inputs on both ends).
+    r_stag = 0.5 * (radius_asc[:-1] + radius_asc[1:])
+    probes = [0.0, float(r_stag[0]), 4.5e6, float(r_stag[-1]), 1.0e8]
+    for r_probe in probes:
+        assert tf_aragog(r_probe, 0.0) == pytest.approx(tf_spider(r_probe, 0.0), rel=1e-14)
+    # Discrimination guard: with an ordering-blind hand-off the two
+    # conventions disagree at the CMB by the full deep-to-surface
+    # temperature contrast carried by the arrays, far above the
+    # comparison tolerance; pin the CMB anchor to the deep value.
+    assert (T_a[0] - T_a[-1]) > 5.0e3
+    assert tf_aragog(0.0, 0.0) == pytest.approx(7740.0, rel=1e-12)
 
 
 # ============================================================================
@@ -1009,23 +1397,25 @@ def test_solve_structure_invalid_module():
 
 @pytest.mark.unit
 def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
-    """Successful zalmoxis_solver call clears hf_row['_structure_stale'].
+    """Successful zalmoxis_solver call clears interior_o.structure_stale.
 
-    Contract: ``hf_row['_structure_stale']`` is the signal that downstream
+    Contract: ``interior_o.structure_stale`` is the signal that downstream
     consumers (notably Aragog) use to distinguish a fresh structure from
     a stale one carried over from a prior fall-back. A successful
-    re-solve must set the key to False so consumers can rely on it.
+    re-solve must set the flag to False and persist it so consumers,
+    including a resumed run, can rely on it.
 
     Edge cases covered:
     - Flag was True at entry (simulating prior fall-back) -> must be False after.
-    - Flag was missing at entry (legacy hf_row) -> must be False after (set,
-      not just not-True), so downstream consumers can rely on the key.
+    - Flag was False at entry (fresh run) -> stays False, and the success path
+      still persists it so the on-disk value tracks memory.
     """
     config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
     dirs = _mock_dirs()
     interior_o = _mock_interior_o()
 
     # Case A: flag was True at entry (post-fall-back state)
+    interior_o.structure_stale = True
     hf_row_A = {
         'Time': 1100.0,
         'T_magma': 3000.0,
@@ -1033,7 +1423,6 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
         'R_int': 6.371e6,
         'gravity': 9.81,
         'M_int': 5.972e24,
-        '_structure_stale': True,
     }
     with (
         patch(
@@ -1048,14 +1437,17 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
         ),
     ):
         update_structure_from_interior(dirs, config, hf_row_A, interior_o, 0.0, 3000.0, 0.8)
-    # Flag must be present and False after a successful call.
-    assert '_structure_stale' in hf_row_A, 'flag must be set, not absent'
-    assert hf_row_A['_structure_stale'] is False, (
-        'flag must be cleared (False) on Zalmoxis success, was %r'
-        % hf_row_A['_structure_stale']
+    # Flag must be False after a successful call, and the flag must never
+    # leak into the floats-only helpfile row.
+    assert interior_o.structure_stale is False, (
+        'flag must be cleared (False) on Zalmoxis success, was %r' % interior_o.structure_stale
     )
+    assert '_structure_stale' not in hf_row_A, 'flag must not be written to hf_row'
+    interior_o.write_structure_stale.assert_called_with(dirs['output'])
 
-    # Case B: flag was missing at entry (legacy hf_row never touched by fall-back)
+    # Case B: flag was False at entry (fresh run) -> success still persists it.
+    interior_o.structure_stale = False
+    interior_o.write_structure_stale.reset_mock()
     hf_row_B = {
         'Time': 1100.0,
         'T_magma': 3000.0,
@@ -1063,7 +1455,6 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
         'R_int': 6.371e6,
         'gravity': 9.81,
         'M_int': 5.972e24,
-        # No '_structure_stale' key at entry
     }
     with (
         patch(
@@ -1078,18 +1469,20 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
         ),
     ):
         update_structure_from_interior(dirs, config, hf_row_B, interior_o, 0.0, 3000.0, 0.8)
-    assert hf_row_B.get('_structure_stale') is False, (
-        'success path must set flag to False even if it was absent on entry'
+    assert interior_o.structure_stale is False, (
+        'success path must keep the flag False on a fresh run'
     )
+    interior_o.write_structure_stale.assert_called_with(dirs['output'])
 
 
 @pytest.mark.unit
 def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
-    """Zalmoxis RuntimeError sets hf_row['_structure_stale'] = True.
+    """Zalmoxis RuntimeError sets interior_o.structure_stale = True.
 
     Documents the canonical fall-back contract. Anti-happy-path: also
     checks that the failure does NOT clear the flag if it was already
-    True (i.e. consecutive failures keep it set).
+    True (i.e. consecutive failures keep it set) and that the flag is
+    persisted on every fall-back.
     """
 
     config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
@@ -1103,14 +1496,15 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
         'R_int': 6.371e6,
         'gravity': 9.81,
         'M_int': 5.972e24,
-        # Flag absent at entry
     }
     with patch(
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         side_effect=RuntimeError('mock convergence failure'),
     ):
         update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
-    assert hf_row.get('_structure_stale') is True, 'fall-back path must set flag to True'
+    assert interior_o.structure_stale is True, 'fall-back path must set flag to True'
+    assert '_structure_stale' not in hf_row, 'flag must not be written to hf_row'
+    interior_o.write_structure_stale.assert_called_with(dirs['output'])
 
     # Second consecutive failure: flag stays True (not toggled or cleared).
     with patch(
@@ -1118,7 +1512,7 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
         side_effect=RuntimeError('mock convergence failure 2'),
     ):
         update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
-    assert hf_row.get('_structure_stale') is True
+    assert interior_o.structure_stale is True
 
     # Reset for any downstream tests.
     interior_o.zalmoxis_fail_count = 0
@@ -1191,8 +1585,8 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
         update_structure_from_interior(
             dirs_over, config, hf_row_over, interior_o, 0.0, 3000.0, 0.8
         )
-    assert hf_row_over.get('_structure_stale') is True, (
-        'mass-anchor violation must trigger fall-back (-> _structure_stale=True)'
+    assert interior_o.structure_stale is True, (
+        'mass-anchor violation must trigger fall-back (-> structure_stale=True)'
     )
     assert interior_o.zalmoxis_fail_count == 1, (
         'mass-anchor violation must increment _zalmoxis_fail_count (got %d)'
@@ -1220,9 +1614,9 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
         update_structure_from_interior(
             dirs_under, config, hf_row_under, interior_o, 0.0, 3000.0, 0.8
         )
-    assert hf_row_under.get('_structure_stale') is False, (
+    assert interior_o.structure_stale is False, (
         'sub-tolerance drift must NOT trigger fall-back '
-        '(_structure_stale=%r)' % hf_row_under.get('_structure_stale')
+        '(structure_stale=%r)' % interior_o.structure_stale
     )
     assert interior_o.zalmoxis_fail_count == 0
 
@@ -1255,7 +1649,7 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
         )
     # Must not raise, must not fall-back (graceful degrade for legacy
     # callers that haven't been updated to write M_int_target).
-    assert hf_row_no_target.get('_structure_stale') is False
+    assert interior_o.structure_stale is False
     assert interior_o.zalmoxis_fail_count == 0
 
     interior_o.zalmoxis_fail_count = 0  # cleanup
@@ -1372,6 +1766,10 @@ def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
     config = _mock_config(update_interval=5e4, update_min_interval=0.0)
     config.interior_struct.zalmoxis.update_stale_ceiling = 2.5e4
     dirs = _mock_dirs()
+    # Real Interior_t persists the stale flag under output/data; point at
+    # tmp_path so the sidecar write lands in the auto-cleaned test dir.
+    dirs['output'] = str(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
 
     # Real Interior_t so last_successful_struct_time attribute lookup works
     interior_o = Interior_t(50)
@@ -1467,6 +1865,10 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
     config = _mock_config(update_interval=1e3, update_min_interval=0.0)
     config.interior_struct.zalmoxis.update_stale_ceiling = 0.0  # disable stale-aware ceiling
     dirs = _mock_dirs()
+    # Real Interior_t persists the stale flag under output/data; point at
+    # tmp_path so the sidecar write lands in the auto-cleaned test dir.
+    dirs['output'] = str(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
 
     interior_o = Interior_t(50)
     interior_o.last_successful_struct_time = 5e4
@@ -3842,7 +4244,7 @@ def test_composition_change_trigger_does_not_fire_below_threshold():
 def test_fallback_restores_saved_structure_on_zalmoxis_failure():
     """When zalmoxis_solver raises RuntimeError, the fallback block
     must restore hf_row from _saved_structure and set
-    _structure_stale=True.
+    interior_o.structure_stale=True.
 
     Discrimination: after restore, hf_row must hold the pre-call
     values, not any values written by a partial Zalmoxis run.
@@ -3858,20 +4260,25 @@ def test_fallback_restores_saved_structure_on_zalmoxis_failure():
         'P_center': 3.6e11,
         'rho_avg': 5500.0,
     }
+    from types import SimpleNamespace
+
     hf_row = dict(saved)
     # Simulate Zalmoxis partially writing new values before crashing
     hf_row['R_int'] = 7.0e6  # partially updated
     hf_row['M_int'] = 6e24
 
-    # The restore logic from wrapper.py L1887-1889
+    # The restore logic from the wrapper fall-back block: structure keys are
+    # rolled back on hf_row while the stale flag is raised on interior_o.
+    interior_o = SimpleNamespace(structure_stale=False)
     _saved_structure = dict(saved)
     hf_row.update(_saved_structure)
-    hf_row['_structure_stale'] = True
+    interior_o.structure_stale = True
 
     # Verify restore
     assert hf_row['R_int'] == pytest.approx(6.371e6, rel=1e-12)
     assert hf_row['M_int'] == pytest.approx(5e24, rel=1e-12)
-    assert hf_row['_structure_stale'] is True
+    assert interior_o.structure_stale is True
+    assert '_structure_stale' not in hf_row, 'flag must not live on hf_row'
     # Discrimination: the partially-updated values are gone
     assert hf_row['R_int'] != pytest.approx(7.0e6)
     assert hf_row['M_int'] != pytest.approx(6e24)
@@ -3909,3 +4316,1087 @@ def test_composition_sentinel_update_after_structure_change():
     assert dirs['_last_w_H2_liquid'] == pytest.approx(1e20 / 3e24, rel=1e-12)
     # Discrimination: the old values (1e21/3e24 and 0.0) are gone
     assert dirs['_last_w_H2O_liquid'] != pytest.approx(1e21 / 3e24)
+
+
+# ============================================================================
+# Resume-settling structure-re-solve guard
+#
+# After a resume the interior relaxes thermally over the first loops and the
+# dT/T trigger fires every loop, but the structure radius converges after the
+# first couple of re-solves and then no longer moves. The guard suppresses a
+# dT/T-only re-solve once the structure has converged (small |dR_int/R_int|),
+# within a resume-armed window, with a Phi backstop so genuine solidification
+# is never frozen. These are structural (control-flow) tests, not physics
+# invariants, so they carry no physics_invariant marker.
+# ============================================================================
+
+
+def _dtmagma_scenario(update_dphi_abs=0.05):
+    """Inputs that make the dT/T trigger the SOLE re-solve trigger.
+
+    Elapsed (500 yr) clears the 100 yr floor and sits under the 1000 yr
+    ceiling; T_magma drops 3000->2800 K (dT/T=0.067 >= 0.03) while Phi is
+    unchanged, so neither the ceiling, stale, Phi, nor composition trigger
+    fires. ``update_dphi_abs`` is exposed so a test can disable the Phi
+    trigger (0.999, production-like) and exercise the guard's own Phi backstop.
+    """
+    config = _mock_config(update_dphi_abs=update_dphi_abs)
+    hf_row = {
+        'Time': 500.0,
+        'T_magma': 2800.0,
+        'Phi_global': 0.80,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    # Baselines passed as last_struct_*: dT/T = |2800-3000|/3000 = 0.067.
+    return config, hf_row, 0.0, 3000.0, 0.80
+
+
+def _solver_patches(side_effect=None, return_value=(3.504e6, None)):
+    """Patch the Zalmoxis solver plus the file writes its success path performs."""
+    kw = {'side_effect': side_effect} if side_effect else {'return_value': return_value}
+    return (
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', **kw),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    )
+
+
+@pytest.mark.unit
+def test_resume_settling_guard_suppresses_converged_dtmagma_resolve():
+    """An armed window + converged structure suppresses the dT/T re-solve.
+
+    The dT/T trigger fires, but the last accepted re-solve barely moved R_int
+    (|dR_int/R_int| below tolerance) and the window is open, so the guard
+    returns the unchanged sentinel WITHOUT calling the ~1300 s solver. This is
+    the spurious-re-solve burst the guard exists to kill.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    # Below tolerance => structure converged. Use half the tolerance so the
+    # comparison is unambiguous, not a boundary coincidence.
+    dirs['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    interior_o = _mock_interior_o()
+
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_solver:
+        result = update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    # Side-effect discrimination: the guard must short-circuit BEFORE the solver.
+    mock_solver.assert_not_called()
+    # And return the no-update sentinel (the passed-in baselines), unchanged.
+    assert result == (lt, lT, lP)
+
+
+@pytest.mark.unit
+def test_resume_settling_guard_inactive_on_forward_run():
+    """With no window armed (a fresh run), the identical inputs DO re-solve.
+
+    This is the forward-byte-identity guarantee: a fresh run never sets
+    ``_resume_struct_settle_loops`` in dirs, so the guard branch is skipped
+    entirely and the dT/T trigger proceeds to the solver exactly as before the
+    guard existed. The discriminating contrast to the suppressed case is the
+    sole absence of the window key.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    dirs = _mock_dirs()
+    # Fresh-run state: NO window key, and a converged-looking dR would-be value
+    # present must NOT matter without the window.
+    dirs['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    interior_o = _mock_interior_o()
+
+    s, ns, cp = _solver_patches()
+    with s as mock_solver, ns, cp:
+        result = update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    # The dT/T trigger must reach the solver: forward behaviour is unchanged.
+    mock_solver.assert_called_once()
+    # Success returns the current state, not the stale baselines.
+    assert result[0] == pytest.approx(500.0, rel=1e-12)
+    assert result != (lt, lT, lP)
+
+
+@pytest.mark.unit
+def test_resume_settling_guard_allows_resolve_while_structure_moving():
+    """An armed window does NOT suppress while the structure is still moving.
+
+    If the last accepted re-solve moved R_int by more than the tolerance, the
+    structure has not converged, so suppressing would freeze a genuinely
+    evolving radius (the EOS-vs-mesh desync failure mode). The guard must let
+    the re-solve through. Discriminates against a guard keyed only on the
+    window + trigger, ignoring dR.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    # Two orders of magnitude ABOVE tolerance: structure clearly still moving.
+    dirs['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL * 100.0
+    interior_o = _mock_interior_o()
+
+    s, ns, cp = _solver_patches()
+    with s as mock_solver, ns, cp:
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    # Structure still moving (dR two orders of magnitude above tol) -> proceed.
+    mock_solver.assert_called_once()
+
+    # Discrimination control: identical armed window and dT/T trigger, but a
+    # CONVERGED dR (below tol) -> the guard suppresses. Flipping only dR flips
+    # the outcome, proving the guard keys on dR, not merely on the window.
+    dirs_ctrl = _mock_dirs()
+    dirs_ctrl['_resume_struct_settle_loops'] = 50
+    dirs_ctrl['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_ctrl:
+        update_structure_from_interior(
+            dirs_ctrl, config, hf_row, _mock_interior_o(), lt, lT, lP
+        )
+    mock_ctrl.assert_not_called()
+
+
+@pytest.mark.unit
+def test_resume_settling_guard_phi_backstop_forces_resolve():
+    """A Phi move beyond the backstop forces the re-solve even when converged.
+
+    With the Phi trigger disabled (0.999, production-like) a real rheological
+    change would otherwise slip past, so the guard's own Phi backstop must
+    force the structure update. The paired control (Phi unchanged, same
+    converged dR and window) confirms that WITHOUT the backstop the guard
+    suppresses, isolating the backstop as the cause.
+    """
+    # Phi trigger disabled (0.999) so it cannot pre-empt the dT/T trigger; the
+    # effective backstop is then the cap, min(0.999, cap) = cap.
+    config, hf_row, lt, lT, lP_base = _dtmagma_scenario(update_dphi_abs=0.999)
+    # Phi moved past the cap since the last structure update -> backstop fires.
+    last_Phi = hf_row['Phi_global'] - (_RESUME_STRUCT_DPHI_BACKSTOP_CAP + 0.05)
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    dirs['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    interior_o = _mock_interior_o()
+
+    s, ns, cp = _solver_patches()
+    with s as mock_solver, ns, cp:
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, 3000.0, last_Phi)
+    # Backstop fires -> the solver runs despite the converged structure.
+    mock_solver.assert_called_once()
+
+    # Control: identical converged state but Phi unchanged -> guard suppresses.
+    dirs_ctrl = _mock_dirs()
+    dirs_ctrl['_resume_struct_settle_loops'] = 50
+    dirs_ctrl['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_ctrl:
+        update_structure_from_interior(
+            dirs_ctrl, config, hf_row, _mock_interior_o(), lt, 3000.0, hf_row['Phi_global']
+        )
+    mock_ctrl.assert_not_called()
+
+
+@pytest.mark.unit
+def test_resume_settling_guard_backstop_tracks_active_dphi_trigger():
+    """Backstop ties to update_dphi_abs, so it never blocks a dT/T re-solve.
+
+    When the melt-fraction trigger is active (update_dphi_abs=0.05, the
+    production dynamic setting), a dT/T-triggered re-solve can only occur with
+    a Phi change already below 0.05 (otherwise the melt-fraction trigger would
+    fire instead). A converged structure with such a sub-threshold Phi change
+    must therefore be SUPPRESSED. This is the case a fixed backstop of 0.02
+    wrongly blocked: a Phi change of 0.03 sits in [0.02, 0.05), firing the dT/T
+    trigger yet exceeding the old backstop. The effective backstop is now
+    min(0.05, cap)=0.05, so 0.03 passes and the guard suppresses.
+    """
+    # update_dphi_abs=0.05 active; dPhi=0.03 is below it (so the dT/T trigger,
+    # not the melt-fraction trigger, fires) yet above the old 0.02 backstop.
+    config, hf_row, lt, lT, _ = _dtmagma_scenario(update_dphi_abs=0.05)
+    last_Phi = hf_row['Phi_global'] - 0.03
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    dirs['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    interior_o = _mock_interior_o()
+
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_solver:
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, lt, 3000.0, last_Phi
+        )
+
+    # The dPhi change (0.03) is below the effective backstop (0.05), so the
+    # converged structure is NOT re-solved: this is the dead-zone fix.
+    mock_solver.assert_not_called()
+    assert result == (lt, 3000.0, last_Phi)
+    # Discrimination tied to the live config: the suppressed Phi move is a
+    # real, non-negligible change (0.03) that nonetheless sits below the
+    # effective backstop, which tracks update_dphi_abs rather than a fixed
+    # value. A guard with a fixed 0.02 backstop would have re-solved here.
+    dphi_suppressed = hf_row['Phi_global'] - last_Phi
+    effective_backstop = min(
+        config.interior_struct.zalmoxis.update_dphi_abs, _RESUME_STRUCT_DPHI_BACKSTOP_CAP
+    )
+    assert effective_backstop == pytest.approx(0.05, rel=1e-12)
+    assert dphi_suppressed < effective_backstop
+
+
+@pytest.mark.unit
+def test_resume_settling_guard_disengages_when_window_expired():
+    """Once the window counts down to zero the guard stops suppressing.
+
+    A converged structure with the window at zero must re-solve normally, so
+    genuine later cooling-driven structure changes are never permanently
+    frozen after the resume transient ends. Boundary case: exactly zero.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 0  # window exhausted
+    dirs['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    interior_o = _mock_interior_o()
+
+    s, ns, cp = _solver_patches()
+    with s as mock_solver, ns, cp:
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    # Window exhausted (0) -> guard disengaged -> re-solve proceeds normally.
+    mock_solver.assert_called_once()
+
+    # Discrimination control: identical converged state but the window still
+    # armed (50) -> the guard suppresses. Flipping only the window counter
+    # flips the outcome, isolating window expiry as the cause.
+    dirs_ctrl = _mock_dirs()
+    dirs_ctrl['_resume_struct_settle_loops'] = 50
+    dirs_ctrl['_last_resolve_dR_rel'] = _RESUME_STRUCT_DR_REL_TOL / 2.0
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_ctrl:
+        update_structure_from_interior(
+            dirs_ctrl, config, hf_row, _mock_interior_o(), lt, lT, lP
+        )
+    mock_ctrl.assert_not_called()
+
+
+@pytest.mark.unit
+def test_resume_settling_records_relative_radius_change():
+    """A successful re-solve records |dR_int/R_int| for the next loop's guard.
+
+    The recorded value is what the guard reads to decide convergence, so it
+    must equal the relative radius change the solve actually produced. The mock
+    shrinks R_int by 0.05 %, a non-trivial value distinct from both zero and
+    the tolerance, so the assertion cannot pass on a stale or hard-coded entry.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    dirs = _mock_dirs()  # forward run: no window, so the solve proceeds
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _shrink_radius(*args, **kwargs):
+        # Aragog cooling shrinks the radius; a decrease avoids the
+        # monotonic-radius up-step guard. 0.05 % is well above the 1e-4 tol.
+        passed_hf = args[2]
+        passed_hf['R_int'] = r_prev * (1.0 - 5e-4)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_shrink_radius)
+    with s as mock_solver, ns, cp:
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    assert dirs['_last_resolve_dR_rel'] == pytest.approx(5e-4, rel=1e-9)
+    # Discrimination: it is NOT zero (a no-op record) and IS above tolerance,
+    # so a subsequent guard check would correctly see the structure as moving.
+    assert dirs['_last_resolve_dR_rel'] > _RESUME_STRUCT_DR_REL_TOL
+
+
+@pytest.mark.unit
+def test_resume_settling_monotonic_noop_records_zero_dr():
+    """A rejected up-step (monotonic no-op) records dR_rel=0 so the guard can skip.
+
+    On a super-liquidus resume the dynamic re-solve can produce a small radius
+    INCREASE that the monotonic-radius guard rejects as a cross-table artifact,
+    retaining the previous structure. The accepted radius then did not change,
+    so the guard must record |dR_int/R_int|=0. Otherwise a prior
+    above-tolerance value persists and the guard never reaches the skip
+    condition, leaving the spurious re-solve burst un-suppressed (the failure
+    mode observed in a live resume: dR_rel stuck at 2e-4 across no-op solves).
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    # Prior above-tolerance value: the guard proceeds to the solve, and the
+    # no-op outcome must OVERWRITE this to 0.
+    dirs['_last_resolve_dR_rel'] = 2.0e-4
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        # Solve nudges the radius UP past the running minimum -> rejected as a
+        # cross-table artifact by the monotonic-radius guard.
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    # The solve runs (the no-op only triggers after the solver returns the
+    # rejected up-step), then the guard records the retained-structure outcome.
+    mock_solver.assert_called_once()
+    assert dirs['_last_resolve_dR_rel'] == 0.0
+    # Discrimination: the rejected up-step was +1e-3 relative; recording THAT
+    # (or leaving the prior 2e-4) would keep the guard above tolerance forever.
+    # Zero is what lets the next dT/T trigger skip.
+    assert dirs['_last_resolve_dR_rel'] < _RESUME_STRUCT_DR_REL_TOL
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_monotonic_guard_permits_up_step_under_active_heating(caplog):
+    """A genuine R_int up-step is kept when the interior is actively heating.
+
+    The monotonic-radius guard rejects a cross-table radius INCREASE only while a
+    super-liquidus interior cools. Once tidal or volatile-re-dissolution heating
+    re-inflates the mantle the increase is physical, so the guard must accept it.
+    Here T_magma rises 2800 -> 3000 K over the step (the mantle is heating), the
+    re-solve up-steps R_int by +1e-3 relative, and the guard keeps the new,
+    larger structure instead of restoring the running minimum.
+
+    Monotonicity invariant, correct boundary: R_int may increase only while the
+    interior heats; this pins the heating branch. Discrimination: the identical
+    up-step is clamped when the same interior cools
+    (test_monotonic_guard_clamps_up_step_under_cooling), so acceptance here is
+    driven by the thermal trend, not by the up-step magnitude.
+    """
+    config, hf_row, lt, _lT_cooling, lP = _dtmagma_scenario()
+    # Override the thermal trend to HEATING: last decision at 2800 K, now 3000 K.
+    # dT/T = |3000-2800|/2800 = 0.071 still triggers the re-solve.
+    lT = 2800.0
+    hf_row['T_magma'] = 3000.0
+    hf_row['Phi_global'] = 0.80  # flat; the T_magma rise alone drives acceptance
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    dirs = _mock_dirs()
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        # Genuine re-inflation: the re-solve raises R_int above the running min.
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    msgs = [r.message for r in caplog.records]
+    # The heating-accept path fired ...
+    assert any('Accepted R_int increase under active interior heating' in m for m in msgs), (
+        'a genuine up-step under active heating must be accepted, not clamped'
+    )
+    # ... and neither reject path fired.
+    assert not any('Rejected representation-artifact radius increase' in m for m in msgs)
+    assert not any('Rejected EOS-grid-extent up-step' in m for m in msgs)
+    # The larger structure is KEPT: R_int retains the up-stepped value, not the
+    # restored running minimum. This is the discriminating observable between
+    # accept and reject (both return the same (time, T, Phi) tuple).
+    assert hf_row['R_int'] == pytest.approx(r_prev * (1.0 + 1.0e-3), rel=1e-12)
+    assert hf_row['R_int'] > r_prev
+    # An accepted re-solve records a non-zero radius change; a reject records 0.
+    assert dirs['_last_resolve_dR_rel'] > _RESUME_STRUCT_DR_REL_TOL
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_monotonic_guard_permits_up_step_under_remelting(caplog):
+    """A re-melting interior (Phi rising, T_magma flat) keeps the R_int up-step.
+
+    Re-inflation can be driven by melt returning at near-constant T_magma across
+    the latent-heat plateau, so the heating test must also fire on a rising melt
+    fraction, not T_magma alone. Here Phi rises 0.80 -> 0.86 (the sole re-solve
+    trigger) while T_magma is flat, and the up-step is accepted.
+
+    Discrimination: with T_magma flat the T_magma branch of the heating test is
+    silent, so acceptance proves the Phi branch drives it; a guard keying only on
+    T_magma would wrongly clamp this genuine re-melting inflation.
+    """
+    config, hf_row, lt, lT, _lP_flat = _dtmagma_scenario()
+    # T_magma flat (no dT/T trigger, no T-branch heating); Phi rises past the
+    # 0.05 abs re-solve trigger and past the guard's re-melt threshold.
+    lT = 3000.0
+    hf_row['T_magma'] = 3000.0
+    lP = 0.80
+    hf_row['Phi_global'] = 0.86
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    dirs = _mock_dirs()
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    msgs = [r.message for r in caplog.records]
+    # Acceptance via the Phi (re-melting) branch, with T_magma flat.
+    assert any('Accepted R_int increase under active interior heating' in m for m in msgs), (
+        'a genuine up-step under rising melt fraction must be accepted'
+    )
+    assert not any('Rejected representation-artifact radius increase' in m for m in msgs)
+    # The up-stepped radius is kept.
+    assert hf_row['R_int'] == pytest.approx(r_prev * (1.0 + 1.0e-3), rel=1e-12)
+    assert hf_row['R_int'] > r_prev
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_monotonic_guard_clamps_up_step_under_cooling(caplog):
+    """A representation-artifact R_int up-step is clamped while the interior cools.
+
+    The counterpart to the heating-accept tests: with T_magma falling 3000 ->
+    2800 K and Phi flat (the interior is cooling), an identical +1e-3 R_int
+    up-step from the re-solve is a cross-table artifact and must be rejected, the
+    previous smaller structure restored, and the step recorded as zero radius
+    change so the resume-settling guard can suppress the spurious re-solve.
+
+    Monotonicity invariant: R_int is non-increasing while a super-liquidus
+    interior cools. Discrimination: the accept-path log stays silent and the
+    reject-path log fires, and R_int is restored to the running minimum rather
+    than kept at the up-stepped value, isolating the cooling branch from the
+    heating branch that keeps the same up-step.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()  # cooling: 3000 -> 2800 K
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    dirs = _mock_dirs()
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        result = update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    msgs = [r.message for r in caplog.records]
+    # The cooling branch rejects: reject log fires, accept log stays silent.
+    assert any('Rejected representation-artifact radius increase' in m for m in msgs)
+    assert not any('Accepted R_int increase under active interior heating' in m for m in msgs)
+    # The previous (smaller) structure is restored, not the up-stepped radius.
+    assert hf_row['R_int'] == pytest.approx(r_prev, rel=1e-12)
+    assert hf_row['R_int'] < r_prev * (1.0 + 1.0e-3)
+    # Recorded as zero radius change (retained structure) and a clean no-op.
+    assert dirs['_last_resolve_dR_rel'] == 0.0
+    assert interior_o.zalmoxis_fail_count == 0
+    # The no-op sentinel returns the current thermal state at current_time.
+    assert result[0] == pytest.approx(500.0, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_monotonic_guard_rejects_up_step_on_first_solve_infinite_reference(caplog):
+    """A first-solve R_int up-step is rejected because no finite reference exists.
+
+    Before the first structure is committed the caller seeds the last-decision
+    thermal state with the +inf sentinel (last_Tmagma = last_Phi = +inf). The
+    +inf last_Phi makes the absolute-Phi trigger fire (|Phi - inf| = inf), so the
+    solve runs and reaches the guard, but the reinflation discriminator needs a
+    finite prior reference: np.isfinite(+inf) is False, so neither the T_magma
+    nor the Phi comparison can hold and the up-step falls to the conservative
+    reject default.
+
+    Monotonicity invariant: R_int is non-increasing unless a finite prior
+    structure demonstrates heating. Discrimination: the identical +1e-3 up-step
+    is accepted once a finite heating reference exists (the heating-accept test),
+    so rejection here is driven by the missing reference, not the step size, which
+    pins the first-solve default the heating and cooling tests do not exercise.
+    """
+    config, hf_row, lt, _lT, _lP = _dtmagma_scenario()
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    # First solve: no committed structure yet, so the references are the +inf
+    # sentinels the caller initialises (proteus.py last_struct_Tmagma/Phi).
+    lT = np.inf
+    lP = np.inf
+    dirs = _mock_dirs()
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        result = update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    msgs = [r.message for r in caplog.records]
+    # No finite reference: the conservative default rejects, accept log silent.
+    assert any('Rejected representation-artifact radius increase' in m for m in msgs)
+    assert not any('Accepted R_int increase under active interior heating' in m for m in msgs)
+    # The pre-solve (smaller) structure is restored, not the up-stepped radius.
+    assert hf_row['R_int'] == pytest.approx(r_prev, rel=1e-12)
+    assert hf_row['R_int'] < r_prev * (1.0 + 1.0e-3)
+    # Recorded as zero radius change: a retained-structure no-op, not a failure.
+    assert dirs['_last_resolve_dR_rel'] == 0.0
+    assert interior_o.zalmoxis_fail_count == 0
+    # The no-op sentinel returns the current thermal state at current_time.
+    assert result[0] == pytest.approx(500.0, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('entry_stale', [False, True])
+def test_monotonic_guard_reject_preserves_structure_stale_flag(entry_stale, caplog):
+    """The reject path leaves structure_stale paired with the retained structure.
+
+    A rejected representation-artifact up-step retains the entry structure
+    (_saved_structure), so it must leave interior_o.structure_stale exactly as it
+    found it: it is neither a convergence failure (which would raise the flag) nor
+    a committed re-solve (which would clear it). Consumers read structure_stale to
+    decide whether Aragog is integrating on a fresh or a stale mesh, so the flag
+    must keep describing the structure actually in hf_row.
+
+    Contract invariant: the reject preserves the entry flag in BOTH states. Entry
+    True (a genuine prior non-convergence never re-solved) must stay True so the
+    stale-step counter keeps advancing; entry False (a committed structure) must
+    stay False so a healthy guard no-op is not miscounted as a stale mesh. The
+    True case discriminates: a reject that wrongly cleared the flag would silently
+    reset the stale-mesh accounting.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()  # cooling: 3000 -> 2800 K
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    dirs = _mock_dirs()
+    interior_o = _mock_interior_o()
+    interior_o.structure_stale = entry_stale
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    # The reject fired: the running-minimum structure is restored, not the up-step.
+    assert hf_row['R_int'] == pytest.approx(r_prev, rel=1e-12)
+    assert hf_row['R_int'] < r_prev * (1.0 + 1.0e-3)
+    # The stale flag is preserved exactly, neither cleared (as on a committed
+    # re-solve) nor raised (as on a convergence fall-back).
+    assert interior_o.structure_stale is entry_stale
+    assert '_structure_stale' not in hf_row, 'flag must not live on hf_row'
+
+
+# ============================================================================
+# Composition-sentinel refresh on the super-liquidus monotonic-radius no-op
+#
+# The dissolved-volatile composition trigger compares the live mass fraction
+# w = {species}_kg_liquid / M_mantle against the stored baseline
+# _last_w_{species}_liquid. Under the super-liquidus adiabat IC a comp-driven
+# re-solve is a representation-artifact radius up-step that the monotonic-radius
+# guard rejects, returning early BEFORE the success-path sentinel refresh. With
+# the baseline frozen and outgassing still moving the live fraction, the same
+# delta re-fires every loop and the coupled clock never commits (the IWp3_oxauth
+# livelock). The fix refreshes the baseline on the reject path too, through the
+# shared _refresh_composition_sentinels helper, WITHOUT gating the trigger (so
+# the crystallization-driving down-step re-solves and their EOS regeneration are
+# untouched). These exercise that refresh.
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_refresh_composition_sentinels_sets_both_species_in_unit_interval():
+    """The helper writes w = {species}_kg_liquid / M_mantle for BOTH H2O and H2.
+
+    Boundedness invariant: a dissolved-volatile mass fraction is in [0, 1]
+    (the dissolved mass cannot exceed the mantle mass). Both species baselines
+    must satisfy it and must take the distinct values their distinct liquid
+    masses imply.
+
+    Discrimination: H2O (5e21 kg) and H2 (1e20 kg) give baselines ~50x apart, so
+    a regression collapsing the two species, or dividing by a whole-planet mass
+    (5e24) instead of the mantle mass (3e24), would miss at least one pin well
+    beyond tolerance.
+    """
+    hf_row = {'M_mantle': 3.0e24, 'H2O_kg_liquid': 5.0e21, 'H2_kg_liquid': 1.0e20}
+    # Stale seeds, distinct from the current fractions, so the refresh is visible.
+    dirs = {'_last_w_H2O_liquid': 1.0e21 / 3.0e24, '_last_w_H2_liquid': 0.0}
+
+    _refresh_composition_sentinels(dirs, hf_row)
+
+    w_h2o = dirs['_last_w_H2O_liquid']
+    w_h2 = dirs['_last_w_H2_liquid']
+    assert w_h2o == pytest.approx(5.0e21 / 3.0e24, rel=1e-12)
+    assert w_h2 == pytest.approx(1.0e20 / 3.0e24, rel=1e-12)
+    # Boundedness invariant for both species.
+    assert 0.0 <= w_h2o <= 1.0
+    assert 0.0 <= w_h2 <= 1.0
+    # Distinct species: H2O baseline is ~50x the H2 baseline here.
+    assert w_h2o > 10.0 * w_h2
+    # Discrimination against a wrong (whole-planet) denominator: dividing the
+    # same liquid mass by a 5e24 kg planet mass instead of the 3e24 kg mantle
+    # gives 1.0e-3, which differs from the correct 1.667e-3 by 6.7e-4, far above
+    # the 1e-12 pin tolerance.
+    assert abs(w_h2o - 5.0e21 / 5.0e24) > 1e-4
+
+    # Upper-bound edge plus first-call (empty dirs) path: a fully dissolved
+    # species (liquid mass == mantle mass) pins the fraction at exactly 1.0,
+    # exercising the boundedness invariant at its edge, and an empty dirs gets
+    # the sentinels created rather than raising, so the first reject after t=0
+    # has a baseline to set.
+    dirs_full = {}
+    _refresh_composition_sentinels(
+        dirs_full, {'M_mantle': 3.0e24, 'H2O_kg_liquid': 3.0e24, 'H2_kg_liquid': 0.0}
+    )
+    assert dirs_full['_last_w_H2O_liquid'] == pytest.approx(1.0, rel=1e-12)
+    assert 0.0 <= dirs_full['_last_w_H2O_liquid'] <= 1.0
+    assert dirs_full['_last_w_H2_liquid'] == pytest.approx(0.0, abs=1e-30)
+
+
+@pytest.mark.unit
+def test_refresh_composition_sentinels_zero_mantle_leaves_baseline_untouched():
+    """A non-positive mantle mass leaves the sentinels untouched.
+
+    The trigger skips the dw comparison when M_mantle <= 0, so the refresh must
+    not write a divide-by-zero or 0/0 baseline that would later fire a spurious
+    composition trigger. Edge case: M_mantle = 0 with non-zero liquid masses.
+    """
+    dirs = {'_last_w_H2O_liquid': 4.2e-4, '_last_w_H2_liquid': 7.0e-5}
+
+    _refresh_composition_sentinels(
+        dirs, {'M_mantle': 0.0, 'H2O_kg_liquid': 5.0e21, 'H2_kg_liquid': 1.0e20}
+    )
+
+    # Untouched: the prior baselines survive intact (no zero/NaN written).
+    assert dirs['_last_w_H2O_liquid'] == pytest.approx(4.2e-4, rel=1e-12)
+    assert dirs['_last_w_H2_liquid'] == pytest.approx(7.0e-5, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_monotonic_noop_advances_composition_sentinels():
+    """A rejected super-liquidus up-step refreshes BOTH composition sentinels.
+
+    The reject path returns before the success-path refresh, so without the fix
+    the dissolved-volatile baseline stays frozen while outgassing keeps moving
+    the live fraction; the growing delta re-fires the composition trigger every
+    step and the coupled clock never commits. After the no-op the baselines must
+    equal the current dissolved fractions even though the structure was retained.
+
+    Discrimination: the stale seeds (distinct from the current fractions) are
+    gone, BOTH species advance (the H2 sentinel moves off its 0.0 seed, so a
+    regression refreshing only H2O would be caught), and the values match
+    kg_liquid / M_mantle, not the prior baseline.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    # dT/T is the trigger here; add composition so the reject-path refresh has
+    # data and the comp baselines are demonstrably advanced by a NON-comp trigger.
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    dirs = _mock_dirs()
+    dirs['_resume_struct_settle_loops'] = 50
+    dirs['_last_w_H2O_liquid'] = 1.0e21 / 3.0e24  # stale, distinct from current
+    dirs['_last_w_H2_liquid'] = 0.0  # stale
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        # Up-step past the running minimum -> rejected as a cross-table artifact.
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    assert dirs['_last_w_H2O_liquid'] == pytest.approx(5.0e21 / 3.0e24, rel=1e-9)
+    assert dirs['_last_w_H2_liquid'] == pytest.approx(1.0e20 / 3.0e24, rel=1e-9)
+    # Discrimination: the stale baseline (which the livelock would persist) is
+    # gone, and the H2 sentinel left its 0.0 seed.
+    assert dirs['_last_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
+    assert dirs['_last_w_H2_liquid'] > 0.0
+
+
+@pytest.mark.unit
+def test_superliquidus_does_not_gate_composition_trigger():
+    """Under the super-liquidus IC the composition trigger STILL fires.
+
+    Regression guard: the livelock fix advances the sentinel on the reject path
+    and must NOT gate the trigger off under the super-liquidus predicate. Gating
+    it (the reverted cb3f8582 behaviour) re-freezes crystallization because the
+    accepted down-step re-solves that drive solidification, and their EOS
+    regeneration, never run. With composition the SOLE trigger and the
+    super-liquidus predicate active, the solver must be CALLED (not short-circuit
+    to a no-update return).
+
+    Discrimination: if the trigger were gated under super-liquidus, ``triggered``
+    would stay False, the function would return the no-update sentinel, and the
+    solver would never be called.
+    """
+    config = _mock_config(update_interval=1e99, update_dtmagma_frac=1.0, update_dphi_abs=1.0)
+    config.interior_struct.zalmoxis.update_dw_comp_abs = 0.05
+    config.interior_struct.zalmoxis.global_miscibility = False
+
+    hf_row = {
+        'Time': 500.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.5,
+        'R_int': 6.371e6,
+        'M_int': 5e24,
+        'M_core': 2e24,
+        'M_mantle': 3.0e24,
+        'P_surf': 1e5,
+        'R_core': 3.5e6,
+        'P_center': 3.6e11,
+        'P_cmb': 1.4e11,
+        'rho_avg': 5500.0,
+        'gravity': 9.81,
+        'H2O_kg_liquid': 3.0e21,
+        'H2_kg_liquid': 0.0,
+    }
+    dirs = _mock_dirs()
+    # Stale baseline -> dw = |1e-3 - 6.67e-4| / 6.67e-4 = 0.5 >= 0.05 threshold.
+    dirs['_last_w_H2O_liquid'] = 2.0e21 / 3.0e24
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
+
+    # The composition trigger fired under super-liquidus: the solver ran.
+    mock_solver.assert_called_once()
+    # The up-step was rejected and the previous structure retained (so the reject
+    # path, not the success path, was taken): R_int is restored to its pre-solve
+    # value, not the +1e-3 up-step the solver wrote.
+    assert hf_row['R_int'] == pytest.approx(r_prev, rel=1e-12)
+    # And the reject path then refreshed the baseline to the current fraction,
+    # so the same dw cannot re-fire next loop (the livelock break).
+    assert dirs['_last_w_H2O_liquid'] == pytest.approx(3.0e21 / 3.0e24, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_accepted_resolve_advances_composition_sentinels_on_success_path():
+    """An ACCEPTED (down-step) re-solve refreshes both composition sentinels.
+
+    The reject-path refresh and the success-path refresh share one helper, so
+    this guards the success path independently: a regression dropping the
+    success-path helper call would leave the baseline stale after a normal
+    accepted re-solve and silently re-arm the composition trigger. A cooling
+    interior shrinks R_int (a down-step the monotonic-radius guard accepts), so
+    the call reaches the success path rather than the reject path.
+
+    Discrimination: the stale seeds (distinct from the current fractions) are
+    gone for BOTH species, R_int reflects the accepted shrink (not the retained
+    previous value), and the values match kg_liquid / M_mantle.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    dirs = _mock_dirs()  # forward run: no resume window, so the solve proceeds
+    dirs['_last_w_H2O_liquid'] = 1.0e21 / 3.0e24  # stale, distinct from current
+    dirs['_last_w_H2_liquid'] = 0.0  # stale
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _shrink_radius(*args, **kwargs):
+        # Cooling contracts the radius: a down-step the guard accepts, so the
+        # call reaches the success-path sentinel refresh.
+        args[2]['R_int'] = r_prev * (1.0 - 5e-4)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_shrink_radius)
+    with s as mock_solver, ns, cp:
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    # Accepted down-step: R_int is the shrunk value, not the retained previous one.
+    assert hf_row['R_int'] == pytest.approx(r_prev * (1.0 - 5e-4), rel=1e-9)
+    # Success path refreshed both baselines to the current fractions.
+    assert dirs['_last_w_H2O_liquid'] == pytest.approx(5.0e21 / 3.0e24, rel=1e-9)
+    assert dirs['_last_w_H2_liquid'] == pytest.approx(1.0e20 / 3.0e24, rel=1e-9)
+    # Discrimination: the stale seeds are gone for both species.
+    assert dirs['_last_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
+    assert dirs['_last_w_H2_liquid'] > 0.0
+
+
+# ============================================================================
+# EOS-grid-extent guard (_eos_grid_extent_up_step)
+# ============================================================================
+
+
+def _write_eos_dat(path, r):
+    """Write a 5-column zalmoxis_output.dat (r, P, rho, g, T) with radius col 0.
+
+    Mirrors the real on-disk format so the guard's ``usecols=0`` extraction is
+    exercised: the non-radius columns carry distinct constants, so a wrong-column
+    read would surface as a wrong extent and fail the radius assertions.
+    """
+    # Write with plain file I/O, NOT np.savetxt: the integration test patches
+    # proteus.interior_energetics.wrapper.np.savetxt, and because np is a shared
+    # module object that patch also mocks numpy.savetxt here, which would silently
+    # drop the file. open() is never patched, so the guard's real np.loadtxt reads
+    # a genuine on-disk mesh in both the predicate and the end-to-end tests.
+    r = np.atleast_1d(np.asarray(r, dtype=float))
+    with open(str(path), 'w') as fh:
+        for ri in r:
+            fh.write(f'{ri:.18e} {1.0e11:.18e} {5.0e3:.18e} {10.0:.18e} {3.0e3:.18e}\n')
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_eos_grid_extent_up_step_detects_km_scale_outer_artifact(tmp_path):
+    """A km-scale outer-grid up-step at a fixed scalar R_int is caught.
+
+    Reproduces the high-redox oxauth artifact: a re-solve regenerates a
+    zalmoxis_output.dat whose radial grid outer node sits +4 km beyond the
+    retained R_int while the scalar R_int is unchanged, so the scalar
+    monotonic-radius guard stays silent. Aragog's _validate_eos_radius_range
+    would raise on this mesh; the grid-extent guard must reject it. The
+    monotonicity invariant: a cooling planet's grid extent is non-increasing, so
+    an outer up-step is a representation artifact to reject.
+    """
+    eos = tmp_path / 'zalmoxis_output.dat'
+    R_int = 6.371e6
+    R_core = 3.48e6
+    hf_row = {'R_int': R_int, 'R_core': R_core}
+    # Ascending CMB -> surface grid whose outer node is 4 km past R_int.
+    _write_eos_dat(eos, np.linspace(R_core, R_int + 4.0e3, 200))
+    assert _eos_grid_extent_up_step(str(eos), hf_row) is True
+    # Discrimination guard: the same grid capped exactly at R_int is consistent,
+    # so the True above is driven by the +4 km excess, not by always returning
+    # True. A guard that ignored the grid (only the scalar) would pass both.
+    _write_eos_dat(eos, np.linspace(R_core, R_int, 200))
+    assert _eos_grid_extent_up_step(str(eos), hf_row) is False
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_eos_grid_extent_up_step_mirrors_aragog_atol_floor(tmp_path):
+    """Sub-metre drift passes; a metre-scale up-step beyond the 1 m floor rejects.
+
+    The guard mirrors Aragog's ``atol = max(1 m, 1e-9 * span)`` tolerance so that
+    single-metre resume drift between the saved mesh and the live R_int is
+    absorbed (pure pass-through) while a real up-step beyond the floor is caught.
+    Pins both sides of the 1 m floor: a wrong tolerance (0 m, or a km-scale
+    window) would flip at least one assertion.
+    """
+    eos = tmp_path / 'zalmoxis_output.dat'
+    R_int = 6.371e6
+    R_core = 3.48e6
+    hf_row = {'R_int': R_int, 'R_core': R_core}
+    # span = 2.891e6 m -> 1e-9 * span = 2.9e-3 m, so the 1 m floor governs.
+    # 0.5 m drift is within tolerance -> pass-through (no reject).
+    _write_eos_dat(eos, np.linspace(R_core, R_int + 0.5, 200))
+    assert _eos_grid_extent_up_step(str(eos), hf_row) is False
+    # 1.5 m up-step exceeds the 1 m floor -> reject.
+    _write_eos_dat(eos, np.linspace(R_core, R_int + 1.5, 200))
+    assert _eos_grid_extent_up_step(str(eos), hf_row) is True
+
+
+@pytest.mark.unit
+def test_eos_grid_extent_up_step_degenerate_inputs_pass_through(tmp_path):
+    """Unreadable, single-point, and non-positive-R_int inputs never reject.
+
+    These are not the monotonic-radius artifact, so the guard returns False and
+    the caller keeps the unchanged success path rather than restoring a previous
+    structure that does not apply. Exercises the error-contract paths (the
+    OSError/ValueError guard, the < 2-point guard, the R_int <= 0 guard).
+    """
+    eos = tmp_path / 'zalmoxis_output.dat'
+    R_int = 6.371e6
+    R_core = 3.48e6
+    # Absent file -> caught by the OSError guard.
+    assert (
+        _eos_grid_extent_up_step(
+            str(tmp_path / 'absent.dat'), {'R_int': R_int, 'R_core': R_core}
+        )
+        is False
+    )
+    # Single grid point -> too small to bound an extent.
+    _write_eos_dat(eos, np.array([R_int + 1.0e4]))
+    assert _eos_grid_extent_up_step(str(eos), {'R_int': R_int, 'R_core': R_core}) is False
+    # Non-positive R_int -> no valid mesh outer bound, even with a wide grid the
+    # guard cannot judge an up-step, so it must pass through (not reject).
+    _write_eos_dat(eos, np.linspace(R_core, R_int + 4.0e3, 200))
+    assert _eos_grid_extent_up_step(str(eos), {'R_int': 0.0, 'R_core': R_core}) is False
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_grid_extent_up_step_rejected_through_real_wrapper(tmp_path, caplog):
+    """A grid-extent up-step at a fixed scalar R_int is rejected end-to-end.
+
+    Exercises the wiring the predicate test cannot reach: a re-solve leaves the
+    scalar R_int at the running minimum (so the scalar monotonic-radius guard
+    stays silent) but writes a zalmoxis_output.dat whose outer grid node is +4 km
+    past R_int. update_structure_from_interior must take the new grid-extent
+    branch of the guard, restore zalmoxis_output.dat from .prev, advance the
+    composition sentinels, and return the no-op sentinel without counting a
+    solver failure. The monotonic invariant: a cooling planet's grid extent
+    cannot increase, so the inconsistent mesh is discarded rather than handed to
+    Aragog.
+
+    Discrimination: the grid-extent log line fires while the scalar-up-step log
+    line does NOT, so the test proves the grid branch (not the pre-existing
+    scalar branch) drove the rejection; a guard that only checked the scalar
+    R_int would leave both logs silent and pass the inconsistent mesh through.
+    """
+    config, hf_row, lt, lT, lP = _dtmagma_scenario()
+    hf_row['M_mantle'] = 3.0e24
+    hf_row['R_core'] = 3.5e6
+    hf_row['H2O_kg_liquid'] = 5.0e21
+    hf_row['H2_kg_liquid'] = 1.0e20
+    r_prev = hf_row['R_int']
+
+    outdir = tmp_path
+    (outdir / 'data').mkdir()
+    eos_path = outdir / 'data' / 'zalmoxis_output.dat'
+    # Pre-call .prev holds the retained, consistent grid (outer node at R_int).
+    # The reject restores zalmoxis_output.dat from it; without an existing .prev
+    # the wrapper best-effort skips the restore (the first-call case).
+    _write_eos_dat(str(eos_path) + '.prev', np.linspace(hf_row['R_core'], r_prev, 200))
+
+    dirs = _mock_dirs()
+    dirs['output'] = str(outdir)
+    dirs['_last_w_H2O_liquid'] = 1.0e21 / 3.0e24  # stale, distinct from current
+    dirs['_last_w_H2_liquid'] = 0.0
+    interior_o = _mock_interior_o()
+
+    def _grid_up_step_no_scalar(*args, **kwargs):
+        # R_int stays at the running minimum (no scalar up-step), but the
+        # regenerated mesh outer node sits 4 km past it.
+        hr = args[2]
+        hr['R_int'] = r_prev
+        _write_eos_dat(eos_path, np.linspace(hr['R_core'], r_prev + 4.0e3, 200))
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_grid_up_step_no_scalar)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp as mock_copy2,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, lt, lT, lP)
+
+    mock_solver.assert_called_once()
+    msgs = [r.message for r in caplog.records]
+    # The grid-extent branch fired ...
+    assert any(
+        'Rejected EOS-grid-extent up-step under the super-liquidus adiabat IC:' in m
+        for m in msgs
+    ), 'grid-extent reject log must fire when the outer grid up-steps past R_int'
+    # ... and the scalar branch did NOT (R_int was held at the running minimum).
+    assert not any('Rejected representation-artifact radius increase' in m for m in msgs), (
+        'the scalar up-step log must stay silent: R_int did not up-step'
+    )
+    # The reject restored zalmoxis_output.dat from its pre-call .prev snapshot.
+    mock_copy2.assert_any_call(str(eos_path) + '.prev', str(eos_path))
+    # A rejected up-step is a clean no-op, not a solver failure.
+    assert interior_o.zalmoxis_fail_count == 0
+    # The composition sentinel advanced off its stale seed (reject-path refresh).
+    assert dirs['_last_w_H2O_liquid'] == pytest.approx(5.0e21 / 3.0e24, rel=1e-9)
+    assert dirs['_last_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)

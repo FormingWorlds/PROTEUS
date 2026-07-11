@@ -29,9 +29,10 @@ Invariants asserted:
   physical values when the ``'self'`` sentinel resolves through
   the EOS.
 - ``gravity`` positive and bounded (5-15 m/s^2 for 1 M_Earth).
-- Cross-step stability: with the default ``update_interval = 1e9
-  yr``, only the IC structure solve fires in a 1e3 yr run, so
-  ``R_int`` is constant to within numerical roundoff across rows.
+- Cross-step structure stability: with ``update_interval = 0`` the
+  per-iteration refresh triggers are off, so the only structure
+  change is the one-time baseline hand-off on the first non-init
+  step (which contracts ``R_int`` once); ``R_int`` is then constant.
 
 Discrimination guard: the test verifies that Zalmoxis (not the
 dummy Noack & Lasbleis scaling law) ran, by reading the structure
@@ -64,13 +65,17 @@ from tests.integration.conftest import (
     validate_stability,
 )
 
-# Linux exercises the production Zalmoxis path end-to-end. The IC
-# solve via `solve_structure` is the only Zalmoxis call exercised
-# in this test; the test overrides below disable the
-# `equilibrate_initial_state` loop (up to 15 more solves) and the
-# per-iteration `update_structure_from_interior` refresh. With those
-# off the test lands well inside the standard 3600 s slow-tier
-# budget on GHA ubuntu-latest.
+# Linux exercises the production Zalmoxis path end-to-end at the production
+# 150-level resolution, where the structure self-consistency check holds. The
+# overrides below disable the `equilibrate_initial_state` loop and the
+# per-iteration `update_structure_from_interior` refresh, but the initial-
+# condition solve plus the one-time baseline hand-off still drive the Newton
+# mass-radius search through full-resolution structure integrations. This is
+# the same IC solve the sibling zalmoxis + aragog + calliope test runs (~133
+# min there, with real aragog and calliope on top); with only dummy backends
+# around it this test costs less, so the shared 9000 s timeout gives the real
+# solve ample headroom without coarsening the mesh below the resolution the
+# self-consistency check requires.
 #
 # On macOS arm64 the same test path is markedly slower (JAX +
 # diffrax PALEOS solve runs far slower on Apple Silicon); the test
@@ -78,7 +83,7 @@ from tests.integration.conftest import (
 # investigated at the wrapper or library level (TODO).
 pytestmark = [
     pytest.mark.slow,
-    pytest.mark.timeout(3600),
+    pytest.mark.timeout(9000),
     pytest.mark.skipif(
         sys.platform == 'darwin',
         reason='Zalmoxis + JAX PALEOS solve is markedly slower on macOS arm64; Linux covers production path',
@@ -95,9 +100,11 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
     Physical scenario: 1 M_Earth, 0.5 AU, IW+2 fO2 shift, 3000 ppmw
     H budget (from ``input/dummy.toml``). The real Zalmoxis solver
     (production default ``outer_solver='newton'``, ``use_jax=True``,
-    PALEOS mantle + iron core EOS) solves the structure at IC and
-    holds it constant across the two timesteps because
-    ``update_interval`` defaults to 1 Gyr.
+    PALEOS mantle + iron core EOS) solves the structure at IC, hands
+    it off once to the energetics-module temperature profile on the
+    first non-init step (a bounded ``R_int`` contraction), then holds
+    it constant since ``update_interval = 0`` disables further
+    re-solves.
 
     Verifies:
 
@@ -112,7 +119,8 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
     - core_density, core_heatcap positive (the 'self' sentinel
       resolved to physical values through the EOS).
     - Gravity in [5, 15] m/s^2.
-    - R_int stable across rows (no spurious refresh).
+    - R_int does a single bounded baseline contraction, then stable
+      (no spurious per-step refresh).
     - Cross-cutting mass + stability helpers.
     """
     # Restrict Zalmoxis to the single IC solve. The helper covers the
@@ -151,14 +159,36 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
     assert np.all(r_int > 5.5e6), f'R_int below Earth scale: min={r_int.min():.3e} m'
     assert np.all(r_int < 6.5e6), f'R_int above Earth scale: max={r_int.max():.3e} m'
 
-    # R_int is held constant by the default update_interval = 1 Gyr.
-    # Two timesteps at 100-1000 yr separation should not trigger a
-    # re-solve, so cross-row variation reflects only IC roundoff.
+    # R_int follows the branch's one-time baseline hand-off, then settles.
+    # The IC solve sets the maximal-radius structure; on the first non-init
+    # step the baseline re-solve (proteus.py, force=True) hands the structure
+    # off to the energetics-module temperature profile once, which contracts
+    # R_int. With update_interval = 0 the per-iteration refresh triggers are
+    # short-circuited, so no further re-solve fires and R_int is constant after
+    # that single hand-off. The assertions encode "one bounded contraction then
+    # stable", which still discriminates a per-step re-solve (would show several
+    # changes) and a runaway collapse or expansion (magnitude / sign guards).
     if len(r_int) >= 2:
-        rel_drift = np.max(np.abs(np.diff(r_int))) / r_int[0]
-        assert rel_drift < 1e-6, (
-            f'R_int drifted across rows despite update_interval = 1 Gyr; '
-            f'max rel drift = {rel_drift:.3e}'
+        step_drift = np.abs(np.diff(r_int)) / r_int[0]
+        # At most one significant per-step change: the baseline hand-off. A
+        # refresh trigger misfiring every step would show more than one; a
+        # frozen structure would show none.
+        n_significant = int(np.sum(step_drift > 1e-4))
+        assert n_significant <= 1, (
+            f'R_int changed on more than one step (n={n_significant}); expected a '
+            f'single baseline hand-off, per-step rel drifts = {step_drift}'
+        )
+        # The hand-off contracts the structure (the energetics T profile sits
+        # below the maximal-radius IC adiabat); R_int must not expand, and the
+        # one-time change is bounded well below a runaway collapse.
+        net_change = (r_int[0] - r_int[-1]) / r_int[0]
+        assert -1e-6 <= net_change < 0.10, (
+            f'R_int net change {net_change:.3e} outside [0, 10%): expected a '
+            f'bounded one-time baseline contraction, not expansion or collapse'
+        )
+        # No per-step expansion: every step is a contraction (or roundoff-flat).
+        assert np.all(np.diff(r_int) <= 1e-6 * r_int[0]), (
+            f'R_int expanded on some step; per-step diffs = {np.diff(r_int)}'
         )
 
     # Mass closure: M_int + M_volatiles = M_planet, the production-side

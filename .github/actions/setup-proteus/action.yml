@@ -358,6 +358,47 @@ runs:
         # are optional for end users (a standard run uses calliope).
         pip install -e ".[develop,vulcan,atmodeller]"
 
+    # ------------------------------------------------------------------
+    # 8b. Paired-branch submodules (aragog, Zalmoxis). When PROTEUS is on a
+    # feature branch that the submodule also carries, install that submodule
+    # branch editable so it shadows the released fwl-* pulled in by the PROTEUS
+    # install above, and CI exercises the real paired code. main and branches
+    # with no matching submodule branch are untouched and keep the PyPI release.
+    # ------------------------------------------------------------------
+    - name: Install paired-branch submodules
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+        case "$branch" in
+          '' | main | master)
+            echo "On '${branch:-detached HEAD}'; keeping the released submodules (no paired branch)."
+            exit 0 ;;
+        esac
+        # name|repo-url|install-script
+        for spec in \
+          "aragog|https://github.com/FormingWorlds/aragog.git|tools/get_aragog.sh" \
+          "Zalmoxis|https://github.com/FormingWorlds/Zalmoxis.git|tools/get_zalmoxis.sh"; do
+          name="${spec%%|*}"; rest="${spec#*|}"; url="${rest%%|*}"; script="${rest#*|}"
+          # git ls-remote --exit-code: 0 = branch present, 2 = genuinely absent,
+          # any other code = probe failure (e.g. a network blip). Only a clean
+          # "absent" keeps the PyPI release; a probe failure on a feature branch
+          # fails loudly rather than silently dropping paired-branch-only code,
+          # which would otherwise resurface as an AttributeError or a non-
+          # converging solve in the slow tests.
+          rc=0
+          git ls-remote --exit-code --heads "$url" "$branch" >/dev/null 2>&1 || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "$name has a matching '$branch' branch; installing it editable to shadow the PyPI release."
+            bash "$script" --force
+          elif [ "$rc" -eq 2 ]; then
+            echo "No $name branch named '$branch'; keeping the released $name (PyPI)."
+          else
+            echo "ERROR: git ls-remote failed (exit $rc) probing $name for branch '$branch'; refusing to silently keep the PyPI release." >&2
+            exit 1
+          fi
+        done
+
     # BOREAS is an optional dependency: users opt in via
     # tools/get_boreas.sh. CI installs it explicitly (at the ref pinned
     # in [tool.proteus.modules.boreas]) so the BOREAS escape tests run

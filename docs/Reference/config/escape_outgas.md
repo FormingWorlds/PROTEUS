@@ -105,7 +105,7 @@ real-gas equations of state.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `solver_mode` | str | `"robust"` | Root-finding mode: `robust` (better convergence) or `basic` (faster) |
-| `solver_max_steps` | int | `256` | Maximum solver iterations |
+| `solver_max_steps` | int | `1024` | Maximum solver iterations |
 | `solver_multistart` | int | `10` | Number of random restarts |
 | `include_condensates` | bool | `true` | Enable condensate formation (e.g. graphite) |
 

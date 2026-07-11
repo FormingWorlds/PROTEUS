@@ -49,13 +49,13 @@ def _make_minimal_config(
     cfg.interior_struct.core_frac = core_frac
     cfg.interior_struct.core_frac_mode = core_frac_mode
     cfg.interior_struct.module = 'dummy'
-    # Explicitly None out interior_struct.zalmoxis so the function takes the
-    # early fallback at common.py around line 374 ("Zalmoxis config not
-    # available"). Without this line MagicMock auto-creates a MagicMock for
-    # interior_struct.zalmoxis, the None-guard never fires, and the function
-    # runs the real Zalmoxis 2-phase EOS loaders with MagicMock paths. That
-    # path completes quickly on a host where zalmoxis import fails early but
-    # can hang on a hosted CI image where zalmoxis is installed and the
+    # Explicitly None out interior_struct.zalmoxis. The liquidus_super solve
+    # resolves P_cmb and emits the Noack & Lasbleis (2020) fallback log line
+    # before it reads interior_struct.zalmoxis.mantle_eos, so this lets the
+    # solve stop with a harmless AttributeError right after the log we assert
+    # on, instead of descending into the real PALEOS adiabat. Without it
+    # MagicMock auto-creates the field and the solve runs the real EOS loaders
+    # with MagicMock paths, which can hang on a hosted CI image where the
     # MagicMock paths feed into JAX compilation or disk-scan loops.
     cfg.interior_struct.zalmoxis = None
     return cfg
@@ -105,7 +105,7 @@ def test_super_earth_no_longer_raises_earth_window_error(mass_tot, caplog):
     cfg = _make_minimal_config(mass_tot=mass_tot)
     caplog.set_level(
         logging.WARNING,
-        logger='fwl.proteus.interior_energetics.common',
+        logger='fwl.proteus.interior_struct.zalmoxis',
     )
     _call_and_swallow_downstream(cfg)
     # The Noack & Lasbleis (2020) fallback log must appear regardless
@@ -126,7 +126,7 @@ def test_NL20_log_lines_pcmb_scales_with_mass(caplog):
     """
     caplog.set_level(
         logging.WARNING,
-        logger='fwl.proteus.interior_energetics.common',
+        logger='fwl.proteus.interior_struct.zalmoxis',
     )
 
     p_cmb_logged = {}

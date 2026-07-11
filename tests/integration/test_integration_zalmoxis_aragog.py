@@ -67,8 +67,9 @@ Integration-tier scope:
   inequality cases.
 - ``Aragog.tolerance_struct`` and ``Aragog.atol_temperature_equivalent``
   both use ``gt(0)`` with the both-edge selectivity pattern.
-- ``Aragog.phi_step_cap`` uses ``ge(0)`` (catches ``gt(0)``
-  regression at the documented default 0.0).
+- ``Aragog.phi_step_cap`` admits the -1.0 off sentinel or any
+  finite value >= 0; the documented default 0.0 and small positives
+  round-trip while any other negative rejects.
 - The wrapper merge contract: ``R_int``, ``M_int``, ``R_core``,
   ``P_center``, ``P_cmb``, ``core_density``, ``core_heatcap``,
   ``T_cmb``, ``T_cmb_initial``, and ``F_cmb`` are registered in
@@ -698,18 +699,26 @@ def test_aragog_tolerance_struct_and_atol_gt0_with_selectivity():
     assert default.atol_temperature_equivalent == pytest.approx(1e-8, rel=1e-12)
 
 
-def test_aragog_phi_step_cap_ge0_with_selectivity():
-    """``Aragog.phi_step_cap`` uses ``ge(0)``: ``=0`` round-trips
-    (the documented default; catches a ``gt(0)`` regression that
-    would silently reject the off-by-default value), small positive
-    round-trips, negative rejects.
+def test_aragog_phi_step_cap_off_sentinel_with_selectivity():
+    """``Aragog.phi_step_cap`` admits the -1.0 off sentinel or any
+    finite value >= 0. The documented default 0.0 round-trips (the
+    off-by-default value the wrapper promotes on the zalmoxis stack),
+    a small positive round-trips, the -1.0 sentinel round-trips as the
+    single disabled value, and any other negative rejects so a
+    malformed cap cannot silently pass as the disabled sentinel.
     """
     from proteus.config._interior import Aragog
 
     assert Aragog(phi_step_cap=0.0).phi_step_cap == pytest.approx(0.0, abs=1e-12)
     assert Aragog(phi_step_cap=0.05).phi_step_cap == pytest.approx(0.05, rel=1e-12)
+    # The -1.0 off sentinel is admitted and round-trips unchanged.
+    assert Aragog(phi_step_cap=-1.0).phi_step_cap == pytest.approx(-1.0, abs=1e-12)
+    # Selectivity: a negative just off the sentinel (differs from -1.0 by far
+    # more than any tolerance) and a larger negative both reject.
     with pytest.raises(ValueError, match=r'(?i)phi_step_cap'):
         Aragog(phi_step_cap=-1e-12)
+    with pytest.raises(ValueError, match=r'(?i)phi_step_cap'):
+        Aragog(phi_step_cap=-5.0)
 
 
 def test_aragog_requires_at_least_one_energy_transport_term_under_zalmoxis():

@@ -603,7 +603,7 @@ def test_optional_backends_vulcan_atmodeller_are_extras_not_mandatory():
     extras = data['project']['optional-dependencies']
     # Membership, not exact-list: an extra may gain a second requirement
     # later (e.g. a transitive pin) without this guard going stale.
-    assert any(r.startswith('atmodeller>=1.0.0') for r in extras.get('atmodeller', [])), (
+    assert any(r.startswith('atmodeller>=1.0.2') for r in extras.get('atmodeller', [])), (
         f'atmodeller extra must keep its pin, got {extras.get("atmodeller")!r}'
     )
     assert any(r.startswith('fwl-vulcan>=26.04.22') for r in extras.get('vulcan', [])), (
@@ -611,13 +611,14 @@ def test_optional_backends_vulcan_atmodeller_are_extras_not_mandatory():
     )
     # The default Aragog interior solver runs on JAX and its modules are
     # equinox Modules, so the jax/equinox stack must stay MANDATORY, not be
-    # gated behind the optional atmodeller extra. equinox==0.13.2 calls
-    # jax.core.mapped_aval (removed in jax 0.10), which is why jax/jaxlib are
-    # pinned <0.10. Lifting any of these would break a standard run.
+    # gated behind the optional atmodeller extra. The pinned equinox build
+    # targets a jax API that changed in 0.10, which is why jax/jaxlib are held
+    # <0.10; the pin is the combination the Aragog numerics are validated
+    # against. Lifting any of these would break a standard run.
     assert 'jax<0.10' in deps and 'jaxlib<0.10' in deps, (
         'jax/jaxlib must stay pinned <0.10 for the default Aragog jax solver'
     )
-    assert 'equinox==0.13.2' in deps, (
+    assert 'equinox==0.13.8' in deps, (
         'equinox must be a mandatory dependency for the default Aragog jax solver; '
         'it was previously pulled only transitively via atmodeller'
     )

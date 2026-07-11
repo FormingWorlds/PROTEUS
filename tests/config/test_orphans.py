@@ -345,3 +345,77 @@ def test_orphans_proteus_init_succeeds_on_clean_config(tmp_path):
 
     # Discrimination: the output directory must have been resolved
     assert runner.directories is not None
+
+
+def test_all_options_phase_boundary_margin_declared_and_resolves():
+    """The phase-boundary entropy margin lives in both the TOML and the schema.
+
+    A key present in the reference TOML but absent from the schema would be a
+    silent orphan: the user could set it with intent and get no effect and no
+    warning. This pins that ``phase_boundary_entropy_margin`` is declared in
+    both layers, sits at the documented 200.0 default in the reference TOML,
+    keeps ``input/all_options.toml`` orphan-free, and resolves to 200.0 through
+    the parser. The omitted-key bit-identity claim is exercised separately by
+    ``test_omitted_phase_boundary_margin_resolves_to_default``.
+    """
+    import tomllib
+
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    all_options = PROTEUS_ROOT / 'input' / 'all_options.toml'
+    with open(all_options, 'rb') as f:
+        raw = tomllib.load(f)
+
+    # Present in the reference TOML at the documented default.
+    toml_value = raw['interior_energetics']['aragog']['phase_boundary_entropy_margin']
+    assert toml_value == pytest.approx(200.0)
+
+    # The whole reference file stays orphan-free, so the new key has a schema
+    # home and is not one of the silently-discarded orphans.
+    assert check_config_orphan_free(raw) is True
+
+    # End-to-end resolution through the parser yields the same 200.0. Pinning
+    # the exact band is itself the discriminator: it rejects a 0.0 step-cap-
+    # style sentinel that would silently disable the near-boundary max_step
+    # tightening this knob exists to control.
+    cfg = read_config_object(all_options)
+    resolved = cfg.interior_energetics.aragog.phase_boundary_entropy_margin
+    assert resolved == pytest.approx(200.0)
+
+
+def test_omitted_phase_boundary_margin_resolves_to_default(tmp_path):
+    """A config that omits the margin key resolves to Aragog's 200.0 default.
+
+    The release-gate guarantee is that surfacing the knob does not move any
+    converged result: a TOML with no ``phase_boundary_entropy_margin`` must
+    reach the solver with the same 200.0 band that was previously hard-coded
+    inside Aragog. This deletes the key from the reference config, re-parses,
+    and asserts the schema default fills in exactly, so the omitted-key path is
+    bit-identical to prior behaviour rather than merely orphan-free.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    all_options = PROTEUS_ROOT / 'input' / 'all_options.toml'
+    with open(all_options, 'rb') as f:
+        raw = tomllib.load(f)
+
+    # Drop the key so the parser must fall back to the attrs default.
+    del raw['interior_energetics']['aragog']['phase_boundary_entropy_margin']
+    assert 'phase_boundary_entropy_margin' not in raw['interior_energetics']['aragog']
+
+    stripped = tmp_path / 'no_margin.toml'
+    with open(stripped, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    cfg = read_config_object(stripped)
+    resolved = cfg.interior_energetics.aragog.phase_boundary_entropy_margin
+    # Exact 200.0 default, not the 0.0 sentinel the step caps use: an omitted
+    # band must not silently disable the near-boundary max_step tightening.
+    assert resolved == pytest.approx(200.0)

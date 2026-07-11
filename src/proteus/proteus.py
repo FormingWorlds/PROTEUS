@@ -62,6 +62,10 @@ class Proteus:
         self.init_stage = False
         self.loops = None
 
+        # Whether the one-time callable-representation structure baseline has
+        # been solved (set once at the init/evolution boundary, see main loop)
+        self._baseline_structure_done = False
+
         # Interior
         self.interior_o = None  # Interior object from interior/common.py
 
@@ -192,6 +196,66 @@ class Proteus:
 
         self.directories = set_directories(self.config)
 
+    def _solve_structure_baseline_if_needed(self):
+        """Solve the one-time callable-representation structure baseline.
+
+        At the first evolution step both dynamic and static Zalmoxis runs solve
+        the structure once from the converged initial interior profile, so they
+        share an identical, self-consistent starting radius rather than the
+        structure-solver's own initial-condition adiabat. The baseline is solved
+        once per run; resumed runs and already-baselined runs are a no-op.
+
+        A failed forced solve restores the initial-condition structure and flags
+        it stale; in that case the baseline is left unmarked so the next
+        evolution step retries. The solver's own consecutive-failure budget
+        aborts the run if the baseline cannot be established, so a static run is
+        never silently frozen on the unconverged initial-condition structure.
+
+        For the super-liquidus adiabat initial condition the structure solve
+        already integrates against the true adiabat for both dynamic and static
+        runs, so the shared starting radius is established at the initial
+        condition itself. Re-solving here against the energetics module's
+        temperature profile would overwrite that maximal-radius initial
+        condition with a different (cross-table) representation and could nudge
+        R_int upward, so the baseline re-solve is skipped in that case.
+        """
+        if (
+            self.init_stage
+            or self._baseline_structure_done
+            or self.config.interior_struct.module != 'zalmoxis'
+        ):
+            return
+
+        from proteus.interior_energetics.wrapper import (
+            _use_superliquidus_adiabat_ic,
+            update_structure_from_interior,
+        )
+
+        if _use_superliquidus_adiabat_ic(self.config):
+            self._baseline_structure_done = True
+            return
+
+        new_time, new_Tmagma, new_Phi = update_structure_from_interior(
+            self.directories,
+            self.config,
+            self.hf_row,
+            self.interior_o,
+            self.last_struct_time,
+            self.last_struct_Tmagma,
+            self.last_struct_Phi,
+            force=True,
+        )
+
+        # Commit the baseline only when the solve converged. On a fall-back the
+        # structure is the stale initial-condition one; retry on the next step.
+        if self.interior_o.structure_stale:
+            return
+
+        self.last_struct_time = new_time
+        self.last_struct_Tmagma = new_Tmagma
+        self.last_struct_Phi = new_Phi
+        self._baseline_structure_done = True
+
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
 
@@ -265,6 +329,7 @@ class Proteus:
             print_stoptime,
             print_system_configuration,
             remove_excess_files,
+            select_resumable_snapshot,
             validate_module_versions,
         )
 
@@ -320,6 +385,7 @@ class Proteus:
             'init_loops': 3,  # Maximum number of init iters
         }
         self.init_stage = True
+        self._baseline_structure_done = False
 
         # Write config to output directory, for future reference
         self.config.write(os.path.join(self.directories['output'], 'init_coupler.toml'))
@@ -486,6 +552,39 @@ class Proteus:
                 UpdateStatusfile(self.directories, 20)
                 raise RuntimeError('Simulation is too short to be resumed')
 
+            # Extract archived data files before choosing a resume point, so
+            # the loose per-iteration snapshots are present on disk.
+            log.debug('Extracting archived data files')
+            self.extract_archives()
+
+            # Resume from the latest fully written snapshot pair. A crash
+            # mid-write can truncate the most recent _int.nc or _atm.nc
+            # independently of the (atomic) helpfile; drop any such
+            # incomplete trailing rows so the interior and atmosphere both
+            # load a complete state instead of aborting on the corrupt file.
+            require_atm = self.config.atmos_clim.module != 'dummy'
+            self.hf_all, dropped_snapshots = select_resumable_snapshot(
+                self.directories['output'],
+                self.hf_all,
+                require_atm=require_atm,
+                interior_module=self.config.interior_energetics.module,
+                atmos_module=self.config.atmos_clim.module,
+            )
+            if dropped_snapshots:
+                log.warning(
+                    'Resume: dropped %d trailing helpfile row(s) without a '
+                    'complete snapshot pair (times %s); resuming from the last '
+                    'complete state.',
+                    len(dropped_snapshots),
+                    dropped_snapshots,
+                )
+                if len(self.hf_all) <= self.loops['init_loops'] + 1:
+                    UpdateStatusfile(self.directories, 20)
+                    raise RuntimeError(
+                        'Simulation is too short to be resumed after dropping '
+                        'incomplete trailing snapshots'
+                    )
+
             # Get last row from helpfile dataframe
             self.hf_row = self.hf_all.iloc[-1].to_dict()
 
@@ -507,10 +606,6 @@ class Proteus:
             # Check if the planet is desiccated
             self.desiccated = check_desiccation(self.config, self.hf_row)
 
-            # Extract all archived data files
-            log.debug('Extracting archived data files')
-            self.extract_archives()
-
             # Interior initial condition
             self.interior_o.ic = 2
 
@@ -518,9 +613,20 @@ class Proteus:
             if self.config.orbit.module is not None:
                 self.interior_o.resume_tides(self.directories['output'])
 
+            # Restore the stale-structure flag so a resume that lands on a
+            # fall-back Zalmoxis mesh keeps the stale-step accounting instead of
+            # silently reading fresh.
+            self.interior_o.resume_structure_stale(self.directories['output'])
+
             # Set loop counters
             self.loops['total'] = len(self.hf_all)
             self.init_stage = False
+            # A resumed run continues from its on-disk structure; do not solve
+            # the init baseline mid-evolution, which would inject a spurious
+            # radius step (and would un-freeze a static run). For runs first
+            # launched on this code path the on-disk structure is already the
+            # callable-representation baseline.
+            self._baseline_structure_done = True
 
             # Restore Zalmoxis mesh path for resumed SPIDER runs
             if (
@@ -547,6 +653,15 @@ class Proteus:
             # no Zalmoxis-generated EOS tables are available`. Same issue
             # bites Aragog when it needs the P-S tables at re-init.
             eos_dir_restored = os.path.join(self.directories['output'], 'data', 'spider_eos')
+            if not os.path.isdir(eos_dir_restored):
+                # Runs launched with PROTEUS_PS_CACHE_DIR keep the tables in the
+                # shared cache, not under the run directory. Follow the pointer
+                # left at table generation so resume finds them there.
+                from proteus.interior_struct.zalmoxis import read_ps_cache_pointer
+
+                pointed = read_ps_cache_pointer(self.directories['output'])
+                if pointed and os.path.isdir(pointed):
+                    eos_dir_restored = pointed
             if os.path.isdir(eos_dir_restored):
                 self.directories['spider_eos_dir'] = eos_dir_restored
                 solidus_ps = os.path.join(eos_dir_restored, 'solidus_P-S.dat')
@@ -561,6 +676,19 @@ class Proteus:
             self.last_struct_time = self.hf_row.get('Time', 0.0)
             self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
             self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
+
+            # Arm the resume-settling structure-re-solve guard. The resumed
+            # interior relaxes thermally over the first loops and would
+            # otherwise fire repeated dynamic structure re-solves that recompute
+            # the same converged radius at a large wall cost. The guard (in
+            # interior_energetics/wrapper.py) suppresses dT/T-only re-solves once
+            # the radius has converged, within this window. Only the resume path
+            # arms it, so a fresh run's re-solve cadence is unchanged.
+            from proteus.interior_energetics.wrapper import (
+                _RESUME_STRUCT_SETTLE_LOOPS,
+            )
+
+            self.directories['_resume_struct_settle_loops'] = _RESUME_STRUCT_SETTLE_LOOPS
 
             # Save the coupled T_surf for the first resumed atmosphere solve.
             # Aragog's first step outputs an adiabatic T_magma ~30-50 K above
@@ -698,6 +826,12 @@ class Proteus:
             self.hf_row['Time'] += self.interior_o.dt  # in years
             self.hf_row['age_star'] += self.interior_o.dt  # in years
 
+            # One-time structure baseline in the interior-fed callable
+            # representation (dynamic and static runs share an identical start).
+            # Static runs perform no further structure solves; dynamic runs
+            # continue in the block below.
+            self._solve_structure_baseline_if_needed()
+
             # Re-compute structure if Zalmoxis feedback is active
             if (
                 not self.init_stage
@@ -723,6 +857,13 @@ class Proteus:
                 if _IT_TIMING_ENABLED:
                     _t_mod['structure'] = time.perf_counter() - _t0
                 # gc.collect() already called inside update_structure_from_interior()
+
+                # Count down the resume-settling structure-re-solve window once
+                # per loop. When it reaches zero the guard disengages and the
+                # normal dynamic re-solve cadence resumes. Only ever armed on the
+                # resume path, so a fresh run never decrements (the key is absent).
+                if self.directories.get('_resume_struct_settle_loops', 0) > 0:
+                    self.directories['_resume_struct_settle_loops'] -= 1
 
             ############### / INTERIOR AND STRUCTURE
 
@@ -1044,9 +1185,16 @@ class Proteus:
             ):
                 log.info('Updating archive of model output data')
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                # do not remove ALL files
-                archive.update(self.directories['output/data'], remove_files=False)
-                # remove all files EXCEPT the latest ones
+                # pack new timestamped snapshots into data.tar, keeping the
+                # originals loose; the fixed-name runtime files and EOS table
+                # directories are left out so they are not re-appended (and so
+                # duplicated) on every archive cycle
+                archive.update(
+                    self.directories['output/data'], remove_files=False, snapshots_only=True
+                )
+                # prune archived snapshots older than the cutoff; fixed-name
+                # runtime files needed by the interior modules (mesh and EOS
+                # hand-off files) stay in place
                 archive.remove_old(self.directories['output/data'], self.hf_row['Time'] * 0.99)
                 if _IT_TIMING_ENABLED:
                     _t_mod['archive'] = time.perf_counter() - _t0
