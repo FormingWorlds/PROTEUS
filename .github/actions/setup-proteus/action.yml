@@ -369,6 +369,13 @@ runs:
       shell: bash -el {0}
       run: |
         set -euo pipefail
+        # This step runs in a login shell (needed for the conda env used by
+        # the install scripts below). On the hosted runners the login
+        # shell's logout hook (~/.bash_logout -> clear_console) fails on
+        # the console-less runner and overwrites the step's exit status,
+        # so the explicit exit 0 below arrives as exit 1. Removing the
+        # hook keeps this step's own exit status authoritative.
+        rm -f "$HOME/.bash_logout"
         branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
         case "$branch" in
           '' | main | master)
