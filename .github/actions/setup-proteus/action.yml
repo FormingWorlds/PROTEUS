@@ -86,6 +86,21 @@ runs:
         df -h /
 
     # ------------------------------------------------------------------
+    # 0c. Neutralise the console-less-runner logout hook
+    # ------------------------------------------------------------------
+    # Hosted runners have no console, so the clear_console call in the
+    # default ~/.bash_logout fails on exit. Under a login shell (bash -el,
+    # used by the conda-activating steps below and by any workflow that
+    # runs this action) that failure overrides the recorded exit status of
+    # a step whose script ends on an explicit exit, reporting a success as
+    # a failure. Removing the hook once here, ahead of the first login
+    # shell, keeps every later login-shell step in the job reporting its
+    # true status. clear_console is purely cosmetic, so dropping it is safe.
+    - name: Neutralise the console-less-runner logout hook
+      shell: bash
+      run: rm -f "$HOME/.bash_logout"
+
+    # ------------------------------------------------------------------
     # 1a. System packages (Linux)
     # ------------------------------------------------------------------
     - name: Install system packages (Linux)
