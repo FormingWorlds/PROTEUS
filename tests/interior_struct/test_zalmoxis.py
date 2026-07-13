@@ -875,6 +875,225 @@ def test_jax_structure_viability_predicate(tmp_path):
     )
 
 
+_WET_GATE_REGISTRY = {
+    'PALEOS:H2O': {'eos_file': 'h2o_unified.dat', 'format': 'paleos_unified'},
+    # Same shape as the production entry; the wet envelope rejects it by
+    # name, not by format.
+    'Chabrier:H': {'eos_file': 'chabrier_h.dat', 'format': 'paleos_unified'},
+    # Live-tabulated entry: materialises to paleos_unified in place.
+    'PALEOS-API:H2O': {'format': 'paleos_api', 'material': 'h2o'},
+    # 2-phase style format: the JAX wet path has no reader for it.
+    'WolfBower2018:H2O': {'eos_file': 'wb_h2o.dat', 'format': 'paleos'},
+}
+
+_WET_GATE_MANTLE = 'PALEOS:MgSiO3:0.9800+PALEOS:H2O:0.0200'
+
+
+def _make_profile(**overrides):
+    """Real Zalmoxis VolatileProfile, default in-envelope (H2O in melt)."""
+    from zalmoxis.mixing import VolatileProfile
+
+    kwargs = {
+        'w_liquid': {'PALEOS:H2O': 0.02},
+        'w_solid': {},
+        'primary_component': 'PALEOS:MgSiO3',
+    }
+    kwargs.update(overrides)
+    return VolatileProfile(**kwargs)
+
+
+def test_volatile_profile_jax_viable_accepts_in_envelope_profiles():
+    """The wet-envelope predicate accepts what the Zalmoxis JAX path runs.
+
+    In-envelope means a single active paleos_unified volatile blended
+    into the mantle through the profile, with no binodal or miscibility
+    physics. Melt-only and solid-only weights both count as active, a
+    zero-weight primary entry contributes nothing and is tolerated, and
+    a paleos_api volatile qualifies because it materialises to
+    paleos_unified in place.
+    """
+    from proteus.interior_struct.zalmoxis import _volatile_profile_jax_viable
+
+    # Single H2O volatile in the melt: the canonical wet solve.
+    assert (
+        _volatile_profile_jax_viable(_make_profile(), _WET_GATE_REGISTRY, _WET_GATE_MANTLE)
+        is True
+    )
+
+    # Solid-phase weight alone also makes the volatile active.
+    solid_only = _make_profile(w_liquid={}, w_solid={'PALEOS:H2O': 0.005})
+    assert (
+        _volatile_profile_jax_viable(solid_only, _WET_GATE_REGISTRY, _WET_GATE_MANTLE) is True
+    )
+
+    # A zero-weight primary entry contributes nothing in the blend and
+    # is tolerated by the wrapper.
+    zero_primary = _make_profile(w_liquid={'PALEOS:H2O': 0.02, 'PALEOS:MgSiO3': 0.0})
+    assert (
+        _volatile_profile_jax_viable(zero_primary, _WET_GATE_REGISTRY, _WET_GATE_MANTLE) is True
+    )
+
+    # A paleos_api volatile materialises to paleos_unified in place.
+    api_vol = _make_profile(w_liquid={'PALEOS-API:H2O': 0.02})
+    assert (
+        _volatile_profile_jax_viable(
+            api_vol, _WET_GATE_REGISTRY, 'PALEOS:MgSiO3:0.9800+PALEOS-API:H2O:0.0200'
+        )
+        is True
+    )
+
+
+def test_volatile_profile_jax_viable_rejects_out_of_envelope_profiles():
+    """The wet-envelope predicate is False for every wrapper rejection.
+
+    Each case mirrors one ValueError branch of the Zalmoxis wet-mantle
+    validation (or of the volatile cache load that follows it): the
+    numpy fallback fires inside Zalmoxis, so the callable must stay in
+    play. Unknown or malformed input also reads False, the conservative
+    answer.
+    """
+    from proteus.interior_struct.zalmoxis import _volatile_profile_jax_viable
+
+    reg = _WET_GATE_REGISTRY
+    mantle = _WET_GATE_MANTLE
+
+    # No profile: nothing to blend (callers gate the dry case separately).
+    assert _volatile_profile_jax_viable(None, reg, mantle) is False
+
+    # Binodal-controlled profiles: global miscibility or x_interior.
+    assert (
+        _volatile_profile_jax_viable(_make_profile(global_miscibility=True), reg, mantle)
+        is False
+    )
+    assert (
+        _volatile_profile_jax_viable(_make_profile(x_interior={'Chabrier:H': 0.1}), reg, mantle)
+        is False
+    )
+
+    # Nonzero weight on the primary silicate (either phase).
+    assert (
+        _volatile_profile_jax_viable(
+            _make_profile(w_liquid={'PALEOS:H2O': 0.02, 'PALEOS:MgSiO3': 0.5}), reg, mantle
+        )
+        is False
+    )
+    assert (
+        _volatile_profile_jax_viable(_make_profile(w_solid={'PALEOS:MgSiO3': 0.5}), reg, mantle)
+        is False
+    )
+
+    # Primary component absent from the mantle mixture string.
+    assert (
+        _volatile_profile_jax_viable(
+            _make_profile(primary_component='RTPress100TPa:MgSiO3'), reg, mantle
+        )
+        is False
+    )
+
+    # No active volatile: zero weights, or a volatile that is not a
+    # component of the mantle mixture.
+    assert (
+        _volatile_profile_jax_viable(_make_profile(w_liquid={'PALEOS:H2O': 0.0}), reg, mantle)
+        is False
+    )
+    assert _volatile_profile_jax_viable(_make_profile(), reg, 'PALEOS:MgSiO3') is False
+
+    # More than one active volatile in the mixture.
+    two_vols = _make_profile(w_liquid={'PALEOS:H2O': 0.02, 'Chabrier:H': 0.01})
+    assert (
+        _volatile_profile_jax_viable(
+            two_vols, reg, 'PALEOS:MgSiO3:0.9700+PALEOS:H2O:0.0200+Chabrier:H:0.0100'
+        )
+        is False
+    )
+
+    # An unmanaged extra mixture component keeps its fraction only on
+    # the numpy path.
+    assert (
+        _volatile_profile_jax_viable(
+            _make_profile(), reg, 'PALEOS:MgSiO3:0.9600+PALEOS:H2O:0.0200+PALEOS:iron:0.0200'
+        )
+        is False
+    )
+
+    # Chabrier:H as the single active volatile: rejected by name (its
+    # binodal suppression factor is not ported to the JAX RHS).
+    h2 = _make_profile(w_liquid={'Chabrier:H': 0.02})
+    assert (
+        _volatile_profile_jax_viable(h2, reg, 'PALEOS:MgSiO3:0.9800+Chabrier:H:0.0200') is False
+    )
+
+    # Volatile registry entry missing, non-unified, or without eos_file.
+    assert _volatile_profile_jax_viable(_make_profile(), {}, mantle) is False
+    wb = _make_profile(w_liquid={'WolfBower2018:H2O': 0.02})
+    assert (
+        _volatile_profile_jax_viable(wb, reg, 'PALEOS:MgSiO3:0.9800+WolfBower2018:H2O:0.0200')
+        is False
+    )
+    reg_nofile = dict(reg)
+    reg_nofile['PALEOS:H2O'] = {'format': 'paleos_unified'}
+    assert _volatile_profile_jax_viable(_make_profile(), reg_nofile, mantle) is False
+
+    # Malformed profile object: conservative False, not an exception.
+    assert _volatile_profile_jax_viable(object(), reg, mantle) is False
+
+
+@pytest.mark.reference_pinned
+def test_volatile_profile_predicate_matches_zalmoxis_wet_envelope():
+    """Cross-check the PROTEUS wet-envelope predicate against Zalmoxis.
+
+    Pins ``_volatile_profile_jax_viable`` to the accept/reject behavior
+    of ``zalmoxis.jax_eos.wrapper._validate_wet_mantle`` (fwl-zalmoxis
+    >= 26.07.13), the authoritative envelope check the Zalmoxis JAX
+    dispatch runs on the same profiles. A drift between the two would
+    either drop the callable on a solve that falls back to numpy (the
+    hot-anchor physics bug) or keep JAX-viable solves on the slow numpy
+    path, so the two implementations must agree on every profile whose
+    registry entry passes the format check both sides share.
+    """
+    wrapper = pytest.importorskip('zalmoxis.jax_eos.wrapper')
+    mixing = pytest.importorskip('zalmoxis.mixing')
+    from proteus.interior_struct.zalmoxis import _volatile_profile_jax_viable
+
+    validate = getattr(wrapper, '_validate_wet_mantle', None)
+    if validate is None:
+        pytest.skip('installed zalmoxis does not expose _validate_wet_mantle')
+
+    def zalmoxis_accepts(profile, mantle_string):
+        mixture = mixing.parse_layer_components(mantle_string)
+        try:
+            validate(profile, mixture, _WET_GATE_REGISTRY)
+        except ValueError:
+            return False
+        return True
+
+    cases = [
+        # (profile, extended mantle EOS string, expected viability)
+        (_make_profile(), _WET_GATE_MANTLE, True),
+        (
+            _make_profile(w_liquid={'Chabrier:H': 0.02}),
+            'PALEOS:MgSiO3:0.9800+Chabrier:H:0.0200',
+            False,
+        ),
+        (_make_profile(global_miscibility=True), _WET_GATE_MANTLE, False),
+        (
+            _make_profile(w_liquid={'PALEOS:H2O': 0.02, 'PALEOS:MgSiO3': 0.5}),
+            _WET_GATE_MANTLE,
+            False,
+        ),
+        (
+            _make_profile(w_liquid={'PALEOS:H2O': 0.02, 'Chabrier:H': 0.01}),
+            'PALEOS:MgSiO3:0.9700+PALEOS:H2O:0.0200+Chabrier:H:0.0100',
+            False,
+        ),
+    ]
+    for profile, mantle_string, expected in cases:
+        assert zalmoxis_accepts(profile, mantle_string) is expected
+        assert (
+            _volatile_profile_jax_viable(profile, _WET_GATE_REGISTRY, mantle_string) is expected
+        )
+
+
 def _gate_config(mantle_eos: str):
     """MagicMock config for the temperature-source dispatch tests.
 
@@ -1150,17 +1369,86 @@ def test_zalmoxis_solver_withholds_callable_on_jax_viable_eos(
     assert 0.0 < cmb_radius < hf_row['R_int']
 
 
-def test_zalmoxis_solver_keeps_callable_on_wet_jax_viable_eos(tmp_path, monkeypatch):
-    """Wet solves keep the evolved T(r) callable even on a JAX-viable EOS.
+def test_zalmoxis_solver_withholds_callable_on_wet_in_envelope_profile(tmp_path, monkeypatch):
+    """In-envelope wet solves feed the arrays to the JAX path.
 
-    With ``dry_mantle = false`` and a dissolved inventory, the solve
-    carries a ``VolatileProfile`` and must consume the callable on the
-    numpy path: the arrays hand-off and the post-solve rebuild recompute
-    density from the bare dry mantle EOS, which would overwrite the
-    volatile-blended density column. The EOS pair here is identical to
-    the dry withhold test above, so the retained callable and skipped
-    rebuild discriminate exactly the ``volatile_profile`` conjunct of
-    the dispatch.
+    With ``dry_mantle = false`` and a single dissolved H2O inventory,
+    the ``VolatileProfile`` matches the Zalmoxis JAX wet envelope
+    (one paleos_unified volatile blended into the mantle), so the
+    external callable is withheld and the JAX RHS integrates against
+    the hand-off arrays. The dry-EOS post-solve rebuild must NOT run:
+    it evaluates the bare dry mantle EOS and would overwrite the
+    volatile-blended density column, so the solver's own columns stand.
+    """
+    model_for_arrays = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
+
+    def tf(r, P):
+        if r <= r_arr[0]:
+            return float(t_arr[0])
+        return float(np.interp(r, r_arr, t_arr))
+
+    # Dissolved inventory: 2% of the liquid mantle mass as H2O, so
+    # build_volatile_profile returns a profile instead of None.
+    hf_extra = {
+        'M_mantle_liquid': 4.0e24,
+        'M_mantle_solid': 1.0e24,
+        'H2O_kg_liquid': 8.0e22,
+    }
+    main_mock, rho_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS-2phase:MgSiO3',
+        (r_arr, t_arr),
+        tf,
+        dry_mantle=False,
+        hf_extra=hf_extra,
+    )
+
+    # Callable withheld, arrays passed through: the wet JAX envelope
+    # accepts the single-H2O profile.
+    kwargs = main_mock.call_args.kwargs
+    assert kwargs['temperature_function'] is None
+    passed_r, passed_t = kwargs['temperature_arrays']
+    np.testing.assert_allclose(passed_r, r_arr, rtol=0, atol=0)
+    np.testing.assert_allclose(passed_t, t_arr, rtol=0, atol=0)
+
+    # The dry-EOS rebuild must not run on a wet solve: the solver's
+    # volatile-blended density column stands.
+    assert rho_mock.call_count == 0
+
+    # The written hand-off file carries the solver's own temperature
+    # column, not a rebuilt one: the CMB row reads the mocked solver
+    # value (~5500 K at node 0), far from the 7740 K hand-off value the
+    # dry rebuild would have written.
+    data = np.loadtxt(tmp_path / 'data' / 'zalmoxis_output.dat')
+    n = len(model_results['radii'])
+    t_solver_cmb = float(model_results['temperature'][n // 3])
+    assert data[:, 4][0] == pytest.approx(t_solver_cmb, rel=1e-6)
+    assert abs(7740.0 - t_solver_cmb) > 3000.0
+
+    # Vacuous-pass guard: the profile was actually built and handed to
+    # the solve (a None profile would satisfy the dispatch trivially),
+    # and the mantle EOS string was extended with the dissolved species
+    # so the per-shell blend has the volatile component available.
+    assert kwargs['volatile_profile'] is not None
+    solver_params = main_mock.call_args.args[0]
+    assert '+PALEOS:H2O:' in solver_params['layer_eos_config']['mantle']
+
+    # Structure scalars from the converged solve stay bounded either way.
+    assert 0.0 < hf_row['M_core'] < hf_row['M_int']
+    assert 0.0 < cmb_radius < hf_row['R_int']
+
+
+def test_zalmoxis_solver_keeps_callable_on_wet_out_of_envelope_profile(tmp_path, monkeypatch):
+    """Out-of-envelope wet solves keep the evolved T(r) callable.
+
+    A dissolved H2 inventory builds a ``VolatileProfile`` carrying
+    ``Chabrier:H``, which the Zalmoxis JAX wet path rejects (the binodal
+    suppression factor is not ported), so the solve must consume the
+    callable on the numpy path. The EOS pair is identical to the
+    in-envelope test above, so the retained callable discriminates
+    exactly the wet-envelope conjunct of the dispatch.
     """
     from proteus.interior_struct.zalmoxis import _zalmoxis_jax_structure_viable
 
@@ -1172,19 +1460,19 @@ def test_zalmoxis_solver_keeps_callable_on_wet_jax_viable_eos(tmp_path, monkeypa
             return float(t_arr[0])
         return float(np.interp(r, r_arr, t_arr))
 
-    # Discrimination guard: this EOS pair is JAX-viable, so only the wet
-    # conjunct can keep the callable in play below.
+    # Discrimination guard: this EOS pair is JAX-viable, so only the
+    # wet-envelope conjunct can keep the callable in play below.
     registry = _gate_registry(tmp_path)
     assert (
         _zalmoxis_jax_structure_viable(registry, 'PALEOS:iron', 'PALEOS-2phase:MgSiO3') is True
     )
 
-    # Dissolved inventory: 2% of the liquid mantle mass as H2O, so
-    # build_volatile_profile returns a profile instead of None.
+    # Dissolved inventory: H2 only, so the profile's single active
+    # volatile is Chabrier:H and the wet envelope rejects it.
     hf_extra = {
         'M_mantle_liquid': 4.0e24,
         'M_mantle_solid': 1.0e24,
-        'H2O_kg_liquid': 8.0e22,
+        'H2_kg_liquid': 4.0e22,
     }
     main_mock, rho_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
         tmp_path,
@@ -1204,17 +1492,14 @@ def test_zalmoxis_solver_keeps_callable_on_wet_jax_viable_eos(tmp_path, monkeypa
     np.testing.assert_allclose(passed_r, r_arr, rtol=0, atol=0)
     np.testing.assert_allclose(passed_t, t_arr, rtol=0, atol=0)
 
-    # The dry-EOS rebuild must not run: the solver's volatile-blended
-    # density column stands.
+    # No rebuild on the honored-callable path.
     assert rho_mock.call_count == 0
 
-    # Vacuous-pass guard: the profile was actually built and handed to
-    # the solve (a None profile would satisfy the dispatch trivially),
-    # and the mantle EOS string was extended with the dissolved species
-    # so the per-shell blend has the volatile component available.
+    # Vacuous-pass guard: the profile was actually built and carries the
+    # rejected volatile.
     assert kwargs['volatile_profile'] is not None
     solver_params = main_mock.call_args.args[0]
-    assert '+PALEOS:H2O:' in solver_params['layer_eos_config']['mantle']
+    assert '+Chabrier:H:' in solver_params['layer_eos_config']['mantle']
 
     # Structure scalars from the converged solve stay bounded either way.
     assert 0.0 < hf_row['M_core'] < hf_row['M_int']

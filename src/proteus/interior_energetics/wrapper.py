@@ -2508,10 +2508,11 @@ def update_structure_from_interior(
     # tabulation in jax_eos/wrapper.py collapses for this closure
     # (T_asc varies with r and ignores P).
     # zalmoxis_solver dispatches between the two: it feeds the arrays to
-    # the JAX path when the configured mantle EOS supports it (2-phase
-    # PALEOS mantle + unified core) and otherwise passes the callable to
-    # the numpy path, so the evolved T(r) reaches the density solve on
-    # either path. The arrays are already sorted strictly ascending in r
+    # the JAX path when the configured EOS layout supports it (unified
+    # or 2-phase PALEOS mantle plus unified core, with any wet profile
+    # inside the Zalmoxis JAX wet envelope) and otherwise passes the
+    # callable to the numpy path, so the evolved T(r) reaches the
+    # density solve on either path. The arrays are already sorted strictly ascending in r
     # above, as jnp.interp requires monotonically increasing xp; a
     # descending [surface, ..., CMB] array would produce ``Final M=0``
     # failures in JAX.
