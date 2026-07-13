@@ -2409,11 +2409,12 @@ def test_select_resumable_snapshot_keeps_complete_latest(tmp_path):
 
 @pytest.mark.unit
 def test_select_resumable_snapshot_falls_back_on_corrupt_atm(tmp_path):
-    """A truncated latest _atm.nc trims to the prior pair and quarantines both halves.
+    """A truncated latest _atm.nc trims to the prior pair and deletes both halves.
 
     The interior half being intact must not save the step: the atmosphere
-    half is required, so the row is dropped and both 30_*.nc files are moved
-    aside so the modules' latest-file globs land on time 20.
+    half is required, so the row is dropped and both 30_*.nc files are
+    deleted so the modules' latest-file globs land on time 20 and the
+    archive sweep cannot pick them up.
     """
     data = tmp_path / 'data'
     data.mkdir()
@@ -2427,8 +2428,8 @@ def test_select_resumable_snapshot_falls_back_on_corrupt_atm(tmp_path):
 
     assert dropped == [30]
     assert int(out.iloc[-1]['Time']) == 20
-    assert (data / '30_atm.nc.incomplete').exists()
-    assert (data / '30_int.nc.incomplete').exists()
+    assert not (data / '30_atm.nc.incomplete').exists()
+    assert not (data / '30_int.nc.incomplete').exists()
     assert not (data / '30_atm.nc').exists()
     assert not (data / '30_int.nc').exists()
 
@@ -2448,11 +2449,11 @@ def test_select_resumable_snapshot_falls_back_on_corrupt_int(tmp_path):
 
     assert dropped == [30]
     assert int(out.iloc[-1]['Time']) == 20
-    # Both halves of the incomplete pair are quarantined (symmetry with the
+    # Both halves of the incomplete pair are deleted (symmetry with the
     # corrupt-atm case): a stray valid 30_atm.nc must not be left for the
     # atmosphere module's latest-file glob to pick up against a missing 30_int.
-    assert (data / '30_int.nc.incomplete').exists()
-    assert (data / '30_atm.nc.incomplete').exists()
+    assert not (data / '30_int.nc.incomplete').exists()
+    assert not (data / '30_atm.nc.incomplete').exists()
     assert not (data / '30_int.nc').exists()
     assert not (data / '30_atm.nc').exists()
 
@@ -2644,9 +2645,9 @@ def test_select_resumable_snapshot_falls_back_on_corrupt_spider_json(tmp_path):
 
     assert dropped == [30]
     assert int(out.iloc[-1]['Time']) == 20
-    # The incomplete latest half is quarantined so SPIDER's latest-json glob
+    # The incomplete latest half is deleted so SPIDER's latest-json glob
     # lands on time 20, not the truncated 30.json.
-    assert (data / '30.json.incomplete').exists()
+    assert not (data / '30.json.incomplete').exists()
     assert not (data / '30.json').exists()
 
 
@@ -2750,7 +2751,7 @@ def test_select_resumable_snapshot_rejects_cross_row_atm_collision(tmp_path):
     # them.
     assert (data / '30_atm.nc').exists()
     assert (data / '30.json').exists()
-    # 30.7's orphaned interior is quarantined so SPIDER's latest-json glob
+    # 30.7's orphaned interior is deleted so SPIDER's latest-json glob
     # cannot load it against the 30.2-trimmed helpfile.
-    assert (data / '31.json.incomplete').exists()
+    assert not (data / '31.json.incomplete').exists()
     assert not (data / '31.json').exists()
