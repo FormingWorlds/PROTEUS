@@ -771,17 +771,25 @@ def _gate_registry(tmp_path) -> dict:
     sol = tmp_path / 'mgsio3_solid.dat'
     liq = tmp_path / 'mgsio3_liquid.dat'
     water = tmp_path / 'h2o_unified.dat'
-    for f in (iron, unified, sol, liq, water):
+    hydrogen = tmp_path / 'chabrier_h.dat'
+    seager_sil = tmp_path / 'seager_silicate.txt'
+    for f in (iron, unified, sol, liq, water, hydrogen, seager_sil):
         f.write_text('eos table stub')
     return {
         'PALEOS:iron': {'eos_file': str(iron), 'format': 'paleos_unified'},
         'PALEOS:MgSiO3': {'eos_file': str(unified), 'format': 'paleos_unified'},
         'PALEOS:H2O': {'eos_file': str(water), 'format': 'paleos_unified'},
+        # Same shape as the production registry entry: unified format, but
+        # the JAX wet path rejects it by name (binodal suppression).
+        'Chabrier:H': {'eos_file': str(hydrogen), 'format': 'paleos_unified'},
         'PALEOS-2phase:MgSiO3': {
             'core': {'eos_file': str(iron)},
             'melted_mantle': {'eos_file': str(liq), 'format': 'paleos'},
             'solid_mantle': {'eos_file': str(sol), 'format': 'paleos'},
         },
+        # Flat entry with neither the unified format nor phase sub-tables:
+        # no JAX representation, the numpy ODE handles it.
+        'Seager2007:silicate': {'eos_file': str(seager_sil)},
     }
 
 
@@ -789,24 +797,40 @@ def test_jax_structure_viability_predicate(tmp_path):
     """JAX-path viability tracks the registry layout, not the config flags.
 
     The predicate must reproduce the precondition outcome of Zalmoxis'
-    JAX dispatch: True only for a 2-phase mantle (both phase sub-tables)
-    paired with a core that resolves to the unified PALEOS format.
-    Edge cases: unknown registry keys (conservative False, keeping the
-    temperature callable in play), a ``paleos_api`` core (resolves in
-    place to ``paleos_unified``, so True), and a volatile-extended
-    mantle string whose fraction token must be stripped before lookup.
+    JAX dispatch: True for a unified PALEOS mantle (flat entry, format
+    ``paleos_unified`` with an ``eos_file``) or a 2-phase mantle (both
+    phase sub-tables), paired with a core that resolves to the unified
+    PALEOS format. Edge cases: unknown registry keys (conservative
+    False, keeping the temperature callable in play), ``paleos_api``
+    entries (resolve in place to ``paleos_unified``, so True), a
+    unified entry without an ``eos_file`` (the wrapper raises, so
+    False), and a volatile-extended mantle string whose fraction token
+    must be stripped before lookup.
     """
     from proteus.interior_struct.zalmoxis import _zalmoxis_jax_structure_viable
 
     registry = _gate_registry(tmp_path)
 
-    # Unified mantle has no phase sub-tables: the JAX dispatch raises and
-    # the numpy ODE runs, so the predicate must be False.
-    assert _zalmoxis_jax_structure_viable(registry, 'PALEOS:iron', 'PALEOS:MgSiO3') is False
+    # Unified mantle (flat paleos_unified entry): the JAX path can run.
+    assert _zalmoxis_jax_structure_viable(registry, 'PALEOS:iron', 'PALEOS:MgSiO3') is True
 
     # 2-phase mantle + unified core: the JAX path can run.
     assert (
         _zalmoxis_jax_structure_viable(registry, 'PALEOS:iron', 'PALEOS-2phase:MgSiO3') is True
+    )
+
+    # Flat mantle entry with neither the unified format nor phase
+    # sub-tables: the JAX dispatch raises and the numpy ODE runs.
+    assert (
+        _zalmoxis_jax_structure_viable(registry, 'PALEOS:iron', 'Seager2007:silicate') is False
+    )
+
+    # A unified mantle entry without an eos_file cannot be cached by the
+    # wrapper (it raises), so the predicate must be False.
+    registry_nofile = dict(registry)
+    registry_nofile['PALEOS:MgSiO3'] = {'format': 'paleos_unified'}
+    assert (
+        _zalmoxis_jax_structure_viable(registry_nofile, 'PALEOS:iron', 'PALEOS:MgSiO3') is False
     )
 
     # Missing registry entries (mantle or core): conservative False.
@@ -816,13 +840,17 @@ def test_jax_structure_viability_predicate(tmp_path):
     )
     assert _zalmoxis_jax_structure_viable({}, 'PALEOS:iron', 'PALEOS-2phase:MgSiO3') is False
 
-    # A paleos_api core materialises to paleos_unified before the JAX
-    # dispatch checks it, so it qualifies.
+    # paleos_api entries materialise to paleos_unified before the JAX
+    # dispatch checks them, so they qualify on either layer.
     registry_api = dict(registry)
     registry_api['PALEOS-API:iron'] = {'format': 'paleos_api', 'material': 'iron'}
+    registry_api['PALEOS-API:MgSiO3'] = {'format': 'paleos_api', 'material': 'mgsio3'}
     assert (
         _zalmoxis_jax_structure_viable(registry_api, 'PALEOS-API:iron', 'PALEOS-2phase:MgSiO3')
         is True
+    )
+    assert (
+        _zalmoxis_jax_structure_viable(registry_api, 'PALEOS:iron', 'PALEOS-API:MgSiO3') is True
     )
 
     # A non-unified core (Seager nested layout, no top-level format)
@@ -841,6 +869,9 @@ def test_jax_structure_viability_predicate(tmp_path):
     assert (
         _zalmoxis_jax_structure_viable(registry, 'PALEOS:iron', 'PALEOS-2phase:MgSiO3:0.9800')
         is True
+    )
+    assert (
+        _zalmoxis_jax_structure_viable(registry, 'PALEOS:iron', 'PALEOS:MgSiO3:0.9800') is True
     )
 
 
@@ -1019,14 +1050,15 @@ def _run_gate_solver(
 
 
 def test_zalmoxis_solver_passes_callable_when_jax_path_not_viable(tmp_path, monkeypatch):
-    """Unified-mantle re-solves hand the evolved T(r) callable to the solve.
+    """Non-viable-mantle re-solves hand the evolved T(r) callable to the solve.
 
-    With ``use_jax=True``, ``temperature_arrays`` supplied, and a unified
-    PALEOS mantle (no phase sub-tables), the JAX dispatch cannot run and
-    the numpy ODE consumes only ``temperature_function``. The callable
-    must therefore reach the solve unmodified; nulling it would make
-    every re-solve rebuild the internal hot-anchor profile and freeze
-    the interior radius across the entire crystallization sequence.
+    With ``use_jax=True``, ``temperature_arrays`` supplied, and a mantle
+    whose registry entry is neither unified PALEOS nor 2-phase PALEOS,
+    the JAX dispatch cannot run and the numpy ODE consumes only
+    ``temperature_function``. The callable must therefore reach the
+    solve unmodified; nulling it would make every re-solve rebuild the
+    internal hot-anchor profile and freeze the interior radius across
+    the entire crystallization sequence.
     """
     model_for_arrays = _plausible_model_results()
     r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
@@ -1038,7 +1070,7 @@ def test_zalmoxis_solver_passes_callable_when_jax_path_not_viable(tmp_path, monk
         return float(np.interp(r, r_arr, t_arr))
 
     main_mock, rho_mock, hf_row, model_results, cmb_radius, mesh_file = _run_gate_solver(
-        tmp_path, monkeypatch, 'PALEOS:MgSiO3', (r_arr, t_arr), tf
+        tmp_path, monkeypatch, 'Seager2007:silicate', (r_arr, t_arr), tf
     )
 
     # The callable passes through identically; the arrays ride along for
@@ -1063,10 +1095,14 @@ def test_zalmoxis_solver_passes_callable_when_jax_path_not_viable(tmp_path, monk
     assert mesh_file is None  # num_spider_nodes=0 requests no SPIDER mesh
 
 
-def test_zalmoxis_solver_withholds_callable_on_jax_viable_eos(tmp_path, monkeypatch):
-    """2-phase-mantle re-solves feed the arrays to the JAX path instead.
+@pytest.mark.parametrize('mantle_eos', ['PALEOS-2phase:MgSiO3', 'PALEOS:MgSiO3'])
+def test_zalmoxis_solver_withholds_callable_on_jax_viable_eos(
+    tmp_path, monkeypatch, mantle_eos
+):
+    """JAX-viable-mantle re-solves feed the arrays to the JAX path instead.
 
-    With a 2-phase PALEOS mantle the JAX dispatch consumes
+    With a JAX-capable mantle layout (2-phase PALEOS sub-tables or the
+    unified PALEOS table) the JAX dispatch consumes
     ``temperature_arrays``, so the external callable is withheld (the
     inner Picard converges on the internal linear-T profile) and the
     post-solve rebuild rewrites the density and temperature columns
@@ -1082,7 +1118,7 @@ def test_zalmoxis_solver_withholds_callable_on_jax_viable_eos(tmp_path, monkeypa
         return float(np.interp(r, r_arr, t_arr))
 
     main_mock, rho_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
-        tmp_path, monkeypatch, 'PALEOS-2phase:MgSiO3', (r_arr, t_arr), tf
+        tmp_path, monkeypatch, mantle_eos, (r_arr, t_arr), tf
     )
 
     # Callable withheld, arrays passed through.
@@ -1227,6 +1263,8 @@ def test_zalmoxis_solver_retry_replaces_density_and_gravity(tmp_path, monkeypatc
     Aragog reads from zalmoxis_output.dat for its cell masses) must then
     reflect the retry solution, not the failed primary's. Self-consistency
     of the written structure (rho, g, M from one solve) is the invariant.
+    The mantle layout is not JAX-viable, so the callable is honored on
+    both the primary and the retry (the gate applies to each unchanged).
     """
     retry_results = _plausible_model_results()
     primary_results = _plausible_model_results()
@@ -1247,7 +1285,7 @@ def test_zalmoxis_solver_retry_replaces_density_and_gravity(tmp_path, monkeypatc
     main_mock, rho_mock, hf_row, _, cmb_radius, _ = _run_gate_solver(
         tmp_path,
         monkeypatch,
-        'PALEOS:MgSiO3',
+        'Seager2007:silicate',
         (r_arr, t_arr),
         tf,
         main_results=[primary_results, retry_results],
