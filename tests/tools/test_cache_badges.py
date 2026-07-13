@@ -2,8 +2,9 @@
 
 Covers the network-free logic: static shields URL escaping, the SVG-versus-HTML
 validation that decides whether a fetched body is written, the placeholder
-fallback, the run-conclusion to badge-style mapping, and the
-fetch/last-good/placeholder branch in cache_badge.
+fallback, the run-conclusion to badge-style mapping, the fetch/last-good/
+placeholder branch in cache_badge, the main-branch run query in
+_latest_conclusion, and the workflow-to-badge mapping that reports main.
 
 Testing standards: docs/How-to/test_infrastructure.md, test_categorization.md,
 test_building.md
@@ -12,6 +13,7 @@ test_building.md
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -38,6 +40,22 @@ def _load_cache_badges():
 
 
 cb = _load_cache_badges()
+
+
+class _FakeResp:
+    """Minimal context-manager stand-in for a urlopen response body."""
+
+    def __init__(self, body: bytes):
+        self._body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self) -> bytes:
+        return self._body
 
 
 def test_static_shields_url_escapes_dash_underscore_space():
@@ -117,3 +135,79 @@ def test_cache_badge_writes_fetched_svg(tmp_path, monkeypatch):
     result = cb.cache_badge(tmp_path, 'docs', ['http://src'], 1, 1)
     assert result == 'ok'
     assert (tmp_path / 'docs.svg').read_bytes() == b'<svg>ok</svg>'
+
+
+def test_latest_conclusion_queries_completed_main_runs(monkeypatch):
+    """Resolve the latest completed run on main and map its conclusion.
+
+    The branch=main filter is what makes the badge report main: without it a
+    transient feature-branch run would be the 'latest' and freeze the badge on
+    an unrelated result. status=completed drops the in-progress docs deploy that
+    invokes this script, whose null conclusion would render as 'no status'. An
+    empty run history yields None (no status yet, not a fabricated one); an
+    unreachable API yields the 'unknown' sentinel so the caller keeps last-good.
+    """
+    calls = {'url': None, 'attempts': 0}
+    # No real sleeps: the retry backoff would otherwise blow the unit budget.
+    monkeypatch.setattr(cb.time, 'sleep', lambda _s: None)
+
+    def make_urlopen(payload=None, raises=False):
+        def fake_urlopen(req, timeout=None):
+            calls['url'] = req.full_url
+            calls['attempts'] += 1
+            if raises:
+                raise cb.urllib.error.URLError('unreachable')
+            return _FakeResp(json.dumps(payload).encode())
+
+        return fake_urlopen
+
+    # Happy path: the newest completed run on main is a success.
+    monkeypatch.setattr(
+        cb.urllib.request,
+        'urlopen',
+        make_urlopen({'workflow_runs': [{'conclusion': 'success'}]}),
+    )
+    assert cb._latest_conclusion('coverage-baseline.yml', 1, 1) == 'success'
+    # Both filters must be present: branch scopes to main, status drops the
+    # in-progress caller run. A missing branch filter is the exact regression
+    # this pins against.
+    assert 'branch=main' in calls['url']
+    assert 'status=completed' in calls['url']
+    assert 'coverage-baseline.yml/runs' in calls['url']
+
+    # Boundary: no runs recorded yet returns None, never a made-up conclusion.
+    monkeypatch.setattr(cb.urllib.request, 'urlopen', make_urlopen({'workflow_runs': []}))
+    assert cb._latest_conclusion('coverage-baseline.yml', 1, 1) is None
+
+    # Error contract: an unreachable API returns 'unknown' after exhausting the
+    # requested retries. The attempt count discriminates a no-retry regression
+    # (1) and an off-by-one (3) from the correct 2.
+    calls['attempts'] = 0
+    monkeypatch.setattr(cb.urllib.request, 'urlopen', make_urlopen(raises=True))
+    assert cb._latest_conclusion('coverage-baseline.yml', 1, 2) == 'unknown'
+    assert calls['attempts'] == 2
+
+
+def test_status_workflows_map_unit_to_main_coverage_baseline():
+    """The unit badge resolves the workflow that runs the unit suite on main.
+
+    coverage-baseline.yml runs the unit suite on every push to main, so its run
+    conclusion reflects main's unit-test health. The pull_request-only PR-check
+    workflow never runs on main, so a badge pointed at it would never satisfy
+    the branch=main query and would freeze; this pins the mapping against that
+    regression and confirms the other two badges are unchanged.
+    """
+    mapping = {label: workflow for _name, workflow, label in cb._STATUS_WORKFLOWS}
+    assert mapping['Unit Tests'] == 'coverage-baseline.yml'
+    assert mapping['Integration Tests'] == 'ci-nightly.yml'
+    assert mapping['Docs'] == 'docs.yaml'
+    # No badge may point at the pull_request-only workflow: it never runs on
+    # main and so would never satisfy the branch=main query.
+    workflows = {workflow for _name, workflow, _label in cb._STATUS_WORKFLOWS}
+    assert 'ci-pr-checks.yml' not in workflows
+    # Badge names line up in order with the SVG files the docs pages embed.
+    assert [name for name, _wf, _label in cb._STATUS_WORKFLOWS] == [
+        'unit',
+        'integration',
+        'docs',
+    ]
