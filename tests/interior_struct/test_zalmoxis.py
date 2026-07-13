@@ -770,11 +770,13 @@ def _gate_registry(tmp_path) -> dict:
     unified = tmp_path / 'mgsio3_unified.dat'
     sol = tmp_path / 'mgsio3_solid.dat'
     liq = tmp_path / 'mgsio3_liquid.dat'
-    for f in (iron, unified, sol, liq):
+    water = tmp_path / 'h2o_unified.dat'
+    for f in (iron, unified, sol, liq, water):
         f.write_text('eos table stub')
     return {
         'PALEOS:iron': {'eos_file': str(iron), 'format': 'paleos_unified'},
         'PALEOS:MgSiO3': {'eos_file': str(unified), 'format': 'paleos_unified'},
+        'PALEOS:H2O': {'eos_file': str(water), 'format': 'paleos_unified'},
         'PALEOS-2phase:MgSiO3': {
             'core': {'eos_file': str(iron)},
             'melted_mantle': {'eos_file': str(liq), 'format': 'paleos'},
@@ -932,7 +934,14 @@ def _cooled_mantle_arrays(model_results: dict) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _run_gate_solver(
-    tmp_path, monkeypatch, mantle_eos, temperature_arrays, tf, main_results=None
+    tmp_path,
+    monkeypatch,
+    mantle_eos,
+    temperature_arrays,
+    tf,
+    main_results=None,
+    dry_mantle=True,
+    hf_extra=None,
 ):
     """Invoke zalmoxis_solver with the heavy solve mocked out.
 
@@ -947,6 +956,13 @@ def _run_gate_solver(
         Result(s) the mocked ``main`` solve returns. A dict is returned
         on every call; a list is consumed call by call (primary, retry,
         ...). Defaults to a single converged Earth-like result.
+    dry_mantle : bool, optional
+        Value for ``config.interior_struct.zalmoxis.dry_mantle``. With
+        False, supply dissolved-reservoir keys via ``hf_extra`` so a
+        ``VolatileProfile`` is actually built.
+    hf_extra : dict, optional
+        Extra hf_row keys merged over the default surface-pressure row
+        (e.g. mantle phase masses and dissolved volatile masses).
     """
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
@@ -961,6 +977,10 @@ def _run_gate_solver(
         main_patch_kwargs = {'return_value': main_results}
         model_results = main_results
     hf_row = {'P_surf': 1.0}  # bar; resolves the surface-pressure target
+    if hf_extra:
+        hf_row.update(hf_extra)
+    config = _gate_config(mantle_eos)
+    config.interior_struct.zalmoxis.dry_mantle = dry_mantle
 
     monkeypatch.setattr(
         zalmoxis_wrapper,
@@ -987,7 +1007,7 @@ def _run_gate_solver(
         patch('zalmoxis.eos.dispatch.calculate_density', side_effect=_fake_density) as rho_mock,
     ):
         cmb_radius, mesh_file = zalmoxis_wrapper.zalmoxis_solver(
-            _gate_config(mantle_eos),
+            config,
             str(tmp_path),
             hf_row,
             num_spider_nodes=0,
@@ -1090,6 +1110,77 @@ def test_zalmoxis_solver_withholds_callable_on_jax_viable_eos(tmp_path, monkeypa
     assert abs(7740.0 - t_mock_cmb) > 3000.0
 
     # Boundedness of the structure scalars still holds on this path.
+    assert 0.0 < hf_row['M_core'] < hf_row['M_int']
+    assert 0.0 < cmb_radius < hf_row['R_int']
+
+
+def test_zalmoxis_solver_keeps_callable_on_wet_jax_viable_eos(tmp_path, monkeypatch):
+    """Wet solves keep the evolved T(r) callable even on a JAX-viable EOS.
+
+    With ``dry_mantle = false`` and a dissolved inventory, the solve
+    carries a ``VolatileProfile`` and must consume the callable on the
+    numpy path: the arrays hand-off and the post-solve rebuild recompute
+    density from the bare dry mantle EOS, which would overwrite the
+    volatile-blended density column. The EOS pair here is identical to
+    the dry withhold test above, so the retained callable and skipped
+    rebuild discriminate exactly the ``volatile_profile`` conjunct of
+    the dispatch.
+    """
+    from proteus.interior_struct.zalmoxis import _zalmoxis_jax_structure_viable
+
+    model_for_arrays = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
+
+    def tf(r, P):
+        if r <= r_arr[0]:
+            return float(t_arr[0])
+        return float(np.interp(r, r_arr, t_arr))
+
+    # Discrimination guard: this EOS pair is JAX-viable, so only the wet
+    # conjunct can keep the callable in play below.
+    registry = _gate_registry(tmp_path)
+    assert (
+        _zalmoxis_jax_structure_viable(registry, 'PALEOS:iron', 'PALEOS-2phase:MgSiO3') is True
+    )
+
+    # Dissolved inventory: 2% of the liquid mantle mass as H2O, so
+    # build_volatile_profile returns a profile instead of None.
+    hf_extra = {
+        'M_mantle_liquid': 4.0e24,
+        'M_mantle_solid': 1.0e24,
+        'H2O_kg_liquid': 8.0e22,
+    }
+    main_mock, rho_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS-2phase:MgSiO3',
+        (r_arr, t_arr),
+        tf,
+        dry_mantle=False,
+        hf_extra=hf_extra,
+    )
+
+    # The callable reaches the solve unmodified and the arrays ride
+    # along for the (declined) JAX dispatch inside Zalmoxis.
+    kwargs = main_mock.call_args.kwargs
+    assert kwargs['temperature_function'] is tf
+    passed_r, passed_t = kwargs['temperature_arrays']
+    np.testing.assert_allclose(passed_r, r_arr, rtol=0, atol=0)
+    np.testing.assert_allclose(passed_t, t_arr, rtol=0, atol=0)
+
+    # The dry-EOS rebuild must not run: the solver's volatile-blended
+    # density column stands.
+    assert rho_mock.call_count == 0
+
+    # Vacuous-pass guard: the profile was actually built and handed to
+    # the solve (a None profile would satisfy the dispatch trivially),
+    # and the mantle EOS string was extended with the dissolved species
+    # so the per-shell blend has the volatile component available.
+    assert kwargs['volatile_profile'] is not None
+    solver_params = main_mock.call_args.args[0]
+    assert '+PALEOS:H2O:' in solver_params['layer_eos_config']['mantle']
+
+    # Structure scalars from the converged solve stay bounded either way.
     assert 0.0 < hf_row['M_core'] < hf_row['M_int']
     assert 0.0 < cmb_radius < hf_row['R_int']
 

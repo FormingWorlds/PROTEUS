@@ -2102,10 +2102,11 @@ def zalmoxis_solver(
         dispatch. Used to pass SPIDER/Aragog T(r) profiles in memory.
     temperature_arrays : tuple[ndarray, ndarray] or None, optional
         Explicit r-indexed ``(r_arr, T_arr)`` for the Zalmoxis JAX path.
-        Consumed only when ``use_jax=True`` AND the configured EOS pair
+        Consumed only when ``use_jax=True``, the configured EOS pair
         can take the Zalmoxis JAX dispatch (2-phase PALEOS mantle with
         solid and melted sub-tables plus a unified PALEOS core; see
-        :func:`_zalmoxis_jax_structure_viable`). In that case the
+        :func:`_zalmoxis_jax_structure_viable`), and the solve is dry
+        (no ``VolatileProfile`` in play). In that case the
         external callable is withheld so the inner Picard converges on
         Zalmoxis' internal linear-T profile while the JAX RHS integrates
         against the arrays. For any other EOS configuration the solve
@@ -2241,6 +2242,10 @@ def zalmoxis_solver(
     # that path consumes only the callable, so it must pass through for
     # the solve to follow the evolved T(r) instead of rebuilding the
     # internal temperature_mode profile from the hot initial anchor.
+    # Wet solves (volatile_profile present) also keep the callable and
+    # stay on the numpy path here: the arrays handoff and the post-solve
+    # rebuild gated on _drop_callable recompute density from the bare dry
+    # mantle EOS and would overwrite the volatile-blended column.
     _use_jax_active = bool(config_params.get('use_jax'))
     _jax_viable = _zalmoxis_jax_structure_viable(
         mat_dicts, config.interior_struct.zalmoxis.core_eos, mantle_eos
@@ -2248,7 +2253,12 @@ def zalmoxis_solver(
     # Surface a JAX->numpy fallback once from the PROTEUS side (see helper).
     if _use_jax_active and not _jax_viable:
         _log_jax_nonviable_once(config.interior_struct.zalmoxis.core_eos, mantle_eos)
-    _drop_callable = _use_jax_active and temperature_arrays is not None and _jax_viable
+    _drop_callable = (
+        _use_jax_active
+        and temperature_arrays is not None
+        and _jax_viable
+        and volatile_profile is None
+    )
     _tf_effective = None if _drop_callable else temperature_function
     if _drop_callable:
         log.debug(
