@@ -5306,6 +5306,46 @@ def test_composition_driven_up_step_still_rejected_on_dry_mantle(caplog):
 
 
 @pytest.mark.unit
+def test_non_superliquidus_run_skips_grid_extent_table_read():
+    """Non-superliquidus re-solves never read zalmoxis_output.dat for the guard.
+
+    Both guard branches are unreachable without the super-liquidus IC, so
+    the grid-extent probe (an np.loadtxt of the full structure table on
+    every accepted re-solve) must be short-circuited away. Discrimination:
+    the same probe IS evaluated under the super-liquidus predicate (the
+    grid-extent guard tests), so the skip is driven by the predicate, not
+    by a dead probe.
+    """
+    config, hf_row, dirs = _composition_trigger_scenario(dry_mantle=True)
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=False,
+        ),
+        patch(
+            'proteus.interior_energetics.wrapper._eos_grid_extent_up_step',
+        ) as probe,
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
+
+    mock_solver.assert_called_once()
+    probe.assert_not_called()
+    # Without the super-liquidus IC there is no clamp: the re-solve stands.
+    assert hf_row['R_int'] == pytest.approx(r_prev * (1.0 + 1.0e-3), rel=1e-12)
+
+
+@pytest.mark.unit
 def test_accepted_resolve_advances_composition_sentinels_on_success_path():
     """An ACCEPTED (down-step) re-solve refreshes both composition sentinels.
 

@@ -2583,9 +2583,14 @@ def update_structure_from_interior(
         # whose _validate_eos_radius_range then crashes on er[-1] > outer + atol.
         # Reject that grid-extent up-step here through the identical restore path,
         # so a single release closes both the scalar and the grid-extent artifact.
-        _grid_extent_up_step = _eos_grid_extent_up_step(_output_zalmoxis_path, hf_row)
-        _is_up_step = _scalar_radius_up_step or _grid_extent_up_step
+        # _superliq is evaluated first so non-superliquidus runs, for which both
+        # guard branches below are unreachable, skip the zalmoxis_output.dat
+        # table read entirely.
         _superliq = _use_superliquidus_adiabat_ic(config)
+        _grid_extent_up_step = _superliq and _eos_grid_extent_up_step(
+            _output_zalmoxis_path, hf_row
+        )
+        _is_up_step = _scalar_radius_up_step or _grid_extent_up_step
         # Runtime cooling discriminator. An up-step is a representation artifact
         # only while the interior is cooling. If active heating is re-inflating
         # the mantle (T_magma rising, or Phi rising as melt returns) the up-step
