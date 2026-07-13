@@ -41,7 +41,7 @@ EXPECTED_BADGES = [
 ]
 
 # Workflow files referenced by badge URLs
-BADGE_WORKFLOW_FILES = ['ci-pr-checks.yml', 'ci-nightly.yml', 'docs.yaml']
+BADGE_WORKFLOW_FILES = ['coverage-baseline.yml', 'ci-nightly.yml', 'docs.yaml']
 
 
 @pytest.fixture
@@ -137,7 +137,8 @@ def test_workflow_badges_reference_existing_workflows(workflow_file):
     """Workflow badge URLs must reference workflow files that actually exist.
 
     Checks that the workflow YAML files referenced in badge URLs
-    (ci-pr-checks.yml, ci-nightly.yml, docs.yaml) exist in .github/workflows/.
+    (coverage-baseline.yml, ci-nightly.yml, docs.yaml) exist in
+    .github/workflows/.
     """
     workflow_path = PROTEUS_ROOT / '.github' / 'workflows' / workflow_file
     assert workflow_path.is_file(), (

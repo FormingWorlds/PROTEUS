@@ -6,8 +6,8 @@
 </h1>
 
 <p align="center">
-  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-pr-checks.yml?branch=main&label=Unit%20Tests">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/coverage-baseline.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/coverage-baseline.yml?branch=main&label=Unit%20Tests">
   </a>
   <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-nightly.yml?branch=main&label=Integration%20Tests">
