@@ -2670,14 +2670,23 @@ def zalmoxis_solver(
     # (P, T_aragog) using numpy EOS before any downstream consumer reads
     # them. When the callable was honored on the numpy path instead, the
     # solver's own columns already reflect the evolved T(r) and no rebuild
-    # runs. Wet solves are excluded even when they took the JAX-arrays
-    # path: this rebuild evaluates the bare dry mantle EOS and would
-    # overwrite the volatile-blended density column, so on the wet JAX
-    # path the solver's own columns stand (still evaluated at the
-    # internal linear-T profile; a profile-aware rebuild is a known
-    # follow-up).
-    if _drop_callable and volatile_profile is None:
+    # runs. Wet solves rebuild the mantle through the same per-shell blend
+    # the numpy solver's density update evaluates (calculate_mixed_density
+    # on the extended mantle mixture with the VolatileProfile at the local
+    # melt fraction), so the written column keeps the dissolved-volatile
+    # contribution instead of collapsing to the bare dry mantle EOS.
+    if _drop_callable:
         from zalmoxis.eos.dispatch import calculate_density as _calc_rho
+
+        # Wet path: the extended mantle mixture (primary silicate plus
+        # profile-managed volatiles), parsed from the same EOS string the
+        # solver parses, blended per shell by the profile.
+        _mantle_mixture = None
+        if volatile_profile is not None:
+            from zalmoxis.mixing import calculate_mixed_density as _calc_rho_mixed
+            from zalmoxis.mixing import parse_layer_components as _parse_mixture
+
+            _mantle_mixture = _parse_mixture(config_params['layer_eos_config']['mantle'])
 
         _r_ref, _T_ref = temperature_arrays
         _T_ref_cmb = float(_T_ref[0])
@@ -2702,17 +2711,41 @@ def zalmoxis_solver(
             else:
                 _T = float(np.interp(_r, _r_ref, _T_ref))
             _T_fixed[_i] = _T
-            _eos_here = _core_eos if _i < cmb_index else _mantle_eos
-            _rho = _calc_rho(
-                _P,
-                mat_dicts,
-                _eos_here,
-                _T,
-                _sol_f,
-                _liq_f,
-                interpolation_functions=_interp_cache,
-                mushy_zone_factor=_mzf,
-            )
+            if _mantle_mixture is not None and _i >= cmb_index:
+                # Wet mantle node: same evaluation as the numpy solver's
+                # density update. calculate_mixed_density computes the
+                # local melt fraction from the melting curves at this
+                # node's (P, T) (lever rule in compute_melt_fraction) and
+                # takes the per-component fractions from
+                # volatile_profile.apply_to_mixture. The condensed and
+                # binodal sigmoid parameters stay at the zalmoxis.mixing
+                # defaults, the same values the solver resolves when
+                # config_params carries no overrides (PROTEUS sets none).
+                _rho = _calc_rho_mixed(
+                    _P,
+                    _T,
+                    _mantle_mixture,
+                    mat_dicts,
+                    _sol_f,
+                    _liq_f,
+                    _interp_cache,
+                    mushy_zone_factors=config_params.get('mushy_zone_factors'),
+                    volatile_profile=volatile_profile,
+                )
+                if _rho is not None and not np.isfinite(_rho):
+                    _rho = None
+            else:
+                _eos_here = _core_eos if _i < cmb_index else _mantle_eos
+                _rho = _calc_rho(
+                    _P,
+                    mat_dicts,
+                    _eos_here,
+                    _T,
+                    _sol_f,
+                    _liq_f,
+                    interpolation_functions=_interp_cache,
+                    mushy_zone_factor=_mzf,
+                )
             _rho_fixed[_i] = float(_rho) if _rho is not None else float(density[_i])
         density = _rho_fixed
         temperature = _T_fixed

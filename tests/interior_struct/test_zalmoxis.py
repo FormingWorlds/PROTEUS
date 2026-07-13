@@ -1183,6 +1183,12 @@ def _cooled_mantle_arrays(model_results: dict) -> tuple[np.ndarray, np.ndarray]:
     return r_arr, t_arr
 
 
+# Constant offset between the fake blended density and the fake bare
+# density at equal (P, T): lets the gate tests discriminate which
+# evaluator wrote the rebuilt density column.
+_MIXED_DENSITY_OFFSET = 250.0
+
+
 def _run_gate_solver(
     tmp_path,
     monkeypatch,
@@ -1197,8 +1203,13 @@ def _run_gate_solver(
 
     Patches the EOS registry to the on-disk synthetic one, the melting
     curves to plausible constants, the Zalmoxis ``main`` solve to a
-    converged Earth-like result, and the EOS density dispatch used by
-    the post-solve column rebuild. Returns the mocks and the hf_row.
+    converged Earth-like result, and both density evaluators used by
+    the post-solve column rebuild: the bare EOS dispatch
+    (``calculate_density``, dry mantle and core nodes) and the blended
+    evaluator (``calculate_mixed_density``, wet mantle nodes). The two
+    fakes differ by a constant ``_MIXED_DENSITY_OFFSET`` at equal
+    (P, T), so a written column discriminates which evaluator produced
+    it. Returns the mocks and the hf_row.
 
     Parameters
     ----------
@@ -1242,6 +1253,11 @@ def _run_gate_solver(
         # Plausible monotone-in-P, decreasing-in-T condensed density.
         return 3300.0 + 2.0e-8 * float(P) - 0.1 * (float(T) - 3000.0)
 
+    def _fake_mixed_density(P, T, mixture, mats, sol, liq, interp, **kwargs):
+        # Bare fake plus a constant blend offset: distinguishable from
+        # _fake_density at the same (P, T).
+        return _fake_density(P, mats, None, T, sol, liq) + _MIXED_DENSITY_OFFSET
+
     with (
         patch.object(
             zalmoxis_wrapper,
@@ -1255,6 +1271,9 @@ def _run_gate_solver(
         ),
         patch.object(zalmoxis_wrapper, 'main', **main_patch_kwargs) as main_mock,
         patch('zalmoxis.eos.dispatch.calculate_density', side_effect=_fake_density) as rho_mock,
+        patch(
+            'zalmoxis.mixing.calculate_mixed_density', side_effect=_fake_mixed_density
+        ) as mixed_mock,
     ):
         cmb_radius, mesh_file = zalmoxis_wrapper.zalmoxis_solver(
             config,
@@ -1265,7 +1284,7 @@ def _run_gate_solver(
             temperature_arrays=temperature_arrays,
         )
 
-    return main_mock, rho_mock, hf_row, model_results, cmb_radius, mesh_file
+    return main_mock, rho_mock, mixed_mock, hf_row, model_results, cmb_radius, mesh_file
 
 
 def test_zalmoxis_solver_passes_callable_when_jax_path_not_viable(tmp_path, monkeypatch):
@@ -1288,8 +1307,8 @@ def test_zalmoxis_solver_passes_callable_when_jax_path_not_viable(tmp_path, monk
             return float(t_arr[0])
         return float(np.interp(r, r_arr, t_arr))
 
-    main_mock, rho_mock, hf_row, model_results, cmb_radius, mesh_file = _run_gate_solver(
-        tmp_path, monkeypatch, 'Seager2007:silicate', (r_arr, t_arr), tf
+    main_mock, rho_mock, mixed_mock, hf_row, model_results, cmb_radius, mesh_file = (
+        _run_gate_solver(tmp_path, monkeypatch, 'Seager2007:silicate', (r_arr, t_arr), tf)
     )
 
     # The callable passes through identically; the arrays ride along for
@@ -1336,7 +1355,7 @@ def test_zalmoxis_solver_withholds_callable_on_jax_viable_eos(
             return float(t_arr[0])
         return float(np.interp(r, r_arr, t_arr))
 
-    main_mock, rho_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
+    main_mock, rho_mock, mixed_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
         tmp_path, monkeypatch, mantle_eos, (r_arr, t_arr), tf
     )
 
@@ -1347,8 +1366,10 @@ def test_zalmoxis_solver_withholds_callable_on_jax_viable_eos(
     np.testing.assert_allclose(passed_r, r_arr, rtol=0, atol=0)
     np.testing.assert_allclose(passed_t, t_arr, rtol=0, atol=0)
 
-    # The rebuild ran: one EOS density evaluation per radial node.
+    # The rebuild ran: one bare EOS density evaluation per radial node,
+    # and no blended evaluation on a dry solve.
     assert rho_mock.call_count == len(model_results['radii'])
+    assert mixed_mock.call_count == 0
 
     # The written hand-off file carries the rebuilt (cooled) temperature
     # column: its surface value tracks the arrays, not the mocked solve
@@ -1376,9 +1397,12 @@ def test_zalmoxis_solver_withholds_callable_on_wet_in_envelope_profile(tmp_path,
     the ``VolatileProfile`` matches the Zalmoxis JAX wet envelope
     (one paleos_unified volatile blended into the mantle), so the
     external callable is withheld and the JAX RHS integrates against
-    the hand-off arrays. The dry-EOS post-solve rebuild must NOT run:
-    it evaluates the bare dry mantle EOS and would overwrite the
-    volatile-blended density column, so the solver's own columns stand.
+    the hand-off arrays. The post-solve rebuild must run
+    profile-aware: mantle nodes go through the blended evaluator
+    (``calculate_mixed_density`` with the profile), core nodes through
+    the bare EOS dispatch, and the written columns carry the hand-off
+    temperature and the blended density, matching what a
+    callable-driven numpy solve would have written.
     """
     model_for_arrays = _plausible_model_results()
     r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
@@ -1395,7 +1419,7 @@ def test_zalmoxis_solver_withholds_callable_on_wet_in_envelope_profile(tmp_path,
         'M_mantle_solid': 1.0e24,
         'H2O_kg_liquid': 8.0e22,
     }
-    main_mock, rho_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
+    main_mock, rho_mock, mixed_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
         tmp_path,
         monkeypatch,
         'PALEOS-2phase:MgSiO3',
@@ -1413,19 +1437,34 @@ def test_zalmoxis_solver_withholds_callable_on_wet_in_envelope_profile(tmp_path,
     np.testing.assert_allclose(passed_r, r_arr, rtol=0, atol=0)
     np.testing.assert_allclose(passed_t, t_arr, rtol=0, atol=0)
 
-    # The dry-EOS rebuild must not run on a wet solve: the solver's
-    # volatile-blended density column stands.
-    assert rho_mock.call_count == 0
-
-    # The written hand-off file carries the solver's own temperature
-    # column, not a rebuilt one: the CMB row reads the mocked solver
-    # value (~5500 K at node 0), far from the 7740 K hand-off value the
-    # dry rebuild would have written.
-    data = np.loadtxt(tmp_path / 'data' / 'zalmoxis_output.dat')
+    # The rebuild ran profile-aware: every mantle node through the
+    # blended evaluator with this solve's profile, every core node
+    # through the bare EOS dispatch.
     n = len(model_results['radii'])
-    t_solver_cmb = float(model_results['temperature'][n // 3])
-    assert data[:, 4][0] == pytest.approx(t_solver_cmb, rel=1e-6)
-    assert abs(7740.0 - t_solver_cmb) > 3000.0
+    cmb_index = n // 3
+    assert mixed_mock.call_count == n - cmb_index
+    assert rho_mock.call_count == cmb_index
+    for call in mixed_mock.call_args_list:
+        assert call.kwargs['volatile_profile'] is kwargs['volatile_profile']
+        # The blend evaluates the extended mantle mixture, so the
+        # dissolved species is available to the per-shell fractions.
+        assert 'PALEOS:H2O' in call.args[2].components
+
+    # The written hand-off file carries the rebuilt columns. The CMB row
+    # temperature is the 7740 K hand-off value (the mocked solver column
+    # reads ~4500 K there, so the assertion cannot pass un-rebuilt), and
+    # the CMB row density is the blended fake at that (P, T), a constant
+    # _MIXED_DENSITY_OFFSET above the bare fake (the bare recompute
+    # cannot produce it).
+    data = np.loadtxt(tmp_path / 'data' / 'zalmoxis_output.dat')
+    t_column = data[:, 4]
+    assert t_column[0] == pytest.approx(7740.0, rel=1e-6)
+    t_mock_cmb = float(model_results['temperature'][cmb_index])
+    assert abs(7740.0 - t_mock_cmb) > 3000.0
+    p_cmb_row = float(data[:, 1][0])
+    rho_bare = 3300.0 + 2.0e-8 * p_cmb_row - 0.1 * (7740.0 - 3000.0)
+    assert data[:, 2][0] == pytest.approx(rho_bare + _MIXED_DENSITY_OFFSET, rel=1e-9)
+    assert abs(float(data[:, 2][0]) - rho_bare) > 0.5 * _MIXED_DENSITY_OFFSET
 
     # Vacuous-pass guard: the profile was actually built and handed to
     # the solve (a None profile would satisfy the dispatch trivially),
@@ -1474,7 +1513,7 @@ def test_zalmoxis_solver_keeps_callable_on_wet_out_of_envelope_profile(tmp_path,
         'M_mantle_solid': 1.0e24,
         'H2_kg_liquid': 4.0e22,
     }
-    main_mock, rho_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
+    main_mock, rho_mock, mixed_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
         tmp_path,
         monkeypatch,
         'PALEOS-2phase:MgSiO3',
@@ -1492,8 +1531,9 @@ def test_zalmoxis_solver_keeps_callable_on_wet_out_of_envelope_profile(tmp_path,
     np.testing.assert_allclose(passed_r, r_arr, rtol=0, atol=0)
     np.testing.assert_allclose(passed_t, t_arr, rtol=0, atol=0)
 
-    # No rebuild on the honored-callable path.
+    # No rebuild on the honored-callable path, bare or blended.
     assert rho_mock.call_count == 0
+    assert mixed_mock.call_count == 0
 
     # Vacuous-pass guard: the profile was actually built and carries the
     # rejected volatile.
@@ -1517,7 +1557,7 @@ def test_zalmoxis_solver_init_call_keeps_internal_mode_dispatch(tmp_path, monkey
     pins the limit-input behavior of the gate: the dispatch fix applies
     only to re-solves that actually carry an evolved profile.
     """
-    main_mock, rho_mock, hf_row, model_results, _, _ = _run_gate_solver(
+    main_mock, rho_mock, _mixed_mock, hf_row, model_results, _, _ = _run_gate_solver(
         tmp_path, monkeypatch, 'PALEOS-2phase:MgSiO3', None, None
     )
 
@@ -1567,7 +1607,7 @@ def test_zalmoxis_solver_retry_replaces_density_and_gravity(tmp_path, monkeypatc
             return float(t_arr[0])
         return float(np.interp(r, r_arr, t_arr))
 
-    main_mock, rho_mock, hf_row, _, cmb_radius, _ = _run_gate_solver(
+    main_mock, rho_mock, _mixed_mock, hf_row, _, cmb_radius, _ = _run_gate_solver(
         tmp_path,
         monkeypatch,
         'Seager2007:silicate',
