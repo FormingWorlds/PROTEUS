@@ -877,8 +877,6 @@ def test_solver_gas_mass_is_authoritative_over_total_minus_dissolved(caplog):
     differ by 10 sigma of every tolerance used, so passing on the wrong
     convention is impossible.
     """
-    import logging
-
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     config = _make_from_o_budget_config()
