@@ -2561,7 +2561,10 @@ def update_structure_from_interior(
         # structure decision. When the mantle is genuinely heating (T_magma
         # rising, or Phi rising as melt returns) the up-step is physical and is
         # accepted; the accept criterion is the observed thermal change, not an
-        # assumed mechanism. A reject restores the previous structure (hf_row keys AND the
+        # assumed mechanism. A wet mantle adds one more physical up-step: a
+        # composition-triggered re-solve with dry_mantle=false can raise R_int
+        # while cooling because the dissolved volatiles lower the mean mantle
+        # density; that case is accepted through _composition_driven below. A reject restores the previous structure (hf_row keys AND the
         # on-disk zalmoxis_output.dat snapshot) and returns the no-update
         # sentinel: a clean no-op, NOT a solver failure, so the consecutive-
         # failure counter is left untouched (a rejected up-step must not count
@@ -2596,22 +2599,50 @@ def update_structure_from_interior(
             _Tmagma_now > last_Tmagma * (1.0 + _REINFLATE_TMAGMA_REL_TOL)
             or _Phi_now > last_Phi + _REINFLATE_PHI_ABS_TOL
         )
-        if _superliq and _is_up_step and _interior_reinflating:
-            log.info(
-                'Accepted R_int increase under active interior heating on the '
-                'super-liquidus adiabat IC: re-solve R_int=%.6e m rose above the '
-                'running minimum %.6e m while the mantle is heating (T_magma '
-                '%.1f -> %.1f K, Phi %.4f -> %.4f). The observed thermal rise '
-                'marks genuine re-inflation, not a cross-table artifact, so the '
-                'new structure is kept.',
-                _R_int_new,
-                R_int_prev,
-                last_Tmagma,
-                _Tmagma_now,
-                last_Phi,
-                _Phi_now,
-            )
-        if _superliq and _is_up_step and not _interior_reinflating:
+        # Composition escape for the wet mantle. When the firing trigger of
+        # this re-solve was a dissolved-composition change and the mantle EOS
+        # carries the dissolved volatiles (dry_mantle = false), a radius
+        # up-step under cooling is a physical signal: more volatiles in the
+        # melt lower the mean mantle density while T_magma keeps falling.
+        # Without this escape the reject path below would also consume the
+        # composition sentinels, so the composition trigger could never
+        # re-fire and the structure would stay composition-frozen for the
+        # whole molten epoch. Inert for dry mantles by the short-circuit.
+        # Residual gap: comp_changed marks only the FIRING trigger, so a
+        # thermal trigger that fires on a step where composition also moved
+        # still rejects under cooling; that narrows the escape, it does not
+        # reopen the freeze.
+        _composition_driven = comp_changed and not config.interior_struct.zalmoxis.dry_mantle
+        _accept_up_step = _interior_reinflating or _composition_driven
+        if _superliq and _is_up_step and _accept_up_step:
+            if _interior_reinflating:
+                log.info(
+                    'Accepted R_int increase under active interior heating on the '
+                    'super-liquidus adiabat IC: re-solve R_int=%.6e m rose above the '
+                    'running minimum %.6e m while the mantle is heating (T_magma '
+                    '%.1f -> %.1f K, Phi %.4f -> %.4f). The observed thermal rise '
+                    'marks genuine re-inflation, not a cross-table artifact, so the '
+                    'new structure is kept.',
+                    _R_int_new,
+                    R_int_prev,
+                    last_Tmagma,
+                    _Tmagma_now,
+                    last_Phi,
+                    _Phi_now,
+                )
+            else:
+                log.info(
+                    'Accepted R_int increase from a composition-driven wet '
+                    're-solve on the super-liquidus adiabat IC: re-solve '
+                    'R_int=%.6e m rose above the running minimum %.6e m after '
+                    'the dissolved-composition trigger fired with '
+                    'dry_mantle=false. The volatile-blended mantle EOS makes '
+                    'this a physical density response, not a cross-table '
+                    'artifact, so the new structure is kept.',
+                    _R_int_new,
+                    R_int_prev,
+                )
+        if _superliq and _is_up_step and not _accept_up_step:
             if _scalar_radius_up_step:
                 log.info(
                     'Rejected representation-artifact radius increase under the '
