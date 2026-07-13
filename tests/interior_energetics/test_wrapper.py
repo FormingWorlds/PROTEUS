@@ -245,6 +245,76 @@ def test_force_baseline_ignores_unmet_triggers():
     assert forced[0] == pytest.approx(50.0, rel=1e-12)
 
 
+@pytest.mark.unit
+def test_force_baseline_warns_when_swap_exceeds_mesh_max_shift(tmp_path, caplog):
+    """The unclamped baseline swap warns when its shift exceeds mesh_max_shift.
+
+    force=True disables the blend cap, so a baseline mesh far from the .prev
+    mesh lands on the interior solver in a single step. A 15% shift against
+    mesh_max_shift=5% must produce the warning with both numbers; the
+    companion 2% run through the same path must stay silent, pinning the
+    threshold rather than an unconditional log line. In both runs the forced
+    path must leave convergence tracking inactive (no clamped intermediate
+    exists for later steps to reconcile).
+    """
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    (tmp_path / 'data').mkdir(exist_ok=True)
+
+    def _run(shift):
+        config = _mock_config(mesh_max_shift=0.05)
+        mesh_file = str(tmp_path / 'spider_mesh.dat')
+        dirs = {
+            'output': str(tmp_path),
+            'spider': '/tmp/spider',
+            'spider_mesh': mesh_file,
+            'spider_mesh_prev': mesh_file + '.prev',
+            'mesh_shift_active': False,
+            'mesh_convergence_steps': 0,
+        }
+        with (
+            patch(
+                'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+                return_value=(3.504e6, mesh_file),
+            ),
+            patch('proteus.interior_energetics.wrapper.np.savetxt'),
+            patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+            patch(
+                'proteus.interior_energetics.spider.blend_mesh_files',
+                return_value=shift,
+            ),
+            patch('proteus.interior_energetics.wrapper.gc.collect'),
+            caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'),
+        ):
+            update_structure_from_interior(
+                dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8, force=True
+            )
+        return dirs
+
+    interior_o = _mock_interior_o()
+    dirs_above = _run(0.15)
+    warns = [r.getMessage() for r in caplog.records if 'mesh_max_shift' in r.message]
+    assert len(warns) == 1
+    # Both numbers appear so the log line is actionable on its own.
+    assert '15.0%' in warns[0]
+    assert '5.0%' in warns[0]
+    # Invariant: the forced baseline never enters mesh convergence tracking,
+    # even when the shift exceeds the cap.
+    assert dirs_above['mesh_shift_active'] is False
+    assert dirs_above['mesh_convergence_steps'] == 0
+
+    # Discrimination guard: a shift below the threshold stays silent.
+    caplog.clear()
+    dirs_below = _run(0.02)
+    assert not [r for r in caplog.records if 'mesh_max_shift' in r.message]
+    assert dirs_below['mesh_shift_active'] is False
+
+
 def _dirs_hf_with_composition_delta():
     """Build dirs + hf_row carrying a dissolved-H2O fraction change that is
     above the composition trigger threshold (w 1.0e-3 -> 2.0e-3, dw = 100%)."""
