@@ -678,10 +678,9 @@ def test_check_eos_files_walks_nested_and_lazy_siblings(tmp_path):
 def _volatile_config(dry_mantle: bool):
     """MagicMock config for the dry-mass target tests.
 
-    MagicMock bypasses the config-load gate on ``dry_mantle = false``
-    deliberately: the subtraction logic must already be correct for when
-    the Zalmoxis pin gains per-shell volatile-profile support and the
-    gate is lifted.
+    MagicMock drives ``load_zalmoxis_configuration`` directly, independent
+    of config-load validation: the subtraction logic is exercised for both
+    mantle EOS modes now that the ``dry_mantle = false`` gate is lifted.
     """
     config = MagicMock()
     config.planet.mass_tot = 1.0
@@ -771,11 +770,13 @@ def _gate_registry(tmp_path) -> dict:
     unified = tmp_path / 'mgsio3_unified.dat'
     sol = tmp_path / 'mgsio3_solid.dat'
     liq = tmp_path / 'mgsio3_liquid.dat'
-    for f in (iron, unified, sol, liq):
+    water = tmp_path / 'h2o_unified.dat'
+    for f in (iron, unified, sol, liq, water):
         f.write_text('eos table stub')
     return {
         'PALEOS:iron': {'eos_file': str(iron), 'format': 'paleos_unified'},
         'PALEOS:MgSiO3': {'eos_file': str(unified), 'format': 'paleos_unified'},
+        'PALEOS:H2O': {'eos_file': str(water), 'format': 'paleos_unified'},
         'PALEOS-2phase:MgSiO3': {
             'core': {'eos_file': str(iron)},
             'melted_mantle': {'eos_file': str(liq), 'format': 'paleos'},
@@ -933,7 +934,14 @@ def _cooled_mantle_arrays(model_results: dict) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _run_gate_solver(
-    tmp_path, monkeypatch, mantle_eos, temperature_arrays, tf, main_results=None
+    tmp_path,
+    monkeypatch,
+    mantle_eos,
+    temperature_arrays,
+    tf,
+    main_results=None,
+    dry_mantle=True,
+    hf_extra=None,
 ):
     """Invoke zalmoxis_solver with the heavy solve mocked out.
 
@@ -948,6 +956,13 @@ def _run_gate_solver(
         Result(s) the mocked ``main`` solve returns. A dict is returned
         on every call; a list is consumed call by call (primary, retry,
         ...). Defaults to a single converged Earth-like result.
+    dry_mantle : bool, optional
+        Value for ``config.interior_struct.zalmoxis.dry_mantle``. With
+        False, supply dissolved-reservoir keys via ``hf_extra`` so a
+        ``VolatileProfile`` is actually built.
+    hf_extra : dict, optional
+        Extra hf_row keys merged over the default surface-pressure row
+        (e.g. mantle phase masses and dissolved volatile masses).
     """
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
@@ -962,6 +977,10 @@ def _run_gate_solver(
         main_patch_kwargs = {'return_value': main_results}
         model_results = main_results
     hf_row = {'P_surf': 1.0}  # bar; resolves the surface-pressure target
+    if hf_extra:
+        hf_row.update(hf_extra)
+    config = _gate_config(mantle_eos)
+    config.interior_struct.zalmoxis.dry_mantle = dry_mantle
 
     monkeypatch.setattr(
         zalmoxis_wrapper,
@@ -988,7 +1007,7 @@ def _run_gate_solver(
         patch('zalmoxis.eos.dispatch.calculate_density', side_effect=_fake_density) as rho_mock,
     ):
         cmb_radius, mesh_file = zalmoxis_wrapper.zalmoxis_solver(
-            _gate_config(mantle_eos),
+            config,
             str(tmp_path),
             hf_row,
             num_spider_nodes=0,
@@ -1091,6 +1110,77 @@ def test_zalmoxis_solver_withholds_callable_on_jax_viable_eos(tmp_path, monkeypa
     assert abs(7740.0 - t_mock_cmb) > 3000.0
 
     # Boundedness of the structure scalars still holds on this path.
+    assert 0.0 < hf_row['M_core'] < hf_row['M_int']
+    assert 0.0 < cmb_radius < hf_row['R_int']
+
+
+def test_zalmoxis_solver_keeps_callable_on_wet_jax_viable_eos(tmp_path, monkeypatch):
+    """Wet solves keep the evolved T(r) callable even on a JAX-viable EOS.
+
+    With ``dry_mantle = false`` and a dissolved inventory, the solve
+    carries a ``VolatileProfile`` and must consume the callable on the
+    numpy path: the arrays hand-off and the post-solve rebuild recompute
+    density from the bare dry mantle EOS, which would overwrite the
+    volatile-blended density column. The EOS pair here is identical to
+    the dry withhold test above, so the retained callable and skipped
+    rebuild discriminate exactly the ``volatile_profile`` conjunct of
+    the dispatch.
+    """
+    from proteus.interior_struct.zalmoxis import _zalmoxis_jax_structure_viable
+
+    model_for_arrays = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
+
+    def tf(r, P):
+        if r <= r_arr[0]:
+            return float(t_arr[0])
+        return float(np.interp(r, r_arr, t_arr))
+
+    # Discrimination guard: this EOS pair is JAX-viable, so only the wet
+    # conjunct can keep the callable in play below.
+    registry = _gate_registry(tmp_path)
+    assert (
+        _zalmoxis_jax_structure_viable(registry, 'PALEOS:iron', 'PALEOS-2phase:MgSiO3') is True
+    )
+
+    # Dissolved inventory: 2% of the liquid mantle mass as H2O, so
+    # build_volatile_profile returns a profile instead of None.
+    hf_extra = {
+        'M_mantle_liquid': 4.0e24,
+        'M_mantle_solid': 1.0e24,
+        'H2O_kg_liquid': 8.0e22,
+    }
+    main_mock, rho_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS-2phase:MgSiO3',
+        (r_arr, t_arr),
+        tf,
+        dry_mantle=False,
+        hf_extra=hf_extra,
+    )
+
+    # The callable reaches the solve unmodified and the arrays ride
+    # along for the (declined) JAX dispatch inside Zalmoxis.
+    kwargs = main_mock.call_args.kwargs
+    assert kwargs['temperature_function'] is tf
+    passed_r, passed_t = kwargs['temperature_arrays']
+    np.testing.assert_allclose(passed_r, r_arr, rtol=0, atol=0)
+    np.testing.assert_allclose(passed_t, t_arr, rtol=0, atol=0)
+
+    # The dry-EOS rebuild must not run: the solver's volatile-blended
+    # density column stands.
+    assert rho_mock.call_count == 0
+
+    # Vacuous-pass guard: the profile was actually built and handed to
+    # the solve (a None profile would satisfy the dispatch trivially),
+    # and the mantle EOS string was extended with the dissolved species
+    # so the per-shell blend has the volatile component available.
+    assert kwargs['volatile_profile'] is not None
+    solver_params = main_mock.call_args.args[0]
+    assert '+PALEOS:H2O:' in solver_params['layer_eos_config']['mantle']
+
+    # Structure scalars from the converged solve stay bounded either way.
     assert 0.0 < hf_row['M_core'] < hf_row['M_int']
     assert 0.0 < cmb_radius < hf_row['R_int']
 
@@ -1638,3 +1728,153 @@ def test_jax_nonviable_fallback_logs_once_per_run(caplog):
 
     # Leave the module flag clean for any later test in this session.
     _clear_superliquidus_cache()
+
+
+# ============================================================================
+# Volatile profile construction and the wet mantle EOS extension
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_build_volatile_profile_fractions():
+    """Per-phase mass fractions come straight from the helpfile reservoirs.
+
+    ``build_volatile_profile`` divides each dissolved-volatile phase mass by
+    the corresponding mantle phase mass, keyed by the Zalmoxis EOS name, and
+    maps the PROTEUS species names through ``_VOLATILE_EOS_MAP``
+    (``H2O -> PALEOS:H2O``, ``H2 -> Chabrier:H``).
+    """
+    from proteus.interior_struct.zalmoxis import build_volatile_profile
+
+    M_liq, M_sol = 4.0e24, 1.0e24
+    hf_row = {
+        'M_mantle_liquid': M_liq,
+        'M_mantle_solid': M_sol,
+        'H2O_kg_liquid': 8.0e22,
+        'H2O_kg_solid': 5.0e21,
+        'H2_kg_liquid': 4.0e21,
+        'H2_kg_solid': 0.0,
+    }
+    profile = build_volatile_profile(hf_row, 'PALEOS:MgSiO3')
+
+    assert profile is not None
+    assert profile.primary_component == 'PALEOS:MgSiO3'
+    assert profile.w_liquid['PALEOS:H2O'] == pytest.approx(8.0e22 / M_liq)
+    assert profile.w_solid['PALEOS:H2O'] == pytest.approx(5.0e21 / M_sol)
+    assert profile.w_liquid['Chabrier:H'] == pytest.approx(4.0e21 / M_liq)
+    assert profile.w_solid['Chabrier:H'] == pytest.approx(0.0)
+
+
+@pytest.mark.unit
+def test_build_volatile_profile_clamps_to_silicate_floor():
+    """Total dissolved fraction is clamped so >=5% silicate always remains.
+
+    An over-saturated inventory (sum of volatile fractions > 0.95) is scaled
+    down proportionally rather than pushing the silicate fraction negative.
+    """
+    from proteus.interior_struct.zalmoxis import build_volatile_profile
+
+    M_liq = 1.0e24
+    hf_row = {
+        'M_mantle_liquid': M_liq,
+        'M_mantle_solid': 0.0,
+        # 0.8 + 0.5 = 1.3 of liquid mass before clamping.
+        'H2O_kg_liquid': 8.0e23,
+        'H2_kg_liquid': 5.0e23,
+    }
+    profile = build_volatile_profile(hf_row, 'PALEOS:MgSiO3')
+
+    assert profile is not None
+    total = profile.w_liquid['PALEOS:H2O'] + profile.w_liquid['Chabrier:H']
+    assert total == pytest.approx(0.95)
+    # Proportional clamp preserves the H2O:H2 ratio (0.8:0.5).
+    ratio = profile.w_liquid['PALEOS:H2O'] / profile.w_liquid['Chabrier:H']
+    assert ratio == pytest.approx(0.8 / 0.5)
+
+
+@pytest.mark.unit
+def test_build_volatile_profile_returns_none_paths():
+    """The None returns are the silent dry-fallback branch: cover them.
+
+    ``dry_mantle = false`` degrades to the dry path whenever no profile can
+    be built, so the two None conditions (no mantle phase mass, no dissolved
+    volatile mass) must be pinned so the fallback stays intentional.
+    """
+    from proteus.interior_struct.zalmoxis import build_volatile_profile
+
+    # No mantle phase mass yet (e.g. pre-energetics init step).
+    assert build_volatile_profile({'H2O_kg_liquid': 1.0e22}, 'PALEOS:MgSiO3') is None
+    # Mantle mass present but nothing dissolved.
+    assert (
+        build_volatile_profile(
+            {'M_mantle_liquid': 4.0e24, 'M_mantle_solid': 1.0e24}, 'PALEOS:MgSiO3'
+        )
+        is None
+    )
+
+
+@pytest.mark.unit
+def test_extend_mantle_eos_with_volatiles():
+    """A single-component mantle EOS gains placeholder volatile tokens.
+
+    The placeholder fractions are overridden per shell by the profile at run
+    time; only the token structure matters here. A ``None`` profile or an
+    already-composite EOS string is returned unchanged.
+    """
+    from zalmoxis.mixing import VolatileProfile
+
+    from proteus.interior_struct.zalmoxis import extend_mantle_eos_with_volatiles
+
+    profile = VolatileProfile(
+        w_liquid={'PALEOS:H2O': 0.02},
+        w_solid={'PALEOS:H2O': 0.0},
+        primary_component='PALEOS:MgSiO3',
+    )
+    extended = extend_mantle_eos_with_volatiles('PALEOS:MgSiO3', profile)
+    assert extended == 'PALEOS:MgSiO3:0.9900+PALEOS:H2O:0.0100'
+
+    # Pass-through: no profile, and an already-composite string.
+    assert extend_mantle_eos_with_volatiles('PALEOS:MgSiO3', None) == 'PALEOS:MgSiO3'
+    composite = 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1'
+    assert extend_mantle_eos_with_volatiles(composite, profile) == composite
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_build_volatile_profile_uses_structural_mantle_mass():
+    """The melt concentration divides CALLIOPE's dissolved kg by the same
+    reservoir CALLIOPE dissolved into, Phi_global * M_mantle (structural).
+    Aragog's M_mantle_liquid is computed from its PALEOS EOS cell masses,
+    ~7% denser than the wet structural mantle; using it diluted w_liquid
+    and lost the same fraction of dissolved water from the structure
+    (the -6.4% residual of the wire_wet_1Me_aragog verification run).
+    """
+    from proteus.interior_struct.zalmoxis import build_volatile_profile
+
+    hf_row = {
+        'M_mantle': 4.0e24,
+        'Phi_global': 1.0,
+        'M_mantle_liquid': 4.3e24,  # PALEOS-density mass, must be ignored
+        'M_mantle_solid': 0.0,
+        'H2O_kg_liquid': 3.32e23,
+        'H2O_kg_solid': 0.0,
+    }
+    prof = build_volatile_profile(hf_row, 'PALEOS:MgSiO3')
+    assert prof is not None
+    assert prof.w_liquid['PALEOS:H2O'] == pytest.approx(3.32e23 / 4.0e24, rel=1e-12)
+
+    # Fallback: without the structural fields, the per-phase masses apply.
+    hf_fallback = {
+        'M_mantle_liquid': 4.3e24,
+        'M_mantle_solid': 0.0,
+        'H2O_kg_liquid': 3.32e23,
+        'H2O_kg_solid': 0.0,
+    }
+    prof = build_volatile_profile(hf_fallback, 'PALEOS:MgSiO3')
+    assert prof.w_liquid['PALEOS:H2O'] == pytest.approx(3.32e23 / 4.3e24, rel=1e-12)
+
+    # Partially molten: the split follows Phi_global.
+    hf_mixed = dict(hf_row, Phi_global=0.5, H2O_kg_solid=1.0e22)
+    prof = build_volatile_profile(hf_mixed, 'PALEOS:MgSiO3')
+    assert prof.w_liquid['PALEOS:H2O'] == pytest.approx(3.32e23 / 2.0e24, rel=1e-12)
+    assert prof.w_solid['PALEOS:H2O'] == pytest.approx(1.0e22 / 2.0e24, rel=1e-12)

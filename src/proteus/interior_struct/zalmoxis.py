@@ -349,8 +349,9 @@ def build_volatile_profile(hf_row: dict, mantle_eos: str):
     ----------
     hf_row : dict
         Current helpfile row with volatile mass keys (e.g. ``H2O_kg_liquid``,
-        ``H2O_kg_solid``) and mantle mass keys (``M_mantle_liquid``,
-        ``M_mantle_solid``).
+        ``H2O_kg_solid``) and mantle mass keys: ``M_mantle`` with
+        ``Phi_global`` (preferred, structural), or ``M_mantle_liquid`` and
+        ``M_mantle_solid`` as a fallback.
     mantle_eos : str
         Primary mantle EOS identifier (e.g. ``'PALEOS:MgSiO3'``).
 
@@ -361,8 +362,24 @@ def build_volatile_profile(hf_row: dict, mantle_eos: str):
     """
     from zalmoxis.mixing import VolatileProfile
 
-    M_liq = float(hf_row.get('M_mantle_liquid', 0.0))
-    M_sol = float(hf_row.get('M_mantle_solid', 0.0))
+    # Denominators: the melt concentration must be taken against the same
+    # reservoir the chemistry used and the structure carries. CALLIOPE
+    # dissolves into M_mantle * Phi_global, and the structure integrates
+    # the (structural) mantle mass, so split the structural M_mantle by
+    # Phi_global. Aragog's M_mantle_liquid/M_mantle_solid use its PALEOS
+    # EOS cell masses instead, ~7% denser than the wet structural mantle,
+    # which diluted w_liquid and lost the same fraction of dissolved
+    # water from the structure. Fall back to the per-phase masses when
+    # the structural fields are absent (e.g. minimal test rows).
+    M_mantle = float(hf_row.get('M_mantle', 0.0))
+    Phi_global = float(hf_row.get('Phi_global', float('nan')))
+    if M_mantle > 0 and np.isfinite(Phi_global):
+        Phi_global = min(max(Phi_global, 0.0), 1.0)
+        M_liq = Phi_global * M_mantle
+        M_sol = (1.0 - Phi_global) * M_mantle
+    else:
+        M_liq = float(hf_row.get('M_mantle_liquid', 0.0))
+        M_sol = float(hf_row.get('M_mantle_solid', 0.0))
 
     # Need mantle mass data to compute fractions
     if M_liq + M_sol <= 0:
@@ -910,11 +927,17 @@ def load_zalmoxis_configuration(
     # implicitly via the PALEOS density tables; we do not double-count it.
     # With dry_mantle the full inventory is excluded (the mantle EOS
     # represents bare silicate). When the mantle EOS carries dissolved
-    # volatiles (dry_mantle = false, gated until the Zalmoxis pin supports
-    # it), only the atmospheric inventory may be excluded: the dissolved
-    # mass is already part of the wet-mantle EOS, and subtracting it again
-    # would remove it twice. Escaped mass is already debited from the
-    # *_kg_* inventories and needs no separate term.
+    # volatiles (dry_mantle = false), only the atmospheric inventory may
+    # be excluded: the dissolved mass is already part of the wet-mantle
+    # EOS, and subtracting it again would remove it twice. Note this
+    # keeps ALL dissolved species inside the target, while the EOS blend
+    # only represents those in _VOLATILE_EOS_MAP (H2O in practice); the
+    # dissolved mass of unmapped species (CO2, CH4, N2, S2) lands in the
+    # silicate remainder fraction and is packed at silicate density.
+    # Mass stays exact, compressibility is misrepresented; the radius
+    # error scales as (dissolved mass fraction) x (density contrast) and
+    # is negligible at typical inventories. Escaped mass is already
+    # debited from the *_kg_* inventories and needs no separate term.
     # Defensive .get(): some pre-IC paths invoke Zalmoxis before
     # calc_target_elemental_inventories has populated all element columns.
     dry_mantle = config.interior_struct.zalmoxis.dry_mantle
@@ -2103,10 +2126,11 @@ def zalmoxis_solver(
         dispatch. Used to pass SPIDER/Aragog T(r) profiles in memory.
     temperature_arrays : tuple[ndarray, ndarray] or None, optional
         Explicit r-indexed ``(r_arr, T_arr)`` for the Zalmoxis JAX path.
-        Consumed only when ``use_jax=True`` AND the configured EOS pair
+        Consumed only when ``use_jax=True``, the configured EOS pair
         can take the Zalmoxis JAX dispatch (2-phase PALEOS mantle with
         solid and melted sub-tables plus a unified PALEOS core; see
-        :func:`_zalmoxis_jax_structure_viable`). In that case the
+        :func:`_zalmoxis_jax_structure_viable`), and the solve is dry
+        (no ``VolatileProfile`` in play). In that case the
         external callable is withheld so the inner Picard converges on
         Zalmoxis' internal linear-T profile while the JAX RHS integrates
         against the arrays. For any other EOS configuration the solve
@@ -2242,6 +2266,10 @@ def zalmoxis_solver(
     # that path consumes only the callable, so it must pass through for
     # the solve to follow the evolved T(r) instead of rebuilding the
     # internal temperature_mode profile from the hot initial anchor.
+    # Wet solves (volatile_profile present) also keep the callable and
+    # stay on the numpy path here: the arrays handoff and the post-solve
+    # rebuild gated on _drop_callable recompute density from the bare dry
+    # mantle EOS and would overwrite the volatile-blended column.
     _use_jax_active = bool(config_params.get('use_jax'))
     _jax_viable = _zalmoxis_jax_structure_viable(
         mat_dicts, config.interior_struct.zalmoxis.core_eos, mantle_eos
@@ -2249,7 +2277,12 @@ def zalmoxis_solver(
     # Surface a JAX->numpy fallback once from the PROTEUS side (see helper).
     if _use_jax_active and not _jax_viable:
         _log_jax_nonviable_once(config.interior_struct.zalmoxis.core_eos, mantle_eos)
-    _drop_callable = _use_jax_active and temperature_arrays is not None and _jax_viable
+    _drop_callable = (
+        _use_jax_active
+        and temperature_arrays is not None
+        and _jax_viable
+        and volatile_profile is None
+    )
     _tf_effective = None if _drop_callable else temperature_function
     if _drop_callable:
         log.debug(

@@ -661,17 +661,37 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         hf_row[f'{proteus_name}_kg_solid'] = 0.0
 
         if total_kg is not None:
-            # atmodeller's per-species total_mass is the conserved mass
-            # constraint, and its dissolved_mass is the melt share. Deriving
-            # the atmospheric mass as total minus dissolved keeps the tracked
-            # inventory conserved and correctly mass-weighted per species. The
-            # pressure-derived atmospheric mass from the first loop distributes
-            # the column by mole fraction, which misweights a species whose
-            # molar mass differs from the mean (badly for a light noble gas),
-            # so it is overwritten here whenever atmodeller reports the total.
+            # atmodeller's per-species gas_mass is the solver's own gas-phase
+            # reservoir and is the authoritative atmospheric write; total_mass
+            # is the conserved constraint and dissolved_mass the melt share.
+            # Deriving the atmospheric mass as total minus dissolved equals
+            # gas_mass only while no species holds a solid-phase reservoir
+            # (true today: graphite is a separate condensed species and never
+            # enters a gas species' total_mass), so that difference serves as
+            # a closure check and as the fallback when the output omits
+            # gas_mass. Either write replaces the pressure-derived mass from
+            # the first loop, which distributes the column by mole fraction
+            # and misweights a species whose molar mass differs from the mean
+            # (badly for a light noble gas).
             liquid = min(max(0.0, dissolved_kg if dissolved_kg is not None else 0.0), total_kg)
             hf_row[f'{proteus_name}_kg_liquid'] = liquid
-            hf_row[f'{proteus_name}_kg_atm'] = max(0.0, total_kg - liquid)
+            gas_kg = _as_mass(species_data.get('gas_mass'))
+            residual_kg = max(0.0, total_kg - liquid)
+            if gas_kg is not None:
+                hf_row[f'{proteus_name}_kg_atm'] = max(0.0, gas_kg)
+                if not np.isclose(max(0.0, gas_kg), residual_kg, rtol=1e-6, atol=1.0):
+                    log.warning(
+                        'atmodeller gas-phase closure gap for %s: gas_mass=%.6e kg '
+                        'but total_mass - dissolved_mass=%.6e kg. A persistent gap '
+                        'means the species holds a reservoir this mapping does not '
+                        'track (e.g. a solid phase); the solver gas_mass write is '
+                        'kept.',
+                        atm_name,
+                        gas_kg,
+                        residual_kg,
+                    )
+            else:
+                hf_row[f'{proteus_name}_kg_atm'] = residual_kg
             # A noble gas element total is escape-owned; restore the pre-solve
             # value so the solver's residual cannot drift the tracked budget
             # across iterations. Its atmosphere and melt split are still taken

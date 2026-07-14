@@ -817,8 +817,9 @@ def test_noble_gas_passed_as_mass_constraint_and_uses_total_mass_output():
 
     Discriminating: the mass constraint carries the exact He budget; the
     tracked He total equals atmodeller's total_mass and the atmospheric mass
-    is total minus dissolved, so the pressure-derived value (which would
-    misweight the light noble gas) is not used.
+    falls back to total minus dissolved when the output omits gas_mass, so
+    the pressure-derived value (which would misweight the light noble gas)
+    is not used.
     """
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
@@ -861,6 +862,60 @@ def test_noble_gas_passed_as_mass_constraint_and_uses_total_mass_output():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_solver_gas_mass_is_authoritative_over_total_minus_dissolved(caplog):
+    """When the output carries gas_mass, it wins over total minus dissolved.
+
+    total_mass - dissolved_mass equals the gas-phase mass only while a
+    species holds no third reservoir. A solver output where the two
+    derivations disagree (the future solid-partitioning case) must book
+    the solver's own gas_mass into the atmosphere, keep the difference
+    out, and surface the closure gap in the log so an untracked reservoir
+    cannot silently inflate the atmospheric budget.
+
+    Discrimination: gas_mass (1.8e16 kg) and total - dissolved (2.0e16 kg)
+    differ by 10 sigma of every tolerance used, so passing on the wrong
+    convention is impossible.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    config = _make_from_o_budget_config()
+    hf_row = _earth_hf_row(O_kg_total=1.0e22)
+    hf_row['He_kg_total'] = 3.0e16
+    for gas in noble_gases:
+        hf_row[f'{gas}_bar'] = 0.0
+
+    out = _fake_atmodeller_output(log10dIW=-0.5)
+    ql = dict(out.quick_look.return_value)
+    ql['He_g'] = np.array(0.02)
+    out.quick_look.return_value = ql
+    ad = dict(out.asdict.return_value)
+    # 0.2e16 kg sits in a reservoir the mapping does not track, so
+    # total - dissolved (2.0e16) overstates the gas phase (1.8e16).
+    ad['He_g'] = {
+        'total_mass': np.array(3.0e16),
+        'dissolved_mass': np.array(1.0e16),
+        'gas_mass': np.array(1.8e16),
+    }
+    out.asdict.return_value = ad
+
+    fake_model = MagicMock()
+    fake_model.output = out
+    with (
+        caplog.at_level(logging.WARNING),
+        patch('atmodeller.EquilibriumModel', return_value=fake_model),
+    ):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+
+    # The solver's gas-phase mass is booked, not the residual.
+    assert hf_row['He_kg_atm'] == pytest.approx(1.8e16, rel=1e-9)
+    assert hf_row['He_kg_atm'] != pytest.approx(2.0e16, rel=1e-3)
+    assert hf_row['He_kg_liquid'] == pytest.approx(1.0e16, rel=1e-9)
+    # The closure gap is surfaced.
+    assert any('gas-phase closure gap' in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
 def test_no_noble_budget_leaves_atmodeller_species_unchanged():
     """With no noble inventory, no noble gas is added to the species network
     or the mass constraints, so a run without a noble budget is unaffected by
@@ -889,7 +944,8 @@ def test_atmodeller_restores_escape_owned_noble_total():
     """The noble gas element total is escape-owned, so after the solve the
     wrapper restores the pre-solve total rather than the solver's total_mass
     (which drifts by the solver residual). The atmosphere and melt split still
-    come from the solve, so the reservoirs stay consistent.
+    come from the solve (here via the total minus dissolved fallback, since
+    the fixture omits gas_mass), so the reservoirs stay consistent.
     """
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
