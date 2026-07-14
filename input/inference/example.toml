@@ -303,10 +303,10 @@ config_version = "3.0"
         equilibrate_tol       = 0.01         # equilibration convergence tolerance
 
         # Mantle EOS composition. true = bare-silicate mantle tables;
-        # false (dissolved volatiles shift the structure-side density) is
-        # rejected at config load until the pinned Zalmoxis release
-        # supports per-shell volatile profiles.
-        dry_mantle            = true         # keep true; false is not yet supported
+        # false blends the dissolved volatile inventory into the mantle
+        # density through a per-shell volatile profile (H2O under the
+        # production outgassing chemistry; see the interior_struct docs).
+        dry_mantle            = true         # false enables wet-mantle volatile mixing
 
         # P-S entropy lookup table resolution (derived from PALEOS EOS at
         # runtime, cached). These tables size the inputs consumed by the
@@ -315,8 +315,8 @@ config_version = "3.0"
         lookup_nS             = 280          # entropy grid points
 
         # Miscibility (H2-silicate binodal; experimental). true is
-        # rejected at config load: it requires dry_mantle = false, which
-        # the pinned Zalmoxis release does not support yet.
+        # rejected at config load: the H2-silicate binodal handoff is not
+        # implemented on the Zalmoxis side yet (Zalmoxis tracker #64).
         global_miscibility    = false        # enable binodal-aware radial structure
         miscibility_max_iter  = 10           # max miscibility iterations
         miscibility_tol       = 0.01         # miscibility convergence tolerance
