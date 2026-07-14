@@ -25,6 +25,9 @@
   <a href="https://proteus-framework.org">
     <img src="https://img.shields.io/website?url=https%3A%2F%2Fproteus-framework.org&label=Website&up_message=proteus-framework.org&down_message=proteus-framework.org" />
   </a>
+  <a href="https://doi.org/10.5281/zenodo.21358380">
+    <img src="https://zenodo.org/badge/DOI/10.5281/zenodo.21358380.svg">
+  </a>
 </p>
 
 **Coupled atmosphere-interior evolution of rocky planets and exoplanets.**
@@ -59,4 +62,4 @@ Full documentation: **[proteus-framework.org/PROTEUS](https://proteus-framework.
 
 ## Community and citation
 
-Ask questions on the [discussions page](https://github.com/orgs/FormingWorlds/discussions) or [contact the developers](https://proteus-framework.org/PROTEUS/Community/contact.html). If you use PROTEUS, please cite the papers listed in the [bibliography](https://proteus-framework.org/PROTEUS/Reference/bibliography.html).
+Ask questions on the [discussions page](https://github.com/orgs/FormingWorlds/discussions) or [contact the developers](https://proteus-framework.org/PROTEUS/Community/contact.html). If you use PROTEUS, please cite the papers listed in the [bibliography](https://proteus-framework.org/PROTEUS/Reference/bibliography.html). To cite the software itself, use the Zenodo concept DOI [10.5281/zenodo.21358380](https://doi.org/10.5281/zenodo.21358380), which always resolves to the latest archived release.

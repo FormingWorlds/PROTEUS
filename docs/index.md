@@ -101,6 +101,10 @@ If you make use of PROTEUS, please reference the scientific manuscripts
 outlined in the [Bibliography](Reference/bibliography.md), state the code
 version used, and include an acknowledgement. We provide a suggested
 acknowledgement in the [contributing page](Community/CONTRIBUTING.md#licensing-and-credit).
+To cite the software itself, use the Zenodo concept DOI
+[10.5281/zenodo.21358380](https://doi.org/10.5281/zenodo.21358380), which
+always resolves to the latest archived release; the Zenodo record for a
+specific release also carries its own version DOI.
 
 ## License
 
