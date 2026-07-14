@@ -1390,6 +1390,60 @@ def test_zalmoxis_solver_withholds_callable_on_jax_viable_eos(
     assert 0.0 < cmb_radius < hf_row['R_int']
 
 
+def test_zalmoxis_solver_init_adiabat_arrays_take_jax_dispatch(tmp_path, monkeypatch):
+    """IC adiabat calls with sampled arrays dispatch like evolved re-solves.
+
+    The liquidus_super IC hand-off (issue #719) passes the P-indexed
+    adiabat closure together with its r-indexed sampling on the previous
+    structure's grid. On a JAX-viable EOS the hoisted dispatch must make
+    the same decision it makes for evolved Aragog re-solves: withhold
+    the callable, feed the arrays to the JAX path, and run the
+    post-solve rebuild against them. The internal-mode init case (no
+    callable, no arrays) is pinned separately by
+    test_zalmoxis_solver_init_call_keeps_internal_mode_dispatch.
+    """
+    model_for_arrays = _plausible_model_results()
+    radii = np.asarray(model_for_arrays['radii'])
+    pressure = np.asarray(model_for_arrays['pressure'])
+    n = len(radii)
+    cmb_index = n // 3
+
+    # P-indexed adiabat closure: ignores r, monotone in P, the shape
+    # _build_superliquidus_adiabat_tp produces. The slope keeps the
+    # deep-mantle sample several hundred K away from the mocked solver
+    # column so the rebuilt-column assertion below discriminates.
+    def tf(r, P):
+        return 4000.0 + 4.0e-9 * float(P)
+
+    # Arrays sampled from the closure on the previous structure's mantle
+    # grid, the _sample_adiabat_temperature_arrays convention.
+    r_arr = radii[cmb_index:]
+    t_arr = np.array([tf(r, P) for r, P in zip(r_arr, pressure[cmb_index:])])
+
+    main_mock, rho_mock, mixed_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
+        tmp_path, monkeypatch, 'PALEOS:MgSiO3', (r_arr, t_arr), tf
+    )
+
+    # Same dispatch outcome as the evolved re-solve: callable withheld,
+    # arrays through, dry rebuild against the arrays.
+    kwargs = main_mock.call_args.kwargs
+    assert kwargs['temperature_function'] is None
+    passed_r, passed_t = kwargs['temperature_arrays']
+    np.testing.assert_allclose(passed_r, r_arr, rtol=0, atol=0)
+    np.testing.assert_allclose(passed_t, t_arr, rtol=0, atol=0)
+    assert rho_mock.call_count == len(model_results['radii'])
+    assert mixed_mock.call_count == 0
+
+    # The written temperature column carries the adiabat samples: the CMB
+    # row reads the sampled deep-mantle T, not the mocked solver column.
+    data = np.loadtxt(tmp_path / 'data' / 'zalmoxis_output.dat')
+    assert data[:, 4][0] == pytest.approx(float(t_arr[0]), rel=1e-6)
+    assert abs(float(t_arr[0]) - float(model_results['temperature'][cmb_index])) > 100.0
+
+    assert 0.0 < hf_row['M_core'] < hf_row['M_int']
+    assert 0.0 < cmb_radius < hf_row['R_int']
+
+
 def test_zalmoxis_solver_withholds_callable_on_wet_in_envelope_profile(tmp_path, monkeypatch):
     """In-envelope wet solves feed the arrays to the JAX path.
 

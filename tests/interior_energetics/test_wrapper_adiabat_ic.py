@@ -11,6 +11,12 @@ internal linear-in-r temperature guess:
   captures zalmoxis_output.dat -> .prev, enforces the mass anchor and R_int
   validity, and on failure restores BOTH the hf_row keys AND the on-disk
   zalmoxis_output.dat so the next solver never reads the failed adiabat geometry.
+- ``_sample_adiabat_temperature_arrays``: samples the P-indexed adiabat closure
+  onto the previous structure's mantle (r, P) grid so the solve carries
+  r-indexed ``temperature_arrays`` alongside the callable and the Zalmoxis JAX
+  inner path can consume the adiabat on JAX-viable EOS layouts (issue #719);
+  returns None (callable-only degradation) on any missing or malformed
+  previous structure.
 - ``_resolve_adiabatic_ic_structure``: two-pass re-solve that hands the adiabat
   T(P) to the Zalmoxis numpy path, with mass-anchor enforcement and rollback to
   the linear-guess structure on failure.
@@ -65,6 +71,7 @@ from proteus.interior_energetics.wrapper import (
     _MONOTONIC_RINT_REL_TOL,
     _build_superliquidus_adiabat_tp,
     _resolve_adiabatic_ic_structure,
+    _sample_adiabat_temperature_arrays,
     _solve_structure_with_adiabat_or_rollback,
     _use_superliquidus_adiabat_ic,
     update_structure_from_interior,
@@ -405,6 +412,212 @@ def test_solve_helper_keeps_disk_geometry_on_success(tmp_path):
     # Accepted geometry survives: the relaxed radius and the new file content.
     assert hf_row['R_int'] == pytest.approx(1.2746e7, rel=1e-9)
     assert out_path.read_text() == adiabat_content
+
+
+# ============================================================================
+# _sample_adiabat_temperature_arrays: adiabat sampling for the JAX arrays path
+# ============================================================================
+
+
+def _write_structure_file(tmp_path, n=40, r0=6.0e6, r1=1.2007e7, p0=1.4e12, p1=1.0e5):
+    """Write a numeric zalmoxis_output.dat (mantle rows; columns r, P, rho, g, T).
+
+    Radii ascend from the CMB to the surface and pressure descends, matching
+    the file the previous structure solve writes. Returns the (r, P) columns.
+    """
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(exist_ok=True)
+    r = np.linspace(r0, r1, n)
+    P = np.linspace(p0, p1, n)
+    rho = np.linspace(5500.0, 3300.0, n)
+    g = np.full(n, 10.0)
+    T = np.linspace(6200.0, 4000.0, n)
+    np.savetxt(
+        data_dir / 'zalmoxis_output.dat',
+        np.column_stack([r, P, rho, g, T]),
+    )
+    return r, P
+
+
+def _adiabat_closure():
+    """P-indexed adiabat closure over the _good_adiabat table (r is ignored)."""
+    adiabat = _good_adiabat()
+    P_arr, T_arr = adiabat['P'], adiabat['T']
+
+    def tf(r, P):
+        P_clipped = min(max(float(P), float(P_arr[0])), float(P_arr[-1]))
+        return float(np.interp(P_clipped, P_arr, T_arr))
+
+    return tf
+
+
+def test_sample_adiabat_arrays_matches_closure_on_previous_grid(tmp_path):
+    """The sampled arrays are the closure evaluated on the previous (r, P) grid.
+
+    The r axis is the previous structure's mantle radii (strictly increasing,
+    spanning CMB to surface, the domain the outer radius search perturbs
+    around; radii beyond it are endpoint-clamped by the JAX RHS), and every
+    T value equals the closure at that row's (r, P). Because the closure is
+    pressure-indexed and the file's P decreases outward, T decreases
+    monotonically toward the surface.
+    """
+    r_file, p_file = _write_structure_file(tmp_path)
+    tf = _adiabat_closure()
+
+    sampled = _sample_adiabat_temperature_arrays(str(tmp_path), tf)
+
+    assert sampled is not None
+    r_arr, t_arr = sampled
+    np.testing.assert_allclose(r_arr, r_file, rtol=0, atol=0)
+    assert np.all(np.diff(r_arr) > 0.0)
+    # Domain coverage: the sampling spans the previous mantle exactly.
+    assert r_arr[0] == pytest.approx(6.0e6, rel=1e-12)
+    assert r_arr[-1] == pytest.approx(1.2007e7, rel=1e-12)
+    # T pins to the closure row by row, and stays positive and finite.
+    expected = np.array([tf(r, P) for r, P in zip(r_file, p_file)])
+    np.testing.assert_allclose(t_arr, expected, rtol=1e-12)
+    assert np.all(np.isfinite(t_arr)) and np.all(t_arr > 0.0)
+    assert np.all(np.diff(t_arr) <= 0.0)
+    # Discrimination: sampling T at a fixed pressure (a plausible wrong
+    # implementation) would be constant; the true profile spans > 1000 K.
+    assert t_arr[0] - t_arr[-1] > 1000.0
+
+
+def test_sample_adiabat_arrays_returns_none_on_bad_input(tmp_path):
+    """Any missing or malformed previous structure degrades to None.
+
+    None routes the caller to the callable-only solve, the pre-#719 behavior,
+    so every guard here is a safety valve rather than an error path: missing
+    file, non-numeric content, non-monotone radii, non-finite pressure, and a
+    closure returning non-finite temperatures.
+    """
+    tf = _adiabat_closure()
+
+    # Missing file.
+    assert _sample_adiabat_temperature_arrays(str(tmp_path), tf) is None
+
+    # Non-numeric content (the rollback tests write such placeholders).
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    out_path = data_dir / 'zalmoxis_output.dat'
+    out_path.write_text('LINEAR GEOMETRY placeholder\n')
+    assert _sample_adiabat_temperature_arrays(str(tmp_path), tf) is None
+
+    # Single row: no interpolable grid.
+    np.savetxt(out_path, np.array([[6.0e6, 1.4e12, 5500.0, 10.0, 6200.0]]))
+    assert _sample_adiabat_temperature_arrays(str(tmp_path), tf) is None
+
+    # Non-monotone radii.
+    r, P = _write_structure_file(tmp_path)
+    data = np.loadtxt(out_path)
+    data[5, 0] = data[3, 0]  # duplicate radius breaks strict monotonicity
+    np.savetxt(out_path, data)
+    assert _sample_adiabat_temperature_arrays(str(tmp_path), tf) is None
+
+    # Non-finite pressure.
+    _write_structure_file(tmp_path)
+    data = np.loadtxt(out_path)
+    data[5, 1] = np.nan
+    np.savetxt(out_path, data)
+    assert _sample_adiabat_temperature_arrays(str(tmp_path), tf) is None
+
+    # Closure returning non-finite temperatures.
+    _write_structure_file(tmp_path)
+    assert _sample_adiabat_temperature_arrays(str(tmp_path), lambda r, P: float('nan')) is None
+
+
+def test_adiabat_solve_hands_sampled_arrays_alongside_callable(tmp_path):
+    """The adiabat solve passes both the closure and its r-indexed sampling.
+
+    With a numeric previous structure on disk, the solver receives the same
+    callable object plus temperature_arrays sampled from it on the previous
+    (r, P) grid, so zalmoxis_solver's temperature-source dispatch decides the
+    JAX-vs-numpy question exactly as it does for evolved re-solves (#719).
+    """
+    r_file, p_file = _write_structure_file(tmp_path)
+    tf = _adiabat_closure()
+    config = _config()
+    hf_row = _linear_hf_row()
+    M_target = hf_row['M_int_target']
+
+    received = {}
+
+    def fake_solver(
+        cfg,
+        outdir,
+        row,
+        num_spider_nodes=0,
+        temperature_function=None,
+        temperature_arrays=None,
+        **kw,
+    ):
+        received['tf'] = temperature_function
+        received['arrays'] = temperature_arrays
+        row['R_int'] = 1.2746e7
+        row['M_int'] = M_target
+        return 6.0e6, str(tmp_path / 'adiabat_mesh.dat')
+
+    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=fake_solver):
+        _mesh, ok = _solve_structure_with_adiabat_or_rollback(
+            config,
+            str(tmp_path),
+            hf_row,
+            num_spider_nodes=0,
+            temperature_function=tf,
+        )
+
+    assert ok is True
+    # The callable still reaches the solver unmodified (non-JAX-viable
+    # configurations keep consuming it on the numpy path).
+    assert received['tf'] is tf
+    # The arrays ride alongside: previous r grid, closure-sampled T.
+    r_arr, t_arr = received['arrays']
+    np.testing.assert_allclose(r_arr, r_file, rtol=0, atol=0)
+    expected = np.array([tf(r, P) for r, P in zip(r_file, p_file)])
+    np.testing.assert_allclose(t_arr, expected, rtol=1e-12)
+
+
+def test_adiabat_solve_degrades_to_callable_only_without_previous_structure(tmp_path):
+    """Without a usable previous structure the solve carries the callable alone.
+
+    temperature_arrays arrives as None, which reproduces the pre-#719 call
+    exactly: the solver-side dispatch sees no arrays and keeps the callable on
+    the numpy path.
+    """
+    tf = _adiabat_closure()
+    config = _config()
+    hf_row = _linear_hf_row()
+    M_target = hf_row['M_int_target']
+
+    received = {}
+
+    def fake_solver(
+        cfg,
+        outdir,
+        row,
+        num_spider_nodes=0,
+        temperature_function=None,
+        temperature_arrays=None,
+        **kw,
+    ):
+        received['tf'] = temperature_function
+        received['arrays'] = temperature_arrays
+        row['R_int'] = 1.2746e7
+        row['M_int'] = M_target
+        return 6.0e6, str(tmp_path / 'adiabat_mesh.dat')
+
+    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=fake_solver):
+        _mesh, ok = _solve_structure_with_adiabat_or_rollback(
+            config,
+            str(tmp_path),
+            hf_row,
+            num_spider_nodes=0,
+            temperature_function=tf,
+        )
+
+    assert ok is True
+    assert received['tf'] is tf
+    assert received['arrays'] is None
 
 
 def test_adiabat_resolve_falls_back_when_adiabat_unavailable():
