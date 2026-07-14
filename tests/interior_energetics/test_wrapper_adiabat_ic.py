@@ -508,7 +508,7 @@ def test_sample_adiabat_arrays_returns_none_on_bad_input(tmp_path):
     assert _sample_adiabat_temperature_arrays(str(tmp_path), tf) is None
 
     # Non-monotone radii.
-    r, P = _write_structure_file(tmp_path)
+    _write_structure_file(tmp_path)
     data = np.loadtxt(out_path)
     data[5, 0] = data[3, 0]  # duplicate radius breaks strict monotonicity
     np.savetxt(out_path, data)
@@ -524,6 +524,14 @@ def test_sample_adiabat_arrays_returns_none_on_bad_input(tmp_path):
     # Closure returning non-finite temperatures.
     _write_structure_file(tmp_path)
     assert _sample_adiabat_temperature_arrays(str(tmp_path), lambda r, P: float('nan')) is None
+
+    # Closure raising outright (e.g. a P outside its tabulated span with a
+    # strict interpolator): degrade to the callable-only call, never raise.
+    def _raising_closure(r, P):
+        raise ValueError('P outside adiabat table span')
+
+    _write_structure_file(tmp_path)
+    assert _sample_adiabat_temperature_arrays(str(tmp_path), _raising_closure) is None
 
 
 def test_adiabat_solve_hands_sampled_arrays_alongside_callable(tmp_path):

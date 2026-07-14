@@ -1198,6 +1198,7 @@ def _run_gate_solver(
     main_results=None,
     dry_mantle=True,
     hf_extra=None,
+    mixed_side_effect=None,
 ):
     """Invoke zalmoxis_solver with the heavy solve mocked out.
 
@@ -1224,6 +1225,10 @@ def _run_gate_solver(
     hf_extra : dict, optional
         Extra hf_row keys merged over the default surface-pressure row
         (e.g. mantle phase masses and dissolved volatile masses).
+    mixed_side_effect : callable, optional
+        Replacement side effect for the blended evaluator, e.g. to make
+        selected nodes return non-finite densities. Defaults to the
+        offset fake.
     """
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
@@ -1272,7 +1277,8 @@ def _run_gate_solver(
         patch.object(zalmoxis_wrapper, 'main', **main_patch_kwargs) as main_mock,
         patch('zalmoxis.eos.dispatch.calculate_density', side_effect=_fake_density) as rho_mock,
         patch(
-            'zalmoxis.mixing.calculate_mixed_density', side_effect=_fake_mixed_density
+            'zalmoxis.mixing.calculate_mixed_density',
+            side_effect=mixed_side_effect or _fake_mixed_density,
         ) as mixed_mock,
     ):
         cmb_radius, mesh_file = zalmoxis_wrapper.zalmoxis_solver(
@@ -1531,6 +1537,70 @@ def test_zalmoxis_solver_withholds_callable_on_wet_in_envelope_profile(tmp_path,
     # Structure scalars from the converged solve stay bounded either way.
     assert 0.0 < hf_row['M_core'] < hf_row['M_int']
     assert 0.0 < cmb_radius < hf_row['R_int']
+
+
+def test_wet_rebuild_falls_back_to_solver_density_on_non_finite_blend(tmp_path, monkeypatch):
+    """A non-finite blended density falls back to the solver's column value.
+
+    Near the edge of a volatile EOS table the blend can return NaN for a
+    node the solver itself filled through its own out-of-range handling,
+    so the rebuild must keep that node's solver density instead of
+    writing NaN into the hand-off file Aragog reads. Discrimination: the
+    poisoned node carries the solver column value (which the offset fake
+    cannot produce at that (P, T)), every other mantle node carries the
+    blended fake, and no NaN reaches the written file.
+    """
+    model_for_arrays = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
+
+    def tf(r, P):
+        if r <= r_arr[0]:
+            return float(t_arr[0])
+        return float(np.interp(r, r_arr, t_arr))
+
+    calls = {'n': 0}
+
+    def _nan_first_blend(P, T, mixture, mats, sol, liq, interp, **kwargs):
+        calls['n'] += 1
+        if calls['n'] == 1:
+            return float('nan')
+        return 3300.0 + 2.0e-8 * float(P) - 0.1 * (float(T) - 3000.0) + _MIXED_DENSITY_OFFSET
+
+    hf_extra = {
+        'M_mantle_liquid': 4.0e24,
+        'M_mantle_solid': 1.0e24,
+        'H2O_kg_liquid': 8.0e22,
+    }
+    main_mock, rho_mock, mixed_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS-2phase:MgSiO3',
+        (r_arr, t_arr),
+        tf,
+        dry_mantle=False,
+        hf_extra=hf_extra,
+        mixed_side_effect=_nan_first_blend,
+    )
+
+    n = len(model_results['radii'])
+    cmb_index = n // 3
+    assert mixed_mock.call_count == n - cmb_index
+
+    data = np.loadtxt(tmp_path / 'data' / 'zalmoxis_output.dat')
+    rho_column = data[:, 2]
+    assert np.all(np.isfinite(rho_column))
+    # The poisoned first mantle node keeps the solver's column density.
+    solver_rho_cmb = float(model_results['density'][cmb_index])
+    assert rho_column[0] == pytest.approx(solver_rho_cmb, rel=1e-9)
+    # The next node carries the blended fake at the hand-off temperature,
+    # so the fallback is per node, not a whole-column bailout.
+    p_next = float(data[1, 1])
+    t_next = float(data[1, 4])
+    rho_blend_next = 3300.0 + 2.0e-8 * p_next - 0.1 * (t_next - 3000.0) + _MIXED_DENSITY_OFFSET
+    assert rho_column[1] == pytest.approx(rho_blend_next, rel=1e-9)
+    # Discrimination: the solver density and the blended fake differ by
+    # far more than the tolerances above at the poisoned node.
+    assert abs(solver_rho_cmb - rho_blend_next) > 0.5 * _MIXED_DENSITY_OFFSET
 
 
 def test_zalmoxis_solver_keeps_callable_on_wet_out_of_envelope_profile(tmp_path, monkeypatch):
