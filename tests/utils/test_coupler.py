@@ -2516,6 +2516,41 @@ def test_select_resumable_snapshot_raises_when_no_complete_pair(tmp_path):
         select_resumable_snapshot(str(tmp_path), _hf_times([10, 20]))
 
 
+@pytest.mark.unit
+def test_failed_selection_restores_quarantined_files(tmp_path):
+    """A failed selection restores every quarantined file and deletes none.
+
+    A successful selection deletes the quarantined trailing files, which are
+    unusable once the helpfile is truncated below them; a FAILED selection
+    must do the opposite and put every file back under its original name, so
+    a failed resume attempt stays lossless and a later retry or manual
+    inspection sees the run directory exactly as it was. Discrimination:
+    each file carries unique bytes and the restored files must match them,
+    so a re-created placeholder or a cross-file swap cannot pass.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    payloads = {}
+    for t in (10, 20):
+        for half in ('int', 'atm'):
+            p = data / f'{t}_{half}.nc'
+            _write_corrupt_nc(str(p))
+            # Make each corrupt file unique so restore is distinguishable
+            # from recreation; appending keeps the file corrupt.
+            p.write_bytes(p.read_bytes() + p.name.encode())
+            payloads[p.name] = p.read_bytes()
+
+    with pytest.raises(RuntimeError, match='No complete'):
+        select_resumable_snapshot(str(tmp_path), _hf_times([10, 20]))
+
+    leftovers = sorted(f.name for f in data.iterdir())
+    assert leftovers == sorted(payloads), (
+        'originals must be back under their exact names with no .incomplete strays'
+    )
+    for name, blob in payloads.items():
+        assert (data / name).read_bytes() == blob
+
+
 def _write_valid_json(path: str) -> str:
     """Create a minimal, valid SPIDER-style interior JSON snapshot."""
     with open(path, 'w') as fh:
