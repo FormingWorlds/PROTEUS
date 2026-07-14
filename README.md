@@ -25,9 +25,6 @@
   <a href="https://proteus-framework.org">
     <img src="https://img.shields.io/website?url=https%3A%2F%2Fproteus-framework.org&label=Website&up_message=proteus-framework.org&down_message=proteus-framework.org" />
   </a>
-  <a href="https://doi.org/10.5281/zenodo.21358380">
-    <img src="https://zenodo.org/badge/DOI/10.5281/zenodo.21358380.svg">
-  </a>
 </p>
 
 **Coupled atmosphere-interior evolution of rocky planets and exoplanets.**
