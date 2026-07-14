@@ -2498,6 +2498,9 @@ def update_structure_from_interior(
     # accepted re-solve under the super-liquidus adiabat IC only lowers R_int,
     # the last accepted value IS the running minimum, so a single read of the
     # current hf_row['R_int'] is the bound to compare the new solve against.
+    # Wet exception: an accepted composition-driven up-step (dry_mantle =
+    # false) raises R_int, and the guard then re-anchors to that larger
+    # committed value; the bound stays "last accepted R_int" either way.
     R_int_prev = float(hf_row.get('R_int', 0.0) or 0.0)
 
     # Also hand the (r, T) arrays to Zalmoxis explicitly. The JAX path
