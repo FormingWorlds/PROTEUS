@@ -274,7 +274,7 @@ class Proteus:
 
         #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
-        from proteus.atmos_clim.common import Albedo_t, Atmos_t
+        from proteus.atmos_clim.common import Atmos_t
 
         #    escape and outgas
         from proteus.escape.wrapper import run_escape
@@ -411,12 +411,6 @@ class Proteus:
 
         # Initialise atmosphere object
         self.atmos_o = Atmos_t()
-        if self.config.atmos_clim.albedo_from_file:
-            log.debug('Reading albedo data from file')
-            self.atmos_o.albedo_o = Albedo_t(self.config.atmos_clim.albedo_pl)
-            if not self.atmos_o.albedo_o.ok:
-                UpdateStatusfile(self.directories, 22)
-                raise RuntimeError('Problem when loading albedo data file')
 
         # Is the model resuming from a previous state?
         if not self.config.params.resume:

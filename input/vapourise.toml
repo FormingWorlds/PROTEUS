@@ -477,7 +477,7 @@ config_version = "3.0"
     cloud_enabled             = false        # water cloud radiative effects
     cloud_alpha               = 0.0          # condensate retention fraction (0 to 1)
     aerosols_enabled          = false        # enable aerosol radiative effects (agni only)
-    albedo_pl                 = 0.0          # planetary bond albedo; float or path to CSV lookup
+    albedo_pl                 = 0.0          # planetary bond albedo (0 to 1)
     surf_greyalbedo           = 0.1          # grey surface albedo (used when agni.surf_material = "greybody")
 
     # Surface boundary condition

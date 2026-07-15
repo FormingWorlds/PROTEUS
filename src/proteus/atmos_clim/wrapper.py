@@ -64,7 +64,7 @@ def run_atmosphere(
     log.info('Solving atmosphere...')
 
     # Update bond albedo
-    if config.atmos_clim.albedo_from_file or (config.atmos_clim.albedo_pl > 1.0e-9):
+    if config.atmos_clim.albedo_pl > 1.0e-9:
         # Warn if invalid
         if config.atmos_clim.rayleigh:
             log.warning(
@@ -78,12 +78,8 @@ def run_atmosphere(
             )
 
         # Update value of input albedo
-        if config.atmos_clim.albedo_from_file:
-            hf_row['albedo_pl'] = float(atmos_o.albedo_o.evaluate(hf_row['T_surf']))
-            log.info(f'Set albedo by interpolation: {hf_row["albedo_pl"] * 100:.3f}%')
-        else:
-            hf_row['albedo_pl'] = float(config.atmos_clim.albedo_pl)
-            log.debug(f'Set albedo by config: {hf_row["albedo_pl"] * 100:.3f}%')
+        hf_row['albedo_pl'] = float(config.atmos_clim.albedo_pl)
+        log.debug(f'Set albedo by config: {hf_row["albedo_pl"] * 100:.3f}%')
 
     else:
         # Held at zero

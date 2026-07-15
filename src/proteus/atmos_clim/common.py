@@ -6,8 +6,6 @@ import os
 from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
-from scipy.interpolate import PchipInterpolator
 
 from proteus.utils.helper import find_nearest
 
@@ -22,9 +20,6 @@ class Atmos_t:
     def __init__(self):
         # Atmosphere object internal to JANUS or AGNI
         self._atm = None
-
-        # Albedo lookup object
-        self.albedo_o: Albedo_t = None
 
         # Whether the most recent atmosphere call converged. For AGNI this
         # is True iff the Newton/LM solver converged on at least one attempt;
@@ -286,78 +281,3 @@ def get_radius_from_pressure(p_arr: list, r_arr: list, p_tgt: float) -> tuple[fl
     pressure-to-radius case.
     """
     return get_oarr_from_parr(p_arr, r_arr, p_tgt)
-
-
-class Albedo_t:
-    """
-    Store and evaluate bond albedo as a function of other variables.
-    """
-
-    def __init__(self, csvfile: str):
-        # Data table
-        self._data: pd.DataFrame = None
-        self.ok = False
-
-        # Interpolator
-        self._lims: dict = {}  # axis limits
-        self._interp = None
-
-        # Read data file
-        #   tmp     ->   temperature [K]
-        #   albedo  ->   bond albedo [-]
-        if os.path.isfile(csvfile):
-            try:
-                self._data = pd.read_csv(csvfile, dtype=float)
-            except Exception:
-                log.error(f"Could not parse lookup data from file '{csvfile}'")
-                self._data = None
-                return
-        else:
-            log.error(f"Could not find file '{csvfile}'")
-            return
-
-        # Check that file has required keys
-        for k in ('tmp', 'albedo'):
-            if k not in self._data.keys():
-                log.error(f"Albedo lookup data does not have required key '{k}'")
-                log.error(f'    File: {csvfile}')
-                return
-
-        # Store axis limits
-        for k in self._data.keys():
-            self._lims[k] = (np.amin(self._data[k]), np.amax(self._data[k]))
-
-        # Process data by interpolation
-        self.ok = True
-        self._interp = PchipInterpolator(self._data['tmp'], self._data['albedo'])
-
-    def evaluate(self, tmp: float) -> float:
-        """
-        Evaluate bond albedo at a given temperature [K]
-
-        Parameters
-        -----------
-        - tmp: float
-            Surface temperature [K]
-
-        Returns
-        ------------
-        - albedo_pl: float
-            Planetary bond albedo (from 0 to 1)
-        """
-
-        if (not self._interp) or (not self.ok):
-            log.error('Cannot evaluate bond albedo. Lookup data not loaded!')
-            return None
-
-        else:
-            # Ensure valid range on input parameters
-            tmp = min(max(tmp, self._lims['tmp'][0]), self._lims['tmp'][1])
-
-            # Evaluate albedo
-            alb = float(self._interp(tmp))
-
-            # Ensure valid range on output albedo
-            if not (0 <= alb <= 1):
-                log.warning(f'Interpolated `albedo_pl` is out of range: {alb}')
-            return min(max(alb, 0.0), 1.0)

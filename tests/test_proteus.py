@@ -38,7 +38,6 @@ def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_modul
     config.params.out.logging = 'WARNING'
     config.params.stop.iters.minimum = 10
     config.params.stop.iters.maximum = 1000
-    config.atmos_clim.albedo_from_file = False
 
     directories = {
         'output': str(tmp_path),
@@ -59,7 +58,6 @@ def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_modul
 _START_PATCHES = [
     'proteus.atmos_chem.wrapper.run_chemistry',
     'proteus.atmos_clim.run_atmosphere',
-    'proteus.atmos_clim.common.Albedo_t',
     'proteus.atmos_clim.common.Atmos_t',
     'proteus.escape.wrapper.run_escape',
     'proteus.interior_energetics.wrapper.run_interior',
@@ -570,38 +568,6 @@ def test_proteus_resume_restores_spider_eos_dir(tmp_path):
     assert p.directories['spider_liquidus_ps'] == str(eos_dir / 'liquidus_P-S.dat')
     # Discrimination: without the restore, the keys would not exist
     assert 'spider_eos_dir' in p.directories
-
-
-def test_proteus_albedo_from_file_raises_on_invalid_data():
-    """When the Albedo_t constructor sets ``ok=False`` (bad CSV,
-    missing file), the albedo validation block at proteus.py L346-348
-    must raise RuntimeError rather than silently proceeding with a
-    broken interpolator.
-
-    This test directly exercises the conditional logic without
-    booting the full Proteus constructor; the guard is a three-line
-    block that checks albedo_o.ok and raises if False.
-    """
-    from proteus.atmos_clim.common import Albedo_t, Atmos_t
-
-    mock_albedo = MagicMock(spec=Albedo_t)
-    mock_albedo.ok = False
-
-    atmos_o = Atmos_t()
-    atmos_o.albedo_o = mock_albedo
-
-    # Exercise the guard directly: this is the logic at L346-348
-    with pytest.raises(RuntimeError, match='Problem when loading albedo'):
-        if not atmos_o.albedo_o.ok:
-            raise RuntimeError('Problem when loading albedo data file')
-
-    # Discrimination: when ok=True, no error fires
-    mock_albedo.ok = True
-    try:
-        if not atmos_o.albedo_o.ok:
-            raise RuntimeError('Problem when loading albedo data file')
-    except RuntimeError:
-        pytest.fail('RuntimeError should not fire when albedo_o.ok is True')
 
 
 # ---------------------------------------------------------------------------
