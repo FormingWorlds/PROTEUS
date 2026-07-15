@@ -319,6 +319,86 @@ runs:
           julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.pins.outputs.agni_ref }}-
           julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-
 
+    - name: Fetch AGNI spectral data (with retry)
+      shell: bash
+      run: |
+        set -euo pipefail
+        # AGNI's deps/build.jl normally calls src/get_data.sh to pull the basic
+        # spectral, stellar, thermodynamic and scattering data from Zenodo. That
+        # script pre-flights the connection and hard-exits on any non-2xx/3xx
+        # response, so a transient Zenodo 5xx aborts the whole setup and reddens
+        # every PR and nightly that lands during the blip. Fetch the data here
+        # first, retrying with backoff, then build AGNI with the download skipped
+        # (build.jl nodata) so the build never re-fetches it.
+        #
+        # The fetch runs on every setup rather than trusting the cached AGNI/
+        # tree: get_data.sh basic is safely re-runnable (each file is overwritten
+        # by wget -qO and each archive re-extracted with unzip -oq), so re-running
+        # replaces rather than corrupts res/ and completes a partial tree.
+        # Skipping it on a cache hit would instead let a partial res/ left by a
+        # green-but-incomplete fetch persist unrepaired.
+        #
+        # Bound every wget the script issues via a per-step WGETRC so a hung
+        # connection times out and the outer loop retries it, instead of stalling
+        # to the job wall-clock; get_data.sh passes no timeout of its own.
+        wgetrc="$(mktemp)"
+        printf 'timeout = 60\ntries = 2\n' > "$wgetrc"
+        export WGETRC="$wgetrc"
+        #
+        # get_data.sh runs with errexit disabled and its unzip wrapper ignores
+        # unzip's exit code, so a green get_data.sh does not by itself prove res/
+        # is complete: a transient 200-with-empty-body writes a zero-byte file and
+        # still exits 0. res_complete asserts a representative artifact from each
+        # basic sub-fetch is present, and it runs inside the retry loop, so an
+        # incomplete tree is retried like any other failure rather than failing
+        # the job on the first try or handing an empty tree to the nodata build.
+        res="$GITHUB_WORKSPACE/AGNI/res"
+        required_files=(
+          "$res/spectral_files/Oak/318/Oak.sf"
+          "$res/spectral_files/Oak/318/Oak.sf_k"
+          "$res/spectral_files/Dayspring/48/Dayspring.sf"
+          "$res/spectral_files/Dayspring/48/Dayspring.sf_k"
+          "$res/spectral_files/Dayspring/16/Dayspring.sf"
+          "$res/spectral_files/Dayspring/16/Dayspring.sf_k"
+          "$res/stellar_spectra/sun.txt"
+          "$res/thermodynamics/H2O.nc"
+          "$res/parfiles/h2o-co2_4000-5000.par"
+        )
+        res_complete() {
+          local p rc=0
+          for p in "${required_files[@]}"; do
+            [ -s "$p" ] || { echo "missing AGNI data file: $p" >&2; rc=1; }
+          done
+          # The scattering payload is a set of .mon files whose names track the
+          # Zenodo record, so require at least one real file rather than a fixed
+          # name. res/scattering/_readme.txt is part of the AGNI checkout and is
+          # excluded from the archive, so a plain directory-non-empty test would
+          # pass before any .mon file downloads; exclude it explicitly.
+          if [ -z "$(find "$res/scattering" -maxdepth 1 -type f ! -name '_readme.txt' 2>/dev/null)" ]; then
+            echo "missing AGNI scattering data (only _readme.txt present in $res/scattering)" >&2
+            rc=1
+          fi
+          return $rc
+        }
+        fetch="$GITHUB_WORKSPACE/AGNI/src/get_data.sh"
+        delays=(10 30 60)
+        attempts=$(( ${#delays[@]} + 1 ))
+        n=1
+        while true; do
+          if bash "$fetch" basic && res_complete; then
+            echo "AGNI basic data fetched and verified on attempt $n"
+            break
+          fi
+          if [ "$n" -ge "$attempts" ]; then
+            echo "AGNI data fetch failed after $attempts attempts (see errors above)" >&2
+            exit 1
+          fi
+          delay="${delays[$((n - 1))]}"
+          echo "AGNI data fetch attempt $n incomplete; retrying in ${delay}s" >&2
+          sleep "$delay"
+          n=$((n + 1))
+        done
+
     - name: Build AGNI (Pkg.instantiate)
       shell: bash
       run: |
@@ -327,7 +407,9 @@ runs:
         # the detached-HEAD checkout we pinned via tools/_module_pins.py.
         # Run the build steps directly so we keep the pinned ref intact.
         # RAD_DIR is exported by the later "Export environment" step but
-        # AGNI's deps/build.jl reads it inline, so we set it here too.
+        # AGNI's deps/build.jl reads it inline, so we set it here too. The
+        # basic spectral data is fetched by the preceding step, so the build
+        # runs with `nodata` and does not re-fetch it.
         #
         # Order matters: Pkg.instantiate must run BEFORE deps/build.jl,
         # because deps/build.jl includes SOCRATES's clean_wrappers.jl
@@ -358,7 +440,7 @@ runs:
           fi
         fi
         julia --project=. -e 'using Pkg; Pkg.instantiate()'
-        julia --project=. deps/build.jl
+        julia --project=. deps/build.jl nodata
 
     # ------------------------------------------------------------------
     # 8. PROTEUS pip install (resolves PyPI + git deps in pyproject.toml)
