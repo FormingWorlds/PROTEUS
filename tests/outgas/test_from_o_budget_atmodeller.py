@@ -10,8 +10,13 @@ Covers the dispatch logic added to ``proteus.outgas.atmodeller`` when
 * After the solve, the wrapper writes ``fO2_shift_IW_derived`` from
   atmodeller's back-computed ``log10dIW_1_bar`` output and reports the
   O mass residual.
-* The authoritative ``hf_row['O_kg_total']`` is preserved across the
-  call so per-iteration drift cannot accumulate into the escape pipeline.
+* Under from_O_budget the authoritative ``hf_row['O_kg_total']`` is
+  restored to the user target after the solve so per-iteration solver
+  drift cannot accumulate into the escape pipeline.
+* Under user_constant ``hf_row['O_kg_total']`` is set to the
+  chemistry-derived total volatile oxygen (atmospheric + dissolved) so
+  the whole-planet O accounting (``M_ele``) includes atmospheric O even
+  though O is buffered, not a mass constraint (issue #677).
 """
 
 from __future__ import annotations
@@ -97,8 +102,15 @@ def _earth_hf_row(O_kg_total: float = 1.0e22) -> dict:
 def _fake_atmodeller_output(log10dIW: float = -0.1):
     """Build a MagicMock that mimics ``EquilibriumModel.solve(...)`` ->
     ``model.output`` chain. The output's ``asdict()`` populates the keys
-    the wrapper reads (``O2_g.log10dIW_1_bar`` and per-species
+    the wrapper reads (``O2_g.log10dIW_1_bar`` and per-species ``gas_mass`` /
     ``dissolved_mass``); ``quick_look()`` provides partial pressures.
+
+    Each species carries ``gas_mass`` (the atmospheric mass the wrapper now
+    sources directly, rather than reconstructing it from the partial pressure
+    via p*A/g) so these dispatch / plumbing tests exercise the primary
+    atmospheric-mass path. The values are independent of the partial pressures
+    on purpose: a regression that reverted to the p*A/g reconstruction would
+    produce different ``{sp}_kg_atm`` here.
     """
     out = MagicMock()
     out.quick_look.return_value = {
@@ -110,9 +122,11 @@ def _fake_atmodeller_output(log10dIW: float = -0.1):
     }
     out.total_pressure.return_value = np.array(56.5)
     out.asdict.return_value = {
-        'O2_g': {'log10dIW_1_bar': np.array(log10dIW)},
-        'H2O_g': {'dissolved_mass': np.array(2.0e19)},
-        'CO2_g': {'dissolved_mass': np.array(1.0e18)},
+        'O2_g': {'log10dIW_1_bar': np.array(log10dIW), 'gas_mass': np.array(4.0e12)},
+        'H2O_g': {'gas_mass': np.array(3.0e20), 'dissolved_mass': np.array(2.0e19)},
+        'CO2_g': {'gas_mass': np.array(3.0e19), 'dissolved_mass': np.array(1.0e18)},
+        'N2_g': {'gas_mass': np.array(5.0e18)},
+        'S2_g': {'gas_mass': np.array(2.5e18)},
         'state': {'temperature': np.array(1800.0), 'pressure': np.array(56.5)},
     }
     return out
@@ -216,6 +230,48 @@ def test_legacy_path_keeps_4_element_mass_constraints_and_fO2_buffer():
     assert 'O' not in mass_kwargs
     assert 'O2_g' in fug_kwargs
     assert isinstance(fug_kwargs['O2_g'], IronWustiteBuffer)
+
+
+@pytest.mark.unit
+def test_wrapper_reuses_model_until_species_network_changes():
+    """The wrapper builds one EquilibriumModel across solves with the same active
+    species set, and a new one only when the network changes.
+
+    This is the regression surface of the JIT-recompile out-of-memory fix:
+    atmodeller caches its compiled solver on the model instance, so building a
+    fresh model every solve recompiled the solver until the job was killed.
+    Two solves with identical budgets must construct the model exactly once
+    (the second reuses the cached compiled solver). Dropping sulfur below the
+    mass threshold removes the S-bearing species, shrinks the network, changes
+    the cache signature, and must construct a second model. A regression that
+    rebuilt the model every call would show three constructions; one that never
+    rebuilt on a network change would show one.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    dirs = {'output': '/tmp/test'}
+    config = _make_from_o_budget_config()
+
+    builds = []
+
+    def _make_model(*args, **kwargs):
+        m = MagicMock()
+        m.output = _fake_atmodeller_output()
+        builds.append(m)
+        return m
+
+    with patch('atmodeller.EquilibriumModel', side_effect=_make_model):
+        # Two solves, identical active-species network -> built once, then reused.
+        calc_surface_pressures_atmodeller(dirs, config, _earth_hf_row(O_kg_total=1.0e22))
+        calc_surface_pressures_atmodeller(dirs, config, _earth_hf_row(O_kg_total=1.0e22))
+        assert len(builds) == 1  # reused; atmodeller's compiled solver not rebuilt
+
+        # Sulfur drops below the mass threshold -> S2/SO2/H2S leave the network
+        # -> different signature -> a new model (and a fresh solver) is built.
+        hf_no_s = _earth_hf_row(O_kg_total=1.0e22)
+        hf_no_s['S_kg_total'] = 0.0
+        calc_surface_pressures_atmodeller(dirs, config, hf_no_s)
+        assert len(builds) == 2  # network shrank -> rebuilt exactly once more
 
 
 # ---------------------------------------------------------------------------
@@ -424,15 +480,21 @@ def test_from_o_budget_preserves_authoritative_O_kg_total():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_legacy_path_does_not_overwrite_O_kg_total():
-    """Mirror: under user_constant the atmodeller wrapper does not
-    touch ``O_kg_total`` (atmodeller's output doesn't include O as a
-    per-element constraint, and the wrapper doesn't reconstruct it).
-    The value carried by hf_row before the call (from
-    ``_resolve_oxygen_budget`` at IC, or from a previous iteration's
-    escape debit) survives unchanged.
+def test_user_constant_writes_chemistry_derived_O_kg_total():
+    """Under user_constant the wrapper records the chemistry-derived total
+    volatile oxygen (atmospheric + dissolved) in ``O_kg_total`` so the
+    whole-planet O accounting (``M_ele``) includes atmospheric O even
+    though O is buffered, not a mass constraint (issue #677). Without this
+    the pre-seeded value (0 under O_mode='ic_chemistry') would persist and
+    M_ele would omit the atmospheric O entirely (e.g. an oxidising O2
+    atmosphere), breaking the M_atm <= M_planet invariant at high fO2.
+
+    Discriminating: the pre-seeded O_kg_total (5.5e21) must be replaced by
+    the equilibrium-derived total volatile O summed over the O-bearing
+    species, not left untouched and not driven to zero.
     """
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+    from proteus.utils.constants import element_mmw
 
     dirs = {'output': '/tmp/test'}
     config = _make_from_o_budget_config()
@@ -445,13 +507,90 @@ def test_legacy_path_does_not_overwrite_O_kg_total():
     with patch('atmodeller.EquilibriumModel', return_value=fake_model):
         calc_surface_pressures_atmodeller(dirs, config, hf_row)
 
-    assert hf_row['O_kg_total'] == pytest.approx(5.5e21, rel=1e-12)
-    # Discrimination: the legacy path must NOT have added 'O' to the
-    # mass_constraints dict (atmodeller solves O via the IW fugacity
-    # buffer here). A regression that mistakenly added it would
-    # silently over-constrain the system.
+    # Independently re-derive the expected total volatile O from the
+    # per-species atmospheric+dissolved masses the wrapper just populated
+    # (NOT via the helper under test), so a stoichiometry error in the
+    # helper would surface here rather than cancel out.
+    m_O = element_mmw['O']
+    m_C = element_mmw['C']
+    m_H = element_mmw['H']
+    m_S = element_mmw['S']
+    o_frac = {
+        'H2O': m_O / (2 * m_H + m_O),
+        'CO2': 2 * m_O / (m_C + 2 * m_O),
+        'CO': m_O / (m_C + m_O),
+        'SO2': 2 * m_O / (m_S + 2 * m_O),
+        'O2': 1.0,
+    }
+    expected = sum(
+        (hf_row.get(f'{sp}_kg_atm', 0.0) + hf_row.get(f'{sp}_kg_liquid', 0.0)) * f
+        for sp, f in o_frac.items()
+    )
+    assert hf_row['O_kg_total'] == pytest.approx(expected, rel=1e-12)
+    # The fake solve carries real O-bearing volatiles, so the result is a
+    # strictly positive reservoir, NOT the bug's 0 and NOT the stale pre-seed.
+    assert hf_row['O_kg_total'] > 0.0
+    assert abs(hf_row['O_kg_total'] - 5.5e21) > 1e21
+    # Discrimination: O must still be solved via the IW fugacity buffer
+    # (NOT added as a mass constraint) under user_constant.
     mass_kwargs = fake_model.solve.call_args.kwargs['mass_constraints']
     assert 'O' not in mass_kwargs
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_total_volatile_oxygen_sums_atm_and_dissolved_over_o_bearing_species():
+    """``_total_volatile_oxygen_kg`` sums oxygen across both the atmospheric
+    and dissolved reservoirs of the O-bearing volatiles {H2O, CO2, CO, SO2,
+    O2}, weighted by the stoichiometric O mass fraction. This is the
+    whole-planet O reservoir that M_ele must include.
+
+    Discriminating: O-free volatiles (H2, CH4, N2) contribute exactly zero,
+    and dropping the dissolved part underestimates the total.
+    """
+    from proteus.outgas.atmodeller import _total_volatile_oxygen_kg
+    from proteus.utils.constants import element_mmw
+
+    m_O = element_mmw['O']
+    m_C = element_mmw['C']
+    m_H = element_mmw['H']
+    m_S = element_mmw['S']
+    hf_row = {
+        'H2O_kg_atm': 1.8e21,
+        'H2O_kg_liquid': 2.0e20,
+        'CO2_kg_atm': 4.4e20,
+        'SO2_kg_atm': 6.4e19,
+        'O2_kg_atm': 3.2e20,
+        'CH4_kg_atm': 1.0e20,  # carries no oxygen
+        'N2_kg_atm': 5.0e20,  # carries no oxygen
+    }
+    expected = (
+        (1.8e21 + 2.0e20) * (m_O / (2 * m_H + m_O))  # H2O atm + dissolved
+        + 4.4e20 * (2 * m_O / (m_C + 2 * m_O))  # CO2
+        + 6.4e19 * (2 * m_O / (m_S + 2 * m_O))  # SO2
+        + 3.2e20 * 1.0  # O2 is pure oxygen
+    )
+    got = _total_volatile_oxygen_kg(hf_row, element_mmw)
+    assert got == pytest.approx(expected, rel=1e-12)
+    # Discrimination 1: CH4 + N2 (6.0e20 kg) carry no O, so a buggy
+    # all-volatiles sum would exceed the correct value by a large margin.
+    assert abs(got - (expected + 6.0e20)) > 1e20
+    # Discrimination 2: the dissolved H2O O is included (not atmosphere-only).
+    atm_only = got - 2.0e20 * (m_O / (2 * m_H + m_O))
+    assert got - atm_only == pytest.approx(2.0e20 * (m_O / (2 * m_H + m_O)), rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_total_volatile_oxygen_zero_without_o_bearing_species():
+    """Edge case: with only O-free volatiles present (or an empty row) the
+    total volatile oxygen is exactly zero, not a spurious small float."""
+    from proteus.outgas.atmodeller import _total_volatile_oxygen_kg
+    from proteus.utils.constants import element_mmw
+
+    assert _total_volatile_oxygen_kg({}, element_mmw) == 0.0
+    hf_row = {'H2_kg_atm': 1e20, 'CH4_kg_atm': 2e20, 'N2_kg_liquid': 3e20}
+    assert _total_volatile_oxygen_kg(hf_row, element_mmw) == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -497,10 +636,10 @@ def test_from_o_budget_with_O_below_threshold_raises():
 
 @pytest.mark.unit
 def test_from_o_budget_writes_finite_O_residual():
-    """Under from_O_budget the wrapper must compute and write ``O_res`` from
-    target - (atmospheric_O + dissolved_O). A finite, bounded residual
-    is the strongest assertion available without the real solver; the
-    fake output's hand-built numbers give us a deterministic check.
+    """Under from_O_budget the wrapper must compute and write ``O_res`` =
+    (atmospheric_O + dissolved_O) - target. A finite, bounded, correctly
+    signed residual is the strongest assertion available without the real
+    solver; the fake output's hand-built numbers give a deterministic check.
     """
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
@@ -520,6 +659,11 @@ def test_from_o_budget_writes_finite_O_residual():
     # The fake output produces a finite atmospheric + dissolved O, so
     # the residual must be strictly less than the full target.
     assert abs(hf_row['O_res']) < target_O
+    # Sign pin: the equilibrium volatile O (~1e20) sits far below the 1e22
+    # target, so O_res = volatile_O - target must be strongly negative. A
+    # sign-flipped residual (target - volatile) would pass the bounded
+    # check above but land positive here.
+    assert hf_row['O_res'] < 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -673,8 +817,9 @@ def test_noble_gas_passed_as_mass_constraint_and_uses_total_mass_output():
 
     Discriminating: the mass constraint carries the exact He budget; the
     tracked He total equals atmodeller's total_mass and the atmospheric mass
-    is total minus dissolved, so the pressure-derived value (which would
-    misweight the light noble gas) is not used.
+    falls back to total minus dissolved when the output omits gas_mass, so
+    the pressure-derived value (which would misweight the light noble gas)
+    is not used.
     """
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
@@ -717,6 +862,60 @@ def test_noble_gas_passed_as_mass_constraint_and_uses_total_mass_output():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_solver_gas_mass_is_authoritative_over_total_minus_dissolved(caplog):
+    """When the output carries gas_mass, it wins over total minus dissolved.
+
+    total_mass - dissolved_mass equals the gas-phase mass only while a
+    species holds no third reservoir. A solver output where the two
+    derivations disagree (the future solid-partitioning case) must book
+    the solver's own gas_mass into the atmosphere, keep the difference
+    out, and surface the closure gap in the log so an untracked reservoir
+    cannot silently inflate the atmospheric budget.
+
+    Discrimination: gas_mass (1.8e16 kg) and total - dissolved (2.0e16 kg)
+    differ by 10 sigma of every tolerance used, so passing on the wrong
+    convention is impossible.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    config = _make_from_o_budget_config()
+    hf_row = _earth_hf_row(O_kg_total=1.0e22)
+    hf_row['He_kg_total'] = 3.0e16
+    for gas in noble_gases:
+        hf_row[f'{gas}_bar'] = 0.0
+
+    out = _fake_atmodeller_output(log10dIW=-0.5)
+    ql = dict(out.quick_look.return_value)
+    ql['He_g'] = np.array(0.02)
+    out.quick_look.return_value = ql
+    ad = dict(out.asdict.return_value)
+    # 0.2e16 kg sits in a reservoir the mapping does not track, so
+    # total - dissolved (2.0e16) overstates the gas phase (1.8e16).
+    ad['He_g'] = {
+        'total_mass': np.array(3.0e16),
+        'dissolved_mass': np.array(1.0e16),
+        'gas_mass': np.array(1.8e16),
+    }
+    out.asdict.return_value = ad
+
+    fake_model = MagicMock()
+    fake_model.output = out
+    with (
+        caplog.at_level(logging.WARNING),
+        patch('atmodeller.EquilibriumModel', return_value=fake_model),
+    ):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+
+    # The solver's gas-phase mass is booked, not the residual.
+    assert hf_row['He_kg_atm'] == pytest.approx(1.8e16, rel=1e-9)
+    assert hf_row['He_kg_atm'] != pytest.approx(2.0e16, rel=1e-3)
+    assert hf_row['He_kg_liquid'] == pytest.approx(1.0e16, rel=1e-9)
+    # The closure gap is surfaced.
+    assert any('gas-phase closure gap' in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
 def test_no_noble_budget_leaves_atmodeller_species_unchanged():
     """With no noble inventory, no noble gas is added to the species network
     or the mass constraints, so a run without a noble budget is unaffected by
@@ -745,7 +944,8 @@ def test_atmodeller_restores_escape_owned_noble_total():
     """The noble gas element total is escape-owned, so after the solve the
     wrapper restores the pre-solve total rather than the solver's total_mass
     (which drifts by the solver residual). The atmosphere and melt split still
-    come from the solve, so the reservoirs stay consistent.
+    come from the solve (here via the total minus dissolved fallback, since
+    the fixture omits gas_mass), so the reservoirs stay consistent.
     """
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 

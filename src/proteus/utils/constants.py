@@ -14,6 +14,12 @@ R_earth = 6.335439e6  # m
 R_core_earth = 3485000.0  # m
 M_core_earth = 1.94e24  # kg
 
+# Fei et al. (2021, Nat. Commun. 12, 876) MgSiO3 melting curve is calibrated to
+# ~500 GPa. Above this pressure the high-pressure power-law liquidus branch is
+# an extrapolation, so a superheat margin evaluated there is uncertain.
+FEI2021_LIQUIDUS_P_CALIB_PA = 500e9  # Pa
+mol = 6.02214076e23  # mol definition
+
 # Earth heat flux, globally averaged [W m-2]
 # https://se.copernicus.org/articles/1/5/2010/
 F_earth = 47.2e12 / (4 * 3.141 * R_earth * R_earth)

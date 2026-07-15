@@ -105,7 +105,7 @@ def test_atmodeller_solver_step_and_multistart_must_be_positive():
     ``validators.gt(0)``, i.e. strictly positive integers.
 
     Edge: limit-input case (0 and -1 raise). Documented defaults
-    (256, 10) round-trip. Discrimination guard: a regression that
+    (1024, 10) round-trip. Discrimination guard: a regression that
     swapped ``gt(0)`` for ``ge(0)`` would accept 0; the explicit
     zero-raise rejects that.
     """
@@ -123,7 +123,7 @@ def test_atmodeller_solver_step_and_multistart_must_be_positive():
     assert default.solver_max_steps > 0
     assert default.solver_multistart > 0
     # Defaults documented in the dataclass docstring.
-    assert default.solver_max_steps == 256
+    assert default.solver_max_steps == 1024
     assert default.solver_multistart == 10
 
 

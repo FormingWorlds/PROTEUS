@@ -114,6 +114,16 @@ def _resume_with_patches(p, hf_df):
         stack.enter_context(
             patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
         )
+        # These tests exercise the mesh-restoration block, not snapshot
+        # selection: pass the helpfile through unchanged so the resume reaches
+        # the mesh code instead of failing the snapshot-pair check (which would
+        # need on-disk _int.nc/_atm.nc files these tests deliberately omit).
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                return_value=(hf_df, []),
+            )
+        )
         stack.enter_context(
             patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
         )
@@ -740,3 +750,138 @@ def test_solvus_override_no_op_when_r_solvus_exceeds_r_int():
     # Override must NOT have fired
     assert _saved_atm_bc == {}
     assert hf_row['T_surf'] == pytest.approx(2000.0, rel=1e-12)
+
+
+# ============================================================================
+# _solve_structure_baseline_if_needed: one-time callable-representation baseline
+# ============================================================================
+
+_BASELINE_TARGET = 'proteus.interior_energetics.wrapper.update_structure_from_interior'
+
+
+def _make_baseline_proteus(tmp_path, *, module='zalmoxis', init_stage=False, done=False):
+    """Build a Proteus positioned for the structure-baseline gate.
+
+    The method reads init_stage, the one-shot flag, the interior_struct module,
+    the interior object and the structure sentinels; everything else is left at
+    its post-__init__ default.
+    """
+    p = _make_proteus_instance(tmp_path, struct_module=module)
+    p.init_stage = init_stage
+    p._baseline_structure_done = done
+    p.interior_o = MagicMock()
+    # The baseline retry check reads interior_o.structure_stale; seed the fresh-run
+    # value so a bare MagicMock attribute does not read truthy and skip the solve.
+    p.interior_o.structure_stale = False
+    p.hf_row = {}
+    p.last_struct_time = 0.0
+    p.last_struct_Tmagma = float('inf')
+    p.last_struct_Phi = float('inf')
+    return p
+
+
+def test_structure_baseline_fires_once_with_force_then_is_idempotent(tmp_path):
+    """The first evolution step solves the baseline once with force=True and
+    commits the returned structure sentinels; a second call is a no-op.
+
+    Discriminating: the sentinels are pinned to the solver's returned values
+    (123.0, 2500.0, 0.71), which differ from the post-__init__ defaults, so a
+    regression that failed to commit them would be caught; and the second-call
+    assertion guards against the one-shot flag not latching (which would
+    re-solve every iteration and inject a spurious radius step).
+    """
+    p = _make_baseline_proteus(tmp_path)
+    with patch(_BASELINE_TARGET, return_value=(123.0, 2500.0, 0.71)) as mock_update:
+        p._solve_structure_baseline_if_needed()
+
+        assert mock_update.call_count == 1
+        assert mock_update.call_args.kwargs['force'] is True
+        assert p._baseline_structure_done is True
+        assert p.last_struct_time == pytest.approx(123.0, rel=1e-12)
+        assert p.last_struct_Tmagma == pytest.approx(2500.0, rel=1e-12)
+        assert p.last_struct_Phi == pytest.approx(0.71, rel=1e-12)
+
+        # Idempotent: the latched flag prevents any further forced solve.
+        p._solve_structure_baseline_if_needed()
+        assert mock_update.call_count == 1
+
+
+@pytest.mark.parametrize(
+    'kwargs',
+    [
+        {'done': True},  # already baselined, e.g. a resumed run
+        {'init_stage': True},  # still in the init stage
+        {'module': 'dummy'},  # non-Zalmoxis structure module
+    ],
+    ids=['already_done_or_resumed', 'init_stage', 'non_zalmoxis_module'],
+)
+def test_structure_baseline_skipped(tmp_path, kwargs):
+    """The baseline solve fires only for a fresh, post-init Zalmoxis run.
+
+    Edge cases: a resumed/already-baselined run (the flag pre-set), an
+    init-stage iteration, and a non-Zalmoxis module each must skip the forced
+    solve. Discriminating: the one-shot flag is asserted unchanged at its input
+    value, so a regression that dropped a guard and solved anyway is caught.
+    """
+    p = _make_baseline_proteus(tmp_path, **kwargs)
+    with patch(_BASELINE_TARGET, return_value=(1.0, 2.0, 0.3)) as mock_update:
+        p._solve_structure_baseline_if_needed()
+    mock_update.assert_not_called()
+    assert p._baseline_structure_done is kwargs.get('done', False)
+
+
+def test_structure_baseline_retries_after_failed_solve(tmp_path):
+    """A failed forced baseline (fall-back to the IC-internal structure) must
+    NOT mark the baseline done, so the next evolution step retries.
+
+    Without this, a single failed baseline on a static run would freeze it on
+    the IC-internal-adiabat radius for the rest of the run, silently re-adding
+    the representation offset to the dynamic-vs-static comparison.
+
+    Discriminating: the solver signals failure by setting
+    interior_o.structure_stale True; the test asserts the baseline is not
+    latched (retry) AND the sentinels are NOT advanced from their defaults,
+    distinguishing a real fall-back from a committed solve.
+    """
+
+    def _failed_solve(directories, config, hf_row, interior_o, *args, **kwargs):
+        # Mirror the wrapper fall-back: flag the structure stale on interior_o,
+        # return the unchanged sentinels (last_struct_time/Tmagma/Phi are
+        # args[0:3] here).
+        interior_o.structure_stale = True
+        return (args[0], args[1], args[2])
+
+    p = _make_baseline_proteus(tmp_path)
+    with patch(_BASELINE_TARGET, side_effect=_failed_solve) as mock_update:
+        p._solve_structure_baseline_if_needed()
+
+    mock_update.assert_called_once()
+    assert p._baseline_structure_done is False  # retried, not latched
+    assert p.last_struct_time == pytest.approx(0.0, abs=0.0)  # sentinels untouched
+    assert p.last_struct_Phi == float('inf')
+
+
+def test_structure_baseline_skipped_for_superliquidus_adiabat(tmp_path):
+    """For the super-liquidus adiabat IC the structure solve already integrates
+    against the true adiabat for both dynamic and static runs, so the shared
+    maximal-radius baseline is set at the initial condition. A forced re-solve
+    here would overwrite it with a different (cross-table) representation and
+    could nudge R_int upward, so the baseline must be skipped.
+
+    Discriminating: a non-liquidus_super zalmoxis run (test_structure_baseline_
+    fires_once...) DOES fire the forced solve, so this asserts the skip is
+    specific to the adiabat IC, not a blanket disable; the flag is still latched
+    so the gate is not re-evaluated every step.
+    """
+    p = _make_baseline_proteus(tmp_path)
+    # Make _use_superliquidus_adiabat_ic(config) true: zalmoxis struct module
+    # (already set), liquidus_super temperature mode, non-spider energetics.
+    p.config.interior_struct.module = 'zalmoxis'
+    p.config.planet.temperature_mode = 'liquidus_super'
+    p.config.interior_energetics.module = 'aragog'
+
+    with patch(_BASELINE_TARGET) as mock_update:
+        p._solve_structure_baseline_if_needed()
+
+    mock_update.assert_not_called()  # forced re-solve skipped, IC adiabat stands
+    assert p._baseline_structure_done is True  # latched so it is not re-checked

@@ -61,6 +61,27 @@ from proteus.utils.constants import (
     secs_per_year,
 )
 
+
+@pytest.fixture(autouse=True)
+def _clear_atmodeller_model_cache():
+    """Reset the atmodeller equilibrium-model cache around every test.
+
+    ``proteus.outgas.atmodeller`` reuses one ``EquilibriumModel`` per signature
+    (so its JIT solver compiles once instead of every solve). That cache is
+    module-level and would otherwise persist across tests for the whole pytest
+    process: a model built under a patched ``EquilibriumModel`` in one test, or a
+    real model from a multi-timestep integration test, would be reused by a later
+    test with the same signature, ignoring that test's own setup. Clearing it
+    before and after each test keeps every tier (unit, smoke, integration)
+    independent. The clear is a no-op for tests that never touch the wrapper.
+    """
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    yield
+    _MODEL_CACHE.clear()
+
+
 # =============================================================================
 # Physical Parameters for Earth-like Test Scenarios
 # =============================================================================

@@ -23,6 +23,7 @@ Fixtures from conftest.py:
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import sys
@@ -46,12 +47,17 @@ from proteus.utils.coupler import (
     ReadHelpfileFromCSV,
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
+    _atm_snapshot_names,
     _get_current_time,
+    _interior_snapshot_names,
+    _netcdf_readable,
     _populate_energy_residual,
+    _snapshot_readable,
     get_proteus_directories,
     print_citation,
     print_module_configuration,
     remove_excess_files,
+    select_resumable_snapshot,
     set_directories,
     variable_is_logarithmic,
 )
@@ -296,7 +302,7 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
 
     MagicMock()
     row = ZeroHelpfileRow()
-    row['_structure_stale'] = True  # private transient key: must not warn
+    row['_T_magma_raw'] = 3000.0  # private transient key: must not warn
     row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
     row['nonsense_future_key'] = 1.0  # genuine drift: must warn
     hf = CreateHelpfileFromDict(ZeroHelpfileRow())
@@ -307,7 +313,7 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
     joined = '\n'.join(r.message for r in warns)
     assert 'nonsense_future_key' in joined, f'Expected unknown-key warning, got: {joined!r}'
-    assert '_structure_stale' not in joined, 'Private key leaked into warning'
+    assert '_T_magma_raw' not in joined, 'Private key leaked into warning'
     assert 'core_state_initial' not in joined, 'Allowlisted key triggered warning'
 
 
@@ -433,6 +439,65 @@ def test_write_and_read_helpfile_roundtrip():
         assert hf_read['T_magma'].iloc[0] == pytest.approx(2500.0)
         assert hf_read['P_surf'].iloc[0] == pytest.approx(1.0)
         assert hf_read['F_int'].iloc[0] == pytest.approx(50.0)
+
+
+@pytest.mark.unit
+def test_write_helpfile_preserves_prior_file_on_failed_write():
+    """A crash or full disk mid-write must not destroy the existing helpfile.
+
+    The atomic write serialises to a temporary file and renames it into
+    place, so a failed serialisation leaves the previous complete file
+    untouched and a later resume can still read a full row history. A
+    direct remove-then-write would have left the helpfile missing, which
+    is the empty-CSV state that blocks resume.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row1 = ZeroHelpfileRow()
+        row1['Time'] = 111.0
+        row1['T_surf'] = 301.0
+        WriteHelpfileToCSV(tmpdir, CreateHelpfileFromDict(row1))
+
+        fpath = os.path.join(tmpdir, 'runtime_helpfile.csv')
+        with open(fpath) as fh:
+            before = fh.read()
+
+        # Simulate a disk-full / killed process during the next write.
+        row2 = ZeroHelpfileRow()
+        row2['Time'] = 222.0
+        hf2 = CreateHelpfileFromDict(row2)
+        with patch.object(
+            pd.DataFrame,
+            'to_csv',
+            side_effect=OSError('[Errno 28] No space left on device'),
+        ):
+            with pytest.raises(OSError):
+                WriteHelpfileToCSV(tmpdir, hf2)
+
+        # The prior complete file survives byte-for-byte, and no temp
+        # artefact is left behind.
+        assert os.path.exists(fpath)
+        with open(fpath) as fh:
+            assert fh.read() == before
+        assert not os.path.exists(fpath + '.tmp')
+
+        # Discrimination guard: the surviving file is the v1 row (Time=111),
+        # not the failed v2 row (Time=222) and not an empty file.
+        df = pd.read_csv(fpath, sep=r'\s+')
+        assert len(df) == 1
+        assert df['Time'].iloc[0] == pytest.approx(111.0)
+
+
+@pytest.mark.unit
+def test_write_helpfile_leaves_no_temp_file_on_success():
+    """A successful atomic write leaves only the final CSV, no .tmp artefact."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        row['Time'] = 5.0
+        WriteHelpfileToCSV(tmpdir, CreateHelpfileFromDict(row))
+
+        entries = os.listdir(tmpdir)
+        assert 'runtime_helpfile.csv' in entries
+        assert not any(e.endswith('.tmp') for e in entries)
 
 
 @pytest.mark.unit
@@ -1137,18 +1202,22 @@ def _aragog_row(
     step_dE_F_cmb_J: float = 0.0,
     step_dE_Q_radio_cons_J: float = 0.0,
     step_dE_Q_tidal_cons_J: float = 0.0,
+    step_dE_Q_radio_J: float = 0.0,
+    step_dE_Q_tidal_J: float = 0.0,
     step_solver_residual_J: float = 0.0,
+    step_dE_state_heat_J: float = 0.0,
     F_cmb: float = 0.0,
     R_int: float = 6.371e6,
     R_core: float = 3.481e6,
     T_magma: float = 3000.0,
 ) -> dict:
-    """Helper: build a ZeroHelpfileRow populated with the cons (frozen-mass)
-    columns the energy-residual helper reads. Uses Earth-like radii by
-    default. The instantaneous F_cmb keyword argument is supported only so
-    the discrimination test can prove it is IGNORED by the cumulative-sum
-    logic; it has no effect on dE_predicted_cons_J."""
-    MagicMock()
+    """Helper: build a ZeroHelpfileRow populated with the columns the
+    energy-residual helper reads. The predicted side is the boundary-flux
+    and source increments; the state side is ``step_dE_state_heat_J`` (the
+    entropy-transported heat). Uses Earth-like radii by default. The
+    instantaneous F_cmb keyword is supported only so the discrimination
+    test can prove it is IGNORED by the cumulative-sum logic; it has no
+    effect on dE_predicted_cons_J."""
     row = ZeroHelpfileRow()
     row['Time'] = time_yr
     row['E_state_cons_J'] = E_state_cons_J
@@ -1156,7 +1225,10 @@ def _aragog_row(
     row['step_dE_F_cmb_J'] = step_dE_F_cmb_J
     row['step_dE_Q_radio_cons_J'] = step_dE_Q_radio_cons_J
     row['step_dE_Q_tidal_cons_J'] = step_dE_Q_tidal_cons_J
+    row['step_dE_Q_radio_J'] = step_dE_Q_radio_J
+    row['step_dE_Q_tidal_J'] = step_dE_Q_tidal_J
     row['step_solver_residual_J'] = step_solver_residual_J
+    row['step_dE_state_heat_J'] = step_dE_state_heat_J
     row['F_cmb'] = F_cmb
     row['R_int'] = R_int
     row['R_core'] = R_core
@@ -1172,22 +1244,26 @@ def test_helpfile_keys_include_energy_conservation_columns():
     be reconstructed downstream."""
     keys = GetHelpfileKeys()
     expected = {
-        # Frozen-mass conservation primitives (consumed by the residual).
-        'E_state_cons_J',
+        # Predicted-side primitives (boundary + source, frozen-mass).
         'step_dE_F_int_J',
         'step_dE_F_cmb_J',
         'step_dE_Q_radio_cons_J',
         'step_dE_Q_tidal_cons_J',
         'step_solver_residual_J',
+        # State-side primitive: the entropy-transported heat content change.
+        'step_dE_state_heat_J',
         # Cumulative columns derived from the primitives above.
+        'E_state_heat_cons_J',
         'dE_predicted_cons_J',
         'E_residual_cons_J',
         'E_residual_cons_frac',
         'solver_residual_J',
-        # State-mass columns kept as diagnostics (NOT used for residuals).
+        # Enthalpy columns kept as diagnostics (NOT used for residuals).
+        'E_state_cons_J',
         'E_state_J',
         'step_dE_Q_radio_J',
         'step_dE_Q_tidal_J',
+        'step_dE_compression_J',
     }
     missing = expected - set(keys)
     assert not missing, f'Energy-conservation keys missing from schema: {missing}'
@@ -1287,8 +1363,11 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
         time_yr=10.0,
         E_state_cons_J=E1,
         step_dE_F_int_J=delta_1_F_int,
-        step_dE_Q_radio_cons_J=delta_1_Q_radio,
+        step_dE_Q_radio_J=delta_1_Q_radio,
         step_solver_residual_J=solver_inc_1,
+        # Self-consistent run: the entropy-transported heat per step equals
+        # the predicted boundary+source increment, so the residual is zero.
+        step_dE_state_heat_J=delta_1_F_int + delta_1_Q_radio,
     )
     _populate_energy_residual(hf, row1)
     hf = ExtendHelpfile(hf, row1)
@@ -1305,6 +1384,7 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
         step_dE_F_int_J=delta_2_F_int,
         step_dE_F_cmb_J=delta_2_F_cmb,
         step_solver_residual_J=solver_inc_2,
+        step_dE_state_heat_J=delta_2_F_int + delta_2_F_cmb,
     )
     _populate_energy_residual(hf, row2)
     hf = ExtendHelpfile(hf, row2)
@@ -1321,6 +1401,7 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
         step_dE_F_cmb_J=delta_3_F_cmb,
         step_dE_F_int_J=delta_3_F_int,
         step_solver_residual_J=solver_inc_3,
+        step_dE_state_heat_J=delta_3_F_cmb + delta_3_F_int,
     )
     _populate_energy_residual(hf, row3)
 
@@ -1358,12 +1439,13 @@ def test_populate_energy_residual_ignores_instantaneous_F_cmb_spike():
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    # Physical step delta: -1e29 J (mild cooling).
+    # Physical step delta: -1e29 J (mild cooling), matched on both sides.
     physical_delta = -1.0e29
     row1 = _aragog_row(
         time_yr=10.0,
         E_state_cons_J=E0 + physical_delta,
         step_dE_F_int_J=physical_delta,
+        step_dE_state_heat_J=physical_delta,
         # Catastrophic instantaneous spike; must be IGNORED.
         F_cmb=1.0e23,
     )
@@ -1393,8 +1475,9 @@ def test_populate_energy_residual_frac_normalises_safely_when_dE_tiny():
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    # dE_actual_cons = +0.5 J, dE_pred_cons = 0 (no step deltas set).
-    row1 = _aragog_row(time_yr=1.0, E_state_cons_J=E0 + 0.5)
+    # State-heat increment = +0.5 J, predicted = 0 (no step deltas set), so
+    # the residual is +0.5 J against a cumulative state heat of +0.5 J.
+    row1 = _aragog_row(time_yr=1.0, E_state_cons_J=E0, step_dE_state_heat_J=0.5)
     _populate_energy_residual(hf, row1)
 
     # Without flooring this would be 0.5 / 0.5 = 1.0; with floor at 1 J
@@ -1407,33 +1490,109 @@ def test_populate_energy_residual_frac_normalises_safely_when_dE_tiny():
 
 @pytest.mark.unit
 def test_populate_energy_residual_residual_detects_missing_source():
-    """Conservation residual must surface a missing source. We
-    construct a 'real' planet whose E_state_cons actually ROSE by
-    5e29 J because of a fictional unreported source, but Aragog (in
-    this scenario) only reported the cooling step delta (-3e29 J).
-    The residual should be +8e29 J = (E_state_cons-E_state_cons[0])
-    - dE_predicted_cons, sign and magnitude both meaningful. Catches
-    a regression where the helper would silently zero residuals or
-    apply the wrong sign convention."""
+    """Conservation residual must surface a missing source. We construct a
+    'real' planet whose entropy-transported heat content actually ROSE by
+    5e29 J because of a fictional unreported source, but Aragog (in this
+    scenario) only reported the cooling boundary-flux delta (-3e29 J). The
+    residual is the state-heat side minus the predicted side, +8e29 J, sign
+    and magnitude both meaningful. Catches a regression where the helper
+    would silently zero residuals or apply the wrong sign convention."""
     E0 = 1.0e31
     MagicMock()
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    actual_dE = +5.0e29  # planet warmed
-    reported_step_delta = -3.0e29  # Aragog only reported the cooling
+    # Hold the enthalpy snapshot E_state_cons_J fixed at E0 and let the
+    # entropy-transported heat carry the true rise. The reverted enthalpy-
+    # anchor logic would read zero state change and report only +3e29; the
+    # state-heat logic reports +8e29. The two regimes therefore disagree, so
+    # this assertion fails on a revert rather than passing for both.
+    actual_dE = +5.0e29  # true heat content rise (state side)
+    reported_step_delta = -3.0e29  # Aragog only reported the cooling flux
     row1 = _aragog_row(
         time_yr=100.0,
-        E_state_cons_J=E0 + actual_dE,
+        E_state_cons_J=E0,
         step_dE_F_int_J=reported_step_delta,
+        step_dE_state_heat_J=actual_dE,
     )
     _populate_energy_residual(hf, row1)
 
     expected_residual = actual_dE - reported_step_delta  # = +8e29 J
     assert row1['dE_predicted_cons_J'] == pytest.approx(reported_step_delta, rel=1e-12)
+    assert row1['E_state_heat_cons_J'] == pytest.approx(actual_dE, rel=1e-12)
     assert row1['E_residual_cons_J'] == pytest.approx(expected_residual, rel=1e-12)
+    # Reverted enthalpy-anchor logic would give actual_dE=0 -> residual +3e29.
+    enthalpy_anchor_residual = 0.0 - reported_step_delta
+    assert abs(expected_residual - enthalpy_anchor_residual) > 1e29
     # E_residual_cons_frac should be O(1); residual is comparable to actual.
     assert abs(row1['E_residual_cons_frac']) > 0.5
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_excludes_compression_from_predicted():
+    """The compression term must NOT enter the predicted side.
+
+    ``step_dE_compression_J`` is an enthalpy-framed quantity retained only
+    as a diagnostic; the entropy-transported heat already carries the full
+    thermodynamic content. We set a large compression value alongside a
+    physical boundary-flux delta and assert the predicted increment equals
+    the flux delta alone. If compression leaked back into the sum (the
+    behaviour being reverted) the predicted value would shift by the
+    compression magnitude, which the discrimination guard rules out.
+    """
+    E0 = 1.0e31
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    flux_delta = -2.0e29
+    compression = +7.0e29  # large, opposite sign; must be ignored
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_cons_J=E0 + flux_delta,
+        step_dE_F_int_J=flux_delta,
+        step_dE_state_heat_J=flux_delta,
+    )
+    row1['step_dE_compression_J'] = compression
+    _populate_energy_residual(hf, row1)
+
+    assert row1['dE_predicted_cons_J'] == pytest.approx(flux_delta, rel=1e-12)
+    # Compression excluded on both sides => residual stays at zero, not at
+    # the compression magnitude.
+    assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(compression)
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_predicted_uses_live_mass_heating():
+    """The predicted side uses the live-density heating variants, matching the
+    live-density state side.
+
+    The state side integrates rho(P,S) (live EOS density), so the heating
+    sources on the predicted side must use the same mass frame: the live
+    step_dE_Q_radio_J / step_dE_Q_tidal_J, not the frozen-mass *_cons
+    variants. We give the live and frozen radiogenic increments different
+    values and assert the predicted side tracks the live one. If the residual
+    reverted to the frozen-mass variant the predicted increment would differ
+    by the live-minus-frozen gap, which the discrimination guard rejects.
+    """
+    E0 = 1.0e31
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    live_radio = +1.0e29
+    frozen_radio = +4.0e29  # deliberately different; must be IGNORED
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_cons_J=E0 + live_radio,
+        step_dE_Q_radio_J=live_radio,
+        step_dE_Q_radio_cons_J=frozen_radio,
+        step_dE_state_heat_J=live_radio,
+    )
+    _populate_energy_residual(hf, row1)
+
+    assert row1['dE_predicted_cons_J'] == pytest.approx(live_radio, rel=1e-12)
+    # Frozen-mass variant would have given +4e29; guard the gap.
+    assert abs(row1['dE_predicted_cons_J'] - frozen_radio) > 1e29
+    assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(live_radio)
 
 
 @pytest.mark.unit
@@ -2352,3 +2511,411 @@ def test_remove_excess_files_without_spectra(monkeypatch):
 
     assert len(removed) == 3
     assert all('runtime.sf' not in p for p in removed)
+
+
+# =============================================================================
+# Test: resume snapshot-pair validation
+# =============================================================================
+
+
+def _write_valid_nc(path: str) -> str:
+    """Create a minimal, valid netCDF file at ``path``."""
+    from netCDF4 import Dataset
+
+    with Dataset(path, 'w') as ds:
+        ds.createDimension('x', 1)
+    return path
+
+
+def _write_corrupt_nc(path: str) -> str:
+    """Create a file that exists but does not open as netCDF (truncated write)."""
+    with open(path, 'wb') as fh:
+        fh.write(b'not a valid netcdf file')
+    return path
+
+
+def _hf_times(times):
+    """Minimal helpfile DataFrame carrying just the columns the selector reads."""
+    return pd.DataFrame({'Time': [float(t) for t in times], 'Phi_global': [0.9] * len(times)})
+
+
+@pytest.mark.unit
+def test_netcdf_readable_distinguishes_valid_corrupt_missing(tmp_path):
+    """_netcdf_readable is True only for a file that opens as netCDF.
+
+    Covers the three states the resume selector must tell apart: a complete
+    file, a file present but truncated mid-write, and an absent file.
+    """
+    valid = _write_valid_nc(str(tmp_path / 'ok.nc'))
+    corrupt = _write_corrupt_nc(str(tmp_path / 'bad.nc'))
+
+    assert _netcdf_readable(valid) is True
+    assert _netcdf_readable(corrupt) is False
+    assert _netcdf_readable(str(tmp_path / 'missing.nc')) is False
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_keeps_complete_latest(tmp_path):
+    """A complete latest pair leaves the helpfile and the data dir untouched."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20, 30):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30]))
+
+    assert dropped == []
+    assert len(out) == 3
+    assert int(out.iloc[-1]['Time']) == 30
+    # Discrimination guard: nothing was quarantined on the all-complete path.
+    assert not list(data.glob('*.incomplete'))
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_falls_back_on_corrupt_atm(tmp_path):
+    """A truncated latest _atm.nc trims to the prior pair and quarantines both halves.
+
+    The interior half being intact must not save the step: the atmosphere
+    half is required, so the row is dropped and both 30_*.nc files are moved
+    aside so the modules' latest-file globs land on time 20.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+    _write_valid_nc(str(data / '30_int.nc'))
+    _write_corrupt_nc(str(data / '30_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30]))
+
+    assert dropped == [30]
+    assert int(out.iloc[-1]['Time']) == 20
+    assert (data / '30_atm.nc.incomplete').exists()
+    assert (data / '30_int.nc.incomplete').exists()
+    assert not (data / '30_atm.nc').exists()
+    assert not (data / '30_int.nc').exists()
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_falls_back_on_corrupt_int(tmp_path):
+    """A truncated latest _int.nc (atmosphere intact) also triggers the fallback."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+    _write_corrupt_nc(str(data / '30_int.nc'))
+    _write_valid_nc(str(data / '30_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30]))
+
+    assert dropped == [30]
+    assert int(out.iloc[-1]['Time']) == 20
+    # Both halves of the incomplete pair are quarantined (symmetry with the
+    # corrupt-atm case): a stray valid 30_atm.nc must not be left for the
+    # atmosphere module's latest-file glob to pick up against a missing 30_int.
+    assert (data / '30_int.nc.incomplete').exists()
+    assert (data / '30_atm.nc.incomplete').exists()
+    assert not (data / '30_int.nc').exists()
+    assert not (data / '30_atm.nc').exists()
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_matches_writer_filename_conventions(tmp_path):
+    """Interior (truncated %d) and atmosphere (rounded %.0f) names can differ by 1.
+
+    Aragog writes <int(Time)>_int.nc and AGNI writes <round(Time)>_atm.nc, so
+    a fractional Time >= .5 puts the two halves at integer names one apart.
+    The selector must probe each half with its own writer's convention: the
+    Aragog interior at 30 and the AGNI atmosphere at 31 for Time 30.7. Probing
+    the interior name for the atmosphere half would miss the rounded file and
+    wrongly drop a valid latest snapshot.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+    # Time 30.7: interior truncates to 30, atmosphere rounds to 31.
+    _write_valid_nc(str(data / '30_int.nc'))
+    _write_valid_nc(str(data / '31_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30.7]))
+
+    # The offset pair is recognised as complete: nothing dropped, latest kept.
+    assert dropped == []
+    assert len(out) == 3
+    assert out.iloc[-1]['Time'] == pytest.approx(30.7)
+    assert not list(data.glob('*.incomplete'))
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_dummy_atm_requires_only_interior(tmp_path):
+    """With require_atm=False the selector ignores the (absent) atmosphere half."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20, 30):
+        _write_valid_nc(str(data / f'{t}_int.nc'))  # no _atm.nc written at all
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30]), require_atm=False
+    )
+
+    assert dropped == []
+    assert int(out.iloc[-1]['Time']) == 30
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_raises_when_no_complete_pair(tmp_path):
+    """No complete pair anywhere raises, so the caller can restart fresh."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_corrupt_nc(str(data / f'{t}_int.nc'))
+        _write_corrupt_nc(str(data / f'{t}_atm.nc'))
+
+    with pytest.raises(RuntimeError, match='No complete'):
+        select_resumable_snapshot(str(tmp_path), _hf_times([10, 20]))
+
+
+def _write_valid_json(path: str) -> str:
+    """Create a minimal, valid SPIDER-style interior JSON snapshot."""
+    with open(path, 'w') as fh:
+        json.dump({'data': {'S': [1.0, 2.0]}}, fh)
+    return path
+
+
+def _write_corrupt_json(path: str) -> str:
+    """Create a truncated JSON file (present but not parseable)."""
+    with open(path, 'w') as fh:
+        fh.write('{"data": {"S": [1.0, 2.')  # cut off mid-write
+    return path
+
+
+@pytest.mark.unit
+def test_interior_snapshot_names_track_each_writer_convention():
+    """Each interior module's probe uses that writer's own filename format.
+
+    Aragog truncates (``%d_int.nc``) and SPIDER rounds (``%.0f.json``), so at
+    a fractional Time the two land on integer stems one apart; the dummy and
+    boundary interiors write no snapshot at all. A probe that assumed the
+    Aragog name for every module would miss the SPIDER file and wrongly
+    quarantine a valid resume point.
+    """
+    # Time 30.7: Aragog truncates to 30, SPIDER rounds to 31.
+    assert _interior_snapshot_names(30.7, 'aragog') == ['30_int.nc']
+    assert _interior_snapshot_names(30.7, 'spider') == ['31.json']
+    # Discrimination guard: the two conventions disagree on both stem and
+    # extension, so a single-convention probe cannot cover both.
+    assert _interior_snapshot_names(30.7, 'aragog') != _interior_snapshot_names(30.7, 'spider')
+    # Dummy and boundary write no interior snapshot: empty constraint.
+    assert _interior_snapshot_names(30.7, 'dummy') == []
+    assert _interior_snapshot_names(30.7, 'boundary') == []
+    # Unknown module falls back to the Aragog default rather than crashing.
+    assert _interior_snapshot_names(30.7, 'other') == ['30_int.nc']
+
+
+@pytest.mark.unit
+def test_atm_snapshot_names_single_convention_per_writer():
+    """The atmosphere probe uses exactly the active writer's rounding convention.
+
+    Only one atmosphere module is active per run, so the probe must return that
+    writer's single filename, not both integer names. JANUS writes
+    ``str(int(Time))_atm.nc`` (truncates) while AGNI writes ``%.0f_atm.nc``
+    (rounds). For a fractional Time the two stems differ; probing both would let
+    a fractional row's truncated name collide with an adjacent row's rounded
+    name, so the single-convention rule is what prevents the cross-row mismatch.
+    """
+    # Time 30.7: JANUS truncates to 30, AGNI rounds to 31. Each writer yields
+    # its own single candidate, never both.
+    assert _atm_snapshot_names(30.7, 'janus') == ['30_atm.nc']
+    assert _atm_snapshot_names(30.7, 'agni') == ['31_atm.nc']
+    # Discrimination guard: the two conventions disagree at this fractional Time,
+    # which is exactly the collision (30.7 truncated == 30.2 rounded == 30) that
+    # probing both names would reintroduce.
+    assert _atm_snapshot_names(30.7, 'janus') != _atm_snapshot_names(30.7, 'agni')
+    # Integer Time: both conventions coincide, so the choice of writer is moot.
+    assert _atm_snapshot_names(30.0, 'janus') == ['30_atm.nc']
+    assert _atm_snapshot_names(30.0, 'agni') == ['30_atm.nc']
+    # Unknown or empty module falls back to the AGNI (rounded) default rather
+    # than crashing; 30.7 rounds to 31 under that fall-back.
+    assert _atm_snapshot_names(30.7, 'other') == ['31_atm.nc']
+    assert _atm_snapshot_names(30.7, '') == ['31_atm.nc']
+
+
+@pytest.mark.unit
+def test_snapshot_readable_dispatches_json_and_netcdf(tmp_path):
+    """_snapshot_readable validates a .json half by parse and an .nc half by open.
+
+    SPIDER's interior half is JSON; a truncated write parses as invalid. The
+    netCDF halves keep the existing open-check. Covers valid, corrupt, and
+    absent for both extensions.
+    """
+    good_json = _write_valid_json(str(tmp_path / 'ok.json'))
+    bad_json = _write_corrupt_json(str(tmp_path / 'bad.json'))
+    good_nc = _write_valid_nc(str(tmp_path / 'ok.nc'))
+
+    assert _snapshot_readable(good_json) is True
+    assert _snapshot_readable(bad_json) is False
+    assert _snapshot_readable(str(tmp_path / 'missing.json')) is False
+    # netCDF dispatch unchanged.
+    assert _snapshot_readable(good_nc) is True
+    assert _snapshot_readable(str(tmp_path / 'missing.nc')) is False
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_resumes_spider_json_history(tmp_path):
+    """A SPIDER interior (JSON snapshots) resumes; the Aragog-only probe would not.
+
+    SPIDER writes ``'%.0f.json'`` interior snapshots and no ``_int.nc``. With
+    ``interior_module='spider'`` the selector must recognise the JSON half and
+    keep the latest row; a probe hard-coded to the Aragog ``_int.nc`` name
+    would find no interior half on any row and raise the no-complete-pair
+    error, a regression against a SPIDER resume that worked before.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20, 30):
+        _write_valid_json(str(data / f'{t:.0f}.json'))
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30]), require_atm=False, interior_module='spider'
+    )
+
+    assert dropped == []
+    assert int(out.iloc[-1]['Time']) == 30
+    # Discrimination guard: the Aragog-name probe sees no interior half here,
+    # so it would raise rather than return the valid latest row.
+    with pytest.raises(RuntimeError, match='No complete'):
+        select_resumable_snapshot(
+            str(tmp_path), _hf_times([10, 20, 30]), require_atm=False, interior_module='aragog'
+        )
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_falls_back_on_corrupt_spider_json(tmp_path):
+    """A truncated latest SPIDER JSON trims to the prior complete snapshot."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_json(str(data / f'{t:.0f}.json'))
+    _write_corrupt_json(str(data / '30.json'))
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30]), require_atm=False, interior_module='spider'
+    )
+
+    assert dropped == [30]
+    assert int(out.iloc[-1]['Time']) == 20
+    # The incomplete latest half is quarantined so SPIDER's latest-json glob
+    # lands on time 20, not the truncated 30.json.
+    assert (data / '30.json.incomplete').exists()
+    assert not (data / '30.json').exists()
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_dummy_interior_trusts_helpfile(tmp_path):
+    """Dummy/boundary interiors write no snapshot, so resume trusts the helpfile.
+
+    With ``interior_module='dummy'`` and no atmosphere half, no snapshot file
+    exists on disk at all; the selector must impose no interior constraint and
+    keep the latest helpfile row rather than raise for a missing ``_int.nc``.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()  # deliberately empty: dummy interior + dummy atm write nothing
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30]), require_atm=False, interior_module='dummy'
+    )
+
+    assert dropped == []
+    assert int(out.iloc[-1]['Time']) == 30
+    assert not list(data.glob('*.incomplete'))
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_accepts_truncated_janus_atm(tmp_path):
+    """A fractional-Time JANUS atmosphere (truncated name) is recognised, not quarantined.
+
+    JANUS writes ``str(int(Time))_atm.nc`` (truncates), so at Time 30.7 it
+    writes ``30_atm.nc`` while the rounded AGNI convention would look for
+    ``31_atm.nc``. With ``atmos_module='janus'`` the selector probes the
+    truncated name and accepts the valid row; the default AGNI convention would
+    look for the absent ``31_atm.nc`` and wrongly drop it.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+    # Time 30.7: interior truncates to 30; JANUS atmosphere also truncates to 30.
+    _write_valid_nc(str(data / '30_int.nc'))
+    _write_valid_nc(str(data / '30_atm.nc'))  # JANUS truncated name, NOT 31
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30.7]), atmos_module='janus'
+    )
+
+    assert dropped == []
+    assert len(out) == 3
+    assert out.iloc[-1]['Time'] == pytest.approx(30.7)
+    # Discrimination guard: nothing quarantined; the truncated atm name was
+    # accepted rather than treated as a missing rounded 31_atm.nc.
+    assert not list(data.glob('*.incomplete'))
+    assert (data / '30_atm.nc').exists()
+    # Under the default AGNI (rounded) convention the same layout finds no
+    # 31_atm.nc for Time 30.7 and drops the row, so the writer selection is
+    # what accepts the truncated file rather than a probe of both names. The
+    # JANUS probe above accepted 30.7 and quarantined nothing, so the files are
+    # untouched for this second probe.
+    out_agni, dropped_agni = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30.7]), atmos_module='agni'
+    )
+    assert dropped_agni == [30]
+    assert out_agni.iloc[-1]['Time'] == pytest.approx(20)
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_rejects_cross_row_atm_collision(tmp_path):
+    """A row's missing atmosphere is not satisfied by an adjacent row's file.
+
+    SPIDER writes rounded ``'%.0f.json'`` interiors and AGNI writes rounded
+    ``'%.0f_atm.nc'`` atmospheres. Time 30.2 rounds to 30 for both halves and
+    Time 30.7 rounds to 31. If Time 30.7's own ``31_atm.nc`` never landed while
+    Time 30.2's ``30_atm.nc`` is on disk, a probe that also accepted the
+    truncated ``30_atm.nc`` for Time 30.7 would pair 30.7's interior with
+    30.2's atmosphere and resume from a mismatched state. The single AGNI
+    convention probes only ``31_atm.nc`` for 30.7, so the row is dropped and
+    30.2's valid pair is left in place.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    # Time 30.2: complete SPIDER-JSON + AGNI pair (both round to 30).
+    _write_valid_json(str(data / '30.json'))
+    _write_valid_nc(str(data / '30_atm.nc'))
+    # Time 30.7: interior present (rounds to 31); its own atmosphere is absent.
+    _write_valid_json(str(data / '31.json'))
+    # 31_atm.nc deliberately not written.
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path),
+        _hf_times([30.2, 30.7]),
+        interior_module='spider',
+        atmos_module='agni',
+    )
+
+    # 30.7 is rejected (its own atmosphere is missing); resume falls to 30.2.
+    assert dropped == [30]
+    assert len(out) == 1
+    assert out.iloc[-1]['Time'] == pytest.approx(30.2)
+    # 30.2's valid pair must survive untouched: neither file is a candidate for
+    # 30.7 under the single rounded convention, so the collision cannot consume
+    # them.
+    assert (data / '30_atm.nc').exists()
+    assert (data / '30.json').exists()
+    # 30.7's orphaned interior is quarantined so SPIDER's latest-json glob
+    # cannot load it against the 30.2-trimmed helpfile.
+    assert (data / '31.json.incomplete').exists()
+    assert not (data / '31.json').exists()

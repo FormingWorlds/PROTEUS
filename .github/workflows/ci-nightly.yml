@@ -367,6 +367,10 @@ jobs:
       - name: List downloaded artifacts
         run: find artifacts -type f | sort
       - name: Combine Linux .coverage files
+        # Runs in a non-login shell: the step needs no conda environment,
+        # and its empty-report branch ends on an explicit exit 0, which
+        # the login shell's logout hook corrupts on the hosted runners.
+        shell: bash
         run: |
           # Combine .coverage SQLite files from Linux runners into the
           # canonical coverage.xml. macOS .coverage files are NOT

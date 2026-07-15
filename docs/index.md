@@ -15,7 +15,7 @@ hide:
 </h1>
 
 <p align="center">
-  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml" target="_blank" rel="noopener">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/coverage-baseline.yml" target="_blank" rel="noopener">
     <img src="badges/unit.svg" alt="Unit tests status">
   </a>
   <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml" target="_blank" rel="noopener">
@@ -101,6 +101,10 @@ If you make use of PROTEUS, please reference the scientific manuscripts
 outlined in the [Bibliography](Reference/bibliography.md), state the code
 version used, and include an acknowledgement. We provide a suggested
 acknowledgement in the [contributing page](Community/CONTRIBUTING.md#licensing-and-credit).
+To cite the software itself, use the Zenodo concept DOI
+[10.5281/zenodo.21358380](https://doi.org/10.5281/zenodo.21358380), which
+always resolves to the latest archived release; the Zenodo record for a
+specific release also carries its own version DOI.
 
 ## License
 

@@ -6,7 +6,18 @@ from ._converters import none_if_none
 
 
 def _reject_enabled_binodal(instance, attribute, value):
-    """Reject `h2_binodal = true` until the feature is production ready."""
+    """Reject `h2_binodal = true` until the feature is production ready.
+
+    This gate is also what keeps the `dry_mantle = false` structure path
+    water-only: `apply_binodal_h2` is the sole producer of a nonzero
+    `H2_kg_liquid`, which `build_volatile_profile` would blend into the
+    mantle EOS as `Chabrier:H`. The wet path's mass-conservation
+    verification covers dissolved H2O only, and the per-shell binodal
+    suppression in the mixed density removes dissolved H2 from the
+    structure without returning it to the atmosphere, so lifting this
+    gate requires extending the wet-path verification to H2 first
+    (Zalmoxis tracker #64).
+    """
     if value:
         raise ValueError(
             '`outgas.h2_binodal = true` is not yet supported: the H2-silicate '
@@ -140,7 +151,7 @@ class Atmodeller:
         default='robust',
         validator=validators.in_(('robust', 'basic')),
     )
-    solver_max_steps: int = field(default=256, validator=validators.gt(0))
+    solver_max_steps: int = field(default=1024, validator=validators.gt(0))
     solver_multistart: int = field(default=10, validator=validators.gt(0))
     include_condensates: bool = field(default=True)
     solubility_H2O: str | None = field(default='H2O_peridotite_sossi23', converter=none_if_none)
