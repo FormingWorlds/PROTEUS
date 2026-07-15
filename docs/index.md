@@ -5,7 +5,7 @@ hide:
   - navigation
 ---
 
-<div class="proteus-index; proteus-index-img">
+<div class="proteus-index proteus-index-img">
 
 <h1 align="center" markdown="0"><a href="https://proteus-framework.org"><img src="assets/PROTEUS_white.png#only-light" alt="PROTEUS" width="90%"/><img src="assets/PROTEUS_black_nobkg.png#only-dark" alt="PROTEUS" width="90%"/></a></h1>
 
