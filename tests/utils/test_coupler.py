@@ -926,6 +926,37 @@ def test_get_agni_version_with_mock():
 
 
 @pytest.mark.unit
+def test_get_lavatmos_version_with_mock():
+    """Test that _get_lavatmos_version reports the LAVA_DIR checkout's git hash."""
+    from proteus.utils.coupler import _get_lavatmos_version
+
+    with (
+        patch.dict(os.environ, {'LAVA_DIR': '/fake/lava'}),
+        patch('proteus.utils.coupler._get_git_revision', return_value='abc123def') as mock_rev,
+    ):
+        version = _get_lavatmos_version()
+
+    assert version == 'abc123def'
+    # Discrimination: the hash must come from the LAVA_DIR checkout, not
+    # some other directory a regression might pass by mistake.
+    mock_rev.assert_called_once_with('/fake/lava')
+
+
+@pytest.mark.unit
+def test_get_lavatmos_version_raises_without_lava_dir():
+    """Test that _get_lavatmos_version errors when LAVA_DIR is missing."""
+    from proteus.utils.coupler import _get_lavatmos_version
+
+    with patch.dict(os.environ, {}, clear=True):
+        # Precondition: confirm LAVA_DIR is actually absent in the clean
+        # env so the missing-env branch is what gets exercised (rather
+        # than a leaked outer-process value).
+        assert 'LAVA_DIR' not in os.environ
+        with pytest.raises(EnvironmentError, match='LAVA_DIR environment variable is not set'):
+            _get_lavatmos_version()
+
+
+@pytest.mark.unit
 def test_get_julia_version_with_mock():
     """Test that _get_julia_version parses julia --version output."""
     from proteus.utils.coupler import _get_julia_version
@@ -2077,7 +2108,7 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
     config = types.SimpleNamespace(
         interior_energetics=types.SimpleNamespace(module='spider'),
         atmos_clim=types.SimpleNamespace(module='agni'),
-        outgas=types.SimpleNamespace(module='calliope'),
+        outgas=types.SimpleNamespace(module='calliope', vapourise=False),
         escape=types.SimpleNamespace(module='boreas'),
         star=types.SimpleNamespace(module='mors'),
         orbit=types.SimpleNamespace(module='lovepy'),
@@ -2113,6 +2144,9 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
         assert any('Escape module     boreas version' in m for m in messages)
         assert any('Star module       mors version' in m for m in messages)
         assert any('Observe module    petitRADTRANS version' in m for m in messages)
+        # Discrimination: rock-vapour outgassing is disabled here
+        # (vapourise=False), so LavAtmos must not be reported at all.
+        assert not any('LavAtmos' in m for m in messages)
 
 
 @pytest.mark.unit
@@ -2121,7 +2155,7 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
     config = types.SimpleNamespace(
         interior_energetics=types.SimpleNamespace(module='aragog'),
         atmos_clim=types.SimpleNamespace(module='janus'),
-        outgas=types.SimpleNamespace(module='dummy'),
+        outgas=types.SimpleNamespace(module='dummy', vapourise=True),
         escape=types.SimpleNamespace(module='zephyrus'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='dummy'),
@@ -2133,6 +2167,7 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
 
     monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'def456')
     monkeypatch.setattr(coupler_mod, '_get_socrates_version', lambda: '24.1.0')
+    monkeypatch.setattr(coupler_mod, '_get_lavatmos_version', lambda: 'ghi789')
     monkeypatch.setitem(sys.modules, 'aragog', types.SimpleNamespace(__version__='0.7.0'))
     monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='0.5.0'))
     monkeypatch.setitem(sys.modules, 'zephyrus', types.SimpleNamespace(__version__='0.6.0'))
@@ -2143,6 +2178,9 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
         assert any('Interior module   aragog version' in m for m in messages)
         assert any('Atmos_clim module janus version' in m for m in messages)
         assert any('Escape module     zephyrus version' in m for m in messages)
+        # Rock-vapour outgassing (config.outgas.vapourise=True) must print the
+        # LavAtmos checkout version regardless of the outgas.module setting.
+        assert any('LavAtmos' in m and 'ghi789' in m for m in messages)
 
 
 @pytest.mark.unit

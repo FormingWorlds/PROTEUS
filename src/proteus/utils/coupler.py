@@ -136,6 +136,20 @@ def _get_julia_version():
     return subprocess.check_output(['julia', '--version']).decode('utf-8').split()[-1]
 
 
+def _get_lavatmos_version() -> str:
+    """
+    Get the installed LavAtmos version.
+
+    LavAtmos is a git checkout (like AGNI/SOCRATES) rather than a pip
+    package with a static `__version__`, so its "version" is the commit
+    hash of the checkout pointed to by LAVA_DIR.
+    """
+    LAVA_DIR = os.environ.get('LAVA_DIR')
+    if LAVA_DIR is None:
+        raise EnvironmentError('LAVA_DIR environment variable is not set.')
+    return _get_git_revision(LAVA_DIR)
+
+
 def validate_module_versions(dirs: dict, config: Config):
     """Raise if module versions are incompatible."""
 
@@ -341,6 +355,8 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
 
         write += ' version ' + calliope_version
     log.info(write)
+    if config.outgas.vapourise:
+        log.info('  - LavAtmos      version ' + _get_lavatmos_version())
 
     # Escape module
     write = 'Escape module     %s' % config.escape.module
