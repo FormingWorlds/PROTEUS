@@ -5,14 +5,9 @@ hide:
   - navigation
 ---
 
-<h1 align="center">
-    <a href="https://proteus-framework.org">
-    <div>
-        <img src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/PROTEUS_white.png#gh-light-mode-only" style="vertical-align: middle;" width="40%"/>
-        <img src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/PROTEUS_black_nobkg.png#gh-dark-mode-only" style="vertical-align: middle;" width="40%"/>
-    </div>
-    </a>
-</h1>
+<div class="proteus-index" markdown=1>
+
+<h1 align="center" markdown="0"><a href="https://proteus-framework.org"><img src="assets/PROTEUS_white.png#only-light" alt="PROTEUS" width="60%"/><img src="assets/PROTEUS_black_nobkg.png#only-dark" alt="PROTEUS" width="60%"/></a></h1>
 
 <p align="center">
   <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/coverage-baseline.yml" target="_blank" rel="noopener">
@@ -36,7 +31,6 @@ hide:
   </a>
 </p>
 
-<div class="home-text" markdown>
 **PROTEUS** is a modular Python framework that simulates the coupled evolution
 of rocky planet atmospheres and interiors. It connects interior thermal
 evolution, volatile outgassing, atmospheric radiative transfer, atmospheric
