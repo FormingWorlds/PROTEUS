@@ -11,7 +11,7 @@ from matplotlib.ticker import LogLocator
 
 from proteus.atmos_chem.common import read_result
 from proteus.atmos_clim.common import read_ncdf_profile
-from proteus.utils.constants import gas_list
+from proteus.utils.constants import gas_list, vap_list
 from proteus.utils.helper import natural_sort
 from proteus.utils.plot import get_colour, latexify
 
@@ -54,22 +54,10 @@ GASES_STANDARD = (
     'S',
 )
 
-REFRACTORY_GASES = (
-    'Fe',
-    'Si',
-    'Ti',
-    'K',
-    'Mg',
-    'SiO',
-    'SiO2',
-    'TiO',
-    'FeO',
-    'MgO',
-    'Na',
-    'TiO2',
-    'SiH',
-    'SiH4',
-)
+# Rock-vapour species (canonical list: proteus.utils.constants.vap_list) are
+# always plotted regardless of the xmin cutoff, since their VMR can be low but
+# their presence is still diagnostically important.
+REFRACTORY_GASES = tuple(vap_list)
 
 
 def plot_chem_atmosphere(
