@@ -1694,8 +1694,6 @@ def test_assert_mass_conservation_passes_when_invariants_hold():
     from proteus.utils.constants import gas_list
     from proteus.utils.coupler import assert_mass_conservation
 
-    config = MagicMock()
-
     hf_row = {
         'M_atm': 4.6e24,
         'M_planet': 5.97e24,
@@ -1706,7 +1704,7 @@ def test_assert_mass_conservation_passes_when_invariants_hold():
     for s in gas_list:
         hf_row[s + '_kg_atm'] = per_species
 
-    result = assert_mass_conservation(hf_row, config)
+    result = assert_mass_conservation(hf_row)
     assert result is None  # contract: helper returns None silently when M_atm <= M_planet
     # Discriminating check: M_atm < M_planet strictly (not vacuously zero), and
     # the per-species sum exactly equals M_atm so the closure path is exercised.
@@ -1725,8 +1723,6 @@ def test_assert_mass_conservation_fails_when_M_atm_exceeds_M_planet():
     """
     from proteus.utils.coupler import assert_mass_conservation
 
-    config = MagicMock()
-
     hf_row = {
         'M_atm': 7.2e24,  # Atmosphere exceeds planet (the issue #677 symptom)
         'M_planet': 5.97e24,
@@ -1737,7 +1733,7 @@ def test_assert_mass_conservation_fails_when_M_atm_exceeds_M_planet():
         pass
 
     with pytest.raises(RuntimeError, match='Mass conservation violation'):
-        assert_mass_conservation(hf_row, config)
+        assert_mass_conservation(hf_row)
     # Discrimination: confirm the excess is well above the 1e-6 tolerance
     # so the test is exercising the violation branch, not riding the
     # numerical edge. M_atm/M_planet should exceed 1.0 by ~21 percent.
@@ -1766,9 +1762,8 @@ def test_assert_mass_conservation_fails_when_species_sum_disagrees():
     per_species = (0.87 * 4.6e24) / len(gas_list)
     for s in gas_list:
         hf_row[s + '_kg_atm'] = per_species
-    config = MagicMock()
     with pytest.raises(RuntimeError, match='M_atm bookkeeping inconsistency'):
-        assert_mass_conservation(hf_row, config)
+        assert_mass_conservation(hf_row)
     # Discrimination: the M_atm <= M_planet invariant must HOLD here so
     # the failure must come from the per-species bookkeeping path, not
     # from the M_atm > M_planet path. Pin both legs.
