@@ -13,6 +13,11 @@
   .proteus-getstarted {
     margin-left: 1em;
   }
+
+  .proteus-index-img {
+    max-width: 50em;
+    margin: 0 auto;
+  }
 }
 
 
