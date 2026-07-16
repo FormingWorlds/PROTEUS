@@ -72,6 +72,57 @@
   margin-top: auto;
 }
 
+/* Active top tab: magma underline (the theme targets a link class that
+   this template does not emit, so the marker is set on the item) */
+.md-tabs__item--active {
+  border-bottom-color: var(--pt-magma);
+}
+
+/* Headings that follow an explicit horizontal rule keep the rule as their
+   only separator instead of doubling it with the heading border */
+.md-typeset hr + h2 {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* Admonitions: tint the box with its signal color */
+.md-typeset .admonition.note,
+.md-typeset details.note,
+.md-typeset .admonition.info,
+.md-typeset details.info {
+  --md-admonition-bg-color: rgba(27, 111, 168, 0.10);
+}
+
+.md-typeset .note > .admonition-title::before,
+.md-typeset .note > summary::before,
+.md-typeset .info > .admonition-title::before,
+.md-typeset .info > summary::before {
+  background-color: #1B6FA8;
+}
+
+.md-typeset .admonition.warning,
+.md-typeset details.warning,
+.md-typeset .admonition.danger,
+.md-typeset details.danger {
+  --md-admonition-bg-color: rgba(226, 61, 40, 0.10);
+}
+
+.md-typeset .warning > .admonition-title::before,
+.md-typeset .warning > summary::before,
+.md-typeset .danger > .admonition-title::before,
+.md-typeset .danger > summary::before {
+  background-color: #E23D28;
+}
+
+/* Table headers containing math keep normal typography: the tracked
+   uppercase mono header style would mangle symbols and units */
+.md-typeset table:not([class]) th:has(.arithmatex, mjx-container) {
+  font-family: inherit;
+  font-size: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 /* Funding page: logo grid collapses to a single full-width column on
    narrow screens; the wide side margins apply on desktop only */
 .funding-grid {

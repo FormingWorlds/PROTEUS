@@ -133,13 +133,14 @@ theme:
   favicon: assets/favicon.svg
   logo: assets/glyph_phase_dark.png
 
+  # The toggle icon shows the current mode, matching the project website
   palette:
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: custom
       accent: custom
       toggle:
-        icon: lucide/sun
+        icon: lucide/moon
         name: Switch to light mode
 
     - media: "(prefers-color-scheme: light)"
@@ -147,7 +148,7 @@ theme:
       primary: custom
       accent: custom
       toggle:
-        icon: lucide/moon
+        icon: lucide/sun
         name: Switch to dark mode
 
 markdown_extensions:
