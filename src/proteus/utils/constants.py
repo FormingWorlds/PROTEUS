@@ -123,7 +123,7 @@ gas_list = vol_list + vap_list + noble_gases
 # Supported elements: volatiles, rock-forming elements, noble gases.
 vol_element_list = ['H', 'O', 'C', 'N', 'S']
 vap_element_list = ['Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K']
-element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'] + noble_gases
+element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na','Al'] + noble_gases
 
 element_mmw = {
     'H': 1.008000000e-03,

@@ -60,7 +60,9 @@ def _handler(cfg: Any, *, phi_global: float = 0.4) -> Any:
         'breakup_period': 5.0,
         'runtime': 10.0,
         'Time': 0.0,
+        'M_vaps': 1.0e20,
     }
+
     loops = {
         'total': 0,
         'total_loops': cfg.params.stop.iters.total_loops,
