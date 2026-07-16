@@ -155,9 +155,8 @@ conda activate proteus
 proteus start --offline -c input/dummy.toml
 ```
 
-If this produces output in `output/dummy/`, your installation is working.
-See the [Quick start tutorial](../Tutorials/quick_start_dummy.md) for
-a guided walkthrough.
+If this produces output in `output/run_<timestamp>_xxxx/`, your installation is working.
+See the [Quick start tutorial](../Tutorials/quick_start_dummy.md) for a guided walkthrough.
 
 !!! note "SPIDER (optional)"
     The installer does not include SPIDER or PETSc. If you need SPIDER
