@@ -1310,7 +1310,10 @@ def select_resumable_snapshot(
     (when ``require_atm``) snapshots both open cleanly, move any incomplete
     trailing snapshot files aside (``.incomplete`` suffix) so the modules'
     latest-file globs land on the complete pair, and return the helpfile
-    truncated to that row.
+    truncated to that row. Once a resumable row is found, the quarantined
+    files are deleted: the helpfile is truncated below their rows, so they
+    can never back a resume and would otherwise be swept into the final
+    data archive.
 
     Each half is probed with its own writer's filename convention. The
     interior name depends on the module: Aragog writes ``'%d_int.nc'``
@@ -1396,6 +1399,14 @@ def select_resumable_snapshot(
             'No complete interior+atmosphere snapshot pair found in the '
             'helpfile history; cannot resume from disk.'
         )
+    if quarantined:
+        # The helpfile is truncated below the dropped rows, so these files
+        # can never back a resume; delete them so the final archive sweep
+        # does not pick them up.
+        for dst, _original in quarantined:
+            if os.path.exists(dst):
+                os.remove(dst)
+        log.info('Deleted %d quarantined snapshot file(s)', len(quarantined))
     if not dropped:
         return hf_all, []
     return hf_all.iloc[: keep_idx + 1].reset_index(drop=True), sorted(dropped)

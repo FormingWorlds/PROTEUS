@@ -195,6 +195,7 @@ extra_javascript:
 
 extra_css:
   - stylesheets/extra.css
+  - stylesheets/widths.css
   - stylesheets/proteus_theme.css
   - stylesheets/footnotes.css
 

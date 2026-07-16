@@ -3,12 +3,14 @@ with real Zalmoxis + real Aragog + real CALLIOPE.
 
 This is the heaviest end-to-end test that does not yet require a
 real atmosphere. Real Zalmoxis solves the structure (newton outer
-solver, PALEOS EOS, 150 radial levels) on the numpy path; the
-production-default unified ``PALEOS:MgSiO3`` mantle table has no JAX
-structure reader, so the structure solve runs in numpy. Real Aragog
-steps the entropy ODE on the resulting mantle (production
-``backend='jax'``: scipy-CVode with JAX-derived RHS and analytic
-Jacobian, the only JAX path exercised); real CALLIOPE partitions
+solver, PALEOS EOS, 150 radial levels); with fwl-zalmoxis >= 26.07.13
+the production-default unified ``PALEOS:MgSiO3`` mantle table has a
+JAX structure reader, so the interior-fed baseline re-solve takes the
+JAX arrays hand-off instead of the numpy fallback (the IC and
+equilibration solves, which carry no external temperature source,
+stay on numpy by design). Real Aragog steps the entropy ODE on the
+resulting mantle (production ``backend='jax'``: scipy-CVode with
+JAX-derived RHS and analytic Jacobian); real CALLIOPE partitions
 volatiles at the new T, P state. Atmosphere, star, escape, atmos_chem
 stay on dummy backends so the test isolates the interior + outgas
 coupling boundary while exercising the production-default structure
@@ -56,13 +58,15 @@ Invariants asserted:
 
 Runtime: this end-to-end real-binary test is dominated by the Aragog
 first-call JAX setup (CVode factory plus RHS and Jacobian compile)
-and the Zalmoxis structure solves on the numpy path. It completes in
-roughly 80 min on the macOS GHA runner and is gated to macOS
-(``skipif`` on linux): the unified PALEOS mantle has no JAX structure
-path, so the full-resolution coupled run on the numpy fallback
-exceeds the slow-tier walltime on the x86 ubuntu runner. The per-test
-timeout is 10800 s (180 min), the slow-tier standard, leaving generous
-headroom above the macOS runtime; the slow-tier job cap is set higher
+and the Zalmoxis structure solves. It completes in roughly 80 min on
+the macOS GHA runner and runs on every platform: with fwl-zalmoxis
+>= 26.07.13 the unified PALEOS mantle takes the JAX structure path on
+the interior-fed baseline re-solve, removing the numpy-fallback
+structure cost that previously pushed the full-resolution coupled run
+past the slow-tier walltime on the x86 ubuntu runner (an earlier
+``skipif`` gated this test to macOS for that reason). The per-test timeout is
+10800 s (180 min), the slow-tier standard, leaving generous headroom
+above the macOS runtime; the slow-tier job cap is set higher
 (210 min) so that setup time plus the per-test timeout still fit
 inside the job, letting a genuine hang trip pytest-timeout's per-test
 timer (which dumps every thread's stack) before the job-level
@@ -78,8 +82,6 @@ See also:
 
 from __future__ import annotations
 
-import sys
-
 import numpy as np
 import pytest
 
@@ -93,13 +95,6 @@ pytestmark = [pytest.mark.slow, pytest.mark.timeout(10800)]
 
 @pytest.mark.slow
 @pytest.mark.physics_invariant
-@pytest.mark.skipif(
-    sys.platform.startswith('linux'),
-    reason='Zalmoxis structure solve runs the numpy fallback (no JAX '
-    'path for the unified PALEOS mantle); the full-resolution coupled '
-    'run exceeds the slow-tier walltime on x86 runners. Exercised on '
-    'macOS. Tracked: FormingWorlds/Zalmoxis#75.',
-)
 def test_zalmoxis_aragog_calliope_two_timesteps(proteus_multi_timestep_run):
     """Two-step PROTEUS run with real Zalmoxis + Aragog + CALLIOPE on
     the Earth-IC fiducial.

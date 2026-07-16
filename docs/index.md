@@ -5,14 +5,9 @@ hide:
   - navigation
 ---
 
-<h1 align="center">
-    <a href="https://proteus-framework.org">
-    <div>
-        <img src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/PROTEUS_white.png#gh-light-mode-only" style="vertical-align: middle;" width="40%"/>
-        <img src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/PROTEUS_black_nobkg.png#gh-dark-mode-only" style="vertical-align: middle;" width="40%"/>
-    </div>
-    </a>
-</h1>
+<div class="proteus-index proteus-index-img">
+
+<h1 align="center" markdown="0"><a href="https://proteus-framework.org"><img src="assets/PROTEUS_white.png#only-light" alt="PROTEUS" width="90%"/><img src="assets/PROTEUS_black_nobkg.png#only-dark" alt="PROTEUS" width="90%"/></a></h1>
 
 <p align="center">
   <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/coverage-baseline.yml" target="_blank" rel="noopener">
@@ -36,7 +31,10 @@ hide:
   </a>
 </p>
 
-<div class="home-text" markdown>
+</div>
+
+<div class="proteus-index" markdown=1>
+
 **PROTEUS** is a modular Python framework that simulates the coupled evolution
 of rocky planet atmospheres and interiors. It connects interior thermal
 evolution, volatile outgassing, atmospheric radiative transfer, atmospheric
@@ -44,11 +42,14 @@ escape, and stellar evolution into a self-consistent time-stepping loop,
 tracking the planet from a molten magma ocean to a solidified surface over
 billions of years.
 
-<div align="center" style="max-width: 70%; margin: 0 auto;">
+</div>
+
+<div align="center" class="proteus-index proteus-index-img">
   <object type="image/svg+xml" data="assets/proteus_modules_schematic.svg" class="mod-diagram mod-diagram--light" aria-label="PROTEUS module schematic (light mode)">PROTEUS module schematic (light mode)</object>
   <object type="image/svg+xml" data="assets/proteus_modules_schematic_darkmode.svg" class="mod-diagram mod-diagram--dark" aria-label="PROTEUS module schematic (dark mode)">PROTEUS module schematic (dark mode)</object>
 </div>
 
+<div class="proteus-index" markdown=1>
 <p style="text-align: center;"><strong>Schematic of PROTEUS components and corresponding modules.</strong></p>
 
 ## Key features
