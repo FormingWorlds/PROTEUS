@@ -1,10 +1,10 @@
-<p align="center">
+<div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/proteus-lockup-dark.png">
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/proteus-lockup-light.png">
     <img alt="PROTEUS framework lockup: the wordmark with the phase glyph as the O" src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/proteus-lockup-light.png" width="480">
   </picture>
-</p>
+</div>
 
 <p align="center">
   <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/coverage-baseline.yml">
