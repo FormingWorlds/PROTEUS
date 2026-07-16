@@ -600,4 +600,4 @@ config_version = "3.0"
 
 # Synthetic observations
 [observe]
-    synthesis                 = "none"       # none | platon
+    module                 = "none"       # none | platon
