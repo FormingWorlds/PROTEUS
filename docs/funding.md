@@ -20,13 +20,13 @@ alt="University of Groningen logo">
 alt="University of Groningen logo">
 </a>
 <a href="https://research-software-directory.org/projects/proteus" target="_blank">
-<img src="assets/logos/eScienceCenter.jpg" class="logo-light"
+<img src="assets/logos/eScienceCenter.png" class="logo-light"
 alt="Netherlands eScience Center logo">
 <img src="assets/logos/eScienceCenter_white.png" class="logo-dark"
 alt="Netherlands eScience Center logo">
 </a>
 <a href="https://brancoweissfellowship.org/fellow/lichtenberg/" target="_blank">
-<img src="assets/logos/BrancoWeissFoundation.jpeg" class="logo-light"
+<img src="assets/logos/BrancoWeissFoundation.png" class="logo-light"
 alt="Branco Weiss Foundation logo">
 <img src="assets/logos/BrancoWeissFoundation_white.png" class="logo-dark"
 alt="Branco Weiss Foundation logo">
