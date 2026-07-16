@@ -9,8 +9,10 @@ These tests mock out external LavAtmos / FastChem interactions by:
 They assert that hf_row is updated appropriately in the happy path, and that
 the function raises when the FastChem output directory is missing.
 """
-import os
+from __future__ import annotations
+
 import math
+import os
 
 import pytest
 
