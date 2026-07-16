@@ -72,6 +72,37 @@
   margin-top: auto;
 }
 
+/* Funding page: logo grid collapses to a single full-width column on
+   narrow screens; the wide side margins apply on desktop only */
+.funding-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 2rem;
+  align-items: center;
+  justify-items: center;
+  margin-top: 2rem;
+}
+
+@media screen and (min-width: 769px) {
+  .funding-grid {
+    margin-left: 7rem;
+    margin-right: 7rem;
+  }
+}
+
+.funding-grid img {
+  max-width: min(280px, 100%);
+  max-height: 150px;
+  width: auto;
+  height: auto;
+}
+
+.funding-grid .funding-logo-boxed {
+  background: white;
+  padding: 8px;
+  border-radius: 4px;
+}
+
 /* Footer: no underline on copyright and meta links */
 .md-footer-copyright a,
 .md-footer-meta a {
