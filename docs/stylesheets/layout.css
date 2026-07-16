@@ -85,12 +85,14 @@
   padding-top: 0;
 }
 
-/* Admonitions: tint the box with its signal color */
+/* Admonitions: tint the box with its signal color (set directly, since the
+   theme hardcodes its own background on the admonition element) */
 .md-typeset .admonition.note,
 .md-typeset details.note,
 .md-typeset .admonition.info,
 .md-typeset details.info {
   --md-admonition-bg-color: rgba(27, 111, 168, 0.10);
+  background-color: rgba(27, 111, 168, 0.10);
 }
 
 .md-typeset .note > .admonition-title::before,
@@ -105,6 +107,7 @@
 .md-typeset .admonition.danger,
 .md-typeset details.danger {
   --md-admonition-bg-color: rgba(226, 61, 40, 0.10);
+  background-color: rgba(226, 61, 40, 0.10);
 }
 
 .md-typeset .warning > .admonition-title::before,
