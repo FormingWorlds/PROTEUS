@@ -67,19 +67,18 @@ class TestPathsImporterInitialization:
         Physical scenario: LavAtmos requires pre-existing output directories to
         write to; paths_importer must create them idempotently on init.
         """
-        #mock_dirs = {'output': '/mock/output/'}
+        # mock_dirs = {'output': '/mock/output/'}
 
         with patch.dict(os.environ, {'LAVA_DIR': '/lava', 'FC_DIR': '/fc'}, clear=False):
             with patch('os.makedirs') as mock_makedirs:
-
-                #importer = paths_importer(mock_dirs)
+                # importer = paths_importer(mock_dirs)
 
                 # Verify makedirs was called twice: once for element_abundances, once for fastchem
                 assert mock_makedirs.call_count >= 2
                 calls = mock_makedirs.call_args_list
                 # Check that exist_ok=True is passed (idempotency contract)
                 for c in calls:
-                    assert 'exist_ok' in c.kwargs or c.kwargs.get('exist_ok') #== True
+                    assert 'exist_ok' in c.kwargs or c.kwargs.get('exist_ok')  # == True
 
     def test_paths_importer_constructs_element_abundance_output_path(self):
         """Test that element_abundance_output path is correctly joined.
@@ -268,7 +267,7 @@ class TestPathsImporterInitialization:
         Physical scenario: initialization may be called multiple times; creating
         dirs must not fail if they already exist.
         """
-        #mock_dirs = {'output': '/output/base'}
+        # mock_dirs = {'output': '/output/base'}
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
 
@@ -276,8 +275,7 @@ class TestPathsImporterInitialization:
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
             with patch('os.makedirs') as mock_makedirs:
-
-                #importer = paths_importer(mock_dirs)
+                # importer = paths_importer(mock_dirs)
 
                 # Verify all makedirs calls have exist_ok=True
                 for call_obj in mock_makedirs.call_args_list:
@@ -389,8 +387,8 @@ class TestPathsImporterInitialization:
 
                 # Positivity guard: all paths are strings
                 for path in path_attrs:
-                    assert isinstance(path, str), f"Path {path} is not a string"
-                    assert len(path) > 0, "Path is an empty string"
+                    assert isinstance(path, str), f'Path {path} is not a string'
+                    assert len(path) > 0, 'Path is an empty string'
 
     def test_paths_importer_wkdir_equals_lavatmos_dir(self):
         """Test that wkdir is always set equal to lavatmos_dir.
@@ -507,7 +505,7 @@ class TestPathsImporterPhysicsInvariants:
         must call makedirs() for element_abundances and fastchem output dirs,
         no more, no less. Repeated calls should not increase call count.
         """
-        #mock_dirs = {'output': '/output/base'}
+        # mock_dirs = {'output': '/output/base'}
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
 
@@ -515,8 +513,7 @@ class TestPathsImporterPhysicsInvariants:
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
             with patch('os.makedirs') as mock_makedirs:
-
-                #importer = paths_importer(mock_dirs)
+                # importer = paths_importer(mock_dirs)
 
                 # Verify exactly 2 makedirs calls: element_abundances, fastchem
                 assert mock_makedirs.call_count == 2
@@ -554,9 +551,9 @@ class TestPathsImporterPhysicsInvariants:
                 ]
 
                 for path in output_paths:
-                    assert path.startswith(
-                        mock_output_base
-                    ), f"Path {path} does not start with {mock_output_base}"
+                    assert path.startswith(mock_output_base), (
+                        f'Path {path} does not start with {mock_output_base}'
+                    )
 
     @pytest.mark.physics_invariant
     def test_paths_importer_all_paths_non_empty(self):
@@ -585,7 +582,7 @@ class TestPathsImporterPhysicsInvariants:
                 ]
 
                 for path_str in path_attrs:
-                    assert len(path_str) > 0, f"Empty path string in {path_attrs}"
+                    assert len(path_str) > 0, f'Empty path string in {path_attrs}'
 
     @pytest.mark.physics_invariant
     def test_paths_importer_config_template_path_invariant(self):
