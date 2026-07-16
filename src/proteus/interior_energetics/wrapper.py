@@ -2943,6 +2943,17 @@ def update_structure_from_interior(
             not force and actual_shift > config.interior_struct.zalmoxis.mesh_max_shift
         )
 
+        # The unclamped baseline can jump far from the previous mesh; surface
+        # that so a large swap is visible in the log. With no .prev mesh on
+        # disk, blend_mesh_files returns 0.0 and this cannot fire.
+        if force and actual_shift > config.interior_struct.zalmoxis.mesh_max_shift:
+            log.warning(
+                'One-time baseline mesh swap shift %.1f%% exceeds mesh_max_shift '
+                '%.1f%% and lands on the interior solver unclamped in a single step',
+                actual_shift * 100,
+                config.interior_struct.zalmoxis.mesh_max_shift * 100,
+            )
+
         # Track convergence steps; give up after 20 consecutive blends
         # to avoid infinite rapid-update loops when Zalmoxis and SPIDER
         # persistently disagree (e.g. extreme mass / low CMF)
