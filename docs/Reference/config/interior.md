@@ -42,7 +42,7 @@ Chabrier, or Seager 2007). It supports 2-layer (core + mantle) and 3-layer
 | `ice_layer_eos` | str or none | `none` | Ice/water layer EOS; `none` = 2-layer model |
 | `mushy_zone_factor` | float | `0.8` | Solidus depression $T_\mathrm{sol}=f\,T_\mathrm{liq}$ \[0.7, 1.0]; the default 0.8 is the Stixrude (2014) solidus-to-liquidus ratio for MgSiO$_3$. Applies to `PALEOS:` unified only; for `PALEOS-2phase:` it is treated as 1.0 |
 | `mantle_mass_fraction` | float | `0` | Mantle mass fraction for 3-layer models; `0` = auto ($1 - \mathrm{core\_frac}$) |
-| `dry_mantle` | bool | `true` | Structure EOS assumes a dry mantle. `false` (melt-fraction-aware dissolved-volatile mixing in the mantle density) is rejected at config load until the pinned Zalmoxis release supports per-shell volatile profiles |
+| `dry_mantle` | bool | `true` | Structure EOS assumes a dry mantle. Set `false` for melt-fraction-aware dissolved-volatile mixing in the mantle density (per-shell volatile profile). When `false`, only the atmospheric inventory is excluded from the dry-mass target; the dissolved mass stays inside the interior |
 
 **How the PALEOS mantle EOS is applied**
 
@@ -60,6 +60,9 @@ With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the solid and liquid tables define t
 !!! note "Two-phase table versions"
     Two versions of the PALEOS two-phase MgSiO$_3$ tables are in circulation: the set shipped in the Zalmoxis data directory, and the finer-grid set on Zenodo that the reference-data manifest fetches.
     They are generated from the same PALEOS EOS but on different grids, so for exact reproducibility record which set a run used (the shipped tables resolve through the Zalmoxis material registry; the fetched tables land under `FWL_DATA`).
+
+!!! note "The wet mantle carries dissolved water only"
+    With `dry_mantle = false` and the production outgassing module (CALLIOPE), the only species blended into the mantle density is H2O. This is the intersection of the two sides of the coupling, not an arbitrary restriction: a species needs both a dissolved mass from the outgassing chemistry and an EOS table in the structure solver, and under CALLIOPE H2O is the only species with both. CALLIOPE also dissolves CO2, CO, CH4, N2, and S2, but these have no structure-side EOS mapping. Their dissolved mass stays inside the interior mass target, and because the silicate blend fraction is defined as the remainder `1 - w_H2O`, those kilograms are packed at silicate density: the mass budget stays exact while the compressibility of these species is misrepresented. The radius error scales as the species' dissolved mass fraction times its density contrast against silicate, negligible at typical inventories. If a composition ever pushes an unmapped species to percent-level dissolved mass fractions, the fix is an EOS mapping for it, not a bookkeeping change. H2 has an EOS mapping (`Chabrier:H`) but no solubility law in CALLIOPE; a dissolved H2 mass can arise from the atmodeller outgassing module (its H2 solubility law), from the H2-silicate binodal partitioning (`outgas.h2_binodal`), or from the radial miscibility solve (`interior_struct.zalmoxis.global_miscibility`). The last two are rejected at config load until that physics is production ready, and the atmodeller wet combination has not been through the wet-path conservation verification. Every verified configuration therefore exercises the wet path with water alone, which is exactly the case covered by the dissolved-water conservation verification. Whoever lifts either gate or runs atmodeller wet must extend the wet-path verification to H2 first: the per-shell binodal suppression removes dissolved H2 from the structure without returning it to the atmosphere, so water-grade mass closure does not carry over.
 
 **Grid and solver**
 
@@ -133,7 +136,7 @@ against it, so point it at storage sized for the campaign.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `global_miscibility` | bool | `false` | Enable H$_2$-silicate binodal-aware radial structure. `true` is rejected at config load: it requires `dry_mantle = false`, which the pinned Zalmoxis release does not support yet |
+| `global_miscibility` | bool | `false` | Enable H$_2$-silicate binodal-aware radial structure. `true` is rejected at config load: it requires the H$_2$-silicate binodal handoff on the Zalmoxis side (Zalmoxis tracker #64), which is not yet implemented |
 | `miscibility_max_iter` | int | `10` | Maximum miscibility iterations |
 | `miscibility_tol` | float | `0.01` | Miscibility convergence tolerance |
 

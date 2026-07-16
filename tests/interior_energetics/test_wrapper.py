@@ -5242,6 +5242,179 @@ def test_superliquidus_does_not_gate_composition_trigger():
     assert dirs['_last_w_H2O_liquid'] == pytest.approx(3.0e21 / 3.0e24, rel=1e-9)
 
 
+def _composition_trigger_scenario(dry_mantle):
+    """Composition-only trigger under the super-liquidus predicate.
+
+    Same scenario as test_superliquidus_does_not_gate_composition_trigger:
+    thermal triggers disabled, a stale dissolved-water baseline fires the
+    composition trigger, and the re-solve up-steps R_int while the interior
+    is NOT heating. Only ``dry_mantle`` varies between the wet-accept and
+    dry-reject tests, so acceptance is pinned to the wet path alone.
+    """
+    config = _mock_config(update_interval=1e99, update_dtmagma_frac=1.0, update_dphi_abs=1.0)
+    config.interior_struct.zalmoxis.update_dw_comp_abs = 0.05
+    config.interior_struct.zalmoxis.global_miscibility = False
+    config.interior_struct.zalmoxis.dry_mantle = dry_mantle
+
+    hf_row = {
+        'Time': 500.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.5,
+        'R_int': 6.371e6,
+        'M_int': 5e24,
+        'M_core': 2e24,
+        'M_mantle': 3.0e24,
+        'P_surf': 1e5,
+        'R_core': 3.5e6,
+        'P_center': 3.6e11,
+        'P_cmb': 1.4e11,
+        'rho_avg': 5500.0,
+        'gravity': 9.81,
+        'H2O_kg_liquid': 3.0e21,
+        'H2_kg_liquid': 0.0,
+    }
+    dirs = _mock_dirs()
+    # Stale baseline -> dw = |1e-3 - 6.67e-4| / 6.67e-4 = 0.5 >= 0.05 threshold.
+    dirs['_last_w_H2O_liquid'] = 2.0e21 / 3.0e24
+    return config, hf_row, dirs
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_composition_driven_up_step_accepted_on_wet_mantle(caplog):
+    """A composition-triggered R_int up-step under cooling is KEPT when wet.
+
+    With ``dry_mantle = false`` the dissolved volatiles are part of the
+    mantle EOS, so dissolving more of them legitimately lowers the mean
+    mantle density and raises R_int while T_magma keeps falling. The guard
+    must accept exactly this case; rejecting it would also consume the
+    composition sentinel, so the trigger could never re-fire and the wet
+    structure would stay composition-frozen for the whole molten epoch.
+
+    Discrimination: the identical scenario with ``dry_mantle = true``
+    (test below) is rejected, so acceptance here is driven by the wet
+    path, not by the up-step magnitude or the trigger type.
+    """
+    config, hf_row, dirs = _composition_trigger_scenario(dry_mantle=False)
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
+
+    mock_solver.assert_called_once()
+    msgs = [r.message for r in caplog.records]
+    # The composition-accept branch fired and neither reject path did.
+    assert any('composition-driven wet' in m for m in msgs)
+    assert not any('Rejected representation-artifact radius increase' in m for m in msgs)
+    assert not any('Rejected EOS-grid-extent up-step' in m for m in msgs)
+    # The larger structure is KEPT: this is the discriminating observable
+    # between accept and reject.
+    assert hf_row['R_int'] == pytest.approx(r_prev * (1.0 + 1.0e-3), rel=1e-12)
+    # An accepted re-solve records a non-zero radius change; a reject records 0.
+    assert dirs['_last_resolve_dR_rel'] > _RESUME_STRUCT_DR_REL_TOL
+    # The success-path sentinel refresh ran, so the trigger baseline tracks
+    # the committed structure.
+    assert dirs['_last_w_H2O_liquid'] == pytest.approx(3.0e21 / 3.0e24, rel=1e-9)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_composition_driven_up_step_still_rejected_on_dry_mantle(caplog):
+    """The same composition-triggered up-step stays clamped when dry.
+
+    With ``dry_mantle = true`` the mantle EOS is bare silicate, so a
+    composition change cannot physically raise R_int; the up-step remains
+    a cross-table artifact and the reject path (restore + sentinel
+    consume) must stay byte-identical to the pre-escape behavior. This
+    pins the escape's inertness explicitly rather than through the
+    MagicMock default.
+    """
+    config, hf_row, dirs = _composition_trigger_scenario(dry_mantle=True)
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        caplog.at_level(logging.INFO),
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=True,
+        ),
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
+
+    mock_solver.assert_called_once()
+    msgs = [r.message for r in caplog.records]
+    assert any('Rejected representation-artifact radius increase' in m for m in msgs)
+    assert not any('composition-driven wet' in m for m in msgs)
+    # The previous structure is restored and the baseline consumed (the
+    # livelock break for dry runs is unchanged).
+    assert hf_row['R_int'] == pytest.approx(r_prev, rel=1e-12)
+    assert dirs['_last_w_H2O_liquid'] == pytest.approx(3.0e21 / 3.0e24, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_non_superliquidus_run_skips_grid_extent_table_read():
+    """Non-superliquidus re-solves never read zalmoxis_output.dat for the guard.
+
+    Both guard branches are unreachable without the super-liquidus IC, so
+    the grid-extent probe (an np.loadtxt of the full structure table on
+    every accepted re-solve) must be short-circuited away. Discrimination:
+    the same probe IS evaluated under the super-liquidus predicate (the
+    grid-extent guard tests), so the skip is driven by the predicate, not
+    by a dead probe.
+    """
+    config, hf_row, dirs = _composition_trigger_scenario(dry_mantle=True)
+    interior_o = _mock_interior_o()
+    r_prev = hf_row['R_int']
+
+    def _up_step(*args, **kwargs):
+        args[2]['R_int'] = r_prev * (1.0 + 1.0e-3)
+        return (3.504e6, None)
+
+    s, ns, cp = _solver_patches(side_effect=_up_step)
+    with (
+        s as mock_solver,
+        ns,
+        cp,
+        patch(
+            'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+            return_value=False,
+        ),
+        patch(
+            'proteus.interior_energetics.wrapper._eos_grid_extent_up_step',
+        ) as probe,
+    ):
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.5)
+
+    mock_solver.assert_called_once()
+    probe.assert_not_called()
+    # Without the super-liquidus IC there is no clamp: the re-solve stands.
+    assert hf_row['R_int'] == pytest.approx(r_prev * (1.0 + 1.0e-3), rel=1e-12)
+
+
 @pytest.mark.unit
 def test_accepted_resolve_advances_composition_sentinels_on_success_path():
     """An ACCEPTED (down-step) re-solve refreshes both composition sentinels.

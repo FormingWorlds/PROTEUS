@@ -1248,6 +1248,69 @@ _ADIABAT_IC_RESTORE_KEYS = (
 )
 
 
+def _sample_adiabat_temperature_arrays(outdir: str, temperature_function):
+    """Sample the adiabat closure onto the previous structure's mantle grid.
+
+    The super-liquidus adiabat closure is pressure-indexed (``f(r, P)``
+    ignores ``r``), but the Zalmoxis JAX inner path consumes an explicit
+    r-indexed ``temperature_arrays=(r_arr, T_arr)``, the only temperature
+    input its surrounding numpy Picard helper does not also read. With
+    the callable alone, the Picard density updates evaluate the hot
+    adiabat near the PALEOS phase-boundary clamps and dominate the IC
+    wall time (issue #719). The r to P map needed for the sampling is
+    the immediately preceding converged structure in
+    ``<outdir>/data/zalmoxis_output.dat`` (mantle rows; columns r, P,
+    rho, g, T): ``T_i = temperature_function(r_i, P_i)``. The file is
+    read fresh on every call, so equilibration iterations track their
+    own drifting ``P_cmb``.
+
+    Out-of-domain radii are safe by construction: the JAX RHS
+    interpolates T on radius with ``jnp.interp``, which clamps to the
+    endpoint values, extending the adiabat's deepest temperature inward
+    over the core (the closure's own pressure clip does the same) and
+    the surface temperature outward past the previous surface radius,
+    so the outer radius search may probe beyond the sampled domain.
+
+    Parameters
+    ----------
+    outdir : str
+        Output directory holding ``data/zalmoxis_output.dat``.
+    temperature_function : callable
+        Adiabat ``f(r, P) -> T`` closure to sample.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray] or None
+        ``(r_arr, T_arr)`` on the previous structure's mantle radii, or
+        None when the previous structure is unavailable or malformed;
+        the caller then passes the callable alone and the solve behaves
+        as before.
+    """
+    path = os.path.join(outdir, 'data', 'zalmoxis_output.dat')
+    try:
+        data = np.loadtxt(path)
+    except (OSError, ValueError):
+        return None
+    if data.ndim != 2 or data.shape[0] < 2 or data.shape[1] < 2:
+        return None
+    r_arr = np.ascontiguousarray(data[:, 0], dtype=float)
+    p_arr = np.ascontiguousarray(data[:, 1], dtype=float)
+    if not (np.all(np.isfinite(r_arr)) and np.all(np.isfinite(p_arr))):
+        return None
+    if np.any(np.diff(r_arr) <= 0.0) or np.any(p_arr < 0.0):
+        return None
+    try:
+        t_arr = np.array(
+            [float(temperature_function(float(r), float(P))) for r, P in zip(r_arr, p_arr)],
+            dtype=float,
+        )
+    except (TypeError, ValueError):
+        return None
+    if not np.all(np.isfinite(t_arr)) or np.any(t_arr <= 0.0):
+        return None
+    return r_arr, t_arr
+
+
 def _solve_structure_with_adiabat_or_rollback(
     config: Config,
     outdir: str,
@@ -1259,7 +1322,9 @@ def _solve_structure_with_adiabat_or_rollback(
 
     Captures the on-disk ``zalmoxis_output.dat`` and the structure-defining
     ``hf_row`` keys, calls :func:`zalmoxis_solver` with the supplied adiabat
-    ``T(P)`` closure, then enforces the mass-anchor contract
+    ``T(P)`` closure plus its r-indexed sampling (see
+    :func:`_sample_adiabat_temperature_arrays`), then enforces the
+    mass-anchor contract
     (``|M_int / M_int_target - 1| < _ZALMOXIS_MASS_ANCHOR_TOL``) and a finite,
     positive ``R_int``. On any failure it restores BOTH the saved ``hf_row``
     keys AND ``zalmoxis_output.dat`` from its ``.prev`` snapshot, so the
@@ -1283,7 +1348,9 @@ def _solve_structure_with_adiabat_or_rollback(
     num_spider_nodes : int
         SPIDER basic-node count forwarded to the solver (0 for Aragog/dummy).
     temperature_function : callable
-        Adiabat ``f(r, P) -> T`` closure handed to the Zalmoxis numpy path.
+        Adiabat ``f(r, P) -> T`` closure. Passed to the solver together
+        with the sampled r-indexed arrays; the solver's temperature-source
+        dispatch then decides which one the solve consumes.
 
     Returns
     -------
@@ -1310,6 +1377,15 @@ def _solve_structure_with_adiabat_or_rollback(
     saved = {k: hf_row[k] for k in _ADIABAT_IC_RESTORE_KEYS if k in hf_row}
     R_int_prev = float(hf_row.get('R_int', 0.0) or 0.0)
 
+    # Hand the adiabat to the solver in both representations: the P-indexed
+    # closure and its r-indexed sampling on the previous structure's grid.
+    # zalmoxis_solver's temperature-source dispatch then decides exactly as
+    # on evolved re-solves: a JAX-viable EOS withholds the callable and the
+    # JAX RHS integrates the arrays (issue #719); any other configuration
+    # keeps the callable on the numpy path unchanged. A None sampling (no
+    # or malformed previous structure) degrades to the callable-only call.
+    adiabat_arrays = _sample_adiabat_temperature_arrays(outdir, temperature_function)
+
     try:
         _cmb_radius, adiabat_mesh_file = zalmoxis_solver(
             config,
@@ -1317,6 +1393,7 @@ def _solve_structure_with_adiabat_or_rollback(
             hf_row,
             num_spider_nodes=num_spider_nodes,
             temperature_function=temperature_function,
+            temperature_arrays=adiabat_arrays,
         )
         # Mass-anchor contract: a too-loosely-converged adiabat solve is
         # treated as a failure, same as the time-evolution re-solve path.
@@ -2498,6 +2575,9 @@ def update_structure_from_interior(
     # accepted re-solve under the super-liquidus adiabat IC only lowers R_int,
     # the last accepted value IS the running minimum, so a single read of the
     # current hf_row['R_int'] is the bound to compare the new solve against.
+    # Wet exception: an accepted composition-driven up-step (dry_mantle =
+    # false) raises R_int, and the guard then re-anchors to that larger
+    # committed value; the bound stays "last accepted R_int" either way.
     R_int_prev = float(hf_row.get('R_int', 0.0) or 0.0)
 
     # Also hand the (r, T) arrays to Zalmoxis explicitly. The JAX path
@@ -2505,10 +2585,11 @@ def update_structure_from_interior(
     # tabulation in jax_eos/wrapper.py collapses for this closure
     # (T_asc varies with r and ignores P).
     # zalmoxis_solver dispatches between the two: it feeds the arrays to
-    # the JAX path when the configured mantle EOS supports it (2-phase
-    # PALEOS mantle + unified core) and otherwise passes the callable to
-    # the numpy path, so the evolved T(r) reaches the density solve on
-    # either path. The arrays are already sorted strictly ascending in r
+    # the JAX path when the configured EOS layout supports it (unified
+    # or 2-phase PALEOS mantle plus unified core, with any wet profile
+    # inside the Zalmoxis JAX wet envelope) and otherwise passes the
+    # callable to the numpy path, so the evolved T(r) reaches the
+    # density solve on either path. The arrays are already sorted strictly ascending in r
     # above, as jnp.interp requires monotonically increasing xp; a
     # descending [surface, ..., CMB] array would produce ``Final M=0``
     # failures in JAX.
@@ -2561,7 +2642,10 @@ def update_structure_from_interior(
         # structure decision. When the mantle is genuinely heating (T_magma
         # rising, or Phi rising as melt returns) the up-step is physical and is
         # accepted; the accept criterion is the observed thermal change, not an
-        # assumed mechanism. A reject restores the previous structure (hf_row keys AND the
+        # assumed mechanism. A wet mantle adds one more physical up-step: a
+        # composition-triggered re-solve with dry_mantle=false can raise R_int
+        # while cooling because the dissolved volatiles lower the mean mantle
+        # density; that case is accepted through _composition_driven below. A reject restores the previous structure (hf_row keys AND the
         # on-disk zalmoxis_output.dat snapshot) and returns the no-update
         # sentinel: a clean no-op, NOT a solver failure, so the consecutive-
         # failure counter is left untouched (a rejected up-step must not count
@@ -2580,9 +2664,14 @@ def update_structure_from_interior(
         # whose _validate_eos_radius_range then crashes on er[-1] > outer + atol.
         # Reject that grid-extent up-step here through the identical restore path,
         # so a single release closes both the scalar and the grid-extent artifact.
-        _grid_extent_up_step = _eos_grid_extent_up_step(_output_zalmoxis_path, hf_row)
-        _is_up_step = _scalar_radius_up_step or _grid_extent_up_step
+        # _superliq is evaluated first so non-superliquidus runs, for which both
+        # guard branches below are unreachable, skip the zalmoxis_output.dat
+        # table read entirely.
         _superliq = _use_superliquidus_adiabat_ic(config)
+        _grid_extent_up_step = _superliq and _eos_grid_extent_up_step(
+            _output_zalmoxis_path, hf_row
+        )
+        _is_up_step = _scalar_radius_up_step or _grid_extent_up_step
         # Runtime cooling discriminator. An up-step is a representation artifact
         # only while the interior is cooling. If active heating is re-inflating
         # the mantle (T_magma rising, or Phi rising as melt returns) the up-step
@@ -2596,22 +2685,50 @@ def update_structure_from_interior(
             _Tmagma_now > last_Tmagma * (1.0 + _REINFLATE_TMAGMA_REL_TOL)
             or _Phi_now > last_Phi + _REINFLATE_PHI_ABS_TOL
         )
-        if _superliq and _is_up_step and _interior_reinflating:
-            log.info(
-                'Accepted R_int increase under active interior heating on the '
-                'super-liquidus adiabat IC: re-solve R_int=%.6e m rose above the '
-                'running minimum %.6e m while the mantle is heating (T_magma '
-                '%.1f -> %.1f K, Phi %.4f -> %.4f). The observed thermal rise '
-                'marks genuine re-inflation, not a cross-table artifact, so the '
-                'new structure is kept.',
-                _R_int_new,
-                R_int_prev,
-                last_Tmagma,
-                _Tmagma_now,
-                last_Phi,
-                _Phi_now,
-            )
-        if _superliq and _is_up_step and not _interior_reinflating:
+        # Composition escape for the wet mantle. When the firing trigger of
+        # this re-solve was a dissolved-composition change and the mantle EOS
+        # carries the dissolved volatiles (dry_mantle = false), a radius
+        # up-step under cooling is a physical signal: more volatiles in the
+        # melt lower the mean mantle density while T_magma keeps falling.
+        # Without this escape the reject path below would also consume the
+        # composition sentinels, so the composition trigger could never
+        # re-fire and the structure would stay composition-frozen for the
+        # whole molten epoch. Inert for dry mantles by the short-circuit.
+        # Residual gap: comp_changed marks only the FIRING trigger, so a
+        # thermal trigger that fires on a step where composition also moved
+        # still rejects under cooling; that narrows the escape, it does not
+        # reopen the freeze.
+        _composition_driven = comp_changed and not config.interior_struct.zalmoxis.dry_mantle
+        _accept_up_step = _interior_reinflating or _composition_driven
+        if _superliq and _is_up_step and _accept_up_step:
+            if _interior_reinflating:
+                log.info(
+                    'Accepted R_int increase under active interior heating on the '
+                    'super-liquidus adiabat IC: re-solve R_int=%.6e m rose above the '
+                    'running minimum %.6e m while the mantle is heating (T_magma '
+                    '%.1f -> %.1f K, Phi %.4f -> %.4f). The observed thermal rise '
+                    'marks genuine re-inflation, not a cross-table artifact, so the '
+                    'new structure is kept.',
+                    _R_int_new,
+                    R_int_prev,
+                    last_Tmagma,
+                    _Tmagma_now,
+                    last_Phi,
+                    _Phi_now,
+                )
+            else:
+                log.info(
+                    'Accepted R_int increase from a composition-driven wet '
+                    're-solve on the super-liquidus adiabat IC: re-solve '
+                    'R_int=%.6e m rose above the running minimum %.6e m after '
+                    'the dissolved-composition trigger fired with '
+                    'dry_mantle=false. The volatile-blended mantle EOS makes '
+                    'this a physical density response, not a cross-table '
+                    'artifact, so the new structure is kept.',
+                    _R_int_new,
+                    R_int_prev,
+                )
+        if _superliq and _is_up_step and not _accept_up_step:
             if _scalar_radius_up_step:
                 log.info(
                     'Rejected representation-artifact radius increase under the '

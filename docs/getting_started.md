@@ -3,7 +3,7 @@ hide:
   - navigation
 ---
 
-<div style="padding-left: 1em" markdown="1">
+<div class = "proteus-getstarted" markdown="1">
 
 # Get started
 

@@ -71,10 +71,3 @@
 .md-typeset .grid.cards > ul > li > p:last-child {
   margin-top: auto;
 }
-
-/* Narrow and center the homepage intro tagline */
-.md-typeset .home-text {
-  max-width: 85%;
-  margin: 1.5rem auto;
-  text-align: left;
-}

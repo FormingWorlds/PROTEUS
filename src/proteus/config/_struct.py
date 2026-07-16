@@ -30,25 +30,18 @@ def valid_zalmoxis(instance, attribute, value):
             f"got '{ice_layer_eos}'"
         )
 
-    # Binodal-aware miscibility iterates on a volatile profile that is
-    # only built when dry_mantle is false, so the flag would silently do
-    # nothing on a default config; and the dissolved-volatile structure
-    # path itself needs per-shell volatile-profile support that the
-    # pinned Zalmoxis release does not provide. Gate both until the
-    # Zalmoxis pin gains that support.
+    # Phase-aware volatile mixing (`dry_mantle = false`) is supported: the
+    # pinned Zalmoxis release evaluates a per-shell volatile profile in the
+    # mantle density. Binodal-aware miscibility (`global_miscibility`)
+    # additionally requires the H2-silicate binodal handoff on the Zalmoxis
+    # side (Zalmoxis tracker #64), which is not yet implemented, so it stays
+    # gated on its own merits rather than on the pin.
     if getattr(instance.zalmoxis, 'global_miscibility', False):
         raise ValueError(
             '`interior_struct.zalmoxis.global_miscibility = true` is not yet usable: '
-            'with `dry_mantle = true` no volatile profile is built and the flag does '
-            'nothing, and `dry_mantle = false` requires per-shell volatile-profile '
-            'support that the pinned Zalmoxis release does not provide.'
-        )
-    if not getattr(instance.zalmoxis, 'dry_mantle', True):
-        raise ValueError(
-            '`interior_struct.zalmoxis.dry_mantle = false` is not supported with the '
-            'pinned Zalmoxis release: the mantle EOS cannot consume a per-shell '
-            'volatile profile yet, so the extended EOS would carry placeholder '
-            'fractions that nothing overrides. Keep `dry_mantle = true`.'
+            'it requires the H2-silicate binodal handoff on the Zalmoxis side '
+            '(Zalmoxis tracker #64), which the pinned release does not implement. '
+            'Use `dry_mantle = false` for phase-aware H2O mixing without miscibility.'
         )
 
     # WolfBower2018 EOS is limited to 1 TPa. For planets > 2 M_earth,
@@ -189,7 +182,11 @@ class Zalmoxis:
     # happens in the outgassing module; this flag only controls whether
     # dissolved volatile mass shifts the structure-side EOS density /
     # mixing. Set to False to enable phi-aware volatile mixing in the
-    # mantle density.
+    # mantle density. When False, the dry-mass target excludes only the
+    # atmospheric inventory (the dissolved mass stays inside the interior);
+    # the dissolved-volatile mass carried by the structure is set by the
+    # per-shell profile fractions and is not iterated to match the
+    # outgassing module's dissolved kg (a small, diagnosed approximation).
     dry_mantle: bool = field(default=True)
 
     # SPIDER P-S table resolution (generated from PALEOS)
