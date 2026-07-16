@@ -74,7 +74,7 @@ style="max-width: 280px; max-height: 150px; width: auto; height: auto;">
 <img src="assets/logos/ERC.png" class="logo-light"
 alt="European Research Council logo"
 style="max-width: 280px; max-height: 150px; width: auto; height: auto;">
-<img src="assets/logos/ERC.png" class="logo-dark"
+<img src="assets/logos/ERC_dark.png" class="logo-dark"
 alt="European Research Council logo"
 style="max-width: 280px; max-height: 150px; width: auto; height: auto;">
 </a>
