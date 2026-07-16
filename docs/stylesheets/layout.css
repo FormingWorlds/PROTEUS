@@ -1,0 +1,185 @@
+/* Modules diagram: size and show light/dark versions based on color scheme */
+
+.mod-diagram {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 670 / 509;
+  display: none;
+}
+[data-md-color-scheme="default"] .mod-diagram--light {
+  display: block;
+}
+[data-md-color-scheme="slate"] .mod-diagram--dark {
+  display: block;
+}
+.mod-diagram:focus,
+.mod-diagram:focus-visible {
+  outline: none !important;
+}
+
+/* Architecture diagram: size and show light/dark versions based on color scheme
+   The aspect-ratio is set to a default reserved box so a diagram whose file name
+   is not matched below still reserves space instead of collapsing while the SVG
+   loads. Add a per-diagram rule below with the exact source-viewBox ratio when
+   adding a new diagram. */
+
+.arch-diagram {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  display: none;
+}
+
+.arch-diagram[data*="proteus_architecture"] {
+  aspect-ratio: 1412 / 1315;
+}
+
+/* Light mode: show light diagram */
+[data-md-color-scheme="default"] .arch-diagram--light {
+  display: block;
+}
+
+/* Dark mode: show dark diagram (Material's default dark scheme is "slate") */
+[data-md-color-scheme="slate"] .arch-diagram--dark {
+  display: block;
+}
+
+/* Remove underline from links that contain only an image */
+.md-typeset p a:has(> img) {
+  text-decoration: none;
+}
+
+/* Figure captions: justified, full width, slightly smaller */
+.md-typeset figcaption {
+  text-align: justify;
+  max-width: 100%;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+
+/* Funding logos dark switch */
+.logo-dark { display: none; }
+[data-md-color-scheme="slate"] .logo-light { display: none; }
+[data-md-color-scheme="slate"] .logo-dark { display: inline; }
+
+/* Grid cards: make the last paragraph in each card stick to the bottom of the card */
+.md-typeset .grid.cards > ul > li {
+  display: flex;
+  flex-direction: column;
+}
+
+.md-typeset .grid.cards > ul > li > p:last-child {
+  margin-top: auto;
+}
+
+/* Active top tab: magma underline (the theme targets a link class that
+   this template does not emit, so the marker is set on the item) */
+.md-tabs__item--active {
+  border-bottom-color: var(--pt-magma);
+}
+
+/* Headings that follow an explicit horizontal rule keep the rule as their
+   only separator instead of doubling it with the heading border */
+.md-typeset hr + h2 {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* Admonitions: tint the box with its signal color (set directly, since the
+   theme hardcodes its own background on the admonition element) */
+.md-typeset .admonition.note,
+.md-typeset details.note,
+.md-typeset .admonition.info,
+.md-typeset details.info {
+  --md-admonition-bg-color: rgba(27, 111, 168, 0.10);
+  background-color: rgba(27, 111, 168, 0.10);
+}
+
+.md-typeset .note > .admonition-title::before,
+.md-typeset .note > summary::before,
+.md-typeset .info > .admonition-title::before,
+.md-typeset .info > summary::before {
+  background-color: #1B6FA8;
+}
+
+/* the fold chevron of collapsible admonitions draws in currentColor */
+.md-typeset .note > summary::after,
+.md-typeset .info > summary::after {
+  color: #1B6FA8;
+}
+
+.md-typeset .admonition.warning,
+.md-typeset details.warning,
+.md-typeset .admonition.danger,
+.md-typeset details.danger {
+  --md-admonition-bg-color: rgba(226, 61, 40, 0.10);
+  background-color: rgba(226, 61, 40, 0.10);
+}
+
+.md-typeset .warning > .admonition-title::before,
+.md-typeset .warning > summary::before,
+.md-typeset .danger > .admonition-title::before,
+.md-typeset .danger > summary::before {
+  background-color: #E23D28;
+}
+
+.md-typeset .warning > summary::after,
+.md-typeset .danger > summary::after {
+  color: #E23D28;
+}
+
+/* Table headers containing math keep normal typography: the tracked
+   uppercase mono header style would mangle symbols and units */
+.md-typeset table:not([class]) th:has(.arithmatex, mjx-container) {
+  font-family: inherit;
+  font-size: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* Funding page: logo grid collapses to a single full-width column on
+   narrow screens; the wide side margins apply on desktop only */
+.funding-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 2rem;
+  align-items: center;
+  justify-items: center;
+  margin-top: 2rem;
+}
+
+@media screen and (min-width: 769px) {
+  .funding-grid {
+    margin-left: 7rem;
+    margin-right: 7rem;
+  }
+}
+
+.funding-grid img {
+  max-width: min(280px, 100%);
+  max-height: 150px;
+  width: auto;
+  height: auto;
+}
+
+.funding-grid .funding-logo-boxed {
+  background: white;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+/* Footer: no underline on copyright and meta links */
+.md-footer-copyright a,
+.md-footer-meta a {
+  text-decoration: none !important;
+}
+
+/* Header title doubles as a home link (see javascripts/header-links.js) */
+.md-header__title[data-md-component="header-title"] {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.md-header__title[data-md-component="header-title"]:hover {
+  opacity: 0.7;
+}

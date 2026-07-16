@@ -1,0 +1,68 @@
+/* ============================================================
+   PROTEUS FRAMEWORK — THERMOCLINE SELF-HOSTED FONTS
+   Sora (display) · Instrument Sans (body/UI) · Spline Sans Mono
+   All faces are SIL OFL 1.1; see OFL.txt in this folder.
+   Family names match the stacks in ../tokens/tokens.css.
+   ============================================================ */
+
+/* ——— Sora — display ——— */
+@font-face {
+  font-family: "Sora";
+  src: url("sora/Sora-SemiBold.woff2") format("woff2"), url("sora/Sora-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Sora";
+  src: url("sora/Sora-Bold.woff2") format("woff2"), url("sora/Sora-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Sora";
+  src: url("sora/Sora-ExtraBold.woff2") format("woff2"), url("sora/Sora-ExtraBold.ttf") format("truetype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ——— Instrument Sans — body / UI ——— */
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("instrument-sans/InstrumentSans-Regular.woff2") format("woff2"), url("instrument-sans/InstrumentSans-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("instrument-sans/InstrumentSans-Medium.woff2") format("woff2"), url("instrument-sans/InstrumentSans-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("instrument-sans/InstrumentSans-SemiBold.woff2") format("woff2"), url("instrument-sans/InstrumentSans-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ——— Spline Sans Mono — code, labels, metadata ——— */
+@font-face {
+  font-family: "Spline Sans Mono";
+  src: url("spline-sans-mono/SplineSansMono-Regular.woff2") format("woff2"), url("spline-sans-mono/SplineSansMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Spline Sans Mono";
+  src: url("spline-sans-mono/SplineSansMono-Medium.woff2") format("woff2"), url("spline-sans-mono/SplineSansMono-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
