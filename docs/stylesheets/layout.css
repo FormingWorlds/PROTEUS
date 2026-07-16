@@ -102,6 +102,12 @@
   background-color: #1B6FA8;
 }
 
+/* the fold chevron of collapsible admonitions draws in currentColor */
+.md-typeset .note > summary::after,
+.md-typeset .info > summary::after {
+  color: #1B6FA8;
+}
+
 .md-typeset .admonition.warning,
 .md-typeset details.warning,
 .md-typeset .admonition.danger,
@@ -115,6 +121,11 @@
 .md-typeset .danger > .admonition-title::before,
 .md-typeset .danger > summary::before {
   background-color: #E23D28;
+}
+
+.md-typeset .warning > summary::after,
+.md-typeset .danger > summary::after {
+  color: #E23D28;
 }
 
 /* Table headers containing math keep normal typography: the tracked
