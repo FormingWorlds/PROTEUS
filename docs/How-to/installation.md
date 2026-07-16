@@ -51,7 +51,7 @@ Install the required system libraries for your platform. See the
 ([Kapteyn](kapteyn_cluster_guide.md),
 [Habrok](habrok_cluster_guide.md),
 [Snellius](snellius_cluster_guide.md),
-[Cambridge IoA](ioa_cluster_guide)).
+[Cambridge IoA](ioa_cluster_guide.md)).
 
 ## 2. Clone PROTEUS and set up Python environment
 
@@ -86,7 +86,7 @@ or [miniforge](https://github.com/conda-forge/miniforge) installed yet:
     ```
 
 !!! note "Install miniconda/miniforge in your personal directory"
-    Installing miniconda/miniforge in your personal directory gives you full control over your environment and is recommended even on clusters (see the cluster guides: [Kapteyn](kapteyn_cluster_guide.md), [Habrok](habrok_cluster_guide.md), [Snellius](snellius_cluster_guide.md), [Cambridge IoA](ioa_cluster_guide)). 
+    Installing miniconda/miniforge in your personal directory gives you full control over your environment and is recommended even on clusters (see the cluster guides: [Kapteyn](kapteyn_cluster_guide.md), [Habrok](habrok_cluster_guide.md), [Snellius](snellius_cluster_guide.md), [Cambridge IoA](ioa_cluster_guide.md)). 
 
 Then clone PROTEUS and create a conda environment with Python 3.12:
 
@@ -168,4 +168,4 @@ See the [Quick start tutorial](../Tutorials/quick_start_dummy.md) for a guided w
     bash tools/get_spider.sh
     ```
 
-    See [SPIDER installation](optionalmodules_installation#optional-setup-petsc) for details.
+    See [SPIDER installation](optionalmodules_installation.md#optional-setup-petsc) for details.
