@@ -1086,14 +1086,18 @@ def _zalmoxis_jax_structure_viable(mat_dicts: dict, core_eos: str, mantle_eos: s
 
     Mirrors, on static registry properties, the preconditions that
     ``zalmoxis.jax_eos.wrapper.solve_structure_via_jax`` enforces before
-    integrating: the mantle registry entry must carry both ``solid_mantle``
-    and ``melted_mantle`` dict sub-tables (the 2-phase PALEOS layout), and
-    the core entry must resolve to the ``paleos_unified`` format. A
-    ``paleos_api`` core qualifies because
+    integrating: the mantle registry entry must be one of the two
+    supported representations, the unified single-table layout (a flat
+    entry with format ``paleos_unified`` carrying an ``eos_file``, the
+    production default) or the 2-phase PALEOS layout (both
+    ``solid_mantle`` and ``melted_mantle`` dict sub-tables), and the core
+    entry must resolve to the ``paleos_unified`` format. A ``paleos_api``
+    entry qualifies on either layer because
     ``zalmoxis.eos.paleos_api_cache.resolve_registry_entry`` materialises
-    it to ``paleos_unified`` in place before the JAX dispatch checks it.
+    it to ``paleos_unified`` (with an on-disk ``eos_file``) in place
+    before the JAX dispatch checks it.
 
-    When either precondition fails, the Zalmoxis dispatch raises inside
+    When a precondition fails, the Zalmoxis dispatch raises inside
     the JAX wrapper and falls back to the numpy ODE, which consumes
     ``temperature_function`` rather than ``temperature_arrays``; the
     caller must therefore keep the temperature callable in play.
@@ -1120,14 +1124,111 @@ def _zalmoxis_jax_structure_viable(mat_dicts: dict, core_eos: str, mantle_eos: s
     mantle_entry = mat_dicts.get(_strip_fraction_tokens(str(mantle_eos)))
     if not isinstance(mantle_entry, dict):
         return False
-    if not isinstance(mantle_entry.get('solid_mantle'), dict):
-        return False
-    if not isinstance(mantle_entry.get('melted_mantle'), dict):
+    mantle_format = mantle_entry.get('format')
+    if mantle_format == 'paleos_unified':
+        mantle_viable = bool(mantle_entry.get('eos_file'))
+    elif mantle_format == 'paleos_api':
+        mantle_viable = True
+    else:
+        mantle_viable = isinstance(mantle_entry.get('solid_mantle'), dict) and isinstance(
+            mantle_entry.get('melted_mantle'), dict
+        )
+    if not mantle_viable:
         return False
     core_entry = mat_dicts.get(_strip_fraction_tokens(str(core_eos)))
     if not isinstance(core_entry, dict):
         return False
     return core_entry.get('format') in ('paleos_unified', 'paleos_api')
+
+
+def _volatile_profile_jax_viable(
+    volatile_profile, mat_dicts: dict, mantle_eos_extended
+) -> bool:
+    """Report whether a ``VolatileProfile`` fits the Zalmoxis JAX wet envelope.
+
+    Mirrors, on static profile and registry properties, the checks that
+    ``zalmoxis.jax_eos.wrapper._validate_wet_mantle`` and the volatile
+    cache load in ``zalmoxis.jax_eos.wrapper.solve_structure_via_jax``
+    enforce before integrating a wet mantle: no ``global_miscibility``,
+    no ``x_interior`` entries, zero (or absent) weight on the primary
+    silicate component, the primary present in the mantle mixture,
+    exactly one active volatile in the mixture, no mixture components
+    outside the profile, the volatile not ``Chabrier:H`` (its binodal
+    suppression factor is not ported to the JAX RHS), and a volatile
+    registry entry that resolves to the ``paleos_unified`` format with
+    an ``eos_file`` (``paleos_api`` entries materialise to that in
+    place).
+
+    When any check fails, the Zalmoxis dispatch raises inside the JAX
+    wrapper and falls back to the numpy ODE, which consumes
+    ``temperature_function`` rather than ``temperature_arrays``; the
+    caller must therefore keep the temperature callable in play.
+
+    Parameters
+    ----------
+    volatile_profile : VolatileProfile or None
+        Profile built by :func:`build_volatile_profile`. None reads as
+        not viable; callers gate the dry case separately.
+    mat_dicts : dict
+        EOS registry from :func:`load_zalmoxis_material_dictionaries`.
+    mantle_eos_extended : str
+        Mantle EOS string after
+        :func:`extend_mantle_eos_with_volatiles`, whose components (with
+        fraction tokens stripped) are the mantle mixture Zalmoxis
+        parses.
+
+    Returns
+    -------
+    bool
+        True when the profile matches the JAX wet envelope. False
+        otherwise, including malformed or unrecognised input: the
+        conservative answer routes the solve to the numpy path with the
+        callable attached.
+    """
+    try:
+        if volatile_profile is None:
+            return False
+        if getattr(volatile_profile, 'global_miscibility', False):
+            return False
+        if getattr(volatile_profile, 'x_interior', None):
+            return False
+        primary = str(volatile_profile.primary_component)
+        w_liquid = dict(volatile_profile.w_liquid)
+        w_solid = dict(volatile_profile.w_solid)
+        # A nonzero weight on the primary silicate is degenerate input
+        # the wrapper rejects (numpy's blend() double-counts it).
+        if float(w_liquid.get(primary, 0.0)) > 0.0 or float(w_solid.get(primary, 0.0)) > 0.0:
+            return False
+        components = [
+            _strip_fraction_tokens(token) for token in str(mantle_eos_extended).split('+')
+        ]
+        if primary not in components:
+            return False
+        managed = (set(w_liquid) | set(w_solid)) - {primary}
+        active = [
+            key
+            for key in managed
+            if (float(w_liquid.get(key, 0.0)) > 0.0 or float(w_solid.get(key, 0.0)) > 0.0)
+            and key in components
+        ]
+        if len(active) != 1:
+            return False
+        # Unmanaged extra mixture components keep their fraction only on
+        # the numpy path; the wrapper rejects them.
+        if any(c != primary and c not in managed for c in components):
+            return False
+        (vol_eos,) = active
+        if vol_eos == 'Chabrier:H':
+            return False
+        vol_entry = mat_dicts.get(vol_eos)
+        if not isinstance(vol_entry, dict):
+            return False
+        vol_format = vol_entry.get('format')
+        if vol_format == 'paleos_api':
+            return True
+        return vol_format == 'paleos_unified' and bool(vol_entry.get('eos_file'))
+    except (AttributeError, TypeError, ValueError):
+        return False
 
 
 def load_zalmoxis_material_dictionaries():
@@ -2127,13 +2228,15 @@ def zalmoxis_solver(
     temperature_arrays : tuple[ndarray, ndarray] or None, optional
         Explicit r-indexed ``(r_arr, T_arr)`` for the Zalmoxis JAX path.
         Consumed only when ``use_jax=True``, the configured EOS pair
-        can take the Zalmoxis JAX dispatch (2-phase PALEOS mantle with
-        solid and melted sub-tables plus a unified PALEOS core; see
-        :func:`_zalmoxis_jax_structure_viable`), and the solve is dry
-        (no ``VolatileProfile`` in play). In that case the
+        can take the Zalmoxis JAX dispatch (a unified or 2-phase PALEOS
+        mantle plus a unified PALEOS core; see
+        :func:`_zalmoxis_jax_structure_viable`), and the solve is either
+        dry (no ``VolatileProfile`` in play) or wet with a profile
+        inside the Zalmoxis JAX wet envelope (see
+        :func:`_volatile_profile_jax_viable`). In that case the
         external callable is withheld so the inner Picard converges on
         Zalmoxis' internal linear-T profile while the JAX RHS integrates
-        against the arrays. For any other EOS configuration the solve
+        against the arrays. For any other configuration the solve
         runs on the numpy path, which consumes ``temperature_function``,
         and the callable is therefore passed through. See Zalmoxis'
         ``solve_structure_via_jax`` docstring for why both kwargs can be
@@ -2255,21 +2358,21 @@ def zalmoxis_solver(
 
     # Temperature-source dispatch for this call. temperature_arrays can be
     # consumed only by the Zalmoxis JAX inner path, which requires a
-    # 2-phase PALEOS mantle (solid_mantle + melted_mantle sub-tables) and
-    # a unified PALEOS core. Only in that case is the external callable
-    # withheld: the JAX RHS integrates against the arrays while the numpy
-    # Picard helper converges quickly on Zalmoxis' internal linear-T
-    # profile (passing the callable there lands Picard near PALEOS
-    # phase-boundary clamps and costs roughly two orders of magnitude
-    # more wall time at the same JAX arrays). For every other EOS
-    # configuration the JAX dispatch declines and the numpy ODE runs;
-    # that path consumes only the callable, so it must pass through for
-    # the solve to follow the evolved T(r) instead of rebuilding the
-    # internal temperature_mode profile from the hot initial anchor.
-    # Wet solves (volatile_profile present) also keep the callable and
-    # stay on the numpy path here: the arrays handoff and the post-solve
-    # rebuild gated on _drop_callable recompute density from the bare dry
-    # mantle EOS and would overwrite the volatile-blended column.
+    # JAX-capable EOS layout (a unified or 2-phase PALEOS mantle plus a
+    # unified PALEOS core) and, on wet solves, a VolatileProfile inside
+    # the Zalmoxis JAX wet envelope (exactly one paleos_unified volatile
+    # blended into the mantle; see _volatile_profile_jax_viable). Only in
+    # that case is the external callable withheld: the JAX RHS integrates
+    # against the arrays while the numpy Picard helper converges quickly
+    # on Zalmoxis' internal linear-T profile (passing the callable there
+    # lands Picard near PALEOS phase-boundary clamps and costs roughly
+    # two orders of magnitude more wall time at the same JAX arrays). For
+    # every other EOS configuration, and for wet solves whose profile
+    # falls outside the envelope, the JAX dispatch declines and the numpy
+    # ODE runs; that path consumes only the callable, so it must pass
+    # through for the solve to follow the evolved T(r) instead of
+    # rebuilding the internal temperature_mode profile from the hot
+    # initial anchor.
     _use_jax_active = bool(config_params.get('use_jax'))
     _jax_viable = _zalmoxis_jax_structure_viable(
         mat_dicts, config.interior_struct.zalmoxis.core_eos, mantle_eos
@@ -2277,11 +2380,16 @@ def zalmoxis_solver(
     # Surface a JAX->numpy fallback once from the PROTEUS side (see helper).
     if _use_jax_active and not _jax_viable:
         _log_jax_nonviable_once(config.interior_struct.zalmoxis.core_eos, mantle_eos)
+    _wet_jax_viable = volatile_profile is None or _volatile_profile_jax_viable(
+        volatile_profile, mat_dicts, config_params['layer_eos_config']['mantle']
+    )
+    if _use_jax_active and _jax_viable and volatile_profile is not None and not _wet_jax_viable:
+        log.debug(
+            'VolatileProfile falls outside the Zalmoxis JAX wet envelope; '
+            'the structure solve stays on the numpy path with the callable.'
+        )
     _drop_callable = (
-        _use_jax_active
-        and temperature_arrays is not None
-        and _jax_viable
-        and volatile_profile is None
+        _use_jax_active and temperature_arrays is not None and _jax_viable and _wet_jax_viable
     )
     _tf_effective = None if _drop_callable else temperature_function
     if _drop_callable:
@@ -2350,9 +2458,10 @@ def zalmoxis_solver(
     else:
         # _tf_effective carries the temperature-source decision hoisted
         # above: the callable is withheld only when the JAX inner path
-        # will actually consume temperature_arrays (2-phase PALEOS
-        # mantle + unified core); on any other EOS configuration the
-        # numpy path runs and the callable passes through. Warm-starts
+        # will actually consume temperature_arrays (JAX-viable EOS
+        # layout and, on wet solves, an in-envelope VolatileProfile);
+        # on any other configuration the numpy path runs and the
+        # callable passes through. Warm-starts
         # stay disabled on the JAX path: they drive Anderson into
         # oscillation and do not help otherwise, because the inner
         # Picard plateau at diff=0.1 is set by the lever-rule EOS kink,
@@ -2561,9 +2670,23 @@ def zalmoxis_solver(
     # (P, T_aragog) using numpy EOS before any downstream consumer reads
     # them. When the callable was honored on the numpy path instead, the
     # solver's own columns already reflect the evolved T(r) and no rebuild
-    # runs.
+    # runs. Wet solves rebuild the mantle through the same per-shell blend
+    # the numpy solver's density update evaluates (calculate_mixed_density
+    # on the extended mantle mixture with the VolatileProfile at the local
+    # melt fraction), so the written column keeps the dissolved-volatile
+    # contribution instead of collapsing to the bare dry mantle EOS.
     if _drop_callable:
         from zalmoxis.eos.dispatch import calculate_density as _calc_rho
+
+        # Wet path: the extended mantle mixture (primary silicate plus
+        # profile-managed volatiles), parsed from the same EOS string the
+        # solver parses, blended per shell by the profile.
+        _mantle_mixture = None
+        if volatile_profile is not None:
+            from zalmoxis.mixing import calculate_mixed_density as _calc_rho_mixed
+            from zalmoxis.mixing import parse_layer_components as _parse_mixture
+
+            _mantle_mixture = _parse_mixture(config_params['layer_eos_config']['mantle'])
 
         _r_ref, _T_ref = temperature_arrays
         _T_ref_cmb = float(_T_ref[0])
@@ -2588,17 +2711,41 @@ def zalmoxis_solver(
             else:
                 _T = float(np.interp(_r, _r_ref, _T_ref))
             _T_fixed[_i] = _T
-            _eos_here = _core_eos if _i < cmb_index else _mantle_eos
-            _rho = _calc_rho(
-                _P,
-                mat_dicts,
-                _eos_here,
-                _T,
-                _sol_f,
-                _liq_f,
-                interpolation_functions=_interp_cache,
-                mushy_zone_factor=_mzf,
-            )
+            if _mantle_mixture is not None and _i >= cmb_index:
+                # Wet mantle node: same evaluation as the numpy solver's
+                # density update. calculate_mixed_density computes the
+                # local melt fraction from the melting curves at this
+                # node's (P, T) (lever rule in compute_melt_fraction) and
+                # takes the per-component fractions from
+                # volatile_profile.apply_to_mixture. The condensed and
+                # binodal sigmoid parameters stay at the zalmoxis.mixing
+                # defaults, the same values the solver resolves when
+                # config_params carries no overrides (PROTEUS sets none).
+                _rho = _calc_rho_mixed(
+                    _P,
+                    _T,
+                    _mantle_mixture,
+                    mat_dicts,
+                    _sol_f,
+                    _liq_f,
+                    _interp_cache,
+                    mushy_zone_factors=config_params.get('mushy_zone_factors'),
+                    volatile_profile=volatile_profile,
+                )
+                if _rho is not None and not np.isfinite(_rho):
+                    _rho = None
+            else:
+                _eos_here = _core_eos if _i < cmb_index else _mantle_eos
+                _rho = _calc_rho(
+                    _P,
+                    mat_dicts,
+                    _eos_here,
+                    _T,
+                    _sol_f,
+                    _liq_f,
+                    interpolation_functions=_interp_cache,
+                    mushy_zone_factor=_mzf,
+                )
             _rho_fixed[_i] = float(_rho) if _rho is not None else float(density[_i])
         density = _rho_fixed
         temperature = _T_fixed
