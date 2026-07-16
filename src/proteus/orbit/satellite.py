@@ -9,7 +9,7 @@ from scipy.integrate import solve_ivp
 
 from proteus.interior_energetics.common import Interior_t
 from proteus.orbit.common import Tides_t, get_all_m_hansen
-from proteus.utils.constants import const_G
+from proteus.utils.constants import const_G, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -282,6 +282,9 @@ def ps1d_evec(hf_row, config, tides_o, dt):
             Time interval over which escape is occuring [yr]
     """
 
+    # Convert time to seconds (Fixes the unit mismatch bug)
+    dt = float(dt) * secs_per_year      # need to check this for other orbital models as well.
+
     # Orbital parameters from helpfile
     axial_p = 2 * np.pi / float(hf_row['axial_period'])
     axial_s = 2 * np.pi / float(hf_row['axial_period_sat'])
@@ -320,28 +323,64 @@ def ps1d_evec(hf_row, config, tides_o, dt):
         return a * ((E_p / 2.0) * sum_da_p + (E_s / 2.0) * sum_da_s)
 
 
-    def de_dt(e_safe, n_mm, n_star, phi, E_p, E_s, sum_de_p, sum_de_s):
-        """Eccentricity (Tides + Solar Resonance)"""
-        sqrt_term = np.sqrt(1.0 - e_safe**2)
+    def get_resonance_filter(dw_secular_total, n_star, scale_width=1e-8):
+        """
+        Computes a smooth activation filter [0.0, 1.0] based on how close
+        the system's secular precession rate is to the star's orbital frequency.
 
+        dw_secular_total: The total secular precession rate (J2 + Tides + Secular Sun)
+        n_star:           The target resonance frequency (orbital frequency of the star)
+        scale_width:      The transition width in rad/s
+        """
+        delta_frequency = np.abs(dw_secular_total - n_star)
+
+        # We want a value near 1.0 when delta_frequency -> 0, and 0.0 when far away.
+        # Use tanh for a perfectly differentiable C^infinity smooth transition.
+        activation = 1.0 - np.tanh(delta_frequency / scale_width)
+        return activation
+
+
+    def de_dt(e, e_safe, n_mm, n_star, phi, E_p, E_s, sum_de_p, sum_de_s, r_filter):
+        """Eccentricity (Tides + Solar Resonance)"""
+        sqrt_term = np.sqrt(1.0 - e**2)
+
+        # Standard tidal dissipation (always active)
         de_tide_p = (E_p * sqrt_term / (4.0 * e_safe)) * sum_de_p
         de_tide_s = (E_s * sqrt_term / (4.0 * e_safe)) * sum_de_s
-        de_res    = (15.0 / 4.0) * e_safe * sqrt_term * (n_star**2 / n_mm) * np.sin(2.0 * phi)
 
-        return de_tide_p + de_tide_s + de_res
+        # Resonant evection excitation (modulated by the detection filter)
+        de_res = (15.0 / 4.0) * e * sqrt_term * (n_star**2 / n_mm) * np.sin(2.0 * phi)
+
+        return de_tide_p + de_tide_s + (r_filter * de_res)
 
 
-    def dw_dt(e_safe, n_mm, n_star, phi, dw_J2, E_p, E_s, sum_dw_p, sum_dw_s):
+    def dw_dt(e, e_safe, n_mm, n_star, phi, dw_J2, E_p, E_s, sum_dw_p, sum_dw_s, scale_width):
         """Apsidal precession / Evection Angle"""
         prefactor = 1.0 / (e_safe**2 * np.sqrt(1.0 - e_safe**2))
 
         dw_tide_p = E_p * prefactor * sum_dw_p
         dw_tide_s = E_s * prefactor * sum_dw_s
 
-        # Calculate d(phi)/dt
-        dphi = dw_J2 + dw_tide_p + dw_tide_s - n_star + \
-               (0.75) * (n_star**2 / n_mm) * np.sqrt(1.0 - e_safe**2) * (1.0 + 5.0 * np.cos(2.0 * phi))
-        return dphi
+        # Secular third-body precession from the Star (always active, does not oscillate)
+        dw_secular_star = (3.0 / 4.0) * (n_star**2 / n_mm) * np.sqrt(1.0 - e**2)
+
+        # RESONANCE DETECTION TRIGGER
+        # The secular precession is the sum of J2, tides, and the non-oscillating third-body term
+        dw_secular_total = dw_J2 + dw_tide_p + dw_tide_s + dw_secular_star
+
+        # Update filter strength dynamically
+        # The scale_width of 1e-8 rad/s corresponds to a precession period difference of a few years
+        local_filter = get_resonance_filter(dw_secular_total, n_star, scale_width=scale_width)
+
+        # The oscillating evection feedback component (modulated by the detection filter)
+        dw_evection_oscillating = (15.0 / 4.0) * np.sqrt(1.0 - e**2) * (n_star**2 / n_mm) * np.cos(2.0 * phi)
+
+        # Calculate d(phi)/dt:
+        # d(phi)/dt = d(omega)/dt - n_star
+        dphi = dw_secular_total + (local_filter * dw_evection_oscillating) - n_star
+
+        # Return both the derivative and the calculated filter value for use in de_dt
+        return dphi, local_filter
 
 
     def orbitals(t, z, p):
@@ -379,9 +418,9 @@ def ps1d_evec(hf_row, config, tides_o, dt):
         LNk_s = tides_o.get(primary="satellite", perturber="planet").LNk
 
         kmin, kmax = np.min(nmk_p[:,2]), np.max(nmk_p[:,2])
-        k, X_all = get_all_m_hansen(e_safe, 2, kmin, kmax)
+        k, X_all = get_all_m_hansen(e_safe, 2, kmin, kmax)  # 'n = 2' is fixed for this orbital evolution model
 
-        # Convert your arrays into a dictionary mapping (n, m, k) -> Complex Love Number
+        # Convert arrays into a dictionary mapping (n, m, k) -> Complex Love Number
         love_dict_p = {tuple(nmk): ln for nmk, ln in zip(nmk_p, LNk_p)}
         love_dict_s = {tuple(nmk): ln for nmk, ln in zip(nmk_s, LNk_s)}
 
@@ -389,7 +428,7 @@ def ps1d_evec(hf_row, config, tides_o, dt):
         # Assuming tides_o and orbit_o handle the known caching efficiently
         for si, s in enumerate(k):
 
-            # Fetch Hansen modes
+            # Fetch Hansen coefficients per mode 'm'
             X_0  = X_all[0][si]
             X_2  = X_all[2][si]
             X_m1 = X_all[-1][si]
@@ -398,16 +437,22 @@ def ps1d_evec(hf_row, config, tides_o, dt):
 
             # Fetch complex Love number components (A = Real, K = -Imaginary)
             # Look up the complex values, defaulting to 0.0 + 0j if not found
+            # Make sure user is aware of missing Love numbers
             val_p0 = love_dict_p.get((2, 0, s), 0.0 + 0.0j)
             val_p2 = love_dict_p.get((2, 2, s), 0.0 + 0.0j)
             val_s0 = love_dict_s.get((2, 0, s), 0.0 + 0.0j)
             val_s2 = love_dict_s.get((2, 2, s), 0.0 + 0.0j)
 
             # Extract real and imaginary parts
-            A_p0, K_p0 = val_p0.real, -val_p0.imag
-            A_p2, K_p2 = val_p2.real, -val_p2.imag
+            A_p0, K_p0 = val_p0.real, val_p0.imag       # Testing with + / - signs to stimulate
+            A_p2, K_p2 = val_p2.real, val_p2.imag       # outward migration of the Moon
             A_s0, K_s0 = val_s0.real, -val_s0.imag
             A_s2, K_s2 = val_s2.real, -val_s2.imag
+
+            # Note for the Earth-Moon system, the tidal bulge preceeds the satellite, so the imaginary
+            # part of the Love number is positive, this allows the Moon to migrate outward. If the sign
+            # of the imaginary part is negative, the satellite would migrate inward, which is not observed
+            # for the Earth-Moon system.
 
             # Accumulate
             X0_sq = X_0**2
@@ -430,13 +475,25 @@ def ps1d_evec(hf_row, config, tides_o, dt):
             sums['dw_p'] += (3.0/16.0) * A_p0 * term0 - (1.0/16.0) * A_p2 * term2
             sums['dw_s'] += (3.0/16.0) * A_s0 * term0 - (1.0/16.0) * A_s2 * term2
 
+        # Compute the precession derivative and extract the filter value
+        dphi_dt, r_filter = dw_dt(
+            e, e_safe, n_mm, p['n_star'], phi, dw_J2,
+            E_p, E_s, sums['dw_p'], sums['dw_s'], scale_width=1e-8
+        )
+
+        # Compute the eccentricity derivative using the same filter value
+        de_dot = de_dt(
+            e, e_safe, n_mm, p['n_star'], phi,
+            E_p, E_s, sums['de_p'], sums['de_s'], r_filter
+        )
+
         # Final Evaluation using distinct functions
         return [
             domega_dt(I_p, p['C_p'], sums['dOmega_p']),
             domega_dt(I_s, p['C_s'], sums['dOmega_s']),
             da_dt(a, E_p, E_s, sums['da_p'], sums['da_s']),
-            de_dt(e_safe, n_mm, p['n_star'], phi, E_p, E_s, sums['de_p'], sums['de_s']),
-            dw_dt(e_safe, n_mm, p['n_star'], phi, dw_J2, E_p, E_s, sums['dw_p'], sums['dw_s'])
+            de_dot,
+            dphi_dt
         ]
 
     # Integration

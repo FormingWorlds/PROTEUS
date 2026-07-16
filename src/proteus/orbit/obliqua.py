@@ -150,6 +150,9 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides
         "orbit": {
             "obliqua": {
                 "store_3D": config.orbit.obliqua.store_3D,
+                "enforce_ec": config.orbit.obliqua.enforce_ec,
+                "optimize_scales": config.orbit.obliqua.optimize_scales,
+                "solid_shell": config.orbit.obliqua.solid_shell,
 
                 "min_frac": config.orbit.obliqua.min_frac,
 
@@ -162,10 +165,6 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides
                 "m": config.orbit.obliqua.m,
 
                 "spectrum": "adaptive", # Note that this is fixed, since spectrum = full is not useful for the current implementation of Obliqua in PROTEUS.
-
-                "N_sigma": config.orbit.obliqua.N_sigma,
-                "p_min": config.orbit.obliqua.p_min,
-                "p_max": config.orbit.obliqua.p_max,
 
                 "s_min": config.orbit.obliqua.k_min,
                 "s_max": config.orbit.obliqua.k_max,
@@ -184,7 +183,6 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides
                     "dr_max": config.orbit.obliqua.solid.dr_max,
                     "core": config.orbit.obliqua.solid.core,
                     "bulk_l": config.orbit.obliqua.solid.bulk_l,
-                    "permea": "will be removed",
                     "porosity_thresh": config.orbit.obliqua.solid.porosity_thresh,
                     "dbulk_power": config.orbit.obliqua.solid.dbulk_power,
                 },
@@ -301,7 +299,9 @@ def LN_from_lookup(hf_row: dict, tides_o: Tides_t, config: Config):
             PROTEUS config object
     """
     # Fetch relevant modes from planet-side forcing
-    nmk_p = np.asarray(tides_o.get(primary="planet", perturber="satellite").nmk)
+    nmk_p = np.asarray(
+        tides_o.get(primary="planet", perturber="satellite").nmk
+    )
 
     # Vectorized calculation of forcing frequencies (sigma_s = m * omega_rot - k * omega_orb)
     axial_freq_s = 2.0 * np.pi / hf_row["axial_period_sat"]
@@ -315,31 +315,71 @@ def LN_from_lookup(hf_row: dict, tides_o: Tides_t, config: Config):
         lookup = tides_o.get(primary="satellite_dict", perturber="planet")
     except KeyError:
         file_path = config.orbit.satellite.love_number_sat
-        if not file_path:
-            raise ValueError("Satellite tidal data file path (`config.orbit.satellite.love_number_sat`) is not specified.")
 
-        tides_o.add_from_file(primary="satellite_dict", perturber="planet", file_path=file_path)
+        if not file_path:
+            raise ValueError(
+                "Satellite tidal data file path (`config.orbit.satellite.love_number_sat`) is not specified."
+            )
+
+        tides_o.add_from_file(
+            primary="satellite_dict",
+            perturber="planet",
+            file_path=file_path
+        )
+
         lookup = tides_o.get(primary="satellite_dict", perturber="planet")
 
     # Extract lookup arrays
-    sigma_s_lookup = np.asarray(lookup.sigma)
-    nmk_s_lookup = np.asarray(lookup.nmk)
-    LNk_s_lookup = np.asarray(lookup.LNk)
+    sigma_lookup = np.asarray(lookup.sigma)
+    nmk_lookup = np.asarray(lookup.nmk)
+    LNk_lookup = np.asarray(lookup.LNk)
+
+    # Mirror lookup about sigma = 0 (symmetry valid for linear rheologies)
+    # Generates a clean negative-to-positive frequency sequence: [-c, -b, -a, a, b, c]
+    sigma_lookup = np.concatenate([
+        -sigma_lookup[::-1],
+        sigma_lookup
+    ])
+
+    nmk_lookup = np.concatenate([
+        nmk_lookup[::-1],
+        nmk_lookup
+    ], axis=0)  # axis=0 explicitly ensures 2D array coordinates align properly
+
+    LNk_lookup = np.concatenate([
+        np.conjugate(LNk_lookup)[::-1],
+        LNk_lookup
+    ])
 
     # Pre-index lookup table by degree n
     unique_n = np.unique(nmk_p[:, 0])
     lookup_by_n = {}
+
     for n_val in unique_n:
-        mask = (nmk_s_lookup[:, 0] == n_val)
+        # Create a boolean mask for the current degree n
+        mask = (nmk_lookup[:, 0] == n_val)
+
         if not np.any(mask):
-            raise ValueError(f"Lookup table does not contain tidal data for degree n = {int(n_val)}.")
-        lookup_by_n[n_val] = (sigma_s_lookup[mask], LNk_s_lookup[mask])
+            raise ValueError(
+                f"Lookup table does not contain tidal data for degree n = {int(n_val)}."
+            )
+
+        lookup_by_n[n_val] = (
+            sigma_lookup[mask],
+            LNk_lookup[mask]
+        )
 
     # Nearest-neighbor frequency matching
-    LNk_s = np.empty(len(nmk_p), dtype=LNk_s_lookup.dtype)
+    LNk_s = np.empty(len(nmk_p), dtype=LNk_lookup.dtype)
 
     for i, (n, _, _) in enumerate(nmk_p):
+        # Static tide
+        if np.isclose(sigma_s[i], 0.0, atol=1e-15):
+            LNk_s[i] = 0.0 + 0.0j
+            continue
+
         sigma_filtered, LNk_filtered = lookup_by_n[n]
+
         # Find the index of the closest forcing frequency
         idx = np.argmin(np.abs(sigma_filtered - sigma_s[i]))
         LNk_s[i] = LNk_filtered[idx]

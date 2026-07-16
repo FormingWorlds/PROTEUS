@@ -135,6 +135,12 @@ class Obliqua:
     ----------
     store_3D : bool
         Whether to store 3D information for solid tides.
+    enforce_ec : bool
+        Whether to enforce energy conservation between Lovenumbers and heating profile.
+    optimize_scales : bool
+        Whether to optimize the non-dimensional scaling parameters for solid tides.
+    solid_shell : bool
+        Whether to insert an infinitesimal solid shell around the core.
     min_frac : float
         Minimal segment radius fraction before smoothing.
     visc_l : float
@@ -172,7 +178,10 @@ class Obliqua:
     """
 
     # global configuration
-    store_3D: bool = field(default=False)
+    store_3D: bool        = field(default=False)
+    enforce_ec: bool      = field(default=True)
+    optimize_scales: bool = field(default=False)
+    solid_shell: bool     = field(default=True)
 
     min_frac: float = field(default=0.02, validator=gt(0))
 

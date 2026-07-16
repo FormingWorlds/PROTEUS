@@ -231,6 +231,11 @@ config_version = "3.0"
         ncalc                 = 1000         # grid points for tidal calculation
 
     [orbit.obliqua]
+        store_3D              = false        # store 3D tidal heating profile
+        enforce_ec            = true         # enforce eccentricity in tidal heating calculation
+        optimize_scales       = false        # optimize tidal heating scales for speed
+        solid_shell           = true         # use solid shell model for tidal heating
+
         min_frac              = 0.02         # minimum segment radius fraction before smoothing [dimensionless]
         visc_l                = 1e2          # pure liquid viscosity [Pa s]
         visc_lus              = 5e5          # liquidus viscosity to use [Pa s]
@@ -298,7 +303,7 @@ config_version = "3.0"
             sigma_R_inf       = 1e-7         # rayleigh drag coefficient in pure fluid [dimensionless]
             sigma_R_prf       = "dynamic"    # heating profile distribution ("uniform", "exp", "linear", "quadratic", "dynamic")
             H_R               = 1e5          # heating profile scale height [m]
-            efficiency        = 1e-2         # rayleigh drag efficiency at core interface [dimensionless]
+            efficiency        = 1e0         # rayleigh drag efficiency at core interface [dimensionless]
 
 # ----------------------------------------------------
 
