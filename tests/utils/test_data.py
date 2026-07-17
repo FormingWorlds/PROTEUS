@@ -2750,6 +2750,61 @@ def test_download_zalmoxis_eos_paleos_unified(mock_static, mock_folder, mock_cha
 @patch('proteus.utils.data._download_zalmoxis_chabrier')
 @patch('proteus.utils.data._download_zalmoxis_folder')
 @patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_paleos_2phase_fetches_seager_fallback(
+    mock_static, mock_folder, mock_chabrier
+):
+    """PALEOS-2phase with a PALEOS core still fetches the Seager static set.
+
+    The registry entry for every multi-layer mantle family references the
+    Seager iron table as its core fallback, and the start-of-run existence
+    check requires every referenced file, so the fetch must cover the
+    fallback even though neither the mantle nor the core names Seager. A
+    fetch that skips it leaves a fresh install failing the existence check
+    on its first run of the Earth tutorial config (PALEOS-2phase:MgSiO3
+    mantle, PALEOS:iron core). The 2-phase sub-tables and the unified iron
+    table must download alongside.
+    """
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='PALEOS:iron')
+
+    mock_static.assert_called_once()
+    folders = [str(c) for c in mock_folder.call_args_list]
+    assert any('paleos_mgsio3_tables_pt_proteus_solid.dat' in f for f in folders)
+    assert any('paleos_mgsio3_tables_pt_proteus_liquid.dat' in f for f in folders)
+    assert any('PALEOS_iron' in f for f in folders)
+    # The standard-resolution selection must not pull the ~1.3 GB highres pair.
+    assert not any('highres' in f for f in folders)
+    mock_chabrier.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_api_2phase_fetches_only_seager(
+    mock_static, mock_folder, mock_chabrier
+):
+    """PALEOS-API-2phase tabulates live but still needs the Seager fallback.
+
+    The API-backed 2-phase mantle generates its own tables on demand, so no
+    folder download may fire for it, yet its registry entry carries the
+    Seager iron core fallback whose file the existence check requires. The
+    limit case of the fallback rule: the static set is the only download.
+    """
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS-API-2phase:MgSiO3', core_eos='PALEOS-API:iron')
+
+    mock_static.assert_called_once()
+    mock_folder.assert_not_called()
+    mock_chabrier.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_multi_component(mock_static, mock_folder, mock_chabrier):
     """download_zalmoxis_eos handles multi-component EOS strings."""
     from proteus.utils.data import download_zalmoxis_eos

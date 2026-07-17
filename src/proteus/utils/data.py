@@ -2015,8 +2015,25 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
             if len(tokens) >= 2:
                 components.add(f'{tokens[0]}:{tokens[1]}')
 
-    # Seager2007 static EOS (always needed for core fallback)
-    if any(c.startswith('Seager2007') for c in components) or not core_eos:
+    # Seager2007 static EOS. Needed when a Seager component is selected
+    # directly, when no core EOS is given (Seager iron is the default
+    # core), and for every mantle family whose registry entry carries
+    # the Seager iron core fallback (see
+    # proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries):
+    # the start-of-run existence check requires every file those entries
+    # reference, so the fetch must cover the fallback too. Flat
+    # single-table families (PALEOS:*, Chabrier:*) do not reference it.
+    seager_fallback_families = (
+        'WolfBower2018:',
+        'RTPress100TPa:',
+        'PALEOS-2phase:',
+        'PALEOS-API-2phase:',
+    )
+    if (
+        any(c.startswith('Seager2007') for c in components)
+        or any(c.startswith(seager_fallback_families) for c in components)
+        or not core_eos
+    ):
         download_eos_static()
 
     # WolfBower2018 T-dependent MgSiO3
