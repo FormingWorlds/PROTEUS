@@ -1598,6 +1598,19 @@ def _get_sufficient(config: Config, clean: bool = False):
             group, bands = get_spfile_name_and_bands(config)
             download_spectral_file(group, bands)
 
+    # Opacity tables for synthetic observations. petitRADTRANS is optional, so these are
+    # fetched only when a config asks for it. A config that asks for it cannot proceed
+    # without them, so a failure here stops the run rather than surfacing later inside
+    # petitRADTRANS.
+    if config.observe.module == 'petitRADTRANS':
+        from proteus.utils.prt_data import download_prt_opacities
+
+        if not download_prt_opacities():
+            raise RuntimeError(
+                'Could not obtain the petitRADTRANS opacity tables required by '
+                'observe.module = "petitRADTRANS"'
+            )
+
     # Surface single-scattering data
     if config.atmos_clim.module == 'agni':
         download_surface_albedos()

@@ -116,6 +116,14 @@ atmodeller = ["atmodeller>=1.0.2"]
 # atmos_chem.module = "vulcan". Also installable editable via
 # tools/get_vulcan.sh.
 vulcan = ["fwl-vulcan>=26.04.22"]
+# observe: synthetic transit and eclipse spectra, selected via
+# observe.module = "petitRADTRANS". Pinned to a commit because the fork
+# publishes no versioned releases, so an unpinned dependency would track
+# its default branch. The opacity tables are a separate ~2.4 GB download
+# handled by proteus.utils.prt_data, not by pip.
+observe = [
+    "petitRADTRANS @ git+https://github.com/FormingWorlds/petitRADTRANS.git@0d9303cd981766496f4ec3045a230abc01d6269a",
+]
 
 develop = [
     # coverage[toml] enables standalone coverage tool with TOML config support (used by ratcheting script)

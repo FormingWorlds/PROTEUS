@@ -2901,6 +2901,7 @@ def test_get_sufficient_agni_skips_group_band_lookup_when_spectral_file_set(monk
         ),
         interior_energetics=SimpleNamespace(module='dummy'),
         interior_struct=SimpleNamespace(module='dummy'),
+        observe=SimpleNamespace(module=None),
     )
 
     data_mod._get_sufficient(config, clean=False)
@@ -2953,6 +2954,7 @@ def test_get_sufficient_agni_downloads_group_and_bands_when_no_spectral_file(mon
         ),
         interior_energetics=SimpleNamespace(module='dummy'),
         interior_struct=SimpleNamespace(module='dummy'),
+        observe=SimpleNamespace(module=None),
     )
 
     data_mod._get_sufficient(config, clean=False)
@@ -3007,6 +3009,7 @@ def test_get_sufficient_janus_always_downloads_group_and_bands(monkeypatch):
         atmos_clim=SimpleNamespace(module='janus', aerosols_enabled=False),
         interior_energetics=SimpleNamespace(module='dummy'),
         interior_struct=SimpleNamespace(module='dummy'),
+        observe=SimpleNamespace(module=None),
     )
 
     data_mod._get_sufficient(config, clean=False)
@@ -5438,6 +5441,7 @@ def test_get_sufficient_mors_solar_spectrum_only(monkeypatch):
         atmos_clim=SimpleNamespace(module='dummy', aerosols_enabled=False),
         interior_energetics=SimpleNamespace(module='dummy'),
         interior_struct=SimpleNamespace(module='dummy'),
+        observe=SimpleNamespace(module=None),
     )
 
     data_mod._get_sufficient(config)
@@ -5484,6 +5488,7 @@ def test_get_sufficient_mors_muscles_spectrum_only(monkeypatch):
         atmos_clim=SimpleNamespace(module='dummy', aerosols_enabled=False),
         interior_energetics=SimpleNamespace(module='dummy'),
         interior_struct=SimpleNamespace(module='dummy'),
+        observe=SimpleNamespace(module=None),
     )
 
     data_mod._get_sufficient(config)
@@ -5527,6 +5532,7 @@ def test_get_sufficient_agni_aerosols_downloads_scattering(monkeypatch):
         ),
         interior_energetics=SimpleNamespace(module='dummy'),
         interior_struct=SimpleNamespace(module='dummy'),
+        observe=SimpleNamespace(module=None),
     )
 
     surface_calls = []

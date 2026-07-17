@@ -34,20 +34,41 @@ import numpy as np
 import pytest
 from helpers import PROTEUS_ROOT
 
-from proteus import Proteus
-from proteus.observe.common import (
+# petitRADTRANS is an optional component and a machine without it is supported, so the
+# absence of the package skips this file with a reason that names it. Anything else that
+# goes wrong here is a failure: the point of these tests is to exercise the real
+# synthesis, and a run that quietly declines to do so would report success having checked
+# nothing.
+pytest.importorskip('petitRADTRANS', reason='petitRADTRANS not installed (observe extra)')
+
+from proteus import Proteus  # noqa: E402
+from proteus.observe.common import (  # noqa: E402
     OBS_SOURCES,
     get_eclipse_fpath,
     get_transit_fpath,
     read_eclipse,
     read_transit,
 )
-from proteus.observe.wrapper import calc_synthetic_spectra, run_observe
+from proteus.observe.wrapper import calc_synthetic_spectra, run_observe  # noqa: E402
+from proteus.utils.prt_data import opacities_present  # noqa: E402
 
 if TYPE_CHECKING:
     pass
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+
+
+def _require_checked(count: int, what: str) -> None:
+    """Skip when a test found nothing to check, rather than let it report success.
+
+    The tests below walk the observation sources and check whatever spectra the run
+    produced. An atmosphere module that writes no profile leaves every source with
+    nothing, so the loop bodies never execute and the test would end green having
+    verified nothing at all. Saying so as a skip keeps the difference between "checked
+    and correct" and "had nothing to check" visible in the run report.
+    """
+    if count == 0:
+        pytest.skip(f'No {what} was produced; the run wrote no atmosphere profile')
 
 
 @pytest.fixture(scope='module')
@@ -59,12 +80,20 @@ def dummy_run_with_observe():
     module enabled to generate transit/eclipse spectra. The output can be
     used for all observation-related tests in this module.
 
+    The opacity tables are the one other thing that may legitimately be absent, and their
+    absence skips. A failure of the run itself is raised, not skipped: these tests exist
+    to exercise the real synthesis, so a fixture that swallowed the failure would leave
+    every test in the file passing while checking nothing.
+
     Yields:
         tuple: (runner: Proteus, output_dir: str, hf_row: dict)
             - runner: The PROTEUS runner object
             - output_dir: Path to the output directory
             - hf_row: The last row from the helpfile (used for spectrum calculation)
     """
+    if not opacities_present():
+        pytest.skip('petitRADTRANS opacity tables not installed; see proteus.utils.prt_data')
+
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load configuration with observe module enabled
@@ -94,19 +123,17 @@ def dummy_run_with_observe():
         runner.config.params.out.write_mod = 0
         runner.config.params.out.archive_mod = 'none'
 
-        try:
-            # Run simulation to generate atmosphere output
-            runner.start(resume=False, offline=True)
+        # Run simulation to generate atmosphere output. A failure here is a failure of
+        # the thing under test and is left to propagate.
+        runner.start(resume=False, offline=True)
 
-            # Get the last helpfile row for spectrum calculations
-            if runner.hf_all is None or len(runner.hf_all) == 0:
-                pytest.skip('Helpfile is empty')
+        assert runner.hf_all is not None and len(runner.hf_all) > 0, (
+            'PROTEUS produced no helpfile rows, so there is no state to synthesise from'
+        )
 
-            hf_row = runner.hf_all.iloc[-1].to_dict()
+        hf_row = runner.hf_all.iloc[-1].to_dict()
 
-            yield runner, output_dir, hf_row
-        except Exception as e:
-            pytest.skip(f'Failed to run PROTEUS with observe module: {e}')
+        yield runner, output_dir, hf_row
 
 
 @pytest.mark.integration
@@ -132,6 +159,7 @@ def test_observe_wrapper_calc_synthetic_spectra(dummy_run_with_observe):
     assert observe_dir.exists(), f'Observe directory not created: {observe_dir}'
 
     # Check that transit/eclipse files exist for at least one source
+    checked = 0
     for source in OBS_SOURCES:
         # Skip profile source if using dummy atmosphere module
         if source == 'profile' and config.atmos_clim.module == 'dummy':
@@ -145,6 +173,7 @@ def test_observe_wrapper_calc_synthetic_spectra(dummy_run_with_observe):
 
         # At least one should exist
         if transit_file.exists() or eclipse_file.exists():
+            checked += 1
             # Validate transit spectrum if it exists
             if transit_file.exists():
                 transit_data = read_transit(output_dir, source, 'synthesis')
@@ -186,6 +215,8 @@ def test_observe_wrapper_calc_synthetic_spectra(dummy_run_with_observe):
                     f'Non-finite wavelengths in eclipse: {source}'
                 )
                 assert np.all(np.isfinite(depths)), f'Non-finite depths in eclipse: {source}'
+
+    _require_checked(checked, 'spectrum')
 
 
 @pytest.mark.integration
@@ -233,6 +264,7 @@ def test_transit_depth_spectrum_format(dummy_run_with_observe):
     # Calculate spectra
     from proteus.observe.petitRADTRANS import transit_depth
 
+    checked = 0
     for source in OBS_SOURCES:
         # Skip unsupported sources
         if source == 'profile' and config.atmos_clim.module == 'dummy':
@@ -244,6 +276,7 @@ def test_transit_depth_spectrum_format(dummy_run_with_observe):
             result = transit_depth(hf_row, config, source, runner.directories)
             if result is None:
                 continue
+            checked += 1
 
             # Validate return format: [wavelength, depth]
             assert isinstance(result, np.ndarray), (
@@ -269,6 +302,8 @@ def test_transit_depth_spectrum_format(dummy_run_with_observe):
             if 'Could not read atmosphere data' not in str(e):
                 raise
 
+    _require_checked(checked, 'transit spectrum')
+
 
 @pytest.mark.integration
 @pytest.mark.physics_invariant
@@ -288,6 +323,7 @@ def test_eclipse_depth_spectrum_format(dummy_run_with_observe):
     # Calculate spectra
     from proteus.observe.petitRADTRANS import eclipse_depth
 
+    checked = 0
     for source in OBS_SOURCES:
         # Skip unsupported sources
         if source == 'profile' and config.atmos_clim.module == 'dummy':
@@ -299,6 +335,7 @@ def test_eclipse_depth_spectrum_format(dummy_run_with_observe):
             result = eclipse_depth(hf_row, config, source, runner.directories)
             if result is None:
                 continue
+            checked += 1
 
             # Validate return format: [wavelength, depth]
             assert isinstance(result, np.ndarray), (
@@ -323,6 +360,8 @@ def test_eclipse_depth_spectrum_format(dummy_run_with_observe):
             # Some sources might not be available, which is ok
             if 'Could not read atmosphere data' not in str(e):
                 raise
+
+    _require_checked(checked, 'eclipse spectrum')
 
 
 @pytest.mark.integration
@@ -356,6 +395,8 @@ def test_observe_files_persist(dummy_run_with_observe):
             data2 = read_transit(output_dir, source, 'synthesis')
             assert data1.equals(data2), f'Data inconsistency on re-read: {source}'
             spectra_data[source] = data1
+
+    _require_checked(len(spectra_data), 'transit spectrum')
 
 
 @pytest.mark.integration
@@ -454,6 +495,11 @@ def test_transit_eclipse_depth_ratio(dummy_run_with_observe):
     try:
         transit_result = transit_depth(hf_row, config, 'outgas', runner.directories)
         eclipse_result = eclipse_depth(hf_row, config, 'outgas', runner.directories)
+
+        _require_checked(
+            int(transit_result is not None and eclipse_result is not None),
+            'transit and eclipse spectrum pair',
+        )
 
         if transit_result is not None and eclipse_result is not None:
             transit_wl = transit_result[:, 0]

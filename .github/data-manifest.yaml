@@ -38,6 +38,14 @@ datasets:
   mors_evolution_tracks:
     family: Spada
 
+  # petitRADTRANS opacity tables (~5.6 GB), fetched only for configs that select the
+  # optional observe module. These come from the library the petitRADTRANS team
+  # publishes, which stays the source of truth; PROTEUS names which file it wants per
+  # species in proteus.utils.prt_data and caches the result here. Bump the version to
+  # re-cut the cache after any of those names change.
+  prt_opacities:
+    version: 2026-07-17
+
   # DACE / Zeng-2019 reference catalogs for the cpl_population plots.
   exoplanet_archive:
     version: 2026-05
