@@ -404,9 +404,20 @@ class TestGitHelpers:
         assert head is not None and len(head) == 40
 
     def test_git_dirty_false_for_clean_repo(self, tmp_path):
-        """Clean repo returns False."""
+        """A repo whose tracked content matches HEAD is clean; an untracked file
+        still counts as dirty.
+
+        The dirty state is read from ``git status --porcelain``, which lists
+        untracked files alongside modified ones. An untracked file is therefore
+        the edge case that separates the current behaviour from a tracked-only
+        check such as ``git diff --quiet``, which would keep reporting clean
+        here and let an environment report hide a stray file.
+        """
         _init_test_repo(tmp_path)
         assert _git_dirty(str(tmp_path)) is False
+        # Edge: a file git has never seen makes the same repo dirty.
+        (tmp_path / 'untracked.txt').write_text('new')
+        assert _git_dirty(str(tmp_path)) is True
 
     def test_git_dirty_true_for_modified_file(self, tmp_path):
         """Modified tracked file makes repo dirty."""

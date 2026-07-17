@@ -78,9 +78,27 @@ def test_orphans_extract_attrs_class_union_with_attrs():
 
 
 def test_orphans_extract_attrs_class_plain_scalar_returns_none():
-    """Plain scalars (float, bool, str) return None; no attrs walk should follow."""
+    """Scalars and non-attrs containers yield no class, so no attrs walk follows.
+
+    Two branches reach the same answer by different routes: a bare scalar has no
+    ``__args__`` and exits early, while a parameterised container does enter the
+    ``__args__`` loop but holds no attrs member. Both must fall through to None,
+    or ``_collect_orphan_keys`` would recurse into a value the schema never
+    declares as a sub-config and report its keys as orphans.
+    """
+    from proteus.config._planet import Planet
+
     for hint in (float, bool, int, str):
         assert _extract_attrs_class(hint) is None, f'Expected None for {hint}'
+
+    # Container hints reach the __args__ loop but hold no attrs member.
+    for hint in (list[float], dict[str, float]):
+        assert _extract_attrs_class(hint) is None, f'Expected None for {hint}'
+
+    # Discrimination: a real attrs class is still returned, so the None results
+    # above come from the scalar and container branches and not from a
+    # regression that returns None unconditionally.
+    assert _extract_attrs_class(Planet) is Planet
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +125,12 @@ def test_orphans_collect_orphan_keys_valid_top_level_keys():
     data = {'star': {}, 'planet': {}, 'orbit': {}, 'config_version': '3.0'}
     result = _collect_orphan_keys(data, Config)
     assert result == []
+
+    # Discrimination: an unknown key alongside the very same valid keys is
+    # still reported, so the empty list above reflects the keys being known
+    # rather than a scan that never inspects a top-level dict.
+    mixed = dict(data, NOT_A_FIELD=1)
+    assert _collect_orphan_keys(mixed, Config) == ['NOT_A_FIELD']
 
 
 def test_orphans_collect_orphan_keys_single_top_level_orphan():
@@ -144,6 +168,22 @@ def test_orphans_collect_orphan_keys_deeply_nested_orphan():
     result = _collect_orphan_keys(data, Config)
     assert result == ['star.mors.bad_star_key']
 
+    # Orphans at two different depths in a single walk: each dotted path must
+    # carry the prefix of the level it was found at. A recursion that reset or
+    # dropped the prefix would report a bare 'bad_star_key' here and mislead
+    # the user into looking for the typo one section too high.
+    two_depths = {
+        'star': {
+            'module': 'mors',
+            'NOT_A_STAR_FIELD': 1,
+            'mors': {'age_now': 4.5, 'bad_star_key': 'oops'},
+        }
+    }
+    assert sorted(_collect_orphan_keys(two_depths, Config)) == [
+        'star.NOT_A_STAR_FIELD',
+        'star.mors.bad_star_key',
+    ]
+
 
 def test_orphans_collect_orphan_keys_multiple_orphans_all_reported():
     """All orphan keys are collected; none is silently dropped."""
@@ -170,6 +210,12 @@ def test_orphans_collect_orphan_keys_valid_nested_dict_does_not_raise():
     }
     result = _collect_orphan_keys(data, Config)
     assert result == []
+
+    # Discrimination: the walk does descend into these same nested dicts, so a
+    # typo one level down is caught. Without this, the empty list above would
+    # also be produced by a scan that never recursed past the top level.
+    data['planet']['mass_totl'] = 1.0
+    assert _collect_orphan_keys(data, Config) == ['planet.mass_totl']
 
 
 def test_orphans_collect_orphan_keys_non_attrs_type_skips_recursion():
@@ -198,6 +244,13 @@ def test_orphans_check_config_orphan_free_clean_config_passes():
     """A config with no orphans returns True without raising."""
     result = check_config_orphan_free(_MINIMAL_VALID)
     assert result is True
+
+    # Error contract: the same config carrying one unknown key returns False
+    # rather than raising, because the caller reports the keys and decides. The
+    # pair also shows True is driven by the config content, not returned
+    # unconditionally.
+    dirty = {**_MINIMAL_VALID, 'planet': {**_MINIMAL_VALID['planet'], 'typo_field': 99}}
+    assert check_config_orphan_free(dirty) is False
 
 
 # ---------------------------------------------------------------------------

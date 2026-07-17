@@ -1777,8 +1777,10 @@ def test_boundary_runner_init_invalid_core_frac_mode_raises_value_error(
     Error contract: the message must name both valid modes and reproduce the
     offending value so users can diagnose config mistakes without reading source.
 
-    Edge: the error branch is only reachable when R_core is absent from hf_row
-    (the happy-path shortcut at line 93 would otherwise bypass the mode check).
+    Edge: the error branch is only reachable when R_core is absent from hf_row.
+    A supplied CMB radius short-circuits the mode check, so the same invalid
+    mode must construct in that case; this pairs the raise with the condition
+    that makes it reachable.
     """
     hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
     mock_config.interior_struct.core_frac_mode = 'volume'  # neither 'radius' nor 'mass'
@@ -1794,6 +1796,16 @@ def test_boundary_runner_init_invalid_core_frac_mode_raises_value_error(
                 mock_atmos,
             )
 
+    # With R_core present the mode is never consulted: the same invalid 'volume'
+    # constructs and the CMB radius is taken from the row. This is what makes
+    # the raise above attributable to the missing R_core rather than to the
+    # config value alone.
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        runner = BoundaryRunner(
+            mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
+        )
+    assert runner.core_radius == pytest.approx(mock_hf_row['R_core'])
+
 
 def test_boundary_runner_init_invalid_core_frac_mode_message_includes_bad_value(
     mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
@@ -1801,13 +1813,30 @@ def test_boundary_runner_init_invalid_core_frac_mode_message_includes_bad_value(
     """The ValueError raised for an invalid core_frac_mode must include the
     offending value so the user can identify the misconfigured field.
 
-    Edge: tests a different invalid value ('fraction') to confirm the error
-    message is populated from the config value, not hard-coded.
+    The message is built from the config value rather than hard-coded: a second
+    invalid value quotes itself and does not mention the first. Without that
+    contrast a message that quoted a fixed example value would still satisfy the
+    match and send the user looking for a field they never set.
     """
     hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
     mock_config.interior_struct.core_frac_mode = 'fraction'
 
-    with pytest.raises(ValueError, match=r"got 'fraction'"):
+    with pytest.raises(ValueError, match=r"got 'fraction'") as excinfo:
+        with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+            BoundaryRunner(
+                mock_config,
+                mock_dirs,
+                hf_row_no_r_core,
+                mock_hf_all,
+                mock_interior,
+                mock_atmos,
+            )
+    # Only the value actually configured is quoted back.
+    assert 'volume' not in str(excinfo.value)
+
+    # A different invalid value quotes itself, so the message tracks the config.
+    mock_config.interior_struct.core_frac_mode = 'volume'
+    with pytest.raises(ValueError, match=r"got 'volume'"):
         with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
             BoundaryRunner(
                 mock_config,

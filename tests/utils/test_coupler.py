@@ -2008,16 +2008,33 @@ def test_print_citation_covers_module_specific_citations_with_when_set(monkeypat
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'name,expected',
+    'name,expected,near_miss',
     [
-        ('P_surf', True),
-        ('X_vmr', True),
-        ('CO2_bar', True),
-        ('T_surf', False),
+        # Exact membership: the name list is matched whole, so a longer name
+        # built on the same stem falls through to the linear default.
+        ('P_surf', True, 'P_surface'),
+        # Composition suffix: the deciding token is the '_vmr' substring.
+        ('X_vmr', True, 'X_vmol'),
+        # Partial-pressure suffix: the deciding token is the '_bar' substring.
+        ('CO2_bar', True, 'CO2_bat'),
+        # Linear default, taken the other way round: a name that is neither
+        # listed nor suffixed stays linear until it gains the substring.
+        ('T_surf', False, 'T_surf_vmr'),
     ],
 )
-def test_variable_is_logarithmic_covers_membership_and_suffix_branches(name, expected):
+def test_variable_is_logarithmic_covers_membership_and_suffix_branches(
+    name, expected, near_miss
+):
+    """Log scaling is chosen by exact name membership or a _vmr / _bar substring.
+
+    Each case pairs a name with a near-miss differing only in the deciding
+    token, so the pair separates the branch under test from a classifier that
+    keys off the general shape of the name. Plotting reads this to pick a log
+    axis, so a mislabelled variable is drawn on the wrong scale rather than
+    failing loudly.
+    """
     assert variable_is_logarithmic(name) is expected
+    assert variable_is_logarithmic(near_miss) is not expected
 
 
 @pytest.mark.unit
@@ -2224,7 +2241,13 @@ def test_set_directories_sets_rad_and_temp_for_non_debug(monkeypatch):
 
 @pytest.mark.unit
 def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypatch, tmp_path):
-    """Cover spider/zalmoxis/janus/calliope/zephyrus/mors pass branches plus unpinned deps."""
+    """A spider stack above its pins passes, and the pin itself is inclusive.
+
+    'numpy' carries no version specifier and must be skipped rather than parsed.
+    The second block is the boundary: an installed version exactly equal to the
+    required minimum satisfies a '>=' pin, so a regression to a strict '>'
+    comparison would reject a correctly-pinned environment and abort the run.
+    """
     from proteus.utils.coupler import validate_module_versions
 
     config = types.SimpleNamespace(
@@ -2235,28 +2258,36 @@ def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypa
         escape=types.SimpleNamespace(module='zephyrus'),
         star=types.SimpleNamespace(module='mors'),
     )
-    monkeypatch.setitem(sys.modules, 'zalmoxis', types.SimpleNamespace(__version__='1.2'))
-    monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='1.2'))
-    monkeypatch.setitem(sys.modules, 'calliope', types.SimpleNamespace(__version__='1.2'))
-    monkeypatch.setitem(sys.modules, 'zephyrus', types.SimpleNamespace(__version__='1.2'))
-    monkeypatch.setitem(sys.modules, 'mors', types.SimpleNamespace(__version__='1.2'))
+    requires = [
+        'numpy',
+        'fwl-zalmoxis>=1.0',
+        'fwl-janus>=1.0',
+        'fwl-calliope>=1.0',
+        'fwl-zephyrus>=1.0',
+        'fwl-mors>=1.0',
+    ]
+    installed = ('zalmoxis', 'janus', 'calliope', 'zephyrus', 'mors')
+
+    for name in installed:
+        monkeypatch.setitem(sys.modules, name, types.SimpleNamespace(__version__='1.2'))
 
     with (
-        patch(
-            'importlib.metadata.requires',
-            return_value=[
-                'numpy',
-                'fwl-zalmoxis>=1.0',
-                'fwl-janus>=1.0',
-                'fwl-calliope>=1.0',
-                'fwl-zephyrus>=1.0',
-                'fwl-mors>=1.0',
-            ],
-        ),
+        patch('importlib.metadata.requires', return_value=requires),
         patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
     ):
         validate_module_versions({'rad': str(tmp_path)}, config)
     assert mock_update.call_count == 0
+
+    # Boundary: installed == required minimum. '>=' admits equality.
+    for name in installed:
+        monkeypatch.setitem(sys.modules, name, types.SimpleNamespace(__version__='1.0'))
+
+    with (
+        patch('importlib.metadata.requires', return_value=requires),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update_eq,
+    ):
+        validate_module_versions({'rad': str(tmp_path)}, config)
+    assert mock_update_eq.call_count == 0
 
 
 @pytest.mark.unit
@@ -2339,6 +2370,13 @@ def test_update_plots_spider_dummy_atm_covers_skip_branches(monkeypatch, tmp_pat
 
 @pytest.mark.unit
 def test_remove_excess_files_without_spectra(monkeypatch):
+    """With spectra kept, only the three run-scratch files are removed.
+
+    Those are the AGNI log, the SPIDER scratch directory, and the lockfile. The
+    spectral files are the expensive ones to regenerate and are kept unless
+    rm_spectralfiles is set, so the count pins that nothing else was swept in
+    and the suffix check pins which files were spared.
+    """
     removed = []
     monkeypatch.setattr('proteus.utils.coupler.safe_rm', lambda p: removed.append(p))
 
@@ -2505,7 +2543,13 @@ def test_select_resumable_snapshot_dummy_atm_requires_only_interior(tmp_path):
 
 @pytest.mark.unit
 def test_select_resumable_snapshot_raises_when_no_complete_pair(tmp_path):
-    """No complete pair anywhere raises, so the caller can restart fresh."""
+    """No resumable row raises, so the caller can restart fresh.
+
+    Two ways to reach it: the scan walks every row and finds none backed by a
+    readable pair, or there is no row to walk at all. The empty helpfile is the
+    boundary case where the loop body never runs, so the raise has to come from
+    the post-loop check rather than from a failed probe inside it.
+    """
     data = tmp_path / 'data'
     data.mkdir()
     for t in (10, 20):
@@ -2514,6 +2558,10 @@ def test_select_resumable_snapshot_raises_when_no_complete_pair(tmp_path):
 
     with pytest.raises(RuntimeError, match='No complete'):
         select_resumable_snapshot(str(tmp_path), _hf_times([10, 20]))
+
+    # Boundary: a helpfile with no rows has nothing to resume from either.
+    with pytest.raises(RuntimeError, match='No complete'):
+        select_resumable_snapshot(str(tmp_path), _hf_times([]))
 
 
 @pytest.mark.unit

@@ -150,3 +150,8 @@ class TestZalmoxisVolatileGates:
         (the zalmoxis sub-config is inert under spider)."""
         s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(global_miscibility=True)))
         assert s.zalmoxis.global_miscibility is True
+        # Discrimination: the identical sub-config is rejected under zalmoxis,
+        # so the module is the only thing that decides, and acceptance here is
+        # the gate being out of scope rather than the flag value being tolerated.
+        with pytest.raises(ValueError, match='global_miscibility'):
+            Struct(module='zalmoxis', zalmoxis=Zalmoxis(global_miscibility=True))
