@@ -356,6 +356,8 @@ class StopParams:
         Parameters for planet disintegration criteria.
     clock: StopClock
         Parameters for maximum clock runtime criteria.
+    evap: StopEvap
+        Parameters for evaporation of mantle
     """
 
     iters: StopIters = field(factory=StopIters)

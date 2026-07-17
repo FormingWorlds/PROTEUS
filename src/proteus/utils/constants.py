@@ -1,8 +1,6 @@
 # Physical, numerical, etc constants
 from __future__ import annotations
 
-# import config file from proteus to set the vapour species list
-
 L_sun = 3.828e26  # W, IAU definition
 R_sun = 6.957e8  # m
 R_sun_cm = 100 * R_sun  # cm
