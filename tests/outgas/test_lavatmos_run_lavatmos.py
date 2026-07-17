@@ -123,7 +123,7 @@ def test_read_in_element_fracs(tmp_path):
     Reads FastChem abundance format:
 
     H 12.0
-    O 10
+    O 10.0
     """
 
     infile = tmp_path / 'elements.dat'
@@ -154,8 +154,8 @@ def test_read_in_element_fracs_zero_value(tmp_path):
 
     infile.write_text(
         """
-H 0
-O 10
+H 0.0
+O 10.0
 """
     )
 
@@ -230,8 +230,8 @@ def test_zero_abundance_is_preserved(tmp_path):
 
     infile.write_text(
         """
-H 0
-O 12
+H 0.0
+O 12.0
 """
     )
 

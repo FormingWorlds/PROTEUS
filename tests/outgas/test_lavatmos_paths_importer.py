@@ -67,11 +67,12 @@ class TestPathsImporterInitialization:
         Physical scenario: LavAtmos requires pre-existing output directories to
         write to; paths_importer must create them idempotently on init.
         """
-        # mock_dirs = {'output': '/mock/output/'}
+        mock_dirs = {'output': '/mock/output/'}
+        from proteus.outgas.lavatmos import paths_importer
 
         with patch.dict(os.environ, {'LAVA_DIR': '/lava', 'FC_DIR': '/fc'}, clear=False):
             with patch('os.makedirs') as mock_makedirs:
-                # importer = paths_importer(mock_dirs)
+                paths_importer(mock_dirs)
 
                 # Verify makedirs was called twice: once for element_abundances, once for fastchem
                 assert mock_makedirs.call_count >= 2
@@ -267,7 +268,9 @@ class TestPathsImporterInitialization:
         Physical scenario: initialization may be called multiple times; creating
         dirs must not fail if they already exist.
         """
-        # mock_dirs = {'output': '/output/base'}
+        from proteus.outgas.lavatmos import paths_importer
+
+        mock_dirs = {'output': '/output/base'}
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
 
@@ -275,7 +278,7 @@ class TestPathsImporterInitialization:
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
             with patch('os.makedirs') as mock_makedirs:
-                # importer = paths_importer(mock_dirs)
+                paths_importer(mock_dirs)
 
                 # Verify all makedirs calls have exist_ok=True
                 for call_obj in mock_makedirs.call_args_list:
@@ -505,7 +508,9 @@ class TestPathsImporterPhysicsInvariants:
         must call makedirs() for element_abundances and fastchem output dirs,
         no more, no less. Repeated calls should not increase call count.
         """
-        # mock_dirs = {'output': '/output/base'}
+        from proteus.outgas.lavatmos import paths_importer
+
+        mock_dirs = {'output': '/output/base'}
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
 
@@ -513,7 +518,7 @@ class TestPathsImporterPhysicsInvariants:
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
             with patch('os.makedirs') as mock_makedirs:
-                # importer = paths_importer(mock_dirs)
+                paths_importer(mock_dirs)
 
                 # Verify exactly 2 makedirs calls: element_abundances, fastchem
                 assert mock_makedirs.call_count == 2

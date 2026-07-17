@@ -482,8 +482,6 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     log.info('new atmospheric mass:%.2e' % M_atmo_new)
 
     gas_list = vol_list + vap_list
-
-    # do not update surface pressure!
     Poutgas = (
         new_atmos_abundances['Pbar'][0] - hf_row['P_surf']
     )  # comput ehow much silicates are outgassed
@@ -492,6 +490,10 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
 
     hf_row['P_vol'] = hf_row['P_surf']
     hf_row['P_vap'] = Poutgas
+
+    mmw_elements = 0
+    for e in element_fracs.keys():
+        mmw_elements += element_fracs[e] * species_lib[e].weight
 
     for vol in gas_list:
         if vol in species_lib.keys():
@@ -517,10 +519,6 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
             hf_row[vol + '_mol_atm'] + hf_row[vol + '_mol_solid'] + hf_row[vol + '_mol_liquid']
         )
 
-    mmw_elements = 0
-    for e in element_fracs.keys():
-        mmw_elements += element_fracs[e] * species_lib[e].weight
-
     for e in element_list:
         log.debug('element frac:  %s,  %s', e, element_fracs[e])
         if (
@@ -529,13 +527,20 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
             log.debug('volatile species, no need to update from lavatmos')
             continue
         else:
-            hf_row[e + '_kg_atm'] = (
-                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
-            )
-            hf_row['M_vaps'] += hf_row[e + '_kg_total']
+            if e not in gas_list:
+                hf_row[e + '_kg_atm'] = (
+                    element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+                )
+            hf_row['M_vaps'] += hf_row[e + '_kg_atm']
 
     # saving new oxygen fugacity from lavatmos run, which is computed as log10 of the partial pressure of O2, to compare with the iron wustite buffer
-    log10_fO2 = np.log10(new_atmos_abundances['O2'][0]) + np.log10(
+
+    pO2 = new_atmos_abundances['O2'][0]
+    log.debug('O2 patial pressure  very small: %.3e', pO2)
+    if pO2 < 1e-20:
+        log.debug('O2 patial pressure smaller than 1e-12')
+        pO2 = 1e-20
+    log10_fO2 = np.log10(pO2) + np.log10(
         new_atmos_abundances['Pbar'][0]
     )  # is this really partical pressure ? Maybe this is actually abundances
 
@@ -551,7 +556,6 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
         'log10 fO2 shift compared to IW buffer: %.6f' % hf_row['log10_fO2_shift_vapourise']
     )
 
-    # print vapourised partial pressures (in order of descending abundance)
     mask = [hf_row[s + '_vmr'] for s in vap_list]
     for i in np.argsort(mask)[::-1]:
         s = vap_list[i]
