@@ -1989,6 +1989,22 @@ def _download_zalmoxis_chabrier():
         )
 
 
+# Mantle EOS family prefixes whose registry entry carries the Seager iron
+# table as its core fallback (see
+# proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries).
+# The start-of-run existence check requires every file those entries
+# reference, so the data fetch must cover the fallback whenever such a
+# mantle is selected. Flat single-table families (PALEOS:*, Chabrier:*)
+# do not reference it. Kept in sync with the registry by a dedicated
+# test in tests/utils/test_data.py.
+SEAGER_FALLBACK_FAMILIES = (
+    'WolfBower2018:',
+    'RTPress100TPa:',
+    'PALEOS-2phase:',
+    'PALEOS-API-2phase:',
+)
+
+
 def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: str = ''):
     """Download Zalmoxis EOS data required for the given EOS configuration.
 
@@ -2018,20 +2034,10 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
     # Seager2007 static EOS. Needed when a Seager component is selected
     # directly, when no core EOS is given (Seager iron is the default
     # core), and for every mantle family whose registry entry carries
-    # the Seager iron core fallback (see
-    # proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries):
-    # the start-of-run existence check requires every file those entries
-    # reference, so the fetch must cover the fallback too. Flat
-    # single-table families (PALEOS:*, Chabrier:*) do not reference it.
-    seager_fallback_families = (
-        'WolfBower2018:',
-        'RTPress100TPa:',
-        'PALEOS-2phase:',
-        'PALEOS-API-2phase:',
-    )
+    # the Seager iron core fallback (SEAGER_FALLBACK_FAMILIES above).
     if (
         any(c.startswith('Seager2007') for c in components)
-        or any(c.startswith(seager_fallback_families) for c in components)
+        or any(c.startswith(SEAGER_FALLBACK_FAMILIES) for c in components)
         or not core_eos
     ):
         download_eos_static()
@@ -2112,7 +2118,6 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
     # (generated locally from upstream paleos at runtime) but are valid.
     known_prefixes = (
         'Seager2007:',
-        'WolfBower2018:',
         'RTPress100TPa:',
         'Chabrier:',
         'PALEOS-API:',
