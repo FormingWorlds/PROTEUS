@@ -61,7 +61,7 @@ def _handler(cfg: Any, *, phi_global: float = 0.4) -> Any:
         'runtime': 10.0,
         'Time': 0.0,
         'M_vaps': 1.0e18,
-        'M_int': 1.0e24
+        'M_int': 1.0e24,
     }
 
     loops = {
