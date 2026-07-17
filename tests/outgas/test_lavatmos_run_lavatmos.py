@@ -122,7 +122,7 @@ def test_read_in_element_fracs(tmp_path):
     """
     Reads FastChem abundance format:
 
-    H 12
+    H 12.0
     O 10
     """
 
@@ -131,8 +131,8 @@ def test_read_in_element_fracs(tmp_path):
     infile.write_text(
         """
 # comment
-H 12
-O 10
+H 12.0
+O 10.0
 """
     )
 
@@ -179,7 +179,7 @@ def test_normalized_element_fractions_sum_to_one(tmp_path):
 
     infile.write_text(
         """
-H 12
+H 12.0
 O 12
 """
     )
@@ -197,8 +197,8 @@ def test_normalized_element_fraction_ratio(tmp_path):
 
     infile.write_text(
         """
-H 12
-O 11
+H 12.0
+O 11.0
 """
     )
 
@@ -214,7 +214,7 @@ def test_missing_elements_are_added(tmp_path):
 
     infile.write_text(
         """
-H 12
+H 12.0
 """
     )
 
