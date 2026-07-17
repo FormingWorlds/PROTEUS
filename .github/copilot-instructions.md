@@ -204,9 +204,11 @@ pytest
 ```bash
 pytest -m unit              # Fast unit tests (<100ms each, mocked physics)
 pytest -m smoke             # Binary validation (1 timestep, low res)
-pytest -m "unit and not skip"   # What PR checks run
 pytest -m integration       # Multi-module coupling
 pytest -m "not slow"        # Everything except slow tests
+
+# Exactly what the PR checks run (the extra filters keep slow-marked files out):
+pytest -m "unit and not skip and not slow and not integration" --ignore=tests/examples
 ```
 
 **With coverage**:
@@ -224,7 +226,7 @@ coverage html
 **Coverage thresholds** (in `pyproject.toml`; fixed ceilings, never lowered):
 
 - Fast gate (`[tool.proteus.coverage_fast]`, unit-only on PR, every PR): fixed at **80%**. Unit tests alone cannot exercise wrapper paths that require real binaries, so the fast gate is held at 80 rather than chasing 90. Warn-only on draft PRs; blocking once the PR is ready for review.
-- Full gate (`[tool.coverage.report]`, unit + smoke + integration + slow, nightly): fixed at **90%**.
+- Full gate value (`[tool.coverage.report]`): fixed at **90%**. The nightly does not enforce it; it is the number the PR estimated-total gate is measured against.
 - Estimated total (PR unit coverage union with the latest nightly artifact, every PR): compared against the 90% full gate. This is the 90% KPI; the nightly tier fills the wrapper / binary code paths.
 
 See the `Coverage architecture` block in the Testing Standards section below for the contract.
@@ -261,10 +263,13 @@ pre-commit install -f
 
 **CI runs on PRs** (`.github/workflows/ci-pr-checks.yml`):
 
-1. **Unit tests**: `pytest -m "unit and not skip" --cov=src --cov-fail-under=$FAST_COV_FAIL_UNDER` (CI reads the fast threshold from `pyproject.toml` `[tool.proteus.coverage_fast]`; fixed at 80%, warn-only on draft PRs). The PR cycle runs the unit tier only; smoke, integration, and slow run nightly.
+1. **Unit tests**: `pytest -m "unit and not skip and not slow and not integration" --cov=src --cov-fail-under=$FAST_COV_FAIL_UNDER` (CI reads the fast threshold from `pyproject.toml` `[tool.proteus.coverage_fast]`; fixed at 80%, warn-only on draft PRs). The PR cycle runs the unit tier only; smoke, integration, and slow run nightly.
 2. **Lint**: `ruff check src/ tests/` and `ruff format --check src/ tests/`
 3. **Diff-cover**: 80% on changed lines, fast-suite coverage unioned with the latest nightly coverage (enforced)
-4. **Test structure**: `bash tools/validate_test_structure.sh`
+4. **Estimated-total coverage**: PR unit coverage unioned with the latest nightly, measured against 90%
+5. **Test structure**: `bash tools/validate_test_structure.sh`
+6. **Editable install**: verifies the package installs correctly
+7. **Test quality**: `python tools/check_test_quality.py --check` (reported, does not block)
 
 **All must pass** before merge. Coverage gates are warn-only on draft PRs and block once the PR is ready for review. Coverage ceilings are fixed (fast 80%, full 90%) and never lowered.
 
@@ -296,7 +301,7 @@ pre-commit install -f
 - `pyproject.toml` - Package metadata, pytest config, coverage thresholds, ruff rules
 - `mkdocs.yml` - Documentation configuration (used by Zensical)
 - `.github/workflows/` - CI/CD pipelines
-  - `ci-pr-checks.yml` - Fast PR validation (unit + smoke + lint)
+  - `ci-pr-checks.yml` - Fast PR validation (unit + lint)
   - `code-style.yaml` - Pre-commit hooks
   - `proteus_test_quality_gate.yml` - Reusable test workflow
 
@@ -329,8 +334,8 @@ Tier markers, with their CI surface and per-test wall-time budgets:
 
 | Marker | What it tests | Speed budget | When CI runs it |
 |---|---|---|---|
-| `@pytest.mark.unit` | Python logic, heavy physics mocked | < 100 ms per test | Every PR (`unit and not skip`) |
-| `@pytest.mark.smoke` | Real binaries, 1 timestep, low resolution | < 30 s per test | Nightly only (`smoke and not skip`) |
+| `@pytest.mark.unit` | Python logic, heavy physics mocked | < 100 ms per test | Every PR (`unit and not skip and not slow and not integration`) |
+| `@pytest.mark.smoke` | Real binaries, 1 timestep, low resolution | < 30 s per test | Nightly only (`smoke and not skip and not slow and not integration`) |
 | `@pytest.mark.integration` | Multi-module coupling | Minutes per test | Nightly only |
 | `@pytest.mark.slow` | Full physics validation | Up to hours per test | Nightly only (targeted file list) |
 | `@pytest.mark.skip` | Placeholder, deliberately disabled | n/a | Never |
@@ -341,7 +346,7 @@ Tier markers, with their CI surface and per-test wall-time budgets:
 pytestmark = [pytest.mark.<tier>, pytest.mark.timeout(<budget>)]
 ```
 
-with timeouts: 30 s for unit, 60 s for smoke, 300 s for integration, 3600 s for slow. Per-function markers are additive but do not replace the module-level marker. CI runs `pytest -m "unit and not skip"`; tests without a tier marker are invisible to CI. The `pytest-timeout` ceiling is a defensive net against future regressions that introduce a hang; current budgets are well clear of it.
+with timeouts: 30 s for unit, 60 s for smoke, 300 s for integration, 3600 s for slow. Per-function markers are additive but do not replace the module-level marker. CI runs `pytest -m "unit and not skip and not slow and not integration"`; tests without a tier marker are invisible to CI. The `pytest-timeout` ceiling is a defensive net against future regressions that introduce a hang; current budgets are well clear of it.
 
 ### Physics validity (tiered)
 
@@ -447,13 +452,12 @@ A pull request that adds or substantially modifies > 50 lines of test code acros
 
 ### Coverage architecture
 
-PROTEUS uses two gates with explicit sub-targets:
+PROTEUS runs three gates on every pull request. The full gate is not a fourth: it is the pyproject value the estimated total is measured against.
 
 | Gate | Tests included | Target | Enforced |
 |---|---|---|---|
 | Fast gate (`tool.proteus.coverage_fast.fail_under`) | unit-only (PR) | Fixed **80%** | Every PR (warn-only on drafts) |
-| Estimated total (PR unit coverage union with latest nightly artifact) | unit + smoke + integration + slow | **90%** (the PROTEUS-ecosystem ceiling) | Every PR (warn-only on drafts) |
-| Full gate (`tool.coverage.report.fail_under`) | unit + smoke + integration + slow | Fixed **90%** | Read by the PR estimated-total gate; the nightly publishes coverage without failing on it |
+| Estimated total (PR unit coverage union with latest nightly artifact) | unit + smoke + integration + slow | **90%**, the `tool.coverage.report.fail_under` value | Every PR (warn-only on drafts) |
 | Diff-cover | changed lines (fast + nightly union) | 80% (hard-coded; warn-only on drafts) | Every PR |
 
 **What this means for contributors**: the coverage ceilings are fixed, not ratcheting: the fast (unit-only) gate is held at **80%** and the full gate at the **90%** PROTEUS-ecosystem target (`tools/update_coverage_threshold.py` enforces `CEILINGS = {'fast': 80.0, 'full': 90.0}` and the PR threshold guard fails if either is edited away from its fixed value). Unit tests alone are not expected to reach 90% because wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is exercised only by the nightly tiers; that is why the fast gate sits at 80, not 90. The 90% target is reached via the estimated-total: the PR's unit coverage is unioned with the latest nightly artifact and compared against the full gate, and the diff-cover gate unions the fast and nightly reports the same way. Coverage gates run on draft PRs for visibility but are warn-only there; they block once the PR is marked ready for review.

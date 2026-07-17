@@ -12,7 +12,7 @@ physics invariants, validation certification), see
 Install with `pip install -e ".[develop]"`, then:
 
 ```bash
-pytest -m "unit and not skip"           # Fast unit tests (~2 min)
+pytest -m "unit and not skip and not slow and not integration"   # Fast unit tests (~2 min)
 pytest -m "smoke and not skip"          # Smoke tests with real binaries
 pytest --cov=src --cov-report=html      # Generate coverage report
 open htmlcov/index.html                 # View coverage in browser
@@ -20,7 +20,7 @@ open htmlcov/index.html                 # View coverage in browser
 
 Before committing:
 
-1. `pytest -m "unit and not skip"` must pass
+1. `pytest -m "unit and not skip and not slow and not integration"` must pass
 2. `ruff check src/ tests/ && ruff format src/ tests/` must pass
 3. `bash tools/validate_test_structure.sh` must pass
 
@@ -145,14 +145,16 @@ This prevents collection failures on CI runners without the optional package.
 | Diff-cover | Changed lines, fast coverage unioned with the latest nightly | 80% | PR checks |
 
 All three gates run on pull requests. The nightly runs every tier and
-publishes the coverage artifact the first two union against; it does not
-itself fail on a coverage percentage.
+publishes the coverage artifact that the estimated total and diff-cover union
+against; it does not itself fail on a coverage percentage.
 
-The two ceilings are fixed rather than ratcheting, and neither may be
-lowered: `tools/update_coverage_threshold.py` holds them and a pull-request
-guard fails if either is edited away from its value. Unit tests alone are not
-expected to reach 90%, because wrapper code that requires real binaries runs
-only in the nightly tiers; the 90% target is met through the estimated total.
+The fast gate's 80% and the 90% the estimated total is measured against are
+fixed rather than ratcheting, and neither may be lowered:
+`tools/update_coverage_threshold.py` holds both and a pull-request guard fails
+if either is edited away from its value. The diff-cover threshold is fixed in
+the workflow instead. Unit tests alone are not expected to reach 90%, because
+wrapper code that requires real binaries runs only in the nightly tiers; the
+90% target is met through the estimated total.
 
 The gates only warn on draft pull requests and block once the pull request is
 marked ready for review. Two of them also fall back to warning when no nightly
@@ -193,10 +195,14 @@ This AST-based linter flags:
 When you open a PR, CI runs:
 
 1. **Structure validation**: `tests/` mirrors `src/proteus/`
-2. **Unit tests** (Linux + macOS): `pytest -m "unit and not skip"`
-3. **Diff-cover**: 80% coverage on changed lines
-4. **Lint**: `ruff check` and `ruff format`
-5. **Editable install**: verifies the package installs correctly
+2. **Unit tests** (Linux + macOS): `pytest -m "unit and not skip and not slow and not integration"`
+3. **Estimated-total coverage**: PR unit coverage unioned with the latest
+   nightly, measured against 90%
+4. **Diff-cover**: 80% coverage on changed lines
+5. **Lint**: `ruff check` and `ruff format`
+6. **Editable install**: verifies the package installs correctly
+7. **Test quality**: `python tools/check_test_quality.py --check` (reported,
+   does not block)
 
 The pull-request cycle runs the unit tier only. The smoke, integration, and
 slow tiers run in the nightly workflow.
@@ -221,7 +227,7 @@ Runtime: ~2-3 hours.
 Before every commit:
 
 ```bash
-pytest -m "unit and not skip"           # Tests pass
+pytest -m "unit and not skip and not slow and not integration"   # Tests pass
 ruff check --fix src/ tests/            # Lint
 ruff format src/ tests/                 # Format
 bash tools/validate_test_structure.sh   # Structure
