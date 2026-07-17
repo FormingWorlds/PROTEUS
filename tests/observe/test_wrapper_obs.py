@@ -271,21 +271,62 @@ def test_calc_synthetic_spectra_single_selected_source(monkeypatch):
 
 
 def test_calc_synthetic_spectra_selected_profile_raises_with_dummy_atmos(monkeypatch):
-    """Explicit profile source should error when no resolved atmosphere exists."""
+    """Asking for the profile source by name while the atmosphere module is the dummy is
+    a configuration mistake and is refused, because a dummy atmosphere writes no profile
+    to synthesise from and silently producing nothing would look like success.
+
+    The second call is the discriminator: the same explicit request against a real
+    atmosphere module is accepted and reaches the backend once, for the profile source.
+    Without it the test would pass just as well for an implementation that refused every
+    explicitly named source, whatever the atmosphere module.
+    """
     _install_fake_petitradtrans(monkeypatch)
     config = _make_config(source='profile', atmos_clim_module='dummy')
 
     with pytest.raises(ValueError, match="observe.source = 'profile'"):
         calc_synthetic_spectra(hf_row={}, config=config, dirs=_make_dirs())
 
+    backend = importlib.import_module('proteus.observe.petitRADTRANS')
+    transit_mock = MagicMock(name='transit_depth')
+    monkeypatch.setattr(backend, 'transit_depth', transit_mock)
+    monkeypatch.setattr(backend, 'eclipse_depth', MagicMock(name='eclipse_depth'))
+
+    calc_synthetic_spectra(
+        hf_row={},
+        config=_make_config(source='profile', atmos_clim_module='janus'),
+        dirs=_make_dirs(),
+    )
+    assert [call.args[2] for call in transit_mock.call_args_list] == ['profile']
+
 
 def test_calc_synthetic_spectra_selected_offchem_raises_without_chem(monkeypatch):
-    """Explicit offchem source should error when atmos_chem is disabled."""
+    """Asking for the offchem source by name while chemistry is switched off is refused,
+    because there is no chemistry output to read and the request cannot be honoured.
+
+    The second call pins the asymmetry that gives the refusal its meaning: the identical
+    unavailable source is quietly skipped when the request was for every source, leaving
+    outgas and profile to run. Asking for everything means whatever is available, while
+    naming a source means that source or an error. A guard that refused in both cases
+    would break ordinary dummy-chemistry runs, and one that skipped in both would let a
+    misconfigured run report success having synthesised nothing.
+    """
     _install_fake_petitradtrans(monkeypatch)
     config = _make_config(source='offchem', atmos_chem_module=None)
 
     with pytest.raises(ValueError, match="observe.source = 'offchem'"):
         calc_synthetic_spectra(hf_row={}, config=config, dirs=_make_dirs())
+
+    backend = importlib.import_module('proteus.observe.petitRADTRANS')
+    transit_mock = MagicMock(name='transit_depth')
+    monkeypatch.setattr(backend, 'transit_depth', transit_mock)
+    monkeypatch.setattr(backend, 'eclipse_depth', MagicMock(name='eclipse_depth'))
+
+    calc_synthetic_spectra(
+        hf_row={},
+        config=_make_config(source='all', atmos_chem_module=None),
+        dirs=_make_dirs(),
+    )
+    assert [call.args[2] for call in transit_mock.call_args_list] == ['outgas', 'profile']
 
 
 def test_calc_synthetic_spectra_transit_only(monkeypatch):

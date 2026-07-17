@@ -360,9 +360,15 @@ def test_observe_files_persist(dummy_run_with_observe):
 
 @pytest.mark.integration
 def test_wrapper_invalid_module(dummy_run_with_observe):
-    """Test that wrapper raises error when config has unknown observe module.
+    """A misspelled synthesis module is refused by name rather than falling back to the
+    only module that exists, and the refusal happens before any other config is read.
 
-    Validates error handling for invalid configuration.
+    The message has to carry the offending name, since that is what tells the reader
+    which config line to correct. The second call supplies a config holding nothing but
+    the module name: it must still fail on the module rather than on the attributes it
+    lacks, which pins the dispatch as the first thing the function does. That ordering is
+    what makes the error survive a config that is broken in more than one way, instead of
+    surfacing whichever problem the reader happens to reach first.
     """
     runner, _, hf_row = dummy_run_with_observe
 
@@ -379,8 +385,17 @@ def test_wrapper_invalid_module(dummy_run_with_observe):
     bad_config.atmos_clim.module = runner.config.atmos_clim.module
     bad_config.atmos_chem.module = runner.config.atmos_chem.module
 
-    with pytest.raises(ValueError, match='Unknown synthesis module'):
+    with pytest.raises(ValueError, match='Unknown synthesis module') as excinfo:
         calc_synthetic_spectra(hf_row, bad_config, runner.directories)
+    assert 'invalid_module' in str(excinfo.value)
+
+    # A config carrying only the module name still fails on the module, so the dispatch
+    # runs before the source and spectrum-type lookups touch the other sections.
+    bare_config = _Obj()
+    bare_config.observe = _Obj()
+    bare_config.observe.module = 'invalid_module'
+    with pytest.raises(ValueError, match='Unknown synthesis module'):
+        calc_synthetic_spectra(hf_row, bare_config, runner.directories)
 
 
 @pytest.mark.integration
