@@ -540,11 +540,13 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     if pO2 < 1e-20:
         log.debug('O2 patial pressure smaller than 1e-12')
         pO2 = 1e-20
-    if new_atmos_abundances['Pbar'][0]< 1e-10:
-        psurf=1e-10
+    if new_atmos_abundances['Pbar'][0] < 1e-10:
+        psurf = 1e-10
     else:
-        psurf=new_atmos_abundances['Pbar'][0]
-    log10_fO2 = np.log10(pO2) + np.log10(psurf)  # is this really partical pressure ? Maybe this is actually abundances
+        psurf = new_atmos_abundances['Pbar'][0]
+    log10_fO2 = np.log10(pO2) + np.log10(
+        psurf
+    )  # is this really partical pressure ? Maybe this is actually abundances
 
     # OxygenFugacity(T, fO2_shift=0) returns the absolute buffer value
     # IW(T); the shift relative to that buffer is log10_fO2 - IW(T).
