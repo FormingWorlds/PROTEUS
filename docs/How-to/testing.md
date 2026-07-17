@@ -140,11 +140,17 @@ This prevents collection failures on CI runners without the optional package.
 
 | Gate | Tests | Target | Enforced |
 |------|-------|--------|----------|
-| Fast (every PR) | unit + smoke | Ratcheting toward 90% | PR checks |
-| Full (nightly) | unit + smoke + integration + slow | 90% | Nightly CI |
+| Fast (every PR) | unit only | 80% (fixed) | PR checks |
+| Estimated total (every PR) | PR unit coverage unioned with the latest nightly | 90% | PR checks |
+| Full (nightly) | unit + smoke + integration + slow | 90% (fixed) | Nightly CI |
 | Diff-cover (every PR) | Changed lines only | 80% | PR checks |
 
-Thresholds auto-ratchet upward (never decrease) and are capped at 90%.
+The ceilings are fixed rather than ratcheting, and neither may be lowered.
+Unit tests alone are not expected to reach 90%, because wrapper code that
+requires real binaries runs only in the nightly tiers; the 90% target is met
+through the estimated total. Coverage gates run on draft pull requests for
+visibility but only warn there, and block once the pull request is marked
+ready for review.
 
 ### Checking coverage locally
 

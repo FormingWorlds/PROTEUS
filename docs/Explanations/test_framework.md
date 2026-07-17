@@ -149,18 +149,21 @@ Every new test function must include:
 
 PROTEUS uses two coverage gates:
 
-- **Fast gate** (every PR): unit + smoke tests. Ratchets toward 90%
-  but plateaus around 60-75% because wrapper code exercised only by
-  real binaries is excluded.
-- **Full gate** (nightly): all tiers combined. Targets 90%. This is the
+- **Fast gate** (every PR): unit tests only, fixed at 80%. Unit tests alone
+  are not expected to reach the 90% ecosystem target, because wrapper code
+  that requires real binaries is exercised only by the nightly tiers. That is
+  why the gate sits at 80 rather than chasing 90.
+- **Full gate** (nightly): all tiers combined, fixed at 90%. This is the
   primary KPI; the fast gate is a lower bound.
 
-The estimated-total mechanism unions PR unit/smoke coverage with the latest
-nightly artifact to compare against the full gate on every PR, even though
-integration and slow tests do not run on PRs.
+The estimated-total mechanism unions PR unit coverage with the latest nightly
+artifact to compare against the full gate on every PR, even though smoke,
+integration, and slow tests do not run on PRs. That union is how the 90%
+target is reached on a PR.
 
-Coverage thresholds auto-ratchet upward and are capped at 90% (the
-ecosystem ceiling). Neither gate may be manually decreased.
+Both ceilings are fixed rather than ratcheting, and neither may be lowered:
+`tools/update_coverage_threshold.py` holds them and the PR threshold guard
+fails if either is edited away from its value.
 
 ## Float comparison discipline
 
