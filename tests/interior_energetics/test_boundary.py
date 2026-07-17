@@ -17,8 +17,8 @@ magma ocean states to solid interiors.
   - Rayleigh numbers: 10^6-10^10 (sub-critical to hyper-turbulent convection)
 
 **Test Infrastructure**:
-  See `docs/How-to/test_infrastructure.md`, `test_categorization.md`,
-  and `test_building.md` for full testing framework documentation.
+  See `docs/How-to/testing.md` and `docs/Explanations/test_framework.md` for full testing
+  framework documentation.
 
 **Coverage**:
   - Viscosity models: constant, aggregate, Arrhenius

@@ -13,7 +13,7 @@ functions for module version checking and system diagnostics.
 - Version validation and system information
 
 All tests use mocked external dependencies (file I/O, subprocess calls) to ensure
-fast execution (target: <100ms per test). See docs/test_building.md for test
+fast execution (target: <100ms per test). See docs/How-to/testing.md for test
 infrastructure guidelines.
 
 Fixtures from conftest.py:
