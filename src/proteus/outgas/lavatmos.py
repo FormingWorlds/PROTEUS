@@ -14,7 +14,6 @@ from calliope.oxygen_fugacity import OxygenFugacity
 # sys.path.insert(1,'wkdir')
 from proteus.utils.constants import (
     const_k,
-    const_mp,
     const_Nav,
     electron_molar_mass,
     element_list,
@@ -401,6 +400,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
 
     # set element fractions in atmosphere for lavatmos run
     input_eles = ['H', 'C', 'N', 'S', 'O']
+    hf_row['M_vaps'] = 0.0
 
     # lavatmos takes in the abudance fractions of element not mass fractions so divide by atomic number
     molfracs = {}
@@ -455,33 +455,37 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
 
     # hf_row['P_surf'] is in bar; convert to Pascals for use in the ideal gas law
     # 1bar = 100 kPa
-    P_surf_kPa = hf_row['P_surf'] * 100  # convert to kgPa
+    P_surf_kPa = hf_row['P_surf'] * 1e5  # convert to kPa
     rho_old = kg_per_particle * P_surf_kPa / (const_k * hf_row['T_magma'])
     M_atmo_old = hf_row['M_atm']
 
     # rho of armosphere after lavatmos
     # n=rho/mu*const_mp
     # 1bar = 100 kPa
-    kg_pp_new = mu_outgassed * const_mp
+    kg_pp_new = mu_outgassed * const_Nav
     # log.debug('new mass per particle :%.4e'%kg_pp_new)
-    P_new_kPa = new_atmos_abundances['Pbar'][0] * 100  # convert pressure to cgs
+    P_new_kPa = new_atmos_abundances['Pbar'][0] * 1e5  # convert pressure to cgs
     # log.info('atmospheric pressure :%.2e'%new_atmos_abundances['Pbar'][0])
     rho_new = (
         kg_pp_new * P_new_kPa / (const_k * hf_row['T_magma'])
     )  # convert pressure in cgs to kg !
     # log.debug('new atmospheric density:%.4f'%rho_new)
 
+    G_const = 6.67430e-11  # m^3 kg^-1 s^-2
+    gravity = G_const * hf_row['M_planet']/(hf_row['R_planet']**2)
+    Hshell= const_k * hf_row['T_magma'] / (kg_pp_new * gravity)  # scale height of the atmosphere in m\
     if M_atmo_old > 0.0:
         M_atmo_new = (
             M_atmo_old / rho_old
         ) * rho_new  # kg assuming volume does not change but only pressure
     else:  # compute shell volume and from there the new mass with the new density
         Vshell = (
-            (4 / 3) * np.pi * (((hf_row['R_int'] + 1e2) ** 3) - (hf_row['R_int'] ** 3))
+            (4 / 3) * np.pi * (((hf_row['R_int'] + Hshell) ** 3) - (hf_row['R_int'] ** 3))
         )  # assume 1e2 m shell thickness (small shell)
         M_atmo_new = rho_new * Vshell
 
-    log.debug('new atmospheric mass:%.2e' % M_atmo_new)
+    log.info('old atmospheric mass:%.2e' %hf_row['M_atm'])
+    log.info('new atmospheric mass:%.2e' % M_atmo_new)
 
     gas_list = vol_list + vap_list
 
@@ -534,11 +538,6 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
             hf_row[e + '_kg_atm'] = (
                 element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
             )
-
-            # don't update total element mass, other wise mass between mantle and atmosphere not conserved -> planet keeps increasing with time
-            hf_row[e + '_kg_total'] = (
-                hf_row[e + '_kg_atm'] + hf_row[e + '_kg_solid'] + hf_row[e + '_kg_liquid']
-            )
             hf_row['M_vaps'] += hf_row[e + '_kg_total']
 
     # saving new oxygen fugacity from lavatmos run, which is computed as log10 of the partial pressure of O2, to compare with the iron wustite buffer
@@ -552,6 +551,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     hf_row['log10_fO2_vapourise'] = log10_fO2
     hf_row['log10_fO2_shift_vapourise'] = log10_fO2 - iw_buffer(hf_row['T_magma'])
     hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
+    hf_row['M_atm'] = M_atmo_new
 
     log.debug(
         'log10 fO2 shift compared to IW buffer: %.6f' % hf_row['log10_fO2_shift_vapourise']

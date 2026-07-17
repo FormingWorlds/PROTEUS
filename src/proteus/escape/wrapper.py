@@ -298,25 +298,10 @@ def calc_new_elements(
     for e in element_list:
         res[e] = float(hf_row.get(f'{e}{key}', 0.0))
 
-    log.debug(
-        'Total mass of hydrogen in atmosphere before escape: %e kg'
-        % hf_row.get('H_kg_atm', 0.0)
-    )
-    log.debug(
-        'Total mass of hydrogen in interior before escape: %e kg'
-        % hf_row.get('H_kg_liquid', 0.0)
-    )
-
     M_vols = float(sum(res.values()))
-    for e in element_list:
-        if e == 'O':
-            continue
-        else:
-            log.debug('mass ratio of element %s %.4f', e, (res[e] / M_vols))
-
     # check if we just desiccated the planet...
     if M_vols < min_thresh:
-        log.debug('    Total mass of volatiles below threshold in escape calculation')
+        log.debug('Total mass of volatiles below threshold in escape calculation')
         return res
 
     # compute mass ratios in escaping reservoir

@@ -518,7 +518,7 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     """Runtime invariant: M_atm <= M_planet and sum of per-species kg_atm
     matches M_atm.
 
-    Issue #677 invariant. M_atm sums atmospheric oxygen (over vol_list of
+    Issue #677 invariant. M_atm sums atmospheric oxygen (over gas_list of
     *_kg_atm, including the O atoms in H2O / CO2 / SO2), and M_planet =
     M_int + M_ele counts the same oxygen in M_ele, so whole-planet O
     accounting keeps the two sides symmetric and M_atm <= M_planet holds
@@ -1197,7 +1197,7 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     return fpath
 
 
-def ReadHelpfileFromCSV(output_dir: str):
+def ReadHelpfileFromCSV(output_dir: str, config: Config):
     """
     Read helpfile from disk CSV file to DataFrame
     """

@@ -11,6 +11,7 @@ from proteus.outgas.lavatmos import compute_silicate_outgassing
 from proteus.utils.constants import (
     element_list,
     element_mmw,
+    noble_gases,
     secs_per_year,
     vap_list,
     vol_element_list,
@@ -609,7 +610,7 @@ def run_outgassing_and_vapourisation(
             hf_row[s + '_kg_total'] = 0.0
 
     for e in element_list:
-        if e in ['H', 'C', 'N', 'O', 'S', 'P']:
+        if e in ['H', 'C', 'N', 'O', 'S'] or  noble_gases.contains(e):
             continue
         else:
             hf_row[e + '_kg_atm'] = 0.0
