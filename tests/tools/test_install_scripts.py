@@ -1,7 +1,8 @@
 """
-Unit tests for PETSc/SPIDER installation shell scripts.
+Unit tests for the installation shell scripts and the repository and CI
+configuration invariants they depend on.
 
-Tests the reusable shell logic extracted from ``tools/get_petsc.sh`` and
+Reusable shell logic replicated inline from ``tools/get_petsc.sh`` and
 ``tools/get_spider.sh``:
 - ``portable_realpath()``: cross-platform path resolution
 - ERR trap: exit-code and step-name capture
@@ -10,8 +11,25 @@ Tests the reusable shell logic extracted from ``tools/get_petsc.sh`` and
 - Workpath argument handling: ``$1`` override vs default
 - PETSc library detection: versioned ``.so``, ``.dylib``, missing
 
-Each test runs an isolated bash snippet via ``subprocess.run()``, with no
-network access and no real builds.
+Blocks lifted out of the shipped scripts at run time, so that rewording a
+script re-runs its cases against the new text:
+- ``tools/get_aragog.sh``: the dirty-checkout guard shared across ``get_*.sh``
+- ``tools/get_socrates.sh``: the portable-flag rewrite, its post-build flag
+  check, and the conditional AGNI-wrapper rebuild note
+
+Also pins invariants that live in checked-in configuration and documentation
+rather than in shell, each of which fails silently when its counterpart moves:
+- ``pyproject.toml`` module pins and optional-dependency extras, which the
+  scripts resolve through ``tools/_module_pins.py``
+- the extras the ``setup-proteus`` composite action installs, against the
+  extra keys pyproject declares
+- the installation docs' guidance on editable installs, against those pins
+- CI config leaving USER at the runner default, which the action's macOS
+  ``brew install`` step requires
+
+Each shell test runs an isolated bash snippet via ``subprocess.run()``, with
+no network access and no real builds; the configuration tests read the
+checked-in files directly.
 
 See also:
 - docs/test_infrastructure.md
@@ -1059,3 +1077,77 @@ def test_socrates_rebuild_warns_to_regenerate_agni_wrappers(tmp_path):
     res_absent = _run_agni_rebuild_note(without_agni, has_agni=False)
     assert res_absent.returncode == 0, res_absent.stderr
     assert 'get_agni.sh' not in res_absent.stdout
+
+
+# ---------------------------------------------------------------------------
+# CI must not pin USER (breaks the macOS Homebrew install)
+# ---------------------------------------------------------------------------
+# A USER pin reaches the job environment as a block-mapping key, as a flow-
+# mapping entry, or as a dynamic export out of a run step. All three are
+# forbidden, so the scan matches all three rather than only the block form.
+_USER_PINS = (
+    re.compile(r'^\s*["\']?USER["\']?\s*:'),
+    re.compile(r'[{,]\s*["\']?USER["\']?\s*:'),
+    re.compile(r'\bUSER\s*=.*GITHUB_ENV'),
+)
+
+
+def _pins_user(line: str) -> bool:
+    """Return True when a CI config line pins USER into the job environment."""
+    # Drop trailing comments so prose naming USER cannot trip the scan.
+    text = line.split('#', 1)[0]
+    return any(pattern.search(text) for pattern in _USER_PINS)
+
+
+@pytest.mark.unit
+def test_ci_config_never_pins_user():
+    """CI config must leave USER at the runner default.
+
+    Several jobs share the macOS leg of the ``setup-proteus`` composite action,
+    which runs ``brew install``. Its preinstall check resolves the active
+    account by name, so a USER naming an account that does not exist on the
+    runner aborts the setup step before a single package is installed and every
+    macOS job fails before reaching its tests. Pinning even a real account name
+    is fragile, because it breaks whenever the runner account is renamed or the
+    jobs move back into a container. The invariant is pinned here, for every
+    workflow at once, rather than by a comment in whichever one was edited last.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    workflow_dir = repo_root / '.github/workflows'
+    workflows = sorted(workflow_dir.glob('*.yml')) + sorted(workflow_dir.glob('*.yaml'))
+    # Every composite action is scanned, not just the one that installs the
+    # macOS packages today: any action calling brew is a place where a USER
+    # pin would break the setup.
+    actions = sorted(repo_root.glob('.github/actions/*/action.yml')) + sorted(
+        repo_root.glob('.github/actions/*/action.yaml')
+    )
+
+    # Guard the guard: an empty or mis-rooted glob would make the scan below
+    # pass by finding nothing to check.
+    assert workflows, f'no workflow files resolved under {workflow_dir}'
+    assert actions, f'no composite actions resolved under {repo_root}/.github/actions'
+    targets = workflows + actions
+
+    # Discrimination: the matcher must fire on every shape that reaches the job
+    # environment and stay quiet on unrelated keys, prose, and same-suffix
+    # variables, so a broken pattern cannot make this test pass vacuously.
+    assert _pins_user('      USER: "ci-runner"')
+    assert _pins_user("      'USER': ci-runner")
+    assert _pins_user('    env: {USER: ci-runner}')
+    assert _pins_user('        echo "USER=ci-runner" >> "$GITHUB_ENV"')
+    assert not _pins_user('  COVERAGE_FILE: .coverage.unit.macos-latest')
+    assert not _pins_user('  # Leave USER at the runner default')
+    assert not _pins_user('        echo "FWL_USER=someone" >> "$GITHUB_ENV"')
+
+    offenders = []
+    for path in targets:
+        for lineno, raw in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+            if _pins_user(raw):
+                offenders.append(f'{path.relative_to(repo_root)}:{lineno}: {raw.strip()}')
+
+    assert not offenders, (
+        'CI config must leave USER at the runner default. A USER naming an '
+        'account that does not exist aborts the macOS brew install shared by '
+        'several jobs, and pinning a real account name breaks on the next '
+        f'runner rename. Remove these: {offenders}'
+    )

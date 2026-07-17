@@ -126,31 +126,30 @@ theme:
     - content.code.copy
     - content.tabs.link
 
+  # Fonts are self-hosted via stylesheets/fonts/fonts.css
+  font: false
 
-  # Default assets (used unless overridden per palette below)
-  favicon: assets/PROTEUS_black_on_white_logo_only.png
-  logo: assets/PROTEUS_white_on_black.png
+  # Default assets (the header stays dark in both schemes, so one glyph serves both)
+  favicon: assets/favicon.svg
+  logo: assets/glyph_phase_dark.png
 
+  # The toggle icon shows the current mode, matching the project website
   palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: custom
-      accent: custom
-      favicon: assets/PROTEUS_black_on_white_logo_only.png
-      logo: assets/PROTEUS_white_on_black.png
-      toggle:
-        icon: lucide/moon
-        name: Switch to dark mode
-
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: custom
       accent: custom
-      favicon: assets/PROTEUS_white_on_black_logo_only.png
-      logo: assets/PROTEUS_white_on_black.png
+      toggle:
+        icon: lucide/moon
+        name: Switch to light mode
+
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
       toggle:
         icon: lucide/sun
-        name: Switch to light mode
+        name: Switch to dark mode
 
 markdown_extensions:
   - admonition
@@ -195,8 +194,8 @@ extra_javascript:
 
 extra_css:
   - stylesheets/extra.css
+  - stylesheets/layout.css
   - stylesheets/widths.css
-  - stylesheets/proteus_theme.css
   - stylesheets/footnotes.css
 
 plugins:
