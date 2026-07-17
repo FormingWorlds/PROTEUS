@@ -34,7 +34,7 @@ config_version = "3.0"
     [params.out]
         # Output folder inside PROTEUS/output/. Set "auto" for a unique timestamped
         # name (run_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
-        path                  = "test_new_pressuresettings"
+        path                  = "vapourise"
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 1            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf

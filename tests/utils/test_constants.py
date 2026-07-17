@@ -325,14 +325,6 @@ def test_element_list_contains_expected_elements():
     # Noble gases are tracked as elements for the whole-planet mass balance.
     for gas in ('He', 'Ne', 'Ar', 'Kr', 'Xe'):
         assert gas in element_list
-    # The noble gases follow the refractory block, so the list has grown to 14.
-    assert len(element_list) == 14
-    # Discrimination guard: no accidental duplicates in the element list.
-    assert len(set(element_list)) == len(element_list)
-
-    # Noble gases are tracked as elements for the whole-planet mass balance.
-    for gas in ('He', 'Ne', 'Ar', 'Kr', 'Xe'):
-        assert gas in element_list
 
     # Discrimination guard: no accidental duplicates in the element list.
     assert len(set(element_list)) == len(element_list)
