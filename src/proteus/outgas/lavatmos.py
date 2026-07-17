@@ -472,8 +472,10 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     # log.debug('new atmospheric density:%.4f'%rho_new)
 
     G_const = 6.67430e-11  # m^3 kg^-1 s^-2
-    gravity = G_const * hf_row['M_planet']/(hf_row['R_planet']**2)
-    Hshell= const_k * hf_row['T_magma'] / (kg_pp_new * gravity)  # scale height of the atmosphere in m\
+    gravity = G_const * hf_row['M_planet'] / (hf_row['R_planet'] ** 2)
+    Hshell = (
+        const_k * hf_row['T_magma'] / (kg_pp_new * gravity)
+    )  # scale height of the atmosphere in m\
     if M_atmo_old > 0.0:
         M_atmo_new = (
             M_atmo_old / rho_old
@@ -484,7 +486,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
         )  # assume 1e2 m shell thickness (small shell)
         M_atmo_new = rho_new * Vshell
 
-    log.info('old atmospheric mass:%.2e' %hf_row['M_atm'])
+    log.info('old atmospheric mass:%.2e' % hf_row['M_atm'])
     log.info('new atmospheric mass:%.2e' % M_atmo_new)
 
     gas_list = vol_list + vap_list
