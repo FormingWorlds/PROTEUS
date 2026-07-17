@@ -1450,3 +1450,114 @@ def test_reference_pinned_mean_molar_mass_increases_with_helium_vmr(monkeypatch)
     assert np.allclose(mmw_2[0], 2.5, rtol=0.02), (
         'Reference: 75% H2 + 25% He should give M_mean ≈ 2.5 g/mol'
     )
+
+
+@pytest.mark.physics_invariant
+def test_eclipse_depth_divides_by_the_stellar_surface_flux(monkeypatch, tmp_path):
+    """The eclipse depth is the planet-to-star surface brightness ratio scaled by the
+    squared radius ratio, so the denominator has to be the flux at the stellar surface.
+
+    The stored spectrum is the flux arriving at the planet, already reduced by the
+    orbital distance, so it has to be carried back out to the stellar surface before it
+    divides the planet flux. Otherwise the orbital reduction is applied a second time
+    through the geometric factor and every depth comes out too large by the squared
+    ratio of separation to stellar radius.
+
+    The planet sits at ten stellar radii, a hot-Jupiter separation, which makes that
+    ratio exactly 100 and puts the two candidate answers two decades apart: far outside
+    any tolerance, and far outside the ppm and radius-ratio factors the neighbouring
+    pins already cover. The stand-in transfer returns fixed fluxes, so the expected
+    depth is closed-form: planet flux 1.0 over a surface flux of 3e8 * 100, times the
+    squared radius ratio (7.0e8/7.0e10)^2, in ppm.
+    """
+    mod = _import_backend(monkeypatch)
+    monkeypatch.setattr(mod, 'prt_gases', ('H2O',))
+    monkeypatch.setattr(mod, 'prt_rayleigh_species', set())
+    monkeypatch.setattr(mod, 'prt_cia_species', ())
+    monkeypatch.setattr(mod, 'eval_gas_mmw', lambda gas: {'H2O': 18e-3}[gas])
+
+    input_data_path = tmp_path / 'input_data'
+    species_dir = input_data_path / 'opacities' / 'lines' / 'correlated_k' / 'H2O'
+    species_dir.mkdir(parents=True)
+    (species_dir / '1H2-16O__Test.R1000_0.5-5mu.ktable.petitRADTRANS.h5').write_text('dummy')
+
+    observe_common = types.ModuleType('proteus.observe.common')
+
+    def _get_eclipse_fpath(outdir, source, kind):
+        path = Path(outdir) / 'observe' / f'eclipse_{source}_{kind}.csv'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return str(path)
+
+    observe_common.get_eclipse_fpath = _get_eclipse_fpath
+    monkeypatch.setitem(sys.modules, 'proteus.observe.common', observe_common)
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True)
+    # The transfer reports micron-scale wavelengths while the table stops at 600 nm, so
+    # the interpolation runs off the top and holds 30 erg cm-2 s-1 nm-1, which is why the
+    # denominator is flat. The table rises rather than sitting at a plateau so that the
+    # held value names which end was reached: a wavelength mapping that put the targets
+    # below the table would hold 10 instead and move the depths.
+    (data_dir / '1.sflux').write_text('wl flux\n400 10\n500 20\n600 30\n')
+
+    fake_atm = {
+        'pl': np.array([1.0e5, 1.0e4]),
+        'tmpl': np.array([300.0, 200.0]),
+        'rl': np.array([7.0e6, 7.1e6]),
+        'p': np.array([1.0e5, 1.0e4]),
+        'r': np.array([7.0e6, 7.1e6]),
+        'g': np.array([10.0, 11.0]),
+        'x_gas': {'H2O': np.array([1.0, 1.0])},
+    }
+    monkeypatch.setattr(mod, '_get_atm_profile', lambda *_a, **_k: fake_atm)
+    monkeypatch.setattr(mod, '_get_input_data_path', lambda _dirs: str(input_data_path))
+
+    class FakeRadtrans:
+        def __init__(self, **kwargs):
+            pass
+
+        def calculate_flux(self, **kwargs):
+            return np.array([1.0e-4, 2.0e-4]), np.array([1.0, 2.0]), None
+
+    monkeypatch.setattr(sys.modules['petitRADTRANS.radtrans'], 'Radtrans', FakeRadtrans)
+
+    R_star = 7.0e8  # m, one solar radius to two figures
+    hf_row = {
+        'Time': 1,
+        'R_star': R_star,
+        'T_star': 1000.0,
+        # Ten stellar radii, a hot-Jupiter orbit. Deliberately not equal to R_star: at
+        # separation == R_star the surface and orbit fluxes coincide and the assertion
+        # below could not tell which one divided the planet flux.
+        'separation': 10.0 * R_star,
+        'R_int': 7.0e6,
+    }
+
+    config = _make_config(include_cia=False, include_rayleigh=False, remove_one_gas=False)
+    dirs = {'fwl': str(tmp_path), 'output': str(tmp_path)}
+    result = mod.eclipse_depth(hf_row, config, 'outgas', dirs)
+
+    dilution = (hf_row['separation'] / R_star) ** 2  # 100, exactly
+    surface_flux = 3.0e8 * dilution  # erg cm-2 s-1 cm-1 at the stellar surface
+    radius_ratio_sq = (7.0e8 / 7.0e10) ** 2
+    expected = np.array([1.0, 2.0]) / surface_flux * radius_ratio_sq * 1e6
+
+    np.testing.assert_allclose(result[:, 1], expected, rtol=1e-6)
+
+    # Sign guard: a depth is a positive flux ratio.
+    assert np.all(result[:, 1] > 0.0)
+    # Discrimination guard: dividing by the orbit-reduced flux instead of the surface
+    # flux lands 100x high, two decades outside the tolerance above.
+    double_diluted = expected * dilution
+    assert np.all(np.abs(result[:, 1] - double_diluted) > 0.9 * double_diluted)
+    # Scale guard: these are ~3e-9 ppm, not ~3e-7 (double dilution) and not ~3e-3
+    # (a missing radius ratio).
+    assert np.all((result[:, 1] > 1.0e-10) & (result[:, 1] < 1.0e-8))
+
+    # Limit input: a planet orbiting at one stellar radius sits on the stellar surface,
+    # where the two fluxes are the same and the rescale is the identity. The depths then
+    # fall back on the stored spectrum unchanged, which is why pins taken at that
+    # separation cannot tell the two denominators apart.
+    hf_row_at_surface = {**hf_row, 'separation': R_star}
+    result_at_surface = mod.eclipse_depth(hf_row_at_surface, config, 'outgas', dirs)
+    np.testing.assert_allclose(result_at_surface[:, 1], expected * dilution, rtol=1e-6)

@@ -378,7 +378,7 @@ def scale_spectrum_to_toa(fl_arr, sep: float):
         fl_arr : iterable
             Stellar fluxes at 1 AU
         sep : float
-            Planet-star distance, in units of AU
+            Planet-star distance [m]
     Returns
     ----------
         fl_arr : np.ndarray
@@ -396,7 +396,8 @@ def write_spectrum(wl_arr, fl_arr, hf_row: dict, output_dir: str):
         wl_arr : np.ndarray
             Wavelength array [nm]
         fl_arr : np.ndarray
-            Stellar fluxes at 1 AU [erg s-1 cm-2 nm-1]
+            Stellar fluxes at the top of the planet's atmosphere
+            [erg s-1 cm-2 nm-1]
         hf_row : dict
             Current helpfile row
         output_dir : str
