@@ -418,14 +418,9 @@ config_version = "3.0"
 
     # Boundary backend (Schaefer+2016 0-D box model with prescribed solidus/liquidus)
     [interior_energetics.boundary]
-        rtol                      = 1.0e-5       # ODE solver relative tolerance
-        atol                      = 1.0e-8       # ODE solver absolute tolerance
-        T_p_0                     = 3200.0       # initial potential temperature if Zalmoxis is not active [K]
         T_solidus                 = 1420.0       # mantle solidus [K]
         T_liquidus                = 2020.0       # mantle liquidus [K]
-        Tsurf_event_change        = 300.0         # max surface-T jump per iteration before triggering an event [K]
         critical_rayleigh_number  = 1100.0       # critical Rayleigh number for onset of convection
-        heat_fusion_silicate      = 4.0e5        # latent heat of fusion for silicates [J/kg]
         nusselt_exponent          = 0.33         # Nusselt-Rayleigh scaling exponent
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
         atm_heat_capacity_const   = true        #  always use fallback heat capacity?
@@ -435,9 +430,6 @@ config_version = "3.0"
         thermal_diffusivity       = 1.0e-6       # thermal diffusivity [m^2/s]
         thermal_expansivity       = 2.0e-5       # thermal expansivity [1/K]
         viscosity_model           = 3            # 1=constant | 2=aggregate smooth | 3=Arrhenius
-        eta_constant              = 1.0e2        # constant viscosity for model 1 [Pa s]
-        eta_solid_const           = 5.0e22       # solid-end viscosity for aggregate model [Pa s]
-        eta_melt_const            = 1.0e2        # melt-end viscosity for aggregate model [Pa s]
         dynamic_viscosity         = 3.8e9        # Arrhenius solid reference dynamic viscosity [Pa s]
         activation_energy         = 3.5e5        # Arrhenius solid activation energy [J/mol]
         creep_parameter           = 26.0         # Arrhenius creep parameter
@@ -504,8 +496,8 @@ config_version = "3.0"
     module                    = "agni"       # agni | janus | dummy
 
     # Grid and spectral setup (shared by agni + janus)
-    # spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
-    # spectral_bands            = "16"         # wavenumber bands in k-table
+    spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
+    spectral_bands            = "16"         # wavenumber bands in k-table
     num_levels                = 32           # vertical atmosphere levels (min 15)
     p_top                     = 1.0e-3       # top-of-atmosphere pressure [bar]
     p_obs                     = 0.02         # observation pressure level [bar] (transit radius)
@@ -529,17 +521,17 @@ config_version = "3.0"
 
     [atmos_clim.agni]
 
-        spectral_file   = "output/runtime.sf"
+        # spectral_file   = "output/runtime.sf"
 
         # Physics switches
-        solve_energy          = true         # iterative energy-conserving T(p) profile
+        solve_energy          = false         # iterative energy-conserving T(p) profile
         convection            = true         # convective adjustment (MLT)
         conduction            = false         # conductive heat transport (Fourier)
         sens_heat             = true         # sensible heat flux at surface
         rainout               = false         # volatile condensation and evaporation
         oceans                = false         # surface liquid water oceans
         latent_heat           = false        # latent heat from condensation/evaporation
-        real_gas              = false        # real-gas EOS where available
+        real_gas              = true        # real-gas EOS where available
         chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem)
         thermo_functions      = false        # use T-dependent thermo functions
         mlt_criterion         = "s"          # convection criterion: s (Schwarzschild) | l (Ledoux)
