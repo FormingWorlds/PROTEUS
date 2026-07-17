@@ -127,6 +127,13 @@ runs:
     # successfully" warning. The packages themselves are functional,
     # so verify each is on the prefix list before accepting the
     # failure.
+    #
+    # Calling workflows must leave USER at the runner default and must
+    # not set it in any env block. ``brew install`` runs a preinstall
+    # check that looks the active account up by name in the passwd
+    # database, so a USER naming an account that does not exist aborts
+    # this step with "user <name> doesn't exist" before any package is
+    # installed. ``tests/tools/test_install_scripts.py`` enforces this.
     - name: Install system packages (macOS)
       if: runner.os == 'macOS'
       shell: bash
