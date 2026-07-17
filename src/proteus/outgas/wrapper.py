@@ -610,7 +610,7 @@ def run_outgassing_and_vapourisation(
             hf_row[s + '_kg_total'] = 0.0
 
     for e in element_list:
-        if e in ['H', 'C', 'N', 'O', 'S'] or noble_gases.contains(e):
+        if e in ['H', 'C', 'N', 'O', 'S'] or e in noble_gases:
             continue
         else:
             hf_row[e + '_kg_atm'] = 0.0

@@ -450,42 +450,34 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
         new_atmos_abundances.rename(columns={'m(u)': 'mu'}, inplace=True)
 
     mu_outgassed = new_atmos_abundances['mu'][0]
-    # compute density for the previous run with calliope output from hf_row:
-    kg_per_particle = hf_row['atm_kg_per_mol'] / const_Nav
 
     # hf_row['P_surf'] is in bar; convert to Pascals for use in the ideal gas law
     # 1bar = 100 kPa
     P_surf_kPa = hf_row['P_surf'] * 1e5  # convert to kPa
-    rho_old = kg_per_particle * P_surf_kPa / (const_k * hf_row['T_magma'])
     M_atmo_old = hf_row['M_atm']
 
     # rho of armosphere after lavatmos
-    # n=rho/mu*const_mp
-    # 1bar = 100 kPa
-    kg_pp_new = mu_outgassed * const_Nav
-    # log.debug('new mass per particle :%.4e'%kg_pp_new)
+    kg_pp_new = mu_outgassed / const_Nav * 1e-3  # convert to kg
+    log.debug('new kg per particle: %.4e' % kg_pp_new)
     P_new_kPa = new_atmos_abundances['Pbar'][0] * 1e5  # convert pressure to cgs
-    # log.info('atmospheric pressure :%.2e'%new_atmos_abundances['Pbar'][0])
     rho_new = (
         kg_pp_new * P_new_kPa / (const_k * hf_row['T_magma'])
     )  # convert pressure in cgs to kg !
-    # log.debug('new atmospheric density:%.4f'%rho_new)
 
     G_const = 6.67430e-11  # m^3 kg^-1 s^-2
-    gravity = G_const * hf_row['M_planet'] / (hf_row['R_planet'] ** 2)
+    gravity = G_const * hf_row['M_planet'] / (hf_row['R_int'] * (10**-2)) ** 2
     Hshell = (
         const_k * hf_row['T_magma'] / (kg_pp_new * gravity)
     )  # scale height of the atmosphere in m\
     if M_atmo_old > 0.0:
         M_atmo_new = (
-            M_atmo_old / rho_old
-        ) * rho_new  # kg assuming volume does not change but only pressure
-    else:  # compute shell volume and from there the new mass with the new density
-        Vshell = (
-            (4 / 3) * np.pi * (((hf_row['R_int'] + Hshell) ** 3) - (hf_row['R_int'] ** 3))
-        )  # assume 1e2 m shell thickness (small shell)
+            M_atmo_old * P_new_kPa / P_surf_kPa
+        )  # kg assuming volume does not change but only pressure
+    else:  # compute shell volume and from there the new mass with the new density, assumes density constant over 1 scale height of the atmosphere
+        Vshell = (4 / 3) * np.pi * (((hf_row['R_int'] + Hshell) ** 3) - (hf_row['R_int'] ** 3))
         M_atmo_new = rho_new * Vshell
 
+    log.info('scale height of the atmosphere: %.2e' % Hshell)
     log.info('old atmospheric mass:%.2e' % hf_row['M_atm'])
     log.info('new atmospheric mass:%.2e' % M_atmo_new)
 
