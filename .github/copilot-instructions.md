@@ -25,7 +25,7 @@ Follow the same standards for testing, coverage, code quality, and infrastructur
 >
 > These two files plus this one are the canonical sources of truth for testing rigor and review criteria. Together they enforce PROTEUS's extreme-rigor stance on physics validity, anti-happy-path testing, and validation certification.
 
-1. **Always** read the two rule files above plus the testing standards in this document and `docs/How-to/test_infrastructure.md` before any code change.
+1. **Always** read the two rule files above plus the testing standards in this document and `docs/How-to/testing.md` before any code change.
 2. **Always** inform the user that you are reading in this file by printing a message at the start of your response: "(Read in copilot-instructions.md...)"
 3. When creating a PR, **always** follow the PR template and ensure all sections are filled out with relevant information.
 4. **Claude-specific**: `CLAUDE.md` is a symlink to this file. Session learnings, plans, and memories live in `~/.claude/projects/<repo>/memory/` (per the global voice rule); they do NOT live in this repository.
@@ -429,7 +429,7 @@ The repo-wide voice rule (zero AI-process disclosure in any public artifact, see
 
 ### Documentation per test
 
-- File-level docstring: name the module under test, list the invariants and contract clauses the file exercises, and link to the three test docs (`test_infrastructure.md`, `test_categorization.md`, `test_building.md`).
+- File-level docstring: name the module under test, list the invariants and contract clauses the file exercises, and link to the test docs (`docs/How-to/testing.md`, `docs/Explanations/test_framework.md`).
 - Function-level docstring: state the physical scenario or contract clause being verified, in plain language. Required (lint-enforced).
 - Inline comments: explain **why** a specific input range was chosen ("T=300 K and T=1500 K so the T**3 vs T**4 difference is resolved well above tolerance").
 
@@ -459,7 +459,7 @@ PROTEUS uses two gates with explicit sub-targets:
 
 **What this means for contributors**: the coverage ceilings are fixed, not ratcheting: the fast (unit-only) gate is held at **80%** and the full gate at the **90%** PROTEUS-ecosystem target (`tools/update_coverage_threshold.py` enforces `CEILINGS = {'fast': 80.0, 'full': 90.0}` and the PR threshold guard fails if either is edited away from its fixed value). Unit tests alone are not expected to reach 90% because wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is exercised only by the nightly tiers; that is why the fast gate sits at 80, not 90. The 90% target is reached via the estimated-total: the PR's unit coverage is unioned with the latest nightly artifact and compared against the full gate, and the diff-cover gate unions the fast and nightly reports the same way. Coverage gates run on draft PRs for visibility but are warn-only there; they block once the PR is marked ready for review.
 
-Reports: `pytest --cov=src --cov-report=html` and open `htmlcov/index.html`. Module-level analysis: `bash tools/coverage_analysis.sh`. Diff-cover reasoning is documented in `docs/How-to/test_infrastructure.md`.
+Reports: `pytest --cov=src --cov-report=html` and open `htmlcov/index.html`. Module-level analysis: `bash tools/coverage_analysis.sh`. Diff-cover thresholds are documented in `docs/How-to/testing.md`.
 
 ## Safety & Determinism
 - **Randomness:** Explicitly set seeds (e.g., `np.random.seed(42)`) in tests.
@@ -569,7 +569,7 @@ Under D1A (the chosen design), CALLIOPE / atmodeller chemistry is unchanged. Oxy
 
 ## Documentation References
 
-- **Testing**: `docs/How-to/test_infrastructure.md`, `docs/How-to/test_building.md`, `docs/How-to/test_categorization.md`
+- **Testing**: `docs/How-to/testing.md`, `docs/Explanations/test_framework.md`
 - **Installation**: `docs/How-to/installation.md`, `docs/How-to/local_machine_guide.md`
 - **Usage**: `docs/How-to/usage.md`, `docs/How-to/config.md`
 - **Docs development**: `docs/How-to/documentation.md` (build/serve with `zensical serve`)

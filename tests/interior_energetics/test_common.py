@@ -6,9 +6,8 @@ Tests the _load_ps_table() method which loads SPIDER's P-S lookup tables
 fallback logic, and verifies the loaders are wired by ``Interior_t.__init__``.
 
 Testing standards and documentation:
-- docs/test_infrastructure.md: Test infrastructure overview
-- docs/test_categorization.md: Test marker definitions
-- docs/test_building.md: Best practices for test construction
+- docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
+- docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 
 Functions tested:
 - Interior_t._load_ps_table(): Load arbitrary P-S table with path fallback

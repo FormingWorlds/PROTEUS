@@ -14,9 +14,8 @@ Physics tested:
 - Data structure validation (column presence, data types)
 
 Related documentation:
-- docs/test_infrastructure.md: Testing standards and structure
-- docs/test_categorization.md: Test classification criteria
-- docs/test_building.md: Best practices for test implementation
+- docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
+- docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 
 Mocking strategy:
 - Use tmp_path fixture for temporary file creation

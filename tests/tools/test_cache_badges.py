@@ -6,8 +6,8 @@ fallback, the run-conclusion to badge-style mapping, the fetch/last-good/
 placeholder branch in cache_badge, the main-branch run query in
 _latest_conclusion, and the workflow-to-badge mapping that reports main.
 
-Testing standards: docs/How-to/test_infrastructure.md, test_categorization.md,
-test_building.md
+Testing standards: docs/How-to/testing.md,
+docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

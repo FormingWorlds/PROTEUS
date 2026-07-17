@@ -24,8 +24,8 @@ integration tests.
         validate_mass_conservation(runner.hf_all)
 
 Documentation:
-- docs/test_infrastructure.md
-- docs/test_categorization.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
