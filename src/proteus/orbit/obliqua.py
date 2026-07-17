@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import juliacall
+import netCDF4 as nc
 import numpy as np
 from juliacall import Main as jl
 
@@ -391,3 +393,18 @@ def LN_from_lookup(hf_row: dict, tides_o: Tides_t, config: Config):
     storage.LNk = LNk_s
 
     pass
+
+
+def read_ncdf(fpath: str):
+    out = {}
+    ds = nc.Dataset(fpath)
+
+    for key in ds.variables.keys():
+        out[key] = ds.variables[key][:]
+
+    ds.close()
+    return out
+
+
+def read_ncdfs(output_dir: str, times: list):
+    return [read_ncdf(os.path.join(output_dir, 'data', '%d_obliqua.nc' % t)) for t in times]

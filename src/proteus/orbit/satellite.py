@@ -444,15 +444,10 @@ def ps1d_evec(hf_row, config, tides_o, dt):
             val_s2 = love_dict_s.get((2, 2, s), 0.0 + 0.0j)
 
             # Extract real and imaginary parts
-            A_p0, K_p0 = val_p0.real, val_p0.imag       # Testing with + / - signs to stimulate
-            A_p2, K_p2 = val_p2.real, val_p2.imag       # outward migration of the Moon
+            A_p0, K_p0 = val_p0.real, -val_p0.imag
+            A_p2, K_p2 = val_p2.real, -val_p2.imag
             A_s0, K_s0 = val_s0.real, -val_s0.imag
             A_s2, K_s2 = val_s2.real, -val_s2.imag
-
-            # Note for the Earth-Moon system, the tidal bulge preceeds the satellite, so the imaginary
-            # part of the Love number is positive, this allows the Moon to migrate outward. If the sign
-            # of the imaginary part is negative, the satellite would migrate inward, which is not observed
-            # for the Earth-Moon system.
 
             # Accumulate
             X0_sq = X_0**2

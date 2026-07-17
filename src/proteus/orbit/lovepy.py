@@ -145,14 +145,12 @@ def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides_
     nmk = np.array(([2, 0, 1],[2, 2, 1],[2, 2, 3]), dtype=int) # Note that these modes are hardcoded into Lovepy.
     LNk = np.array(([0.0 + Imk2*1j],[0.0 + Imk2*1j],[0.0 + Imk2*1j]), dtype=complex) # Note we only have acces to the imaginary part of k2, so we set the real part to 0.0.
     sigma = np.array(([omega],[omega],[omega]), dtype=float) # Note we consistently drop the minus sign on the East/West ward component of the forcing frequency and the imaginary part of the k2 love number.
-    Hansen = np.array(([3/2*ecc],[1/2*ecc],[7/2*ecc]), dtype=float) # Note these are the low eccentricity limits of the Hansen coefficients, which is what lovepy uses to calculate the tidal heating.
 
     # Store tidal mode information in tides_o object
     storage = tides_o.add(primary="planet", perturber="star")
     storage.nmk    = nmk
     storage.sigma  = sigma
     storage.LNk    = LNk
-    storage.Hansen = Hansen
 
     # Return imaginary part of k2 love number
     return float(Imk2)

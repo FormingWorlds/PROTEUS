@@ -386,3 +386,16 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
         log.info('    Extracting Love number from satellite lookup table')
 
         LN_from_lookup(hf_row, tides_o, config)
+
+
+def read_tides_data(output_dir: str, model: str, times: list):
+    if len(times) == 0:
+        return []
+
+    if model == 'obliqua':
+        from proteus.orbit.obliqua import read_ncdfs
+
+        return read_ncdfs(output_dir, times)
+
+    else:
+        return []
