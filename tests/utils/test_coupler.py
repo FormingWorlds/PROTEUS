@@ -2029,9 +2029,10 @@ def test_variable_is_logarithmic_covers_membership_and_suffix_branches(
 
     Each case pairs a name with a near-miss differing only in the deciding
     token, so the pair separates the branch under test from a classifier that
-    keys off the general shape of the name. Plotting reads this to pick a log
-    axis, so a mislabelled variable is drawn on the wrong scale rather than
-    failing loudly.
+    keys off the general shape of the name. Inference reads this convention to
+    decide which parameters it optimises in log10: a misclassified variable
+    silently changes the objective it fits, or trips the transform's
+    non-positive-bound check, well before anyone notices a wrong plot axis.
     """
     assert variable_is_logarithmic(name) is expected
     assert variable_is_logarithmic(near_miss) is not expected

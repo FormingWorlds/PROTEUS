@@ -77,7 +77,7 @@ def test_orphans_extract_attrs_class_union_with_attrs():
     assert _extract_attrs_class(str | None) is None
 
 
-def test_orphans_extract_attrs_class_plain_scalar_returns_none():
+def test_orphans_extract_attrs_class_returns_none_for_non_attrs_hints():
     """Scalars and non-attrs containers yield no class, so no attrs walk follows.
 
     Two branches reach the same answer by different routes: a bare scalar has no
@@ -119,7 +119,11 @@ def test_orphans_collect_orphan_keys_empty_dict_is_clean():
 
 
 def test_orphans_collect_orphan_keys_valid_top_level_keys():
-    """Known top-level Config fields do not appear in the orphan list."""
+    """Known top-level Config fields do not appear in the orphan list.
+
+    The paired negative adds the same unknown key to that very dict and expects
+    it back as the whole list.
+    """
     from proteus.config._config import Config
 
     data = {'star': {}, 'planet': {}, 'orbit': {}, 'config_version': '3.0'}
@@ -129,6 +133,9 @@ def test_orphans_collect_orphan_keys_valid_top_level_keys():
     # Discrimination: an unknown key alongside the very same valid keys is
     # still reported, so the empty list above reflects the keys being known
     # rather than a scan that never inspects a top-level dict.
+    # ..._single_top_level_orphan covers an unknown key on its own and asserts
+    # membership; this pins exact-list equality against a mixed dict, so a scan
+    # that reported a known sibling alongside the orphan would fail here.
     mixed = dict(data, NOT_A_FIELD=1)
     assert _collect_orphan_keys(mixed, Config) == ['NOT_A_FIELD']
 
@@ -201,7 +208,11 @@ def test_orphans_collect_orphan_keys_multiple_orphans_all_reported():
 
 
 def test_orphans_collect_orphan_keys_valid_nested_dict_does_not_raise():
-    """A known nested dict with all valid keys produces an empty orphan list."""
+    """A known nested dict with all valid keys produces an empty orphan list.
+
+    The paired negative misspells one of those same nested keys and expects the
+    dotted path back.
+    """
     from proteus.config._config import Config
 
     data = {
@@ -214,6 +225,9 @@ def test_orphans_collect_orphan_keys_valid_nested_dict_does_not_raise():
     # Discrimination: the walk does descend into these same nested dicts, so a
     # typo one level down is caught. Without this, the empty list above would
     # also be produced by a scan that never recursed past the top level.
+    # ..._nested_orphan_in_planet covers a planet-level typo from a standing
+    # start; this one mutates the dict just asserted clean, so the two results
+    # come from the same input and the empty list cannot be a shape artefact.
     data['planet']['mass_totl'] = 1.0
     assert _collect_orphan_keys(data, Config) == ['planet.mass_totl']
 
@@ -241,7 +255,11 @@ def test_orphans_collect_orphan_keys_non_attrs_type_skips_recursion():
 
 
 def test_orphans_check_config_orphan_free_clean_config_passes():
-    """A config with no orphans returns True without raising."""
+    """A config with no orphans returns True without raising.
+
+    The paired negative injects one unknown key into that config and expects
+    False rather than a raise.
+    """
     result = check_config_orphan_free(_MINIMAL_VALID)
     assert result is True
 

@@ -483,25 +483,55 @@ def test_element_modes_from_ratios():
     assert flat['planet.elements.O_mode'] == 'ic_chemistry'
 
 
-def test_additive_element_budget_warns():
-    """C set by both ppmw and kg (2.0 sums them) cannot be one mode: warn."""
-    v2 = _minimal_spider_v2()
-    v2['delivery']['elements'] = {'H_ppmw': 100.0, 'C_ppmw': 200.0, 'C_kg': 5e19}
-    flat, report = _translate(v2)
-    assert any('ppmw and kg' in w for w in report.warnings)
+def _element_warnings(report, el):
+    """Additive-budget warnings the migration raised for one element."""
+    return [w for w in report.warnings if w.startswith(f'{el} set by both')]
 
-    # The warning states which term was kept, so the output must match it: ppmw
-    # wins and the kg term is dropped for the user to fold in by hand. Silently
-    # taking the kg budget instead would understate C by orders of magnitude.
+
+def test_additive_element_budget_warns():
+    """An element set by both ppmw and kg warns, quoting the budget it kept.
+
+    2.0 sums the ppmw and kg terms, so a config setting both carries a budget
+    3.0's single mode cannot reproduce. The warning is the user's only signal
+    that a term was left out, so it has to quote the term that actually reached
+    the migrated config: someone folding the dropped carbon into the field the
+    warning points at ships a budget the run never reads if that field is not
+    the one that was written.
+    """
+    # ppmw outranks kg, and the warning quotes the ppmw budget that was written.
+    v2 = _minimal_spider_v2()
+    v2['delivery']['elements'] = {
+        'H_ppmw': 100.0,
+        'NH_ratio': 0.5,
+        'SH_ratio': 2.0,
+        'C_ppmw': 200.0,
+        'C_kg': 5e19,
+    }
+    flat, report = _translate(v2)
     assert flat['planet.elements.C_mode'] == 'ppmw'
     assert flat['planet.elements.C_budget'] == pytest.approx(200.0)
+    assert len(_element_warnings(report, 'C')) == 1
+    assert 'C_ppmw=200.0 as C_mode="ppmw"' in _element_warnings(report, 'C')[0]
+    assert 'C_kg' in _element_warnings(report, 'C')[0]  # the dropped term is named
 
-    # Only the doubly-set element warns. C, N and S all run through the same
-    # loop and N/S are set by neither term here, so a handler that warned per
-    # element rather than per double setting would raise three warnings.
-    additive = [w for w in report.warnings if 'ppmw and kg' in w]
-    assert len(additive) == 1
-    assert additive[0].startswith('C set by both')
+    # Only the doubly-set element warns. N and S run the same loop and are each
+    # set by exactly one term, so a warning raised per element rather than per
+    # doubly-set element would name them too. The shared predicate keeps this
+    # honest: a reworded message breaks the C assertions above rather than
+    # leaving this one quietly matching nothing.
+    assert _element_warnings(report, 'N') == []
+    assert _element_warnings(report, 'S') == []
+
+    # A ratio outranks both other terms, so the same warning must follow the
+    # output to the ratio budget. Quoting the ppmw term here would send the
+    # user to a field the migrated config does not carry.
+    v2['delivery']['elements']['CH_ratio'] = 1.0
+    flat, report = _translate(v2)
+    assert flat['planet.elements.C_mode'] == 'C/H'
+    assert flat['planet.elements.C_budget'] == pytest.approx(1.0)
+    assert len(_element_warnings(report, 'C')) == 1
+    assert 'CH_ratio=1.0 as C_mode="C/H"' in _element_warnings(report, 'C')[0]
+    assert 'C_ppmw=200.0' in _element_warnings(report, 'C')[0]  # now a dropped term
 
 
 def test_instellation_method_sma_to_distance():

@@ -150,8 +150,14 @@ class TestZalmoxisVolatileGates:
         (the zalmoxis sub-config is inert under spider)."""
         s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(global_miscibility=True)))
         assert s.zalmoxis.global_miscibility is True
-        # Discrimination: the identical sub-config is rejected under zalmoxis,
-        # so the module is the only thing that decides, and acceptance here is
-        # the gate being out of scope rather than the flag value being tolerated.
-        with pytest.raises(ValueError, match='global_miscibility'):
-            Struct(module='zalmoxis', zalmoxis=Zalmoxis(global_miscibility=True))
+        # The skip covers the whole sub-config, not the miscibility flag alone:
+        # an EOS string that fails the zalmoxis format check is equally inert
+        # under spider. Narrowing the skip to the flag, and validating EOS
+        # strings for every module, would reject this spider config.
+        s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(core_eos='no_colon')))
+        assert s.zalmoxis.core_eos == 'no_colon'
+        # The paired negative: zalmoxis does enforce the format, so acceptance
+        # above is the module skipping the check rather than the check being
+        # absent.
+        with pytest.raises(ValueError, match='core_eos'):
+            Struct(module='zalmoxis', zalmoxis=Zalmoxis(core_eos='no_colon'))

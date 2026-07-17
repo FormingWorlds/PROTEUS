@@ -383,6 +383,13 @@ def _init_test_repo(path):
     subprocess.run(['git', '-C', p, 'commit', '-m', 'init'], check=True, capture_output=True)
 
 
+def _git_commit_all(path, message):
+    """Stage and commit everything in the repo at the given path."""
+    p = str(path)
+    subprocess.run(['git', '-C', p, 'add', '.'], check=True, capture_output=True)
+    subprocess.run(['git', '-C', p, 'commit', '-m', message], check=True, capture_output=True)
+
+
 class TestGitHelpers:
     """Git helper functions."""
 
@@ -404,18 +411,35 @@ class TestGitHelpers:
         assert head is not None and len(head) == 40
 
     def test_git_dirty_false_for_clean_repo(self, tmp_path):
-        """A repo whose tracked content matches HEAD is clean; an untracked file
-        still counts as dirty.
+        """A repo whose tracked content matches HEAD is clean, and an ignored
+        file leaves it clean.
 
-        The dirty state is read from ``git status --porcelain``, which lists
-        untracked files alongside modified ones. An untracked file is therefore
-        the edge case that separates the current behaviour from a tracked-only
-        check such as ``git diff --quiet``, which would keep reporting clean
-        here and let an environment report hide a stray file.
+        The dirty state is read from ``git status --porcelain``, which honours
+        .gitignore. That matters here because a PROTEUS checkout carries
+        gitignored run output: if ignored paths counted, every environment
+        report after a simulation would call the tree dirty.
         """
         _init_test_repo(tmp_path)
         assert _git_dirty(str(tmp_path)) is False
-        # Edge: a file git has never seen makes the same repo dirty.
+
+        # Edge: an ignored path holding files does not disturb the clean state.
+        # The .gitignore is committed so it is not itself an untracked file.
+        (tmp_path / '.gitignore').write_text('output/\n')
+        _git_commit_all(tmp_path, 'add gitignore')
+        (tmp_path / 'output').mkdir()
+        (tmp_path / 'output' / 'run.log').write_text('junk')
+        assert _git_dirty(str(tmp_path)) is False
+
+    def test_git_dirty_true_for_untracked_file(self, tmp_path):
+        """A file git has never seen makes the tree dirty.
+
+        ``git status --porcelain`` lists untracked files alongside modified
+        ones, so an untracked file is the case that separates the current
+        behaviour from a tracked-only check such as ``git diff --quiet``, which
+        would keep reporting clean and let a stray file pass unreported.
+        """
+        _init_test_repo(tmp_path)
+        assert _git_dirty(str(tmp_path)) is False
         (tmp_path / 'untracked.txt').write_text('new')
         assert _git_dirty(str(tmp_path)) is True
 

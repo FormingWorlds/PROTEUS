@@ -522,22 +522,33 @@ def _handle_elements(eff_v2, explicit, v3, report):
         ('S', 'SH_ratio', 'S/H'),
     ):
         ratio, ppmw, kg = g(ratio_key), g(f'{el}_ppmw'), g(f'{el}_kg')
-        # 2.0 sums the ppmw (relative) and kg (absolute) terms; 3.0 carries a
-        # single mode, so a config that set both cannot be reproduced exactly.
-        if ppmw and kg:
-            report.warnings.append(
-                f'{el} set by both ppmw and kg in 2.0 (which sums them); 3.0 '
-                f'supports one mode. Using ppmw={ppmw}; fold the kg term in by '
-                f'hand if it matters.'
-            )
-        if ratio:
-            mode, budget = ratio_mode, ratio
-        elif ppmw:
-            mode, budget = 'ppmw', ppmw
-        elif kg:
-            mode, budget = 'kg', kg
+
+        # Candidate terms in precedence order: a ratio outranks ppmw, which
+        # outranks kg. The first one the user set is the one 3.0 carries.
+        candidates = (
+            (ratio_key, ratio, ratio_mode),
+            (f'{el}_ppmw', ppmw, 'ppmw'),
+            (f'{el}_kg', kg, 'kg'),
+        )
+        chosen = [c for c in candidates if c[1]]
+        if chosen:
+            kept_key, budget, mode = chosen[0]
         else:
             mode, budget = ratio_mode, 0.0
+
+        # 2.0 sums the ppmw (relative) and kg (absolute) terms, so a config
+        # setting both carries a budget 3.0's single mode cannot reproduce.
+        # Quote the term that actually reached the migrated config, and list
+        # the ones left out: naming a term the output ignores sends the user to
+        # fold their budget into a field the run never reads.
+        if ppmw and kg:
+            dropped = ', '.join(f'{key}={val}' for key, val, _ in chosen[1:])
+            report.warnings.append(
+                f'{el} set by both ppmw and kg in 2.0 (which sums them); 3.0 '
+                f'supports one mode. Using {kept_key}={budget} as '
+                f'{el}_mode="{mode}"; fold in by hand if it matters: {dropped}.'
+            )
+
         v3[f'planet.elements.{el}_mode'] = mode
         v3[f'planet.elements.{el}_budget'] = budget
 
