@@ -51,18 +51,12 @@ from proteus.config._config import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Mixed-tier file: 32 unit tests + 1 slow test (the 7776-combo cross-
-# product is too expensive for the unit budget and carries
-# @pytest.mark.slow per-function). New tests default to unit; only
-# combinatorial fuzz that exceeds the 30 s ceiling should be slow.
-
-
-# This file deliberately omits a module-level `pytestmark` because it
-# mixes two tiers: the explicit per-validator tests are `@pytest.mark.unit`
-# and the exhaustive cross-product is `@pytest.mark.slow`. A module-level
-# mark would double-mark the slow test as unit and break the CI filter
-# `unit and not slow`. Every test function in this file MUST carry its
-# own tier decorator; review for missing marks at PR time.
+# Every test here is unit tier, including the 7776-combo cross-product, which
+# sweeps in ~2.5 s. Keep it that way: a second tier marker on any function in
+# this file would combine with the module mark above, and the tier filters are
+# mutually exclusive (`unit and not slow` against `slow and not unit`), so a
+# doubly-marked test is selected by neither and silently stops running. A test
+# that outgrows the 30 s ceiling belongs in its own single-tier file.
 
 # ---------------------------------------------------------------------------
 # Schema enum inventory: kept here so a schema change that adds a backend
@@ -872,7 +866,6 @@ def _make_combo_toml(combo, tmp_path):
     return p
 
 
-@pytest.mark.slow
 def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
     """Exhaustive cross-product over the importable backend combinations.
 
@@ -901,6 +894,10 @@ def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
     - We only enumerate combos with backends in the hard-dep set; the
       check_module_dependencies positive/negative logic (atmodeller, boreas
       missing) is covered by the explicit tests above.
+    - The sweep runs in ~2.5 s, so it sits at unit tier with the rest of this
+      file rather than waiting for the nightly. It is over the 100 ms unit
+      target but far inside the 30 s ceiling, and an exhaustive validator
+      sweep is worth that on every pull request.
     """
     import itertools
 
