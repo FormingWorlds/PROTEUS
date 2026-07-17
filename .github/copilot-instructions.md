@@ -204,7 +204,7 @@ pytest
 ```bash
 pytest -m unit              # Fast unit tests (<100ms each, mocked physics)
 pytest -m smoke             # Binary validation (1 timestep, low res)
-pytest -m "unit or smoke"   # What PR checks run
+pytest -m "unit and not skip"   # What PR checks run
 pytest -m integration       # Multi-module coupling
 pytest -m "not slow"        # Everything except slow tests
 ```
@@ -261,11 +261,10 @@ pre-commit install -f
 
 **CI runs on PRs** (`.github/workflows/ci-pr-checks.yml`):
 
-1. **Unit tests**: `pytest -m "unit and not skip" --cov=src --cov-fail-under=$FAST_COV_FAIL_UNDER` (CI reads the fast threshold from `pyproject.toml` `[tool.proteus.coverage_fast]`; fixed at 80%, warn-only on draft PRs)
-2. **Smoke tests**: `pytest -m "smoke and not skip"`
-3. **Lint**: `ruff check src/ tests/` and `ruff format --check src/ tests/`
-4. **Diff-cover**: 80% on changed lines, fast-suite coverage unioned with the latest nightly coverage (enforced)
-5. **Test structure**: `bash tools/validate_test_structure.sh`
+1. **Unit tests**: `pytest -m "unit and not skip" --cov=src --cov-fail-under=$FAST_COV_FAIL_UNDER` (CI reads the fast threshold from `pyproject.toml` `[tool.proteus.coverage_fast]`; fixed at 80%, warn-only on draft PRs). The PR cycle runs the unit tier only; smoke, integration, and slow run nightly.
+2. **Lint**: `ruff check src/ tests/` and `ruff format --check src/ tests/`
+3. **Diff-cover**: 80% on changed lines, fast-suite coverage unioned with the latest nightly coverage (enforced)
+4. **Test structure**: `bash tools/validate_test_structure.sh`
 
 **All must pass** before merge. Coverage gates are warn-only on draft PRs and block once the PR is ready for review. Coverage ceilings are fixed (fast 80%, full 90%) and never lowered.
 
@@ -331,7 +330,7 @@ Tier markers, with their CI surface and per-test wall-time budgets:
 | Marker | What it tests | Speed budget | When CI runs it |
 |---|---|---|---|
 | `@pytest.mark.unit` | Python logic, heavy physics mocked | < 100 ms per test | Every PR (`unit and not skip`) |
-| `@pytest.mark.smoke` | Real binaries, 1 timestep, low resolution | < 30 s per test | Every PR (`smoke and not skip`) |
+| `@pytest.mark.smoke` | Real binaries, 1 timestep, low resolution | < 30 s per test | Nightly only (`smoke and not skip`) |
 | `@pytest.mark.integration` | Multi-module coupling | Minutes per test | Nightly only |
 | `@pytest.mark.slow` | Full physics validation | Up to hours per test | Nightly only (targeted file list) |
 | `@pytest.mark.skip` | Placeholder, deliberately disabled | n/a | Never |
@@ -453,8 +452,8 @@ PROTEUS uses two gates with explicit sub-targets:
 | Gate | Tests included | Target | Enforced |
 |---|---|---|---|
 | Fast gate (`tool.proteus.coverage_fast.fail_under`) | unit-only (PR) | Fixed **80%** | Every PR (warn-only on drafts) |
-| Estimated total (PR unit coverage union with latest nightly artifact) | unit + smoke + integration | **90%** (the PROTEUS-ecosystem ceiling) | Every PR (warn-only on drafts) |
-| Full gate (`tool.coverage.report.fail_under`) | unit + smoke + integration + slow | Fixed **90%** | Nightly only |
+| Estimated total (PR unit coverage union with latest nightly artifact) | unit + smoke + integration + slow | **90%** (the PROTEUS-ecosystem ceiling) | Every PR (warn-only on drafts) |
+| Full gate (`tool.coverage.report.fail_under`) | unit + smoke + integration + slow | Fixed **90%** | Read by the PR estimated-total gate; the nightly publishes coverage without failing on it |
 | Diff-cover | changed lines (fast + nightly union) | 80% (hard-coded; warn-only on drafts) | Every PR |
 
 **What this means for contributors**: the coverage ceilings are fixed, not ratcheting: the fast (unit-only) gate is held at **80%** and the full gate at the **90%** PROTEUS-ecosystem target (`tools/update_coverage_threshold.py` enforces `CEILINGS = {'fast': 80.0, 'full': 90.0}` and the PR threshold guard fails if either is edited away from its fixed value). Unit tests alone are not expected to reach 90% because wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is exercised only by the nightly tiers; that is why the fast gate sits at 80, not 90. The 90% target is reached via the estimated-total: the PR's unit coverage is unioned with the latest nightly artifact and compared against the full gate, and the diff-cover gate unions the fast and nightly reports the same way. Coverage gates run on draft PRs for visibility but are warn-only there; they block once the PR is marked ready for review.

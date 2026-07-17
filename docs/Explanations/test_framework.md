@@ -24,7 +24,7 @@ Tests are organized into four tiers of increasing scope and cost:
 ```
 Unit (< 100 ms)  →  Smoke (< 30 s)  →  Integration (minutes)  →  Slow (hours)
      ↑                    ↑                     ↑                      ↑
-  Every PR            Every PR              Nightly               Nightly
+  Every PR             Nightly              Nightly               Nightly
 ```
 
 **Unit tests** verify individual Python functions with all external
@@ -147,19 +147,19 @@ Every new test function must include:
 
 ## Coverage architecture
 
-PROTEUS uses two coverage gates:
+PROTEUS uses two coverage gates, both on every pull request:
 
-- **Fast gate** (every PR): unit tests only, fixed at 80%. Unit tests alone
-  are not expected to reach the 90% ecosystem target, because wrapper code
-  that requires real binaries is exercised only by the nightly tiers. That is
-  why the gate sits at 80 rather than chasing 90.
-- **Full gate** (nightly): all tiers combined, fixed at 90%. This is the
-  primary KPI; the fast gate is a lower bound.
+- **Fast gate**: unit tests only, fixed at 80%. Unit tests alone are not
+  expected to reach the 90% ecosystem target, because wrapper code that
+  requires real binaries is exercised only by the nightly tiers. That is why
+  the gate sits at 80 rather than chasing 90.
+- **Estimated total**: the pull request's unit coverage unioned with the
+  latest nightly artifact, fixed at 90%. That union is how the 90% target is
+  reached on a pull request even though smoke, integration, and slow tests do
+  not run there. This is the primary KPI; the fast gate is a lower bound.
 
-The estimated-total mechanism unions PR unit coverage with the latest nightly
-artifact to compare against the full gate on every PR, even though smoke,
-integration, and slow tests do not run on PRs. That union is how the 90%
-target is reached on a PR.
+The nightly runs every tier and publishes the coverage artifact the estimated
+total unions against; it does not itself fail on a coverage percentage.
 
 Both ceilings are fixed rather than ratcheting, and neither may be lowered:
 `tools/update_coverage_threshold.py` holds them and the PR threshold guard
