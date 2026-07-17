@@ -1,7 +1,8 @@
 """
-Unit tests for PETSc/SPIDER installation shell scripts.
+Unit tests for the installation shell scripts and the repository and CI
+configuration invariants they depend on.
 
-Tests the reusable shell logic extracted from ``tools/get_petsc.sh`` and
+Reusable shell logic replicated inline from ``tools/get_petsc.sh`` and
 ``tools/get_spider.sh``:
 - ``portable_realpath()``: cross-platform path resolution
 - ERR trap: exit-code and step-name capture
@@ -10,8 +11,25 @@ Tests the reusable shell logic extracted from ``tools/get_petsc.sh`` and
 - Workpath argument handling: ``$1`` override vs default
 - PETSc library detection: versioned ``.so``, ``.dylib``, missing
 
-Each test runs an isolated bash snippet via ``subprocess.run()``, with no
-network access and no real builds.
+Blocks lifted out of the shipped scripts at run time, so that rewording a
+script re-runs its cases against the new text:
+- ``tools/get_aragog.sh``: the dirty-checkout guard shared across ``get_*.sh``
+- ``tools/get_socrates.sh``: the portable-flag rewrite, its post-build flag
+  check, and the conditional AGNI-wrapper rebuild note
+
+Also pins invariants that live in checked-in configuration and documentation
+rather than in shell, each of which fails silently when its counterpart moves:
+- ``pyproject.toml`` module pins and optional-dependency extras, which the
+  scripts resolve through ``tools/_module_pins.py``
+- the extras the ``setup-proteus`` composite action installs, against the
+  extra keys pyproject declares
+- the installation docs' guidance on editable installs, against those pins
+- CI config leaving USER at the runner default, which the action's macOS
+  ``brew install`` step requires
+
+Each shell test runs an isolated bash snippet via ``subprocess.run()``, with
+no network access and no real builds; the configuration tests read the
+checked-in files directly.
 
 See also:
 - docs/test_infrastructure.md
@@ -1097,13 +1115,18 @@ def test_ci_config_never_pins_user():
     repo_root = Path(__file__).resolve().parents[2]
     workflow_dir = repo_root / '.github/workflows'
     workflows = sorted(workflow_dir.glob('*.yml')) + sorted(workflow_dir.glob('*.yaml'))
-    action = repo_root / '.github/actions/setup-proteus/action.yml'
+    # Every composite action is scanned, not just the one that installs the
+    # macOS packages today: any action calling brew is a place where a USER
+    # pin would break the setup.
+    actions = sorted(repo_root.glob('.github/actions/*/action.yml')) + sorted(
+        repo_root.glob('.github/actions/*/action.yaml')
+    )
 
-    # Guard the guard: an empty or mis-rooted glob, or a renamed action, would
-    # make the scan below pass by finding nothing to check.
+    # Guard the guard: an empty or mis-rooted glob would make the scan below
+    # pass by finding nothing to check.
     assert workflows, f'no workflow files resolved under {workflow_dir}'
-    assert action.is_file(), f'{action} is missing; the USER guard cannot check CI setup'
-    targets = workflows + [action]
+    assert actions, f'no composite actions resolved under {repo_root}/.github/actions'
+    targets = workflows + actions
 
     # Discrimination: the matcher must fire on every shape that reaches the job
     # environment and stay quiet on unrelated keys, prose, and same-suffix
