@@ -8,8 +8,8 @@ path. Each solve runs a surface-temperature scan plus bisection over the PALEOS
 adiabat, so they live in the slow nightly tier; the unit suite exercises the
 solver control flow against a synthetic adiabat in ``test_liquidus_super_ic``.
 
-See also: ``docs/How-to/test_infrastructure.md``,
-``docs/How-to/test_categorization.md``, ``docs/How-to/test_building.md``.
+See also: ``docs/How-to/testing.md``,
+``docs/Explanations/test_framework.md``.
 """
 
 from __future__ import annotations

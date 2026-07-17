@@ -7,9 +7,8 @@ This ensures that the simulation defaults to a known state (usually Earth-like o
 without preventing manual configuration.
 
 See also:
-- docs/test_infrastructure.md
-- docs/test_categorization.md
-- docs/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

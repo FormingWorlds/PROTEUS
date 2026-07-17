@@ -17,12 +17,10 @@ Physics tested:
 - Net flux constraint (prevent warming: F_atm >= 0)
 
 All tests use mocked config objects to isolate physics calculations (<100ms runtime).
-See docs/test_infrastructure.md, docs/test_building.md for testing standards.
 
 Related documentation:
-- docs/test_infrastructure.md: Test framework and CI integration
-- docs/test_categorization.md: Test markers and categories
-- docs/test_building.md: Best practices for writing robust tests
+- docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
+- docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 """
 
 from __future__ import annotations

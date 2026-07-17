@@ -213,8 +213,9 @@ markers = [
 ]
 
 [tool.coverage.report]
-# Full coverage gate: unit + smoke + integration + slow tests, enforced by the
-# nightly workflow. Fixed ceiling at 90% (the PROTEUS-ecosystem target). The
+# Full coverage gate value: unit + smoke + integration + slow tests. The nightly
+# does not enforce it; it is the number the PR estimated-total gate is measured
+# against. Fixed ceiling at 90% (the PROTEUS-ecosystem target). The
 # estimated-total coverage on PRs (union of PR unit coverage with the latest
 # nightly artifact) is also compared against this gate; that is the 90% KPI
 # operators read. The fixed value is enforced by

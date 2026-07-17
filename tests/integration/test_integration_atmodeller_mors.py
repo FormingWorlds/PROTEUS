@@ -50,9 +50,8 @@ interior) for the atmodeller leg; the MORS leg is exercised by
 ``test_smoke_modules.py``.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

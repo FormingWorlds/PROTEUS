@@ -9,7 +9,8 @@ This module tests the shared utility functions used by all atmosphere-climate mo
 - Interpolation of lookup tables (Albedo)
 
 See also:
-- docs/test_infrastructure.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

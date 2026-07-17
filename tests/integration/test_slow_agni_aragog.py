@@ -37,9 +37,8 @@ plus AGNI's per-step Newton solve at the grey-gas level. The 3600 s
 timeout sits inside the slow-tier 200 min step cap.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

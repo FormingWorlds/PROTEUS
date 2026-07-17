@@ -7,9 +7,8 @@ Also tests solve_structure() dispatch, phi_crit warning, full update path
 with mesh blending, convergence tracking, and entropy remap.
 
 Testing standards and documentation:
-- docs/test_infrastructure.md: Test infrastructure overview
-- docs/test_categorization.md: Test marker definitions
-- docs/test_building.md: Best practices for test construction
+- docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
+- docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 
 Functions tested:
 - update_structure_from_interior(): Trigger logic, T(r) profile building,

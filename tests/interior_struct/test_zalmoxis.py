@@ -5,9 +5,8 @@ Validates SPIDER mesh file generation from Zalmoxis mantle profiles,
 Zalmoxis configuration building, and solidus/liquidus loading.
 
 Testing standards and documentation:
-- docs/test_infrastructure.md: Test infrastructure overview
-- docs/test_categorization.md: Test marker definitions
-- docs/test_building.md: Best practices for test construction
+- docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
+- docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 
 Functions tested:
 - write_spider_mesh_file(): Interpolate Zalmoxis profiles onto SPIDER mesh
