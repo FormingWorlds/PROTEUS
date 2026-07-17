@@ -57,7 +57,6 @@ jobs:
     timeout-minutes: 30
     env:
       COVERAGE_FILE: .coverage.unit.${{ matrix.os }}
-      USER: "ci-runner"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -143,7 +142,6 @@ jobs:
     timeout-minutes: 45
     env:
       COVERAGE_FILE: .coverage.integration.${{ matrix.os }}
-      USER: "ci-runner"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -282,7 +280,6 @@ jobs:
     timeout-minutes: 210   # job cap for the slow-tier matrix, sized by its longest shard (zalmoxis-coupled/ubuntu, ~137 min plus ~11 min setup); above the 180 min per-test pytest-timeout so a hung single test trips pytest-timeout's per-test timer before the job is cancelled.
     env:
       COVERAGE_FILE: .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
-      USER: "ci-runner"
     steps:
       - uses: actions/checkout@v6
         with:

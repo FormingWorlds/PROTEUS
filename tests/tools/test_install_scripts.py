@@ -1059,3 +1059,72 @@ def test_socrates_rebuild_warns_to_regenerate_agni_wrappers(tmp_path):
     res_absent = _run_agni_rebuild_note(without_agni, has_agni=False)
     assert res_absent.returncode == 0, res_absent.stderr
     assert 'get_agni.sh' not in res_absent.stdout
+
+
+# ---------------------------------------------------------------------------
+# CI must not pin USER (breaks the macOS Homebrew install)
+# ---------------------------------------------------------------------------
+# A USER pin reaches the job environment as a block-mapping key, as a flow-
+# mapping entry, or as a dynamic export out of a run step. All three are
+# forbidden, so the scan matches all three rather than only the block form.
+_USER_PINS = (
+    re.compile(r'^\s*["\']?USER["\']?\s*:'),
+    re.compile(r'[{,]\s*["\']?USER["\']?\s*:'),
+    re.compile(r'\bUSER\s*=.*GITHUB_ENV'),
+)
+
+
+def _pins_user(line: str) -> bool:
+    """Return True when a CI config line pins USER into the job environment."""
+    # Drop trailing comments so prose naming USER cannot trip the scan.
+    text = line.split('#', 1)[0]
+    return any(pattern.search(text) for pattern in _USER_PINS)
+
+
+@pytest.mark.unit
+def test_ci_config_never_pins_user():
+    """CI config must leave USER at the runner default.
+
+    Several jobs share the macOS leg of the ``setup-proteus`` composite action,
+    which runs ``brew install``. Its preinstall check resolves the active
+    account by name, so a USER naming an account that does not exist on the
+    runner aborts the setup step before a single package is installed and every
+    macOS job fails before reaching its tests. Pinning even a real account name
+    is fragile, because it breaks whenever the runner account is renamed or the
+    jobs move back into a container. The invariant is pinned here, for every
+    workflow at once, rather than by a comment in whichever one was edited last.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    workflow_dir = repo_root / '.github/workflows'
+    workflows = sorted(workflow_dir.glob('*.yml')) + sorted(workflow_dir.glob('*.yaml'))
+    action = repo_root / '.github/actions/setup-proteus/action.yml'
+
+    # Guard the guard: an empty or mis-rooted glob, or a renamed action, would
+    # make the scan below pass by finding nothing to check.
+    assert workflows, f'no workflow files resolved under {workflow_dir}'
+    assert action.is_file(), f'{action} is missing; the USER guard cannot check CI setup'
+    targets = workflows + [action]
+
+    # Discrimination: the matcher must fire on every shape that reaches the job
+    # environment and stay quiet on unrelated keys, prose, and same-suffix
+    # variables, so a broken pattern cannot make this test pass vacuously.
+    assert _pins_user('      USER: "ci-runner"')
+    assert _pins_user("      'USER': ci-runner")
+    assert _pins_user('    env: {USER: ci-runner}')
+    assert _pins_user('        echo "USER=ci-runner" >> "$GITHUB_ENV"')
+    assert not _pins_user('  COVERAGE_FILE: .coverage.unit.macos-latest')
+    assert not _pins_user('  # Leave USER at the runner default')
+    assert not _pins_user('        echo "FWL_USER=someone" >> "$GITHUB_ENV"')
+
+    offenders = []
+    for path in targets:
+        for lineno, raw in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+            if _pins_user(raw):
+                offenders.append(f'{path.relative_to(repo_root)}:{lineno}: {raw.strip()}')
+
+    assert not offenders, (
+        'CI config must leave USER at the runner default. A USER naming an '
+        'account that does not exist aborts the macOS brew install shared by '
+        'several jobs, and pinning a real account name breaks on the next '
+        f'runner rename. Remove these: {offenders}'
+    )
