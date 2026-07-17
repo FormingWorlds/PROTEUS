@@ -219,10 +219,9 @@ _REVIEWED_NEUTRAL = frozenset(
 )
 
 
-def test_map_completeness():
-    """Every 2.0 field has a destination, a handler, a removal, or a drop rule."""
+def _unhandled_v2_fields(paths):
+    """2.0 field paths with no copy, rename, handler, removal, or drop rule."""
     v3_defaults, _ = _v3()
-    v2 = mig._load_v2_defaults()
     interior_targets = set()
     for d in mig.INTERIOR_RENAMES.values():
         interior_targets |= set(d)
@@ -230,7 +229,7 @@ def test_map_completeness():
         f'atmos_clim.{m}.{f}' for m in ('agni', 'janus') for f in mig._ATMOS_SHARED
     }
     unhandled = []
-    for path in v2:
+    for path in paths:
         if path == 'version':
             continue
         if path in v3_defaults:  # identical path, copied
@@ -250,7 +249,23 @@ def test_map_completeness():
         if path.startswith(_DROP_PREFIXES) or path == 'struct.zalmoxis':
             continue
         unhandled.append(path)
-    assert not unhandled, f'2.0 fields with no handling rule: {sorted(unhandled)}'
+    return unhandled
+
+
+def test_map_completeness():
+    """Every 2.0 field has a destination, a handler, a removal, or a drop rule."""
+    v2 = mig._load_v2_defaults()
+    # The 2.0 snapshot is the input the scan is meant to cover; an empty or
+    # truncated one would make the check below vacuously true.
+    assert len(v2) > 100, f'2.0 defaults snapshot looks truncated: {len(v2)} fields'
+    assert _unhandled_v2_fields(v2) == []
+
+    # A 2.0 field matching none of the rules is reported, so the empty result
+    # above is the map covering the snapshot rather than a scan that accepts
+    # anything. 'struct.ghost_field' sits under a real 2.0 section but is not a
+    # drop prefix, so only the field itself may be flagged.
+    probe = list(v2) + ['struct.ghost_field']
+    assert _unhandled_v2_fields(probe) == ['struct.ghost_field']
 
 
 def _compute_pm(v3_defaults):
@@ -433,13 +448,27 @@ def test_maximum_rel_pinned_when_unset():
     flat, _ = _translate(_minimal_spider_v2())
     assert flat['params.dt.maximum_rel'] == pytest.approx(0.0)
 
+    # The pin is doing the work: the live 3.0 schema default is 1.0, so a
+    # migration that simply let the field default would produce a time-growing
+    # dt cap the 2.0 run never had.
+    v3_defaults, _ = _v3()
+    assert v3_defaults['params.dt.maximum_rel'] == pytest.approx(1.0)
+
 
 def test_explicit_maximum_rel_is_respected():
     """An explicit 2.0 maximum_rel wins over the backwards-compat override."""
     v2 = _minimal_spider_v2()
-    v2['params'] = {'dt': {'maximum_rel': 1.0}}
-    flat, _ = _translate(v2)
-    assert flat['params.dt.maximum_rel'] == pytest.approx(1.0)
+    # 0.25 is neither the 0.0 override nor the 1.0 schema default, so the value
+    # can only have come from the input; either fallback fires here.
+    v2['params'] = {'dt': {'maximum_rel': 0.25}}
+    flat, report = _translate(v2)
+    assert flat['params.dt.maximum_rel'] == pytest.approx(0.25)
+
+    # The report lists the fields the migration pinned on the user's behalf. An
+    # explicit choice is not a pin, so this field must not appear there: a
+    # report that claims it was overridden sends the user hunting for a change
+    # to their own value that never happened.
+    assert 'params.dt.maximum_rel' not in dict(report.overridden)
 
 
 def test_element_modes_from_ratios():
@@ -454,18 +483,77 @@ def test_element_modes_from_ratios():
     assert flat['planet.elements.O_mode'] == 'ic_chemistry'
 
 
+def _element_warnings(report, el):
+    """Additive-budget warnings the migration raised for one element."""
+    return [w for w in report.warnings if w.startswith(f'{el} set by both')]
+
+
 def test_additive_element_budget_warns():
-    """C set by both ppmw and kg (2.0 sums them) cannot be one mode: warn."""
+    """An element set by both ppmw and kg warns, quoting the budget it kept.
+
+    2.0 sums the ppmw and kg terms, so a config setting both carries a budget
+    3.0's single mode cannot reproduce. The warning is the user's only signal
+    that a term was left out, so it has to quote the term that actually reached
+    the migrated config: someone folding the dropped carbon into the field the
+    warning points at ships a budget the run never reads if that field is not
+    the one that was written.
+    """
+    # ppmw outranks kg, and the warning quotes the ppmw budget that was written.
     v2 = _minimal_spider_v2()
-    v2['delivery']['elements'] = {'H_ppmw': 100.0, 'C_ppmw': 200.0, 'C_kg': 5e19}
-    _, report = _translate(v2)
-    assert any('ppmw and kg' in w for w in report.warnings)
+    v2['delivery']['elements'] = {
+        'H_ppmw': 100.0,
+        'NH_ratio': 0.5,
+        'SH_ratio': 2.0,
+        'C_ppmw': 200.0,
+        'C_kg': 5e19,
+    }
+    flat, report = _translate(v2)
+    assert flat['planet.elements.C_mode'] == 'ppmw'
+    assert flat['planet.elements.C_budget'] == pytest.approx(200.0)
+    assert len(_element_warnings(report, 'C')) == 1
+    assert 'C_ppmw=200.0 as C_mode="ppmw"' in _element_warnings(report, 'C')[0]
+    assert 'C_kg' in _element_warnings(report, 'C')[0]  # the dropped term is named
+
+    # Only the doubly-set element warns. N and S run the same loop and are each
+    # set by exactly one term, so a warning raised per element rather than per
+    # doubly-set element would name them too. The shared predicate keeps this
+    # honest: a reworded message breaks the C assertions above rather than
+    # leaving this one quietly matching nothing.
+    assert _element_warnings(report, 'N') == []
+    assert _element_warnings(report, 'S') == []
+
+    # A ratio outranks both other terms, so the same warning must follow the
+    # output to the ratio budget. Quoting the ppmw term here would send the
+    # user to a field the migrated config does not carry.
+    v2['delivery']['elements']['CH_ratio'] = 1.0
+    flat, report = _translate(v2)
+    assert flat['planet.elements.C_mode'] == 'C/H'
+    assert flat['planet.elements.C_budget'] == pytest.approx(1.0)
+    assert len(_element_warnings(report, 'C')) == 1
+    assert 'CH_ratio=1.0 as C_mode="C/H"' in _element_warnings(report, 'C')[0]
+    assert 'C_ppmw=200.0' in _element_warnings(report, 'C')[0]  # now a dropped term
 
 
 def test_instellation_method_sma_to_distance():
     """The orbit instellation method renames from sma to distance."""
     flat, _ = _translate(_minimal_spider_v2())
     assert flat['orbit.instellation_method'] == 'distance'
+
+    # 'inst' is the other 2.0 value and keeps its name in 3.0, so the rename
+    # rewrites one value rather than the whole field. A blanket rewrite would
+    # land 'distance' here and silently switch a fixed-instellation run to a
+    # distance-derived one. 'inst' is only accepted alongside a dummy star, so
+    # the star block moves with it.
+    v2 = _minimal_spider_v2()
+    v2['orbit']['instellation_method'] = 'inst'
+    v2['star'] = {
+        'module': 'dummy',
+        'mass': 1.0,
+        'age_ini': 0.1,
+        'dummy': {'radius': 1.0, 'Teff': 5772.0},
+    }
+    flat_inst, _ = _translate(v2)
+    assert flat_inst['orbit.instellation_method'] == 'inst'
 
 
 def test_outgas_solver_tolerances_renamed():
@@ -486,6 +574,18 @@ def test_unset_F_initial_pins_main_default():
     del v2['interior']['F_initial']
     flat, _ = _translate(v2)
     assert flat['interior_energetics.flux_guess'] == pytest.approx(1000.0)
+
+    # The pinned value is not the schema default, so letting the field default
+    # would flip the run to the auto sigma*T^4 guess. The negative default is
+    # a sentinel, well separated from any real W/m^2 flux.
+    v3_defaults, _ = _v3()
+    assert v3_defaults['interior_energetics.flux_guess'] == pytest.approx(-1)
+
+    # An explicit 2.0 F_initial still wins over the pin, so the 1000.0 above is
+    # the omitted-field fallback and not a hard-coded output.
+    v2['interior']['F_initial'] = 250.0
+    flat_explicit, _ = _translate(v2)
+    assert flat_explicit['interior_energetics.flux_guess'] == pytest.approx(250.0)
 
 
 def test_radius_int_converts_earth_radii_to_metres():
@@ -512,6 +612,15 @@ def test_clean_spider_config_warns_only_about_legacy_observe_synthesis():
     assert report.warnings == ['Unmapped 2.0 field (left out): observe.synthesis'], (
         report.warnings
     )
+
+    # The warning is reserved for fields main's 2.0 loader actually read. A key
+    # that was never part of the 2.0 schema had no effect on the 2.0 run, so
+    # dropping it is faithful and silent; warning on it would bury the one
+    # field that does need the user's attention.
+    v2 = _minimal_spider_v2()
+    v2['interior']['ghost_field'] = 1.0
+    _, ghost_report = _translate(v2)
+    assert ghost_report.warnings == report.warnings
 
 
 def test_grid_axis_renames():
