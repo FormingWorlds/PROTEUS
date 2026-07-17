@@ -29,9 +29,8 @@ ordering bugs surface), S values designed so the 1 %, 5 % and 8 % cases are
 clearly in the right bucket.
 
 Testing standards and documentation:
-- docs/test_infrastructure.md
-- docs/test_categorization.md
-- docs/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

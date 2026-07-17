@@ -12,8 +12,8 @@
 # Runtime: Each test <30s (target for fast PR CI)
 #
 # Documentation: For testing standards, see:
-# - docs/test_infrastructure.md
-# - docs/test_categorization.md
+# - docs/How-to/testing.md
+# - docs/Explanations/test_framework.md
 #
 from __future__ import annotations
 

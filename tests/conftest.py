@@ -31,8 +31,8 @@ for consistency across the PROTEUS ecosystem.
       assert earth_params.planet_mass == earth_params.planet_mass
       assert earth_params.equilibrium_temperature > 273  # Above freezing
 
-See test_infrastructure.md for full documentation of conftest.py role in the
-testing framework.
+See docs/How-to/testing.md for full documentation of the conftest.py role in
+the testing framework.
 """
 
 from __future__ import annotations

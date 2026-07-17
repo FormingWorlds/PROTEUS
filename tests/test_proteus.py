@@ -5,9 +5,8 @@ Tests the resume code path in Proteus.start() that restores the Zalmoxis
 mesh file path when resuming a SPIDER interior simulation.
 
 Testing standards and documentation:
-- docs/test_infrastructure.md: Test infrastructure overview
-- docs/test_categorization.md: Test marker definitions
-- docs/test_building.md: Best practices for test construction
+- docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
+- docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 
 Functions tested:
 - Proteus.start(): Resume path restoring spider_mesh and spider_mesh_prev

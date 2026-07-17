@@ -1,8 +1,8 @@
 """Tests for observe config validators.
 
 This file targets _observe.py validators. See testing standards in
-docs/test_infrastructure.md, docs/test_categorization.md, and
-docs/test_building.md for required structure, speed, and physics validity.
+docs/How-to/testing.md and docs/Explanations/test_framework.md for required
+structure, speed, and physics validity.
 """
 
 from __future__ import annotations

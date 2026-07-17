@@ -32,9 +32,8 @@ no network access and no real builds; the configuration tests read the
 checked-in files directly.
 
 See also:
-- docs/test_infrastructure.md
-- docs/test_categorization.md
-- docs/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

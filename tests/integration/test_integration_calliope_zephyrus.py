@@ -46,9 +46,8 @@ zephyrus) and the AGNI x CALLIOPE leg covers the calliope
 atmosphere boundary.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
