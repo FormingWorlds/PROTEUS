@@ -201,16 +201,14 @@ def test_vmrs_to_mass_fractions_normalizes_remaining_species(monkeypatch):
     np.testing.assert_allclose(mass_fractions['H2'], np.array([1.0 / 3.0, 0.6]), rtol=1e-12)
     np.testing.assert_allclose(mass_fractions['He'], np.array([2.0 / 3.0, 0.4]), rtol=1e-12)
     # Carries the VMR scale, so this is the pin that sees the renormalization: skipping
-    # it gives 0.6 and 1.0. petitRADTRANS wants amu (g mol-1), so the kg mol-1 masses are
-    # scaled by 1e3; dropping that conversion lands three decades away at 3.0e-3.
+    # it gives 0.6 and 1.0, factors of 5 and 2.5 away. petitRADTRANS wants amu (g mol-1),
+    # so the kg mol-1 masses are scaled by 1e3; dropping that lands three decades off, at
+    # 3.0e-3.
     np.testing.assert_allclose(mean_molar_masses, np.array([3.0, 2.5]), rtol=1e-12)
 
-    # Every gas in the mix reaches the output: the returned fractions account for all of
-    # the mass. This is closure over the dict, not over the arithmetic, so it fails if a
-    # contributing gas is filtered out of the result rather than merely mis-weighted.
-    np.testing.assert_allclose(sum(mass_fractions.values()), np.ones(2), rtol=1e-12)
-    # Boundedness: a single species can neither carry none of the mass nor all of it in a
-    # two-gas mix, so a sign slip in either contribution escapes the interval.
+    # Sign and scale guard for the pins above: in a two-gas mix neither species can carry
+    # none of the mass nor all of it, so a negative contribution or a swapped denominator
+    # leaves the interval.
     for gas in gases:
         assert np.all((mass_fractions[gas] > 0.0) & (mass_fractions[gas] < 1.0))
 
@@ -251,8 +249,10 @@ def test_get_input_data_path_prefers_fwl_data_directory(monkeypatch, tmp_path):
 
     The nested directory is created but its parents are not otherwise populated, so the
     returned path has to be the nested one rather than the FWL root itself. The second
-    check confirms the helper hands back a path that actually exists on disk instead of
-    a plausible string it assembled without probing.
+    case pins that the probe asks whether the candidate is a directory and not merely
+    whether something sits at that name: a plain file called input_data is not an opacity
+    tree, and accepting it would move the failure into petitRADTRANS, where it surfaces
+    as a far less obvious error.
     """
     mod = _import_backend(monkeypatch)
 
@@ -261,7 +261,12 @@ def test_get_input_data_path_prefers_fwl_data_directory(monkeypatch, tmp_path):
 
     result = mod._get_input_data_path({'fwl': str(tmp_path)})
     assert result == str(data_path)
-    assert Path(result).is_dir()
+
+    file_root = tmp_path / 'file_root'
+    (file_root / 'prt').mkdir(parents=True)
+    (file_root / 'prt' / 'input_data').write_text('a file, not an opacity tree')
+    with pytest.raises(FileNotFoundError):
+        mod._get_input_data_path({'fwl': str(file_root)})
 
 
 def test_get_input_data_path_raises_when_missing_everywhere(monkeypatch, tmp_path):
@@ -289,12 +294,15 @@ def test_get_input_data_path_raises_when_dirs_missing_fwl(monkeypatch, tmp_path)
     error would mislead: a missing key means the run started without FWL_DATA resolved,
     while a present key with no prt/input_data underneath means the reference data was
     never fetched. The second call supplies the key but points it at a directory that
-    does not exist, and must surface FileNotFoundError instead of KeyError. A guard
-    that probed the filesystem before checking the key would report the wrong one.
+    does not exist, and must surface FileNotFoundError instead of KeyError.
+
+    The guard raises with its own wording, and that wording is what the match keys off.
+    A bare lookup of a key a dictionary lacks raises KeyError('fwl') on its own, so the
+    message is the only thing separating the deliberate check from the subscript.
     """
     mod = _import_backend(monkeypatch)
 
-    with pytest.raises(KeyError, match='fwl'):
+    with pytest.raises(KeyError, match='Missing required'):
         mod._get_input_data_path({})
 
     with pytest.raises(FileNotFoundError):
@@ -629,11 +637,12 @@ def test_get_ptr_reverses_without_vmrs_when_descending(monkeypatch):
     """A descending profile is reordered even when the caller supplies no VMRs, and the
     reordered temperatures are pulled inside the range the opacity tables cover.
 
-    The coldest level sits at 100 K, just under the 100.5 K floor petitRADTRANS
-    supports, so the clamp is observable: without it that entry stays at 100 K and the
-    lower-bound assertion fails. Choosing a temperature only half a kelvin below the
-    floor also keeps the clamp from masking a failed reversal, since the reversal is
-    checked on pressure and radius, which are not clamped.
+    The profile straddles both limits: the coldest level sits at 100 K, half a kelvin
+    under the floor, and the hottest at 5000 K, a kilokelvin over the ceiling, so each
+    clamp is observable and a profile that skipped either end keeps a value the pin
+    rejects. The middle level is left well inside the range, so the clamp cannot disguise
+    a failed reversal, which is in any case checked on pressure and radius, neither of
+    which is clamped.
 
     This is the branch where passing no VMRs matters: the reordering block is entered,
     so the guard in front of the VMR rewrite is what keeps the helper from iterating
@@ -644,7 +653,7 @@ def test_get_ptr_reverses_without_vmrs_when_descending(monkeypatch):
 
     atm = {
         'pl': np.array([1.0e5, 1.0e4, 1.0e3]),
-        'tmpl': np.array([100.0, 200.0, 300.0]),
+        'tmpl': np.array([100.0, 200.0, 5000.0]),
         'rl': np.array([1.0, 2.0, 3.0]),
     }
 
@@ -652,7 +661,12 @@ def test_get_ptr_reverses_without_vmrs_when_descending(monkeypatch):
 
     assert np.array_equal(prs, np.array([1.0e3, 1.0e4, 1.0e5]))
     assert np.array_equal(rad, np.array([3.0, 2.0, 1.0]))
-    assert np.all(tmp >= mod.petitRADTRANS_TLIMS[0])
+    # petitRADTRANS covers 100 to 4000 K and the helper insets each end by half a kelvin,
+    # so a clamped profile lies within [100.5, 3999.5]. The bounds are written out here as
+    # values in their own right: the outer levels both fall outside them and come back
+    # clamped, while the middle level passes through, so the reversal and both limits are
+    # pinned in one comparison.
+    np.testing.assert_allclose(tmp, np.array([3999.5, 200.0, 100.5]), rtol=1e-12)
     assert vmrs_sorted is None
 
 
@@ -861,10 +875,9 @@ def test_transit_depth_raises_for_unknown_source_before_parse(monkeypatch, tmp_p
     as one of them: no branch binds an atmosphere, so the call fails on the unbound name
     rather than synthesising a spectrum from whatever happens to be lying around.
 
-    The contrast call is what makes the test discriminate: it repeats the call with a
-    recognised source and an unreadable profile, and that one leaves through the
-    ordinary guard with None, showing the failure belongs to the unknown source rather
-    than to the stubs. This pins the behaviour of a source name the module does not
+    The failure lands on the guard that reads the atmosphere, before any opacity is set
+    up, which is what the Radtrans count pins: an unrecognised source costs nothing more
+    than the reference read. This pins the behaviour of a source name the module does not
     validate, so it will need revisiting if an explicit check is added upstream.
     """
     mod = _import_backend(monkeypatch)
@@ -880,8 +893,7 @@ def test_transit_depth_raises_for_unknown_source_before_parse(monkeypatch, tmp_p
     with pytest.raises(UnboundLocalError):
         mod.transit_depth({'Time': 1, 'R_star': 1.0}, config, 'unknown_source', dirs)
 
-    monkeypatch.setattr(mod, '_get_atm_profile', lambda *_a, **_k: None)
-    assert mod.transit_depth({'Time': 1, 'R_star': 1.0}, config, 'profile', dirs) is None
+    assert sys.modules['petitRADTRANS.radtrans'].Radtrans.call_count == 0
 
 
 def test_eclipse_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_path):
@@ -951,11 +963,9 @@ def test_eclipse_depth_raises_for_unknown_source_before_parse(monkeypatch, tmp_p
     same reason it fails the transit path, so neither spectrum is quietly produced from
     an unintended source.
 
-    The contrast call repeats the call with a recognised source and an unreadable
-    profile and returns None through the ordinary guard, which shows the failure tracks
-    the source name rather than the stubs. This pins the behaviour of a source name the
-    module does not validate, so it will need revisiting if an explicit check is added
-    upstream.
+    The failure lands on the guard that reads the atmosphere, before any opacity is set
+    up, which the Radtrans count pins. This pins the behaviour of a source name the module
+    does not validate, so it will need revisiting if an explicit check is added upstream.
     """
     mod = _import_backend(monkeypatch)
 
@@ -971,8 +981,7 @@ def test_eclipse_depth_raises_for_unknown_source_before_parse(monkeypatch, tmp_p
     with pytest.raises(UnboundLocalError):
         mod.eclipse_depth(hf_row, config, 'unknown_source', dirs)
 
-    monkeypatch.setattr(mod, '_get_atm_profile', lambda *_a, **_k: None)
-    assert mod.eclipse_depth(hf_row, config, 'profile', dirs) is None
+    assert sys.modules['petitRADTRANS.radtrans'].Radtrans.call_count == 0
 
 
 def test_transit_depth_prioritizes_broadest_coverage_and_writes_output(monkeypatch, tmp_path):
@@ -1081,8 +1090,9 @@ def test_eclipse_depth_offchem_uses_latest_sflux_and_writes_output(monkeypatch, 
     Both spectra are tabulated only out to 600 nm while the stand-in transfer reports
     micron-scale wavelengths, so the interpolation runs off the end of the table and
     holds the last value, which is why the denominator is flat. The depths are pinned
-    absolutely to catch the wrong spectrum being read, and the counterfactual sits a
-    decade away, far outside the tolerance.
+    absolutely, which keeps the ppm conversion and the squared radius ratio under check,
+    and the run is then repeated with the later spectrum removed so the ratio of the two
+    identifies which spectrum was read.
     """
     mod = _import_backend(monkeypatch)
     monkeypatch.setattr(mod, 'prt_gases', ('H2O', 'CH4', 'H2'))
@@ -1162,28 +1172,30 @@ def test_eclipse_depth_offchem_uses_latest_sflux_and_writes_output(monkeypatch, 
         'Time': 1,
         'R_star': 7.0e8,
         'T_star': 1000.0,
-        'separation': 1.0e11,
+        # Equal to the stellar radius. The stand-in transfer never reads the separation,
+        # and holding the two equal makes the depth the same whether the geometric factor
+        # is taken against the stellar radius or against the orbital distance, so the pin
+        # below covers the ppm conversion and the squared radius ratio while staying clear
+        # of which distance belongs in the denominator.
+        'separation': 7.0e8,
         'R_int': 7.0e6,
     }
 
-    result = mod.eclipse_depth(
-        hf_row,
-        config,
-        'offchem',
-        {'fwl': str(tmp_path), 'output': str(tmp_path)},
-    )
+    dirs = {'fwl': str(tmp_path), 'output': str(tmp_path)}
+    result = mod.eclipse_depth(hf_row, config, 'offchem', dirs)
 
     assert result.shape == (2, 2)
     assert FakeRadtrans.init_calls[0]['line_species'][0] == 'CH4'
 
-    # Planet fluxes of 1 and 2 over the 42.sflux plateau of 30 erg cm-2 s-1 nm-1, which
-    # is 3e8 erg cm-2 s-1 cm-1 after conversion, scaled by (R_p / R_star)^2 =
-    # (7.0e8 / 7.0e10)^2 and expressed in ppm.
+    # Planet fluxes of 1 and 2 over the 42.sflux plateau of 30 erg cm-2 s-1 nm-1, which is
+    # 3e8 erg cm-2 s-1 cm-1 once converted, times the squared radius ratio (7.0e8/7.0e10)^2,
+    # in ppm.
     np.testing.assert_allclose(
         result[:, 1], np.array([3.3333333e-07, 6.6666667e-07]), rtol=1e-6
     )
-    # Scale guard: 1.sflux would put the depths at 3.3e-6 and 6.7e-6, a decade higher.
-    assert np.all(result[:, 1] < 1.0e-6)
+    # Scale guard: without the ppm factor these land six decades lower, and a cubed radius
+    # ratio two decades lower again.
+    assert np.all((result[:, 1] > 1.0e-8) & (result[:, 1] < 1.0e-6))
 
     assert Path(tmp_path / 'observe' / 'eclipse_offchem_synthesis.csv').is_file()
     content = (tmp_path / 'observe' / 'eclipse_offchem_synthesis.csv').read_text()
@@ -1196,6 +1208,14 @@ def test_eclipse_depth_offchem_uses_latest_sflux_and_writes_output(monkeypatch, 
         'CH4_removed/ppm',
         'H2_removed/ppm',
     ]
+
+    # The two runs differ only in which spectrum is on disk, so their ratio names the one
+    # that was read. The later spectrum is ten times the brighter, so it gives depths a
+    # tenth the size. This is checked after the written output, so the file inspected
+    # above belongs to the run the rest of the test describes.
+    (data_dir / '42.sflux').unlink()
+    older = mod.eclipse_depth(hf_row, config, 'offchem', dirs)
+    np.testing.assert_allclose(result[:, 1] / older[:, 1], np.full(2, 0.1), rtol=1e-6)
 
 
 def test_transit_depth_disables_removed_species_columns(monkeypatch, tmp_path):
