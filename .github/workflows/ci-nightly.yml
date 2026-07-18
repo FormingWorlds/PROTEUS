@@ -267,7 +267,7 @@ jobs:
               tests/integration/test_slow_janus_aragog.py
               tests/inference/test_bo_convergence.py
               tests/inference/test_inference_slow.py
-          # ---- shard: misc (config + smoke + dummy + helpers) ----
+          # ---- shard: misc (hypothesis fuzz + dummy/std-config integration + superliquidus) ----
           - shard: misc
             tier: critical
             os: ubuntu-latest
@@ -276,7 +276,6 @@ jobs:
               tests/integration/test_integration_dummy.py
               tests/integration/test_integration_std_config.py
               tests/interior_struct/test_superliquidus_adiabat.py
-              tests/helpers/test_smoke_invariants.py
           - shard: misc
             tier: critical
             os: macos-latest
@@ -285,7 +284,6 @@ jobs:
               tests/integration/test_integration_dummy.py
               tests/integration/test_integration_std_config.py
               tests/interior_struct/test_superliquidus_adiabat.py
-              tests/helpers/test_smoke_invariants.py
     runs-on: ${{ matrix.os }}
     timeout-minutes: 210   # job cap for the slow-tier matrix, sized by its longest shard (zalmoxis-coupled/ubuntu, ~137 min plus ~11 min setup); above the 180 min per-test pytest-timeout so a hung single test trips pytest-timeout's per-test timer before the job is cancelled.
     env:

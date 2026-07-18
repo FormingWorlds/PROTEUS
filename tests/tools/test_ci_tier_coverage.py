@@ -152,6 +152,28 @@ def test_marker_extractor_detects_a_double_tier(tmp_path):
     # Markers accumulate through a class, not just a function.
     assert tiers['TestGroup::test_in_class'] == {'unit', 'smoke'}
 
+    # The two branches the sweep below relies on but the sample above does not
+    # reach: a module with no pytestmark whose function carries no tier is the
+    # runs-nowhere shape the sweep must report as untiered, and a skip-marked
+    # function must be dropped entirely so the deliberately disabled tests do
+    # not count as untiered.
+    orphan_sample = (
+        'import pytest\n'
+        '@pytest.mark.skip\n'
+        'def test_skipped():\n'
+        '    pass\n'
+        'def test_orphan():\n'
+        '    pass\n'
+    )
+    orphan = tmp_path / '_tier_orphan.py'
+    orphan.write_text(orphan_sample, encoding='utf-8')
+    orphan_tiers = _tiers_per_test(orphan)
+
+    # An untiered test resolves to the empty set, which the sweep flags.
+    assert orphan_tiers['test_orphan'] == set()
+    # A skip-marked test is excluded, not reported as untiered.
+    assert 'test_skipped' not in orphan_tiers
+
 
 def test_every_test_carries_exactly_one_tier():
     """No test may carry two tier markers, or none.
