@@ -406,10 +406,14 @@ def write_spectrum(wl_arr, fl_arr, hf_row: dict, output_dir: str):
 
     log.debug('Writing stellar spectrum to file')
 
-    # Header information
+    # Header information. Name where the spectrum corresponds to so the file is
+    # self-describing: these are the fluxes at the top of the planet's atmosphere,
+    # carried in from 1 AU by the orbital separation, not the fluxes at the stellar
+    # surface. A consumer that wants the stellar surface must undo that scaling.
     header = (
-        '# WL(nm)\t Flux(ergs/cm**2/s/nm)   Stellar flux at t_star = %.2e yr'
-        % hf_row['age_star']
+        '# WL(nm)\t Flux(ergs/cm**2/s/nm)   '
+        'Stellar flux at the top of the planet atmosphere '
+        '(scaled from 1 AU by the orbital separation), t_star = %.2e yr' % hf_row['age_star']
     )
 
     # Write to TSV file

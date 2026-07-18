@@ -229,7 +229,9 @@ def test_load_stellar_toa_flux_reads_saved_sflux_and_interpolates(monkeypatch, t
     data_dir.mkdir(parents=True)
     spectrum_file = data_dir / '42.sflux'
     spectrum_file.write_text(
-        '# WL(nm)\t Flux(ergs/cm**2/s/nm)   Stellar flux at t_star = 1.00e+00 yr\n'
+        '# WL(nm)\t Flux(ergs/cm**2/s/nm)   Stellar flux at the top of the '
+        'planet atmosphere (scaled from 1 AU by the orbital separation), '
+        't_star = 1.00e+00 yr\n'
         '4.00000000e+02\t1.00000000e+00\n'
         '5.00000000e+02\t2.00000000e+00\n'
         '6.00000000e+02\t4.00000000e+00\n'
