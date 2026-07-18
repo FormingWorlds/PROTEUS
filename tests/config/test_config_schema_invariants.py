@@ -51,7 +51,7 @@ from proteus.config._config import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Every test here is unit tier, including the 7776-combo cross-product, which
+# Every test here is unit tier, including the 5184-combo cross-product, which
 # sweeps in ~2.5 s. Keep it that way: a second tier marker on any function in
 # this file would combine with the module mark above, and the tier filters are
 # mutually exclusive (`unit and not slow` against `slow and not unit`), so a
@@ -869,7 +869,7 @@ def _make_combo_toml(combo, tmp_path):
 def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
     """Exhaustive cross-product over the importable backend combinations.
 
-    For each of ~7776 combos: either read_config_object returns a Config,
+    For each of 5184 combos: either read_config_object returns a Config,
     OR raises a ValueError / ImportError / TypeError with a non-empty
     message that names the offending field. Catastrophic exceptions
     (TypeError / AttributeError / KeyError without a wrapper) fail the test.

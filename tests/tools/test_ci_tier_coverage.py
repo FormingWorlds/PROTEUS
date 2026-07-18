@@ -118,7 +118,7 @@ def _integration_paths() -> list[str]:
     return shlex.split(m.group(1))
 
 
-def test_marker_extractor_detects_a_double_tier():
+def test_marker_extractor_detects_a_double_tier(tmp_path):
     """The extractor must see additive tiers, or the sweep below passes blind.
 
     A module mark plus a function mark is the exact shape that produces an
@@ -138,12 +138,12 @@ def test_marker_extractor_detects_a_double_tier():
         '    def test_in_class(self):\n'
         '        pass\n'
     )
-    tmp = Path(__file__).parent / '_tier_sample_tmp.py'
+    # Write the fixture into tmp_path, not the source tree: a crash before an
+    # in-tree unlink would leave an untracked module behind, and parallel
+    # workers would race on a shared path.
+    tmp = tmp_path / '_tier_sample.py'
     tmp.write_text(sample, encoding='utf-8')
-    try:
-        tiers = _tiers_per_test(tmp)
-    finally:
-        tmp.unlink()
+    tiers = _tiers_per_test(tmp)
 
     # The doubly-marked function is the shape this guard exists to catch.
     assert tiers['test_double'] == {'unit', 'slow'}
