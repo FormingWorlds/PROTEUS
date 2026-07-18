@@ -543,7 +543,12 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         lambda: EquilibriumModel(SpeciesNetwork(tuple(species_list))),
     )
 
-    # Solve equilibrium
+    # Solve equilibrium. The outgassing-temperature rescue ladder
+    # (config.outgas.T_rescue) is applied on the CALLIOPE path only; the
+    # atmodeller solver's non-convergence signalling has not been characterised
+    # here, so this path keeps single-attempt behaviour and records the solved
+    # temperature for provenance parity.
+    hf_row['T_outgas'] = float(T_magma)
     try:
         model.solve(
             state=planet,

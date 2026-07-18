@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from attrs import define, field, validators
 
 from ._converters import none_if_none
@@ -24,6 +26,33 @@ def _reject_enabled_binodal(instance, attribute, value):
             'binodal partitioning (Rogers et al. 2025) is not production '
             'ready. Keep `h2_binodal = false`.'
         )
+
+
+def _to_float_tuple(value):
+    """Coerce a TOML list (or any iterable) to a tuple of floats."""
+    if value is None:
+        return ()
+    return tuple(float(v) for v in value)
+
+
+def _validate_rescue_ladder(instance, attribute, value):
+    """Rescue temperatures must be finite, positive, and strictly ascending.
+
+    The finiteness check is explicit because a NaN entry passes both `t <= 0`
+    and `t <= prev` (all IEEE comparisons against NaN are False), which would
+    let a NaN slip through and, once it becomes `prev`, silently disable the
+    ascending check for every later entry; `inf` would reach the solver as an
+    unbounded temperature.
+    """
+    prev = 0.0
+    for t in value:
+        if not math.isfinite(t):
+            raise ValueError(f'outgas.{attribute.name} entries must be finite; got {t}')
+        if t <= 0.0:
+            raise ValueError(f'outgas.{attribute.name} entries must be positive; got {t}')
+        if t <= prev:
+            raise ValueError(f'outgas.{attribute.name} must be strictly ascending; got {value}')
+        prev = t
 
 
 @define
@@ -188,6 +217,18 @@ class Outgas:
     T_floor: float
         Temperature floor [K]. The outgassing temperature is clamped to
         this value from below before the chemistry solve.
+    T_rescue: tuple of float
+        Ascending ladder of outgassing temperatures [K] retried, one after
+        another, when the CALLIOPE equilibrium solve does not converge at the
+        floored temperature. The retry fires only once the mantle is
+        essentially solidified (melt fraction below a small threshold): there
+        the whole volatile budget is in the atmosphere and, being dominated by
+        a single species, both the surface pressure and the composition are
+        nearly temperature-independent, so a higher outgassing temperature
+        recovers the same state while letting the solver locate the root.
+        Outside that regime a non-convergence is a physical signal and is not
+        masked. The first entry that converges is used. An empty ladder
+        disables the retry and restores single-attempt behaviour.
     solver_rtol: float
         Relative tolerance for the volatile equilibrium solver.
     solver_atol: float
@@ -217,6 +258,11 @@ class Outgas:
 
     # Shared solver parameters (calliope + atmodeller)
     T_floor: float = field(default=700.0, validator=validators.gt(0.0))
+    T_rescue: tuple[float, ...] = field(
+        default=(1200.0, 1500.0, 2000.0),
+        converter=_to_float_tuple,
+        validator=_validate_rescue_ladder,
+    )
     solver_rtol: float = field(default=1e-4, validator=validators.gt(0.0))
     solver_atol: float = field(default=1e-6, validator=validators.gt(0.0))
 

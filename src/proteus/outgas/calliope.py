@@ -32,6 +32,13 @@ log = logging.getLogger('fwl.' + __name__)
 # Constants
 mass_ocean = ocean_moles * molar_mass['H2']
 
+# Melt-fraction ceiling below which the outgassing-temperature rescue may fire.
+# The rescue is only physically benign once the mantle is essentially solid
+# (single-species-dominated atmosphere, temperature-independent composition);
+# above this the melt-atmosphere split is temperature-dependent and a
+# non-convergence is left to surface rather than masked.
+RESCUE_MAX_PHI = 0.01
+
 
 def construct_options(dirs: dict, config: Config, hf_row: dict):
     """
@@ -375,9 +382,9 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     # masses, elemental totals, atmospheric diagnostics) so downstream
     # consumers are agnostic; the 'from_O_budget' source adds two extra keys
     # (fO2_shift_derived, O_res) that we plumb into hf_row below.
-    try:
+    def _solve():
         if config.planet.fO2_source == 'from_O_budget':
-            solvevol_result = equilibrium_atmosphere_authoritative_O(
+            return equilibrium_atmosphere_authoritative_O(
                 target,
                 opts,
                 fO2_hint=config.outgas.fO2_shift_IW,
@@ -397,24 +404,65 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
                 print_result=False,
                 opt_solver=False,
             )
-        else:
-            solvevol_result = equilibrium_atmosphere(
-                target,
-                opts,
-                xtol=config.outgas.solver_atol,
-                rtol=config.outgas.solver_rtol,
-                atol=config.outgas.mass_thresh,
-                nguess=config.outgas.calliope.nguess,
-                nsolve=config.outgas.calliope.nsolve,
-                p_guess=p_guess,
-                p_guess_max=config.outgas.calliope.p_guess_max,
-                print_result=False,
-                opt_solver=False,
-            )
-    except RuntimeError as e:
+        return equilibrium_atmosphere(
+            target,
+            opts,
+            xtol=config.outgas.solver_atol,
+            rtol=config.outgas.solver_rtol,
+            atol=config.outgas.mass_thresh,
+            nguess=config.outgas.calliope.nguess,
+            nsolve=config.outgas.calliope.nsolve,
+            p_guess=p_guess,
+            p_guess_max=config.outgas.calliope.p_guess_max,
+            print_result=False,
+            opt_solver=False,
+        )
+
+    # Escalating-temperature retry, restricted to the near-solidified regime.
+    # Once the mantle has essentially solidified the whole volatile budget is
+    # in the atmosphere and, dominated by a single species, both the surface
+    # pressure and the composition are nearly temperature-independent, so the
+    # equilibrium solver can fail to locate the (large) root at low temperature
+    # while a higher outgassing temperature recovers the same state. The rescue
+    # ladder is therefore entered ONLY when the melt fraction is below
+    # RESCUE_MAX_PHI. At higher melt fraction the melt-atmosphere partitioning
+    # is genuinely temperature-dependent through the solubility laws, so a
+    # non-convergence there is a physical signal and is left to fail rather than
+    # masked by a solve at a fictitious temperature. Solve at the floored
+    # temperature first, then at each rescue temperature above it, keeping the
+    # first that converges.
+    T_primary = opts['T_magma']
+    T_ladder = [T_primary]
+    if hf_row.get('Phi_global', 0.0) < RESCUE_MAX_PHI:
+        T_ladder += [t for t in config.outgas.T_rescue if t > T_primary]
+
+    solvevol_result = None
+    solved = False
+    last_err: RuntimeError | None = None
+    for attempt, T_try in enumerate(T_ladder):
+        opts['T_magma'] = T_try
+        if attempt > 0:
+            log.warning('Outgassing did not converge; retrying at %.1f K' % T_try)
+        try:
+            solvevol_result = _solve()
+            solved = True
+            break
+        except RuntimeError as e:
+            last_err = e
+
+    if not solved:
         log.error('Outgassing calculation with CALLIOPE failed')
         UpdateStatusfile(dirs, 27)
-        raise e
+        if last_err is None:
+            raise RuntimeError('CALLIOPE outgassing failed with no captured error')
+        raise last_err
+
+    # Record the temperature the chemistry was actually solved at, so a step
+    # rescued at an elevated temperature is distinguishable downstream from the
+    # recorded (true) T_magma.
+    hf_row['T_outgas'] = float(opts['T_magma'])
+    if opts['T_magma'] > T_primary:
+        log.info('Outgassing converged at rescue temperature %.1f K' % opts['T_magma'])
 
     # Get result
     for k in expected_keys():

@@ -642,6 +642,7 @@ def GetHelpfileKeys():
         # Temperatures
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
+        'T_outgas',         # temperature the outgassing chemistry was solved at [K]
         'T_cmb',           # core temperature [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]
         'T_skin',           # grey radiative skin temperature [K]

@@ -84,6 +84,47 @@ def test_outgas_custom_solver_params():
     assert o.solver_atol == pytest.approx(1e-7, rel=1e-12)
 
 
+@pytest.mark.unit
+def test_outgas_t_rescue_ladder_default_coercion_and_validation():
+    """The outgassing rescue ladder defaults to an ascending temperature
+    sequence, coerces a TOML list to a float tuple, and rejects a non-ascending
+    or non-positive ladder that would break the escalate-and-stop retry.
+
+    An empty ladder is the explicit opt-out that restores single-attempt
+    behaviour, so it must be accepted rather than rejected as empty.
+    """
+    from proteus.config._outgas import Outgas
+
+    # Default ladder is a strictly ascending float tuple.
+    o = Outgas()
+    assert o.T_rescue == (1200.0, 1500.0, 2000.0)
+    assert all(b > a for a, b in zip(o.T_rescue, o.T_rescue[1:]))
+
+    # A TOML list of ints is coerced to a tuple of floats, stored verbatim.
+    coerced = Outgas(T_rescue=[1300, 1600]).T_rescue
+    assert coerced == (1300.0, 1600.0)
+    assert all(isinstance(t, float) for t in coerced)
+
+    # Empty ladder is the disable switch, not an error.
+    assert Outgas(T_rescue=[]).T_rescue == ()
+
+    # Non-ascending, non-positive, and non-finite ladders fail loudly. NaN and
+    # inf are called out explicitly: NaN passes both `<= 0` and `<= prev` (all
+    # IEEE comparisons against NaN are False) so it would defeat the ascending
+    # check, and inf would reach the solver as an unbounded temperature.
+    for bad in (
+        [1500.0, 1200.0],
+        [1200.0, 1200.0],
+        [0.0, 1200.0],
+        [-100.0],
+        [float('nan'), 1200.0],
+        [1200.0, float('nan'), 1100.0],
+        [float('inf')],
+    ):
+        with pytest.raises(ValueError):
+            Outgas(T_rescue=bad)
+
+
 def test_h2_binodal_enabled_is_rejected():
     """`h2_binodal = true` is rejected at config load.
 

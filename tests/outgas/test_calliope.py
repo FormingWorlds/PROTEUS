@@ -26,8 +26,10 @@ import pytest
 # calliope is an optional dependency; skip if not installed
 pytest.importorskip('calliope')
 
+from proteus.outgas import calliope as calliope_mod
 from proteus.outgas.calliope import (
     _resolve_element,
+    calc_surface_pressures,
     construct_guess,
     construct_options,
     flag_included_volatiles,
@@ -442,3 +444,235 @@ def test_construct_guess_defers_to_cold_start_when_noble_active():
     result = construct_guess(hf_row, target, mass_thresh=1.0)
     assert isinstance(result, dict)
     assert result['CO2'] == pytest.approx(10.0, rel=1e-12)
+
+
+# -----------------------------------------------------------------------
+# calc_surface_pressures :: escalating-temperature retry
+# -----------------------------------------------------------------------
+
+
+def _rescue_config(
+    T_rescue=(1200.0, 1500.0, 2000.0), T_floor=620.0, fO2_source='user_constant'
+):
+    """MagicMock config with the fields calc_surface_pressures reads directly
+    (construct_options is mocked separately)."""
+    config = MagicMock()
+    config.planet.fO2_source = fO2_source
+    config.outgas.T_floor = T_floor
+    config.outgas.T_rescue = tuple(T_rescue)
+    config.outgas.fO2_shift_IW = 5.0
+    return config
+
+
+def _cold_hf_row(T_magma, phi=0.0):
+    """Outgassing input state. Phi defaults to solidified (0), which is below
+    the rescue gate; pass a higher phi to exercise the partial-melt gate.
+    """
+    hf_row = {'Time': 0.0, 'Phi_global': phi, 'T_magma': T_magma}
+    for e in element_list:
+        hf_row[f'{e}_kg_total'] = 1.0e20 if e in ('H', 'C', 'N', 'S') else 0.0
+    if 'O_kg_total' not in hf_row:
+        hf_row['O_kg_total'] = 1.0e21
+    return hf_row
+
+
+def _patch_solver(monkeypatch, converge_at, calls, branch='user_constant'):
+    """Route calc_surface_pressures at the fakes and a temperature-gated solver.
+
+    The fake equilibrium solve records the outgassing temperature of each
+    attempt and converges only at or above ``converge_at`` K, reproducing the
+    cold-state behaviour where the real CALLIOPE solver fails below ~1100 K.
+    ``branch`` selects which CALLIOPE entry point is mocked so the retry can be
+    exercised on both the user_constant and from_O_budget dispatch paths.
+    """
+
+    def fake_eq(target, opts, **kwargs):
+        calls.append(opts['T_magma'])
+        if opts['T_magma'] < converge_at:
+            raise RuntimeError('mock: no convergence')
+        return {'P_surf': 5.16e5}
+
+    def fake_eq_o(target, opts, **kwargs):
+        calls.append(opts['T_magma'])
+        if opts['T_magma'] < converge_at:
+            raise RuntimeError('mock: no convergence')
+        return {'P_surf': 5.16e5, 'fO2_shift_derived': 3.0, 'O_res': 1.0e12}
+
+    mock_update = MagicMock()
+    monkeypatch.setattr(
+        calliope_mod, 'construct_options', lambda d, c, hf: {'T_magma': hf['T_magma']}
+    )
+    monkeypatch.setattr(calliope_mod, 'construct_guess', lambda hf, t, mass_thresh: None)
+    monkeypatch.setattr(
+        calliope_mod, 'flag_included_volatiles', lambda g, c: {s: True for s in vol_list}
+    )
+    monkeypatch.setattr(calliope_mod, 'equilibrium_atmosphere', fake_eq)
+    monkeypatch.setattr(calliope_mod, 'equilibrium_atmosphere_authoritative_O', fake_eq_o)
+    monkeypatch.setattr(calliope_mod, 'UpdateStatusfile', mock_update)
+    return mock_update
+
+
+def test_calc_surface_pressures_escalates_to_first_converging_temperature(monkeypatch):
+    """When the floored temperature does not converge, the solve is retried up
+    the rescue ladder and stops at the first temperature that converges.
+
+    The cold solidified state fails at the 620 K floor and converges at
+    1200 K, so exactly two attempts run and the higher rescue temperatures are
+    not reached. On success the user_constant redox columns are written.
+    """
+    calls = []
+    mock_update = _patch_solver(monkeypatch, converge_at=1100.0, calls=calls)
+    config = _rescue_config(T_rescue=(1200.0, 1500.0, 2000.0), T_floor=620.0)
+    hf_row = _cold_hf_row(T_magma=321.0)
+
+    calc_surface_pressures({'output': '/tmp'}, config, hf_row)
+
+    # Floored primary (620 K) then first rescue (1200 K); ladder stops there.
+    assert len(calls) == 2
+    assert calls == [pytest.approx(620.0), pytest.approx(1200.0)]
+    # The 1500/2000 K rungs were never tried once 1200 K converged.
+    assert max(calls) == pytest.approx(1200.0)
+    # Success path completed and plumbed the redox columns.
+    mock_update.assert_not_called()
+    assert hf_row['fO2_shift_IW_derived'] == pytest.approx(5.0)
+    assert hf_row['O_res'] == pytest.approx(0.0)
+    # Provenance: the recorded outgassing temperature is the rescue value, not
+    # the floored primary, so the rescued step is distinguishable downstream.
+    assert hf_row['T_outgas'] == pytest.approx(1200.0)
+
+
+def test_calc_surface_pressures_raises_after_exhausting_rescue_ladder(monkeypatch):
+    """If no temperature in the ladder converges, every rung is tried, the
+    failure status (27) is written, and the RuntimeError propagates.
+
+    This is the error contract: the retry must not swallow a genuine
+    non-convergence, and it must exhaust the whole ladder before giving up.
+    """
+    calls = []
+    mock_update = _patch_solver(monkeypatch, converge_at=1e9, calls=calls)
+    config = _rescue_config(T_rescue=(1200.0, 1500.0, 2000.0), T_floor=620.0)
+    hf_row = _cold_hf_row(T_magma=321.0)
+
+    with pytest.raises(RuntimeError, match='no convergence'):
+        calc_surface_pressures({'output': '/tmp'}, config, hf_row)
+
+    # Full ladder attempted: floored primary plus all three rescue rungs.
+    assert len(calls) == 4
+    assert calls == [
+        pytest.approx(620.0),
+        pytest.approx(1200.0),
+        pytest.approx(1500.0),
+        pytest.approx(2000.0),
+    ]
+    mock_update.assert_called_once_with({'output': '/tmp'}, 27)
+
+
+def test_calc_surface_pressures_does_not_retry_when_primary_converges(monkeypatch):
+    """A run that converges at its own outgassing temperature triggers no
+    retry, so normal (non-solidified) cases are untouched by the rescue path.
+
+    T_magma = 1800 K is above the floor and converges immediately, so the
+    solver is called exactly once even though a rescue ladder is configured.
+    """
+    calls = []
+    mock_update = _patch_solver(monkeypatch, converge_at=620.0, calls=calls)
+    config = _rescue_config(T_rescue=(1200.0, 1500.0, 2000.0), T_floor=620.0)
+    hf_row = _cold_hf_row(T_magma=1800.0)
+
+    calc_surface_pressures({'output': '/tmp'}, config, hf_row)
+
+    assert len(calls) == 1
+    assert calls[0] == pytest.approx(1800.0)
+    mock_update.assert_not_called()
+    # Provenance records the primary temperature when no rescue was needed.
+    assert hf_row['T_outgas'] == pytest.approx(1800.0)
+
+
+def test_rescue_is_gated_out_above_the_melt_fraction_threshold(monkeypatch):
+    """At partial melt the rescue ladder is not entered: a non-convergence is
+    left to fail rather than masked by a solve at a fictitious temperature.
+
+    The melt-atmosphere partitioning is temperature-dependent when melt is
+    present, so escalating there would record a physically wrong split. With
+    Phi = 0.3 (well above the RESCUE_MAX_PHI = 0.01 gate) the solver is called
+    exactly once at the floored temperature and the failure propagates.
+    """
+    calls = []
+    mock_update = _patch_solver(monkeypatch, converge_at=1100.0, calls=calls)
+    config = _rescue_config(T_rescue=(1200.0, 1500.0, 2000.0), T_floor=620.0)
+    hf_row = _cold_hf_row(T_magma=321.0, phi=0.3)
+
+    with pytest.raises(RuntimeError, match='no convergence'):
+        calc_surface_pressures({'output': '/tmp'}, config, hf_row)
+
+    # Single attempt at the floored primary; the 1200/1500/2000 K rungs that
+    # would have converged are never reached because the gate excluded them.
+    assert len(calls) == 1
+    assert calls[0] == pytest.approx(620.0)
+    mock_update.assert_called_once_with({'output': '/tmp'}, 27)
+    # No successful solve, so no outgassing temperature is recorded.
+    assert 'T_outgas' not in hf_row
+
+
+def test_from_o_budget_branch_also_escalates(monkeypatch):
+    """The retry works on the from_O_budget dispatch branch, which routes
+    through equilibrium_atmosphere_authoritative_O rather than
+    equilibrium_atmosphere and plumbs the derived redox fields from the solver.
+
+    Exercises the second _solve() branch: it must escalate identically and take
+    fO2_shift_IW_derived and O_res from the solver result, not the config.
+    """
+    calls = []
+    mock_update = _patch_solver(monkeypatch, converge_at=1100.0, calls=calls)
+    config = _rescue_config(
+        T_rescue=(1200.0, 1500.0, 2000.0), T_floor=620.0, fO2_source='from_O_budget'
+    )
+    hf_row = _cold_hf_row(T_magma=321.0)
+
+    calc_surface_pressures({'output': '/tmp'}, config, hf_row)
+
+    assert calls == [pytest.approx(620.0), pytest.approx(1200.0)]
+    mock_update.assert_not_called()
+    # Derived redox fields come from the authoritative-O solver result.
+    assert hf_row['fO2_shift_IW_derived'] == pytest.approx(3.0)
+    assert hf_row['O_res'] == pytest.approx(1.0e12)
+    assert hf_row['T_outgas'] == pytest.approx(1200.0)
+
+
+def test_empty_ladder_makes_a_single_attempt_and_raises(monkeypatch):
+    """An empty T_rescue ladder disables the retry at the wrapper: a failing
+    primary solve is attempted once and raises, restoring single-attempt
+    behaviour. This is the behavioural half of the config opt-out that the
+    schema test only checks at coercion.
+    """
+    calls = []
+    mock_update = _patch_solver(monkeypatch, converge_at=1e9, calls=calls)
+    config = _rescue_config(T_rescue=(), T_floor=620.0)
+    hf_row = _cold_hf_row(T_magma=321.0)
+
+    with pytest.raises(RuntimeError, match='no convergence'):
+        calc_surface_pressures({'output': '/tmp'}, config, hf_row)
+
+    assert len(calls) == 1
+    assert calls[0] == pytest.approx(620.0)
+    mock_update.assert_called_once_with({'output': '/tmp'}, 27)
+
+
+def test_no_rescue_rungs_when_floored_temperature_exceeds_ladder(monkeypatch):
+    """When the floored temperature is above every rescue rung, the filter
+    leaves a single attempt; a failure there still writes status 27 and raises.
+
+    Guards the `t > T_primary` filter on the failing side: a floored 2500 K
+    primary with a (1200, 1500, 2000) ladder must not retry at a lower rung.
+    """
+    calls = []
+    mock_update = _patch_solver(monkeypatch, converge_at=1e9, calls=calls)
+    config = _rescue_config(T_rescue=(1200.0, 1500.0, 2000.0), T_floor=2500.0)
+    hf_row = _cold_hf_row(T_magma=2500.0)
+
+    with pytest.raises(RuntimeError, match='no convergence'):
+        calc_surface_pressures({'output': '/tmp'}, config, hf_row)
+
+    assert len(calls) == 1
+    assert calls[0] == pytest.approx(2500.0)
+    mock_update.assert_called_once_with({'output': '/tmp'}, 27)

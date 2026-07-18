@@ -453,6 +453,7 @@ config_version = "3.0"
 
     # Shared solver parameters (calliope + atmodeller)
     T_floor                   = 700.0        # outgassing temperature floor [K]; clamped from below
+    T_rescue                  = [1200.0, 1500.0, 2000.0]  # ascending K ladder retried on CALLIOPE non-convergence at near-solidified melt fraction; [] disables
     solver_rtol               = 1e-4         # relative mass/equilibrium tolerance
     solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
 

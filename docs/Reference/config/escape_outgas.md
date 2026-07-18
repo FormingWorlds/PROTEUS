@@ -51,6 +51,7 @@ planetary surface conditions.
 | `mass_thresh` | float | `1e16` | Minimum volatile mass threshold \[kg] |
 | `h2_binodal` | bool | `false` | Enable H$_2$-MgSiO$_3$ miscibility gap model. `true` is rejected at config load: the parameterisation is not production ready |
 | `T_floor` | float | `700.0` | Clamp the outgassing temperature to this floor \[K] before the chemistry solve |
+| `T_rescue` | list of float | `[1200.0, 1500.0, 2000.0]` | Ascending ladder of outgassing temperatures \[K] retried in turn when the CALLIOPE equilibrium solve fails to converge and the mantle is near-solidified; the first that converges is used. `[]` disables the retry |
 | `solver_rtol` | float | `1e-4` | Relative mass/equilibrium tolerance |
 | `solver_atol` | float | `1e-6` | Absolute mass/equilibrium tolerance |
 
