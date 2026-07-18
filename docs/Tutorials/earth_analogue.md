@@ -100,7 +100,8 @@ proteus plot -c input/tutorials/tutorial_earth.toml all
 ```
 
 <figure markdown="span">
-  ![Earth tutorial output](../assets/tutorials/earth_global_log.avif){ width="100%" }
+  ![Earth tutorial output](../assets/tutorials/earth_global_log.avif#only-light){ width="100%" }
+  ![Earth tutorial output](../assets/tutorials/earth_global_log_dark.avif#only-dark){ width="100%" }
   <figcaption><b>Multi-panel overview of the PROTEUS Earth analogue tutorial run.</b>
   (a) Upward heat flux components: radiogenic heating (magenta, ~0.2 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid grey), outgoing longwave radiation (OLR, red), and absorbed stellar flux (ASF, dashed blue, ~226 W m<sup>-2</sup>). Tidal heating (dark yellow) is negligible. The net fluxes decline from ~10<sup>5</sup> W m<sup>-2</sup> to a few hundred W m<sup>-2</sup> over ~1.5 Myr.
   (b) Surface partial pressures: the superheated initial state is O<sub>2</sub>-dominated (yellow-green), with total surface pressure (black dashed) near 2 &times; 10<sup>4</sup> bar; O<sub>2</sub> collapses within the first ~10<sup>5</sup> yr as the surface cools. CO<sub>2</sub> (orange) holds ~50-100 bar; H<sub>2</sub>O (blue) rises from ~4 bar to ~340 bar as it exsolves during solidification. CO (gold) and H<sub>2</sub> (green) remain minor.
