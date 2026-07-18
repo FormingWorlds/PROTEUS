@@ -15,6 +15,7 @@ import vulcan
 
 # Import PROTEUS
 from proteus.atmos_clim.common import read_atmosphere_data
+from proteus.star.wrapper import scale_spectrum_to_stellar_surface
 from proteus.utils.constants import AU, R_sun, element_list, vol_list
 from proteus.utils.helper import find_nearest
 
@@ -121,7 +122,9 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     # Read spectrum and scale to surface of the star
     sflux_data = np.loadtxt(sflux_fpath, skiprows=1).T
     star_wl = np.array(sflux_data[0])
-    star_fl = np.array(sflux_data[1]) * hf_row['separation'] ** 2 / hf_row['R_star'] ** 2
+    star_fl = scale_spectrum_to_stellar_surface(
+        sflux_data[1], hf_row['separation'], hf_row['R_star']
+    )
 
     # Remove small values
     star_wl = star_wl[star_fl > config.atmos_chem.vulcan.clip_fl]
