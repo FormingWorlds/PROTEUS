@@ -8,9 +8,8 @@ least two discriminating post-state facts so that a regression which
 silently no-ops one branch cannot pass.
 
 Links:
-- ``docs/How-to/test_infrastructure.md``
-- ``docs/How-to/test_categorization.md``
-- ``docs/How-to/test_building.md``
+- ``docs/How-to/testing.md``
+- ``docs/Explanations/test_framework.md``
 """
 
 from __future__ import annotations

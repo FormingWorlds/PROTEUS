@@ -6,9 +6,8 @@ the R_c > R_p clamp inside ``solve_dummy_structure``. These complement
 the existing scaling-law tests in ``test_dummy_struct.py``.
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

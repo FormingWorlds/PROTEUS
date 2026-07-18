@@ -177,7 +177,7 @@ config_version = "3.0"
 [observe]
 
     # Module with which to calculate the synthetic observables
-    synthesis = "none"
+    module = "none"
 
 [atmos_chem]
     module = "none"

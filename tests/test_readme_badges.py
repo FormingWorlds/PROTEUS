@@ -8,8 +8,8 @@ without a third-party request. The two surfaces use different image sources by
 design but must link to the same destinations; these tests pin both the README
 source contract and that the two surfaces stay in sync on what they point to.
 
-Testing standards: docs/test_infrastructure.md, docs/test_categorization.md,
-docs/test_building.md
+Testing standards: docs/How-to/testing.md,
+docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

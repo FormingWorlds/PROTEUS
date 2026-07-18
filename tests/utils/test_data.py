@@ -8,7 +8,8 @@ external physics data (spectral files, lookup tables). It covers:
 - Configuration mapping for remote resources.
 
 See also:
-- docs/test_infrastructure.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

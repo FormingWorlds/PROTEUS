@@ -55,9 +55,8 @@ The full two-timestep coupled run with real Aragog + real CALLIOPE
 ``test_slow_aragog_calliope.py``.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

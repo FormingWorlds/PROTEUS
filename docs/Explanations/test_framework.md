@@ -24,7 +24,7 @@ Tests are organized into four tiers of increasing scope and cost:
 ```
 Unit (< 100 ms)  →  Smoke (< 30 s)  →  Integration (minutes)  →  Slow (hours)
      ↑                    ↑                     ↑                      ↑
-  Every PR            Every PR              Nightly               Nightly
+  Every PR             Nightly              Nightly               Nightly
 ```
 
 **Unit tests** verify individual Python functions with all external
@@ -44,7 +44,7 @@ validate against published benchmarks and cross-implementation checks (e.g.
 SPIDER vs Aragog for the same initial conditions). These are the most
 expensive tests and run only in the nightly CI.
 
-The badge row at the top of this page carries three kinds of badge. The coverage badge reports the line coverage that codecov records for the main branch. The two status badges report the outcome of the latest pull-request checks and the latest nightly run. The three count badges report how many tests the suite collects in each category: the total, the unit tier, and the combined smoke, integration, and slow tiers. The counts come from `pytest --collect-only`, so they track the real suite as it grows.
+The badge row at the top of this page carries three kinds of badge. The coverage badge reports the line coverage that codecov records for the main branch. The two status badges report the outcome of the latest unit-coverage run on the main branch and the latest nightly run. The three count badges report how many tests the suite collects in each category: the total, the unit tier, and the combined smoke, integration, and slow tiers. The counts come from `pytest --collect-only`, so they track the real suite as it grows.
 
 ## Functional tests vs physics tests
 
@@ -147,20 +147,30 @@ Every new test function must include:
 
 ## Coverage architecture
 
-PROTEUS uses two coverage gates:
+PROTEUS uses three coverage gates, all on every pull request:
 
-- **Fast gate** (every PR): unit + smoke tests. Ratchets toward 90%
-  but plateaus around 60-75% because wrapper code exercised only by
-  real binaries is excluded.
-- **Full gate** (nightly): all tiers combined. Targets 90%. This is the
-  primary KPI; the fast gate is a lower bound.
+- **Fast gate**: unit tests only, fixed at 80%. Unit tests alone are not
+  expected to reach the 90% ecosystem target, because wrapper code that
+  requires real binaries is exercised only by the nightly tiers. That is why
+  the gate sits at 80 rather than chasing 90.
+- **Estimated total**: the pull request's unit coverage unioned with the
+  latest nightly artifact, measured against 90%. That union is how the 90%
+  target is reached on a pull request even though smoke, integration, and slow
+  tests do not run there. This is the primary KPI; the fast gate is a lower
+  bound.
+- **Diff-cover**: the lines the pull request changed, held to 80%, again
+  unioning the fast coverage with the latest nightly so that wrapper code the
+  nightly alone exercises is not counted against the change.
 
-The estimated-total mechanism unions PR unit/smoke coverage with the latest
-nightly artifact to compare against the full gate on every PR, even though
-integration and slow tests do not run on PRs.
+The nightly runs every tier and publishes the coverage artifact the estimated
+total and diff-cover union against; it does not itself fail on a coverage
+percentage.
 
-Coverage thresholds auto-ratchet upward and are capped at 90% (the
-ecosystem ceiling). Neither gate may be manually decreased.
+The fast gate's 80% and the 90% the estimated total is measured against are
+fixed rather than ratcheting, and neither may be lowered:
+`tools/update_coverage_threshold.py` holds both and the pull-request threshold
+guard fails if either is edited away from its value. The diff-cover threshold is
+fixed in the workflow instead.
 
 ## Float comparison discipline
 

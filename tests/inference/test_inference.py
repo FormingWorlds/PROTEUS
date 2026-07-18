@@ -2,9 +2,8 @@
 Tests for the inference pipeline entrypoints.
 
 References:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 # ruff: noqa: E402, I001
