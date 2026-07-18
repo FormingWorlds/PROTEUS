@@ -100,13 +100,14 @@ proteus plot -c input/tutorials/tutorial_earth.toml all
 ```
 
 <figure markdown="span">
-  ![Earth tutorial output](../assets/tutorials/earth_global_log.avif){ width="100%" }
+  ![Earth tutorial output](../assets/tutorials/earth_global_log.avif#only-light){ width="100%" }
+  ![Earth tutorial output](../assets/tutorials/earth_global_log_dark.avif#only-dark){ width="100%" }
   <figcaption><b>Multi-panel overview of the PROTEUS Earth analogue tutorial run.</b>
-  (a) Upward heat flux components: radiogenic heating (magenta, ~0.2 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid grey), outgoing longwave radiation (OLR, red), and absorbed stellar flux (ASF, dashed blue, ~226 W m<sup>-2</sup>). Tidal heating (dark yellow) is negligible. The net fluxes decline from ~10<sup>5</sup> W m<sup>-2</sup> to a few hundred W m<sup>-2</sup> over ~1.5 Myr.
-  (b) Surface partial pressures: the superheated initial state is O<sub>2</sub>-dominated (yellow-green), with total surface pressure (black dashed) near 2 &times; 10<sup>4</sup> bar; O<sub>2</sub> collapses within the first ~10<sup>5</sup> yr as the surface cools. CO<sub>2</sub> (orange) holds ~50-100 bar; H<sub>2</sub>O (blue) rises from ~4 bar to ~340 bar as it exsolves during solidification. CO (gold) and H<sub>2</sub> (green) remain minor.
-  (c) Surface temperature (solid grey) declining from ~3300 K to ~1920 K at the solidus; the magma temperature (dashed orange) starts near 4280 K.
+  (a) Upward heat flux components: radiogenic heating (magenta, ~0.2 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid, grey/white), outgoing longwave radiation (OLR, red), and absorbed stellar flux (ASF, dashed blue, ~226 W m<sup>-2</sup>). Tidal heating (dark yellow) is negligible. The net fluxes decline from a few &times; 10<sup>5</sup> W m<sup>-2</sup> to a few hundred W m<sup>-2</sup> over ~1.5 Myr.
+  (b) Surface partial pressures: the superheated initial state is O<sub>2</sub>-dominated (yellow-green), with total surface pressure (dashed) near 2 &times; 10<sup>4</sup> bar; O<sub>2</sub> collapses within the first ~10<sup>5</sup> yr as the surface cools. CO<sub>2</sub> (orange) holds ~50-100 bar; H<sub>2</sub>O (blue) rises from ~4 bar to ~340 bar as it exsolves during solidification. CO (gold) and H<sub>2</sub> (green) remain minor.
+  (c) Surface temperature (solid) declining from ~3300 K to ~1920 K at the solidus; the magma temperature (dashed orange) starts near 4280 K.
   (d) Surface gas mole fractions: O<sub>2</sub> (yellow-green) dominates the initial atmosphere (~100%) and collapses; CO<sub>2</sub> (orange) then dominates, peaking near 88%; H<sub>2</sub>O (blue) rises to dominate late, crossing CO<sub>2</sub> around 8.5 &times; 10<sup>5</sup> yr and reaching ~84%.
-  (e) Mantle evolution: the core-mantle boundary reference (dashed purple) marks the core mass fraction (0.325); the rheological front (orange) starts at the core-mantle boundary (~0.48 of the planet radius) and propagates outward as the mantle solidifies; the global melt fraction (dotted grey) decreases from 1.0 to 0.05.
+  (e) Mantle evolution: the dashed purple line marks the core mass fraction (0.325); the rheological front (orange) starts at the core-mantle boundary in radius (~0.48 of the planet radius, above the mass-fraction reference) and propagates outward as the mantle solidifies; the global melt fraction (dotted) decreases from 1.0 to 0.05.
   (f) Volatile partitioning into the interior: H<sub>2</sub>O (blue) starts almost fully dissolved in the melt (~99.6%) and falls to ~45% at the &Phi; = 5% termination, the residual melt still retaining much of the water. CO<sub>2</sub> (orange) is far less soluble, starting at ~14% interior and dropping to ~0.5%.</figcaption>
 </figure>
 
@@ -115,14 +116,14 @@ proteus plot -c input/tutorials/tutorial_earth.toml all
 The planet starts fully molten, with a surface temperature
 T$_\mathrm{s}$ $\approx$ 3300 K and a magma temperature near 4280 K.
 The magma ocean radiates through a thick atmosphere, with the net
-interior and atmospheric fluxes reaching ~10$^5$ W m$^{-2}$ initially
+interior and atmospheric fluxes reaching a few $\times$ 10$^5$ W m$^{-2}$ initially
 (a). Radiogenic heating (magenta) provides a constant ~0.2 W m$^{-2}$
 baseline, negligible compared to the interior cooling flux. The absorbed
 stellar flux (ASF, dashed blue) is ~226 W m$^{-2}$ at 1 AU
 (instellation F$_\mathrm{ins}$ $\approx$ 1005 W m$^{-2}$ at 50 Myr,
 reduced by the geometry factor, Bond albedo, and zenith angle).
 
-The surface temperature (c, solid grey) decreases from ~3300 K to
+The surface temperature (c, solid) decreases from ~3300 K to
 ~1920 K at the solidus over ~1.5 Myr; the magma temperature (dashed
 orange) tracks above it, starting near 4280 K. The decline slows around
 10$^5$ yr as the mantle enters the mushy zone and latent heat release
@@ -139,7 +140,7 @@ solidifies:
    molten, superheated initial condition the IW+4 oxygen fugacity buffer
    produces an O$_2$-dominated atmosphere (~100 mol%, d) with a total
    surface pressure of ~2 $\times$ 10$^4$ bar (b). This O$_2$ collapses as
-   the surface cools below ~3000 K, falling from ~10$^4$ bar to below
+   the surface cools below ~3000 K, falling from ~2 $\times$ 10$^4$ bar to below
    10 bar within the first ~3 $\times$ 10$^4$ yr and to a negligible
    partial pressure by ~10$^5$ yr.
 
@@ -153,9 +154,9 @@ solidifies:
    exsolves it.
 
 3. **H$_2$O-dominated phase** (t > ~8 $\times$ 10$^5$ yr): H$_2$O overtakes
-   CO$_2$ in mole fraction around 8.5 $\times$ 10$^5$ yr (d), its partial
-   pressure having climbed to ~340 bar as the melt crystallizes. It
-   dominates the final atmosphere at ~84 mol% (~340 bar), with CO$_2$ at
+   CO$_2$ in mole fraction around 8.5 $\times$ 10$^5$ yr (d) and keeps
+   rising as the melt crystallizes. It dominates the final atmosphere at
+   ~84 mol% (~340 bar), with CO$_2$ at
    ~14 mol% (~57 bar). The total surface pressure at solidification is
    ~403 bar.
 
@@ -172,11 +173,11 @@ core radius = 3.41 Mm (0.54 R$_\oplus$, 0.48 of the planet radius),
 surface gravity = 7.77 m s$^{-2}$, CMB pressure = 103 GPa,
 center pressure = 342 GPa.
 
-In (e), the core-mantle boundary reference (dashed purple) is drawn at
-the core mass fraction (0.325). The rheological front (orange), defined
-as the radius where $\Phi$ = 0.4, starts at the core-mantle boundary
-(~0.48 of the planet radius) and propagates outward as the mantle
-crystallizes from the base up. The global melt fraction (dotted grey)
+In (e), the dashed purple line is drawn at the core mass fraction
+(0.325). The rheological front (orange), defined as the radius where
+$\Phi$ = 0.4, starts at the core-mantle boundary in radius (~0.48 of the
+planet radius, above the mass-fraction reference) and propagates outward
+as the mantle crystallizes from the base up. The global melt fraction (dotted)
 decreases from 1.0 to 0.05, at which point the run terminates.
 
 In (f), H$_2$O (blue) starts with nearly all of its mass dissolved in the
