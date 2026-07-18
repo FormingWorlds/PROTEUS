@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.interpolate import PchipInterpolator
 
+from proteus.star.wrapper import scale_spectrum_to_stellar_surface
 from proteus.utils.constants import (
     prt_cia_species,
     prt_gases,
@@ -669,7 +670,7 @@ def eclipse_depth(hf_row: dict, config: Config, source: str, dirs: dict[str, str
         # result on top of the geometric factor below. This assumes the stored spectrum
         # was written at the separation this row holds, which is exact for a fixed orbit
         # and leaves the ratio of the two separations behind while an orbit evolves.
-        stellar_surface_flux = stellar_toa_flux * (sep / Rs) ** 2
+        stellar_surface_flux = scale_spectrum_to_stellar_surface(stellar_toa_flux, sep, Rs)
         depth_local = (
             np.array(planet_flux_local, dtype=float)
             / stellar_surface_flux

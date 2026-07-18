@@ -1552,8 +1552,9 @@ def test_eclipse_depth_divides_by_the_stellar_surface_flux(monkeypatch, tmp_path
     # flux lands 100x high, two decades outside the tolerance above.
     double_diluted = expected * dilution
     assert np.all(np.abs(result[:, 1] - double_diluted) > 0.9 * double_diluted)
-    # Scale guard: these are ~3e-9 ppm, not ~3e-7 (double dilution) and not ~3e-3
-    # (a missing radius ratio).
+    # Scale guard: these are ~3e-9 ppm, not ~3e-7 (double dilution) and not ~3e-5
+    # (a missing radius ratio: the ~3e-9 expected value divided by the 1e-4
+    # radius-ratio square).
     assert np.all((result[:, 1] > 1.0e-10) & (result[:, 1] < 1.0e-8))
 
     # Limit input: a planet orbiting at one stellar radius sits on the stellar surface,

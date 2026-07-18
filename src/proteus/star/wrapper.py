@@ -387,6 +387,33 @@ def scale_spectrum_to_toa(fl_arr, sep: float):
     return np.array(fl_arr) * ((AU / sep) ** 2)
 
 
+def scale_spectrum_to_stellar_surface(fl_arr, sep: float, r_star: float):
+    """
+    Scale stellar fluxes from the top of the planet's atmosphere to the stellar surface.
+
+    This inverts the separation-dependent part of scale_spectrum_to_toa. The spectrum
+    written to the .sflux file is the flux at the planet, reduced from the stellar
+    surface by (r_star / sep) ** 2, so recovering the surface value multiplies by
+    (sep / r_star) ** 2. A consumer that compares against the stellar surface, such as
+    the eclipse-depth denominator or the VULCAN stellar input, needs this; the climate
+    and photochemistry modules that want the flux at the planet use the file as written.
+
+    Parameters
+    ----------
+        fl_arr : iterable
+            Stellar fluxes at the top of the planet's atmosphere.
+        sep : float
+            Planet-star distance [m].
+        r_star : float
+            Stellar radius [m].
+    Returns
+    ----------
+        fl_arr : np.ndarray
+            Stellar fluxes at the stellar surface.
+    """
+    return np.array(fl_arr) * ((sep / r_star) ** 2)
+
+
 def write_spectrum(wl_arr, fl_arr, hf_row: dict, output_dir: str):
     """
     Write stellar spectrum to file.
