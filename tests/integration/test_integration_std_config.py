@@ -39,16 +39,16 @@ from tests.integration.conftest import (
     validate_stability,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
-# Mixed-tier file: 2 integration tests + 2 slow tests. The slow pair
-# carries @pytest.mark.slow per-function and runs only in the nightly
-# slow surface; the integration filter selects only the first two.
+# Both tests here drive the real modules for many timesteps and cost tens of
+# minutes, so the whole file is slow tier. Keep it single-tier: a second tier
+# marker on a function would combine with the module mark above, and the tier
+# filters are mutually exclusive (`integration and not slow` against `slow and
+# not integration`), so a doubly-marked test is selected by neither.
 
 
-@pytest.mark.integration
 @pytest.mark.physics_invariant
-@pytest.mark.slow
 @pytest.mark.timeout(1800)  # 30 minute timeout for this test
 def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
     """Test standard PROTEUS configuration with all real modules (5 timesteps).
@@ -72,7 +72,7 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
 
     Runtime: ~10-20 minutes (3 timesteps, all real modules, low resolution)
 
-    Note: Marked as @pytest.mark.slow - runs in nightly Science validation CI only.
+    Note: slow tier, so this runs in the nightly science validation only.
     This test requires all real modules to be available (MORS, LovePy, ARAGOG, AGNI,
     CALLIOPE, ZEPHYRUS) and ARAGOG lookup data. It may skip locally if modules/data
     are not available, but MUST run in nightly Science validation CI.
@@ -266,9 +266,7 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
     assert final_row['Time'] > initial_row['Time'], 'Time should have progressed'
 
 
-@pytest.mark.integration
 @pytest.mark.physics_invariant
-@pytest.mark.slow
 @pytest.mark.timeout(3600)  # 60 minute timeout for extended run
 def test_integration_std_config_extended_run(proteus_multi_timestep_run):
     """Test extended standard configuration run (10 timesteps).
@@ -285,7 +283,7 @@ def test_integration_std_config_extended_run(proteus_multi_timestep_run):
 
     Runtime: ~20-40 minutes (5 timesteps, all real modules, low resolution)
 
-    Note: Marked as @pytest.mark.slow - runs in nightly CI only.
+    Note: slow tier, so this runs in the nightly only.
     Requires all real modules (MORS, LovePy, ARAGOG, AGNI, CALLIOPE, ZEPHYRUS).
     """
     # Try to run PROTEUS with standard configuration for extended period
