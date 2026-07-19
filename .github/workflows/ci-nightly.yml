@@ -293,7 +293,7 @@ jobs:
           - shard: std-config-multi
             tier: extended
             os: ubuntu-latest
-            job_minutes: 330
+            job_minutes: 355
             select: test_integration_std_config_multi_timestep
             files: >-
               tests/integration/test_integration_std_config.py

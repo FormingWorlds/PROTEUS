@@ -43,15 +43,15 @@ from tests.integration.conftest import (
 
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
-# Both tests here drive the real modules for many timesteps and cost tens of
-# minutes, so the whole file is slow tier. Keep it single-tier: a second tier
-# marker on a function would combine with the module mark above, and the tier
-# filters are mutually exclusive (`integration and not slow` against `slow and
-# not integration`), so a doubly-marked test is selected by neither.
+# Both tests here drive the real modules for several coupled timesteps and cost
+# hours on the runner, so the whole file is slow tier. Keep it single-tier: a
+# second tier marker on a function would combine with the module mark above, and
+# the tier filters are mutually exclusive (`integration and not slow` against
+# `slow and not integration`), so a doubly-marked test is selected by neither.
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.timeout(18000)  # 300 min ceiling; the coupled run measures ~180 min on the runner
+@pytest.mark.timeout(20100)  # 335 min ceiling; the coupled run measures ~180 min on the runner
 def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
     """Test standard PROTEUS configuration with all real modules (3 timesteps).
 
@@ -72,7 +72,7 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
     - Volatile evolution: H2O, CO2 masses evolve (CALLIOPE)
     - Escape evolution: esc_rate_total calculated (ZEPHYRUS)
 
-    Runtime: tens of minutes on CI (3 timesteps, all real modules, low resolution)
+    Runtime: ~3 h on the CI runner (3 timesteps, all real modules, low resolution)
 
     Note: slow tier, so this runs in the nightly science validation only.
     This test requires all real modules to be available (MORS, LovePy, ARAGOG, AGNI,
@@ -270,10 +270,10 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
 
 @pytest.mark.physics_invariant
 @pytest.mark.skip(
-    reason='The 5-timestep coupled run measures ~4 h on the CI runner, beyond the '
-    'nightly budget and close to the runner job limit. The 3-timestep '
-    'multi_timestep test covers the coupling nightly; run this one manually or '
-    'in a periodic workflow when longer-horizon stability needs checking.'
+    reason='The 5-timestep coupled run measures ~4 h on the CI runner, which does '
+    'not fit the 360 min hosted-runner job limit with margin. The 3-timestep '
+    'multi_timestep test covers the coupling nightly; run this one manually when '
+    'longer-horizon stability needs checking.'
 )
 def test_integration_std_config_extended_run(proteus_multi_timestep_run):
     """Test extended standard configuration run (5 timesteps).

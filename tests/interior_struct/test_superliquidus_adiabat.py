@@ -74,8 +74,8 @@ class TestSolveSuperliquidusReal:
         assert r['surface_T'] > 3500.0
 
     @pytest.mark.physics_invariant
-    # Three real solves in series (1, 5, 10 M_Earth); the file measures ~141 min
-    # on the runner, so this needs well above the file-level 3600 s net.
+    # Three real solves in series (1, 5, 10 M_Earth); this test measures ~141 min
+    # on the runner, so it needs well above the file-level 3600 s net.
     @pytest.mark.timeout(14400)
     def test_solved_entropy_is_mass_independent(self):
         """The shallow PALEOS binding depth makes the solved entropy
