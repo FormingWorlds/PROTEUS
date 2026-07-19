@@ -267,25 +267,54 @@ jobs:
               tests/integration/test_slow_janus_aragog.py
               tests/inference/test_bo_convergence.py
               tests/inference/test_inference_slow.py
-          # ---- shard: misc (hypothesis fuzz + dummy/std-config integration + superliquidus) ----
+          # ---- shard: misc (hypothesis fuzz + dummy integration; both quick) ----
           - shard: misc
             tier: critical
             os: ubuntu-latest
             files: >-
               tests/integration/test_smoke_hypothesis.py
               tests/integration/test_integration_dummy.py
-              tests/integration/test_integration_std_config.py
-              tests/interior_struct/test_superliquidus_adiabat.py
           - shard: misc
             tier: critical
             os: macos-latest
             files: >-
               tests/integration/test_smoke_hypothesis.py
               tests/integration/test_integration_dummy.py
+          # ---- shard: std-config (full coupled "standard candle" run with
+          # every real module; the two tests run 3 and 5 coupled timesteps and
+          # cost tens of minutes to over an hour on the runner. Linux-only
+          # extended: this run boots AGNI, whose macOS arm64 path is not yet
+          # validated (the reason the agni shard is Linux-only too), and the
+          # macOS runner ceiling is already full. job_minutes gives headroom for
+          # the coupled runtime, which uses the multi-band Honeyside spectral
+          # file and has not been timed on the runner) ----
+          - shard: std-config
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 240
+            files: >-
               tests/integration/test_integration_std_config.py
+          # ---- shard: superliquidus (real-PALEOS super-liquidus IC solve;
+          # each solve is ~26 EOS-adiabat probes and runs ~40 min on the runner,
+          # and the mass-independence test runs three solves in series (~2 h), so
+          # the whole file is ~3.5 h. Pure numpy/scipy EOS work with no macOS
+          # parity need, so Linux-only extended with a raised job cap that keeps
+          # real headroom over the run and stays above the file's per-test
+          # timeouts) ----
+          - shard: superliquidus
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 300
+            files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 210   # job cap for the slow-tier matrix, sized by its longest shard (zalmoxis-coupled/ubuntu, ~137 min plus ~11 min setup); above the 180 min per-test pytest-timeout so a hung single test trips pytest-timeout's per-test timer before the job is cancelled.
+    # Job cap defaults to 210 min, kept above the longest per-test pytest-timeout
+    # (<= 180 min) so a hung single test trips its own timer before the job is
+    # cancelled. The two heavy extended shards run several tens-of-minutes tests
+    # in series, so they raise the cap via matrix.job_minutes (std-config 240,
+    # superliquidus 300) to hold real headroom over their totals while staying
+    # above their per-test timeouts.
+    timeout-minutes: ${{ matrix.job_minutes || 210 }}
     env:
       COVERAGE_FILE: .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
     steps:
