@@ -50,7 +50,7 @@ pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.timeout(5400)  # 90 min ceiling; the coupled run takes tens of minutes on CI
+@pytest.mark.timeout(14400)  # generous ceiling while the runner wall-time is measured
 def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
     """Test standard PROTEUS configuration with all real modules (3 timesteps).
 
@@ -268,7 +268,7 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.timeout(9000)  # 150 min ceiling; the longer coupled run takes over an hour on CI
+@pytest.mark.timeout(18000)  # generous ceiling while the runner wall-time is measured
 def test_integration_std_config_extended_run(proteus_multi_timestep_run):
     """Test extended standard configuration run (5 timesteps).
 

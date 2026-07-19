@@ -280,40 +280,59 @@ jobs:
             files: >-
               tests/integration/test_smoke_hypothesis.py
               tests/integration/test_integration_dummy.py
-          # ---- shard: std-config (full coupled "standard candle" run with
-          # every real module; the two tests run 3 and 5 coupled timesteps and
-          # cost tens of minutes to over an hour on the runner. Linux-only
-          # extended: this run boots AGNI, whose macOS arm64 path is not yet
-          # validated (the reason the agni shard is Linux-only too), and the
-          # macOS runner ceiling is already full. job_minutes gives headroom for
-          # the coupled runtime, which uses the multi-band Honeyside spectral
-          # file and has not been timed on the runner) ----
-          - shard: std-config
+          # Heavy real-solver tests run one per shard (via matrix.select -> -k)
+          # so each job is bounded by setup plus a single test, not a serial
+          # stack. All are Linux-only extended: the coupled std-config run boots
+          # AGNI, whose macOS arm64 path is not yet validated (the reason the
+          # agni shard is Linux-only too); the super-liquidus solve is pure
+          # numpy/scipy EOS work with no platform binary; and the macOS runner
+          # budget is already full. job_minutes are generous measurement
+          # ceilings while the real per-test runner wall-times are established.
+          # ---- std-config-multi (3 coupled timesteps, all real modules) ----
+          - shard: std-config-multi
             tier: extended
             os: ubuntu-latest
-            job_minutes: 240
+            job_minutes: 260
+            select: test_integration_std_config_multi_timestep
             files: >-
               tests/integration/test_integration_std_config.py
-          # ---- shard: superliquidus (real-PALEOS super-liquidus IC solve;
-          # each solve is ~26 EOS-adiabat probes and runs ~40 min on the runner,
-          # and the mass-independence test runs three solves in series (~2 h), so
-          # the whole file is ~3.5 h. Pure numpy/scipy EOS work with no macOS
-          # parity need, so Linux-only extended with a raised job cap that keeps
-          # real headroom over the run and stays above the file's per-test
-          # timeouts) ----
-          - shard: superliquidus
+          # ---- std-config-extended (5 coupled timesteps, all real modules) ----
+          - shard: std-config-extended
             tier: extended
             os: ubuntu-latest
-            job_minutes: 300
+            job_minutes: 320
+            select: test_integration_std_config_extended_run
+            files: >-
+              tests/integration/test_integration_std_config.py
+          # ---- superliquidus-m1 (single 1 M_Earth PALEOS solve) ----
+          - shard: superliquidus-m1
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 170
+            select: test_m1_solved_adiabat_pinned
+            files: >-
+              tests/interior_struct/test_superliquidus_adiabat.py
+          # ---- superliquidus-massindep (three solves in series: 1, 5, 10 M_E) ----
+          - shard: superliquidus-massindep
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 350
+            select: test_solved_entropy_is_mass_independent
+            files: >-
+              tests/interior_struct/test_superliquidus_adiabat.py
+          # ---- superliquidus-unreachable (one full-span scan, no bisection) ----
+          - shard: superliquidus-unreachable
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 170
+            select: test_unreachable_superheat_raises_real
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
     runs-on: ${{ matrix.os }}
-    # Job cap defaults to 210 min, kept above the longest per-test pytest-timeout
-    # (<= 180 min) so a hung single test trips its own timer before the job is
-    # cancelled. The two heavy extended shards run several tens-of-minutes tests
-    # in series, so they raise the cap via matrix.job_minutes (std-config 240,
-    # superliquidus 300) to hold real headroom over their totals while staying
-    # above their per-test timeouts.
+    # Job cap defaults to 210 min, kept above each shard's per-test pytest-timeout
+    # so a hung single test trips its own timer before the job is cancelled. The
+    # one-test heavy shards raise the cap via matrix.job_minutes because a single
+    # real-solver test there runs one to several hours on the runner.
     timeout-minutes: ${{ matrix.job_minutes || 210 }}
     env:
       COVERAGE_FILE: .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
@@ -325,11 +344,19 @@ jobs:
         with:
           full-data: 'true'
       - name: Run slow shard
+        env:
+          SHARD_SELECT: ${{ matrix.select }}
         run: |
+          # Heavy shards select a single test by name via matrix.select; other
+          # shards run their whole file list. Test names are plain identifiers,
+          # so the unquoted expansion is a single -k token (empty when unset).
+          SELECT_ARG=""
+          if [ -n "$SHARD_SELECT" ]; then SELECT_ARG="-k $SHARD_SELECT"; fi
           pytest -m "slow and not unit and not smoke and not integration" \
             ${{ matrix.files }} \
+            $SELECT_ARG \
             -p no:faulthandler \
-            --durations=10 \
+            --durations=0 \
             --junitxml=junit-slow-${{ matrix.shard }}-${{ matrix.os }}.xml \
             --cov=proteus \
             --cov-report=xml:coverage-slow-${{ matrix.shard }}-${{ matrix.os }}.xml \
