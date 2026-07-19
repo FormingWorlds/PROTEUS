@@ -16,8 +16,9 @@ This test validates the full PROTEUS "standard candle" configuration using
 - Ensures stable feedback loops over multiple timesteps
 - Must run in nightly Science validation CI
 
-**Runtime**: tens of minutes to over an hour per test on CI (3 and 5 coupled
-timesteps, all real modules, low resolution)
+**Runtime**: the 3-timestep multi_timestep test measures ~3 h on the CI runner
+and runs nightly; the 5-timestep extended_run measures ~4 h and is skipped from
+the routine nightly (run it manually), all real modules, low resolution
 
 **Requirements**:
 - All real modules must be available (MORS, LovePy, ARAGOG, AGNI, CALLIOPE, ZEPHYRUS)
@@ -50,7 +51,7 @@ pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.timeout(14400)  # generous ceiling while the runner wall-time is measured
+@pytest.mark.timeout(18000)  # 300 min ceiling; the coupled run measures ~180 min on the runner
 def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
     """Test standard PROTEUS configuration with all real modules (3 timesteps).
 
@@ -268,7 +269,12 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.timeout(18000)  # generous ceiling while the runner wall-time is measured
+@pytest.mark.skip(
+    reason='The 5-timestep coupled run measures ~4 h on the CI runner, beyond the '
+    'nightly budget and close to the runner job limit. The 3-timestep '
+    'multi_timestep test covers the coupling nightly; run this one manually or '
+    'in a periodic workflow when longer-horizon stability needs checking.'
+)
 def test_integration_std_config_extended_run(proteus_multi_timestep_run):
     """Test extended standard configuration run (5 timesteps).
 
@@ -282,10 +288,11 @@ def test_integration_std_config_extended_run(proteus_multi_timestep_run):
     - No unbounded growth in any physical variables
     - Conservation laws maintained over time
 
-    Runtime: over an hour on CI (5 timesteps, all real modules, low resolution)
+    Runtime: ~4 h on the CI runner (5 timesteps, all real modules, low
+    resolution), which is why it is skipped from the routine nightly.
 
-    Note: slow tier, so this runs in the nightly only.
-    Requires all real modules (MORS, LovePy, ARAGOG, AGNI, CALLIOPE, ZEPHYRUS).
+    Note: skipped from CI for runtime; run manually with all real modules
+    (MORS, LovePy, ARAGOG, AGNI, CALLIOPE, ZEPHYRUS).
     """
     # Try to run PROTEUS with standard configuration for extended period
     try:

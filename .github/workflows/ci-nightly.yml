@@ -286,45 +286,38 @@ jobs:
           # AGNI, whose macOS arm64 path is not yet validated (the reason the
           # agni shard is Linux-only too); the super-liquidus solve is pure
           # numpy/scipy EOS work with no platform binary; and the macOS runner
-          # budget is already full. job_minutes are generous measurement
-          # ceilings while the real per-test runner wall-times are established.
-          # ---- std-config-multi (3 coupled timesteps, all real modules) ----
+          # budget is already full. job_minutes sit above the measured runner
+          # wall-time with margin for the ~1.5x runner-to-runner variance, and
+          # above each shard's per-test timeout so a hung test trips first.
+          # ---- std-config-multi (3 coupled timesteps; ~180 min measured) ----
           - shard: std-config-multi
             tier: extended
             os: ubuntu-latest
-            job_minutes: 260
+            job_minutes: 330
             select: test_integration_std_config_multi_timestep
             files: >-
               tests/integration/test_integration_std_config.py
-          # ---- std-config-extended (5 coupled timesteps, all real modules) ----
-          - shard: std-config-extended
-            tier: extended
-            os: ubuntu-latest
-            job_minutes: 320
-            select: test_integration_std_config_extended_run
-            files: >-
-              tests/integration/test_integration_std_config.py
-          # ---- superliquidus-m1 (single 1 M_Earth PALEOS solve) ----
+          # ---- superliquidus-m1 (single 1 M_Earth solve; ~47 min measured) ----
           - shard: superliquidus-m1
             tier: extended
             os: ubuntu-latest
-            job_minutes: 170
+            job_minutes: 120
             select: test_m1_solved_adiabat_pinned
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
-          # ---- superliquidus-massindep (three solves in series: 1, 5, 10 M_E) ----
+          # ---- superliquidus-massindep (three solves in series; ~141 min measured) ----
           - shard: superliquidus-massindep
             tier: extended
             os: ubuntu-latest
-            job_minutes: 350
+            job_minutes: 270
             select: test_solved_entropy_is_mass_independent
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
-          # ---- superliquidus-unreachable (one full-span scan, no bisection) ----
+          # ---- superliquidus-unreachable (one full-span scan; ~48 min measured) ----
           - shard: superliquidus-unreachable
             tier: extended
             os: ubuntu-latest
-            job_minutes: 170
+            job_minutes: 120
             select: test_unreachable_superheat_raises_real
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py

@@ -46,7 +46,7 @@ class TestSolveSuperliquidusReal:
 
     @pytest.mark.physics_invariant
     @pytest.mark.reference_pinned
-    @pytest.mark.timeout(9000)  # generous ceiling while the runner wall-time is measured
+    @pytest.mark.timeout(5400)  # 90 min ceiling; a single solve measures ~47 min on the runner
     def test_m1_solved_adiabat_pinned(self):
         """Pin the 1 M_Earth PALEOS solve (delta_T_super = 500 K).
 
@@ -74,9 +74,9 @@ class TestSolveSuperliquidusReal:
         assert r['surface_T'] > 3500.0
 
     @pytest.mark.physics_invariant
-    # Three real solves in series (1, 5, 10 M_Earth): generous ceiling while the
-    # runner wall-time is measured.
-    @pytest.mark.timeout(20000)
+    # Three real solves in series (1, 5, 10 M_Earth); the file measures ~141 min
+    # on the runner, so this needs well above the file-level 3600 s net.
+    @pytest.mark.timeout(14400)
     def test_solved_entropy_is_mass_independent(self):
         """The shallow PALEOS binding depth makes the solved entropy
         essentially mass-independent, keeping the mass grid on a common initial
@@ -106,7 +106,7 @@ class TestSolveSuperliquidusReal:
         # well within that.
         assert spread < 0.05 * min(entropies)
 
-    @pytest.mark.timeout(9000)  # generous ceiling while the runner wall-time is measured
+    @pytest.mark.timeout(5400)  # 90 min ceiling; the scan measures ~48 min on the runner
     def test_unreachable_superheat_raises_real(self):
         """A superheat too large for the EOS table to support raises and names
         the largest achievable value, rather than returning a partial-melt IC.
