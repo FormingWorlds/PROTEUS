@@ -572,7 +572,7 @@ def assert_mass_conservation(hf_row: dict, config: Config, atol_frac: float = 1e
     summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
     if M_atm > 0.0:
         rel = abs(summed - M_atm) / M_atm
-        if config.outgas.silicates:
+        if config.outgas.vapourise:
             """relax the criterion to mass cannot change more tahn by twice atmospheric mass. The reason is
             that if silicates=True, the outgassing can change the relative distribution of elements and also
             othe rspecies than the ones considered in gas_list might get outgassed."""
