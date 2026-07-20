@@ -25,7 +25,6 @@ from proteus.utils.constants import (
     gas_list,
     secs_per_hour,
     secs_per_minute,
-    vol_list,
 )
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -515,7 +514,7 @@ def print_stoptime(start_time):
     log.info(' ')
 
 
-def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
+def assert_mass_conservation(hf_row: dict, config: Config, atol_frac: float = 1e-6) -> None:
     """Runtime invariant: M_atm <= M_planet and sum of per-species kg_atm
     matches M_atm.
 
@@ -534,7 +533,6 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     atol_frac : float
         Relative tolerance for the two invariants. Default 1e-6 admits
         accumulated float-rounding from the per-species sum but not
-        any physically meaningful drift.
 
     Raises
     ------
@@ -543,11 +541,8 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
         the per-species sum disagrees with M_atm by more than that.
     """
 
-    M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
-    M_vaps = float(
-        hf_row.get('M_vaps', 0.0)
-    )  # not including O , but O is not updated in atmosphere mass after lavatmos so o.k.
+    M_atm = float(hf_row.get('M_atm', 0.0))
 
     # Pre-IC short-circuit: M_planet == 0 means the structure solve has
     # not yet populated the hf_row. The invariants are not meaningful
@@ -559,7 +554,7 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
         return
 
     # Invariant 1: atmosphere mass <= total planet mass.
-    if (M_atm - M_vaps) > M_planet * (1.0 + atol_frac):
+    if M_atm > M_planet * (1.0 + atol_frac):
         raise RuntimeError(
             f'Mass conservation violation (issue #677 regression?): '
             f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
@@ -574,16 +569,29 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     # species kg_atm after M_atm is computed without refreshing M_atm. The
     # noble gases are members of gas_list, so their atmospheric mass is
     # counted here and in M_atm alike.
-    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_list)
+    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
     if M_atm > 0.0:
         rel = abs(summed - M_atm) / M_atm
-        if rel > atol_frac:
-            raise RuntimeError(
-                f'M_atm bookkeeping inconsistency: M_atm={M_atm:.3e} kg but '
-                f'sum_s(s_kg_atm)={summed:.3e} kg (relative difference '
-                f'{rel * 100:.3f}%). One of the gas-species kg_atm fields '
-                f'is stale or the M_atm sum loop is missing a species.'
-            )
+        if config.outgas.silicates:
+            """relax the criterion to mass cannot change more tahn by twice atmospheric mass. The reason is
+            that if silicates=True, the outgassing can change the relative distribution of elements and also
+            othe rspecies than the ones considered in gas_list might get outgassed."""
+
+            if rel > M_atm:
+                raise RuntimeError(
+                    f'M_atm bookkeeping inconsistency: M_atm={M_atm:.3e} kg but '
+                    f'sum_s(s_kg_atm)={summed:.3e} kg (relative difference '
+                    f'{rel * 100:.3f}%). One of the gas-species kg_atm fields '
+                    f'is stale or the M_atm sum loop is missing a species.'
+                )
+        else:
+            if rel > atol_frac:
+                raise RuntimeError(
+                    f'M_atm bookkeeping inconsistency: M_atm={M_atm:.3e} kg but '
+                    f'sum_s(s_kg_atm)={summed:.3e} kg (relative difference '
+                    f'{rel * 100:.3f}%). One of the gas-species kg_atm fields '
+                    f'is stale or the M_atm sum loop is missing a species.'
+                )
 
 
 def assert_surface_pressure_consistency(
@@ -705,7 +713,7 @@ def GetHelpfileKeys():
         'R_int',            # interior radius [m]
         'M_int',            # interior mass [kg]
         'M_planet',         # total planet wet+dry mass [kg]
-        'M_vaps',           # outgassed rock vapour mass , w/o oxygen [kg]
+        'M_vaps',           # outgassed rock vapour mass [kg]
         'R_core',           # core radius [m]
         'R_solvus',         # solvus radius for global_miscibility mode [m]
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]

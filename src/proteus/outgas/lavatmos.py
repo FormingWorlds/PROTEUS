@@ -532,7 +532,6 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
                     element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
                 )
             hf_row['M_vaps'] += hf_row[e + '_kg_atm']
-
     # saving new oxygen fugacity from lavatmos run, which is computed as log10 of the partial pressure of O2, to compare with the iron wustite buffer
 
     pO2 = new_atmos_abundances['O2'][0]
