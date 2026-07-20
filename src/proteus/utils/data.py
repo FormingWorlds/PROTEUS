@@ -1492,16 +1492,21 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
     use_osf_fallback : bool
         If True, attempt OSF download if MORS download fails
     """
-    from mors.data import DownloadEvolutionTracks
+    from mors import data as mors_data
 
     log.debug(f'Downloading stellar evolution tracks: {track}')
 
     # Try MORS download first
     try:
-        DownloadEvolutionTracks(track)
-        # Verify download succeeded by checking if tracks directory exists
-        fwl_data = GetFWLData()
-        tracks_path = fwl_data / 'stellar_evolution_tracks' / track
+        mors_data.DownloadEvolutionTracks(track)
+        # Verify the download landed. A migrated MORS fetches Baraffe through
+        # fwl-io into its versioned directory and exposes baraffe_data_dir to
+        # resolve it; an older MORS wrote Baraffe to the legacy path, like Spada.
+        # Verify wherever this MORS version actually placed the tracks.
+        if track == 'Baraffe' and hasattr(mors_data, 'baraffe_data_dir'):
+            tracks_path = mors_data.baraffe_data_dir()
+        else:
+            tracks_path = GetFWLData() / 'stellar_evolution_tracks' / track
         if tracks_path.exists() and any(tracks_path.iterdir()):
             log.info(f'Successfully downloaded {track} tracks via MORS')
             return
@@ -1511,7 +1516,9 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
     except Exception as e:
         log.warning(f'MORS download failed for {track} tracks: {e}')
 
-        if not use_osf_fallback:
+        # Baraffe is hash-verified by fwl-io and has no OSF mirror, so a failure
+        # is authoritative; only Spada has a legacy OSF fallback.
+        if track == 'Baraffe' or not use_osf_fallback:
             raise
 
         # Fallback to OSF if available
