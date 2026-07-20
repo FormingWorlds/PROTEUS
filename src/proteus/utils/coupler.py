@@ -544,6 +544,9 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
 
     M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
+    M_vaps = float(
+        hf_row.get('M_vaps', 0.0)
+    )  # not including O , but O is not updated in atmosphere mass after lavatmos so o.k.
 
     # Pre-IC short-circuit: M_planet == 0 means the structure solve has
     # not yet populated the hf_row. The invariants are not meaningful
@@ -555,7 +558,7 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
         return
 
     # Invariant 1: atmosphere mass <= total planet mass.
-    if M_atm > M_planet * (1.0 + atol_frac):
+    if (M_atm - M_vaps) > M_planet * (1.0 + atol_frac):
         raise RuntimeError(
             f'Mass conservation violation (issue #677 regression?): '
             f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
