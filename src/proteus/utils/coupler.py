@@ -25,6 +25,7 @@ from proteus.utils.constants import (
     gas_list,
     secs_per_hour,
     secs_per_minute,
+    vol_list,
 )
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -573,7 +574,7 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     # species kg_atm after M_atm is computed without refreshing M_atm. The
     # noble gases are members of gas_list, so their atmospheric mass is
     # counted here and in M_atm alike.
-    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
+    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_list)
     if M_atm > 0.0:
         rel = abs(summed - M_atm) / M_atm
         if rel > atol_frac:
