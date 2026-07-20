@@ -7,7 +7,7 @@ hide:
 
 <div class="proteus-index proteus-index-img">
 
-<h1 align="center" markdown="0"><a href="https://proteus-framework.org"><img src="assets/PROTEUS_white.png#only-light" alt="PROTEUS" width="90%"/><img src="assets/PROTEUS_black_nobkg.png#only-dark" alt="PROTEUS" width="90%"/></a></h1>
+<h1 align="center" markdown="0"><a href="https://proteus-framework.org"><img src="assets/proteus-lockup-light-transparent.png#only-light" alt="PROTEUS" width="70%"/><img src="assets/proteus-lockup-dark-transparent.png#only-dark" alt="PROTEUS" width="70%"/></a></h1>
 
 <p align="center">
   <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/coverage-baseline.yml" target="_blank" rel="noopener">

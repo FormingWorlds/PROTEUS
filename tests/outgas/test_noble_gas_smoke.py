@@ -11,9 +11,8 @@ that predates that support it skips, so the fast PR gate stays green; it
 activates automatically once the CALLIOPE version pin is bumped.
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

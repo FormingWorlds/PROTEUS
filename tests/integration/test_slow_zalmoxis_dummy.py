@@ -47,9 +47,8 @@ markedly longer there and exhausts the 3600 s pytest-timeout; if
 the macOS path is re-enabled later, budget at least 3600 s.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

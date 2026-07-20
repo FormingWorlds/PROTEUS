@@ -7,9 +7,8 @@ os.* primitives; mocking those would amount to mocking the function
 under test.
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

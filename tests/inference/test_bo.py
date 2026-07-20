@@ -14,9 +14,8 @@ Physics invariants exercised:
     busy points for the diversity-aware scheduler.
 
 References:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -25,6 +24,8 @@ import pytest
 import torch
 
 import proteus.inference.BO as bo_mod
+
+from ._bo_helpers import make_quadratic_objective
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -392,3 +393,27 @@ def test_init_locs_propagates_acqf_to_log_pi(monkeypatch):
     assert tuple(out.shape) == (2, 1)
     assert out[0, 0].item() == pytest.approx(0.3)
     assert out[1, 0].item() == pytest.approx(0.6)
+
+
+# ---------------------------------------------------------------------------
+# Synthetic objective shared with the slow convergence tier
+# ---------------------------------------------------------------------------
+def test_quadratic_objective_returns_zero_at_target():
+    """The synthetic objective evaluates to exactly 0 at its target point.
+
+    The slow-tier convergence tests optimize against this objective, so a bug
+    in the helper would make them pass while testing nothing. Pinning it at
+    unit tier keeps the helper honest without waiting for the nightly.
+    """
+    target = torch.tensor([0.3, 0.7], dtype=torch.double)
+    objective = make_quadratic_objective(target)
+    y_at_target = objective(target.unsqueeze(0))
+    assert y_at_target.item() == pytest.approx(0.0, abs=1e-12)
+    # Off-target value is strictly negative
+    y_off = objective(torch.tensor([[0.0, 0.0]], dtype=torch.double))
+    assert y_off.item() < 0
+    # Quadratic: doubling the distance quadruples the magnitude
+    y_far = objective(torch.tensor([[0.6, 0.4]], dtype=torch.double))
+    y_near = objective(torch.tensor([[0.45, 0.55]], dtype=torch.double))
+    # ratio of (far-target)^2 to (near-target)^2 = ((0.3,0.3))^2 / ((0.15,0.15))^2 = 4
+    assert y_near.item() / y_far.item() == pytest.approx(0.25, rel=1e-9)

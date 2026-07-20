@@ -101,7 +101,7 @@ real-gas equations of state.
     `pip install "fwl-proteus[atmodeller]"` before setting
     `outgas.module = "atmodeller"`. atmodeller is GPL-3.0 licensed; review
     its terms before installing. See
-    [Installation: optional modules](../../How-to/optionalmodules_installation).
+    [Installation: optional modules](../../How-to/optionalmodules_installation.md).
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|

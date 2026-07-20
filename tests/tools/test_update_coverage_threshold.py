@@ -9,8 +9,8 @@ fixed per-gate ceilings (fast 80%, full 90%). These tests exercise:
 * the no-op-at-ceiling short circuit,
 * the validation/error contract (missing coverage file, unknown target).
 
-See ``docs/How-to/test_infrastructure.md``, ``docs/How-to/test_building.md``,
-and ``docs/How-to/test_categorization.md`` for the test framework.
+See ``docs/How-to/testing.md`` and
+``docs/Explanations/test_framework.md`` for the test framework.
 """
 
 from __future__ import annotations

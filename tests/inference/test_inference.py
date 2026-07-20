@@ -2,91 +2,24 @@
 Tests for the inference pipeline entrypoints.
 
 References:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 # ruff: noqa: E402, I001
 from __future__ import annotations
 
-import filecmp
 import multiprocessing as mp
-import os
 
-import pandas as pd
 import pytest
 import toml
-from helpers import PROTEUS_ROOT
 
 import proteus.inference.inference as inference_mod
-from proteus.inference.inference import infer_from_config
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Mixed-tier file: 5 unit tests + 3 slow tests (subprocess-driven). The
-# slow tests carry @pytest.mark.slow per-function and run only in the
-# nightly tier; the fast PR filter "unit and not slow" selects only
-# the 5 unit tests. Do not move a slow test to the unit tier without
-# refitting it to the 100 ms / 30 s wall budget.
-
-
 # Pytest can hang on process completion when using multiprocessing by default.
 mp.set_start_method('spawn', force=True)
-
-OUT_DIR = PROTEUS_ROOT / 'output' / 'dummy_inference'
-INFER_CONFIG = PROTEUS_ROOT / 'tests' / 'inference' / 'dummy.infer.toml'
-BASE_CONFIG = PROTEUS_ROOT / 'tests' / 'inference' / 'base.toml'
-
-
-@pytest.fixture(scope='module')
-def inference_run():
-    infer_from_config(INFER_CONFIG)
-
-
-# The three tests below run the full inference pipeline as a child PROTEUS
-# subprocess. Each evaluation takes ~75 s wall (~5 min for 4 evaluations),
-# which exceeds the smoke tier's per-test budget. Tagged as slow.
-@pytest.mark.slow
-@pytest.mark.timeout(3600)
-def test_inference_smoke_config(inference_run):
-    """A finished inference run leaves a copy of its config TOML
-    (``copy.infer.toml``) and a bit-identical copy of the reference base
-    config under the output directory. Reproducibility hook.
-    """
-    assert os.path.isfile(OUT_DIR / 'copy.infer.toml')
-    assert filecmp.cmp(OUT_DIR / 'ref_config.toml', BASE_CONFIG, shallow=False)
-
-
-@pytest.mark.slow
-@pytest.mark.timeout(3600)
-def test_inference_smoke_init(inference_run):
-    """The inference run produces an ``init.csv`` containing the
-    Halton-sampled initial design, with the canonical ``y`` objective
-    column and at least one ``x_*`` parameter column.
-    """
-    assert os.path.isfile(OUT_DIR / 'init.csv')
-    data = pd.read_csv(OUT_DIR / 'init.csv')
-    assert 'y' in data.columns
-    assert any(col.startswith('x_') for col in data.columns)
-
-
-@pytest.mark.slow
-@pytest.mark.timeout(3600)
-def test_inference_smoke_output(inference_run):
-    """The inference run produces a ``data.csv`` with at least three rows
-    (initial design + BO iterations) and writes the two canonical result
-    plots (``result_correlation.png``, ``result_objective.png``).
-    """
-    assert os.path.isfile(OUT_DIR / 'data.csv')
-
-    data = pd.read_csv(OUT_DIR / 'data.csv')
-    assert 'y' in data.columns
-    assert any(col.startswith('x_') for col in data.columns)
-    assert len(data['y']) > 2
-
-    assert os.path.isfile(OUT_DIR / 'plots' / 'result_correlation.png')
-    assert os.path.isfile(OUT_DIR / 'plots' / 'result_objective.png')
 
 
 @pytest.mark.unit

@@ -7,9 +7,8 @@ valid neighbouring configuration is accepted, so the rejection is driven
 by the specific invalid field and not a blanket raise.
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -150,3 +149,14 @@ class TestZalmoxisVolatileGates:
         (the zalmoxis sub-config is inert under spider)."""
         s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(global_miscibility=True)))
         assert s.zalmoxis.global_miscibility is True
+        # The skip covers the whole sub-config, not the miscibility flag alone:
+        # an EOS string that fails the zalmoxis format check is equally inert
+        # under spider. Narrowing the skip to the flag, and validating EOS
+        # strings for every module, would reject this spider config.
+        s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(core_eos='no_colon')))
+        assert s.zalmoxis.core_eos == 'no_colon'
+        # The paired negative: zalmoxis does enforce the format, so acceptance
+        # above is the module skipping the check rather than the check being
+        # absent.
+        with pytest.raises(ValueError, match='core_eos'):
+            Struct(module='zalmoxis', zalmoxis=Zalmoxis(core_eos='no_colon'))

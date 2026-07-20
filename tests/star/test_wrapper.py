@@ -5,9 +5,8 @@ helper. Heavier dispatch functions that drive MORS / Spada tracks are
 covered by integration tests in nightly tier.
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -311,3 +310,81 @@ def test_update_stellar_temperature_spada_branch_calls_value():
     assert track.BaraffeStellarTeff.call_count == 0
     assert hf_row['T_star'] == pytest.approx(5778.0, rel=1e-12)
     assert hf_row['T_star'] > 0
+
+
+# ---------------------------------------------------------------------------
+# scale_spectrum_to_stellar_surface: inverse of the TOA scaling
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.physics_invariant
+def test_scale_spectrum_to_stellar_surface_recovers_surface_flux_regardless_of_separation():
+    """Scaling a 1 AU spectrum out to the planet and back to the stellar surface
+    returns the surface flux, and the recovered value does not depend on the
+    orbital separation: the separation that scale_spectrum_to_toa introduces is
+    exactly undone by scale_spectrum_to_stellar_surface.
+
+    Discrimination: the round trip is run at two separations two decades apart
+    (0.1 AU and 10 AU). The rescale uses (sep / r_star) ** 2; an inverted ratio
+    (r_star / sep) ** 2 or a dropped square would leave a residual separation
+    dependence, so the two recovered spectra would differ by many decades instead
+    of matching. Asserting they both equal the surface flux, and each other, rules
+    those out.
+    """
+    from proteus.star.wrapper import (
+        scale_spectrum_to_stellar_surface,
+        scale_spectrum_to_toa,
+    )
+    from proteus.utils.constants import R_sun
+
+    f_surface = np.array([10.0, 20.0, 40.0])
+    r_star = 0.9 * R_sun
+    # Flux at 1 AU is the surface flux diluted by (r_star / AU) ** 2.
+    f_1au = f_surface * (r_star / AU) ** 2
+
+    recovered = []
+    for sep in (0.1 * AU, 10.0 * AU):
+        f_planet = scale_spectrum_to_toa(f_1au, sep)
+        recovered.append(scale_spectrum_to_stellar_surface(f_planet, sep, r_star))
+
+    np.testing.assert_allclose(recovered[0], f_surface, rtol=1e-12)
+    np.testing.assert_allclose(recovered[1], f_surface, rtol=1e-12)
+    # Separation cancels: an inverted rescale would put these 1e8 apart.
+    np.testing.assert_allclose(recovered[0], recovered[1], rtol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# write_spectrum: the .sflux file stays single-header-line for skiprows=1 readers
+# ---------------------------------------------------------------------------
+
+
+def test_write_spectrum_emits_a_single_header_line(tmp_path):
+    """write_spectrum writes exactly one header line, so every consumer that skips
+    one row (AGNI, VULCAN, the eclipse loader, the cpl_sflux plotters) reads the
+    data unshifted. The written values round-trip through np.loadtxt(skiprows=1).
+
+    Discrimination: a regression that emitted a second header line, or embedded a
+    newline in the header string, would make skiprows=1 consume a header line as
+    the first data row. That would either raise or return the wrong first
+    wavelength, so pinning an exact one-line header and a value-preserving round
+    trip (with the true first wavelength recovered) catches it.
+    """
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    wl = np.array([100.0, 200.0, 300.0])
+    fl = np.array([1.0e3, 2.0e3, 4.0e3])
+    hf_row = {'age_star': 4.567e9, 'Time': 42}
+
+    star_wrapper.write_spectrum(wl, fl, hf_row, str(tmp_path))
+
+    path = data_dir / '42.sflux'
+    lines = path.read_text().splitlines()
+    header_lines = [ln for ln in lines if ln.lstrip().startswith('#')]
+    # Exactly one header line, and it is the first line.
+    assert len(header_lines) == 1
+    assert lines[0].startswith('#')
+    # skiprows=1 recovers the data exactly, including the true first wavelength
+    # (a second header line would shift it to 200.0 or raise).
+    recovered = np.loadtxt(path, skiprows=1).T
+    np.testing.assert_allclose(recovered[0], wl, rtol=1e-12)
+    np.testing.assert_allclose(recovered[1], fl, rtol=1e-12)

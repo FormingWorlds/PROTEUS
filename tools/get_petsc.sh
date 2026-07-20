@@ -71,7 +71,7 @@ on_error() {
             echo "   - Check petsc/configure.log for details"
             echo "   - On macOS: ensure Xcode CLI tools are installed (xcode-select --install)"
             echo "   - Verify MPI is installed (mpicc --version)"
-            echo "   - See PROTEUS docs/troubleshooting.md for platform-specific fixes"
+            echo "   - See PROTEUS docs/How-to/troubleshooting.md for platform-specific fixes"
             ;;
         *"Build"*)
             echo "   - Check petsc/make.log for compiler errors"
@@ -82,10 +82,10 @@ on_error() {
             echo "   - PETSc built but tests failed"
             echo "   - Check petsc/make.log for details"
             echo "   - On macOS: check /etc/hosts for localhost entry"
-            echo "     (see docs/troubleshooting.md: PETSc tests error)"
+            echo "     (see docs/How-to/troubleshooting.md: PETSc tests error)"
             ;;
         *)
-            echo "   - See docs/troubleshooting.md for platform-specific advice"
+            echo "   - See docs/How-to/troubleshooting.md for platform-specific advice"
             ;;
     esac
     echo "========================================"

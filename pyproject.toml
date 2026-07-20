@@ -51,10 +51,11 @@ dependencies = [
     "fwl-calliope>=26.06.01",
     "fwl-zephyrus>=25.03.11",
     "fwl-aragog>=26.07.04",
-    # 26.07.13 carries the JAX structure path for the unified PALEOS
-    # mantle (the production default) and for wet mantles blending one
-    # paleos_unified volatile through the VolatileProfile (Zalmoxis #78).
-    "fwl-zalmoxis>=26.07.13",
+    # 26.07.17 reads the liquid EOS table for fully molten entropy
+    # lookups, which the super-liquidus interior initial condition
+    # requires (Zalmoxis #79), on top of the JAX structure path for
+    # unified PALEOS and wet mantles (Zalmoxis #78).
+    "fwl-zalmoxis>=26.07.17",
     # The default Aragog interior solver runs on JAX: its eos/phase/solver
     # modules are equinox Modules, so jax, jaxlib, and equinox are needed by
     # a standard run, not only by the optional atmodeller backend. The three
@@ -213,8 +214,9 @@ markers = [
 ]
 
 [tool.coverage.report]
-# Full coverage gate: unit + smoke + integration + slow tests, enforced by the
-# nightly workflow. Fixed ceiling at 90% (the PROTEUS-ecosystem target). The
+# Full coverage gate value: unit + smoke + integration + slow tests. The nightly
+# does not enforce it; it is the number the PR estimated-total gate is measured
+# against. Fixed ceiling at 90% (the PROTEUS-ecosystem target). The
 # estimated-total coverage on PRs (union of PR unit coverage with the latest
 # nightly artifact) is also compared against this gate; that is the 90% KPI
 # operators read. The fixed value is enforced by
@@ -256,14 +258,14 @@ directory = "htmlcov"
 # Tracks nichollsh/AGNI main. Bump after every AGNI release that
 # PROTEUS depends on.
 url = "https://github.com/nichollsh/AGNI.git"
-ref = "eb1e412b089e6fc244cf8a5a8d875cacf83e03b1"
+ref = "59ce1d4cda84f2043a8055682fa49c2f9c27c3c4"
 
 [tool.proteus.modules.socrates]
 # Spectral radiative transfer library (Fortran). Compiled in-place
 # under socrates/ by tools/get_socrates.sh; the build output is what
 # the AGNI / JANUS atmosphere modules link against at runtime.
 url = "https://github.com/FormingWorlds/SOCRATES.git"
-ref = "fe0c4a486f1dbf9addf6f01a03c644d6bd5e1d1e"
+ref = "f42ddec0356b3811b260cfe21a7f2c06033b39bd"
 
 [tool.proteus.modules.spider]
 # Interior thermal evolution module (C, requires PETSc). Cloned and

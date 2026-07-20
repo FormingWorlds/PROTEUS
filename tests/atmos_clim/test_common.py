@@ -8,7 +8,8 @@ This module tests the shared utility functions used by all atmosphere-climate mo
 - Configuration helpers (spectral file paths)
 
 See also:
-- docs/test_infrastructure.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.interpolate import PchipInterpolator
 
+from proteus.star.wrapper import scale_spectrum_to_stellar_surface
 from proteus.utils.constants import (
     prt_cia_species,
     prt_gases,
@@ -370,8 +371,9 @@ def _load_stellar_toa_flux(
 ) -> np.ndarray:
     """Load the PROTEUS-written stellar spectrum from the latest ``data/<Number>.sflux`` file.
 
-    The spectrum is already scaled to the top of the planet atmosphere, so it
-    can be used directly in the eclipse-depth denominator.
+    The spectrum is scaled to the top of the planet atmosphere, so it carries the
+    reduction by the orbital distance. A consumer that needs the flux at the stellar
+    surface, such as the eclipse-depth denominator, must undo that reduction.
     Selects the .sflux file with the largest numeric prefix in the filename.
     """
 
@@ -660,7 +662,15 @@ def eclipse_depth(hf_row: dict, config: Config, source: str, dirs: dict[str, str
         )
         wl_local = np.array(wl_cm_local, dtype=float) * 1e4
         stellar_wavelength_nm = np.array(wl_cm_local, dtype=float) * 1.0e7
-        stellar_surface_flux = _load_stellar_toa_flux(outdir, hf_row, stellar_wavelength_nm)
+        stellar_toa_flux = _load_stellar_toa_flux(outdir, hf_row, stellar_wavelength_nm)
+        # The eclipse depth compares the two emitting surfaces, so the denominator is
+        # the flux at the stellar surface. The stored spectrum is the flux arriving at
+        # the planet, still carrying the reduction by the orbital distance, so undo
+        # that reduction here; dividing by it as it stands leaves the reduction in the
+        # result on top of the geometric factor below. This assumes the stored spectrum
+        # was written at the separation this row holds, which is exact for a fixed orbit
+        # and leaves the ratio of the two separations behind while an orbit evolves.
+        stellar_surface_flux = scale_spectrum_to_stellar_surface(stellar_toa_flux, sep, Rs)
         depth_local = (
             np.array(planet_flux_local, dtype=float)
             / stellar_surface_flux

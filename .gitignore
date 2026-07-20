@@ -20,6 +20,9 @@ socrates_star.txt
 radiation_code.lock
 screenlog.0
 
+ThermoEngineLite
+LavAtmos
+
 # Output files
 old/
 output/*

@@ -26,8 +26,8 @@ Invariants exercised:
   outgas-reservoir escape debit, whereas the zeroed-reservoir bug state
   collapses it.
 
-See ``docs/How-to/test_infrastructure.md``, ``docs/How-to/test_building.md``,
-``docs/How-to/test_categorization.md``.
+See ``docs/How-to/testing.md``,
+``docs/Explanations/test_framework.md``.
 """
 
 from __future__ import annotations
