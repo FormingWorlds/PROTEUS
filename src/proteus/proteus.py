@@ -1047,7 +1047,7 @@ class Proteus:
             # that hard-fails if any future change re-introduces the
             # O-skipping asymmetry that could let M_atm exceed
             # M_planet at high H_ppmw.
-            assert_mass_conservation(self.hf_row, atol_frac=0.1)
+            assert_mass_conservation(self.hf_row, self.config, atol_frac=0.1)
 
             # P_surf = P_vol + P_vap, and P_vap == 0 when rock vapour
             # outgassing is disabled. Cheap end-of-outgas guardrail against
