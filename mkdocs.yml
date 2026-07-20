@@ -179,7 +179,7 @@ extra:
       link: https://proteus-framework.org/
       name: PROTEUS website
     - icon: material/email
-      link: mailto:proteus_dev@formingworlds.space
+      link: mailto:dev@proteus-framework.org
       name: Mail PROTEUS developers
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/fwl-proteus/

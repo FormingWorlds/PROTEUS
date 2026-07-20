@@ -84,7 +84,7 @@ die() {
     echo ""
     if [ -n "${LOGFILE:-}" ] && [ -f "${LOGFILE:-}" ]; then
         echo "A full log was written to: $LOGFILE"
-        echo "If you need help, send that log file to proteus_dev@formingworlds.space,"
+        echo "If you need help, send that log file to dev@proteus-framework.org,"
         echo "or open an issue or discussion at:"
         echo "  https://github.com/FormingWorlds/PROTEUS/issues"
         echo "  https://github.com/orgs/FormingWorlds/discussions"
