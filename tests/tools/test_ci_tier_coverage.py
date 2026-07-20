@@ -111,6 +111,34 @@ def _slow_matrix_files() -> set[str]:
     return set(re.findall(r'^\s+(tests/\S+\.py)\s*$', _nightly_text(), re.M))
 
 
+def _slow_matrix_shards() -> list[dict]:
+    """Parse the slow-tier matrix into one dict per shard entry.
+
+    ``shard:`` appears only in the slow tier, so splitting the workflow text on
+    it yields exactly the shard entries. Each dict carries the shard name, its
+    ``select:`` value (or None), its ``job_minutes:`` cap (or None), and the
+    test files it names. Parsed as text because PyYAML is not a dependency.
+    """
+    entries = re.split(r'\n\s+- shard:', _nightly_text())[1:]
+    shards = []
+    for entry in entries:
+        # The last entry runs to end-of-file; stop it at the job's runs-on key
+        # so trailing lines cannot leak file paths into this shard.
+        entry = entry.split('\n    runs-on:')[0]
+        name = entry.splitlines()[0].strip()
+        sel = re.search(r'^\s+select:\s*(\S+)\s*$', entry, re.M)
+        cap = re.search(r'^\s+job_minutes:\s*(\d+)\s*$', entry, re.M)
+        shards.append(
+            {
+                'shard': name,
+                'select': sel.group(1) if sel else None,
+                'job_minutes': int(cap.group(1)) if cap else None,
+                'files': re.findall(r'^\s+(tests/\S+\.py)\s*$', entry, re.M),
+            }
+        )
+    return shards
+
+
 def _integration_paths() -> list[str]:
     """Directories the integration tier passes to pytest."""
     m = re.search(r'pytest ((?:tests/\S+ +)+)\\', _nightly_text())
@@ -235,3 +263,51 @@ def test_every_tiered_file_is_reachable_by_its_ci_job():
         'these files hold integration tests but sit outside the directories the '
         f'integration tier runs ({integ_paths}), so the tests never run: {missing_integ}'
     )
+
+
+def test_select_sharded_files_cover_every_slow_test():
+    """A file run under per-shard ``-k select:`` runs only the tests those shards
+    name, so file-level reachability no longer implies every test runs.
+
+    A slow test added to such a file later would be selected by no shard and run
+    nowhere, while ``test_every_tiered_file_is_reachable_by_its_ci_job`` stays
+    green because the file is still named. Assert instead that the shard selects
+    cover every non-skip slow test in each select-sharded file, exactly once, and
+    that each such shard carries a ``job_minutes`` cap below the 360 min
+    hosted-runner hard limit (without it the cap silently falls back to 210 min,
+    below the shard's own per-test timeout).
+    """
+    select_shards = [s for s in _slow_matrix_shards() if s['select']]
+    assert select_shards, 'expected select-based heavy shards in the slow matrix'
+
+    by_file: dict[str, list[str]] = {}
+    for s in select_shards:
+        assert s['job_minutes'] is not None, (
+            f'shard {s["shard"]} selects a single test but sets no job_minutes, so '
+            'its cap silently falls back to the 210 min default'
+        )
+        assert s['job_minutes'] < 360, (
+            f'shard {s["shard"]} job_minutes={s["job_minutes"]} is at or above the '
+            '360 min hosted-runner hard job limit'
+        )
+        assert len(s['files']) == 1, (
+            f'select shard {s["shard"]} must name exactly one file, got {s["files"]}'
+        )
+        by_file.setdefault(s['files'][0], []).append(s['select'])
+
+    for rel, selects in by_file.items():
+        slow_tests = {n for n, t in _tiers_per_test(REPO_ROOT / rel).items() if 'slow' in t}
+        for sel in selects:
+            matched = [n for n in slow_tests if sel in n]
+            assert len(matched) == 1, (
+                f'select {sel!r} in {rel} matches {matched}; it must name exactly '
+                'one non-skip slow test (a substring select can silently match two)'
+            )
+        assert len(selects) == len(set(selects)), (
+            f'{rel}: a test is selected by more than one shard: {selects}'
+        )
+        selected = {n for sel in selects for n in slow_tests if sel in n}
+        assert selected == slow_tests, (
+            f'{rel}: the shards select {sorted(selected)} but the file holds non-skip '
+            f'slow tests {sorted(slow_tests)}; the unselected ones run in no shard'
+        )
