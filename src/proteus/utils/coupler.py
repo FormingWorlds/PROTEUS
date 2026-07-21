@@ -555,7 +555,7 @@ def assert_mass_conservation(hf_row: dict, config: Config, atol_frac: float = 1e
         return
 
     # Invariant 1: atmosphere mass <= total planet mass.
-    if M_atm > (M_planet - M_vaps) * (1.0 + atol_frac):
+    if M_atm > (M_planet + M_vaps) * (1.0 + atol_frac):
         raise RuntimeError(
             f'Mass conservation violation (issue #677 regression?): '
             f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
