@@ -307,3 +307,7 @@ src/proteus/_version.py
 # Editor / IDE
 .vscode/
 .pip-cache
+
+# Local scratch directories (not part of the project)
+/.playwright-mcp/
+/platon/
