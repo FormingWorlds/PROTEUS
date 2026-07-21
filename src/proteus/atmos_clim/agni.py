@@ -366,7 +366,7 @@ def activate_julia(dirs: dict, verbosity: int):
     log.debug("AGNI will log to '%s'" % logpath)
 
 
-def _construct_voldict(hf_row: dict, dirs: dict):
+def _construct_voldict(config: Config, hf_row: dict, dirs: dict):
     # Volume mixing ratio of every modelled gas, read from hf_row. AGNI
     # recognises the noble gases as species, so they enter the composition
     # handed to the radiative-convective solve like any other gas.
@@ -381,7 +381,39 @@ def _construct_voldict(hf_row: dict, dirs: dict):
         UpdateStatusfile(dirs, 20)
         raise ValueError('All volatiles have a volume mixing ratio of zero')
 
+    if config.atmos_clim.agni.chemistry == 'eq':
+        _determine_Hfraction(hf_row, vol_dict)
+
     return vol_dict
+
+
+def _determine_Hfraction(hf_row: dict, vol_dict: dict):
+    """this function ensures that there is enough hydrogen in the atmosphere that fastchem can run in case chemistry is switched on in agni"""
+
+    H_atoms = (
+        2 * hf_row['H2S_vmr']
+        + 2 * hf_row['H2O_vmr']
+        + 3 * hf_row['H2O_vmr']
+        + 2 * hf_row['H2_vmr']
+        + 4 * hf_row['CH4_vmr']
+    )
+
+    total_atoms = (
+        3 * hf_row['H2S_vmr']
+        + 3 * hf_row['H2O_vmr']
+        + 3 * hf_row['H2O_vmr']
+        + 2 * hf_row['H2_vmr']
+        + 5 * hf_row['CH4_vmr']
+        + 3 * hf_row['CO2_vmr']
+        + 2 * hf_row['N2_vmr']
+        + 3 * hf_row['S2_vmr']
+        + 3 * hf_row['SO2_vmr']
+        + 2 * hf_row['CO_vmr']
+    )
+
+    H_number_fraction = H_atoms / total_atoms
+    if H_number_fraction < 1e-10:
+        hf_row['H2_vmr'] = 1e-10 / 2
 
 
 def _determine_condensates(vol_list: list):
@@ -523,7 +555,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     log.info(f'Temporary-file working dir: {io_dir}')
 
     # composition
-    vol_dict = _construct_voldict(hf_row, dirs)
+    vol_dict = _construct_voldict(config, hf_row, dirs)
 
     # set condensation
     condensates = []
@@ -708,7 +740,7 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
 
     # ---------------------
     # Update compositions
-    vol_dict = _construct_voldict(hf_row, dirs)
+    vol_dict = _construct_voldict(config, hf_row, dirs)
     for g in vol_dict.keys():
         atmos.gas_vmr[g][:] = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]

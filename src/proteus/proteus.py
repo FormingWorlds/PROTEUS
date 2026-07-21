@@ -1004,8 +1004,8 @@ class Proteus:
 
             else:
                 run_outgassing_and_vapourisation(
-                        self.directories, self.config, self.hf_row, first_iter
-                    )
+                    self.directories, self.config, self.hf_row, first_iter
+                )
 
                 # Issue #677 IC consistency check. Fires once at the first
                 # outgas call (subsequent init_stage calls find the sentinel

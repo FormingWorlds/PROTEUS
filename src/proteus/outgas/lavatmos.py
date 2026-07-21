@@ -164,9 +164,12 @@ _SPECIES_TABLE = [
     ('TiO2', 'O2Ti1'),
     ('TiS', 'S1Ti1'),
     ('TiH', 'H1Ti1'),
+    ('TiN', 'N1Ti1'),
     ('VO', 'V1O1'),
     ('SiO', 'O1Si1'),
     ('AlO', 'Al1O1'),
+    ('AlN', 'Al1N1'),
+    ('AlO2', 'Al1O2'),
     ('CaO', 'Ca1O1'),
     ('PO', 'P1O1'),
     ('PO2', 'P1O2'),
@@ -180,6 +183,7 @@ _SPECIES_TABLE = [
     ('SiS', 'S1Si1'),
     ('PS', 'S1P1'),
     ('MgO', 'Mg1O1'),
+    ('MgN', 'Mg1N1'),
     ('CN', 'N1C1'),
     ('H2CO', 'O1C1H2'),
     ('CH', 'H1C1'),
@@ -190,28 +194,31 @@ _SPECIES_TABLE = [
     ('PH', 'P1H1'),
     ('PN', 'P1N1'),
     ('C2', 'C2'),
-    ('CaOH', 'Ca1O1H1'),
+    ('CaOH', 'Ca1H1O1'),
     ('FeH', 'Fe1H1'),
     ('FeO', 'Fe1O1'),
-    ('KOH', 'K1O1H1'),
+    ('FeS', 'Fe1S1'),
+    ('KOH', 'H1K1O1'),
+    ('KH', 'H1K1'),
+    ('KO', 'K1O1'),
     ('SiH2', 'H2Si1'),
     ('SiH4', 'H4Si1'),
-    ('NaOH', 'Na1O1H1'),
+    ('NaOH', 'H1Na1O1'),
     ('NaO', 'Na1O1'),
-    ('SiN', 'Si1N1'),
+    ('SiN', 'N1Si1'),
     ('AlN', 'Al1N1'),
     ('CaS', 'Ca1S1'),
     ('HO2', 'H1O2'),
     ('KO', 'K1O1'),
     ('MgS', 'Mg1S1'),
-    ('FeO2H2', 'Fe1O2H2'),
+    ('FeO2H2', 'Fe1H2O2'),
     ('HAlO2', 'Al1H1O2'),
     ('Al2O', 'Al2O1'),
     ('AlS', 'Al1S1'),
     ('AlOH', 'Al1H1O1'),
-    ('MgO2H2', 'Mg1O2H2'),
-    ('MgOH', 'Mg1O1H1'),
-    ('CaO2H2', 'Ca1O2H2'),
+    ('MgO2H2', 'H2Mg1O2'),
+    ('MgOH', 'H1Mg1O1'),
+    ('CaO2H2', 'Ca1H2O2'),
     # neutral atoms
     ('H', 'H'),
     ('He', 'He'),
@@ -488,7 +495,6 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     hf_row['P_vol'] = hf_row['P_surf']
     hf_row['P_vap'] = Poutgas
 
-
     mmw_elements = 0
     for e in element_fracs.keys():
         mmw_elements += element_fracs[e] * species_lib[e].weight
@@ -508,34 +514,51 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
             * species_lib[vol].weight
             / mu_outgassed
         )  # kg
-        hf_row[vol + '_kg_total'] = (
-            hf_row[vol + '_kg_atm'] + hf_row[vol + '_kg_solid'] + hf_row[vol + '_kg_liquid']
-        )
-
         hf_row[vol + '_mol_atm'] = hf_row[vol + '_kg_atm'] / hf_row['atm_kg_per_mol']
-        hf_row[vol + '_mol_total'] = (
-            hf_row[vol + '_mol_atm'] + hf_row[vol + '_mol_solid'] + hf_row[vol + '_mol_liquid']
-        )
+
+        if vol in vap_list:
+            hf_row[vol + '_kg_total'] = (
+                0.0  # ensures that elements Na and K, si, Ti are not added to the planet mass computations in interior model
+            )
+            # but saved separately later in M_vaps
+            hf_row[vol + '_mol_total'] = 0.0
+        else:
+            hf_row[vol + '_kg_total'] = (
+                hf_row[vol + '_kg_atm'] + hf_row[vol + '_kg_solid'] + hf_row[vol + '_kg_liquid']
+            )
+            hf_row[vol + '_mol_total'] = (
+                hf_row[vol + '_mol_atm']
+                + hf_row[vol + '_mol_solid']
+                + hf_row[vol + '_mol_liquid']
+            )
 
     for e in element_list:
         log.debug('element frac:  %s,  %s', e, element_fracs[e])
-        if (
-            e in input_eles
-        ):  # oxygen should not be added to M_vaps, since it is not counted in M_eles       #and e != 'O':
+        if e in input_eles:
             log.debug('volatile species, no need to update from lavatmos')
-            if e=='O':
-                Omass_after_outgas = element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+            if e == 'O':
+                Omass_after_outgas = (
+                    element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+                )
             continue
         else:
             if e not in gas_list:
                 hf_row[e + '_kg_atm'] = (
                     element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
                 )
-            hf_row['M_vaps'] += hf_row[e + '_kg_atm']
+            hf_row['M_vaps'] += (
+                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+            )  # don't use hf_row[e + '_kg_atm'] becuase this only acounts for e.g. Si in atomic gas form not total Si
+
     # saving new oxygen fugacity from lavatmos run, which is computed as log10 of the partial pressure of O2, to compare with the iron wustite buffer
 
-    hf_row['M_vaps'] += Omass_after_outgas - hf_row['O_kg_atm']  #add outgassed oxygen mass to elemental vapour species mass
-    log.info('added oxygen from outagssing to initial O budget in atmosphere [kg]: %.4e ', Omass_after_outgas- hf_row['O_kg_atm'])
+    hf_row['M_vaps'] += (
+        Omass_after_outgas - hf_row['O_kg_atm']
+    )  # add outgassed oxygen mass to elemental vapour species mass
+    log.info(
+        'added oxygen from outagssing to initial O budget in atmosphere [kg]: %.4e ',
+        Omass_after_outgas - hf_row['O_kg_atm'],
+    )
 
     pO2 = new_atmos_abundances['O2'][0]
     log.debug('O2 patial pressure  very small: %.3e', pO2)

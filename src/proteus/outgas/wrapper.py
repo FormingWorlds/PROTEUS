@@ -412,6 +412,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     hf_row['M_atm'] = 0.0
     for s in gas_list:
         hf_row['M_atm'] += float(hf_row.get(s + '_kg_atm', 0.0))
+    # assure that hydrogen abundnace high enough for agni to run
 
     # Derive element mass ratios in atmosphere
     for e1 in element_list:
@@ -620,11 +621,10 @@ def run_outgassing_and_vapourisation(
     run_outgassing(dirs, config, hf_row)
 
     # Now do rock vapours
-    if not config.outgas.vapourise:
-        log.warning('Rock vapourisation is disabled, skipping rock vapourisation step')
+    if (
+        hf_row['Phi_global'] < config.params.stop.solid.phi_crit or not config.outgas.vapourise
+    ):  # if vapourisation not running
+        log.info('no vapour outgassing')
     else:
-        if hf_row['Phi_global'] > config.params.stop.solid.phi_crit:
-            log.info('Calculating rock vapourisation at surface')
-            compute_silicate_outgassing(dirs, config, hf_row, first_iter)
-        else:
-            log.info('Planet has solidified, no silicate outgassing occurs')
+        log.info('Calculating rock vapourisation at surface')
+        compute_silicate_outgassing(dirs, config, hf_row, first_iter)
