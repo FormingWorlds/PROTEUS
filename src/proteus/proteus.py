@@ -14,7 +14,6 @@ from juliacall import Main  # noqa: F401
 
 import proteus.utils.archive as archive
 from proteus.config import check_config_orphan_free, read_config, read_config_object
-from proteus.outgas.wrapper import run_outgassing
 from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
@@ -1004,16 +1003,9 @@ class Proteus:
                 run_crystallized(self.config, self.hf_row, self.interior_o.dt)
 
             else:
-                # magma ocean regime
-
-                if self.config.outgas.vapourise:
-                    # with rock vapours
-                    run_outgassing_and_vapourisation(
+                run_outgassing_and_vapourisation(
                         self.directories, self.config, self.hf_row, first_iter
                     )
-                else:
-                    # without rock vapours
-                    run_outgassing(self.directories, self.config, self.hf_row)
 
                 # Issue #677 IC consistency check. Fires once at the first
                 # outgas call (subsequent init_stage calls find the sentinel
