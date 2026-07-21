@@ -53,6 +53,7 @@ electron_molar_mass = 5.4858e-4
 
 # Supported gases
 vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
+
 vap_list = [
     'SiO',
     'SiO2',
@@ -70,7 +71,38 @@ vap_list = [
     'SiH4',
     'Fe',
     'FeO',
+    'AlO',
+    'AlO2'
+    'CaO',
+    'FeH',
+    'MgH',
+    'NaH',
+    'NaOH',
+    'CaOH'
+    'FeH2O2',
+    'TiH',
+    'SiS',
+    'MgO2H2',
+    'KOH',
 ]
+
+fc_gases=['NS',
+    'PS',
+    'CH3',
+    'C2',
+    'CS',
+    'C2H2',
+    'C2H4',
+    'HCN',
+    'O',
+    'O2',
+    'O3',
+    'OH',
+    'SH',
+    'PO',
+    'SO3',
+    'H-']
+
 prt_gases = [
     'C2H2',
     'C2H4',

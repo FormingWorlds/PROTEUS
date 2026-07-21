@@ -554,7 +554,7 @@ def assert_mass_conservation(hf_row: dict, config: Config, atol_frac: float = 1e
         return
 
     # Invariant 1: atmosphere mass <= total planet mass.
-    if M_atm > M_planet * (1.0 + atol_frac):
+    if M_atm > M_planet* (1.0 + atol_frac):
         raise RuntimeError(
             f'Mass conservation violation (issue #677 regression?): '
             f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
@@ -713,7 +713,7 @@ def GetHelpfileKeys():
         'R_int',            # interior radius [m]
         'M_int',            # interior mass [kg]
         'M_planet',         # total planet wet+dry mass [kg]
-        'M_vaps',           # outgassed rock vapour mass [kg]
+        'M_vaps',           # outgassed rock vapour mass including outgassed extra oxygen [kg]
         'R_core',           # core radius [m]
         'R_solvus',         # solvus radius for global_miscibility mode [m]
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]

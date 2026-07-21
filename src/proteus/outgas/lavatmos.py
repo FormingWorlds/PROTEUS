@@ -428,11 +428,8 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
 
     # convert the element abundances from lavatmos file to element fractions, normalized to unity
     element_fracs = read_in_element_fracs_normalized(paths.element_abundance_output)
-    # import shutil
-    # shutil.copy(paths.element_abundance_output, dirs['output'] + 'element_abundances/element_abundances_output'+'_'+ str(hf_row['Time']) +'_.dat')
-    # elementfile = paths.element_abundance_output
-
     log.debug('element fraction after running lavatmos: %s' % element_fracs)
+
     # read in boa chemistry from last iteration of fastchem and lavatmos
     output_fc = paths.fastchem3_output
     if os.path.exists(output_fc):
@@ -443,6 +440,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
 
     # update abundances in output file for next calliope run
     new_atmos_abundances = pd.read_csv(mmr_path, sep=r'\s+')
+
     # make sure that the column names are consistent with the rest of the code
     if '#p(bar)' in new_atmos_abundances.columns:
         new_atmos_abundances.rename(columns={'#p(bar)': 'Pbar'}, inplace=True)
@@ -452,7 +450,6 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     mu_outgassed = new_atmos_abundances['mu'][0]
 
     # hf_row['P_surf'] is in bar; convert to Pascals for use in the ideal gas law
-    # 1bar = 100 kPa
     P_surf_kPa = hf_row['P_surf'] * 1e5  # convert to kPa
     M_atmo_old = hf_row['M_atm']
 
@@ -491,6 +488,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     hf_row['P_vol'] = hf_row['P_surf']
     hf_row['P_vap'] = Poutgas
 
+
     mmw_elements = 0
     for e in element_fracs.keys():
         mmw_elements += element_fracs[e] * species_lib[e].weight
@@ -525,6 +523,8 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
             e in input_eles
         ):  # oxygen should not be added to M_vaps, since it is not counted in M_eles       #and e != 'O':
             log.debug('volatile species, no need to update from lavatmos')
+            if e=='O':
+                Omass_after_outgas = element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
             continue
         else:
             if e not in gas_list:
@@ -533,6 +533,9 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
                 )
             hf_row['M_vaps'] += hf_row[e + '_kg_atm']
     # saving new oxygen fugacity from lavatmos run, which is computed as log10 of the partial pressure of O2, to compare with the iron wustite buffer
+
+    hf_row['M_vaps'] += Omass_after_outgas - hf_row['O_kg_atm']  #add outgassed oxygen mass to elemental vapour species mass
+    log.info('added oxygen from outagssing to initial O budget in atmosphere [kg]: %.4e ', Omass_after_outgas- hf_row['O_kg_atm'])
 
     pO2 = new_atmos_abundances['O2'][0]
     log.debug('O2 patial pressure  very small: %.3e', pO2)
