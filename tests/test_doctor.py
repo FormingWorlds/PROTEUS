@@ -20,6 +20,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from proteus.doctor import (
+    _SUPPORT_EMAIL,
     FAIL,
     PASS,
     PYTHON_PACKAGES,
@@ -1396,6 +1397,18 @@ class TestSupportPromptAndCliExit:
         assert 'dev@proteus-framework.org' in out
         assert 'github.com/FormingWorlds/PROTEUS/issues' in out
         assert 'discussions' in out
+
+    def test_support_email_constant_is_exact_and_rendered_verbatim(self, tmp_path, capsys):
+        """The support address is pinned to its exact value, and the failure
+        prompt renders that exact constant exactly once. A stray leading or
+        trailing character, whitespace, or a duplicate copy in the constant
+        fails the equality check. The exact count also catches the address
+        being rendered more than once, which the substring checks elsewhere
+        cannot tell apart from a single occurrence."""
+        assert _SUPPORT_EMAIL == 'dev@proteus-framework.org'
+        _print_support_prompt('doctor', tmp_path / 'proteus_doctor.log')
+        out = capsys.readouterr().out
+        assert out.count(_SUPPORT_EMAIL) == 1
 
     def test_prompt_handles_a_missing_log_path(self, capsys):
         """With no log written the prompt says so and tells the user to copy the
