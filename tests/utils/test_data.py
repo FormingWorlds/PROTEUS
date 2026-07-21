@@ -4656,6 +4656,107 @@ def test_download_stellar_tracks_mors_success(tmp_path, monkeypatch):
 
 
 @pytest.mark.unit
+def test_download_stellar_tracks_baraffe_verifies_versioned_path(tmp_path, monkeypatch):
+    """Baraffe success is verified at the fwl-io versioned path, not the legacy dir."""
+    import sys
+    import types
+
+    import proteus.utils.data as data_mod
+
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    # The versioned Baraffe directory holds the tracks; the legacy dir is absent.
+    versioned = tmp_path / 'star' / 'tracks' / 'baraffe_2015' / 'r15729114'
+    versioned.mkdir(parents=True)
+    (versioned / 'BHAC15-M1p000.txt').write_text('track')
+
+    checked = []
+    fake_mors_data = types.ModuleType('mors.data')
+    fake_mors_data.DownloadEvolutionTracks = lambda track: None
+    fake_mors_data.baraffe_data_dir = lambda: checked.append(versioned) or versioned
+    fake_mors = types.ModuleType('mors')
+    fake_mors.data = fake_mors_data
+    monkeypatch.setitem(sys.modules, 'mors', fake_mors)
+    monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
+
+    osf_calls = []
+    monkeypatch.setattr(data_mod, 'download_OSF_folder', lambda **k: osf_calls.append(k))
+
+    data_mod.download_stellar_tracks('Baraffe')
+
+    # Discrimination: verification consulted the versioned resolver, not the
+    # legacy path (which never exists here), so the fetch succeeded and no OSF
+    # fallback ran.
+    assert checked == [versioned]
+    assert osf_calls == []
+
+
+@pytest.mark.unit
+def test_download_stellar_tracks_baraffe_legacy_mors_uses_legacy_path(tmp_path, monkeypatch):
+    """A pre-migration MORS (no baraffe_data_dir) verifies Baraffe at the legacy path."""
+    import sys
+    import types
+
+    import proteus.utils.data as data_mod
+
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    # An older MORS writes Baraffe to the legacy path and exposes no resolver.
+    legacy = tmp_path / 'stellar_evolution_tracks' / 'Baraffe'
+    legacy.mkdir(parents=True)
+    (legacy / 'BHAC15-M1p000.txt').write_text('track')
+
+    fake_mors_data = types.ModuleType('mors.data')
+    fake_mors_data.DownloadEvolutionTracks = lambda track: None
+    # Deliberately no baraffe_data_dir attribute (pre-migration MORS).
+    fake_mors = types.ModuleType('mors')
+    fake_mors.data = fake_mors_data
+    monkeypatch.setitem(sys.modules, 'mors', fake_mors)
+    monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
+
+    osf_calls = []
+    monkeypatch.setattr(data_mod, 'download_OSF_folder', lambda **k: osf_calls.append(k))
+
+    data_mod.download_stellar_tracks('Baraffe')
+
+    # Discrimination: provisioning succeeds via the legacy path even though the
+    # versioned directory is never created, so PROTEUS works with both MORS
+    # versions; no OSF fallback runs.
+    assert not (tmp_path / 'star' / 'tracks' / 'baraffe_2015').exists()
+    assert osf_calls == []
+
+
+@pytest.mark.unit
+def test_download_stellar_tracks_baraffe_failure_reraises_without_osf(tmp_path, monkeypatch):
+    """A genuine Baraffe failure re-raises; Baraffe has no OSF fallback mirror."""
+    import sys
+    import types
+
+    import proteus.utils.data as data_mod
+
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    # baraffe_data_dir resolves to an empty directory: the fetch produced nothing.
+    empty = tmp_path / 'star' / 'tracks' / 'baraffe_2015' / 'r15729114'
+    empty.mkdir(parents=True)
+    fake_mors_data = types.ModuleType('mors.data')
+    fake_mors_data.DownloadEvolutionTracks = lambda track: None
+    fake_mors_data.baraffe_data_dir = lambda: empty
+    fake_mors = types.ModuleType('mors')
+    fake_mors.data = fake_mors_data
+    monkeypatch.setitem(sys.modules, 'mors', fake_mors)
+    monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
+
+    osf_calls = []
+    monkeypatch.setattr(data_mod, 'download_OSF_folder', lambda **k: osf_calls.append(k))
+
+    with pytest.raises(FileNotFoundError, match='empty or missing'):
+        data_mod.download_stellar_tracks('Baraffe', use_osf_fallback=True)
+    # Even with use_osf_fallback=True, Baraffe does not attempt the OSF fallback.
+    assert osf_calls == []
+
+
+@pytest.mark.unit
 def test_download_stellar_tracks_mors_completes_but_tracks_missing(tmp_path, monkeypatch):
     """MORS download claims success but tracks dir is empty: triggers OSF fallback."""
     import sys
@@ -4747,20 +4848,20 @@ def test_download_stellar_tracks_osf_fallback_succeeds(tmp_path, monkeypatch):
 
     def fake_osf_folder(*, storage, folders, data_dir):
         # Create the expected tracks directory
-        target = Path(data_dir) / 'Baraffe'
+        target = Path(data_dir) / 'Spada'
         target.mkdir(parents=True, exist_ok=True)
-        (target / 'baraffe_track.dat').write_text('data')
+        (target / 'spada_track.dat').write_text('data')
 
     monkeypatch.setattr(data_mod, 'download_OSF_folder', fake_osf_folder)
     monkeypatch.setattr(data_mod, 'get_osf', lambda osf_id: MagicMock())
 
-    # Should not raise
-    data_mod.download_stellar_tracks('Baraffe', use_osf_fallback=True)
+    # Spada keeps the legacy OSF fallback; the failed MORS fetch is recovered.
+    data_mod.download_stellar_tracks('Spada', use_osf_fallback=True)
     # Discrimination: the OSF fallback produced the expected track file
-    # at the canonical location.
-    tracks_dir = tmp_path / 'stellar_evolution_tracks' / 'Baraffe'
+    # at the canonical legacy location.
+    tracks_dir = tmp_path / 'stellar_evolution_tracks' / 'Spada'
     assert tracks_dir.is_dir()
-    assert (tracks_dir / 'baraffe_track.dat').exists()
+    assert (tracks_dir / 'spada_track.dat').exists()
 
 
 # ============================================================================
