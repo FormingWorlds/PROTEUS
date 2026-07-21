@@ -1205,7 +1205,7 @@ class TestRunLogging:
         out = capsys.readouterr().out
         # the user is told the exact file to send and where to send it
         assert str(logs[0]) in out
-        assert 'proteus_dev@formingworlds.space' in out
+        assert 'dev@proteus-framework.org' in out
         assert 'github.com/FormingWorlds/PROTEUS/issues' in out
         assert 'discussions' in out
 
@@ -1218,7 +1218,7 @@ class TestRunLogging:
         assert result is True
         assert list(tmp_path.glob('proteus_*.log')) == []
         out = capsys.readouterr().out
-        assert 'proteus_dev@formingworlds.space' not in out
+        assert 'dev@proteus-framework.org' not in out
 
     def test_doctor_json_mode_is_not_logged(self, tmp_path, monkeypatch, capsys):
         """JSON output is for scripts: no log file and no prompt, just JSON."""
@@ -1256,7 +1256,7 @@ class TestRunLogging:
         assert 'exit 7' in log_text
         out = capsys.readouterr().out
         assert str(logs[0]) in out
-        assert 'proteus_dev@formingworlds.space' in out
+        assert 'dev@proteus-framework.org' in out
 
     def test_doctor_crash_is_logged_with_traceback_and_prompt(
         self, tmp_path, monkeypatch, capsys
@@ -1275,7 +1275,7 @@ class TestRunLogging:
         # The traceback and the exception message are in the log.
         assert 'Traceback' in log_text and 'boom_xyz_123' in log_text
         captured = capsys.readouterr()
-        assert 'proteus_dev@formingworlds.space' in captured.out
+        assert 'dev@proteus-framework.org' in captured.out
         # The crash is surfaced to the user too, not buried only in the log.
         assert 'boom_xyz_123' in (captured.out + captured.err)
 
@@ -1294,7 +1294,7 @@ class TestRunLogging:
         out = capsys.readouterr().out
         # The fallback message and the support channel are both shown.
         assert 'could not be written' in out
-        assert 'proteus_dev@formingworlds.space' in out
+        assert 'dev@proteus-framework.org' in out
 
 
 class TestTee:
@@ -1393,7 +1393,7 @@ class TestSupportPromptAndCliExit:
         _print_support_prompt('doctor', log)
         out = capsys.readouterr().out
         assert str(log) in out
-        assert 'proteus_dev@formingworlds.space' in out
+        assert 'dev@proteus-framework.org' in out
         assert 'github.com/FormingWorlds/PROTEUS/issues' in out
         assert 'discussions' in out
 
@@ -1421,7 +1421,7 @@ class TestSupportPromptAndCliExit:
         # Exit code 1 specifically (a click usage error would be 2), and the
         # failure path actually ran, so the support prompt is in the output.
         assert result.exit_code == 1
-        assert 'proteus_dev@formingworlds.space' in result.output
+        assert 'dev@proteus-framework.org' in result.output
 
     def test_doctor_cli_exits_zero_when_clean(self, tmp_path, monkeypatch):
         """A clean diagnose exits zero, so a passing check does not break a
@@ -1436,4 +1436,4 @@ class TestSupportPromptAndCliExit:
             result = CliRunner().invoke(doctor_cmd, [])
         assert result.exit_code == 0
         # Discrimination: no failure exit means no support prompt was printed.
-        assert 'proteus_dev@formingworlds.space' not in result.output
+        assert 'dev@proteus-framework.org' not in result.output
