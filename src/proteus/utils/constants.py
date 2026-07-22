@@ -148,6 +148,7 @@ vap_element_list = ['Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K']
 # Construct element list from all three sources (with duplicates removed)
 element_list = list(dict.fromkeys(vol_element_list + vap_element_list + noble_gases))
 
+# Molar masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/
 element_mmw = {
     'H': 1.008000000e-03,
     'He': 4.002000000e-03,

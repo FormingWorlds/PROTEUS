@@ -35,7 +35,6 @@ def plot_atmosphere(output_dir: str, times: list, profiles: list, plot_format='p
 
     zmax = 100.0
     pmax = 1.0
-    tmin = 200.0
     tmax = 300.0
 
     for i, t in enumerate(times):
@@ -49,7 +48,6 @@ def plot_atmosphere(output_dir: str, times: list, profiles: list, plot_format='p
 
         zmax = max(zmax, np.amax(zarr))
         pmax = max(pmax, np.amax(parr))
-        tmin = min(tmin, np.amin(xarr))
         tmax = max(tmax, np.amax(xarr))
 
         ls = 'solid'
@@ -62,7 +60,7 @@ def plot_atmosphere(output_dir: str, times: list, profiles: list, plot_format='p
     #####  T-Z
     ax0.set_ylabel(r'Height [km]')
     ax0.set_ylim(bottom=0.0, top=zmax)
-    ax0.set_xlim([tmin - 5, tmax + 5])
+    ax0.set_xlim([0.0, tmax + 100])
 
     #####  T-P
     ax1.set_xlabel('Temperature [K]')
@@ -71,7 +69,7 @@ def plot_atmosphere(output_dir: str, times: list, profiles: list, plot_format='p
     ax1.set_yscale('log')
     ax1.set_ylim(bottom=pmax, top=np.amin(parr))
 
-    ax1.set_xlim([tmin, tmax])
+    ax1.set_xlim([0.0, tmax + 100])
     ax1.yaxis.set_major_locator(LogLocator(numticks=1000))
 
     # Legend

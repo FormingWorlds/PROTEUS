@@ -40,7 +40,7 @@ def plot_atmosphere_cbar(output_dir, times, profiles, plot_format='pdf'):
     ax.invert_yaxis()
     ax.set_yscale('log')
 
-    tmp_max = 1000.0
+    tmp_max = 300.0
     prs_max = 1.0
     for i, t in enumerate(times):
         prof = profiles[i]
