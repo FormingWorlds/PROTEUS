@@ -35,6 +35,8 @@ def plot_atmosphere(output_dir: str, times: list, profiles: list, plot_format='p
 
     zmax = 100.0
     pmax = 1.0
+    tmin = 200.0
+    tmax = 300.0
 
     for i, t in enumerate(times):
         prof = profiles[i]
@@ -43,21 +45,24 @@ def plot_atmosphere(output_dir: str, times: list, profiles: list, plot_format='p
 
         zarr = prof['z'] / 1e3
         parr = prof['p'] / 1e5
+        xarr = prof['t']
 
         zmax = max(zmax, np.amax(zarr))
         pmax = max(pmax, np.amax(parr))
+        tmin = min(tmin, np.amin(xarr))
+        tmax = max(tmax, np.amax(xarr))
 
         ls = 'solid'
         if prof['transparent']:
             ls = 'dotted'
 
-        ax0.plot(prof['t'], zarr, color=color, label=label, lw=1.5, zorder=i + 2, ls=ls)
-        ax1.plot(prof['t'], parr, color=color, label=label, lw=1.5, zorder=i + 2, ls=ls)
+        ax0.plot(xarr, zarr, color=color, label=label, lw=1.5, zorder=i + 2, ls=ls)
+        ax1.plot(xarr, parr, color=color, label=label, lw=1.5, zorder=i + 2, ls=ls)
 
     #####  T-Z
     ax0.set_ylabel(r'Height [km]')
     ax0.set_ylim(bottom=0.0, top=zmax)
-    ax0.set_xlim([200, 4000])
+    ax0.set_xlim([tmin - 5, tmax + 5])
 
     #####  T-P
     ax1.set_xlabel('Temperature [K]')
@@ -66,7 +71,7 @@ def plot_atmosphere(output_dir: str, times: list, profiles: list, plot_format='p
     ax1.set_yscale('log')
     ax1.set_ylim(bottom=pmax, top=np.amin(parr))
 
-    ax1.set_xlim([200, 4000])
+    ax1.set_xlim([tmin, tmax])
     ax1.yaxis.set_major_locator(LogLocator(numticks=1000))
 
     # Legend

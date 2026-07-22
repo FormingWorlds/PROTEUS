@@ -20,7 +20,6 @@ from proteus.utils.constants import (
     gas_list,
     noble_gases,
     vap_list,
-    vol_list,
 )
 from proteus.utils.coupler import UpdateStatusfile
 from proteus.utils.helper import mol_to_ele
@@ -493,10 +492,6 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     P_surf_new_Pa = new_atmos_abundances['Pbar'][0] * 1e5  # bar -> Pa
     M_atmo_new = P_surf_new_Pa * area / hf_row['gravity']  # kg
 
-    # Read the combined composition back for every reactive volatile, rock-vapour
-    # species, and noble gas so nothing modelled is dropped from the atmosphere.
-    gas_list = vol_list + vap_list + noble_gases
-
     # Split the new total surface pressure into a volatile part (P_vol) and a
     # rock-vapour part (P_vap). P_vap is the excess of the LavAtmos+FastChem total
     # over the volatile-only pressure that went in; it cannot be negative.
@@ -626,7 +621,6 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
         else:
             # don't spam log with species of negligible abundance
             log.debug(_s)
-        # log.info('mass of this species: %s %4e'%s % hf_row[s + '_kg_atm'])
 
     # print total pressure and mmw
     log.info('    total      = %-9.2f bar' % hf_row['P_surf'])

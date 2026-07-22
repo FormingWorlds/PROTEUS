@@ -426,7 +426,6 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
         else:
             # don't spam log with species of negligible abundance
             log.debug(_s)
-        # log.info('mass of this species: %s %4e'%s % hf_row[s + '_kg_atm'])
 
     # print total pressure and mmw
     log.info('    total      = %-9.2f bar' % hf_row['P_surf'])
