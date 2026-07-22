@@ -582,39 +582,17 @@ class Proteus:
                     )
 
             # Get last row from helpfile dataframe
-            self.hf_row = (
-                self.hf_all.iloc[-1].to_dict()
-            )  # row is copied from last row so need to reset somehow all the silicate masses !
+            self.hf_row = self.hf_all.iloc[-1].to_dict()
 
-            # Resume banner: since proteus_00.log is opened in append mode on
-            # resume, every prior session's banner + output stays in the file
-            # with no visible marker of where the new session picks up. A
-            # self-contained three-line resume banner makes log triage
-            # (grep, tail -f, monitor cron filters) tractable. This is
-            # cosmetic only; no state is changed.
-            log.info('=' * 60)
+            # Resume banner. The '==== RESUME' prefix is added to output,
+            # since this makes log triage (grep, tail -f, cron filters) easy
             log.info(
                 '=== RESUME at helpfile row %d, t = %.3e yr, Phi = %.4f',
                 len(self.hf_all),
                 float(self.hf_row.get('Time', 0.0)),
                 float(self.hf_row.get('Phi_global', float('nan'))),
             )
-            log.info('=' * 60)
-
-            # Resume banner: since proteus_00.log is opened in append mode on
-            # resume, every prior session's banner + output stays in the file
-            # with no visible marker of where the new session picks up. A
-            # self-contained three-line resume banner makes log triage
-            # (grep, tail -f, monitor cron filters) tractable. This is
-            # cosmetic only; no state is changed.
-            log.info('=' * 60)
-            log.info(
-                '=== RESUME at helpfile row %d, t = %.3e yr, Phi = %.4f',
-                len(self.hf_all),
-                float(self.hf_row.get('Time', 0.0)),
-                float(self.hf_row.get('Phi_global', float('nan'))),
-            )
-            log.info('=' * 60)
+            log.info('')
 
             # Check if the planet is desiccated
             self.desiccated = check_desiccation(self.config, self.hf_row)
@@ -1354,7 +1332,7 @@ class Proteus:
         # Load data from helpfile
         from proteus.utils.coupler import ReadHelpfileFromCSV
 
-        hf_all = ReadHelpfileFromCSV(self.directories['output'], self.config)
+        hf_all = ReadHelpfileFromCSV(self.directories['output'])
 
         # Check length
         if len(hf_all) < 1:
@@ -1375,7 +1353,7 @@ class Proteus:
         # Load data from helpfile
         from proteus.utils.coupler import ReadHelpfileFromCSV
 
-        hf_all = ReadHelpfileFromCSV(self.directories['output'], self.config)
+        hf_all = ReadHelpfileFromCSV(self.directories['output'])
 
         # Check length
         if len(hf_all) < 1:

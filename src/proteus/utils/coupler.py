@@ -1229,7 +1229,7 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     return fpath
 
 
-def ReadHelpfileFromCSV(output_dir: str, config: Config):
+def ReadHelpfileFromCSV(output_dir: str):
     """
     Read helpfile from disk CSV file to DataFrame
     """
