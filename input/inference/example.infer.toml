@@ -71,4 +71,3 @@ n_steps    = 100       # Total number of evaluations (i.e. BO steps)
 # "C/O_atm" = 1.8980497971e-01
 # "S/O_atm" = 1.2046901115e-01
 # "O/H_atm" = 1.3032972420e+01
-
