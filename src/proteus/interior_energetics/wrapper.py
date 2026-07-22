@@ -209,12 +209,13 @@ def update_planet_mass(hf_row: dict):
     """
     Calculate total planet mass, as sum of dry+wet parts.
 
-    Whole-planet oxygen accounting (issue #677): M_ele sums over ALL
-    elements in ``element_list``, including O. The atmospheric and
-    dissolved O mass produced by CALLIOPE (under the fO2 buffer) is
+    Whole-planet volatile element accounting (issue #677): M_ele sums over ALL
+    elements in ``element_list``, including O.
+
+    The atmospheric anddissolved O mass produced by CALLIOPE (from fO2) is
     therefore counted in M_planet = M_int + M_ele, keeping the
     bookkeeping symmetric so M_atm cannot exceed M_planet at
-    high H budgets.
+    high H budgets. This doesn't include rock vapours.
 
     Mantle FeO-bound oxygen remains implicit in the PALEOS density
     tables that drive ``M_int``; we don't double-count it here.
@@ -227,10 +228,7 @@ def update_planet_mass(hf_row: dict):
     a wet-mantle ``M_int`` already contains that mass.
     """
 
-    # Update total element mass. O is included alongside H/C/N/S
-    # (issue #677). .get() default of 0.0
-    # makes the sum safe for pre-IC hf_row states where some element
-    # columns may not have been initialised yet.
+    # Update total element mass.
     hf_row['M_ele'] = 0.0
     for e in element_list:
         hf_row['M_ele'] += float(hf_row.get(e + '_kg_total', 0.0))

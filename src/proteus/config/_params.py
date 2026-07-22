@@ -309,6 +309,8 @@ class StopDisint:
 class StopEvap:
     """Parameters for evaporation stopping criteria.
 
+    Simulation should terminate when the mantle has been fully vapourised.
+
     Attributes
     ----------
     enabled: bool
@@ -357,7 +359,7 @@ class StopParams:
     clock: StopClock
         Parameters for maximum clock runtime criteria.
     evap: StopEvap
-        Parameters for evaporation of mantle
+        Parameters for vapourisation of planet's mantle.
     """
 
     iters: StopIters = field(factory=StopIters)

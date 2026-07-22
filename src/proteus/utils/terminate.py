@@ -112,16 +112,17 @@ def _check_escape(handler: Proteus) -> bool:
     return False
 
 
+# Planet has been entirely vapourised
 def _check_evap(handler: Proteus) -> bool:
-    log.debug('Check evaporation of planet')
+    log.debug("Check complete vapourisation of planet's mantle")
 
     M_vaps = handler.hf_row['M_vaps']
-    M_interior = handler.hf_row['M_int']
-    log.debug('    val, req = %.3e, %.3e  kg' % (M_vaps, M_interior))
+    M_mantle = handler.hf_row['M_mantle']
+    log.debug('    val, req = %.3e, %.3e  kg' % (M_vaps, M_mantle))
 
-    if M_vaps >= M_interior:
+    if M_vaps >= M_mantle:
         UpdateStatusfile(handler.directories, 29)
-        _msg_termination('The interior has fully evaporated')
+        _msg_termination('The mantle has been fully vapourised')
         return True
 
     return False

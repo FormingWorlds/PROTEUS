@@ -357,7 +357,7 @@ def run_lavatmos(
     This function imports the LavAtmos package from `LAVA_DIR` in-process and
     runs the melt-vapour equilibrium solve directly (no subprocess or
     container). The result is written to a csv file for diagnostics; the
-    caller (`compute_silicate_outgassing`) instead reads the element
+    caller (`run_vapourisation`) instead reads the element
     abundances and FastChem output that LavAtmos writes as a side effect.
 
     """
@@ -416,7 +416,7 @@ def run_lavatmos(
     lavatmos_output.to_csv(os.path.join(paths.output_dir, output_name))
 
 
-def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
+def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     """
 
     This function runs the Thermoengine module Lavatmos. Outgassing of refractory species

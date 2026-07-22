@@ -1009,7 +1009,7 @@ class Proteus:
 
                 check_ic_oxygen_budget(self.config, self.hf_row)
 
-            # Add mass of total volatile element mass (M_ele) to total mass of mantle+core
+            # Add mass of total tracked element mass (M_ele) to total mass of mantle+core
             update_planet_mass(self.hf_row)
 
             # Issue #677 mass-conservation invariant: M_atm <= M_planet

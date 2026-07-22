@@ -630,7 +630,7 @@ def assert_surface_pressure_consistency(
     ----------
     hf_row : dict
         Helpfile row at the end of an outgassing call (run_outgassing,
-        compute_silicate_outgassing, run_desiccated, or run_crystallized).
+        run_vapourisation, run_desiccated, or run_crystallized).
     atol_frac : float
         Relative tolerance against max(|P_surf|, |P_vol + P_vap|).
 

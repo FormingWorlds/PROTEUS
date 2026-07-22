@@ -1796,7 +1796,7 @@ def test_assert_surface_pressure_consistency_passes_when_vapourise_enabled():
 
     Physical scenario: LavAtmos has run (outgas.vapourise = True) and added
     a rock-vapour partial pressure on top of the volatile total, mirroring
-    compute_silicate_outgassing's P_vol/P_vap/P_surf bookkeeping.
+    run_vapourisation's P_vol/P_vap/P_surf bookkeeping.
     """
     from proteus.utils.coupler import assert_surface_pressure_consistency
 

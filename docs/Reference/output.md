@@ -105,7 +105,7 @@ are grouped by category below.
 | `R_int` | m | Interior (surface) radius |
 | `R_core` | m | Core radius |
 | `M_int` | kg | Interior dry mass (mantle + core) |
-| `M_planet` | kg | Total planet mass (interior + volatiles) |
+| `M_planet` | kg | Total planet mass (interior + atmosphere) |
 | `M_core` | kg | Core mass |
 | `M_mantle` | kg | Mantle mass (solid + liquid) |
 | `M_mantle_solid` | kg | Solid mantle mass |
@@ -191,7 +191,7 @@ For each element (H, C, N, O, S):
 | Column | Units | Description |
 |--------|-------|-------------|
 | `M_atm` | kg | Total atmospheric mass |
-| `M_ele` | kg | Total volatile element mass |
+| `M_ele` | kg | Total volatile+vapour+noble element mass |
 | `P_surf` | bar | Total surface pressure |
 | `atm_kg_per_mol` | kg mol$^{-1}$ | Mean molecular weight |
 

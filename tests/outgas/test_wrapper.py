@@ -1826,7 +1826,7 @@ def test_run_outgassing_and_vapourisation_runs_silicate_step_above_phi_crit():
 
     with (
         patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
-        patch('proteus.outgas.wrapper.compute_silicate_outgassing') as mock_vap,
+        patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap,
     ):
         run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
 
@@ -1852,7 +1852,7 @@ def test_run_outgassing_and_vapourisation_skips_silicate_step_below_phi_crit():
 
     with (
         patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
-        patch('proteus.outgas.wrapper.compute_silicate_outgassing') as mock_vap,
+        patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap,
     ):
         run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=False)
 
@@ -1875,7 +1875,7 @@ def test_run_outgassing_and_vapourisation_skips_silicate_step_when_disabled():
 
     with (
         patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
-        patch('proteus.outgas.wrapper.compute_silicate_outgassing') as mock_vap,
+        patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap,
     ):
         run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
 

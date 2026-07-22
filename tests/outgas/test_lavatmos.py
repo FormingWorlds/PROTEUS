@@ -1,6 +1,6 @@
 """Tests for proteus.outgas.lavatmos rock-vapour outgassing.
 
-Covers compute_silicate_outgassing (the routine that combines the volatile
+Covers run_vapourisation (the routine that combines the volatile
 solve with the LavAtmos+FastChem rock-vapour re-equilibration into one
 atmospheric composition) and set_magmaproperties. External LavAtmos / FastChem
 calls are mocked at the narrowest scope: run_lavatmos is replaced by a fake that
@@ -31,7 +31,7 @@ import proteus.outgas.lavatmos as lavatmos_mod
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Matches the constant used inside lavatmos.compute_silicate_outgassing so the
+# Matches the constant used inside lavatmos.run_vapourisation so the
 # in-test recomputation of the hydrostatic column mass agrees to float precision.
 _G_CONST = 6.67430e-11
 
@@ -46,7 +46,7 @@ class _DummySpecies:
 
 
 def _make_hf_row():
-    """Minimal helpfile row with the keys compute_silicate_outgassing reads.
+    """Minimal helpfile row with the keys run_vapourisation reads.
 
     R_int is stored in cm (as elsewhere in PROTEUS); M_planet and R_int are
     Earth-like so surface gravity is ~9.8 m/s^2 and the column mass is a
@@ -119,7 +119,7 @@ def _fake_run_lavatmos_factory(pbar, mu, co2_vmr, h2o_vmr, o2_vmr):
 
 
 @pytest.mark.physics_invariant
-def test_compute_silicate_outgassing_combines_into_single_composition(tmp_path, monkeypatch):
+def test_run_vapourisation_combines_into_single_composition(tmp_path, monkeypatch):
     """Volatile + rock-vapour results combine into one atmosphere with a
     hydrostatic-column mass, a self-consistent molar mass, and a P_vol/P_vap
     split that sums back to P_surf.
@@ -138,7 +138,7 @@ def test_compute_silicate_outgassing_combines_into_single_composition(tmp_path, 
         _fake_run_lavatmos_factory(pbar=2.0, mu=30.0, co2_vmr=0.5, h2o_vmr=0.4999, o2_vmr=1e-6),
     )
 
-    lavatmos_mod.compute_silicate_outgassing(dirs, config=None, hf_row=hf_row, first_iter=True)
+    lavatmos_mod.run_vapourisation(dirs, config=None, hf_row=hf_row, first_iter=True)
 
     # New total surface pressure comes straight from the FastChem table.
     assert hf_row['P_surf'] == pytest.approx(2.0, rel=1e-12)
@@ -183,7 +183,7 @@ def test_compute_silicate_outgassing_combines_into_single_composition(tmp_path, 
 
 
 @pytest.mark.physics_invariant
-def test_compute_silicate_outgassing_clamps_negative_P_vap(tmp_path, monkeypatch):
+def test_run_vapourisation_clamps_negative_P_vap(tmp_path, monkeypatch):
     """When the FastChem total falls below the volatile input pressure, the
     rock-vapour pressure would be negative; it is clamped to zero and P_vol is
     derived so P_vol + P_vap still equals the (new) surface pressure.
@@ -201,7 +201,7 @@ def test_compute_silicate_outgassing_clamps_negative_P_vap(tmp_path, monkeypatch
         _fake_run_lavatmos_factory(pbar=2.0, mu=30.0, co2_vmr=0.5, h2o_vmr=0.4999, o2_vmr=1e-6),
     )
 
-    lavatmos_mod.compute_silicate_outgassing(dirs, config=None, hf_row=hf_row, first_iter=False)
+    lavatmos_mod.run_vapourisation(dirs, config=None, hf_row=hf_row, first_iter=False)
 
     # P_vap clamped to zero, never negative.
     assert hf_row['P_vap'] == pytest.approx(0.0, abs=1e-30)
@@ -211,7 +211,7 @@ def test_compute_silicate_outgassing_clamps_negative_P_vap(tmp_path, monkeypatch
     assert hf_row['P_vol'] + hf_row['P_vap'] == pytest.approx(hf_row['P_surf'], rel=1e-12)
 
 
-def test_compute_silicate_outgassing_missing_fastchem_output_raises(tmp_path, monkeypatch):
+def test_run_vapourisation_missing_fastchem_output_raises(tmp_path, monkeypatch):
     """A missing FastChem output directory triggers UpdateStatusfile and a
     RuntimeError rather than a silent skip.
 
@@ -234,9 +234,7 @@ def test_compute_silicate_outgassing_missing_fastchem_output_raises(tmp_path, mo
     monkeypatch.setattr(lavatmos_mod, 'UpdateStatusfile', _fake_update)
 
     with pytest.raises(RuntimeError, match='fastchem'):
-        lavatmos_mod.compute_silicate_outgassing(
-            dirs, config=None, hf_row=hf_row, first_iter=True
-        )
+        lavatmos_mod.run_vapourisation(dirs, config=None, hf_row=hf_row, first_iter=True)
     assert called['status'] is True
 
 
@@ -297,7 +295,7 @@ def test_set_magmaproperties_temperature_floor(monkeypatch):
 
 
 @pytest.mark.physics_invariant
-def test_compute_silicate_outgassing_preserves_noble_gases(tmp_path, monkeypatch):
+def test_run_vapourisation_preserves_noble_gases(tmp_path, monkeypatch):
     """Noble gases pass through the rock-vapour step: they are read back from the
     combined FastChem equilibrium (not dropped) and excluded from the rock-vapour
     mass M_vaps (they are inert atmospheric gas, not vaporised rock). A noble
@@ -363,7 +361,7 @@ def test_compute_silicate_outgassing_preserves_noble_gases(tmp_path, monkeypatch
         for suff in ('_kg_solid', '_kg_liquid', '_mol_solid', '_mol_liquid'):
             hf_row.setdefault(s + suff, 0.0)
 
-    lavatmos_mod.compute_silicate_outgassing(dirs, config=None, hf_row=hf_row, first_iter=True)
+    lavatmos_mod.run_vapourisation(dirs, config=None, hf_row=hf_row, first_iter=True)
 
     # He is read back from the combined FastChem equilibrium: not dropped.
     assert hf_row['He_vmr'] == pytest.approx(0.5, rel=1e-9)
