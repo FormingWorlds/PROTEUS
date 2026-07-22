@@ -1,4 +1,3 @@
-
 name: CI - Nightly Science Validation
 
 # Full test tier matrix (unit + smoke + integration + slow) on Linux and
