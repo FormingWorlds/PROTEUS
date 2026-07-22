@@ -407,12 +407,13 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info('Accretion module  %s' % config.accretion.module)
 
     # Atmospheric chemistry module
-    log.info('Atmos_chem module %s' % config.atmos_chem.module)
+    write = 'Atmos_chem module %s' % config.atmos_chem.module
     match config.atmos_chem.module:
         case 'vulcan':
             from vulcan import __version__ as vulcan_version
 
             write += ' version ' + vulcan_version
+    log.info(write)
 
     # Observations synthesis module
     write = 'Observe module    %s' % config.observe.module
@@ -1531,7 +1532,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     from proteus.plot.cpl_sflux_cross import plot_sflux_cross
     from proteus.plot.cpl_spectra import plot_spectra
     from proteus.plot.cpl_structure import plot_structure
-    # from proteus.plot.cpl_visual import plot_visual
+    from proteus.plot.cpl_visual import plot_visual
 
     # Directories
     output_dir = dirs['output']
@@ -1540,6 +1541,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
     dummy_int = config.interior_energetics.module == 'dummy'
+    agni = config.atmos_clim.module == 'agni'
     spider = config.interior_energetics.module == 'spider'
     aragog = config.interior_energetics.module == 'aragog'
     observed = bool(config.observe.module is not None)
@@ -1651,6 +1653,10 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
             atm_data = read_atmosphere_data(output_dir, plot_times)
             plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
             plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
+
+        # Visualise planet and star
+        if agni:
+            plot_visual(hf_all, output_dir, idx=-1, plot_format=config.params.out.plot_fmt)
 
         # Check that the simulation ran for long enough to make useful plots
         if len(hf_all['Time']) >= 3:
