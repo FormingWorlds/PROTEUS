@@ -88,7 +88,7 @@ config_version = "3.0"
 [escape]
     module = "dummy"
     [escape.dummy]
-        rate = 0.0               # no escape, so the run reaches solidification
+        rate = 1e4               # no escape, so the run reaches solidification
 
 [atmos_chem]
     module = "dummy"

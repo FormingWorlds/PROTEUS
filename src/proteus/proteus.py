@@ -1292,6 +1292,7 @@ class Proteus:
 
         # Make final plots
         if self.config.params.out.plot_mod is not None:
+            log.info(' ')
             log.info('Making final plots')
             UpdatePlots(self.hf_all, self.directories, self.config, end=True)
 

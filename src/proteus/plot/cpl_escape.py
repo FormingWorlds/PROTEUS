@@ -56,20 +56,15 @@ def plot_escape(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf', mass_l
 
         # Plot planetary inventory of this element
         y = np.array(hf_crop[e + '_kg_total']) / M_uval
-        if y.ndim == 2:
-            y = y[:, 0]
+        total += y
         ax0.plot(time, y, lw=_lw, ls='dotted', color=col)
 
         # Plot atmospheric inventory of this element
         y = np.array(hf_crop[f'{e}_kg_atm']) / M_uval
-        if y.ndim == 2:
-            y = y[:, 0]
         ax0.plot(time, y, lw=_lw, ls='solid', color=col, label=e)
 
         # Plot escape rate of this element
         y = np.array(hf_crop[f'esc_rate_{e}']) * secs_per_year * 1e6 / M_uval
-        if y.ndim == 2:
-            y = y[:, 0]
         ax1.plot(time, y, lw=_lw, ls='solid', color=col)
 
     # Planetary element sum inventory
@@ -82,7 +77,14 @@ def plot_escape(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf', mass_l
     # Decorate top plot
     ax0.set_ylabel(rf'Mass [{M_ulbl}]')
     ax0.set_yscale('symlog', linthresh=mass_linthresh)
-    ax0.legend(loc='upper left', bbox_to_anchor=(1.0, 0.8), labelspacing=0.4)
+    ax0.legend(
+        loc='upper left',
+        bbox_to_anchor=(1.0, 1.0),
+        fontsize=9,
+        labelspacing=0.3,
+        handlelength=1.5,
+        handletextpad=0.4,
+    )
     ax0.set_ylim(0, max(np.amax(total), mass_linthresh) * 1.5)
 
     # Plot bulk escape rate (mass per yr)
@@ -106,10 +108,14 @@ def plot_escape(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf', mass_l
     color = 'seagreen'
     alpha = 0.8
     y = np.array(hf_crop['P_surf'])
+    unit = 'bar'
+    if np.amax(y) > 1e4:
+        y /= 1e3  # convert to kbar
+        unit = 'kbar'
     axr.plot(time, y, lw=lw, color=color, alpha=alpha)
     axr.set_ylim(0, np.amax(y))
     axr.tick_params(axis='y', color=color, labelcolor=color)
-    axr.set_ylabel('Surf pressure [bar]', color=color)
+    axr.set_ylabel(f'Surf pressure [{unit}]', color=color)
 
     # Plot vertical line to show surface pressure maximum
     tmax = time[np.argmax(y)]

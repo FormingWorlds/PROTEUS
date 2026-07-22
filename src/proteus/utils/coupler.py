@@ -375,10 +375,7 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info(write)
     if config.outgas.vapourise:
         log.info('  - LavAtmos      version ' + _get_lavatmos_version())
-
-        from thermoengine import __version__ as thermoengine_version
-
-        log.info('  - ThermoEngine  version ' + thermoengine_version)
+        log.info('  - ThermoEngine  version ' + _get_thermoengine_version())
 
     # Escape module
     write = 'Escape module     %s' % config.escape.module
