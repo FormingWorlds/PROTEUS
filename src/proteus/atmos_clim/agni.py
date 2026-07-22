@@ -413,9 +413,7 @@ def _determine_Hfraction(hf_row: dict, vol_dict: dict):
 
     H_number_fraction = H_atoms / total_atoms
     if H_number_fraction < 1e-10:
-        hf_row['H2_vmr'] = 1e-10 / 2
-
-    vol_dict['H2'] = hf_row['H2_vmr']
+        vol_dict['H2'] = 1e-10 / 2
 
     return vol_dict
 
