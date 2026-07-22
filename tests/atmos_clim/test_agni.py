@@ -1299,8 +1299,9 @@ def test_construct_voldict_raises_on_zero_vmr(monkeypatch):
         agni_mod, 'UpdateStatusfile', lambda dirs, code: update_calls.append(code)
     )
 
+    cfg = SimpleNamespace(atmos_clim=SimpleNamespace(agni=SimpleNamespace(chemistry='none')))
     with pytest.raises(ValueError, match='zero'):
-        agni_mod._construct_voldict(hf_row, {'output': '/tmp'})
+        agni_mod._construct_voldict(cfg, hf_row, {'output': '/tmp'})
 
     assert update_calls == [20]
 
@@ -1318,7 +1319,8 @@ def test_construct_voldict_includes_noble_gases():
     for g in agni_mod.gas_list:
         hf_row[g + '_vmr'] = 0.01
 
-    vol_dict = agni_mod._construct_voldict(hf_row, {'output': '/tmp'})
+    cfg = SimpleNamespace(atmos_clim=SimpleNamespace(agni=SimpleNamespace(chemistry='none')))
+    vol_dict = agni_mod._construct_voldict(cfg, hf_row, {'output': '/tmp'})
     assert set(vol_dict.keys()) == set(agni_mod.gas_list)
     for gas in noble_gases:
         assert vol_dict[gas] == pytest.approx(0.01, rel=1e-12)
@@ -1343,10 +1345,56 @@ def test_construct_voldict_handles_noble_only_atmosphere():
     for gas in noble_gases:
         hf_row[gas + '_vmr'] = 0.2  # noble-only atmosphere
 
-    vol_dict = agni_mod._construct_voldict(hf_row, {'output': '/tmp'})
+    cfg = SimpleNamespace(atmos_clim=SimpleNamespace(agni=SimpleNamespace(chemistry='none')))
+    vol_dict = agni_mod._construct_voldict(cfg, hf_row, {'output': '/tmp'})
     for gas in noble_gases:
         assert vol_dict[gas] == pytest.approx(0.2, rel=1e-12)
     assert sum(vol_dict.values()) == pytest.approx(0.2 * len(noble_gases), rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# _determine_Hfraction: hydrogen floor for equilibrium chemistry
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.physics_invariant
+def test_determine_Hfraction_leaves_hydrogen_rich_atmosphere_unchanged():
+    """When the atmosphere already contains hydrogen, _determine_Hfraction does
+    not inject the H2 floor and leaves the mixing ratios untouched.
+
+    Physical scenario: an H2O/CO2 atmosphere. H2O carries 2 H atoms per molecule,
+    so the H abundance (1.0) is far above the 1e-10 floor and no H2 is added.
+    """
+    vol_dict = {'H2O': 0.5, 'CO2': 0.5}
+    result = agni_mod._determine_Hfraction({}, vol_dict)
+
+    # No hydrogen floor injected; the reactive VMRs are preserved.
+    assert 'H2' not in result
+    assert result['H2O'] == pytest.approx(0.5, rel=1e-12)
+    # All mixing ratios remain valid.
+    for vmr in result.values():
+        assert 0.0 <= vmr <= 1.0
+
+
+@pytest.mark.physics_invariant
+def test_determine_Hfraction_injects_floor_when_hydrogen_absent():
+    """When no molecule contributes hydrogen atoms, _determine_Hfraction injects
+    a small H2 floor so FastChem can define metallicity ratios.
+
+    Edge case: a CO2/N2 atmosphere with a noble gas (He) whose name contains 'H'
+    but contributes zero H atoms. The substring 'H' in 'He' must not be counted
+    as hydrogen, so the floor still fires. Pins the injected VMR to 1e-10 (not
+    the earlier 1e-10/2), and confirms it is positive and bounded.
+    """
+    vol_dict = {'CO2': 0.6, 'N2': 0.1, 'He': 0.3}
+    result = agni_mod._determine_Hfraction({}, vol_dict)
+
+    assert result['H2'] == pytest.approx(1e-10, rel=1e-9)
+    # Discrimination: the old formula injected half this (5e-11); the values
+    # differ by 5e-11, well outside the tolerance.
+    assert abs(result['H2'] - 5e-11) > 1e-11
+    assert result['H2'] > 0.0
+    assert 0.0 <= result['H2'] <= 1.0
 
 
 # ---------------------------------------------------------------------------

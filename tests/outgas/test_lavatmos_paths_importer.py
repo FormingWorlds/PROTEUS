@@ -54,12 +54,18 @@ class TestPathsImporterInitialization:
                 from proteus.outgas.lavatmos import paths_importer
 
                 importer = paths_importer(mock_dirs)
-                assert importer.lavatmos_dir == mock_lava_dir
-                assert importer.wkdir == mock_lava_dir
+                # The env value is normalised (redundant separators collapsed) and
+                # given a single trailing separator, so it is idempotent to a
+                # trailing slash in the env var.
+                assert importer.lavatmos_dir == os.path.normpath(mock_lava_dir) + '/'
+                assert importer.wkdir == os.path.normpath(mock_lava_dir) + '/'
 
         # Sign guard: verify we actually read the env var, not a fallback
         assert importer.lavatmos_dir is not None
         assert len(importer.lavatmos_dir) > 0
+        # A single trailing separator is kept (LavAtmos concatenates onto it).
+        assert importer.lavatmos_dir.endswith('/')
+        assert not importer.lavatmos_dir.endswith('//')
 
     def test_paths_importer_creates_output_subdirectories(self):
         """Test that paths_importer creates element_abundances/ and fastchem/ subdirs.
@@ -149,7 +155,7 @@ class TestPathsImporterInitialization:
                 importer = paths_importer(mock_dirs)
 
                 # Verify paths are joined correctly
-                assert importer.fastchem3_input == os.path.join(mock_fc_dir, 'input/')
+                assert importer.fastchem3_input == os.path.join(mock_fc_dir, 'input')
                 assert importer.species_data_file == os.path.join(
                     mock_fc_dir, 'input/logK/logK.dat'
                 )
@@ -223,7 +229,7 @@ class TestPathsImporterInitialization:
 
                 importer = paths_importer(mock_dirs)
 
-                expected = os.path.join(mock_lava_dir, 'data/')
+                expected = os.path.join(mock_lava_dir, 'data')
                 assert importer.janafdata == expected
 
     def test_paths_importer_handles_trailing_slashes_in_env_vars(self):
@@ -303,7 +309,7 @@ class TestPathsImporterInitialization:
 
                 importer = paths_importer(mock_dirs)
 
-                expected = mock_lava_dir + 'input/'
+                expected = os.path.join(mock_lava_dir, 'input') + '/'
                 assert importer.input_dir == expected
                 # Discriminating value: input_dir must end with 'input/'
                 assert importer.input_dir.endswith('input/')
@@ -325,11 +331,11 @@ class TestPathsImporterInitialization:
 
                 importer = paths_importer(mock_dirs)
 
-                expected = mock_lava_dir + 'input/' + 'lava_compositions/'
+                expected = os.path.join(mock_lava_dir, 'input', 'lava_compositions') + '/'
                 assert importer.lava_comps == expected
                 # Discriminating value: must include both 'input' and 'lava_compositions'
-                assert 'input/' in importer.lava_comps
-                assert 'lava_compositions/' in importer.lava_comps
+                assert 'input' in importer.lava_comps
+                assert 'lava_compositions' in importer.lava_comps
 
     def test_paths_importer_handles_empty_dirs_output_key(self, tmp_path):
         """Test that paths_importer handles edge case of dirs dict with empty string.
@@ -414,15 +420,13 @@ class TestPathsImporterInitialization:
                 # Monotonicity: wkdir must match lavatmos_dir
                 assert importer.wkdir == importer.lavatmos_dir
 
-    def test_paths_importer_input_dir_concatenation_preserves_slashes(self):
-        """Test that input_dir is constructed by string concatenation, not os.path.join.
+    def test_paths_importer_input_dir_normalizes_slashes(self):
+        """input_dir is built with os.path.join, so a trailing slash on LAVA_DIR
+        does not change the result.
 
-        Physical scenario: the current code uses self.wkdir + 'input/', which
-        relies on wkdir retaining its trailing slash. This tests that behavior.
-
-        Edge case: if wkdir is given without a trailing slash, this concatenation
-        will produce a malformed path like '/lava/inputinput/'. This is a known
-        code smell but the test documents the current behavior.
+        Edge case: LAVA_DIR given with and without a trailing slash must yield
+        the same input_dir ('/lava/input'), not the malformed '/lavainput' that
+        naive string concatenation produced.
         """
         mock_lava_dir_slash = '/lava/'
         mock_lava_dir_no_slash = '/lava'
@@ -435,35 +439,33 @@ class TestPathsImporterInitialization:
             with patch('os.makedirs'):
                 from proteus.outgas.lavatmos import paths_importer
 
-                importer1 = paths_importer(mock_dirs)
-                input1 = importer1.input_dir
+                input1 = paths_importer(mock_dirs).input_dir
 
-        # With trailing slash: concatenation works correctly
-        assert input1 == '/lava/input/'
-
-        # Without trailing slash: concatenation fails silently (code smell)
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir_no_slash, 'FC_DIR': mock_fc_dir}, clear=False
         ):
             with patch('os.makedirs'):
                 from proteus.outgas.lavatmos import paths_importer as paths_importer2
 
-                importer2 = paths_importer2(mock_dirs)
-                input2 = importer2.input_dir
+                input2 = paths_importer2(mock_dirs).input_dir
 
-        # This will be '/lavainput/' instead of '/lava/input/' -- a discriminating test
-        # showing the code does not normalize path separators
-        assert input2 == '/lavainput/'
+        # Idempotent under the trailing slash, and correctly separated.
+        assert input1 == input2 == os.path.join('/lava', 'input') + '/'
+        # Discrimination: the old concatenation produced '/lavainput' for the
+        # no-slash case; the normalised path must not collapse the separator.
+        assert input2 != '/lavainput'
+        assert not input2.endswith('//')
 
 
 class TestPathsImporterErrorHandling:
     """Test error contracts and edge cases."""
 
     def test_paths_importer_missing_lava_dir_env_var(self):
-        """Test behavior when LAVA_DIR environment variable is not set.
+        """paths_importer fails fast with an error when LAVA_DIR is unset.
 
-        Physical scenario: if LAVA_DIR is missing, os.environ.get() returns None,
-        and the initializer should handle this gracefully or fail fast.
+        Error contract: rock-vapour outgassing cannot run without the LavAtmos
+        checkout, so construction raises ValueError naming LAVA_DIR rather than
+        silently storing None and crashing cryptically downstream.
         """
         mock_dirs = {'output': '/output/base'}
         # Remove LAVA_DIR from environment
@@ -474,15 +476,15 @@ class TestPathsImporterErrorHandling:
             with patch('os.makedirs'):
                 from proteus.outgas.lavatmos import paths_importer
 
-                importer = paths_importer(mock_dirs)
-                # os.environ.get returns None when key is missing
-                assert importer.lavatmos_dir is None
-                assert importer.wkdir is None
+                with pytest.raises(ValueError, match='LAVA_DIR'):
+                    paths_importer(mock_dirs)
 
     def test_paths_importer_missing_fc_dir_env_var(self):
-        """Test behavior when FC_DIR environment variable is not set.
+        """paths_importer fails fast with an error when FC_DIR is unset.
 
-        Physical scenario: if FC_DIR is missing, os.environ.get() returns None.
+        Error contract: FastChem is required for the speciation step, so a
+        missing FC_DIR raises ValueError naming FC_DIR (with LAVA_DIR present,
+        the error must single out FC_DIR).
         """
         mock_dirs = {'output': '/output/base'}
         env_dict = {k: v for k, v in os.environ.items() if k != 'FC_DIR'}
@@ -492,9 +494,8 @@ class TestPathsImporterErrorHandling:
             with patch('os.makedirs'):
                 from proteus.outgas.lavatmos import paths_importer
 
-                importer = paths_importer(mock_dirs)
-                # os.environ.get returns None when key is missing
-                assert importer.fastchem3_dir is None
+                with pytest.raises(ValueError, match='FC_DIR'):
+                    paths_importer(mock_dirs)
 
 
 class TestPathsImporterPhysicsInvariants:

@@ -482,6 +482,10 @@ config_version = "3.0"
         eos_CH4               = "none"       # none | CH4_zhang_duan06
         eos_CO                = "none"       # none (no real gas EOS available)
 
+    [outgas.lavatmos]                        # rock vapour (requires vapourise = true)
+        T_min                 = 1500.0       # minimum LavAtmos surface temperature [K]
+        melt_comp_name        = "BSE_palm"   # melt composition file name (no extension)
+
 # Atmosphere climate (radiative-convective structure)
 [atmos_clim]
     module                    = "agni"       # agni | janus | dummy

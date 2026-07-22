@@ -16,6 +16,7 @@ from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
     create_tmp_folder,
+    mol_to_ele,
     multiple,
     safe_rm,
 )
@@ -388,32 +389,32 @@ def _construct_voldict(config: Config, hf_row: dict, dirs: dict):
 
 
 def _determine_Hfraction(hf_row: dict, vol_dict: dict):
-    """this function ensures that there is enough hydrogen in the atmosphere that fastchem can run in case chemistry is switched on in agni"""
+    """Ensure that the hydrogen fraction is non-zero if chemistry is enabled.
 
-    H_atoms = (
-        2 * hf_row['H2S_vmr']
-        + 2 * hf_row['H2O_vmr']
-        + 3 * hf_row['H2O_vmr']
-        + 2 * hf_row['H2_vmr']
-        + 4 * hf_row['CH4_vmr']
-    )
+    Fastchem requires a non-zero H content in order to define metallicity ratios.
 
-    total_atoms = (
-        3 * hf_row['H2S_vmr']
-        + 3 * hf_row['H2O_vmr']
-        + 3 * hf_row['H2O_vmr']
-        + 2 * hf_row['H2_vmr']
-        + 5 * hf_row['CH4_vmr']
-        + 3 * hf_row['CO2_vmr']
-        + 2 * hf_row['N2_vmr']
-        + 3 * hf_row['S2_vmr']
-        + 3 * hf_row['SO2_vmr']
-        + 2 * hf_row['CO_vmr']
-    )
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
+        vol_dict : dict
+            Dictionary containing volume mixing ratios of gases
 
-    H_number_fraction = H_atoms / total_atoms
-    if H_number_fraction < 1e-10:
-        vol_dict['H2'] = 1e-10 / 2
+    Returns
+    ----------
+        vol_dict : dict
+            Updated dictionary containing volume mixing ratios of gases
+    """
+
+    # Loop through all molecules with hydrogen, and check if any are non-zero
+    H_abund = 0.0
+    for gas in vol_dict.keys():
+        if 'H' in gas:
+            H_abund += vol_dict[gas] * mol_to_ele(gas).get('H', 0)
+
+    # If H abundance is low, add a small amount of H2 to the atmosphere
+    if H_abund < 1e-10:
+        vol_dict['H2'] = 1e-10
 
     return vol_dict
 
@@ -737,8 +738,6 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     atmos.instellation = float(hf_row['F_ins'])
     setfield = getattr(jl, 'setfield!')
     setfield(atmos, jl.Symbol('albedo_b'), float(hf_row['albedo_pl']))
-    value = jl.getfield(atmos, jl.Symbol('albedo_b'))
-    log.debug('albedo of planet:%.3f' % value)
 
     # ---------------------
     # Update compositions

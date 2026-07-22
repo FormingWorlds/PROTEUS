@@ -37,6 +37,7 @@ from proteus.outgas.wrapper import (
     check_ic_oxygen_budget,
     run_desiccated,
     run_outgassing,
+    run_outgassing_and_vapourisation,
 )
 from proteus.utils.constants import element_list, gas_list, vap_list, vol_list
 
@@ -1788,3 +1789,96 @@ def test_run_crystallized_rejects_fractionated_escape():
     run_crystallized(_cryst_cfg('bulk'), hf_bulk, dt)
     assert hf_bulk['M_atm'] == pytest.approx(90.0, rel=1e-9)
     assert hf_bulk['M_atm'] < base['M_atm'] - 1.0
+
+
+# ---------------------------------------------------------------------------
+# run_outgassing_and_vapourisation: volatile solve + rock-vapour orchestration
+# ---------------------------------------------------------------------------
+
+
+def _vapourise_config(vapourise: bool, phi_crit: float = 0.3):
+    """MagicMock config with the two real scalars the orchestrator reads."""
+    config = MagicMock()
+    config.outgas.vapourise = vapourise
+    config.params.stop.solid.phi_crit = phi_crit
+    return config
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_outgassing_and_vapourisation_runs_silicate_step_above_phi_crit():
+    """With vapourise enabled and the mantle above the solidification threshold,
+    the orchestrator resets the rock-vapour reservoirs, runs the volatile solve,
+    then runs the silicate (rock-vapour) step.
+
+    Reset invariant: a stale M_vaps and stale vapour-species mass are zeroed
+    before the solve (rock-vapour mass is non-negative and re-derived each call).
+    """
+    dirs = {'output': '/tmp/test'}
+    config = _vapourise_config(vapourise=True, phi_crit=0.3)
+
+    vap_species = vap_list[0]
+    hf_row = {
+        'Phi_global': 0.5,  # above phi_crit -> silicate step runs
+        'M_vaps': 5.0e18,  # stale value that must be reset
+        vap_species + '_kg_atm': 9.0e9,  # stale vapour mass that must be reset
+    }
+
+    with (
+        patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
+        patch('proteus.outgas.wrapper.compute_silicate_outgassing') as mock_vap,
+    ):
+        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
+
+    mock_outgas.assert_called_once_with(dirs, config, hf_row)
+    mock_vap.assert_called_once_with(dirs, config, hf_row, True)
+    # Reset happened before the (mocked, no-op) silicate step.
+    assert hf_row['M_vaps'] == 0.0
+    assert hf_row['M_vaps'] >= 0.0
+    assert hf_row[vap_species + '_kg_atm'] == 0.0
+
+
+@pytest.mark.unit
+def test_run_outgassing_and_vapourisation_skips_silicate_step_below_phi_crit():
+    """When the mantle is below the solidification threshold, the silicate step
+    is skipped even with vapourise enabled; the volatile solve still runs.
+
+    Edge case: Phi_global < phi_crit disables rock vapour (a near-solid mantle
+    has no melt to vaporise).
+    """
+    dirs = {'output': '/tmp/test'}
+    config = _vapourise_config(vapourise=True, phi_crit=0.3)
+    hf_row = {'Phi_global': 0.1, 'M_vaps': 2.0e18}  # below phi_crit
+
+    with (
+        patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
+        patch('proteus.outgas.wrapper.compute_silicate_outgassing') as mock_vap,
+    ):
+        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=False)
+
+    mock_outgas.assert_called_once_with(dirs, config, hf_row)
+    mock_vap.assert_not_called()
+    assert hf_row['M_vaps'] == 0.0
+
+
+@pytest.mark.unit
+def test_run_outgassing_and_vapourisation_skips_silicate_step_when_disabled():
+    """With vapourise disabled the silicate step never runs, regardless of the
+    melt fraction; the volatile solve still runs and M_vaps stays zero.
+
+    Discrimination: Phi_global is well above phi_crit, so only the vapourise
+    flag (not the melt gate) can be responsible for skipping the silicate step.
+    """
+    dirs = {'output': '/tmp/test'}
+    config = _vapourise_config(vapourise=False, phi_crit=0.3)
+    hf_row = {'Phi_global': 0.9, 'M_vaps': 7.0e18}
+
+    with (
+        patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
+        patch('proteus.outgas.wrapper.compute_silicate_outgassing') as mock_vap,
+    ):
+        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
+
+    mock_outgas.assert_called_once_with(dirs, config, hf_row)
+    mock_vap.assert_not_called()
+    assert hf_row['M_vaps'] == 0.0

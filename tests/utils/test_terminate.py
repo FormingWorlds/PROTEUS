@@ -178,6 +178,38 @@ def test_check_escape_not_triggered_when_pressure_high(patch_statusfile):
 
 
 @pytest.mark.unit
+def test_check_evap_triggers_when_vaps_reaches_interior(patch_statusfile):
+    """Evaporation: outgassed rock-vapour mass meeting the interior mass exits
+    with status 29.
+
+    Boundary case: M_vaps == M_int exactly must trigger (the condition is
+    ``>=``), the physical point at which the interior has fully evaporated.
+    """
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['M_int'] = 3.0e23
+    h.hf_row['M_vaps'] = 3.0e23  # equal: interior fully evaporated
+    assert terminate._check_evap(h) is True
+    assert patch_statusfile[-1][1] == 29
+
+
+@pytest.mark.unit
+def test_check_evap_not_triggered_when_vaps_below_interior(patch_statusfile):
+    """Evaporation: rock-vapour mass below the interior mass keeps running and
+    writes no status.
+
+    Discrimination: M_vaps is a full order of magnitude below M_int, so a
+    regression flipping the comparison to ``<=`` would wrongly terminate here.
+    """
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['M_int'] = 1.0e24
+    h.hf_row['M_vaps'] = 1.0e23
+    assert terminate._check_evap(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
 def test_check_separation_triggers_roche_limit(patch_statusfile):
     """Disintegration: separation below Roche limit exits with status 16."""
     cfg = _cfg()

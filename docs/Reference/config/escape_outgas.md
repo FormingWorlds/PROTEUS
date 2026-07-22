@@ -132,6 +132,17 @@ real-gas equations of state.
 | `eos_CH4` | `"none"` | CH$_4$ EOS |
 | `eos_CO` | `"none"` | CO EOS |
 
+### LavAtmos `[outgas.lavatmos]`
+
+Rock-vapour outgassing parameters, used when `outgas.vapourise = true`. Requires
+`LAVA_DIR` and `FC_DIR`; see
+[Installation: optional modules](../../How-to/optionalmodules_installation.md#rock-vapours-lavatmos-thermoenginelite).
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `T_min` | float | `1500.0` | Minimum LavAtmos surface temperature \[K]; the outgassing temperature is clamped up to this floor |
+| `melt_comp_name` | str | `"BSE_palm"` | Melt composition file name (without extension), read from the LavAtmos `lava_compositions` directory |
+
 ---
 
 **See also:** [Escape modules](../../Explanations/model.md#atmospheric-escape-zephyrus) | [Outgassing modules](../../Explanations/model.md#volatile-outgassing-calliope-atmodeller)

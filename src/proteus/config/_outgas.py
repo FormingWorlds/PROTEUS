@@ -171,6 +171,25 @@ class Atmodeller:
 
 
 @define
+class Lavatmos:
+    """Module parameters for LavAtmos rock-vapour outgassing.
+
+    Attributes
+    ----------
+    T_min: float
+        Minimum surface temperature [K] handed to LavAtmos. The melt-vapour
+        equilibrium is not evaluated below this floor, so the outgassing
+        temperature is clamped up to it. Default 1500 K.
+    melt_comp_name: str
+        Name of the melt composition file (without extension) read from the
+        LavAtmos ``lava_compositions`` directory. Default ``BSE_palm``.
+    """
+
+    T_min: float = field(default=1500.0, validator=validators.gt(0.0))
+    melt_comp_name: str = field(default='BSE_palm')
+
+
+@define
 class Outgas:
     """Outgassing parameters (fO2) and included volatiles.
 
@@ -199,7 +218,9 @@ class Outgas:
     vapourise: bool
         Enable rock vapour outgassing via LavAtmos/ThermoEngineLite. Requires
         `LAVA_DIR` and `FC_DIR` to be set; see the optional modules
-        installation guide.
+        installation guide. LavAtmos parameters are set in `outgas.lavatmos`.
+    lavatmos: Lavatmos
+        Parameters for the LavAtmos rock-vapour module.
     """
 
     module: str = field(
@@ -226,6 +247,7 @@ class Outgas:
 
     calliope: Calliope = field(factory=Calliope)
     atmodeller: Atmodeller = field(factory=Atmodeller)
+    lavatmos: Lavatmos = field(factory=Lavatmos)
 
     # LavAtmos / silicate coupling is opt-in: default to disabled.
     vapourise: bool = field(default=False)

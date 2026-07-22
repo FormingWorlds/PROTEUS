@@ -1038,8 +1038,12 @@ class Proteus:
             # and sum(s_kg_atm) == M_atm. Cheap end-of-outgas guardrail
             # that hard-fails if any future change re-introduces the
             # O-skipping asymmetry that could let M_atm exceed
-            # M_planet at high H_ppmw.
-            assert_mass_conservation(self.hf_row, self.config, atol_frac=0.1)
+            # M_planet at high H_ppmw. Rock-vapour outgassing moves
+            # non-volatile mass into M_atm that M_planet does not track,
+            # so the invariant does not hold there; skip it when vapourise
+            # is enabled rather than weaken the tolerance for every run.
+            if not self.config.outgas.vapourise:
+                assert_mass_conservation(self.hf_row)
 
             # P_surf = P_vol + P_vap, and P_vap == 0 when rock vapour
             # outgassing is disabled. Cheap end-of-outgas guardrail against

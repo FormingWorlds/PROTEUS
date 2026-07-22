@@ -133,21 +133,34 @@ def _get_julia_version():
     """
     Get the installed Julia version
     """
-    return subprocess.check_output(['julia', '--version']).decode('utf-8').split()[-1]
+    try:
+        subprocess.check_output(['julia', '--version']).decode('utf-8').split()[-1]
+    except FileNotFoundError:
+        return 'unknown (julia not installed)'
 
 
 def _get_lavatmos_version() -> str:
     """
     Get the installed LavAtmos version.
-
-    LavAtmos is a git checkout (like AGNI/SOCRATES) rather than a pip
-    package with a static `__version__`, so its "version" is the commit
-    hash of the checkout pointed to by LAVA_DIR.
     """
     LAVA_DIR = os.environ.get('LAVA_DIR')
     if LAVA_DIR is None:
-        raise EnvironmentError('LAVA_DIR environment variable is not set.')
+        return 'unknown (LAVA_DIR not set)'
     return _get_git_revision(LAVA_DIR)
+
+
+def _get_thermoengine_version() -> str:
+    """
+    Get the installed ThermoEngine version.
+
+    This is a python module but is optional, so might not be installed.
+    """
+
+    try:
+        import thermoengine
+    except ImportError:
+        return 'unknown (thermoengine not installed)'
+    return thermoengine.__version__
 
 
 def validate_module_versions(dirs: dict, config: Config):
@@ -298,6 +311,7 @@ def print_system_configuration(dirs: dict):
 
     log.info('Current time      ' + _get_current_time())
     log.info('Python version    ' + sys.version.split(' ')[0])
+    log.info('Julia version     ' + _get_julia_version())
     log.info('System hostname   ' + str(os.uname()[1]))
     log.info('System username   ' + str(username))
     log.info('Platform type     ' + str(platform.system()))
@@ -345,18 +359,26 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info(write)
     if config.atmos_clim.module in ['janus', 'agni']:
         log.info('  - SOCRATES      version %s at %s' % (_get_socrates_version(), dirs['rad']))
-        if config.atmos_clim.module == 'agni':
-            log.info('  - Julia         version ' + _get_julia_version())
 
     # Outgassing module
     write = 'Outgas module     %s' % config.outgas.module
-    if config.outgas.module == 'calliope':
-        from calliope import __version__ as calliope_version
+    match config.outgas.module:
+        case 'calliope':
+            from calliope import __version__ as calliope_version
 
-        write += ' version ' + calliope_version
+            write += ' version ' + calliope_version
+        case 'atmodeller':
+            from atmodeller import __version__ as atmodeller_version
+
+            write += ' version ' + atmodeller_version
+
     log.info(write)
     if config.outgas.vapourise:
         log.info('  - LavAtmos      version ' + _get_lavatmos_version())
+
+        from thermoengine import __version__ as thermoengine_version
+
+        log.info('  - ThermoEngine  version ' + thermoengine_version)
 
     # Escape module
     write = 'Escape module     %s' % config.escape.module
@@ -389,6 +411,11 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
 
     # Atmospheric chemistry module
     log.info('Atmos_chem module %s' % config.atmos_chem.module)
+    match config.atmos_chem.module:
+        case 'vulcan':
+            from vulcan import __version__ as vulcan_version
+
+            write += ' version ' + vulcan_version
 
     # Observations synthesis module
     write = 'Observe module    %s' % config.observe.module
@@ -514,7 +541,7 @@ def print_stoptime(start_time):
     log.info(' ')
 
 
-def assert_mass_conservation(hf_row: dict, config: Config, atol_frac: float = 1e-6) -> None:
+def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     """Runtime invariant: M_atm <= M_planet and sum of per-species kg_atm
     matches M_atm.
 
@@ -525,6 +552,12 @@ def assert_mass_conservation(hf_row: dict, config: Config, atol_frac: float = 1e
     by construction. This assertion catches any regression that
     re-introduces an asymmetry by dropping O from one side.
 
+    This invariant does not hold when rock-vapour outgassing
+    (``outgas.vapourise``) is enabled, because that path moves
+    non-volatile silicate mass into M_atm that M_planet does not track;
+    the caller skips this check in that mode rather than loosening the
+    tolerance for volatile-only runs.
+
     Parameters
     ----------
     hf_row : dict
@@ -533,6 +566,7 @@ def assert_mass_conservation(hf_row: dict, config: Config, atol_frac: float = 1e
     atol_frac : float
         Relative tolerance for the two invariants. Default 1e-6 admits
         accumulated float-rounding from the per-species sum but not
+        any physically meaningful drift.
 
     Raises
     ------
@@ -540,10 +574,8 @@ def assert_mass_conservation(hf_row: dict, config: Config, atol_frac: float = 1e
         If M_atm > M_planet (by more than ``atol_frac`` of M_planet) or
         the per-species sum disagrees with M_atm by more than that.
     """
-
-    M_planet = float(hf_row.get('M_planet', 0.0))
     M_atm = float(hf_row.get('M_atm', 0.0))
-    M_vaps = float(hf_row.get('M_vaps', 0.0))
+    M_planet = float(hf_row.get('M_planet', 0.0))
 
     # Pre-IC short-circuit: M_planet == 0 means the structure solve has
     # not yet populated the hf_row. The invariants are not meaningful
@@ -555,7 +587,7 @@ def assert_mass_conservation(hf_row: dict, config: Config, atol_frac: float = 1e
         return
 
     # Invariant 1: atmosphere mass <= total planet mass.
-    if M_atm > (M_planet + M_vaps) * (1.0 + atol_frac):
+    if M_atm > M_planet * (1.0 + atol_frac):
         raise RuntimeError(
             f'Mass conservation violation (issue #677 regression?): '
             f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
@@ -573,26 +605,13 @@ def assert_mass_conservation(hf_row: dict, config: Config, atol_frac: float = 1e
     summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
     if M_atm > 0.0:
         rel = abs(summed - M_atm) / M_atm
-        if config.outgas.vapourise:
-            """relax the criterion to mass cannot change more tahn by twice atmospheric mass. The reason is
-            that if silicates=True, the outgassing can change the relative distribution of elements and also
-            othe rspecies than the ones considered in gas_list might get outgassed."""
-
-            if rel > M_atm:
-                raise RuntimeError(
-                    f'M_atm bookkeeping inconsistency: M_atm={M_atm:.3e} kg but '
-                    f'sum_s(s_kg_atm)={summed:.3e} kg (relative difference '
-                    f'{rel * 100:.3f}%). One of the gas-species kg_atm fields '
-                    f'is stale or the M_atm sum loop is missing a species.'
-                )
-        else:
-            if rel > atol_frac:
-                raise RuntimeError(
-                    f'M_atm bookkeeping inconsistency: M_atm={M_atm:.3e} kg but '
-                    f'sum_s(s_kg_atm)={summed:.3e} kg (relative difference '
-                    f'{rel * 100:.3f}%). One of the gas-species kg_atm fields '
-                    f'is stale or the M_atm sum loop is missing a species.'
-                )
+        if rel > atol_frac:
+            raise RuntimeError(
+                f'M_atm bookkeeping inconsistency: M_atm={M_atm:.3e} kg but '
+                f'sum_s(s_kg_atm)={summed:.3e} kg (relative difference '
+                f'{rel * 100:.3f}%). One of the gas-species kg_atm fields '
+                f'is stale or the M_atm sum loop is missing a species.'
+            )
 
 
 def assert_surface_pressure_consistency(

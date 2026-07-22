@@ -246,21 +246,26 @@ O 12.0
 
 
 @pytest.mark.unit
-def test_run_lavatmos_calls_vaporise(monkeypatch):
-    class FakeSystem:
-        def vaporise(self, *args, **kwargs):
-            return pd.DataFrame(
-                {
-                    'species': ['H2O'],
-                    'mass': [1.0],
-                }
-            )
+@pytest.mark.unit
+def test_run_lavatmos_calls_vaporise(tmp_path, monkeypatch):
+    """run_lavatmos drives the LavAtmos melt-vapour system's vaporise() step.
 
-    class FakeLavatmos:
-        def melt_vapor_system(self, paths):
-            return FakeSystem()
+    On the first iteration the previous-fO2 warm start is disabled, so vaporise
+    is called exactly once with fO2_tries_from_last=False.
+    """
+    paths = make_paths(tmp_path)
+    monkeypatch.setattr('proteus.outgas.lavatmos.paths_importer', lambda dirs: paths)
+    monkeypatch.setattr(
+        'proteus.outgas.lavatmos.set_magmaproperties', lambda *args: make_magma()
+    )
+    create_melt_file(paths)
+    fake_system, _ = install_fake_lavatmos(monkeypatch)
 
-    monkeypatch.setattr('lavatmos3.melt_vapor_system', FakeLavatmos().melt_vapor_system)
+    run_lavatmos({'a': 1}, 'CONFIG', {'log10_fO2_vapourise': -5}, {'H': 0.1}, True)
+
+    fake_system.vaporise.assert_called_once()
+    # First iteration must not reuse the previous solve's fO2 as a warm start.
+    assert fake_system.vaporise.call_args.kwargs['fO2_tries_from_last'] is False
 
 
 def make_paths(tmp_path):
@@ -342,12 +347,12 @@ def test_run_lavatmos_calls_paths_importer(
         return paths
 
     monkeypatch.setattr(
-        'lavatmos.paths_importer',
+        'proteus.outgas.lavatmos.paths_importer',
         fake_paths_importer,
     )
 
     monkeypatch.setattr(
-        'lavatmos.set_magmaproperties',
+        'proteus.outgas.lavatmos.set_magmaproperties',
         lambda *args: make_magma(),
     )
 
@@ -391,12 +396,12 @@ def test_run_lavatmos_calls_set_magmaproperties(
         return magma
 
     monkeypatch.setattr(
-        'lavatmos.paths_importer',
+        'proteus.outgas.lavatmos.paths_importer',
         lambda dirs: paths,
     )
 
     monkeypatch.setattr(
-        'lavatmos.set_magmaproperties',
+        'proteus.outgas.lavatmos.set_magmaproperties',
         fake_set,
     )
 
@@ -426,12 +431,12 @@ def test_run_lavatmos_reads_melt_composition(
     paths = make_paths(tmp_path)
 
     monkeypatch.setattr(
-        'lavatmos.paths_importer',
+        'proteus.outgas.lavatmos.paths_importer',
         lambda dirs: paths,
     )
 
     monkeypatch.setattr(
-        'lavatmos.set_magmaproperties',
+        'proteus.outgas.lavatmos.set_magmaproperties',
         lambda *args: make_magma(),
     )
 
@@ -464,12 +469,12 @@ def test_run_lavatmos_sets_fixed_melt_pressure(
     paths = make_paths(tmp_path)
 
     monkeypatch.setattr(
-        'lavatmos.paths_importer',
+        'proteus.outgas.lavatmos.paths_importer',
         lambda dirs: paths,
     )
 
     monkeypatch.setattr(
-        'lavatmos.set_magmaproperties',
+        'proteus.outgas.lavatmos.set_magmaproperties',
         lambda *args: make_magma(),
     )
 
@@ -498,12 +503,12 @@ def test_run_lavatmos_converts_fO2_guess(
     paths = make_paths(tmp_path)
 
     monkeypatch.setattr(
-        'lavatmos.paths_importer',
+        'proteus.outgas.lavatmos.paths_importer',
         lambda dirs: paths,
     )
 
     monkeypatch.setattr(
-        'lavatmos.set_magmaproperties',
+        'proteus.outgas.lavatmos.set_magmaproperties',
         lambda *args: make_magma(),
     )
 
@@ -532,12 +537,12 @@ def test_run_lavatmos_first_iteration_disables_previous_fO2(
     paths = make_paths(tmp_path)
 
     monkeypatch.setattr(
-        'lavatmos.paths_importer',
+        'proteus.outgas.lavatmos.paths_importer',
         lambda dirs: paths,
     )
 
     monkeypatch.setattr(
-        'lavatmos.set_magmaproperties',
+        'proteus.outgas.lavatmos.set_magmaproperties',
         lambda *args: make_magma(),
     )
 
@@ -564,12 +569,12 @@ def test_run_lavatmos_second_iteration_uses_previous_fO2(
     paths = make_paths(tmp_path)
 
     monkeypatch.setattr(
-        'lavatmos.paths_importer',
+        'proteus.outgas.lavatmos.paths_importer',
         lambda dirs: paths,
     )
 
     monkeypatch.setattr(
-        'lavatmos.set_magmaproperties',
+        'proteus.outgas.lavatmos.set_magmaproperties',
         lambda *args: make_magma(),
     )
 
@@ -596,12 +601,12 @@ def test_run_lavatmos_sets_tolerance(
     paths = make_paths(tmp_path)
 
     monkeypatch.setattr(
-        'lavatmos.paths_importer',
+        'proteus.outgas.lavatmos.paths_importer',
         lambda dirs: paths,
     )
 
     monkeypatch.setattr(
-        'lavatmos.set_magmaproperties',
+        'proteus.outgas.lavatmos.set_magmaproperties',
         lambda *args: make_magma(),
     )
 
@@ -631,12 +636,12 @@ def test_run_lavatmos_output_filename(
     magma.run_name = 'special_case'
 
     monkeypatch.setattr(
-        'lavatmos.paths_importer',
+        'proteus.outgas.lavatmos.paths_importer',
         lambda dirs: paths,
     )
 
     monkeypatch.setattr(
-        'lavatmos.set_magmaproperties',
+        'proteus.outgas.lavatmos.set_magmaproperties',
         lambda *args: magma,
     )
 
@@ -666,12 +671,12 @@ def test_run_lavatmos_output_contents(
     paths = make_paths(tmp_path)
 
     monkeypatch.setattr(
-        'lavatmos.paths_importer',
+        'proteus.outgas.lavatmos.paths_importer',
         lambda dirs: paths,
     )
 
     monkeypatch.setattr(
-        'lavatmos.set_magmaproperties',
+        'proteus.outgas.lavatmos.set_magmaproperties',
         lambda *args: make_magma(),
     )
 
@@ -709,12 +714,12 @@ def test_run_lavatmos_missing_melt_file_raises(
     paths = make_paths(tmp_path)
 
     monkeypatch.setattr(
-        'lavatmos.paths_importer',
+        'proteus.outgas.lavatmos.paths_importer',
         lambda dirs: paths,
     )
 
     monkeypatch.setattr(
-        'lavatmos.set_magmaproperties',
+        'proteus.outgas.lavatmos.set_magmaproperties',
         lambda *args: make_magma(),
     )
 
