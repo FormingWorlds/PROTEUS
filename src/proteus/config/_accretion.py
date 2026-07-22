@@ -81,12 +81,6 @@ class Morrigan:
     selector_value: float or None
         Target value for the 'semimajoraxis' and 'id' selectors. Ignored
         otherwise.
-    time_offset: float
-        Offset applied to Morrigan event times when mapping them onto the
-        PROTEUS time axis [yr]. Morrigan measures time from disk
-        dispersal; PROTEUS measures it from the start of its own
-        evolution. Events that land before the start of the PROTEUS run
-        are folded into the initial condition.
     """
 
     seed: int = field(default=1, validator=ge(0))
@@ -106,8 +100,6 @@ class Morrigan:
 
     selector: str = field(default='match_config', validator=in_(SELECTORS))
     selector_value: float | str | None = field(default=None, converter=none_if_none)
-
-    time_offset: float = field(default=0.0)
 
 
 def valid_accretiondummy(instance, attribute, value):
@@ -156,6 +148,12 @@ class Accretion:
         Parameters for the Morrigan giant-impact module.
     dummy: AccretionDummy
         Parameters for the timeline-driven dummy module.
+    time_offset: float
+        Offset applied to every impact time when mapping the timeline onto
+        the PROTEUS time axis [yr]. A dynamical model measures time from
+        disk dispersal, while PROTEUS measures it from the start of its
+        own evolution. Impacts landing before the start of the run are
+        folded into the initial condition.
     impactor_H_ppmw: float
         Hydrogen carried by each impactor [ppmw of impactor mass].
     impactor_C_ppmw: float
@@ -176,6 +174,8 @@ class Accretion:
 
     morrigan: Morrigan = field(factory=Morrigan, validator=valid_morrigan)
     dummy: AccretionDummy = field(factory=AccretionDummy, validator=valid_accretiondummy)
+
+    time_offset: float = field(default=0.0)
 
     # Impactor volatile content, applied to every impact. Zero means the
     # impactor adds silicate and iron mass only, so the planet's bulk

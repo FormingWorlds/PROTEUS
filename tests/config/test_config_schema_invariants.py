@@ -212,6 +212,7 @@ def _make_config_instance(**overrides):
     that is the cross-product test's job.
     """
     base = SimpleNamespace(
+        accretion=SimpleNamespace(module=None),
         outgas=SimpleNamespace(module='calliope', fO2_shift_IW=0.0),
         escape=SimpleNamespace(module='zephyrus'),
         atmos_chem=SimpleNamespace(module=None),
