@@ -255,6 +255,7 @@ class _FakeAtmosphere:
         self.transspec_p = 1e2
         self.transspec_r = 6.371e6
         self.transspec_tmp = 295.0
+        self.transspec_grav = 9.8
         # Chemistry workspace
         self.fastchem_work = ''
 
@@ -1015,6 +1016,7 @@ def test_run_agni_transparent_returns_R_obs_equal_R_int(monkeypatch):
         'R_int': 6.371e6,
         'R_xuv': 6.5e6,
         'p_xuv': 1e-3,
+        'gravity': 9.8,
         'Time': 0.0,
     }
     for g in ['H2O', 'CO2']:
@@ -1058,6 +1060,7 @@ def test_run_agni_prevent_warming_clamps_negative_flux(monkeypatch):
         'P_surf': 100.0,
         'p_xuv': 1e-3,
         'R_xuv': 6.5e6,
+        'gravity': 9.8,
         'Time': 100.0,
     }
     for g in ['H2O', 'CO2']:

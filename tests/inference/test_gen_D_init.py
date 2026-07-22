@@ -204,7 +204,7 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
     captured = {}
 
     class FakeHalton:
-        def __init__(self, d, seed, scramble):
+        def __init__(self, d, rng, scramble):
             captured['dims'] = d
             captured['scramble'] = scramble
 
