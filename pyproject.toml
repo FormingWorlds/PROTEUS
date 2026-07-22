@@ -296,12 +296,12 @@ ref = "main"
 [tool.proteus.modules.thermoenginelite]
 # Multi-phase thermodynamics engine (c++ and Python)
 url = "https://github.com/FormingWorlds/ThermoEngineLite"
-ref = "main"
+ref = "19711ec1a69f66f2d46efd9331da323161bafc4d"
 
 [tool.proteus.modules.lavatmos]
 # Rock vapourisation code (python)
 url = "https://github.com/FormingWorlds/LavAtmos"
-ref = "main"
+ref = "c963dd2acf6c8a4c33d246d653342121666ae612"
 
 [tool.proteus.modules.petsc]
 # Pre-built PETSc archive on OSF. Required by SPIDER. tools/get_petsc.sh

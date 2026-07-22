@@ -51,9 +51,10 @@ B_ein = 2.5
 # element, so it doesn't belong in element_mmw.
 electron_molar_mass = 5.4858e-4
 
-# Supported gases
+# Supported volatiles
 vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
 
+# Supported vapours
 vap_list = [
     'SiO',
     'SiO2',
@@ -96,25 +97,6 @@ vap_list = [
     'KH',
 ]
 
-fc_gases = [
-    'NS',
-    'PS',
-    'CH3',
-    'C2',
-    'CS',
-    'C2H2',
-    'C2H4',
-    'HCN',
-    'O',
-    'O2',
-    'O3',
-    'OH',
-    'SH',
-    'PO',
-    'SO3',
-    'H-',
-]
-
 prt_gases = [
     'C2H2',
     'C2H4',
@@ -152,34 +134,19 @@ prt_cia_species = [
 ]
 prt_ignored_gases = {'e-', 'MMW', 'nabla_ad'}
 
-# Noble gases. Each is chemically inert, and its gas species and its element
-# are the same monatomic entity. They are full members of both gas_list (the
-# modelled gas species) and element_list (the supported elements), so they are
-# tracked in the helpfile schema, the surface pressure, and the whole-planet
-# mass balance without special-casing. They are opt-in per gas via the
-# outgassing config, so a run with no noble budget carries them as zero.
+# Noble gases. They are full members of both gas_listand element_list.
+# They are tracked in the helpfile and the whole-planet mass balance.
 noble_gases = ['He', 'Ne', 'Ar', 'Kr', 'Xe']
 
-gas_list = vol_list + vap_list + noble_gases
+# Construct gas list from all three sources (with duplicates removed)
+gas_list = list(dict.fromkeys(vol_list + vap_list + noble_gases))
 
-# Supported elements: volatiles, rock-forming elements, noble gases.
+# Supported elements: volatiles, rock-forming elements, noble gases (above)
 vol_element_list = ['H', 'O', 'C', 'N', 'S']
 vap_element_list = ['Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K']
-element_list = [
-    'H',
-    'O',
-    'C',
-    'N',
-    'S',
-    'Si',
-    'Mg',
-    'Fe',
-    'Na',
-    'Al',
-    'Ti',
-    'Ca',
-    'K',
-] + noble_gases
+
+# Construct element list from all three sources (with duplicates removed)
+element_list = list(dict.fromkeys(vol_element_list + vap_element_list + noble_gases))
 
 element_mmw = {
     'H': 1.008000000e-03,
