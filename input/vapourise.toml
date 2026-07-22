@@ -106,7 +106,7 @@ config_version = "3.0"
 
     # Initial temperature profile
     temperature_mode          = "liquidus_super"  # default; other modes: isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
-    tsurf_init                = 3000         # surface temperature [K] (isothermal, linear, adiabatic)
+    tsurf_init                = 3200         # surface temperature [K] (isothermal, linear, adiabatic)
     tcmb_init                 = 6000         # CMB temperature [K] (adiabatic_from_cmb)
     tcenter_init              = 6000         # center temperature [K] (linear only)
     delta_T_super             = 500.0        # superliquidus offset at CMB [K] (liquidus_super)
@@ -410,7 +410,7 @@ config_version = "3.0"
 # Outgassing (volatile partitioning between interior and atmosphere)
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = 2        # atmosphere/interior boundary oxidation state [log10(ΔIW)]
+    fO2_shift_IW    = 4        # atmosphere/interior boundary oxidation state [log10(ΔIW)]
 
     vapourise = true
 
@@ -481,7 +481,7 @@ config_version = "3.0"
     surf_greyalbedo           = 0.1          # grey surface albedo (used when agni.surf_material = "greybody")
 
     # Surface boundary condition
-    surf_state                = "skin"       # energy balance: mixed_layer | fixed | skin
+    surf_state                = "fixed"       # energy balance: mixed_layer | fixed | skin
     surface_d                 = 0.01         # conductive skin thickness [m]
     surface_k                 = 2.0          # conductive skin conductivity [W/m/K]
 
@@ -490,7 +490,7 @@ config_version = "3.0"
 
     [atmos_clim.agni]
         # Physics switches
-        solve_energy          = true         # iterative energy-conserving T(p) profile
+        solve_energy          = false         # iterative energy-conserving T(p) profile
         convection            = true         # convective adjustment (MLT)
         conduction            = false        # conductive heat transport (Fourier)
         sens_heat             = true         # sensible heat flux at surface

@@ -54,9 +54,6 @@ class TestPathsImporterInitialization:
                 from proteus.outgas.lavatmos import paths_importer
 
                 importer = paths_importer(mock_dirs)
-                # The env value is normalised (redundant separators collapsed) and
-                # given a single trailing separator, so it is idempotent to a
-                # trailing slash in the env var.
                 assert importer.lavatmos_dir == os.path.normpath(mock_lava_dir) + '/'
                 assert importer.wkdir == os.path.normpath(mock_lava_dir) + '/'
 

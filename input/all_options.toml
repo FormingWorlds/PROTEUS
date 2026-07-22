@@ -485,6 +485,8 @@ config_version = "3.0"
     [outgas.lavatmos]                        # rock vapour (requires vapourise = true)
         T_min                 = 1500.0       # minimum LavAtmos surface temperature [K]
         melt_comp_name        = "BSE_palm"   # melt composition file name (no extension)
+        P_melt                = 0.01         # pressure for melt activities [bar]
+        xatol                 = 1e-5         # absolute tolerance on the fO2 solve
 
 # Atmosphere climate (radiative-convective structure)
 [atmos_clim]

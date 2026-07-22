@@ -177,16 +177,22 @@ class Lavatmos:
     Attributes
     ----------
     T_min: float
-        Minimum surface temperature [K] handed to LavAtmos. The melt-vapour
-        equilibrium is not evaluated below this floor, so the outgassing
-        temperature is clamped up to it. Default 1500 K.
+        Minimum surface temperature [K] used by LavAtmos.
     melt_comp_name: str
-        Name of the melt composition file (without extension) read from the
-        LavAtmos ``lava_compositions`` directory. Default ``BSE_palm``.
+        Name of the melt composition file (without extension).
+    P_melt: float
+        Pressure used for melt activities [bar].
+    xatol: float
+        Absolute tolerance on fO2 solve used by LavAtmos.
     """
 
     T_min: float = field(default=1500.0, validator=validators.gt(0.0))
     melt_comp_name: str = field(default='BSE_palm')
+    P_melt: float = field(default=0.01, validator=validators.gt(0.0))
+    xatol: float = field(default=1e-5, validator=validators.gt(0.0))
+    fO2_buffer_model: str = field(
+        default='oneill', validator=validators.in_(('oneill', 'fischer'))
+    )
 
 
 @define

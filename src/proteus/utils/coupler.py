@@ -134,7 +134,7 @@ def _get_julia_version():
     Get the installed Julia version
     """
     try:
-        subprocess.check_output(['julia', '--version']).decode('utf-8').split()[-1]
+        return subprocess.check_output(['julia', '--version']).decode('utf-8').split()[-1]
     except FileNotFoundError:
         return 'unknown (julia not installed)'
 

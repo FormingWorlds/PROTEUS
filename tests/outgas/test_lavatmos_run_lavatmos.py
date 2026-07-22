@@ -261,7 +261,7 @@ def test_run_lavatmos_calls_vaporise(tmp_path, monkeypatch):
     create_melt_file(paths)
     fake_system, _ = install_fake_lavatmos(monkeypatch)
 
-    run_lavatmos({'a': 1}, 'CONFIG', {'log10_fO2_vapourise': -5}, {'H': 0.1}, True)
+    run_lavatmos({'a': 1}, make_config(), {'log10_fO2_vapourise': -5}, {'H': 0.1}, True)
 
     fake_system.vaporise.assert_called_once()
     # First iteration must not reuse the previous solve's fO2 as a warm start.
@@ -291,6 +291,13 @@ def make_magma():
         P_volatile=100,
         melt_fraction=0.8,
         run_name='test_run',
+    )
+
+
+def make_config(p_melt=0.01, xatol=1e-5):
+    """Config stub exposing the outgas.lavatmos fields run_lavatmos reads."""
+    return SimpleNamespace(
+        outgas=SimpleNamespace(lavatmos=SimpleNamespace(P_melt=p_melt, xatol=xatol))
     )
 
 
@@ -362,7 +369,7 @@ def test_run_lavatmos_calls_paths_importer(
 
     run_lavatmos(
         {'test': 1},
-        'config',
+        make_config(),
         {'log10_fO2_vapourise': -5},
         {},
         True,
@@ -409,15 +416,17 @@ def test_run_lavatmos_calls_set_magmaproperties(
 
     install_fake_lavatmos(monkeypatch)
 
+    config = make_config()
+
     run_lavatmos(
         {'a': 1},
-        'CONFIG',
+        config,
         {'log10_fO2_vapourise': -4},
         {'H': 0.1},
         True,
     )
 
-    assert captured['config'] == 'CONFIG'
+    assert captured['config'] is config
     assert captured['hf_row']['log10_fO2_vapourise'] == -4
     assert captured['volatile_fracs'] == {'H': 0.1}
     assert captured['dirs'] == {'a': 1}
@@ -446,7 +455,7 @@ def test_run_lavatmos_reads_melt_composition(
 
     run_lavatmos(
         {},
-        None,
+        make_config(),
         {'log10_fO2_vapourise': -5},
         {},
         True,
@@ -462,10 +471,12 @@ def test_run_lavatmos_reads_melt_composition(
 
 
 @pytest.mark.unit
-def test_run_lavatmos_sets_fixed_melt_pressure(
+def test_run_lavatmos_uses_config_melt_pressure(
     tmp_path,
     monkeypatch,
 ):
+    """The melt-activity pressure handed to vaporise comes from config, not a
+    hard-coded constant."""
     paths = make_paths(tmp_path)
 
     monkeypatch.setattr(
@@ -482,9 +493,11 @@ def test_run_lavatmos_sets_fixed_melt_pressure(
 
     fake_system, _ = install_fake_lavatmos(monkeypatch)
 
+    # Non-default value so the assertion proves config drives P_melt rather
+    # than matching the retired 0.01 bar constant.
     run_lavatmos(
         {},
-        None,
+        make_config(p_melt=0.05),
         {'log10_fO2_vapourise': -5},
         {},
         True,
@@ -492,7 +505,9 @@ def test_run_lavatmos_sets_fixed_melt_pressure(
 
     kwargs = fake_system.vaporise.call_args.kwargs
 
-    assert kwargs['P_melt'] == pytest.approx(0.01)
+    assert kwargs['P_melt'] == pytest.approx(0.05)
+    # Discrimination guard: the old hard-coded default would give 0.01.
+    assert kwargs['P_melt'] != pytest.approx(0.01)
 
 
 @pytest.mark.unit
@@ -518,7 +533,7 @@ def test_run_lavatmos_converts_fO2_guess(
 
     run_lavatmos(
         {},
-        None,
+        make_config(),
         {'log10_fO2_vapourise': -3},
         {},
         True,
@@ -552,7 +567,7 @@ def test_run_lavatmos_first_iteration_disables_previous_fO2(
 
     run_lavatmos(
         {},
-        None,
+        make_config(),
         {'log10_fO2_vapourise': -5},
         {},
         True,
@@ -584,7 +599,7 @@ def test_run_lavatmos_second_iteration_uses_previous_fO2(
 
     run_lavatmos(
         {},
-        None,
+        make_config(),
         {'log10_fO2_vapourise': -5},
         {},
         False,
@@ -594,10 +609,12 @@ def test_run_lavatmos_second_iteration_uses_previous_fO2(
 
 
 @pytest.mark.unit
-def test_run_lavatmos_sets_tolerance(
+def test_run_lavatmos_uses_config_tolerance(
     tmp_path,
     monkeypatch,
 ):
+    """The fO2-solve tolerance handed to vaporise comes from config, not a
+    hard-coded constant."""
     paths = make_paths(tmp_path)
 
     monkeypatch.setattr(
@@ -614,15 +631,19 @@ def test_run_lavatmos_sets_tolerance(
 
     fake_system, _ = install_fake_lavatmos(monkeypatch)
 
+    # Non-default value so the assertion proves config drives xatol rather
+    # than matching the retired 1e-5 constant.
     run_lavatmos(
         {},
-        None,
+        make_config(xatol=2e-6),
         {'log10_fO2_vapourise': -5},
         {},
         True,
     )
 
-    assert fake_system.vaporise.call_args.kwargs['xatol'] == pytest.approx(1e-5)
+    assert fake_system.vaporise.call_args.kwargs['xatol'] == pytest.approx(2e-6)
+    # Discrimination guard: the old hard-coded default would give 1e-5.
+    assert fake_system.vaporise.call_args.kwargs['xatol'] != pytest.approx(1e-5)
 
 
 @pytest.mark.unit
@@ -654,7 +675,7 @@ def test_run_lavatmos_output_filename(
 
     run_lavatmos(
         {},
-        None,
+        make_config(),
         {'log10_fO2_vapourise': -5},
         {},
         True,
@@ -694,7 +715,7 @@ def test_run_lavatmos_output_contents(
 
     run_lavatmos(
         {},
-        None,
+        make_config(),
         {'log10_fO2_vapourise': -5},
         {},
         True,
@@ -728,7 +749,7 @@ def test_run_lavatmos_missing_melt_file_raises(
     with pytest.raises(FileNotFoundError):
         run_lavatmos(
             {},
-            None,
+            make_config(),
             {'log10_fO2_vapourise': -5},
             {},
             True,

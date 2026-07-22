@@ -13,7 +13,6 @@ from calliope.oxygen_fugacity import OxygenFugacity
 # Local packages and paths
 # sys.path.insert(1,'wkdir')
 from proteus.utils.constants import (
-    const_k,
     const_Nav,
     electron_molar_mass,
     element_list,
@@ -31,7 +30,10 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
-# species db class comes from HELIOS code Kitzmann+2017
+
+# Constants
+H_NUMFRAC_FLOOR = 1e-9  # minimum H number fraction in LavAtmos input
+SURFACE_MELT_FRAC = 1.0  # melt fraction at the surface (LavAtmos input)
 
 
 # Custom modules
@@ -44,24 +46,13 @@ class paths_importer:
 
         """
 
-        # General directory structure. Rock-vapour outgassing needs both the
-        # LavAtmos checkout (LAVA_DIR) and the compiled FastChem (FC_DIR).
+        # General directory structure
         lava_dir = os.environ.get('LAVA_DIR')
+        if lava_dir is None:
+            raise ValueError('Environment variable "LAVA_DIR" is not set')
         fastchem_dir = os.environ.get('FC_DIR')
-        missing = [
-            name
-            for name, value in (('LAVA_DIR', lava_dir), ('FC_DIR', fastchem_dir))
-            if value is None
-        ]
-        if missing:
-            log.error(
-                'LavAtmos paths cannot be built: %s not set. Set these environment '
-                'variables (see the optional-modules installation guide) before '
-                'enabling outgas.vapourise.' % ' and '.join(missing)
-            )
-            raise ValueError(
-                'Rock-vapour outgassing requires %s to be set.' % ' and '.join(missing)
-            )
+        if fastchem_dir is None:
+            raise ValueError('Environment variable "FC_DIR" is not set')
 
         # Normalise so a trailing slash in the env var does not change any
         # derived path (os.path.normpath strips it).
@@ -71,6 +62,13 @@ class paths_importer:
         log.debug('LavAtmos Work directory set as: %s' % self.wkdir)
         self.input_dir = os.path.join(self.wkdir, 'input') + '/'
         self.lava_comps = os.path.join(self.input_dir, 'lava_compositions') + '/'
+
+        # Sanity check - does lava_comps exist?
+        if not os.path.exists(self.lava_comps):
+            raise ValueError(
+                f"Lava compositions directory '{self.lava_comps}' does not exist. "
+                'Please check your LAVA_DIR environment variable.'
+            )
 
         # FastChem 3
         self.fastchem3_dir = os.path.normpath(fastchem_dir) + '/'
@@ -115,24 +113,15 @@ class set_magmaproperties:
 
         # General directory structure
         paths = paths_importer(dirs)
-        # Import input. The surface temperature handed to LavAtmos is clamped up
-        # to the configured floor (the melt-vapour equilibrium is not evaluated
-        # below it).
-        T_min = config.outgas.lavatmos.T_min
-        if hf_row['T_magma'] > T_min:
-            self.T_surf = hf_row['T_magma']
-        else:
-            self.T_surf = T_min
+
+        # Import input from config
+        self.T_surf = max(config.outgas.lavatmos.T_min, hf_row['T_magma'])
         self.P_volatile = hf_row['P_surf']
         self.melt_comp_name = config.outgas.lavatmos.melt_comp_name
         self.output_dir = paths.output_dir
-        self.lavatmos_version = 'lavatmos3'
         self.run_name = 'proteus_run'
-        self.melt_fraction = 1.0
+        self.melt_fraction = SURFACE_MELT_FRAC
         self.volatile_comp = volatile_comp
-        # Saving volatile comp to csv for so that LavAtmos can read it later
-        # need to find better way to read in volatile composition that from a parameter dictionary maybe ?
-        log.debug('volatile composition in set_magmaproperties: ' + str(self.volatile_comp))
 
 
 class Species_db(object):
@@ -142,10 +131,6 @@ class Species_db(object):
         self.weight = weight  # weight in AMU or g/mol
 
 
-# (name, FastChem designation); species_lib is keyed by name (they always
-# match, so there is no separate key column). Molecular weights are derived
-# below from the FastChem formula and proteus.utils.constants.element_mmw, so
-# this table only needs to record composition, not weight.
 _SPECIES_TABLE = [
     # neutral molecules
     ('CO2', 'C1O2'),
@@ -314,7 +299,6 @@ def read_in_element_fracs(input_path, time, parameters):
         sep=r'\s+',  # split on any whitespace
         header=None,
     )
-    # shutil.copy(input_path + parameters['elementfile'], "/data3/leoni/PROTEUS/elementfiles/element_abundances_{}.dat".format(str(time)))
     # make first column the headers and second column the data row
     df = pd.DataFrame([df[1].values], columns=df[0].values)
 
@@ -348,6 +332,7 @@ def read_in_element_fracs_normalized(input_path):
     abundance_dict = dict(zip(df[0], df[1]))
     for key in abundance_dict.keys():
         if abundance_dict[key] != 0.0:
+            # lavatmos abundances are scaled by 1e20
             abundance_dict[key] = 10 ** (abundance_dict[key] - 12) / 1e20
         else:
             abundance_dict[key] = 0.0
@@ -376,9 +361,24 @@ def run_lavatmos(
     abundances and FastChem output that LavAtmos writes as a side effect.
 
     """
-    paths = paths_importer(dirs)
+
+    # Get paths from environment variables
+    try:
+        paths = paths_importer(dirs)
+    except ValueError as e:
+        UpdateStatusfile(dirs, 27)
+        raise RuntimeError(str(e))
+
+    # Import lavatmos
     sys.path.append(paths.lavatmos_dir)
-    import lavatmos3
+    try:
+        import lavatmos3
+    except ImportError as e:
+        UpdateStatusfile(dirs, 27)
+        raise RuntimeError(
+            f"Failed to import LavAtmos from '{paths.lavatmos_dir}'. "
+            'Please check your LAVA_DIR environment variable.'
+        ) from e
 
     Magma = set_magmaproperties(config, hf_row, volatile_fracs, dirs)
 
@@ -390,13 +390,13 @@ def run_lavatmos(
         melt_comp[melt_comp_df['spec'].loc[i]] = float(melt_comp_df['abund'].loc[i])
 
     # Pressure used for melt activities [bar]
-    P_melt = 0.01
+    P_melt = config.outgas.lavatmos.P_melt
 
     # Guess for fO2 [bar]
     fO2_initial_guess = 10 ** hf_row['log10_fO2_vapourise']
 
     # Lavatmos tolerance
-    xatol = 1e-5
+    xatol = config.outgas.lavatmos.xatol
 
     system = lavatmos3.melt_vapor_system(paths)
     lavatmos_output = system.vaporise(
@@ -433,12 +433,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     """
     paths = paths_importer(dirs)
 
-    # set element fractions in atmosphere for lavatmos run. The noble gases are
-    # passed through to LavAtmos/FastChem alongside the reactive volatiles so
-    # they enter the combined equilibrium (and are not dropped from the total
-    # pressure / atmospheric mass). Being on this list also keeps them out of
-    # the M_vaps rock-vapour sum below: they are inert atmospheric gas, not
-    # vaporised rock.
+    # set element fractions in atmosphere for lavatmos run.
     input_eles = ['H', 'C', 'N', 'S', 'O'] + noble_gases
     hf_row['M_vaps'] = 0.0
 
@@ -452,12 +447,12 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     for e in input_eles:
         if total_mols > 0:
             if e == 'H':
-                nfrac[e] = max(molfracs[e] / total_mols, 1e-9)
+                nfrac[e] = max(molfracs[e] / total_mols, H_NUMFRAC_FLOOR)
             else:
                 nfrac[e] = molfracs[e] / total_mols
         else:
             if e == 'H':
-                nfrac[e] = 1e-9
+                nfrac[e] = H_NUMFRAC_FLOOR
             else:
                 nfrac[e] = 0.0
     log.debug('volatile element fractions going as input to lavatmos : %s', nfrac)
@@ -493,25 +488,10 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     kg_pp_new = mu_outgassed / const_Nav * 1e-3  # kg per particle
     log.debug('new kg per particle: %.4e' % kg_pp_new)
 
-    G_const = 6.67430e-11  # m^3 kg^-1 s^-2
-    gravity = G_const * hf_row['M_planet'] / (hf_row['R_int'] * (10**-2)) ** 2
-    Hshell = (
-        const_k * hf_row['T_magma'] / (kg_pp_new * gravity)
-    )  # scale height of the atmosphere in m
-
-    # New atmospheric mass from the hydrostatic column relation M = P_surf * A / g,
-    # exact for a thin atmosphere with constant g. This uses the total (volatile +
-    # rock-vapour) surface pressure directly rather than scaling the previous mass by
-    # a pressure ratio, so it needs neither the stale prior mass nor a cold-start
-    # special case.
-    R_m = hf_row['R_int'] * 1e-2  # R_int stored in cm -> m
-    area = 4.0 * np.pi * R_m**2
+    # New atmospheric mass from the hydrostatic relation
+    area = 4.0 * np.pi * hf_row['R_int'] ** 2
     P_surf_new_Pa = new_atmos_abundances['Pbar'][0] * 1e5  # bar -> Pa
-    M_atmo_new = P_surf_new_Pa * area / gravity
-
-    log.info('scale height of the atmosphere: %.2e' % Hshell)
-    log.info('old atmospheric mass:%.2e' % hf_row['M_atm'])
-    log.info('new atmospheric mass:%.2e' % M_atmo_new)
+    M_atmo_new = P_surf_new_Pa * area / hf_row['gravity']  # kg
 
     # Read the combined composition back for every reactive volatile, rock-vapour
     # species, and noble gas so nothing modelled is dropped from the atmosphere.
@@ -519,10 +499,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
 
     # Split the new total surface pressure into a volatile part (P_vol) and a
     # rock-vapour part (P_vap). P_vap is the excess of the LavAtmos+FastChem total
-    # over the volatile-only pressure that went in; it cannot be negative. A
-    # negative value signals the FastChem total fell below the input volatile
-    # pressure (numerical, or net condensation), so clamp it to zero and derive
-    # P_vol so that P_vol + P_vap == P_surf holds exactly.
+    # over the volatile-only pressure that went in; it cannot be negative.
     P_surf_new = new_atmos_abundances['Pbar'][0]
     Poutgas = P_surf_new - hf_row['P_surf']  # rock-vapour pressure contribution
     if Poutgas < 0.0:
@@ -536,10 +513,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     hf_row['P_vap'] = Poutgas
     hf_row['P_vol'] = P_surf_new - Poutgas  # == old P_surf when Poutgas >= 0
 
-    # Update the tracked atmospheric mean molar mass to the combined
-    # (volatile + rock-vapour) value from FastChem so *_mol_atm below is
-    # consistent with the post-vapourisation atmosphere rather than the stale
-    # volatile-only molar mass. mu_outgassed is in u (g/mol); store kg/mol.
+    # Update the tracked atmospheric MMW = volatile + rock-vapour
     hf_row['atm_kg_per_mol'] = mu_outgassed * 1e-3
 
     mmw_elements = 0
@@ -613,7 +587,7 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
     hf_row['M_vaps'] += (
         Omass_after_outgas - hf_row['O_kg_atm']
     )  # add outgassed oxygen mass to elemental vapour species mass
-    log.info(
+    log.debug(
         'added oxygen from outagssing to initial O budget in atmosphere [kg]: %.4e ',
         Omass_after_outgas - hf_row['O_kg_atm'],
     )
@@ -627,13 +601,11 @@ def compute_silicate_outgassing(dirs: dict, config: Config, hf_row: dict, first_
         psurf = 1e-10
     else:
         psurf = new_atmos_abundances['Pbar'][0]
-    log10_fO2 = np.log10(pO2) + np.log10(
-        psurf
-    )  # is this really partical pressure ? Maybe this is actually abundances
+    log10_fO2 = np.log10(pO2) + np.log10(psurf)
 
     # OxygenFugacity(T, fO2_shift=0) returns the absolute buffer value
     # IW(T); the shift relative to that buffer is log10_fO2 - IW(T).
-    iw_buffer = OxygenFugacity(model='oneill')
+    iw_buffer = OxygenFugacity(model=config.outgas.lavatmos.fO2_buffer_model)
     hf_row['log10_fO2_vapourise'] = log10_fO2
     hf_row['log10_fO2_shift_vapourise'] = log10_fO2 - iw_buffer(hf_row['T_magma'])
     hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
