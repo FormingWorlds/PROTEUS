@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import const_R, const_sigma, vap_list, vol_list
+from proteus.utils.constants import const_R, const_sigma, gas_list
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -18,11 +18,6 @@ log = logging.getLogger('fwl.' + __name__)
 # Run the dummy atmosphere module
 def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     # Gas composition for escape equal to surface composition
-    if config.outgas.vapourise:
-        gas_list = vol_list + vap_list
-    else:
-        gas_list = vol_list
-
     log.debug('Running dummy atmosphere...')
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.

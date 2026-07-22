@@ -105,7 +105,6 @@ def test_get_helpfile_keys_contains_required_keys():
 @pytest.mark.unit
 def test_get_helpfile_keys_includes_gas_species():
     """Test that GetHelpfileKeys includes species from gas_list."""
-    MagicMock()
     keys = GetHelpfileKeys()
 
     # Check for at least H2O and CO2
@@ -148,7 +147,6 @@ def test_get_helpfile_keys_no_duplicates():
 @pytest.mark.unit
 def test_zero_helpfile_row_returns_dict():
     """Test that ZeroHelpfileRow returns a dictionary."""
-    MagicMock()
     row = ZeroHelpfileRow()
     assert isinstance(row, dict)
     # Discriminating check: the row is non-empty (carries every helpfile column
@@ -187,7 +185,6 @@ def test_zero_helpfile_row_has_correct_keys():
 @pytest.mark.unit
 def test_create_helpfile_from_dict_creates_dataframe():
     """Test that CreateHelpfileFromDict creates a pandas DataFrame."""
-    MagicMock()
     row = ZeroHelpfileRow()
     row['Time'] = 1.0
     row['T_surf'] = 300.0
@@ -200,7 +197,6 @@ def test_create_helpfile_from_dict_creates_dataframe():
 @pytest.mark.unit
 def test_create_helpfile_from_dict_preserves_values():
     """Test that CreateHelpfileFromDict preserves input values."""
-    MagicMock()
     row = ZeroHelpfileRow()
     row['Time'] = 1.5e9
     row['T_surf'] = 350.0
@@ -237,7 +233,6 @@ def test_create_helpfile_from_dict_has_all_keys():
 def test_extend_helpfile_appends_row():
     """Test that ExtendHelpfile appends a new row to helpfile."""
     # Create initial helpfile
-    MagicMock()
     row1 = ZeroHelpfileRow()
     row1['Time'] = 0.0
     hf = CreateHelpfileFromDict(row1)
@@ -257,7 +252,6 @@ def test_extend_helpfile_appends_row():
 @pytest.mark.unit
 def test_extend_helpfile_multiple_rows():
     """Test that ExtendHelpfile works with multiple sequential extensions."""
-    MagicMock()
     row1 = ZeroHelpfileRow()
     row1['Time'] = 0.0
     hf = CreateHelpfileFromDict(row1)
@@ -277,7 +271,6 @@ def test_extend_helpfile_multiple_rows():
 @pytest.mark.unit
 def test_extend_helpfile_validates_keys():
     """Test that ExtendHelpfile raises error for missing keys."""
-    MagicMock()
     row1 = ZeroHelpfileRow()
     hf = CreateHelpfileFromDict(row1)
 
@@ -300,7 +293,6 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     like ``core_state_initial`` are also skipped."""
     import logging
 
-    MagicMock()
     row = ZeroHelpfileRow()
     row['_T_magma_raw'] = 3000.0  # private transient key: must not warn
     row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
@@ -320,7 +312,6 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
 @pytest.mark.unit
 def test_extend_helpfile_preserves_dataframe_order():
     """Test that ExtendHelpfile preserves row order."""
-    MagicMock()
     row1 = ZeroHelpfileRow()
     row1['Time'] = 0.0
     hf = CreateHelpfileFromDict(row1)
@@ -351,14 +342,12 @@ def test_write_helpfile_to_csv_creates_file():
     """Test that WriteHelpfileToCSV creates a CSV file."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create helpfile
-        MagicMock()
         row = ZeroHelpfileRow()
         row['Time'] = 1.0
         row['T_surf'] = 300.0
         hf = CreateHelpfileFromDict(row)
 
         # Write to CSV
-        MagicMock()
         fpath = WriteHelpfileToCSV(tmpdir, hf)
 
         # Verify file exists
@@ -370,14 +359,12 @@ def test_write_helpfile_to_csv_creates_file():
 @pytest.mark.unit
 def test_write_helpfile_to_csv_contains_data():
     """Test that WriteHelpfileToCSV writes correct data to file."""
-    MagicMock()
     with tempfile.TemporaryDirectory() as tmpdir:
         row = ZeroHelpfileRow()
         row['Time'] = 1.5
         row['T_surf'] = 350.5
         hf = CreateHelpfileFromDict(row)
 
-        MagicMock()
         WriteHelpfileToCSV(tmpdir, hf)
 
         # Read back and verify
@@ -391,20 +378,17 @@ def test_write_helpfile_to_csv_contains_data():
 @pytest.mark.unit
 def test_write_helpfile_to_csv_overwrites_existing():
     """Test that WriteHelpfileToCSV overwrites existing file."""
-    MagicMock()
     with tempfile.TemporaryDirectory() as tmpdir:
         # Write first helpfile
         row1 = ZeroHelpfileRow()
         row1['Time'] = 1.0
         hf1 = CreateHelpfileFromDict(row1)
-        MagicMock()
         WriteHelpfileToCSV(tmpdir, hf1)
 
         # Write second helpfile (should overwrite)
         row2 = ZeroHelpfileRow()
         row2['Time'] = 2.0
         hf2 = CreateHelpfileFromDict(row2)
-        MagicMock()
         WriteHelpfileToCSV(tmpdir, hf2)
 
         # Verify only latest data is in file
@@ -418,7 +402,6 @@ def test_write_helpfile_to_csv_overwrites_existing():
 @pytest.mark.unit
 def test_write_and_read_helpfile_roundtrip():
     """Test that helpfile survives write and read cycle."""
-    MagicMock()
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create and write
         row = ZeroHelpfileRow()
@@ -518,7 +501,6 @@ def test_read_helpfile_from_csv_missing_file():
 @pytest.mark.unit
 def test_write_helpfile_multiple_rows_roundtrip():
     """Test that multiple rows survive write and read cycle."""
-    MagicMock()
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create helpfile with multiple rows
         row1 = ZeroHelpfileRow()
@@ -532,7 +514,6 @@ def test_write_helpfile_multiple_rows_roundtrip():
             hf = ExtendHelpfile(hf, row)
 
         # Write and read
-        MagicMock()
         WriteHelpfileToCSV(tmpdir, hf)
         hf_read = ReadHelpfileFromCSV(tmpdir)
 
@@ -612,7 +593,6 @@ def test_lock_file_contains_message():
 @pytest.mark.unit
 def test_print_current_state_with_valid_row():
     """Test that PrintCurrentState accepts valid helpfile row."""
-    MagicMock()
     hf_row = ZeroHelpfileRow()
     hf_row['Time'] = 1.0e8
     hf_row['T_surf'] = 287.0
@@ -637,7 +617,6 @@ def test_print_current_state_with_valid_row():
 @pytest.mark.unit
 def test_print_current_state_includes_time():
     """Test that PrintCurrentState includes Time in output."""
-    MagicMock()
     hf_row = ZeroHelpfileRow()
     hf_row['Time'] = 1.5e8
 
@@ -657,7 +636,6 @@ def test_print_current_state_includes_time():
 @pytest.mark.unit
 def test_print_current_state_includes_temperatures():
     """Test that PrintCurrentState includes T_surf and T_magma."""
-    MagicMock()
     hf_row = ZeroHelpfileRow()
     hf_row['T_surf'] = 300.5
     hf_row['T_magma'] = 2500.3
@@ -739,7 +717,6 @@ def test_get_current_time_format_consistency():
 @pytest.mark.unit
 def test_helpfile_with_realistic_earth_values():
     """Test helpfile with realistic modern Earth values."""
-    MagicMock()
     row = ZeroHelpfileRow()
 
     # Modern Earth parameters
@@ -762,7 +739,6 @@ def test_helpfile_with_realistic_earth_values():
 @pytest.mark.unit
 def test_helpfile_with_extreme_values():
     """Test helpfile with extreme but physically valid values."""
-    MagicMock()
     row = ZeroHelpfileRow()
 
     # Ultra-hot planet
@@ -782,7 +758,6 @@ def test_helpfile_with_extreme_values():
 @pytest.mark.unit
 def test_helpfile_float_precision():
     """Test that helpfile preserves floating-point precision."""
-    MagicMock()
     row = ZeroHelpfileRow()
 
     # Use a value with many significant figures
@@ -804,7 +779,6 @@ def test_helpfile_float_precision():
 def test_helpfile_scientific_notation_consistency():
     """Test that scientific notation values are consistent."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        MagicMock()
         row = ZeroHelpfileRow()
         row['Time'] = 1.234e8  # yr
         row['M_planet'] = 5.972e24  # kg
@@ -1104,7 +1078,6 @@ def test_write_helpfile_validates_missing_keys():
         df = pd.DataFrame({'Time': [1.0]})  # Missing all other required keys
 
         with pytest.raises(Exception, match='mismatched keys'):
-            MagicMock()
             WriteHelpfileToCSV(tmpdir, df)
         # Discrimination: the validation must short-circuit BEFORE writing
         # the CSV. A regression that wrote first and then raised would
@@ -1115,7 +1088,6 @@ def test_write_helpfile_validates_missing_keys():
 @pytest.mark.unit
 def test_zero_helpfile_row_is_immutable_structure():
     """Test that ZeroHelpfileRow returns new dict each time."""
-    MagicMock()
     row1 = ZeroHelpfileRow()
     row2 = ZeroHelpfileRow()
 
@@ -1162,7 +1134,6 @@ def test_create_lock_file_with_absolute_path():
 @pytest.mark.unit
 def test_extend_helpfile_preserves_dtype():
     """Test that ExtendHelpfile preserves float dtype."""
-    MagicMock()
     row1 = ZeroHelpfileRow()
     row1['Time'] = 1.0
     hf = CreateHelpfileFromDict(row1)
@@ -1183,7 +1154,6 @@ def test_extend_helpfile_preserves_dtype():
 @pytest.mark.unit
 def test_helpfile_handles_large_time_values():
     """Test that helpfile handles large time values (Gyr scale)."""
-    MagicMock()
     row = ZeroHelpfileRow()
     row['Time'] = 4.567e9  # 4.567 Gyr (age of Earth)
     hf = CreateHelpfileFromDict(row)
@@ -1200,7 +1170,6 @@ def test_helpfile_handles_large_time_values():
 @pytest.mark.unit
 def test_helpfile_handles_negative_fluxes():
     """Test that helpfile handles negative flux values (heat loss)."""
-    MagicMock()
     row = ZeroHelpfileRow()
     row['F_int'] = -50.0  # negative = heat loss from interior
     row['F_atm'] = -100.0  # negative = net radiative cooling
@@ -1322,7 +1291,6 @@ def test_populate_energy_residual_inactive_when_E_state_cons_zero():
     stay at 0.0, NEVER NaN, even when step deltas happen to be non-zero.
     NaN would propagate into cumulative sums and silently corrupt
     downstream rows."""
-    MagicMock()
     hf = CreateHelpfileFromDict(_aragog_row(time_yr=0.0, E_state_cons_J=0.0))
     new_row = _aragog_row(
         time_yr=1.0,
@@ -1378,7 +1346,6 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
     fact that step_solver_residual_J is itself the per-call increment.
     """
 
-    MagicMock()
     E0 = 1.0e31
     # Three asymmetric increments, all sources active.
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
@@ -1466,7 +1433,6 @@ def test_populate_energy_residual_ignores_instantaneous_F_cmb_spike():
     bug pattern) but the per-call step delta is physical; assert the
     cumulative is governed by the step delta alone."""
     E0 = 1.0e31
-    MagicMock()
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
@@ -1529,7 +1495,6 @@ def test_populate_energy_residual_residual_detects_missing_source():
     and magnitude both meaningful. Catches a regression where the helper
     would silently zero residuals or apply the wrong sign convention."""
     E0 = 1.0e31
-    MagicMock()
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 

@@ -142,6 +142,8 @@ Rock-vapour outgassing parameters, used when `outgas.vapourise = true`. Requires
 |-----------|------|---------|-------------|
 | `T_min` | float | `1500.0` | Minimum LavAtmos surface temperature \[K]; the outgassing temperature is clamped up to this floor |
 | `melt_comp_name` | str | `"BSE_palm"` | Melt composition file name (without extension), read from the LavAtmos `lava_compositions` directory |
+| `P_melt` | float | `0.01` | Pressure used for melt activities \[bar] |
+| `xatol` | float | `1e-5` | Absolute tolerance on the fO$_2$ solve passed to LavAtmos |
 
 ---
 
