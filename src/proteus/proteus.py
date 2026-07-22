@@ -98,6 +98,9 @@ class Proteus:
         self.star_wl = None
         self.star_fl = None
 
+        # Giant impacts scheduled for this run, empty when accretion is off
+        self.impact_events: list = []
+
         # Time at which star was last updated
         self.sspec_prev = -np.inf  # spectrum
         self.sinst_prev = -np.inf  # instellation and radius
@@ -269,6 +272,8 @@ class Proteus:
 
         # Import things needed to run PROTEUS
         #    atmospheric chemistry
+        #    giant-impact accretion
+        from proteus.accretion.wrapper import init_accretion
         from proteus.atmos_chem.wrapper import run_chemistry
 
         #    atmosphere solver
@@ -704,6 +709,10 @@ class Proteus:
 
         # Prepare orbit stuff
         init_orbit(self)
+
+        # Prepare the giant-impact timeline. Fixed at initialisation and
+        # consulted on every step, like the stellar evolution track.
+        self.impact_events = init_accretion(self)
 
         # Track the last simulation time at which data was written to disk,
         # so that dt_write_rel can suppress high-frequency writes during

@@ -101,7 +101,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'accretion.morrigan.selector',
         'accretion.morrigan.selector_value',
         'accretion.morrigan.spacing',
-        'accretion.morrigan.time_offset',
+        'accretion.time_offset',
         'atmos_clim.aerosols_enabled',
         'atmos_clim.agni.grey_opacity_lw',
         'atmos_clim.agni.grey_opacity_sw',

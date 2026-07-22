@@ -454,8 +454,10 @@ def print_citation(config: Config):
         case _:
             pass
 
-    # Delivery module
+    # Accretion module
     match config.accretion.module:
+        case 'morrigan':
+            _cite('Kimura et al. (2025)', 'https://doi.org/10.3847/1538-4357/ade992')
         case _:
             pass
 

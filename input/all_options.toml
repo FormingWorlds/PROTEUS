@@ -579,6 +579,7 @@ config_version = "3.0"
 # Giant-impact accretion and delivery
 [accretion]
     module                    = "none"       # none | dummy | morrigan
+    time_offset               = 0.0          # shift of impact times onto the PROTEUS time axis [yr]
 
     # Volatile content of each impactor [ppmw of impactor mass].
     # Zero means impactors add silicate and iron mass only.
@@ -602,7 +603,6 @@ config_version = "3.0"
         inner_cutoff          = 0.005        # perihelion counting as lost to the star [AU]
         selector              = "match_config"  # match_config | mass | semimajoraxis | id
         selector_value        = "none"       # target orbit [AU] or embryo id, per selector
-        time_offset           = 0.0          # shift of Morrigan event times onto PROTEUS time [yr]
 
     [accretion.dummy]
         timeline_path         = "none"       # impact timeline file to replay

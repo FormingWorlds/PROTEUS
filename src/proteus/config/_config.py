@@ -106,6 +106,13 @@ def check_module_dependencies(instance, attribute, value):
             'escape.module = "boreas" requires the optional boreas package. '
             'Install it with: bash tools/get_boreas.sh',
         ),
+        'morrigan': (
+            instance.accretion.module == 'morrigan',
+            'morrigan',
+            'accretion.module = "morrigan" requires the morrigan package, which '
+            'runs the giant-impact model. Install it with: '
+            'git clone git@github.com:FormingWorlds/Morrigan && pip install -e Morrigan/.',
+        ),
     }
 
     for name, (needed, pkg, msg) in checks.items():
