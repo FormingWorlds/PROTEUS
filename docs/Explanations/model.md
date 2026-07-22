@@ -100,6 +100,14 @@ The escape module computes atmospheric mass loss rates driven by the stellar XUV
 
 **[ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS)** (Python) implements energy-limited escape, computing a bulk mass loss rate from the XUV flux, planet mass, and XUV absorption radius. The bulk rate is then distributed across elements proportionally to their atmospheric abundance (unfractionated escape). ZEPHYRUS also provides a tidal correction factor for planets in close-in orbits.
 
+### Weakly bound initial envelopes
+
+Energy-limited escape assumes the atmosphere is bound tightly enough that stellar XUV heating drives the outflow. A planet whose envelope extends towards its Bondi radius instead loses mass through a wind powered by the envelope's own thermal energy, and the energy-limited rate stops being an upper bound on the loss. That phase completes long before the epoch PROTEUS integrates, so an initial condition still carrying an inflated envelope describes a state that would already have been shed.
+
+Setting `escape.boiloff_ic` scales the whole-planet volatile inventory down to the fraction of the envelope that survives, before the first outgassing call, so the evolution starts from a bound envelope. All elements are scaled by the same factor, leaving the configured elemental ratios unchanged, and the reduced inventory is re-partitioned between atmosphere and melt by the next outgassing call. The correction re-evaluates on each initialisation pass, and the mass it removes is recorded in the `M_boiloff_kg` output column. It is disabled by default.
+
+The surviving fraction follows Owen & Wu (2016) and is decided on the ratio of planet radius to Bondi radius. The restricted Jeans parameter of Fossati et al. (2017) is reported alongside it in the log for context. The two criteria are quoted in the literature as equivalent at a Jeans value of 20, but that equivalence holds only when both are evaluated for atomic hydrogen, so only the radius ratio governs the trim.
+
 Config section: `[escape]`. Reference: [Escape and outgassing configuration](../Reference/config/escape_outgas.md).
 
 ## Volatile outgassing: CALLIOPE, atmodeller
