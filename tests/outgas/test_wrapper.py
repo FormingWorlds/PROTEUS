@@ -15,9 +15,8 @@ Physics tested:
 - Mean molecular weight calculation (atm_kg_per_mol)
 
 Related documentation:
-- docs/test_infrastructure.md: Testing standards and structure
-- docs/test_categorization.md: Test classification criteria
-- docs/test_building.md: Best practices for test implementation
+- docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
+- docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 
 Mocking strategy:
 - Mock all CALLIOPE functions (calc_surface_pressures, calc_target_masses) to isolate wrapper logic
@@ -412,26 +411,11 @@ def test_run_outgassing_atmosphere_mass_conservation():
     config.outgas.module = 'calliope'
     config.planet.fO2_source = 'user_constant'
 
-    # Setup with known gas masses for all gases in gas_list
+    # Setup with known, distinct gas masses for every species in gas_list.
+    # The masses decrease geometrically so each species contributes a
+    # different amount to M_atm, and the list adapts to the gas_list length.
     hf_row = {}
-    # gas_list has 15 elements, use decreasing masses
-    gas_masses = [
-        1e20,
-        5e19,
-        2e19,
-        1e18,
-        5e17,
-        3e17,
-        1e17,
-        5e16,
-        1e16,
-        1e15,
-        1e14,
-        1e13,
-        1e12,
-        1e11,
-        1e10,
-    ]
+    gas_masses = [1e20 / (2.0**i) for i in range(len(gas_list))]
     for i, s in enumerate(gas_list):
         hf_row[s + '_kg_atm'] = gas_masses[i]
         hf_row[s + '_vmr'] = 0.1 / len(gas_list)  # Equal fractional mixing
@@ -697,6 +681,12 @@ def test_run_outgassing_mixed_species_dominance():
         'SO2_kg_atm': 0.0,
         'H2S_kg_atm': 0.0,
         'SiO_kg_atm': 0.0,
+        # Noble gases are gas_list members; none present in this case.
+        'He_kg_atm': 0.0,
+        'Ne_kg_atm': 0.0,
+        'Ar_kg_atm': 0.0,
+        'Kr_kg_atm': 0.0,
+        'Xe_kg_atm': 0.0,
     }
 
     for s in gas_list:

@@ -29,29 +29,14 @@ from botorch.exceptions.warnings import OptimizationWarning
 from proteus.inference import BO as bo_mod
 from proteus.inference.utils import get_kernel_w_prior
 
+from ._bo_helpers import make_quadratic_objective
+
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 # ---------------------------------------------------------------------------
 # Synthetic objectives
 # ---------------------------------------------------------------------------
-def make_quadratic_objective(target: torch.Tensor):
-    """Return f(x) = -||x - target||^2.
-
-    The minimum of `||x - target||^2` is 0 at x = target. The negation
-    gives a maximum of 0 at x = target, which matches the BO scheme's
-    convention (maximize Y). Returns a torch tensor shaped like
-    `(1,)` to satisfy the BO_step contract.
-    """
-
-    def _f(x: torch.Tensor) -> torch.Tensor:
-        # x is shape (1, d)
-        diff = x.flatten() - target
-        return -(diff * diff).sum().unsqueeze(0)
-
-    return _f
-
-
 # ---------------------------------------------------------------------------
 # BO loop helper
 # ---------------------------------------------------------------------------
@@ -300,12 +285,12 @@ def test_bo_step_rejects_unknown_acquisition():
     documented acquisitions."""
     target = torch.tensor([0.5, 0.5], dtype=torch.double)
     objective = make_quadratic_objective(target)
-    with pytest.raises(ValueError, match=r'Unknown acquisition function: not-a-real-acqf'):
+    with pytest.raises(ValueError, match=r'Unsupported acquisition function: not-a-real-acqf'):
         _run_bo_loop(objective, d=2, n_init=3, n_iter=1, acqf='not-a-real-acqf', seed=4)
     # Discrimination: a known-good acqf in the same harness must complete
     # without raising AND grow the dataset by exactly one iteration.
     # Without this paired call, a regression that raised
-    # `ValueError('Unknown acquisition function')` for EVERY acqf would
+    # `ValueError('Unsupported acquisition function')` for EVERY acqf would
     # still pass the test above; without the shape pin, a regression that
     # returned an empty X tensor would also pass.
     X_ok, _ = _run_bo_loop(objective, d=2, n_init=3, n_iter=1, acqf='LogEI', seed=4)
@@ -328,35 +313,3 @@ def test_bo_handles_constant_objective_without_crashing():
     assert torch.allclose(Y, torch.zeros_like(Y))
     # X must have advanced
     assert X.shape[0] == 3 + 3
-
-
-# ---------------------------------------------------------------------------
-# Sanity: the helper objective itself is correct
-# ---------------------------------------------------------------------------
-# This test deliberately carries TWO tier markers: the module-level
-# `pytestmark = pytest.mark.slow` plus a function-level `@pytest.mark.unit`.
-# Pytest applies both, so the test matches BOTH the `unit` PR-CI filter
-# AND the `slow` nightly filter. The unit-tier inclusion is intentional:
-# the convergence tests above all rely on this synthetic objective being
-# correct, so a bug here would invalidate the whole file silently in
-# nightly. Running it in PR CI keeps the helper honest at fast tier.
-@pytest.mark.unit
-def test_quadratic_objective_returns_zero_at_target():
-    """The synthetic objective evaluates to exactly 0 at its target point.
-
-    If the helper itself were buggy, the convergence tests above would
-    test nothing meaningful, so this sanity check is the gate at PR CI
-    that prevents a silent helper-level regression.
-    """
-    target = torch.tensor([0.3, 0.7], dtype=torch.double)
-    objective = make_quadratic_objective(target)
-    y_at_target = objective(target.unsqueeze(0))
-    assert y_at_target.item() == pytest.approx(0.0, abs=1e-12)
-    # Off-target value is strictly negative
-    y_off = objective(torch.tensor([[0.0, 0.0]], dtype=torch.double))
-    assert y_off.item() < 0
-    # Quadratic: doubling the distance quadruples the magnitude
-    y_far = objective(torch.tensor([[0.6, 0.4]], dtype=torch.double))
-    y_near = objective(torch.tensor([[0.45, 0.55]], dtype=torch.double))
-    # ratio of (far-target)^2 to (near-target)^2 = ((0.3,0.3))^2 / ((0.15,0.15))^2 = 4
-    assert y_near.item() / y_far.item() == pytest.approx(0.25, rel=1e-9)

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import glob
+import json
 import logging
 import os
 import subprocess
@@ -19,7 +20,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
+from proteus.utils.constants import (
+    element_list,
+    gas_list,
+    noble_gases,
+    secs_per_hour,
+    secs_per_minute,
+)
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
 
@@ -369,11 +376,12 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info('Atmos_chem module %s' % config.atmos_chem.module)
 
     # Observations synthesis module
-    write = 'Observe module    %s' % config.observe.synthesis
-    if config.observe.synthesis == 'platon':
-        from platon import __version__ as platon_version
+    write = 'Observe module    %s' % config.observe.module
+    if config.observe.module == 'petitRADTRANS':
+        from petitRADTRANS import __version__ as obs_version
 
-        write += ' version ' + platon_version
+        write += ' version ' + obs_version
+
     log.info(write)
 
     # End spacer
@@ -452,9 +460,9 @@ def print_citation(config: Config):
             pass
 
     # Observations synthesis module
-    match config.observe.synthesis:
-        case 'platon':
-            _cite('Zhang et al. (2024)', 'https://doi.org/10.48550/arXiv.2410.22398')
+    match config.observe.module:
+        case 'petitRADTRANS':
+            _cite('Mollière et al. (2019)', 'https://doi.org/10.1051/0004-6361/201935470')
         case _:
             pass
 
@@ -543,7 +551,9 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
 
     # Invariant 2: M_atm stays in sync with the per-species kg_atm fields it
     # is summed from. This guards against a future reordering that mutates a
-    # species kg_atm after M_atm is computed without refreshing M_atm.
+    # species kg_atm after M_atm is computed without refreshing M_atm. The
+    # noble gases are members of gas_list, so their atmospheric mass is
+    # counted here and in M_atm alike.
     summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
     if M_atm > 0.0:
         rel = abs(summed - M_atm) / M_atm
@@ -627,6 +637,7 @@ def GetHelpfileKeys():
         'core_density',     # core density from structure solver [kg m-3]
         'core_heatcap',     # core heat capacity [J kg-1 K-1]
         'X_H2_int',         # H2 mass fraction in interior (sub-Neptune mode) [1]
+        'struct_mass_desync_frac',  # |trapezoid - ODE accumulator| / accumulator structure mass self-consistency [1]
 
         # Temperatures
         'T_surf',           # global surface temperature [K]
@@ -671,54 +682,62 @@ def GetHelpfileKeys():
         'T_pot',            # characteristic mantle potential temperature [K]
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
-        # Energy-conservation columns (Aragog A1+A2 + per-call integrals).
-        # ``E_state_cons_J`` is the canonical conservation-grade integrated
-        # mantle enthalpy: ``Σ h(P,S) × ρ_struct × V`` with the FROZEN
-        # structural mass weighting from ``mesh.staggered_effective_density
-        # × volume``. Pairs with ``dE_predicted_cons_J`` (cumulative sum
-        # of ``step_dE_F_int_J + step_dE_F_cmb_J + step_dE_Q_radio_cons_J
-        # + step_dE_Q_tidal_cons_J``) for the running residual:
-        #   E_residual_cons_J  = (E_state_cons - E_state_cons[0]) - dE_predicted_cons_J
-        #   E_residual_cons_frac = E_residual_cons_J / max(|ΔE_state_cons|, 1 J)
-        # Closes to ~5 % of total cooling and ~2 % of initial reservoir
-        # over multi-Myr trajectories. The state-mass enthalpy
-        # ``E_state_J`` is reported as a diagnostic snapshot only; do
-        # NOT use it for residual checks. State-dependent ``ρ(P,S) × V``
-        # mass weighting introduces a non-conservation cross term that
-        # grows with mantle cooling, so a residual built on
-        # ``E_state_J`` would conflate that frame artefact with real
-        # numerical drift.
-        # ``solver_residual_J`` is the cumulative entropy-ODE LHS-RHS
-        # residual over the trajectory and closes to machine precision
-        # (~1e-7 of total cooling); it is the rigorous solver-correctness
-        # check. ``E_th_mantle`` is the legacy ``m × Cp_apparent × T``
-        # proxy with phase-dependent jumps in the mushy zone -- not for
-        # conservation use. ``Q_radio_W`` / ``Q_tidal_W`` are instantaneous
-        # mantle-integrated source powers in watts (do NOT integrate
-        # trapezoidally; spike-prone at CVODE phase-boundary moments).
-        # ``F_cmb`` is the analogous instantaneous CMB heat flux. The
-        # conservation primitive is the per-call integral set computed by
+        # Energy-conservation columns: per-call integrals plus their
+        # cumulative residual. The residual pairs the entropy-transported
+        # heat (state side) against the boundary-flux and source prediction
+        # (predicted side), both in the live EOS density frame ``ρ(P,S)``:
+        #   E_state_heat_cons_J = Σ step_dE_state_heat_J across rows [J]
+        #   dE_predicted_cons_J = Σ (step_dE_F_int_J + step_dE_F_cmb_J
+        #                            + step_dE_Q_radio_J + step_dE_Q_tidal_J)
+        #   E_residual_cons_J   = E_state_heat_cons_J - dE_predicted_cons_J
+        #   E_residual_cons_frac = E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J)
+        # This closes to about a percent of the cumulative cooling (largest
+        # near full melt and at crystallisation-front / structure-remesh
+        # steps), not to machine precision; that floor is the lever-rule
+        # vs tanh-blended phase density difference. The ``_cons`` suffix on
+        # these column names pairs them for readability and does not mean
+        # they use the frozen-mass ``step_dE_Q_*_cons_J`` variants.
+        # ``E_state_cons_J`` (frozen-mass enthalpy) and ``E_state_J``
+        # (state-mass enthalpy) are diagnostic snapshots only; do NOT build a
+        # residual on either. ``E_state_cons_J`` also indicates whether an
+        # EOS-aware interior module ran (non-zero), which populates the
+        # residual columns.
+        # ``solver_residual_J`` is the entropy-equation self-consistency
+        # check: the discrete flux divergence telescopes to the boundary
+        # fluxes, so it is machine-zero by construction and a non-zero
+        # value flags a divergence-assembly bug; it carries the
+        # machine-precision conservation guarantee. ``E_th_mantle`` is the
+        # ``m × Cp_apparent × T`` proxy with phase-dependent jumps in the
+        # mushy zone, not for conservation use. ``Q_radio_W`` / ``Q_tidal_W``
+        # are instantaneous mantle-integrated source powers in watts (do NOT
+        # integrate trapezoidally; spike-prone at CVODE phase-boundary
+        # moments). ``F_cmb`` is the analogous instantaneous CMB heat flux.
+        # The conservation primitive is the per-call integral set computed by
         # Aragog over its CVODE sub-step trajectory:
         #   step_dE_F_int_J        = -∫ F_int * A_int dt   [J]
         #   step_dE_F_cmb_J        = +∫ F_cmb * A_cmb dt   [J]
-        #   step_dE_Q_*_J          = +∫ Q_* dt             [J] (state-mass)
+        #   step_dE_Q_*_J          = +∫ Q_* dt             [J] (live-density)
         #   step_dE_Q_*_cons_J     = +∫ Q_* dt             [J] (frozen-mass)
+        #   step_dE_state_heat_J   = ∫ Σ ρ T dS            [J]
         #   step_solver_residual_J = ∫ (LHS - RHS) dt      [J]
-        'E_th_mantle',      # legacy thermal-energy proxy [J] (do not use for conservation)
+        'E_th_mantle',      # thermal-energy proxy [J] (do not use for conservation)
         'E_state_J',         # state-mass integrated mantle enthalpy [J] (diagnostic only)
-        'E_state_cons_J',    # frozen-mass conservation-grade enthalpy [J]
+        'E_state_cons_J',    # frozen-mass integrated mantle enthalpy [J] (diagnostic only)
         'Q_radio_W',         # instantaneous mantle-integrated radiogenic power [W]
         'Q_tidal_W',         # instantaneous mantle-integrated tidal power [W]
         'step_dE_F_int_J',   # per-call ∫ -F_int*A_int dt [J]
         'step_dE_F_cmb_J',   # per-call ∫ +F_cmb*A_cmb dt [J]
-        'step_dE_Q_radio_J', # per-call ∫ +Q_radio dt [J] (state-mass, instrumentation)
-        'step_dE_Q_tidal_J', # per-call ∫ +Q_tidal dt [J] (state-mass, instrumentation)
-        'step_dE_Q_radio_cons_J',  # per-call ∫ +Q_radio dt [J] (frozen-mass)
-        'step_dE_Q_tidal_cons_J',  # per-call ∫ +Q_tidal dt [J] (frozen-mass)
+        'step_dE_Q_radio_J', # per-call ∫ +Q_radio dt [J] (live-density, predicted side)
+        'step_dE_Q_tidal_J', # per-call ∫ +Q_tidal dt [J] (live-density, predicted side)
+        'step_dE_Q_radio_cons_J',  # per-call ∫ +Q_radio dt [J] (frozen-mass, diagnostic)
+        'step_dE_Q_tidal_cons_J',  # per-call ∫ +Q_tidal dt [J] (frozen-mass, diagnostic)
         'step_solver_residual_J',  # per-call entropy-ODE LHS-RHS [J]
-        'dE_predicted_cons_J',  # cumulative sum of step_dE_*_cons_J across rows [J]
-        'E_residual_cons_J',    # (E_state_cons - E_state_cons[0]) - dE_predicted_cons_J [J]
-        'E_residual_cons_frac', # E_residual_cons_J / max(|ΔE_state_cons|, 1 J) [1]
+        'step_dE_compression_J',  # per-call structure-re-solve compression work [J] (diagnostic)
+        'step_dE_state_heat_J',  # per-call entropy-transported heat content change [J]
+        'E_state_heat_cons_J',  # cumulative sum of step_dE_state_heat_J across rows [J]
+        'dE_predicted_cons_J',  # cumulative sum of boundary fluxes + live-density step_dE_Q_*_J [J]
+        'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
+        'E_residual_cons_frac', # E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J) [1]
         'solver_residual_J',    # cumulative entropy-ODE LHS-RHS residual [J]
         'Cp_eff',           # effective mantle heat capacity [J kg-1 K-1]
 
@@ -789,8 +808,12 @@ def GetHelpfileKeys():
         keys.append(s + '_bar')         # partial surface pressure [bar]
         keys.append(s + '_vmr_xuv')     # volume mixing ratio at XUV level [1]
 
-    # quantities for each element
+    # quantities for each element. A noble gas is also a gas species, so its
+    # mass columns are already emitted by the gas-species loop above; skip it
+    # here to avoid duplicating them.
     for e in element_list:
+        if e in noble_gases:
+            continue
         keys.append(e + '_kg_atm')      # mass outgassed to atmosphere [kg]
         keys.append(e + '_kg_solid')    # mass in solid mantle [kg]
         keys.append(e + '_kg_liquid')   # mass in liquid mantle [kg]
@@ -854,45 +877,67 @@ def ZeroHelpfileRow():
 def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     """Fill the cumulative energy-conservation columns of ``new_row`` in place.
 
-    The conservation primitive is the per-call energy integral set
-    computed by Aragog over its CVODE sub-step trajectory:
+    The conservation check compares two cumulative integrals built from
+    the per-call quantities Aragog reports over its CVODE sub-step
+    trajectory. The predicted (boundary + source) side is
 
-        step_dE_F_int_J        = -∫ F_int * A_int dt   over the call [J]
-        step_dE_F_cmb_J        = +∫ F_cmb * A_cmb dt   over the call [J]
-        step_dE_Q_*_cons_J     = +∫ Q_* dt             [J] (frozen-mass)
-        step_solver_residual_J = ∫ (LHS - RHS) dt      [J]
+        step_dE_F_int_J        = -∫ F_int * A_int dt   [J]
+        step_dE_F_cmb_J        = +∫ F_cmb * A_cmb dt   [J]
+        step_dE_Q_radio_J      = +∫ Q_radio dt         [J] (live-density)
+        step_dE_Q_tidal_J      = +∫ Q_tidal dt         [J] (live-density)
 
-    The cumulative ``dE_predicted_cons_J`` is the running sum of the
-    flux+source integrals across all helpfile rows. This eliminates the
-    previous helpfile-side trapezoidal interpolation between
-    end-of-step F_cmb snapshots, which was prone to phase-boundary
-    spikes: a single CVODE sub-step transient could blow up the
-    integral by orders of magnitude when used as a trapezoid endpoint
-    over a PROTEUS iteration's worth of time.
+    and the state side is the entropy-transported heat content change
 
-    Row 0 sets all cumulative columns to zero by definition.
-    ``E_residual_cons_frac`` normalises by ``max(|ΔE_state_cons|, 1 J)``
-    so the residual stays bounded when both numerator and denominator
-    are tiny (quiescent steady state). Closes to ~5 % of total cooling
-    over multi-Myr trajectories.
+        step_dE_state_heat_J   = ∫ Σ rho T dS over the call [J].
 
-    ``solver_residual_J`` is the running entropy-ODE LHS-RHS check;
-    closes to machine precision (~1e-7 of total cooling) and flags
-    real CVODE step rejection or atol/rtol issues if it drifts.
+    The heating sources use the live-density (state-mass) Q variants so
+    they share the ``rho(P,S)`` frame the state side integrates; the
+    frozen-mass ``step_dE_Q_*_cons_J`` variants are not summed here.
+    ``dE_predicted_cons_J`` and ``E_state_heat_cons_J`` are the running
+    sums of the predicted and state increments across rows, and
 
-    Active only when ``E_state_cons_J`` is finite and non-zero,
-    signalling that an EOS-aware interior module populated it. Other
-    modules leave the column at 0.0 (from ZeroHelpfileRow) and the
-    residual columns stay at 0.0 too.
+        E_residual_cons_J = E_state_heat_cons_J - dE_predicted_cons_J.
 
-    The frozen-mass framing is required for the residual to close.
-    A state-mass alternative (``ρ(P,S) × V`` re-evaluated each step)
-    would carry a non-conservation cross term that grows with mantle
-    cooling and masks real numerical drift.
+    The ``_cons`` suffix on ``dE_predicted_cons_J`` is a naming convention
+    that pairs it with the residual columns; it does not mean the sum uses
+    the frozen-mass ``_cons`` heating variants.
+
+    ``E_residual_cons_frac`` normalises by ``max(|E_state_heat_cons_J|, 1 J)``
+    so it stays bounded when both numerator and denominator are tiny
+    (quiescent steady state). This is a frame-consistency conservation
+    diagnostic: it closes to roughly a percent of the cumulative cooling for
+    cooling-dominated evolution (largest near full melt, where the lever-rule
+    density has the most curvature), NOT to machine precision. The residual
+    state side weights by the live EOS density rho(P,S) used in the cell
+    capacitance, the heating sources use the matching live-density variants,
+    and the boundary fluxes are area-weighted; the small remaining floor is
+    the difference between that lever-rule density and the tanh-blended phase
+    density the entropy ODE integrates. Machine-precision conservation is
+    carried by ``solver_residual_J``, not by this column.
+
+    The state side uses ``Σ rho T dS`` (the heat the entropy ODE
+    transports, capacitance rho*T), not an enthalpy change. The two-phase
+    EOS specific enthalpy does not satisfy ``dh = T dS`` across the mushy
+    zone, so an enthalpy snapshot difference carries a flow-work term the
+    boundary-flux budget never sees and cannot close against it.
+    ``E_state_J`` and ``E_state_cons_J`` are retained as enthalpy
+    diagnostics only; ``step_dE_compression_J`` is likewise informational
+    and is not added to the predicted side.
+
+    ``solver_residual_J`` is the independent entropy-equation self-
+    consistency check: the discrete flux divergence telescopes to the
+    boundary fluxes, so it is machine-zero by construction and a non-zero
+    value flags a divergence-assembly bug. It and ``E_residual_cons_frac``
+    are complementary conservation gates.
+
+    Active only when ``E_state_cons_J`` is finite and non-zero, signalling
+    that an EOS-aware interior module ran. Other modules leave the columns
+    at 0.0 (from ZeroHelpfileRow) and the residual columns stay at 0.0 too.
     """
     e_state_cons_now = float(new_row.get('E_state_cons_J', 0.0))
     if not np.isfinite(e_state_cons_now) or e_state_cons_now == 0.0:
         for k in (
+            'E_state_heat_cons_J',
             'dE_predicted_cons_J',
             'E_residual_cons_J',
             'E_residual_cons_frac',
@@ -901,20 +946,29 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
             new_row.setdefault(k, 0.0)
         return
 
-    # Per-call energy increment from Aragog [J]. Sign is already baked
-    # into each step delta (positive = energy added to mantle). Uses
-    # frozen-mass Q_*_cons to pair with the frozen-mass E_state_cons_J.
+    # Predicted (boundary + source) increment from Aragog [J]. Sign is
+    # already baked into each step delta (positive = energy added to the
+    # mantle). The heating sources use the live-density (state-mass) Q
+    # variants so they share the same mass frame as the entropy-transported
+    # heat on the state side, which integrates rho(P,S). Surface and CMB
+    # fluxes are area-weighted and frame-independent. The compression term
+    # is informational and is deliberately excluded: the state side carries
+    # the full thermodynamic content via Σ rho T dS.
     dE_inc_cons = (
         float(new_row.get('step_dE_F_int_J', 0.0))
         + float(new_row.get('step_dE_F_cmb_J', 0.0))
-        + float(new_row.get('step_dE_Q_radio_cons_J', 0.0))
-        + float(new_row.get('step_dE_Q_tidal_cons_J', 0.0))
+        + float(new_row.get('step_dE_Q_radio_J', 0.0))
+        + float(new_row.get('step_dE_Q_tidal_J', 0.0))
     )
+    # State increment [J]: the entropy-transported heat content change over
+    # the call, Σ rho T dS by EOS quadrature (step_dE_state_heat_J).
+    dE_state_heat_inc = float(new_row.get('step_dE_state_heat_J', 0.0))
     solver_inc = float(new_row.get('step_solver_residual_J', 0.0))
 
     n_prior = len(current_hf)
     if n_prior == 0:
         # Anchor row: cumulative integrals start at zero by definition.
+        new_row['E_state_heat_cons_J'] = 0.0
         new_row['dE_predicted_cons_J'] = 0.0
         new_row['E_residual_cons_J'] = 0.0
         new_row['E_residual_cons_frac'] = 0.0
@@ -922,26 +976,34 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
         return
 
     prev = current_hf.iloc[-1]
-    dE_pred_cons_prev = float(prev.get('dE_predicted_cons_J', 0.0))
-    dE_pred_cons_now = dE_pred_cons_prev + dE_inc_cons
+    dE_pred_prev = float(prev.get('dE_predicted_cons_J', 0.0))
+    e_state_heat_prev = prev.get('E_state_heat_cons_J', float('nan'))
 
-    # Anchor the cumulative actual-energy change on the first populated
-    # E_state_cons_J. A 0.0 entry marks a row written before this column
-    # existed; anchoring on it would fold the entire absolute mantle enthalpy
-    # into the residual.
-    e_state_series = current_hf['E_state_cons_J']
-    valid_anchor = e_state_series[(e_state_series != 0.0) & np.isfinite(e_state_series)]
-    e_state_cons_anchor = float(
-        valid_anchor.iloc[0] if len(valid_anchor) > 0 else e_state_series.iloc[0]
-    )
-    dE_actual_cons_now = e_state_cons_now - e_state_cons_anchor
-    residual_cons_now = dE_actual_cons_now - dE_pred_cons_now
+    # Resume across the introduction of the state-heat column: an older
+    # helpfile carries a populated dE_predicted_cons_J but no
+    # E_state_heat_cons_J. Continuing the predicted side from its full prior
+    # cumulative while the state side restarts from zero would inject a
+    # one-row residual equal to the entire prior predicted energy. Re-anchor
+    # both cumulatives to zero at the first row after such a resume.
+    if not np.isfinite(e_state_heat_prev) and dE_pred_prev != 0.0:
+        dE_pred_prev = 0.0
+        e_state_heat_prev = 0.0
+    else:
+        e_state_heat_prev = float(e_state_heat_prev) if np.isfinite(e_state_heat_prev) else 0.0
 
+    dE_pred_cons_now = dE_pred_prev + dE_inc_cons
+    e_state_heat_now = e_state_heat_prev + dE_state_heat_inc
+
+    # The state side and the predicted side both integrate the entropy-
+    # transported heat, so their difference is the conservation residual.
+    residual_cons_now = e_state_heat_now - dE_pred_cons_now
+
+    new_row['E_state_heat_cons_J'] = e_state_heat_now
     new_row['dE_predicted_cons_J'] = dE_pred_cons_now
     new_row['E_residual_cons_J'] = residual_cons_now
-    new_row['E_residual_cons_frac'] = residual_cons_now / max(abs(dE_actual_cons_now), 1.0)
+    new_row['E_residual_cons_frac'] = residual_cons_now / max(abs(e_state_heat_now), 1.0)
 
-    # Cumulative entropy-ODE solver residual.
+    # Cumulative entropy-ODE solver residual (independent second gate).
     solver_resid_prev = float(prev.get('solver_residual_J', 0.0))
     new_row['solver_residual_J'] = solver_resid_prev + solver_inc
 
@@ -969,7 +1031,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     # - Unknown keys (new_row has but schema doesn't) are silently dropped
     #   by `columns=GetHelpfileKeys()` in the DataFrame construction, which
     #   means resume would lose those values. We WARN here rather than raise
-    #   so existing hf_row private/transient fields (_structure_stale, etc.)
+    #   so existing hf_row private/transient fields (_T_magma_raw, etc.)
     #   and string-valued fields (core_state_initial) don't break runs.
     # Private (underscore-prefixed) keys are intentionally transient and
     # are excluded from both checks.
@@ -1031,13 +1093,27 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     if len(difference) > 0:
         raise Exception('There are mismatched keys in helpfile: ' + str(difference))
 
-    # remove old file
+    # Write atomically: serialise to a temporary file in the same
+    # directory, then rename it into place. A direct remove-then-write
+    # leaves the helpfile missing or truncated if the process is killed
+    # (or the disk fills) mid-write, and an empty helpfile then blocks
+    # resume because the restored row history is too short. os.replace is
+    # atomic within one filesystem, so a reader, or a later resume, always
+    # sees either the complete previous file or the complete new one. On a
+    # failed write the previous file is left untouched.
     fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
-    if os.path.exists(fpath):
-        os.remove(fpath)
-
-    # write new file
-    current_hf.to_csv(fpath, index=False, sep='\t', float_format='%.10e')
+    tmp_path = fpath + '.tmp'
+    try:
+        current_hf.to_csv(tmp_path, index=False, sep='\t', float_format='%.10e')
+        os.replace(tmp_path, fpath)
+    except BaseException:
+        # Best-effort temp cleanup; never let it mask the original error.
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
     return fpath
 
 
@@ -1049,6 +1125,211 @@ def ReadHelpfileFromCSV(output_dir: str):
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
     return pd.read_csv(fpath, sep=r'\s+')
+
+
+def _netcdf_readable(path: str) -> bool:
+    """Return True if ``path`` exists and opens as a valid netCDF file.
+
+    A disk-full or killed write can leave a snapshot file truncated: it
+    exists on disk but raises when opened. This check lets the resume path
+    skip an incomplete snapshot and fall back to the last complete one.
+    """
+    if not os.path.isfile(path):
+        return False
+    # Import outside the try so a missing netCDF4 (a core dependency) raises
+    # an honest ImportError instead of being silently reported as "every
+    # snapshot is unreadable", which would mask the real cause behind the
+    # selector's "no complete pair" error.
+    from netCDF4 import Dataset
+
+    try:
+        with Dataset(path):
+            return True
+    except Exception:
+        return False
+
+
+def _snapshot_readable(path: str) -> bool:
+    """Whether a snapshot file exists and opens as a complete file.
+
+    A disk-full or killed write can leave a snapshot truncated: it exists on
+    disk but raises when opened. NetCDF halves (interior ``_int.nc``,
+    atmosphere ``_atm.nc``) are validated with :func:`_netcdf_readable`;
+    SPIDER's interior half (``.json``) is validated by a full ``json.load``,
+    which fails on a partially written file. This lets the resume path skip
+    an incomplete snapshot and fall back to the last complete one.
+    """
+    if path.endswith('.json'):
+        if not os.path.isfile(path):
+            return False
+        try:
+            with open(path) as fh:
+                json.load(fh)
+            return True
+        except Exception:
+            return False
+    return _netcdf_readable(path)
+
+
+def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
+    """Interior snapshot filename candidates for a simulation time, per writer.
+
+    Each interior module names its snapshot with its own convention, so the
+    resume probe must match the active writer:
+
+    - Aragog writes ``'%d_int.nc' % Time`` (truncates toward zero).
+    - SPIDER writes ``'%.0f.json' % Time`` (rounds to nearest).
+    - The dummy and boundary interiors write no interior snapshot, so resume
+      imposes no interior constraint (empty list).
+
+    An unrecognised module falls back to the Aragog convention, the default
+    interior for this branch.
+    """
+    module = (interior_module or '').lower()
+    if module == 'spider':
+        return ['%.0f.json' % time]
+    if module in ('dummy', 'boundary'):
+        return []
+    return ['%d_int.nc' % time]
+
+
+def _atm_snapshot_names(time: float, atmos_module: str) -> list[str]:
+    """Atmosphere snapshot filename candidate for a simulation time, per writer.
+
+    Atmosphere writers round the time differently: AGNI writes
+    ``'%.0f_atm.nc' % Time`` (rounds to nearest) while JANUS writes
+    ``str(int(Time)) + '_atm.nc'`` (truncates toward zero). Only one atmosphere
+    module is active in a run, so the probe uses that writer's single
+    convention rather than accepting both integer names. Probing both would let
+    the truncated name of a fractional-Time row collide with an adjacent row's
+    rounded name (e.g. Time 30.7 truncates to ``30_atm.nc``, which is Time
+    30.2's rounded file), wrongly pairing one row's interior with another row's
+    atmosphere. An unrecognised module falls back to the AGNI (rounded)
+    convention, the default atmosphere for this branch.
+    """
+    if (atmos_module or '').lower() == 'janus':
+        return ['%d_atm.nc' % time]
+    return ['%.0f_atm.nc' % time]
+
+
+def select_resumable_snapshot(
+    output_dir: str,
+    hf_all: pd.DataFrame,
+    require_atm: bool = True,
+    interior_module: str = 'aragog',
+    atmos_module: str = 'agni',
+) -> tuple[pd.DataFrame, list[int]]:
+    """Trim the helpfile to the latest row backed by a complete snapshot pair.
+
+    On resume the interior loads its snapshot keyed off ``hf_row['Time']``
+    and the atmosphere loads the latest ``*_atm.nc``. A crash mid-write can
+    truncate either half of the most recent pair independently of the
+    (atomic) helpfile, which then aborts the resume when a module opens the
+    corrupt file. Walk the helpfile from its last row backward to the first
+    row whose interior (when the interior module writes one) and atmosphere
+    (when ``require_atm``) snapshots both open cleanly, move any incomplete
+    trailing snapshot files aside (``.incomplete`` suffix) so the modules'
+    latest-file globs land on the complete pair, and return the helpfile
+    truncated to that row. Once a resumable row is found, the quarantined
+    files are deleted: the helpfile is truncated below their rows, so they
+    can never back a resume and would otherwise be swept into the final
+    data archive.
+
+    Each half is probed with its own writer's filename convention. The
+    interior name depends on the module: Aragog writes ``'%d_int.nc'``
+    (truncated), SPIDER writes ``'%.0f.json'`` (rounded), and the dummy and
+    boundary interiors write no snapshot at all (no interior constraint). The
+    atmosphere half is probed with the active writer's single convention: AGNI
+    rounds (``'%.0f_atm.nc'``), JANUS truncates (``str(int(Time)) + '_atm.nc'``).
+    Probing only the active convention keeps a fractional-Time row from matching
+    an adjacent row's atmosphere file. See ``_interior_snapshot_names`` /
+    ``_atm_snapshot_names``.
+
+    Parameters
+    ----------
+    output_dir : str
+        Run output directory (contains ``data/``).
+    hf_all : pd.DataFrame
+        Full restored helpfile history.
+    require_atm : bool, optional
+        Whether an ``_atm.nc`` half is expected. False for the dummy
+        atmosphere, which writes no atmosphere snapshot.
+    interior_module : str, optional
+        The active ``interior_energetics.module`` (``'aragog'``, ``'spider'``,
+        ``'dummy'``, ``'boundary'``). Selects the interior filename
+        convention; ``'dummy'`` and ``'boundary'`` write no interior snapshot
+        so the interior half imposes no constraint.
+    atmos_module : str, optional
+        The active ``atmos_clim.module`` (``'agni'`` or ``'janus'``). Selects
+        the atmosphere filename convention: AGNI rounds, JANUS truncates.
+        Ignored when ``require_atm`` is False.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, list[int]]
+        The (possibly trimmed) helpfile and the ascending list of dropped
+        snapshot times. The helpfile is returned unchanged and the list
+        empty when the latest pair is already complete.
+
+    Raises
+    ------
+    RuntimeError
+        If no row in the helpfile has a complete snapshot pair. Any files
+        quarantined during the scan are restored before this is raised, so
+        a later attempt still sees them.
+    """
+    data_dir = os.path.join(output_dir, 'data')
+    times = [float(t) for t in hf_all['Time'].to_numpy()]
+    dropped: list[int] = []
+    quarantined: list[tuple[str, str]] = []  # (moved_to, original) for rollback
+    keep_idx = None
+    for i in range(len(times) - 1, -1, -1):
+        t = times[i]
+        int_paths = [
+            os.path.join(data_dir, n) for n in _interior_snapshot_names(t, interior_module)
+        ]
+        atm_paths = (
+            [os.path.join(data_dir, n) for n in _atm_snapshot_names(t, atmos_module)]
+            if require_atm
+            else []
+        )
+        # An empty interior candidate list means the interior module writes no
+        # snapshot (dummy/boundary): that half imposes no resume constraint.
+        int_ok = (not int_paths) or any(_snapshot_readable(p) for p in int_paths)
+        atm_ok = (not require_atm) or any(_snapshot_readable(p) for p in atm_paths)
+        if int_ok and atm_ok:
+            keep_idx = i
+            break
+        # Incomplete pair: move whichever candidate halves exist aside so the
+        # interior / atmosphere latest-file globs cannot pick them up.
+        for p in int_paths + atm_paths:
+            if os.path.exists(p):
+                dst = p + '.incomplete'
+                os.replace(p, dst)
+                quarantined.append((dst, p))
+        dropped.append(int(t))
+
+    if keep_idx is None:
+        # Nothing resumable: undo the quarantine so a later attempt (or
+        # manual recovery) still has the files, then fail loudly.
+        for dst, original in quarantined:
+            if os.path.exists(dst):
+                os.replace(dst, original)
+        raise RuntimeError(
+            'No complete interior+atmosphere snapshot pair found in the '
+            'helpfile history; cannot resume from disk.'
+        )
+    if quarantined:
+        # The helpfile is truncated below the dropped rows, so these files
+        # can never back a resume; delete them so the final archive sweep
+        # does not pick them up.
+        for dst, _original in quarantined:
+            if os.path.exists(dst):
+                os.remove(dst)
+        log.info('Deleted %d quarantined snapshot file(s)', len(quarantined))
+    if not dropped:
+        return hf_all, []
+    return hf_all.iloc[: keep_idx + 1].reset_index(drop=True), sorted(dropped)
 
 
 def variable_is_logarithmic(varname: str) -> bool:
@@ -1151,9 +1432,10 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     dummy_atm = config.atmos_clim.module == 'dummy'
     dummy_int = config.interior_energetics.module == 'dummy'
     agni = config.atmos_clim.module == 'agni'
+
     spider = config.interior_energetics.module == 'spider'
     aragog = config.interior_energetics.module == 'aragog'
-    observed = bool(config.observe.synthesis is not None)
+    observed = bool(config.observe.module is not None)
 
     # Get all output times
     output_times = []

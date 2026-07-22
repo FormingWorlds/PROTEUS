@@ -5,9 +5,8 @@ This test file validates the dummy interior evolution model used for simple
 thermal evolution calculations without full mantle convection physics.
 
 Testing standards and documentation:
-- docs/test_infrastructure.md: Test infrastructure overview
-- docs/test_categorization.md: Test marker definitions
-- docs/test_building.md: Best practices for test construction
+- docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
+- docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 
 Functions tested:
 - calculate_simple_mantle_mass(): Mantle mass from radius/core fraction

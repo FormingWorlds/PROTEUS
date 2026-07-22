@@ -14,9 +14,8 @@ Invariants tested:
     expected species
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -40,6 +39,8 @@ from proteus.utils.constants import (
     element_list,
     element_mmw,
     gas_list,
+    noble_gases,
+    noble_solar_mass_ratio,
     secs_per_year,
     vap_list,
     vol_list,
@@ -296,13 +297,21 @@ def test_vol_list_excludes_vap_list():
 
 
 def test_element_list_contains_expected_elements():
-    """element_list contains the 9 elements tracked by PROTEUS.
+    """element_list contains the volatile-forming elements, the refractory
+    elements, and the five noble gases tracked by PROTEUS.
 
-    At minimum: H, O, C, N, S.
+    At minimum the volatile-forming H, O, C, N, S and the noble gases
+    He, Ne, Ar, Kr, Xe must be present.
     """
-    assert len(element_list) == 9
-    for elem in ('H', 'O', 'C', 'N', 'S'):
+    for elem in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'):
         assert elem in element_list
+    # Noble gases are tracked as elements for the whole-planet mass balance.
+    for gas in ('He', 'Ne', 'Ar', 'Kr', 'Xe'):
+        assert gas in element_list
+    # The noble gases follow the refractory block, so the list has grown to 14.
+    assert len(element_list) == 14
+    # Discrimination guard: no accidental duplicates in the element list.
+    assert len(set(element_list)) == len(element_list)
 
 
 def test_element_mmw_all_positive():
@@ -314,6 +323,46 @@ def test_element_mmw_all_positive():
     for elem, mmw in element_mmw.items():
         assert mmw > 0, f'Molar mass for {elem} is not positive: {mmw}'
         assert mmw < 1.0, f'Molar mass for {elem} implausibly large: {mmw} kg/mol'
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_noble_solar_mass_ratios_match_protosolar_abundances():
+    """Pin the protosolar noble gas X/H mass ratios against Lodders (2003).
+
+    The ratios are derived from the Lodders (2003) protosolar log abundances
+    (H = 12): He 10.98, Ne 8.05, Ar 6.50, Kr 3.25, Xe 2.25, converted to X/H
+    mass ratios via `10**(log - 12) * M_X / M_H`. Pinning each to a literal
+    locks the constant so a later transcription or units slip fails here.
+
+    Discrimination: the ratios span seven orders of magnitude (He of order
+    0.1 down to Xe of order 1e-8), so a wrong-gas copy or a number-vs-mass
+    ratio confusion (a factor of M_X/M_H, tens to over a hundred) lands far
+    outside the per-gas scale guards below.
+    """
+    expected = {
+        'He': 3.79e-1,
+        'Ne': 2.25e-3,
+        'Ar': 1.25e-4,
+        'Kr': 1.48e-7,
+        'Xe': 2.32e-8,
+    }
+    assert set(noble_solar_mass_ratio) == set(noble_gases)
+    for gas, ref in expected.items():
+        assert noble_solar_mass_ratio[gas] == pytest.approx(ref, rel=1e-2)
+
+    # Independent order-of-magnitude guards per gas (helium is a major solar
+    # constituent; xenon is a trace element ~7 orders below it). A wrong
+    # exponent or a number-vs-mass slip fails these bounds.
+    assert 3.0e-1 < noble_solar_mass_ratio['He'] < 4.5e-1
+    assert 1.5e-3 < noble_solar_mass_ratio['Ne'] < 3.5e-3
+    assert 8.0e-5 < noble_solar_mass_ratio['Ar'] < 2.0e-4
+    assert 1.0e-7 < noble_solar_mass_ratio['Kr'] < 2.5e-7
+    assert 1.0e-8 < noble_solar_mass_ratio['Xe'] < 4.0e-8
+    # Ordering invariant: solar noble abundances fall monotonically from He to
+    # Xe by mass, so a swapped pair would break the descent.
+    ordered = [noble_solar_mass_ratio[g] for g in ('He', 'Ne', 'Ar', 'Kr', 'Xe')]
+    assert ordered[0] > ordered[1] > ordered[2] > ordered[3] > ordered[4]
 
 
 @pytest.mark.reference_pinned

@@ -57,7 +57,6 @@ jobs:
     timeout-minutes: 30
     env:
       COVERAGE_FILE: .coverage.unit.${{ matrix.os }}
-      USER: "ci-runner"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -87,7 +86,17 @@ jobs:
             --cov-fail-under=0 \
             -v --tb=short
       - name: Upload unit + smoke artifacts
+        id: upload-unit
         if: always()
+        # These artifacts carry this tier's coverage data and test results.
+        # The Linux run is combined into the canonical nightly-coverage
+        # report that PR runs union against, so a transient artifact-service
+        # reset is retried once before the shard is left out rather than
+        # dropped on the first blip. The retry sets overwrite so a
+        # half-registered first attempt does not block it. If both attempts
+        # fail the tier stays green (its tests passed) and coverage-aggregate
+        # degrades to the tolerated missing-shard path.
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: tier-unit-${{ matrix.os }}
@@ -99,6 +108,22 @@ jobs:
             junit-smoke-${{ matrix.os }}.xml
           if-no-files-found: ignore
           include-hidden-files: true
+          retention-days: 14
+      - name: Retry unit + smoke artifact upload
+        if: always() && steps.upload-unit.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: tier-unit-${{ matrix.os }}
+          path: |
+            .coverage.unit.${{ matrix.os }}
+            coverage-unit-${{ matrix.os }}.xml
+            coverage-smoke-${{ matrix.os }}.xml
+            junit-unit-${{ matrix.os }}.xml
+            junit-smoke-${{ matrix.os }}.xml
+          if-no-files-found: ignore
+          include-hidden-files: true
+          overwrite: true
           retention-days: 14
 
   # ============================================================
@@ -117,7 +142,6 @@ jobs:
     timeout-minutes: 45
     env:
       COVERAGE_FILE: .coverage.integration.${{ matrix.os }}
-      USER: "ci-runner"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -137,7 +161,11 @@ jobs:
             --cov-fail-under=0 \
             -v --tb=short
       - name: Upload integration artifacts
+        id: upload-int
         if: always()
+        # See the unit tier upload: retry a transient reset once, then
+        # tolerate a dropped shard rather than reddening a passing tier.
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: tier-int-${{ matrix.os }}
@@ -147,6 +175,20 @@ jobs:
             junit-int-${{ matrix.os }}.xml
           if-no-files-found: ignore
           include-hidden-files: true
+          retention-days: 14
+      - name: Retry integration artifact upload
+        if: always() && steps.upload-int.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: tier-int-${{ matrix.os }}
+          path: |
+            .coverage.integration.${{ matrix.os }}
+            coverage-int-${{ matrix.os }}.xml
+            junit-int-${{ matrix.os }}.xml
+          if-no-files-found: ignore
+          include-hidden-files: true
+          overwrite: true
           retention-days: 14
 
   # ============================================================
@@ -202,6 +244,14 @@ jobs:
             os: ubuntu-latest
             files: >-
               tests/integration/test_slow_agni_aragog.py
+          # ---- shard: grid (dummy-backend parameter grid; a single
+          # module-scoped fixture runs the whole grid, ~27 min. Linux-only
+          # extended because it needs no macOS parity) ----
+          - shard: grid
+            tier: extended
+            os: ubuntu-latest
+            files: >-
+              tests/grid/test_grid.py
           # ---- shard: janus-inference (JANUS + BO + inference) ----
           - shard: janus-inference
             tier: critical
@@ -209,36 +259,76 @@ jobs:
             files: >-
               tests/integration/test_slow_janus_aragog.py
               tests/inference/test_bo_convergence.py
-              tests/inference/test_inference.py
+              tests/inference/test_inference_slow.py
           - shard: janus-inference
             tier: critical
             os: macos-latest
             files: >-
               tests/integration/test_slow_janus_aragog.py
               tests/inference/test_bo_convergence.py
-              tests/inference/test_inference.py
-          # ---- shard: misc (config + smoke + dummy + helpers) ----
+              tests/inference/test_inference_slow.py
+          # ---- shard: misc (hypothesis fuzz + dummy integration; both quick) ----
           - shard: misc
             tier: critical
             os: ubuntu-latest
             files: >-
-              tests/config/test_config_schema_invariants.py
               tests/integration/test_smoke_hypothesis.py
               tests/integration/test_integration_dummy.py
-              tests/helpers/test_smoke_invariants.py
           - shard: misc
             tier: critical
             os: macos-latest
             files: >-
-              tests/config/test_config_schema_invariants.py
               tests/integration/test_smoke_hypothesis.py
               tests/integration/test_integration_dummy.py
-              tests/helpers/test_smoke_invariants.py
+          # Heavy real-solver tests run one per shard (via matrix.select -> -k)
+          # so each job is bounded by setup plus a single test, not a serial
+          # stack. All are Linux-only extended: the coupled std-config run boots
+          # AGNI, whose macOS arm64 path is not yet validated (the reason the
+          # agni shard is Linux-only too); the super-liquidus solve is pure
+          # numpy/scipy EOS work with no platform binary; and the macOS runner
+          # budget is already full. job_minutes sit above the measured runner
+          # wall-time with margin for the ~1.5x runner-to-runner variance, and
+          # above each shard's per-test timeout so a hung test trips first.
+          # ---- std-config-multi (3 coupled timesteps; ~180 min measured) ----
+          - shard: std-config-multi
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 355
+            select: test_integration_std_config_multi_timestep
+            files: >-
+              tests/integration/test_integration_std_config.py
+          # ---- superliquidus-m1 (single 1 M_Earth solve; ~47 min measured) ----
+          - shard: superliquidus-m1
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 120
+            select: test_m1_solved_adiabat_pinned
+            files: >-
+              tests/interior_struct/test_superliquidus_adiabat.py
+          # ---- superliquidus-massindep (three solves in series; ~141 min measured) ----
+          - shard: superliquidus-massindep
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 270
+            select: test_solved_entropy_is_mass_independent
+            files: >-
+              tests/interior_struct/test_superliquidus_adiabat.py
+          # ---- superliquidus-unreachable (one full-span scan; ~48 min measured) ----
+          - shard: superliquidus-unreachable
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 120
+            select: test_unreachable_superheat_raises_real
+            files: >-
+              tests/interior_struct/test_superliquidus_adiabat.py
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 150   # per-shard cap; zalmoxis-coupled/ubuntu hits ~100-130 min depending on GHA runner load
+    # Job cap defaults to 210 min, kept above each shard's per-test pytest-timeout
+    # so a hung single test trips its own timer before the job is cancelled. The
+    # one-test heavy shards raise the cap via matrix.job_minutes because a single
+    # real-solver test there runs one to several hours on the runner.
+    timeout-minutes: ${{ matrix.job_minutes || 210 }}
     env:
       COVERAGE_FILE: .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
-      USER: "ci-runner"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -247,10 +337,19 @@ jobs:
         with:
           full-data: 'true'
       - name: Run slow shard
+        env:
+          SHARD_SELECT: ${{ matrix.select }}
         run: |
+          # Heavy shards select a single test by name via matrix.select; other
+          # shards run their whole file list. Test names are plain identifiers,
+          # so the unquoted expansion is a single -k token (empty when unset).
+          SELECT_ARG=""
+          if [ -n "$SHARD_SELECT" ]; then SELECT_ARG="-k $SHARD_SELECT"; fi
           pytest -m "slow and not unit and not smoke and not integration" \
             ${{ matrix.files }} \
+            $SELECT_ARG \
             -p no:faulthandler \
+            --durations=0 \
             --junitxml=junit-slow-${{ matrix.shard }}-${{ matrix.os }}.xml \
             --cov=proteus \
             --cov-report=xml:coverage-slow-${{ matrix.shard }}-${{ matrix.os }}.xml \
@@ -260,7 +359,13 @@ jobs:
             --log-cli-format='%(asctime)s %(levelname)s %(name)s: %(message)s' \
             -v --tb=short
       - name: Upload slow shard artifacts
+        id: upload-slow
         if: always()
+        # See the unit tier upload. On Linux this shard is the only source
+        # for lines no faster tier reaches, so losing it understates the
+        # nightly coverage the PR runs union against. Retry a transient
+        # reset once before tolerating a dropped shard.
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: tier-slow-${{ matrix.shard }}-${{ matrix.os }}
@@ -270,6 +375,20 @@ jobs:
             junit-slow-${{ matrix.shard }}-${{ matrix.os }}.xml
           if-no-files-found: ignore
           include-hidden-files: true
+          retention-days: 14
+      - name: Retry slow shard artifact upload
+        if: always() && steps.upload-slow.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: tier-slow-${{ matrix.shard }}-${{ matrix.os }}
+          path: |
+            .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
+            coverage-slow-${{ matrix.shard }}-${{ matrix.os }}.xml
+            junit-slow-${{ matrix.shard }}-${{ matrix.os }}.xml
+          if-no-files-found: ignore
+          include-hidden-files: true
+          overwrite: true
           retention-days: 14
 
   # ============================================================
@@ -302,6 +421,10 @@ jobs:
       - name: List downloaded artifacts
         run: find artifacts -type f | sort
       - name: Combine Linux .coverage files
+        # Runs in a non-login shell: the step needs no conda environment,
+        # and its empty-report branch ends on an explicit exit 0, which
+        # the login shell's logout hook corrupts on the hosted runners.
+        shell: bash
         run: |
           # Combine .coverage SQLite files from Linux runners into the
           # canonical coverage.xml. macOS .coverage files are NOT
@@ -469,7 +592,15 @@ jobs:
           flags: nightly
           name: nightly-full-suite
       - name: Upload nightly-coverage artifact
+        id: upload-nightly-cov
         if: always()
+        # This is the canonical artifact the PR runs download for the
+        # estimated-total and diff-cover gates. Retry a transient reset
+        # once so a network blip does not red the aggregate on passing
+        # science. If both attempts fail the PR side already tolerates a
+        # missing nightly artifact and falls back to the unit-only
+        # estimate, so tolerate rather than red.
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: nightly-coverage
@@ -480,6 +611,21 @@ jobs:
             coverage-integration-only.json
             nightly-timestamp.txt
           if-no-files-found: ignore
+          retention-days: 30
+      - name: Retry nightly-coverage upload
+        if: always() && steps.upload-nightly-cov.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: nightly-coverage
+          path: |
+            coverage.xml
+            coverage-branch-nightly.json
+            coverage-by-type.json
+            coverage-integration-only.json
+            nightly-timestamp.txt
+          if-no-files-found: ignore
+          overwrite: true
           retention-days: 30
 
   # ============================================================

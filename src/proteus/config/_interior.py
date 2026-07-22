@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import warnings
 
 from attrs import define, field
@@ -12,6 +13,13 @@ from attrs.validators import ge, gt, in_, lt
 _DEFAULT_RTOL = 1e-10
 _TOL_UNSET = -1.0
 
+# Single canonical "disabled" value for the three per-call Aragog step caps.
+# 0.0 is the schema default that the wrapper promotes to a built-in on the
+# zalmoxis stack, a positive value is used verbatim, and this sentinel forces
+# the cap off even on zalmoxis. Any other negative, NaN, or infinity is a
+# malformed cap.
+_STEP_CAP_OFF = -1.0
+
 
 def _gt0_or_unset(instance, attribute, value):
     """Allow the unset sentinel; otherwise require a positive value."""
@@ -19,6 +27,24 @@ def _gt0_or_unset(instance, attribute, value):
         return
     if value <= 0:
         raise ValueError(f'`{attribute.name}` must be greater than 0, got {value}')
+
+
+def _step_cap_valid(instance, attribute, value):
+    """Accept the -1.0 off sentinel or any finite value >= 0; reject the rest.
+
+    The three per-call step caps use -1.0 as the only "disabled" value so the
+    off switch is a single canonical choice. 0.0 is the schema default (the
+    wrapper promotes it to the zalmoxis built-in) and a positive value is a
+    real cap. Any other negative, along with NaN and the infinities, is a
+    malformed value and raises rather than silently disabling the
+    crystallisation-onset guard.
+    """
+    if value == _STEP_CAP_OFF:
+        return
+    if not math.isfinite(value) or value < 0.0:
+        raise ValueError(
+            f'`{attribute.name}` must be -1.0 (disabled) or a finite value >= 0, got {value}'
+        )
 
 
 def valid_spider(instance, attribute, value):
@@ -186,13 +212,56 @@ class Aragog:
     Aragog's per-node gravity path interpolates to that scalar everywhere.
     False by default; set True only when running a paired scalar-gravity
     comparison."""
-    phi_step_cap: float = field(default=0.0, validator=ge(0.0))
-    """Per-call ΔΦ cap. When > 0 and at least one staggered cell sits in or
-    near the mushy band at solve() entry, Aragog clamps the integration
-    end_time so the projected per-cell |ΔΦ| over the requested window stays
-    within this cap. The estimate uses |dΦ/dt| at t=start_time scaled by a 0.5
-    safety factor, and the PROTEUS outer loop sees the truncated achieved time
-    via ``sol.t[-1]``. Default 0.0 (disabled)."""
+    phi_step_cap: float = field(default=0.0, validator=_step_cap_valid)
+    """Per-call melt-fraction step cap. When > 0 and any staggered cell is in
+    or near the two-phase window at solve() entry, a CVODE root function (and
+    the equivalent scipy event) returns control at the exact time the larger
+    of the global mass-weighted |ΔΦ| and the maximum single-cell |Δφ| reaches
+    this cap. The per-cell term bounds how far one deep cell may cross the
+    mushy window in a single call, which removes the discontinuous
+    core-temperature drop at crystallisation onset. Schema default 0.0, which
+    the Aragog wrapper promotes to a non-zero default for the coupled zalmoxis
+    interior stack; a positive value here overrides that. -1.0 is the single
+    off sentinel that keeps the cap disabled even on zalmoxis; any other
+    negative, NaN, or infinity is rejected at load."""
+
+    temperature_step_cap: float = field(default=0.0, validator=_step_cap_valid)
+    """Per-call per-cell temperature step cap [K]. Shares the same root
+    function as phi_step_cap and fires on the maximum single-cell |ΔT| since
+    solve() entry. It bounds the core-temperature drop on the solid adiabat
+    just below the solidus, where the melt-fraction cap goes blind because a
+    fully solid cell's melt fraction can no longer move. Schema default 0.0,
+    which the Aragog wrapper promotes to a non-zero default for the coupled
+    zalmoxis stack; a positive value overrides that. -1.0 is the single off
+    sentinel that keeps the cap disabled even on zalmoxis; any other negative,
+    NaN, or infinity is rejected at load."""
+
+    entropy_step_cap: float = field(default=0.0, validator=_step_cap_valid)
+    """Per-call per-cell entropy step cap [J/kg/K], in the native solver
+    variable; same role as temperature_step_cap without an EOS lookup in the
+    root function. Schema default 0.0, which the Aragog wrapper promotes to a
+    non-zero default for the coupled zalmoxis stack; a positive value overrides
+    that. -1.0 is the single off sentinel that keeps the cap disabled even on
+    zalmoxis; any other negative, NaN, or infinity is rejected at load."""
+
+    phase_boundary_entropy_margin: float = field(default=200.0, validator=gt(0))
+    """Phase-boundary proximity band [J/kg/K] within which a staggered cell
+    counts as near a solidus or liquidus crossing, tightening the integrator
+    max_step so CVODE resolves the stiff two-phase RHS across the boundary.
+    This is a solver-accuracy control, not a cosmetic step-size setting: at the
+    default it reproduces the fixed band and the converged trajectory is
+    unchanged, but lowering it below the default can under-resolve a real
+    phase crossing and shift the converged state, because CVODE's local error
+    control can accept an over-large step across the near-discontinuous RHS.
+    Keeping the default reproduces current behaviour, and modestly widening the
+    band does not move a converged result because tighter steps only refine an
+    adaptive integrator; but a value orders of magnitude above the default makes
+    every cell count as near a boundary at all times, clamping the integrator to
+    1 yr steps (max_step = 1 yr, versus 100 yr otherwise) for the whole run and
+    stalling it, so keep the band of order a few hundred J/kg/K. Default 200.0,
+    matching Aragog's own default;
+    a positive value is required (0 or negative is not a valid disabled state
+    for a proximity band)."""
 
     tolerance_struct: float = field(default=1e2, validator=gt(0))
     """Absolute mass tolerance [kg] for the secant solver in
@@ -219,22 +288,12 @@ class InteriorBoundary:
 
     Attributes
     ----------
-    rtol: float
-        ODE solver relative tolerance.
-    atol: float
-        ODE solver absolute tolerance.
-    T_p_0: float
-        Initial potential temperature [K] for boundary solver if zalmoxis module is not used.
     T_solidus: float
         Mantle solidus temperature [K].
     T_liquidus: float
         Mantle liquidus temperature [K].
-    Tsurf_event_change: float
-        Maximum change in surface temperature allowed during a single interior iteration before triggering an event [K].
     critical_rayleigh_number: float
         Critical Rayleigh number for onset of convection [-].
-    heat_fusion_silicate: float
-        Latent heat of fusion for silicates [J/kg].
     nusselt_exponent: float
         Nusselt-Rayleigh scaling exponent [-].
     silicate_heat_capacity: float
@@ -245,6 +304,8 @@ class InteriorBoundary:
         Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].
     silicate_density: float
         Silicate density [kg/m^3]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F).
+    core_density: float
+        Core density [kg/m^3].
     thermal_conductivity: float
         Thermal conductivity [W/m/K].
     thermal_diffusivity: float
@@ -253,16 +314,12 @@ class InteriorBoundary:
         Thermal expansivity [1/K].
     viscosity_model: int
         Viscosity parameterisation model. Choices: 1 (constant), 2 (aggregate smooth transition), 3 (Arrhenius temperature-dependent).
-    eta_constant: float
-        Constant viscosity value [Pa s] for model 1.
-    eta_solid_const: float
-        Constant solid viscosity for aggregate formulation [Pa s].
-    eta_melt_const: float
-        Constant melt viscosity for aggregate formulation [Pa s].
     dynamic_viscosity: float
         Reference dynamic viscosity [Pa s] for Arrhenius solid mantle model.
     activation_energy: float
         Activation energy [J/mol] for Arrhenius solid mantle model.
+    creep_parameter: float
+        Creep parameter [-] for Arrhenius solid mantle model.
     viscosity_prefactor: float
         Viscosity prefactor [Pa s] for Vogel-Fulcher-Tammann magma ocean model.
     viscosity_activation_temp: float
@@ -271,20 +328,13 @@ class InteriorBoundary:
         Whether to create diagnostic CSV data files from boundary interior module.
     """
 
-    rtol: float = field(default=1e-6, validator=gt(0))
-    atol: float = field(default=1e-9, validator=gt(0))
-
-    T_p_0: float = field(default=3500.0, validator=ge(0))
-
     T_solidus: float = field(default=1420.0, validator=ge(0))
     T_liquidus: float = field(default=2020.0, validator=gt(0))
 
-    Tsurf_event_change: float = field(default=20.0, validator=gt(0))  # K
-
     critical_rayleigh_number: float = field(default=1.1e3, validator=gt(0))  # -
-    heat_fusion_silicate: float = field(default=4.0e5, validator=gt(0))  # J/kg
     nusselt_exponent: float = field(default=0.33, validator=gt(0))  # -
     silicate_heat_capacity: float = field(default=1.2e3, validator=gt(0))  # J/kg/K
+    core_density: float = field(default=10738.0, validator=gt(0))  # kg/m^3
     atm_heat_capacity_const: bool = field(default=True)
     atm_heat_capacity: float = field(default=1.7e4, validator=gt(0))  # J/kg/K
     silicate_density: float = field(default=4103.0, validator=gt(0))  # kg/m^3
@@ -296,11 +346,6 @@ class InteriorBoundary:
     viscosity_model: int = field(
         default=2, validator=in_((1, 2, 3))
     )  # 1=constant, 2=aggregate, 3=Arrhenius
-    eta_constant: float = field(default=1e2, validator=gt(0))  # Pa s, for model 1
-
-    # Aggregate viscosity parameters
-    eta_solid_const: float = field(default=1e22, validator=gt(0))  # Pa s
-    eta_melt_const: float = field(default=1e2, validator=gt(0))  # Pa s
 
     # Arrhenius solid mantle parameters
     dynamic_viscosity: float = field(default=3.8e9, validator=gt(0))  # Pa s

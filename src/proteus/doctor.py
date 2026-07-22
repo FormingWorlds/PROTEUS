@@ -652,7 +652,7 @@ def run_all_checks() -> list[CheckResult]:
 
 # ─── Run logging and support prompt ──────────────────────────────────
 
-_SUPPORT_EMAIL = 'proteus_dev@formingworlds.space'
+_SUPPORT_EMAIL = 'dev@proteus-framework.org'
 _ISSUES_URL = 'https://github.com/FormingWorlds/PROTEUS/issues'
 _DISCUSSIONS_URL = 'https://github.com/orgs/FormingWorlds/discussions'
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')

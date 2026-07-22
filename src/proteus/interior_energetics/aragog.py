@@ -2,6 +2,7 @@
 from __future__ import annotations  # noqa: I001
 
 import glob
+import inspect
 import logging
 import os
 import platform
@@ -30,6 +31,7 @@ from aragog.parser import (
     _SolverParameters,
 )
 from proteus.interior_energetics.common import Interior_t
+from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
@@ -41,6 +43,13 @@ if TYPE_CHECKING:
 
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
+
+# Aragog's built-in phase-boundary entropy margin [J/kg/K], applied when a
+# config omits the knob or an installed Aragog is too old to accept it. This
+# mirrors the PROTEUS schema default in config/_interior.py and Aragog's own
+# _DEFAULT_PHASE_BOUNDARY_ENTROPY_MARGIN; keep the three in step so the
+# omitted-key and default paths stay a no-op relative to prior behaviour.
+_ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN = 200.0
 
 
 _entropy_eos_cache: dict = {}
@@ -121,6 +130,93 @@ _DIFFRAX_RESEARCH_ONLY = False
 # on a network filesystem).
 _RHO_CORE_MIN = 1000.0
 _RHO_CORE_MAX = 30000.0
+
+# Default per-call melt-fraction step cap auto-enabled for the coupled
+# zalmoxis interior stack. Bounds how far any single cell's melt fraction
+# may move within one solver call, so a deep cell cannot cross the entire
+# two-phase window in one step (the source of the core-temperature
+# discontinuity at crystallisation onset). The cliff occurs whether or not
+# the structure is re-solved during runtime, so the cap is enabled for both
+# static and dynamic zalmoxis runs. A user value > 0 in the config always
+# takes precedence. Sensitivity-tested across the m-series grid.
+_ZALMOXIS_DEFAULT_PHI_STEP_CAP = 0.1
+
+# Default per-cell temperature and entropy step caps auto-enabled for the
+# coupled zalmoxis stack, alongside the melt-fraction cap. The melt-fraction
+# cap goes blind once a cell is fully solid, so it cannot bound the core-
+# temperature drop on the solid adiabat just below the solidus; the
+# temperature cap bounds |ΔT| per cell directly, and the entropy cap bounds
+# |ΔS| in the native solver variable. All three are set aggressively to
+# suppress any single-step core-temperature jump (robustness over runtime;
+# runtime tuning is a follow-up). Sensitivity-tested; a config value > 0
+# overrides each.
+_ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP = 100.0
+_ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP = 100.0
+
+
+def _resolve_step_cap(cap: float, zalmoxis_default: float, is_zalmoxis: bool) -> float:
+    """Map a configured per-call step cap to the value Aragog receives.
+
+    Shared resolution for the melt-fraction, temperature, and entropy caps,
+    which differ only in their zalmoxis default and physical meaning:
+
+    - The -1.0 off sentinel (and defensively any negative) resolves to 0.0, so
+      the cap is disabled even on the coupled zalmoxis stack. The config schema
+      admits only -1.0 among the negatives; the ``< 0.0`` guard keeps a stray
+      negative from ever reaching the solver as a literal cap.
+    - The schema default 0.0 is promoted to ``zalmoxis_default`` on the zalmoxis
+      interior stack so the crystallisation-onset core-temperature
+      discontinuity is guarded by default, and stays 0.0 (no cap) on any other
+      interior.
+    - A positive value is used verbatim on any interior.
+    """
+    if cap < 0.0:
+        return 0.0
+    if cap == 0.0 and is_zalmoxis:
+        return zalmoxis_default
+    return cap
+
+
+def _effective_phi_step_cap(config: Config) -> float:
+    """Resolve the melt-fraction step cap passed to Aragog.
+
+    The per-cell melt-fraction cap bounds how far a deep cell may cross the
+    mushy window in one call, removing the crystallisation-onset
+    core-temperature discontinuity. See :func:`_resolve_step_cap` for the
+    off-sentinel / zalmoxis-promotion / verbatim contract shared by the three
+    caps; the zalmoxis default here is :data:`_ZALMOXIS_DEFAULT_PHI_STEP_CAP`.
+    """
+    cap = float(config.interior_energetics.aragog.phi_step_cap)
+    is_zalmoxis = config.interior_struct.module == 'zalmoxis'
+    return _resolve_step_cap(cap, _ZALMOXIS_DEFAULT_PHI_STEP_CAP, is_zalmoxis)
+
+
+def _effective_temperature_step_cap(config: Config) -> float:
+    """Resolve the per-cell temperature step cap [K] passed to Aragog.
+
+    The melt-fraction cap cannot bound the core-temperature drop once a cell is
+    fully solid (its melt fraction can no longer move), so the temperature cap
+    bounds the per-cell temperature change on the solid adiabat below the
+    solidus. See :func:`_resolve_step_cap` for the shared off-sentinel /
+    zalmoxis-promotion / verbatim contract; the zalmoxis default here is
+    :data:`_ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP`.
+    """
+    cap = float(config.interior_energetics.aragog.temperature_step_cap)
+    is_zalmoxis = config.interior_struct.module == 'zalmoxis'
+    return _resolve_step_cap(cap, _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP, is_zalmoxis)
+
+
+def _effective_entropy_step_cap(config: Config) -> float:
+    """Resolve the per-cell entropy step cap [J/kg/K] passed to Aragog.
+
+    Same role as the temperature cap in the native solver variable, without an
+    EOS lookup in the root function. See :func:`_resolve_step_cap` for the
+    shared off-sentinel / zalmoxis-promotion / verbatim contract; the zalmoxis
+    default here is :data:`_ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP`.
+    """
+    cap = float(config.interior_energetics.aragog.entropy_step_cap)
+    is_zalmoxis = config.interior_struct.module == 'zalmoxis'
+    return _resolve_step_cap(cap, _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP, is_zalmoxis)
 
 
 def _is_plausible_core_density(rho_core: float) -> bool:
@@ -408,13 +504,13 @@ class AragogRunner:
                 )
         else:
             # Track how long Aragog has been integrating on a stale
-            # Zalmoxis structure. The _structure_stale flag is set by the
-            # wrapper's fall-back path on Zalmoxis non-convergence and
+            # Zalmoxis structure. The interior_o.structure_stale flag is set
+            # by the wrapper's fall-back path on Zalmoxis non-convergence and
             # cleared on the next successful Zalmoxis call. Surfacing this
             # counter at INFO makes the silent-stale-mesh window visible in
             # proteus_00.log; the hard-fail policy lives in the
             # wrapper's _ZALMOXIS_MAX_CONSECUTIVE_FAILS budget.
-            if hf_row.get('_structure_stale', False):
+            if interior_o.structure_stale:
                 interior_o._stale_struct_steps += 1
                 log.info(
                     'Aragog re-running on stale Zalmoxis structure '
@@ -568,7 +664,41 @@ class AragogRunner:
                 outdir, 'data', 'zalmoxis_output.dat'
             )  # Zalmoxis output file with mantle parameters
 
-        energy = _EnergyParameters(
+        # Per-cell step caps, all auto-enabled for the coupled zalmoxis
+        # interior stack. The melt-fraction cap subdivides a cell's crossing
+        # of the two-phase window; the temperature and entropy caps bound the
+        # per-cell |ΔT| and |ΔS|, which additionally cover the core-temperature
+        # drop on the solid adiabat below the solidus where the melt-fraction
+        # cap goes blind. Together they remove the discontinuous core-
+        # temperature drop at crystallisation onset. A config value overrides
+        # each.
+        ar = config.interior_energetics.aragog
+        phi_step_cap = _effective_phi_step_cap(config)
+        temperature_step_cap = _effective_temperature_step_cap(config)
+        entropy_step_cap = _effective_entropy_step_cap(config)
+        # Only a genuine promotion (schema default 0.0 lifted to a positive
+        # zalmoxis default) is an auto-enable. An explicit negative off switch
+        # resolves to 0.0 and differs from the configured value too, so the
+        # notice requires a positive effective cap to avoid mislabelling a
+        # deliberate disable as an auto-enable.
+        _promoted = (
+            (phi_step_cap > 0.0 and phi_step_cap != ar.phi_step_cap)
+            or (temperature_step_cap > 0.0 and temperature_step_cap != ar.temperature_step_cap)
+            or (entropy_step_cap > 0.0 and entropy_step_cap != ar.entropy_step_cap)
+        )
+        if _promoted:
+            # Fires every solve and is fully determined by the config, so it is
+            # provenance rather than per-step signal; keep it at debug so the
+            # per-solve INFO summary stays uncluttered.
+            log.debug(
+                'Auto-enabling step caps for the zalmoxis interior stack: '
+                'phi=%.3g, T=%.3g K, S=%.3g J/kg/K',
+                phi_step_cap,
+                temperature_step_cap,
+                entropy_step_cap,
+            )
+
+        energy_kwargs = dict(
             conduction=config.interior_energetics.trans_conduction,
             convection=config.interior_energetics.trans_convection,
             gravitational_separation=(config.interior_energetics.trans_grav_sep),
@@ -586,8 +716,37 @@ class AragogRunner:
             phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
             solver_method=config.interior_energetics.aragog.solver_method,
             use_jax_jacobian=(config.interior_energetics.aragog.backend == 'jax'),
-            phi_step_cap=config.interior_energetics.aragog.phi_step_cap,
+            phi_step_cap=phi_step_cap,
+            temperature_step_cap=temperature_step_cap,
+            entropy_step_cap=entropy_step_cap,
+            phase_boundary_entropy_margin=float(ar.phase_boundary_entropy_margin),
         )
+        # The temperature/entropy step caps and the phase-boundary entropy
+        # margin require a paired Aragog. Pass them only when the installed
+        # Aragog accepts them, so an older Aragog degrades gracefully (no caps,
+        # its built-in 200 J/kg/K margin) with a clear warning instead of
+        # crashing on an unexpected keyword.
+        _energy_fields = set(inspect.signature(_EnergyParameters).parameters)
+        _unsupported = {
+            'temperature_step_cap',
+            'entropy_step_cap',
+            'phase_boundary_entropy_margin',
+        } - _energy_fields
+        _caps_requested = temperature_step_cap > 0.0 or entropy_step_cap > 0.0
+        _nondefault_margin_dropped = (
+            'phase_boundary_entropy_margin' in _unsupported
+            and float(ar.phase_boundary_entropy_margin) != _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN
+        )
+        if _unsupported and (_caps_requested or _nondefault_margin_dropped):
+            log.warning(
+                'Installed Aragog does not support %s; the affected interior '
+                'stepping control(s) fall back to Aragog defaults. Update '
+                'Aragog to enable them.',
+                ', '.join(sorted(_unsupported)),
+            )
+        for _key in _unsupported:
+            energy_kwargs.pop(_key, None)
+        energy = _EnergyParameters(**energy_kwargs)
 
         # Define initial conditions for prescribing temperature profile
         if config.interior_struct.module in ('spider', 'dummy'):
@@ -725,6 +884,16 @@ class AragogRunner:
                 and os.path.isfile(liquid_eos)
             )
 
+            # Aragog's per-phase P-T property tables are built from the
+            # two-phase solid/liquid tables whenever they are available, for
+            # BOTH mantle_eos = "PALEOS:MgSiO3" (unified structure) and
+            # "PALEOS-2phase:MgSiO3". So for the default unified config the
+            # structure solve uses the unified table while Aragog's densities
+            # come from these two-phase tables. The "already exist" path below
+            # reuses the cached per-run aragog_pt tables (generated once from
+            # the two-phase source). Only when no two-phase tables are present
+            # does Aragog fall back to building its tables from the unified
+            # table, where solid and melt share one source surface.
             if has_2phase:
                 if not (LOOK_UP_DIR / 'density_melt.dat').is_file():
                     from zalmoxis.eos_export import generate_aragog_pt_tables_2phase
@@ -1397,14 +1566,27 @@ class AragogRunner:
             )
 
             # ---- Independent PALEOS adiabat ----
-            # Use the same surface temperature that _set_entropy_ic used:
-            # config.planet.tsurf_init unless hf_row carries an accretion
-            # override (T_surface_initial from Zalmoxis White+Li mode).
-            T_surf = float(config.planet.tsurf_init)
-            if hf_row is not None:
-                T_surface_computed = hf_row.get('T_surface_initial', 0)
-                if T_surface_computed and T_surface_computed > 0:
-                    T_surf = float(T_surface_computed)
+            # Reference surface temperature for the independent adiabat.
+            # liquidus_super builds the IC by solving for the surface
+            # temperature that gives the requested superheat, so anchor the
+            # cross-check adiabat at that same solved value (tsurf_init is
+            # ignored by liquidus_super). The cold-surface guard below then
+            # compares the IC's unpacked surface against the intended surface,
+            # so a corrupted IC is still caught.
+            if config.planet.temperature_mode == 'liquidus_super':
+                from proteus.interior_struct.zalmoxis import (
+                    solve_superliquidus_adiabat,
+                )
+
+                T_surf = float(solve_superliquidus_adiabat(config, hf_row)['surface_T'])
+            else:
+                # config.planet.tsurf_init unless hf_row carries an accretion
+                # override (T_surface_initial from Zalmoxis White+Li mode).
+                T_surf = float(config.planet.tsurf_init)
+                if hf_row is not None:
+                    T_surface_computed = hf_row.get('T_surface_initial', 0)
+                    if T_surface_computed and T_surface_computed > 0:
+                        T_surf = float(T_surface_computed)
 
             # Surface pressure: use 1 bar (same as _set_entropy_ic and
             # common.compute_initial_entropy) to keep the cross-check
@@ -1487,25 +1669,61 @@ class AragogRunner:
                     max_rel,
                 )
             elif verdict == 'FAIL':
-                # Do NOT raise. Log only. Production runs on Habrok
-                # showed that this threshold fires on every Aragog case
-                # at M>=2.0 Earth masses (CMB pressure >~250 GPa) due
-                # to the same table-boundary effect noted above. This
-                # is an EOS self-consistency drift, not a coupling bug.
-                # If you want a stricter safety net, use the surface-only
-                # scalar check in _set_entropy_ic (T_check log line at
-                # line ~600) which is always reliable.
-                log.warning(
+                # Two distinct regimes produce a FAIL verdict:
+                #
+                # (1) Benign EOS table drift: the regenerated P-S table and the
+                #     direct PALEOS adiabat disagree by ~5-10% at high P (the
+                #     regeneration involves bilinear interpolation across non-
+                #     converged cells). The run still conserves energy and cools
+                #     monotonically; the disagreement grows with mass and is
+                #     diagnostic only. The 1 M_Earth case already sits at ~6%.
+                # (2) The out-of-calibration liquidus_super failure mode: the
+                #     extrapolated CMB liquidus anchor inverts to a low entropy
+                #     that unpacks to a COLD surface (T well below the adiabat
+                #     anchor), a steeply inverted profile that drives a spurious
+                #     CMB flux and breaks energy conservation. compute_initial_
+                #     entropy redirects this case to the surface anchor, so it
+                #     should not normally reach here; the raise is a safety net
+                #     for any path that bypasses that redirect.
+                #
+                # The signature that separates (2) from (1) is the COLD SURFACE,
+                # not the verdict magnitude: benign drift can also exceed the
+                # FAIL threshold, so gating the raise on the verdict alone would
+                # wrongly block a correctly-anchored high-mass run.
+                isurf = int(np.argmin(P_stag))
+                surface_too_cold = T_stag_aragog[isurf] < 0.9 * T_adiabat_interp[isurf]
+                is_liquidus_super = config.planet.temperature_mode == 'liquidus_super'
+                if (
+                    is_liquidus_super
+                    and P_cmb_adiabat > FEI2021_LIQUIDUS_P_CALIB_PA
+                    and surface_too_cold
+                ):
+                    raise RuntimeError(
+                        f'Entropy IC cross-check FAILED with a cold-surface '
+                        f'inversion (surface T={T_stag_aragog[isurf]:.0f} K vs '
+                        f'adiabat {T_adiabat_interp[isurf]:.0f} K; max '
+                        f'{max_diff:.0f} K / {max_rel:.1f}%) for liquidus_super '
+                        f'at P_cmb={P_cmb_adiabat / 1e9:.0f} GPa, beyond the '
+                        f'Fei+2021 calibration '
+                        f'(~{FEI2021_LIQUIDUS_P_CALIB_PA / 1e9:.0f} GPa). The '
+                        'extrapolated CMB anchor produced a non-physical, '
+                        'energy-non-conserving initial condition. Use an '
+                        'adiabatic (surface-anchored) initial condition for '
+                        'this planet mass.'
+                    )
+                log.debug(
                     'Entropy IC full-profile cross-check > %.1f%% '
-                    '(max %.1f K / %.2f%% at depth). Diagnostic only; '
-                    'NOT raising because this reflects known PALEOS '
-                    'P-T vs P-S table boundary drift at high mass, '
-                    'not a coupling bug. The scalar surface cross-check '
-                    'logged by _set_entropy_ic is the authoritative '
-                    'IC sanity check.',
+                    '(max %.1f K / %.2f%% at depth). Diagnostic only; benign '
+                    'PALEOS P-T vs regenerated P-S table drift (P_cmb=%.0f GPa, '
+                    'surface T=%.0f K vs adiabat %.0f K), not a coupling bug. '
+                    'The scalar surface cross-check logged by _set_entropy_ic '
+                    'is the authoritative IC sanity check.',
                     FAIL_PCT,
                     max_diff,
                     max_rel,
+                    P_cmb_adiabat / 1e9,
+                    T_stag_aragog[isurf],
+                    T_adiabat_interp[isurf],
                 )
 
         except (
@@ -1773,20 +1991,24 @@ class AragogRunner:
         solver = self.aragog_solver
         max_attempts = 6
         atol_sf_max = 5.0  # cap on atol scaling; tested 125x corrupted T_core
-        # Scale the T_core-jump sanity threshold with planet mass. At 1 M_Earth
-        # the IC transient in T_core is O(100 K); at 5 M_Earth with per-node
-        # gravity the same transient is O(2-3 kK) because core heat extraction
-        # scales with CMB gravity and core-mantle area (g_cmb^2 * R_core^2).
-        # A flat 1500 K threshold is calibrated for 1 M_Earth and
-        # wrongly rejects physical transients on super-Earth runs, driving the
-        # retry ladder to exhaustion. Linear-in-mass scaling is defensible:
-        # for rocky planets the product (g_cmb * M_core * C_p_core) rises
-        # approximately linearly with planet mass, and the first-step
-        # dT_core/dt scales with that product. At 5 M_Earth this gives a
-        # 7500 K ceiling, ~2.5x headroom above the observed 2700 K jump.
+        # Scale the T_core-jump sanity threshold with planet mass, with a floor.
+        # The early-evolution transient in T_core grows with planet mass because
+        # core heat extraction scales with CMB gravity and core-mantle area
+        # (g_cmb^2 * R_core^2); the product (g_cmb * M_core * C_p_core) rises
+        # roughly linearly with planet mass, so the first-step dT_core/dt tracks
+        # it. A 5 M_Earth run shows an O(2-3 kK) transient, so the linear term
+        # gives a 7500 K ceiling there (about 2.5x headroom over the observed
+        # 2700 K). The transient is sub-linear at the low-mass end rather than
+        # the O(100 K) the linear term alone implies: with the super-liquidus
+        # initial condition a 1 M_Earth run settles its core by about 1700 K on
+        # the early steps, above the bare 1500 K linear value, which froze T_cmb
+        # and exhausted the retry ladder. The floor gives the low-mass runs
+        # headroom over that transient while the guard still rejects the much
+        # larger jumps from a corrupted solve (an over-relaxed atol returns
+        # T_core errors of many thousands of K).
         mass_tot = float(getattr(self._config.planet, 'mass_tot', 1.0) or 1.0)
-        sanity_dT_core = 1500.0 * max(
-            1.0, mass_tot
+        sanity_dT_core = max(
+            3000.0, 1500.0 * mass_tot
         )  # max plausible T_core change per retry [K]
 
         # Capture IC for restoration on retry, and pre-call T_core for
@@ -2054,7 +2276,7 @@ class AragogRunner:
             'Cp_eff': out.Cp_eff,
             'F_radio': F_radio,
             'F_tidal': F_tidal,
-            # Energy-conservation diagnostic columns (Aragog A1+A2).
+            # Energy-conservation diagnostic columns.
             # E_state is the EOS-consistent integrated mantle enthalpy
             # from the precomputed h(P,S) table; F_cmb is the CMB heat
             # flux signed positive-out-of-core; Q_*_W are mantle-mass-
@@ -2066,32 +2288,46 @@ class AragogRunner:
             'F_cmb': out.F_cmb,
             'Q_radio_W': out.Q_radio_total,
             'Q_tidal_W': out.Q_tidal_total,
-            # Per-call energy contributions [J] integrated over the
-            # CVODE sub-step trajectory. Replaces helpfile-side
-            # trapezoidal interpolation of end-of-step F_cmb snapshots
-            # (which were prone to phase-boundary spikes at single
-            # sub-step boundaries). The cumulative ``dE_predicted_cons_J``
-            # is now sum_n step_dE_*_J across all rows in the helpfile.
-            # The state-mass ``step_dE_Q_*_J`` are kept as instrumentation
-            # diagnostics; the residual itself uses ``step_dE_Q_*_cons_J``.
+            # Per-call energy contributions [J] integrated over the CVODE
+            # sub-step trajectory (rather than from end-of-step F_cmb
+            # snapshots, which spike at phase boundaries). The cumulative
+            # ``dE_predicted_cons_J`` in the coupler sums the boundary fluxes
+            # and the live-density (state-mass) ``step_dE_Q_radio_J`` and
+            # ``step_dE_Q_tidal_J`` below, so the predicted side shares the
+            # ``rho(P,S)`` frame the entropy-transported state side integrates.
             'step_dE_F_int_J': out.step_dE_F_int_J,
             'step_dE_F_cmb_J': out.step_dE_F_cmb_J,
             'step_dE_Q_radio_J': out.step_dE_Q_radio_J,
             'step_dE_Q_tidal_J': out.step_dE_Q_tidal_J,
-            # Conservation-grade variants: same per-call integrals but
-            # with frozen-mass weighting on the volumetric source
-            # terms (Q_radio, Q_tidal). Together with E_state_cons_J
-            # they give a Lagrangian-frame budget that closes against
-            # the entropy ODE to numerical precision.
+            # Frozen-mass variants of the per-call source integrals, retained
+            # as a Lagrangian-frame comparison diagnostic. They are NOT summed
+            # into the conservation residual (which uses the live-density
+            # variants above); ``E_state_cons_J`` is likewise an enthalpy
+            # diagnostic, not the conservation-grade quantity. Machine-precision
+            # conservation is carried by the solver-residual column below.
             'step_dE_Q_radio_cons_J': out.step_dE_Q_radio_cons_J,
             'step_dE_Q_tidal_cons_J': out.step_dE_Q_tidal_cons_J,
-            # Per-call entropy-ODE solver residual [J]. Sums to a
-            # cumulative ``solver_residual_J`` in the coupler that
-            # quantifies trapezoidal-vs-CVODE-internal integration
-            # mismatch. Should remain near zero for a well-converged
-            # integrator; non-trivial values signal step rejection or
-            # tolerance issues.
+            # Per-call entropy-equation self-consistency residual [J].
+            # Sums to a cumulative ``solver_residual_J`` in the coupler.
+            # The discrete flux divergence telescopes to the boundary
+            # fluxes, so it is machine-zero by construction; a non-zero
+            # value flags a divergence-assembly bug, not time-integration
+            # quality (that is carried by ``E_residual_cons_frac``).
             'step_solver_residual_J': out.step_solver_residual_J,
+            # Per-call adiabatic compression work [J] from the structure
+            # re-solve that preceded this step. Informational only: the
+            # conservation residual is built from the entropy-transported
+            # heat below, not from an enthalpy-plus-compression prediction.
+            'step_dE_compression_J': out.step_dE_compression_J,
+            # Per-call entropy-transported heat content change [J], the
+            # Lagrangian heat the entropy ODE moves (rho*T weighting). Its
+            # cumulative sum is the state side of the conservation residual
+            # in the coupler; the boundary-flux+source sum is the predicted
+            # side. Both integrate the same entropy-transported heat, so the
+            # residual closes to about a percent of the cooling (the floor is
+            # the table-vs-phase density difference); machine-precision
+            # conservation is the separate solver-residual column.
+            'step_dE_state_heat_J': out.step_dE_state_heat_J,
             # Boundary layer thickness, taken straight from the atmosphere
             # config. Surfaced here so the helpfile carries a single
             # backend-agnostic field for downstream tooling that has to

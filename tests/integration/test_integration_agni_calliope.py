@@ -28,9 +28,8 @@ a real interior solver; the AGNI leg is exercised by the existing
 ``test_smoke_modules.py`` chain.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -103,7 +102,7 @@ def test_calliope_is_included_preserves_documented_ten_gas_set():
 
     Discrimination: pin the full list of ten species. A regression
     that dropped any one (e.g. removed include_NH3) would fail the
-    per-gas loop. The trailing ``is_included('Ar')`` raise pins
+    per-gas loop. The trailing ``is_included('Rn')`` raise pins
     that the helper does not silently return False for an absent
     attribute.
     """
@@ -126,21 +125,29 @@ def test_calliope_is_included_preserves_documented_ten_gas_set():
         assert c.is_included(gas) is True, f'{gas} missing from Calliope defaults'
 
     # Pin the count of include_* fields so a regression that silently
-    # adds an eleventh species (e.g. include_Xe) fails the count
+    # adds or removes a reactive species fails the count
     # check even if the ten documented species still appear.
     import attrs
 
+    from proteus.utils.constants import noble_gases
+
     include_fields = [f for f in attrs.fields(Calliope) if f.name.startswith('include_')]
-    assert len(include_fields) == len(documented_species), (
-        f'Expected {len(documented_species)} include_* fields on Calliope, '
-        f'got {len(include_fields)}: {[f.name for f in include_fields]}'
+    reactive_fields = [
+        f for f in include_fields if f.name.removeprefix('include_') not in noble_gases
+    ]
+    assert len(reactive_fields) == len(documented_species), (
+        f'Expected {len(documented_species)} reactive include_* fields on Calliope, '
+        f'got {len(reactive_fields)}: {[f.name for f in reactive_fields]}'
     )
+    # The noble gases are opt-in, so each has an include_* flag defaulting off.
+    for _noble in noble_gases:
+        assert c.is_included(_noble) is False, f'{_noble} should default to off'
 
     # Discrimination: helper must raise on an undocumented attribute
     # rather than silently return False. The attrs class does not
-    # carry an include_Ar field.
+    # carry an include_Rn field.
     with pytest.raises(AttributeError):
-        c.is_included('Ar')
+        c.is_included('Rn')
 
 
 # ---------------------------------------------------------------------------

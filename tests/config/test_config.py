@@ -2,8 +2,8 @@
 
 This file targets config parsing helpers plus validator guardrails across
 _config.py, _interior.py, and _params.py. See testing standards in
-docs/test_infrastructure.md, docs/test_categorization.md, and
-docs/test_building.md for required structure, speed, and physics validity.
+docs/How-to/testing.md and docs/Explanations/test_framework.md for required
+structure, speed, and physics validity.
 """
 
 from __future__ import annotations
@@ -129,7 +129,11 @@ def test_factory_defaults_from_minimal_config():
     # Omitted sections should use factory defaults
     assert cfg.escape.module == 'zephyrus'
     assert cfg.accretion.module is None
-    assert cfg.observe.synthesis is None
+    assert cfg.observe.module is None
+    assert cfg.observe.petitRADTRANS.line_opacity_mode == 'c-k'
+    assert cfg.observe.petitRADTRANS.include_rayleigh is True
+    assert cfg.observe.petitRADTRANS.include_cia is True
+    assert cfg.observe.petitRADTRANS.silent is True
     assert cfg.atmos_chem.module is None
     assert cfg.interior_energetics.module == 'aragog'
     assert cfg.star.module == 'mors'
@@ -291,7 +295,8 @@ def test_tides_enabled_orbit_requires_orbit_module():
 def test_observe_resolved_atmosphere_requires_non_dummy():
     """Resolved spectra synthesis is invalid when the climate module is dummy."""
     inst = SimpleNamespace(
-        observe=SimpleNamespace(synthesis='platon'), atmos_clim=SimpleNamespace(module='dummy')
+        observe=SimpleNamespace(module='petitRADTRANS'),
+        atmos_clim=SimpleNamespace(module='dummy'),
     )
     with pytest.raises(ValueError):
         observe_resolved_atmosphere(inst, None, None)
@@ -2008,7 +2013,7 @@ def test_config_observe_resolved_atmosphere_requires_non_dummy_atmos():
 
     # Invalid: synthesis observations with dummy atmosphere
     instance = SimpleNamespace(
-        observe=SimpleNamespace(synthesis='platon'),  # Synthesis enabled
+        observe=SimpleNamespace(module='petitRADTRANS'),  # Synthesis enabled
         atmos_clim=SimpleNamespace(module='dummy'),  # Dummy module - INVALID
     )
     with pytest.raises(ValueError, match='Observational synthesis requires'):
@@ -2029,14 +2034,14 @@ def test_config_observe_resolved_atmosphere_allows_no_synthesis():
 
     # Valid: no synthesis observations
     instance = SimpleNamespace(
-        observe=SimpleNamespace(synthesis=None),
+        observe=SimpleNamespace(module=None),
         atmos_clim=SimpleNamespace(module='dummy'),
     )
     result = observe_resolved_atmosphere(instance, SimpleNamespace(), None)
-    assert result is None  # contract: synthesis=None short-circuits the validator
-    # Discriminating check: atmos_clim.module='dummy' with synthesis='platon' would
+    assert result is None  # contract: module=None short-circuits the validator
+    # Discriminating check: atmos_clim.module='dummy' with module='petitRADTRANS' would
     # have raised; only the synthesis-disabled branch can produce a silent pass.
-    assert instance.observe.synthesis is None
+    assert instance.observe.module is None
 
 
 @pytest.mark.unit

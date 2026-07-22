@@ -52,9 +52,8 @@ atmodeller + dummy Zalmoxis lives at the slow tier in
 ``test_slow_aragog_atmodeller.py``.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -148,7 +147,7 @@ def test_atmodeller_solver_max_steps_and_multistart_gt0_under_zalmoxis():
 
     - ``=0`` rejects (catches a ``ge(0)`` regression).
     - ``=1`` round-trips (catches a ``gt(1)`` regression).
-    - Documented defaults (256, 10) round-trip.
+    - Documented defaults (1024, 10) round-trip.
     """
     from proteus.config._outgas import Atmodeller
 
@@ -161,7 +160,7 @@ def test_atmodeller_solver_max_steps_and_multistart_gt0_under_zalmoxis():
     assert a_min.solver_max_steps == 1
     assert a_min.solver_multistart == 1
     default = Atmodeller()
-    assert default.solver_max_steps == 256
+    assert default.solver_max_steps == 1024
     assert default.solver_multistart == 10
 
 
@@ -285,10 +284,14 @@ def test_atmodeller_whole_element_totals_in_hf_row_schema_under_zalmoxis():
     Fe, Na) are pinned together because the dry-mass subtraction
     treats them uniformly.
     """
-    from proteus.utils.constants import element_list
+    from proteus.utils.constants import element_list, noble_gases
     from proteus.utils.coupler import GetHelpfileKeys, ZeroHelpfileRow
 
-    assert set(element_list) == {'H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'}
+    # The reactive and rock-forming elements plus the opt-in noble gases, which
+    # are tracked as elements in the whole-planet mass balance.
+    assert set(element_list) == {'H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'} | set(
+        noble_gases
+    )
     keys = GetHelpfileKeys()
     for e in element_list:
         col = f'{e}_kg_total'

@@ -2,7 +2,7 @@
 
 Exercises stellar radius calculation (empirical scaling laws and direct config),
 blackbody spectrum generation, bolometric luminosity, and planetary instellation.
-Follows PROTEUS testing standards (see docs/test_infrastructure.md).
+Follows PROTEUS testing standards (see docs/How-to/testing.md).
 """
 
 from __future__ import annotations

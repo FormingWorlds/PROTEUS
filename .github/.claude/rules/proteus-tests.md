@@ -235,7 +235,7 @@ with budgets:
 - `integration` -> `timeout(300)`.
 - `slow` -> `timeout(3600)`.
 
-CI runs `pytest -m "unit and not skip"`. Tests without the tier marker are invisible to CI and shipped untested. The lint script blocks any file missing the module-level `pytestmark`.
+CI runs `pytest -m "unit and not skip and not slow and not integration"`. Tests without the tier marker are invisible to CI and shipped untested. The lint script blocks any file missing the module-level `pytestmark`.
 
 ### Per-function markers
 
@@ -353,13 +353,12 @@ The lint script is wired into PR CI (`ci-pr-checks.yml`). The step currently run
 
 ## 15. Coverage strategy (operator's view)
 
-PROTEUS uses two coverage gates with explicit sub-targets. The fast gate is for PR cycle time; the estimated total is the real KPI.
+PROTEUS runs three gates on every pull request. The fast gate is for PR cycle time; the estimated total is the real KPI. The full gate is not a fourth: it is the pyproject value the estimated total is measured against.
 
 | Gate | Tests | Target | When |
 |---|---|---|---|
 | Fast gate (`tool.proteus.coverage_fast`) | unit-only (PR) | fixed **80%** | Every PR (warn-only on drafts) |
-| Estimated total (PR union with nightly artifact) | unit + smoke + integration | **90%** (PROTEUS-ecosystem ceiling) | Every PR (warn-only on drafts) |
-| Full gate (`tool.coverage.report`) | unit + smoke + integration + slow | fixed **90%** | Nightly |
+| Estimated total (PR union with nightly artifact) | unit + smoke + integration + slow | **90%**, the `tool.coverage.report` value | Every PR (warn-only on drafts) |
 | Diff-cover | changed lines (fast + nightly union) | 80% (hard-coded; warn-only on drafts) | Every PR |
 
 Unit tests alone are not expected to reach 90%. Wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is covered by smoke / integration / slow tests in nightly; the nightly artifact is downloaded into PR runs and unioned with the PR's own coverage both for the estimated total and for the diff-cover gate. That is why the fast (unit-only) gate is held at a fixed 80% rather than chasing 90%.

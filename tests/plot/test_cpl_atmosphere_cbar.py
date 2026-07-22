@@ -5,9 +5,8 @@ with colour bar) and the ``plot_atmosphere_cbar_entry`` wrapper.
 Matplotlib + axes_grid1 are mocked at the source-binding attributes.
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

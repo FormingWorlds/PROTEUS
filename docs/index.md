@@ -1,18 +1,16 @@
 ---
 title: PROTEUS
+hide: 
+  - toc
+  - navigation
 ---
 
-<h1 align="center">
-    <a href="https://proteus-framework.org">
-    <div>
-        <img src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/PROTEUS_white.png#gh-light-mode-only" style="vertical-align: middle;" width="60%"/>
-        <img src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/PROTEUS_black_nobkg.png#gh-dark-mode-only" style="vertical-align: middle;" width="60%"/>
-    </div>
-    </a>
-</h1>
+<div class="proteus-index proteus-index-img">
+
+<h1 align="center" markdown="0"><a href="https://proteus-framework.org"><img src="assets/proteus-lockup-light-transparent.png#only-light" alt="PROTEUS" width="70%"/><img src="assets/proteus-lockup-dark-transparent.png#only-dark" alt="PROTEUS" width="70%"/></a></h1>
 
 <p align="center">
-  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml" target="_blank" rel="noopener">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/coverage-baseline.yml" target="_blank" rel="noopener">
     <img src="badges/unit.svg" alt="Unit tests status">
   </a>
   <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml" target="_blank" rel="noopener">
@@ -33,6 +31,10 @@ title: PROTEUS
   </a>
 </p>
 
+</div>
+
+<div class="proteus-index" markdown=1>
+
 **PROTEUS** is a modular Python framework that simulates the coupled evolution
 of rocky planet atmospheres and interiors. It connects interior thermal
 evolution, volatile outgassing, atmospheric radiative transfer, atmospheric
@@ -40,9 +42,14 @@ escape, and stellar evolution into a self-consistent time-stepping loop,
 tracking the planet from a molten magma ocean to a solidified surface over
 billions of years.
 
-<object type="image/svg+xml" data="https://cdn.jsdelivr.net/gh/FormingWorlds/PROTEUS@main/docs/assets/proteus_modules_schematic.svg" class="arch-diagram arch-diagram--light"></object>
-<object type="image/svg+xml" data="https://cdn.jsdelivr.net/gh/FormingWorlds/PROTEUS@main/docs/assets/proteus_modules_schematic_darkmode.svg" class="arch-diagram arch-diagram--dark"></object>
+</div>
 
+<div align="center" class="proteus-index proteus-index-img">
+  <object type="image/svg+xml" data="assets/proteus_modules_schematic.svg" class="mod-diagram mod-diagram--light" aria-label="PROTEUS module schematic (light mode)">PROTEUS module schematic (light mode)</object>
+  <object type="image/svg+xml" data="assets/proteus_modules_schematic_darkmode.svg" class="mod-diagram mod-diagram--dark" aria-label="PROTEUS module schematic (dark mode)">PROTEUS module schematic (dark mode)</object>
+</div>
+
+<div class="proteus-index" markdown=1>
 <p style="text-align: center;"><strong>Schematic of PROTEUS components and corresponding modules.</strong></p>
 
 ## Key features
@@ -68,25 +75,26 @@ billions of years.
 -   :material-download: **Install PROTEUS**
 
     Set up the framework and its physics modules with the guided
-    installer. &nbsp; &nbsp;
+    installer.
 
     [Installation guide](How-to/installation.md){ .md-button .md-button--primary }
 
 -   :material-school: **New to PROTEUS?**
 
-    Start with the quick-start tutorial using all-dummy backends (no external
-    solvers needed, runs in under a minute).
+    Start with the quick-start tutorial using all-dummy backends (runs in under a minute).
 
     [Quick start tutorial](Tutorials/quick_start_dummy.md){ .md-button .md-button--primary }
 
 -   :material-earth: **Ready for science?**
 
     Follow the Earth analogue tutorial for a full production run with real
-    physics modules. &nbsp; &nbsp;
+    physics modules. 
 
     [Earth analogue tutorial](Tutorials/earth_analogue.md){ .md-button .md-button--primary}
 
 </div>
+
+Need the full picture? See the [get started guide](getting_started.md).
 
 ## Citation and credit
 
@@ -94,3 +102,16 @@ If you make use of PROTEUS, please reference the scientific manuscripts
 outlined in the [Bibliography](Reference/bibliography.md), state the code
 version used, and include an acknowledgement. We provide a suggested
 acknowledgement in the [contributing page](Community/CONTRIBUTING.md#licensing-and-credit).
+To cite the software itself, use the Zenodo concept DOI
+[10.5281/zenodo.21358380](https://doi.org/10.5281/zenodo.21358380), which
+always resolves to the latest archived release; the Zenodo record for a
+specific release also carries its own version DOI.
+
+## License
+
+PROTEUS is released under the [Apache 2.0 license](https://github.com/FormingWorlds/PROTEUS/blob/main/LICENSE.txt).
+
+!!! info "Licenses across the PROTEUS framework"
+    Different components within the PROTEUS framework carry different licenses. Please find information about the use of licenses within the PROTEUS framework on the website's [license page](https://proteus-framework.org/license/).
+
+</div>

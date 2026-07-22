@@ -6,9 +6,8 @@ Tests the _load_ps_table() method which loads SPIDER's P-S lookup tables
 fallback logic, and verifies the loaders are wired by ``Interior_t.__init__``.
 
 Testing standards and documentation:
-- docs/test_infrastructure.md: Test infrastructure overview
-- docs/test_categorization.md: Test marker definitions
-- docs/test_building.md: Best practices for test construction
+- docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
+- docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 
 Functions tested:
 - Interior_t._load_ps_table(): Load arbitrary P-S table with path fallback
@@ -471,6 +470,152 @@ def test_resume_tides_missing_file_emits_warning_and_does_not_mutate_state(tmp_p
     # State unchanged: zeros preserved (no array growth, no NaN injection).
     np.testing.assert_allclose(interior.phi, 0.0, atol=1e-12)
     np.testing.assert_allclose(interior.tides, 0.0, atol=1e-12)
+
+
+def test_get_file_structure_stale_returns_expected_subpath(tmp_path):
+    """get_file_structure_stale composes ``outdir/data/structure_stale.dat``."""
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    out = get_file_structure_stale(str(tmp_path))
+    # Edge case: a trailing separator on the outdir must still join cleanly.
+    out_slash = get_file_structure_stale(str(tmp_path) + os.sep)
+    assert out.endswith(os.path.join('data', 'structure_stale.dat'))
+    assert out_slash.endswith(os.path.join('data', 'structure_stale.dat'))
+    # The composed path stays inside outdir, not an absolute escape, and is
+    # distinct from the tides sidecar so the two records never collide.
+    from proteus.interior_energetics.common import get_file_tides
+
+    assert str(tmp_path) in out
+    assert out != get_file_tides(str(tmp_path))
+
+
+def test_write_structure_stale_survives_resume_roundtrip(tmp_path):
+    """A raised stale flag survives a simulated resume through the sidecar.
+
+    Contract: ``structure_stale`` records that the interior is running on a
+    fall-back (previous-step) mesh. It lives on ``interior_o`` rather than the
+    floats-only helpfile row, so it would be lost on resume (which rebuilds
+    ``hf_row`` from the last CSV row) unless it is persisted separately. The
+    write/resume pair is that persistence path.
+
+    The resume target is a FRESH ``Interior_t``, whose constructor default is
+    ``False``; that is the discrimination. If ``resume_structure_stale`` were a
+    no-op, the fresh object would read ``False`` and the assertion would fail.
+    The recovered ``True`` therefore proves the bit crossed the disk boundary.
+    """
+    (tmp_path / 'data').mkdir()
+
+    # Direction 1 (the critical case): a crash right after a fall-back must resume
+    # knowing the mesh is stale.
+    stale = Interior_t(5)
+    stale.structure_stale = True
+    stale.write_structure_stale(str(tmp_path))
+
+    resumed = Interior_t(5)
+    assert resumed.structure_stale is False, 'fresh interior must default to not-stale'
+    resumed.resume_structure_stale(str(tmp_path))
+    assert resumed.structure_stale is True, 'raised flag must survive the resume'
+
+    # Direction 2: a cleared flag persists too, so a resume after a successful
+    # re-solve does not spuriously read stale. Discrimination: seed the resume
+    # target True at entry so a no-op resume would leave it True; the recovered
+    # False proves the on-disk 0 overrode the pre-resume state.
+    fresh = Interior_t(5)
+    fresh.structure_stale = False
+    fresh.write_structure_stale(str(tmp_path))
+
+    resumed_false = Interior_t(5)
+    resumed_false.structure_stale = True
+    resumed_false.resume_structure_stale(str(tmp_path))
+    assert resumed_false.structure_stale is False, 'cleared flag must survive the resume'
+
+
+def test_resume_structure_stale_missing_or_malformed_file_defaults_fresh(tmp_path, caplog):
+    """resume_structure_stale degrades to not-stale on an absent or corrupt file.
+
+    Edge case (absent file): a run with no sidecar, or one that never fell back,
+    must assume the mesh is fresh rather than abort.
+    Discrimination: the target is seeded ``True`` at entry, so the absent-file
+    branch must actively reset it to ``False``, not merely leave a default.
+
+    Error contract (malformed file): a non-integer payload must be swallowed with
+    a warning and treated as fresh, so an unparseable visibility bit never blocks
+    a resume.
+    """
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    (tmp_path / 'data').mkdir()
+
+    # Absent file: no sidecar written.
+    missing = Interior_t(5)
+    missing.structure_stale = True  # seed non-default so the reset is observable
+    missing.resume_structure_stale(str(tmp_path))
+    assert missing.structure_stale is False, 'absent file must reset to not-stale'
+
+    # Malformed file: unparseable content must warn and fall back to False.
+    with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
+        hdl.write('not-an-int\n')
+    corrupt = Interior_t(5)
+    corrupt.structure_stale = True
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        corrupt.resume_structure_stale(str(tmp_path))
+    assert corrupt.structure_stale is False, 'malformed file must fall back to not-stale'
+    assert any('stale-structure flag' in r.message for r in caplog.records), (
+        'the malformed-file branch must emit a warning for provenance'
+    )
+
+
+def test_write_structure_stale_swallows_oserror_without_propagating(
+    tmp_path, caplog, monkeypatch
+):
+    """A failed stale-flag write is logged and swallowed, never propagated.
+
+    Contract: ``write_structure_stale`` is called on the Zalmoxis fall-back path
+    in ``wrapper.py`` immediately before the mesh and ``zalmoxis_output.dat``
+    rollback. The flag is only a resume-visibility bit, so a write failure (an
+    absent ``data/`` directory, a full disk) must not abort the run; propagating
+    the error here would skip the rollback that follows the call and strand the
+    run on a half-committed structure. The guard logs and returns instead.
+
+    Two directions, both of which would raise out of the call if the
+    ``except OSError`` guard were removed:
+    """
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    # Direction 1 (absent data/ dir): the realistic failure. ``tmp_path`` has no
+    # ``data/`` subdirectory, so the underlying ``open(..., 'w')`` raises
+    # ``FileNotFoundError`` (an ``OSError`` subclass). Discrimination: assert the
+    # directory really is missing, then assert the guarded call still returns.
+    target = get_file_structure_stale(str(tmp_path))
+    assert not os.path.exists(os.path.dirname(target)), 'data/ must be absent for this branch'
+    interior = Interior_t(5)
+    interior.structure_stale = True
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        result = interior.write_structure_stale(str(tmp_path))
+    assert result is None, 'the call must return normally, not propagate the write error'
+    assert not os.path.exists(target), 'a failed write must not leave a partial flag file'
+    assert any('stale-structure flag' in r.message for r in caplog.records), (
+        'a swallowed write failure must still emit a warning for provenance'
+    )
+
+    # Direction 2 (generic OSError): the ``data/`` directory now exists, so the
+    # only failure source is a patched ``open`` that raises a bare ``OSError``
+    # (the disk-full case named in the source comment). This discriminates that
+    # the guard catches ``OSError`` broadly, not merely the missing-dir subclass.
+    (tmp_path / 'data').mkdir()
+
+    def _raise_oserror(*args, **kwargs):
+        raise OSError('simulated disk-full')
+
+    monkeypatch.setattr('builtins.open', _raise_oserror)
+    caplog.clear()
+    disk_full = Interior_t(5)
+    disk_full.structure_stale = False
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        assert disk_full.write_structure_stale(str(tmp_path)) is None
+    assert any('stale-structure flag' in r.message for r in caplog.records), (
+        'a bare OSError must be caught and logged, not only FileNotFoundError'
+    )
 
 
 def test_resume_tides_length_mismatch_logs_error_but_does_not_raise(tmp_path, caplog):

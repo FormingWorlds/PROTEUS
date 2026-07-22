@@ -58,7 +58,7 @@ config_version = "3.0"
         scale_decr            = 0.8          # shrink factor on rejected adaptive step
         window                = 3            # lookback window for adaptive comparison [steps]
         max_growth_factor     = 0.0          # cap on dt growth ratio between consecutive steps; 0 = disabled
-        mushy_maximum         = 0.0          # max dt [yr] while stop.solid.phi_crit < Phi < mushy_upper; 0 = disabled
+        mushy_maximum         = 1.0e6        # max dt [yr] while stop.solid.phi_crit < Phi < mushy_upper (0 = disabled); caps steps through the mushy band so the integrator resolves the solidification front rather than overstepping it
         mushy_upper           = 0.99         # mushy regime upper bound (melt fraction)
         hysteresis_iters      = 0            # suppress speed-up for N iters after a slow-down; 0 = disabled
         hysteresis_sfinc      = 1.1          # gentler speed-up factor while hysteresis active
@@ -109,7 +109,7 @@ config_version = "3.0"
     tsurf_init                = 4000         # surface temperature [K] (isothermal, linear, adiabatic)
     tcmb_init                 = 6000         # CMB temperature [K] (adiabatic_from_cmb)
     tcenter_init              = 6000         # center temperature [K] (linear only)
-    delta_T_super             = 500.0        # superliquidus offset at CMB [K] (liquidus_super)
+    delta_T_super             = 100.0        # min superheat above the liquidus [K] (liquidus_super); small value starts the interior near the liquidus for a stable default run
     ini_entropy               = 3900.0       # initial specific entropy [J/kg/K] (isentropic only)
     ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (isentropic only)
     f_accretion               = 0.04         # accretion heat retention [0-1] (accretion only)
@@ -139,6 +139,18 @@ config_version = "3.0"
         S_budget              = 1.0          # unit defined by S_mode
         use_metallicity       = false        # scale C/N/S from solar metallicity; replaces C/N/S budgets
         metallicity           = 1000         # metallicity relative to solar [by mass]
+        # Noble gases (opt-in per gas via outgas.calliope.include_*). Mode is
+        # kg | ppmw | solar; solar = multiple of the protosolar X/H mass ratio.
+        He_mode               = "kg"         # kg | ppmw | solar
+        He_budget             = 0.0          # unit defined by He_mode
+        Ne_mode               = "kg"
+        Ne_budget             = 0.0
+        Ar_mode               = "kg"
+        Ar_budget             = 0.0
+        Kr_mode               = "kg"
+        Kr_budget             = 0.0
+        Xe_mode               = "kg"
+        Xe_budget             = 0.0
 
     # Partial pressures (used when volatile_mode = 'gas_prs') [bar]
     [planet.gas_prs]
@@ -272,10 +284,10 @@ config_version = "3.0"
         equilibrate_tol       = 0.01         # equilibration convergence tolerance
 
         # Mantle EOS composition. true = bare-silicate mantle tables;
-        # false (dissolved volatiles shift the structure-side density) is
-        # rejected at config load until the pinned Zalmoxis release
-        # supports per-shell volatile profiles.
-        dry_mantle            = true         # keep true; false is not yet supported
+        # false blends the dissolved volatile inventory into the mantle
+        # density through a per-shell volatile profile (H2O under the
+        # production outgassing chemistry; see the interior_struct docs).
+        dry_mantle            = true         # false enables wet-mantle volatile mixing
 
         # P-S entropy lookup table resolution (derived from PALEOS EOS at
         # runtime, cached). These tables size the inputs consumed by the
@@ -284,8 +296,8 @@ config_version = "3.0"
         lookup_nS             = 280          # entropy grid points
 
         # Miscibility (H2-silicate binodal; experimental). true is
-        # rejected at config load: it requires dry_mantle = false, which
-        # the pinned Zalmoxis release does not support yet.
+        # rejected at config load: the H2-silicate binodal handoff is not
+        # implemented on the Zalmoxis side yet (Zalmoxis tracker #64).
         global_miscibility    = false        # enable binodal-aware radial structure
         miscibility_max_iter  = 10           # max miscibility iterations
         miscibility_tol       = 0.01         # miscibility convergence tolerance
@@ -371,6 +383,14 @@ config_version = "3.0"
         solver_method                 = "cvode"  # cvode (SUNDIALS) | radau (scipy) | bdf (scipy)
         atol_temperature_equivalent   = 1.0e-8   # CVODE atol [K]
         phase_smoothing               = "tanh"   # phase-boundary smoothing: tanh | cubic_hermite
+        # Proximity band [J/kg/K] within which a cell counts as near a solidus/liquidus
+        # crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase
+        # RHS. Solver-accuracy control, not a cosmetic step-size knob: lowering it below the
+        # default can under-resolve a real crossing and shift the converged state. Modestly
+        # widening does not move a converged result, but a value far above the default clamps
+        # the integrator to 1 yr steps (max_step = 1 yr vs 100 yr) every step and can stall
+        # the run; keep it of order a few hundred.
+        phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
 
     # SPIDER-only parameters
     [interior_energetics.spider]
@@ -387,25 +407,18 @@ config_version = "3.0"
 
     # Boundary backend (Schaefer+2016 0-D box model with prescribed solidus/liquidus)
     [interior_energetics.boundary]
-        rtol                      = 1.0e-4       # ODE solver relative tolerance
-        atol                      = 1.0e-8       # ODE solver absolute tolerance
-        T_p_0                     = 3500.0       # initial potential temperature if Zalmoxis is not active [K]
         T_solidus                 = 1420.0       # mantle solidus [K]
         T_liquidus                = 2020.0       # mantle liquidus [K]
-        Tsurf_event_change        = 20.0         # max surface-T jump per iteration before triggering an event [K]
         critical_rayleigh_number  = 1100.0       # critical Rayleigh number for onset of convection
-        heat_fusion_silicate      = 4.0e5        # latent heat of fusion for silicates [J/kg]
         nusselt_exponent          = 0.33         # Nusselt-Rayleigh scaling exponent
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
         atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
         silicate_density          = 4103.0       # silicate density [kg/m^3]
+        core_density              = 10738        # core density if not defined by structure module [kg/m^3]
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]
         thermal_diffusivity       = 1.0e-6       # thermal diffusivity [m^2/s]
         thermal_expansivity       = 2.0e-5       # thermal expansivity [1/K]
         viscosity_model           = 2            # 1=constant | 2=aggregate smooth | 3=Arrhenius
-        eta_constant              = 1.0e2        # constant viscosity for model 1 [Pa s]
-        eta_solid_const           = 1.0e22       # solid-end viscosity for aggregate model [Pa s]
-        eta_melt_const            = 1.0e2        # melt-end viscosity for aggregate model [Pa s]
         dynamic_viscosity         = 3.8e9        # Arrhenius solid reference dynamic viscosity [Pa s]
         activation_energy         = 3.5e5        # Arrhenius solid activation energy [J/mol]
         creep_parameter           = 26.0         # Arrhenius creep parameter
@@ -439,11 +452,17 @@ config_version = "3.0"
         include_H2            = true
         include_CH4           = true
         include_CO            = true
+        # Noble gases (opt-in; budgets set in planet.elements). Default off.
+        include_He            = false
+        include_Ne            = false
+        include_Ar            = false
+        include_Kr            = false
+        include_Xe            = false
         solubility            = true         # melt-gas partitioning (false = all in atmosphere)
 
     [outgas.atmodeller]
         solver_mode           = "robust"     # robust (better convergence) | basic (faster)
-        solver_max_steps      = 256          # root-finder max iterations
+        solver_max_steps      = 1024         # root-finder max iterations
         solver_multistart     = 10           # number of random restarts
         include_condensates   = true         # graphite condensation
         # Solubility law per species ("none" = no dissolution, gas stays in atmosphere)
@@ -516,7 +535,7 @@ config_version = "3.0"
         solution_atol         = 0.5          # Newton solver absolute tolerance [W/m2]
         solution_rtol         = 0.15         # Newton solver relative tolerance
         psurf_thresh          = 0.1          # skip full RCE when P_surf below this [bar]
-        dx_max                = 35.0         # max Newton step per iteration [K]
+        dx_max                = 200.0        # max Newton step per iteration [K]; wide cap lets the RCE solve reach equilibrium from a hot start within max_steps
         dx_max_ini            = 50.0         # max Newton step during first few PROTEUS loops [K]
         max_steps             = 200          # max Newton iterations per call
         perturb_all           = false        # recompute full Jacobian each iteration
@@ -593,8 +612,15 @@ config_version = "3.0"
 
 # Synthetic observations
 [observe]
-    synthesis                 = "none"       # none | platon
+    module                    = "none"       # none | petitRADTRANS
+    source                    = "all"        # all | outgas | profile | offchem
+    spectrum_type             = "both"       # both | transit | eclipse
+    remove_one_gas            = true         # generate additional leave-one-out spectra (one gas removed per run)
+    clip_vmr                  =  1e-8        # minimum VMR for inclusion
+    reference_pressure        = 10           # used to calculate the synthetic spectrum [bar]
 
-    [observe.platon]
-        downsample            = 8            # opacity downsample factor
-        clip_vmr              = 1e-8         # minimum VMR for inclusion
+    [observe.petitRADTRANS]
+        line_opacity_mode     = 'c-k'        # opacity treatment: 'c-k' (correlated-k) or 'lbl' (line-by-line).
+        include_rayleigh      = true         # include Rayleigh scattering contributions.
+        include_cia           = true         # include collision-induced absorption contributions.
+        silent                = true        # suppress petitRADTRANS stdout/stderr during Radtrans initialization

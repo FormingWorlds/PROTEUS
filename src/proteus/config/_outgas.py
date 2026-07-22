@@ -6,7 +6,18 @@ from ._converters import none_if_none
 
 
 def _reject_enabled_binodal(instance, attribute, value):
-    """Reject `h2_binodal = true` until the feature is production ready."""
+    """Reject `h2_binodal = true` until the feature is production ready.
+
+    This gate is also what keeps the `dry_mantle = false` structure path
+    water-only: `apply_binodal_h2` is the sole producer of a nonzero
+    `H2_kg_liquid`, which `build_volatile_profile` would blend into the
+    mantle EOS as `Chabrier:H`. The wet path's mass-conservation
+    verification covers dissolved H2O only, and the per-shell binodal
+    suppression in the mixed density removes dissolved H2 from the
+    structure without returning it to the atmosphere, so lifting this
+    gate requires extending the wet-path verification to H2 first
+    (Zalmoxis tracker #64).
+    """
     if value:
         raise ValueError(
             '`outgas.h2_binodal = true` is not yet supported: the H2-silicate '
@@ -67,6 +78,14 @@ class Calliope:
     include_H2: bool = field(default=True)
     include_CH4: bool = field(default=True)
     include_CO: bool = field(default=True)
+    # Noble gases are opt-in and default off, so a run with no noble budget is
+    # unchanged. A noble gas contributes to the solve only when its flag is
+    # true and its element budget in planet.elements is positive.
+    include_He: bool = field(default=False)
+    include_Ne: bool = field(default=False)
+    include_Ar: bool = field(default=False)
+    include_Kr: bool = field(default=False)
+    include_Xe: bool = field(default=False)
     solubility: bool = field(default=True)
     nguess: int = field(default=int(1e3), validator=validators.gt(0))
     nsolve: int = field(default=int(3e3), validator=validators.gt(0))
@@ -132,7 +151,7 @@ class Atmodeller:
         default='robust',
         validator=validators.in_(('robust', 'basic')),
     )
-    solver_max_steps: int = field(default=256, validator=validators.gt(0))
+    solver_max_steps: int = field(default=1024, validator=validators.gt(0))
     solver_multistart: int = field(default=10, validator=validators.gt(0))
     include_condensates: bool = field(default=True)
     solubility_H2O: str | None = field(default='H2O_peridotite_sossi23', converter=none_if_none)

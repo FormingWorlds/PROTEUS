@@ -50,9 +50,8 @@ interior) for the atmodeller leg; the MORS leg is exercised by
 ``test_smoke_modules.py``.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -153,7 +152,7 @@ def test_atmodeller_solver_step_and_multistart_must_be_positive_under_mors_pair(
     assert a_min_multi.solver_multistart == 1
     default = Atmodeller()
     # Pin the documented defaults so a silent shift surfaces here.
-    assert default.solver_max_steps == 256
+    assert default.solver_max_steps == 1024
     assert default.solver_multistart == 10
 
 

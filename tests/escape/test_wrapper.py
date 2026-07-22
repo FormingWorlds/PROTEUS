@@ -15,12 +15,10 @@ Physics tested:
 - XUV-driven hydrodynamic escape (ZEPHYRUS)
 
 All tests use mocked ZEPHYRUS calls to avoid heavy physics computation (<100ms runtime).
-See docs/test_infrastructure.md, docs/test_building.md for testing standards.
 
 Related documentation:
-- docs/test_infrastructure.md: Test framework and CI integration
-- docs/test_categorization.md: Test markers and categories
-- docs/test_building.md: Best practices for writing robust tests
+- docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
+- docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 """
 
 from __future__ import annotations
@@ -389,6 +387,37 @@ def test_run_escape_snapshots_baseline_on_first_call():
     # 1e3 * 1000 * secs_per_year ≈ 3.156e13 kg
     assert hf_row['esc_kg_cumulative'] > 0.0
     assert hf_row['esc_kg_cumulative'] < 1e15
+
+
+@pytest.mark.physics_invariant
+def test_calc_new_elements_exempts_noble_gases_from_desiccation_floor():
+    """Noble gas inventories are intrinsically trace and sit orders of
+    magnitude below the major-volatile desiccation floor, so calc_new_elements
+    must not zero them when they fall under min_thresh. A major volatile below
+    the floor is still zeroed, so the two behaviours are discriminated and the
+    noble exemption is not a blanket removal of the floor.
+    """
+    from proteus.escape.wrapper import calc_new_elements
+    from proteus.utils.constants import element_list
+
+    hf = {f'{e}_kg_total': 0.0 for e in element_list}
+    hf['H_kg_total'] = 1.5e20
+    hf['C_kg_total'] = 1.0e20
+    hf['He_kg_total'] = 3.7e12  # Earth-like helium, far below the 1e16 floor
+    hf['S_kg_total'] = 1.0e12  # a major volatile below the floor
+    hf['esc_rate_total'] = 1.0e4  # small bulk escape
+
+    out = calc_new_elements(hf, reservoir='bulk', dt=1.0e6, min_thresh=1.0e16)
+
+    # Helium is trace and exempt: preserved, only debited by its escape share,
+    # never floored to zero.
+    assert out['He'] > 3.0e12
+    assert out['He'] < 3.7e12
+    # A major volatile below the same floor is treated as desiccated (zeroed),
+    # confirming the floor still fires for the species it is meant for.
+    assert out['S'] == 0.0
+    # Hydrogen, well above the floor, is debited but stays non-zero.
+    assert 0.0 < out['H'] < 1.5e20
 
 
 @pytest.mark.unit

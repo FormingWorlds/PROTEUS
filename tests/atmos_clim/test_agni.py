@@ -7,9 +7,8 @@ This module tests the AGNI atmosphere interface including:
 - AGNI atmosphere initialization (init_agni_atmos)
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -21,6 +20,7 @@ import pytest
 
 import proteus.atmos_clim.agni as agni_mod
 from proteus.atmos_clim.agni import _determine_aerosols, _determine_condensates, init_agni_atmos
+from proteus.utils.constants import noble_gases
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -128,22 +128,25 @@ def test_determine_condensates():
     """
     Test condensate species determination from volatile list.
 
-    Physical scenario: Given a list of volatile species, filter out
-    those that are always dry (H2, N2, CO) to get condensable
-    species like H2O, CO2, He, CH4, etc.
+    Physical scenario: given a list of volatile species, filter out the
+    always-dry gases (H2, N2, CO, and the inert noble gases) to leave the
+    condensable species like H2O, CO2, CH4.
     """
-    # Test with mixed list of dry and condensable species
-    vol_list = ['H2O', 'CO2', 'N2', 'CH4', 'He', 'H2', 'CO']
+    # Test with mixed list of dry, condensable, and noble species
+    vol_list = ['H2O', 'CO2', 'N2', 'CH4', 'He', 'Ar', 'H2', 'CO']
     condensates = _determine_condensates(vol_list)
 
-    # N2, H2, CO should be filtered out (always dry)
+    # H2O, CO2, CH4 remain condensable
     assert 'H2O' in condensates
     assert 'CO2' in condensates
     assert 'CH4' in condensates
-    assert 'He' in condensates  # He is condensable in AGNI
+    # N2, H2, CO are always dry
     assert 'N2' not in condensates
     assert 'H2' not in condensates
     assert 'CO' not in condensates
+    # Noble gases are chemically inert and never condense
+    assert 'He' not in condensates
+    assert 'Ar' not in condensates
 
 
 @pytest.mark.unit
@@ -382,6 +385,57 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     # grey_opacity_lw/sw should be forwarded as the Greek-named AGNI kwargs.
     assert fake_agni.last_setup_kwargs['κ_grey_lw'] == pytest.approx(0.1)
     assert fake_agni.last_setup_kwargs['κ_grey_sw'] == pytest.approx(0.2)
+
+
+@pytest.mark.unit
+def test_init_agni_atmos_passes_unscaled_surface_pressure(monkeypatch, tmp_path):
+    """init_agni_atmos hands AGNI the true surface pressure from hf_row, with
+    no rescaling by the composition's mixing-ratio sum.
+
+    Every modelled gas, including the noble gases, is in the composition, so
+    AGNI's unit-sum renormalization already preserves each partial pressure;
+    the total column pressure passed to setup_b must equal hf_row['P_surf'].
+
+    Discrimination: _construct_voldict here returns a set whose VMR sum is 0.9.
+    A regression reintroducing ``p_surf *= sum(vol_dict.values())`` would pass
+    0.9 * P_surf, differing from the correct value by 10% of the column.
+    """
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    config = _build_greygas_config()
+    p_surf_true = 200.0  # bar, far above the p_top floor so no clamping occurs
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': p_surf_true,
+    }
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    # VMR sum deliberately below 1 so a rescaling regression is detectable.
+    monkeypatch.setattr(
+        agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 0.6, 'CO2': 0.3}
+    )
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+
+    atmos = init_agni_atmos(dirs, config, hf_row)
+    assert atmos is not None
+
+    # setup_b positional arg index 11 is p_surf (see the setup_b call in agni.py).
+    passed_p_surf = fake_agni.last_setup_args[11]
+    assert passed_p_surf == pytest.approx(p_surf_true)
+    # The removed hack would have scaled by the 0.9 VMR sum.
+    assert passed_p_surf != pytest.approx(0.9 * p_surf_true)
 
 
 @pytest.mark.unit
@@ -1181,6 +1235,48 @@ def test_solve_once_calls_composition_and_fluxes(monkeypatch):
     assert 'saturation' not in call_order
 
 
+def test_solve_once_rainout_skips_noble_gases(monkeypatch):
+    """With rainout enabled, _solve_once calls AGNI's saturation routine for
+    the reactive gases but never for a noble gas.
+
+    Noble gases are chemically inert and tracked as conserved reservoirs, so
+    condensing them would break mass closure. A regression that dropped the
+    noble skip in the rainout loop would pass He/Ne/Ar/Kr/Xe to saturation_b.
+    """
+    saturated = []
+
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(
+            chemistry=SimpleNamespace(calc_composition_b=lambda *_a, **_k: False),
+            setpt=SimpleNamespace(
+                dry_adiabat_b=lambda *_a, **_k: None,
+                saturation_b=lambda _atmos, gas: saturated.append(gas),
+                stratosphere_b=lambda *_a, **_k: None,
+            ),
+            energy=SimpleNamespace(
+                calc_fluxes_b=lambda *_a, **_k: None,
+                fill_Kzz_b=lambda *_a, **_k: None,
+            ),
+        ),
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+
+    config = _make_run_agni_config(solve_energy=False)
+    config.atmos_clim.agni.oceans = False
+    config.atmos_clim.agni.rainout = True
+
+    atmos = _make_run_agni_atmos()
+    agni_mod._solve_once(atmos, config)
+
+    # No noble gas reaches the saturation routine.
+    for noble in noble_gases:
+        assert noble not in saturated, f'{noble} must not be rained out'
+    # Edge guard: the loop still ran and the skip is selective, not a blanket
+    # skip of every gas. At least one reactive gas was saturated.
+    assert len(saturated) > 0
+    assert all(g not in noble_gases for g in saturated)
+
+
 # ---------------------------------------------------------------------------
 # _construct_voldict: VMR assembly from hf_row
 # ---------------------------------------------------------------------------
@@ -1209,12 +1305,14 @@ def test_construct_voldict_raises_on_zero_vmr(monkeypatch):
     assert update_calls == [20]
 
 
-def test_construct_voldict_returns_vmr_dict():
-    """_construct_voldict returns a dict of {gas: vmr} and the sum is
-    above the threshold.
+def test_construct_voldict_includes_noble_gases():
+    """_construct_voldict returns {gas: vmr} for every modelled gas, including
+    the noble gases, which enter the composition handed to the AGNI solve
+    alongside the reactive gases.
 
-    Discrimination: the returned dict must have exactly the gas_list
-    keys, not a subset or superset.
+    Discrimination: the returned dict has exactly the full gas_list key set and
+    each noble gas keeps its input VMR. The noble-excluding formula would drop
+    the sum by 0.05, far above the tolerance.
     """
     hf_row = {}
     for g in agni_mod.gas_list:
@@ -1222,7 +1320,33 @@ def test_construct_voldict_returns_vmr_dict():
 
     vol_dict = agni_mod._construct_voldict(hf_row, {'output': '/tmp'})
     assert set(vol_dict.keys()) == set(agni_mod.gas_list)
+    for gas in noble_gases:
+        assert vol_dict[gas] == pytest.approx(0.01, rel=1e-12)
     assert sum(vol_dict.values()) == pytest.approx(0.01 * len(agni_mod.gas_list), rel=1e-12)
+    # A noble-excluding regression would land at 0.01 * (len - 5); the 0.05
+    # gap discriminates it from the correct full-set sum.
+    excl_sum = 0.01 * (len(agni_mod.gas_list) - len(noble_gases))
+    assert abs(sum(vol_dict.values()) - excl_sum) > 0.04
+
+
+def test_construct_voldict_handles_noble_only_atmosphere():
+    """When every reactive gas has zero VMR but the noble gases are present,
+    the total mixing-ratio sum is non-zero, so _construct_voldict returns the
+    noble composition and the empty-atmosphere guard does not trip.
+
+    Edge case: every reactive gas is at zero VMR. With the five noble gases at
+    0.2 the mixing-ratio sum is 1.0, well above the 1e-4 floor, so the function
+    returns the noble gases. The noble-excluding formula would drop the sum to
+    zero and raise ValueError.
+    """
+    hf_row = {g + '_vmr': 0.0 for g in agni_mod.gas_list}
+    for gas in noble_gases:
+        hf_row[gas + '_vmr'] = 0.2  # noble-only atmosphere
+
+    vol_dict = agni_mod._construct_voldict(hf_row, {'output': '/tmp'})
+    for gas in noble_gases:
+        assert vol_dict[gas] == pytest.approx(0.2, rel=1e-12)
+    assert sum(vol_dict.values()) == pytest.approx(0.2 * len(noble_gases), rel=1e-12)
 
 
 # ---------------------------------------------------------------------------

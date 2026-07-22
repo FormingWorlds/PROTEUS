@@ -2,6 +2,8 @@
 ############
 *.pyc
 
+.nfs*
+
 # Installer logs
 install_*.log
 proteus_doctor*.log
@@ -15,6 +17,9 @@ star.sf*
 socrates_star.txt
 radiation_code.lock
 screenlog.0
+
+ThermoEngineLite
+LavAtmos
 
 # Output files
 old/
@@ -41,6 +46,9 @@ JANUS
 agni
 Agni
 AGNI
+prt/
+pRT/
+petitRADTRANS/
 calliope
 Calliope
 CALLIOPE
@@ -70,9 +78,9 @@ lovepy
 Lovepy
 LOVEPY
 LovePy
-platon
-Platon
-PLATON
+prt
+petitradtrans
+petitRADTRANS
 Love.jl/
 BOREAS
 boreas
@@ -99,6 +107,7 @@ tools/grid_proteus_SNS*
 *.odg#
 *.ods#
 *.odp#
+*.h5
 md5sums.txt
 zenodo*.log
 
@@ -239,7 +248,7 @@ ENV/
 env.bak/
 venv.bak/
 
-# Platon temp/downloaded files
+# Synthesis temp/downloaded files
 *.zip
 transit_depth.png
 eclipse_depth.png
@@ -298,3 +307,7 @@ src/proteus/_version.py
 # Editor / IDE
 .vscode/
 .pip-cache
+
+# Local scratch directories (not part of the project)
+/.playwright-mcp/
+/platon/

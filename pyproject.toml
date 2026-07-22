@@ -50,19 +50,22 @@ dependencies = [
     "fwl-mors>=26.01.02",
     "fwl-calliope>=26.06.01",
     "fwl-zephyrus>=25.03.11",
-    "fwl-aragog>=26.05.13",
-    "fwl-zalmoxis>=26.05.13",
+    "fwl-aragog>=26.07.04",
+    # 26.07.17 reads the liquid EOS table for fully molten entropy
+    # lookups, which the super-liquidus interior initial condition
+    # requires (Zalmoxis #79), on top of the JAX structure path for
+    # unified PALEOS and wet mantles (Zalmoxis #78).
+    "fwl-zalmoxis>=26.07.17",
     # The default Aragog interior solver runs on JAX: its eos/phase/solver
     # modules are equinox Modules, so jax, jaxlib, and equinox are needed by
-    # a standard run, not only by the optional atmodeller backend. The stack
-    # is pinned to the tested combination: equinox 0.13.2 calls
-    # jax.core.mapped_aval, which JAX removed in 0.10, so jax and jaxlib are
-    # held below 0.10. Lifting any of these bounds requires revalidating the
-    # default Aragog numerics (atmodeller pins the same equinox==0.13.2, so
-    # the optional backend stays consistent).
+    # a standard run, not only by the optional atmodeller backend. The three
+    # are held to the combination the default Aragog numerics are validated
+    # against: equinox 0.13.8 on jax and jaxlib below 0.10. Lifting any of
+    # these bounds requires revalidating the Aragog entropy solve against the
+    # current pin before the newer versions are trusted for grid production.
     "jax<0.10",
     "jaxlib<0.10",
-    "equinox==0.13.2",
+    "equinox==0.13.8",
     "cmcrameri",
     # Pinned >=0.9.35: 0.9.33-0.9.34 mis-resolve the PythonCall.jl dev-path on
     # conda envs, and 0.9.35 restores resolution by registered version.
@@ -109,7 +112,7 @@ changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 #
 # atmodeller: alternative outgassing backend (Bower+2025, ApJ 995:59),
 # selected via outgas.module = "atmodeller". Pulls JAX + equinox.
-atmodeller = ["atmodeller>=1.0.0"]
+atmodeller = ["atmodeller>=1.0.2"]
 # vulcan: atmospheric photochemistry backend, selected via
 # atmos_chem.module = "vulcan". Also installable editable via
 # tools/get_vulcan.sh.
@@ -158,6 +161,11 @@ omit = [
     "*/test_*.py",
     "*/__pycache__/*",
     "*/conftest.py",
+    # Third-party netCDF4 C-extension: its compiled `_netCDF4.pyx` has no
+    # source tree on the runner, so `coverage json` raises "No source for
+    # code" and fails the step. It is a dependency, not measured code, so
+    # exclude it specifically rather than blanket-ignoring report errors.
+    "*/netCDF4/*",
 ]
 
 [tool.coverage.paths]
@@ -206,8 +214,9 @@ markers = [
 ]
 
 [tool.coverage.report]
-# Full coverage gate: unit + smoke + integration + slow tests, enforced by the
-# nightly workflow. Fixed ceiling at 90% (the PROTEUS-ecosystem target). The
+# Full coverage gate value: unit + smoke + integration + slow tests. The nightly
+# does not enforce it; it is the number the PR estimated-total gate is measured
+# against. Fixed ceiling at 90% (the PROTEUS-ecosystem target). The
 # estimated-total coverage on PRs (union of PR unit coverage with the latest
 # nightly artifact) is also compared against this gate; that is the 90% KPI
 # operators read. The fixed value is enforced by
@@ -249,14 +258,14 @@ directory = "htmlcov"
 # Tracks nichollsh/AGNI main. Bump after every AGNI release that
 # PROTEUS depends on.
 url = "https://github.com/nichollsh/AGNI.git"
-ref = "179472b36b14e15bb125666cd8c9c6f231a2e907"
+ref = "59ce1d4cda84f2043a8055682fa49c2f9c27c3c4"
 
 [tool.proteus.modules.socrates]
 # Spectral radiative transfer library (Fortran). Compiled in-place
 # under socrates/ by tools/get_socrates.sh; the build output is what
 # the AGNI / JANUS atmosphere modules link against at runtime.
 url = "https://github.com/FormingWorlds/SOCRATES.git"
-ref = "fe0c4a486f1dbf9addf6f01a03c644d6bd5e1d1e"
+ref = "f42ddec0356b3811b260cfe21a7f2c06033b39bd"
 
 [tool.proteus.modules.spider]
 # Interior thermal evolution module (C, requires PETSc). Cloned and
@@ -320,7 +329,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party=["proteus"]
-known-third-party=["zalmoxis"]
+known-third-party=["aragog", "atmodeller", "zalmoxis"]
 required-imports = ["from __future__ import annotations"]
 
 [tool.ruff.format]

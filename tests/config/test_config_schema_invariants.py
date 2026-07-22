@@ -41,7 +41,6 @@ from proteus.config import read_config_object
 from proteus.config._config import (
     boreas_requires_atmosphere,
     boundary_requires_fixed_surface_state,
-    boundary_zalmoxis_incompatible,
     check_module_dependencies,
     instmethod_evolve,
     planet_fO2_source_compat,
@@ -52,18 +51,12 @@ from proteus.config._config import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Mixed-tier file: 32 unit tests + 1 slow test (the 7776-combo cross-
-# product is too expensive for the unit budget and carries
-# @pytest.mark.slow per-function). New tests default to unit; only
-# combinatorial fuzz that exceeds the 30 s ceiling should be slow.
-
-
-# This file deliberately omits a module-level `pytestmark` because it
-# mixes two tiers: the explicit per-validator tests are `@pytest.mark.unit`
-# and the exhaustive cross-product is `@pytest.mark.slow`. A module-level
-# mark would double-mark the slow test as unit and break the CI filter
-# `unit and not slow`. Every test function in this file MUST carry its
-# own tier decorator; review for missing marks at PR time.
+# Every test here is unit tier, including the 5184-combo cross-product, which
+# sweeps in ~2.5 s. Keep it that way: a second tier marker on any function in
+# this file would combine with the module mark above, and the tier filters are
+# mutually exclusive (`unit and not slow` against `slow and not unit`), so a
+# doubly-marked test is selected by neither and silently stops running. A test
+# that outgrows the 30 s ceiling belongs in its own single-tier file.
 
 # ---------------------------------------------------------------------------
 # Schema enum inventory: kept here so a schema change that adds a backend
@@ -225,7 +218,14 @@ def _make_config_instance(**overrides):
         atmos_clim=SimpleNamespace(module='agni', surf_state='fixed'),
         interior_energetics=SimpleNamespace(module='aragog'),
         interior_struct=SimpleNamespace(module='zalmoxis'),
-        observe=SimpleNamespace(synthesis=None),
+        observe=SimpleNamespace(
+            module=None,
+            petitRADTRANS=SimpleNamespace(
+                line_opacity_mode='c-k',
+                include_rayleigh=True,
+                include_cia=True,
+            ),
+        ),
         orbit=SimpleNamespace(
             module='dummy',
             instellation_method='separation',
@@ -702,45 +702,6 @@ def test_boundary_requires_fixed_surface_state_passes_with_fixed():
     assert instance.atmos_clim.surf_state == 'fixed'
 
 
-@pytest.mark.unit
-def test_boundary_zalmoxis_incompatible_rejects_combo():
-    """``interior_energetics.module='boundary'`` with
-    ``interior_struct.module='zalmoxis'`` is an unsupported coupling and
-    must raise with a message naming ``zalmoxis``.
-    """
-    instance = _make_config_instance(
-        **{
-            'interior_energetics.module': 'boundary',
-            'interior_struct.module': 'zalmoxis',
-        }
-    )
-    with pytest.raises(ValueError, match=r'zalmoxis') as excinfo:
-        boundary_zalmoxis_incompatible(instance, None, None)
-    # Discrimination: the message must also name 'boundary' to identify BOTH
-    # sides of the incompatible combo. A regression that dropped the interior
-    # backend name (so the user only sees 'zalmoxis cannot be used') would fail.
-    assert 'boundary' in str(excinfo.value).lower() or 'Boundary' in str(excinfo.value)
-
-
-@pytest.mark.unit
-def test_boundary_zalmoxis_incompatible_passes_with_dummy_struct():
-    """Boundary energetics with the dummy structure backend is allowed;
-    the incompatibility is specific to the zalmoxis combo above.
-    """
-    instance = _make_config_instance(
-        **{
-            'interior_energetics.module': 'boundary',
-            'interior_struct.module': 'dummy',
-        }
-    )
-    result = boundary_zalmoxis_incompatible(instance, None, None)
-    assert result is None  # contract: boundary + non-zalmoxis struct is accepted silently
-    # Discriminating check: struct.module='zalmoxis' would have raised; only the
-    # non-zalmoxis branch can produce a silent pass here.
-    assert instance.interior_energetics.module == 'boundary'
-    assert instance.interior_struct.module != 'zalmoxis'
-
-
 # ---------------------------------------------------------------------------
 # Orbit-coupling validators: instmethod_evolve and satellite_evolve
 # ---------------------------------------------------------------------------
@@ -905,11 +866,10 @@ def _make_combo_toml(combo, tmp_path):
     return p
 
 
-@pytest.mark.slow
 def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
     """Exhaustive cross-product over the importable backend combinations.
 
-    For each of ~7776 combos: either read_config_object returns a Config,
+    For each of 5184 combos: either read_config_object returns a Config,
     OR raises a ValueError / ImportError / TypeError with a non-empty
     message that names the offending field. Catastrophic exceptions
     (TypeError / AttributeError / KeyError without a wrapper) fail the test.
@@ -934,6 +894,10 @@ def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
     - We only enumerate combos with backends in the hard-dep set; the
       check_module_dependencies positive/negative logic (atmodeller, boreas
       missing) is covered by the explicit tests above.
+    - The sweep runs in ~2.5 s, so it sits at unit tier with the rest of this
+      file rather than waiting for the nightly. It is over the 100 ms unit
+      target but far inside the 30 s ceiling, and an exhaustive validator
+      sweep is worth that on every pull request.
     """
     import itertools
 

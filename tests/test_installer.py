@@ -6,9 +6,8 @@ environments. Does not execute actual installations (SOCRATES, AGNI,
 pip install); those are tested by the CI pipeline and smoke tests.
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -64,14 +63,34 @@ class TestInstallerArgParsing:
         assert 'Unknown argument' in output
 
     def test_interactive_flag_accepted(self):
-        """--interactive flag is accepted without error (parsed before pre-flight)."""
-        result = subprocess.run(
-            ['bash', str(INSTALL_SH), '--interactive', '--help'],
+        """--interactive and its -i short form are accepted by the argument loop.
+
+        The flag is checked ahead of --help, which exits 0 on its own. The
+        bogus-flag run is what gives the exit code meaning: the loop visits
+        every argument in order and rejects an unrecognised one even when
+        --help follows, so a clean exit here is --interactive being accepted
+        rather than --help short-circuiting the parse.
+        """
+        for flag in ('--interactive', '-i'):
+            result = subprocess.run(
+                ['bash', str(INSTALL_SH), flag, '--help'],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            assert result.returncode == 0, f'{flag} rejected: {result.stdout + result.stderr}'
+            assert 'Unknown argument' not in result.stdout + result.stderr
+
+        # Control: an unrecognised flag in the same position does fail, so the
+        # clean exits above are not an artefact of the trailing --help.
+        bogus = subprocess.run(
+            ['bash', str(INSTALL_SH), '--not-a-flag', '--help'],
             capture_output=True,
             text=True,
             timeout=10,
         )
-        assert result.returncode == 0
+        assert bogus.returncode != 0
+        assert 'Unknown argument' in bogus.stdout + bogus.stderr
 
 
 class TestPreflightChecks:
@@ -121,11 +140,26 @@ class TestPreflightChecks:
         assert 'pyproject.toml' in output or 'repository root' in output.lower()
 
 
+def _echo_e_lines(content: str) -> list[int]:
+    """Return the 1-based line numbers carrying a live (uncommented) echo -e."""
+    return [
+        i + 1
+        for i, line in enumerate(content.split('\n'))
+        if 'echo -e' in line and not line.strip().startswith('#')
+    ]
+
+
 class TestBashSyntax:
     """Verify the script is valid bash."""
 
-    def test_installer_is_valid_bash(self):
-        """install.sh parses without syntax errors."""
+    def test_installer_is_valid_bash(self, tmp_path):
+        """install.sh parses without syntax errors, and bash -n would say so.
+
+        A clean parse prints nothing at all, so an empty stderr is part of the
+        contract. The broken copy is the control: it proves bash -n in this
+        harness really does reject malformed input, so the clean result above
+        is a property of install.sh and not of a check that always passes.
+        """
         result = subprocess.run(
             ['bash', '-n', str(INSTALL_SH)],
             capture_output=True,
@@ -133,21 +167,32 @@ class TestBashSyntax:
             timeout=10,
         )
         assert result.returncode == 0, f'Bash syntax error: {result.stderr}'
+        assert result.stderr == ''
+
+        broken = tmp_path / 'broken.sh'
+        broken.write_text(INSTALL_SH.read_text() + '\nif [ -z "$X" ; then\n')
+        bad = subprocess.run(
+            ['bash', '-n', str(broken)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert bad.returncode != 0
 
     def test_no_echo_e_usage(self):
         """Script uses printf instead of echo -e for portability.
 
-        Discrimination: echo -e is not POSIX; printf is. The script
-        should not use echo -e outside of comments.
+        echo -e is not POSIX; printf is. The scanner ignores commented lines,
+        so the synthetic pair pins both of its branches: a live echo -e is
+        reported and a commented one is not. Without that, a scanner that
+        silently found nothing would make the empty result above look clean.
         """
         content = INSTALL_SH.read_text()
-        lines = content.split('\n')
-        echo_e_lines = [
-            i + 1
-            for i, line in enumerate(lines)
-            if 'echo -e' in line and not line.strip().startswith('#')
-        ]
-        assert echo_e_lines == [], f'echo -e found on lines: {echo_e_lines}'
+        assert _echo_e_lines(content) == [], f'echo -e found on lines: {_echo_e_lines(content)}'
+
+        # The scanner reports a live echo -e and skips a commented one.
+        synthetic = 'echo hello\n# echo -e "commented"\necho -e "live"\n'
+        assert _echo_e_lines(synthetic) == [3]
 
 
 class TestIdempotency:

@@ -1492,16 +1492,21 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
     use_osf_fallback : bool
         If True, attempt OSF download if MORS download fails
     """
-    from mors.data import DownloadEvolutionTracks
+    from mors import data as mors_data
 
     log.debug(f'Downloading stellar evolution tracks: {track}')
 
     # Try MORS download first
     try:
-        DownloadEvolutionTracks(track)
-        # Verify download succeeded by checking if tracks directory exists
-        fwl_data = GetFWLData()
-        tracks_path = fwl_data / 'stellar_evolution_tracks' / track
+        mors_data.DownloadEvolutionTracks(track)
+        # Verify the download landed. A migrated MORS fetches Baraffe through
+        # fwl-io into its versioned directory and exposes baraffe_data_dir to
+        # resolve it; an older MORS wrote Baraffe to the legacy path, like Spada.
+        # Verify wherever this MORS version actually placed the tracks.
+        if track == 'Baraffe' and hasattr(mors_data, 'baraffe_data_dir'):
+            tracks_path = mors_data.baraffe_data_dir()
+        else:
+            tracks_path = GetFWLData() / 'stellar_evolution_tracks' / track
         if tracks_path.exists() and any(tracks_path.iterdir()):
             log.info(f'Successfully downloaded {track} tracks via MORS')
             return
@@ -1511,7 +1516,9 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
     except Exception as e:
         log.warning(f'MORS download failed for {track} tracks: {e}')
 
-        if not use_osf_fallback:
+        # Baraffe is hash-verified by fwl-io and has no OSF mirror, so a failure
+        # is authoritative; only Spada has a legacy OSF fallback.
+        if track == 'Baraffe' or not use_osf_fallback:
             raise
 
         # Fallback to OSF if available
@@ -1989,6 +1996,22 @@ def _download_zalmoxis_chabrier():
         )
 
 
+# Mantle EOS family prefixes whose registry entry carries the Seager iron
+# table as its core fallback (see
+# proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries).
+# The start-of-run existence check requires every file those entries
+# reference, so the data fetch must cover the fallback whenever such a
+# mantle is selected. Flat single-table families (PALEOS:*, Chabrier:*)
+# do not reference it. Kept in sync with the registry by a dedicated
+# test in tests/utils/test_data.py.
+SEAGER_FALLBACK_FAMILIES = (
+    'WolfBower2018:',
+    'RTPress100TPa:',
+    'PALEOS-2phase:',
+    'PALEOS-API-2phase:',
+)
+
+
 def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: str = ''):
     """Download Zalmoxis EOS data required for the given EOS configuration.
 
@@ -2015,8 +2038,15 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
             if len(tokens) >= 2:
                 components.add(f'{tokens[0]}:{tokens[1]}')
 
-    # Seager2007 static EOS (always needed for core fallback)
-    if any(c.startswith('Seager2007') for c in components) or not core_eos:
+    # Seager2007 static EOS. Needed when a Seager component is selected
+    # directly, when no core EOS is given (Seager iron is the default
+    # core), and for every mantle family whose registry entry carries
+    # the Seager iron core fallback (SEAGER_FALLBACK_FAMILIES above).
+    if (
+        any(c.startswith('Seager2007') for c in components)
+        or any(c.startswith(SEAGER_FALLBACK_FAMILIES) for c in components)
+        or not core_eos
+    ):
         download_eos_static()
 
     # WolfBower2018 T-dependent MgSiO3
@@ -2095,7 +2125,6 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
     # (generated locally from upstream paleos at runtime) but are valid.
     known_prefixes = (
         'Seager2007:',
-        'WolfBower2018:',
         'RTPress100TPa:',
         'Chabrier:',
         'PALEOS-API:',

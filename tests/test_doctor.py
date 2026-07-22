@@ -20,6 +20,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from proteus.doctor import (
+    _SUPPORT_EMAIL,
     FAIL,
     PASS,
     PYTHON_PACKAGES,
@@ -383,6 +384,13 @@ def _init_test_repo(path):
     subprocess.run(['git', '-C', p, 'commit', '-m', 'init'], check=True, capture_output=True)
 
 
+def _git_commit_all(path, message):
+    """Stage and commit everything in the repo at the given path."""
+    p = str(path)
+    subprocess.run(['git', '-C', p, 'add', '.'], check=True, capture_output=True)
+    subprocess.run(['git', '-C', p, 'commit', '-m', message], check=True, capture_output=True)
+
+
 class TestGitHelpers:
     """Git helper functions."""
 
@@ -404,9 +412,37 @@ class TestGitHelpers:
         assert head is not None and len(head) == 40
 
     def test_git_dirty_false_for_clean_repo(self, tmp_path):
-        """Clean repo returns False."""
+        """A repo whose tracked content matches HEAD is clean, and an ignored
+        file leaves it clean.
+
+        The dirty state is read from ``git status --porcelain``, which honours
+        .gitignore. That matters here because a PROTEUS checkout carries
+        gitignored run output: if ignored paths counted, every environment
+        report after a simulation would call the tree dirty.
+        """
         _init_test_repo(tmp_path)
         assert _git_dirty(str(tmp_path)) is False
+
+        # Edge: an ignored path holding files does not disturb the clean state.
+        # The .gitignore is committed so it is not itself an untracked file.
+        (tmp_path / '.gitignore').write_text('output/\n')
+        _git_commit_all(tmp_path, 'add gitignore')
+        (tmp_path / 'output').mkdir()
+        (tmp_path / 'output' / 'run.log').write_text('junk')
+        assert _git_dirty(str(tmp_path)) is False
+
+    def test_git_dirty_true_for_untracked_file(self, tmp_path):
+        """A file git has never seen makes the tree dirty.
+
+        ``git status --porcelain`` lists untracked files alongside modified
+        ones, so an untracked file is the case that separates the current
+        behaviour from a tracked-only check such as ``git diff --quiet``, which
+        would keep reporting clean and let a stray file pass unreported.
+        """
+        _init_test_repo(tmp_path)
+        assert _git_dirty(str(tmp_path)) is False
+        (tmp_path / 'untracked.txt').write_text('new')
+        assert _git_dirty(str(tmp_path)) is True
 
     def test_git_dirty_true_for_modified_file(self, tmp_path):
         """Modified tracked file makes repo dirty."""
@@ -1170,7 +1206,7 @@ class TestRunLogging:
         out = capsys.readouterr().out
         # the user is told the exact file to send and where to send it
         assert str(logs[0]) in out
-        assert 'proteus_dev@formingworlds.space' in out
+        assert 'dev@proteus-framework.org' in out
         assert 'github.com/FormingWorlds/PROTEUS/issues' in out
         assert 'discussions' in out
 
@@ -1183,7 +1219,7 @@ class TestRunLogging:
         assert result is True
         assert list(tmp_path.glob('proteus_*.log')) == []
         out = capsys.readouterr().out
-        assert 'proteus_dev@formingworlds.space' not in out
+        assert 'dev@proteus-framework.org' not in out
 
     def test_doctor_json_mode_is_not_logged(self, tmp_path, monkeypatch, capsys):
         """JSON output is for scripts: no log file and no prompt, just JSON."""
@@ -1221,7 +1257,7 @@ class TestRunLogging:
         assert 'exit 7' in log_text
         out = capsys.readouterr().out
         assert str(logs[0]) in out
-        assert 'proteus_dev@formingworlds.space' in out
+        assert 'dev@proteus-framework.org' in out
 
     def test_doctor_crash_is_logged_with_traceback_and_prompt(
         self, tmp_path, monkeypatch, capsys
@@ -1240,7 +1276,7 @@ class TestRunLogging:
         # The traceback and the exception message are in the log.
         assert 'Traceback' in log_text and 'boom_xyz_123' in log_text
         captured = capsys.readouterr()
-        assert 'proteus_dev@formingworlds.space' in captured.out
+        assert 'dev@proteus-framework.org' in captured.out
         # The crash is surfaced to the user too, not buried only in the log.
         assert 'boom_xyz_123' in (captured.out + captured.err)
 
@@ -1259,7 +1295,7 @@ class TestRunLogging:
         out = capsys.readouterr().out
         # The fallback message and the support channel are both shown.
         assert 'could not be written' in out
-        assert 'proteus_dev@formingworlds.space' in out
+        assert 'dev@proteus-framework.org' in out
 
 
 class TestTee:
@@ -1358,9 +1394,21 @@ class TestSupportPromptAndCliExit:
         _print_support_prompt('doctor', log)
         out = capsys.readouterr().out
         assert str(log) in out
-        assert 'proteus_dev@formingworlds.space' in out
+        assert 'dev@proteus-framework.org' in out
         assert 'github.com/FormingWorlds/PROTEUS/issues' in out
         assert 'discussions' in out
+
+    def test_support_email_constant_is_exact_and_rendered_verbatim(self, tmp_path, capsys):
+        """The support address is pinned to its exact value, and the failure
+        prompt renders that exact constant exactly once. A stray leading or
+        trailing character, whitespace, or a duplicate copy in the constant
+        fails the equality check. The exact count also catches the address
+        being rendered more than once, which the substring checks elsewhere
+        cannot tell apart from a single occurrence."""
+        assert _SUPPORT_EMAIL == 'dev@proteus-framework.org'
+        _print_support_prompt('doctor', tmp_path / 'proteus_doctor.log')
+        out = capsys.readouterr().out
+        assert out.count(_SUPPORT_EMAIL) == 1
 
     def test_prompt_handles_a_missing_log_path(self, capsys):
         """With no log written the prompt says so and tells the user to copy the
@@ -1386,7 +1434,7 @@ class TestSupportPromptAndCliExit:
         # Exit code 1 specifically (a click usage error would be 2), and the
         # failure path actually ran, so the support prompt is in the output.
         assert result.exit_code == 1
-        assert 'proteus_dev@formingworlds.space' in result.output
+        assert 'dev@proteus-framework.org' in result.output
 
     def test_doctor_cli_exits_zero_when_clean(self, tmp_path, monkeypatch):
         """A clean diagnose exits zero, so a passing check does not break a
@@ -1401,4 +1449,4 @@ class TestSupportPromptAndCliExit:
             result = CliRunner().invoke(doctor_cmd, [])
         assert result.exit_code == 0
         # Discrimination: no failure exit means no support prompt was printed.
-        assert 'proteus_dev@formingworlds.space' not in result.output
+        assert 'dev@proteus-framework.org' not in result.output

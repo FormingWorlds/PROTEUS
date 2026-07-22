@@ -74,6 +74,11 @@ fO$_2$ buffering.
 | `include_H2` | `true` | H$_2$ |
 | `include_CH4` | `true` | CH$_4$ |
 | `include_CO` | `true` | CO |
+| `include_He` | `false` | He (noble gas; budget in `[planet.elements]`) |
+| `include_Ne` | `false` | Ne (noble gas; budget in `[planet.elements]`) |
+| `include_Ar` | `false` | Ar (noble gas; budget in `[planet.elements]`) |
+| `include_Kr` | `false` | Kr (noble gas; budget in `[planet.elements]`) |
+| `include_Xe` | `false` | Xe (noble gas; budget in `[planet.elements]`) |
 | `solubility` | `true` | Enable melt-gas partitioning (`false` = all volatiles in atmosphere) |
 
 **Solver**
@@ -95,12 +100,12 @@ real-gas equations of state.
     `pip install "fwl-proteus[atmodeller]"` before setting
     `outgas.module = "atmodeller"`. atmodeller is GPL-3.0 licensed; review
     its terms before installing. See
-    [Installation: optional modules](../../How-to/installation.md#optional-modules).
+    [Installation: optional modules](../../How-to/optionalmodules_installation.md).
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `solver_mode` | str | `"robust"` | Root-finding mode: `robust` (better convergence) or `basic` (faster) |
-| `solver_max_steps` | int | `256` | Maximum solver iterations |
+| `solver_max_steps` | int | `1024` | Maximum solver iterations |
 | `solver_multistart` | int | `10` | Number of random restarts |
 | `include_condensates` | bool | `true` | Enable condensate formation (e.g. graphite) |
 

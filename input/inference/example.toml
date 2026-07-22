@@ -303,10 +303,10 @@ config_version = "3.0"
         equilibrate_tol       = 0.01         # equilibration convergence tolerance
 
         # Mantle EOS composition. true = bare-silicate mantle tables;
-        # false (dissolved volatiles shift the structure-side density) is
-        # rejected at config load until the pinned Zalmoxis release
-        # supports per-shell volatile profiles.
-        dry_mantle            = true         # keep true; false is not yet supported
+        # false blends the dissolved volatile inventory into the mantle
+        # density through a per-shell volatile profile (H2O under the
+        # production outgassing chemistry; see the interior_struct docs).
+        dry_mantle            = true         # false enables wet-mantle volatile mixing
 
         # P-S entropy lookup table resolution (derived from PALEOS EOS at
         # runtime, cached). These tables size the inputs consumed by the
@@ -315,8 +315,8 @@ config_version = "3.0"
         lookup_nS             = 280          # entropy grid points
 
         # Miscibility (H2-silicate binodal; experimental). true is
-        # rejected at config load: it requires dry_mantle = false, which
-        # the pinned Zalmoxis release does not support yet.
+        # rejected at config load: the H2-silicate binodal handoff is not
+        # implemented on the Zalmoxis side yet (Zalmoxis tracker #64).
         global_miscibility    = false        # enable binodal-aware radial structure
         miscibility_max_iter  = 10           # max miscibility iterations
         miscibility_tol       = 0.01         # miscibility convergence tolerance
@@ -418,14 +418,9 @@ config_version = "3.0"
 
     # Boundary backend (Schaefer+2016 0-D box model with prescribed solidus/liquidus)
     [interior_energetics.boundary]
-        rtol                      = 1.0e-5       # ODE solver relative tolerance
-        atol                      = 1.0e-8       # ODE solver absolute tolerance
-        T_p_0                     = 3200.0       # initial potential temperature if Zalmoxis is not active [K]
         T_solidus                 = 1420.0       # mantle solidus [K]
         T_liquidus                = 2020.0       # mantle liquidus [K]
-        Tsurf_event_change        = 300.0         # max surface-T jump per iteration before triggering an event [K]
         critical_rayleigh_number  = 1100.0       # critical Rayleigh number for onset of convection
-        heat_fusion_silicate      = 4.0e5        # latent heat of fusion for silicates [J/kg]
         nusselt_exponent          = 0.33         # Nusselt-Rayleigh scaling exponent
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
         atm_heat_capacity_const   = true        #  always use fallback heat capacity?
@@ -435,9 +430,6 @@ config_version = "3.0"
         thermal_diffusivity       = 1.0e-6       # thermal diffusivity [m^2/s]
         thermal_expansivity       = 2.0e-5       # thermal expansivity [1/K]
         viscosity_model           = 3            # 1=constant | 2=aggregate smooth | 3=Arrhenius
-        eta_constant              = 1.0e2        # constant viscosity for model 1 [Pa s]
-        eta_solid_const           = 5.0e22       # solid-end viscosity for aggregate model [Pa s]
-        eta_melt_const            = 1.0e2        # melt-end viscosity for aggregate model [Pa s]
         dynamic_viscosity         = 3.8e9        # Arrhenius solid reference dynamic viscosity [Pa s]
         activation_energy         = 3.5e5        # Arrhenius solid activation energy [J/mol]
         creep_parameter           = 26.0         # Arrhenius creep parameter
@@ -480,7 +472,7 @@ config_version = "3.0"
 
     [outgas.atmodeller]
         solver_mode           = "robust"     # robust (better convergence) | basic (faster)
-        solver_max_steps      = 256          # root-finder max iterations
+        solver_max_steps      = 1024         # root-finder max iterations
         solver_multistart     = 10           # number of random restarts
         include_condensates   = true         # graphite condensation
         # Solubility law per species ("none" = no dissolution, gas stays in atmosphere)
@@ -504,8 +496,8 @@ config_version = "3.0"
     module                    = "agni"       # agni | janus | dummy
 
     # Grid and spectral setup (shared by agni + janus)
-    # spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
-    # spectral_bands            = "16"         # wavenumber bands in k-table
+    spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
+    spectral_bands            = "16"         # wavenumber bands in k-table
     num_levels                = 30           # vertical atmosphere levels (min 15)
     p_top                     = 1.0e-3       # top-of-atmosphere pressure [bar]
     p_obs                     = 1.0e-2         # observation pressure level [bar] (transit radius)
@@ -529,10 +521,10 @@ config_version = "3.0"
 
     [atmos_clim.agni]
 
-        spectral_file   = "output/runtime.sf"
+        # spectral_file   = "output/runtime.sf"
 
         # Physics switches
-        solve_energy          = true         # iterative energy-conserving T(p) profile
+        solve_energy          = false         # iterative energy-conserving T(p) profile
         convection            = true         # convective adjustment (MLT)
         conduction            = false         # conductive heat transport (Fourier)
         sens_heat             = true         # sensible heat flux at surface
@@ -600,4 +592,4 @@ config_version = "3.0"
 
 # Synthetic observations
 [observe]
-    synthesis                 = "none"       # none | platon
+    module                 = "none"       # none | platon

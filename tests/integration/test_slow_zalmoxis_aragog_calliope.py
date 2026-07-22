@@ -3,13 +3,18 @@ with real Zalmoxis + real Aragog + real CALLIOPE.
 
 This is the heaviest end-to-end test that does not yet require a
 real atmosphere. Real Zalmoxis solves the structure (newton outer
-solver, JAX backend, PALEOS EOS, 150 radial levels); real Aragog
-steps the entropy ODE on the resulting mantle (production
-``backend='jax'``: scipy-CVode with JAX-derived RHS and analytic
-Jacobian); real CALLIOPE partitions volatiles at the new T, P
-state. Atmosphere, star, escape, atmos_chem stay on dummy backends
-so the test isolates the interior + outgas coupling boundary while
-exercising the production-default structure solver.
+solver, PALEOS EOS, 150 radial levels); with fwl-zalmoxis >= 26.07.13
+the production-default unified ``PALEOS:MgSiO3`` mantle table has a
+JAX structure reader, so the interior-fed baseline re-solve takes the
+JAX arrays hand-off instead of the numpy fallback (the IC and
+equilibration solves, which carry no external temperature source,
+stay on numpy by design). Real Aragog steps the entropy ODE on the
+resulting mantle (production ``backend='jax'``: scipy-CVode with
+JAX-derived RHS and analytic Jacobian); real CALLIOPE partitions
+volatiles at the new T, P state. Atmosphere, star, escape, atmos_chem
+stay on dummy backends so the test isolates the interior + outgas
+coupling boundary while exercising the production-default structure
+solver.
 
 Complements:
 
@@ -45,22 +50,33 @@ Invariants asserted:
 - Cross-step continuity on T_magma (|dT| < 1000 K rejects an
   entropy-solver runaway) and Phi_global (|dphi| < 0.5 rejects an
   unphysical melt-fraction jump).
-- R_int constant across rows with structure refresh disabled
-  (``update_interval = 0``; catches a spurious structure refresh).
-- Earth-scale R_int (5.5e6-6.5e6 m for 1 M_Earth).
+- R_int does one bounded hand-off step (expansion under the hot
+  profile) then holds constant with structure refresh disabled
+  (``update_interval = 0``; catches a spurious per-step refresh).
+- Earth-scale R_int (5.5e6-6.7e6 m for 1 M_Earth).
 - Cross-cutting mass + stability helpers.
 
-Runtime budget: ~6 min macOS GHA (~3 min Zalmoxis setup + EOS load,
-~2 min Aragog setup, ~1 min coupled iteration), ~25 min Linux GHA
-(JAX/CVode setup tax on x86 plus Zalmoxis EOS table load). The
-single IC-only structure solve keeps the run well inside the
-7200 s timeout; the per-row dynamic refresh path is exercised
-separately by the structure-update unit tests.
+Runtime: this end-to-end real-binary test is dominated by the Aragog
+first-call JAX setup (CVode factory plus RHS and Jacobian compile)
+and the Zalmoxis structure solves. It completes in roughly 80 min on
+the macOS GHA runner and runs on every platform: with fwl-zalmoxis
+>= 26.07.13 the unified PALEOS mantle takes the JAX structure path on
+the interior-fed baseline re-solve, removing the numpy-fallback
+structure cost that previously pushed the full-resolution coupled run
+past the slow-tier walltime on the x86 ubuntu runner (an earlier
+``skipif`` gated this test to macOS for that reason). The per-test timeout is
+10800 s (180 min), the slow-tier standard, leaving generous headroom
+above the macOS runtime; the slow-tier job cap is set higher
+(210 min) so that setup time plus the per-test timeout still fit
+inside the job, letting a genuine hang trip pytest-timeout's per-test
+timer (which dumps every thread's stack) before the job-level
+cancellation. The single IC-only structure solve (update_interval = 0)
+keeps the coupled cost bounded; the per-row dynamic refresh path is
+exercised separately by the structure-update unit tests.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -73,7 +89,7 @@ from tests.integration.conftest import (
     validate_stability,
 )
 
-pytestmark = [pytest.mark.slow, pytest.mark.timeout(7200)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(10800)]
 
 
 @pytest.mark.slow
@@ -108,8 +124,10 @@ def test_zalmoxis_aragog_calliope_two_timesteps(proteus_multi_timestep_run):
     - ``Phi_global`` in [0, 1].
     - Cross-step continuity: |dT_magma| < 1000 K, |dPhi_global| <
       0.5.
-    - R_int stable across rows (structure refresh disabled,
-      update_interval = 0).
+    - R_int does a single bounded hand-off step (expansion under the
+      hot profile) then stays stable (refresh disabled,
+      update_interval = 0; the one-time baseline hand-off is the only
+      structure change).
     - Cross-cutting mass + stability helpers.
     """
     runner = proteus_multi_timestep_run(
@@ -149,22 +167,42 @@ def test_zalmoxis_aragog_calliope_two_timesteps(proteus_multi_timestep_run):
         f'path was not exercised'
     )
 
-    # Earth-scale R_int at every row. Self-consistent PALEOS solve
-    # on 1 M_Earth lands within a few percent of 6.371e6 m.
+    # Earth-scale R_int at every row. Self-consistent PALEOS solve on
+    # 1 M_Earth starts near 6.35e6 m and expands once under the hot
+    # adiabatic hand-off to ~6.52e6 m, a few percent above 6.371e6 m.
     r_int = hf['R_int'].to_numpy()
     assert np.all(np.isfinite(r_int)), 'R_int contains NaN or Inf'
     assert np.all(r_int > 5.5e6), f'R_int below Earth scale: min={r_int.min():.3e} m'
-    assert np.all(r_int < 6.5e6), f'R_int above Earth scale: max={r_int.max():.3e} m'
+    assert np.all(r_int < 6.7e6), f'R_int above Earth scale: max={r_int.max():.3e} m'
 
-    # R_int stable across rows: structure refresh is disabled
-    # (update_interval = 0), so Zalmoxis solves once at IC and the
-    # radius is held fixed. Any cross-row variation is a spurious
-    # re-solve.
+    # R_int follows the one-time baseline structure hand-off, then settles.
+    # With update_interval = 0 the per-iteration refresh triggers are off, so
+    # the only structure change is the baseline re-solve on the first non-init
+    # step (which hands the structure off to the energetics-module hot
+    # adiabatic temperature profile and expands R_int once); R_int is then
+    # constant. The assertions encode "one bounded hand-off step then stable",
+    # which still discriminates a per-step re-solve (more than one change) and
+    # a runaway in either direction (magnitude guard).
     if len(r_int) >= 2:
-        rel_drift = np.max(np.abs(np.diff(r_int))) / r_int[0]
-        assert rel_drift < 1e-6, (
-            f'R_int drifted across rows despite update_interval = 0; '
-            f'max rel drift = {rel_drift:.3e}'
+        step_drift = np.abs(np.diff(r_int)) / r_int[0]
+        # At most one significant per-step change: the baseline hand-off. A
+        # refresh trigger misfiring every step would show more than one; a
+        # frozen structure shows none.
+        n_significant = int(np.sum(step_drift > 1e-4))
+        assert n_significant <= 1, (
+            f'R_int changed on more than one step (n={n_significant}); expected a '
+            f'single baseline hand-off, per-step rel drifts = {step_drift}'
+        )
+        # The hand-off re-solves the structure under the hot adiabatic profile,
+        # expanding R_int once; the one-time change is bounded well below a
+        # runaway in either direction (|net change| < 10%).
+        net_change = (r_int[0] - r_int[-1]) / r_int[0]
+        assert abs(net_change) < 0.10, (
+            f'R_int net change {net_change:.3e} exceeds 10%: expected a '
+            f'bounded one-time baseline hand-off, not a runaway'
+        )
+        assert np.all(np.abs(np.diff(r_int)) <= 0.10 * r_int[0]), (
+            f'R_int step change exceeds 10% of baseline; per-step diffs = {np.diff(r_int)}'
         )
 
     final = hf.iloc[-1]

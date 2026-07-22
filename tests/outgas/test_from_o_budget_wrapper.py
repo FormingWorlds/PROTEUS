@@ -17,21 +17,23 @@ Covers the dispatch logic added to ``proteus.outgas.calliope`` and
 from __future__ import annotations
 
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import numpy as np
 import pytest
 
 from proteus.outgas.calliope import calc_surface_pressures
-from proteus.utils.constants import element_list, gas_list, vol_list
+from proteus.utils.constants import element_list, gas_list
 from proteus.utils.coupler import GetHelpfileKeys
+
+from ._from_o_budget_helpers import _earth_hf_row, _make_from_o_budget_config
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Mixed-tier file: 8 unit tests + 3 smoke tests. The smoke tests carry
-# @pytest.mark.smoke per-function and run alongside other smoke tests in
-# the smoke surface of PR CI; the unit filter excludes them. New tests
-# in this file default to unit unless they exercise a real binary call.
+# Every test here is unit tier and mocks CALLIOPE. The cases that drive the
+# real solver live in test_from_o_budget_wrapper_smoke.py: a smoke marker on a
+# function in this file would combine with the module mark above, and the unit
+# and smoke filters do not exclude each other, so the test would be collected
+# by both tiers and run twice.
 
 
 logging.getLogger('calliope').setLevel(logging.WARNING)
@@ -89,71 +91,6 @@ def _make_solvevol_result(
     # exercise the "wrapper restores the authoritative input" branch.
     out['O_kg_total'] = 1.0e22 if O_kg_total_out is None else O_kg_total_out
     return out
-
-
-def _make_from_o_budget_config(fO2_shift_IW: float = 4.0):
-    """Build a MagicMock Config consistent with from_O_budget dispatch.
-
-    Only the fields the wrapper reaches into are populated; everything
-    else inherits the MagicMock default (auto-attribute) and is irrelevant
-    to the wrapper's control flow because solvevol_inp/target construction
-    is the only consumer.
-    """
-    config = MagicMock()
-    config.outgas.module = 'calliope'
-    config.outgas.fO2_shift_IW = fO2_shift_IW
-    config.outgas.T_floor = 1200.0
-    config.outgas.mass_thresh = 1e8
-    config.outgas.solver_atol = 1e-8
-    config.outgas.solver_rtol = 1e-5
-    config.outgas.calliope.nguess = 100
-    config.outgas.calliope.nsolve = 500
-    config.outgas.calliope.p_guess_max = 5.0e6  # distinctive (non-default) for forwarding test
-    config.outgas.calliope.solubility = True
-    for s in vol_list:
-        setattr(config.outgas.calliope, f'include_{s}', True)
-    config.outgas.calliope.is_included = lambda s: True
-    config.planet.fO2_source = 'from_O_budget'
-    config.planet.volatile_mode = 'elements'
-    config.planet.volatile_reservoir = 'mantle'
-    config.planet.elements.use_metallicity = False
-    config.planet.elements.H_mode = 'kg'
-    config.planet.elements.H_budget = 1.5e20
-    config.planet.elements.C_mode = 'kg'
-    config.planet.elements.C_budget = 1.5e19
-    config.planet.elements.N_mode = 'kg'
-    config.planet.elements.N_budget = 8.0e18
-    config.planet.elements.S_mode = 'kg'
-    config.planet.elements.S_budget = 8.0e20
-    config.planet.elements.O_mode = 'kg'
-    config.planet.elements.O_budget = 1.0e22
-    return config
-
-
-def _earth_hf_row(O_kg_total: float = 1.0e22) -> dict:
-    """Helpfile row populated up to the point ``calc_surface_pressures``
-    is called: structural quantities and per-element targets are set, but
-    the gas-phase quantities are not."""
-    hf: dict = {
-        'M_mantle': 4.03e24,
-        'M_int': 5.97e24,
-        'gravity': 9.81,
-        'R_int': 6.371e6,
-        'Phi_global': 1.0,
-        'T_magma': 1800.0,
-        'Time': 0.0,
-    }
-    # element_list = [H, O, C, N, S, Si, Mg, Fe, Na]; CALLIOPE only
-    # consumes H/C/N/S(/O). Pre-populate every element so the target
-    # construction (loop over element_list) can read the slot uniformly.
-    for e in element_list:
-        hf[f'{e}_kg_total'] = 0.0
-    hf['H_kg_total'] = 1.5e20
-    hf['C_kg_total'] = 1.5e19
-    hf['N_kg_total'] = 8.0e18
-    hf['S_kg_total'] = 8.0e20
-    hf['O_kg_total'] = O_kg_total
-    return hf
 
 
 # ---------------------------------------------------------------------------
@@ -431,123 +368,3 @@ def test_legacy_path_lets_solver_set_O_kg_total():
     # regression that preserved the user input (correct under from_O_budget but
     # wrong under legacy) would leave hf_row['O_kg_total'] at 0.0.
     assert hf_row['O_kg_total'] > 0.0
-
-
-# ---------------------------------------------------------------------------
-# Smoke: round-trip through the real CALLIOPE solver
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.smoke
-@pytest.mark.parametrize(
-    'dIW',
-    [
-        -2.0,
-        0.0,
-        2.0,
-        4.0,
-    ],
-)
-def test_smoke_from_o_budget_round_trip_through_wrapper(dIW):
-    """Round-trip: run the wrapper in legacy mode at ``fO2_shift_IW = dIW``
-    to derive the implied O budget, then re-run in from_O_budget mode with that
-    budget and verify ``fO2_shift_IW_derived ≈ dIW``.
-
-    Mirrors the CALLIOPE Stage 2 ``TestRoundTrip`` pattern but exercises
-    the *PROTEUS wrapper* (calc_surface_pressures + construct_options +
-    target assembly), so a regression in the wrapper-level glue (wrong
-    target dict, wrong fO2_hint plumbing, key-name mismatch in the
-    output filter) is caught here, not just in CALLIOPE.
-    """
-    dirs = {'output': '/tmp/test'}
-
-    # Legacy leg
-    config_legacy = _make_from_o_budget_config(fO2_shift_IW=dIW)
-    config_legacy.planet.fO2_source = 'user_constant'
-    hf_row_legacy = _earth_hf_row()
-    calc_surface_pressures(dirs, config_legacy, hf_row_legacy)
-
-    target_O = hf_row_legacy['O_kg_total']
-    assert target_O > 0, 'legacy run must produce a positive O budget'
-    assert hf_row_legacy['fO2_shift_IW_derived'] == pytest.approx(dIW)
-
-    # from_O_budget leg, feeding the implied O budget back in
-    config_path_c = _make_from_o_budget_config(fO2_shift_IW=dIW)
-    hf_row_path_c = _earth_hf_row(O_kg_total=target_O)
-    calc_surface_pressures(dirs, config_path_c, hf_row_path_c)
-
-    derived = hf_row_path_c['fO2_shift_IW_derived']
-    delta = abs(derived - dIW)
-
-    # 0.05 dex is the same tolerance used by CALLIOPE Stage 2
-    # TestRoundTrip; a wrapper-level glue bug (wrong fO2_hint, wrong
-    # target['O'] source) would push delta well past 0.1 dex.
-    assert delta < 0.05, f'wrapper round-trip failed at dIW={dIW}: derived={derived:.4f}'
-
-    # from_O_budget must preserve the authoritative O budget across the call.
-    assert hf_row_path_c['O_kg_total'] == pytest.approx(target_O, rel=1e-12)
-
-
-@pytest.mark.smoke
-def test_smoke_from_o_budget_residual_bounded_by_tolerance():
-    """Under from_O_budget the wrapper writes the 5th residual into ``O_res``.
-    With a converged solve the absolute residual must be well below the
-    target; otherwise the chemistry would silently mis-conserve O across
-    iterations. Discriminating: a value above ``target_O * 1e-3`` (0.1%)
-    would indicate the per-element tolerance gate is broken.
-    """
-    dirs = {'output': '/tmp/test'}
-    config = _make_from_o_budget_config(fO2_shift_IW=2.0)
-
-    # Bootstrap the O budget from a legacy run so it's by-construction reachable.
-    cfg_seed = _make_from_o_budget_config(fO2_shift_IW=2.0)
-    cfg_seed.planet.fO2_source = 'user_constant'
-    seed_hf = _earth_hf_row()
-    calc_surface_pressures(dirs, cfg_seed, seed_hf)
-    target_O = seed_hf['O_kg_total']
-
-    hf_row = _earth_hf_row(O_kg_total=target_O)
-    calc_surface_pressures(dirs, config, hf_row)
-
-    assert np.isfinite(hf_row['O_res'])
-    assert abs(hf_row['O_res']) <= max(target_O * 1e-3, 1e9)
-
-
-@pytest.mark.smoke
-def test_smoke_from_o_budget_mass_conservation_invariant():
-    """End-to-end check that issue #677's mass-conservation invariant
-    holds under from_O_budget: M_atm <= M_planet (which here is approximated
-    by M_int + sum of element budgets, since the wrapper does not run
-    update_planet_mass).
-
-    The atmosphere mass aggregated from CALLIOPE's per-species
-    ``s_kg_atm`` outputs must not exceed the planet's total tracked
-    mass. A bug that re-introduced the O-skipping asymmetry would let
-    M_atm exceed this bound at high H budgets.
-    """
-    dirs = {'output': '/tmp/test'}
-    config = _make_from_o_budget_config(fO2_shift_IW=4.0)
-
-    cfg_seed = _make_from_o_budget_config(fO2_shift_IW=4.0)
-    cfg_seed.planet.fO2_source = 'user_constant'
-    seed_hf = _earth_hf_row()
-    calc_surface_pressures(dirs, cfg_seed, seed_hf)
-    target_O = seed_hf['O_kg_total']
-
-    hf_row = _earth_hf_row(O_kg_total=target_O)
-    calc_surface_pressures(dirs, config, hf_row)
-
-    M_atm = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
-    M_planet_lb = hf_row['M_int'] + (
-        hf_row['H_kg_total']
-        + hf_row['C_kg_total']
-        + hf_row['N_kg_total']
-        + hf_row['S_kg_total']
-        + hf_row['O_kg_total']
-    )
-
-    assert M_atm > 0, 'sanity: outgassing produced a non-empty atmosphere'
-    assert M_atm <= M_planet_lb, (
-        f'from_O_budget atmosphere ({M_atm:.3e} kg) exceeds tracked planet '
-        f'mass lower bound ({M_planet_lb:.3e} kg), issue #677 regression?'
-    )

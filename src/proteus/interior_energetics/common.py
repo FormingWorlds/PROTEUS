@@ -16,11 +16,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Fei et al. (2021, Nat. Commun. 12, 876) MgSiO3 melting temperature is
-# calibrated to ~500 GPa. Above this pressure the liquidus_super CMB anchor
-# relies on extrapolation of the high-pressure power-law branch.
-FEI2021_LIQUIDUS_P_CALIB_PA = 500e9
-
 
 @dataclass
 class rheo_t:
@@ -249,24 +244,51 @@ def compute_initial_entropy(
         )
         return S
 
-    # CMB-anchored adiabat: invert (P_cmb, tcmb_init) -> S via the same
-    # entropy tables the interior solver integrates with. Because S is
-    # conserved along an adiabat, S(P_cmb, T_cmb) = S(P_surf, T_surf), so
-    # this returns exactly the entropy that produces T(P_cmb) = tcmb_init
-    # when the solver unpacks the IC. Use this mode when the surface-
-    # anchored adiabat under the current EOS would land in the mushy zone
-    # at IC and you want to force a fully molten initial state.
-    #
-    # liquidus_super shares the (P_cmb, T_cmb) -> S inversion path with
-    # adiabatic_from_cmb, with one substitution: T_cmb is derived from
-    # the EoS-agnostic Fei et al. (2021) MgSiO3 liquidus at P_cmb plus
-    # the user-set delta_T_super offset, instead of being read directly
-    # from config.planet.tcmb_init. This makes the IC anchor independent
-    # of which silicate EoS bookkeeping convention (WB17 S_0=0 vs PALEOS
-    # Stebbins-anchored) is being compared.
-    if config.planet.temperature_mode in ('adiabatic_from_cmb', 'liquidus_super'):
+    # liquidus_super: start the mantle on the coolest single adiabat that is
+    # fully molten everywhere with delta_T_super of superheat above the
+    # configured liquidus. The superheat is solved against the actual melting
+    # curve at the most-constraining depth, so the initial condition is robust
+    # to the liquidus parameterisation and to planet mass instead of relying on
+    # a fixed surface temperature or entropy value (see
+    # zalmoxis.solve_superliquidus_adiabat). Anchoring at the CMB liquidus
+    # instead extrapolates the melting curve past its calibration at high mass
+    # and yields a cold-surface, energy-non-conserving IC.
+    if config.planet.temperature_mode == 'liquidus_super':
+        from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
+
+        res = solve_superliquidus_adiabat(config, hf_row)
+        surface_T = res['surface_T']
+        if spider_eos_dir and os.path.isdir(spider_eos_dir):
+            try:
+                from aragog.eos.entropy import EntropyEOS
+
+                S = float(EntropyEOS(spider_eos_dir).invert_temperature(1e5, surface_T))
+                log.info(
+                    'liquidus_super initial entropy from surface P-S inversion: '
+                    'surface T=%.0f K -> S=%.1f J/kg/K',
+                    surface_T,
+                    S,
+                )
+                return S
+            except (ImportError, ValueError, FileNotFoundError) as e:
+                log.warning(
+                    'liquidus_super surface P-S inversion failed (%s); using the '
+                    'PALEOS adiabat entropy S=%.1f J/kg/K.',
+                    e,
+                    res['S_target'],
+                )
+        return float(res['S_target'])
+
+    # adiabatic_from_cmb: invert (P_cmb, tcmb_init) -> S via the same entropy
+    # tables the interior solver integrates with. Because S is conserved along
+    # an adiabat, S(P_cmb, tcmb_init) = S(P_surf, T_surf), so this returns the
+    # entropy that reproduces T(P_cmb) = tcmb_init when the solver unpacks the
+    # IC. Use this mode to force a fully molten initial state by an explicit
+    # user-set CMB temperature.
+    cmb_mode = config.planet.temperature_mode == 'adiabatic_from_cmb'
+
+    if cmb_mode:
         mode = config.planet.temperature_mode
-        is_liquidus_super = mode == 'liquidus_super'
         P_cmb = None
         if hf_row is not None:
             P_cmb = hf_row.get('P_cmb', None)
@@ -300,46 +322,9 @@ def compute_initial_entropy(
                 struct_mod,
             )
 
-        # Compute the CMB anchor temperature.
-        #   adiabatic_from_cmb: tcmb_init is user-set absolute K.
-        #   liquidus_super:     T_liq_Fei2021(P_cmb) + delta_T_super.
-        # The Fei+2021 (Nat. Commun. 12, 876) MgSiO3 liquidus is a third-party
-        # calibration shared between PALEOS and external references, so
-        # neither the WB17 nor the PALEOS S_0 anchoring choice biases the
-        # IC. The piecewise Simon-Glatzel fit is implemented in Zalmoxis
-        # (zalmoxis.melting_curves.paleos_liquidus); we import lazily so
-        # users without Zalmoxis can still run adiabatic_from_cmb.
-        if is_liquidus_super:
-            try:
-                from zalmoxis.melting_curves import paleos_liquidus
-            except (ImportError, ModuleNotFoundError) as e:
-                raise RuntimeError(
-                    f'liquidus_super mode requires Zalmoxis '
-                    f'(zalmoxis.melting_curves.paleos_liquidus); '
-                    f'import failed: {e}'
-                )
-            if P_cmb > FEI2021_LIQUIDUS_P_CALIB_PA:
-                log.warning(
-                    'liquidus_super: P_cmb=%.0f GPa exceeds the Fei+2021 '
-                    'MgSiO3 melting-curve calibration (~%.0f GPa); the CMB '
-                    'anchor temperature is an extrapolation and the initial '
-                    'condition is uncertain at this planet mass.',
-                    P_cmb / 1e9,
-                    FEI2021_LIQUIDUS_P_CALIB_PA / 1e9,
-                )
-            T_liq = float(paleos_liquidus(P_cmb))
-            delta = float(config.planet.delta_T_super)
-            tcmb = T_liq + delta
-            log.info(
-                'liquidus_super CMB anchor: P_cmb=%.2e Pa -> '
-                'T_liq_Fei2021=%.0f K + delta_T_super=%.0f K = T_cmb=%.0f K',
-                P_cmb,
-                T_liq,
-                delta,
-                tcmb,
-            )
-        else:
-            tcmb = float(config.planet.tcmb_init)
+        # The adiabatic_from_cmb anchor temperature is the user-set absolute
+        # value; S(P_cmb, tcmb_init) is inverted below.
+        tcmb = float(config.planet.tcmb_init)
 
         # Preferred path: invert via the Aragog entropy tables (the same
         # tables the solver integrates with), so the resulting S yields
@@ -554,6 +539,14 @@ def get_file_tides(outdir: str):
     return os.path.join(outdir, 'data', 'tides_recent.dat')
 
 
+# Path to location at which to persist the stale-structure flag. The flag is a
+# per-run interior-state bit that must survive a resume: a run that fell back to
+# the previous structure on a Zalmoxis non-convergence, then crashed, must come
+# back knowing its on-disk mesh is stale rather than assuming it is fresh.
+def get_file_structure_stale(outdir: str):
+    return os.path.join(outdir, 'data', 'structure_stale.dat')
+
+
 # Structure for holding interior variables at the current time-step
 class Interior_t:
     def __init__(self, nlev_b: int, spider_dir=None, eos_dir=None):
@@ -572,6 +565,16 @@ class Interior_t:
         self.zalmoxis_fail_count = 0
         self.spider_fail_count = 0
         self.aragog_fail_count = 0
+
+        # True when the interior is running on a fallback (previous-step)
+        # structure because the last Zalmoxis re-solve did not converge; set on
+        # that fall-back and cleared on the next successful re-solve. Downstream
+        # consumers (Aragog's stale-mesh visibility counter, the baseline-commit
+        # guard) read it here rather than from hf_row so it stays out of the
+        # floats-only helpfile schema. Persisted to disk (write_structure_stale)
+        # and restored on resume (resume_structure_stale) so a crash right after
+        # a fall-back does not resume believing the on-disk mesh is fresh.
+        self.structure_stale = False
 
         # Cumulative SPIDER time [yr]. Used by the CVode failure
         # fallback path (wrapper.py) to keep bookkeeping consistent
@@ -611,7 +614,7 @@ class Interior_t:
         self.aragog_solver = None
 
         # Counter for consecutive Aragog steps integrated on a stale
-        # Zalmoxis structure (i.e. with hf_row['_structure_stale']=True
+        # Zalmoxis structure (i.e. with self.structure_stale=True
         # set by a Zalmoxis fall-back). Resets to 0 on every successful
         # structure refresh. Used by setup_or_update_solver to log how
         # long Aragog has been running on a frozen mesh, surfacing the
@@ -754,6 +757,36 @@ class Interior_t:
             # for each level...
             for i in range(self.nlev_s):
                 hdl.write('%.7e %.7e \n' % (self.phi[i], self.tides[i]))
+
+    def write_structure_stale(self, outdir: str):
+        # Persist the stale-structure flag so a resumed run recovers it. Written
+        # whenever the flag changes (the Zalmoxis success and fall-back paths in
+        # wrapper.py), so the on-disk value tracks the in-memory one. A write
+        # failure (disk full, absent data/ directory) must not abort the run or,
+        # on the fall-back path, skip the mesh and zalmoxis_output.dat rollback
+        # that follows this call: the flag is only a resume-visibility bit, so
+        # log and continue rather than propagate.
+        try:
+            with open(get_file_structure_stale(outdir), 'w') as hdl:
+                hdl.write('%d\n' % (1 if self.structure_stale else 0))
+        except OSError as exc:
+            log.warning('Could not persist stale-structure flag file: %s', exc)
+
+    def resume_structure_stale(self, outdir: str):
+        # Restore the stale-structure flag from disk on resume. A missing file
+        # means no fall-back was recorded, so the mesh
+        # is fresh and the flag stays False. A malformed file is treated the
+        # same way rather than aborting the resume over a visibility bit.
+        path = get_file_structure_stale(outdir)
+        if not os.path.exists(path):
+            self.structure_stale = False
+            return
+        try:
+            with open(path) as hdl:
+                self.structure_stale = bool(int(hdl.read().strip()))
+        except (ValueError, OSError):
+            log.warning('Could not parse stale-structure flag file; assuming fresh')
+            self.structure_stale = False
 
     def update_rheology(self, visc: bool = False):
         # Update shear and bulk moduli arrays based on the melt fraction at each layer.

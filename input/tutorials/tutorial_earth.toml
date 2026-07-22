@@ -13,7 +13,10 @@
 #
 # Expected: solidification in ~0.5-4 Myr, consistent with CHILI models.
 #
-# Run: proteus start --offline -c input/tutorials/tutorial_earth.toml
+# Run: proteus start -c input/tutorials/tutorial_earth.toml
+# The first run downloads all required reference data (spectral files,
+# stellar tracks and spectra, interior EOS tables). Add --offline on
+# later runs to skip the reference-data check.
 
 config_version = "3.0"
 

@@ -1,21 +1,10 @@
 # The coupling loop
 
-PROTEUS evolves a planet by coupling multiple physics modules in a sequential
-loop. Each iteration advances the simulation by one timestep, with modules
-exchanging boundary conditions through a shared data structure. This page
-explains how that loop works and why it is structured the way it is.
-
-For the high-level module overview, see [Model description](model.md). For the
-code layout, see [Code architecture](code_architecture.md).
-
-## Architecture diagram
-
-The diagram below shows the full PROTEUS coupling architecture. Each box
-represents a physics module; arrows show the data flow between them within
-a single iteration.
-
-<object type="image/svg+xml" data="../assets/proteus_architecture.svg" class="arch-diagram arch-diagram--light"></object>
-<object type="image/svg+xml" data="../assets/proteus_architecture_darkmode.svg" class="arch-diagram arch-diagram--dark"></object>
+The [previous page](code_architecture.md) described the static layout of
+PROTEUS's modules. This page explains how they run: the fixed execution order
+within each timestep, how modules exchange state through `hf_row`, and how the
+simulation advances and terminates. For the broader scientific context of each
+module, see [Model description](model.md).
 
 ## The helpfile row: data bus between modules
 

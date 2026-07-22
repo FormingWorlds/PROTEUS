@@ -84,7 +84,7 @@ die() {
     echo ""
     if [ -n "${LOGFILE:-}" ] && [ -f "${LOGFILE:-}" ]; then
         echo "A full log was written to: $LOGFILE"
-        echo "If you need help, send that log file to proteus_dev@formingworlds.space,"
+        echo "If you need help, send that log file to dev@proteus-framework.org,"
         echo "or open an issue or discussion at:"
         echo "  https://github.com/FormingWorlds/PROTEUS/issues"
         echo "  https://github.com/orgs/FormingWorlds/discussions"
@@ -837,6 +837,13 @@ info "Setting up Aragog..."
 bash tools/get_aragog.sh 2>&1
 info "Setting up Zalmoxis..."
 bash tools/get_zalmoxis.sh 2>&1
+
+# Install the SUNDIALS CVODE solver (Aragog's production integration path).
+# Without it Aragog falls back to scipy Radau, which is slower and step-size-
+# fragile on coupled cooling runs.
+info "Setting up the SUNDIALS CVODE solver..."
+bash tools/get_cvode.sh 2>&1 \
+    || warn "CVODE install failed; Aragog will fall back to scipy Radau"
 
 # Install PROTEUS itself
 info "Installing PROTEUS and remaining dependencies..."

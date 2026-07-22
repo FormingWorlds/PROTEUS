@@ -29,9 +29,8 @@ ordering bugs surface), S values designed so the 1 %, 5 % and 8 % cases are
 clearly in the right bucket.
 
 Testing standards and documentation:
-- docs/test_infrastructure.md
-- docs/test_categorization.md
-- docs/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -581,13 +580,12 @@ def test_aragog_verify_runs_and_overrides_on_warn(tmp_path):
 @pytest.mark.unit
 def test_aragog_verify_logs_on_large_mismatch_but_does_not_raise(tmp_path, caplog):
     """
-    10 % discrepancy is logged (as a WARN about table boundary drift)
-    but does NOT raise. The Aragog full-profile cross-check was found
-    to fire on every production run at M>=2.0 Earth masses because the
-    PALEOS P-T and regenerated P-S tables drift by up to ~10% at high
-    P (memory pitfall 50). The cross-check is therefore advisory only;
-    the scalar surface check in _set_entropy_ic is the authoritative
-    IC sanity check.
+    A 10 % discrepancy is logged as a debug note about table boundary
+    drift but does NOT raise. The Aragog full-profile cross-check fires
+    on production runs at M>=2.0 Earth masses because the PALEOS P-T and
+    regenerated P-S tables drift by up to ~10% at high pressure, so it is
+    advisory only; the scalar surface check in _set_entropy_ic is the
+    authoritative IC sanity check.
     """
     import logging
 
@@ -611,7 +609,7 @@ def test_aragog_verify_logs_on_large_mismatch_but_does_not_raise(tmp_path, caplo
         'S_target': 7081.0,
     }
 
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.aragog'):
+    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.aragog'):
         with (
             patch(
                 'zalmoxis.eos_export.compute_entropy_adiabat',
@@ -631,7 +629,7 @@ def test_aragog_verify_logs_on_large_mismatch_but_does_not_raise(tmp_path, caplo
             ),
             patch('os.path.isfile', return_value=True),
         ):
-            # Must not raise. Must log the mismatch at WARNING level.
+            # Must not raise. Must log the mismatch at debug level.
             AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
 
     joined = '\n'.join(r.message for r in caplog.records)
@@ -643,3 +641,142 @@ def test_aragog_verify_logs_on_large_mismatch_but_does_not_raise(tmp_path, caplo
     # re-enabled the override would also satisfy the log-line check
     # above but silently overwrite the IC profile.
     interior_o.aragog_solver.set_initial_entropy.assert_not_called()
+
+
+# ======================================================================
+# Aragog path: liquidus_super cold-surface guard
+# ======================================================================
+
+
+def _make_aragog_liquidus_super_config():
+    """Mock config for a zalmoxis + PALEOS liquidus_super run."""
+    config = MagicMock()
+    config.interior_struct.module = 'zalmoxis'
+    config.interior_struct.zalmoxis = MagicMock()
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    config.planet.temperature_mode = 'liquidus_super'
+    config.planet.tsurf_init = 4000.0
+    return config
+
+
+def _patch_crosscheck_eos(monkeypatch, tmp_path, surface_T, p_cmb):
+    """Mock the EOS dependencies of ``_verify_entropy_ic`` so the cold-surface
+    guard logic can be unit-tested without the PALEOS tables.
+
+    Provides a present (stub) EOS file, a super-liquidus solve that returns the
+    intended warm surface temperature, and a warm monotone reference adiabat.
+    The IC profile itself is set by the caller's ``temperature_scalar``.
+    """
+    import zalmoxis.eos_export as eos_export
+
+    import proteus.interior_struct.zalmoxis as zmod
+
+    eos_file = tmp_path / 'eos.dat'
+    eos_file.write_text('stub')
+    monkeypatch.setattr(
+        zmod,
+        'load_zalmoxis_material_dictionaries',
+        lambda: {'PALEOS:MgSiO3': {'eos_file': str(eos_file)}},
+    )
+    monkeypatch.setattr(zmod, 'resolve_2phase_mgsio3_paths', lambda *a, **k: (None, None))
+    monkeypatch.setattr(zmod, 'load_zalmoxis_solidus_liquidus_functions', lambda *a, **k: None)
+    monkeypatch.setattr(
+        zmod,
+        'solve_superliquidus_adiabat',
+        lambda config, hf_row: {
+            'surface_T': surface_T,
+            'S_target': 10591.0,
+            'cmb_T': 13000.0,
+            'achieved_superheat': 500.0,
+            'binding_P': 1.2e11,
+            'P_cmb': p_cmb,
+        },
+    )
+
+    def fake_adiabat(
+        eos_file,
+        T_surface,
+        P_surface,
+        P_cmb,
+        n_points,
+        solidus_func,
+        liquidus_func,
+        solid_eos_file,
+        liquid_eos_file,
+    ):
+        P = np.linspace(P_surface, P_cmb, n_points)
+        T = T_surface + (P - P_surface) / (P_cmb - P_surface) * (13000.0 - T_surface)
+        return {
+            'P': P,
+            'T': T,
+            'S_target': 10591.0,
+            'S_profile': np.full(n_points, 10591.0),
+        }
+
+    monkeypatch.setattr(eos_export, 'compute_entropy_adiabat', fake_adiabat)
+
+
+@pytest.mark.physics_invariant
+def test_aragog_verify_raises_on_cold_surface_liquidus_super(monkeypatch, tmp_path):
+    """A liquidus_super IC that unpacks to a COLD surface beyond the Fei+2021
+    calibration is rejected: the cross-check raises, because that steeply
+    inverted profile is the energy-non-conserving cold-surface initial
+    condition the guard exists to catch.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    p_cmb = 1.474e12  # m10, beyond the ~500 GPa Fei calibration
+    config = _make_aragog_liquidus_super_config()
+    _patch_crosscheck_eos(monkeypatch, tmp_path, surface_T=4243.0, p_cmb=p_cmb)
+    # P from CMB (index 0) down to the surface; the IC unpacks cold at the
+    # surface (2900 K) and hot at the base (11000 K) -> steep inversion.
+    P_stag = np.array([p_cmb, 6e11, 1.5e11, 1e9, 1e5])
+
+    def cold_T(p, s):
+        return 2900.0 + (p - 1e5) / (p_cmb - 1e5) * (11000.0 - 2900.0)
+
+    interior_o = MagicMock()
+    interior_o.aragog_solver = _make_mock_entropy_solver(
+        P_stag=P_stag,
+        S_stag=np.full(P_stag.size, 10000.0),
+        temperature_scalar_fn=cold_T,
+    )
+    with pytest.raises(RuntimeError, match='cold-surface inversion') as exc:
+        AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path), {'P_cmb': p_cmb})
+    msg = str(exc.value)
+    # The message must name the mode and the out-of-calibration pressure so the
+    # failure is actionable, and report the cold unpacked surface (2900 K) it
+    # caught against the intended ~4243 K adiabat anchor.
+    assert 'liquidus_super' in msg and 'GPa' in msg
+    assert '2900 K' in msg
+
+
+def test_aragog_verify_no_raise_on_warm_surface_liquidus_super(monkeypatch, tmp_path):
+    """A correctly-anchored warm-surface liquidus_super IC does NOT raise, even
+    when the table-drift verdict is FAIL: the guard is gated on the cold-surface
+    signature, not the verdict magnitude (a benign ~7 % deep drift must pass).
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    p_cmb = 1.474e12
+    config = _make_aragog_liquidus_super_config()
+    _patch_crosscheck_eos(monkeypatch, tmp_path, surface_T=4243.0, p_cmb=p_cmb)
+    P_stag = np.array([p_cmb, 6e11, 1.5e11, 1e9, 1e5])
+
+    def warm_T(p, s):
+        base = 4243.0 + (p - 1e5) / (p_cmb - 1e5) * (13000.0 - 4243.0)
+        return base * (1.0 + 0.07 * (p / p_cmb))  # warm surface, ~7% deep drift
+
+    interior_o = MagicMock()
+    interior_o.aragog_solver = _make_mock_entropy_solver(
+        P_stag=P_stag,
+        S_stag=np.full(P_stag.size, 10000.0),
+        temperature_scalar_fn=warm_T,
+    )
+    # Must not raise; the cross-check runs to completion and writes its
+    # diagnostic, confirming the FAIL verdict was reached but not escalated.
+    AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path), {'P_cmb': p_cmb})
+    assert (
+        tmp_path / 'data' / 'entropy_ic_verification' / 'entropy_ic_comparison.npz'
+    ).exists()
+    interior_o.aragog_solver.entropy_eos.temperature_scalar.assert_called()
