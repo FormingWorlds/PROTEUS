@@ -153,6 +153,8 @@ class Escape:
         Parameters for dummy escape module.
     boreas: EscapeBoreas
         Parameters for BOREAS escape module.
+    boiloff_ic: bool
+        Reduce the initial volatile inventory to the fraction that survives boil-off.
     """
 
     module: str | None = field(
@@ -166,6 +168,8 @@ class Escape:
     boreas: EscapeBoreas = field(factory=EscapeBoreas, validator=valid_escapeboreas)
 
     reservoir: str = field(default='outgas', validator=valid_reservoir)
+
+    boiloff_ic: bool = field(default=False)
 
     @property
     def xuv_defined_by_radius(self) -> bool:

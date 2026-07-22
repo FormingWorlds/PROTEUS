@@ -791,6 +791,11 @@ def GetHelpfileKeys():
         # resume preserves the gate's state.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
         'esc_kg_cumulative', # cumulative escaped mass [kg]
+        # Volatile mass removed from the initial inventory by the boil-off
+        # correction in `escape.boiloff`, zero unless it is enabled. Recorded
+        # so the trimmed initial condition is machine-readable rather than
+        # only present in the run log.
+        'M_boiloff_kg',     # mass removed by the boil-off IC correction [kg]
     ]
 
     # quantities for each gas, from outgassing

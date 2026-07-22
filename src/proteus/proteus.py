@@ -276,6 +276,7 @@ class Proteus:
         from proteus.atmos_clim.common import Albedo_t, Atmos_t
 
         #    escape and outgas
+        from proteus.escape.boiloff import apply_boiloff_ic
         from proteus.escape.wrapper import run_escape
 
         #    interior
@@ -954,6 +955,11 @@ class Proteus:
             #    depending on the true melt fraction and T_magma found by SPIDER at runtime.
             if self.init_stage:
                 calc_target_elemental_inventories(self.directories, self.config, self.hf_row)
+
+                # Trim an envelope that is not gravitationally bound down to the
+                # fraction that survives boil-off, before it is outgassed. Runs
+                # each init pass so the estimate converges; no-op by default.
+                apply_boiloff_ic(self.config, self.hf_row)
 
             else:
                 # Check crystallization: outgassing stops but simulation continues

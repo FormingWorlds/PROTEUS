@@ -84,6 +84,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.agni.spectral_file',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
+        'escape.boiloff_ic',
         'interior_energetics.adams_williamson_beta',
         'interior_energetics.adams_williamson_rhos',
         'interior_energetics.adiabatic_bulk_modulus',
