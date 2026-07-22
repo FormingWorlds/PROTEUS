@@ -576,9 +576,36 @@ config_version = "3.0"
     [escape.dummy]
         rate                  = 0.0          # bulk escape rate [kg s-1]
 
-# Late accretion
+# Giant-impact accretion and delivery
 [accretion]
-    module                    = "none"       # not yet implemented
+    module                    = "none"       # none | dummy | morrigan
+
+    # Volatile content of each impactor [ppmw of impactor mass].
+    # Zero means impactors add silicate and iron mass only.
+    impactor_H_ppmw           = 0.0          # hydrogen delivered per impact
+    impactor_C_ppmw           = 0.0          # carbon delivered per impact
+    impactor_N_ppmw           = 0.0          # nitrogen delivered per impact
+    impactor_S_ppmw           = 0.0          # sulfur delivered per impact
+    impactor_O_ppmw           = 0.0          # oxygen delivered per impact
+
+    [accretion.morrigan]
+        seed                  = 1            # Monte Carlo seed
+        num_planets           = 10           # number of embryos at disk dispersal
+        masses                = []           # embryo masses [M_earth]; empty = all mass_equal
+        mass_equal            = 0.5          # embryo mass when masses is empty [M_earth]
+        eccentricity_init     = 0.01         # initial eccentricity of every embryo
+        inner_edge            = 0.1          # orbit of the innermost embryo [AU]
+        spacing               = 10.0         # initial embryo separation [mutual Hill radii]
+        density               = 5500.0       # bulk density for mass to radius [kg m-3]
+        impact_angle          = 45.0         # impact angle [deg]
+        evolution_time        = 1.0          # duration of the dynamical evolution [Gyr]
+        inner_cutoff          = 0.005        # perihelion counting as lost to the star [AU]
+        selector              = "match_config"  # match_config | mass | semimajoraxis | id
+        selector_value        = "none"       # target orbit [AU] or embryo id, per selector
+        time_offset           = 0.0          # shift of Morrigan event times onto PROTEUS time [yr]
+
+    [accretion.dummy]
+        timeline_path         = "none"       # impact timeline file to replay
 
 # Atmospheric chemistry (post-processing)
 [atmos_chem]
