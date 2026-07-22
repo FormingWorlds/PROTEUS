@@ -45,7 +45,7 @@ config_version = "3.0"
 
     [params.dt]
         minimum               = 1e3          # minimum time step [yr]
-        minimum_rel           = 1e-5         # minimum relative time step
+        minimum_rel           = 1e-3         # minimum relative time step
         maximum               = 1e6          # maximum time step [yr]
         initial               = 3e1          # initial step size [yr]
         starspec              = 1e8          # recalculate stellar spectrum interval [yr]
@@ -89,7 +89,7 @@ config_version = "3.0"
 
         [params.stop.escape]                 # atmosphere loss criterion
             enabled           = true
-            p_stop            = 1e-3          # stop when surface pressure < p_stop [bar]
+            p_stop            = 1e-4          # stop when surface pressure < p_stop [bar]
 
         [params.stop.disint]                 # planetary disintegration criterion
             enabled           = false
@@ -102,7 +102,7 @@ config_version = "3.0"
 
 # Bulk planet properties, initial temperature, and volatile inventory
 [planet]
-    mass_tot                  = 9.0          # total initial planet mass [M_earth]
+    mass_tot                  = 1.0          # total initial planet mass [M_earth]
 
     # Initial temperature profile
     temperature_mode          = "liquidus_super"  # default; other modes: isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
@@ -123,7 +123,7 @@ config_version = "3.0"
     volatile_reservoir        = "mantle"     # ppmw reference mass: mantle | mantle+core
 
     # Cooling constraint
-    prevent_warming           = false      # require monotonic cooling
+    prevent_warming           = true      # require monotonic cooling
 
     # Element abundances (used when volatile_mode = 'elements')
     [planet.elements]
@@ -221,7 +221,7 @@ config_version = "3.0"
 # Interior structure (hydrostatic equilibrium & composition)
 [interior_struct]
     module                    = "dummy"   # zalmoxis | dummy | spider
-    core_frac_mode            = "mass"       # radius | mass; zalmoxis always uses mass (radius is ignored with a warning)
+    core_frac_mode            = "radius"       # radius | mass; zalmoxis always uses mass (radius is ignored with a warning)
     core_frac                 = 0.55        # radius or mass fraction (see core_frac_mode)
     core_density              = "self"       # core density [kg m-3]; "self" = from zalmoxis/dummy
     core_heatcap              = "self"       # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis/dummy
@@ -462,18 +462,18 @@ config_version = "3.0"
 
 # Atmosphere climate (radiative-convective structure)
 [atmos_clim]
-    module                    = "dummy"       # agni | janus | dummy
+    module                    = "agni"       # agni | janus | dummy
 
     # Grid and spectral setup (shared by agni + janus)
     spectral_group            = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
     spectral_bands            = "48"         # wavenumber bands in k-table
-    num_levels                = 50           # vertical atmosphere levels (min 15)
-    p_top                     = 1.0e-4       # top-of-atmosphere pressure [bar]
+    num_levels                = 45           # vertical atmosphere levels (min 15)
+    p_top                     = 1.0e-5       # top-of-atmosphere pressure [bar]
     p_obs                     = 0.02         # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
     # Radiative properties (agni, janus only)
-    rayleigh                  = false         # Rayleigh scattering
+    rayleigh                  = true         # Rayleigh scattering
     cloud_enabled             = false        # water cloud radiative effects
     cloud_alpha               = 0.0          # condensate retention fraction (0 to 1)
     aerosols_enabled          = false        # enable aerosol radiative effects (agni only)

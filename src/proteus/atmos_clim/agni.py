@@ -382,7 +382,7 @@ def _construct_voldict(config: Config, hf_row: dict, dirs: dict):
         raise ValueError('All volatiles have a volume mixing ratio of zero')
 
     if config.atmos_clim.agni.chemistry == 'eq':
-        _determine_Hfraction(hf_row, vol_dict)
+        vol_dict = _determine_Hfraction(hf_row, vol_dict)
 
     return vol_dict
 
@@ -414,6 +414,10 @@ def _determine_Hfraction(hf_row: dict, vol_dict: dict):
     H_number_fraction = H_atoms / total_atoms
     if H_number_fraction < 1e-10:
         hf_row['H2_vmr'] = 1e-10 / 2
+
+    vol_dict['H2'] = hf_row['H2_vmr']
+
+    return vol_dict
 
 
 def _determine_condensates(vol_list: list):
