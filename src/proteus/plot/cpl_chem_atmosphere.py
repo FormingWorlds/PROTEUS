@@ -85,8 +85,26 @@ def plot_chem_atmosphere(
     plot_format='pdf',
     plot_gases: list = None,
     plot_offchem: bool = True,
-    xmin: float = 1e-14,
+    xmin: float = 1e-10,
 ):
+    """
+    Plot the chemical composition of the atmosphere.
+
+    Arguments
+    ---------
+    output_dir : str
+        Path to the output directory for the simulation.
+    chem_module : str
+        Name of the chemistry module that was used.
+    plot_format : str, optional
+        Format for the output plot file.
+    plot_gases : list, optional
+        List of gases to plot (otherwise uses default list)
+    plot_offchem : bool, optional
+        Whether to plot offline chemistry results.
+    xmin : float, optional
+        Minimum VMR for x-axis of the plot.
+    """
     log.info('Plot atmosphere chemical composition')
 
     # Default species.
@@ -153,7 +171,7 @@ def plot_chem_atmosphere(
         if key in atm_profile.keys():
             xarr = list(atm_profile[key])
             xarr = [xarr[0]] + xarr
-            if np.amax(xarr) >= xmin or gas in list(REFRACTORY_GASES):
+            if np.amax(xarr) >= xmin:
                 vmr = float(xarr[-1])
                 n = min(len(xarr), len(parr))
                 ax1.plot(xarr[:n], parr[:n], ls='dashed', color=col, lw=_lw, alpha=al)
