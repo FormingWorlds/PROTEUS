@@ -593,6 +593,14 @@ class Interior_t:
         # escaped from.
         self.dt_hysteresis_remaining = 0
 
+        # Time of the next scheduled giant impact [yr], refreshed by the
+        # main loop from the accretion timeline. The time-stepper clamps
+        # dt so the loop lands on it, because an impact resets the mantle
+        # and changes the planet's mass: stepping over one would apply it
+        # at the wrong state. Infinite when no impact is pending, which
+        # is every run with accretion switched off.
+        self.t_next_impact = float('inf')
+
         # Lookup data for SPIDER (P-S tables, used by E_th and
         # melt-volume bookkeeping). Each is a (nS, nP, 3) array, the
         # third channel being the SI value of the quantity.

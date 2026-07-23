@@ -94,10 +94,11 @@ def _make_hf_all(n_rows: int = 10, dt_prev: float = 1.0e3, phi: float = 1.0):
     )
 
 
-def _make_interior_o():
+def _make_interior_o(t_next_impact=float('inf')):
     """Minimal stand-in for Interior_t that exposes the fields the
-    controller reads/writes."""
-    return SimpleNamespace(dt_hysteresis_remaining=0)
+    controller reads/writes. The default impact time is infinite, which
+    is what a run with accretion switched off carries."""
+    return SimpleNamespace(dt_hysteresis_remaining=0, t_next_impact=t_next_impact)
 
 
 # ---------------------------------------------------------------------------
@@ -628,3 +629,119 @@ def test_next_step_maximum_rel_default_widens_cap_proportional_to_Time():
     # maximum_rel would land at 10 here; the gap of 40 is well above
     # any reasonable rounding error.
     assert dt > 10.0
+
+
+# ---------------------------------------------------------------------------
+# Landing on scheduled giant impacts
+# ---------------------------------------------------------------------------
+
+
+class TestImpactClamp:
+    """Verify dt is shortened to land on the next scheduled impact.
+
+    An impact grows the planet and re-melts its mantle, so it has to be
+    applied at the state the timeline places it at. The clamp is one-way:
+    it may only shorten the step, and it is floored at the minimum step so
+    that an imminent impact cannot drive dt to zero.
+    """
+
+    @pytest.mark.physics_invariant
+    def test_no_pending_impact_leaves_the_step_untouched(self):
+        """A run with accretion off carries an infinite impact time.
+
+        This is the path every existing run takes, so it must return the
+        controller's own choice unchanged.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+
+        dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o())
+
+        # SFINC * dt_prev = 1.6 * 5e3 = 8e3, the uncapped controller step.
+        assert dt == pytest.approx(8.0e3, rel=1e-6), f'Expected 8e3, got {dt}'
+        assert dt > 0.0
+
+    @pytest.mark.physics_invariant
+    def test_step_lands_exactly_on_an_impact_inside_the_step(self):
+        """An impact closer than the controller's step pulls dt back to it."""
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        time_now = 1.0e5
+        hf_row = {'Time': time_now, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        t_impact = time_now + 3.0e3
+
+        dt = next_step(
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=t_impact),
+        )
+
+        # The step ends on the impact, to the precision of the time axis.
+        assert hf_row['Time'] + dt == pytest.approx(t_impact, rel=1e-12)
+        # Discrimination: the uncapped controller would have chosen 8e3
+        # and stepped 5e3 past the impact, so an inactive clamp cannot
+        # pass the equality above.
+        assert dt < 8.0e3
+
+    def test_a_distant_impact_does_not_lengthen_the_step(self):
+        """The clamp is one-way; it must never grow dt.
+
+        A timeline whose next impact is far away has to leave the
+        stiffness-aware controller in charge.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+
+        dt = next_step(
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=1.0e5 + 2.0e4),
+        )
+
+        assert dt == pytest.approx(8.0e3, rel=1e-6), f'Expected 8e3, got {dt}'
+
+    @pytest.mark.physics_invariant
+    def test_an_imminent_impact_is_floored_at_the_minimum_step(self):
+        """An impact inside the minimum step must not collapse dt.
+
+        The event handler applies impacts on a half-open time window, so
+        overshooting an impact by less than one minimum step still fires
+        it exactly once. Shrinking dt towards zero to reach it, on the
+        other hand, would stall the run.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        time_now = 1.0e5
+        hf_row = {'Time': time_now, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        t_impact = time_now + 10.0
+
+        dt = next_step(
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=t_impact),
+        )
+
+        # dt.minimum + dt.minimum_rel * Time = 100 + 0.005 * 1e5 = 600.
+        assert dt == pytest.approx(600.0, rel=1e-6), f'Expected the 600 yr floor, got {dt}'
+        # Positivity, and the deliberate overshoot that the floor implies.
+        assert dt > 0.0
+        assert hf_row['Time'] + dt > t_impact
