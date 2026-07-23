@@ -76,14 +76,13 @@ def _make_hf_row():
 
 def _install_common_mocks(monkeypatch, element_fracs, env_dir):
     """Replace the module rosters and the element-fraction reader with small
-    controlled values. vol_list=[CO2] (a volatile), vap_list=[H2O] (treated as
+    controlled values. vap_list=[H2O] (treated as
     the rock-vapour species here); element_list carries two rock-forming
     elements (Fe, Mg) so the M_vaps accumulation path is exercised. LAVA_DIR /
     FC_DIR are set to a temp dir so paths_importer builds without needing a real
     LavAtmos/FastChem install (CI runs without those env vars)."""
     monkeypatch.setenv('LAVA_DIR', str(env_dir))
     monkeypatch.setenv('FC_DIR', str(env_dir))
-    monkeypatch.setattr(lavatmos_mod, 'vol_list', ['CO2'])
     monkeypatch.setattr(lavatmos_mod, 'vap_list', ['H2O'])
     monkeypatch.setattr(lavatmos_mod, 'noble_gases', [])
     monkeypatch.setattr(lavatmos_mod, 'element_list', ['H', 'C', 'N', 'S', 'O', 'Fe', 'Mg'])
@@ -308,7 +307,6 @@ def test_run_vapourisation_preserves_noble_gases(tmp_path, monkeypatch):
     dirs = {'output': str(tmp_path)}
     monkeypatch.setenv('LAVA_DIR', str(tmp_path))
     monkeypatch.setenv('FC_DIR', str(tmp_path))
-    monkeypatch.setattr(lavatmos_mod, 'vol_list', ['CO2'])
     monkeypatch.setattr(lavatmos_mod, 'vap_list', ['Fe'])  # a rock-vapour species
     monkeypatch.setattr(lavatmos_mod, 'noble_gases', ['He', 'Ar'])
     monkeypatch.setattr(

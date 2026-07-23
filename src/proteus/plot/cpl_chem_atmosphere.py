@@ -73,9 +73,6 @@ GASES_STANDARD = (
 )
 
 
-# Rock-vapour species (canonical list: proteus.utils.constants.vap_list) are
-# always plotted regardless of the xmin cutoff, since their VMR can be low but
-# their presence is still diagnostically important.
 REFRACTORY_GASES = tuple(vap_list)
 
 
