@@ -44,6 +44,15 @@ MASS_CLOSURE_RTOL = 1e-6
 # sqrt(v_inf^2 + v_esc^2). The tolerance absorbs round-trip formatting only.
 VELOCITY_FLOOR_RTOL = 1e-6
 
+# Largest fraction of its mass a body may shed between two consecutive impacts.
+# The timeline reports the perfect-merger mass M_target + M_impactor, while the
+# dynamical model may hand the next impact a lighter body because the collision
+# stripped atmosphere. Only the atmosphere is available to lose, so the drop is
+# bounded by the envelope mass fraction, of order a percent for the embryos
+# these models follow. Ten percent leaves room for envelope-rich bodies while
+# still rejecting the discontinuity that means the rows describe two planets.
+MAX_INTERIMPACT_MASS_LOSS_FRAC = 0.1
+
 
 @define(frozen=True)
 class ImpactEvent:
@@ -189,23 +198,38 @@ def _check_event_physics(event: ImpactEvent, index: int) -> None:
         )
 
 
-def validate_timeline(events: Sequence[ImpactEvent]) -> None:
+def validate_timeline(
+    events: Sequence[ImpactEvent],
+    max_mass_loss_frac: float = MAX_INTERIMPACT_MASS_LOSS_FRAC,
+) -> None:
     """Check a whole timeline for self-consistency.
 
     Every record must be physically valid on its own, times must increase
     strictly so each impact can be scheduled unambiguously, and the mass
-    handed from one impact to the next must be continuous.
+    handed from one impact to the next must follow from the body the
+    previous impact produced.
+
+    That last check is one-way. The timeline reports the perfect-merger
+    mass, so between two impacts a body may shed the atmosphere the
+    collision stripped, but it has nothing to accrete from: the next
+    target mass may sit below the previous merged mass by up to
+    ``max_mass_loss_frac``, and may not sit above it at all.
 
     Parameters
     ----------
     events : sequence of ImpactEvent
         Timeline to check, in time order.
+    max_mass_loss_frac : float
+        Largest fraction of its mass a body may shed between consecutive
+        impacts [1]. Raise it for a model whose bodies carry envelopes
+        heavier than the default ceiling.
 
     Raises
     ------
     ValueError
         If any record is invalid, if two impacts share a time or run
-        backwards, or if the target mass jumps between consecutive impacts.
+        backwards, or if the target mass gains on, or falls too far
+        below, the previous merged mass.
     """
     previous: ImpactEvent | None = None
 
@@ -221,15 +245,25 @@ def validate_timeline(events: Sequence[ImpactEvent]) -> None:
                 )
 
             # The body that emerges from one impact is the target of the
-            # next, so a mass discontinuity means the rows describe
-            # different planets.
-            if abs(event.M_target_before - previous.M_merged_after) > (
-                MASS_CLOSURE_RTOL * previous.M_merged_after
-            ):
+            # next. Nothing feeds it in between, so any gain is a
+            # bookkeeping error rather than physics.
+            merged = previous.M_merged_after
+            drift = event.M_target_before - merged
+            if drift > MASS_CLOSURE_RTOL * merged:
                 raise ValueError(
-                    f'impact {index}: target mass {event.M_target_before:.6e} kg does '
-                    f'not continue from the previous merged mass '
-                    f'{previous.M_merged_after:.6e} kg; the rows describe different bodies'
+                    f'impact {index}: target mass {event.M_target_before:.6e} kg exceeds '
+                    f'the previous merged mass {merged:.6e} kg; a body cannot gain mass '
+                    'between impacts'
+                )
+
+            # A drop larger than any atmosphere the body could carry means
+            # the rows describe different planets.
+            if -drift > max_mass_loss_frac * merged:
+                raise ValueError(
+                    f'impact {index}: target mass {event.M_target_before:.6e} kg falls '
+                    f'{-drift / merged:.1%} below the previous merged mass '
+                    f'{merged:.6e} kg, more than the {max_mass_loss_frac:.1%} a stripped '
+                    'atmosphere can account for; the rows describe different bodies'
                 )
 
         previous = event

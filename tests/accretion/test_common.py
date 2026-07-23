@@ -5,8 +5,8 @@ read_timeline, next_event, due_events). The timeline is the interface
 between a dynamical model and every consequence PROTEUS applies at an
 impact, so the invariants exercised here are mass closure of a perfect
 merger, the escape-velocity floor on the collision velocity, boundedness
-of the impact geometry, and continuity of the target mass along the
-chain.
+of the impact geometry, and the one-way handover of mass from one impact
+to the next.
 
 See testing standards in docs/How-to/testing.md and
 docs/Explanations/test_framework.md for required structure, speed, and
@@ -19,6 +19,8 @@ import numpy as np
 import pytest
 
 from proteus.accretion.common import (
+    MASS_CLOSURE_RTOL,
+    MAX_INTERIMPACT_MASS_LOSS_FRAC,
     TIMELINE_COLUMNS,
     ImpactEvent,
     due_events,
@@ -231,6 +233,61 @@ def test_timeline_must_advance_in_time_and_carry_mass_forward():
                 ),
             ]
         )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_mass_may_only_drop_between_impacts_and_only_by_an_atmosphere():
+    """Between two impacts a body can lose atmosphere but cannot accrete.
+
+    The timeline reports the perfect-merger mass, whereas the dynamical
+    model hands the next collision a body that has already shed whatever
+    atmosphere the impact stripped. That gap is legitimate, so the chain
+    check is one-way: a drop within the envelope-mass ceiling passes, a
+    gain of any size fails, and a drop too large to be atmosphere fails
+    because it means a different planet's rows were spliced in.
+    """
+    first = _event(
+        time=1.0e5, M_target_before=6.0e24, M_impactor=6.4e23, M_merged_after=6.64e24
+    )
+
+    def _second(M_target_before, **kwargs):
+        """Second impact starting from a stated target mass."""
+        return _event(
+            time=5.0e5,
+            M_target_before=M_target_before,
+            M_impactor=1.0e23,
+            M_merged_after=M_target_before + 1.0e23,
+            **kwargs,
+        )
+
+    # A one percent atmosphere, the Morrigan default, stripped entirely.
+    validate_timeline([first, _second(6.64e24 * 0.99)])
+
+    # Discrimination: that same one percent is four orders of magnitude
+    # above the closure tolerance, so the previous line would fail under a
+    # strict-equality chain check.
+    assert 0.01 > 1.0e3 * MASS_CLOSURE_RTOL
+
+    # Just inside and just outside the ceiling, from both sides.
+    validate_timeline(
+        [first, _second(6.64e24 * (1.0 - 0.999 * MAX_INTERIMPACT_MASS_LOSS_FRAC))]
+    )
+    with pytest.raises(ValueError, match='different bodies'):
+        validate_timeline(
+            [first, _second(6.64e24 * (1.0 - 1.001 * MAX_INTERIMPACT_MASS_LOSS_FRAC))]
+        )
+
+    # Raising the ceiling admits an envelope-rich body.
+    validate_timeline([first, _second(6.64e24 * 0.80)], max_mass_loss_frac=0.25)
+
+    # Nothing feeds the body between impacts, so even a per-mille gain is
+    # a bookkeeping error, well short of the loss the same size is given.
+    with pytest.raises(ValueError, match='cannot gain mass'):
+        validate_timeline([first, _second(6.64e24 * 1.001)])
+
+    # Round-off on the handover is still accepted from the upper side.
+    validate_timeline([first, _second(6.64e24 * (1.0 + 1.0e-9))])
 
 
 @pytest.mark.unit
