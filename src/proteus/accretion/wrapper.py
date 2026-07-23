@@ -54,6 +54,63 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
     return _drop_events_before_start(events, handler.hf_row.get('Time', 0.0))
 
 
+def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
+    """Apply one giant impact's consequences to the running planet.
+
+    Called once for each impact, at the end of the timestep that lands on
+    its time, so the orbit and structure of that step already use the grown
+    planet and the next interior solve evolves it from there.
+
+    The impactor mass is added to the planet's total mass and the interior
+    structure is re-solved, so the radius, gravity and the core/mantle split
+    follow the new mass at the configured core fraction. The orbit change is
+    applied as a discrete jump to both the configuration, which pins the
+    orbit when tides are off, and the running row, which the tidal evolution
+    carries forward when tides are on, so the jump persists under either.
+
+    Parameters
+    ----------
+    handler : Proteus
+        Proteus object instance, mutated in place.
+    event : ImpactEvent
+        The impact to apply.
+    """
+    from proteus.interior_energetics.wrapper import solve_structure
+
+    config = handler.config
+    hf_row = handler.hf_row
+
+    log.info(
+        'Giant impact at t = %.4e yr: target %d struck by %d, adding %.4f M_earth',
+        event.time,
+        event.id_target,
+        event.id_impactor,
+        event.mass_delta / M_earth,
+    )
+
+    # Grow the planet by the impactor mass and re-solve the structure. mass_tot
+    # is in Earth masses; the event's mass delta is the impactor mass in kg.
+    config.planet.mass_tot += event.mass_delta / M_earth
+    solve_structure(
+        handler.directories, config, handler.hf_all, hf_row, handler.directories['output']
+    )
+
+    # Move the orbit by the impact's proportional change in semi-major axis and
+    # its post-impact eccentricity, writing both the configuration and the row.
+    ratio = event.semimajoraxis_ratio
+    config.orbit.semimajoraxis *= ratio
+    config.orbit.eccentricity = event.e_after
+    hf_row['semimajorax'] *= ratio
+    hf_row['eccentricity'] = event.e_after
+
+    log.info(
+        '    planet is now %.4f M_earth at %.5f AU, e = %.4f',
+        config.planet.mass_tot,
+        config.orbit.semimajoraxis,
+        config.orbit.eccentricity,
+    )
+
+
 def _drop_events_before_start(
     events: list[ImpactEvent], time_start: float
 ) -> list[ImpactEvent]:
