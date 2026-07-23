@@ -286,23 +286,6 @@ for _name in element_list + gas_list:
         )
 
 
-def read_in_element_fracs(input_path, time, parameters):
-    # read file (skip comment line, split on whitespace)
-
-    df = pd.read_csv(
-        input_path + parameters['elementfile'],
-        comment='#',  # ignore lines starting with #
-        sep=r'\s+',  # split on any whitespace
-        header=None,
-    )
-    # make first column the headers and second column the data row
-    df = pd.DataFrame([df[1].values], columns=df[0].values)
-
-    df_frac = (10 ** (df - 12)).where(df != 0, 0)
-    # dataframe has been multiplied by 1e20, so need to renormalise to get real fractions
-    return df_frac / 1e20
-
-
 def read_in_element_fracs_normalized(input_path):
     """constructs a dataframe with number element fractions of each element as computed by lavatmos
 
@@ -561,16 +544,17 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
                 + hf_row[vol + '_mol_liquid']
             )
 
-    Omass_after_outgas= 0.0
+    Omass_after_outgas = 0.0
     for e in element_list:
         log.debug('element frac:  %s,  %s', e, element_fracs[e])
         if e in input_eles:
             hf_row[e + '_kg_atm'] = (
-                                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
-                            )
+                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+            )
         if e == 'O':
             Omass_after_outgas += (
-                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements)
+                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+            )
         else:
             if e not in gas_list:
                 hf_row[e + '_kg_atm'] = (

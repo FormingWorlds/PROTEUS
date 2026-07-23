@@ -33,7 +33,6 @@ import pytest
 from proteus.outgas.lavatmos import (
     _SPECIES_TABLE,
     _fastchem_weight,
-    read_in_element_fracs,
     read_in_element_fracs_normalized,
     run_lavatmos,
     species_lib,
@@ -110,62 +109,6 @@ def test_species_fallback_elements_exist():
     """
     for name in element_list + gas_list:
         assert name in species_lib
-
-
-# ---------------------------------------------------------------------------
-# read_in_element_fracs tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_read_in_element_fracs(tmp_path):
-    """
-    Reads FastChem abundance format:
-
-    H 12.0
-    O 10.0
-    """
-
-    infile = tmp_path / 'elements.dat'
-
-    infile.write_text(
-        """
-# comment
-H 12.0
-O 10.0
-"""
-    )
-
-    result = read_in_element_fracs(
-        str(tmp_path) + '/',
-        time=0,
-        parameters={'elementfile': 'elements.dat'},
-    )
-
-    assert isinstance(result, pd.DataFrame)
-
-    assert 'H' in result.columns
-    assert 'O' in result.columns
-
-
-@pytest.mark.unit
-def test_read_in_element_fracs_zero_value(tmp_path):
-    infile = tmp_path / 'elements.dat'
-
-    infile.write_text(
-        """
-H 0.0
-O 10.0
-"""
-    )
-
-    result = read_in_element_fracs(
-        str(tmp_path) + '/',
-        0,
-        {'elementfile': 'elements.dat'},
-    )
-
-    assert result['H'].iloc[0] == 0
 
 
 # ---------------------------------------------------------------------------
