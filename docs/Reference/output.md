@@ -110,6 +110,7 @@ are grouped by category below.
 | `M_mantle` | kg | Mantle mass (solid + liquid) |
 | `M_mantle_solid` | kg | Solid mantle mass |
 | `M_mantle_liquid` | kg | Liquid mantle mass |
+| `M_vaps` | kg | vapour species mass|
 | `P_center` | Pa | Central pressure |
 | `P_cmb` | Pa | Core-mantle boundary pressure |
 | `core_density` | kg m$^{-3}$ | Core density |
@@ -193,13 +194,16 @@ For each element (H, C, N, O, S):
 | `M_atm` | kg | Total atmospheric mass |
 | `M_ele` | kg | Total volatile+vapour+noble element mass |
 | `P_surf` | bar | Total surface pressure |
+| `P_vap` | bar | surface pressure of vapour species|
+| `P_vol` | bar | surface pressure of volatile species|
 | `atm_kg_per_mol` | kg mol$^{-1}$ | Mean molecular weight |
 
 ### Redox state
 
 | Column | Units | Description |
 |--------|-------|-------------|
-| `fO2_shift_IW_derived` | log$_{10}$ | Derived fO2 offset from iron-wustite buffer |
+| `log10_fO2_shift_vapourise` | log$_{10}$ | Derived fO2 offset from iron-wustite buffer |
+| `log10_fO2_vapourise` | log$_{10}$| Derived fO2 |
 | `O_res` | kg | Oxygen mass-balance residual |
 
 ### Escape

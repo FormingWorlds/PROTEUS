@@ -544,17 +544,16 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
                 + hf_row[vol + '_mol_liquid']
             )
 
-    Omass_after_outgas = 0.0
+    Omass_after_outgas= 0.0
     for e in element_list:
         log.debug('element frac:  %s,  %s', e, element_fracs[e])
         if e in input_eles:
             hf_row[e + '_kg_atm'] = (
-                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
-            )
+                                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+                            )
         if e == 'O':
             Omass_after_outgas += (
-                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
-            )
+                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements)
         else:
             if e not in gas_list:
                 hf_row[e + '_kg_atm'] = (
@@ -577,7 +576,7 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     pO2 = new_atmos_abundances['O2'][0]
     log.debug('O2 partial pressure  very small: %.3e', pO2)
     if pO2 < 1e-20:
-        log.debug('O2 partial pressure smaller than 1e-12')
+        log.debug('O2 partial pressure smaller than 1e-20')
         pO2 = 1e-20
     if new_atmos_abundances['Pbar'][0] < 1e-10:
         psurf = 1e-10
