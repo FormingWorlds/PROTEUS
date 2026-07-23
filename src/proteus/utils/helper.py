@@ -77,6 +77,34 @@ def multiple(a: int, b: int) -> bool:
         return bool(a % b == 0)
 
 
+def is_write_snapshot(
+    loops_total: int,
+    write_mod: int,
+    dt_write_rel: float,
+    cur_time: float,
+    last_write_time: float,
+) -> bool:
+    """
+    Decide whether the current iteration of PROTEUS should write data to disk.
+
+    Two criteria, each individually sufficient:
+      1. Iteration count is a multiple of ``write_mod``.
+      2. Enough simulation time has elapsed since the last write, where the
+         relative interval is ``dt_write_rel * max(cur_time, 1)``.
+    """
+
+    # Iteration criterion
+    iter_ok = multiple(loops_total, write_mod)
+
+    # Time criterion
+    time_ok = False
+    if dt_write_rel > 0:
+        time_ok = bool(cur_time - last_write_time >= dt_write_rel * max(cur_time, 1.0))
+
+    # Logical OR of the two criteria
+    return iter_ok or time_ok
+
+
 def mol_to_ele(mol: str):
     """
     Return the number of atoms of each element in a given molecule, as a dictionary

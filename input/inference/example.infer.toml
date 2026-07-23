@@ -7,34 +7,32 @@ seed = 42
 logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "bayesopt_infer_sn_mat32_logei_10/"
+output = "bayesopt_infer_se_mat12_lei_5_100/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "output/bayesopt_sn/init_coupler.toml"
+ref_config = "output/bayesopt_se/init_coupler.toml"
 # ref_config = "input/inference/example.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
-init_samps = -1        # Number of random samples if starting from scratch.
+init_samps = 3        # Number of random samples if starting from scratch.
 init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
 
-# Excluded exit codes (in addition to errors)
+# Excluded exit codes (in addition to edrrors)
 failure_codes = [11, ] # solidified (10), escaped (15), max_runtime (11)
 
 # Parameters for Bayesian optimisation
-n_workers  = 10        # Number of parallel workers
-kernel     = "MAT3/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
+n_workers  = 5        # Number of parallel workers
+kernel     = "MAT1/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
 acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI" | "LogPI"
 n_steps    = 100       # Total number of evaluations (i.e. BO steps)
 
 # Parameters to optimize (with bounds)
 [parameters]
-# "params.stop.time.maximum"  = [1e7,     3e9] # for SN only
-# "orbit.semimajoraxis"       = [0.05,    0.2] # for SN only
-"interior_energetics.boundary.T_p_0"   = [2500.0,  4000.0]
+# "interior_energetics.boundary.T_p_0"   = [2500.0,  4000.0]
 # "planet.mass_tot"           = [1.0,     4.0]
-"interior_struct.core_frac"           = [0.3,     0.7]
+"interior_struct.core_frac" = [0.3,     0.7]
 "outgas.fO2_shift_IW"       = [-4.0,    4.0]
-"planet.elements.H_budget"= [1e2,     1e4]      # Hppmw
+"planet.elements.H_budget"= [1e3,     2e4]      # Hppmw
 "planet.elements.C_budget"= [0.1,     4.0]        # C/H
 "planet.elements.S_budget"= [0.1,     4.0]        # S/H
 
@@ -42,28 +40,34 @@ n_steps    = 100       # Total number of evaluations (i.e. BO steps)
 # Target observables to match by optimisation...
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_sn/runtime_helpfile.csv
-# extracted at index: 21, time: 1.000e+09 years
-[observables]
-"R_obs" = 1.0804500127e+07
-"T_obs" = 3.1278371726e+02
-"atm_kg_per_mol" = 4.9222261146e-03
-"C/O_atm" = 3.7104315436e+00
-"S/O_atm" = 1.2499022004e+00
+# extracted at index: 22, time: 1.000e+09 years
+# [observables]
+# "R_obs" = 1.2227601049e+07
+# "T_obs" = 3.1306404106e+02
+# "g_obs" = 8.0918693165e+00
+# "atm_kg_per_mol" = 4.0917808871e-03
+# "C/O_atm" = 3.1927819502e+00
+# "S/O_atm" = 1.0676983970e+00
+# "O/H_atm" = 1.6218905121e-01
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
-# extracted at index: 25, time: 5.000e+09 years
-# [observables]
-# "R_obs" = 8.5317284082e+06
-# "T_obs" = 4.1254645744e+02
-# "atm_kg_per_mol" = 2.1585436833e-02
-# "C/O_atm" = 4.5518929163e-01
-# "S/O_atm" = 1.2828302065e+00
+# extracted at index: 24, time: 2.000e+09 years
+[observables]
+"R_obs" = 9.2533288845e+06
+"T_obs" = 4.0923645346e+02
+"g_obs" = 9.1084971059e+00
+"atm_kg_per_mol" = 1.8866492160e-02
+"C/O_atm" = 8.6643301819e-01
+"S/O_atm" = 5.6541485879e-01
+"O/H_atm" = 2.7986395281e+00
 
 # helpfile: /data/hen28/Projects/PROTEUS/output/bayesopt_tr/runtime_helpfile.csv
 # extracted at index: 19, time: 1.000e+08 years
 # [observables]
-# "R_obs" = 6.8641160122e+06
-# "T_obs" = 6.0336826631e+02
-# "atm_kg_per_mol" = 2.8214455165e-02
-# "C/O_atm" = 2.2783435495e-01
-# "S/O_atm" = 2.0976390461e-01
+# "R_obs" = 6.8402356796e+06
+# "T_obs" = 5.8248419999e+02
+# "g_obs" = 8.5802612746e+00
+# "atm_kg_per_mol" = 2.5754849004e-02
+# "C/O_atm" = 1.8980497971e-01
+# "S/O_atm" = 1.2046901115e-01
+# "O/H_atm" = 1.3032972420e+01

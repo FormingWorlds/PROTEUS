@@ -1029,6 +1029,13 @@ def _solve_transparent(atmos, config: Config):
     return atmos
 
 
+def write_atmos_ncdf(atmos, dirs: dict, time: float) -> None:
+    """Write the AGNI atmosphere struct to a timestamped NetCDF file."""
+    log.debug('AGNI write to NetCDF file')
+    ncdf_path = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % time)
+    jl.AGNI.save.write_ncdf(atmos, ncdf_path)
+
+
 def run_agni(
     atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict, write_data: bool = True
 ):
@@ -1103,9 +1110,7 @@ def run_agni(
 
     # Write output data
     if write_data:
-        log.debug('AGNI write to NetCDF file')
-        ncdf_path = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % hf_row['Time'])
-        jl.AGNI.save.write_ncdf(atmos, ncdf_path)
+        write_atmos_ncdf(atmos, dirs, hf_row['Time'])
 
     # Make plots
     if multiple(loops_total, config.params.out.plot_mod):
@@ -1127,9 +1132,11 @@ def run_agni(
     if bool(atmos.transparent):
         R_obs = float(hf_row['R_int'])
         T_obs = float(atmos.tmp_surf)
+        g_obs = float(hf_row['gravity'])
     else:
         R_obs = float(atmos.transspec_r)
         T_obs = float(atmos.transspec_tmp)
+        g_obs = float(atmos.transspec_grav)
 
     # Print info to user
     if config.atmos_clim.agni.oceans:
@@ -1174,6 +1181,7 @@ def run_agni(
     output['p_obs'] = float(atmos.transspec_p) / 1e5  # convert [Pa] to [bar]
     output['T_obs'] = T_obs
     output['R_obs'] = R_obs
+    output['g_obs'] = g_obs
     output['albedo'] = albedo
     output['tau_atm_TOA'] = tau_TOA
     output['tau_atm_surface'] = tau_surface

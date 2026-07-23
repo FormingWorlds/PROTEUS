@@ -32,7 +32,7 @@ This is the recommended mode for most use cases: it adds chemistry as a post-pro
 
 ### Online mode
 
-When `atmos_chem.when = "online"`, PROTEUS runs VULCAN at every output snapshot (controlled by `params.out.write_mod`) during the main simulation loop. This couples the chemistry to the evolving thermal state of the atmosphere.
+When `atmos_chem.when = "online"`, PROTEUS runs VULCAN at every output snapshot (controlled by `params.out.write_mod` and `params.out.dt_write_rel`) during the main simulation loop. This couples the chemistry to the evolving thermal state of the atmosphere.
 
 Key differences from offline mode:
 

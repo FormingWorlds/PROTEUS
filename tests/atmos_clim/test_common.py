@@ -22,6 +22,7 @@ import pytest
 
 from proteus.atmos_clim.common import (
     Albedo_t,
+    find_latest_atmosphere_time,
     get_oarr_from_parr,
     get_radius_from_pressure,
     get_spfile_name_and_bands,
@@ -739,3 +740,47 @@ def test_albedo_t_evaluate_clamps_out_of_range_interpolation_with_warning(caplog
     # Physics-invariant boundedness: albedo always in [0, 1].
     assert 0.0 <= clamped <= 1.0
     assert any('out of range' in rec.message for rec in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# find_latest_atmosphere_time: select the newest *_atm.nc snapshot on disk
+# ---------------------------------------------------------------------------
+
+
+def test_find_latest_atmosphere_time_returns_max(tmp_path):
+    """The latest snapshot is the maximum parsed time, not the first globbed
+    or the file count.
+
+    Files are created out of chronological order and with a count (3) that
+    differs from every time key, so a regression returning the glob-order
+    first element, the minimum, or len(files) would all disagree with the
+    correct maximum (5000).
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (999, 5000, 100):
+        (data / f'{t}_atm.nc').write_text('x')
+    # An unrelated file must be ignored by the *_atm.nc glob.
+    (data / '5000.sflux').write_text('x')
+
+    latest = find_latest_atmosphere_time(str(tmp_path))
+    assert latest == pytest.approx(5000.0, rel=1e-12)
+    # Discrimination: not the count of files, not the minimum.
+    assert latest != pytest.approx(3.0)
+    assert latest != pytest.approx(100.0)
+
+
+def test_find_latest_atmosphere_time_empty_returns_none(tmp_path):
+    """With no atmosphere NetCDF files the helper returns None rather than
+    raising, so callers can degrade gracefully.
+
+    The data directory contains a non-matching file to confirm the glob is
+    specific to the ``*_atm.nc`` pattern.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    (data / '1000.sflux').write_text('x')
+
+    assert find_latest_atmosphere_time(str(tmp_path)) is None
+    # Also handles a missing data directory without raising.
+    assert find_latest_atmosphere_time(str(tmp_path / 'nonexistent')) is None
