@@ -24,7 +24,6 @@ from proteus.utils.constants import (
 from proteus.utils.coupler import UpdateStatusfile
 from proteus.utils.helper import mol_to_ele
 
-sys.path.append(os.getcwd())
 if TYPE_CHECKING:
     from proteus.config import Config
 
@@ -219,10 +218,8 @@ _SPECIES_TABLE = [
     ('NaOH', 'H1Na1O1'),
     ('NaO', 'Na1O1'),
     ('SiN', 'N1Si1'),
-    ('AlN', 'Al1N1'),
     ('CaS', 'Ca1S1'),
     ('HO2', 'H1O2'),
-    ('KO', 'K1O1'),
     ('MgS', 'Mg1S1'),
     ('FeO2H2', 'Fe1H2O2'),
     ('HAlO2', 'Al1H1O2'),
@@ -369,7 +366,9 @@ def run_lavatmos(
         raise RuntimeError(str(e))
 
     # Import lavatmos
-    sys.path.append(paths.lavatmos_dir)
+    lavatmos_dir = str(paths.lavatmos_dir)
+    if lavatmos_dir not in sys.path:
+        sys.path.append(lavatmos_dir)
     try:
         import lavatmos3
     except ImportError as e:
@@ -563,8 +562,8 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
         log.debug('element frac:  %s,  %s', e, element_fracs[e])
         if e in input_eles:
             hf_row[e + '_kg_atm'] = (
-                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
-            )
+                                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+                            )
             if e == 'O':
                 Omass_after_outgas = (
                     element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
