@@ -307,9 +307,9 @@ def read_in_element_fracs_normalized(input_path):
     """constructs a dataframe with number element fractions of each element as computed by lavatmos
 
     input:
-    - inputpath: path to the directory where the elemnt_abundance folder which contains the lavatmos output elements is located
+    - inputpath: path to the directory where the element_abundance folder which contains the lavatmos output elements is located
         this file contains element abundances in fastchem format where ej=10^(xj-12)
-    - time: time of the ucrrent timestep wt ahich the outgassing is computed
+    - time: time of the current timestep wt ahich the outgassing is computed
 
     output:
     - dataframe with normalised element fractions ej/etot
@@ -438,7 +438,7 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     input_eles = ['H', 'C', 'N', 'S', 'O'] + noble_gases
     hf_row['M_vaps'] = 0.0
 
-    # lavatmos takes in the abudance fractions of element not mass fractions so divide by atomic number
+    # lavatmos takes in the abundance fractions of element not mass fractions so divide by atomic number
     molfracs = {}
     nfrac = {'P': 0.0}
     total_mols = 0.0
@@ -561,17 +561,16 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
                 + hf_row[vol + '_mol_liquid']
             )
 
-    Omass_after_outgas = 0.0
+    Omass_after_outgas= 0.0
     for e in element_list:
         log.debug('element frac:  %s,  %s', e, element_fracs[e])
         if e in input_eles:
             hf_row[e + '_kg_atm'] = (
-                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
-            )
+                                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+                            )
         if e == 'O':
             Omass_after_outgas += (
-                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
-            )
+                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements)
         else:
             if e not in gas_list:
                 hf_row[e + '_kg_atm'] = (
@@ -579,7 +578,7 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
                 )
             hf_row['M_vaps'] += (
                 element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
-            )  # don't use hf_row[e + '_kg_atm'] becuase this only acounts for e.g. Si in atomic gas form not total Si
+            )  # don't use hf_row[e + '_kg_atm'] because this only acounts for e.g. Si in atomic gas form not total Si
 
     # saving new oxygen fugacity from lavatmos run, which is computed as log10 of the partial pressure of O2, to compare with the iron wustite buffer
 
@@ -592,9 +591,9 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     )
 
     pO2 = new_atmos_abundances['O2'][0]
-    log.debug('O2 patial pressure  very small: %.3e', pO2)
+    log.debug('O2 partial pressure  very small: %.3e', pO2)
     if pO2 < 1e-20:
-        log.debug('O2 patial pressure smaller than 1e-12')
+        log.debug('O2 partial pressure smaller than 1e-12')
         pO2 = 1e-20
     if new_atmos_abundances['Pbar'][0] < 1e-10:
         psurf = 1e-10
