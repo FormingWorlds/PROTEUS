@@ -71,7 +71,14 @@ def _timeline_file(path):
     return path
 
 
-def _handler(module=None, timeline_path=None, time_offset=0.0, time_start=0.0):
+def _handler(
+    module=None,
+    timeline_path=None,
+    time_offset=0.0,
+    time_start=0.0,
+    interior_module='dummy',
+    temperature_mode='liquidus_super',
+):
     """Build the minimal Proteus handler shape init_accretion reads."""
     return SimpleNamespace(
         config=SimpleNamespace(
@@ -81,7 +88,9 @@ def _handler(module=None, timeline_path=None, time_offset=0.0, time_start=0.0):
                 dummy=SimpleNamespace(
                     timeline_path=None if timeline_path is None else str(timeline_path)
                 ),
-            )
+            ),
+            interior_energetics=SimpleNamespace(module=interior_module),
+            planet=SimpleNamespace(temperature_mode=temperature_mode),
         ),
         hf_row={'Time': time_start},
     )

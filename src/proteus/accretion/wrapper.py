@@ -39,6 +39,24 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
         return []
 
     log.info('Preparing accretion model')
+
+    # Advise when the Aragog re-melt initial condition is not guaranteed molten.
+    # The re-melt re-applies the run's temperature-mode initial condition, and
+    # only some modes guarantee it is fully molten; the others are only as molten
+    # as the user's temperature or entropy value. Emitted here, after the file
+    # logger exists, rather than in the config validator, which runs before it.
+    _MOLTEN_MODES = ('liquidus_super', 'accretion', 'adiabatic_from_cmb')
+    if (
+        config.interior_energetics.module == 'aragog'
+        and config.planet.temperature_mode not in _MOLTEN_MODES
+    ):
+        log.warning(
+            "Accretion on Aragog with temperature_mode='%s': each impact re-melts "
+            'the mantle by re-applying this initial condition, which is not guaranteed '
+            "fully molten. Use temperature_mode='liquidus_super' for a molten re-melt, "
+            'or confirm the initial melt fraction is what you intend.',
+            config.planet.temperature_mode,
+        )
     log.info('')
 
     match module:

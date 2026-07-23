@@ -143,24 +143,6 @@ def check_accretion_interior_compatibility(instance, attribute, value):
             "Use interior_energetics.module = 'aragog' (or 'dummy' for a test)."
         )
 
-    # The Aragog re-melt re-applies the run's entropy initial condition. Only
-    # the liquidus_super temperature mode guarantees that condition is fully
-    # molten; with the others the re-melt is only as molten as the user's
-    # temperature or entropy value, so warn rather than silently under-melt.
-    if (
-        instance.accretion.module is not None
-        and instance.interior_energetics.module == 'aragog'
-        and instance.planet.temperature_mode != 'liquidus_super'
-    ):
-        log.warning(
-            "accretion with interior_energetics.module = 'aragog' and "
-            "temperature_mode = '%s': a giant-impact re-melt re-applies this "
-            'initial condition, which is only guaranteed fully molten for '
-            "temperature_mode = 'liquidus_super'. Check the initial melt fraction "
-            'is what you intend.',
-            instance.planet.temperature_mode,
-        )
-
 
 def boreas_requires_atmosphere(instance, attribute, value):
     """BOREAS escape requires a radiative atmosphere (not dummy)."""

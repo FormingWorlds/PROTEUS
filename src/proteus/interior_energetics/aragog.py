@@ -1459,6 +1459,10 @@ class AragogRunner:
             float(S_target),
             N,
         )
+        # Return the staggered entropy profile just set, so a caller re-melting
+        # mid-run can carry it forward without re-deriving it from the solver's
+        # solution object (which still holds the pre-reset trajectory).
+        return S_init
 
     @staticmethod
     def _verify_entropy_ic(

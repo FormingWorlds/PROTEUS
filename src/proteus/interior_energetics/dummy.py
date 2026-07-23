@@ -18,11 +18,25 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
-def melt_fraction(config: Config, temperature: float) -> float:
-    """Global melt fraction of the dummy mantle at a surface magma temperature.
+def _solidus_liquidus(config: Config) -> tuple[float, float]:
+    """Return the (solidus, liquidus) the active scalar backend uses [K].
 
-    Linear between the configured solidus and liquidus, saturating at fully
-    solid below the solidus and fully molten above the liquidus.
+    The dummy and boundary backends carry separate melting curves; the melt
+    fraction of a re-melt must use the one the running backend evolves against,
+    not the dummy defaults for both.
+    """
+    if config.interior_energetics.module == 'boundary':
+        b = config.interior_energetics.boundary
+        return b.T_solidus, b.T_liquidus
+    d = config.interior_energetics.dummy
+    return d.mantle_tsol, d.mantle_tliq
+
+
+def melt_fraction(config: Config, temperature: float) -> float:
+    """Global melt fraction of the scalar-backend mantle at a surface temperature.
+
+    Linear between the active backend's solidus and liquidus, saturating at
+    fully solid below the solidus and fully molten above the liquidus.
 
     Parameters
     ----------
@@ -36,8 +50,7 @@ def melt_fraction(config: Config, temperature: float) -> float:
     float
         Melt fraction in [0, 1].
     """
-    tliq = config.interior_energetics.dummy.mantle_tliq
-    tsol = config.interior_energetics.dummy.mantle_tsol
+    tsol, tliq = _solidus_liquidus(config)
     if temperature >= tliq:
         return 1.0
     if temperature <= tsol:
