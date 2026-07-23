@@ -345,7 +345,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     # value would not be available.
     target = {}
     for e in element_list:
-        if e in vol_element_list and e != 'O':
+        if e in vol_element_list:
             target[e] = hf_row[e + '_kg_total']
     if config.planet.fO2_source == 'from_O_budget':
         if 'O_kg_total' not in hf_row:
