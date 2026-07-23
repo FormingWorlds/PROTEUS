@@ -201,8 +201,24 @@ def _impact_event(**overrides):
     return ImpactEvent(**base)
 
 
+def _impact_accretion(**ppmw):
+    """Accretion sub-config with impactor volatile contents (default dry)."""
+    return SimpleNamespace(
+        impactor_H_ppmw=ppmw.get('H', 0.0),
+        impactor_C_ppmw=ppmw.get('C', 0.0),
+        impactor_N_ppmw=ppmw.get('N', 0.0),
+        impactor_S_ppmw=ppmw.get('S', 0.0),
+        impactor_O_ppmw=ppmw.get('O', 0.0),
+    )
+
+
 def _impact_handler(
-    mass_tot=1.0, semimajoraxis=0.5, eccentricity=0.1, tsurf_init=4000.0, crystallized=False
+    mass_tot=1.0,
+    semimajoraxis=0.5,
+    eccentricity=0.1,
+    tsurf_init=4000.0,
+    crystallized=False,
+    accretion=None,
 ):
     """Build the minimal handler shape apply_impact reads and mutates.
 
@@ -220,6 +236,7 @@ def _impact_handler(
                 dummy=SimpleNamespace(mantle_tliq=2700.0, mantle_tsol=1700.0),
             ),
             interior_struct=SimpleNamespace(core_frac=0.55),
+            accretion=accretion if accretion is not None else _impact_accretion(),
         ),
         hf_row={
             'semimajorax': semimajoraxis * AU,
@@ -367,3 +384,66 @@ def test_a_grazing_head_on_impact_leaves_the_orbit_circular(monkeypatch):
     # Equal before/after semi-major axis is a unit ratio, so the orbit size
     # is unchanged while the eccentricity is reset.
     assert handler.config.orbit.semimajoraxis == pytest.approx(1.0, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_impact_delivers_configured_volatiles_into_the_element_budgets(monkeypatch):
+    """An opted-in impactor adds its volatile content to the planet budgets.
+
+    Delivery is the impactor mass times the configured content in parts per
+    million by weight, added to the whole-planet element inventory the
+    outgassing step reads. Only the elements with a non-zero content are
+    touched: a dry element leaves its budget, and a budget deferred to the
+    chemistry step, untouched.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    # Impactor delivers 1000 ppmw H and 500 ppmw S; C, N, O are dry.
+    handler = _impact_handler(accretion=_impact_accretion(H=1000.0, S=500.0))
+    handler.hf_row['H_kg_total'] = 2.0e20  # a pre-existing hydrogen budget
+    handler.hf_row['S_kg_total'] = 1.0e20
+    m_impactor = 0.5 * M_earth
+    apply_impact(handler, _impact_event(M_impactor=m_impactor))
+
+    # Hydrogen grew by exactly M_impactor * 1000e-6.
+    expected_H = 2.0e20 + m_impactor * 1000.0 / 1.0e6
+    assert handler.hf_row['H_kg_total'] == pytest.approx(expected_H, rel=1e-12)
+    # Discrimination: forgetting the ppmw-to-fraction 1e6 would overshoot by a
+    # million-fold, and delivering nothing would leave it at 2e20.
+    assert handler.hf_row['H_kg_total'] > 2.0e20
+    assert handler.hf_row['H_kg_total'] < 2.0e20 + m_impactor  # never the full impactor mass
+
+    # Sulfur grew by its own configured amount.
+    assert handler.hf_row['S_kg_total'] == pytest.approx(
+        1.0e20 + m_impactor * 500.0 / 1.0e6, rel=1e-12
+    )
+    # A dry element that was never in the row is not created.
+    assert 'O_kg_total' not in handler.hf_row
+
+
+@pytest.mark.unit
+def test_a_dry_impactor_delivers_no_volatiles(monkeypatch):
+    """The default dry impactor leaves every element budget untouched.
+
+    Delivery is opt-in per element and defaults to zero, so a run that sets no
+    impactor content must not create or grow any element budget at an impact.
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    handler = _impact_handler()  # dry impactor (all ppmw zero)
+    handler.hf_row['H_kg_total'] = 3.0e20
+    apply_impact(handler, _impact_event())
+
+    # The existing budget is unchanged and no new element key appears.
+    assert handler.hf_row['H_kg_total'] == pytest.approx(3.0e20, rel=1e-12)
+    assert not any(k.endswith('_kg_total') and k != 'H_kg_total' for k in handler.hf_row)

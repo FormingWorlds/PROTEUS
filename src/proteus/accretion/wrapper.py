@@ -139,6 +139,44 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         config.orbit.eccentricity,
     )
 
+    # Deliver the impactor's volatiles into the whole-planet element budgets,
+    # so the outgassing step later this iteration re-equilibrates with them. The
+    # amount per element is the impactor mass times the configured content in
+    # ppmw; every element defaults to zero (a dry impactor), so this is a no-op
+    # unless a run opts in. Only the keys with a non-zero content are touched, so
+    # an element deferred to the chemistry step (e.g. oxygen under ic_chemistry)
+    # is left alone when nothing is delivered for it.
+    _deliver_impactor_volatiles(config, hf_row, event.M_impactor)
+
+
+def _deliver_impactor_volatiles(config, hf_row: dict, m_impactor: float) -> None:
+    """Add the impactor's volatile content to the whole-planet element budgets.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration; reads ``accretion.impactor_<e>_ppmw``.
+    hf_row : dict
+        Current helpfile row, whose ``<e>_kg_total`` budgets are grown in place.
+    m_impactor : float
+        Impactor mass [kg].
+    """
+    delivered = {}
+    for element in ('H', 'C', 'N', 'S', 'O'):
+        ppmw = getattr(config.accretion, f'impactor_{element}_ppmw')
+        if ppmw <= 0.0:
+            continue
+        added = m_impactor * ppmw / 1.0e6
+        key = f'{element}_kg_total'
+        hf_row[key] = hf_row.get(key, 0.0) + added
+        delivered[element] = added
+
+    if delivered:
+        log.info(
+            '    delivered impactor volatiles [kg]: %s',
+            ', '.join(f'{e}={v:.3e}' for e, v in delivered.items()),
+        )
+
 
 def _drop_events_before_start(
     events: list[ImpactEvent], time_start: float
