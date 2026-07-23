@@ -75,7 +75,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     event : ImpactEvent
         The impact to apply.
     """
-    from proteus.interior_energetics.wrapper import solve_structure
+    from proteus.interior_energetics.wrapper import remelt_mantle, solve_structure
 
     config = handler.config
     hf_row = handler.hf_row
@@ -94,6 +94,17 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     solve_structure(
         handler.directories, config, handler.hf_all, hf_row, handler.directories['output']
     )
+
+    # Re-melt the mantle to its molten initial condition, so the interior
+    # evolves from a fully molten state after the impact.
+    remelt_mantle(handler.directories, config, hf_row, handler.interior_o, event)
+
+    # A mantle that had crystallised is now a magma ocean again, so lift the
+    # one-way solidification latch; otherwise outgassing would stay frozen and
+    # the volatiles would be treated as locked in a solid mantle for good.
+    if getattr(handler, 'crystallized', False):
+        handler.crystallized = False
+        log.info('    solidification latch cleared: the mantle is molten again')
 
     # Move the orbit by the impact's proportional change in semi-major axis and
     # its post-impact eccentricity, writing both the configuration and the row.

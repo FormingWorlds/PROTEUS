@@ -192,17 +192,38 @@ def _impact_event(**overrides):
     return ImpactEvent(**base)
 
 
-def _impact_handler(mass_tot=1.0, semimajoraxis=0.5, eccentricity=0.1):
-    """Build the minimal handler shape apply_impact reads and mutates."""
+def _impact_handler(
+    mass_tot=1.0, semimajoraxis=0.5, eccentricity=0.1, tsurf_init=4000.0, crystallized=False
+):
+    """Build the minimal handler shape apply_impact reads and mutates.
+
+    The dummy interior is used so the mantle re-melt runs for real (it resets
+    the temperature and the melt state) without needing a live solver.
+    """
     from proteus.utils.constants import AU
 
     return SimpleNamespace(
         config=SimpleNamespace(
-            planet=SimpleNamespace(mass_tot=mass_tot),
+            planet=SimpleNamespace(mass_tot=mass_tot, tsurf_init=tsurf_init),
             orbit=SimpleNamespace(semimajoraxis=semimajoraxis, eccentricity=eccentricity),
+            interior_energetics=SimpleNamespace(
+                module='dummy',
+                dummy=SimpleNamespace(mantle_tliq=2700.0, mantle_tsol=1700.0),
+            ),
+            interior_struct=SimpleNamespace(core_frac=0.55),
         ),
-        hf_row={'semimajorax': semimajoraxis * AU, 'eccentricity': eccentricity},
+        hf_row={
+            'semimajorax': semimajoraxis * AU,
+            'eccentricity': eccentricity,
+            'T_magma': 2000.0,  # cooled; the re-melt should reset it
+            'M_int': mass_tot * 5.9736e24,
+            'M_core': 0.3 * mass_tot * 5.9736e24,
+            'R_int': 6.4e6,
+            'R_core': 3.5e6,
+        },
         hf_all=None,
+        interior_o=SimpleNamespace(impact_reset=False),
+        crystallized=crystallized,
         directories={'output': '/tmp/unused'},
     )
 
@@ -244,6 +265,37 @@ def test_impact_grows_the_planet_by_the_impactor_mass_and_re_solves(monkeypatch)
 
     # The structure was re-solved exactly once, against the grown planet.
     assert len(calls) == 1
+
+    # The mantle was re-melted to its molten initial temperature, above the
+    # cooled 2000 K it started this step at, and fully molten.
+    assert handler.hf_row['T_magma'] == pytest.approx(4000.0, rel=1e-12)
+    assert handler.hf_row['T_magma'] > 2000.0
+    assert handler.hf_row['Phi_global'] == pytest.approx(1.0, rel=1e-12)
+    # The interior stepper is told the temperature jump is a deliberate reset.
+    assert handler.interior_o.impact_reset is True
+
+
+@pytest.mark.unit
+def test_impact_on_a_crystallised_planet_reopens_outgassing(monkeypatch):
+    """A re-melting impact clears the one-way solidification latch.
+
+    Once the mantle solidifies the run latches into a frozen-mantle path with
+    outgassing shut off. A giant impact that re-melts the mantle to a magma
+    ocean must lift that latch, or the re-melted planet would keep being
+    treated as a solid with its volatiles trapped for the rest of the run.
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    handler = _impact_handler(crystallized=True)
+    assert handler.crystallized is True  # latched before the impact
+    apply_impact(handler, _impact_event())
+
+    # The impact re-melted the mantle, so the latch is lifted.
+    assert handler.crystallized is False
 
 
 @pytest.mark.unit

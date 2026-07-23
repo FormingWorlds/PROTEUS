@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -33,6 +34,7 @@ from proteus.interior_energetics.wrapper import (
     _eos_grid_extent_up_step,
     _prevent_warming_clamp_active,
     _refresh_composition_sentinels,
+    remelt_mantle,
     update_structure_from_interior,
 )
 
@@ -5642,3 +5644,197 @@ def test_grid_extent_up_step_rejected_through_real_wrapper(tmp_path, caplog):
     # The composition sentinel advanced off its stale seed (reject-path refresh).
     assert dirs['_last_w_H2O_liquid'] == pytest.approx(5.0e21 / 3.0e24, rel=1e-9)
     assert dirs['_last_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
+
+
+def _remelt_config(module, tsurf_init=4000.0, mantle_tliq=2700.0, mantle_tsol=1700.0):
+    """Config shape remelt_mantle and the scalar-backend melt state read."""
+    return SimpleNamespace(
+        interior_energetics=SimpleNamespace(
+            module=module,
+            dummy=SimpleNamespace(mantle_tliq=mantle_tliq, mantle_tsol=mantle_tsol),
+        ),
+        planet=SimpleNamespace(tsurf_init=tsurf_init),
+        interior_struct=SimpleNamespace(core_frac=0.55),
+    )
+
+
+def _remelt_hf_row(T_magma=2100.0):
+    """Cooled helpfile row carrying the structure the melt state needs."""
+    return {
+        'T_magma': T_magma,
+        'M_int': 6.0e24,
+        'M_core': 2.0e24,
+        'R_int': 6.4e6,
+        'R_core': 3.5e6,
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_remelt_returns_the_dummy_mantle_to_a_fully_molten_consistent_state():
+    """A dummy re-melt rewrites the temperature AND every quantity it implies.
+
+    The mantle must come back fully molten, which is the physical invariant:
+    at the reset temperature (above the liquidus) the melt fraction is 1 and
+    the entire mantle mass is liquid. Rewriting only the temperature and
+    leaving the melt fraction at its cooled value would be an impossible
+    state, so the derived quantities must move with it.
+    """
+    config = _remelt_config('dummy', tsurf_init=4000.0)
+    hf_row = _remelt_hf_row(T_magma=2100.0)  # cooled, partly solid
+    interior_o = SimpleNamespace(impact_reset=False)
+
+    remelt_mantle({'output': '/tmp/unused'}, config, hf_row, interior_o)
+
+    assert hf_row['T_magma'] == pytest.approx(4000.0, rel=1e-12)
+    # The invariant: fully molten, so melt fraction is exactly 1 and all of
+    # the mantle mass (M_int - M_core) is liquid.
+    assert hf_row['Phi_global'] == pytest.approx(1.0, rel=1e-12)
+    m_mantle = hf_row['M_int'] - hf_row['M_core']
+    assert hf_row['M_mantle_liquid'] == pytest.approx(m_mantle, rel=1e-12)
+    assert hf_row['M_mantle_solid'] == pytest.approx(0.0, abs=1e12)
+    # Discrimination: leaving the cooled melt fraction would give Phi = 0.4
+    # here (T=2100 between tsol=1700 and tliq=2700), far from 1.
+    assert hf_row['Phi_global'] > 0.9
+    # The re-melt flags the coming temperature jump so it is not clipped.
+    assert interior_o.impact_reset is True
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_remelt_below_the_liquidus_warns_and_is_not_fully_molten():
+    """A reset temperature below the liquidus cannot fully re-melt, and says so.
+
+    Decision 7 is a full re-melt, but the dummy reset temperature is a free
+    configuration value; if it is set below the liquidus the mantle comes back
+    only partly molten. That must surface as a warning and a melt fraction
+    below 1, not pass silently as if the mantle were molten.
+    """
+    config = _remelt_config('dummy', tsurf_init=2200.0, mantle_tliq=2700.0, mantle_tsol=1700.0)
+    hf_row = _remelt_hf_row(T_magma=1800.0)
+    interior_o = SimpleNamespace(impact_reset=False)
+
+    import logging
+
+    with pytest.MonkeyPatch.context():
+        caplog_records = []
+        handler = logging.Handler()
+        handler.emit = lambda record: caplog_records.append(record.getMessage())
+        logger = logging.getLogger('fwl.proteus.interior_energetics.wrapper')
+        logger.addHandler(handler)
+        try:
+            remelt_mantle({'output': '/tmp/unused'}, config, hf_row, interior_o)
+        finally:
+            logger.removeHandler(handler)
+
+    # (2200 - 1700) / (2700 - 1700) = 0.5, not fully molten.
+    assert hf_row['Phi_global'] == pytest.approx(0.5, rel=1e-9)
+    assert any('below' in m and 'liquidus' in m for m in caplog_records)
+
+
+@pytest.mark.unit
+def test_remelt_boundary_backend_resets_both_magma_and_surface_temperature():
+    """The boundary backend shares the dummy reset, plus its surface temperature.
+
+    The boundary backend carries a surface temperature the atmosphere reads in
+    addition to the magma temperature, so both must be reset together or the
+    two would disagree after the re-melt.
+    """
+    config = _remelt_config('boundary', tsurf_init=4000.0)
+    hf_row = _remelt_hf_row(T_magma=2000.0)
+    hf_row['T_surf'] = 1500.0
+    interior_o = SimpleNamespace(impact_reset=False)
+
+    remelt_mantle({'output': '/tmp/unused'}, config, hf_row, interior_o)
+
+    assert hf_row['T_magma'] == pytest.approx(4000.0, rel=1e-12)
+    assert hf_row['T_surf'] == pytest.approx(4000.0, rel=1e-12)
+    assert hf_row['Phi_global'] == pytest.approx(1.0, rel=1e-12)
+
+
+class _FakeAragogSolver:
+    """Aragog solver stand-in with the state the re-melt round-trip touches.
+
+    Mimics the two pieces that matter for the survival of a re-melt: the
+    ``entropy_staggered`` view of the current profile, and the ``_solution``
+    trajectory that the coupling's restore step re-derives the initial
+    condition from when it is present.
+    """
+
+    def __init__(self, cooled_profile):
+        self._S0 = np.asarray(cooled_profile, dtype=float).copy()
+        self.entropy_staggered = np.asarray(cooled_profile, dtype=float).copy()
+        self._solution = object()  # a stale (cooled) trajectory exists
+        self._dSdr_cmb_init = 1.234e-6  # stale CMB gradient from the cooled solve
+
+    def set_initial_entropy(self, S):
+        # Real set_initial_entropy writes _S0 and, in the coupled path, the
+        # current profile view; mirror both so the re-melt can read it back.
+        self._S0 = np.asarray(S, dtype=float).copy()
+        self.entropy_staggered = np.asarray(S, dtype=float).copy()
+
+
+@pytest.mark.unit
+def test_aragog_remelt_survives_the_next_coupling_restore():
+    """The Aragog re-melt must persist past the next step's entropy restore.
+
+    The coupling restores the solver entropy from the previous solution at the
+    start of each step, so a re-melt that only rewrites the solver's initial
+    vector is erased. The re-melt must instead update the restore carrier with
+    the molten profile and drop the stale trajectory, so the restore that runs
+    next step re-applies the molten profile, not the cooled one.
+    """
+    molten = np.full(6, 3900.0)
+    solver = _FakeAragogSolver(cooled_profile=np.full(6, 2400.0))
+    interior_o = SimpleNamespace(
+        aragog_solver=solver, _last_entropy=np.full(6, 2400.0), impact_reset=False
+    )
+    config = _remelt_config('aragog')
+
+    # _set_entropy_ic is the start-up helper; here it stands in for "the solver
+    # now holds the molten profile", which is what the survival logic reads.
+    def _fake_set_ic(cfg, io, outdir, hf_row):
+        io.aragog_solver.set_initial_entropy(molten)
+
+    with patch(
+        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+        side_effect=_fake_set_ic,
+    ):
+        remelt_mantle({'output': '/tmp/out'}, config, hf_row={}, interior_o=interior_o)
+
+    # The restore carrier now holds the molten profile, not the cooled one.
+    np.testing.assert_allclose(interior_o._last_entropy, molten)
+    # The stale trajectory and CMB gradient are cleared, so the next step's
+    # restore cannot re-derive the cooled field over the molten carrier.
+    assert solver._solution is None
+    assert solver._dSdr_cmb_init is None
+
+    # Simulate the next step's restore (setup_or_update_solver): with no stale
+    # trajectory, _last_entropy is untouched, then re-applied. The solver ends
+    # holding the molten profile.
+    if solver._solution is not None:  # the branch that would resurrect the cooled field
+        interior_o._last_entropy = solver.entropy_staggered
+    solver.set_initial_entropy(interior_o._last_entropy)
+    np.testing.assert_allclose(solver._S0, molten)
+    assert interior_o.impact_reset is True
+
+
+@pytest.mark.unit
+def test_remelt_refuses_spider_and_rejects_an_unknown_backend():
+    """Re-melt fails loudly where it has no validated path, updating the status.
+
+    SPIDER keeps its state in an external restart file with no validated
+    re-melt, so an accretion run on it must stop with an actionable message and
+    a written status file, not continue with an un-melted mantle. An
+    unrecognised backend is a programming error and is rejected outright.
+    """
+    dirs = {'output': '/tmp/out'}
+    with patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as mock_status:
+        with pytest.raises(NotImplementedError, match='SPIDER'):
+            remelt_mantle(dirs, _remelt_config('spider'), hf_row={}, interior_o=None)
+        # The status file is written before the raise, so the run does not die
+        # leaving the status reading "Running".
+        mock_status.assert_called_once()
+
+        with pytest.raises(ValueError, match='unknown interior module'):
+            remelt_mantle(dirs, _remelt_config('nonsense'), hf_row={}, interior_o=None)

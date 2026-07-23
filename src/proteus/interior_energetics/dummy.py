@@ -18,6 +18,72 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
+def melt_fraction(config: Config, temperature: float) -> float:
+    """Global melt fraction of the dummy mantle at a surface magma temperature.
+
+    Linear between the configured solidus and liquidus, saturating at fully
+    solid below the solidus and fully molten above the liquidus.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration.
+    temperature : float
+        Surface magma temperature [K].
+
+    Returns
+    -------
+    float
+        Melt fraction in [0, 1].
+    """
+    tliq = config.interior_energetics.dummy.mantle_tliq
+    tsol = config.interior_energetics.dummy.mantle_tsol
+    if temperature >= tliq:
+        return 1.0
+    if temperature <= tsol:
+        return 0.0
+    return (temperature - tsol) / (tliq - tsol)
+
+
+def melt_state_from_temperature(config: Config, hf_row: dict, temperature: float) -> dict:
+    """Mantle melt quantities implied by a surface magma temperature.
+
+    Derives every temperature-dependent mantle quantity the dummy backend
+    exposes, so a caller that changes the magma temperature outside the
+    normal solve (a giant-impact re-melt) can rewrite a fully consistent
+    state rather than leaving the melt fraction and reservoir masses stale.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration.
+    hf_row : dict
+        Current helpfile row, read for the structure (``M_int``, ``M_core``,
+        ``R_int``, ``R_core``).
+    temperature : float
+        Surface magma temperature [K].
+
+    Returns
+    -------
+    dict
+        ``T_magma``, ``T_pot``, ``Phi_global``, ``Phi_global_vol``,
+        ``M_mantle_liquid``, ``M_mantle_solid`` and ``RF_depth``.
+    """
+    phi = melt_fraction(config, temperature)
+    m_mantle = hf_row['M_int'] - hf_row['M_core']
+    r_core = hf_row.get('R_core', config.interior_struct.core_frac * hf_row['R_int'])
+    core_radius_frac = r_core / hf_row['R_int']
+    return {
+        'T_magma': float(temperature),
+        'T_pot': float(temperature),
+        'Phi_global': phi,
+        'Phi_global_vol': phi,
+        'M_mantle_liquid': m_mantle * phi,
+        'M_mantle_solid': m_mantle * (1.0 - phi),
+        'RF_depth': phi * (1.0 - core_radius_frac),
+    }
+
+
 def calculate_simple_mantle_mass(radius: float, core_frac: float, density: float) -> float:
     """
     A very simple interior structure model.
@@ -69,21 +135,8 @@ def run_dummy_int(
         )
 
     # Physical parameters
-    tmp_liq = config.interior_energetics.dummy.mantle_tliq  # Liquidus
-    tmp_sol = config.interior_energetics.dummy.mantle_tsol  # Solidus
     tmp_init = config.planet.tsurf_init  # Initial magma temperature
     area = 4 * np.pi * hf_row['R_int'] ** 2
-
-    # Get mantle melt fraction as a function of temperature
-    def _calc_phi(tmp: float):
-        # Too hot
-        if tmp >= tmp_liq:
-            return 1.0
-        # Too cold
-        elif tmp <= tmp_sol:
-            return 0.0
-        # Just right
-        return (tmp - tmp_sol) / (tmp_liq - tmp_sol)
 
     # Interior heat capacity [J K-1]
     cp_int = (
@@ -129,7 +182,7 @@ def run_dummy_int(
 
     # Store scalars
     output['T_pot'] = float(output['T_magma'])
-    output['Phi_global'] = _calc_phi(output['T_magma'])
+    output['Phi_global'] = melt_fraction(config, output['T_magma'])
     output['Phi_global_vol'] = output['Phi_global']
     output['M_mantle_liquid'] = output['M_mantle'] * output['Phi_global']
     output['M_mantle_solid'] = output['M_mantle'] - output['M_mantle_liquid']

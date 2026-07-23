@@ -230,3 +230,42 @@ def test_reference_config_declares_the_accretion_section():
         assert raw['accretion']['morrigan'][key] == pytest.approx(
             getattr(morrigan_defaults, key)
         )
+
+
+def _compat_instance(accretion_module, interior_module, temperature_mode='liquidus_super'):
+    """Duck-typed config instance the interior-compatibility validator reads."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        accretion=SimpleNamespace(module=accretion_module),
+        interior_energetics=SimpleNamespace(module=interior_module),
+        planet=SimpleNamespace(temperature_mode=temperature_mode),
+    )
+
+
+@pytest.mark.unit
+def test_accretion_on_spider_is_refused_at_config_load():
+    """An accretion run on the SPIDER interior is rejected before it starts.
+
+    A giant impact re-melts the mantle and SPIDER has no validated re-melt
+    path, so the combination must fail at configuration load rather than many
+    hours into a run at the first impact. The supported interiors are accepted,
+    and a run without accretion is never blocked on this ground.
+    """
+    from proteus.config._config import check_accretion_interior_compatibility
+
+    # The unsupported combination is refused, and the message names the fix.
+    with pytest.raises(ValueError, match='SPIDER has no supported re-melt path'):
+        check_accretion_interior_compatibility(
+            _compat_instance('morrigan', 'spider'), None, None
+        )
+    with pytest.raises(ValueError, match='spider'):
+        check_accretion_interior_compatibility(_compat_instance('dummy', 'spider'), None, None)
+
+    # The supported interiors pass, and so does any run without accretion.
+    for interior in ('aragog', 'dummy'):
+        check_accretion_interior_compatibility(
+            _compat_instance('morrigan', interior), None, None
+        )
+    # No accretion: SPIDER is fine, the check does not fire.
+    check_accretion_interior_compatibility(_compat_instance(None, 'spider'), None, None)

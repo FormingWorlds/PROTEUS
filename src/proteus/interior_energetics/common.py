@@ -601,6 +601,11 @@ class Interior_t:
         # is every run with accretion switched off.
         self.t_next_impact = float('inf')
 
+        # Raised by a giant-impact re-melt so the next interior solve does
+        # not clip the deliberate temperature jump back out as if it were a
+        # solver anomaly. Consumed and cleared on that one step.
+        self.impact_reset = False
+
         # Lookup data for SPIDER (P-S tables, used by E_th and
         # melt-volume bookkeeping). Each is a (nS, nP, 3) array, the
         # third channel being the SI value of the quantity.

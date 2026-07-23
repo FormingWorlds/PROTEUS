@@ -1795,6 +1795,155 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
 
 
+def _remelt_scalar_backend(config: Config, hf_row: dict) -> None:
+    """Re-melt a temperature-state backend (dummy or boundary) in place.
+
+    These backends carry the mantle thermal state as a surface magma
+    temperature they cool from the configured initial value. Resetting that
+    temperature, and every melt quantity derived from it, returns the mantle
+    to its molten start. Writing the derived quantities as well keeps the
+    impact iteration self-consistent: the melt fraction and reservoir masses
+    match the reset temperature instead of lagging a step behind it.
+    """
+    from proteus.interior_energetics.dummy import melt_state_from_temperature
+
+    t_reset = config.planet.tsurf_init
+    state = melt_state_from_temperature(config, hf_row, t_reset)
+    hf_row.update(state)
+    # The boundary backend also cools a surface temperature that the atmosphere
+    # reads, so keep it in step with the magma temperature.
+    if config.interior_energetics.module == 'boundary':
+        hf_row['T_surf'] = t_reset
+
+    if state['Phi_global'] < 1.0:
+        log.warning(
+            '    mantle re-melt left it only %.0f%% molten: tsurf_init=%.0f K is below '
+            'the liquidus. Raise planet.tsurf_init for a full re-melt.',
+            100.0 * state['Phi_global'],
+            t_reset,
+        )
+    log.info(
+        '    mantle re-melted: T_magma reset to %.0f K (melt fraction %.2f)',
+        t_reset,
+        state['Phi_global'],
+    )
+
+
+def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None:
+    """Re-melt the Aragog mantle so the reset survives to the next solve.
+
+    ``_set_entropy_ic`` alone only rewrites the solver's initial-state vector,
+    which the next coupling step overwrites when it restores the entropy from
+    the previous (cooled) solution. To make the re-melt stick, the restored
+    profile carrier ``interior_o._last_entropy`` is set to the molten profile,
+    the stale trajectory is cleared so the restore path cannot resurrect it,
+    and the cached CMB-gradient state is cleared so it is re-derived from the
+    molten profile rather than inherited from the cooled one.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    if interior_o.aragog_solver is None:
+        raise RuntimeError(
+            'Cannot re-melt the mantle: the Aragog solver is not yet initialised. '
+            'An impact cannot precede the first interior solve.'
+        )
+
+    AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
+
+    solver = interior_o.aragog_solver
+    # Carry the molten profile onto the carrier the next step restores from,
+    # and drop the cooled trajectory so update_solver cannot re-derive the old
+    # field over it.
+    S_block = solver.entropy_staggered
+    S_molten = S_block[:, -1] if getattr(S_block, 'ndim', 1) > 1 else S_block
+    interior_o._last_entropy = np.asarray(S_molten, dtype=float).ravel().copy()
+    solver._solution = None
+    if hasattr(solver, '_dSdr_cmb_init'):
+        solver._dSdr_cmb_init = None
+
+    log.info('    mantle re-melted: Aragog entropy reset to the molten initial condition')
+
+
+def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=None) -> None:
+    """Reset the mantle to its molten initial condition after a giant impact.
+
+    A giant impact re-melts the mantle in full (no energy threshold), so the
+    interior is returned to a molten initial condition recomputed for the
+    current, grown planet. The reset is applied to the running interior state,
+    and an ``impact_reset`` flag is raised on ``interior_o`` so the next
+    interior solve does not clip the resulting temperature jump as if it were
+    a solver glitch.
+
+    The backends carry their state differently, so each is reset in its own
+    terms: the dummy and boundary backends cool a surface temperature and are
+    reset to the configured initial value together with every quantity derived
+    from it; Aragog re-applies its entropy initial condition and carries the
+    molten profile through the reset the coupling performs on the next step.
+    SPIDER keeps its state in a restart file written by the external binary and
+    has no validated re-melt path; an accretion run on SPIDER is refused at
+    configuration load, and this backstop refuses it at the first impact.
+
+    Parameters
+    ----------
+    dirs : dict
+        Directories dictionary.
+    config : Config
+        Model configuration.
+    hf_row : dict
+        Current helpfile row, mutated in place for the scalar backends.
+    interior_o : Interior_t
+        Interior state, reset in place; its ``impact_reset`` flag is raised.
+    event : ImpactEvent, optional
+        The impact being applied, used only to log the impact energy against
+        the enthalpy the re-melt injects.
+
+    Raises
+    ------
+    NotImplementedError
+        If the interior module has no supported re-melt path (SPIDER).
+    ValueError
+        If the interior module is unrecognised.
+    RuntimeError
+        If the Aragog solver has not been initialised.
+    """
+    module = config.interior_energetics.module
+
+    match module:
+        case 'dummy' | 'boundary':
+            _remelt_scalar_backend(config, hf_row)
+        case 'aragog':
+            _remelt_aragog(config, dirs, hf_row, interior_o)
+        case 'spider':
+            UpdateStatusfile(dirs, 20)
+            raise NotImplementedError(
+                'Giant-impact mantle re-melt is not supported with the SPIDER '
+                'interior. SPIDER holds its state in a restart file written by the '
+                'external binary, and no validated re-melt path exists yet. Use '
+                "interior_energetics.module = 'aragog' for accretion runs."
+            )
+        case _:
+            UpdateStatusfile(dirs, 20)
+            raise ValueError(f'Cannot re-melt the mantle: unknown interior module {module!r}')
+
+    # Tell the time-stepper's limiter the coming temperature jump is a
+    # deliberate impact re-melt, not a solver anomaly to be clipped away.
+    interior_o.impact_reset = True
+
+    # Log the impact kinetic energy for context. A full re-melt injects mantle-
+    # scale enthalpy with no source term, so leave a line the reader can weigh
+    # against the impact energy the event carries.
+    if event is not None:
+        reduced = (
+            event.M_target_before
+            * event.M_impactor
+            / (event.M_target_before + event.M_impactor)
+        )
+        e_impact = 0.5 * reduced * event.v_impact**2
+        log.info(
+            '    impact kinetic energy %.3e J (re-melt injects mantle-scale enthalpy)', e_impact
+        )
+
+
 def solve_structure(
     dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
 ):
@@ -2045,8 +2194,14 @@ def run_interior(
     # Update planet mass
     update_planet_mass(hf_row)
 
+    # The step after a giant-impact re-melt legitimately jumps the temperature
+    # from the cooled state to fully molten. Skip the warming clamp and the
+    # large-increase clip for that one step, then clear the flag, so the
+    # deliberate re-melt is not treated as a solver anomaly and clipped away.
+    impact_reset = getattr(interior_o, 'impact_reset', False)
+
     # Apply step limiters
-    if hf_row['Time'] > 0:
+    if hf_row['Time'] > 0 and not impact_reset:
         # Prevent increasing surface temperature, if enabled. Gated by
         # _prevent_warming_clamp_active(); the runaway-T fallback below
         # remains active regardless.
@@ -2090,6 +2245,10 @@ def run_interior(
             log.warning('Prevented large increase to T_surf!')
             log.warning('   Clipped from %.2f K' % hf_row['T_surf'])
             hf_row['T_surf'] = T_surf_prev + dT_delta_surf
+
+    # One-shot: the post-impact step has now passed the limiters unclipped.
+    if impact_reset:
+        interior_o.impact_reset = False
 
     # Print result of interior module
     if verbose:
