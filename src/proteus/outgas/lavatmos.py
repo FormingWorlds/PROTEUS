@@ -340,7 +340,10 @@ def read_in_element_fracs_normalized(input_path):
 
     total = sum(abundance_dict.values())
 
-    norm_dict = {k: v / total for k, v in abundance_dict.items()}
+    if abs(total) > 1e-30:
+        norm_dict = {k: v / total for k, v in abundance_dict.items()}
+    else:
+        norm_dict = {k: 0 for k in abundance_dict}
 
     return norm_dict
 
