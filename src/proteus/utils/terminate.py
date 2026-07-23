@@ -110,22 +110,6 @@ def _check_escape(handler: Proteus) -> bool:
     return False
 
 
-# Planet has been entirely vapourised
-def _check_evap(handler: Proteus) -> bool:
-    log.debug("Check complete vapourisation of planet's mantle")
-
-    M_vaps = handler.hf_row['M_vaps']
-    M_mantle = handler.hf_row['M_mantle']
-    log.debug('    val, req = %.3e, %.3e  kg' % (M_vaps, M_mantle))
-
-    if M_vaps >= M_mantle:
-        UpdateStatusfile(handler.directories, 29)
-        _msg_termination('The mantle has been fully vapourised')
-        return True
-
-    return False
-
-
 # Planet has disintegrated
 def _check_separation(handler: Proteus) -> bool:
     log.debug('Check separation')
@@ -299,8 +283,6 @@ def check_termination(handler: Proteus) -> bool:
         if handler.config.params.stop.disint.spin_enabled:
             finished = finished or _check_spinrate(handler)
 
-    if handler.config.params.stop.evap.enabled:
-        finished = finished or _check_evap(handler)
     # ------------------------
     # 3) Check resource-based criteria, set by user according to the
     #    available the machine / job. These are not physical criteria.
