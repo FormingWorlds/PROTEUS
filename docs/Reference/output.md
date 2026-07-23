@@ -192,7 +192,7 @@ For each element (H, C, N, O, S):
 | Column | Units | Description |
 |--------|-------|-------------|
 | `M_atm` | kg | Total atmospheric mass |
-| `M_ele` | kg | Total volatile+vapour+noble element mass |
+| `M_ele` | kg | volatile+noble element mass |
 | `P_surf` | bar | Total surface pressure |
 | `P_vap` | bar | surface pressure of vapour species|
 | `P_vol` | bar | surface pressure of volatile species|
