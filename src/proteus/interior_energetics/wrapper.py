@@ -1795,16 +1795,19 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
 
 
-def _remelt_scalar_backend(config: Config, hf_row: dict) -> None:
+def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
     """Re-melt a temperature-state backend (dummy or boundary) in place.
 
     These backends carry the mantle thermal state as a surface magma
     temperature they cool from the configured initial value. Resetting that
     temperature, and every melt quantity derived from it, returns the mantle
-    to its molten start. Writing the derived quantities as well keeps the
-    impact iteration self-consistent: the melt fraction and reservoir masses
-    match the reset temperature instead of lagging a step behind it.
+    to its molten start. Writing the derived quantities as well, and the melt
+    fraction and temperature onto the interior arrays the same-iteration tidal
+    call reads, keeps the impact iteration self-consistent rather than leaving
+    those quantities a step behind the reset temperature.
     """
+    import numpy as np
+
     from proteus.interior_energetics.dummy import melt_state_from_temperature
 
     t_reset = config.planet.tsurf_init
@@ -1814,6 +1817,11 @@ def _remelt_scalar_backend(config: Config, hf_row: dict) -> None:
     # reads, so keep it in step with the magma temperature.
     if config.interior_energetics.module == 'boundary':
         hf_row['T_surf'] = t_reset
+
+    # Refresh the single-cell interior arrays the orbit/tides block reads later
+    # in this same iteration, so tidal heating uses the re-melted melt fraction.
+    interior_o.phi = np.array([state['Phi_global']])
+    interior_o.temp = np.array([t_reset])
 
     if state['Phi_global'] < 1.0:
         log.warning(
@@ -1848,18 +1856,22 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
             'An impact cannot precede the first interior solve.'
         )
 
-    AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
-
     solver = interior_o.aragog_solver
-    # Carry the molten profile onto the carrier the next step restores from,
-    # and drop the cooled trajectory so update_solver cannot re-derive the old
-    # field over it.
-    S_block = solver.entropy_staggered
-    S_molten = S_block[:, -1] if getattr(S_block, 'ndim', 1) > 1 else S_block
-    interior_o._last_entropy = np.asarray(S_molten, dtype=float).ravel().copy()
+    # Drop the cooled trajectory and its cached CMB gradient BEFORE rebuilding
+    # the initial condition. This has to come first: _set_entropy_ic hot-starts
+    # the boundary gradient from the solution when one is present, so clearing
+    # it first forces a cold-start derived from the molten profile. Clearing the
+    # trajectory also stops the next step's restore from re-deriving the cooled
+    # field over the molten one.
     solver._solution = None
     if hasattr(solver, '_dSdr_cmb_init'):
         solver._dSdr_cmb_init = None
+
+    # _set_entropy_ic returns the staggered molten profile it just set. Take it
+    # from the return value rather than from the solver's solution object, which
+    # holds no valid trajectory now and would in any case lag the reset.
+    S_molten = AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
+    interior_o._last_entropy = np.asarray(S_molten, dtype=float).ravel().copy()
 
     log.info('    mantle re-melted: Aragog entropy reset to the molten initial condition')
 
@@ -1910,7 +1922,7 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
 
     match module:
         case 'dummy' | 'boundary':
-            _remelt_scalar_backend(config, hf_row)
+            _remelt_scalar_backend(config, hf_row, interior_o)
         case 'aragog':
             _remelt_aragog(config, dirs, hf_row, interior_o)
         case 'spider':
@@ -2032,6 +2044,13 @@ def run_interior(
     if verbose:
         log.info('Evolve interior...')
     log.debug('Using %s module to evolve interior' % config.interior_energetics.module)
+
+    # Consume the one-shot giant-impact re-melt flag up front, so the step after
+    # a re-melt skips the temperature-jump clip below, and so the flag is cleared
+    # even on an early return further down (e.g. a solver retry-ladder exit) and
+    # cannot wrongly suppress the clip on a later, ordinary step.
+    impact_reset = getattr(interior_o, 'impact_reset', False)
+    interior_o.impact_reset = False
 
     # Write tidal heating file
     if config.interior_energetics.heat_tidal:
@@ -2194,14 +2213,11 @@ def run_interior(
     # Update planet mass
     update_planet_mass(hf_row)
 
-    # The step after a giant-impact re-melt legitimately jumps the temperature
-    # from the cooled state to fully molten. Skip the warming clamp and the
-    # large-increase clip for that one step, then clear the flag, so the
-    # deliberate re-melt is not treated as a solver anomaly and clipped away.
-    impact_reset = getattr(interior_o, 'impact_reset', False)
-
-    # Apply step limiters
-    if hf_row['Time'] > 0 and not impact_reset:
+    # Apply step limiters. The F_int positivity floor is applied unconditionally
+    # (below); the warming clamp and the large-increase clips are skipped on the
+    # single step after a giant-impact re-melt, whose deliberate temperature jump
+    # must not be treated as a solver anomaly.
+    if hf_row['Time'] > 0:
         # Prevent increasing surface temperature, if enabled. Gated by
         # _prevent_warming_clamp_active(); the runaway-T fallback below
         # remains active regardless.
@@ -2209,23 +2225,24 @@ def run_interior(
         T_surf_prev = float(hf_all.iloc[-1]['T_surf'])
         Phi_global_prev = float(hf_all.iloc[-1]['Phi_global'])
         F_int_prev = float(hf_all.iloc[-1]['F_int'])
-        if _prevent_warming_clamp_active(config) and (interior_o.ic == 2):
+        if _prevent_warming_clamp_active(config) and (interior_o.ic == 2) and not impact_reset:
             hf_row['Phi_global'] = min(hf_row['Phi_global'], Phi_global_prev)
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
             hf_row['T_surf'] = min(hf_row['T_surf'], T_surf_prev)
             hf_row['F_int'] = min(hf_row['F_int'], F_int_prev)
 
         # F_int positivity floor under prevent_warming, applied for all
-        # ic values (not just ic == 2). SPIDER's JSON output can produce
-        # a slightly-negative F_int on the first post-restart step (ic
-        # = 1) because the thermal state is read from the previous
-        # solver epoch; the floor is what stopped a negative flux from
-        # propagating to the helpfile + atmosphere BC before this floor
-        # was relocated out of ReadSPIDER in the 7g commit.
+        # ic values (not just ic == 2), and NOT skipped on the impact-reset
+        # step: a negative flux must never reach the helpfile or the atmosphere
+        # BC. SPIDER's JSON output can produce a slightly-negative F_int on the
+        # first post-restart step (ic = 1) because the thermal state is read from
+        # the previous solver epoch; the floor is what stopped a negative flux
+        # from propagating before this floor was relocated out of ReadSPIDER.
         if _prevent_warming_clamp_active(config):
             hf_row['F_int'] = max(1.0e-8, hf_row['F_int'])
 
-        # Do not allow massive increases to T_magma or T_surf.
+        # Do not allow massive increases to T_magma or T_surf. Skipped on the
+        # impact-reset step so the re-melt's jump survives.
         #
         # T_magma uses the SPIDER/Aragog/dummy tolerance formula for
         # every backend. For all backends T_surf shares the
@@ -2235,20 +2252,16 @@ def run_interior(
 
         dT_delta_surf = dT_delta_magma
 
-        if hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
+        if (not impact_reset) and hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
             log.warning('Prevented large increase to T_magma!')
             log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
             hf_row['T_magma'] = T_magma_prev + dT_delta_magma
             hf_row['Phi_global'] = Phi_global_prev
 
-        if hf_row['T_surf'] > T_surf_prev + dT_delta_surf:
+        if (not impact_reset) and hf_row['T_surf'] > T_surf_prev + dT_delta_surf:
             log.warning('Prevented large increase to T_surf!')
             log.warning('   Clipped from %.2f K' % hf_row['T_surf'])
             hf_row['T_surf'] = T_surf_prev + dT_delta_surf
-
-    # One-shot: the post-impact step has now passed the limiters unclipped.
-    if impact_reset:
-        interior_o.impact_reset = False
 
     # Print result of interior module
     if verbose:

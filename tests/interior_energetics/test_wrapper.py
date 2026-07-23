@@ -5646,12 +5646,20 @@ def test_grid_extent_up_step_rejected_through_real_wrapper(tmp_path, caplog):
     assert dirs['_last_w_H2O_liquid'] != pytest.approx(1.0e21 / 3.0e24)
 
 
-def _remelt_config(module, tsurf_init=4000.0, mantle_tliq=2700.0, mantle_tsol=1700.0):
+def _remelt_config(
+    module,
+    tsurf_init=4000.0,
+    mantle_tliq=2700.0,
+    mantle_tsol=1700.0,
+    b_tsol=1420.0,
+    b_tliq=2020.0,
+):
     """Config shape remelt_mantle and the scalar-backend melt state read."""
     return SimpleNamespace(
         interior_energetics=SimpleNamespace(
             module=module,
             dummy=SimpleNamespace(mantle_tliq=mantle_tliq, mantle_tsol=mantle_tsol),
+            boundary=SimpleNamespace(T_solidus=b_tsol, T_liquidus=b_tliq),
         ),
         planet=SimpleNamespace(tsurf_init=tsurf_init),
         interior_struct=SimpleNamespace(core_frac=0.55),
@@ -5702,34 +5710,24 @@ def test_remelt_returns_the_dummy_mantle_to_a_fully_molten_consistent_state():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_remelt_below_the_liquidus_warns_and_is_not_fully_molten():
+def test_remelt_below_the_liquidus_warns_and_is_not_fully_molten(caplog):
     """A reset temperature below the liquidus cannot fully re-melt, and says so.
 
-    Decision 7 is a full re-melt, but the dummy reset temperature is a free
-    configuration value; if it is set below the liquidus the mantle comes back
-    only partly molten. That must surface as a warning and a melt fraction
+    A full re-melt is the intended behaviour, but the dummy reset temperature is
+    a free configuration value; if it is set below the liquidus the mantle comes
+    back only partly molten. That must surface as a warning and a melt fraction
     below 1, not pass silently as if the mantle were molten.
     """
     config = _remelt_config('dummy', tsurf_init=2200.0, mantle_tliq=2700.0, mantle_tsol=1700.0)
     hf_row = _remelt_hf_row(T_magma=1800.0)
     interior_o = SimpleNamespace(impact_reset=False)
 
-    import logging
-
-    with pytest.MonkeyPatch.context():
-        caplog_records = []
-        handler = logging.Handler()
-        handler.emit = lambda record: caplog_records.append(record.getMessage())
-        logger = logging.getLogger('fwl.proteus.interior_energetics.wrapper')
-        logger.addHandler(handler)
-        try:
-            remelt_mantle({'output': '/tmp/unused'}, config, hf_row, interior_o)
-        finally:
-            logger.removeHandler(handler)
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'):
+        remelt_mantle({'output': '/tmp/unused'}, config, hf_row, interior_o)
 
     # (2200 - 1700) / (2700 - 1700) = 0.5, not fully molten.
     assert hf_row['Phi_global'] == pytest.approx(0.5, rel=1e-9)
-    assert any('below' in m and 'liquidus' in m for m in caplog_records)
+    assert any('below' in m and 'liquidus' in m for m in caplog.messages)
 
 
 @pytest.mark.unit
@@ -5753,36 +5751,44 @@ def test_remelt_boundary_backend_resets_both_magma_and_surface_temperature():
 
 
 class _FakeAragogSolver:
-    """Aragog solver stand-in with the state the re-melt round-trip touches.
+    """Aragog solver stand-in faithful to the property semantics that matter.
 
-    Mimics the two pieces that matter for the survival of a re-melt: the
-    ``entropy_staggered`` view of the current profile, and the ``_solution``
-    trajectory that the coupling's restore step re-derives the initial
-    condition from when it is present.
+    On the real solver ``entropy_staggered`` is a read-only property computed
+    from ``_solution.y`` and raises when no solve has run; ``set_initial_entropy``
+    writes only ``_S0``. Modelling that faithfully is the point: a re-melt that
+    reads ``entropy_staggered`` after clearing ``_solution`` would raise here,
+    exactly as it would on the real solver, so a return-to-``entropy_staggered``
+    regression cannot pass this test.
     """
+
+    class _Solution:
+        def __init__(self, profile):
+            self.y = np.asarray(profile, dtype=float).reshape(-1, 1)
 
     def __init__(self, cooled_profile):
         self._S0 = np.asarray(cooled_profile, dtype=float).copy()
-        self.entropy_staggered = np.asarray(cooled_profile, dtype=float).copy()
-        self._solution = object()  # a stale (cooled) trajectory exists
+        self._solution = self._Solution(cooled_profile)  # a stale (cooled) trajectory
         self._dSdr_cmb_init = 1.234e-6  # stale CMB gradient from the cooled solve
 
+    @property
+    def entropy_staggered(self):
+        # Read-only view over the solved trajectory, as on the real solver.
+        return self._solution.y[:, -1]
+
     def set_initial_entropy(self, S):
-        # Real set_initial_entropy writes _S0 and, in the coupled path, the
-        # current profile view; mirror both so the re-melt can read it back.
+        # The real method writes only _S0; it does NOT update entropy_staggered.
         self._S0 = np.asarray(S, dtype=float).copy()
-        self.entropy_staggered = np.asarray(S, dtype=float).copy()
 
 
 @pytest.mark.unit
-def test_aragog_remelt_survives_the_next_coupling_restore():
+def test_aragog_remelt_carries_the_molten_profile_past_the_next_restore():
     """The Aragog re-melt must persist past the next step's entropy restore.
 
     The coupling restores the solver entropy from the previous solution at the
-    start of each step, so a re-melt that only rewrites the solver's initial
-    vector is erased. The re-melt must instead update the restore carrier with
-    the molten profile and drop the stale trajectory, so the restore that runs
-    next step re-applies the molten profile, not the cooled one.
+    start of each step, so a re-melt that reads the cooled solution back into the
+    restore carrier is erased. The re-melt must take the molten profile from
+    what it just set (the helper's return value), put it on the restore carrier,
+    and drop the stale trajectory and its CMB gradient BEFORE rebuilding the IC.
     """
     molten = np.full(6, 3900.0)
     solver = _FakeAragogSolver(cooled_profile=np.full(6, 2400.0))
@@ -5791,10 +5797,16 @@ def test_aragog_remelt_survives_the_next_coupling_restore():
     )
     config = _remelt_config('aragog')
 
-    # _set_entropy_ic is the start-up helper; here it stands in for "the solver
-    # now holds the molten profile", which is what the survival logic reads.
+    # _set_entropy_ic sets the molten profile onto _S0 and returns it, and must
+    # see the trajectory already cleared (so its CMB-gradient hot-start cannot
+    # inherit the cooled solve). Assert both here.
     def _fake_set_ic(cfg, io, outdir, hf_row):
+        assert io.aragog_solver._solution is None, (
+            'trajectory must be cleared before IC rebuild'
+        )
+        assert io.aragog_solver._dSdr_cmb_init is None, 'CMB gradient must be cleared first'
         io.aragog_solver.set_initial_entropy(molten)
+        return molten
 
     with patch(
         'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
@@ -5804,16 +5816,13 @@ def test_aragog_remelt_survives_the_next_coupling_restore():
 
     # The restore carrier now holds the molten profile, not the cooled one.
     np.testing.assert_allclose(interior_o._last_entropy, molten)
-    # The stale trajectory and CMB gradient are cleared, so the next step's
-    # restore cannot re-derive the cooled field over the molten carrier.
     assert solver._solution is None
     assert solver._dSdr_cmb_init is None
 
-    # Simulate the next step's restore (setup_or_update_solver): with no stale
-    # trajectory, _last_entropy is untouched, then re-applied. The solver ends
-    # holding the molten profile.
-    if solver._solution is not None:  # the branch that would resurrect the cooled field
-        interior_o._last_entropy = solver.entropy_staggered
+    # The next step's restore re-applies the carrier: because the trajectory is
+    # cleared, update_solver leaves _last_entropy alone, and set_initial_entropy
+    # writes the molten profile onto _S0. A regression reading entropy_staggered
+    # here would raise (no _solution), which is the point of the faithful fake.
     solver.set_initial_entropy(interior_o._last_entropy)
     np.testing.assert_allclose(solver._S0, molten)
     assert interior_o.impact_reset is True
