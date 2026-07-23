@@ -419,7 +419,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     vmrs = np.array([hf_row[s + '_vmr'] for s in species])
 
     for i in np.argsort(vmrs)[::-1]:
-        s = species [i]
+        s = species[i]
         _p = hf_row[s + '_bar']
         _x = hf_row[s + '_vmr']
         _s = '    %-6s     = %-9.2f bar (%.2e VMR)' % (s, _p, _x)
