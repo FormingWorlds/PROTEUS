@@ -134,7 +134,7 @@ def run_atmosphere(
             InitStellarSpectrum(dirs, wl_un, fl_un, spectral_file_nostar)
             atmos_o._atm = InitAtm(dirs, config)
 
-        atm_output = RunJANUS(atmos_o._atm, dirs, config, hf_row, hf_all)
+        atm_output = RunJANUS(atmos_o._atm, dirs, config, hf_row, hf_all, write_data=write_data)
 
     elif config.atmos_clim.module == 'agni':
         # Import
@@ -214,6 +214,47 @@ def run_atmosphere(
 
     # Estimate WTG parameter
     update_wtg_surf(hf_row)
+
+
+def write_atmosphere_snapshot(atmos_o: Atmos_t, config: Config, dirs: dict, hf_row: dict):
+    """Force-write the current atmosphere state to a NetCDF snapshot.
+
+    Arguments
+    ---------
+        atmos_o : Atmos_t
+            Atmosphere struct
+        config : Config
+            Configuration options for PROTEUS
+        dirs : dict
+            Dictionary containing paths to directories
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
+    """
+    if atmos_o._atm is None:
+        return
+
+    # Get time from this iteration
+    time = hf_row['Time']
+    try:
+        # Use AGNI writer
+        if config.atmos_clim.module == 'agni':
+            from proteus.atmos_clim.agni import write_atmos_ncdf
+
+            # Only a successfully allocated struct can be used.
+            if not bool(atmos_o._atm.is_alloc):
+                log.warning('Cannot write atmosphere; AGNI struct unallocated')
+                return
+            write_atmos_ncdf(atmos_o._atm, dirs, time)
+
+        # Use JANUS writer
+        elif config.atmos_clim.module == 'janus':
+            from proteus.atmos_clim.janus import write_atmos_ncdf
+
+            write_atmos_ncdf(atmos_o._atm, dirs, time)
+
+        # Otherwise, write no atmosphere NetCDF
+    except Exception as exc:
+        log.warning('Could not write final atmosphere NetCDF: %s' % exc)
 
 
 def update_wtg_surf(hf_row: dict):

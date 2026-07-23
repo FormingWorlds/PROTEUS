@@ -14,6 +14,8 @@ Testing standards:
 from __future__ import annotations
 
 import math
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -246,3 +248,137 @@ def test_shallow_mixed_ocean_layer_zero_flux_keeps_temperature_constant():
     # either direction. A regression that introduced a constant offset
     # would surface here.
     assert abs(T_cur - 1500.0) < 1e-3
+
+
+# ---------------------------------------------------------------------------
+# write_atmosphere_snapshot: end-of-simulation force-write dispatch
+# ---------------------------------------------------------------------------
+
+
+def _fake_atmos_o(atm):
+    """Minimal Atmos_t stand-in exposing only the `_atm` attribute."""
+    return SimpleNamespace(_atm=atm)
+
+
+def _fake_config(module):
+    return SimpleNamespace(atmos_clim=SimpleNamespace(module=module))
+
+
+def test_write_atmosphere_snapshot_noop_when_atm_is_none():
+    """No atmosphere struct means nothing can be written; the dispatch must
+    return without touching either backend writer.
+
+    Edge case: an aborted run may reach the end-of-sim block with
+    ``atmos_o._atm is None`` (atmosphere never solved).
+    """
+    atmos_o = _fake_atmos_o(None)
+    config = _fake_config('agni')
+    with (
+        patch('proteus.atmos_clim.agni.write_atmos_ncdf') as agni_w,
+        patch('proteus.atmos_clim.janus.write_atmos_ncdf') as janus_w,
+    ):
+        atmos_wrapper.write_atmosphere_snapshot(
+            atmos_o, config, {'output': '/tmp/x'}, {'Time': 100.0}
+        )
+    agni_w.assert_not_called()
+    janus_w.assert_not_called()
+
+
+def test_write_atmosphere_snapshot_dummy_module_writes_nothing():
+    """The dummy atmosphere has no NetCDF representation, so the dispatch is a
+    no-op even when a non-None struct is present."""
+    atmos_o = _fake_atmos_o(object())
+    config = _fake_config('dummy')
+    with (
+        patch('proteus.atmos_clim.agni.write_atmos_ncdf') as agni_w,
+        patch('proteus.atmos_clim.janus.write_atmos_ncdf') as janus_w,
+    ):
+        atmos_wrapper.write_atmosphere_snapshot(
+            atmos_o, config, {'output': '/tmp/x'}, {'Time': 100.0}
+        )
+    agni_w.assert_not_called()
+    janus_w.assert_not_called()
+
+
+def test_write_atmosphere_snapshot_agni_writes_when_allocated():
+    """For AGNI with an allocated struct, the dispatch calls the AGNI writer
+    once with the current time, and NOT the JANUS writer.
+
+    Discrimination: asserting the exact `time` argument (and that janus is not
+    called) rules out a regression that dispatched to the wrong backend or
+    dropped the time.
+    """
+    atm = SimpleNamespace(is_alloc=True)
+    atmos_o = _fake_atmos_o(atm)
+    config = _fake_config('agni')
+    dirs = {'output': '/tmp/x'}
+    with (
+        patch('proteus.atmos_clim.agni.write_atmos_ncdf') as agni_w,
+        patch('proteus.atmos_clim.janus.write_atmos_ncdf') as janus_w,
+    ):
+        atmos_wrapper.write_atmosphere_snapshot(atmos_o, config, dirs, {'Time': 384913130.0})
+    agni_w.assert_called_once_with(atm, dirs, 384913130.0)
+    janus_w.assert_not_called()
+
+
+def test_write_atmosphere_snapshot_agni_skips_when_not_allocated(caplog):
+    """An unallocated AGNI struct cannot be serialised, so the writer must be
+    skipped and a warning logged rather than crashing.
+
+    Error-contract path: is_alloc is False.
+    """
+    import logging
+
+    atm = SimpleNamespace(is_alloc=False)
+    atmos_o = _fake_atmos_o(atm)
+    config = _fake_config('agni')
+    with patch('proteus.atmos_clim.agni.write_atmos_ncdf') as agni_w:
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.wrapper'):
+            atmos_wrapper.write_atmosphere_snapshot(
+                atmos_o, config, {'output': '/tmp/x'}, {'Time': 100.0}
+            )
+    agni_w.assert_not_called()
+    assert any('unallocated' in rec.message for rec in caplog.records)
+
+
+def test_write_atmosphere_snapshot_janus_writes():
+    """For JANUS with a present struct, the dispatch calls the JANUS writer
+    once with the current time, and NOT the AGNI writer."""
+    atm = object()
+    atmos_o = _fake_atmos_o(atm)
+    config = _fake_config('janus')
+    dirs = {'output': '/tmp/x'}
+    with (
+        patch('proteus.atmos_clim.agni.write_atmos_ncdf') as agni_w,
+        patch('proteus.atmos_clim.janus.write_atmos_ncdf') as janus_w,
+    ):
+        atmos_wrapper.write_atmosphere_snapshot(atmos_o, config, dirs, {'Time': 4675466.0})
+    janus_w.assert_called_once_with(atm, dirs, 4675466.0)
+    agni_w.assert_not_called()
+
+
+def test_write_atmosphere_snapshot_swallows_writer_failure(caplog):
+    """A writer failure at end-of-sim must not propagate and crash an
+    otherwise-complete run; it is logged and swallowed.
+
+    Error-contract path: the backend writer raises.
+    """
+    import logging
+
+    atm = SimpleNamespace(is_alloc=True)
+    atmos_o = _fake_atmos_o(atm)
+    config = _fake_config('agni')
+    with patch(
+        'proteus.atmos_clim.agni.write_atmos_ncdf', side_effect=RuntimeError('disk full')
+    ) as agni_w:
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.wrapper'):
+            # Must not raise (the return itself is the primary contract).
+            result = atmos_wrapper.write_atmosphere_snapshot(
+                atmos_o, config, {'output': '/tmp/x'}, {'Time': 100.0}
+            )
+    # The writer was attempted (so the failure was genuinely swallowed, not
+    # dodged by an earlier guard), the call returned normally, and the failure
+    # was surfaced as a warning.
+    agni_w.assert_called_once()
+    assert result is None
+    assert any('Could not write final atmosphere' in rec.message for rec in caplog.records)

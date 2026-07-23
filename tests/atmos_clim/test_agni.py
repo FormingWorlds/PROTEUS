@@ -14,12 +14,17 @@ See also:
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import proteus.atmos_clim.agni as agni_mod
-from proteus.atmos_clim.agni import _determine_aerosols, _determine_condensates, init_agni_atmos
+from proteus.atmos_clim.agni import (
+    _determine_aerosols,
+    _determine_condensates,
+    init_agni_atmos,
+    write_atmos_ncdf,
+)
 from proteus.utils.constants import noble_gases
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -1387,3 +1392,32 @@ def test_determine_condensates_single_gas_returns_empty():
     # Adjacent-valid: two gases (one dry, one condensable) works
     result2 = agni_mod._determine_condensates(['H2O', 'N2'])
     assert result2 == ['H2O']
+
+
+# ---------------------------------------------------------------------------
+# write_atmos_ncdf: AGNI NetCDF snapshot writer
+# ---------------------------------------------------------------------------
+
+
+def test_write_atmos_ncdf_uses_rounded_time_and_data_dir(monkeypatch):
+    """The AGNI writer serialises the struct to ``<output>/data/<%.0f>_atm.nc``
+    via ``jl.AGNI.save.write_ncdf``.
+
+    Discrimination: time=1000.6 rounds to 1001 under AGNI's ``%.0f``
+    convention (not 1000 as an ``int()`` truncation would give), so the pinned
+    path distinguishes the rounding convention. The struct is passed through
+    unchanged as the first argument.
+    """
+    fake_write = MagicMock()
+    fake_jl = SimpleNamespace(AGNI=SimpleNamespace(save=SimpleNamespace(write_ncdf=fake_write)))
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+
+    atmos_sentinel = object()
+    write_atmos_ncdf(atmos_sentinel, {'output': '/tmp/run'}, 1000.6)
+
+    fake_write.assert_called_once()
+    called_atmos, called_path = fake_write.call_args.args
+    assert called_atmos is atmos_sentinel
+    assert called_path == '/tmp/run/data/1001_atm.nc'
+    # A regression to int() truncation would have produced 1000_atm.nc.
+    assert '1000_atm.nc' not in called_path

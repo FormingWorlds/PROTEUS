@@ -48,6 +48,7 @@ from proteus.atmos_clim.janus import (
     InitAtm,
     InitStellarSpectrum,
     UpdateStateAtm,
+    write_atmos_ncdf,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -369,3 +370,29 @@ def test_init_stellar_spectrum_calls_janus_utilities_in_order(
     # once; a regression that forgot the cleanup would leave the
     # staged file behind.
     mock_remove.assert_called_once_with('/tmp/runXYZ/socrates_star.txt')
+
+
+# ---------------------------------------------------------------------------
+# write_atmos_ncdf: JANUS NetCDF snapshot writer
+# ---------------------------------------------------------------------------
+
+
+def test_write_atmos_ncdf_uses_rounded_time_convention():
+    """The JANUS writer builds ``<output>/data/<%.0f>_atm.nc`` and calls
+    ``atm.write_ncdf`` exactly once.
+
+    The filename uses ``%.0f`` rounding, matching the AGNI writer and the read
+    side in ``read_atmosphere_data`` so a snapshot written by either backend is
+    found by the same name. Discrimination: time=1000.7 rounds to 1001 (not
+    1000 as an ``int()`` truncation would give), pinning the convention.
+    """
+    atm = MagicMock()
+    dirs = {'output': '/tmp/run'}
+
+    write_atmos_ncdf(atm, dirs, 1000.7)
+
+    atm.write_ncdf.assert_called_once_with('/tmp/run/data/1001_atm.nc')
+    # A regression to int() truncation would have produced 1000_atm.nc.
+    assert '1000_atm.nc' not in str(atm.write_ncdf.call_args)
+    # Discrimination on the directory: the file lands under data/, not output/.
+    assert atm.write_ncdf.call_args.args[0].endswith('/data/1001_atm.nc')

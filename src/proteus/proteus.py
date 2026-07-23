@@ -20,6 +20,7 @@ from proteus.utils.helper import (
     PrintHalfSeparator,
     PrintSeparator,
     UpdateStatusfile,
+    is_write_snapshot,
     multiple,
 )
 from proteus.utils.logs import (
@@ -728,17 +729,17 @@ class Proteus:
         UpdateStatusfile(self.directories, 1)
         while not self.finished_both:
             # Determine whether this iteration is a data-write snapshot.
-            # Two conditions must both be satisfied:
-            #   1. iteration count matches write_mod (existing behaviour)
-            #   2. enough simulation time has elapsed since the last write
-            #      (relative guard: min interval = dt_write_rel * Time)
-            iter_ok = multiple(self.loops['total'], self.config.params.out.write_mod)
-            dt_write_rel = self.config.params.out.dt_write_rel
-            cur_time = self.hf_row.get('Time', 0.0)
-            time_ok = dt_write_rel <= 0 or (
-                cur_time - self.last_write_time >= dt_write_rel * max(cur_time, 1.0)
+            # Conditions that are individually sufficient:
+            #   1. iteration count matches write_mod, or
+            #   2. time elapsed since the last write (>dt_write_rel * Time)
+            #   3. the final iteration is always written.
+            is_snapshot = is_write_snapshot(
+                self.loops['total'],
+                self.config.params.out.write_mod,
+                self.config.params.out.dt_write_rel,
+                self.hf_row.get('Time', 0.0),
+                self.last_write_time,
             )
-            is_snapshot = iter_ok and time_ok
             # New rows
             if self.loops['total'] > 0:
                 # Create new row to hold the updated variables. This will be
@@ -1232,6 +1233,12 @@ class Proteus:
                 T_surf_coupled=self.hf_row.get('T_surf'),
             )
 
+        # Ensure the final atmosphere state is on disk. write_mod / dt_write_rel
+        # may have suppressed the atmosphere write on the last iteration.
+        from proteus.atmos_clim.wrapper import write_atmosphere_snapshot
+
+        write_atmosphere_snapshot(self.atmos_o, self.config, self.directories, self.hf_row)
+
         # Run offline chemistry
         if self.config.atmos_chem.when == 'offline':
             log.info(' ')
@@ -1330,6 +1337,12 @@ class Proteus:
         from proteus.atmos_chem.wrapper import run_chemistry
 
         result = run_chemistry(self.directories, self.config, hf_row)
+
+        # Refresh the chemistry plot
+        if result is not None:
+            from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere_entry
+
+            plot_chem_atmosphere_entry(self)
 
         # return the dataframe
         return result

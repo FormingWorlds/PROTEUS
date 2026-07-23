@@ -57,6 +57,7 @@ from proteus.utils.coupler import (
     print_citation,
     print_module_configuration,
     remove_excess_files,
+    select_profile_plot_times,
     select_resumable_snapshot,
     set_directories,
     variable_is_logarithmic,
@@ -2839,3 +2840,51 @@ def test_select_resumable_snapshot_rejects_cross_row_atm_collision(tmp_path):
     # cannot load it against the 30.2-trimmed helpfile.
     assert not (data / '31.json.incomplete').exists()
     assert not (data / '31.json').exists()
+
+
+# =============================================================================
+# Test: select_profile_plot_times() - atmosphere/interior profile-time selection
+# =============================================================================
+
+
+def test_select_profile_plot_times_boundary_uses_atmosphere_times():
+    """When the interior writes no snapshots (dummy/boundary), the atmosphere
+    NetCDF times are used directly rather than intersected away.
+
+    Regression guard: the previous logic special-cased only 'dummy', so a
+    'boundary' interior produced an empty interior time list and the
+    intersection wiped out every atmosphere time (empty plot). Here the
+    interior list is empty but atmosphere times survive.
+    """
+    result = select_profile_plot_times([], [10, 30, 20], no_int_snapshots=True)
+    assert result == [10, 20, 30]
+    # A regression that intersected against the empty interior list would
+    # return [] here; assert non-empty and the full atmosphere set.
+    assert result != []
+    assert set(result) == {10, 20, 30}
+
+
+def test_select_profile_plot_times_intersects_for_snapshot_interiors():
+    """For spider/aragog, profiles are plotted only at times present in BOTH
+    the interior and atmosphere outputs (the intersection).
+
+    Discrimination: an atmosphere-only time (30) must be excluded AND a shared
+    time (10) must be included — a discriminating pair, not a single check. An
+    interior-only time (5) must also be excluded.
+    """
+    result = select_profile_plot_times([5, 10, 20], [10, 20, 30], no_int_snapshots=False)
+    assert result == [10, 20]
+    assert 30 not in result  # atmosphere-only time excluded
+    assert 5 not in result  # interior-only time excluded
+    assert 10 in result  # shared time included
+
+
+def test_select_profile_plot_times_empty_atmosphere_returns_empty():
+    """With no atmosphere NetCDF times, no profiles can be plotted regardless
+    of interior module.
+
+    Edge case: empty atmosphere list under both branches yields an empty
+    result (and never raises).
+    """
+    assert select_profile_plot_times([1, 2, 3], [], no_int_snapshots=False) == []
+    assert select_profile_plot_times([], [], no_int_snapshots=True) == []

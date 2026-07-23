@@ -1,6 +1,7 @@
 # Common atmosphere climate model functions
 from __future__ import annotations
 
+import glob
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -228,6 +229,15 @@ def read_atmosphere_data(output_dir: str, times: list, extra_keys=[]):
         return
 
     return profiles
+
+
+def find_latest_atmosphere_time(output_dir: str) -> float | None:
+    """Return the largest available ``*_atm.nc`` snapshot time on disk."""
+    ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
+    times = [int(os.path.basename(f).split('_atm')[0]) for f in ncs]
+    if not times:
+        return None
+    return float(max(times))
 
 
 def get_spfile_name_and_bands(config: Config):

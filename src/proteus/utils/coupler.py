@@ -1378,6 +1378,30 @@ def variable_is_logarithmic(varname: str) -> bool:
     return out
 
 
+def select_profile_plot_times(
+    interior_times: list, nc_times: list, no_int_snapshots: bool
+) -> list:
+    """Select the times at which to plot atmosphere/interior profiles.
+
+    Parameters
+    ----------
+    interior_times : list
+        Interior snapshot times (empty for dummy/boundary interiors).
+    nc_times : list
+        Atmosphere ``*_atm.nc`` snapshot times.
+    no_int_snapshots : bool
+        True when the interior module writes no per-time snapshot.
+
+    Returns
+    -------
+    list
+        Sorted list of times at which profiles can be plotted.
+    """
+    if no_int_snapshots:
+        return sorted(nc_times)
+    return sorted(set(interior_times) & set(nc_times))
+
+
 def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
 
@@ -1430,7 +1454,9 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
-    dummy_int = config.interior_energetics.module == 'dummy'
+    # The dummy and boundary interiors write no per-time interior NetCDF
+    # snapshot, so profile plots cannot intersect against interior times.
+    no_int_snapshots = config.interior_energetics.module in ('dummy', 'boundary')
     agni = config.atmos_clim.module == 'agni'
 
     spider = config.interior_energetics.module == 'spider'
@@ -1463,12 +1489,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     if not dummy_atm:
         ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
         nc_times = [int(f.split('/')[-1].split('_atm')[0]) for f in ncs]
-
-        # Check intersection of atmosphere and interior data
-        if dummy_int:
-            output_times = nc_times
-        else:
-            output_times = sorted(list(set(output_times) & set(nc_times)))
+        output_times = select_profile_plot_times(output_times, nc_times, no_int_snapshots)
 
     # Samples for plotting profiles
     if len(output_times) > 0:
@@ -1479,7 +1500,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
         log.debug('Snapshots to plot:' + str(plot_times))
 
         # Interior profiles
-        if not dummy_int:
+        if not no_int_snapshots:
             int_data = read_interior_data(
                 output_dir, config.interior_energetics.module, plot_times
             )
@@ -1507,7 +1528,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
             )
 
             # Atmosphere and interior, stacked radially
-            if not dummy_int:
+            if not no_int_snapshots:
                 plot_structure(
                     hf_all,
                     output_dir,
@@ -1568,7 +1589,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
                 output_dir, modern_age=modern_age, plot_format=config.params.out.plot_fmt
             )
 
-            if plot_times and not dummy_int:
+            if plot_times and not no_int_snapshots:
                 plot_interior_cmesh(
                     output_dir,
                     plot_times,

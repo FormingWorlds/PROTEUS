@@ -16,7 +16,7 @@ time-stepping and convergence work in practice.
 | `plot_fmt` | str | `"png"` | Plot format: `png` or `pdf` |
 | `plot_mod` | int or none | `5` | Plot frequency: `0` = at end only, `n` = every n iterations, `none` = never |
 | `write_mod` | int | `1` | Helpfile write frequency: `0` = at end only, `n` = every n iterations |
-| `dt_write_rel` | float | `0.0` | Minimum write interval as fraction of elapsed simulation time. Prevents excessive I/O during early rapid evolution. `0` = disabled. |
+| `dt_write_rel` | float | `0.0` | Additional time-based write trigger, as a fraction of elapsed simulation time. A write also occurs whenever `dt_write_rel * Time` of simulation time has elapsed since the last write, independently of `write_mod` (the two triggers are combined with a logical OR). `0` = disabled. |
 | `archive_mod` | int or none | `none` | Archive frequency: `0` = at end, `n` = every n iterations, `none` = never |
 | `remove_sf` | bool | `false` | Remove SOCRATES spectral files after simulation completes |
 

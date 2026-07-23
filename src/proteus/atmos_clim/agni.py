@@ -1029,6 +1029,13 @@ def _solve_transparent(atmos, config: Config):
     return atmos
 
 
+def write_atmos_ncdf(atmos, dirs: dict, time: float) -> None:
+    """Write the AGNI atmosphere struct to a timestamped NetCDF file."""
+    log.debug('AGNI write to NetCDF file')
+    ncdf_path = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % time)
+    jl.AGNI.save.write_ncdf(atmos, ncdf_path)
+
+
 def run_agni(
     atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict, write_data: bool = True
 ):
@@ -1103,9 +1110,7 @@ def run_agni(
 
     # Write output data
     if write_data:
-        log.debug('AGNI write to NetCDF file')
-        ncdf_path = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % hf_row['Time'])
-        jl.AGNI.save.write_ncdf(atmos, ncdf_path)
+        write_atmos_ncdf(atmos, dirs, hf_row['Time'])
 
     # Make plots
     if multiple(loops_total, config.params.out.plot_mod):

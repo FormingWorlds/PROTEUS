@@ -489,11 +489,15 @@ def test_offline_chemistry_dispatches_to_run_chemistry_and_returns_result(tmp_pa
         patch.object(p, 'extract_archives'),
         patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=df),
         patch('proteus.atmos_chem.wrapper.run_chemistry', return_value=expected) as mock_chem,
+        patch('proteus.plot.cpl_chem_atmosphere.plot_chem_atmosphere_entry') as mock_plot,
     ):
         result = p.offline_chemistry()
     mock_chem.assert_called_once()
     # The result must be the run_chemistry return, unchanged.
     assert result is expected
+    # A successful (non-None) result must refresh the chemistry plot once,
+    # with the Proteus handler passed through.
+    mock_plot.assert_called_once_with(p)
     # Discrimination: verify the last-row dict was passed (not the
     # full DataFrame). A regression that passed df would land args[2]
     # as a pandas object, not a dict.
@@ -504,6 +508,27 @@ def test_offline_chemistry_dispatches_to_run_chemistry_and_returns_result(tmp_pa
     # both so the test discriminates the correct last-row pick.
     assert args[2]['Phi_global'] != pytest.approx(1.0)
     assert args[2]['Phi_global'] != pytest.approx(0.85)
+
+
+def test_offline_chemistry_skips_plot_when_chemistry_returns_none(tmp_path):
+    """A failed/skipped chemistry run (run_chemistry returns None) must NOT
+    trigger the chemistry plot refresh.
+
+    Discriminating counterpart to the success test: the same code path with a
+    None return must leave the plot entry uncalled and propagate None.
+    """
+    p = _make_proteus_instance(tmp_path)
+    df = _helpfile_df_multi_row()
+    with (
+        patch.object(p, 'extract_archives'),
+        patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=df),
+        patch('proteus.atmos_chem.wrapper.run_chemistry', return_value=None) as mock_chem,
+        patch('proteus.plot.cpl_chem_atmosphere.plot_chem_atmosphere_entry') as mock_plot,
+    ):
+        result = p.offline_chemistry()
+    mock_chem.assert_called_once()
+    assert result is None
+    mock_plot.assert_not_called()
 
 
 def test_offline_chemistry_raises_on_empty_helpfile(tmp_path):
