@@ -164,3 +164,145 @@ def test_impacts_before_the_run_starts_are_reported_and_excluded(tmp_path, caplo
     # which is the documented remedy.
     shifted = _handler(module='dummy', timeline_path=path, time_offset=3.0e5, time_start=2.0e5)
     assert len(init_accretion(shifted)) == 2
+
+
+def _impact_event(**overrides):
+    """Build one physically self-consistent impact record for the handler."""
+    from proteus.accretion.common import ImpactEvent
+
+    base = dict(
+        time=1.0e5,
+        M_target_before=6.0e24,
+        M_impactor=6.4e23,
+        M_merged_after=6.64e24,
+        v_impact=1.30e4,
+        v_esc=1.15e4,
+        impact_parameter=0.7,
+        R_target_before=6.371e6,
+        R_impactor=3.39e6,
+        rho_target=5510.0,
+        rho_impactor=3930.0,
+        a_before=1.496e11,
+        a_after=1.4e11,
+        e_after=0.05,
+        id_target=1,
+        id_impactor=4,
+    )
+    base.update(overrides)
+    return ImpactEvent(**base)
+
+
+def _impact_handler(mass_tot=1.0, semimajoraxis=0.5, eccentricity=0.1):
+    """Build the minimal handler shape apply_impact reads and mutates."""
+    from proteus.utils.constants import AU
+
+    return SimpleNamespace(
+        config=SimpleNamespace(
+            planet=SimpleNamespace(mass_tot=mass_tot),
+            orbit=SimpleNamespace(semimajoraxis=semimajoraxis, eccentricity=eccentricity),
+        ),
+        hf_row={'semimajorax': semimajoraxis * AU, 'eccentricity': eccentricity},
+        hf_all=None,
+        directories={'output': '/tmp/unused'},
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_impact_grows_the_planet_by_the_impactor_mass_and_re_solves(monkeypatch):
+    """An impact adds the impactor mass and rebuilds the interior structure.
+
+    The mass the planet gains is the impactor mass, the difference between
+    the merged and target masses, not the merged mass itself, which is an
+    order of magnitude larger here and is the plausible wrong reading. The
+    structure is re-solved once against the new total mass so the radius and
+    the core/mantle split follow it rather than staying frozen at the old
+    mass.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    calls = []
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure',
+        lambda *a, **k: calls.append(a),
+    )
+
+    handler = _impact_handler(mass_tot=1.0)
+    # Impactor is 0.5 Earth masses; merged mass is 6.5 (ten times larger).
+    event = _impact_event(
+        M_target_before=6.0 * M_earth,
+        M_impactor=0.5 * M_earth,
+        M_merged_after=6.5 * M_earth,
+    )
+    apply_impact(handler, event)
+
+    assert handler.config.planet.mass_tot == pytest.approx(1.5, rel=1e-12)
+    # Discrimination: adding the merged mass instead would land near 7.5,
+    # five Earth masses away, far outside any tolerance.
+    assert abs(handler.config.planet.mass_tot - (1.0 + 6.5)) > 1.0
+
+    # The structure was re-solved exactly once, against the grown planet.
+    assert len(calls) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_impact_moves_the_orbit_in_both_the_config_and_the_row(monkeypatch):
+    """The orbit change is applied as a jump to both the config and the row.
+
+    The semi-major axis moves by the impact's proportional change and the
+    eccentricity takes its post-impact value. Both the configuration, which
+    pins the orbit when tides are off, and the running row, which the tidal
+    evolution carries forward when tides are on, must be written, or the
+    jump would be lost under one of the two orbit modes.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import AU
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    handler = _impact_handler(semimajoraxis=0.5, eccentricity=0.1)
+    # a_after / a_before = 1.4e11 / 1.4e11 scaled: choose a clean 1.2 ratio.
+    event = _impact_event(a_before=1.0e11, a_after=1.2e11, e_after=0.03)
+    ratio = 1.2
+
+    apply_impact(handler, event)
+
+    assert handler.config.orbit.semimajoraxis == pytest.approx(0.5 * ratio, rel=1e-12)
+    assert handler.hf_row['semimajorax'] == pytest.approx(0.5 * AU * ratio, rel=1e-12)
+    # Config (AU) and row (metres) describe the same orbit after the jump.
+    assert handler.hf_row['semimajorax'] / AU == pytest.approx(
+        handler.config.orbit.semimajoraxis, rel=1e-12
+    )
+    # Eccentricity takes the post-impact value in both places.
+    assert handler.config.orbit.eccentricity == pytest.approx(0.03, rel=1e-12)
+    assert handler.hf_row['eccentricity'] == pytest.approx(0.03, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_grazing_head_on_impact_leaves_the_orbit_circular(monkeypatch):
+    """A zero post-impact eccentricity is a valid boundary and is applied.
+
+    The eccentricity is written directly, so the circular limit must come
+    through as exactly zero rather than being clamped away, and the
+    semi-major axis still moves by its ratio independently of it.
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    handler = _impact_handler(semimajoraxis=1.0, eccentricity=0.2)
+    event = _impact_event(a_before=1.0e11, a_after=1.0e11, e_after=0.0)
+    apply_impact(handler, event)
+
+    assert handler.config.orbit.eccentricity == 0.0
+    assert handler.hf_row['eccentricity'] == 0.0
+    # Equal before/after semi-major axis is a unit ratio, so the orbit size
+    # is unchanged while the eccentricity is reset.
+    assert handler.config.orbit.semimajoraxis == pytest.approx(1.0, rel=1e-12)

@@ -841,6 +841,21 @@ class Proteus:
             self.hf_row['Time'] += self.interior_o.dt  # in years
             self.hf_row['age_star'] += self.interior_o.dt  # in years
 
+            # Apply any giant impacts falling in this step. The time-stepper
+            # lands the step on the next impact time, and the window is
+            # half-open, so each impact fires exactly once no matter how the
+            # step straddles it. Applied after the time advance, so this step's
+            # orbit and structure use the grown planet and the next interior
+            # solve evolves it. Empty when no accretion module is selected.
+            if self.impact_events:
+                from proteus.accretion.common import due_events
+                from proteus.accretion.wrapper import apply_impact
+
+                time_now = self.hf_row['Time']
+                time_previous = time_now - self.interior_o.dt
+                for event in due_events(self.impact_events, time_previous, time_now):
+                    apply_impact(self, event)
+
             # One-time structure baseline in the interior-fed callable
             # representation (dynamic and static runs share an identical start).
             # Static runs perform no further structure solves; dynamic runs
