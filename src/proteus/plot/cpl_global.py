@@ -80,6 +80,13 @@ def plot_global(
         vol_mol_int[vol] = vol_mol_tot[vol] - vol_mol_atm[vol]
 
         vol_vmr[vol] = this_bar / hf['P_surf']  # volume mixing ratio
+        Psurf = np.array(hf['P_surf'])
+
+        vol_vmr[vol] = np.zeros_like(this_bar, dtype=float)
+        mask = (
+            Psurf > 1e-30
+        )  # only divide by Psurf if it is larger than 1e-30 -> avoids by zero division
+        vol_vmr[vol][mask] = this_bar[mask] / Psurf[mask]
 
         # Volatile partitioning into the interior
         # Requires special treatment for when moles=0, which occurs when atmosphere escapes.
