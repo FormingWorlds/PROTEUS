@@ -75,8 +75,7 @@ vap_list = [
     'FeO2H2',
     'CaO',
     'NaOH',
-    'Ca'
-    'KOH',
+    'CaKOH',
 ]
 
 prt_gases = [

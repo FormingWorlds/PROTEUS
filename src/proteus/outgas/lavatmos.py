@@ -562,7 +562,9 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     for e in element_list:
         log.debug('element frac:  %s,  %s', e, element_fracs[e])
         if e in input_eles:
-            log.debug('volatile species, no need to update from lavatmos')
+            hf_row[e + '_kg_atm'] = (
+                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+            )
             if e == 'O':
                 Omass_after_outgas = (
                     element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
