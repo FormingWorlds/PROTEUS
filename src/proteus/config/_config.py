@@ -123,6 +123,45 @@ def check_module_dependencies(instance, attribute, value):
                 raise ImportError(f'{msg}\n  Original error: {e}') from e
 
 
+def check_accretion_interior_compatibility(instance, attribute, value):
+    """Reject accretion runs on an interior that cannot re-melt after an impact.
+
+    A giant impact fully re-melts the mantle, and the SPIDER interior keeps its
+    state in a restart file written by the external binary with no validated
+    re-melt path, so the combination is refused here at configuration load
+    rather than at the first impact, which can be many hours into a run.
+    """
+    if (
+        instance.accretion.module is not None
+        and instance.interior_energetics.module == 'spider'
+    ):
+        raise ValueError(
+            "accretion.module = '"
+            + str(instance.accretion.module)
+            + "' cannot run with interior_energetics.module = 'spider': a giant "
+            'impact re-melts the mantle and SPIDER has no supported re-melt path. '
+            "Use interior_energetics.module = 'aragog' (or 'dummy' for a test)."
+        )
+
+    # The Aragog re-melt re-applies the run's entropy initial condition. Only
+    # the liquidus_super temperature mode guarantees that condition is fully
+    # molten; with the others the re-melt is only as molten as the user's
+    # temperature or entropy value, so warn rather than silently under-melt.
+    if (
+        instance.accretion.module is not None
+        and instance.interior_energetics.module == 'aragog'
+        and instance.planet.temperature_mode != 'liquidus_super'
+    ):
+        log.warning(
+            "accretion with interior_energetics.module = 'aragog' and "
+            "temperature_mode = '%s': a giant-impact re-melt re-applies this "
+            'initial condition, which is only guaranteed fully molten for '
+            "temperature_mode = 'liquidus_super'. Check the initial melt fraction "
+            'is what you intend.',
+            instance.planet.temperature_mode,
+        )
+
+
 def boreas_requires_atmosphere(instance, attribute, value):
     """BOREAS escape requires a radiative atmosphere (not dummy)."""
     if (instance.escape.module == 'boreas') and (instance.atmos_clim.module == 'dummy'):
@@ -354,7 +393,11 @@ class Config:
 
     config_version: str = field(
         default='3.0',
-        validator=(valid_config_version, check_module_dependencies),
+        validator=(
+            valid_config_version,
+            check_module_dependencies,
+            check_accretion_interior_compatibility,
+        ),
     )
 
     def write(self, out: str):
