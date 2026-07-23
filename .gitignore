@@ -3,7 +3,7 @@
 *.pyc
 
 prt/
-prt
+/prt
 .nfs*
 
 # Installer logs
@@ -49,7 +49,7 @@ agni
 Agni
 AGNI
 prt/
-platon
+/platon
 platon/
 PLATON/
 Platon
@@ -84,7 +84,7 @@ lovepy
 Lovepy
 LOVEPY
 LovePy
-prt
+/prt
 petitradtrans
 petitRADTRANS
 Love.jl/
@@ -303,13 +303,13 @@ tests/validation/
 src/proteus/_version.py
 
 #silicateoutgassing files
-lavatmos
-LAVATMOS
-LavAtmos
-ThermoEngineLite
-ThermoEngine
-thermoenginelite
-thermoengine
+/lavatmos
+/LAVATMOS
+/LavAtmos
+/ThermoEngineLite
+/ThermoEngine
+/thermoenginelite
+/thermoengine
 
 #julia installation
 .julia
