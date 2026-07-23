@@ -107,6 +107,55 @@ def setup_logger(logpath: str = 'new.log', level: str = 'INFO', logterm: bool = 
     return custom_logger
 
 
+def bootstrap_logger(level: str = 'INFO'):
+    """Attach a console-only handler to the top-level 'fwl' logger if it has none.
+
+    ``setup_logger`` can only run once the output directory is known (it opens a
+    logfile there), but the 'fwl' logger is already used before that point --
+    e.g. by the directory-setting functions called from ``Proteus.__init__``,
+    and by CLI commands such as ``grid-summarise`` / ``grid-pack`` that never
+    call ``setup_logger`` at all. Without a handler those records fall through to
+    ``logging.lastResort``, which only emits WARNING and above, so INFO/DEBUG
+    messages are silently dropped (see issue #708).
+
+    This installs a lightweight stdout handler so those early messages reach the
+    terminal. It is idempotent and non-destructive: if the logger already has a
+    handler (e.g. from a previous ``setup_logger`` call) it does nothing, so it
+    never clobbers a fully configured file-backed logger. When a command later
+    calls ``setup_logger``, that function clears handlers and re-adds its own
+    terminal + file handlers, so there is no duplicate output.
+
+    Parameters
+    ----------
+    level : str
+        Log level for the bootstrap handler. Defaults to 'INFO', matching the
+        level at which the pre-config directory messages are emitted.
+
+    Returns
+    -------
+    logging.Logger
+        The 'fwl' logger.
+    """
+    custom_logger = logging.getLogger('fwl')
+
+    # Do not touch an already-configured logger.
+    if custom_logger.handlers:
+        return custom_logger
+
+    level = str(level).strip().upper()
+    if level not in ['INFO', 'DEBUG', 'ERROR', 'WARNING']:
+        raise ValueError(f'Invalid log level: {level}')
+    level_code = logging.getLevelNamesMapping()[level]
+
+    sh = logging.StreamHandler(sys.stdout)
+    sh.setFormatter(CustomFormatter())
+    sh.setLevel(level_code)
+    custom_logger.addHandler(sh)
+    custom_logger.setLevel(level_code)
+
+    return custom_logger
+
+
 def GetCurrentLogfileIndex(output_dir: str):
     """
     Get the index of the current logfile, returning -1 if none exists
