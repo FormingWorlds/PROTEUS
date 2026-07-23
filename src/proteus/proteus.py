@@ -273,6 +273,7 @@ class Proteus:
         # Import things needed to run PROTEUS
         #    atmospheric chemistry
         #    giant-impact accretion
+        from proteus.accretion.common import next_event
         from proteus.accretion.wrapper import init_accretion
         from proteus.atmos_chem.wrapper import run_chemistry
 
@@ -774,6 +775,11 @@ class Proteus:
 
             ############### INTERIOR
             PrintHalfSeparator()
+
+            # Tell the time-stepper when the next giant impact is due, so
+            # it can shorten the step to land on it.
+            pending = next_event(self.impact_events, self.hf_row['Time'])
+            self.interior_o.t_next_impact = float('inf') if pending is None else pending.time
 
             # Evolve interior
             _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
