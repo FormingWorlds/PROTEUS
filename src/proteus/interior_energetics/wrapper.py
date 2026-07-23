@@ -13,7 +13,7 @@ import scipy.optimize as optimise
 
 from proteus.interior_energetics.common import Interior_t
 from proteus.outgas.wrapper import calc_target_elemental_inventories
-from proteus.utils.constants import M_earth, R_earth, const_G, element_list
+from proteus.utils.constants import M_earth, R_earth, const_G, noble_gases, vol_element_list
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -230,7 +230,7 @@ def update_planet_mass(hf_row: dict):
 
     # Update total element mass.
     hf_row['M_ele'] = 0.0
-    for e in element_list:
+    for e in vol_element_list + noble_gases:
         hf_row['M_ele'] += float(hf_row.get(e + '_kg_total', 0.0))
 
     # Add to total planet mass
