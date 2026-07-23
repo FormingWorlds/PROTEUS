@@ -34,7 +34,7 @@ config_version = "3.0"
     [params.out]
         # Output folder inside PROTEUS/output/. Set "auto" for a unique timestamped
         # name (run_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
-        path                  = "vapourise"
+        path                  = "vapourise_test2"
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 1            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
@@ -106,7 +106,7 @@ config_version = "3.0"
 
     # Initial temperature profile
     temperature_mode          = "liquidus_super"  # default; other modes: isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
-    tsurf_init                = 3200         # surface temperature [K] (isothermal, linear, adiabatic)
+    tsurf_init                = 4000         # surface temperature [K] (isothermal, linear, adiabatic)
     tcmb_init                 = 6000         # CMB temperature [K] (adiabatic_from_cmb)
     tcenter_init              = 6000         # center temperature [K] (linear only)
     delta_T_super             = 500.0        # superliquidus offset at CMB [K] (liquidus_super)
@@ -412,7 +412,7 @@ config_version = "3.0"
 [outgas]
     fO2_shift_IW    = 4        # atmosphere/interior boundary oxidation state [log10(ΔIW)]
 
-    vapourise = true
+    vapourise = false
 
     module = "calliope"         # Which outgassing module to use
 
@@ -498,7 +498,7 @@ config_version = "3.0"
         oceans                = true         # surface liquid water oceans
         latent_heat           = false        # latent heat from condensation/evaporation
         real_gas              = false        # real-gas EOS where available
-        chemistry             = "eq"       # atmospheric chemistry: none | eq (FastChem)
+        chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem)
         mlt_criterion         = "s"          # convection criterion: s (Schwarzschild) | l (Ledoux)
 
         # Surface properties

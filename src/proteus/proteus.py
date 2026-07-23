@@ -997,18 +997,6 @@ class Proteus:
 
                 check_ic_oxygen_budget(self.config, self.hf_row)
 
-                # Issue #677 IC consistency check. Fires once at the first
-                # outgas call (subsequent init_stage calls find the sentinel
-                # set to -1 and skip). Compares the user-supplied O_budget
-                # against CALLIOPE's equilibrium-derived O_kg_total; hard-
-                # fails on >50% divergence. Skipped when O_mode='ic_chemistry'
-                # or when planet.fO2_source != 'user_constant' (a derived
-                # fO2 makes the user O budget authoritative, so there is
-                # no divergence).
-                from proteus.outgas.wrapper import check_ic_oxygen_budget
-
-                check_ic_oxygen_budget(self.config, self.hf_row)
-
             # Add mass of total tracked element mass (M_ele) to total mass of mantle+core
             update_planet_mass(self.hf_row)
 
@@ -1235,22 +1223,6 @@ class Proteus:
         # Write conditions at the end of simulation
         log.info('Writing data')
         WriteHelpfileToCSV(self.directories['output'], self.hf_all)
-
-        # Ensure the final interior state is on disk so resume can find it.
-        # dt_write_rel may have suppressed the write on the last iteration.
-        if (
-            self.config.interior_energetics.module == 'aragog'
-            and self.interior_o.aragog_solver is not None
-        ):
-            from proteus.interior_energetics.aragog import AragogRunner
-
-            out = self.interior_o.aragog_solver.get_state()
-            AragogRunner._write_output_ncdf(
-                self.directories['output'],
-                self.hf_row['Time'],
-                out,
-                T_surf_coupled=self.hf_row.get('T_surf'),
-            )
 
         # Ensure the final interior state is on disk so resume can find it.
         # dt_write_rel may have suppressed the write on the last iteration.

@@ -139,7 +139,7 @@ prt_ignored_gases = {'e-', 'MMW', 'nabla_ad'}
 noble_gases = ['He', 'Ne', 'Ar', 'Kr', 'Xe']
 
 # Construct gas list from all three sources (with duplicates removed)
-gas_list = list(dict.fromkeys(vol_list + vap_list + noble_gases))
+gas_list = list(dict.fromkeys(vol_list +  noble_gases + vap_list))
 
 # Supported elements: volatiles, rock-forming elements, noble gases (above)
 vol_element_list = ['H', 'O', 'C', 'N', 'S']

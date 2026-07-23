@@ -415,9 +415,11 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
                 hf_row[key] = hf_row[f'{e2}_kg_atm'] / hf_row[f'{e1}_kg_atm']
 
     # print outgassed partial pressures (in order of descending abundance)
-    mask = [hf_row[s + '_vmr'] for s in gas_list if s not in vap_list]
-    for i in np.argsort(mask)[::-1]:
-        s = gas_list[i]
+    species = [s for s in gas_list if s not in vap_list]
+    vmrs = np.array([hf_row[s + '_vmr'] for s in species])
+
+    for i in np.argsort(vmrs)[::-1]:
+        s = species [i]
         _p = hf_row[s + '_bar']
         _x = hf_row[s + '_vmr']
         _s = '    %-6s     = %-9.2f bar (%.2e VMR)' % (s, _p, _x)
