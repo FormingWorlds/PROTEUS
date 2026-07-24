@@ -201,9 +201,16 @@ def _impact_event(**overrides):
     return ImpactEvent(**base)
 
 
-def _impact_accretion(atmloss_module=None, atmloss_frac=0.0, **ppmw):
-    """Accretion sub-config: impactor volatiles and atmosphere loss (default off)."""
+def _impact_accretion(atmloss_module=None, atmloss_frac=0.0, impactor_volatiles=None, **ppmw):
+    """Accretion sub-config: impactor volatiles and atmosphere loss (default off).
+
+    The content mode defaults to 'ppmw' when per-element budgets are given and
+    to 'dry' otherwise, so a test states only the physics it exercises.
+    """
+    if impactor_volatiles is None:
+        impactor_volatiles = 'ppmw' if any(v > 0.0 for v in ppmw.values()) else 'dry'
     return SimpleNamespace(
+        impactor_volatiles=impactor_volatiles,
         impactor_H_ppmw=ppmw.get('H', 0.0),
         impactor_C_ppmw=ppmw.get('C', 0.0),
         impactor_N_ppmw=ppmw.get('N', 0.0),
@@ -659,16 +666,291 @@ def test_impact_strips_oxygen_with_the_other_atmospheric_elements(monkeypatch):
     )
 
 
+def _history(rows):
+    """Build a minimal helpfile history DataFrame for the formation lookup."""
+    import pandas as pd
+
+    return pd.DataFrame(rows)
+
+
+def _converging_solve_structure():
+    """Mock of solve_structure faithful to the root-finder's convergence state.
+
+    The real solve moves R_int until the whole-planet mass matches the target:
+    at convergence ``M_planet = mass_tot * M_earth`` and the interior carries
+    what the volatile budgets do not, ``M_int = M_planet - M_ele``. The mock
+    reproduces exactly that end state (with the budgets it finds, mirroring
+    the config-driven recompute), so a test can check how apply_impact's mass
+    ledger and budget updates CLOSE into M_planet, which a no-op mock hides.
+    """
+    from proteus.utils.constants import M_earth, element_list
+
+    def _mock(dirs, config, hf_all, hf_row, outdir):
+        m_target = config.planet.mass_tot * M_earth
+        m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
+        hf_row['M_int'] = m_target - m_ele
+        hf_row['M_ele'] = m_ele
+        hf_row['M_planet'] = m_target
+
+    return _mock
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_impact_mass_closure_counts_each_volatile_channel_once(monkeypatch):
+    """The planet's mass closes to before + rock + delivered - stripped.
+
+    The interior anchor (mass_tot) and the volatile budgets (M_ele) are the
+    two halves of M_planet, so each impact channel must land in exactly one
+    of them: the impactor's rock grows the anchor, its delivered volatiles
+    and the target strip move the budgets. Booking a channel in both halves
+    double-counts it: growing the anchor by the full merger mass while also
+    crediting the delivered content would inflate M_planet by the delivery,
+    and subtracting the strip from the anchor while also debiting the
+    budgets would remove it twice.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure',
+        _converging_solve_structure(),
+    )
+
+    m_planet_0 = 6.0e24
+    handler = _impact_handler(
+        mass_tot=m_planet_0 / M_earth,
+        accretion=_impact_accretion(
+            impactor_volatiles='match_planet',
+            atmloss_module='constant',
+            atmloss_frac=0.5,
+        ),
+    )
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    handler.hf_all = _history([{'Time': 0.0, 'M_planet': m_planet_0, 'H_kg_total': 4.0e22}])
+    # Half the hydrogen is atmospheric: the mirror loses half the impactor's
+    # content and the constant strip removes half the target atmosphere.
+    _atm_state(handler.hf_row, H=(2.0e22, 4.0e22))
+    handler.hf_row['M_planet'] = m_planet_0
+
+    m_imp = 0.5 * M_earth
+    event = _impact_event(
+        M_target_before=m_planet_0,
+        M_impactor=m_imp,
+        M_merged_after=m_planet_0 + m_imp,
+    )
+    apply_impact(handler, event)
+
+    content = (4.0e22 / m_planet_0) * m_imp
+    delivered = 0.5 * content
+    stripped = 0.5 * 2.0e22
+    rock = m_imp - content
+
+    # The final whole-planet mass counts each channel exactly once.
+    m_ele_after = sum(v for k, v in handler.hf_row.items() if k.endswith('_kg_total'))
+    m_planet_after = handler.hf_row['M_int'] + m_ele_after
+    expected = m_planet_0 + rock + delivered - stripped
+    assert m_planet_after == pytest.approx(expected, rel=1e-9)
+
+    # Discrimination: both double-counting failure modes sit far outside
+    # tolerance. Growing the anchor by the full merger mass over-counts the
+    # delivery (~1e21 kg); also subtracting the strip from the anchor
+    # under-counts it by another 1e22 kg.
+    assert abs(m_planet_after - (expected + delivered)) > 0.5 * delivered
+    assert abs(m_planet_after - (expected - stripped)) > 0.5 * stripped
+
+    # The anchor itself grew by the impactor's rock alone.
+    assert handler.config.planet.mass_tot == pytest.approx(
+        (m_planet_0 + rock) / M_earth, rel=1e-12
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_match_planet_impactor_carries_the_formation_composition(monkeypatch):
+    """A planet-matching impactor is scaled from the FORMATION state, not today.
+
+    Every embryo co-formed from the same disk material, so the impactor
+    carries the planet's t=0 fractional abundances scaled to its own mass.
+    The planet here has since lost 90% of its hydrogen to escape; using the
+    live abundance instead of the formation one would deliver ten times less.
+    The formation row is the settled end of the init epoch (the last row
+    before one year), not the raw first row.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    m_planet_0 = 6.0e24
+    x_h0 = 4.0e22 / m_planet_0  # formation H fraction
+    x_n0 = 2.0e21 / m_planet_0
+    handler = _impact_handler(accretion=_impact_accretion(impactor_volatiles='match_planet'))
+    # Init epoch: an unsettled first row, then the settled formation row the
+    # lookup must select; both precede the 1 yr discriminator.
+    handler.hf_all = _history(
+        [
+            {'Time': 0.0, 'M_planet': m_planet_0, 'H_kg_total': 1.0e21, 'N_kg_total': 1.0e19},
+            {'Time': 0.0, 'M_planet': m_planet_0, 'H_kg_total': 4.0e22, 'N_kg_total': 2.0e21},
+            {'Time': 5.0e2, 'M_planet': m_planet_0, 'H_kg_total': 4.0e21, 'N_kg_total': 2.0e21},
+        ]
+    )
+    # The planet TODAY holds only 10% of its formation hydrogen.
+    handler.hf_row['H_kg_total'] = 4.0e21
+    handler.hf_row['N_kg_total'] = 2.0e21
+    m_imp = 0.5 * M_earth
+    apply_impact(handler, _impact_event(M_impactor=m_imp))
+
+    # Delivery reflects the formation fractions (loss disabled: full content).
+    assert handler.hf_row['H_kg_total'] == pytest.approx(4.0e21 + x_h0 * m_imp, rel=1e-9)
+    assert handler.hf_row['N_kg_total'] == pytest.approx(2.0e21 + x_n0 * m_imp, rel=1e-9)
+    # Discrimination 1: the LIVE H abundance would deliver 10x less, a 1.8e22
+    # kg difference, far outside tolerance.
+    x_h_live = 4.0e21 / m_planet_0
+    assert abs(x_h0 * m_imp - x_h_live * m_imp) > 1.0e22
+    # Discrimination 2: the unsettled first init row would deliver 40x less H
+    # than the settled formation row the lookup must pick.
+    assert x_h0 * m_imp > 40 * (1.0e21 / m_planet_0) * m_imp * 0.99
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_match_planet_partition_mirror_and_fallback(monkeypatch):
+    """The impactor's loss split mirrors the planet, per element, with fallback.
+
+    With loss active, each element's atmospheric (lost) fraction is the
+    planet's own at impact time: hydrogen here is half atmospheric, so half
+    the impactor's hydrogen is lost; nitrogen is fully dissolved, so all its
+    nitrogen arrives. An element the planet no longer holds cannot be
+    mirrored per-element and falls back to the planet's bulk atmospheric
+    fraction instead.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    m_planet_0 = 6.0e24
+    handler = _impact_handler(
+        accretion=_impact_accretion(
+            impactor_volatiles='match_planet', atmloss_module='constant', atmloss_frac=0.0
+        )
+    )
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    handler.hf_all = _history(
+        [
+            {
+                'Time': 0.0,
+                'M_planet': m_planet_0,
+                'H_kg_total': 4.0e22,
+                'N_kg_total': 2.0e21,
+                'C_kg_total': 1.0e21,
+            }
+        ]
+    )
+    # Today: H half atmospheric, N fully dissolved, C fully escaped (no
+    # budget left to mirror). Bulk atm fraction = 2e21/6e21 = 1/3.
+    _atm_state(handler.hf_row, H=(2.0e21, 4.0e21), N=(0.0, 2.0e21))
+    handler.hf_row['C_kg_total'] = 0.0
+    m_imp = 0.5 * M_earth
+    apply_impact(handler, _impact_event(M_impactor=m_imp))
+
+    h_content = (4.0e22 / m_planet_0) * m_imp
+    n_content = (2.0e21 / m_planet_0) * m_imp
+    c_content = (1.0e21 / m_planet_0) * m_imp
+    # H: half lost (mirrors the planet's 50% atmospheric hydrogen).
+    assert handler.hf_row['H_kg_total'] == pytest.approx(4.0e21 + 0.5 * h_content, rel=1e-9)
+    # N: fully dissolved on the planet, so the impactor's N all arrives.
+    assert handler.hf_row['N_kg_total'] == pytest.approx(2.0e21 + n_content, rel=1e-9)
+    # C: fallback to the bulk atm fraction (1/3 lost, 2/3 delivered).
+    assert handler.hf_row['C_kg_total'] == pytest.approx((2.0 / 3.0) * c_content, rel=1e-9)
+    # Discrimination: a fallback of "deliver everything" would land a full
+    # third of the C content higher, resolvable at these magnitudes.
+    assert abs(handler.hf_row['C_kg_total'] - c_content) > 0.3 * c_content
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_small_impactor_stripping_a_heavy_atmosphere_shrinks_the_planet(monkeypatch):
+    """The whole-planet mass falls when losses beat accretion.
+
+    A small dry impactor that blows off a much heavier atmosphere leaves the
+    planet lighter than before: the interior anchor still grows by the
+    accreted rock, but the stripped budgets pull the whole-planet mass below
+    its pre-impact value.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure',
+        _converging_solve_structure(),
+    )
+
+    m_planet_0 = 6.0e24
+    handler = _impact_handler(
+        mass_tot=m_planet_0 / M_earth,
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=1.0),
+    )
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    # Atmosphere of 2e23 kg; the impactor adds only 6.4e21 kg of rock.
+    _atm_state(handler.hf_row, H=(2.0e23, 5.0e23))
+    event = _impact_event(
+        M_target_before=m_planet_0, M_impactor=6.4e21, M_merged_after=6.0064e24
+    )
+    apply_impact(handler, event)
+
+    # The dry impactor's whole mass is rock: the anchor grows by all of it.
+    assert handler.config.planet.mass_tot == pytest.approx(
+        (m_planet_0 + 6.4e21) / M_earth, rel=1e-9
+    )
+    # The whole-planet mass shrank: rock in, a far heavier atmosphere out.
+    m_ele_after = sum(v for k, v in handler.hf_row.items() if k.endswith('_kg_total'))
+    m_planet_after = handler.hf_row['M_int'] + m_ele_after
+    assert m_planet_after == pytest.approx(m_planet_0 + 6.4e21 - 2.0e23, rel=1e-9)
+    assert m_planet_after < m_planet_0  # the planet got lighter
+    assert handler.hf_row['H_kg_total'] == pytest.approx(3.0e23, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_match_planet_without_history_fails_loudly():
+    """Planet-matching impactors need a usable formation state to scale from.
+
+    With no helpfile history the impactor composition is undefined, and a
+    formation row without a positive planet mass cannot normalise the
+    fractions; both must refuse with an actionable error rather than deliver
+    zeros in silence.
+    """
+    from proteus.accretion.wrapper import _impactor_volatile_content
+
+    cfg = SimpleNamespace(
+        accretion=_impact_accretion(impactor_volatiles='match_planet'),
+        planet=SimpleNamespace(),
+    )
+    with pytest.raises(RuntimeError, match='formation composition'):
+        _impactor_volatile_content(cfg, None, _impact_event())
+
+    # A degenerate formation row (no positive planet mass) is refused too.
+    broken = _history([{'Time': 0.0, 'M_planet': 0.0, 'H_kg_total': 1.0e21}])
+    with pytest.raises(RuntimeError, match='M_planet'):
+        _impactor_volatile_content(cfg, broken, _impact_event())
+
+
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
-    """Each impact conserves, strips, and delivers against the state it finds.
+    """Each impact conserves and delivers against the state it finds.
 
     A Morrigan timeline routinely carries several impacts. The second impact
     must act on the post-first-impact budgets: conservation brackets its own
-    structure solve, the strip debits the atmosphere it finds, and the
-    delivery adds its own impactor's content, with the ledger accumulating
-    across both.
+    structure solve (proven against a rescaling solve both times) and the
+    delivery adds its own impactor's content on top of the first's. With
+    loss disabled the full content arrives and the planet grows by the full
+    merger mass each time.
     """
     from proteus.accretion.wrapper import apply_impact
     from proteus.utils.constants import M_earth
@@ -680,7 +962,7 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
 
     handler = _impact_handler(
         mass_tot=1.0,
-        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0),
+        accretion=_impact_accretion(H=1000.0),  # ppmw mode, loss off
     )
     handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
     _atm_state(handler.hf_row, H=(2.0e20, 6.0e20))
@@ -693,29 +975,37 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
 
     apply_impact(handler, event)
     delivered = m_imp * 1000.0 / 1.0e6
-    after_first = 6.0e20 - 0.5 * 2.0e20 + delivered
+    after_first = 6.0e20 + delivered
     assert handler.hf_row['H_kg_total'] == pytest.approx(after_first, rel=1e-9)
 
-    # Second impact: same event again; the atmosphere was not re-equilibrated
-    # between them (no outgas call here), so the strip debits the same
-    # atmospheric reservoir and the delivery adds the same amount.
+    # Second impact: the conservation bracket must defeat the rescaling solve
+    # again, starting from the grown budget, and the delivery adds once more.
     apply_impact(handler, event)
-    after_second = after_first - 0.5 * 2.0e20 + delivered
+    after_second = after_first + delivered
     assert handler.hf_row['H_kg_total'] == pytest.approx(after_second, rel=1e-9)
-    # The planet grew twice and the ledger accumulated both strips.
-    assert handler.config.planet.mass_tot == pytest.approx(1.4, rel=1e-12)
-    assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(2 * 1.0e20, rel=1e-9)
+    # Discrimination: an unbracketed second solve would carry a 1.2x rescale
+    # of after_first, over 1e20 kg above the correct composition.
+    assert abs(handler.hf_row['H_kg_total'] - (1.2 * after_first + delivered)) > 1.0e20
+    # The anchor grew by each impactor's rock (merger mass minus content);
+    # the delivered volatiles reach the planet through the budgets instead.
+    expected_mass = 1.0 + 2 * (event.mass_delta - delivered) / M_earth
+    assert handler.config.planet.mass_tot == pytest.approx(expected_mass, rel=1e-12)
+    assert float(handler.hf_row.get('esc_kg_cumulative', 0.0)) == pytest.approx(0.0, abs=1.0)
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeypatch):
-    """Stripping acts on the pre-impact atmosphere, then delivery adds on top.
+    """With loss active, only the impactor's dissolved part arrives.
 
-    The loss and the delivery are independent physical channels of one impact:
-    the shock strips what the planet had, the impactor's volatiles arrive
-    regardless. The final budget is (total - stripped) + delivered. A loss
-    module returning a fraction outside [0, 1] violates the partitioning
-    contract and must raise rather than be clamped in silence.
+    One impact carries three volatile channels: the shock strips part of the
+    target's atmosphere, the impactor's own atmospheric volatiles are lost
+    with the collision, and its dissolved volatiles are delivered. The
+    impactor's split mirrors the planet's atmosphere fraction per element at
+    impact time (here exactly one third), and the planet's mass grows by the
+    merger mass net of everything lost. A loss module returning a fraction
+    outside [0, 1] violates the partitioning contract and must raise rather
+    than be clamped in silence.
     """
     from proteus.accretion.wrapper import _impact_loss_fraction, apply_impact
     from proteus.utils.constants import M_earth
@@ -725,22 +1015,40 @@ def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeyp
     )
 
     handler = _impact_handler(
-        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0)
+        mass_tot=1.0,
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0),
     )
     handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    # One third of the planet's hydrogen sits in the atmosphere: the mirror
+    # then declares one third of the impactor's content atmospheric (lost)
+    # and delivers the remaining two thirds.
     _atm_state(handler.hf_row, H=(2.0e20, 6.0e20))
     m_impactor = 0.5 * M_earth
-    apply_impact(handler, _impact_event(M_impactor=m_impactor))
+    event = _impact_event(M_impactor=m_impactor)
+    mass_delta = event.mass_delta
+    apply_impact(handler, event)
 
-    delivered = m_impactor * 1000.0 / 1.0e6
-    expected = (6.0e20 - 0.5 * 2.0e20) + delivered
+    content = m_impactor * 1000.0 / 1.0e6
+    stripped = 0.5 * 2.0e20
+    delivered = content * 2.0 / 3.0
+    expected = 6.0e20 - stripped + delivered
     assert handler.hf_row['H_kg_total'] == pytest.approx(expected, rel=1e-9)
-    # Both channels are present at full size: the stripped 1e20 and the
-    # delivered 2.986e21 are each far larger than the tolerance, so a missing
-    # channel cannot pass. The tracked-element total reflects the composition.
     assert handler.hf_row['M_ele'] == pytest.approx(expected, rel=1e-9)
-    assert abs(handler.hf_row['H_kg_total'] - 6.0e20) > 1.0e20  # not "no strip, no delivery"
-    assert abs(handler.hf_row['H_kg_total'] - (6.0e20 + delivered)) > 5.0e19  # not "no strip"
+    # Discrimination: delivering the FULL content (no impactor-side loss)
+    # would land one third of the content higher, ~1e21 kg away.
+    assert abs(handler.hf_row['H_kg_total'] - (6.0e20 - stripped + content)) > 5.0e20
+    # Only the target's stripped mass enters the planet's escape ledger; the
+    # impactor's lost volatiles never belonged to the planet's inventory.
+    assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(stripped, rel=1e-9)
+
+    # The interior anchor grew by the impactor's rock alone; the delivered
+    # and stripped volatiles reach the whole-planet mass through the budgets.
+    expected_mass = 1.0 + (mass_delta - content) / M_earth
+    assert handler.config.planet.mass_tot == pytest.approx(expected_mass, rel=1e-12)
+    # Discrimination: growing the anchor by the full merger mass would put
+    # the delivered content into the interior AND the budgets, resolvable
+    # far above the tolerance.
+    assert abs(handler.config.planet.mass_tot - (1.0 + mass_delta / M_earth)) > 1e-5
 
     # A provider outside the contract is rejected loudly.
     bad = _impact_handler(
