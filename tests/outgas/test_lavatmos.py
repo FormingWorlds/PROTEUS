@@ -5,7 +5,7 @@ solve with the LavAtmos+FastChem rock-vapour re-equilibration into one
 atmospheric composition) and set_magmaproperties. External LavAtmos / FastChem
 calls are mocked at the narrowest scope: run_lavatmos is replaced by a fake that
 writes a minimal boa_chem.dat, read_in_element_fracs_normalized returns a
-controlled element-fraction dict, and vol_list / vap_list / element_list /
+controlled element-fraction dict, and vap_list / element_list /
 species_lib are replaced by small controlled sets.
 
 Invariants exercised:
