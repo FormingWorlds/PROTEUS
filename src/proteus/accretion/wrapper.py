@@ -4,13 +4,19 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from proteus.utils.constants import M_earth
+from proteus.utils.constants import M_earth, element_list, noble_gases
 
 if TYPE_CHECKING:
     from proteus.accretion.common import ImpactEvent
     from proteus.proteus import Proteus
 
 log = logging.getLogger('fwl.' + __name__)
+
+# Volatile and noble-gas elements whose whole-planet budgets are conserved
+# across an impact's mass growth. The rock-forming elements (Si, Mg, Fe, Na)
+# are not carried in the volatile budget; the planet's rock mass grows through
+# the structure solve (mass_tot and the equation of state), not here.
+_VOLATILE_ELEMENTS = ('H', 'O', 'C', 'N', 'S', *noble_gases)
 
 
 def init_accretion(handler: Proteus) -> list[ImpactEvent]:
@@ -106,12 +112,24 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         event.mass_delta / M_earth,
     )
 
+    # Snapshot the whole-planet volatile budgets before the structure re-solve.
+    # solve_structure recomputes the ppmw-mode budgets against the grown mass,
+    # which would let even a dry impactor inflate the volatile inventory as if
+    # the added rock carried the planet's volatile content. Volatiles are
+    # conserved across the mass growth and grow only through the explicit
+    # delivery below; the rock mass grows through the structure solve itself.
+    volatile_budgets = _snapshot_volatile_budgets(hf_row)
+
     # Grow the planet by the impactor mass and re-solve the structure. mass_tot
     # is in Earth masses; the event's mass delta is the impactor mass in kg.
     config.planet.mass_tot += event.mass_delta / M_earth
     solve_structure(
         handler.directories, config, handler.hf_all, hf_row, handler.directories['output']
     )
+
+    # Restore the conserved volatile budgets over the mass-scaled values the
+    # structure solve wrote, so the growth adds rock, not volatiles.
+    _restore_volatile_budgets(hf_row, volatile_budgets)
 
     # Re-melt the mantle to its molten initial condition, so the interior
     # evolves from a fully molten state after the impact.
@@ -148,6 +166,11 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # is left alone when nothing is delivered for it.
     _deliver_impactor_volatiles(config, hf_row, event.M_impactor)
 
+    # Refresh the tracked-element total from the conserved budgets plus any
+    # delivered volatiles. solve_structure set M_ele from the mass-scaled
+    # values it computed, which the restore above has overridden.
+    _refresh_tracked_element_total(hf_row)
+
 
 def _deliver_impactor_volatiles(config, hf_row: dict, m_impactor: float) -> None:
     """Add the impactor's volatile content to the whole-planet element budgets.
@@ -176,6 +199,62 @@ def _deliver_impactor_volatiles(config, hf_row: dict, m_impactor: float) -> None
             '    delivered impactor volatiles [kg]: %s',
             ', '.join(f'{e}={v:.3e}' for e, v in delivered.items()),
         )
+
+
+def _snapshot_volatile_budgets(hf_row: dict) -> dict:
+    """Capture the whole-planet volatile element budgets [kg].
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row.
+
+    Returns
+    -------
+    budgets : dict
+        Mapping of volatile element symbol to its ``<e>_kg_total`` value [kg],
+        for the elements conserved across an impact's mass growth. Only the
+        elements that already carry a budget in the row are captured, so the
+        restore conserves what existed rather than fabricating zero-valued keys
+        for volatiles the run does not track.
+    """
+    return {
+        e: float(hf_row[f'{e}_kg_total'])
+        for e in _VOLATILE_ELEMENTS
+        if f'{e}_kg_total' in hf_row
+    }
+
+
+def _restore_volatile_budgets(hf_row: dict, budgets: dict) -> None:
+    """Write conserved volatile element budgets back into the helpfile row.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row, mutated in place.
+    budgets : dict
+        Snapshot returned by :func:`_snapshot_volatile_budgets`.
+    """
+    for element, kg in budgets.items():
+        hf_row[f'{element}_kg_total'] = kg
+
+
+def _refresh_tracked_element_total(hf_row: dict) -> None:
+    """Recompute the total tracked-element mass ``M_ele`` [kg].
+
+    Mirrors the aggregation in
+    :func:`proteus.outgas.wrapper.calc_target_elemental_inventories`, summing
+    every tracked element's ``<e>_kg_total``. Called after the volatile budgets
+    are restored and the impactor delivery is added, so ``M_ele`` reflects the
+    conserved-plus-delivered inventory rather than the mass-scaled values the
+    structure solve produced.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row, whose ``M_ele`` is updated in place.
+    """
+    hf_row['M_ele'] = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
 
 
 def _drop_events_before_start(
