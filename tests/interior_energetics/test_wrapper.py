@@ -5759,7 +5759,16 @@ class _FakeAragogSolver:
     reads ``entropy_staggered`` after clearing ``_solution`` would raise here,
     exactly as it would on the real solver, so a return-to-``entropy_staggered``
     regression cannot pass this test.
+
+    ``_step_heat_content`` mirrors the real quadrature's contract: it takes the
+    start and end entropy profiles, is antisymmetric in their order (heating is
+    positive), and returns a float. The linear stand-in keeps the sign and
+    argument-order semantics that the booking test discriminates on.
     """
+
+    # J per (J/kg/K) of summed entropy rise; linear stand-in for the
+    # rho*T*V quadrature weight, sized so a profile swap is unmissable.
+    _HEAT_PER_ENTROPY = 2.0e27
 
     class _Solution:
         def __init__(self, profile):
@@ -5769,6 +5778,7 @@ class _FakeAragogSolver:
         self._S0 = np.asarray(cooled_profile, dtype=float).copy()
         self._solution = self._Solution(cooled_profile)  # a stale (cooled) trajectory
         self._dSdr_cmb_init = 1.234e-6  # stale CMB gradient from the cooled solve
+        self.heat_calls = []  # (S0, Sf) pairs _step_heat_content was asked for
 
     @property
     def entropy_staggered(self):
@@ -5778,6 +5788,14 @@ class _FakeAragogSolver:
     def set_initial_entropy(self, S):
         # The real method writes only _S0; it does NOT update entropy_staggered.
         self._S0 = np.asarray(S, dtype=float).copy()
+
+    def _step_heat_content(self, S0_stag, Sf_stag, n_quad: int = 16) -> float:
+        # Positive when Sf > S0 (heating), negative when the caller swaps the
+        # order: the same antisymmetry as the real trapezoid over rho*T dS.
+        S0 = np.asarray(S0_stag, dtype=float).ravel()
+        Sf = np.asarray(Sf_stag, dtype=float).ravel()
+        self.heat_calls.append((S0.copy(), Sf.copy()))
+        return float(np.sum(Sf - S0) * self._HEAT_PER_ENTROPY)
 
 
 @pytest.mark.unit
@@ -5808,11 +5826,12 @@ def test_aragog_remelt_carries_the_molten_profile_past_the_next_restore():
         io.aragog_solver.set_initial_entropy(molten)
         return molten
 
+    hf_row = {}
     with patch(
         'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
         side_effect=_fake_set_ic,
     ):
-        remelt_mantle({'output': '/tmp/out'}, config, hf_row={}, interior_o=interior_o)
+        remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
 
     # The restore carrier now holds the molten profile, not the cooled one.
     np.testing.assert_allclose(interior_o._last_entropy, molten)
@@ -5825,6 +5844,86 @@ def test_aragog_remelt_carries_the_molten_profile_past_the_next_restore():
     # here would raise (no _solution), which is the point of the faithful fake.
     solver.set_initial_entropy(interior_o._last_entropy)
     np.testing.assert_allclose(solver._S0, molten)
+    assert interior_o.impact_reset is True
+
+    # The injected heat is booked, positive for a heating re-melt.
+    assert hf_row['step_dE_impact_J'] > 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_aragog_remelt_books_the_injected_heat_over_the_cooled_to_molten_jump():
+    """The booked impact heat is the quadrature from the cooled to the molten state.
+
+    The energy the re-melt injects is the entropy-transported heat over the
+    jump from the pre-impact cooled profile to the molten initial condition,
+    evaluated by the solver's own quadrature. Booking must pass the profiles in
+    that order: the re-melt heats the mantle, so the booked energy is positive,
+    and a swapped argument order would negate it. The cooled start state must
+    be the profile held BEFORE the reset, not the molten one the reset writes
+    onto the restore carrier.
+    """
+    n = 6
+    cooled = np.full(n, 2400.0)
+    molten = np.full(n, 3900.0)
+    solver = _FakeAragogSolver(cooled_profile=cooled)
+    interior_o = SimpleNamespace(
+        aragog_solver=solver, _last_entropy=cooled.copy(), impact_reset=False
+    )
+    config = _remelt_config('aragog')
+    hf_row = {}
+
+    with patch(
+        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+        return_value=molten,
+    ):
+        remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
+
+    # Exactly one quadrature, from the cooled profile to the molten one.
+    assert len(solver.heat_calls) == 1
+    S0_seen, Sf_seen = solver.heat_calls[0]
+    np.testing.assert_allclose(S0_seen, cooled)
+    np.testing.assert_allclose(Sf_seen, molten)
+
+    # The booked value is the quadrature of the jump: n cells x 1500 J/kg/K
+    # rise at the fake's weight. Positive because the re-melt heats.
+    expected = n * (3900.0 - 2400.0) * _FakeAragogSolver._HEAT_PER_ENTROPY
+    assert hf_row['step_dE_impact_J'] == pytest.approx(expected, rel=1e-12)
+    # Discrimination: a swapped argument order (molten -> cooled) would book
+    # the negated value, 2x the expected magnitude away, far outside tolerance.
+    assert abs(hf_row['step_dE_impact_J'] - (-expected)) > expected
+
+
+@pytest.mark.unit
+def test_aragog_remelt_without_a_prior_profile_warns_and_books_nothing(caplog):
+    """With no pre-impact profile the injection is unquantifiable and says so.
+
+    When no completed solve has stored an entropy profile, there is no start
+    state to measure the jump from. The re-melt must still proceed, but the
+    booking is left at zero with a warning, rather than inventing a value or
+    failing the impact.
+    """
+    import logging
+
+    molten = np.full(6, 3900.0)
+    solver = _FakeAragogSolver(cooled_profile=np.full(6, 2400.0))
+    interior_o = SimpleNamespace(aragog_solver=solver, _last_entropy=None, impact_reset=False)
+    config = _remelt_config('aragog')
+    hf_row = {}
+
+    with patch(
+        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+        return_value=molten,
+    ):
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics'):
+            remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
+
+    # Nothing booked, no quadrature attempted, and the gap is announced.
+    assert hf_row['step_dE_impact_J'] == 0.0
+    assert len(solver.heat_calls) == 0
+    assert 'not booked' in '\n'.join(r.getMessage() for r in caplog.records)
+    # The re-melt itself still completed: the carrier holds the molten profile.
+    np.testing.assert_allclose(interior_o._last_entropy, molten)
     assert interior_o.impact_reset is True
 
 

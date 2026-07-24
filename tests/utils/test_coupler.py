@@ -1175,6 +1175,7 @@ def _aragog_row(
     step_dE_Q_tidal_J: float = 0.0,
     step_solver_residual_J: float = 0.0,
     step_dE_state_heat_J: float = 0.0,
+    step_dE_impact_J: float = 0.0,
     F_cmb: float = 0.0,
     R_int: float = 6.371e6,
     R_core: float = 3.481e6,
@@ -1198,6 +1199,7 @@ def _aragog_row(
     row['step_dE_Q_tidal_J'] = step_dE_Q_tidal_J
     row['step_solver_residual_J'] = step_solver_residual_J
     row['step_dE_state_heat_J'] = step_dE_state_heat_J
+    row['step_dE_impact_J'] = step_dE_impact_J
     row['F_cmb'] = F_cmb
     row['R_int'] = R_int
     row['R_core'] = R_core
@@ -1221,6 +1223,8 @@ def test_helpfile_keys_include_energy_conservation_columns():
         'step_solver_residual_J',
         # State-side primitive: the entropy-transported heat content change.
         'step_dE_state_heat_J',
+        # Giant-impact re-melt heat injection (enters both residual sides).
+        'step_dE_impact_J',
         # Cumulative columns derived from the primitives above.
         'E_state_heat_cons_J',
         'dE_predicted_cons_J',
@@ -1557,6 +1561,72 @@ def test_populate_energy_residual_predicted_uses_live_mass_heating():
     # Frozen-mass variant would have given +4e29; guard the gap.
     assert abs(row1['dE_predicted_cons_J'] - frozen_radio) > 1e29
     assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(live_radio)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_populate_energy_residual_is_invariant_across_a_giant_impact():
+    """A giant-impact re-melt is booked on both sides, leaving the residual closed.
+
+    The re-melt injects mantle-scale heat as an entropy jump between solver
+    calls, so no per-call state integral carries it. The booking enters the
+    impact heat on BOTH cumulatives: the state side gains the heat that was
+    actually added, the predicted side gains the impact as an energy source,
+    and the residual is unchanged across the impact. A one-sided booking would
+    shift the residual by the full injection, which dwarfs every physical
+    increment here, so closure is the discriminating signature.
+    """
+    E0 = 1.0e31
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    # Ordinary cooling step before the impact.
+    cool = -2.0e29
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_cons_J=E0 + cool,
+        step_dE_F_int_J=cool,
+        step_dE_state_heat_J=cool,
+    )
+    _populate_energy_residual(hf, row1)
+    hf = ExtendHelpfile(hf, row1)
+    residual_before = row1['E_residual_cons_J']
+
+    # Impact row: the solve itself cooled a little more, then the re-melt
+    # injected mantle-scale heat (two orders above the step increments).
+    dE_impact = +5.0e30
+    row2 = _aragog_row(
+        time_yr=20.0,
+        E_state_cons_J=E0 + 2 * cool + dE_impact,
+        step_dE_F_int_J=cool,
+        step_dE_state_heat_J=cool,
+        step_dE_impact_J=dE_impact,
+    )
+    _populate_energy_residual(hf, row2)
+
+    # Both cumulatives carry the injection.
+    assert row2['dE_predicted_cons_J'] == pytest.approx(2 * cool + dE_impact, rel=1e-12)
+    assert row2['E_state_heat_cons_J'] == pytest.approx(2 * cool + dE_impact, rel=1e-12)
+    # The residual is invariant across the impact: booked, not leaked.
+    assert row2['E_residual_cons_J'] == pytest.approx(residual_before, abs=1e-3 * abs(cool))
+    # Discrimination: booking on only one side would shift the residual by the
+    # full 5e30 J injection, twenty-five times the physical step increment.
+    assert abs(dE_impact) > 20 * abs(cool)
+
+    # Boundary case: a zero-impact row must reduce to the ordinary bookkeeping,
+    # so the column's default cannot perturb quiet steps.
+    row3 = _aragog_row(
+        time_yr=30.0,
+        E_state_cons_J=E0 + 3 * cool + dE_impact,
+        step_dE_F_int_J=cool,
+        step_dE_state_heat_J=cool,
+        step_dE_impact_J=0.0,
+    )
+    hf = ExtendHelpfile(hf, row2)
+    _populate_energy_residual(hf, row3)
+    assert row3['E_residual_cons_J'] == pytest.approx(
+        row2['E_residual_cons_J'], abs=1e-3 * abs(cool)
+    )
 
 
 @pytest.mark.unit

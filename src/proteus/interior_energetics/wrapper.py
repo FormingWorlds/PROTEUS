@@ -1847,6 +1847,13 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     the stale trajectory is cleared so the restore path cannot resurrect it,
     and the cached CMB-gradient state is cleared so it is re-derived from the
     molten profile rather than inherited from the cooled one.
+
+    The heat the re-melt injects is booked into ``hf_row['step_dE_impact_J']``
+    using the solver's own entropy-transported heat quadrature over the jump
+    from the cooled to the molten profile, the same ``rho(P,S) T dS`` frame the
+    conservation residual integrates. The coupler adds it to both sides of the
+    energy budget, so the residual stays closed across the impact while the
+    injected energy is quantified rather than silently absorbed.
     """
     from proteus.interior_energetics.aragog import AragogRunner
 
@@ -1857,6 +1864,13 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         )
 
     solver = interior_o.aragog_solver
+
+    # Capture the cooled entropy profile before the reset replaces it; it is
+    # the start state of the heat-injection quadrature below.
+    S_cooled = getattr(interior_o, '_last_entropy', None)
+    if S_cooled is not None:
+        S_cooled = np.asarray(S_cooled, dtype=float).ravel().copy()
+
     # Drop the cooled trajectory and its cached CMB gradient BEFORE rebuilding
     # the initial condition. This has to come first: _set_entropy_ic hot-starts
     # the boundary gradient from the solution when one is present, so clearing
@@ -1871,7 +1885,27 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     # from the return value rather than from the solver's solution object, which
     # holds no valid trajectory now and would in any case lag the reset.
     S_molten = AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
-    interior_o._last_entropy = np.asarray(S_molten, dtype=float).ravel().copy()
+    S_molten = np.asarray(S_molten, dtype=float).ravel()
+    interior_o._last_entropy = S_molten.copy()
+
+    # Book the injected heat over the cooled-to-molten entropy jump, in the
+    # residual's own frame: the solver's Σ V_i ∫ rho(P_i,S) T(P_i,S) dS
+    # quadrature evaluated between the two profiles. Positive when the re-melt
+    # heats the mantle. The jump falls between solver calls, so no per-call
+    # state integral carries it; this column is how it enters the budget.
+    if S_cooled is not None and S_cooled.size > 0:
+        dE_impact = float(solver._step_heat_content(S_cooled, S_molten))
+        hf_row['step_dE_impact_J'] = dE_impact
+        log.info('    re-melt heat injection %.3e J booked into the energy budget', dE_impact)
+    else:
+        # No prior profile to measure the jump from (no completed solve has
+        # stored one). The injection cannot be quantified, so it is left
+        # unbooked and said so, rather than booking a silent zero.
+        hf_row['step_dE_impact_J'] = 0.0
+        log.warning(
+            '    re-melt heat injection not booked: no pre-impact entropy '
+            'profile is available to measure the jump from'
+        )
 
     log.info('    mantle re-melted: Aragog entropy reset to the molten initial condition')
 

@@ -2332,6 +2332,12 @@ class AragogRunner:
             # the table-vs-phase density difference); machine-precision
             # conservation is the separate solver-residual column.
             'step_dE_state_heat_J': out.step_dE_state_heat_J,
+            # Giant-impact re-melt heat [J]. Zeroed on every solve call so
+            # ordinary rows carry no impact energy; the accretion handler,
+            # which runs after this call on the iteration an impact lands,
+            # overwrites it with the heat the re-melt injects. The coupler
+            # adds it to both sides of the conservation budget.
+            'step_dE_impact_J': 0.0,
             # Boundary layer thickness, taken straight from the atmosphere
             # config. Surfaced here so the helpfile carries a single
             # backend-agnostic field for downstream tooling that has to
