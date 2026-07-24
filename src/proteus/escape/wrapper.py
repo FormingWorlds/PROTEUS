@@ -259,6 +259,7 @@ def calc_new_elements(
     dt: float,
     reservoir: str,
     min_thresh: float = 1e10,
+    esc_mass: float | None = None,
 ):
     """Calculate new elemental inventory based on escape rate.
 
@@ -267,9 +268,15 @@ def calc_new_elements(
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
         dt : float
-            Time-step length [years]
+            Time-step length [years]. Ignored when ``esc_mass`` is given.
         min_thresh: float
             Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+        esc_mass : float, optional
+            Total mass to remove [kg]. When given, this mass is partitioned
+            over the reservoir instead of the rate-times-timestep integral;
+            an impulsive loss (a giant impact stripping the atmosphere) is
+            debited through the same proportional partitioning, desiccation
+            floor, and noble-gas exemption as continuous escape.
 
     Returns
     -------
@@ -305,8 +312,9 @@ def calc_new_elements(
     # compute mass ratios in escaping reservoir
     emr = {e: (res[e] / M_vols if M_vols > 0 else 0.0) for e in res}
 
-    # total escaped mass over dt [kg]
-    esc_mass = float(hf_row.get('esc_rate_total', 0.0)) * secs_per_year * float(dt)
+    # total escaped mass [kg]: explicit when given, else the rate integral over dt
+    if esc_mass is None:
+        esc_mass = float(hf_row.get('esc_rate_total', 0.0)) * secs_per_year * float(dt)
 
     # compute new TOTAL inventories
     tgt: dict[str, float] = {}

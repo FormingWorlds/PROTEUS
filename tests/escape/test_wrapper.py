@@ -735,6 +735,55 @@ def test_calc_new_elements_outgas_reservoir():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_calc_new_elements_explicit_mass_overrides_the_rate_integral():
+    """An explicit mass debits exactly that mass, ignoring rate and timestep.
+
+    An impulsive loss (a giant impact stripping the atmosphere) hands the
+    total mass to remove directly. The rate-times-timestep integral must play
+    no part: the row carries a deliberately absurd escape rate whose integral
+    over dt would strip 300x more, so any leakage of the rate path into the
+    debit is unmissable. The explicit mass partitions proportionally, and
+    omitting it (the default) must reproduce the rate-integral behaviour
+    unchanged.
+    """
+    from proteus.escape.wrapper import calc_new_elements
+    from proteus.utils.constants import secs_per_year
+
+    def _row():
+        return {
+            'esc_rate_total': 1e8,  # absurd rate; must be IGNORED when mass is given
+            'H_kg_total': 8.0e20,
+            'C_kg_total': 2.0e20,
+            'H_kg_atm': 4.0e20,
+            'C_kg_atm': 1.0e20,
+        }
+
+    dt = 1000.0
+    explicit = 1.0e20  # 1/5 of the 5e20 kg atmosphere
+
+    tgt = calc_new_elements(_row(), dt, 'outgas', min_thresh=1e10, esc_mass=explicit)
+
+    # Exactly the explicit mass leaves, split 4:1 by atmospheric composition.
+    assert tgt['H'] == pytest.approx(8.0e20 - 0.8e20, rel=1e-9)
+    assert tgt['C'] == pytest.approx(2.0e20 - 0.2e20, rel=1e-9)
+    total_lost = (8.0e20 + 2.0e20) - (tgt['H'] + tgt['C'])
+    assert total_lost == pytest.approx(explicit, rel=1e-9)
+    # Discrimination: the rate integral over dt (1e8 kg/s * 3.156e7 s/yr *
+    # 1000 yr = 3.16e18 kg) is 30x smaller than the explicit mass, so the
+    # exact-equality checks above could not pass had the rate path leaked in.
+    rate_mass = 1e8 * secs_per_year * dt
+    assert abs(rate_mass - explicit) > 0.5 * explicit
+
+    # Back-compat: with esc_mass omitted the rate integral governs as before.
+    row2 = _row()
+    row2['esc_rate_total'] = explicit / (secs_per_year * dt)  # same mass via the rate
+    tgt2 = calc_new_elements(row2, dt, 'outgas', min_thresh=1e10)
+    assert tgt2['H'] == pytest.approx(tgt['H'], rel=1e-9)
+    assert tgt2['C'] == pytest.approx(tgt['C'], rel=1e-9)
+
+
+@pytest.mark.unit
 def test_calc_new_elements_below_threshold():
     """Test elemental inventory when mass falls below minimum threshold.
 

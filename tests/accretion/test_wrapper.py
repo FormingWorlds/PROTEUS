@@ -201,14 +201,16 @@ def _impact_event(**overrides):
     return ImpactEvent(**base)
 
 
-def _impact_accretion(**ppmw):
-    """Accretion sub-config with impactor volatile contents (default dry)."""
+def _impact_accretion(atmloss_module=None, atmloss_frac=0.0, **ppmw):
+    """Accretion sub-config: impactor volatiles and atmosphere loss (default off)."""
     return SimpleNamespace(
         impactor_H_ppmw=ppmw.get('H', 0.0),
         impactor_C_ppmw=ppmw.get('C', 0.0),
         impactor_N_ppmw=ppmw.get('N', 0.0),
         impactor_S_ppmw=ppmw.get('S', 0.0),
         impactor_O_ppmw=ppmw.get('O', 0.0),
+        atmloss_module=atmloss_module,
+        atmloss_frac=atmloss_frac,
     )
 
 
@@ -447,6 +449,162 @@ def test_a_dry_impactor_delivers_no_volatiles(monkeypatch):
     # The existing budget is unchanged and no new element key appears.
     assert handler.hf_row['H_kg_total'] == pytest.approx(3.0e20, rel=1e-12)
     assert not any(k.endswith('_kg_total') and k != 'H_kg_total' for k in handler.hf_row)
+
+
+def _atm_state(hf_row, **kg):
+    """Write an atmospheric composition: per-element atm and total budgets.
+
+    Each keyword is an element symbol mapped to ``(kg_atm, kg_total)`` so a
+    test can set up asymmetric atmospheric and dissolved reservoirs.
+    """
+    for e, (atm, total) in kg.items():
+        hf_row[f'{e}_kg_atm'] = atm
+        hf_row[f'{e}_kg_total'] = total
+
+
+@pytest.mark.unit
+def test_impact_atmosphere_loss_is_off_by_default(monkeypatch):
+    """Without an atmosphere-loss module the impact leaves the atmosphere alone.
+
+    Every existing accretion configuration predates impact atmosphere loss, so
+    the default must be a strict no-op: no element budget moves and the
+    escaped-mass ledger is untouched, even for a violent impact on a planet
+    with a massive atmosphere.
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    handler = _impact_handler()  # atmloss_module=None
+    _atm_state(handler.hf_row, H=(2.0e20, 5.0e20), N=(1.0e19, 4.0e19))
+    handler.hf_row['esc_kg_cumulative'] = 7.0e18
+    apply_impact(handler, _impact_event())
+
+    assert handler.hf_row['H_kg_total'] == pytest.approx(5.0e20, rel=1e-12)
+    assert handler.hf_row['N_kg_total'] == pytest.approx(4.0e19, rel=1e-12)
+    assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(7.0e18, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_impact_strips_the_atmosphere_in_proportion_to_its_composition(monkeypatch):
+    """The stripped mass is drawn from the atmosphere, element by element.
+
+    A constant 25% loss removes exactly a quarter of each element's
+    ATMOSPHERIC reservoir from its whole-planet budget: the dissolved interior
+    inventory is untouched, so an element that is mostly dissolved loses far
+    less of its total than one that is mostly atmospheric. Partitioning by the
+    total budgets instead would shift mass between the two, which the
+    asymmetric reservoirs here are chosen to expose. The removed mass is
+    booked into the escaped-mass ledger the desiccation gate audits.
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.25)
+    )
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    # H is mostly atmospheric; N is mostly dissolved. A total-budget
+    # partitioning would debit N nearly 4x more than the atmosphere holds.
+    _atm_state(handler.hf_row, H=(4.0e20, 5.0e20), N=(1.0e19, 4.0e20))
+    apply_impact(handler, _impact_event())
+
+    # Each element loses a quarter of its ATMOSPHERIC mass from the total.
+    assert handler.hf_row['H_kg_total'] == pytest.approx(5.0e20 - 0.25 * 4.0e20, rel=1e-9)
+    assert handler.hf_row['N_kg_total'] == pytest.approx(4.0e20 - 0.25 * 1.0e19, rel=1e-9)
+    # Discrimination: partitioning over the equal TOTAL budgets would debit
+    # both elements identically (0.25 * 0.5 * (4e20 + 1e19) each ~ 5.1e19),
+    # putting N at ~3.49e20, more than 5e18 away from the correct 3.975e20.
+    assert abs(handler.hf_row['N_kg_total'] - 3.4875e20) > 4.0e18
+
+    # The debit never exceeds what the atmosphere held.
+    assert handler.hf_row['H_kg_total'] >= 5.0e20 - 4.0e20
+    assert handler.hf_row['N_kg_total'] >= 4.0e20 - 1.0e19
+
+    # The stripped mass is booked for the desiccation ledger.
+    assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(
+        0.25 * (4.0e20 + 1.0e19), rel=1e-9
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_total_impact_loss_removes_the_atmosphere_but_not_the_interior(monkeypatch):
+    """A loss fraction of one is the boundary: the atmosphere goes, no more.
+
+    Full stripping removes each element's atmospheric reservoir exactly, so
+    the dissolved inventory survives and no budget goes negative. Loss beyond
+    the atmosphere is unphysical, and the ledger booking equals the
+    atmosphere's whole mass.
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=1.0)
+    )
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    _atm_state(handler.hf_row, H=(4.0e20, 5.0e20), C=(2.0e19, 9.0e19))
+    apply_impact(handler, _impact_event())
+
+    # The dissolved part survives complete atmospheric stripping.
+    assert handler.hf_row['H_kg_total'] == pytest.approx(1.0e20, rel=1e-9)
+    assert handler.hf_row['C_kg_total'] == pytest.approx(7.0e19, rel=1e-9)
+    assert handler.hf_row['H_kg_total'] >= 0.0
+    assert handler.hf_row['C_kg_total'] >= 0.0
+    assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(4.2e20, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeypatch):
+    """Stripping acts on the pre-impact atmosphere, then delivery adds on top.
+
+    The loss and the delivery are independent physical channels of one impact:
+    the shock strips what the planet had, the impactor's volatiles arrive
+    regardless. The final budget is (total - stripped) + delivered. A loss
+    module returning a fraction outside [0, 1] violates the partitioning
+    contract and must raise rather than be clamped in silence.
+    """
+    from proteus.accretion.wrapper import _impact_loss_fraction, apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0)
+    )
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    _atm_state(handler.hf_row, H=(2.0e20, 6.0e20))
+    m_impactor = 0.5 * M_earth
+    apply_impact(handler, _impact_event(M_impactor=m_impactor))
+
+    delivered = m_impactor * 1000.0 / 1.0e6
+    expected = (6.0e20 - 0.5 * 2.0e20) + delivered
+    assert handler.hf_row['H_kg_total'] == pytest.approx(expected, rel=1e-9)
+    # Both channels are present at full size: the stripped 1e20 and the
+    # delivered 2.986e21 are each far larger than the tolerance, so a missing
+    # channel cannot pass. The tracked-element total reflects the composition.
+    assert handler.hf_row['M_ele'] == pytest.approx(expected, rel=1e-9)
+    assert abs(handler.hf_row['H_kg_total'] - 6.0e20) > 1.0e20  # not "no strip, no delivery"
+    assert abs(handler.hf_row['H_kg_total'] - (6.0e20 + delivered)) > 5.0e19  # not "no strip"
+
+    # A provider outside the contract is rejected loudly.
+    bad = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=1.5)
+    )
+    with pytest.raises(ValueError, match=r'\[0, 1\]'):
+        _impact_loss_fraction(bad.config, bad.hf_row, _impact_event())
 
 
 def _rescaling_solve_structure(factor):

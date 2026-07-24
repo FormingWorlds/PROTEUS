@@ -157,6 +157,13 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         config.orbit.eccentricity,
     )
 
+    # Strip part of the pre-impact atmosphere, before the impactor's own
+    # volatiles are delivered: the shock blows off what the planet already
+    # has, while the delivery goes into the molten post-impact planet. The
+    # outgassing step later this iteration re-equilibrates the atmosphere
+    # against the debited totals.
+    _strip_impact_atmosphere(config, hf_row, event)
+
     # Deliver the impactor's volatiles into the whole-planet element budgets,
     # so the outgassing step later this iteration re-equilibrates with them. The
     # amount per element is the impactor mass times the configured content in
@@ -199,6 +206,110 @@ def _deliver_impactor_volatiles(config, hf_row: dict, m_impactor: float) -> None
             '    delivered impactor volatiles [kg]: %s',
             ', '.join(f'{e}={v:.3e}' for e, v in delivered.items()),
         )
+
+
+def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
+    """Fraction of the atmosphere removed by this impact [0-1].
+
+    Dispatches on ``accretion.atmloss_module``. The constant module returns
+    the configured fixed fraction and stands in for the coming ZEPHYRUS
+    collision-loss law, which will compute the fraction from the impact
+    parameters this function already receives; PROTEUS itself deliberately
+    ships no impact loss physics.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration; reads ``accretion.atmloss_module`` and
+        ``accretion.atmloss_frac``.
+    hf_row : dict
+        Current helpfile row (the planet state a loss law reads).
+    event : ImpactEvent
+        The impact being applied (the collision parameters a loss law reads).
+
+    Returns
+    -------
+    float
+        Loss fraction in [0, 1]. Zero when the loss is disabled.
+
+    Raises
+    ------
+    ValueError
+        If a loss module returns a fraction outside [0, 1]. The debit
+        partitioning is only meaningful on that interval, so a provider
+        violating it is a contract error, not a value to clamp silently.
+    """
+    module = config.accretion.atmloss_module
+    if module is None:
+        return 0.0
+
+    match module:
+        case 'constant':
+            f_loss = float(config.accretion.atmloss_frac)
+        case _:
+            raise ValueError(f"Invalid accretion.atmloss_module: '{module}'")
+
+    if not 0.0 <= f_loss <= 1.0:
+        raise ValueError(
+            f'Impact atmosphere loss fraction must be in [0, 1], got {f_loss!r} '
+            f"from atmloss_module '{module}'"
+        )
+    return f_loss
+
+
+def _strip_impact_atmosphere(config, hf_row: dict, event: ImpactEvent) -> None:
+    """Remove part of the atmosphere at an impact and debit the element budgets.
+
+    The lost mass is the loss fraction times the atmospheric reservoir, and is
+    partitioned over the elements in proportion to their atmospheric masses
+    through the same path continuous escape uses, so the per-element loss can
+    never exceed what the atmosphere holds and the dissolved interior inventory
+    is untouched. The debited mass is added to the cumulative escaped-mass
+    ledger, which the desiccation gate audits: without that booking, a planet
+    dried out partly by impacts would be refused desiccation later.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration.
+    hf_row : dict
+        Current helpfile row, mutated in place.
+    event : ImpactEvent
+        The impact being applied.
+    """
+    from proteus.escape.wrapper import calc_new_elements
+
+    f_loss = _impact_loss_fraction(config, hf_row, event)
+    if f_loss <= 0.0:
+        return
+
+    # Atmospheric reservoir mass, summed the same way the debit partitions it.
+    m_atm = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list)
+    if m_atm <= 0.0:
+        log.info('    impact atmosphere loss: no atmosphere to strip')
+        return
+
+    before = {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
+    tgt = calc_new_elements(
+        hf_row,
+        dt=0.0,
+        reservoir='outgas',
+        min_thresh=config.outgas.mass_thresh,
+        esc_mass=f_loss * m_atm,
+    )
+    for e, mass in tgt.items():
+        hf_row[f'{e}_kg_total'] = mass
+
+    # Book the actually-debited mass (including any desiccation-floor
+    # truncation) into the escaped-mass ledger the desiccation gate audits.
+    lost = sum(before[e] - float(tgt.get(e, before[e])) for e in before)
+    hf_row['esc_kg_cumulative'] = float(hf_row.get('esc_kg_cumulative', 0.0)) + lost
+
+    log.info(
+        '    impact stripped %.1f%% of the atmosphere: %.3e kg removed',
+        100.0 * f_loss,
+        lost,
+    )
 
 
 def _snapshot_volatile_budgets(hf_row: dict) -> dict:
