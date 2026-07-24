@@ -592,11 +592,14 @@ config_version = "3.0"
     impactor_S_ppmw           = 0.0          # sulfur per impactor [ppmw of impactor mass]
     impactor_O_ppmw           = 0.0          # oxygen per impactor [ppmw of impactor mass]
 
-    # Impact atmosphere loss. With a loss module active the target loses the
-    # configured fraction of its atmosphere at each impact and the impactor's
-    # own atmospheric volatiles are fully lost with the collision.
-    atmloss_module            = "none"       # none | constant
-    atmloss_frac              = 0.0          # target atmosphere fraction removed per impact [0-1]
+    # Impact atmosphere loss. One fraction governs both bodies at each impact:
+    # the target loses that fraction of its atmosphere, and a volatile-bearing
+    # impactor loses the same fraction of its atmospheric part and delivers the
+    # remainder. The constant module applies the fixed fraction below; the
+    # zephyrus module evaluates the Kegerreis et al. (2020) erosion law from
+    # each impact's collision parameters.
+    atmloss_module            = "none"       # none | constant | zephyrus
+    atmloss_frac              = 0.0          # atmosphere fraction removed per impact (constant module) [0-1]
 
     [accretion.morrigan]
         seed                  = 1            # Monte Carlo seed

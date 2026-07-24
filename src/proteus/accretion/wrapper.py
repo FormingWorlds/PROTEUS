@@ -131,9 +131,10 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         config.accretion.impactor_volatiles,
         config.accretion.atmloss_module or 'off',
     )
-    strip = _target_strip_amounts(config, hf_row, event)
+    f_loss = _impact_loss_fraction(config, hf_row, event)
+    strip = _target_strip_amounts(config, hf_row, f_loss)
     content = _impactor_volatile_content(config, handler.hf_all, event)
-    delivered, impactor_lost = _partition_impactor_content(config, hf_row, content)
+    delivered, impactor_lost = _partition_impactor_content(config, hf_row, content, f_loss)
 
     # Snapshot the whole-planet volatile budgets before the structure re-solve.
     # solve_structure recomputes the ppmw-mode budgets against the grown mass,
@@ -164,7 +165,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
     # Apply the sized consequences to the whole-planet budgets and refresh
     # the tracked-element total the budgets aggregate into.
-    _apply_volatile_consequences(config, hf_row, strip, delivered, impactor_lost)
+    _apply_volatile_consequences(hf_row, strip, delivered, impactor_lost, f_loss)
 
     # Re-melt the mantle to its molten initial condition, so the interior
     # evolves from a fully molten state after the impact.
@@ -194,7 +195,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
 
 def _apply_volatile_consequences(
-    config, hf_row: dict, strip: dict, delivered: dict, impactor_lost: dict
+    hf_row: dict, strip: dict, delivered: dict, impactor_lost: dict, f_loss: float
 ) -> None:
     """Apply an impact's sized volatile changes to the whole-planet budgets.
 
@@ -207,12 +208,12 @@ def _apply_volatile_consequences(
 
     Parameters
     ----------
-    config : Config
-        Model configuration, read for the strip-percentage log line.
     hf_row : dict
         Current helpfile row, mutated in place.
     strip, delivered, impactor_lost : dict
         Per-element masses [kg] sized from the pre-impact state.
+    f_loss : float
+        Collision loss fraction in [0, 1], reported in the strip log line.
     """
     for e, removed in strip.items():
         key = f'{e}_kg_total'
@@ -224,7 +225,7 @@ def _apply_volatile_consequences(
         )
         log.info(
             '    impact stripped %.1f%% of the atmosphere: %.3e kg removed',
-            100.0 * float(config.accretion.atmloss_frac),
+            100.0 * f_loss,
             stripped_total,
         )
     for e, added in delivered.items():
@@ -337,28 +338,41 @@ def _impactor_volatile_content(config, hf_all, event: ImpactEvent) -> dict:
     return content
 
 
-def _partition_impactor_content(config, hf_row: dict, content: dict) -> tuple[dict, dict]:
+def _partition_impactor_content(
+    config, hf_row: dict, content: dict, f_loss: float
+) -> tuple[dict, dict]:
     """Split the impactor's volatiles into a delivered and a lost part [kg].
 
     The impactor's internal partitioning is unknowable, so the planet's own
     atmosphere-versus-interior split per element at impact time is mirrored
-    onto it. With impact atmosphere loss active the impactor's atmospheric
-    part is lost with the collision (the impactor is disrupted and its
-    gravity is lower than the target's) and only the dissolved part is
-    delivered; with loss disabled the whole content is delivered. The mirror
-    understates a smaller body's atmospheric fraction (it equilibrates at
-    lower surface pressure), so delivery is somewhat overestimated; the
-    coming ZEPHYRUS collision law replaces this convention.
+    onto it. The impactor's atmospheric part is then lost with the same
+    collision loss fraction that strips the target's atmosphere, and the
+    remainder of its content is delivered: a fast head-on impact loses
+    nearly all of it, a slow grazing one delivers most of it, and with loss
+    disabled the whole content arrives. The mirror understates a smaller
+    body's atmospheric fraction (it equilibrates at lower surface
+    pressure), so delivery is somewhat overestimated.
 
     For an element the planet no longer holds, the per-element mirror is
     undefined and the planet's bulk atmospheric fraction is used instead.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration; read for the loss-module switch.
+    hf_row : dict
+        Current helpfile row, supplying the partitioning mirror.
+    content : dict
+        Per-element volatile mass the impactor carries [kg].
+    f_loss : float
+        Collision loss fraction in [0, 1] applied to the atmospheric part.
 
     Returns
     -------
     (delivered, lost) : tuple of dict
         Per-element masses delivered into the planet and lost to space [kg].
     """
-    if config.accretion.atmloss_module is None:
+    if config.accretion.atmloss_module is None or f_loss <= 0.0:
         return dict(content), {}
 
     # Bulk atmospheric fraction as the fallback mirror for elements the
@@ -378,7 +392,7 @@ def _partition_impactor_content(config, hf_row: dict, content: dict) -> tuple[di
             f_atm = f_atm_bulk
         f_atm = min(max(f_atm, 0.0), 1.0)
         mirror[e] = f_atm
-        lost_e = mass * f_atm
+        lost_e = mass * f_atm * f_loss
         if lost_e > 0.0:
             lost[e] = lost_e
         if mass - lost_e > 0.0:
@@ -392,7 +406,7 @@ def _partition_impactor_content(config, hf_row: dict, content: dict) -> tuple[di
     return delivered, lost
 
 
-def _target_strip_amounts(config, hf_row: dict, event: ImpactEvent) -> dict:
+def _target_strip_amounts(config, hf_row: dict, f_loss: float) -> dict:
     """Mass the impact strips from the target's atmosphere, per element [kg].
 
     Sizes the debit from the pre-impact state without mutating it: the loss
@@ -402,10 +416,18 @@ def _target_strip_amounts(config, hf_row: dict, event: ImpactEvent) -> dict:
     holds and the dissolved interior inventory is untouched. An atmosphere
     below the outgassing mass threshold is treated as nothing to strip, the
     same convention continuous escape applies to it.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration; read for the outgassing mass threshold.
+    hf_row : dict
+        Current helpfile row, read only.
+    f_loss : float
+        Collision loss fraction in [0, 1] from :func:`_impact_loss_fraction`.
     """
     from proteus.escape.wrapper import calc_new_elements
 
-    f_loss = _impact_loss_fraction(config, hf_row, event)
     if f_loss <= 0.0:
         return {}
 
@@ -431,14 +453,32 @@ def _target_strip_amounts(config, hf_row: dict, event: ImpactEvent) -> dict:
     return strip
 
 
+# Atmosphere mass fraction above which the Kegerreis et al. (2020) erosion
+# law leaves its fitted thin-atmosphere regime (of order 1 percent of the
+# planet mass) far enough to warrant a warning.
+_ATMLOSS_THIN_ATM_WARN = 0.03
+
+
 def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
     """Fraction of the atmosphere removed by this impact [0-1].
 
     Dispatches on ``accretion.atmloss_module``. The constant module returns
-    the configured fixed fraction and stands in for the coming ZEPHYRUS
-    collision-loss law, which will compute the fraction from the impact
-    parameters this function already receives; PROTEUS itself deliberately
-    ships no impact loss physics.
+    the configured fixed fraction; the zephyrus module evaluates the
+    giant-impact erosion scaling law of Kegerreis et al. (2020) through
+    ``zephyrus.collision.mass_loss``, fed entirely from the impact record so
+    the speed, masses, radii, densities, and angle stay in the one frame the
+    dynamical model produced them in (Morrigan bodies carry no modelled
+    atmosphere, matching the law's atmosphere-excluded mass and radius
+    convention, and its ``v_impact`` is the speed at first contact). The
+    returned fraction applies to the target's atmosphere and to a
+    volatile-bearing impactor's atmospheric part alike. PROTEUS itself ships
+    no impact loss physics.
+
+    When the zephyrus law is selected and the planet's atmosphere exceeds a
+    few percent of its mass, the fitted thin-atmosphere regime no longer
+    covers the impact and a warning is logged; the fraction is still
+    returned, since staying inside the fitted domain is the run
+    configuration's responsibility.
 
     Parameters
     ----------
@@ -446,9 +486,9 @@ def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
         Model configuration; reads ``accretion.atmloss_module`` and
         ``accretion.atmloss_frac``.
     hf_row : dict
-        Current helpfile row (the planet state a loss law reads).
+        Current helpfile row (the planet state the domain check reads).
     event : ImpactEvent
-        The impact being applied (the collision parameters a loss law reads).
+        The impact being applied (the collision parameters the law reads).
 
     Returns
     -------
@@ -461,6 +501,9 @@ def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
         If a loss module returns a fraction outside [0, 1]. The debit
         partitioning is only meaningful on that interval, so a provider
         violating it is a contract error, not a value to clamp silently.
+    ImportError
+        If the zephyrus module is selected but the installed fwl-zephyrus
+        does not provide the collision law.
     """
     module = config.accretion.atmloss_module
     if module is None:
@@ -469,6 +512,39 @@ def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
     match module:
         case 'constant':
             f_loss = float(config.accretion.atmloss_frac)
+        case 'zephyrus':
+            try:
+                from zephyrus.collision import mass_loss
+            except ImportError as exc:
+                raise ImportError(
+                    "accretion.atmloss_module = 'zephyrus' needs a fwl-zephyrus "
+                    'installation that provides zephyrus.collision; upgrade the '
+                    'fwl-zephyrus package.'
+                ) from exc
+
+            m_atm = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list)
+            m_planet = float(hf_row.get('M_planet', 0.0))
+            if m_planet > 0.0 and m_atm / m_planet > _ATMLOSS_THIN_ATM_WARN:
+                log.warning(
+                    '    the atmosphere is %.1f%% of the planet mass, beyond the '
+                    'thin-atmosphere regime (about 1%%) the impact erosion law is '
+                    'fitted for; the eroded fraction is extrapolated',
+                    100.0 * m_atm / m_planet,
+                )
+
+            f_loss = float(
+                mass_loss(
+                    v_c=event.v_impact,
+                    M_i=event.M_impactor,
+                    M_t=event.M_target_before,
+                    rho_i=event.rho_impactor,
+                    rho_t=event.rho_target,
+                    R_i=event.R_impactor,
+                    R_t=event.R_target_before,
+                    b=event.impact_parameter,
+                )
+            )
+            log.info('    impact erosion law: loss fraction %.3f', f_loss)
         case _:
             raise ValueError(f"Invalid accretion.atmloss_module: '{module}'")
 

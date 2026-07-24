@@ -742,7 +742,9 @@ def test_impact_mass_closure_counts_each_volatile_channel_once(monkeypatch):
     apply_impact(handler, event)
 
     content = (4.0e22 / m_planet_0) * m_imp
-    delivered = 0.5 * content
+    # Half the content is exposed by the mirror and half of that is lost
+    # with the collision, so three quarters arrive.
+    delivered = (1.0 - 0.5 * 0.5) * content
     stripped = 0.5 * 2.0e22
     rock = m_imp - content
 
@@ -837,7 +839,7 @@ def test_match_planet_partition_mirror_and_fallback(monkeypatch):
     m_planet_0 = 6.0e24
     handler = _impact_handler(
         accretion=_impact_accretion(
-            impactor_volatiles='match_planet', atmloss_module='constant', atmloss_frac=0.0
+            impactor_volatiles='match_planet', atmloss_module='constant', atmloss_frac=0.5
         )
     )
     handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
@@ -853,7 +855,9 @@ def test_match_planet_partition_mirror_and_fallback(monkeypatch):
         ]
     )
     # Today: H half atmospheric, N fully dissolved, C fully escaped (no
-    # budget left to mirror). Bulk atm fraction = 2e21/6e21 = 1/3.
+    # budget left to mirror). Bulk atm fraction = 2e21/6e21 = 1/3. The
+    # half-strength collision also strips half the target atmosphere, which
+    # the H expectation below accounts for.
     _atm_state(handler.hf_row, H=(2.0e21, 4.0e21), N=(0.0, 2.0e21))
     handler.hf_row['C_kg_total'] = 0.0
     m_imp = 0.5 * M_earth
@@ -862,15 +866,22 @@ def test_match_planet_partition_mirror_and_fallback(monkeypatch):
     h_content = (4.0e22 / m_planet_0) * m_imp
     n_content = (2.0e21 / m_planet_0) * m_imp
     c_content = (1.0e21 / m_planet_0) * m_imp
-    # H: half lost (mirrors the planet's 50% atmospheric hydrogen).
-    assert handler.hf_row['H_kg_total'] == pytest.approx(4.0e21 + 0.5 * h_content, rel=1e-9)
+    # H: the target strip removes half its atmospheric hydrogen (1e21 kg),
+    # and the impactor's content, half exposed by the mirror, loses half of
+    # that exposed part, delivering three quarters.
+    assert handler.hf_row['H_kg_total'] == pytest.approx(
+        4.0e21 - 0.5 * 2.0e21 + (1.0 - 0.5 * 0.5) * h_content, rel=1e-9
+    )
     # N: fully dissolved on the planet, so the impactor's N all arrives.
     assert handler.hf_row['N_kg_total'] == pytest.approx(2.0e21 + n_content, rel=1e-9)
-    # C: fallback to the bulk atm fraction (1/3 lost, 2/3 delivered).
-    assert handler.hf_row['C_kg_total'] == pytest.approx((2.0 / 3.0) * c_content, rel=1e-9)
-    # Discrimination: a fallback of "deliver everything" would land a full
-    # third of the C content higher, resolvable at these magnitudes.
-    assert abs(handler.hf_row['C_kg_total'] - c_content) > 0.3 * c_content
+    # C: fallback to the bulk atm fraction (1/3 exposed, half of that lost).
+    assert handler.hf_row['C_kg_total'] == pytest.approx(
+        (1.0 - (1.0 / 3.0) * 0.5) * c_content, rel=1e-9
+    )
+    # Discrimination: losing the whole exposed part (the fully-lost
+    # convention) would land the C budget at 2/3 of the content, a sixth of
+    # the content away, resolvable at these magnitudes.
+    assert abs(handler.hf_row['C_kg_total'] - (2.0 / 3.0) * c_content) > 0.1 * c_content
 
 
 @pytest.mark.unit
@@ -996,14 +1007,13 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeypatch):
-    """With loss active, only the impactor's dissolved part arrives.
+    """With loss active, one collision fraction governs both bodies.
 
-    One impact carries three volatile channels: the shock strips part of the
-    target's atmosphere, the impactor's own atmospheric volatiles are lost
-    with the collision, and its dissolved volatiles are delivered. The
-    impactor's split mirrors the planet's atmosphere fraction per element at
-    impact time (here exactly one third), and the planet's mass grows by the
-    merger mass net of everything lost. A loss module returning a fraction
+    One impact carries three volatile channels: the shock strips the loss
+    fraction of the target's atmosphere, the impactor's atmospheric part
+    (mirrored from the planet, here exactly one third) loses the same
+    fraction, and everything else is delivered. The interior anchor grows
+    by the impactor's rock alone. A loss module returning a fraction
     outside [0, 1] violates the partitioning contract and must raise rather
     than be clamped in silence.
     """
@@ -1030,13 +1040,19 @@ def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeyp
 
     content = m_impactor * 1000.0 / 1.0e6
     stripped = 0.5 * 2.0e20
-    delivered = content * 2.0 / 3.0
+    # A third of the content is exposed by the mirror and half of that is
+    # lost with the collision, so five sixths arrive.
+    delivered = content * (1.0 - (1.0 / 3.0) * 0.5)
     expected = 6.0e20 - stripped + delivered
     assert handler.hf_row['H_kg_total'] == pytest.approx(expected, rel=1e-9)
     assert handler.hf_row['M_ele'] == pytest.approx(expected, rel=1e-9)
-    # Discrimination: delivering the FULL content (no impactor-side loss)
-    # would land one third of the content higher, ~1e21 kg away.
-    assert abs(handler.hf_row['H_kg_total'] - (6.0e20 - stripped + content)) > 5.0e20
+    # Discrimination: both neighbouring conventions sit far outside
+    # tolerance, full delivery by half a sixth of the content (~5e20 kg)
+    # and a fully-lost exposed part by a further sixth.
+    assert abs(handler.hf_row['H_kg_total'] - (6.0e20 - stripped + content)) > 4.0e20
+    assert (
+        abs(handler.hf_row['H_kg_total'] - (6.0e20 - stripped + content * 2.0 / 3.0)) > 4.0e20
+    )
     # Only the target's stripped mass enters the planet's escape ledger; the
     # impactor's lost volatiles never belonged to the planet's inventory.
     assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(stripped, rel=1e-9)
@@ -1056,6 +1072,157 @@ def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeyp
     )
     with pytest.raises(ValueError, match=r'\[0, 1\]'):
         _impact_loss_fraction(bad.config, bad.hf_row, _impact_event())
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_zephyrus_loss_module_evaluates_the_kegerreis_law(monkeypatch):
+    """The zephyrus module turns the impact record into the erosion fraction.
+
+    For two identical Earth-like bodies colliding head-on at their mutual
+    escape speed, Eqn. 1 of Kegerreis et al. (2020), ApJL 901, L31 collapses
+    to X = 0.64 * 0.5**0.325 = 0.510911, so the dispatch is pinned against
+    the published closed form through the real ZEPHYRUS implementation. The
+    twin pin cannot see the target/impactor mapping (every ratio is
+    symmetric there), so two asymmetric follow-up events pin the fraction
+    on BOTH sides of the mass assignment to their absolute values: a
+    dispatch that swapped the target and impactor masses would return
+    0.526 where 0.267 is pinned and the reverse, failing both. (Radii
+    cannot discriminate here: at equal densities the interacting mass and
+    the mutual escape speed are both symmetric under a radius swap.)
+    """
+    import numpy as np
+
+    pytest.importorskip('zephyrus.collision')
+    from proteus.accretion.wrapper import _impact_loss_fraction
+
+    m_e, r_e = 5.972e24, 6.371e6
+    rho_e = m_e / (4.0 / 3.0 * np.pi * r_e**3)
+    v_esc = np.sqrt(2.0 * 6.6743e-11 * 2.0 * m_e / (2.0 * r_e))
+    cfg = SimpleNamespace(
+        accretion=_impact_accretion(atmloss_module='zephyrus'),
+    )
+    twins = _impact_event(
+        M_target_before=m_e,
+        M_impactor=m_e,
+        M_merged_after=2.0 * m_e,
+        v_impact=v_esc,
+        v_esc=v_esc,
+        impact_parameter=0.0,
+        R_target_before=r_e,
+        R_impactor=r_e,
+        rho_target=rho_e,
+        rho_impactor=rho_e,
+    )
+    hf_row = {'M_planet': 6.3e24, 'H_kg_atm': 1.0e22}
+
+    f = _impact_loss_fraction(cfg, hf_row, twins)
+    assert f == pytest.approx(0.510911, rel=1e-4)
+    assert 0.0 < f < 1.0
+
+    # Asymmetric event: a half-radius impactor at one eighth the mass. The
+    # mass-ratio term is the only tie-breaker, so pinning the fraction on
+    # both sides of the mass assignment fixes the dispatch's mapping.
+    r_i = 0.5 * r_e
+    m_i = rho_e * 4.0 / 3.0 * np.pi * r_i**3
+    asym = _impact_event(
+        M_target_before=m_e,
+        M_impactor=m_i,
+        M_merged_after=m_e + m_i,
+        v_impact=v_esc,
+        impact_parameter=0.3,
+        R_target_before=r_e,
+        R_impactor=r_i,
+        rho_target=rho_e,
+        rho_impactor=rho_e,
+    )
+    f_asym = _impact_loss_fraction(cfg, hf_row, asym)
+    swapped = _impact_event(
+        M_target_before=m_i,
+        M_impactor=m_e,
+        M_merged_after=m_e + m_i,
+        v_impact=v_esc,
+        impact_parameter=0.3,
+        R_target_before=r_e,
+        R_impactor=r_i,
+        rho_target=rho_e,
+        rho_impactor=rho_e,
+    )
+    f_swapped = _impact_loss_fraction(cfg, hf_row, swapped)
+    # Absolute pins on both sides of the mass assignment: a dispatch with
+    # the target and impactor masses interchanged returns these two values
+    # permuted, failing both pins, where a difference-only check would
+    # survive the permutation unchanged.
+    assert f_asym == pytest.approx(0.2675, rel=2e-3)
+    assert f_swapped == pytest.approx(0.5258, rel=2e-3)
+    assert f_asym < f_swapped  # the lighter impactor erodes less
+
+
+@pytest.mark.unit
+def test_zephyrus_loss_module_warns_outside_the_thin_atmosphere_regime(caplog):
+    """A thick atmosphere triggers the fitted-domain warning, a thin one not.
+
+    The erosion law is fitted for atmospheres of order 1 percent of the
+    planet mass. The dispatch warns when the live atmosphere fraction is
+    beyond a few percent, and stays quiet inside the regime, so a
+    volatile-rich run cannot silently consume extrapolated fractions. The
+    fraction is still returned in both cases.
+    """
+    import logging
+
+    import numpy as np
+
+    pytest.importorskip('zephyrus.collision')
+    from proteus.accretion.wrapper import _impact_loss_fraction
+
+    m_e, r_e = 5.972e24, 6.371e6
+    rho_e = m_e / (4.0 / 3.0 * np.pi * r_e**3)
+    cfg = SimpleNamespace(accretion=_impact_accretion(atmloss_module='zephyrus'))
+    event = _impact_event(
+        M_target_before=m_e,
+        M_impactor=m_e,
+        M_merged_after=2.0 * m_e,
+        v_impact=1.2e4,
+        R_target_before=r_e,
+        R_impactor=r_e,
+        rho_target=rho_e,
+        rho_impactor=rho_e,
+    )
+
+    # Just above the 3% threshold: the warning fires. Straddling the
+    # boundary pins the cutoff itself, not merely the warning's existence.
+    thick = {'M_planet': 6.0e24, 'H_kg_atm': 0.031 * 6.0e24}
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        f_thick = _impact_loss_fraction(cfg, thick, event)
+    assert 0.0 <= f_thick <= 1.0
+    assert 'thin-atmosphere regime' in '\n'.join(r.getMessage() for r in caplog.records)
+
+    # Just below the threshold: no warning.
+    caplog.clear()
+    thin = {'M_planet': 6.0e24, 'H_kg_atm': 0.029 * 6.0e24}
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        f_thin = _impact_loss_fraction(cfg, thin, event)
+    assert 0.0 <= f_thin <= 1.0
+    assert 'thin-atmosphere regime' not in '\n'.join(r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_zephyrus_loss_module_without_the_law_fails_loudly(monkeypatch):
+    """A fwl-zephyrus lacking the collision law is an actionable error.
+
+    The zephyrus loss module needs zephyrus.collision; an installation
+    predating it must produce an upgrade instruction at the first impact,
+    not an AttributeError from deep inside the dispatch.
+    """
+    import sys
+
+    from proteus.accretion.wrapper import _impact_loss_fraction
+
+    cfg = SimpleNamespace(accretion=_impact_accretion(atmloss_module='zephyrus'))
+    monkeypatch.setitem(sys.modules, 'zephyrus.collision', None)
+    with pytest.raises(ImportError, match='fwl-zephyrus'):
+        _impact_loss_fraction(cfg, {'M_planet': 6.0e24}, _impact_event())
 
 
 def _rescaling_solve_structure(factor):

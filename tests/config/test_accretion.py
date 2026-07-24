@@ -237,10 +237,11 @@ def test_atmloss_config_bounds_and_module_selection_bind_at_load():
     with pytest.raises(ValueError):
         Accretion(atmloss_frac=-0.1)
 
-    # Unregistered loss modules are rejected at load; 'zephyrus' is the
-    # realistic future name and must fail until the law actually exists.
-    with pytest.raises(ValueError):
-        Accretion(atmloss_module='zephyrus')
+    # Both registered loss modules load; the zephyrus module needs no
+    # fraction because the law computes one per impact.
+    assert Accretion(atmloss_module='zephyrus').atmloss_module == 'zephyrus'
+    # Unregistered loss modules are rejected at load; the paper's author
+    # name is the realistic typo for the law's module.
     with pytest.raises(ValueError):
         Accretion(atmloss_module='kegerreis')
 

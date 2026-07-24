@@ -181,9 +181,9 @@ class Accretion:
         all embryos co-formed from the same disk material), "ppmw" (the
         per-element ``impactor_<e>_ppmw`` budgets below). The content is
         split into an atmospheric and a dissolved part by mirroring the
-        planet's own partitioning at impact time; with impact atmosphere
-        loss active the atmospheric part is lost with the collision and
-        only the dissolved part is delivered.
+        planet's own partitioning at impact time; the atmospheric part
+        loses the same collision fraction that strips the target's
+        atmosphere and the remainder of the content is delivered.
     impactor_H_ppmw: float
         Hydrogen carried by each impactor [ppmw of impactor mass].
     impactor_C_ppmw: float
@@ -198,15 +198,18 @@ class Accretion:
         How impact atmosphere loss is computed. Choices: None (no impact
         atmosphere loss at all: the target keeps its atmosphere and a
         volatile-bearing impactor delivers its whole content), "constant"
-        (the fixed target fraction below). Whenever a loss module is
-        active, the impactor's own atmospheric volatiles are fully lost
-        with the collision, independently of the fraction below. A
-        ZEPHYRUS collision-loss law will become a further choice when
-        available; PROTEUS itself ships no impact loss physics.
+        (the fixed fraction below), "zephyrus" (the giant-impact erosion
+        scaling law of Kegerreis et al. 2020, evaluated by
+        ``zephyrus.collision.mass_loss`` from each impact's collision
+        parameters). One fraction governs both bodies at each impact: the
+        target loses that fraction of its atmosphere, and a
+        volatile-bearing impactor loses the same fraction of its
+        atmospheric part and delivers the remainder. PROTEUS itself ships
+        no impact loss physics.
     atmloss_frac: float
-        Fraction of the TARGET's atmosphere removed by each impact when
-        ``atmloss_module = "constant"`` [0-1]. Does not scale the
-        impactor-side loss.
+        Fraction of the atmosphere removed by each impact when
+        ``atmloss_module = "constant"`` [0-1]. Applies to the target's
+        atmosphere and to the impactor's atmospheric part alike.
     """
 
     module: str | None = field(
@@ -239,11 +242,12 @@ class Accretion:
     # every budget it guards populated.
     impactor_O_ppmw: float = field(default=0.0, validator=[ge(0), valid_impactor_volatiles])
 
-    # Impact atmosphere loss. Disabled by default; the constant module is a
-    # placeholder with the call shape of the coming ZEPHYRUS collision law.
+    # Impact atmosphere loss. Disabled by default; the constant module
+    # applies a fixed fraction, the zephyrus module the Kegerreis et al.
+    # (2020) scaling law from each impact's collision parameters.
     atmloss_module: str | None = field(
         default='none',
-        validator=in_((None, 'constant')),
+        validator=in_((None, 'constant', 'zephyrus')),
         converter=none_if_none,
     )
     atmloss_frac: float = field(default=0.0, validator=[ge(0), le(1)])

@@ -12,6 +12,7 @@ test inventoried here.
 
 | Module | Source file | Page |
 |---|---|---|
+| Accretion | `accretion/wrapper.py` | [Impact atmosphere-loss dispatch](accretion/wrapper.md) |
 | Interior structure | `interior_struct/zalmoxis.py` | [Liquidus-super IC anchor](interior_struct/zalmoxis.md) |
 | Orbit | `orbit/orbit.py` | [Orbital evolution](orbit/orbit.md) |
 | Orbit | `orbit/satellite.py` | [Satellite angular momentum](orbit/satellite.md) |
