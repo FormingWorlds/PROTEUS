@@ -609,6 +609,18 @@ class TestGetScriptForPackage:
         the helper must not depend on that)."""
         assert _get_script_for_package('FWL-Zalmoxis') == 'tools/get_zalmoxis.sh'
 
+    def test_name_without_fwl_prefix_is_used_verbatim(self):
+        """The fwl- strip is conditional: a name lacking the prefix is looked up
+        as-is, not mangled. 'aragog' resolves to the same script as
+        'fwl-aragog', while a prefixless name with no script is still None."""
+        # Prefix absent, so no strip happens; the bare stem is used directly.
+        assert _get_script_for_package('aragog') == 'tools/get_aragog.sh'
+        # Discrimination: the with- and without-prefix forms agree, confirming
+        # the strip only removes a leading 'fwl-' and never truncates the stem.
+        assert _get_script_for_package('aragog') == _get_script_for_package('fwl-aragog')
+        # A prefixless name with no matching script returns None, not a path.
+        assert _get_script_for_package('calliope') is None
+
     def test_returns_none_for_branch_tracking_package(self):
         """calliope has no setup script (it is cloned on a tracking branch), so
         the helper returns None and the caller falls back to git pull."""
