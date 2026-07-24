@@ -447,3 +447,110 @@ def test_a_dry_impactor_delivers_no_volatiles(monkeypatch):
     # The existing budget is unchanged and no new element key appears.
     assert handler.hf_row['H_kg_total'] == pytest.approx(3.0e20, rel=1e-12)
     assert not any(k.endswith('_kg_total') and k != 'H_kg_total' for k in handler.hf_row)
+
+
+def _rescaling_solve_structure(factor):
+    """Mock of solve_structure that rescales the volatile budgets by ``factor``.
+
+    The real structure solve calls calc_target_elemental_inventories, which for
+    ppmw-mode budgets recomputes ``<e>_kg_total`` against the grown reservoir
+    mass, so a mass-growth impact multiplies every volatile budget by roughly
+    the mass-growth ratio and rewrites ``M_ele`` to match. This stand-in
+    reproduces that mass-scaling so the conservation contract can be exercised
+    without a live solver: a passing test must show the budgets are conserved
+    against exactly this rescaling, not merely left untouched by a no-op mock.
+    """
+
+    def _mock(dirs, config, hf_all, hf_row, outdir):
+        for key in list(hf_row):
+            if key.endswith('_kg_total'):
+                hf_row[key] *= factor
+        hf_row['M_ele'] = sum(v for k, v in hf_row.items() if k.endswith('_kg_total'))
+
+    return _mock
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_mass_growth_conserves_volatiles_a_dry_impactor_creates_none(monkeypatch):
+    """Growing the planet with a dry impactor conserves the volatile budgets.
+
+    The mass growth adds rock, not volatiles: a rock-dominated dry impactor
+    cannot manufacture hydrogen. The structure re-solve rescales the ppmw
+    budgets against the grown mass, so without conservation a dry impact would
+    inflate H, C, N, S in lockstep with the added mass. The impact must leave
+    every volatile budget at its pre-impact value.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    # A 0.5 Earth-mass impactor on a 1.0 Earth-mass planet grows the reservoir
+    # by 1.5x, the factor by which the structure solve would rescale the ppmw
+    # budgets. Dry impactor: no delivery.
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure',
+        _rescaling_solve_structure(1.5),
+    )
+
+    handler = _impact_handler(mass_tot=1.0)
+    handler.hf_row['H_kg_total'] = 4.0e22
+    handler.hf_row['C_kg_total'] = 1.0e21
+    handler.hf_row['O_kg_total'] = 8.0e22
+    event = _impact_event(
+        M_target_before=6.0 * M_earth,
+        M_impactor=0.5 * M_earth,
+        M_merged_after=6.5 * M_earth,
+    )
+    apply_impact(handler, event)
+
+    # Every volatile budget is conserved at its pre-impact value.
+    assert handler.hf_row['H_kg_total'] == pytest.approx(4.0e22, rel=1e-12)
+    assert handler.hf_row['C_kg_total'] == pytest.approx(1.0e21, rel=1e-12)
+    assert handler.hf_row['O_kg_total'] == pytest.approx(8.0e22, rel=1e-12)
+    # Discrimination: the mass-scaled (unconserved) value is 1.5x larger, a 50%
+    # divergence far outside the 1e-12 tolerance. This is the value the row
+    # would carry if the restore were absent.
+    assert abs(handler.hf_row['H_kg_total'] - 4.0e22 * 1.5) > 1.0e22
+    # M_ele reflects the conserved inventory, not the rescaled one.
+    assert handler.hf_row['M_ele'] == pytest.approx(4.0e22 + 1.0e21 + 8.0e22, rel=1e-12)
+    assert handler.hf_row['M_ele'] < 1.5 * (4.0e22 + 1.0e21 + 8.0e22)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_mass_growth_conserves_then_delivery_adds_only_the_delivered_mass(monkeypatch):
+    """Under mass growth the budget is the conserved base plus the delivery.
+
+    With a wet impactor the two mechanisms compose: the mass growth conserves
+    the pre-impact inventory (it does not rescale it), and the delivery adds
+    exactly the impactor mass times its ppmw content on top. The final budget
+    must be base + delivered, never the mass-scaled base or the mass-scaled
+    base plus the delivery.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure',
+        _rescaling_solve_structure(1.5),
+    )
+
+    handler = _impact_handler(mass_tot=1.0, accretion=_impact_accretion(H=1000.0))
+    handler.hf_row['H_kg_total'] = 4.0e22
+    m_impactor = 0.5 * M_earth
+    event = _impact_event(
+        M_target_before=6.0 * M_earth,
+        M_impactor=m_impactor,
+        M_merged_after=6.5 * M_earth,
+    )
+    apply_impact(handler, event)
+
+    delivered = m_impactor * 1000.0 / 1.0e6
+    expected = 4.0e22 + delivered  # conserved base + delivery
+    assert handler.hf_row['H_kg_total'] == pytest.approx(expected, rel=1e-12)
+    # Discrimination against the two wrong compositions: rescaled base (+50%)
+    # and rescaled base plus delivery both exceed the correct value by the
+    # 2.0e22 mass-scaling term, far outside tolerance.
+    assert abs(handler.hf_row['H_kg_total'] - (4.0e22 * 1.5)) > 1.0e22
+    assert abs(handler.hf_row['H_kg_total'] - (4.0e22 * 1.5 + delivered)) > 1.0e22
+    assert handler.hf_row['M_ele'] == pytest.approx(expected, rel=1e-12)
