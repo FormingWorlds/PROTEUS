@@ -69,20 +69,49 @@ def _resolve_level(level: str) -> int:
     return logging.getLevelNamesMapping()[level]
 
 
-def _console_handler(level_code: int) -> logging.StreamHandler:
-    """Build a stdout handler using the PROTEUS colour formatter.
+def _console_handler(
+    level_code: int, formatter: logging.Formatter | None = None
+) -> logging.StreamHandler:
+    """Build a stdout handler.
 
-    Shared by setup_logger and bootstrap_logger so terminal output looks the
-    same whichever installs the console handler.
+    Uses the PROTEUS colour formatter by default; callers that want a plain,
+    logfile-style line (e.g. the grid manager) pass their own formatter. Shared
+    by setup_logger and bootstrap_logger so terminal output stays consistent
+    whichever installs the console handler.
     """
     sh = logging.StreamHandler(sys.stdout)
-    sh.setFormatter(CustomFormatter())
+    sh.setFormatter(formatter if formatter is not None else CustomFormatter())
     sh.setLevel(level_code)
     return sh
 
 
 # Custom logger instance
-def setup_logger(logpath: str = 'new.log', level: str = 'INFO', logterm: bool = True):
+def setup_logger(
+    logpath: str = 'new.log',
+    level: str = 'INFO',
+    logterm: bool = True,
+    fmt: str | None = None,
+    datefmt: str | None = None,
+):
+    """Configure the top-level 'fwl' logger with terminal and file handlers.
+
+    Parameters
+    ----------
+    logpath : str
+        Path of the logfile to (re)create.
+    level : str
+        Log level name: 'INFO', 'DEBUG', 'ERROR', or 'WARNING'.
+    logterm : bool
+        Whether to also emit to the terminal (stdout).
+    fmt : str | None
+        Optional logging format string. When given, both the terminal and file
+        handlers use a plain (uncoloured) ``logging.Formatter(fmt, datefmt)``;
+        for example the grid manager passes ``'[%(asctime)s] %(message)s'`` for a
+        clean, timestamped logfile. When None, the terminal uses the coloured
+        CustomFormatter and the file uses the '[ LEVEL ] message' layout.
+    datefmt : str | None
+        Date format for %(asctime)s, applied only when ``fmt`` is given.
+    """
     logger_name = 'fwl'
 
     # https://stackoverflow.com/a/61457119
@@ -97,13 +126,15 @@ def setup_logger(logpath: str = 'new.log', level: str = 'INFO', logterm: bool = 
 
     level_code = _resolve_level(level)
 
+    plain_formatter = logging.Formatter(fmt, datefmt=datefmt) if fmt is not None else None
+
     # Add terminal output to logger
     if logterm:
-        custom_logger.addHandler(_console_handler(level_code))
+        custom_logger.addHandler(_console_handler(level_code, plain_formatter))
 
     # Add file output to logger
     fh = logging.FileHandler(logpath)
-    fh.setFormatter(logging.Formatter('[ %(levelname)-5s ] %(message)s'))
+    fh.setFormatter(plain_formatter or logging.Formatter('[ %(levelname)-5s ] %(message)s'))
 
     fh.setLevel(level_code)
     custom_logger.addHandler(fh)

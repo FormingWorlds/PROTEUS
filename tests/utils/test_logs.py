@@ -504,6 +504,58 @@ class TestSetupLogger:
             assert callable(sys.excepthook)
             sys.excepthook = original_hook  # Restore original hook
 
+    @pytest.mark.unit
+    def test_plain_fmt_writes_uncoloured_timestamped_file(self):
+        """An explicit fmt makes the file use that plain layout.
+
+        The grid manager passes a timestamped, colourless format so its
+        manager.log stays clean; verify the file carries the requested
+        timestamp layout and not the default level tag.
+        """
+        import re
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logpath = os.path.join(tmpdir, 'plain.log')
+            setup_logger(
+                logpath=logpath,
+                level='INFO',
+                logterm=False,
+                fmt='[%(asctime)s] %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S',
+            )
+            logging.getLogger('fwl').info('PLAINMARK')
+            for h in logging.getLogger('fwl').handlers:
+                h.flush()
+            contents = open(logpath).read().strip()
+        assert 'PLAINMARK' in contents
+        # The plain layout must NOT carry the default '[ LEVEL ]' tag; this
+        # discriminates the fmt path from the default-formatter path.
+        assert '[ INFO' not in contents
+        # And the line must match the requested datefmt exactly (a regression
+        # that ignored datefmt would emit the default comma-millisecond stamp).
+        assert re.match(r'^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] PLAINMARK$', contents)
+
+    @pytest.mark.unit
+    def test_default_fmt_keeps_level_tag(self):
+        """Without fmt, the file keeps the default '[ LEVEL ] message' layout.
+
+        This pins that the new fmt parameter is opt-in and does not change the
+        layout of existing (non-grid) logs.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logpath = os.path.join(tmpdir, 'tagged.log')
+            setup_logger(logpath=logpath, level='INFO', logterm=False)
+            logging.getLogger('fwl').info('TAGMARK')
+            for h in logging.getLogger('fwl').handlers:
+                h.flush()
+            contents = open(logpath).read().strip()
+        assert 'TAGMARK' in contents
+        # Default layout carries the level tag...
+        assert '[ INFO' in contents
+        # ...and must NOT look like the timestamped grid layout, so the two
+        # code paths are distinguishable.
+        assert not contents.startswith('[20')
+
 
 class TestBootstrapLogger:
     """Test suite for bootstrap_logger early console fallback.
