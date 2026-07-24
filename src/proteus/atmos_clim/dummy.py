@@ -151,6 +151,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     # For the dummy climate model, the observed temperature is the surface temperature.
     # Use the locally computed value to avoid requiring hf_row["T_surf"] in unit tests.
     output['T_obs'] = T_surf_atm
+    output['g_obs'] = hf_row['gravity'] * (hf_row['R_int'] / R_obs) ** 2
     output['ocean_areacov'] = 0.0
     output['ocean_maxdepth'] = 0.0
     output['P_surf_clim'] = hf_row['P_surf']

@@ -303,6 +303,12 @@ def RunJANUS(
         _, r_obs = get_oarr_from_parr(atm.p, r_arr, p_obs)
         _, t_obs = get_oarr_from_parr(atm.p, t_arr, p_obs)  # [Pa], [m]
 
+    # Gravity at the observed level. Derive it from r_obs by the inverse-square
+    # law rather than reading atm.grav_z: write_ncdf() above reintegrates the
+    # heights (atm.z) without writing gravity back, so atm.grav_z is stale.
+    # This neglects self-gravity but is self-consistent with JANUS internals.
+    g_obs = float(hf_row['gravity']) * (float(hf_row['R_int']) / r_obs) ** 2
+
     # p_xuv from R_xuv
     if config.escape.xuv_defined_by_radius:
         r_xuv = hf_row['R_xuv']  # m
@@ -323,6 +329,7 @@ def RunJANUS(
     output['p_obs'] = p_obs / 1e5  # observed level [bar]
     output['T_obs'] = t_obs  # observed level [K]
     output['R_obs'] = r_obs  # observed level [m]
+    output['g_obs'] = g_obs  # observed gravity [m/s^2]
     output['p_xuv'] = p_xuv  # Closest pressure to Pxuv [bar]
     output['R_xuv'] = r_xuv  # Radius at Pxuv [m]
     output['P_surf_clim'] = P_surf_clim  # calculated surface pressure [bar]

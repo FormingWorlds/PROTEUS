@@ -395,6 +395,47 @@ def test_rundummyatm_scale_height():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+def test_rundummyatm_gobs_inverse_square_of_robs():
+    """Observed gravity obeys the inverse-square law against R_obs.
+
+    Physical scenario: the dummy atmosphere reports its constraining
+    observable at the level R_obs, which sits height_factor scale heights
+    above the surface R_int. Gravity is (R_int/R_obs)**2
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.4
+    config.atmos_clim.dummy.height_factor = 3.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.surf_state = 'fixed'
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 1200.0,  # K
+        'albedo_pl': 0.3,
+        'F_ins': 1000.0,  # W/m^2
+        'atm_kg_per_mol': 0.029,  # kg/mol; N2
+        'gravity': 10.0,  # m/s^2 surface gravity
+        'R_int': 6.0e6,  # m
+        'P_surf': 1e5,  # Pa
+    }
+
+    output = RunDummyAtm({}, config, hf_row)
+
+    # Scaled gravity from surface
+    g_expected = hf_row['gravity'] * (hf_row['R_int'] / output['R_obs']) ** 2
+    assert output['g_obs'] == pytest.approx(g_expected, rel=1e-10)
+
+    # g_obs must be strictly weaker than the surface gravity
+    assert output['R_obs'] > hf_row['R_int']
+    assert output['g_obs'] < hf_row['gravity']
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_zenith_angle_effect():
     """Test that zenith angle reduces scattered solar flux via cosine factor.
 
