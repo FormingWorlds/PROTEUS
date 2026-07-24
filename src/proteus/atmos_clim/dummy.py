@@ -17,6 +17,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Run the dummy atmosphere module
 def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
+    # Gas composition for escape equal to surface composition
     log.debug('Running dummy atmosphere...')
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
@@ -155,7 +156,6 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     output['ocean_maxdepth'] = 0.0
     output['P_surf_clim'] = hf_row['P_surf']
 
-    # Gas composition for escape equal to surface composition
     for g in gas_list:
         hf_row[f'{g}_vmr_xuv'] = float(hf_row.get(f'{g}_vmr', 0.0))
 

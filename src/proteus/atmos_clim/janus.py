@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.atmos_clim.common import get_oarr_from_parr
-from proteus.utils.constants import gas_list, vap_list, vol_list
+from proteus.utils.constants import vap_list, vol_list, gas_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder
 
 if TYPE_CHECKING:

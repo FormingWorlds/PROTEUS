@@ -23,7 +23,6 @@ import pandas as pd
 from proteus.utils.constants import (
     element_list,
     gas_list,
-    noble_gases,
     secs_per_hour,
     secs_per_minute,
 )
@@ -134,7 +133,34 @@ def _get_julia_version():
     """
     Get the installed Julia version
     """
-    return subprocess.check_output(['julia', '--version']).decode('utf-8').split()[-1]
+    try:
+        return subprocess.check_output(['julia', '--version']).decode('utf-8').split()[-1]
+    except FileNotFoundError:
+        return 'unknown (julia not installed)'
+
+
+def _get_lavatmos_version() -> str:
+    """
+    Get the installed LavAtmos version.
+    """
+    LAVA_DIR = os.environ.get('LAVA_DIR')
+    if LAVA_DIR is None:
+        return 'unknown (LAVA_DIR not set)'
+    return _get_git_revision(LAVA_DIR)
+
+
+def _get_thermoengine_version() -> str:
+    """
+    Get the installed ThermoEngine version.
+
+    This is a python module but is optional, so might not be installed.
+    """
+
+    try:
+        import thermoengine
+    except ImportError:
+        return 'unknown (thermoengine not installed)'
+    return thermoengine.__version__
 
 
 def validate_module_versions(dirs: dict, config: Config):
@@ -285,6 +311,7 @@ def print_system_configuration(dirs: dict):
 
     log.info('Current time      ' + _get_current_time())
     log.info('Python version    ' + sys.version.split(' ')[0])
+    log.info('Julia version     ' + _get_julia_version())
     log.info('System hostname   ' + str(os.uname()[1]))
     log.info('System username   ' + str(username))
     log.info('Platform type     ' + str(platform.system()))
@@ -332,16 +359,23 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info(write)
     if config.atmos_clim.module in ['janus', 'agni']:
         log.info('  - SOCRATES      version %s at %s' % (_get_socrates_version(), dirs['rad']))
-        if config.atmos_clim.module == 'agni':
-            log.info('  - Julia         version ' + _get_julia_version())
 
     # Outgassing module
     write = 'Outgas module     %s' % config.outgas.module
-    if config.outgas.module == 'calliope':
-        from calliope import __version__ as calliope_version
+    match config.outgas.module:
+        case 'calliope':
+            from calliope import __version__ as calliope_version
 
-        write += ' version ' + calliope_version
+            write += ' version ' + calliope_version
+        case 'atmodeller':
+            from atmodeller import __version__ as atmodeller_version
+
+            write += ' version ' + atmodeller_version
+
     log.info(write)
+    if config.outgas.vapourise:
+        log.info('  - LavAtmos      version ' + _get_lavatmos_version())
+        log.info('  - ThermoEngine  version ' + _get_thermoengine_version())
 
     # Escape module
     write = 'Escape module     %s' % config.escape.module
@@ -373,7 +407,13 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info('Accretion module  %s' % config.accretion.module)
 
     # Atmospheric chemistry module
-    log.info('Atmos_chem module %s' % config.atmos_chem.module)
+    write = 'Atmos_chem module %s' % config.atmos_chem.module
+    match config.atmos_chem.module:
+        case 'vulcan':
+            from vulcan import __version__ as vulcan_version
+
+            write += ' version ' + vulcan_version
+    log.info(write)
 
     # Observations synthesis module
     write = 'Observe module    %s' % config.observe.module
@@ -510,6 +550,12 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     by construction. This assertion catches any regression that
     re-introduces an asymmetry by dropping O from one side.
 
+    This invariant does not hold when rock-vapour outgassing
+    (``outgas.vapourise``) is enabled, because that path moves
+    non-volatile silicate mass into M_atm that M_planet does not track;
+    the caller skips this check in that mode rather than loosening the
+    tolerance for volatile-only runs.
+
     Parameters
     ----------
     hf_row : dict
@@ -566,6 +612,62 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
             )
 
 
+def assert_surface_pressure_consistency(
+    config: Config, hf_row: dict, atol_frac: float = 1e-6
+) -> None:
+    """Runtime invariant: P_surf == P_vol + P_vap, and P_vap == 0 when rock
+    vapour outgassing is disabled.
+
+    P_vol is the volatile-only surface pressure (CALLIOPE/atmodeller/dummy
+    output) and P_vap is the rock-vapour contribution added by LavAtmos
+    (`outgas.vapourise = True`). P_surf is the total the atmosphere modules
+    use as their lower boundary condition, so the two partial pressures must
+    always sum back to it.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row at the end of an outgassing call (run_outgassing,
+        run_vapourisation, run_desiccated, or run_crystallized).
+    atol_frac : float
+        Relative tolerance against max(|P_surf|, |P_vol + P_vap|).
+
+    Raises
+    ------
+    RuntimeError
+        If P_vap is nonzero while `outgas.vapourise` is False, or if
+        P_surf disagrees with P_vol + P_vap by more than `atol_frac`.
+    """
+
+    P_surf = float(hf_row.get('P_surf', 0.0))
+    P_vol = float(hf_row.get('P_vol', 0.0))
+    P_vap = float(hf_row.get('P_vap', 0.0))
+
+    if not config.outgas.vapourise and P_vap != 0.0:
+        raise RuntimeError(
+            f'P_vap={P_vap:.3e} bar is nonzero but outgas.vapourise=False: '
+            'rock-vapour pressure must stay at zero when vapourisation is '
+            'disabled. Check that the code path that set P_vap is gated on '
+            'config.outgas.vapourise.'
+        )
+
+    total = P_vol + P_vap
+    scale = max(abs(P_surf), abs(total))
+    if scale <= 0.0:
+        # Pre-IC / no atmosphere yet: nothing meaningful to compare.
+        return
+
+    rel = abs(P_surf - total) / scale
+    if rel > atol_frac:
+        raise RuntimeError(
+            f'Surface pressure inconsistency: P_surf={P_surf:.6e} bar but '
+            f'P_vol+P_vap={total:.6e} bar (P_vol={P_vol:.6e}, '
+            f'P_vap={P_vap:.6e}, relative difference {rel * 100:.3f}%). '
+            'One of the outgassing code paths updated P_surf without '
+            'keeping P_vol/P_vap in sync.'
+        )
+
+
 def PrintCurrentState(hf_row: dict):
     """
     Print the current state of the model to the logger
@@ -601,6 +703,7 @@ def GetHelpfileKeys():
     All dimensional quantites should be stored in SI units, except those noted below.
     * Pressure is in units of [bar].
     * Time is in units of [years].
+
     """
 
     # fmt: off
@@ -628,6 +731,7 @@ def GetHelpfileKeys():
         'R_int',            # interior radius [m]
         'M_int',            # interior mass [kg]
         'M_planet',         # total planet wet+dry mass [kg]
+        'M_vaps',           # outgassed rock vapour mass including outgassed extra oxygen [kg]
         'R_core',           # core radius [m]
         'R_solvus',         # solvus radius for global_miscibility mode [m]
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]
@@ -754,13 +858,15 @@ def GetHelpfileKeys():
         'rho_obs',          # transit bulk density [kg m-3]
         'transit_depth',    # primary transit light curve depth [1]
         'eclipse_depth',    # secondary eclipse light curve depth [1]
-        'albedo_pl',        # INPUT bond albedo from config: constant value or interpolated from table [1]
+        'albedo_pl',        # INPUT bond albedo from config: constant value (0 to 1) [1]
         'bond_albedo',      # OUTPUT calculated bond albedo from radtrans: SW_UP/SW_DN, zero if no scattering [1]
 
         # Atmospheric composition from outgassing
-        'M_ele',            # total mass of tracked elements (utils.constants.element_list)
+        'M_ele',            # total mass of tracked elements (utils.constants.element_list) rock vapour and volatile
         'M_atm',            # total mass of atmosphere [kg]
         'P_surf',           # total surface pressure [bar]
+        'P_vap',            # rock vapour surface pressure [bar]
+        'P_vol',            # volatiles surface pressure [bar]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
 
         # Iron-wustite buffer offset that the chemistry solver actually
@@ -791,9 +897,9 @@ def GetHelpfileKeys():
         # resume preserves the gate's state.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
         'esc_kg_cumulative', # cumulative escaped mass [kg]
-    ]
+        ]
 
-    # quantities for each gas, from outgassing
+    # gases from outgassing
     for s in gas_list:
         keys.append(s + '_mol_atm')     # number outgassed to atmosphere [mol]
         keys.append(s + '_mol_solid')   # number in solid mantle [mol]
@@ -807,11 +913,10 @@ def GetHelpfileKeys():
         keys.append(s + '_bar')         # partial surface pressure [bar]
         keys.append(s + '_vmr_xuv')     # volume mixing ratio at XUV level [1]
 
-    # quantities for each element. A noble gas is also a gas species, so its
-    # mass columns are already emitted by the gas-species loop above; skip it
-    # here to avoid duplicating them.
+    # quantities for each element. Some elements are also gas species in
+    # their own right (all noble gases, plus rock-forming elements)
     for e in element_list:
-        if e in noble_gases:
+        if e in gas_list:
             continue
         keys.append(e + '_kg_atm')      # mass outgassed to atmosphere [kg]
         keys.append(e + '_kg_solid')    # mass in solid mantle [kg]
@@ -850,8 +955,9 @@ def GetHelpfileKeys():
 
     # Simulation's computational variables
     keys.append('runtime')          # Simulation wall-clock runtime [s]
+    keys.append("log10_fO2_vapourise") #relative to IW buffer
+    keys.append("log10_fO2_shift_vapourise") #relative to IW buffer
 
-    # fmt: on
     return keys
 
 
@@ -1010,6 +1116,7 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
 def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     """
     Extend helpfile with new row of variables
+
     """
     log.debug('Extending helpfile with new row')
 
@@ -1034,7 +1141,9 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     #   and string-valued fields (core_state_initial) don't break runs.
     # Private (underscore-prefixed) keys are intentionally transient and
     # are excluded from both checks.
+
     schema = set(GetHelpfileKeys())
+
     row_keys = {k for k in new_row.keys() if not k.startswith('_')}
     # Known non-numeric / non-persistent keys that are written into hf_row
     # but deliberately not tracked in the helpfile CSV schema.
@@ -1068,14 +1177,16 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
 
     # Check for NaN values. Print warning if any are found and convert to zero.
-    for col in new_row.columns:
-        if new_row[col].isna().any():
+    time_val = new_row['Time'].iloc[0]
+    for i, col in enumerate(new_row.columns):
+        col_data = new_row.iloc[:, i]
+        if col_data.isna().any():
             log.warning(
                 'hf_row[%s] is NaN at t=%.2e years; setting to zero.',
                 col,
-                new_row['Time'].iloc[0],
+                time_val,
             )
-            new_row[col] = new_row[col].fillna(0.0)
+            new_row.iloc[:, i] = col_data.fillna(0.0)
 
     # concatenate and return
     return pd.concat([current_hf, new_row], ignore_index=True)
@@ -1431,7 +1542,6 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     dummy_atm = config.atmos_clim.module == 'dummy'
     dummy_int = config.interior_energetics.module == 'dummy'
     agni = config.atmos_clim.module == 'agni'
-
     spider = config.interior_energetics.module == 'spider'
     aragog = config.interior_energetics.module == 'aragog'
     observed = bool(config.observe.module is not None)

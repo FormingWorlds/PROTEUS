@@ -327,20 +327,6 @@ class Dummy:
     fixed_flux: float = field(default=-1.0)
 
 
-def valid_albedo(instance, attribute, value):
-    if isinstance(value, str):
-        return
-
-    elif isinstance(value, float):
-        if not (0 <= value <= 1):
-            raise ValueError('The value of `albedo_pl` must be between 0 and 1')
-        else:
-            return
-
-    else:
-        raise ValueError('The value of `albedo_pl` must be a string or a float')
-
-
 @define
 class AtmosClim:
     """Atmosphere parameters, model selection.
@@ -373,8 +359,8 @@ class AtmosClim:
         Surface energy balance scheme. Choices: 'mixed_layer', 'fixed', 'skin'.
     surf_greyalbedo: float
         Grey surface albedo.
-    albedo_pl: float | str
-        Planetary bond albedo. Can be float (0 to 1) or str (path to CSV lookup).
+    albedo_pl: float
+        Planetary bond albedo (0 to 1).
     rayleigh: bool
         Include Rayleigh scattering (AGNI, JANUS only).
     tmp_minimum: float
@@ -409,7 +395,7 @@ class AtmosClim:
     cloud_enabled: bool = field(default=False, validator=warn_if_dummy)
     cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
     surf_greyalbedo: float = field(default=0.1, validator=(ge(0), le(1)))
-    albedo_pl = field(default=0.0, validator=valid_albedo)
+    albedo_pl: float = field(default=0.0, validator=(ge(0), le(1)))
     rayleigh: bool = field(default=True, validator=valid_rayleigh)
     tmp_minimum: float = field(default=0.5, validator=gt(0))
 
@@ -423,13 +409,3 @@ class AtmosClim:
                 return 2
             case _:
                 raise ValueError(f"Invalid surf_state for AGNI: '{self.surf_state}'")
-
-    @property
-    def albedo_from_file(self) -> bool:
-        """Is albedo set by lookup table or not?"""
-        if isinstance(self.albedo_pl, str):
-            return True
-        elif isinstance(self.albedo_pl, float):
-            return False
-        else:
-            raise ValueError('Cannot determine configuration for setting `albedo_pl`')

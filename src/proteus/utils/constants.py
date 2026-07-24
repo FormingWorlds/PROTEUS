@@ -1,7 +1,6 @@
 # Physical, numerical, etc constants
 from __future__ import annotations
 
-# Astronomical constants
 L_sun = 3.828e26  # W, IAU definition
 R_sun = 6.957e8  # m
 R_sun_cm = 100 * R_sun  # cm
@@ -45,10 +44,41 @@ const_k = 1.38065812e-23  # Boltzman thermodynamic constant
 const_sigma = 5.67051196e-8  # Stefan-Boltzman constant
 const_G = 6.67428e-11  # Gravitational constant (2006 measurements)
 const_Nav = 6.02214076e23  # Avogadro's constant [mol-1]
+const_mp = 1.6726231e-27  # Proton mass [kg]
 B_ein = 2.5
 
-# Supported gases
+# CODATA electron rest mass, expressed as a molar mass [g mol-1]; not an
+# element, so it doesn't belong in element_mmw.
+electron_molar_mass = 5.4858e-4
+
+# Supported volatiles
 vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
+
+# Supported vapours
+vap_list = [
+    'SiO',
+    'SiO2',
+    'Si',
+    'Na',
+    'K',
+    'Ti',
+    'TiO',
+    'TiO2',
+    'Mg',
+    'MgO',
+    'Al',
+    'HAlO2',
+    'SiH',
+    'SiH4',
+    'Fe',
+    'FeO',
+    'FeO2H2',
+    'CaO',
+    'NaOH',
+    'Ca',
+    'KOH',
+]
+
 prt_gases = [
     'C2H2',
     'C2H4',
@@ -85,23 +115,22 @@ prt_cia_species = [
     'O2--O2',
 ]
 prt_ignored_gases = {'e-', 'MMW', 'nabla_ad'}
-vap_list = ['SiO']  # just one for now
 
-# Noble gases. Each is chemically inert, and its gas species and its element
-# are the same monatomic entity. They are full members of both gas_list (the
-# modelled gas species) and element_list (the supported elements), so they are
-# tracked in the helpfile schema, the surface pressure, and the whole-planet
-# mass balance without special-casing. They are opt-in per gas via the
-# outgassing config, so a run with no noble budget carries them as zero.
+# Noble gases. They are full members of both gas_listand element_list.
+# They are tracked in the helpfile and the whole-planet mass balance.
 noble_gases = ['He', 'Ne', 'Ar', 'Kr', 'Xe']
 
-gas_list = vol_list + vap_list + noble_gases
+# Construct gas list from all three sources (with duplicates removed)
+gas_list = list(dict.fromkeys(vol_list + noble_gases + vap_list))
 
-# Supported elements: the reactive and rock-forming elements plus the inert
-# noble gases.
-element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'] + noble_gases
+# Supported elements: volatiles, rock-forming elements, noble gases (above)
+vol_element_list = ['H', 'O', 'C', 'N', 'S']
+vap_element_list = ['Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K']
 
-# Masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/
+# Construct element list from all three sources (with duplicates removed)
+element_list = list(dict.fromkeys(vol_element_list + vap_element_list + noble_gases))
+
+# Molar masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/
 element_mmw = {
     'H': 1.008000000e-03,
     'He': 4.002000000e-03,
@@ -188,7 +217,6 @@ element_mmw = {
     'Pa': 2.310350000e-01,
     'U': 2.380280000e-01,
 }  # noqa
-
 ## Constant from Zephyrus
 ergcm2stoWm2 = 1e-3  # convert [erg s-1 cm-2] to [W m-2]
 # Sun parameters

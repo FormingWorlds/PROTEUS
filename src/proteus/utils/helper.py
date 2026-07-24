@@ -96,7 +96,7 @@ def mol_to_ele(mol: str):
             val = 1
         else:
             val = int(ev[1])
-        elems[str(ev[0])] = val
+        elems[str(ev[0])] = elems.get(ev[0], 0) + val
 
     # Check that what we got is reasonable
     if not elems:
@@ -205,6 +205,8 @@ def CommentFromStatus(status: int):
             desc = 'Error (Outgassing model)'
         case 28:
             desc = 'Error (Escape model)'
+        case 29:
+            desc = 'Completed (planet evaporated)'
         # Default case
         case _:
             desc = 'UNHANDLED STATUS (%d)' % status

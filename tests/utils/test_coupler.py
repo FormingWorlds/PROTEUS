@@ -30,7 +30,7 @@ import sys
 import tempfile
 import types
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -900,6 +900,37 @@ def test_get_agni_version_with_mock():
 
 
 @pytest.mark.unit
+def test_get_lavatmos_version_with_mock():
+    """Test that _get_lavatmos_version reports the LAVA_DIR checkout's git hash."""
+    from proteus.utils.coupler import _get_lavatmos_version
+
+    with (
+        patch.dict(os.environ, {'LAVA_DIR': '/fake/lava'}),
+        patch('proteus.utils.coupler._get_git_revision', return_value='abc123def') as mock_rev,
+    ):
+        version = _get_lavatmos_version()
+
+    assert version == 'abc123def'
+    # Discrimination: the hash must come from the LAVA_DIR checkout, not
+    # some other directory a regression might pass by mistake.
+    mock_rev.assert_called_once_with('/fake/lava')
+
+
+@pytest.mark.unit
+def test_get_lavatmos_version_raises_without_lava_dir():
+    """Test that _get_lavatmos_version errors when LAVA_DIR is missing."""
+    from proteus.utils.coupler import _get_lavatmos_version
+
+    with patch.dict(os.environ, {}, clear=True):
+        # Precondition: confirm LAVA_DIR is actually absent in the clean
+        # env so the missing-env branch is what gets exercised (rather
+        # than a leaked outer-process value).
+        assert 'LAVA_DIR' not in os.environ
+        with pytest.raises(EnvironmentError, match='LAVA_DIR environment variable is not set'):
+            _get_lavatmos_version()
+
+
+@pytest.mark.unit
 def test_get_julia_version_with_mock():
     """Test that _get_julia_version parses julia --version output."""
     from proteus.utils.coupler import _get_julia_version
@@ -1314,6 +1345,7 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
     used the prior-row value as the starting point would miss the
     fact that step_solver_residual_J is itself the per-call increment.
     """
+
     E0 = 1.0e31
     # Three asymmetric increments, all sources active.
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
@@ -1695,7 +1727,6 @@ def test_assert_mass_conservation_fails_when_species_sum_disagrees():
     per_species = (0.87 * 4.6e24) / len(gas_list)
     for s in gas_list:
         hf_row[s + '_kg_atm'] = per_species
-
     with pytest.raises(RuntimeError, match='M_atm bookkeeping inconsistency'):
         assert_mass_conservation(hf_row)
     # Discrimination: the M_atm <= M_planet invariant must HOLD here so
@@ -1727,6 +1758,131 @@ def test_assert_mass_conservation_skips_when_M_planet_zero():
     # can produce a silent pass on this row.
     assert hf_row['M_atm'] > 0.0
     assert hf_row['M_planet'] == 0.0
+
+
+# ============================================================================
+# P_surf = P_vol + P_vap surface-pressure invariant tests
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_passes_when_vapourise_disabled():
+    """P_surf == P_vol with P_vap == 0 is accepted when rock vapour is off.
+
+    Physical scenario: an ordinary CALLIOPE/atmodeller outgas step with
+    outgas.vapourise = False. P_vol mirrors P_surf exactly (no vapour
+    contribution), which is the state run_outgassing leaves hf_row in.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+
+    hf_row = {'P_surf': 120.0, 'P_vol': 120.0, 'P_vap': 0.0}
+
+    result = assert_surface_pressure_consistency(config, hf_row)
+    assert result is None  # contract: silent pass when the invariant holds
+    # Discriminating check: P_vol is non-trivially large (not a vacuous 0/0
+    # pass) and exactly equals P_surf, isolating the "vapourise off" branch.
+    assert hf_row['P_vol'] == pytest.approx(hf_row['P_surf'])
+    assert hf_row['P_vap'] == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_passes_when_vapourise_enabled():
+    """P_surf == P_vol + P_vap is accepted with a nonzero rock-vapour term.
+
+    Physical scenario: LavAtmos has run (outgas.vapourise = True) and added
+    a rock-vapour partial pressure on top of the volatile total, mirroring
+    run_vapourisation's P_vol/P_vap/P_surf bookkeeping.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = True
+
+    # Asymmetric split (not a 50/50 coincidence) so the sum genuinely
+    # exercises both terms rather than passing via a degenerate value.
+    hf_row = {'P_surf': 137.5, 'P_vol': 90.0, 'P_vap': 47.5}
+
+    result = assert_surface_pressure_consistency(config, hf_row)
+    assert result is None
+    assert hf_row['P_vap'] > 0.0
+    assert hf_row['P_vol'] + hf_row['P_vap'] == pytest.approx(hf_row['P_surf'])
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_rejects_nonzero_P_vap_when_disabled():
+    """P_vap must be exactly zero whenever outgas.vapourise is False.
+
+    Regression scenario this guards against: a stale rock-vapour pressure
+    (e.g. left over from a prior iteration, or written by a code path that
+    forgot to gate on the config flag) surviving into an iteration where
+    vapourise is disabled. Must raise before the P_surf==P_vol+P_vap check
+    even runs, since that check alone (100.0 == 95.0 + 5.0) would otherwise
+    pass and mask the real bug.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+
+    hf_row = {'P_surf': 100.0, 'P_vol': 95.0, 'P_vap': 5.0}
+
+    with pytest.raises(RuntimeError, match='outgas.vapourise=False'):
+        assert_surface_pressure_consistency(config, hf_row)
+    # Discrimination: P_surf == P_vol + P_vap holds exactly here (100 == 95 + 5),
+    # so a weaker implementation that only checked the sum would wrongly pass
+    # this row. Pin that the sum-consistent row is exactly what makes this a
+    # useful regression test, not an artifact of an already-broken sum.
+    assert hf_row['P_vol'] + hf_row['P_vap'] == pytest.approx(hf_row['P_surf'])
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_rejects_mismatched_total():
+    """P_surf disagreeing with P_vol + P_vap by more than the tolerance raises.
+
+    Discriminating: P_surf=150.0 but P_vol+P_vap=100.0, a 33 percent
+    disagreement, far above the default 1e-6 relative tolerance. Models a
+    code path (e.g. run_crystallized's escape scaling) that rescaled
+    P_surf without rescaling P_vol/P_vap in step.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = True
+
+    hf_row = {'P_surf': 150.0, 'P_vol': 80.0, 'P_vap': 20.0}
+
+    with pytest.raises(RuntimeError, match='Surface pressure inconsistency'):
+        assert_surface_pressure_consistency(config, hf_row)
+    # Discrimination: the mismatch (50.0) is far above what float rounding
+    # could produce, confirming the raise is the real bookkeeping check and
+    # not a numerical-noise false positive.
+    assert abs(hf_row['P_surf'] - (hf_row['P_vol'] + hf_row['P_vap'])) > 1.0
+
+
+@pytest.mark.unit
+def test_assert_surface_pressure_consistency_skips_pre_ic():
+    """No atmosphere yet (all pressures zero) short-circuits without raising.
+
+    Edge case: at the very first call, before any outgassing has run,
+    P_surf/P_vol/P_vap are all still at their ZeroHelpfileRow default.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = True
+
+    hf_row = {'P_surf': 0.0, 'P_vol': 0.0, 'P_vap': 0.0}
+
+    result = assert_surface_pressure_consistency(config, hf_row)
+    assert result is None
+    assert hf_row['P_surf'] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -1912,7 +2068,7 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
     config = types.SimpleNamespace(
         interior_energetics=types.SimpleNamespace(module='spider'),
         atmos_clim=types.SimpleNamespace(module='agni'),
-        outgas=types.SimpleNamespace(module='calliope'),
+        outgas=types.SimpleNamespace(module='calliope', vapourise=False),
         escape=types.SimpleNamespace(module='boreas'),
         star=types.SimpleNamespace(module='mors'),
         orbit=types.SimpleNamespace(module='lovepy'),
@@ -1948,6 +2104,9 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
         assert any('Escape module     boreas version' in m for m in messages)
         assert any('Star module       mors version' in m for m in messages)
         assert any('Observe module    petitRADTRANS version' in m for m in messages)
+        # Discrimination: rock-vapour outgassing is disabled here
+        # (vapourise=False), so LavAtmos must not be reported at all.
+        assert not any('LavAtmos' in m for m in messages)
 
 
 @pytest.mark.unit
@@ -1956,7 +2115,7 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
     config = types.SimpleNamespace(
         interior_energetics=types.SimpleNamespace(module='aragog'),
         atmos_clim=types.SimpleNamespace(module='janus'),
-        outgas=types.SimpleNamespace(module='dummy'),
+        outgas=types.SimpleNamespace(module='dummy', vapourise=True),
         escape=types.SimpleNamespace(module='zephyrus'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='dummy'),
@@ -1968,6 +2127,7 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
 
     monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'def456')
     monkeypatch.setattr(coupler_mod, '_get_socrates_version', lambda: '24.1.0')
+    monkeypatch.setattr(coupler_mod, '_get_lavatmos_version', lambda: 'ghi789')
     monkeypatch.setitem(sys.modules, 'aragog', types.SimpleNamespace(__version__='0.7.0'))
     monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='0.5.0'))
     monkeypatch.setitem(sys.modules, 'zephyrus', types.SimpleNamespace(__version__='0.6.0'))
@@ -1978,6 +2138,9 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
         assert any('Interior module   aragog version' in m for m in messages)
         assert any('Atmos_clim module janus version' in m for m in messages)
         assert any('Escape module     zephyrus version' in m for m in messages)
+        # Rock-vapour outgassing (config.outgas.vapourise=True) must print the
+        # LavAtmos checkout version regardless of the outgas.module setting.
+        assert any('LavAtmos' in m and 'ghi789' in m for m in messages)
 
 
 @pytest.mark.unit

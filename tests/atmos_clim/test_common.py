@@ -6,7 +6,6 @@ This module tests the shared utility functions used by all atmosphere-climate mo
 - Robust NetCDF data ingestion (reading profiles, handling flags)
 - Physical state conversions (pressure <-> radius)
 - Configuration helpers (spectral file paths)
-- Interpolation of lookup tables (Albedo)
 
 See also:
 - docs/How-to/testing.md
@@ -21,7 +20,6 @@ import numpy as np
 import pytest
 
 from proteus.atmos_clim.common import (
-    Albedo_t,
     get_oarr_from_parr,
     get_radius_from_pressure,
     get_spfile_name_and_bands,
@@ -524,48 +522,9 @@ def test_spfile_helpers():
     assert path == '/fwl/data/spectral_files/Dayspring/16/Dayspring.sf'
 
 
-@pytest.mark.unit
-@patch('proteus.atmos_clim.common.pd.read_csv')
-@patch('proteus.atmos_clim.common.os.path.isfile')
-def test_albedo_t(mock_isfile, mock_read_csv):
-    """
-    Test Albedo_t lookup table class.
-
-    Verifies:
-    1. CSV reading logic (mocked).
-    2. Interpolation of albedo vs temperature.
-    3. Clamping behavior outside the data range.
-    """
-    mock_isfile.return_value = True
-
-    # Mock DataFrame response
-    # mock_df = MagicMock() - Responding to ruff F841
-    # mimic dict access data['tmp']
-    data_dict = {'tmp': np.array([100.0, 300.0, 1000.0]), 'albedo': np.array([0.5, 0.3, 0.1])}
-    mock_read_csv.return_value = data_dict
-
-    # Initialize class
-    alb = Albedo_t('dummy.csv')
-    assert alb.ok
-
-    # Test evaluation (interpolation)
-    # At 100K -> 0.5 (exact)
-    assert alb.evaluate(100.0) == pytest.approx(0.5)
-    # At 1000K -> 0.1 (exact)
-    assert alb.evaluate(1000.0) == pytest.approx(0.1)
-    # At 300K -> 0.3 (exact)
-    assert alb.evaluate(300.0) == pytest.approx(0.3)
-
-    # Test clamping behavior (physics safety check)
-    # Below min temp -> stay at min albedo val (0.5), don't extrapolate
-    assert alb.evaluate(50.0) == pytest.approx(0.5)
-    # Above max temp -> stay at max albedo val (0.1)
-    assert alb.evaluate(2000.0) == pytest.approx(0.1)
-
-
 # ---------------------------------------------------------------------------
 # Coverage for previously-untested error branches: missing NetCDF file,
-# archived-data warning, Albedo_t init failures, evaluate fall-through.
+# archived-data warning.
 # ---------------------------------------------------------------------------
 
 
@@ -617,125 +576,3 @@ def test_read_atmosphere_data_returns_none_when_any_profile_missing(
     messages = [r.message for r in caplog.records]
     assert any('NetCDF files could not be found' in m for m in messages)
     assert any('extract archived data' in m for m in messages)
-
-
-def test_albedo_t_logs_error_and_does_not_load_when_file_missing(caplog, tmp_path):
-    """Albedo_t must fail gracefully when the CSV does not exist:
-    log an error and leave self.ok == False so the later evaluate()
-    can report it.
-
-    Edge: limit-input case for a misconfigured albedo path.
-    Discriminating: pin both the unset state AND the error log.
-    """
-    import logging
-
-    from proteus.atmos_clim.common import Albedo_t
-
-    missing = str(tmp_path / 'no_such_albedo.csv')
-    with caplog.at_level(logging.ERROR, logger='fwl.proteus.atmos_clim.common'):
-        alb = Albedo_t(missing)
-    assert alb.ok is False
-    assert alb._interp is None
-    assert any('Could not find file' in rec.message for rec in caplog.records)
-
-
-def test_albedo_t_logs_error_when_csv_parse_fails(caplog, tmp_path, monkeypatch):
-    """When pd.read_csv raises (corrupt CSV), Albedo_t logs an error
-    and leaves self.ok == False, _data == None.
-
-    Discriminating: a regression that flipped only self.ok or only
-    _data would fail one of these two assertions.
-    """
-    import logging
-
-    from proteus.atmos_clim import common
-    from proteus.atmos_clim.common import Albedo_t
-
-    csvfile = tmp_path / 'corrupt.csv'
-    csvfile.write_text('garbage,not,csv,data\n!!!\n')
-
-    def _raise(*_a, **_k):
-        raise ValueError('parser exploded')
-
-    monkeypatch.setattr(common.pd, 'read_csv', _raise)
-    with caplog.at_level(logging.ERROR, logger='fwl.proteus.atmos_clim.common'):
-        alb = Albedo_t(str(csvfile))
-    assert alb.ok is False
-    assert alb._data is None
-    assert any('Could not parse lookup data' in rec.message for rec in caplog.records)
-
-
-def test_albedo_t_logs_error_when_required_keys_absent(caplog, tmp_path):
-    """A well-formed CSV that lacks the required columns ('tmp',
-    'albedo') must fail validation and leave the object unloaded.
-
-    Discriminating: pin the specific missing-key name ('tmp', the
-    first required column the source iterates) so a regression that
-    only validated 'albedo' would fail here.
-    """
-    import logging
-
-    from proteus.atmos_clim.common import Albedo_t
-
-    csvfile = tmp_path / 'wrong_keys.csv'
-    csvfile.write_text('foo,bar\n1.0,2.0\n3.0,4.0\n')
-    with caplog.at_level(logging.ERROR, logger='fwl.proteus.atmos_clim.common'):
-        alb = Albedo_t(str(csvfile))
-    assert alb.ok is False
-    assert alb._interp is None
-    messages = [r.message for r in caplog.records]
-    assert any("required key 'tmp'" in m for m in messages)
-
-
-def test_albedo_t_evaluate_returns_none_when_data_not_loaded(caplog, tmp_path):
-    """evaluate() short-circuits and returns None when the
-    constructor failed to load data (self.ok == False).
-
-    Discriminating: a regression that proceeded to call self._interp
-    while None would raise AttributeError. Pin the clean-None return.
-    """
-    import logging
-
-    from proteus.atmos_clim.common import Albedo_t
-
-    alb = Albedo_t(str(tmp_path / 'absent.csv'))
-    assert alb.ok is False
-    with caplog.at_level(logging.ERROR, logger='fwl.proteus.atmos_clim.common'):
-        result = alb.evaluate(1500.0)
-    assert result is None
-    assert any('Cannot evaluate bond albedo' in rec.message for rec in caplog.records)
-
-
-@pytest.mark.physics_invariant
-def test_albedo_t_evaluate_clamps_out_of_range_interpolation_with_warning(caplog, tmp_path):
-    """If the underlying interpolator returns a value outside [0, 1]
-    (which can happen with non-PCHIP extrapolations or buggy custom
-    fits), evaluate must clamp to the physical range AND log a
-    warning so the user knows the lookup table has issues.
-
-    Edge: an out-of-range raw value forced by overriding the
-    interpolator on a loaded instance.
-
-    Discriminating: pin the clamped value AND the warning AND the
-    in-range invariants. A regression that dropped the clamp would
-    let the raw 1.5 flow into F_asf and break the radiative
-    energy balance downstream.
-    """
-    import logging
-
-    from proteus.atmos_clim.common import Albedo_t
-
-    csvfile = tmp_path / 'albedo.csv'
-    csvfile.write_text('tmp,albedo\n100.0,0.1\n2000.0,0.9\n')
-    alb = Albedo_t(str(csvfile))
-    assert alb.ok is True
-
-    # Force out-of-range interpolation: a constant 1.5 lands above
-    # the physical ceiling.
-    alb._interp = lambda _t: 1.5
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.common'):
-        clamped = alb.evaluate(1500.0)
-    assert clamped == pytest.approx(1.0, rel=1e-12)
-    # Physics-invariant boundedness: albedo always in [0, 1].
-    assert 0.0 <= clamped <= 1.0
-    assert any('out of range' in rec.message for rec in caplog.records)

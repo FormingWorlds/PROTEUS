@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.utils.archive import archive_exists
+from proteus.utils.constants import vap_list
 from proteus.utils.helper import mol_to_ele
 
 log = logging.getLogger('fwl.' + __name__)
@@ -32,6 +33,12 @@ _preset_colours = {
     'SO2': '#00008B',
     'H2S': '#2eff90',
     'NH3': '#675200',
+    'SiO': '#b2df8a',
+    'MgO': '#a6cee3',
+    'SiO2': '#1b9e77',
+    'FeO': '#7f0000',
+    'TiO': '#9C45BC',
+    'TiO2': '#421e39',
     # Volatile elements
     'H': '#0000cc',
     'C': '#ff0000',
@@ -44,6 +51,10 @@ _preset_colours = {
     'Si': '#aa2277',
     'Mg': '#996633',
     'Na': '#ccff00',
+    'Ti': '#0d2959',
+    'K': '#2e8b57',
+    'Al': '#5e2172',
+    'Ca': '#167A9B',
     # Noble gases (each is both a gas species and an element)
     'He': '#7f7f7f',
     'Ne': '#e6550d',
@@ -157,6 +168,17 @@ def get_colour(thing: str):
         colour = _generate_colour(thing)
 
     return colour
+
+
+def get_linestyle(thing: str):
+    """
+    Get a linestyle for something which needs one (e.g. for plotting a particular gas)
+    """
+
+    if thing in vap_list:
+        return 'dashed'
+    else:
+        return 'solid'
 
 
 def latexify(gas: str):

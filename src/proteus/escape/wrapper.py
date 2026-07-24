@@ -205,8 +205,6 @@ def run_zephyrus(
 
     from zephyrus.escape import EL_escape
 
-    log.info('Running EL escape (ZEPHYRUS) ...')
-
     # Compute energy-limited escape
     mlr = EL_escape(
         config.escape.zephyrus.tidal,  # tidal contribution (True/False)
@@ -251,6 +249,7 @@ def run_zephyrus(
         for e in element_list:
             hf_row[f'esc_rate_{e}'] = 0.0
 
+    log.debug(f'escape rate = {mlr}')
     return float(mlr)
 
 
@@ -277,6 +276,9 @@ def calc_new_elements(
             Volatile element whole-planet inventories [kg]
     """
     # which reservoir?
+
+    log.info(f'Calculating new elemental inventories from escape, reservoir = {reservoir}')
+
     match reservoir:
         case 'bulk':
             key = '_kg_total'
@@ -295,11 +297,11 @@ def calc_new_elements(
     res: dict[str, float] = {}
     for e in element_list:
         res[e] = float(hf_row.get(f'{e}{key}', 0.0))
-    M_vols = float(sum(res.values()))
 
+    M_vols = float(sum(res.values()))
     # check if we just desiccated the planet...
     if M_vols < min_thresh:
-        log.debug('    Total mass of volatiles below threshold in escape calculation')
+        log.debug('Total mass of volatiles below threshold in escape calculation')
         return res
 
     # compute mass ratios in escaping reservoir

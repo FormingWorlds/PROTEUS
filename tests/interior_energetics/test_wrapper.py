@@ -2591,7 +2591,7 @@ def test_update_planet_mass_sums_internal_and_volatile_elements():
     the total volatile-bearing element mass exactly.
     """
     from proteus.interior_energetics.wrapper import update_planet_mass
-    from proteus.utils.constants import element_list
+    from proteus.utils.constants import element_list, vol_element_list
 
     hf_row = {'M_int': 5.972e24}
     # Asymmetric element budget so an off-by-one indexing bug shows.
@@ -2600,14 +2600,14 @@ def test_update_planet_mass_sums_internal_and_volatile_elements():
 
     update_planet_mass(hf_row)
 
-    expected_ele = sum(float(hf_row[e + '_kg_total']) for e in element_list)
+    expected_ele = sum(float(hf_row[e + '_kg_total']) for e in vol_element_list)
     assert hf_row['M_ele'] == pytest.approx(expected_ele, rel=1e-12)
     assert hf_row['M_planet'] == pytest.approx(hf_row['M_int'] + expected_ele, rel=1e-12)
     # Anti-happy-path: skipping ANY single element (e.g. the old O-skip)
     # produces a strictly smaller M_planet. The largest element in the
     # asymmetric budget dominates, so dropping it would change the result
     # by orders of magnitude.
-    largest_elem = max(element_list, key=lambda e: hf_row[e + '_kg_total'])
+    largest_elem = max(vol_element_list, key=lambda e: hf_row[e + '_kg_total'])
     expected_without_largest = expected_ele - hf_row[largest_elem + '_kg_total']
     assert (
         abs(hf_row['M_ele'] - expected_without_largest)

@@ -53,6 +53,7 @@ planetary surface conditions.
 | `T_floor` | float | `700.0` | Clamp the outgassing temperature to this floor \[K] before the chemistry solve |
 | `solver_rtol` | float | `1e-4` | Relative mass/equilibrium tolerance |
 | `solver_atol` | float | `1e-6` | Absolute mass/equilibrium tolerance |
+| `vapourise` | bool | `false` | Enable rock vapour outgassing (LavAtmos/ThermoEngineLite). Requires `LAVA_DIR` and `FC_DIR`; see [Installation: optional modules](../../How-to/optionalmodules_installation.md#rock-vapours-lavatmos-thermoenginelite) |
 
 ### CALLIOPE `[outgas.calliope]`
 
@@ -130,6 +131,19 @@ real-gas equations of state.
 | `eos_H2` | `"none"` | H$_2$ EOS |
 | `eos_CH4` | `"none"` | CH$_4$ EOS |
 | `eos_CO` | `"none"` | CO EOS |
+
+### LavAtmos `[outgas.lavatmos]`
+
+Rock-vapour outgassing parameters, used when `outgas.vapourise = true`. Requires
+`LAVA_DIR` and `FC_DIR`; see
+[Installation: optional modules](../../How-to/optionalmodules_installation.md#rock-vapours-lavatmos-thermoenginelite).
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `T_min` | float | `1500.0` | Minimum LavAtmos surface temperature \[K]; the outgassing temperature is clamped up to this floor |
+| `melt_comp_name` | str | `"BSE_palm"` | Melt composition file name (without extension), read from the LavAtmos `lava_compositions` directory |
+| `P_melt` | float | `0.01` | Pressure used for melt activities \[bar] |
+| `xatol` | float | `1e-5` | Absolute tolerance on the fO$_2$ solve passed to LavAtmos |
 
 ---
 

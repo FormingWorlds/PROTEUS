@@ -273,7 +273,7 @@ class Proteus:
 
         #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
-        from proteus.atmos_clim.common import Albedo_t, Atmos_t
+        from proteus.atmos_clim.common import Atmos_t
 
         #    escape and outgas
         from proteus.escape.wrapper import run_escape
@@ -299,7 +299,7 @@ class Proteus:
             check_desiccation,
             run_crystallized,
             run_desiccated,
-            run_outgassing,
+            run_outgassing_and_vapourisation,
         )
 
         #   stellar spectrum and evolution
@@ -323,6 +323,7 @@ class Proteus:
             WriteHelpfileToCSV,
             ZeroHelpfileRow,
             assert_mass_conservation,
+            assert_surface_pressure_consistency,
             print_citation,
             print_header,
             print_module_configuration,
@@ -409,12 +410,6 @@ class Proteus:
 
         # Initialise atmosphere object
         self.atmos_o = Atmos_t()
-        if self.config.atmos_clim.albedo_from_file:
-            log.debug('Reading albedo data from file')
-            self.atmos_o.albedo_o = Albedo_t(self.config.atmos_clim.albedo_pl)
-            if not self.atmos_o.albedo_o.ok:
-                UpdateStatusfile(self.directories, 22)
-                raise RuntimeError('Problem when loading albedo data file')
 
         # Is the model resuming from a previous state?
         if not self.config.params.resume:
@@ -481,6 +476,7 @@ class Proteus:
 
             # Store partial pressures and list of included volatiles
             inc_gases = []
+
             for s in vol_list:
                 if s != 'O2':
                     pp_val = self.config.planet.gas_prs.get_pressure(s)
@@ -588,20 +584,15 @@ class Proteus:
             # Get last row from helpfile dataframe
             self.hf_row = self.hf_all.iloc[-1].to_dict()
 
-            # Resume banner: since proteus_00.log is opened in append mode on
-            # resume, every prior session's banner + output stays in the file
-            # with no visible marker of where the new session picks up. A
-            # self-contained three-line resume banner makes log triage
-            # (grep, tail -f, monitor cron filters) tractable. This is
-            # cosmetic only; no state is changed.
-            log.info('=' * 60)
+            # Resume banner. The '==== RESUME' prefix is added to output,
+            # since this makes log triage (grep, tail -f, cron filters) easy
             log.info(
                 '=== RESUME at helpfile row %d, t = %.3e yr, Phi = %.4f',
                 len(self.hf_all),
                 float(self.hf_row.get('Time', 0.0)),
                 float(self.hf_row.get('Phi_global', float('nan'))),
             )
-            log.info('=' * 60)
+            log.info('')
 
             # Check if the planet is desiccated
             self.desiccated = check_desiccation(self.config, self.hf_row)
@@ -892,7 +883,6 @@ class Proteus:
                     self.hf_row, self.config, stellar_track=self.stellar_track
                 )
 
-            # Calculate a new (historical) stellar spectrum
             if (
                 abs(self.hf_row['Time'] - self.sspec_prev) > self.config.params.dt.starspec
             ) or (self.loops['total'] == 0):
@@ -980,12 +970,20 @@ class Proteus:
                     self.desiccated = check_desiccation(self.config, self.hf_row)
 
             # Handle volatile exchange
+            log.info('Solving for atmosphere composition...')
+            first_iter = bool(self.loops['total'] <= self.loops['init_loops'])
             if self.desiccated:
-                run_desiccated(self.config, self.hf_row)
+                # no volatiles
+                run_desiccated(self.directories, self.config, self.hf_row, first_iter)
+
             elif self.crystallized:
+                # post solidification
                 run_crystallized(self.config, self.hf_row, self.interior_o.dt)
+
             else:
-                run_outgassing(self.directories, self.config, self.hf_row)
+                run_outgassing_and_vapourisation(
+                    self.directories, self.config, self.hf_row, first_iter
+                )
 
                 # Issue #677 IC consistency check. Fires once at the first
                 # outgas call (subsequent init_stage calls find the sentinel
@@ -999,15 +997,25 @@ class Proteus:
 
                 check_ic_oxygen_budget(self.config, self.hf_row)
 
-            # Add mass of total volatile element mass (M_ele) to total mass of mantle+core
+            # Add mass of total tracked element mass (M_ele) to total mass of mantle+core
             update_planet_mass(self.hf_row)
 
             # Issue #677 mass-conservation invariant: M_atm <= M_planet
             # and sum(s_kg_atm) == M_atm. Cheap end-of-outgas guardrail
             # that hard-fails if any future change re-introduces the
             # O-skipping asymmetry that could let M_atm exceed
-            # M_planet at high H_ppmw.
-            assert_mass_conservation(self.hf_row)
+            # M_planet at high H_ppmw. Rock-vapour outgassing moves
+            # non-volatile mass into M_atm that M_planet does not track,
+            # so the invariant does not hold there; skip it when vapourise
+            # is enabled rather than weaken the tolerance for every run.
+            if not self.config.outgas.vapourise:
+                assert_mass_conservation(self.hf_row)
+
+            # P_surf = P_vol + P_vap, and P_vap == 0 when rock vapour
+            # outgassing is disabled. Cheap end-of-outgas guardrail against
+            # a code path updating P_surf without keeping the partial
+            # pressures in sync.
+            assert_surface_pressure_consistency(self.config, self.hf_row)
 
             if _IT_TIMING_ENABLED:
                 _t_mod['outgas'] = time.perf_counter() - _t0_outgas
@@ -1256,6 +1264,7 @@ class Proteus:
 
         # Make final plots
         if self.config.params.out.plot_mod is not None:
+            log.info(' ')
             log.info('Making final plots')
             UpdatePlots(self.hf_all, self.directories, self.config, end=True)
 

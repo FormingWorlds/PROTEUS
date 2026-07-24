@@ -31,7 +31,7 @@ See also [Model description](../../Explanations/model.md#atmosphere-climate-agni
 | `cloud_enabled` | bool | `false` | Enable water cloud radiative effects |
 | `cloud_alpha` | float | `0.0` | Condensate retention fraction \[0, 1] |
 | `aerosols_enabled` | bool | `false` | Enable aerosol radiative effects (AGNI only) |
-| `albedo_pl` | float or str | `0.0` | Planetary bond albedo: a constant float, or a path to a CSV lookup table |
+| `albedo_pl` | float | `0.0` | Planetary bond albedo \[0, 1] |
 | `surf_greyalbedo` | float | `0.1` | Grey surface albedo (used when `agni.surf_material = "greybody"`) |
 
 **Surface boundary condition**

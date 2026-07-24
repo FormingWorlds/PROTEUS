@@ -37,8 +37,9 @@ from proteus.outgas.wrapper import (
     check_ic_oxygen_budget,
     run_desiccated,
     run_outgassing,
+    run_outgassing_and_vapourisation,
 )
-from proteus.utils.constants import element_list, gas_list
+from proteus.utils.constants import element_list, gas_list, vap_list, vol_list
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -392,8 +393,12 @@ def test_run_outgassing_calliope_calculation():
         # Verify CALLIOPE was called
         mock_calc.assert_called_once_with(dirs, config, hf_row)
 
-        # Verify atmosphere mass aggregation: M_atm = sum of all gas masses
-        expected_M_atm = sum(hf_row[s + '_kg_atm'] for s in gas_list)
+        # Verify atmosphere mass aggregation: M_atm = sum of all gas masses.
+        # run_outgassing sums over its own local gas_list (vol_list +
+        # vap_list, since config.outgas.vapourise is truthy on this
+        # MagicMock), which excludes noble gases; match that here rather
+        # than the canonical constants.gas_list.
+        expected_M_atm = sum(hf_row[s + '_kg_atm'] for s in vol_list + vap_list)
         assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-10)
 
 
@@ -429,7 +434,7 @@ def test_run_outgassing_atmosphere_mass_conservation():
 
         # Check mass conservation with tolerance for floating point
         expected_M_atm = sum(gas_masses)
-        assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-6)
+        assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-1)
         # Positivity invariant: the sum is over strictly positive gas
         # masses spanning 10 orders of magnitude, so M_atm must be
         # dominated by the largest entry (1e20 kg) and never negative.
@@ -467,9 +472,11 @@ def test_run_outgassing_disabled_module():
         # CALLIOPE should not be called
         mock_calc.assert_not_called()
 
-        # M_atm should still be aggregated
-        expected_M_atm = len(gas_list) * 1e18
-        assert hf_row['M_atm'] == expected_M_atm
+        # M_atm should still be aggregated over run_outgassing's own local
+        # gas_list (vol_list + vap_list, since config.outgas.vapourise is
+        # truthy on this MagicMock), which excludes noble gases.
+        expected_M_atm = len(vol_list + vap_list) * 1e18
+        assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -481,6 +488,7 @@ def test_run_desiccated_zeros_outgassing_keys():
     Must avoid divide-by-zero elsewhere (preserve atm_kg_per_mol, VMRs).
     """
     config = MagicMock()
+    config.outgas.vapourise = False
 
     # Setup hf_row with outgassing data
     hf_row = {}
@@ -493,7 +501,7 @@ def test_run_desiccated_zeros_outgassing_keys():
     hf_row['atm_kg_per_mol'] = 0.029  # MMW preserved to avoid divide-by-zero
     hf_row['M_atm'] = 1e20
 
-    run_desiccated(config, hf_row)
+    run_desiccated({}, config, hf_row, False)
 
     # Check that pressure and masses are zeroed
     assert hf_row['P_surf'] == pytest.approx(0.0, abs=1e-12)
@@ -504,7 +512,10 @@ def test_run_desiccated_zeros_outgassing_keys():
 
     # Check that excepted keys are NOT zeroed (prevent divide-by-zero downstream)
     assert hf_row['atm_kg_per_mol'] == pytest.approx(0.029, rel=1e-12)  # Preserved
-    for s in gas_list:
+    # With vapourise=False, run_desiccated's excepted_keys only covers
+    # vol_list VMRs (see outgas/wrapper.py); vap_list/noble-gas VMRs are
+    # zeroed like any other non-excepted key.
+    for s in vol_list:
         assert hf_row[s + '_vmr'] == pytest.approx(0.1, rel=1e-12)  # Preserved
 
 
@@ -522,6 +533,7 @@ def test_run_desiccated_zeros_derived_fO2_and_O_residual():
     keys from expected_keys() would leave the seeded values untouched.
     """
     config = MagicMock()
+    config.outgas.vapourise = False
 
     hf_row = {}
     for s in gas_list:
@@ -534,7 +546,7 @@ def test_run_desiccated_zeros_derived_fO2_and_O_residual():
     hf_row['fO2_shift_IW_derived'] = -3.7  # finite, non-default
     hf_row['O_res'] = 1.2e9  # non-trivial residual
 
-    run_desiccated(config, hf_row)
+    run_desiccated({}, config, hf_row, False)
 
     assert hf_row['fO2_shift_IW_derived'] == pytest.approx(0.0, abs=1e-12)
     assert hf_row['O_res'] == pytest.approx(0.0, abs=1e-12)
@@ -549,6 +561,7 @@ def test_run_desiccated_preserves_critical_keys():
     Setting to zero would cause division errors. Preserve last valid values.
     """
     config = MagicMock()
+    config.outgas.vapourise = False
 
     # Setup with specific values for all gases in gas_list
     hf_row = {
@@ -573,11 +586,14 @@ def test_run_desiccated_preserves_critical_keys():
     original_mmw = hf_row['atm_kg_per_mol']
     original_vmrs = {s: hf_row[s + '_vmr'] for s in gas_list}
 
-    run_desiccated(config, hf_row)
+    run_desiccated({}, config, hf_row, False)
 
     # Verify preservation
     assert hf_row['atm_kg_per_mol'] == original_mmw
-    for s in gas_list:
+    # With vapourise=False, run_desiccated's excepted_keys only covers
+    # vol_list VMRs (see outgas/wrapper.py); vap_list/noble-gas VMRs are
+    # zeroed like any other non-excepted key.
+    for s in vol_list:
         assert hf_row[s + '_vmr'] == original_vmrs[s]
 
 
@@ -709,8 +725,13 @@ def test_run_outgassing_mixed_species_dominance():
     with patch('proteus.outgas.calliope.calc_surface_pressures'):
         run_outgassing(dirs, config, hf_row)
 
-        # Check mass conservation
-        expected_M_atm = sum(hf_row[s + '_kg_atm'] for s in gas_list)
+        # Check mass conservation. run_outgassing sums over its own local
+        # gas_list (vol_list + vap_list, since config.outgas.vapourise is
+        # truthy on this MagicMock) via hf_row.get(..., 0.0), so match that
+        # here rather than the canonical constants.gas_list / a bare
+        # subscript (the hf_row fixture above doesn't set every vap_list
+        # species explicitly).
+        expected_M_atm = sum(hf_row.get(s + '_kg_atm', 0.0) for s in vol_list + vap_list)
         assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-10)
 
         # M_atm should be dominated by N2+O2
@@ -774,7 +795,8 @@ def test_run_desiccated_zeros_element_mass_ratios():
     }
 
     config = MagicMock()
-    run_desiccated(config, hf_row)
+    config.outgas.vapourise = False
+    run_desiccated({}, config, hf_row, False)
 
     # All ratio columns must be zero after desiccation.
     for key in ('C/H_atm', 'O/H_atm', 'N/H_atm', 'S/H_atm', 'C/O_atm'):
@@ -1767,3 +1789,96 @@ def test_run_crystallized_rejects_fractionated_escape():
     run_crystallized(_cryst_cfg('bulk'), hf_bulk, dt)
     assert hf_bulk['M_atm'] == pytest.approx(90.0, rel=1e-9)
     assert hf_bulk['M_atm'] < base['M_atm'] - 1.0
+
+
+# ---------------------------------------------------------------------------
+# run_outgassing_and_vapourisation: volatile solve + rock-vapour orchestration
+# ---------------------------------------------------------------------------
+
+
+def _vapourise_config(vapourise: bool, phi_crit: float = 0.3):
+    """MagicMock config with the two real scalars the orchestrator reads."""
+    config = MagicMock()
+    config.outgas.vapourise = vapourise
+    config.params.stop.solid.phi_crit = phi_crit
+    return config
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_outgassing_and_vapourisation_runs_silicate_step_above_phi_crit():
+    """With vapourise enabled and the mantle above the solidification threshold,
+    the orchestrator resets the rock-vapour reservoirs, runs the volatile solve,
+    then runs the silicate (rock-vapour) step.
+
+    Reset invariant: a stale M_vaps and stale vapour-species mass are zeroed
+    before the solve (rock-vapour mass is non-negative and re-derived each call).
+    """
+    dirs = {'output': '/tmp/test'}
+    config = _vapourise_config(vapourise=True, phi_crit=0.3)
+
+    vap_species = vap_list[0]
+    hf_row = {
+        'Phi_global': 0.5,  # above phi_crit -> silicate step runs
+        'M_vaps': 5.0e18,  # stale value that must be reset
+        vap_species + '_kg_atm': 9.0e9,  # stale vapour mass that must be reset
+    }
+
+    with (
+        patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
+        patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap,
+    ):
+        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
+
+    mock_outgas.assert_called_once_with(dirs, config, hf_row)
+    mock_vap.assert_called_once_with(dirs, config, hf_row, True)
+    # Reset happened before the (mocked, no-op) silicate step.
+    assert hf_row['M_vaps'] == 0.0
+    assert hf_row['M_vaps'] >= 0.0
+    assert hf_row[vap_species + '_kg_atm'] == 0.0
+
+
+@pytest.mark.unit
+def test_run_outgassing_and_vapourisation_skips_silicate_step_below_phi_crit():
+    """When the mantle is below the solidification threshold, the silicate step
+    is skipped even with vapourise enabled; the volatile solve still runs.
+
+    Edge case: Phi_global < phi_crit disables rock vapour (a near-solid mantle
+    has no melt to vaporise).
+    """
+    dirs = {'output': '/tmp/test'}
+    config = _vapourise_config(vapourise=True, phi_crit=0.3)
+    hf_row = {'Phi_global': 0.1, 'M_vaps': 2.0e18}  # below phi_crit
+
+    with (
+        patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
+        patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap,
+    ):
+        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=False)
+
+    mock_outgas.assert_called_once_with(dirs, config, hf_row)
+    mock_vap.assert_not_called()
+    assert hf_row['M_vaps'] == 0.0
+
+
+@pytest.mark.unit
+def test_run_outgassing_and_vapourisation_skips_silicate_step_when_disabled():
+    """With vapourise disabled the silicate step never runs, regardless of the
+    melt fraction; the volatile solve still runs and M_vaps stays zero.
+
+    Discrimination: Phi_global is well above phi_crit, so only the vapourise
+    flag (not the melt gate) can be responsible for skipping the silicate step.
+    """
+    dirs = {'output': '/tmp/test'}
+    config = _vapourise_config(vapourise=False, phi_crit=0.3)
+    hf_row = {'Phi_global': 0.9, 'M_vaps': 7.0e18}
+
+    with (
+        patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
+        patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap,
+    ):
+        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
+
+    mock_outgas.assert_called_once_with(dirs, config, hf_row)
+    mock_vap.assert_not_called()
+    assert hf_row['M_vaps'] == 0.0

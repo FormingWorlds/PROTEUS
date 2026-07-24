@@ -24,7 +24,6 @@ from proteus.utils.constants import element_list, gas_list, noble_gases
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-
 # -----------------------------------------------------------------------
 # Key completeness
 # -----------------------------------------------------------------------
@@ -115,14 +114,25 @@ def test_expected_keys_no_duplicates():
 
 
 def test_expected_keys_contains_scalar_diagnostics():
-    """The scalar diagnostic keys (P_surf, M_atm, atm_kg_per_mol,
-    fO2_shift_IW_derived, O_res) are present.
+    """The scalar diagnostic keys (P_surf, P_vol, P_vap, M_atm,
+    atm_kg_per_mol, fO2_shift_IW_derived, O_res) are present.
 
     These are critical coupling variables between the outgassing
-    solver and the main loop.
+    solver and the main loop. P_vol/P_vap must be listed alongside
+    P_surf so that run_desiccated (which zeroes every expected_keys()
+    entry) resets the volatile/vapour partial-pressure split together
+    with the total, instead of leaving one of the three stale.
     """
     keys = expected_keys()
-    for k in ('P_surf', 'M_atm', 'atm_kg_per_mol', 'fO2_shift_IW_derived', 'O_res'):
+    for k in (
+        'P_surf',
+        'P_vol',
+        'P_vap',
+        'M_atm',
+        'atm_kg_per_mol',
+        'fO2_shift_IW_derived',
+        'O_res',
+    ):
         assert k in keys, f'Missing scalar key: {k}'
     assert len(keys) > len(('P_surf', 'M_atm', 'atm_kg_per_mol'))  # more than just scalars
 

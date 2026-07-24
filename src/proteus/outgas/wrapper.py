@@ -7,7 +7,16 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.outgas.common import expected_keys
-from proteus.utils.constants import element_list, element_mmw, gas_list, secs_per_year
+from proteus.outgas.lavatmos import run_vapourisation
+from proteus.utils.constants import (
+    element_list,
+    element_mmw,
+    gas_list,
+    noble_gases,
+    secs_per_year,
+    vap_list,
+    vol_element_list,
+)
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -77,8 +86,7 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
     """
     Calculate total amount of volatile elements in the planet.
 
-    Under the issue #677 fix (whole-planet O accounting), this function
-    also pre-populates ``hf_row['O_kg_total']`` from the user's O_mode/
+    This function pre-populates ``hf_row['O_kg_total']`` from the user's O_mode/
     O_budget settings (unless O_mode == 'ic_chemistry', in which case the
     first outgas call sets it). The atmosphere+dissolved O thus enters
     the M_ele aggregation and the Zalmoxis dry-mass subtraction, closing
@@ -114,13 +122,11 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
         # ic_chemistry mode: leave O_kg_total at 0; first CALLIOPE call writes it.
         hf_row['O_kg_user_ic'] = -1.0  # sentinel: no user budget supplied
 
-    # Update total mass of tracked elements. Issue #677 fix: O is
-    # included in M_ele. M_planet = M_int + M_ele
+    # Update total mass of tracked volatiles+nobel gases. This includes oxygen and
     # therefore reflects the atmospheric+dissolved O mass that CALLIOPE
-    # produces from the fO2 buffer, closing the asymmetry. Defensive
-    # .get() default lets the sum survive pre-IC hf_row states.
+    # produces from the fO2 buffer. Does not include rock vapours.
     hf_row['M_ele'] = 0.0
-    for e in element_list:
+    for e in vol_element_list + noble_gases:
         hf_row['M_ele'] += float(hf_row.get(e + '_kg_total', 0.0))
 
 
@@ -263,7 +269,7 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # CALLIOPE drives O_kg_total to near-zero once H/C/N/S vanish, so this
     # change rarely affects the desiccation timing, but it keeps the
     # semantics honest under whole-planet O accounting.
-    for e in element_list:
+    for e in vol_element_list:
         if float(hf_row.get(e + '_kg_total', 0.0)) > config.outgas.mass_thresh:
             log.info(
                 'Not desiccated, %s = %.2e kg' % (e, float(hf_row.get(e + '_kg_total', 0.0)))
@@ -283,7 +289,7 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
 
     # Issue #677 fix: include O in cur_m_ele to match the M_vol_initial
     # baseline (which is now also summed over the full element_list).
-    cur_m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
+    cur_m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in vol_element_list)
     lost = m_init - cur_m_ele
     esc_cum = float(hf_row.get('esc_kg_cumulative', 0.0))
 
@@ -319,6 +325,8 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
             Dictionary of helpfile variables, at this iteration only
     """
 
+    log.info('Calculating volatile outgassing at surface')
+
     # planet.fO2_source dispatch. Two runtime paths are wired today:
     # 'user_constant' (fO2 buffered to the configured IW offset) for
     # every backend, and 'from_O_budget' (authoritative-O chemistry)
@@ -342,8 +350,6 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
             'planet.fO2_source = "from_O_budget" requires chemistry to '
             'invert against; outgas.module = "dummy" has none.'
         )
-
-    log.info('Solving outgassing...')
 
     # Default the derived-fO2 helpfile columns to the user-configured
     # buffer offset before the backend dispatch. Each backend overrides
@@ -387,13 +393,15 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
 
         apply_binodal_h2(hf_row, config)
 
-    # calculate total atmosphere mass (from sum of volatile masses)
-    # M_atm is the total atmospheric mass, summed over every modelled gas
-    # species. The noble gases are members of gas_list, so they enter here and
-    # in the surface pressure and mean molar mass consistently.
+    # P_surf here is the volatile+noble gas total
+    hf_row['P_vol'] = hf_row['P_surf']
+    hf_row['P_vap'] = 0.0
+
+    # calculate total atmosphere mass
     hf_row['M_atm'] = 0.0
     for s in gas_list:
         hf_row['M_atm'] += float(hf_row.get(s + '_kg_atm', 0.0))
+    # assure that hydrogen abundnace high enough for agni to run
 
     # Derive element mass ratios in atmosphere
     for e1 in element_list:
@@ -407,9 +415,11 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
                 hf_row[key] = hf_row[f'{e2}_kg_atm'] / hf_row[f'{e1}_kg_atm']
 
     # print outgassed partial pressures (in order of descending abundance)
-    mask = [hf_row[s + '_vmr'] for s in gas_list]
-    for i in np.argsort(mask)[::-1]:
-        s = gas_list[i]
+    species = [s for s in gas_list if s not in vap_list]
+    vmrs = np.array([hf_row[s + '_vmr'] for s in species])
+
+    for i in np.argsort(vmrs)[::-1]:
+        s = species[i]
         _p = hf_row[s + '_bar']
         _x = hf_row[s + '_vmr']
         _s = '    %-6s     = %-9.2f bar (%.2e VMR)' % (s, _p, _x)
@@ -456,6 +466,7 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     # proportion to their abundance. A fractionating model would change the
     # composition and require per-species debiting, so refuse it explicitly at
     # the point that relies on the assumption.
+
     reservoir = getattr(config.escape, 'reservoir', 'outgas')
     if reservoir not in ('outgas', 'bulk'):
         raise NotImplementedError(
@@ -499,6 +510,10 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
         hf_row[f'{s}_kg_atm'] = hf_row.get(f'{s}_kg_atm', 0.0) * retained
         hf_row[f'{s}_bar'] = hf_row.get(f'{s}_bar', 0.0) * retained
     hf_row['P_surf'] = hf_row.get('P_surf', 0.0) * retained
+    # Keep the volatile/vapour partial-pressure split consistent with the
+    # rescaled total (same uniform, composition-preserving scaling as above).
+    hf_row['P_vol'] = hf_row.get('P_vol', 0.0) * retained
+    hf_row['P_vap'] = hf_row.get('P_vap', 0.0) * retained
     hf_row['M_atm'] = m_atm * retained
 
     log.info(
@@ -509,17 +524,21 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     )
 
 
-def run_desiccated(config: Config, hf_row: dict):
+def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     """
     Handle desiccation of the planet. This substitutes for run_outgassing when the planet
     has lost its entire volatile inventory.
 
     Parameters
     ----------
+        dirs : dict
+            Dictionary of directory paths
         config : Config
             Configuration object
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
+        first_iter : bool
+            True if this is the first iteration of the simulation, False otherwise
     """
 
     # if desiccated, set all gas masses to zero
@@ -534,3 +553,56 @@ def run_desiccated(config: Config, hf_row: dict):
     for k in expected_keys():
         if k not in excepted_keys:
             hf_row[k] = 0.0
+
+    if config.outgas.vapourise:
+        run_vapourisation(dirs, config, hf_row, first_iter)
+
+
+def run_outgassing_and_vapourisation(
+    dirs: dict, config: Config, hf_row: dict, first_iter: bool
+):
+    """Runs volatile outgassing and rock vapourisation together and combines the results.
+
+    This allows for a consistent computation of melt outgassing and dissolution.
+
+    Parameters
+    ----------
+        dirs : dict
+            Dictionary of directory paths
+        config : Config
+            Configuration object
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+        first_iter : bool
+            True if this is the first iteration of the simulation, False otherwise
+    """
+
+    # reset all silicate masses to zero:
+    hf_row['M_vaps'] = 0.0
+    for s in gas_list:
+        if s not in vap_list:
+            continue
+        else:
+            hf_row[s + '_bar'] = 0.0
+            hf_row[s + '_vmr'] = 0.0
+            hf_row[s + '_kg_atm'] = 0.0
+            hf_row[s + '_kg_total'] = 0.0
+
+    for e in element_list:
+        if e in ['H', 'C', 'N', 'O', 'S'] or e in noble_gases:
+            continue
+        else:
+            hf_row[e + '_kg_atm'] = 0.0
+            hf_row[e + '_kg_total'] = 0.0
+
+    # Do outgassing without rock vapours first
+    run_outgassing(dirs, config, hf_row)
+
+    # Now do rock vapours
+    if (
+        hf_row['Phi_global'] < config.params.stop.solid.phi_crit or not config.outgas.vapourise
+    ):  # if vapourisation not running
+        log.info('no vapour outgassing')
+    else:
+        log.info('Calculating rock vapourisation at surface')
+        run_vapourisation(dirs, config, hf_row, first_iter)

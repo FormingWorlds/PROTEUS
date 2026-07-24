@@ -171,6 +171,31 @@ class Atmodeller:
 
 
 @define
+class Lavatmos:
+    """Module parameters for LavAtmos rock-vapour outgassing.
+
+    Attributes
+    ----------
+    T_min: float
+        Minimum surface temperature [K] used by LavAtmos.
+    melt_comp_name: str
+        Name of the melt composition file (without extension).
+    P_melt: float
+        Pressure used for melt activities [bar].
+    xatol: float
+        Absolute tolerance on fO2 solve used by LavAtmos.
+    """
+
+    T_min: float = field(default=1500.0, validator=validators.gt(0.0))
+    melt_comp_name: str = field(default='BSE_palm')
+    P_melt: float = field(default=0.01, validator=validators.gt(0.0))
+    xatol: float = field(default=1e-5, validator=validators.gt(0.0))
+    fO2_buffer_model: str = field(
+        default='oneill', validator=validators.in_(('oneill', 'fischer'))
+    )
+
+
+@define
 class Outgas:
     """Outgassing parameters (fO2) and included volatiles.
 
@@ -196,6 +221,12 @@ class Outgas:
         Parameters for CALLIOPE module.
     atmodeller: Atmodeller
         Parameters for atmodeller module.
+    vapourise: bool
+        Enable rock vapour outgassing via LavAtmos/ThermoEngineLite. Requires
+        `LAVA_DIR` and `FC_DIR` to be set; see the optional modules
+        installation guide. LavAtmos parameters are set in `outgas.lavatmos`.
+    lavatmos: Lavatmos
+        Parameters for the LavAtmos rock-vapour module.
     """
 
     module: str = field(
@@ -222,3 +253,7 @@ class Outgas:
 
     calliope: Calliope = field(factory=Calliope)
     atmodeller: Atmodeller = field(factory=Atmodeller)
+    lavatmos: Lavatmos = field(factory=Lavatmos)
+
+    # LavAtmos / silicate coupling is opt-in: default to disabled.
+    vapourise: bool = field(default=False)

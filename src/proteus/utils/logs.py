@@ -9,7 +9,7 @@ import sys
 # Fake file-like stream object that redirects writes to a logger instance.
 class StreamToLogger(object):
     # https://stackoverflow.com/a/36296215
-    def __init__(self, logger, log_level=logging.INFO):
+    def __init__(self, logger: logging.Logger, log_level=logging.INFO):
         self.logger = logger
         self.log_level = log_level
         self.linebuf = ''
@@ -35,22 +35,31 @@ class StreamToLogger(object):
 
 
 class CustomFormatter(logging.Formatter):
+    """
+    Formatter for logging that adds color to the output based on the log level.
+    """
+
+    # part1: black font + open bracket
     part1 = '[\033['
 
-    info = '32'
-    warn = '93'
-    debug = '96'
-    error = '91'
+    # part2: colour+string for level name
+    info = '32m\033[1m INFO  '
+    warn = '93m\033[1m WARN  '
+    debug = '96m\033[1m DEBUG '
+    error = '91m\033[1m ERROR '
 
-    part2 = 'm\033[1m %(levelname)-5s \033[21m\033[0m] %(message)s'
+    # part3: close bracket + reset font + message
+    part3 = '\033[21m\033[0m] %(message)s'
 
+    # Lookup dict based on this format structure
     FORMATS = {
-        logging.DEBUG: part1 + debug + part2,
-        logging.INFO: part1 + info + part2,
-        logging.WARNING: part1 + warn + part2,
-        logging.ERROR: part1 + error + part2,
+        logging.DEBUG: part1 + debug + part3,
+        logging.INFO: part1 + info + part3,
+        logging.WARNING: part1 + warn + part3,
+        logging.ERROR: part1 + error + part3,
     }
 
+    # Formatter function, based on log level
     def format(self, record):
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
