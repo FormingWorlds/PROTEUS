@@ -515,12 +515,24 @@ class TestBootstrapLogger:
     logging.lastResort and are dropped.
     """
 
-    def _reset_fwl(self):
-        """Return the shared 'fwl' singleton to a pristine, handler-free state."""
+    @pytest.fixture(autouse=True)
+    def pristine_fwl(self):
+        """Give each test a handler-free 'fwl' singleton and restore it after.
+
+        'fwl' is a process-wide logging singleton, so a test that installs a
+        handler would leak it into later tests and files. Snapshot the handler
+        list and level, hand each test a pristine WARNING-level logger with no
+        handlers, then restore the snapshot on teardown so no state escapes the
+        class. This is why the tests below can assert exact handler counts.
+        """
         logger = logging.getLogger('fwl')
+        saved_handlers = logger.handlers[:]
+        saved_level = logger.level
         logger.handlers.clear()
         logger.setLevel(logging.WARNING)
-        return logger
+        yield logger
+        logger.handlers[:] = saved_handlers
+        logger.setLevel(saved_level)
 
     @pytest.mark.unit
     def test_adds_single_stdout_handler_at_info(self):
@@ -530,7 +542,6 @@ class TestBootstrapLogger:
         the default INFO level matches the level of the pre-config directory
         messages the fix targets.
         """
-        self._reset_fwl()
         logger = bootstrap_logger()
         assert logger.name == 'fwl'
         stdout_handlers = [
@@ -552,7 +563,6 @@ class TestBootstrapLogger:
         CLI group callbacks and Proteus construction can both reach this code
         in one process; repeated calls must not duplicate terminal output.
         """
-        self._reset_fwl()
         bootstrap_logger()
         n_after_first = len(logging.getLogger('fwl').handlers)
         bootstrap_logger()
@@ -570,7 +580,6 @@ class TestBootstrapLogger:
         bootstrap_logger afterwards must leave that configuration untouched so a
         real run keeps logging to its proteus_XX.log file.
         """
-        self._reset_fwl()
         with tempfile.TemporaryDirectory() as tmpdir:
             logpath = os.path.join(tmpdir, 'test.log')
             setup_logger(logpath=logpath, logterm=False)
@@ -594,7 +603,6 @@ class TestBootstrapLogger:
         setup_logger clears handlers before adding its own, so the bootstrap
         console handler must not survive to double every terminal line.
         """
-        self._reset_fwl()
         bootstrap_logger()
         with tempfile.TemporaryDirectory() as tmpdir:
             logpath = os.path.join(tmpdir, 'test.log')
@@ -618,7 +626,6 @@ class TestBootstrapLogger:
         """
         import io
 
-        self._reset_fwl()
         bootstrap_logger()
         buf = io.StringIO()
         logging.getLogger('fwl').handlers[0].stream = buf
@@ -632,7 +639,6 @@ class TestBootstrapLogger:
         Mirrors setup_logger's contract so a typo in a level string fails fast
         instead of quietly falling back to INFO.
         """
-        self._reset_fwl()
         with pytest.raises(ValueError, match='Invalid log level'):
             bootstrap_logger(level='INVALID')
 
