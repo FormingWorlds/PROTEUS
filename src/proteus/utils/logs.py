@@ -57,6 +57,30 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
+def _resolve_level(level: str) -> int:
+    """Normalise and validate a log-level string, returning its numeric code.
+
+    Shared by setup_logger and bootstrap_logger so the accepted level names and
+    the error message stay identical between the two entry points.
+    """
+    level = str(level).strip().upper()
+    if level not in ['INFO', 'DEBUG', 'ERROR', 'WARNING']:
+        raise ValueError(f'Invalid log level: {level}')
+    return logging.getLevelNamesMapping()[level]
+
+
+def _console_handler(level_code: int) -> logging.StreamHandler:
+    """Build a stdout handler using the PROTEUS colour formatter.
+
+    Shared by setup_logger and bootstrap_logger so terminal output looks the
+    same whichever installs the console handler.
+    """
+    sh = logging.StreamHandler(sys.stdout)
+    sh.setFormatter(CustomFormatter())
+    sh.setLevel(level_code)
+    return sh
+
+
 # Custom logger instance
 def setup_logger(logpath: str = 'new.log', level: str = 'INFO', logterm: bool = True):
     logger_name = 'fwl'
@@ -71,23 +95,17 @@ def setup_logger(logpath: str = 'new.log', level: str = 'INFO', logterm: bool = 
     if os.path.exists(logpath):
         os.remove(logpath)
 
-    level = str(level).strip().upper()
-    if level not in ['INFO', 'DEBUG', 'ERROR', 'WARNING']:
-        raise ValueError(f'Invalid log level: {level}')
-    level_code = logging.getLevelNamesMapping()[level]
+    level_code = _resolve_level(level)
 
     # Add terminal output to logger
     if logterm:
-        sh = logging.StreamHandler(sys.stdout)
-        sh.setFormatter(CustomFormatter())
-        sh.setLevel(level_code)
-        custom_logger.addHandler(sh)
+        custom_logger.addHandler(_console_handler(level_code))
 
     # Add file output to logger
     fh = logging.FileHandler(logpath)
     fh.setFormatter(logging.Formatter('[ %(levelname)-5s ] %(message)s'))
 
-    fh.setLevel(level)
+    fh.setLevel(level_code)
     custom_logger.addHandler(fh)
     custom_logger.setLevel(level_code)
 
@@ -142,15 +160,8 @@ def bootstrap_logger(level: str = 'INFO'):
     if custom_logger.handlers:
         return custom_logger
 
-    level = str(level).strip().upper()
-    if level not in ['INFO', 'DEBUG', 'ERROR', 'WARNING']:
-        raise ValueError(f'Invalid log level: {level}')
-    level_code = logging.getLevelNamesMapping()[level]
-
-    sh = logging.StreamHandler(sys.stdout)
-    sh.setFormatter(CustomFormatter())
-    sh.setLevel(level_code)
-    custom_logger.addHandler(sh)
+    level_code = _resolve_level(level)
+    custom_logger.addHandler(_console_handler(level_code))
     custom_logger.setLevel(level_code)
 
     return custom_logger
