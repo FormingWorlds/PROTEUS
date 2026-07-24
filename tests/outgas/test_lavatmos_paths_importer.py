@@ -35,6 +35,16 @@ class TestPathsImporterInitialization:
     directory creation, and error handling.
     """
 
+    @pytest.fixture
+    def lava_environment(tmp_path, monkeypatch):
+        lava_dir = tmp_path / "input" / "lava_compositions"
+        lava_dir.mkdir(parents=True)
+
+        monkeypatch.setenv("LAVA_DIR", str(tmp_path))
+        monkeypatch.setenv("FC_DIR", str(tmp_path))
+
+        return tmp_path
+
     def test_paths_importer_reads_lava_dir_and_fastchem_dir_from_env(self):
         """Test that paths_importer reads LAVA_DIR and FC_DIR from environment.
 

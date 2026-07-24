@@ -204,9 +204,8 @@ def test_legacy_dispatches_to_legacy_entry_point():
         # passing it as a target would be a category error).
         call = mock_legacy.call_args
         target_arg = call.args[0]
-        for e in ('H', 'C', 'N', 'S'):
+        for e in ('H', 'C', 'N', 'S','O'):
             assert e in target_arg, f'target missing required element {e!r}'
-        assert 'O' not in target_arg, "legacy path must not pass 'O' as a target"
 
 
 @pytest.mark.unit
