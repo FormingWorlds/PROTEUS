@@ -9,8 +9,8 @@ checksums have a single source of truth.
 
 Readers resolve a dataset directory through :func:`dataset_dir` rather than
 joining a path by hand, so the version segment stays an implementation detail of
-the pin. Datasets that have not migrated yet are still served by the legacy
-downloader in :mod:`proteus.utils.data`.
+the pin. Datasets absent from the manifest are provisioned by the downloader in
+:mod:`proteus.utils.data` instead.
 """
 
 from __future__ import annotations
@@ -151,9 +151,10 @@ def _fetcher(key: str, data_root: str | Path | None = None):
 def dataset_dir(key: str, data_root: str | Path | None = None) -> Path:
     """Return the version directory holding one dataset's files.
 
-    Resolving the path does not download anything; call :func:`fetch_dataset`
-    to populate it. The ``r<record-id>`` segment comes from the manifest pin, so
-    callers never join it themselves.
+    Resolving the path creates the data root if it is absent (an fwl-io side
+    effect) but downloads nothing; call :func:`fetch_dataset` to populate it.
+    The ``r<record-id>`` segment comes from the manifest pin, so callers never
+    join it themselves.
 
     Parameters
     ----------

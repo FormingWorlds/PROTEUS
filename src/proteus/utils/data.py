@@ -1442,6 +1442,38 @@ def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
         )
 
 
+def _fetch_optional_dataset(key: str, desc: str) -> bool:
+    """Fetch a dataset whose absence only costs a plot, reporting rather than raising.
+
+    The overlays these datasets feed are decorative: a run must survive an
+    unreachable mirror, an offline environment, or a data tree that cannot be
+    resolved. fwl-io reports all of those by raising, and the reference data is
+    fetched before the interior tables a run genuinely needs, so an escaping
+    error would both abort the run and block the data that matters.
+
+    Parameters
+    ----------
+    key : str
+        Dotted manifest key of the dataset.
+    desc : str
+        Human-readable dataset name used in the log message.
+
+    Returns
+    -------
+    bool
+        Whether the dataset is now present.
+    """
+    from proteus.data import fetch_dataset
+
+    try:
+        fetch_dataset(key)
+    except Exception as exc:  # noqa: BLE001 -- a decorative dataset never fails a run
+        log.error('Failed to download %s: %s', desc, exc)
+        log.error('Plots that use it will be skipped.')
+        return False
+    return True
+
+
 def download_exoplanet_data():
     """
     Download the exoplanet catalogue through fwl-io.
@@ -1450,9 +1482,9 @@ def download_exoplanet_data():
     so the catalogue lands in its version directory and is verified against the
     committed registry.
     """
-    from proteus.data import EXOPLANET_REFERENCE, fetch_dataset
+    from proteus.data import EXOPLANET_REFERENCE
 
-    fetch_dataset(EXOPLANET_REFERENCE)
+    return _fetch_optional_dataset(EXOPLANET_REFERENCE, 'exoplanet data')
 
 
 def download_massradius_data():
@@ -1463,9 +1495,9 @@ def download_massradius_data():
     so the curves land in their version directory and are verified against the
     committed registry.
     """
-    from proteus.data import MASS_RADIUS_ZENG_2019, fetch_dataset
+    from proteus.data import MASS_RADIUS_ZENG_2019
 
-    fetch_dataset(MASS_RADIUS_ZENG_2019)
+    return _fetch_optional_dataset(MASS_RADIUS_ZENG_2019, 'mass radius data')
 
 
 def download_stellar_tracks(track: str, use_osf_fallback: bool = True):

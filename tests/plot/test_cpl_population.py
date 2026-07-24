@@ -315,3 +315,67 @@ def test_plot_population_does_not_eagerly_import_dace_at_module_load():
         # on a present-data path). Tested explicitly above by
         # test_get_exo_data_loads_present_csv and
         # test_get_mr_data_loads_present_curves.
+
+
+def test_get_exo_data_skips_when_the_dataset_cannot_be_resolved(tmp_path, caplog, monkeypatch):
+    """An unresolvable dataset warns and skips rather than raising.
+
+    A wheel that shipped without the manifest or a registry makes fwl-io raise
+    while resolving, before any file is looked for. The overlay is decorative,
+    so that has to behave like missing data; the warning names the dataset and
+    the cause so the failure is diagnosable.
+    """
+
+    def _boom(key, data_root=None):
+        raise FileNotFoundError(f'no registry file for dataset {key!r}')
+
+    monkeypatch.setattr('proteus.data.dataset_dir', _boom)
+
+    with caplog.at_level(logging.WARNING):
+        result = _get_exo_data(str(tmp_path))
+
+    assert result is None
+    msgs = ' '.join(rec.getMessage() for rec in caplog.records)
+    assert 'observe.exoplanet_reference' in msgs, f'the dataset is not named: {msgs}'
+    assert 'no registry file' in msgs, f'the cause is not named: {msgs}'
+
+
+def test_get_mr_data_skips_when_the_dataset_cannot_be_resolved(tmp_path, caplog, monkeypatch):
+    """The mass-radius loader skips on an unresolvable dataset, same contract."""
+
+    def _boom(key, data_root=None):
+        raise RuntimeError(f'fwl-io resolved an unversioned directory for {key!r}')
+
+    monkeypatch.setattr('proteus.data.dataset_dir', _boom)
+
+    with caplog.at_level(logging.WARNING):
+        result = _get_mr_data(str(tmp_path))
+
+    assert result is None
+    msgs = ' '.join(rec.getMessage() for rec in caplog.records)
+    assert 'observe.mass_radius.zeng_2019' in msgs, f'the dataset is not named: {msgs}'
+
+
+def test_plot_wrapper_survives_an_unresolvable_dataset(tmp_path, monkeypatch):
+    """The plot wrapper returns None and writes nothing when resolution fails.
+
+    The smoke tests rely on the end-of-run plot suite never raising, so this is
+    the contract that keeps a partial data tree from failing a whole run.
+    """
+
+    def _boom(key, data_root=None):
+        raise FileNotFoundError('no registry file')
+
+    monkeypatch.setattr('proteus.data.dataset_dir', _boom)
+    out_dir = tmp_path / 'output'
+    (out_dir / 'plots').mkdir(parents=True)
+    hf_all = pd.DataFrame(
+        {
+            'Time': [10.0, 1000.0, 2000.0, 3000.0],
+            'M_planet': [5.972e24] * 4,
+            'R_obs': [6.371e6] * 4,
+        }
+    )
+
+    assert plot_population_mass_radius(hf_all, str(out_dir), str(tmp_path), 'png') is None
+    assert not list((out_dir / 'plots').glob('plot_population*'))

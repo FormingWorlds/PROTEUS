@@ -133,6 +133,10 @@ def test_dataset_dir_rejects_an_unversioned_resolution(tmp_path, monkeypatch):
 
     Serving the bare location would put every reader one directory above the
     files and look like missing data, so the guard names the offending path.
+    A manifest dataset always carries a version DOI, so this branch is not
+    reachable through the shipped manifest; it is a tripwire for a future fwl-io
+    that resolves a location without a version segment, and is driven here
+    through a stand-in fetcher.
     """
 
     class _UnversionedFetcher:
@@ -239,11 +243,13 @@ def test_declared_floor_matches_the_requirement():
     assert bounds == [FWL_IO_FLOOR], f'pyproject floor {bounds} vs module floor {FWL_IO_FLOOR}'
 
 
-def test_manifest_and_registries_travel_in_the_wheel():
+def test_manifest_and_registries_are_declared_as_package_data():
     """The manifest and its registries are declared as package data.
 
     They are read from the installed package, so leaving them out of the wheel
-    works in a source checkout and fails only on a user's machine.
+    works in a source checkout and fails only on a user's machine. This checks
+    the declaration and the shipped filenames; that a built wheel really carries
+    them is covered at the integration tier.
     """
     package_data = _pyproject()['tool']['setuptools']['package-data']
 
@@ -286,7 +292,7 @@ def test_fetch_dataset_delegates_to_the_pinned_fetcher(monkeypatch, tmp_path):
     The fetch is delegated rather than reimplemented, so this pins that the
     dataset key reaches the fetcher and that no download happens here.
     """
-    calls = {'fetch_all': 0, 'key': None}
+    calls = {'fetch_all': 0, 'key': None, 'data_root': 'unset'}
 
     class _Fetcher:
         def fetch_all(self):
@@ -295,6 +301,7 @@ def test_fetch_dataset_delegates_to_the_pinned_fetcher(monkeypatch, tmp_path):
 
     def _fake_fetcher(key, data_root=None):
         calls['key'] = key
+        calls['data_root'] = data_root
         return _Fetcher()
 
     monkeypatch.setattr('proteus.data._fetcher', _fake_fetcher)
@@ -303,4 +310,27 @@ def test_fetch_dataset_delegates_to_the_pinned_fetcher(monkeypatch, tmp_path):
 
     assert calls['fetch_all'] == 1, 'the fetch runs exactly once'
     assert calls['key'] == MASS_RADIUS_ZENG_2019
+    # The caller-supplied tree has to reach the fetcher, or the fetch would
+    # silently populate the process-wide data root instead.
+    assert calls['data_root'] == tmp_path
     assert result == [tmp_path / 'a.txt']
+
+
+def test_default_data_root_is_the_tree_proteus_reads_from(monkeypatch, tmp_path):
+    """A dataset fetched with no explicit root lands where the readers look.
+
+    The fetch side resolves the root through ``GetFWLData``, whose module-level
+    constant is frozen at import, while the plot side passes the root the run
+    resolved. If those diverge, ``proteus get reference`` reports success while
+    the plot warns that the data is missing.
+    """
+    monkeypatch.setenv('FWL_DATA', str(tmp_path))
+    monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path, raising=False)
+
+    implicit = dataset_dir(MASS_RADIUS_ZENG_2019)
+    explicit = dataset_dir(MASS_RADIUS_ZENG_2019, data_root=tmp_path)
+
+    assert implicit == explicit
+    # Discrimination: a resolution that fell back to the repo-local default
+    # would still be a valid path, but not one below the run's data root.
+    assert implicit.is_relative_to(tmp_path)

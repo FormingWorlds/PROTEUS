@@ -8,34 +8,31 @@ config files. For instructions on switching between spectrum sources, see
 
 PROTEUS downloads reference data from
 [Zenodo](https://zenodo.org/communities/proteus_framework/) on first run.
-A Zenodo API token is optional; without one, public access is used
-with lower rate limits.
+Each dataset is provisioned by one of two mechanisms, named per dataset in the
+table below.
 
-Datasets are provisioned in one of two ways:
+**fwl-io.** [fwl-io](https://github.com/FormingWorlds/fwl-io) pins a dataset to
+a Zenodo version DOI declared in `src/proteus/data/proteus_manifest.toml`,
+verifies every file against a checksum registry committed beside that manifest,
+and places the files in a version directory named for the record, so a re-pinned
+deposit lands beside its predecessor rather than overwriting it.
 
-- Through [fwl-io](https://github.com/FormingWorlds/fwl-io), which pins each
-  dataset to a Zenodo version DOI declared in
-  `src/proteus/data/proteus_manifest.toml`, verifies every file against a
-  checksum registry committed beside that manifest, and places the files in a
-  version directory named for the record. A transient network failure is
-  retried before the fetch gives up.
-- Through the downloader in `proteus.utils.data`, which fetches the whole
-  Zenodo record and falls back to the corresponding project on the
-  [Open Science Framework](https://osf.io/) (OSF) when Zenodo is unavailable.
+**The PROTEUS downloader.** `proteus.utils.data` fetches a whole Zenodo record,
+retrying a few times, and falls back to the corresponding project on the
+[Open Science Framework](https://osf.io/) (OSF) when Zenodo is unavailable. A
+Zenodo API token applies to this mechanism only; without one, public access is
+used with lower rate limits.
 
-Datasets move to the first mechanism as they are migrated; the table below
-notes which ones already have.
-
-| Dataset | Downloaded by |
-|---|---|
-| Stellar spectra (solar, MUSCLES) | `proteus get solar`, `proteus get muscles` |
-| PHOENIX synthetic spectra | `proteus get phoenix` |
-| Stellar evolution tracks | `proteus get stellar` |
-| Spectral k-tables | `proteus get spectral` |
-| Surface albedos | `proteus get surfaces` |
-| Scattering properties | `proteus get scattering` |
-| Exoplanet populations, mass-radius curves (via fwl-io) | `proteus get reference` |
-| Interior EOS tables, melting curves | `proteus get interiordata` |
+| Dataset | Provisioned by | Downloaded by |
+|---|---|---|
+| Stellar spectra (solar, MUSCLES) | PROTEUS downloader | `proteus get solar`, `proteus get muscles` |
+| PHOENIX synthetic spectra | PROTEUS downloader | `proteus get phoenix` |
+| Stellar evolution tracks | PROTEUS downloader | `proteus get stellar` |
+| Spectral k-tables | PROTEUS downloader | `proteus get spectral` |
+| Surface albedos | PROTEUS downloader | `proteus get surfaces` |
+| Scattering properties | PROTEUS downloader | `proteus get scattering` |
+| Exoplanet populations, mass-radius curves | fwl-io | `proteus get reference` |
+| Interior EOS tables, melting curves | PROTEUS downloader | `proteus get interiordata` |
 
 To configure a Zenodo API token, see the
 [Troubleshooting guide](../How-to/troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
@@ -202,8 +199,12 @@ Fetched through fwl-io into
 `$FWL_DATA/observe/exoplanet_reference/r<record-id>/`, where `<record-id>` is
 the Zenodo record the manifest pins. The population diagram resolves this
 directory from the pin, so the version segment never has to be typed by hand.
-The catalogue is decorative for a simulation: when it is absent, the population
-diagram is skipped with a warning rather than failing the run.
+The catalogue is decorative for a simulation: when it is absent or cannot be
+downloaded, the population diagram is skipped with a warning rather than
+failing the run.
+
+A copy under `$FWL_DATA/planet_reference/Exoplanets` is not read and can be
+deleted.
 
 ---
 
@@ -213,7 +214,8 @@ Obtained from [Zeng et al. (2016)](https://iopscience.iop.org/article/10.3847/00
 
 Fetched through fwl-io into
 `$FWL_DATA/observe/mass_radius/zeng_2019/r<record-id>/`, on the same terms as
-the exoplanet catalogue above.
+the exoplanet catalogue above. A copy under `$FWL_DATA/mass_radius/Zeng2019` is
+not read and can be deleted.
 
 ---
 

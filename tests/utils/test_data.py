@@ -14,7 +14,9 @@ See also:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -1823,6 +1825,101 @@ def test_download_stellar_spectra_custom(mock_download):
     folders = [call.kwargs['folder'] for call in mock_download.call_args_list]
     assert 'Named' in folders
     assert 'PHOENIX' in folders
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset')
+def test_optional_dataset_failure_does_not_abort_the_run(mock_fetch, caplog):
+    """A mirror failure on decorative data is reported, not raised.
+
+    fwl-io reports an exhausted mirror with DownloadError, a RuntimeError that
+    the start-of-run guard does not catch, so an escaping error would abort
+    every simulation over an overlay that only decorates a plot.
+    """
+    from fwl_io import DownloadError
+
+    from proteus.utils.data import download_exoplanet_data
+
+    mock_fetch.side_effect = DownloadError('could not obtain from any mirror')
+
+    with caplog.at_level(logging.ERROR):
+        result = download_exoplanet_data()
+
+    assert result is False
+    # Discrimination: the fetch really ran, so the survival is not a
+    # short-circuit that skipped the download altogether.
+    mock_fetch.assert_called_once()
+    assert any('exoplanet data' in rec.getMessage() for rec in caplog.records), (
+        f'expected an error naming the dataset; got {[r.getMessage() for r in caplog.records]}'
+    )
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset')
+def test_optional_dataset_offline_failure_does_not_abort_the_run(mock_fetch):
+    """An offline data tree skips the overlay instead of failing the run.
+
+    OfflineDataError is also a RuntimeError, so it escapes the same guard; a
+    user running without network must still be able to start a simulation.
+    """
+    from fwl_io import OfflineDataError
+
+    from proteus.utils.data import download_massradius_data
+
+    mock_fetch.side_effect = OfflineDataError('offline mode is active')
+
+    assert download_massradius_data() is False
+    mock_fetch.assert_called_once()
+
+
+@pytest.mark.unit
+def test_reference_data_failure_still_reaches_the_interior_data(monkeypatch):
+    """A failed overlay fetch does not block the interior tables fetched after it.
+
+    The reference overlays are downloaded before the interior lookup tables and
+    melting curves a run actually needs, so an abort there would deprive the
+    solver of its data.
+    """
+    from fwl_io import DownloadError
+
+    from proteus.utils import data as data_mod
+
+    def _boom(key, data_root=None):
+        raise DownloadError('could not obtain from any mirror')
+
+    reached = {'interior': False, 'melting': False}
+    monkeypatch.setattr('proteus.data.fetch_dataset', _boom)
+    monkeypatch.setattr(
+        data_mod,
+        'download_interior_lookuptables',
+        lambda **kw: reached.__setitem__('interior', True),
+    )
+    monkeypatch.setattr(
+        data_mod,
+        'download_melting_curves',
+        lambda *a, **kw: reached.__setitem__('melting', True),
+    )
+    for name in (
+        'download_stellar_spectra',
+        'download_stellar_tracks',
+        'download_spectral_file',
+        'download_surface_albedos',
+        'download_scattering',
+        'download_zalmoxis_eos_for_config',
+        'download_eos_dynamic',
+    ):
+        monkeypatch.setattr(data_mod, name, lambda *a, **kw: None)
+
+    cfg = SimpleNamespace(
+        star=SimpleNamespace(module='dummy'),
+        atmos_clim=SimpleNamespace(module='dummy', aerosols_enabled=False),
+        interior_energetics=SimpleNamespace(module='aragog'),
+        interior_struct=SimpleNamespace(module='dummy', eos_dir=None),
+    )
+    data_mod._get_sufficient(cfg)
+
+    assert reached['interior'], 'interior lookup tables must still be fetched'
+    assert reached['melting'], 'melting curves must still be fetched'
 
 
 @pytest.mark.unit

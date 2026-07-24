@@ -8,8 +8,7 @@
 #
 # Data consumed by several models of the ecosystem belongs in the manifest
 # fwl-io ships, not here; this file is for data only PROTEUS reads. Datasets
-# still served by the legacy downloader in utils/data.py are absent from this
-# file until they migrate.
+# the downloader in utils/data.py provisions are absent from this file.
 
 [observe.exoplanet_reference]
 name = "DACE PlanetS catalogue of confirmed exoplanets"
