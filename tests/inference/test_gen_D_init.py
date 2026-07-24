@@ -84,11 +84,18 @@ def test_create_init_routes_to_sample_from_bounds(monkeypatch):
 @pytest.mark.unit
 def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
     """``create_init`` with a non-'none' ``init_grid`` dispatches to
-    ``sample_from_grid`` and resolves the grid path via
-    ``proteus_directories.output``.
+    ``sample_from_grid`` and resolves the grid path through the output root,
+    so a relocated output root (PROTEUS_OUTPUT_PATH) is honoured rather than
+    hard-coding ``<proteus>/output``.
     """
     observed = {}
-    monkeypatch.setattr(init_mod, 'get_proteus_directories', lambda: {'proteus': str(tmp_path)})
+    # Model the output root as <tmp_path>/output; the grid name is appended to
+    # it, mirroring get_proteus_directories(outdir)['output'].
+    monkeypatch.setattr(
+        init_mod,
+        'get_proteus_directories',
+        lambda outdir: {'output': str(tmp_path / 'output' / outdir)},
+    )
 
     def fake_sample_from_grid(output, params, observables, grid_dir):
         observed['grid_dir'] = grid_dir
@@ -105,6 +112,10 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
     }
 
     assert init_mod.create_init(config) == 6
+    # The grid dir is resolved through get_proteus_directories(grid)['output'],
+    # i.e. the (possibly relocated) output root joined with the grid name, not a
+    # hard-coded <proteus>/output. Pinning the full path discriminates a
+    # regression that ignored the grid name or reintroduced the hard-coded root.
     assert observed['grid_dir'] == str(tmp_path / 'output' / 'my_grid')
 
 
