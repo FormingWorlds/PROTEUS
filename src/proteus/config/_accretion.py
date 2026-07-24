@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from attr.validators import ge, gt, in_
+from attr.validators import ge, gt, in_, le
 from attrs import define, field
 
 from ._converters import none_if_none
@@ -164,6 +164,15 @@ class Accretion:
         Sulfur carried by each impactor [ppmw of impactor mass].
     impactor_O_ppmw: float
         Oxygen carried by each impactor [ppmw of impactor mass].
+    atmloss_module: str or None
+        How the fraction of atmosphere lost to each impact is computed.
+        Choices: None (no impact atmosphere loss), "constant" (the fixed
+        fraction below). A ZEPHYRUS collision-loss law will become a
+        further choice when available; PROTEUS itself ships no impact
+        loss physics.
+    atmloss_frac: float
+        Fraction of the atmosphere removed by each impact when
+        ``atmloss_module = "constant"`` [0-1].
     """
 
     module: str | None = field(
@@ -185,6 +194,15 @@ class Accretion:
     impactor_N_ppmw: float = field(default=0.0, validator=ge(0))
     impactor_S_ppmw: float = field(default=0.0, validator=ge(0))
     impactor_O_ppmw: float = field(default=0.0, validator=ge(0))
+
+    # Impact atmosphere loss. Disabled by default; the constant module is a
+    # placeholder with the call shape of the coming ZEPHYRUS collision law.
+    atmloss_module: str | None = field(
+        default='none',
+        validator=in_((None, 'constant')),
+        converter=none_if_none,
+    )
+    atmloss_frac: float = field(default=0.0, validator=[ge(0), le(1)])
 
     @property
     def delivers_volatiles(self) -> bool:

@@ -79,9 +79,12 @@ _DROP_PREFIXES = (
 _REVIEWED_NEUTRAL = frozenset(
     {
         # Accretion is off by default and every impactor budget starts at
-        # zero, so a migrated config experiences no impacts and no delivery.
-        # The morrigan and dummy sub-blocks are only read once their backend
-        # is selected, which migration never does.
+        # zero, so a migrated config experiences no impacts, no delivery,
+        # and no impact atmosphere loss (atmloss_module is off and its
+        # fraction is zero). The morrigan and dummy sub-blocks are only
+        # read once their backend is selected, which migration never does.
+        'accretion.atmloss_frac',
+        'accretion.atmloss_module',
         'accretion.dummy.timeline_path',
         'accretion.impactor_C_ppmw',
         'accretion.impactor_H_ppmw',
