@@ -741,11 +741,11 @@ def test_calc_new_elements_explicit_mass_overrides_the_rate_integral():
 
     An impulsive loss (a giant impact stripping the atmosphere) hands the
     total mass to remove directly. The rate-times-timestep integral must play
-    no part: the row carries a deliberately absurd escape rate whose integral
-    over dt would strip 300x more, so any leakage of the rate path into the
-    debit is unmissable. The explicit mass partitions proportionally, and
-    omitting it (the default) must reproduce the rate-integral behaviour
-    unchanged.
+    no part: the row carries an escape rate whose integral over dt is thirty
+    times smaller than the explicit mass, so any leakage of the rate path
+    into the debit is unmissable. The explicit mass partitions
+    proportionally, and omitting it (the default) must reproduce the
+    rate-integral behaviour unchanged.
     """
     from proteus.escape.wrapper import calc_new_elements
     from proteus.utils.constants import secs_per_year
@@ -781,6 +781,17 @@ def test_calc_new_elements_explicit_mass_overrides_the_rate_integral():
     tgt2 = calc_new_elements(row2, dt, 'outgas', min_thresh=1e10)
     assert tgt2['H'] == pytest.approx(tgt['H'], rel=1e-9)
     assert tgt2['C'] == pytest.approx(tgt['C'], rel=1e-9)
+
+    # An explicit zero is a real value, not "fall back to the rate": nothing
+    # is removed even though the rate integral would remove 3.16e18 kg.
+    tgt0 = calc_new_elements(_row(), dt, 'outgas', min_thresh=1e10, esc_mass=0.0)
+    assert tgt0['H'] == pytest.approx(8.0e20, rel=1e-12)
+    assert tgt0['C'] == pytest.approx(2.0e20, rel=1e-12)
+
+    # A negative mass has no meaning in the partitioning and is rejected
+    # rather than silently adding mass to the planet.
+    with pytest.raises(ValueError, match='non-negative'):
+        calc_new_elements(_row(), dt, 'outgas', min_thresh=1e10, esc_mass=-1.0e19)
 
 
 @pytest.mark.unit

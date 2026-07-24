@@ -565,6 +565,149 @@ def test_total_impact_loss_removes_the_atmosphere_but_not_the_interior(monkeypat
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_stripping_a_sub_threshold_atmosphere_leaves_the_dissolved_inventory(monkeypatch):
+    """An atmosphere below the outgassing mass threshold is not strippable.
+
+    On a magma-ocean planet most volatiles are dissolved and the atmosphere can
+    sit below ``outgas.mass_thresh`` (1e16 kg by default) while the totals are
+    orders of magnitude larger. The strip must leave every whole-planet budget
+    and the escaped-mass ledger untouched in that regime: the failure mode this
+    pins is the totals being overwritten with the tiny atmospheric masses,
+    which deletes the dissolved inventory and books it as escaped.
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5)
+    )
+    # Production default threshold; the atmosphere sits well below it while the
+    # dissolved reservoirs dominate the totals.
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e16)
+    _atm_state(handler.hf_row, H=(1.0e15, 5.0e20), C=(5.0e14, 2.0e20))
+    handler.hf_row['esc_kg_cumulative'] = 0.0
+    apply_impact(handler, _impact_event())
+
+    # The dissolved inventory survives, exactly.
+    assert handler.hf_row['H_kg_total'] == pytest.approx(5.0e20, rel=1e-12)
+    assert handler.hf_row['C_kg_total'] == pytest.approx(2.0e20, rel=1e-12)
+    # Nothing is booked as escaped: the corrupted path would book ~7e20 kg.
+    assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(0.0, abs=1.0)
+    # Discrimination: the failure mode leaves the totals at the atmospheric
+    # masses, five orders of magnitude below the correct values.
+    assert handler.hf_row['H_kg_total'] > 1.0e18
+
+
+@pytest.mark.unit
+def test_stripping_with_no_atmosphere_at_all_is_a_clean_no_op(monkeypatch):
+    """Loss enabled on an airless planet strips nothing and books nothing.
+
+    An impact can land before any outgassing has produced an atmosphere. With
+    the loss module active the strip must pass through without touching the
+    budgets, creating atmospheric keys, or moving the escaped-mass ledger.
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.9)
+    )
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    handler.hf_row['H_kg_total'] = 3.0e20  # dissolved only; no _kg_atm keys exist
+    apply_impact(handler, _impact_event())
+
+    assert handler.hf_row['H_kg_total'] == pytest.approx(3.0e20, rel=1e-12)
+    assert float(handler.hf_row.get('esc_kg_cumulative', 0.0)) == pytest.approx(0.0, abs=1.0)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_impact_strips_oxygen_with_the_other_atmospheric_elements(monkeypatch):
+    """Atmospheric oxygen is stripped in proportion, like every other element.
+
+    Under whole-planet oxygen accounting the atmosphere carries O (in H2O,
+    CO2, SO2), so an impact that removes atmosphere removes O with it. The
+    strip must debit O_kg_total by the loss fraction times the atmospheric O,
+    or the O ledger would keep mass the atmosphere no longer holds.
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.4)
+    )
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    _atm_state(handler.hf_row, H=(1.0e20, 3.0e20), O=(8.0e20, 1.2e21))
+    apply_impact(handler, _impact_event())
+
+    assert handler.hf_row['O_kg_total'] == pytest.approx(1.2e21 - 0.4 * 8.0e20, rel=1e-9)
+    assert handler.hf_row['H_kg_total'] == pytest.approx(3.0e20 - 0.4 * 1.0e20, rel=1e-9)
+    # O dominates the atmosphere 8:1, so the ledger booking is mostly O; a
+    # partitioning that skipped O would book 4e19 instead of 3.6e20.
+    assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(
+        0.4 * (8.0e20 + 1.0e20), rel=1e-9
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
+    """Each impact conserves, strips, and delivers against the state it finds.
+
+    A Morrigan timeline routinely carries several impacts. The second impact
+    must act on the post-first-impact budgets: conservation brackets its own
+    structure solve, the strip debits the atmosphere it finds, and the
+    delivery adds its own impactor's content, with the ledger accumulating
+    across both.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure',
+        _rescaling_solve_structure(1.2),
+    )
+
+    handler = _impact_handler(
+        mass_tot=1.0,
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0),
+    )
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    _atm_state(handler.hf_row, H=(2.0e20, 6.0e20))
+    m_imp = 0.2 * M_earth
+    event = _impact_event(
+        M_target_before=6.0 * M_earth,
+        M_impactor=m_imp,
+        M_merged_after=6.2 * M_earth,
+    )
+
+    apply_impact(handler, event)
+    delivered = m_imp * 1000.0 / 1.0e6
+    after_first = 6.0e20 - 0.5 * 2.0e20 + delivered
+    assert handler.hf_row['H_kg_total'] == pytest.approx(after_first, rel=1e-9)
+
+    # Second impact: same event again; the atmosphere was not re-equilibrated
+    # between them (no outgas call here), so the strip debits the same
+    # atmospheric reservoir and the delivery adds the same amount.
+    apply_impact(handler, event)
+    after_second = after_first - 0.5 * 2.0e20 + delivered
+    assert handler.hf_row['H_kg_total'] == pytest.approx(after_second, rel=1e-9)
+    # The planet grew twice and the ledger accumulated both strips.
+    assert handler.config.planet.mass_tot == pytest.approx(1.4, rel=1e-12)
+    assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(2 * 1.0e20, rel=1e-9)
+
+
+@pytest.mark.unit
 def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeypatch):
     """Stripping acts on the pre-impact atmosphere, then delivery adds on top.
 

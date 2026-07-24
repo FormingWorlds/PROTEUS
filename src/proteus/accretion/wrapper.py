@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from proteus.utils.constants import M_earth, element_list, noble_gases
+from proteus.utils.constants import M_earth, element_list
 
 if TYPE_CHECKING:
     from proteus.accretion.common import ImpactEvent
@@ -12,11 +12,14 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Volatile and noble-gas elements whose whole-planet budgets are conserved
-# across an impact's mass growth. The rock-forming elements (Si, Mg, Fe, Na)
-# are not carried in the volatile budget; the planet's rock mass grows through
-# the structure solve (mass_tot and the equation of state), not here.
-_VOLATILE_ELEMENTS = ('H', 'O', 'C', 'N', 'S', *noble_gases)
+# Rock-forming elements, whose mass grows through the structure solve
+# (mass_tot and the equation of state) rather than the volatile budgets.
+_ROCK_ELEMENTS = ('Si', 'Mg', 'Fe', 'Na')
+
+# Every other tracked element's whole-planet budget is conserved across an
+# impact's mass growth. Derived from the tracked-element registry so an
+# element added there is conserved by default unless declared rock-forming.
+_VOLATILE_ELEMENTS = tuple(e for e in element_list if e not in _ROCK_ELEMENTS)
 
 
 def init_accretion(handler: Proteus) -> list[ImpactEvent]:
@@ -284,9 +287,13 @@ def _strip_impact_atmosphere(config, hf_row: dict, event: ImpactEvent) -> None:
         return
 
     # Atmospheric reservoir mass, summed the same way the debit partitions it.
+    # An atmosphere below the outgassing mass threshold is treated as nothing
+    # to strip, the same convention continuous escape applies to it.
     m_atm = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list)
-    if m_atm <= 0.0:
-        log.info('    impact atmosphere loss: no atmosphere to strip')
+    if m_atm < config.outgas.mass_thresh:
+        log.info(
+            '    impact atmosphere loss: atmosphere below the mass threshold, not stripped'
+        )
         return
 
     before = {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
