@@ -8,10 +8,23 @@ config files. For instructions on switching between spectrum sources, see
 
 PROTEUS downloads reference data from
 [Zenodo](https://zenodo.org/communities/proteus_framework/) on first run.
-If Zenodo is unavailable, each dataset falls back automatically to its
-corresponding project on the [Open Science Framework](https://osf.io/)
-(OSF). A Zenodo API token is optional; without one, public access is used
+A Zenodo API token is optional; without one, public access is used
 with lower rate limits.
+
+Datasets are provisioned in one of two ways:
+
+- Through [fwl-io](https://github.com/FormingWorlds/fwl-io), which pins each
+  dataset to a Zenodo version DOI declared in
+  `src/proteus/data/proteus_manifest.toml`, verifies every file against a
+  checksum registry committed beside that manifest, and places the files in a
+  version directory named for the record. A transient network failure is
+  retried before the fetch gives up.
+- Through the downloader in `proteus.utils.data`, which fetches the whole
+  Zenodo record and falls back to the corresponding project on the
+  [Open Science Framework](https://osf.io/) (OSF) when Zenodo is unavailable.
+
+Datasets move to the first mechanism as they are migrated; the table below
+notes which ones already have.
 
 | Dataset | Downloaded by |
 |---|---|
@@ -21,7 +34,7 @@ with lower rate limits.
 | Spectral k-tables | `proteus get spectral` |
 | Surface albedos | `proteus get surfaces` |
 | Scattering properties | `proteus get scattering` |
-| Exoplanet populations, mass-radius curves | `proteus get reference` |
+| Exoplanet populations, mass-radius curves (via fwl-io) | `proteus get reference` |
 | Interior EOS tables, melting curves | `proteus get interiordata` |
 
 To configure a Zenodo API token, see the
@@ -185,11 +198,22 @@ ls $FWL_DATA/surface_albedos/Hammond24
 Obtained from the DACE PlanetS database
 ([Parc et al., 2024](https://arxiv.org/abs/2406.04311)).
 
+Fetched through fwl-io into
+`$FWL_DATA/observe/exoplanet_reference/r<record-id>/`, where `<record-id>` is
+the Zenodo record the manifest pins. The population diagram resolves this
+directory from the pin, so the version segment never has to be typed by hand.
+The catalogue is decorative for a simulation: when it is absent, the population
+diagram is skipped with a warning rather than failing the run.
+
 ---
 
 ## Mass-radius relations
 
 Obtained from [Zeng et al. (2016)](https://iopscience.iop.org/article/10.3847/0004-637X/819/2/127/meta).
+
+Fetched through fwl-io into
+`$FWL_DATA/observe/mass_radius/zeng_2019/r<record-id>/`, on the same terms as
+the exoplanet catalogue above.
 
 ---
 

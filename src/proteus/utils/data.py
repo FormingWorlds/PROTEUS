@@ -504,10 +504,9 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     'MUSCLES': {'zenodo_id': '17802209', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
     # Stellar spectra - solar (OSF project: 8r2sw)
     'solar': {'zenodo_id': '17981836', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
-    # Exoplanet data (OSF project: fzwr4)
-    'Exoplanets': {'zenodo_id': '15727878', 'osf_id': 'fzwr4', 'osf_project': 'fzwr4'},
-    # Mass-radius data (OSF project: xge8t)
-    'Zeng2019': {'zenodo_id': '15727899', 'osf_id': 'xge8t', 'osf_project': 'xge8t'},
+    # The exoplanet catalogue and the mass-radius relations are declared in
+    # src/proteus/data/proteus_manifest.toml and fetched through fwl-io, so
+    # their record pins live there and are absent here.
     # Population data (OSF project: dpkjb)
     # NOTE: Population and EOS_Seager2007 currently share Zenodo ID '15727998'.
     'Population': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
@@ -1445,38 +1444,28 @@ def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
 
 def download_exoplanet_data():
     """
-    Download exoplanet data
-    """
-    folder = 'Exoplanets'
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        raise ValueError(f'No data source mapping found for folder: {folder}')
+    Download the exoplanet catalogue through fwl-io.
 
-    download(
-        folder=folder,
-        target='planet_reference',
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc='exoplanet data',
-    )
+    The record pin and the file checksums come from the manifest PROTEUS ships,
+    so the catalogue lands in its version directory and is verified against the
+    committed registry.
+    """
+    from proteus.data import EXOPLANET_REFERENCE, fetch_dataset
+
+    fetch_dataset(EXOPLANET_REFERENCE)
 
 
 def download_massradius_data():
     """
-    Download mass-radius data
-    """
-    folder = 'Zeng2019'
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        raise ValueError(f'No data source mapping found for folder: {folder}')
+    Download the mass-radius relations through fwl-io.
 
-    download(
-        folder=folder,
-        target='mass_radius',
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc='mass radius data',
-    )
+    The record pin and the file checksums come from the manifest PROTEUS ships,
+    so the curves land in their version directory and are verified against the
+    committed registry.
+    """
+    from proteus.data import MASS_RADIUS_ZENG_2019, fetch_dataset
+
+    fetch_dataset(MASS_RADIUS_ZENG_2019)
 
 
 def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
