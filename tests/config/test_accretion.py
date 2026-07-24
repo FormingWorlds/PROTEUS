@@ -161,25 +161,42 @@ def test_targeted_selectors_require_a_selector_value():
 
 @pytest.mark.unit
 def test_impactor_composition_drives_the_delivery_flag():
-    """Delivery is on when any single element carries a positive budget.
+    """The delivery flag follows the content mode, then the ppmw budgets.
 
     The flag decides whether the impact handler touches the element
-    inventory at all, so it must respond to each element independently. A
-    flag wired to only one element would look correct in any test that set
-    hydrogen, which is why every element is checked in isolation here.
+    inventory at all. Dry impactors never deliver, whatever the ppmw fields
+    say; the planet-matching mode always can; the ppmw mode responds to
+    each element independently, since a flag wired to only one element
+    would look correct in any test that set hydrogen.
     """
     from proteus.config._accretion import Accretion
 
+    # The default is a dry impactor with delivery off.
+    assert Accretion().impactor_volatiles == 'dry'
     assert Accretion().delivers_volatiles is False
 
+    # A ppmw budget under a mode that would ignore it is a configuration
+    # contradiction and is rejected at load rather than silently dropped:
+    # the identical config delivered hydrogen before the mode selector
+    # existed, so a silent dry run would invert the user's intent.
+    with pytest.raises(ValueError, match='ppmw'):
+        Accretion(impactor_H_ppmw=250.0)
+    with pytest.raises(ValueError, match='ppmw'):
+        Accretion(impactor_volatiles='match_planet', impactor_S_ppmw=10.0)
+
+    # Planet-matching impactors always carry the planet's composition.
+    assert Accretion(impactor_volatiles='match_planet').delivers_volatiles is True
+
     for element in ('H', 'C', 'N', 'S', 'O'):
-        cfg = Accretion(**{f'impactor_{element}_ppmw': 250.0})
+        cfg = Accretion(impactor_volatiles='ppmw', **{f'impactor_{element}_ppmw': 250.0})
         assert cfg.delivers_volatiles is True, f'{element} budget ignored'
         assert getattr(cfg, f'impactor_{element}_ppmw') == pytest.approx(250.0)
 
-    # A budget of exactly zero is the documented dry-impactor case and
-    # must not switch delivery on.
-    assert Accretion(impactor_H_ppmw=0.0).delivers_volatiles is False
+    # In ppmw mode a zero budget is the documented dry-impactor case and
+    # must not switch delivery on; an unregistered mode is rejected.
+    assert Accretion(impactor_volatiles='ppmw').delivers_volatiles is False
+    with pytest.raises(ValueError):
+        Accretion(impactor_volatiles='wet')
 
     # Negative budgets would remove volatiles at an impact, which is the
     # escape module's job, not delivery's.

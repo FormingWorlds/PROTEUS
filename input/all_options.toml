@@ -581,13 +581,22 @@ config_version = "3.0"
     module                    = "none"       # none | dummy | morrigan
     time_offset               = 0.0          # shift of impact times onto the PROTEUS time axis [yr]
 
-    # Volatile content of each impactor [ppmw of impactor mass].
-    # Zero means impactors add silicate and iron mass only.
-    impactor_H_ppmw           = 0.0          # hydrogen delivered per impact
-    impactor_C_ppmw           = 0.0          # carbon delivered per impact
-    impactor_N_ppmw           = 0.0          # nitrogen delivered per impact
-    impactor_S_ppmw           = 0.0          # sulfur delivered per impact
-    impactor_O_ppmw           = 0.0          # oxygen delivered per impact
+    # Impactor volatile content source: dry impactors add silicate and iron
+    # mass only; match_planet impactors carry the planet's own formation
+    # composition scaled to their mass; ppmw impactors carry the per-element
+    # budgets below (read only in ppmw mode).
+    impactor_volatiles        = "dry"        # dry | match_planet | ppmw
+    impactor_H_ppmw           = 0.0          # hydrogen per impactor [ppmw of impactor mass]
+    impactor_C_ppmw           = 0.0          # carbon per impactor [ppmw of impactor mass]
+    impactor_N_ppmw           = 0.0          # nitrogen per impactor [ppmw of impactor mass]
+    impactor_S_ppmw           = 0.0          # sulfur per impactor [ppmw of impactor mass]
+    impactor_O_ppmw           = 0.0          # oxygen per impactor [ppmw of impactor mass]
+
+    # Impact atmosphere loss. With a loss module active the target loses the
+    # configured fraction of its atmosphere at each impact and the impactor's
+    # own atmospheric volatiles are fully lost with the collision.
+    atmloss_module            = "none"       # none | constant
+    atmloss_frac              = 0.0          # target atmosphere fraction removed per impact [0-1]
 
     [accretion.morrigan]
         seed                  = 1            # Monte Carlo seed

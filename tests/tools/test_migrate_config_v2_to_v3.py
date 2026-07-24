@@ -86,6 +86,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'accretion.atmloss_frac',
         'accretion.atmloss_module',
         'accretion.dummy.timeline_path',
+        'accretion.impactor_volatiles',
         'accretion.impactor_C_ppmw',
         'accretion.impactor_H_ppmw',
         'accretion.impactor_N_ppmw',

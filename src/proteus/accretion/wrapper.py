@@ -19,7 +19,14 @@ _ROCK_ELEMENTS = ('Si', 'Mg', 'Fe', 'Na')
 # Every other tracked element's whole-planet budget is conserved across an
 # impact's mass growth. Derived from the tracked-element registry so an
 # element added there is conserved by default unless declared rock-forming.
+# The set includes the noble gases, so a planet-matching impactor carries
+# them in proportion like every other volatile.
 _VOLATILE_ELEMENTS = tuple(e for e in element_list if e not in _ROCK_ELEMENTS)
+
+# Elements configurable through the per-element ppmw fields. The ppmw mode
+# can only deliver these; the planet-matching mode covers the full volatile
+# set above, noble gases included.
+_PPMW_ELEMENTS = ('H', 'C', 'N', 'S', 'O')
 
 
 def init_accretion(handler: Proteus) -> list[ImpactEvent]:
@@ -115,17 +122,38 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         event.mass_delta / M_earth,
     )
 
+    # Size every volatile consequence from the pre-impact state, before any of
+    # it is applied: what the impact strips from the target's atmosphere, and
+    # what the impactor carries, split into the part delivered into the planet
+    # and the part its own atmosphere loses with the collision.
+    log.info(
+        '    impactor volatiles: %s; atmosphere loss: %s',
+        config.accretion.impactor_volatiles,
+        config.accretion.atmloss_module or 'off',
+    )
+    strip = _target_strip_amounts(config, hf_row, event)
+    content = _impactor_volatile_content(config, handler.hf_all, event)
+    delivered, impactor_lost = _partition_impactor_content(config, hf_row, content)
+
     # Snapshot the whole-planet volatile budgets before the structure re-solve.
     # solve_structure recomputes the ppmw-mode budgets against the grown mass,
     # which would let even a dry impactor inflate the volatile inventory as if
     # the added rock carried the planet's volatile content. Volatiles are
-    # conserved across the mass growth and grow only through the explicit
+    # conserved across the mass growth and change only through the strip and
     # delivery below; the rock mass grows through the structure solve itself.
     volatile_budgets = _snapshot_volatile_budgets(hf_row)
 
-    # Grow the planet by the impactor mass and re-solve the structure. mass_tot
-    # is in Earth masses; the event's mass delta is the impactor mass in kg.
-    config.planet.mass_tot += event.mass_delta / M_earth
+    # Grow the interior anchor by the impactor's rock alone: the merger mass
+    # minus the impactor's full volatile content. The anchor and the volatile
+    # budgets are the two halves of the whole-planet mass, so each impact
+    # channel must land in exactly one of them; the delivered volatiles and
+    # the target strip move the budgets below, and the impactor's lost
+    # atmosphere never enters the planet at all. The whole-planet mass then
+    # closes to before + rock + delivered - stripped, which can be a net
+    # shrink when a small impactor blows off a heavier atmosphere.
+    # mass_tot is in Earth masses; the amounts are in kg.
+    impactor_rock = event.mass_delta - sum(content.values())
+    config.planet.mass_tot += impactor_rock / M_earth
     solve_structure(
         handler.directories, config, handler.hf_all, hf_row, handler.directories['output']
     )
@@ -133,6 +161,10 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # Restore the conserved volatile budgets over the mass-scaled values the
     # structure solve wrote, so the growth adds rock, not volatiles.
     _restore_volatile_budgets(hf_row, volatile_budgets)
+
+    # Apply the sized consequences to the whole-planet budgets and refresh
+    # the tracked-element total the budgets aggregate into.
+    _apply_volatile_consequences(config, hf_row, strip, delivered, impactor_lost)
 
     # Re-melt the mantle to its molten initial condition, so the interior
     # evolves from a fully molten state after the impact.
@@ -160,55 +192,243 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         config.orbit.eccentricity,
     )
 
-    # Strip part of the pre-impact atmosphere, before the impactor's own
-    # volatiles are delivered: the shock blows off what the planet already
-    # has, while the delivery goes into the molten post-impact planet. The
-    # outgassing step later this iteration re-equilibrates the atmosphere
-    # against the debited totals.
-    _strip_impact_atmosphere(config, hf_row, event)
 
-    # Deliver the impactor's volatiles into the whole-planet element budgets,
-    # so the outgassing step later this iteration re-equilibrates with them. The
-    # amount per element is the impactor mass times the configured content in
-    # ppmw; every element defaults to zero (a dry impactor), so this is a no-op
-    # unless a run opts in. Only the keys with a non-zero content are touched, so
-    # an element deferred to the chemistry step (e.g. oxygen under ic_chemistry)
-    # is left alone when nothing is delivered for it.
-    _deliver_impactor_volatiles(config, hf_row, event.M_impactor)
+def _apply_volatile_consequences(
+    config, hf_row: dict, strip: dict, delivered: dict, impactor_lost: dict
+) -> None:
+    """Apply an impact's sized volatile changes to the whole-planet budgets.
 
-    # Refresh the tracked-element total from the conserved budgets plus any
-    # delivered volatiles. solve_structure set M_ele from the mass-scaled
-    # values it computed, which the restore above has overridden.
-    _refresh_tracked_element_total(hf_row)
-
-
-def _deliver_impactor_volatiles(config, hf_row: dict, m_impactor: float) -> None:
-    """Add the impactor's volatile content to the whole-planet element budgets.
+    Debits the stripped target atmosphere, books it into the escaped-mass
+    ledger the desiccation gate audits, credits the delivered impactor
+    volatiles, and refreshes the tracked-element total. The outgassing step
+    later this iteration re-equilibrates the atmosphere against the updated
+    totals; an element deferred to the chemistry step (e.g. oxygen under
+    ic_chemistry) is re-derived there either way.
 
     Parameters
     ----------
     config : Config
-        Model configuration; reads ``accretion.impactor_<e>_ppmw``.
+        Model configuration, read for the strip-percentage log line.
     hf_row : dict
-        Current helpfile row, whose ``<e>_kg_total`` budgets are grown in place.
-    m_impactor : float
-        Impactor mass [kg].
+        Current helpfile row, mutated in place.
+    strip, delivered, impactor_lost : dict
+        Per-element masses [kg] sized from the pre-impact state.
     """
-    delivered = {}
-    for element in ('H', 'C', 'N', 'S', 'O'):
-        ppmw = getattr(config.accretion, f'impactor_{element}_ppmw')
-        if ppmw <= 0.0:
-            continue
-        added = m_impactor * ppmw / 1.0e6
-        key = f'{element}_kg_total'
-        hf_row[key] = hf_row.get(key, 0.0) + added
-        delivered[element] = added
-
+    for e, removed in strip.items():
+        key = f'{e}_kg_total'
+        hf_row[key] = max(0.0, float(hf_row.get(key, 0.0)) - removed)
+    if strip:
+        stripped_total = sum(strip.values())
+        hf_row['esc_kg_cumulative'] = (
+            float(hf_row.get('esc_kg_cumulative', 0.0)) + stripped_total
+        )
+        log.info(
+            '    impact stripped %.1f%% of the atmosphere: %.3e kg removed',
+            100.0 * float(config.accretion.atmloss_frac),
+            stripped_total,
+        )
+    for e, added in delivered.items():
+        key = f'{e}_kg_total'
+        hf_row[key] = float(hf_row.get(key, 0.0)) + added
     if delivered:
         log.info(
             '    delivered impactor volatiles [kg]: %s',
             ', '.join(f'{e}={v:.3e}' for e, v in delivered.items()),
         )
+    if impactor_lost:
+        log.info(
+            '    impactor atmosphere lost with the collision [kg]: %s (%.3e total)',
+            ', '.join(f'{e}={v:.3e}' for e, v in impactor_lost.items()),
+            sum(impactor_lost.values()),
+        )
+
+    # Refresh the tracked-element total from the conserved budgets plus the
+    # strip and delivery. solve_structure set M_ele from the mass-scaled
+    # values it computed, which the updates above have overridden.
+    _refresh_tracked_element_total(hf_row)
+
+
+def _primordial_mass_fractions(hf_all) -> dict:
+    """Volatile mass fractions of the planet at formation [kg/kg].
+
+    Reads the settled initial state from the run's own history: the last row
+    of the init epoch (``Time < 1`` yr, the same discriminator the outgassing
+    warm start uses), or the first row when no init row exists. The helpfile
+    is persisted, so a resumed run recovers the same formation composition
+    without any extra state.
+
+    Parameters
+    ----------
+    hf_all : pd.DataFrame
+        Full helpfile history of the run.
+
+    Returns
+    -------
+    dict
+        Mapping of volatile element to ``<e>_kg_total / M_planet`` at the
+        formation state.
+
+    Raises
+    ------
+    RuntimeError
+        If no history is available or the formation row carries no positive
+        planet mass; the impactor composition would be undefined.
+    """
+    if hf_all is None or len(hf_all) == 0:
+        raise RuntimeError(
+            'Cannot scale impactor volatiles to the planet: no helpfile history '
+            'is available to read the formation composition from.'
+        )
+
+    init_rows = hf_all[hf_all['Time'] < 1.0]
+    t0 = init_rows.iloc[-1] if len(init_rows) else hf_all.iloc[0]
+
+    m_planet = float(t0.get('M_planet', 0.0))
+    if m_planet <= 0.0:
+        raise RuntimeError(
+            'Cannot scale impactor volatiles to the planet: the formation row '
+            f'carries M_planet = {m_planet!r}.'
+        )
+
+    fractions = {e: float(t0.get(f'{e}_kg_total', 0.0)) / m_planet for e in _VOLATILE_ELEMENTS}
+    log.info(
+        '    formation composition (M_planet=%.3e kg at t=%.2e yr): %s',
+        m_planet,
+        float(t0.get('Time', 0.0)),
+        ', '.join(f'{e}={x:.2e}' for e, x in fractions.items() if x > 0.0),
+    )
+    return fractions
+
+
+def _impactor_volatile_content(config, hf_all, event: ImpactEvent) -> dict:
+    """Total volatile mass the impactor carries, per element [kg].
+
+    Dispatches on ``accretion.impactor_volatiles``: a dry impactor carries
+    nothing; ``match_planet`` scales the planet's formation mass fractions to
+    the impactor mass, on the assumption that every embryo in the dynamical
+    model co-formed from the same disk material; ``ppmw`` uses the configured
+    per-element budgets. Only positive contributions are returned.
+
+    Under ``O_mode = 'ic_chemistry'`` oxygen is excluded from the content:
+    the volatile O budget is chemistry-derived (the next outgassing call
+    re-equilibrates it against the fO2 buffer for the grown planet), so a
+    delivered O mass would be overwritten while its subtraction from the
+    interior anchor persisted. The impactor's oxygen then arrives as part of
+    its rock, which is where oxide-bound oxygen belongs.
+    """
+    mode = config.accretion.impactor_volatiles
+    content: dict[str, float] = {}
+
+    if mode == 'match_planet':
+        fractions = _primordial_mass_fractions(hf_all)
+        for e, x0 in fractions.items():
+            if x0 > 0.0:
+                content[e] = x0 * event.M_impactor
+    elif mode == 'ppmw':
+        for e in _PPMW_ELEMENTS:
+            ppmw = getattr(config.accretion, f'impactor_{e}_ppmw')
+            if ppmw > 0.0:
+                content[e] = event.M_impactor * ppmw / 1.0e6
+
+    o_mode = getattr(getattr(config.planet, 'elements', None), 'O_mode', None)
+    if o_mode == 'ic_chemistry':
+        content.pop('O', None)
+
+    return content
+
+
+def _partition_impactor_content(config, hf_row: dict, content: dict) -> tuple[dict, dict]:
+    """Split the impactor's volatiles into a delivered and a lost part [kg].
+
+    The impactor's internal partitioning is unknowable, so the planet's own
+    atmosphere-versus-interior split per element at impact time is mirrored
+    onto it. With impact atmosphere loss active the impactor's atmospheric
+    part is lost with the collision (the impactor is disrupted and its
+    gravity is lower than the target's) and only the dissolved part is
+    delivered; with loss disabled the whole content is delivered. The mirror
+    understates a smaller body's atmospheric fraction (it equilibrates at
+    lower surface pressure), so delivery is somewhat overestimated; the
+    coming ZEPHYRUS collision law replaces this convention.
+
+    For an element the planet no longer holds, the per-element mirror is
+    undefined and the planet's bulk atmospheric fraction is used instead.
+
+    Returns
+    -------
+    (delivered, lost) : tuple of dict
+        Per-element masses delivered into the planet and lost to space [kg].
+    """
+    if config.accretion.atmloss_module is None:
+        return dict(content), {}
+
+    # Bulk atmospheric fraction as the fallback mirror for elements the
+    # planet no longer tracks a budget for.
+    tot_all = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in _VOLATILE_ELEMENTS)
+    atm_all = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in _VOLATILE_ELEMENTS)
+    f_atm_bulk = atm_all / tot_all if tot_all > 0.0 else 0.0
+
+    delivered: dict[str, float] = {}
+    lost: dict[str, float] = {}
+    mirror: dict[str, float] = {}
+    for e, mass in content.items():
+        total_e = float(hf_row.get(f'{e}_kg_total', 0.0))
+        if total_e > 0.0:
+            f_atm = float(hf_row.get(f'{e}_kg_atm', 0.0)) / total_e
+        else:
+            f_atm = f_atm_bulk
+        f_atm = min(max(f_atm, 0.0), 1.0)
+        mirror[e] = f_atm
+        lost_e = mass * f_atm
+        if lost_e > 0.0:
+            lost[e] = lost_e
+        if mass - lost_e > 0.0:
+            delivered[e] = mass - lost_e
+
+    if mirror:
+        log.info(
+            '    impactor atmospheric fraction per element (planet mirror): %s',
+            ', '.join(f'{e}={f:.2f}' for e, f in mirror.items()),
+        )
+    return delivered, lost
+
+
+def _target_strip_amounts(config, hf_row: dict, event: ImpactEvent) -> dict:
+    """Mass the impact strips from the target's atmosphere, per element [kg].
+
+    Sizes the debit from the pre-impact state without mutating it: the loss
+    fraction times the atmospheric reservoir, partitioned over the elements in
+    proportion to their atmospheric masses through the same path continuous
+    escape uses, so the per-element loss can never exceed what the atmosphere
+    holds and the dissolved interior inventory is untouched. An atmosphere
+    below the outgassing mass threshold is treated as nothing to strip, the
+    same convention continuous escape applies to it.
+    """
+    from proteus.escape.wrapper import calc_new_elements
+
+    f_loss = _impact_loss_fraction(config, hf_row, event)
+    if f_loss <= 0.0:
+        return {}
+
+    m_atm = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list)
+    if m_atm < config.outgas.mass_thresh:
+        log.info(
+            '    impact atmosphere loss: atmosphere below the mass threshold, not stripped'
+        )
+        return {}
+
+    tgt = calc_new_elements(
+        hf_row,
+        dt=0.0,
+        reservoir='outgas',
+        min_thresh=config.outgas.mass_thresh,
+        esc_mass=f_loss * m_atm,
+    )
+    strip = {}
+    for e, new_total in tgt.items():
+        removed = float(hf_row.get(f'{e}_kg_total', 0.0)) - float(new_total)
+        if removed > 0.0:
+            strip[e] = removed
+    return strip
 
 
 def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
@@ -258,65 +478,6 @@ def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
             f"from atmloss_module '{module}'"
         )
     return f_loss
-
-
-def _strip_impact_atmosphere(config, hf_row: dict, event: ImpactEvent) -> None:
-    """Remove part of the atmosphere at an impact and debit the element budgets.
-
-    The lost mass is the loss fraction times the atmospheric reservoir, and is
-    partitioned over the elements in proportion to their atmospheric masses
-    through the same path continuous escape uses, so the per-element loss can
-    never exceed what the atmosphere holds and the dissolved interior inventory
-    is untouched. The debited mass is added to the cumulative escaped-mass
-    ledger, which the desiccation gate audits: without that booking, a planet
-    dried out partly by impacts would be refused desiccation later.
-
-    Parameters
-    ----------
-    config : Config
-        Model configuration.
-    hf_row : dict
-        Current helpfile row, mutated in place.
-    event : ImpactEvent
-        The impact being applied.
-    """
-    from proteus.escape.wrapper import calc_new_elements
-
-    f_loss = _impact_loss_fraction(config, hf_row, event)
-    if f_loss <= 0.0:
-        return
-
-    # Atmospheric reservoir mass, summed the same way the debit partitions it.
-    # An atmosphere below the outgassing mass threshold is treated as nothing
-    # to strip, the same convention continuous escape applies to it.
-    m_atm = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list)
-    if m_atm < config.outgas.mass_thresh:
-        log.info(
-            '    impact atmosphere loss: atmosphere below the mass threshold, not stripped'
-        )
-        return
-
-    before = {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
-    tgt = calc_new_elements(
-        hf_row,
-        dt=0.0,
-        reservoir='outgas',
-        min_thresh=config.outgas.mass_thresh,
-        esc_mass=f_loss * m_atm,
-    )
-    for e, mass in tgt.items():
-        hf_row[f'{e}_kg_total'] = mass
-
-    # Book the actually-debited mass (including any desiccation-floor
-    # truncation) into the escaped-mass ledger the desiccation gate audits.
-    lost = sum(before[e] - float(tgt.get(e, before[e])) for e in before)
-    hf_row['esc_kg_cumulative'] = float(hf_row.get('esc_kg_cumulative', 0.0)) + lost
-
-    log.info(
-        '    impact stripped %.1f%% of the atmosphere: %.3e kg removed',
-        100.0 * f_loss,
-        lost,
-    )
 
 
 def _snapshot_volatile_budgets(hf_row: dict) -> dict:

@@ -130,15 +130,34 @@ class AccretionDummy:
     timeline_path: str | None = field(default=None, converter=none_if_none)
 
 
+def valid_impactor_volatiles(instance, attribute, value):
+    """Refuse ppmw budgets that the selected content mode would ignore."""
+    if instance.impactor_volatiles == 'ppmw':
+        return
+    set_fields = [
+        f'impactor_{e}_ppmw'
+        for e in ('H', 'C', 'N', 'S', 'O')
+        if getattr(instance, f'impactor_{e}_ppmw') > 0.0
+    ]
+    if set_fields:
+        raise ValueError(
+            f'`accretion.{"`, `accretion.".join(set_fields)}` set, but the ppmw '
+            f"budgets are read only when accretion.impactor_volatiles = 'ppmw' "
+            f"(currently '{instance.impactor_volatiles}'). Select the ppmw mode "
+            'or remove the budgets.'
+        )
+
+
 @define
 class Accretion:
     """Giant-impact accretion, delivery, and module selection.
 
     An impact grows the planet, delivers volatiles, re-melts the mantle,
     strips part of the atmosphere, and moves the orbit. The impactor
-    composition below sets how much volatile mass each impactor carries;
-    it defaults to zero, so impactors are dry unless delivery is
-    requested.
+    volatile content is set by ``impactor_volatiles``: "dry" impactors
+    (the default) add silicate and iron mass only, "match_planet"
+    impactors carry the planet's own formation composition, and "ppmw"
+    impactors carry the per-element budgets configured below.
 
     Attributes
     ----------
@@ -154,6 +173,17 @@ class Accretion:
         disk dispersal, while PROTEUS measures it from the start of its
         own evolution. Impacts landing before the start of the run are
         folded into the initial condition.
+    impactor_volatiles: str
+        Where each impactor's volatile content comes from. Choices:
+        "dry" (impactors carry rock and iron only), "match_planet" (every
+        impactor carries the planet's own initial fractional volatile
+        abundances, scaled to the impactor mass, on the assumption that
+        all embryos co-formed from the same disk material), "ppmw" (the
+        per-element ``impactor_<e>_ppmw`` budgets below). The content is
+        split into an atmospheric and a dissolved part by mirroring the
+        planet's own partitioning at impact time; with impact atmosphere
+        loss active the atmospheric part is lost with the collision and
+        only the dissolved part is delivered.
     impactor_H_ppmw: float
         Hydrogen carried by each impactor [ppmw of impactor mass].
     impactor_C_ppmw: float
@@ -165,14 +195,18 @@ class Accretion:
     impactor_O_ppmw: float
         Oxygen carried by each impactor [ppmw of impactor mass].
     atmloss_module: str or None
-        How the fraction of atmosphere lost to each impact is computed.
-        Choices: None (no impact atmosphere loss), "constant" (the fixed
-        fraction below). A ZEPHYRUS collision-loss law will become a
-        further choice when available; PROTEUS itself ships no impact
-        loss physics.
+        How impact atmosphere loss is computed. Choices: None (no impact
+        atmosphere loss at all: the target keeps its atmosphere and a
+        volatile-bearing impactor delivers its whole content), "constant"
+        (the fixed target fraction below). Whenever a loss module is
+        active, the impactor's own atmospheric volatiles are fully lost
+        with the collision, independently of the fraction below. A
+        ZEPHYRUS collision-loss law will become a further choice when
+        available; PROTEUS itself ships no impact loss physics.
     atmloss_frac: float
-        Fraction of the atmosphere removed by each impact when
-        ``atmloss_module = "constant"`` [0-1].
+        Fraction of the TARGET's atmosphere removed by each impact when
+        ``atmloss_module = "constant"`` [0-1]. Does not scale the
+        impactor-side loss.
     """
 
     module: str | None = field(
@@ -186,14 +220,24 @@ class Accretion:
 
     time_offset: float = field(default=0.0)
 
-    # Impactor volatile content, applied to every impact. Zero means the
-    # impactor adds silicate and iron mass only, so the planet's bulk
-    # volatile concentration falls by dilution as it grows.
+    # Impactor volatile content source. 'dry' impactors add silicate and
+    # iron mass only, so the planet's bulk volatile concentration falls by
+    # dilution as it grows; 'match_planet' scales the planet's initial
+    # fractional abundances to the impactor; 'ppmw' uses the fields below.
+    impactor_volatiles: str = field(
+        default='dry',
+        validator=in_(('dry', 'match_planet', 'ppmw')),
+    )
+
+    # Per-element impactor content, read when impactor_volatiles = 'ppmw'.
     impactor_H_ppmw: float = field(default=0.0, validator=ge(0))
     impactor_C_ppmw: float = field(default=0.0, validator=ge(0))
     impactor_N_ppmw: float = field(default=0.0, validator=ge(0))
     impactor_S_ppmw: float = field(default=0.0, validator=ge(0))
-    impactor_O_ppmw: float = field(default=0.0, validator=ge(0))
+    # The cross-field check rides on the LAST ppmw field: attrs runs field
+    # validators in definition order, so only here are the mode selector and
+    # every budget it guards populated.
+    impactor_O_ppmw: float = field(default=0.0, validator=[ge(0), valid_impactor_volatiles])
 
     # Impact atmosphere loss. Disabled by default; the constant module is a
     # placeholder with the call shape of the coming ZEPHYRUS collision law.
@@ -206,5 +250,9 @@ class Accretion:
 
     @property
     def delivers_volatiles(self) -> bool:
-        """Does any impactor volatile budget exceed zero?"""
+        """Can an impactor carry any volatile mass under the selected mode?"""
+        if self.impactor_volatiles == 'dry':
+            return False
+        if self.impactor_volatiles == 'match_planet':
+            return True
         return any(getattr(self, f'impactor_{e}_ppmw') > 0.0 for e in ('H', 'C', 'N', 'S', 'O'))
