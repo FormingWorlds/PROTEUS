@@ -688,10 +688,18 @@ def GetHelpfileKeys():
         # cumulative residual. The residual pairs the entropy-transported
         # heat (state side) against the boundary-flux and source prediction
         # (predicted side), both in the live EOS density frame ``ρ(P,S)``:
-        #   E_state_heat_cons_J = Σ step_dE_state_heat_J across rows [J]
+        #   E_state_heat_cons_J = Σ (step_dE_state_heat_J + step_dE_impact_J)
         #   dE_predicted_cons_J = Σ (step_dE_F_int_J + step_dE_F_cmb_J
-        #                            + step_dE_Q_radio_J + step_dE_Q_tidal_J)
+        #                            + step_dE_Q_radio_J + step_dE_Q_tidal_J
+        #                            + step_dE_impact_J)
         #   E_residual_cons_J   = E_state_heat_cons_J - dE_predicted_cons_J
+        # ``step_dE_impact_J`` is the heat a giant-impact mantle re-melt
+        # injects, evaluated in the same ρ(P,S)·T·dS frame over the
+        # entropy jump from the cooled to the molten profile. It enters
+        # BOTH cumulatives: the state side because the jump falls between
+        # solver calls so no per-call state integral carries it, and the
+        # predicted side because the impact is an energy source. The
+        # residual is therefore invariant across an impact by construction.
         #   E_residual_cons_frac = E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J)
         # This closes to about a percent of the cumulative cooling (largest
         # near full melt and at crystallisation-front / structure-remesh
@@ -736,6 +744,7 @@ def GetHelpfileKeys():
         'step_solver_residual_J',  # per-call entropy-ODE LHS-RHS [J]
         'step_dE_compression_J',  # per-call structure-re-solve compression work [J] (diagnostic)
         'step_dE_state_heat_J',  # per-call entropy-transported heat content change [J]
+        'step_dE_impact_J',  # giant-impact re-melt heat injection [J] (both residual sides)
         'E_state_heat_cons_J',  # cumulative sum of step_dE_state_heat_J across rows [J]
         'dE_predicted_cons_J',  # cumulative sum of boundary fluxes + live-density step_dE_Q_*_J [J]
         'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
@@ -891,6 +900,15 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
 
         step_dE_state_heat_J   = ∫ Σ rho T dS over the call [J].
 
+    A giant-impact mantle re-melt contributes ``step_dE_impact_J``, the
+    heat the re-melt injects evaluated in the same ``rho T dS`` frame
+    over the entropy jump from the cooled to the molten profile. It is
+    added to BOTH cumulatives: to the state side because the jump falls
+    between solver calls, so no per-call state integral carries it, and
+    to the predicted side because the impact is an energy source. The
+    residual is therefore invariant across an impact by construction,
+    and the injected energy is booked rather than silently absorbed.
+
     The heating sources use the live-density (state-mass) Q variants so
     they share the ``rho(P,S)`` frame the state side integrates; the
     frozen-mass ``step_dE_Q_*_cons_J`` variants are not summed here.
@@ -955,15 +973,22 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     # fluxes are area-weighted and frame-independent. The compression term
     # is informational and is deliberately excluded: the state side carries
     # the full thermodynamic content via Σ rho T dS.
+    # Giant-impact re-melt heat [J], zero on rows without an impact. Enters
+    # both increments below so the residual stays closed across an impact
+    # while the injection is booked on both sides of the budget.
+    dE_impact_inc = float(new_row.get('step_dE_impact_J', 0.0))
+
     dE_inc_cons = (
         float(new_row.get('step_dE_F_int_J', 0.0))
         + float(new_row.get('step_dE_F_cmb_J', 0.0))
         + float(new_row.get('step_dE_Q_radio_J', 0.0))
         + float(new_row.get('step_dE_Q_tidal_J', 0.0))
+        + dE_impact_inc
     )
     # State increment [J]: the entropy-transported heat content change over
-    # the call, Σ rho T dS by EOS quadrature (step_dE_state_heat_J).
-    dE_state_heat_inc = float(new_row.get('step_dE_state_heat_J', 0.0))
+    # the call, Σ rho T dS by EOS quadrature (step_dE_state_heat_J), plus
+    # the impact re-melt jump the per-call integral cannot see.
+    dE_state_heat_inc = float(new_row.get('step_dE_state_heat_J', 0.0)) + dE_impact_inc
     solver_inc = float(new_row.get('step_solver_residual_J', 0.0))
 
     n_prior = len(current_hf)
