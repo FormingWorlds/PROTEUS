@@ -82,7 +82,9 @@ def plot_global(
         Psurf = np.array(hf['P_surf'])
 
         vol_vmr[vol] = np.zeros_like(this_bar, dtype=float)
-        mask = Psurf > 1e-30  # only divide by Psurf if it is larger than 1e-30 -> avoids by zero division
+        mask = (
+            Psurf > 1e-30
+        )  # only divide by Psurf if it is larger than 1e-30 -> avoids by zero division
         vol_vmr[vol][mask] = this_bar[mask] / Psurf[mask]
 
         # Volatile partitioning into the interior
