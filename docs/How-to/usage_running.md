@@ -100,6 +100,16 @@ To make every available plot:
 proteus plot -c input/all_options.toml all
 ```
 
+## Relocating the output root
+
+By default every run is written under the `output/` folder inside your PROTEUS installation, so `params.out.path` names a subfolder of `<PROTEUS>/output/`. Set the `PROTEUS_OUTPUT_PATH` environment variable to write runs somewhere else instead, for example onto fast scratch storage on a cluster or into a shared area used by several checkouts:
+
+```console
+export PROTEUS_OUTPUT_PATH=/scratch/$USER/proteus_output
+```
+
+With that set, a run whose `params.out.path` is `trial1` lands in `/scratch/$USER/proteus_output/trial1/`, and its `data/`, `observe/`, `offchem/`, and `plots/` subfolders follow. Use an absolute path; `~` and `$VAR` references are expanded. Leaving the variable unset (or empty) keeps the default `<PROTEUS>/output/` location, so existing setups are unaffected. Only the run output moves: input files and the code tree are unchanged. When resuming or plotting a relocated run, keep the same `PROTEUS_OUTPUT_PATH` in the environment so PROTEUS looks in the right place.
+
 ## Archiving output files
 
 A simulation can generate a large number of files, which becomes a problem when running large [parameter grids](usage_grids.md). The `params.out.archive_mod` configuration option tells PROTEUS when to gather a run's output files into `.tar` archives.
