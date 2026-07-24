@@ -42,11 +42,14 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
+from proteus.atmos_clim import janus as janus_mod
 from proteus.atmos_clim.janus import (
     InitAtm,
     InitStellarSpectrum,
+    RunJANUS,
     UpdateStateAtm,
 )
 
@@ -331,6 +334,95 @@ def test_update_state_atm_default_tropopause_uses_floor():
     # Discrimination guard: a regression that picked up T_skin here
     # would land at 250.0 K, three orders of magnitude above the floor.
     assert fake_atm.trppT < 10.0
+
+
+def _build_run_config():
+    """Config namespace covering the fields ``RunJANUS`` reads."""
+    return SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            p_obs=1e-3,  # bar
+            rayleigh=False,
+            surf_state='fixed',
+            janus=SimpleNamespace(tropopause=None, F_atm_bc=0),
+        ),
+        planet=SimpleNamespace(prevent_warming=False),
+        escape=SimpleNamespace(xuv_defined_by_radius=False),
+    )
+
+
+def _build_run_atm(*, g_surf, z_obs_height, stale_grav):
+    """Fake ``atmos`` returned by the (mocked) JANUS solver.
+
+    ``grav_z`` is deliberately populated with a stale/wrong profile so the
+    test fails if ``RunJANUS`` ever reads gravity off that array again instead
+    of deriving it from the returned radius.
+    """
+    atm = SimpleNamespace()
+    # Height array (m above surface); the observed level is the last entry via
+    # the patched interpolation below.
+    atm.z = np.array([0.0, z_obs_height * 0.5, z_obs_height], dtype=float)
+    atm.grav_z = np.array([stale_grav, stale_grav, stale_grav], dtype=float)
+    atm.tmp = np.array([1400.0, 900.0, 500.0], dtype=float)
+    atm.p = np.array([1e6, 1e4, 1e2], dtype=float)
+    atm.net_flux = np.array([120.0, 80.0, 40.0], dtype=float)
+    atm.LW_flux_up = np.array([110.0, 70.0, 30.0], dtype=float)
+    atm.SW_flux_up = np.array([5.0, 4.0, 3.0], dtype=float)
+    atm.SW_flux_down = np.array([200.0, 150.0, 100.0], dtype=float)
+    atm.clfr = np.array([0.0, 0.0, 0.0], dtype=float)
+    atm.ps = 1.0e6  # Pa
+    atm.ts = 1400.0  # K
+    atm.height_error = False
+    atm.x_gas = {}
+    atm.write_ncdf = lambda path: None
+    return atm
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_janus_gobs_inverse_square_of_robs(monkeypatch, tmp_path):
+    """RunJANUS returns g_obs consistent with R_obs via the inverse-square law."""
+    g_surf = 9.81
+    R_int = 6.371e6
+    z_obs_height = 8.0e4  # m; observed level sits this far above the surface
+
+    atm = _build_run_atm(g_surf=g_surf, z_obs_height=z_obs_height, stale_grav=g_surf)
+
+    # Solver is mocked to return the fake atmosphere unchanged.
+    monkeypatch.setattr('janus.modules.MCPA', lambda *a, **kw: atm)
+    # State push and hydrostatic solve are covered by their own unit tests.
+    monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
+    # Deterministic "observed level" = last array entry, independent of p_obs.
+    monkeypatch.setattr(
+        janus_mod, 'get_oarr_from_parr', lambda p_arr, o_arr, val: (0, o_arr[-1])
+    )
+
+    config = _build_run_config()
+    hf_row = {
+        'Time': 100.0,
+        'R_int': R_int,
+        'gravity': g_surf,
+        'p_xuv': 1e-3,  # bar
+        'T_surf': 1400.0,
+    }
+    dirs = {'output': str(tmp_path)}
+
+    # Run JANUS
+    output = RunJANUS(atm, dirs, config, hf_row, None, write_in_tmp_dir=False)
+
+    # Check additive radii
+    R_obs_expected = R_int + z_obs_height
+    assert output['R_obs'] == pytest.approx(R_obs_expected, rel=1e-12)
+
+    # Check gravity scales as inverse square.
+    g_obs_expected = g_surf * (R_int / R_obs_expected) ** 2
+    assert output['g_obs'] == pytest.approx(g_obs_expected, rel=1e-10)
+
+    # The observed level is above the surface, so gravity must be weaker there.
+    assert output['R_obs'] > R_int
+    assert output['g_obs'] < g_surf
+
+    # Discrimination guard: the stale grav_z value is the surface gravity
+    assert output['g_obs'] != pytest.approx(g_surf, rel=1e-3)
 
 
 @pytest.mark.unit

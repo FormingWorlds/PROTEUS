@@ -77,7 +77,7 @@ dependencies = [
     "netCDF4",
     "numpy>=2.0.0",
     "pandas",
-    "scipy",
+    "scipy>=1.15.0",
     "pre-commit",
     "platformdirs",
     "ruff",

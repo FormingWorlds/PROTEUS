@@ -17,7 +17,7 @@ ref_config = "output/bayesopt_se/init_coupler.toml"
 init_samps = 3        # Number of random samples if starting from scratch.
 init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
 
-# Excluded exit codes (in addition to edrrors)
+# Excluded exit codes (in addition to errors)
 failure_codes = [11, ] # solidified (10), escaped (15), max_runtime (11)
 
 # Parameters for Bayesian optimisation

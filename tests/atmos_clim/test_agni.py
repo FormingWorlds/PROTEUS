@@ -1146,6 +1146,71 @@ def test_run_agni_ocean_output_keys_populated(monkeypatch):
             assert output[g + '_ocean'] == pytest.approx(0.0, abs=1e-12)
 
 
+@pytest.mark.physics_invariant
+def test_run_agni_opaque_gobs_inverse_square_of_robs(monkeypatch):
+    """Opaque AGNI reports g_obs and R_obs that obey the inverse-square law.
+
+    AGNI computes gravity on its own height grid inside the Julia solver and
+    surfaces it as transspec_grav at the photospheric radius transspec_r.
+    However, it doesn't use a simple geometric scaling of the surface gravity.
+    """
+    g_surf = 9.8
+    R_int = 6.371e6
+    R_obs = 6.45e6  # photosphere above the surface
+    g_obs_expected = g_surf * (R_int / R_obs) ** 2  # geometric scaling
+
+    atmos = _make_run_agni_atmos(transparent=False)
+    atmos.transspec_r = R_obs
+    atmos.transspec_grav = g_obs_expected
+
+    config = _make_run_agni_config(solve_energy=False)
+    hf_row = {
+        'P_surf': 100.0,
+        'p_xuv': 1e-3,
+        'R_xuv': 6.5e6,
+        'R_int': R_int,
+        'gravity': g_surf,
+        'Time': 100.0,
+    }
+    for g in ['H2O', 'CO2']:
+        hf_row[g + '_vmr'] = 0.5
+
+    dirs = {'output': '/tmp/fake', 'output/plots': '/tmp/fake_plots'}
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(
+            atmosphere=SimpleNamespace(estimate_photosphere_b=lambda *a, **kw: None),
+            save=SimpleNamespace(write_ncdf=lambda a, p: None),
+            plotting=SimpleNamespace(plot_contfunc1=lambda a, p: None),
+            chemistry=SimpleNamespace(calc_composition_b=lambda *a: False),
+            setpt=SimpleNamespace(
+                dry_adiabat_b=lambda a: None,
+                saturation_b=lambda a, g: None,
+                stratosphere_b=lambda a, v: None,
+            ),
+            energy=SimpleNamespace(
+                calc_fluxes_b=lambda a, **kw: None,
+                fill_Kzz_b=lambda a: None,
+            ),
+        ),
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *a: [])
+    monkeypatch.setattr(agni_mod, 'get_oarr_from_parr', lambda p_arr, r_arr, val: (0, val))
+
+    _, output = agni_mod.run_agni(atmos, 1, dirs, config, hf_row)
+
+    # R_obs is the photosphere,
+    assert output['R_obs'] == pytest.approx(R_obs, rel=1e-12)
+    assert output['R_obs'] > R_int
+
+    # Gravity is scaled by the inverse-square law from the surface value here
+    assert output['g_obs'] == pytest.approx(g_surf * (R_int / output['R_obs']) ** 2, rel=1e-10)
+    assert output['g_obs'] < g_surf
+
+    # Discrimination guard: rules out a pass-through of the surface gravity
+    assert output['g_obs'] != pytest.approx(g_surf, rel=1e-3)
+
+
 # ---------------------------------------------------------------------------
 # _solve_transparent: transparent solver dispatch
 # ---------------------------------------------------------------------------
