@@ -603,8 +603,7 @@ class TestBootstrapLogger:
             stdout_handlers = [
                 h
                 for h in logger.handlers
-                if type(h) is logging.StreamHandler
-                and getattr(h, 'stream', None) is sys.stdout
+                if type(h) is logging.StreamHandler and getattr(h, 'stream', None) is sys.stdout
             ]
             assert len(stdout_handlers) == 1
 
