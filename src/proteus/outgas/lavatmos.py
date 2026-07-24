@@ -52,14 +52,14 @@ class paths_importer:
         if fastchem_dir is None:
             raise ValueError('Environment variable "FC_DIR" is not set')
 
-        # Normalise so a trailing slash in the env var does not change any
-        # derived path (os.path.normpath strips it).
-        self.lavatmos_dir = os.path.normpath(lava_dir) + '/'
-        self.wkdir = self.lavatmos_dir
 
-        log.debug('LavAtmos Work directory set as: %s' % self.wkdir)
-        self.input_dir = os.path.join(self.wkdir, 'input') + '/'
+        self.lavatmos_dir = os.path.normpath(lava_dir) + '/'
+
+
+        log.debug('LavAtmos Work directory set as: %s' % self.lavatmos_dir)
+        self.input_dir = os.path.join(self.lavatmos_dir, 'input') + '/'
         self.lava_comps = os.path.join(self.input_dir, 'lava_compositions') + '/'
+        log.debug('Lavatmos compositions at: %s' % self.lava_comps)
 
         # Sanity check - does lava_comps exist?
         if not os.path.exists(self.lava_comps):
@@ -97,7 +97,7 @@ class paths_importer:
         self.fastchem3_output = os.path.join(dirs['output'], 'fastchem', '')
         self.output_dir = os.path.join(dirs['output'], 'fastchem', '')
 
-        self.janafdata = os.path.join(self.wkdir, 'data')
+        self.janafdata = os.path.join(self.lavatmos_dir, 'data')
         log.debug('LavAtmos output directory set as: %s' % self.output_dir)
 
 
