@@ -1612,6 +1612,136 @@ def test_get_proteus_directories_editable_submodule_paths():
 
 
 # ============================================================================
+# Configurable output root (PROTEUS_OUTPUT_PATH)
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_get_output_root_defaults_to_output_under_root_when_env_unset(monkeypatch):
+    """With PROTEUS_OUTPUT_PATH unset, output stays at <root>/output.
+
+    This is the historical default; nothing may change for users who never
+    set the variable, so the resolved root must be exactly the ``output``
+    subdirectory of the installation root.
+    """
+    monkeypatch.delenv('PROTEUS_OUTPUT_PATH', raising=False)
+    root = '/some/proteus/root'
+    result = coupler_mod.get_output_root(root)
+    assert result == os.path.join(root, 'output')
+    # A regression that dropped the join and returned the bare root, or one
+    # that appended a doubled 'output/output', would both fail this.
+    assert os.path.basename(result) == 'output'
+    assert os.path.dirname(result) == root
+
+
+@pytest.mark.unit
+def test_get_output_root_uses_env_var_verbatim_when_set(monkeypatch):
+    """A set PROTEUS_OUTPUT_PATH overrides the default, ignoring <root>.
+
+    The override must win regardless of the installation root, and the
+    installation root must NOT appear anywhere in the resolved path: the
+    whole point is to relocate output off the code tree.
+    """
+    override = '/scratch/user/proteus_output'
+    monkeypatch.setenv('PROTEUS_OUTPUT_PATH', override)
+    root = '/opt/PROTEUS'
+    result = coupler_mod.get_output_root(root)
+    assert result == override
+    # Precedence guard: the code root must not be spliced in front of or
+    # behind the override (a naive os.path.join(root, env) bug would do this).
+    assert root not in result
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'blank',
+    ['', '   ', '\t', '\n'],
+    ids=['empty', 'spaces', 'tab', 'newline'],
+)
+def test_get_output_root_treats_blank_env_as_unset(monkeypatch, blank):
+    """An empty or whitespace-only value falls back to the default.
+
+    Edge case: shell scripts frequently export ``PROTEUS_OUTPUT_PATH=""``.
+    Honouring that literally would send all output to a path rooted at the
+    empty string (cwd), silently scattering results; it must instead behave
+    as if the variable were never set.
+    """
+    monkeypatch.setenv('PROTEUS_OUTPUT_PATH', blank)
+    root = '/opt/PROTEUS'
+    result = coupler_mod.get_output_root(root)
+    assert result == os.path.join(root, 'output')
+    # Discrimination guard: a literal-empty-string bug would yield 'output'
+    # relative to cwd (dirname == '' or cwd), not anchored at the code root.
+    assert os.path.dirname(result) == root
+
+
+@pytest.mark.unit
+def test_get_output_root_expands_user_and_env_references(monkeypatch):
+    """~ and $VAR references in the override are expanded, not left literal.
+
+    Cluster users set values like ``$TMPDIR/proteus`` or ``~/runs``; passing
+    those through unexpanded would create directories with literal ``~`` or
+    ``$TMPDIR`` names.
+    """
+    monkeypatch.setenv('HOME', '/home/tester')
+    monkeypatch.setenv('MY_SCRATCH', '/scratch/tester')
+    monkeypatch.setenv('PROTEUS_OUTPUT_PATH', '~/runs')
+    assert coupler_mod.get_output_root('/opt/PROTEUS') == '/home/tester/runs'
+    # Environment-variable reference in the value must also expand.
+    monkeypatch.setenv('PROTEUS_OUTPUT_PATH', '$MY_SCRATCH/proteus')
+    result = coupler_mod.get_output_root('/opt/PROTEUS')
+    assert result == '/scratch/tester/proteus'
+    # Guard: the raw sentinel must not survive expansion.
+    assert '$MY_SCRATCH' not in result and '~' not in result
+
+
+@pytest.mark.unit
+def test_get_proteus_directories_routes_all_output_subdirs_through_env(monkeypatch):
+    """Every output* key is rooted at PROTEUS_OUTPUT_PATH, code keys are not.
+
+    Verifies the wiring end to end: when the override is set, the run
+    directory and each of its data/observe/offchem/plots subdirectories must
+    live under the override joined with the run name, while source-tree keys
+    (proteus, input, ...) stay anchored at the installation root.
+    """
+    override = '/scratch/user/out'
+    monkeypatch.setenv('PROTEUS_OUTPUT_PATH', override)
+    dirs = get_proteus_directories(outdir='run-42')
+
+    run_dir = os.path.join(override, 'run-42')
+    assert dirs['output'] == run_dir
+    # Each subdirectory is the run dir plus its fixed leaf name; a swapped or
+    # dropped leaf (e.g. plots written under data) would fail here.
+    assert dirs['output/data'] == os.path.join(run_dir, 'data')
+    assert dirs['output/observe'] == os.path.join(run_dir, 'observe')
+    assert dirs['output/offchem'] == os.path.join(run_dir, 'offchem')
+    assert dirs['output/plots'] == os.path.join(run_dir, 'plots')
+    # Code-tree keys are unaffected by the output override.
+    assert dirs['output'].startswith(override)
+    assert not dirs['proteus'].startswith(override)
+    assert not dirs['input'].startswith(override)
+    assert dirs['input'] == os.path.join(dirs['proteus'], 'input')
+
+
+@pytest.mark.unit
+def test_get_proteus_directories_unset_env_matches_legacy_layout(monkeypatch):
+    """With the override unset, output* keys keep the <root>/output/<run> layout.
+
+    Back-compatibility contract: the presence of the new code path must not
+    perturb the default paths that existing runs and resume logic depend on.
+    """
+    monkeypatch.delenv('PROTEUS_OUTPUT_PATH', raising=False)
+    dirs = get_proteus_directories(outdir='run-legacy')
+
+    expected_root = os.path.join(dirs['proteus'], 'output')
+    assert dirs['output'] == os.path.join(expected_root, 'run-legacy')
+    assert dirs['output/data'] == os.path.join(expected_root, 'run-legacy', 'data')
+    # The run subtree is nested exactly one 'output' level under the code root,
+    # not doubled (a '<root>/output/output/<run>' regression would fail).
+    assert dirs['output'].count(os.sep + 'output' + os.sep) == 1
+
+
+# ============================================================================
 # Issue #677 mass-conservation invariant tests
 # ============================================================================
 
