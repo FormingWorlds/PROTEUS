@@ -135,6 +135,32 @@ def _dependency_specs() -> dict[str, Requirement | None]:
     return result
 
 
+def _get_script_for_package(dist_name: str) -> str | None:
+    """Return the ``tools/get_<name>.sh`` setup script for an FWL package.
+
+    Some FWL packages (aragog, zalmoxis, vulcan, boreas) are installed as
+    editable siblings by a dedicated ``tools/get_<name>.sh`` script that checks
+    the clone out to the pinned version tag, i.e. a detached HEAD. On a detached
+    HEAD ``git pull`` has no upstream to advance and fails, so the update must
+    re-fetch and re-checkout the tag the way the installer does.
+    Re-running the setup script is exactly that path (it reads the version floor
+    from ``pyproject.toml`` and checks out ``tags/<floor>``), so it is the
+    correct fix for those packages.
+
+    Returns the repo-relative script path when it exists, else None. Packages
+    without a setup script are cloned on a tracking branch, where a plain
+    ``git pull`` is the right update, so None signals that fallback.
+    """
+    short = dist_name.lower()
+    prefix = 'fwl-'
+    if short.startswith(prefix):
+        short = short[len(prefix) :]
+    script_rel = f'tools/get_{short}.sh'
+    if (_repo_root() / script_rel).is_file():
+        return script_rel
+    return None
+
+
 def _editable_checkout_path(dist_name: str) -> str | None:
     """Return the local path of an editable install, or None."""
     try:
@@ -429,7 +455,17 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
         if not spec.specifier.contains(installed, prereleases=True):
             fix = f'pip install -U "{spec}"'
             if checkout:
-                fix = f'cd {shlex.quote(checkout)} && git pull && pip install -e .'
+                # An editable checkout installed by a tools/get_<name>.sh script
+                # sits on a detached HEAD (pinned to the version tag), where
+                # `git pull` fails. Re-run the setup script, which fetches and
+                # re-checks-out the pinned tag exactly as the installer does.
+                # Packages without such a script are on a tracking branch, so
+                # the plain `git pull` update applies.
+                script = _get_script_for_package(name)
+                if script:
+                    fix = f'bash {script}'
+                else:
+                    fix = f'cd {shlex.quote(checkout)} && git pull && pip install -e .'
             return CheckResult(
                 name=name,
                 category='versions',

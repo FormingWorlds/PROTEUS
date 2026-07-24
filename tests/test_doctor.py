@@ -29,6 +29,7 @@ from proteus.doctor import (
     _collect_environment_info,
     _conda_build_lines,
     _editable_checkout_path,
+    _get_script_for_package,
     _git_dirty,
     _git_head,
     _git_short_head,
@@ -262,6 +263,72 @@ class TestCheckPythonPackage:
                 r = check_python_package('fwl-aragog', spec)
         assert r.status == FAIL
         assert 'requires' in r.message
+
+    def test_below_spec_editable_tag_module_fix_reruns_setup_script(self):
+        """A tag-pinned editable checkout (aragog, zalmoxis) sits on a detached
+        HEAD, so the fix must re-run tools/get_<name>.sh, not `git pull`, which
+        cannot advance a detached HEAD. This is the issue #779 regression."""
+        from packaging.requirements import Requirement
+
+        spec = Requirement('fwl-zalmoxis>=26.07.17')
+        with (
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.5.13'),
+            patch(
+                'proteus.doctor._editable_checkout_path',
+                return_value='/home/u/PROTEUS/Zalmoxis',
+            ),
+            patch('proteus.doctor._git_short_head', return_value='c0b8412'),
+            patch('proteus.doctor._git_dirty', return_value=False),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            r = check_python_package('fwl-zalmoxis', spec)
+        assert r.status == FAIL
+        # The setup script re-fetches and re-checks-out the pinned tag.
+        assert r.fix_cmd == 'bash tools/get_zalmoxis.sh'
+        # The broken advice must be gone: `git pull` fails on a detached HEAD.
+        assert 'git pull' not in r.fix_cmd
+
+    def test_below_spec_editable_branch_module_fix_keeps_git_pull(self):
+        """A package without a tools/get_<name>.sh script (calliope) is cloned on
+        a tracking branch, where `git pull && pip install -e .` is the correct
+        update. The detached-HEAD path must not swallow this case."""
+        from packaging.requirements import Requirement
+
+        spec = Requirement('fwl-calliope>=99.0.0')
+        with (
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.6.1'),
+            patch(
+                'proteus.doctor._editable_checkout_path',
+                return_value='/home/u/PROTEUS/CALLIOPE',
+            ),
+            patch('proteus.doctor._git_short_head', return_value='1e3ad73'),
+            patch('proteus.doctor._git_dirty', return_value=False),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            r = check_python_package('fwl-calliope', spec)
+        assert r.status == FAIL
+        assert 'git pull' in r.fix_cmd
+        assert 'pip install -e .' in r.fix_cmd
+        # The checkout path is quoted into the cd target, not replaced by a script.
+        assert 'CALLIOPE' in r.fix_cmd
+        assert not r.fix_cmd.startswith('bash tools/get_')
+
+    def test_below_spec_wheel_install_fix_upgrades_via_pip(self):
+        """With no editable checkout (a wheel install), neither branch applies:
+        the fix upgrades from PyPI against the version bound."""
+        from packaging.requirements import Requirement
+
+        spec = Requirement('fwl-aragog>=26.07.04')
+        with (
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.5.13'),
+            patch('proteus.doctor._editable_checkout_path', return_value=None),
+        ):
+            r = check_python_package('fwl-aragog', spec)
+        assert r.status == FAIL
+        assert r.fix_cmd.startswith('pip install -U')
+        # No git operation is offered when there is no checkout to operate on.
+        assert 'git pull' not in r.fix_cmd
+        assert 'get_aragog.sh' not in r.fix_cmd
 
     def test_pass_when_editable_dev_version_above_bound(self):
         """A setuptools-scm dev version a few commits past the tagged release
@@ -516,6 +583,52 @@ class TestEditableCheckoutPath:
         # Discrimination: malformed JSON is swallowed (returns None) only
         # after the helper read and tried to parse direct_url.json.
         assert dist.read_text.call_count == 1
+
+
+class TestGetScriptForPackage:
+    """Mapping from an FWL package to its tools/get_<name>.sh setup script.
+
+    The mapping decides whether `proteus doctor`/`update` offers a `git pull`
+    (tracking-branch checkout) or a re-run of the setup script (tag-pinned,
+    detached-HEAD checkout). See issue #779.
+    """
+
+    def test_returns_script_for_tag_pinned_packages(self):
+        """aragog and zalmoxis are installed by a setup script that pins to a
+        version tag; the helper resolves each to its real script path."""
+        # These scripts exist in the repo, so the helper returns the path.
+        assert _get_script_for_package('fwl-aragog') == 'tools/get_aragog.sh'
+        assert _get_script_for_package('fwl-zalmoxis') == 'tools/get_zalmoxis.sh'
+        # The fwl- prefix is stripped: the script is get_aragog.sh, not
+        # get_fwl-aragog.sh.
+        assert 'fwl-' not in _get_script_for_package('fwl-aragog')
+
+    def test_case_insensitive_prefix_strip(self):
+        """The distribution name is lowercased before the script lookup, so a
+        mixed-case name still resolves (dist names are normally lowercase, but
+        the helper must not depend on that)."""
+        assert _get_script_for_package('FWL-Zalmoxis') == 'tools/get_zalmoxis.sh'
+
+    def test_name_without_fwl_prefix_is_used_verbatim(self):
+        """The fwl- strip is conditional: a name lacking the prefix is looked up
+        as-is, not mangled. 'aragog' resolves to the same script as
+        'fwl-aragog', while a prefixless name with no script is still None."""
+        # Prefix absent, so no strip happens; the bare stem is used directly.
+        assert _get_script_for_package('aragog') == 'tools/get_aragog.sh'
+        # Discrimination: the with- and without-prefix forms agree, confirming
+        # the strip only removes a leading 'fwl-' and never truncates the stem.
+        assert _get_script_for_package('aragog') == _get_script_for_package('fwl-aragog')
+        # A prefixless name with no matching script returns None, not a path.
+        assert _get_script_for_package('calliope') is None
+
+    def test_returns_none_for_branch_tracking_package(self):
+        """calliope has no setup script (it is cloned on a tracking branch), so
+        the helper returns None and the caller falls back to git pull."""
+        # No tools/get_calliope.sh exists, so None signals the git-pull path.
+        assert _get_script_for_package('fwl-calliope') is None
+        # A package name that maps to no script at all is also None, not a
+        # path to a nonexistent file.
+        assert _get_script_for_package('fwl-not-a-real-package') is None
 
 
 class TestRunAllChecks:
