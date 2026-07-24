@@ -188,6 +188,47 @@ def test_impactor_composition_drives_the_delivery_flag():
 
 
 @pytest.mark.unit
+def test_atmloss_config_bounds_and_module_selection_bind_at_load():
+    """The impact atmosphere-loss options are validated at construction.
+
+    The loss fraction only means anything on [0, 1]: partitioning a negative
+    or beyond-total loss over the atmosphere is undefined, so both must be
+    rejected when the config is built, not discovered mid-run at the first
+    impact. The module selector accepts only the registered choices and the
+    'none' string resolves to the None singleton, which is what the runtime
+    dispatch tests identity against.
+    """
+    from proteus.config._accretion import Accretion
+
+    # Defaults: loss disabled, fraction zero.
+    a = Accretion()
+    assert a.atmloss_module is None
+    assert a.atmloss_module != 'none'
+    assert a.atmloss_frac == pytest.approx(0.0)
+
+    # The registered module and the full open interval load cleanly.
+    assert Accretion(atmloss_module='constant', atmloss_frac=0.35).atmloss_frac == (
+        pytest.approx(0.35)
+    )
+    # Both boundary values are legal: no loss, and complete stripping.
+    assert Accretion(atmloss_frac=0.0).atmloss_frac == pytest.approx(0.0)
+    assert Accretion(atmloss_frac=1.0).atmloss_frac == pytest.approx(1.0)
+
+    # Out-of-bounds fractions are rejected at load.
+    with pytest.raises(ValueError):
+        Accretion(atmloss_frac=1.5)
+    with pytest.raises(ValueError):
+        Accretion(atmloss_frac=-0.1)
+
+    # Unregistered loss modules are rejected at load; 'zephyrus' is the
+    # realistic future name and must fail until the law actually exists.
+    with pytest.raises(ValueError):
+        Accretion(atmloss_module='zephyrus')
+    with pytest.raises(ValueError):
+        Accretion(atmloss_module='kegerreis')
+
+
+@pytest.mark.unit
 def test_reference_config_declares_the_accretion_section():
     """The shipped reference config parses and agrees with the schema.
 

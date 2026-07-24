@@ -1851,9 +1851,16 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     The heat the re-melt injects is booked into ``hf_row['step_dE_impact_J']``
     using the solver's own entropy-transported heat quadrature over the jump
     from the cooled to the molten profile, the same ``rho(P,S) T dS`` frame the
-    conservation residual integrates. The coupler adds it to both sides of the
-    energy budget, so the residual stays closed across the impact while the
-    injected energy is quantified rather than silently absorbed.
+    conservation residual integrates. The quadrature runs on the solver's
+    current, pre-impact mesh (the solver is rebuilt for the grown planet only
+    at its next solve), so the booked value is the heat that re-melts the
+    mantle the planet had when the impact struck; the impactor's own heat
+    content arrives as part of the new initial condition and is not booked,
+    the same way the run's t=0 heat content is not. The coupler adds the
+    column to both sides of the energy budget, which keeps the residual closed
+    across the impact for any booked value; the magnitude is therefore a
+    defined convention quantified in the helpfile, not a quantity the residual
+    itself can validate.
     """
     from proteus.interior_energetics.aragog import AragogRunner
 

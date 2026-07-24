@@ -211,14 +211,16 @@ def test_element_budget_survives_outgas_reservoir_escape():
     assert (h_budget - tgt['H']) > 0.01 * h_budget  # a real, resolvable debit
     assert tgt['H'] == pytest.approx(expected_h, rel=1e-9)
 
-    # Discrimination: with the atmospheric reservoir zeroed (the bug state), the
-    # same call collapses every element to zero instead of debiting it.
-    bug_row = dict(hf_row)
+    # Boundary: with the atmospheric reservoir zeroed there is nothing to
+    # partition the loss over, so the call is a no-op that PRESERVES the
+    # whole-planet totals. The historical failure mode returned the zeroed
+    # reservoir dict here, collapsing every total to zero once written back.
+    empty_row = dict(hf_row)
     for e in element_mmw:
-        bug_row[f'{e}_kg_atm'] = 0.0
-    tgt_bug = calc_new_elements(bug_row, dt=dt, reservoir='outgas')
-    assert tgt_bug['H'] == 0.0
-    assert all(v == 0.0 for v in tgt_bug.values())
+        empty_row[f'{e}_kg_atm'] = 0.0
+    tgt_empty = calc_new_elements(empty_row, dt=dt, reservoir='outgas')
+    assert tgt_empty['H'] == pytest.approx(h_budget, rel=1e-12)
+    assert tgt_empty['H'] > 1.0e20  # discriminates against the zero collapse
 
 
 @pytest.mark.physics_invariant
@@ -259,13 +261,15 @@ def test_o2_endpoint_keeps_live_budget_no_false_desiccation():
     # the O2 endpoint.
     assert tgt['O'] > 0.99 * 9.0e21
 
-    # Discrimination: the pre-fix state (no O reservoir) collapses the budget,
-    # which is the false-refusal / livelock the fix removes.
-    bug_row = dict(hf_row)
+    # Boundary: with no atmospheric reservoir at all the call is a no-op that
+    # preserves the O budget; a collapse to zero here is the false-refusal /
+    # livelock failure mode, on either side of the reservoir reconstruction.
+    empty_row = dict(hf_row)
     for e in element_mmw:
-        bug_row[f'{e}_kg_atm'] = 0.0
-    tgt_bug = calc_new_elements(bug_row, dt=1.0, reservoir='outgas')
-    assert tgt_bug['O'] == 0.0
+        empty_row[f'{e}_kg_atm'] = 0.0
+    tgt_empty = calc_new_elements(empty_row, dt=1.0, reservoir='outgas')
+    assert tgt_empty['O'] == pytest.approx(hf_row['O_kg_total'], rel=1e-12)
+    assert tgt_empty['O'] > 8.0e21  # discriminates against the zero collapse
 
 
 def test_model_cache_builds_once_per_species_network():

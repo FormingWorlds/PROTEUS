@@ -695,11 +695,13 @@ def GetHelpfileKeys():
         #   E_residual_cons_J   = E_state_heat_cons_J - dE_predicted_cons_J
         # ``step_dE_impact_J`` is the heat a giant-impact mantle re-melt
         # injects, evaluated in the same ρ(P,S)·T·dS frame over the
-        # entropy jump from the cooled to the molten profile. It enters
-        # BOTH cumulatives: the state side because the jump falls between
-        # solver calls so no per-call state integral carries it, and the
-        # predicted side because the impact is an energy source. The
-        # residual is therefore invariant across an impact by construction.
+        # entropy jump from the cooled to the molten profile on the
+        # pre-impact solver mesh. It enters BOTH cumulatives: the state
+        # side because the jump falls between solver calls so no per-call
+        # state integral carries it, and the predicted side because the
+        # impact is an energy source. The residual is invariant across an
+        # impact for any booked value; the column is a defined convention,
+        # not a residual-checked quantity.
         #   E_residual_cons_frac = E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J)
         # This closes to about a percent of the cumulative cooling (largest
         # near full melt and at crystallisation-front / structure-remesh
@@ -797,11 +799,14 @@ def GetHelpfileKeys():
         # first escape call, used
         # as the reference point for `outgas.wrapper.check_desiccation`'s
         # "is the loss accounted for by escape?" sanity check.
-        # esc_kg_cumulative is the running sum of esc_rate_total * dt
-        # over the whole run. Both must be persisted to the CSV so
-        # resume preserves the gate's state.
+        # esc_kg_cumulative is the whole-run atmospheric-loss ledger:
+        # the running sum of esc_rate_total * dt from continuous escape
+        # plus the mass each giant impact strips from the atmosphere.
+        # The desiccation gate audits the sum of both channels. Both
+        # columns must be persisted to the CSV so resume preserves the
+        # gate's state.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
-        'esc_kg_cumulative', # cumulative escaped mass [kg]
+        'esc_kg_cumulative', # cumulative mass lost to space [kg] (escape + impact stripping)
     ]
 
     # quantities for each gas, from outgassing
@@ -902,12 +907,18 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
 
     A giant-impact mantle re-melt contributes ``step_dE_impact_J``, the
     heat the re-melt injects evaluated in the same ``rho T dS`` frame
-    over the entropy jump from the cooled to the molten profile. It is
-    added to BOTH cumulatives: to the state side because the jump falls
-    between solver calls, so no per-call state integral carries it, and
-    to the predicted side because the impact is an energy source. The
-    residual is therefore invariant across an impact by construction,
-    and the injected energy is booked rather than silently absorbed.
+    over the entropy jump from the cooled to the molten profile, on the
+    pre-impact solver mesh (the impactor's own heat content arrives as
+    part of the new initial condition and is not booked). It is added to
+    BOTH cumulatives: to the state side because the jump falls between
+    solver calls, so no per-call state integral carries it, and to the
+    predicted side because the impact is an energy source. The residual
+    is therefore invariant across an impact for any booked value, which
+    means it cannot validate the injection's magnitude; the column
+    quantifies a defined convention rather than a residual-checked
+    quantity. The relative residual can spike on the impact row when the
+    injection nearly cancels the cumulative state heat in its
+    denominator; the absolute residual is the diagnostic there.
 
     The heating sources use the live-density (state-mass) Q variants so
     they share the ``rho(P,S)`` frame the state side integrates; the
