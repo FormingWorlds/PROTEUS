@@ -67,7 +67,7 @@ from proteus import __version__ as proteus_version  # noqa: E402
 from proteus.config import read_config_object  # noqa: E402
 from proteus.utils.data import download_sufficient_data  # noqa: E402
 from proteus.utils.helper import get_proteus_dir, resolve_fwl_data_dir  # noqa: E402
-from proteus.utils.logs import setup_logger  # noqa: E402
+from proteus.utils.logs import bootstrap_logger, setup_logger  # noqa: E402
 
 config_option = click.option(
     '-c',
@@ -91,7 +91,13 @@ output_option = click.option(
 @click.group()
 @click.version_option(version=proteus_version)
 def cli():
-    pass
+    # Ensure the 'fwl' logger has a handler as early as possible, before any
+    # subcommand constructs Proteus() or calls into modules that log. Without
+    # this, log records emitted before a command's own setup_logger call (e.g.
+    # from Proteus.__init__ -> set_directories, or from commands like
+    # grid-summarise / grid-pack that never call setup_logger) fall through to
+    # logging.lastResort and INFO/DEBUG messages are dropped. See issue #708.
+    bootstrap_logger()
 
 
 # ----------------

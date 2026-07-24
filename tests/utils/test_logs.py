@@ -21,6 +21,7 @@ from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
     StreamToLogger,
+    bootstrap_logger,
     setup_logger,
 )
 
@@ -502,6 +503,144 @@ class TestSetupLogger:
             # check but break on the first uncaught exception.
             assert callable(sys.excepthook)
             sys.excepthook = original_hook  # Restore original hook
+
+
+class TestBootstrapLogger:
+    """Test suite for bootstrap_logger early console fallback.
+
+    bootstrap_logger guarantees the 'fwl' logger has a handler at CLI entry,
+    before any command constructs Proteus() or calls setup_logger. Without it,
+    INFO/DEBUG records emitted early (e.g. from Proteus.__init__ ->
+    set_directories, or from grid-summarise / grid-pack) fall through to
+    logging.lastResort and are dropped.
+    """
+
+    @pytest.fixture(autouse=True)
+    def pristine_fwl(self):
+        """Give each test a handler-free 'fwl' singleton and restore it after.
+
+        'fwl' is a process-wide logging singleton, so a test that installs a
+        handler would leak it into later tests and files. Snapshot the handler
+        list and level, hand each test a pristine WARNING-level logger with no
+        handlers, then restore the snapshot on teardown so no state escapes the
+        class. This is why the tests below can assert exact handler counts.
+        """
+        logger = logging.getLogger('fwl')
+        saved_handlers = logger.handlers[:]
+        saved_level = logger.level
+        logger.handlers.clear()
+        logger.setLevel(logging.WARNING)
+        yield logger
+        logger.handlers[:] = saved_handlers
+        logger.setLevel(saved_level)
+
+    @pytest.mark.unit
+    def test_adds_single_stdout_handler_at_info(self):
+        """Verify a handler-free 'fwl' logger gains exactly one stdout handler.
+
+        This is the contract that keeps early INFO messages from being dropped:
+        the default INFO level matches the level of the pre-config directory
+        messages the fix targets.
+        """
+        logger = bootstrap_logger()
+        assert logger.name == 'fwl'
+        stdout_handlers = [
+            h
+            for h in logger.handlers
+            if type(h) is logging.StreamHandler and getattr(h, 'stream', None) is sys.stdout
+        ]
+        assert len(stdout_handlers) == 1
+        # Discrimination: level must be INFO (20), not left at the pre-existing
+        # WARNING (30). A regression that skipped setLevel would drop the very
+        # INFO messages this function exists to preserve.
+        assert logger.level == logging.INFO
+        assert stdout_handlers[0].level == logging.INFO
+
+    @pytest.mark.unit
+    def test_idempotent_no_duplicate_handler(self):
+        """A second call must not stack a second handler on the singleton.
+
+        CLI group callbacks and Proteus construction can both reach this code
+        in one process; repeated calls must not duplicate terminal output.
+        """
+        bootstrap_logger()
+        n_after_first = len(logging.getLogger('fwl').handlers)
+        bootstrap_logger()
+        assert len(logging.getLogger('fwl').handlers) == n_after_first
+        # Discrimination: pin the count to exactly one so a regression that
+        # appended on every call (rather than guarding on existing handlers)
+        # is caught rather than merely "did not grow unboundedly".
+        assert n_after_first == 1
+
+    @pytest.mark.unit
+    def test_noop_when_handler_already_present(self):
+        """bootstrap_logger must not clobber a configured file logger.
+
+        If setup_logger has already installed a file handler, calling
+        bootstrap_logger afterwards must leave that configuration untouched so a
+        real run keeps logging to its proteus_XX.log file.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logpath = os.path.join(tmpdir, 'test.log')
+            setup_logger(logpath=logpath, logterm=False)
+            handlers_before = list(logging.getLogger('fwl').handlers)
+            bootstrap_logger()
+            assert logging.getLogger('fwl').handlers == handlers_before
+            # Discrimination: the file handler must survive so file logging is
+            # unaffected. A regression that added a stdout handler anyway would
+            # change the handler list identity checked above.
+            file_handlers = [
+                h
+                for h in logging.getLogger('fwl').handlers
+                if isinstance(h, logging.FileHandler)
+            ]
+            assert len(file_handlers) == 1
+
+    @pytest.mark.unit
+    def test_setup_logger_after_bootstrap_has_no_duplicate_stdout(self):
+        """setup_logger after bootstrap yields exactly one stdout handler.
+
+        setup_logger clears handlers before adding its own, so the bootstrap
+        console handler must not survive to double every terminal line.
+        """
+        bootstrap_logger()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logpath = os.path.join(tmpdir, 'test.log')
+            setup_logger(logpath=logpath, logterm=True, level='INFO')
+            logger = logging.getLogger('fwl')
+            stdout_handlers = [
+                h
+                for h in logger.handlers
+                if type(h) is logging.StreamHandler and getattr(h, 'stream', None) is sys.stdout
+            ]
+            assert len(stdout_handlers) == 1
+
+    @pytest.mark.unit
+    def test_info_record_reaches_handler(self):
+        """A child-logger INFO record is emitted, not dropped.
+
+        The fix exists so that records from 'fwl.<module>' children (e.g.
+        'fwl.proteus.utils.coupler') are handled instead of hitting
+        logging.lastResort. Route the handler to a buffer and confirm the text
+        arrives.
+        """
+        import io
+
+        bootstrap_logger()
+        buf = io.StringIO()
+        logging.getLogger('fwl').handlers[0].stream = buf
+        logging.getLogger('fwl.proteus.utils.coupler').info('Temporary-file working dir: /x')
+        assert 'Temporary-file working dir: /x' in buf.getvalue()
+
+    @pytest.mark.unit
+    def test_invalid_level_raises(self):
+        """An unrecognised level must raise rather than silently default.
+
+        Mirrors setup_logger's contract so a typo in a level string fails fast
+        instead of quietly falling back to INFO.
+        """
+        with pytest.raises(ValueError, match='Invalid log level'):
+            bootstrap_logger(level='INVALID')
 
 
 class TestGetCurrentLogfileIndex:
