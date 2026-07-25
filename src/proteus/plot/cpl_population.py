@@ -27,15 +27,43 @@ LEG_KWARGS = {
 }
 
 
+def _dataset_dir_or_none(key: str, fwl_dir: str):
+    """Resolve a dataset's version directory; return None if it cannot be resolved.
+
+    The population overlays are decorative, so a data tree that fwl-io cannot
+    resolve (an unset root, a stale fwl-io, an unreadable manifest) has to warn
+    and skip like a missing file rather than fail the run.
+    """
+    from proteus.data import dataset_dir
+
+    try:
+        return dataset_dir(key, data_root=fwl_dir)
+    except Exception as exc:
+        log.warning(
+            'plot_population: could not resolve dataset %s under %s (%s); '
+            'population diagram will be skipped.',
+            key,
+            fwl_dir,
+            exc,
+        )
+        return None
+
+
 def _get_exo_data(fwl_dir: str):
     """Load DACE_PlanetS.csv; return None if the file is absent.
 
     Returning None lets the population-plot wrappers skip cleanly on
     partial fwl_data installs (e.g., CI Docker images that don't ship
-    the planet_reference tree). The data is decorative for the
+    the exoplanet catalogue). The data is decorative for the
     simulation; missing it should not crash the run.
     """
-    popfile = os.path.join(fwl_dir, 'planet_reference', 'Exoplanets', 'DACE_PlanetS.csv')
+    from proteus.data import EXOPLANET_REFERENCE
+
+    exo_dir = _dataset_dir_or_none(EXOPLANET_REFERENCE, fwl_dir)
+    if exo_dir is None:
+        return None
+
+    popfile = os.path.join(exo_dir, 'DACE_PlanetS.csv')
     if not os.path.isfile(popfile):
         log.warning(
             'plot_population: DACE_PlanetS.csv not found at %s; '
@@ -54,7 +82,13 @@ def _get_mr_data(fwl_dir: str):
     overlays, so a missing file should warn and skip rather than crash
     the simulation.
     """
-    z19 = os.path.join(fwl_dir, 'mass_radius', 'Zeng2019')
+    from proteus.data import MASS_RADIUS_ZENG_2019
+
+    mr_dir = _dataset_dir_or_none(MASS_RADIUS_ZENG_2019, fwl_dir)
+    if mr_dir is None:
+        return None
+
+    z19 = os.fspath(mr_dir)
 
     # Set paths
     curves = {

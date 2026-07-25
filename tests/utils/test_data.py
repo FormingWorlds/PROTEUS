@@ -14,7 +14,9 @@ See also:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -1061,10 +1063,10 @@ def test_download_folder_mode_fails_if_no_sources_available(mock_check, mock_get
 def test_get_data_source_info():
     """Test unified data source mapping lookup."""
     # Test known mapping
-    info = get_data_source_info('Zeng2019')
+    info = get_data_source_info('Hammond24')
     assert info is not None
-    assert info['zenodo_id'] == '15727899'
-    assert info['osf_project'] == 'xge8t'
+    assert info['zenodo_id'] == '15880455'
+    assert info['osf_project'] == '2gcd9'
 
     # Test unknown mapping
     info = get_data_source_info('UnknownFolder')
@@ -1074,7 +1076,7 @@ def test_get_data_source_info():
 @pytest.mark.unit
 def test_get_osf_project():
     """Test OSF project ID lookup."""
-    assert get_osf_project('Zeng2019') == 'xge8t'
+    assert get_osf_project('Hammond24') == '2gcd9'
     assert get_osf_project('Named') == '8r2sw'
     assert get_osf_project('UnknownFolder') is None
 
@@ -1096,7 +1098,7 @@ def test_get_zenodo_from_osf():
 @pytest.mark.unit
 def test_get_osf_from_zenodo():
     """Test reverse lookup: Zenodo ID -> OSF project."""
-    assert get_osf_from_zenodo('15727899') == 'xge8t'  # Zeng2019
+    assert get_osf_from_zenodo('15880455') == '2gcd9'  # Hammond24
     assert get_osf_from_zenodo('15721440') == '8r2sw'  # Named
     assert get_osf_from_zenodo('99999999') is None  # Unknown
 
@@ -1286,7 +1288,7 @@ def test_download_automatic_mapping(
     mock_download_zenodo.return_value = True
     mock_validate.return_value = True
 
-    folder_dir = tmp_path / 'target' / 'Zeng2019'
+    folder_dir = tmp_path / 'target' / 'Hammond24'
     folder_dir.mkdir(parents=True, exist_ok=True)
     (folder_dir / 'test_file.txt').write_text('test')
 
@@ -1297,7 +1299,7 @@ def test_download_automatic_mapping(
 
         # Call download without explicit IDs - should use mapping
         result = download(
-            folder='Zeng2019',
+            folder='Hammond24',
             target='target',
             desc='test data',
             # No osf_id or zenodo_id provided - should use mapping
@@ -1307,7 +1309,7 @@ def test_download_automatic_mapping(
     mock_download_zenodo.assert_called_once()
     # Should have used mapped Zenodo ID (check kwargs since it's called with keyword args)
     call_kwargs = mock_download_zenodo.call_args.kwargs
-    assert call_kwargs['zenodo_id'] == '15727899'  # Zenodo ID from mapping
+    assert call_kwargs['zenodo_id'] == '15880455'  # Zenodo ID from mapping
     assert result is True
 
 
@@ -1826,33 +1828,134 @@ def test_download_stellar_spectra_custom(mock_download):
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-def test_download_exoplanet_data(mock_download):
-    """Test exoplanet data download."""
+@patch('proteus.data.fetch_dataset')
+def test_optional_dataset_failure_does_not_abort_the_run(mock_fetch, caplog):
+    """A mirror failure on decorative data is reported, not raised.
+
+    fwl-io reports an exhausted mirror with DownloadError, a RuntimeError that
+    the start-of-run guard does not catch, so an escaping error would abort
+    every simulation over an overlay that only decorates a plot.
+    """
+    from fwl_io import DownloadError
+
     from proteus.utils.data import download_exoplanet_data
 
-    download_exoplanet_data()
+    mock_fetch.side_effect = DownloadError('could not obtain from any mirror')
 
-    mock_download.assert_called_once()
-    call_kwargs = mock_download.call_args.kwargs
-    assert call_kwargs['folder'] == 'Exoplanets'
-    assert call_kwargs['target'] == 'planet_reference'
-    assert call_kwargs['desc'] == 'exoplanet data'
+    with caplog.at_level(logging.ERROR):
+        result = download_exoplanet_data()
+
+    assert result is False
+    # Discrimination: the fetch really ran, so the survival is not a
+    # short-circuit that skipped the download altogether.
+    mock_fetch.assert_called_once()
+    assert any('exoplanet data' in rec.getMessage() for rec in caplog.records), (
+        f'expected an error naming the dataset; got {[r.getMessage() for r in caplog.records]}'
+    )
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset')
+def test_optional_dataset_offline_failure_does_not_abort_the_run(mock_fetch):
+    """An offline data tree skips the overlay instead of failing the run.
+
+    OfflineDataError is also a RuntimeError, so it escapes the same guard; a
+    user running without network must still be able to start a simulation.
+    """
+    from fwl_io import OfflineDataError
+
+    from proteus.utils.data import download_massradius_data
+
+    mock_fetch.side_effect = OfflineDataError('offline mode is active')
+
+    assert download_massradius_data() is False
+    mock_fetch.assert_called_once()
+
+
+@pytest.mark.unit
+def test_reference_data_failure_still_reaches_the_interior_data(monkeypatch):
+    """A failed overlay fetch does not block the interior tables fetched after it.
+
+    The reference overlays are downloaded before the interior lookup tables and
+    melting curves a run actually needs, so an abort there would deprive the
+    solver of its data.
+    """
+    from fwl_io import DownloadError
+
+    from proteus.utils import data as data_mod
+
+    def _boom(key, data_root=None):
+        raise DownloadError('could not obtain from any mirror')
+
+    reached = {'interior': False, 'melting': False}
+    monkeypatch.setattr('proteus.data.fetch_dataset', _boom)
+    monkeypatch.setattr(
+        data_mod,
+        'download_interior_lookuptables',
+        lambda **kw: reached.__setitem__('interior', True),
+    )
+    monkeypatch.setattr(
+        data_mod,
+        'download_melting_curves',
+        lambda *a, **kw: reached.__setitem__('melting', True),
+    )
+    for name in (
+        'download_stellar_spectra',
+        'download_stellar_tracks',
+        'download_spectral_file',
+        'download_surface_albedos',
+        'download_scattering',
+        'download_zalmoxis_eos_for_config',
+        'download_eos_dynamic',
+    ):
+        monkeypatch.setattr(data_mod, name, lambda *a, **kw: None)
+
+    cfg = SimpleNamespace(
+        star=SimpleNamespace(module='dummy'),
+        atmos_clim=SimpleNamespace(module='dummy', aerosols_enabled=False),
+        interior_energetics=SimpleNamespace(module='aragog'),
+        interior_struct=SimpleNamespace(module='dummy', eos_dir=None),
+    )
+    data_mod._get_sufficient(cfg)
+
+    assert reached['interior'], 'interior lookup tables must still be fetched'
+    assert reached['melting'], 'melting curves must still be fetched'
 
 
 @pytest.mark.unit
 @patch('proteus.utils.data.download')
-def test_download_massradius_data(mock_download):
-    """Test mass-radius data download."""
+@patch('proteus.data.fetch_dataset')
+def test_download_exoplanet_data(mock_fetch, mock_download):
+    """The exoplanet catalogue is fetched through fwl-io, not the legacy path."""
+    from proteus.data import EXOPLANET_REFERENCE
+    from proteus.utils.data import download_exoplanet_data
+
+    download_exoplanet_data()
+
+    mock_fetch.assert_called_once_with(EXOPLANET_REFERENCE)
+    # Discrimination: the key must be the catalogue, not the mass-radius
+    # dataset declared beside it in the same manifest.
+    assert mock_fetch.call_args.args[0] == 'observe.exoplanet_reference'
+    # The legacy Zenodo/OSF downloader must not run: a regression that fell
+    # back to it would still populate a tree and hide the migration.
+    mock_download.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.data.fetch_dataset')
+def test_download_massradius_data(mock_fetch, mock_download):
+    """The mass-radius relations are fetched through fwl-io, not the legacy path."""
+    from proteus.data import MASS_RADIUS_ZENG_2019
     from proteus.utils.data import download_massradius_data
 
     download_massradius_data()
 
-    mock_download.assert_called_once()
-    call_kwargs = mock_download.call_args.kwargs
-    assert call_kwargs['folder'] == 'Zeng2019'
-    assert call_kwargs['target'] == 'mass_radius'
-    assert call_kwargs['desc'] == 'mass radius data'
+    mock_fetch.assert_called_once_with(MASS_RADIUS_ZENG_2019)
+    # Discrimination: the key must be the mass-radius dataset, not the
+    # catalogue declared beside it in the same manifest.
+    assert mock_fetch.call_args.args[0] == 'observe.mass_radius.zeng_2019'
+    mock_download.assert_not_called()
 
 
 @pytest.mark.unit
@@ -2236,22 +2339,6 @@ def test_download_melting_curves_canonical_skip_existing(
 
 @pytest.mark.unit
 @patch('proteus.utils.data.get_data_source_info')
-def test_download_exoplanet_data_no_mapping(mock_get_info):
-    """Test exoplanet data download raises error when no mapping found."""
-    from proteus.utils.data import download_exoplanet_data
-
-    mock_get_info.return_value = None
-
-    with pytest.raises(ValueError, match='No data source mapping found'):
-        download_exoplanet_data()
-    # Discrimination: confirm the mapping lookup actually ran; a regression
-    # that raised ValueError from an earlier unrelated guard would still
-    # pass the raises-match check.
-    mock_get_info.assert_called_once()
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.get_data_source_info')
 def test_download_surface_albedos_no_mapping(mock_get_info):
     """Test surface albedos download raises error when no mapping found."""
     from proteus.utils.data import download_surface_albedos
@@ -2283,22 +2370,6 @@ def test_download_scattering_no_mapping(mock_get_info):
         download_scattering()
     # Discrimination: confirm the registry lookup happened; the raises
     # check alone could be satisfied by an unrelated earlier guard.
-    mock_get_info.assert_called_once()
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.get_data_source_info')
-def test_download_massradius_data_no_mapping(mock_get_info):
-    """Test mass-radius data download raises error when no mapping found."""
-    from proteus.utils.data import download_massradius_data
-
-    mock_get_info.return_value = None
-
-    with pytest.raises(ValueError, match='No data source mapping found'):
-        download_massradius_data()
-    # Discrimination: confirm the mapping lookup actually ran (a regression
-    # that raised ValueError before consulting the registry would still
-    # pass the raises check).
     mock_get_info.assert_called_once()
 
 
