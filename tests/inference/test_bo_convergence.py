@@ -24,8 +24,11 @@ import threading
 import numpy as np
 import pytest
 
-# The Bayesian-optimisation stack ships as the optional `inference` extra.
+# The Bayesian-optimisation stack ships as the optional `inference` extra,
+# which installs all three together. Guarding the whole stack keeps a
+# partial environment skipping rather than failing collection.
 torch = pytest.importorskip('torch')
+pytest.importorskip('gpytorch')
 pytest.importorskip('botorch')
 
 from botorch.exceptions.warnings import OptimizationWarning  # noqa: E402

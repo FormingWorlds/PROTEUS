@@ -1320,26 +1320,33 @@ def test_infer_propagates_broken_submodule_of_installed_distribution(monkeypatch
 
 
 @pytest.mark.unit
-def test_absent_inference_distribution_names_only_a_truly_missing_package(monkeypatch):
+@pytest.mark.parametrize('distribution', ['torch', 'botorch', 'gpytorch'])
+def test_absent_inference_distribution_names_only_a_truly_missing_package(
+    monkeypatch, distribution
+):
     """The classifier behind the CLI message answers with a distribution name
     only when that distribution is genuinely absent. Each rejection path is
     exercised separately, because each one alone is enough to turn a real
-    failure into misleading install advice.
+    failure into misleading install advice. Every package in the extra is
+    covered: a check written against one name only would leave the other two
+    without the install hint.
     """
-    absent = ModuleNotFoundError("No module named 'torch'", name='torch')
+    absent = ModuleNotFoundError(f"No module named '{distribution}'", name=distribution)
 
     # Reported only once the import system agrees the package is gone.
-    _pretend_absent(monkeypatch, 'torch')
-    assert cli._absent_inference_distribution(absent) == 'torch'
+    _pretend_absent(monkeypatch, distribution)
+    assert cli._absent_inference_distribution(absent) == distribution
 
     # A submodule of a missing distribution resolves to the distribution, so
     # the message names something a user can actually install.
-    submodule = ModuleNotFoundError("No module named 'torch.nn'", name='torch.nn')
-    assert cli._absent_inference_distribution(submodule) == 'torch'
+    submodule = ModuleNotFoundError(
+        f"No module named '{distribution}.sub'", name=f'{distribution}.sub'
+    )
+    assert cli._absent_inference_distribution(submodule) == distribution
 
     # A plain ImportError means the package was found and something inside it
     # failed, so it is never translated, even for a name in the extra.
-    inside = ImportError("dlopen failed while loading 'torch'", name='torch')
+    inside = ImportError(f"dlopen failed while loading '{distribution}'", name=distribution)
     assert cli._absent_inference_distribution(inside) is None
 
     # A missing package outside the extra is not this command's business, and

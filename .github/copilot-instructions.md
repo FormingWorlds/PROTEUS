@@ -597,9 +597,10 @@ Do not introduce a new in-repo "memory" or "decisions log" file. The four channe
 ## Quick Reference
 
 ```bash
-# Setup
+# Setup ("[develop]" alone leaves the optional backends and the inference
+# stack out, and their tests then skip; the extras below match CI)
 conda activate proteus
-pip install -e ".[develop]"
+pip install -e ".[develop,vulcan,atmodeller,inference]"
 
 # Test
 pytest -m unit

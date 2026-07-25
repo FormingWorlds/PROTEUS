@@ -13,8 +13,12 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-# The Bayesian-optimisation stack ships as the optional `inference` extra.
+# The Bayesian-optimisation stack ships as the optional `inference` extra,
+# which installs all three together. Guarding the whole stack keeps a
+# partial environment skipping rather than failing collection.
 torch = pytest.importorskip('torch')
+pytest.importorskip('botorch')
+pytest.importorskip('gpytorch')
 
 import proteus.inference.utils as utils_mod  # noqa: E402
 

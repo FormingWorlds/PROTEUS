@@ -87,6 +87,26 @@ def test_no_core_module_imports_the_inference_stack():
     # Discrimination: an empty scan would satisfy the assertion above without
     # checking anything. The package is far larger than this floor.
     assert scanned > 50
+    # The stack also arrives transitively: a core module importing anything
+    # from proteus.inference at module scope pulls torch with it, so that is
+    # the same defect wearing a different name.
+    reexporters = {
+        str(path.relative_to(REPO_ROOT))
+        for path in sorted(SRC_ROOT.rglob('*.py'))
+        if INFERENCE_ROOT not in path.parents
+        and any(
+            (
+                isinstance(node, ast.ImportFrom)
+                and (node.module or '').startswith('proteus.inference')
+            )
+            or (
+                isinstance(node, ast.Import)
+                and any(a.name.startswith('proteus.inference') for a in node.names)
+            )
+            for node in ast.parse(path.read_text()).body
+        )
+    }
+    assert reexporters == set(), f'core modules importing proteus.inference: {reexporters}'
     # The scan reaches modules that do import the stack, so a path filter that
     # silently excluded everything would fail here.
     inference_hits = {
