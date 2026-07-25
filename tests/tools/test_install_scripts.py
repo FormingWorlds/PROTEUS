@@ -495,6 +495,7 @@ def test_spider_lib_check_fails_on_empty_dir(tmp_path):
 
 
 import re  # noqa: E402
+import tempfile  # noqa: E402
 import tomllib  # noqa: E402
 from pathlib import Path  # noqa: E402
 
@@ -878,17 +879,20 @@ def test_morrigan_guard_protects_its_own_checkout(tmp_path):
 
 @pytest.mark.unit
 def test_pyproject_keeps_morrigan_out_of_mandatory_dependencies():
-    """Morrigan is installed only explicitly, via ``bash tools/get_morrigan.sh``.
+    """Morrigan is an optional extra, pinned once by version.
 
-    Two clauses:
-    1. ``[project] dependencies`` must not list morrigan. The giant-impact
-       model is needed only by ``accretion.module = "morrigan"`` runs, and
-       the package is not published on PyPI, so a version pin there could
-       not resolve and a direct git URL would block PyPI uploads of
-       fwl-proteus.
-    2. The pin lives in ``[tool.proteus.modules.morrigan]`` with the
-       FormingWorlds GitHub URL and a full 40-character commit SHA, which
-       tools/get_morrigan.sh resolves through tools/_module_pins.py.
+    The giant-impact model is needed only by ``accretion.module =
+    "morrigan"`` runs, so it must not be a mandatory dependency of
+    fwl-proteus. It lives in ``[project.optional-dependencies]`` under its
+    own extra, carrying a published version floor, and must NOT also carry
+    a ``[tool.proteus.modules]`` SHA pin: a second pin can drift from the
+    PyPI release, which is the dual-pin trap fwl-vulcan, fwl-aragog and
+    fwl-zalmoxis are all kept out of.
+
+    The floor is written zero-padded to match the release tag, because
+    tools/get_morrigan.sh checks out ``tags/<floor>`` for an editable
+    checkout. PEP 440 treats the padded and normalised forms as the same
+    version, so one string serves the resolver and the tag lookup.
     """
     repo_root = Path(__file__).resolve().parents[2]
     data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
@@ -902,20 +906,78 @@ def test_pyproject_keeps_morrigan_out_of_mandatory_dependencies():
     # above; pin a known-mandatory package as evidence the list is intact.
     assert any('fwl-calliope' in d for d in deps), 'mandatory dependency list is intact'
 
-    spec = data['tool']['proteus']['modules']['morrigan']
-    assert spec['url'].startswith('https://github.com/FormingWorlds/Morrigan'), (
-        f'morrigan pin must point at the FormingWorlds repo, got {spec["url"]!r}'
+    extras = data['project']['optional-dependencies']
+    morrigan_extra = extras.get('morrigan', [])
+    assert any(r.startswith('fwl-morrigan>=') for r in morrigan_extra), (
+        f'morrigan extra must keep its version floor, got {morrigan_extra!r}'
     )
-    # Full-SHA pin: reproducible clone, short refs are ambiguous and
-    # mutable upstream.
-    assert re.fullmatch(r'[0-9a-f]{40}', spec['ref']), (
-        f'morrigan ref must be a full commit SHA, got {spec["ref"]!r}'
+
+    # Single pin: a git SHA alongside the version floor could drift from the
+    # published release, so the module table must not carry morrigan.
+    git_modules = data['tool']['proteus']['modules']
+    assert 'morrigan' not in git_modules, (
+        'morrigan must not have a [tool.proteus.modules] git pin; it is pinned '
+        'once via the fwl-morrigan extra and the matching git tag, like '
+        f'fwl-vulcan/fwl-aragog/fwl-zalmoxis. Found: {sorted(git_modules)}'
     )
-    # The URL must be clonable over both transports the installer offers;
-    # the https form is rewritten to SSH in-script, which only works when
-    # the pin is stored in https form.
-    assert not spec['url'].startswith('git@'), (
-        'store the pin as an https URL; the installer rewrites it to SSH'
+
+    # The floor must be tag-shaped (zero-padded CalVer), because the installer
+    # checks out `tags/<floor>`. A normalised floor such as 26.7.25 resolves
+    # against PyPI but names no tag, so the editable install would break.
+    floor = next(r for r in morrigan_extra if r.startswith('fwl-morrigan>=')).split('>=')[1]
+    assert re.fullmatch(r'\d{2}\.\d{2}\.\d{2}', floor), (
+        f'morrigan floor must be zero-padded CalVer to match the release tag, got {floor!r}'
+    )
+
+    # The installer reads the floor with this exact pattern; keep the two in
+    # step so a reformatted pin cannot silently fall back to HEAD.
+    script = (repo_root / 'tools' / 'get_morrigan.sh').read_text(encoding='utf-8')
+    assert 'fwl-morrigan>=' in script and 'tags/$floor' in script, (
+        'tools/get_morrigan.sh must pin the checkout to the fwl-morrigan floor tag'
+    )
+
+    # The extraction must read the pin, not a comment mentioning the package.
+    # The pin already carries a rationale comment above it, and the repo's
+    # house style puts such comments on the preceding lines, so a plain
+    # first-match grep would take a version named in prose. Run the script's
+    # own pipeline against a poisoned copy and require it to still pick the
+    # real floor.
+    # Run the script's OWN assignment, lifted verbatim, so a regression in the
+    # script is what fails here rather than a copy of it kept in the test.
+    assignment = re.search(r'^floor=\$\(.*?\)$', script, re.MULTILINE | re.DOTALL)
+    assert assignment, 'could not find the floor assignment in tools/get_morrigan.sh'
+
+    poisoned = (
+        (repo_root / 'pyproject.toml')
+        .read_text(encoding='utf-8')
+        .replace(
+            f'morrigan = ["fwl-morrigan>={floor}"]',
+            f'# later: needs fwl-morrigan>=99.99.99\nmorrigan = ["fwl-morrigan>={floor}"]',
+        )
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = Path(tmp) / 'pyproject.toml'
+        probe.write_text(poisoned, encoding='utf-8')
+        extracted = subprocess.run(
+            [
+                'bash',
+                '-c',
+                f'set -euo pipefail; root={tmp}\n{assignment.group(0)}\necho "$floor"',
+            ],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    assert extracted == floor, (
+        f'floor extraction picked {extracted!r} from a commented version instead of '
+        f'the pin {floor!r}; get_morrigan.sh would check out a tag that does not exist'
+    )
+
+    # A missing pin must reach the warning branch rather than aborting the
+    # script under `set -e`, which would leave an uninstalled clone behind
+    # with no diagnostic.
+    assert '|| true' in script, (
+        'floor extraction must not abort the script; the warning branch is the '
+        'documented behaviour when the pin cannot be read'
     )
 
 

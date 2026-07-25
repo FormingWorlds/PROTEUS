@@ -328,3 +328,58 @@ def test_accretion_on_spider_is_refused_at_config_load():
         )
     # No accretion: SPIDER is fine, the check does not fire.
     check_accretion_interior_compatibility(_compat_instance(None, 'spider'), None, None)
+
+
+def test_embryo_spacing_is_bounded_on_both_sides():
+    """Embryo spacing is refused at zero and above the sanity ceiling.
+
+    Spacing is measured in mutual Hill radii, so it must be strictly
+    positive, and a value large enough to be an order-of-magnitude
+    mistake is refused at configuration load rather than after the
+    dynamical run has started.
+
+    The ceiling is a typo guard, not the physical limit. The layout
+    condition's pole sits where ``spacing * ((M1+M2)/(3 M*))**(1/3)``
+    reaches 2, so it moves with the embryo masses and with the cube root
+    of the stellar mass; for a compact system around a low-mass host it
+    drops below this ceiling. The test pins that scaling rather than
+    asserting the ceiling is universally conservative, because it is not.
+    """
+    from proteus.config._accretion import Morrigan
+
+    # The documented working range and the inclusive ceiling are accepted.
+    for value in (0.5, 10.0, 30.0, 50.0):
+        assert Morrigan(spacing=value).spacing == pytest.approx(value)
+
+    # Just past the ceiling, and an order-of-magnitude typo, are refused.
+    for value in (50.000001, 1e3):
+        with pytest.raises(ValueError):
+            Morrigan(spacing=value)
+
+    # Non-positive spacing has no geometric meaning and is refused.
+    for value in (0.0, -10.0):
+        with pytest.raises(ValueError):
+            Morrigan(spacing=value)
+
+    # The pole the dynamical model enforces, for reference. Around a
+    # solar-mass star the ceiling does sit below it, and the pole moves
+    # outward as the embryos get lighter.
+    m_earth, m_sun = 5.972e24, 1.988e30
+
+    def pole(mass_earth, stellar_mass_sun):
+        """Spacing at which the layout condition's denominator vanishes."""
+        return 2.0 / ((2 * mass_earth * m_earth) / (3 * stellar_mass_sun * m_sun)) ** (1 / 3)
+
+    assert 50.0 < pole(10.0, 1.0) == pytest.approx(73.6, rel=1e-2)
+    assert pole(10.0, 1.0) < pole(1.0, 1.0)
+
+    # But the ceiling is NOT universally conservative: the pole scales as
+    # the cube root of the stellar mass, so a compact system around a
+    # 0.1-solar-mass host reaches it below 50 and the model, not this
+    # validator, is what refuses the layout. Guarding this keeps the
+    # docstring honest if someone later raises the ceiling on the
+    # assumption that it bounds the pole.
+    assert pole(10.0, 0.1) == pytest.approx(34.2, rel=1e-2)
+    assert pole(10.0, 0.1) < 50.0
+    # The scaling itself: an eighth of the stellar mass halves the pole.
+    assert pole(10.0, 0.125) == pytest.approx(0.5 * pole(10.0, 1.0), rel=1e-9)

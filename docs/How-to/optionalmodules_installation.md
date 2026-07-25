@@ -88,3 +88,25 @@ bash tools/get_vulcan.sh
 !!! warning "License"
     VULCAN is distributed under the GPL-3.0 license; review its terms
     before installing.
+
+## Protoplanet accretion (Morrigan)
+
+Morrigan is an optional giant-impact accretion module, selected with
+`accretion.module = "morrigan"`. It evolves a system of planetary embryos
+through orbital crossings and collisions and returns the impact history
+that the coupled run replays. It is not required for a standard PROTEUS
+run. Install it from PyPI:
+
+```console
+pip install "fwl-proteus[morrigan]"
+```
+
+For local development, install as an editable checkout instead:
+
+```console
+bash tools/get_morrigan.sh
+```
+
+An accretion run needs an interior module that can re-melt the mantle
+after an impact. Aragog is the production choice; SPIDER is refused at
+configuration load because it has no re-melt path.

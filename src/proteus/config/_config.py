@@ -111,7 +111,9 @@ def check_module_dependencies(instance, attribute, value):
             'morrigan',
             'accretion.module = "morrigan" requires the optional morrigan package, '
             'which runs the giant-impact model. Morrigan is not needed for a '
-            'standard PROTEUS run. Install it with: bash tools/get_morrigan.sh',
+            'standard PROTEUS run. Install it with: pip install '
+            '"fwl-proteus[morrigan]" (or bash tools/get_morrigan.sh for an '
+            'editable checkout).',
         ),
     }
 

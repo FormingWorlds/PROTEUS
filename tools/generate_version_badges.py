@@ -101,6 +101,16 @@ OPTIONAL = [
         ('vulcan', 'fwl-vulcan'),
     ),
     (
+        'Morrigan',
+        'Protoplanet accretion via giant impacts',
+        None,
+        'blue',
+        None,
+        'https://github.com/FormingWorlds/Morrigan',
+        'GitHub',
+        ('morrigan', 'fwl-morrigan'),
+    ),
+    (
         'Obliqua',
         'Orbital evolution and tides (Julia)',
         None,

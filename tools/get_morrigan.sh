@@ -3,10 +3,13 @@
 # an editable sibling checkout.
 #
 # Clones FormingWorlds/Morrigan into ./Morrigan/ inside the PROTEUS root,
-# checks out the commit pinned in pyproject.toml
-# ([tool.proteus.modules.morrigan]), and installs it editable into the
-# active Python environment. Morrigan is not published on PyPI, so the
-# pin is resolved from pyproject.toml rather than a version floor.
+# checks out the git tag matching the fwl-morrigan version floor pinned in
+# pyproject.toml ([project.optional-dependencies].morrigan), and installs it
+# editable. Pinning to the floor tag keeps the editable checkout and the PyPI
+# fwl-morrigan release in lock-step instead of tracking the default branch.
+#
+# For a plain (non-editable) install, `pip install "fwl-proteus[morrigan]"`
+# is enough; this script is for developing against a Morrigan checkout.
 
 set -euo pipefail
 
@@ -61,25 +64,35 @@ else
     fi
 fi
 
-# Resolve the pinned URL + ref from pyproject.toml.
-m_url=$(python "$root/tools/_module_pins.py" morrigan url)
-m_ref=$(python "$root/tools/_module_pins.py" morrigan ref)
-if [ -z "$m_url" ] || [ -z "$m_ref" ]; then
-    echo "ERROR: could not resolve morrigan url/ref from pyproject.toml" >&2
-    exit 1
-fi
-
 echo "Cloning from GitHub"
 if [ "$use_ssh" = true ]; then
-    # Rewrite https://github.com/ -> git@github.com: for SSH transport.
-    uri=${m_url/https:\/\/github.com\//git@github.com:}
+    uri="git@github.com:FormingWorlds/Morrigan.git"
 else
-    uri="$m_url"
+    uri="https://github.com/FormingWorlds/Morrigan.git"
 fi
-echo "    $uri @ $m_ref -> $workpath"
+echo "    $uri -> $workpath"
 git clone "$uri" "$workpath" || { echo "ERROR: git clone failed" >&2; exit 1; }
-git -C "$workpath" checkout --quiet "$m_ref" \
-    || { echo "ERROR: cannot checkout $m_ref" >&2; exit 1; }
+
+# Pin the checkout to the fwl-morrigan version floor declared in PROTEUS's
+# pyproject.toml, so the editable install matches the PyPI release across
+# machines and CI instead of tracking whatever the default branch points at.
+# The floor is written zero-padded (26.07.25) to match the release tag; PEP
+# 440 treats that as equal to the normalised PyPI version (26.7.25), so the
+# same string serves both the dependency resolver and this checkout.
+# Comments are stripped before matching: the pin carries a rationale comment
+# above it, and a future comment naming a different version would otherwise be
+# picked up first and checked out instead of the real floor. The `|| true`
+# keeps a missing pin from aborting under `set -e` before the warning below
+# can explain what went wrong.
+floor=$(sed 's/#.*//' "$root/pyproject.toml" \
+    | grep -oE 'fwl-morrigan>=[0-9][0-9.]*' | head -1 | sed 's/.*>=//' || true)
+if [ -n "$floor" ]; then
+    echo "Pinning to fwl-morrigan floor: $floor"
+    git -C "$workpath" checkout --quiet "tags/$floor" \
+        || { echo "ERROR: cannot checkout tag $floor" >&2; exit 1; }
+else
+    echo "WARNING: could not read fwl-morrigan floor from pyproject.toml; using HEAD" >&2
+fi
 
 # Install morrigan package as editable
 pip install -U -e "$workpath" || { echo "ERROR: editable install failed" >&2; exit 1; }

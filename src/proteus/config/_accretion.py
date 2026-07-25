@@ -63,6 +63,22 @@ class Morrigan:
         Semi-major axis of the innermost embryo [AU].
     spacing: float
         Initial separation between adjacent embryos, in mutual Hill radii.
+        Typical values are 5 to 15; beyond roughly 30 the system does not
+        go unstable within any useful evolution time, so the run finishes
+        with no impacts. Capped at 50 purely to catch an
+        order-of-magnitude mistake at configuration load.
+
+        The cap is not the physical limit and does not track it. The
+        layout condition has a pole where the requested gap approaches
+        the span it is measured across, and its position scales with the
+        embryo masses and with the cube root of the stellar mass: near 74
+        mutual Hill radii for a pair of ten-Earth-mass embryos around a
+        solar-mass star, but near 34 for the same pair around a
+        0.1-solar-mass host. A spacing this validator accepts can
+        therefore still be too wide for a compact, low-mass-host system.
+        The dynamical model applies the exact condition and refuses such
+        a layout by name, so that check, not this cap, is what guarantees
+        a valid layout.
     density: float
         Uniform bulk density used to convert embryo mass to radius [kg m-3].
     impact_angle: float
@@ -91,7 +107,7 @@ class Morrigan:
     eccentricity_init: float = field(default=0.01, validator=ge(0))
 
     inner_edge: float = field(default=0.1, validator=gt(0))
-    spacing: float = field(default=10.0, validator=gt(0))
+    spacing: float = field(default=10.0, validator=[gt(0), le(50.0)])
     density: float = field(default=5500.0, validator=gt(0))
     impact_angle: float = field(default=45.0, validator=ge(0))
 

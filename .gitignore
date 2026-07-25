@@ -314,3 +314,6 @@ src/proteus/_version.py
 # Local scratch directories (not part of the project)
 /.playwright-mcp/
 /platon/
+
+# Diagnostic dumps written by `proteus update` into the repo root.
+/proteus_update_*.log

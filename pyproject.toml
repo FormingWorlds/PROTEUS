@@ -117,6 +117,11 @@ atmodeller = ["atmodeller>=1.0.2"]
 # atmos_chem.module = "vulcan". Also installable editable via
 # tools/get_vulcan.sh.
 vulcan = ["fwl-vulcan>=26.04.22"]
+# morrigan: protoplanet accretion module, selected via
+# accretion.module = "morrigan". Supplies the giant-impact timeline the
+# accretion coupling replays. Also installable editable via
+# tools/get_morrigan.sh.
+morrigan = ["fwl-morrigan>=26.07.25"]
 
 develop = [
     # coverage[toml] enables standalone coverage tool with TOML config support (used by ratcheting script)
@@ -287,14 +292,11 @@ ref = "c9a3fd4301c7008291d4f4921506d36b6288f8ca"
 url = "https://github.com/ExoInteriors/BOREAS.git"
 ref = "0174edb04558a92a8f0b47cbd994964787f495aa"
 
-[tool.proteus.modules.morrigan]
-# Giant-impact accretion module (Python). Optional: installed explicitly
-# by tools/get_morrigan.sh, not pulled in by `pip install fwl-proteus`.
-# The package is not published on PyPI, so the pin lives here rather than
-# in [project] dependencies. Only `accretion.module = "morrigan"` runs
-# need it.
-url = "https://github.com/FormingWorlds/Morrigan.git"
-ref = "f44671b6b6d17d7320f05f578641b61431e9a7ad"
+# Morrigan has no entry here on purpose: like fwl-vulcan, fwl-aragog and
+# fwl-zalmoxis, it is a single-source PyPI package. tools/get_morrigan.sh
+# checks out the git tag matching the fwl-morrigan floor in
+# [project.optional-dependencies], so the editable checkout and the PyPI
+# release cannot diverge.
 
 [tool.proteus.modules.lovepy]
 # Multi-phase tidal heating module (Julia). Installed via Julia

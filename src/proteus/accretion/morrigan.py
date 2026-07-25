@@ -26,7 +26,8 @@ MORRIGAN_ENTRY_POINT = 'run_system'
 
 INSTALL_HINT = (
     "accretion.module = 'morrigan' requires the morrigan package. "
-    'Install it with: bash tools/get_morrigan.sh'
+    'Install it with: pip install "fwl-proteus[morrigan]" '
+    '(or bash tools/get_morrigan.sh for an editable checkout).'
 )
 
 
