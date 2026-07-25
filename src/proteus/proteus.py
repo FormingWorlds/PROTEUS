@@ -8,7 +8,9 @@ from pathlib import Path
 
 import numpy as np
 
-# ensure juliacall is imported before torch
+# juliacall has to load before torch does. Nothing here imports torch, but the
+# inference scheme brings it into the same process later, and the two clash if
+# torch wins the race.
 # see issue here: https://github.com/pytorch/pytorch/issues/78829
 from juliacall import Main  # noqa: F401
 

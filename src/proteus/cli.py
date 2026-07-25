@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
 from difflib import get_close_matches
@@ -687,9 +688,47 @@ def grid(config_path: Path, dry_run: bool):
 
 
 # Distributions that only the inference scheme needs, shipped as the
-# `inference` extra. Used to tell a missing extra apart from a genuine
-# import error inside the inference package.
+# `inference` extra. `[project.optional-dependencies].inference` in
+# pyproject.toml is the authority; a test pins the two together.
 INFERENCE_DISTRIBUTIONS = ('torch', 'botorch', 'gpytorch')
+
+
+def _absent_inference_distribution(exc: ImportError) -> str | None:
+    """Name the inference distribution whose absence raised ``exc``.
+
+    Parameters
+    ----------
+    exc : ImportError
+        Error raised while importing the inference entry point.
+
+    Returns
+    -------
+    str or None
+        The missing distribution, or None when the error came from anything
+        else: a failure inside a package that is present, an unrelated
+        module, or one of the three sitting installed but failing to import
+        one of its own submodules.
+
+    Notes
+    -----
+    Absence is confirmed against the import system instead of being inferred
+    from the error alone, so the advice to install the extra is never given
+    for a package that is already in the environment.
+    """
+    if not isinstance(exc, ModuleNotFoundError):
+        # The module was found and something inside it failed: a version
+        # mismatch or a broken install, not a missing extra.
+        return None
+    root = (exc.name or '').split('.')[0]
+    if root not in INFERENCE_DISTRIBUTIONS:
+        return None
+    try:
+        if importlib.util.find_spec(root) is not None:
+            return None
+    except (ImportError, ValueError):
+        # Present but unusable: a broken install, not a missing extra.
+        return None
+    return root
 
 
 @click.command()
@@ -699,8 +738,8 @@ def infer(config_path: Path):
     try:
         from proteus.inference.inference import infer_from_config
     except ImportError as exc:
-        missing = (exc.name or '').split('.')[0]
-        if missing not in INFERENCE_DISTRIBUTIONS:
+        missing = _absent_inference_distribution(exc)
+        if missing is None:
             raise
         raise click.ClickException(
             f"Parameter inference needs '{missing}', which is not installed. "

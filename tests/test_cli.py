@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import builtins
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -1204,6 +1205,23 @@ def _patch_infer_import(monkeypatch, error: ImportError):
     monkeypatch.setattr(builtins, '__import__', fake_import)
 
 
+def _pretend_absent(monkeypatch, *names: str):
+    """Make ``importlib.util.find_spec`` report *names* as not installed.
+
+    The CLI confirms absence before advising an install, so a test that
+    injects a missing-package error for a package the test environment
+    actually has must remove it from the import system's view too.
+    """
+    real_find_spec = importlib.util.find_spec
+
+    def fake_find_spec(name, *args, **kwargs):
+        if name in names:
+            return None
+        return real_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib.util, 'find_spec', fake_find_spec)
+
+
 @pytest.mark.unit
 def test_infer_reports_missing_inference_extra(monkeypatch, tmp_path):
     """With the optimisation stack absent, ``proteus infer`` names the missing
@@ -1214,7 +1232,11 @@ def test_infer_reports_missing_inference_extra(monkeypatch, tmp_path):
     cfg = tmp_path / 'cfg.toml'
     cfg.write_text('# stub\n')
 
-    _patch_infer_import(monkeypatch, ImportError("No module named 'torch'", name='torch'))
+    # The shape the import system produces for a genuinely absent package.
+    _patch_infer_import(
+        monkeypatch, ModuleNotFoundError("No module named 'torch'", name='torch')
+    )
+    _pretend_absent(monkeypatch, 'torch')
 
     res = runner.invoke(cli.infer, ['-c', str(cfg)])
 
@@ -1229,7 +1251,7 @@ def test_infer_reports_missing_inference_extra(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_infer_propagates_unrelated_import_error(monkeypatch, tmp_path):
-    """An ImportError from inside the inference package that is not one of the
+    """An import failure inside the inference package that is not one of the
     optional distributions propagates unchanged. Discrimination: a blanket
     except would answer a broken PROTEUS import with an install-the-extra
     message and send the user chasing a dependency that is already present.
@@ -1237,9 +1259,9 @@ def test_infer_propagates_unrelated_import_error(monkeypatch, tmp_path):
     cfg = tmp_path / 'cfg.toml'
     cfg.write_text('# stub\n')
 
-    broken = ImportError(
-        "cannot import name 'missing_helper' from 'proteus.inference.utils'",
-        name='proteus.inference.utils',
+    broken = ModuleNotFoundError(
+        "No module named 'proteus.inference.missing_helper'",
+        name='proteus.inference.missing_helper',
     )
     _patch_infer_import(monkeypatch, broken)
 
@@ -1248,6 +1270,106 @@ def test_infer_propagates_unrelated_import_error(monkeypatch, tmp_path):
     assert res.exit_code == 1
     assert res.exception is broken
     assert 'fwl-proteus[inference]' not in res.output
+
+
+@pytest.mark.unit
+def test_infer_propagates_import_error_from_present_distribution(monkeypatch, tmp_path):
+    """A symbol that cannot be imported from an installed distribution raises a
+    plain ImportError, not ModuleNotFoundError. That is the signature of a
+    version mismatch inside the optimisation stack, and it must reach the user
+    as itself: telling them to install a package they already have hides the
+    real cause and the reinstall changes nothing.
+    """
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    skewed = ImportError(
+        "cannot import name 'LogExpectedImprovement' from 'botorch.acquisition.analytic'",
+        name='botorch.acquisition.analytic',
+    )
+    _patch_infer_import(monkeypatch, skewed)
+
+    res = runner.invoke(cli.infer, ['-c', str(cfg)])
+
+    assert res.exit_code == 1
+    assert res.exception is skewed
+    assert 'fwl-proteus[inference]' not in res.output
+
+
+@pytest.mark.unit
+def test_infer_propagates_broken_submodule_of_installed_distribution(monkeypatch, tmp_path):
+    """An installed distribution whose own submodule fails to import raises
+    ModuleNotFoundError naming that submodule, whose root is one of the three
+    optional packages. Discrimination: without the installed check the root
+    alone would be taken as proof of absence, and a corrupted install would be
+    reported as a missing extra.
+    """
+    pytest.importorskip('botorch')
+
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    broken = ModuleNotFoundError("No module named 'botorch.models'", name='botorch.models')
+    _patch_infer_import(monkeypatch, broken)
+
+    res = runner.invoke(cli.infer, ['-c', str(cfg)])
+
+    assert res.exit_code == 1
+    assert res.exception is broken
+    assert 'fwl-proteus[inference]' not in res.output
+
+
+@pytest.mark.unit
+def test_absent_inference_distribution_names_only_a_truly_missing_package(monkeypatch):
+    """The classifier behind the CLI message answers with a distribution name
+    only when that distribution is genuinely absent. Each rejection path is
+    exercised separately, because each one alone is enough to turn a real
+    failure into misleading install advice.
+    """
+    absent = ModuleNotFoundError("No module named 'torch'", name='torch')
+
+    # Reported only once the import system agrees the package is gone.
+    _pretend_absent(monkeypatch, 'torch')
+    assert cli._absent_inference_distribution(absent) == 'torch'
+
+    # A submodule of a missing distribution resolves to the distribution, so
+    # the message names something a user can actually install.
+    submodule = ModuleNotFoundError("No module named 'torch.nn'", name='torch.nn')
+    assert cli._absent_inference_distribution(submodule) == 'torch'
+
+    # A plain ImportError means the package was found and something inside it
+    # failed, so it is never translated, even for a name in the extra.
+    inside = ImportError("dlopen failed while loading 'torch'", name='torch')
+    assert cli._absent_inference_distribution(inside) is None
+
+    # A missing package outside the extra is not this command's business, and
+    # its absence must not be answered with the inference install command.
+    unrelated = ModuleNotFoundError(
+        "No module named 'unrelated_absent_package_xyz'",
+        name='unrelated_absent_package_xyz',
+    )
+    assert cli._absent_inference_distribution(unrelated) is None
+
+    # An error carrying no module name cannot identify anything.
+    nameless = ModuleNotFoundError('import failed')
+    assert cli._absent_inference_distribution(nameless) is None
+
+
+@pytest.mark.unit
+def test_absent_inference_distribution_rejects_an_installed_package():
+    """A submodule failure inside an installed distribution names that
+    distribution as the root, and the classifier must still refuse it.
+    Discrimination: this is the one case the exception type alone cannot tell
+    apart from a real absence, so it pins the installed check specifically.
+    """
+    pytest.importorskip('botorch')
+
+    broken = ModuleNotFoundError("No module named 'botorch.models'", name='botorch.models')
+
+    assert cli._absent_inference_distribution(broken) is None
+    # The same error shape, with the import system reporting absence, is the
+    # case that does get reported: the two differ only in installed state.
+    assert broken.name.split('.')[0] in cli.INFERENCE_DISTRIBUTIONS
 
 
 # ---------------------------

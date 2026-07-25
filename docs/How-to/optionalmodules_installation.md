@@ -80,6 +80,15 @@ install that nothing else in PROTEUS uses, so a forward model or a
 pip install "fwl-proteus[inference]"
 ```
 
+On Linux the default PyTorch wheel also pulls in the CUDA runtime packages.
+The scheme runs on CPU, so install PyTorch from its CPU index first if you do
+not want them:
+
+```console
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install "fwl-proteus[inference]"
+```
+
 Without the extra, `proteus infer` stops with a message naming the missing
 package; every other command is unaffected. See the
 [inference guide](inference.md) for how to configure a run.
