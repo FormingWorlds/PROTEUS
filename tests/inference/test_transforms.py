@@ -21,9 +21,11 @@ References:
 from __future__ import annotations
 
 import pytest
-import torch
 
-import proteus.inference.transforms as tr_mod
+# The Bayesian-optimisation stack ships as the optional `inference` extra.
+torch = pytest.importorskip('torch')
+
+import proteus.inference.transforms as tr_mod  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

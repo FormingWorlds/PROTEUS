@@ -31,6 +31,9 @@ import pandas as pd
 import pytest
 from helpers import PROTEUS_ROOT
 
+# The Bayesian-optimisation stack ships as the optional `inference` extra.
+pytest.importorskip('torch')
+
 from proteus.inference.inference import infer_from_config
 
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]

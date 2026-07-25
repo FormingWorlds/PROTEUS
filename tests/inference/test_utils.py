@@ -12,9 +12,11 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-import torch
 
-import proteus.inference.utils as utils_mod
+# The Bayesian-optimisation stack ships as the optional `inference` extra.
+torch = pytest.importorskip('torch')
+
+import proteus.inference.utils as utils_mod  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

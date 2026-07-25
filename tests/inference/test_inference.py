@@ -14,7 +14,10 @@ import multiprocessing as mp
 import pytest
 import toml
 
-import proteus.inference.inference as inference_mod
+# The Bayesian-optimisation stack ships as the optional `inference` extra.
+pytest.importorskip('torch')
+
+import proteus.inference.inference as inference_mod  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

@@ -21,11 +21,13 @@ References:
 from __future__ import annotations
 
 import pytest
-import torch
 
-import proteus.inference.BO as bo_mod
+# The Bayesian-optimisation stack ships as the optional `inference` extra.
+torch = pytest.importorskip('torch')
 
-from ._bo_helpers import make_quadratic_objective
+import proteus.inference.BO as bo_mod  # noqa: E402
+
+from ._bo_helpers import make_quadratic_objective  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

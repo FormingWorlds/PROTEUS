@@ -402,7 +402,7 @@ The new markers are registered in `pyproject.toml`. They do not gate CI by thems
 
 ### Optional-dependency imports
 
-Any test that imports an optional dependency (`hypothesis`, `boreas`, `atmodeller`, `lovepy`, `mors`, `vulcan`, also `zalmoxis` when not installed via editable) MUST call `pytest.importorskip('<dep>')` at module top. The PR Docker image is built with `pip install --no-deps`; tests that import optional deps unconditionally will fail to collect on CI even though they run locally. This trap has recurred multiple times and is now lint-enforced.
+Any test that imports an optional dependency (`hypothesis`, `boreas`, `atmodeller`, `lovepy`, `mors`, `vulcan`, the `inference` extra's `torch` / `botorch` / `gpytorch`, also `zalmoxis` when not installed via editable) MUST call `pytest.importorskip('<dep>')` at module top. The PR Docker image is built with `pip install --no-deps`; tests that import optional deps unconditionally will fail to collect on CI even though they run locally. This trap has recurred multiple times and is now lint-enforced.
 
 ### Module-level constants and `monkeypatch`
 

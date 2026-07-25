@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-import torch
 
-import proteus.inference.async_BO as async_mod
+# The Bayesian-optimisation stack ships as the optional `inference` extra.
+torch = pytest.importorskip('torch')
+
+import proteus.inference.async_BO as async_mod  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

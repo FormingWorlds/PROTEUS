@@ -686,11 +686,27 @@ def grid(config_path: Path, dry_run: bool):
     grid_from_config(config_path, test_run=dry_run)
 
 
+# Distributions that only the inference scheme needs, shipped as the
+# `inference` extra. Used to tell a missing extra apart from a genuine
+# import error inside the inference package.
+INFERENCE_DISTRIBUTIONS = ('torch', 'botorch', 'gpytorch')
+
+
 @click.command()
 @config_option
 def infer(config_path: Path):
     """Use Bayesian optimisation to infer parameters from observables"""
-    from proteus.inference.inference import infer_from_config
+    try:
+        from proteus.inference.inference import infer_from_config
+    except ImportError as exc:
+        missing = (exc.name or '').split('.')[0]
+        if missing not in INFERENCE_DISTRIBUTIONS:
+            raise
+        raise click.ClickException(
+            f"Parameter inference needs '{missing}', which is not installed. "
+            'The optimisation stack ships as an optional extra: '
+            'pip install "fwl-proteus[inference]"'
+        ) from exc
 
     infer_from_config(config_path)
 

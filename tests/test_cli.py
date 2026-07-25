@@ -1,6 +1,7 @@
 # Test PROTEUS terminal CLI and commands
 from __future__ import annotations
 
+import builtins
 from pathlib import Path
 
 import pytest
@@ -1165,6 +1166,9 @@ def test_grid_dry_run_passes_test_run_flag(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_infer_calls_infer_from_config(monkeypatch, tmp_path):
     """``proteus infer -c cfg`` dispatches to infer_from_config with the config path."""
+    # The optimisation stack is the optional `inference` extra.
+    pytest.importorskip('torch')
+
     cfg = tmp_path / 'cfg.toml'
     cfg.write_text('# stub\n')
 
@@ -1181,6 +1185,69 @@ def test_infer_calls_infer_from_config(monkeypatch, tmp_path):
     assert res.exit_code == 0
     assert len(received) == 1
     assert received[0].name == 'cfg.toml'
+
+
+def _patch_infer_import(monkeypatch, error: ImportError):
+    """Make importing the inference entry point raise ``error``.
+
+    The CLI imports ``proteus.inference.inference`` lazily inside the
+    command, so the failure has to be injected at the import call itself
+    rather than by removing an installed package.
+    """
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == 'proteus.inference.inference':
+            raise error
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, '__import__', fake_import)
+
+
+@pytest.mark.unit
+def test_infer_reports_missing_inference_extra(monkeypatch, tmp_path):
+    """With the optimisation stack absent, ``proteus infer`` names the missing
+    package and the extra that provides it instead of surfacing a bare
+    ImportError traceback. The optimisation stack is optional, so this is the
+    first thing a user without it sees.
+    """
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    _patch_infer_import(monkeypatch, ImportError("No module named 'torch'", name='torch'))
+
+    res = runner.invoke(cli.infer, ['-c', str(cfg)])
+
+    assert res.exit_code == 1
+    # Both halves of the message matter: which package is missing, and the
+    # command that installs it.
+    assert 'torch' in res.output
+    assert 'fwl-proteus[inference]' in res.output
+    # A ClickException is reported, not raised through as a traceback.
+    assert res.exception is None or isinstance(res.exception, SystemExit)
+
+
+@pytest.mark.unit
+def test_infer_propagates_unrelated_import_error(monkeypatch, tmp_path):
+    """An ImportError from inside the inference package that is not one of the
+    optional distributions propagates unchanged. Discrimination: a blanket
+    except would answer a broken PROTEUS import with an install-the-extra
+    message and send the user chasing a dependency that is already present.
+    """
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    broken = ImportError(
+        "cannot import name 'missing_helper' from 'proteus.inference.utils'",
+        name='proteus.inference.utils',
+    )
+    _patch_infer_import(monkeypatch, broken)
+
+    res = runner.invoke(cli.infer, ['-c', str(cfg)])
+
+    assert res.exit_code == 1
+    assert res.exception is broken
+    assert 'fwl-proteus[inference]' not in res.output
 
 
 # ---------------------------

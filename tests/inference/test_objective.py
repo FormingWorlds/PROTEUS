@@ -13,9 +13,11 @@ import subprocess
 import pandas as pd
 import pytest
 import toml
-import torch
 
-import proteus.inference.objective as objective_mod
+# The Bayesian-optimisation stack ships as the optional `inference` extra.
+torch = pytest.importorskip('torch')
+
+import proteus.inference.objective as objective_mod  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

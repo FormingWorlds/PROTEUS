@@ -69,6 +69,21 @@ pip install "fwl-proteus[atmodeller]"
     atmodeller is distributed under the GPL-3.0 license; review its terms
     before installing.
 
+## Parameter inference (Bayesian optimisation)
+
+`proteus infer` runs the Bayesian-optimisation scheme, which is built on
+PyTorch, BoTorch and GPyTorch. Those three are a several-hundred-megabyte
+install that nothing else in PROTEUS uses, so a forward model or a
+`proteus grid` sweep does not need them:
+
+```console
+pip install "fwl-proteus[inference]"
+```
+
+Without the extra, `proteus infer` stops with a message naming the missing
+package; every other command is unaffected. See the
+[inference guide](inference.md) for how to configure a run.
+
 ## Atmospheric chemistry (VULCAN)
 
 VULCAN is an optional atmospheric-photochemistry backend, selected with

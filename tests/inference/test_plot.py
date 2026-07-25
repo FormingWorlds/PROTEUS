@@ -31,8 +31,11 @@ import pandas as pd
 import pytest
 import toml
 
-import proteus.inference.plot as plot_mod
-import proteus.inference.transforms as transforms_mod
+# The Bayesian-optimisation stack ships as the optional `inference` extra.
+pytest.importorskip('torch')
+
+import proteus.inference.plot as plot_mod  # noqa: E402
+import proteus.inference.transforms as transforms_mod  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

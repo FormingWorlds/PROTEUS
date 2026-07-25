@@ -18,6 +18,7 @@ import logging
 import numpy as np
 import pytest
 
+# The Bayesian-optimisation stack ships as the optional `inference` extra.
 torch = pytest.importorskip('torch')
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
