@@ -15,7 +15,10 @@ table below.
 a Zenodo version DOI declared in `src/proteus/data/proteus_manifest.toml`,
 verifies every file against a checksum registry committed beside that manifest,
 and places the files in a version directory named for the record, so a re-pinned
-deposit lands beside its predecessor rather than overwriting it.
+deposit lands beside its predecessor rather than overwriting it. Every request
+carries a connect and read timeout, and a transient failure is retried with
+backoff. Zenodo is currently the only mirror these datasets declare, so an
+unreachable Zenodo means the fetch fails rather than falling back elsewhere.
 
 **The PROTEUS downloader.** `proteus.utils.data` fetches a whole Zenodo record,
 retrying a few times, and falls back to the corresponding project on the

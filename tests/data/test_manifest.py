@@ -317,12 +317,11 @@ def test_fetch_dataset_delegates_to_the_pinned_fetcher(monkeypatch, tmp_path):
 
 
 def test_default_data_root_is_the_tree_proteus_reads_from(monkeypatch, tmp_path):
-    """A dataset fetched with no explicit root lands where the readers look.
+    """A dataset fetched with no explicit root lands below the run's data root.
 
-    The fetch side resolves the root through ``GetFWLData``, whose module-level
-    constant is frozen at import, while the plot side passes the root the run
-    resolved. If those diverge, ``proteus get reference`` reports success while
-    the plot warns that the data is missing.
+    The fetch side resolves the root from the module-level constant frozen at
+    import; a resolution that ignored it would populate a different tree from
+    the one the run reads.
     """
     monkeypatch.setenv('FWL_DATA', str(tmp_path))
     monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path, raising=False)
@@ -334,3 +333,30 @@ def test_default_data_root_is_the_tree_proteus_reads_from(monkeypatch, tmp_path)
     # Discrimination: a resolution that fell back to the repo-local default
     # would still be a valid path, but not one below the run's data root.
     assert implicit.is_relative_to(tmp_path)
+
+
+def test_fetch_and_read_sides_agree_on_a_home_relative_data_root(monkeypatch, tmp_path):
+    """PROTEUS and fwl-io must resolve ``FWL_DATA`` to the same tree.
+
+    Both resolvers run in this path: PROTEUS resolves the root for the fetch,
+    fwl-io resolves the root the readers are handed. A value carrying a literal
+    '~' is where they can disagree, and a disagreement means ``proteus get
+    reference`` reports success while the population diagram warns that the
+    data is missing. Compares the two implementations directly rather than
+    asserting either one in isolation.
+    """
+    from fwl_io.paths import resolve_data_root
+
+    from proteus.utils.helper import resolve_fwl_data_dir
+
+    monkeypatch.setenv('HOME', str(tmp_path))
+    monkeypatch.setenv('FWL_DATA', '~/fwl_data_root_check')
+
+    proteus_side = Path(resolve_fwl_data_dir()).absolute()
+    fwl_io_side = resolve_data_root()
+
+    assert proteus_side == fwl_io_side
+    # Discrimination: the failure this guards is a literal '~' directory below
+    # the working directory, which is still an absolute, plausible-looking path.
+    assert '~' not in str(proteus_side)
+    assert proteus_side.is_relative_to(tmp_path)

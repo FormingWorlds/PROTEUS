@@ -87,7 +87,11 @@ dependencies = [
     "botorch",
     "gpytorch",
     "toml",
-    "fwl-io>=26.7.22",
+    # 26.7.25 bounds the time a fetch can take: every request carries an
+    # explicit connect and read timeout, and a transient failure is retried
+    # with backoff instead of ending the fetch. Below that floor a stalled
+    # mirror hangs the start of a run with no diagnostic.
+    "fwl-io>=26.7.25",
     "zenodo-get",
     "zenodo-client>=0.4.1",
     "osfclient",

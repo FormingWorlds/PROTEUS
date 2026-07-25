@@ -28,7 +28,7 @@ MASS_RADIUS_ZENG_2019 = 'observe.mass_radius.zeng_2019'
 # this reads the manifest as malformed rather than as a version mismatch, so the
 # load names which side is out of date. Keep in step with the fwl-io requirement
 # in pyproject.toml; the test suite pins the two together.
-FWL_IO_FLOOR = '26.7.22'
+FWL_IO_FLOOR = '26.7.25'
 
 
 def manifest_path() -> Path:
