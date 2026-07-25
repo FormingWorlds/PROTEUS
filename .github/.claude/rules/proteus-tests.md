@@ -188,7 +188,7 @@ pytest.importorskip('boreas')
 
 Optional deps that have hit this trap on `tl/interior-refactor`: `hypothesis` (three times), `boreas`, `atmodeller`, `lovepy`, `mors`, `vulcan`, `zalmoxis` (when not installed via editable).
 
-The lint script (`tools/check_test_quality.py`) enforces this. Rule key `missing_importorskip`: any module-top `import <optional_dep>` or `from <optional_dep> import ...` that is not preceded by a module-scope `pytest.importorskip('<optional_dep>')` is flagged. The check covers `hypothesis`, `boreas`, `atmodeller`, `lovepy`, `mors`, `vulcan`, `zalmoxis`.
+The lint script (`tools/check_test_quality.py`) enforces this. Rule key `missing_importorskip`: any module-top `import <optional_dep>` or `from <optional_dep> import ...` that is not preceded by a module-scope `pytest.importorskip('<optional_dep>')` is flagged. The check covers `hypothesis`, `boreas`, `atmodeller`, `lovepy`, `mors`, `vulcan`, `zalmoxis`, `torch`, `botorch`, `gpytorch`.
 
 ---
 

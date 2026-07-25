@@ -83,9 +83,6 @@ dependencies = [
     "ruff",
     "sympy",
     "astropy",
-    "torch",
-    "botorch",
-    "gpytorch",
     "toml",
     # 26.7.25 bounds the time a fetch can take: every request carries an
     # explicit connect and read timeout, and a transient failure is retried
@@ -122,6 +119,18 @@ atmodeller = ["atmodeller>=1.0.2"]
 # atmos_chem.module = "vulcan". Also installable editable via
 # tools/get_vulcan.sh.
 vulcan = ["fwl-vulcan>=26.04.22"]
+
+# inference: the Bayesian-optimisation parameter inference run by
+# `proteus infer`. PyTorch and the two BoTorch/GPyTorch layers on top of
+# it are a several-hundred-megabyte dependency stack (larger on Linux,
+# where torch also pulls in the CUDA runtime packages) that nothing else
+# in the package imports, so a forward model or a grid does not pull them
+# in. Install on demand, e.g. `pip install "fwl-proteus[inference]"`.
+inference = [
+    "torch",
+    "botorch",
+    "gpytorch",
+]
 
 develop = [
     # coverage[toml] enables standalone coverage tool with TOML config support (used by ratcheting script)

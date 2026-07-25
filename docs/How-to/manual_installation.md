@@ -264,6 +264,13 @@ bash tools/get_zalmoxis.sh
 python -m pip install -e ".[develop]"
 ```
 
+The optional backends and the parameter-inference stack are not part of this
+install, and their tests skip without them. To match what CI runs:
+
+```console
+python -m pip install -e ".[develop,vulcan,atmodeller,inference]"
+```
+
 ## 9. Enable pre-commit hooks
 
 ```console
