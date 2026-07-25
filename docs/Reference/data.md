@@ -210,7 +210,9 @@ deleted.
 
 ## Mass-radius relations
 
-Obtained from [Zeng et al. (2016)](https://iopscience.iop.org/article/10.3847/0004-637X/819/2/127/meta).
+Theoretical mass-radius curves for a range of interior and atmospheric
+structures, from [Zeng et al. (2019)](https://doi.org/10.1073/pnas.1812905116),
+taken from the author's [planet model tables](https://lweb.cfa.harvard.edu/~lzeng/planetmodels.html#mrtables).
 
 Fetched through fwl-io into
 `$FWL_DATA/observe/mass_radius/zeng_2019/r<record-id>/`, on the same terms as
