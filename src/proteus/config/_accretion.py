@@ -171,8 +171,10 @@ class Accretion:
         Offset applied to every impact time when mapping the timeline onto
         the PROTEUS time axis [yr]. A dynamical model measures time from
         disk dispersal, while PROTEUS measures it from the start of its
-        own evolution. Impacts landing before the start of the run are
-        folded into the initial condition.
+        own evolution. Impacts that still land at or before the start of
+        the run are discarded with a warning, and their mass is not
+        applied anywhere: the configured planet mass and orbit define the
+        initial state on their own.
     impactor_volatiles: str
         Where each impactor's volatile content comes from. Choices:
         "dry" (impactors carry rock and iron only), "match_planet" (every
