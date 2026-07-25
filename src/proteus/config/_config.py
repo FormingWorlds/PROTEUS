@@ -109,9 +109,9 @@ def check_module_dependencies(instance, attribute, value):
         'morrigan': (
             instance.accretion.module == 'morrigan',
             'morrigan',
-            'accretion.module = "morrigan" requires the morrigan package, which '
-            'runs the giant-impact model. Install it with: '
-            'git clone git@github.com:FormingWorlds/Morrigan && pip install -e Morrigan/.',
+            'accretion.module = "morrigan" requires the optional morrigan package, '
+            'which runs the giant-impact model. Morrigan is not needed for a '
+            'standard PROTEUS run. Install it with: bash tools/get_morrigan.sh',
         ),
     }
 

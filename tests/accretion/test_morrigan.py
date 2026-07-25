@@ -88,6 +88,11 @@ def test_missing_package_is_reported_with_an_install_hint(monkeypatch):
     with pytest.raises(ImportError, match='requires the morrigan package'):
         backend.require_morrigan()
 
+    # The message must name the installer that resolves the pinned commit,
+    # not a bare clone: an unpinned checkout is the failure this replaced.
+    assert 'tools/get_morrigan.sh' in backend.INSTALL_HINT
+    assert 'git clone' not in backend.INSTALL_HINT
+
     # Installed but without the entry point: a different, specific message.
     monkeypatch.setattr(backend, 'morrigan', SimpleNamespace(), raising=False)
     with pytest.raises(ImportError, match='does not expose'):

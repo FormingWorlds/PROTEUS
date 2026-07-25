@@ -287,6 +287,15 @@ ref = "c9a3fd4301c7008291d4f4921506d36b6288f8ca"
 url = "https://github.com/ExoInteriors/BOREAS.git"
 ref = "0174edb04558a92a8f0b47cbd994964787f495aa"
 
+[tool.proteus.modules.morrigan]
+# Giant-impact accretion module (Python). Optional: installed explicitly
+# by tools/get_morrigan.sh, not pulled in by `pip install fwl-proteus`.
+# The package is not published on PyPI, so the pin lives here rather than
+# in [project] dependencies. Only `accretion.module = "morrigan"` runs
+# need it.
+url = "https://github.com/FormingWorlds/Morrigan.git"
+ref = "f44671b6b6d17d7320f05f578641b61431e9a7ad"
+
 [tool.proteus.modules.lovepy]
 # Multi-phase tidal heating module (Julia). Installed via Julia
 # Pkg.add(url=..., rev=...) by tools/get_lovepy.sh. Optional.

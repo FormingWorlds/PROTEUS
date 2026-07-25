@@ -26,8 +26,7 @@ MORRIGAN_ENTRY_POINT = 'run_system'
 
 INSTALL_HINT = (
     "accretion.module = 'morrigan' requires the morrigan package. "
-    'Install it with: git clone git@github.com:FormingWorlds/Morrigan && '
-    'pip install -e Morrigan/.'
+    'Install it with: bash tools/get_morrigan.sh'
 )
 
 

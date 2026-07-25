@@ -697,8 +697,8 @@ def test_ci_setup_installs_every_declared_extra():
 # ---------------------------------------------------------------------------
 
 
-def _extract_guard_block() -> str:
-    """Extract the shipped dirty-checkout guard from tools/get_aragog.sh.
+def _extract_guard_block(script_name: str = 'get_aragog.sh') -> str:
+    """Extract the shipped dirty-checkout guard from a ``tools/get_*.sh``.
 
     Reading the block from the script under test (rather than copying it
     into the test) pins the exact shipped lines: any rewording or logic
@@ -707,15 +707,19 @@ def _extract_guard_block() -> str:
     from pathlib import Path
 
     tools_dir = Path(__file__).resolve().parents[2] / 'tools'
-    script = (tools_dir / 'get_aragog.sh').read_text().splitlines()
+    script = (tools_dir / script_name).read_text().splitlines()
     start = next(i for i, ln in enumerate(script) if 'Refuse to delete a checkout' in ln)
     end = next(i for i, ln in enumerate(script) if ln.startswith('rm -rf'))
     return '\n'.join(script[start:end])
 
 
-def _run_guard(tmp_path, *args: str) -> subprocess.CompletedProcess:
+def _run_guard(
+    tmp_path, *args: str, script_name: str = 'get_aragog.sh'
+) -> subprocess.CompletedProcess:
     """Run the extracted guard with ``root`` pointing at ``tmp_path``."""
-    snippet = 'root="$GUARD_ROOT"\n' + _extract_guard_block() + '\necho GUARD_PASSED\n'
+    snippet = (
+        'root="$GUARD_ROOT"\n' + _extract_guard_block(script_name) + '\necho GUARD_PASSED\n'
+    )
     return subprocess.run(
         ['bash', '-c', snippet, 'guard', *args],
         capture_output=True,
@@ -800,6 +804,119 @@ def test_guard_passes_clean_remote_backed_checkout(tmp_path):
     res = _run_guard(tmp_path, '--force')
     assert res.returncode == 0
     assert 'GUARD_PASSED' in res.stdout
+
+
+def test_morrigan_guard_protects_its_own_checkout(tmp_path):
+    """The accretion installer guards the ``Morrigan/`` checkout it deletes.
+
+    ``tools/get_morrigan.sh`` refreshes a sibling clone that a developer
+    may also be working in, so it carries the shared guard rather than
+    relying on the copy in another script. The cases run against the
+    block lifted out of the shipped file: a clean, remote-backed clone is
+    refreshed; a commit that exists on no remote blocks; ``--force``
+    discards deliberately. The directory name is the discriminating part
+    here, since a guard copied verbatim from another installer would
+    inspect the wrong path and silently pass on a dirty Morrigan tree.
+    """
+    block = _extract_guard_block('get_morrigan.sh')
+    assert 'Morrigan/' in block, 'the guard must inspect the Morrigan checkout'
+    assert 'get_morrigan.sh --force' in block, 'the recovery hint must name its own script'
+    # Discrimination: a block copied from the escape installer would still
+    # contain the guard logic but would point at the wrong tree.
+    assert 'BOREAS/' not in block and 'aragog/' not in block
+
+    upstream = tmp_path / 'upstream'
+    upstream.mkdir()
+    _git(upstream, 'init', '-q')
+    (upstream / 'f.py').write_text('a = 1\n')
+    _git(upstream, 'add', 'f.py')
+    _git(upstream, 'commit', '-q', '-m', 'c1')
+
+    workdir = tmp_path / 'Morrigan'
+    _git(tmp_path, 'clone', '-q', str(upstream), str(workdir))
+    _git(workdir, 'checkout', '-q', '--detach', 'HEAD')
+    (workdir / 'morrigan.egg-info').write_text('')  # untracked: must not block
+
+    res = _run_guard(tmp_path, script_name='get_morrigan.sh')
+    assert res.returncode == 0
+    assert 'GUARD_PASSED' in res.stdout
+
+    # A local-only commit is exactly the state of a developer branch that
+    # has not been pushed; refreshing would destroy it.
+    (workdir / 'f.py').write_text('a = 2\n')
+    _git(workdir, 'add', 'f.py')
+    _git(workdir, 'commit', '-q', '-m', 'local work')
+    res = _run_guard(tmp_path, script_name='get_morrigan.sh')
+    assert res.returncode == 1
+    assert 'not on a remote' in res.stderr
+    assert 'GUARD_PASSED' not in res.stdout
+
+    res = _run_guard(tmp_path, '--force', script_name='get_morrigan.sh')
+    assert res.returncode == 0
+    assert 'GUARD_PASSED' in res.stdout
+
+    # Every installer that wipes a sibling git checkout carries the guard.
+    # Discovered from the shipped scripts so a newly added installer is
+    # covered without editing a list here. Scripts that unpack a download
+    # into the same variable (the PETSc archive) hold no local work and
+    # are correctly outside the sweep, which is why cloning is part of the
+    # predicate rather than deletion alone.
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    sources = {p: p.read_text() for p in sorted(tools_dir.glob('get_*.sh'))}
+    refreshing = [
+        p for p, src in sources.items() if 'rm -rf "$workpath"' in src and 'git clone' in src
+    ]
+    assert {p.name for p in refreshing} >= {'get_morrigan.sh', 'get_boreas.sh'}, (
+        f'expected the sibling-checkout installers to be discovered, got {refreshing!r}'
+    )
+    assert 'get_petsc.sh' not in {p.name for p in refreshing}, (
+        'the archive installer holds no git history and must stay out of the sweep'
+    )
+    unguarded = [p.name for p in refreshing if 'Refuse to delete a checkout' not in sources[p]]
+    assert unguarded == [], f'installers wipe a git checkout with no guard: {unguarded!r}'
+
+
+@pytest.mark.unit
+def test_pyproject_keeps_morrigan_out_of_mandatory_dependencies():
+    """Morrigan is installed only explicitly, via ``bash tools/get_morrigan.sh``.
+
+    Two clauses:
+    1. ``[project] dependencies`` must not list morrigan. The giant-impact
+       model is needed only by ``accretion.module = "morrigan"`` runs, and
+       the package is not published on PyPI, so a version pin there could
+       not resolve and a direct git URL would block PyPI uploads of
+       fwl-proteus.
+    2. The pin lives in ``[tool.proteus.modules.morrigan]`` with the
+       FormingWorlds GitHub URL and a full 40-character commit SHA, which
+       tools/get_morrigan.sh resolves through tools/_module_pins.py.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
+
+    deps = data['project']['dependencies']
+    morrigan_deps = [d for d in deps if 'morrigan' in d.lower()]
+    assert morrigan_deps == [], (
+        f'morrigan must not be a mandatory dependency of fwl-proteus: {morrigan_deps!r}'
+    )
+    # Discrimination: an empty dependencies list would also pass the check
+    # above; pin a known-mandatory package as evidence the list is intact.
+    assert any('fwl-calliope' in d for d in deps), 'mandatory dependency list is intact'
+
+    spec = data['tool']['proteus']['modules']['morrigan']
+    assert spec['url'].startswith('https://github.com/FormingWorlds/Morrigan'), (
+        f'morrigan pin must point at the FormingWorlds repo, got {spec["url"]!r}'
+    )
+    # Full-SHA pin: reproducible clone, short refs are ambiguous and
+    # mutable upstream.
+    assert re.fullmatch(r'[0-9a-f]{40}', spec['ref']), (
+        f'morrigan ref must be a full commit SHA, got {spec["ref"]!r}'
+    )
+    # The URL must be clonable over both transports the installer offers;
+    # the https form is rewritten to SSH in-script, which only works when
+    # the pin is stored in https form.
+    assert not spec['url'].startswith('git@'), (
+        'store the pin as an https URL; the installer rewrites it to SSH'
+    )
 
 
 # ---------------------------------------------------------------------------
