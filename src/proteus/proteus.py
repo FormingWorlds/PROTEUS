@@ -8,7 +8,9 @@ from pathlib import Path
 
 import numpy as np
 
-# ensure juliacall is imported before torch
+# juliacall has to load before torch does. Nothing here imports torch, but the
+# inference scheme brings it into the same process later, and the two clash if
+# torch wins the race.
 # see issue here: https://github.com/pytorch/pytorch/issues/78829
 from juliacall import Main  # noqa: F401
 
@@ -611,6 +613,34 @@ class Proteus:
 
             # Check if the planet is desiccated
             self.desiccated = check_desiccation(self.config, self.hf_row)
+
+            # Restore the crystallization flag. Without this it returns as
+            # False on every restart, so the first resumed iteration runs
+            # escape over the whole volatile inventory of a mantle that has
+            # already crystallized, drawing from dissolved reservoirs that are
+            # meant to be trapped. The main loop only re-derives the flag
+            # after escape has run, so the error lands on the first step of
+            # every restart.
+            #
+            # The flag latches: the loop sets it once the melt fraction drops
+            # to the threshold and never clears it, so a mantle that
+            # crystallized and later remelted stays frozen. Reading only the
+            # resumed row would clear it in exactly that case and diverge from
+            # an uninterrupted run, so the whole stored history is searched
+            # instead. Rows with no melt fraction recorded compare False and
+            # so leave the flag clear, which is the behaviour a helpfile
+            # written before the column existed had already.
+            if self.config.params.stop.solid.freeze_volatiles:
+                phi_history = self.hf_all.get('Phi_global')
+                self.crystallized = phi_history is not None and bool(
+                    (phi_history <= self.config.params.stop.solid.phi_crit).any()
+                )
+                if self.crystallized:
+                    log.info(
+                        'Resuming a crystallized mantle (Phi_global reached %.3f); '
+                        'outgassing stays stopped.',
+                        self.config.params.stop.solid.phi_crit,
+                    )
 
             # Interior initial condition
             self.interior_o.ic = 2

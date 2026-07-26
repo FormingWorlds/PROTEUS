@@ -23,13 +23,20 @@ import threading
 
 import numpy as np
 import pytest
-import torch
-from botorch.exceptions.warnings import OptimizationWarning
 
-from proteus.inference import BO as bo_mod
-from proteus.inference.utils import get_kernel_w_prior
+# The Bayesian-optimisation stack ships as the optional `inference` extra,
+# which installs all three together. Guarding the whole stack keeps a
+# partial environment skipping rather than failing collection.
+torch = pytest.importorskip('torch')
+pytest.importorskip('gpytorch')
+pytest.importorskip('botorch')
 
-from ._bo_helpers import make_quadratic_objective
+from botorch.exceptions.warnings import OptimizationWarning  # noqa: E402
+
+from proteus.inference import BO as bo_mod  # noqa: E402
+from proteus.inference.utils import get_kernel_w_prior  # noqa: E402
+
+from ._bo_helpers import make_quadratic_objective  # noqa: E402
 
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 

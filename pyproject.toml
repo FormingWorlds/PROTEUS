@@ -83,10 +83,12 @@ dependencies = [
     "ruff",
     "sympy",
     "astropy",
-    "torch",
-    "botorch",
-    "gpytorch",
     "toml",
+    # 26.7.25 bounds the time a fetch can take: every request carries an
+    # explicit connect and read timeout, and a transient failure is retried
+    # with backoff instead of ending the fetch. Below that floor a stalled
+    # mirror hangs the start of a run with no diagnostic.
+    "fwl-io>=26.7.25",
     "zenodo-get",
     "zenodo-client>=0.4.1",
     "osfclient",
@@ -101,14 +103,14 @@ documentation = "https://proteus-framework.org/proteus/"
 changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 
 [project.optional-dependencies]
-# Optional physics backends. These are not pulled in by a default
+# Optional physics backends. None of these are pulled in by a default
 # `pip install fwl-proteus`; a standard run uses CALLIOPE (outgassing)
-# and needs neither. Install on demand, e.g. `pip install
-# "fwl-proteus[atmodeller]"`. Both are licensed GPL-3.0; review their
-# terms before installing. (PROTEUS's own code is Apache-2.0, but the
-# default install already includes other GPL dependencies such as
-# fwl-aragog, so opting out of these two does not yield a GPL-free
-# environment.)
+# and needs none of them. Install on demand, e.g. `pip install
+# "fwl-proteus[atmodeller]"`. atmodeller and vulcan are licensed
+# GPL-3.0; review their terms before installing. (PROTEUS's own code is
+# Apache-2.0, but the default install already includes other GPL
+# dependencies such as fwl-aragog, so opting out of those two does not
+# yield a GPL-free environment.) morrigan is Apache-2.0.
 #
 # atmodeller: alternative outgassing backend (Bower+2025, ApJ 995:59),
 # selected via outgas.module = "atmodeller". Pulls JAX + equinox.
@@ -122,6 +124,18 @@ vulcan = ["fwl-vulcan>=26.04.22"]
 # accretion coupling replays. Also installable editable via
 # tools/get_morrigan.sh.
 morrigan = ["fwl-morrigan>=26.07.27"]
+
+# inference: the Bayesian-optimisation parameter inference run by
+# `proteus infer`. PyTorch and the two BoTorch/GPyTorch layers on top of
+# it are a several-hundred-megabyte dependency stack (larger on Linux,
+# where torch also pulls in the CUDA runtime packages) that nothing else
+# in the package imports, so a forward model or a grid does not pull them
+# in. Install on demand, e.g. `pip install "fwl-proteus[inference]"`.
+inference = [
+    "torch",
+    "botorch",
+    "gpytorch",
+]
 
 develop = [
     # coverage[toml] enables standalone coverage tool with TOML config support (used by ratcheting script)
@@ -151,12 +165,19 @@ docs = [
 [project.scripts]
 proteus = "proteus.cli:cli"
 
+# Lets fwl-io discover the datasets PROTEUS declares without importing PROTEUS.
+[project.entry-points."fwl_io.manifests"]
+proteus = "proteus.data:manifest_path"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 include-package-data = true
 
 [tool.setuptools.package-data]
 proteus = ["juliapkg.json"]
+# The manifest and its registries are read from the installed package, so they
+# have to travel in the wheel; without this they resolve only in a source tree.
+"proteus.data" = ["*.toml", "*.registry.txt"]
 
 [tool.coverage.run]
 branch = true
