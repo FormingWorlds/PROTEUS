@@ -581,6 +581,7 @@ ENVIRONMENT_VARS = [
 # missing when a user has not installed them.
 PYTHON_PACKAGES = [
     'fwl-proteus',
+    'fwl-io',
     'fwl-aragog',
     'fwl-calliope',
     'fwl-janus',
