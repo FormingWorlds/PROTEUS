@@ -86,6 +86,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'accretion.atmloss_frac',
         'accretion.atmloss_module',
         'accretion.dummy.eccentricity',
+        'accretion.dummy.timeline_path',
         'accretion.dummy.impact_parameter',
         'accretion.dummy.mass_accreted',
         'accretion.dummy.num_impacts',

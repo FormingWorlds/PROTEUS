@@ -68,13 +68,14 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
 
         runner.config.planet.tsurf_init = 2000.0
 
-        # A window that comfortably brackets the single impact below, with a
-        # timestep ceiling small enough that the clamp has to shorten a step to
-        # land on it rather than the impact happening to fall on a step edge.
+        # A window that comfortably brackets the single impact below. The
+        # timestep floor is far smaller than the shortening the clamp needs, so
+        # a step can land exactly on the impact time; leaving the floor above
+        # that shortening would let the run overshoot and still look correct.
         runner.config.params.stop.time.minimum = 1e2
         runner.config.params.stop.time.maximum = 1e5
         runner.config.params.dt.initial = 1e3
-        runner.config.params.dt.minimum = 1e2
+        runner.config.params.dt.minimum = 1e0
         runner.config.params.dt.maximum = 1e4
 
         runner.config.params.out.plot_mod = 0
@@ -96,6 +97,13 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
         runner.config.accretion.dummy.eccentricity = 0.05
         runner.config.accretion.impactor_volatiles = 'dry'
 
+        # Strip a fixed fraction of the atmosphere as well, so the ordering
+        # against escape and outgassing is exercised rather than skipped. The
+        # constant module is used because it needs no optional dependency.
+        atmloss = 0.25
+        runner.config.accretion.atmloss_module = 'constant'
+        runner.config.accretion.atmloss_frac = atmloss
+
         mass_before = runner.config.planet.mass_tot
 
         runner.start(resume=False, offline=True)
@@ -109,6 +117,16 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
         assert hf['Time'].max() > impact_time, (
             f'Run ended at {hf["Time"].max():.3e} yr, before the impact at '
             f'{impact_time:.3e} yr; the test would not have exercised anything'
+        )
+
+        # A step lands exactly on the impact time. The adaptive controller would
+        # not choose that time on its own, so this is the timestep clamp doing
+        # its job: without it the impact fires on whichever step first overshoots
+        # and the planet grows at the wrong moment.
+        times = hf['Time'].values
+        assert np.any(np.isclose(times, impact_time, rtol=0, atol=1e-6)), (
+            f'no step landed on the impact time {impact_time:.4e} yr; '
+            f'nearest was {times[np.argmin(np.abs(times - impact_time))]:.6e} yr'
         )
 
         # A dry impactor delivers no volatiles, so every kilogram of the
@@ -147,3 +165,22 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
         # non-decreasing and strictly larger at the end than at the start.
         m_int = hf['M_int'].values
         assert m_int[-1] > m_int[0], 'the interior mass must grow across the impact'
+
+        # The atmospheric strip ran and was booked into the loss ledger the
+        # desiccation criterion audits. Without this the ordering claim in this
+        # file's docstring would be untested, because a strip of zero exercises
+        # nothing about where the strip sits relative to escape and outgassing.
+        assert 'esc_kg_cumulative' in hf.columns
+        ledger = hf['esc_kg_cumulative'].fillna(0.0).values
+        assert np.all(np.diff(ledger) >= 0.0), 'the loss ledger must not decrease'
+        assert ledger[-1] > 0.0, (
+            'the impact strip removed nothing, so the strip path was not exercised'
+        )
+
+        # The strip is bounded by the atmosphere it is drawn from: it can never
+        # remove more than the whole atmosphere, whatever the fraction asks for.
+        assert 'M_atm' in hf.columns
+        assert np.all(hf['M_atm'].values >= 0.0), 'atmospheric mass must stay non-negative'
+        assert np.all(hf['M_atm'].values <= hf['M_planet'].values), (
+            'the atmosphere cannot outweigh the planet carrying it'
+        )

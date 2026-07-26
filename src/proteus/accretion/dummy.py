@@ -14,6 +14,19 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
+# Zero-pressure densities of the two components a rocky body is treated as a
+# mixture of [kg m-3]. They set the floor the mass-radius scaling is capped
+# against, so a small impactor cannot come out less dense than its own minerals.
+_RHO_IRON = 7870.0
+_RHO_SILICATE = 3300.0
+
+# Smallest impact worth applying, as a fraction of the total accreted mass. The
+# growth law's increments decay geometrically, so a timescale far shorter than
+# the impact spacing drives the later ones toward zero; each would still re-melt
+# the whole mantle and reset the orbit, which a boulder cannot do. Rejecting
+# them names the configuration error rather than letting the run apply it.
+_MIN_IMPACT_MASS_FRAC = 1.0e-4
+
 
 def _body_radius(config: Config, mass: float) -> float:
     """Radius of a rocky body of the given mass [m].
@@ -22,6 +35,17 @@ def _body_radius(config: Config, mass: float) -> float:
     parameterization the dummy interior structure uses, evaluated at the
     planet's configured core fraction so an impactor and its target share a
     composition.
+
+    That scaling is calibrated for planets and its radius grows as
+    ``M**0.282``, so the bulk density it implies falls without bound as the
+    mass does. Extrapolated to an impactor a hundred times lighter than Earth
+    it returns a body less dense than its own uncompressed minerals, which is
+    impossible and which would propagate into the collision speed and the
+    erosion law. The radius is therefore capped so the bulk density never falls
+    below the zero-pressure value of an iron and silicate mixture at the same
+    iron fraction. Above roughly a tenth of an Earth mass the cap is inactive
+    and the scaling governs; below it the body is treated as uncompressed,
+    which is the correct limit for a small body.
 
     Parameters
     ----------
@@ -41,7 +65,12 @@ def _body_radius(config: Config, mass: float) -> float:
         config.interior_struct.core_frac_mode,
         mass_tot_M_earth=m_ratio,
     )
-    return nl20_planet_radius_km(x_fe, m_ratio) * 1.0e3
+    radius = nl20_planet_radius_km(x_fe, m_ratio) * 1.0e3
+
+    rho_uncompressed = 1.0 / (x_fe / _RHO_IRON + (1.0 - x_fe) / _RHO_SILICATE)
+    radius_uncompressed = (3.0 * mass / (4.0 * math.pi * rho_uncompressed)) ** (1.0 / 3.0)
+
+    return min(radius, radius_uncompressed)
 
 
 def _impact_masses(config: Config) -> list[float]:
@@ -74,20 +103,28 @@ def _impact_masses(config: Config) -> list[float]:
         math.exp(-edges[k] / tau) - math.exp(-edges[k + 1] / tau) for k in range(n_impacts)
     ]
 
-    # A timescale far from the impact spacing makes the law unusable in one of
-    # two ways, and both have to be caught here rather than surfacing later as
-    # a zero-mass impactor. Too short and the law completes inside the first
-    # interval, so every later weight underflows to zero; too long and the
-    # accreted fraction over the whole timeline underflows, so they all do.
+    # A timescale far from the impact spacing makes the law unusable. Too short
+    # and it completes inside the first interval, leaving the later impacts with
+    # a vanishing share; too long and the accreted fraction over the whole
+    # timeline underflows, leaving all of them with one. The test is on the
+    # delivered masses rather than on the weights, because a weight can be
+    # positive and still describe an impact too small to be a giant impact,
+    # which would nonetheless re-melt the mantle and reset the orbit.
     total = sum(weights)
-    if total <= 0.0 or min(weights) <= 0.0:
+    if total <= 0.0:
+        smallest = 0.0
+    else:
+        smallest = min(weights) / total
+
+    if smallest < _MIN_IMPACT_MASS_FRAC:
         raise ValueError(
             f'accretion.dummy.timescale = {tau:.3e} yr cannot distribute mass over '
             f'{n_impacts} impacts ending at time_last = {float(dummy.time_last):.3e} yr: '
-            'the accretion law is either finished or has barely begun by the time the '
-            'impacts are spaced, leaving at least one of them with no mass to deliver. '
-            'Bring timescale closer to the impact spacing, '
-            f'{float(dummy.time_last) / n_impacts:.3e} yr.'
+            f'the smallest would carry {smallest:.3e} of the accreted mass, below the '
+            f'{_MIN_IMPACT_MASS_FRAC:.0e} floor, which is not a giant impact but would '
+            'still re-melt the mantle and reset the orbit. Bring timescale closer to the '
+            f'impact spacing, {float(dummy.time_last) / n_impacts:.3e} yr, or ask for '
+            'fewer impacts.'
         )
 
     delivered = float(dummy.mass_accreted) * M_earth
@@ -103,7 +140,12 @@ def _impact_times(config: Config) -> list[float]:
 
 
 def _merged_orbit(
-    m_target: float, m_impactor: float, a_target: float, eccentricity: float, m_star: float
+    m_target: float,
+    m_impactor: float,
+    a_target: float,
+    e_target: float,
+    e_impactor: float,
+    m_star: float,
 ) -> tuple[float, float, float]:
     """Orbit and encounter velocity produced by a perfect merger.
 
@@ -111,22 +153,25 @@ def _merged_orbit(
     leaves the collision point with the mass-weighted mean of the two
     velocities, and its orbit follows from that velocity at that radius.
 
-    The geometry is coplanar and fully determined by one parameter: the target
-    is on a circular orbit of radius ``a_target``, and the impactor is on an
-    orbit of the same semi-major axis with eccentricity ``eccentricity``,
-    evaluated where it crosses the target. At that radius the impactor's speed
-    equals the circular speed while its velocity is tilted, which is what
-    supplies the relative velocity at contact. In the small-eccentricity limit
-    that relative velocity reduces to ``eccentricity * v_kep``.
+    The geometry is coplanar and co-orbital: both bodies share the semi-major
+    axis ``a_target`` and are evaluated where they cross that radius, each with
+    its own eccentricity. At that radius a body's speed equals the circular
+    speed whatever its eccentricity, while its velocity is tilted out of the
+    tangential direction by an amount the eccentricity sets, and that tilt is
+    what supplies the relative velocity at contact. The two are taken to cross
+    in opposite radial directions, one rising and one falling, which is the
+    configuration that brings them together. For a circular target and small
+    impactor eccentricity the relative velocity reduces to
+    ``e_impactor * v_kep``.
 
     Parameters
     ----------
     m_target, m_impactor : float
         Masses of the two bodies [kg].
     a_target : float
-        Semi-major axis of the target's circular orbit [m].
-    eccentricity : float
-        Eccentricity of the impactor's orbit [1].
+        Shared semi-major axis [m].
+    e_target, e_impactor : float
+        Eccentricities of the two bodies' orbits [1].
     m_star : float
         Mass of the host star [kg].
 
@@ -143,12 +188,12 @@ def _merged_orbit(
     mu = const_G * m_star
     v_kep = math.sqrt(mu / a_target)
 
-    # Velocity components at the crossing radius, (radial, tangential). The
-    # target is circular, so it is purely tangential. The impactor shares the
-    # semi-major axis, so it shares the speed, but carries the angular momentum
-    # of an eccentric orbit and makes up the rest radially.
-    v_target = (0.0, v_kep)
-    v_impactor = (v_kep * eccentricity, v_kep * math.sqrt(1.0 - eccentricity**2))
+    # Velocity components at the crossing radius, (radial, tangential). A body
+    # sharing the semi-major axis shares the speed, but an eccentric one carries
+    # less angular momentum and makes up the difference radially. The two cross
+    # in opposite radial senses, so their radial components have opposite signs.
+    v_target = (-v_kep * e_target, v_kep * math.sqrt(1.0 - e_target**2))
+    v_impactor = (v_kep * e_impactor, v_kep * math.sqrt(1.0 - e_impactor**2))
 
     v_encounter = math.hypot(
         v_impactor[0] - v_target[0],
@@ -162,9 +207,10 @@ def _merged_orbit(
     )
 
     # Vis-viva at the collision radius, then the angular momentum fixes the
-    # eccentricity. Averaging two bound velocities at one radius can only lower
-    # the specific energy, so the merged orbit is always bound and interior to
-    # the target's.
+    # eccentricity. Averaging two velocities of equal magnitude can only lower
+    # the speed, so under this co-orbital geometry the merged orbit is always
+    # bound and never wider than the one the bodies shared. That is a property
+    # of the shared semi-major axis, not a general result for mergers.
     speed_sq = v_merged[0] ** 2 + v_merged[1] ** 2
     a_after = 1.0 / (2.0 / a_target - speed_sq / mu)
 
@@ -204,16 +250,27 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
 
     m_target = float(config.planet.mass_tot) * M_earth
     a_target = float(config.orbit.semimajoraxis) * AU
+    e_target = float(config.orbit.eccentricity)
 
     events = []
     for index, (time, m_impactor) in enumerate(zip(times, masses)):
         m_merged = m_target + m_impactor
 
+        if m_impactor > m_target:
+            raise ValueError(
+                f'Impact {index} would strike a target lighter than the impactor '
+                f'({m_impactor / M_earth:.4f} onto {m_target / M_earth:.4f} M_earth). '
+                'Everything downstream treats the target as the surviving body: it is '
+                'the target whose mantle re-melts and whose atmosphere is stripped, so '
+                'the roles cannot be reversed. Lower accretion.dummy.mass_accreted or '
+                'raise planet.mass_tot.'
+            )
+
         r_target = _body_radius(config, m_target)
         r_impactor = _body_radius(config, m_impactor)
 
         a_after, e_after, v_encounter = _merged_orbit(
-            m_target, m_impactor, a_target, eccentricity, m_star
+            m_target, m_impactor, a_target, e_target, eccentricity, m_star
         )
 
         # Contact speed: the encounter velocity, focused by the pair's mutual
@@ -246,6 +303,7 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
 
         m_target = m_merged
         a_target = a_after
+        e_target = e_after
 
     validate_timeline(events)
 

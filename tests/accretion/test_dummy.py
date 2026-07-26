@@ -36,6 +36,7 @@ def _config(
     impact_parameter=0.5,
     mass_tot=1.0,
     semimajoraxis=1.0,
+    orbit_eccentricity=0.0,
     star_mass=1.0,
     time_offset=0.0,
 ):
@@ -54,7 +55,7 @@ def _config(
             ),
         ),
         planet=SimpleNamespace(mass_tot=mass_tot),
-        orbit=SimpleNamespace(semimajoraxis=semimajoraxis),
+        orbit=SimpleNamespace(semimajoraxis=semimajoraxis, eccentricity=orbit_eccentricity),
         star=SimpleNamespace(mass=star_mass),
         interior_struct=SimpleNamespace(core_frac=0.55, core_frac_mode='radius'),
     )
@@ -186,10 +187,12 @@ def test_a_circular_encounter_leaves_the_orbit_untouched():
 def test_a_merger_shrinks_the_orbit_and_leaves_it_bound():
     """Conserving momentum through a collision can only lower the orbit.
 
-    Averaging two bound velocities at one radius lowers the specific orbital
-    energy, so the merged semi-major axis must be smaller than the target's and
-    the orbit must stay bound. An implementation that conserved energy instead
-    of momentum, the plausible alternative, would not shrink the orbit at all.
+    Averaging two velocities of equal magnitude lowers the specific orbital
+    energy, so under the co-orbital geometry this module assumes the merged
+    semi-major axis must be smaller than the target's and the orbit must stay
+    bound. That is a property of the shared semi-major axis, not a general
+    result for mergers. An implementation that conserved energy instead of
+    momentum, the plausible alternative, would not shrink the orbit at all.
     The merged orbit is also checked against vis-viva evaluated on the
     independently computed merged velocity.
     """
@@ -289,7 +292,7 @@ def test_merged_orbit_conserves_angular_momentum_of_the_merged_body():
     eccentricity = 0.2
 
     a_after, e_after, v_encounter = _merged_orbit(
-        m_target, m_impactor, a_target, eccentricity, m_star
+        m_target, m_impactor, a_target, 0.0, eccentricity, m_star
     )
 
     v_kep = math.sqrt(mu / a_target)

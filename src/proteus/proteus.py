@@ -759,6 +759,14 @@ class Proteus:
                 # Create new row to hold the updated variables. This will be
                 #    overwritten by the routines below.
                 self.hf_row = self.hf_all.iloc[-1].to_dict()
+
+                # Per-step impact heat starts at zero on every row. The column
+                # accumulates within a step, because several impacts can land
+                # in one, so carrying the previous row's value forward would
+                # book an earlier impact's heat again. Cleared here rather than
+                # in a solver's success branch so it holds for every interior
+                # module and for the paths that return before that branch.
+                self.hf_row['step_dE_impact_J'] = 0.0
             log.info(' ')
             PrintSeparator()
             log.info('Loop counters')

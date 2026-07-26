@@ -113,7 +113,9 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
         events = get_timeline(config)
         write_timeline(events, resolved_path)
 
-    return _drop_events_before_start(events, handler.hf_row.get('Time', 0.0))
+    return _drop_events_before_start(
+        events, handler.hf_row.get('Time', 0.0), resumed=bool(config.params.resume)
+    )
 
 
 def restore_accretion_state(handler: Proteus) -> None:
@@ -145,7 +147,11 @@ def restore_accretion_state(handler: Proteus) -> None:
     """
     config = handler.config
 
-    if config.accretion.module is None or not config.params.resume:
+    # Driven by the ledger, not by the module setting. Turning accretion off to
+    # continue a run whose impacts are done is a reasonable thing to do, and it
+    # must not silently revert the planet to its configured mass: what the
+    # helpfile records is what happened, whatever the module is set to now.
+    if not config.params.resume:
         return
 
     hf_row = handler.hf_row
@@ -693,14 +699,20 @@ def _restore_volatile_budgets(hf_row: dict, budgets: dict) -> None:
 
 
 def _drop_events_before_start(
-    events: list[ImpactEvent], time_start: float
+    events: list[ImpactEvent], time_start: float, resumed: bool = False
 ) -> list[ImpactEvent]:
-    """Remove impacts that precede the start of the simulation.
+    """Remove impacts that precede the current point on the time axis.
 
-    The configuration owns the planet's initial mass and orbit, so an
-    impact that lands before the run begins cannot be applied without
-    contradicting it. Such impacts are reported rather than dropped in
-    silence, since they usually mean the time offset needs adjusting.
+    On a fresh run the configuration owns the planet's initial mass and orbit,
+    so an impact landing before the run begins cannot be applied without
+    contradicting it. Such impacts are reported rather than dropped in silence,
+    since they usually mean the time offset needs adjusting.
+
+    On a resume the same filter serves the opposite purpose: it removes impacts
+    the earlier session already applied, whose mass the planet is carrying and
+    whose rock is restored from the helpfile. Those are not missing from the
+    run, so they are reported as already applied and the offset advice is
+    withheld, because acting on it would apply them a second time.
 
     Parameters
     ----------
@@ -708,26 +720,38 @@ def _drop_events_before_start(
         Timeline, in time order.
     time_start : float
         Simulation time at the start of the run [yr].
+    resumed : bool
+        Whether this run is resuming an earlier session.
 
     Returns
     -------
     kept : list of ImpactEvent
-        Impacts at or after the start of the run.
+        Impacts after the current point on the time axis.
     """
     kept = [e for e in events if e.time > time_start]
     dropped = len(events) - len(kept)
 
     if dropped:
         missed_mass = sum(e.mass_delta for e in events if e.time <= time_start)
-        log.warning(
-            '%d impact(s) fall at or before the start of the run (t = %.4e yr) and '
-            'will not be applied, because the configured planet mass and orbit define '
-            'the initial state. They would have added %.4f M_earth. Adjust '
-            'accretion.time_offset to bring them into the simulated interval.',
-            dropped,
-            time_start,
-            missed_mass / M_earth,
-        )
+        if resumed:
+            log.info(
+                '%d impact(s) fall at or before the resume point (t = %.4e yr) and were '
+                'applied by an earlier session, adding %.4f M_earth that the planet is '
+                'already carrying.',
+                dropped,
+                time_start,
+                missed_mass / M_earth,
+            )
+        else:
+            log.warning(
+                '%d impact(s) fall at or before the start of the run (t = %.4e yr) and '
+                'will not be applied, because the configured planet mass and orbit define '
+                'the initial state. They would have added %.4f M_earth. Adjust '
+                'accretion.time_offset to bring them into the simulated interval.',
+                dropped,
+                time_start,
+                missed_mass / M_earth,
+            )
 
     log.info('Scheduled %d impact(s)', len(kept))
     if kept:

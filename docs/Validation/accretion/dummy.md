@@ -19,8 +19,11 @@ The module derives an impact chain rather than integrating one, so what it
 must certify is that the chain is physically admissible, not that it
 reproduces any particular system. Mass closes at every merger and over the
 whole timeline; the collision speed satisfies the floor the timeline validator
-enforces, with equality in the circular limit; and the merged orbit is bound,
-interior to the target's, and internally consistent in angular momentum.
+enforces, with equality in the circular limit; and the merged orbit is bound
+and internally consistent in angular momentum. The merged orbit is also never
+wider than the one the two bodies shared, but that follows from the co-orbital
+geometry the module assumes rather than from mergers in general: bodies meeting
+from different semi-major axes can merge onto a wider orbit.
 
 The growth law itself is a modelling choice rather than a measured quantity,
 so it is pinned by its own structure: consecutive impactor masses differ by
@@ -30,4 +33,10 @@ which fixes the renormalisation.
 
 Radii come from the Noack & Lasbleis (2020) scaling laws through
 `utils.structure_estimate`, whose own anchors are certified with the dummy
-interior structure; this module inherits them rather than restating them.
+interior structure. Those laws are calibrated for planets, and their implied
+bulk density falls without bound as the mass does, so an impactor well below an
+Earth mass would otherwise come out less dense than its own uncompressed
+minerals. The radius is capped so the bulk density never falls below the
+zero-pressure value of an iron and silicate mixture at the same iron fraction,
+which is the correct limit for a small body and is where the certification of
+the scaling laws stops applying.

@@ -5951,17 +5951,25 @@ def test_remelt_refuses_spider_and_rejects_an_unknown_backend():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_a_remelt_that_would_cool_the_mantle_is_refused():
-    """An impact adds energy, so the re-melt cannot lower the mantle entropy.
+def test_a_remelt_that_would_cool_the_mantle_books_nothing(caplog):
+    """An impact adds energy, so the re-melt can never book a heat loss.
 
     The re-melt re-applies the run's temperature-mode initial condition. Only
     'liquidus_super' guarantees that condition is molten for any planet mass
     and melting curve; a mode anchored on a user-supplied temperature can sit
-    below the current thermal state, in which case the "re-melt" would cool the
-    mantle and book negative impact heat. Negative impact heat is unphysical
-    and enters both sides of the energy budget, so it would corrupt the ledger
-    silently rather than fail. The run must stop instead, naming the mode.
+    below the current thermal state, and so can any mode once the mantle is
+    already at the state a second impact would reset it to. Booking the
+    resulting negative value would corrupt the energy ledger silently, because
+    it enters both sides of the residual and leaves it closed. Nothing is
+    booked, and the discrepancy is reported with its size and the mode.
+
+    The guard is on the quadrature result rather than on a summary of the two
+    entropy profiles, because the quadrature weights each cell by volume and by
+    rho*T and those weightings disagree with depth: a profile that rises on
+    average can still integrate to a loss.
     """
+    import logging
+
     cooled = np.full(6, 3900.0)  # already hotter than the IC below
     solver = _FakeAragogSolver(cooled_profile=cooled)
     interior_o = SimpleNamespace(
@@ -5971,27 +5979,30 @@ def test_a_remelt_that_would_cool_the_mantle_is_refused():
     config.planet.temperature_mode = 'adiabatic_from_cmb'
 
     colder_ic = np.full(6, 2400.0)
+    would_remove = 6 * (3900.0 - 2400.0) * _FakeAragogSolver._HEAT_PER_ENTROPY
 
     hf_row = {}
-    with patch(
-        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
-        side_effect=lambda cfg, io, outdir, row: colder_ic,
-    ):
-        with pytest.raises(RuntimeError, match='cool the mantle'):
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.wrapper'):
+        with patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            side_effect=lambda cfg, io, outdir, row: colder_ic,
+        ):
             remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
 
-    # The offending mode is named, so the message is actionable rather than
-    # just reporting that something went wrong.
-    with patch(
-        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
-        side_effect=lambda cfg, io, outdir, row: colder_ic,
-    ):
-        with pytest.raises(RuntimeError, match='adiabatic_from_cmb'):
-            remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
+    # Nothing is booked, so the negative value never reaches the budget.
+    assert hf_row['step_dE_impact_J'] == 0.0
+    # Discrimination: booking it would have put -1.35e31 J into both residual
+    # sides, which is the whole re-melt enthalpy rather than a rounding of it.
+    assert would_remove > 1e30
 
-    # No heat was booked: the guard fires before the quadrature, so a corrupt
-    # value cannot reach the row even transiently.
-    assert hf_row.get('step_dE_impact_J', 0.0) == 0.0
+    # The report names the mode and carries the size, so the configuration
+    # error is actionable from the log rather than merely noted.
+    assert 'adiabatic_from_cmb' in caplog.text
+    assert 'remove' in caplog.text
+
+    # The re-melt still takes effect: the reset is a thermodynamic convention
+    # and only the energy booking is suppressed.
+    np.testing.assert_allclose(interior_o._last_entropy, colder_ic)
 
 
 @pytest.mark.unit

@@ -1166,11 +1166,31 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
 def ReadHelpfileFromCSV(output_dir: str):
     """
     Read helpfile from disk CSV file to DataFrame
+
+    Columns the current schema defines but the file does not carry are added
+    as zero. A run started under an earlier schema writes a helpfile without
+    them, and a resume feeds its last row straight back into ``ExtendHelpfile``,
+    which rejects a row missing any schema key. Backfilling here keeps a run in
+    flight when a new column is added, and zero is the right value for the
+    cumulative ledgers this affects: nothing was recorded, so nothing accrued.
     """
     fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
-    return pd.read_csv(fpath, sep=r'\s+')
+    df = pd.read_csv(fpath, sep=r'\s+')
+
+    missing = [key for key in GetHelpfileKeys() if key not in df.columns]
+    if missing:
+        log.warning(
+            'Helpfile predates %d column(s) in the current schema; backfilling with zero: %s',
+            len(missing),
+            ', '.join(sorted(missing)),
+        )
+        # Added in one concat rather than one insert per column, which would
+        # fragment the frame and warn on a schema several columns behind.
+        df = pd.concat([df, pd.DataFrame(0.0, index=df.index, columns=missing)], axis=1)
+
+    return df
 
 
 def _netcdf_readable(path: str) -> bool:

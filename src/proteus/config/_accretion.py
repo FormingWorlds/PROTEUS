@@ -118,6 +118,19 @@ class Morrigan:
     selector_value: float | str | None = field(default=None, converter=none_if_none)
 
 
+def valid_accretiondummy(instance, attribute, value):
+    """Refuse a timeline path aimed at the module that generates its own."""
+    if instance.dummy.timeline_path is None:
+        return
+
+    raise ValueError(
+        '`accretion.dummy.timeline_path` is not a parameter of the analytical '
+        'accretion module, which derives its own impact history. To replay a '
+        "timeline from a file, set `accretion.module = 'timeline'` and move the "
+        'path to `accretion.timeline.timeline_path`.'
+    )
+
+
 def valid_accretiontimeline(instance, attribute, value):
     if instance.module != 'timeline':
         return
@@ -188,8 +201,14 @@ class AccretionDummy:
     impact_parameter: float
         Impact parameter of every collision [1], the sine of the impact angle.
         Zero is head-on, one is grazing.
+    timeline_path: str or None
+        Not a parameter of this module. Present only to reject a configuration
+        that sets it here, which asks to replay a file and would otherwise be
+        served a generated timeline at default settings. Use
+        ``accretion.module = "timeline"`` and ``accretion.timeline.timeline_path``.
     """
 
+    timeline_path: str | None = field(default=None, converter=none_if_none)
     mass_accreted: float = field(default=0.1, validator=gt(0))
     num_impacts: int = field(default=3, validator=ge(1))
     timescale: float = field(default=1.0e6, validator=gt(0))
@@ -235,12 +254,15 @@ class Accretion:
     appreciably, which is the regime this coupling targets, and diverge outside
     it: a mantle already near the initial condition absorbs almost nothing, and
     a cool mantle struck by a small impactor absorbs far more than the impact
-    supplied. The run reports the ratio of the two at every impact and warns
-    when it leaves the physically expected band, because the conservation
-    residual cannot detect the discrepancy: the injection is added to both of
-    its sides, so it stays closed for any injected value. Interpret the thermal
-    response to an impact as a property of the chosen initial condition, and
-    check that ratio before reading it as a consequence of the collision.
+    supplied. On the Aragog interior, which resolves an entropy profile and so
+    can quantify the injection, the run reports it as a fraction of the impact
+    kinetic energy and warns when that fraction leaves the physically expected
+    band. That report is the only check available, because the conservation
+    residual adds the injection to both of its sides and so stays closed for
+    any value. The scalar interiors reset a temperature rather than a profile
+    and book no injection, so neither the report nor the warning applies there.
+    Interpret the thermal response to an impact as a property of the chosen
+    initial condition rather than of the collision.
 
     Attributes
     ----------
@@ -306,7 +328,7 @@ class Accretion:
     )
 
     morrigan: Morrigan = field(factory=Morrigan, validator=valid_morrigan)
-    dummy: AccretionDummy = field(factory=AccretionDummy)
+    dummy: AccretionDummy = field(factory=AccretionDummy, validator=valid_accretiondummy)
     timeline: AccretionTimeline = field(
         factory=AccretionTimeline, validator=valid_accretiontimeline
     )

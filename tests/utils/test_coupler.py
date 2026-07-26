@@ -3039,3 +3039,54 @@ def test_select_resumable_snapshot_rejects_cross_row_atm_collision(tmp_path):
     # cannot load it against the 30.2-trimmed helpfile.
     assert not (data / '31.json.incomplete').exists()
     assert not (data / '31.json').exists()
+
+
+@pytest.mark.unit
+def test_a_helpfile_predating_a_schema_column_still_resumes(tmp_path):
+    """A run in flight when a column is added must survive its own resume.
+
+    The helpfile a run writes carries the schema in force when it started.
+    Adding a column and resuming feeds that file's last row straight back into
+    ExtendHelpfile, which rejects a row missing any schema key, so without a
+    backfill every in-flight run in the fleet dies on its next restart, whether
+    or not it uses the feature the column belongs to. The backfill is zero,
+    which is correct for the cumulative ledgers this affects: nothing was
+    recorded, so nothing accrued.
+    """
+    from proteus.utils.coupler import (
+        ExtendHelpfile,
+        GetHelpfileKeys,
+        ReadHelpfileFromCSV,
+        ZeroHelpfileRow,
+    )
+
+    absent = ('M_accreted_rock', 'esc_kg_cumulative')
+    row = ZeroHelpfileRow()
+    for key in absent:
+        assert key in row, f'{key} must be in the current schema for this test to mean anything'
+        del row[key]
+
+    pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+
+    # Every schema column is present, and the ones that were absent read zero
+    # rather than NaN, which would poison any later arithmetic on them.
+    for key in GetHelpfileKeys():
+        assert key in loaded.columns, f'{key} missing after backfill'
+    for key in absent:
+        assert loaded[key].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+        assert np.isfinite(loaded[key].iloc[-1])
+
+    # The resume path itself: the restored row is accepted.
+    ExtendHelpfile(loaded, loaded.iloc[-1].to_dict())
+
+    # Columns the file did carry are untouched, so the backfill does not
+    # overwrite real data with zeros.
+    original = ZeroHelpfileRow()
+    original['T_surf'] = 1234.5
+    for key in absent:
+        del original[key]
+    pd.DataFrame([original]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+    reloaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert reloaded['T_surf'].iloc[-1] == pytest.approx(1234.5, rel=1e-9)

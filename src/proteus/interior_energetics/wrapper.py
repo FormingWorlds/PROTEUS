@@ -86,13 +86,6 @@ _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 # counter resets on each successful Aragog call.
 _ARAGOG_MAX_CONSECUTIVE_FAILS = 3
 
-# Slack on the "a giant-impact re-melt cannot cool the mantle" guard, as a
-# fraction of the pre-impact mean entropy. Sized to absorb the round-off of the
-# EOS lookup that builds the molten profile while still rejecting a mode whose
-# initial condition genuinely sits below the current state, which lands orders
-# of magnitude below this bound rather than just inside it.
-_REMELT_ENTROPY_RTOL = 1e-6
-
 # Band the giant-impact re-melt injection is expected to occupy as a fraction
 # of the collision's kinetic energy. Giant-impact studies retain of order tens
 # of percent of the impact energy as mantle heat, the rest leaving as ejecta
@@ -1910,31 +1903,6 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     S_molten = AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
     S_molten = np.asarray(S_molten, dtype=float).ravel()
 
-    # An impact deposits energy, so the re-melt cannot leave the mantle cooler
-    # than it found it. A temperature mode whose initial condition sits below
-    # the current state would do exactly that and book negative impact heat,
-    # which is unphysical and would corrupt the budget. The test is on the mean
-    # entropy rather than node by node, so a single-node EOS wiggle at a
-    # boundary cannot trip it, and relative because entropy here is
-    # positive-definite and of order 1e3 J kg-1 K-1. Checked before the carrier
-    # is rewritten, so a refused re-melt leaves no half-applied state behind.
-    if (
-        S_cooled is not None
-        and S_cooled.size > 0
-        and float(S_molten.mean()) < float(S_cooled.mean()) * (1.0 - _REMELT_ENTROPY_RTOL)
-    ):
-        raise RuntimeError(
-            'Giant-impact re-melt would cool the mantle: the '
-            f"temperature_mode='{config.planet.temperature_mode}' initial "
-            'condition sits below the current thermal state, so the impact '
-            'would remove heat instead of adding it. Use '
-            "temperature_mode='liquidus_super', which is molten for any "
-            'planet mass and melting curve, or raise the initial state this '
-            'mode is anchored to.'
-        )
-
-    interior_o._last_entropy = S_molten.copy()
-
     # Book the injected heat over the cooled-to-molten entropy jump, in the
     # residual's own frame: the solver's Σ V_i ∫ rho(P_i,S) T(P_i,S) dS
     # quadrature evaluated between the two profiles. Positive when the re-melt
@@ -1942,13 +1910,43 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     # state integral carries it; this column is how it enters the budget.
     if S_cooled is not None and S_cooled.size > 0:
         dE_impact = float(solver._step_heat_content(S_cooled, S_molten))
+
+        # An impact deposits energy, so the re-melt cannot book a heat loss. The
+        # test is on the booked quantity itself rather than on a summary of the
+        # entropy profiles: the quadrature weights each cell by its volume and
+        # by rho*T, and those weightings pull in opposite directions with depth,
+        # so a profile that rises on average can still integrate to a loss.
+        #
+        # A negative value means the mantle is already above the state this
+        # impact resets it to, which happens when two impacts fall close
+        # together, when the initial condition shifts with the grown planet, or
+        # when the temperature mode is anchored below the current state. None of
+        # those is an energy source, so nothing is booked; clamping rather than
+        # aborting keeps a long run alive, and the warning carries the size of
+        # the discrepancy so it can be judged from the log.
+        if dE_impact < 0.0:
+            log.warning(
+                '    re-melt would remove %.3e J rather than add heat: the mantle is '
+                "above the temperature_mode='%s' state this impact resets it to. "
+                'Nothing is booked. If this is not a pair of impacts landing together, '
+                'the initial condition is too cool for this planet; temperature_mode='
+                "'liquidus_super' is molten for any mass and melting curve.",
+                abs(dE_impact),
+                config.planet.temperature_mode,
+            )
+            dE_impact = 0.0
+
+        interior_o._last_entropy = S_molten.copy()
+
         # Accumulate rather than assign: when two impacts fall inside one
         # timestep the second re-melt measures an already-molten mantle and
         # contributes almost nothing, and assigning would discard the first
-        # impact's injection from the row. The next solve re-zeros the column.
+        # impact's injection from the row. The row is zeroed when it is created,
+        # so the column cannot accumulate across steps.
         hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0) + dE_impact
         log.info('    re-melt heat injection %.3e J booked into the energy budget', dE_impact)
     else:
+        interior_o._last_entropy = S_molten.copy()
         # No prior profile to measure the jump from (no completed solve has
         # stored one). The injection cannot be quantified, so it is left
         # unbooked and said so, rather than booking a silent zero. An earlier
@@ -2051,7 +2049,7 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
         dE_impact = float(hf_row.get('step_dE_impact_J') or 0.0) - booked_before
         log.info('    impact kinetic energy %.3e J', e_impact)
 
-        if e_impact > 0.0 and dE_impact > 0.0:
+        if e_impact > 0.0 and dE_impact != 0.0:
             retained = dE_impact / e_impact
             log.info('    re-melt injection is %.3f of the impact kinetic energy', retained)
             if not _REMELT_RETAINED_BAND[0] <= retained <= _REMELT_RETAINED_BAND[1]:

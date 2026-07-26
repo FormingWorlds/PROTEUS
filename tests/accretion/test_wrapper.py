@@ -1486,6 +1486,11 @@ def test_the_accretion_restore_is_inert_outside_a_resume():
     when the configuration already describes the current planet would double
     the growth. It must therefore be a strict no-op unless the run is a resume
     that has actually accreted something.
+
+    Turning the module off is deliberately NOT one of those conditions.
+    Continuing a run whose impacts are finished by setting the module to none is
+    a reasonable thing to do, and the planet must keep the mass it accreted: the
+    ledger records what happened, whatever the module is set to now.
     """
     from proteus.accretion.wrapper import restore_accretion_state
     from proteus.utils.constants import M_earth
@@ -1503,7 +1508,6 @@ def test_the_accretion_restore_is_inert_outside_a_resume():
 
     for resume, module, accreted in (
         (False, 'morrigan', 0.5 * M_earth),  # fresh run
-        (True, None, 0.5 * M_earth),  # module disabled
         (True, 'morrigan', 0.0),  # resumed before any impact landed
     ):
         handler = _handler_for(resume, module, accreted)
@@ -1511,6 +1515,12 @@ def test_the_accretion_restore_is_inert_outside_a_resume():
         assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-12)
         assert handler.config.orbit.semimajoraxis == pytest.approx(1.0, rel=1e-12)
         assert handler.config.orbit.eccentricity == pytest.approx(0.0, rel=1e-12)
+
+    # Accretion switched off after the impacts finished: the growth survives,
+    # because the ledger and not the module setting is what records it.
+    switched_off = _handler_for(True, None, 0.5 * M_earth)
+    restore_accretion_state(switched_off)
+    assert switched_off.config.planet.mass_tot == pytest.approx(1.5, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -1580,3 +1590,106 @@ def test_the_recorded_timeline_is_not_offset_a_second_time(tmp_path):
     assert replayed[0].time == pytest.approx(1.0e5 + offset)
     # Discrimination: a second application would put it at 1.0e5 + 2 * offset.
     assert abs((1.0e5 + 2 * offset) - replayed[0].time) > 0.5 * offset
+
+
+@pytest.mark.unit
+def test_a_temperature_mode_without_a_molten_guarantee_is_flagged(tmp_path, caplog):
+    """Only liquidus_super suppresses the re-melt advisory on Aragog.
+
+    Each impact re-melts the mantle by re-applying the run's temperature-mode
+    initial condition, and only liquidus_super is molten for any planet mass
+    and melting curve. The modes that merely tend to be molten, and are often
+    chosen for exactly that reason, must still draw the advisory: treating them
+    as guarantees is what lets a run apply an impact that melts nothing and
+    report it as a re-melt.
+    """
+    import logging
+
+    from proteus.accretion.wrapper import init_accretion
+
+    path = _timeline_file(tmp_path / 't.csv')
+
+    for mode in ('adiabatic_from_cmb', 'accretion', 'isothermal'):
+        caplog.clear()
+        handler = _handler(
+            module='timeline',
+            timeline_path=path,
+            output_dir=tmp_path,
+            interior_module='aragog',
+            temperature_mode=mode,
+        )
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+            init_accretion(handler)
+        assert 'not guaranteed' in caplog.text, f'{mode} must draw the advisory'
+        assert mode in caplog.text
+
+    # The one mode that does guarantee it stays quiet, so the advisory
+    # discriminates rather than firing for everything.
+    caplog.clear()
+    handler = _handler(
+        module='timeline',
+        timeline_path=path,
+        output_dir=tmp_path,
+        interior_module='aragog',
+        temperature_mode='liquidus_super',
+    )
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        init_accretion(handler)
+    assert 'not guaranteed' not in caplog.text
+
+    # A scalar interior re-melts by resetting a temperature, so the advisory
+    # about the entropy initial condition does not apply to it at all.
+    caplog.clear()
+    handler = _handler(
+        module='timeline',
+        timeline_path=path,
+        output_dir=tmp_path,
+        interior_module='dummy',
+        temperature_mode='isothermal',
+    )
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        init_accretion(handler)
+    assert 'not guaranteed' not in caplog.text
+
+
+@pytest.mark.unit
+def test_a_resumed_run_does_not_advise_changing_the_time_offset(tmp_path, caplog):
+    """Impacts before a resume point were applied, and are reported as such.
+
+    The same filter serves opposite purposes on the two paths. On a fresh run an
+    impact before the start cannot be applied and the offset is the fix. On a
+    resume the identical impacts were already applied and their mass is restored
+    from the ledger, so repeating the fresh-run advice would tell a user to
+    bring them back and accrete them a second time.
+    """
+    import logging
+
+    from proteus.accretion.wrapper import init_accretion
+
+    path = _timeline_file(tmp_path / 't.csv')
+
+    # Fresh run starting after the first impact: the advice is correct there.
+    fresh = _handler(
+        module='timeline', timeline_path=path, time_start=2.0e5, output_dir=tmp_path
+    )
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.accretion.wrapper'):
+        init_accretion(fresh)
+    assert 'time_offset' in caplog.text
+    assert 'will not be applied' in caplog.text
+
+    # Resume past the first impact: same drop, opposite meaning.
+    caplog.clear()
+    resumed = _handler(
+        module='timeline',
+        timeline_path=path,
+        time_start=2.0e5,
+        output_dir=tmp_path,
+        resume=True,
+    )
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.accretion.wrapper'):
+        events = init_accretion(resumed)
+
+    assert 'time_offset' not in caplog.text
+    assert 'already carrying' in caplog.text
+    # The surviving schedule is the same either way; only the report differs.
+    assert [e.time for e in events] == [5.0e5]
