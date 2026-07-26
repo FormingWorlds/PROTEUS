@@ -27,6 +27,12 @@ _RHO_SILICATE = 3300.0
 # them names the configuration error rather than letting the run apply it.
 _MIN_IMPACT_MASS_FRAC = 1.0e-4
 
+# Smallest impactor worth applying, as a fraction of the target it strikes. Every
+# impact re-melts the whole mantle, strips atmosphere and moves the orbit, so a
+# body far below this cannot be one: the Moon-forming impactor is of order a
+# tenth of Earth, and a thousandth is already three orders below that.
+_MIN_IMPACTOR_TARGET_RATIO = 1.0e-3
+
 
 def _body_radius(config: Config, mass: float) -> float:
     """Radius of a rocky body of the given mass [m].
@@ -264,6 +270,21 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
                 'the target whose mantle re-melts and whose atmosphere is stripped, so '
                 'the roles cannot be reversed. Lower accretion.dummy.mass_accreted or '
                 'raise planet.mass_tot.'
+            )
+
+        # Whether an impact is a giant impact is a statement about the two bodies,
+        # not about how the delivered mass happens to be divided up. The share of
+        # the budget is bounded elsewhere, but a large budget spread over many
+        # impacts onto a heavy planet can still schedule collisions far too small
+        # to melt a mantle or reset an orbit, which is what each one goes on to do.
+        if m_impactor < _MIN_IMPACTOR_TARGET_RATIO * m_target:
+            raise ValueError(
+                f'Impact {index} carries {m_impactor / m_target:.3e} of its target '
+                f'mass ({m_impactor / M_earth:.4e} onto {m_target / M_earth:.4f} '
+                f'M_earth), below the {_MIN_IMPACTOR_TARGET_RATIO:.0e} floor. An '
+                'impact that small is not a giant impact, yet it would still re-melt '
+                'the whole mantle, strip the atmosphere and move the orbit. Raise '
+                'accretion.dummy.mass_accreted or ask for fewer impacts.'
             )
 
         r_target = _body_radius(config, m_target)

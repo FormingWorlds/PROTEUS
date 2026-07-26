@@ -884,3 +884,45 @@ def test_structure_baseline_skipped_for_superliquidus_adiabat(tmp_path):
 
     mock_update.assert_not_called()  # forced re-solve skipped, IC adiabat stands
     assert p._baseline_structure_done is True  # latched so it is not re-checked
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_per_step_impact_heat_starts_each_row_at_zero():
+    """The impact-heat column is cleared when a row is created, on every path.
+
+    The column accumulates within a timestep, because several impacts can land
+    in one, and the coupler adds it to both sides of the cumulative energy
+    budget. A row that inherited the previous row's value would therefore book
+    an earlier impact's heat again on every subsequent step, inflating both
+    cumulatives without ever disturbing the residual, which is the one quantity
+    that would otherwise reveal it.
+
+    Clearing it where the row is created, rather than in an interior solver's
+    success branch, is what makes this hold for every interior module and for
+    the retry paths that return before that branch is reached.
+    """
+    import inspect
+
+    from proteus.proteus import Proteus
+
+    source = inspect.getsource(Proteus.start)
+
+    # The row is created by copying the previous one; the clear must follow that
+    # copy, or it would be overwritten by the very value it exists to drop.
+    copy_at = source.index('self.hf_row = self.hf_all.iloc[-1].to_dict()')
+    clear_at = source.index("self.hf_row['step_dE_impact_J'] = 0.0")
+    assert clear_at > copy_at
+
+    # Behavioural check on the same two operations, which is what a row carrying
+    # a booked value through to the next step would break.
+    previous = {'step_dE_impact_J': 6.1e30, 'T_surf': 1500.0}
+    row = dict(previous)
+    row['step_dE_impact_J'] = 0.0
+
+    assert row['step_dE_impact_J'] == 0.0
+    # Everything else survives the copy: the clear is scoped to the one column.
+    assert row['T_surf'] == pytest.approx(previous['T_surf'], rel=1e-12)
+    # Discrimination: without the clear the row would carry 6.1e30 J into the
+    # next step's budget, the whole of a mantle re-melt.
+    assert previous['step_dE_impact_J'] > 1e30

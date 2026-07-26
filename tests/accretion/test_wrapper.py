@@ -1718,3 +1718,50 @@ def test_a_resumed_run_does_not_advise_changing_the_time_offset(tmp_path, caplog
     assert 'already carrying' in caplog.text
     # The surviving schedule is the same either way; only the report differs.
     assert [e.time for e in events] == [5.0e5]
+
+
+@pytest.mark.unit
+def test_the_impact_eccentricity_is_clamped_to_a_bound_orbit(monkeypatch, caplog):
+    """An impact cannot drive the planet onto an open orbit, and says when it tries.
+
+    The applied change is a difference, so a large positive one on an already
+    eccentric planet can ask for an eccentricity at or above unity, which the
+    rest of the model cannot represent: the separation, periapsis and Hill radius
+    all assume a closed orbit. The result is clamped, and the clamp reports
+    itself, because absorbing it in silence is how a compounding drift in the
+    applied change would hide for a whole run.
+    """
+    import logging
+
+    from proteus.accretion.wrapper import _ECC_MAX, apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    handler = _impact_handler(semimajoraxis=1.0, eccentricity=0.9)
+    # The followed body is excited from 0.01 to 0.8, a change of +0.79, which
+    # would take a planet at 0.9 to 1.69.
+    event = _impact_event(a_before=1.0e11, a_after=1.0e11, e_before=0.01, e_after=0.8)
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        apply_impact(handler, event)
+
+    assert handler.config.orbit.eccentricity == pytest.approx(_ECC_MAX, rel=1e-12)
+    assert handler.hf_row['eccentricity'] == pytest.approx(_ECC_MAX, rel=1e-12)
+    assert 0.0 <= handler.config.orbit.eccentricity < 1.0
+    assert 'clamped' in caplog.text
+
+    # Discrimination: unclamped the orbit would be reported at 1.69, which is not
+    # an orbit at all, and every quantity derived from it would be nonsense.
+    assert 0.9 + 0.79 > 1.0
+
+    # A change that stays inside the range passes through untouched and silent.
+    caplog.clear()
+    quiet = _impact_handler(semimajoraxis=1.0, eccentricity=0.1)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        apply_impact(
+            quiet, _impact_event(a_before=1.0e11, a_after=1.0e11, e_before=0.01, e_after=0.05)
+        )
+    assert quiet.config.orbit.eccentricity == pytest.approx(0.14, rel=1e-12)
+    assert 'clamped' not in caplog.text

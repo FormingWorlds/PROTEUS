@@ -3090,3 +3090,49 @@ def test_a_helpfile_predating_a_schema_column_still_resumes(tmp_path):
     pd.DataFrame([original]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
     reloaded = ReadHelpfileFromCSV(str(tmp_path))
     assert reloaded['T_surf'].iloc[-1] == pytest.approx(1234.5, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_a_helpfile_missing_physical_state_is_refused_not_zero_filled():
+    """Only cumulative columns may be read as zero; state columns must fail.
+
+    Zero is a true statement about a ledger a file never recorded: nothing was
+    written, so nothing accrued. It is a specific and wrong statement about
+    instantaneous state. A zero-filled surface temperature or planet mass would
+    be read as real by everything downstream and would quietly poison a resumed
+    run, which is worse than the loud failure this function gave before the
+    backfill existed. So the backfill is scoped to a declared set, and anything
+    outside it still stops the run.
+    """
+    from proteus.utils.coupler import (
+        RESUMABLE_ZERO_FILL_KEYS,
+        GetHelpfileKeys,
+        ReadHelpfileFromCSV,
+    )
+
+    # Every fillable key is in the schema, so the set cannot drift into naming
+    # columns that no longer exist.
+    assert RESUMABLE_ZERO_FILL_KEYS <= set(GetHelpfileKeys())
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        row['T_surf'] = 1500.0
+        del row['T_surf']  # a state column, not a ledger
+        pd.DataFrame([row]).to_csv(
+            os.path.join(tmpdir, 'runtime_helpfile.csv'), sep='\t', index=False
+        )
+
+        with pytest.raises(Exception, match='physical state'):
+            ReadHelpfileFromCSV(tmpdir)
+
+    # The same function still fills a ledger column, so the guard discriminates
+    # between the two rather than refusing every schema change.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        del row['M_accreted_rock']
+        pd.DataFrame([row]).to_csv(
+            os.path.join(tmpdir, 'runtime_helpfile.csv'), sep='\t', index=False
+        )
+
+        loaded = ReadHelpfileFromCSV(tmpdir)
+        assert loaded['M_accreted_rock'].iloc[-1] == pytest.approx(0.0, abs=1e-30)

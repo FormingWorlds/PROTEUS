@@ -163,6 +163,19 @@ def restore_accretion_state(handler: Proteus) -> None:
 
     accreted = float(hf_row.get('M_accreted_rock') or 0.0)
     if accreted <= 0.0:
+        # Say so rather than returning in silence. A ledger of zero means either
+        # that no impact has landed yet, which is ordinary, or that the helpfile
+        # predates the ledger and the reader filled it in, in which case the
+        # growth of every impact before this restart is not recoverable and the
+        # run continues from the configured mass. The reader warns when it fills
+        # the column; this line is what connects that warning to its consequence.
+        if config.accretion.module is not None:
+            log.info(
+                'No accreted rock recorded before this resume: continuing from the '
+                'configured mass of %.4f M_earth. If this run had already applied an '
+                'impact, its helpfile predates the ledger and that growth is lost.',
+                config.planet.mass_tot,
+            )
         return
 
     config.planet.mass_tot += accreted / M_earth
@@ -291,9 +304,20 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # a ratio cannot express. The result is clamped to a bound orbit, so an
     # impact that excites a planet already near unity cannot unbind it on paper.
     ratio = event.semimajoraxis_ratio
-    eccentricity = min(
-        max(config.orbit.eccentricity + event.eccentricity_change, 0.0), _ECC_MAX
-    )
+    requested = config.orbit.eccentricity + event.eccentricity_change
+    eccentricity = min(max(requested, 0.0), _ECC_MAX)
+
+    # A saturated clamp means the impact asked for an orbit the rest of the model
+    # cannot represent, so report it rather than absorbing it. Clamping in silence
+    # is how a compounding drift in the applied change hides for a whole run.
+    if abs(requested - eccentricity) > 1e-12:
+        log.warning(
+            '    impact asked for eccentricity %.4f, clamped to %.4f: the change it '
+            'applies (%+.4f) takes the orbit outside the representable range',
+            requested,
+            eccentricity,
+            event.eccentricity_change,
+        )
 
     config.orbit.semimajoraxis *= ratio
     config.orbit.eccentricity = eccentricity

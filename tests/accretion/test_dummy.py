@@ -126,6 +126,7 @@ def test_impactor_masses_decay_and_the_first_impact_is_the_largest():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
 def test_collision_velocity_never_falls_below_the_mutual_escape_velocity():
     """v_impact = sqrt(v_encounter^2 + v_esc^2) holds, including at e = 0.
 
@@ -165,6 +166,7 @@ def test_collision_velocity_never_falls_below_the_mutual_escape_velocity():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
 def test_a_circular_encounter_leaves_the_orbit_untouched():
     """With no encounter eccentricity the merger cannot move the orbit.
 
@@ -275,6 +277,7 @@ def test_an_unusable_timescale_is_refused_with_an_actionable_message():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
 def test_merged_orbit_conserves_angular_momentum_of_the_merged_body():
     """The returned orbit reproduces the angular momentum it was built from.
 
@@ -309,3 +312,140 @@ def test_merged_orbit_conserves_angular_momentum_of_the_merged_body():
     # a percent of it, and it must not be zero.
     assert v_encounter == pytest.approx(eccentricity * v_kep, rel=2e-2)
     assert v_encounter > 0.0
+
+
+@pytest.mark.unit
+def test_an_impactor_heavier_than_its_target_is_refused():
+    """The target must survive the collision, so it cannot be the lighter body.
+
+    Everything downstream treats the target as the survivor: its mantle re-melts,
+    its atmosphere is stripped, its orbit moves. A timeline whose impactor
+    outweighs the target describes the opposite collision, and the whole chain
+    would silently model the wrong body. Asking for more mass than the planet has
+    is the ordinary way to reach that, so it fails at generation.
+    """
+    with pytest.raises(ValueError, match='lighter than the impactor'):
+        get_timeline(_config(mass_accreted=5.0, mass_tot=1.0, num_impacts=1))
+
+    # Just under the planet's own mass is still a legal, if violent, merger, so
+    # the guard discriminates rather than refusing every large impact.
+    events = get_timeline(_config(mass_accreted=0.9, mass_tot=1.0, num_impacts=1))
+    assert events[0].M_impactor < events[0].M_target_before
+
+
+@pytest.mark.unit
+def test_an_impactor_far_too_small_for_a_giant_impact_is_refused():
+    """An impact must be large relative to the body it strikes, not just to the budget.
+
+    Each impact re-melts the whole mantle, strips atmosphere and resets the orbit.
+    A collision carrying a millionth of the target's mass cannot do any of that,
+    and scheduling one silently applies a giant impact's consequences to a pebble
+    strike. The share of the accreted budget is bounded separately: this case has
+    a perfectly reasonable share of a tiny budget, so only a ratio against the
+    target catches it.
+    """
+    with pytest.raises(ValueError, match='not a giant impact'):
+        get_timeline(_config(mass_accreted=1.0e-6, mass_tot=1.0, num_impacts=2))
+
+    # A budget large enough that each impact is a real collision passes, so the
+    # floor does not simply reject small timelines.
+    events = get_timeline(_config(mass_accreted=0.1, mass_tot=1.0, num_impacts=2))
+    assert all(e.M_impactor / e.M_target_before > 1.0e-3 for e in events)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_small_impactor_is_not_less_dense_than_its_own_minerals():
+    """The mass-radius scaling is capped at the uncompressed density.
+
+    The scaling is fitted for planets and its radius grows as M**0.282, so the
+    density it implies falls without bound as the mass does; extrapolated to a
+    small impactor it returns a body less dense than the rock and iron it is made
+    of. That radius feeds the mutual escape velocity and the erosion law, so the
+    error does not stay local. Below roughly a tenth of an Earth mass the body is
+    treated as uncompressed instead, which is the correct limit for a small body.
+    """
+    from proteus.accretion.dummy import _RHO_IRON, _RHO_SILICATE, _body_radius
+    from proteus.utils.structure_estimate import iron_fractions
+
+    config = _config()
+    _, x_fe, _ = iron_fractions(0.55, 'radius', mass_tot_M_earth=1.0e-3)
+    floor = 1.0 / (x_fe / _RHO_IRON + (1.0 - x_fe) / _RHO_SILICATE)
+
+    tiny = 1.0e-3 * M_earth
+    radius = _body_radius(config, tiny)
+    density = tiny / (4.0 / 3.0 * math.pi * radius**3)
+
+    # At this mass the cap governs, so the density sits at the floor exactly.
+    assert density == pytest.approx(floor, rel=1e-9)
+    assert density > 4000.0
+
+    # Discrimination: the uncapped scaling would give a body under 1000 kg m-3,
+    # less dense than water and impossible for rock and iron.
+    from proteus.utils.structure_estimate import nl20_planet_radius_km
+
+    uncapped_r = nl20_planet_radius_km(x_fe, 1.0e-3) * 1.0e3
+    uncapped_rho = tiny / (4.0 / 3.0 * math.pi * uncapped_r**3)
+    assert uncapped_rho < 0.5 * floor
+
+    # An Earth-mass body is inside the scaling's range, so the cap is inactive
+    # there and the scaling still governs. The iron fraction is mass-dependent
+    # under the radius-mode core fraction, so it is evaluated at this body's own
+    # mass rather than reused from the small one above.
+    _, x_fe_earth, _ = iron_fractions(0.55, 'radius', mass_tot_M_earth=1.0)
+    earth_r = _body_radius(config, M_earth)
+    assert earth_r == pytest.approx(nl20_planet_radius_km(x_fe_earth, 1.0) * 1.0e3, rel=1e-9)
+
+    # And the cap is genuinely inactive there: the uncompressed radius is the
+    # larger of the two, so the scaling is what min() selects.
+    floor_earth = 1.0 / (x_fe_earth / _RHO_IRON + (1.0 - x_fe_earth) / _RHO_SILICATE)
+    r_uncompressed_earth = (3.0 * M_earth / (4.0 * math.pi * floor_earth)) ** (1.0 / 3.0)
+    assert r_uncompressed_earth > earth_r
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_chain_carries_its_eccentricity_from_one_impact_to_the_next():
+    """Each merger sees the orbit the previous one produced, not the original.
+
+    The module computes a merged eccentricity and must hand it to the next
+    collision as the target's state. Dropping that assignment leaves every
+    impact computed against the configured orbit, so the chain describes a
+    planet that is re-circularised between collisions, and the eccentricity it
+    reports is the one it just discarded.
+    """
+    events = get_timeline(
+        _config(num_impacts=3, eccentricity=0.3, orbit_eccentricity=0.2, mass_accreted=0.6)
+    )
+
+    # Each impact's stated pre-impact eccentricity is the previous impact's
+    # result, which is exactly what carrying the value forward means.
+    assert events[0].e_before == pytest.approx(0.2, rel=1e-12)
+    for previous, current in zip(events, events[1:]):
+        assert current.e_before == pytest.approx(previous.e_after, rel=1e-12)
+
+    # Discrimination: without the carry every impact would start from the
+    # configured 0.2, and the first merger moves it well away from that.
+    assert abs(events[0].e_after - 0.2) > 1e-3
+
+
+@pytest.mark.unit
+def test_a_timescale_that_starves_a_late_impact_is_refused():
+    """A weight that is small but non-zero is still an unusable impact.
+
+    The growth law's increments decay geometrically, so a timescale far shorter
+    than the impact spacing drives the later ones toward zero without ever
+    reaching it. Testing for exact underflow therefore misses the whole regime
+    the guard exists for: an impact carrying a millionth of the budget is not a
+    giant impact, but every arithmetic in the module is perfectly happy with it.
+    """
+    with pytest.raises(ValueError, match='below the'):
+        get_timeline(_config(num_impacts=4, timescale=1.0e5, time_last=5.0e6))
+
+    # The smallest weight here is far above zero, so an exact-underflow test
+    # would let this configuration through.
+    weights = [
+        math.exp(-k * 1.25e6 / 1.0e5) - math.exp(-(k + 1) * 1.25e6 / 1.0e5) for k in range(4)
+    ]
+    assert min(weights) > 0.0
+    assert min(weights) / sum(weights) < 1.0e-4

@@ -166,6 +166,15 @@ def test_impact_geometry_and_eccentricity_stay_in_range():
         with pytest.raises(ValueError, match='eccentricity'):
             validate_timeline([_event(e_after=bad_e)])
 
+    # The pre-impact eccentricity carries the same bound and is checked by name,
+    # since the applied orbit change is the difference of the two and an unbound
+    # value on either side makes that difference meaningless.
+    validate_timeline([_event(e_before=0.0)])
+    validate_timeline([_event(e_before=0.999)])
+    for bad_e in (1.0, 1.5, -0.01):
+        with pytest.raises(ValueError, match='e_before'):
+            validate_timeline([_event(e_before=bad_e)])
+
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant

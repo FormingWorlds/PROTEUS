@@ -397,3 +397,28 @@ def test_embryo_spacing_is_bounded_on_both_sides():
     assert pole(10.0, 0.1) < 50.0
     # The scaling itself: an eighth of the stellar mass halves the pole.
     assert pole(10.0, 0.125) == pytest.approx(0.5 * pole(10.0, 1.0), rel=1e-9)
+
+
+@pytest.mark.unit
+def test_a_timeline_path_aimed_at_the_analytical_module_is_refused():
+    """A path under the analytical module names a file it will never read.
+
+    The file-driven module was renamed, so a configuration written before that
+    names the analytical module and hands it a timeline path. Loading it would
+    silently run a generated timeline at default settings instead of replaying
+    the user's file: the run would succeed and model a different history than
+    the one asked for, which is worse than failing. It fails instead, naming
+    where the path belongs now.
+    """
+    from proteus.config._accretion import Accretion, AccretionDummy
+
+    with pytest.raises(ValueError, match='accretion.timeline.timeline_path'):
+        Accretion(module='dummy', dummy=AccretionDummy(timeline_path='impacts.csv'))
+
+    # It is refused whatever the module is set to, since the path is meaningless
+    # under this block in every case.
+    with pytest.raises(ValueError, match='timeline_path'):
+        Accretion(module='none', dummy=AccretionDummy(timeline_path='impacts.csv'))
+
+    # The analytical module without a path is the ordinary case and loads.
+    assert Accretion(module='dummy').dummy.timeline_path is None

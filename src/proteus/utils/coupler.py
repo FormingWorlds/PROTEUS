@@ -596,6 +596,20 @@ def CreateLockFile(output_dir: str):
     return keepalive_file
 
 
+# Schema columns a resumed run may read as zero when its helpfile predates them.
+# Each accumulates over a run, so zero is a true statement about a file that
+# never recorded it: nothing was written, therefore nothing accrued. Every other
+# column holds instantaneous state, where zero is a specific wrong value rather
+# than a missing one, so a helpfile short of those cannot be resumed at all.
+# Add a column here only when zero is the correct reading of its absence.
+RESUMABLE_ZERO_FILL_KEYS = frozenset(
+    {
+        'esc_kg_cumulative',
+        'M_accreted_rock',
+    }
+)
+
+
 def GetHelpfileKeys():
     """
     Variables to be held in the helpfile.
@@ -1167,12 +1181,18 @@ def ReadHelpfileFromCSV(output_dir: str):
     """
     Read helpfile from disk CSV file to DataFrame
 
-    Columns the current schema defines but the file does not carry are added
-    as zero. A run started under an earlier schema writes a helpfile without
-    them, and a resume feeds its last row straight back into ``ExtendHelpfile``,
-    which rejects a row missing any schema key. Backfilling here keeps a run in
-    flight when a new column is added, and zero is the right value for the
-    cumulative ledgers this affects: nothing was recorded, so nothing accrued.
+    A run started under an earlier schema writes a helpfile without the columns
+    added since, and a resume feeds its last row straight back into
+    ``ExtendHelpfile``, which rejects a row missing any schema key. Such a run
+    would die on its first restart, whether or not it uses the feature the new
+    column belongs to.
+
+    Only the columns in ``RESUMABLE_ZERO_FILL_KEYS`` are filled in, because zero
+    is a true statement about them: they accumulate over a run, so a file that
+    never recorded one accrued nothing. Every other column carries instantaneous
+    physical state, where zero is not "unknown" but a specific and wrong value: a
+    zero-filled temperature or radius would be read as real and quietly poison a
+    resumed run. Those still fail, loudly, the way they did before.
     """
     fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
     if not os.path.exists(fpath):
@@ -1180,15 +1200,30 @@ def ReadHelpfileFromCSV(output_dir: str):
     df = pd.read_csv(fpath, sep=r'\s+')
 
     missing = [key for key in GetHelpfileKeys() if key not in df.columns]
-    if missing:
-        log.warning(
-            'Helpfile predates %d column(s) in the current schema; backfilling with zero: %s',
-            len(missing),
-            ', '.join(sorted(missing)),
+    if not missing:
+        return df
+
+    fillable = [key for key in missing if key in RESUMABLE_ZERO_FILL_KEYS]
+    unfillable = sorted(set(missing) - set(fillable))
+
+    if unfillable:
+        raise Exception(
+            f'Helpfile at {fpath} is missing {len(unfillable)} column(s) that carry '
+            f'physical state, which cannot be reconstructed: {unfillable}. This run '
+            'was started under a schema that predates them and cannot be resumed '
+            'under the current one; start it again from the beginning.'
         )
-        # Added in one concat rather than one insert per column, which would
-        # fragment the frame and warn on a schema several columns behind.
-        df = pd.concat([df, pd.DataFrame(0.0, index=df.index, columns=missing)], axis=1)
+
+    log.warning(
+        'Helpfile predates %d cumulative column(s) in the current schema, and they '
+        'are read as zero for the rest of this run: %s. Any amount they recorded '
+        'before this restart is not in the file and is therefore lost.',
+        len(fillable),
+        ', '.join(sorted(fillable)),
+    )
+    # Added in one concat rather than one insert per column, which would
+    # fragment the frame and warn on a schema several columns behind.
+    df = pd.concat([df, pd.DataFrame(0.0, index=df.index, columns=fillable)], axis=1)
 
     return df
 
