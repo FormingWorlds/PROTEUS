@@ -142,8 +142,11 @@ def proteus_multi_timestep_run():
             runner.config.params.stop.time.minimum = min_time
             runner.config.params.stop.time.maximum = max_time
 
-            # Disable plotting and archiving for speed
-            runner.config.params.out.plot_mod = 0
+            # Disable plotting, data writing and archiving for speed. Plotting
+            # needs None rather than 0: the schema reads 0 as "plot once at
+            # completion", and the end-of-run block skips plotting only when
+            # this is None, so 0 renders the whole plot suite after every run.
+            runner.config.params.out.plot_mod = None
             runner.config.params.out.write_mod = 0
             runner.config.params.out.archive_mod = 'none'
 
