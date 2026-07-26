@@ -28,6 +28,7 @@ from proteus.doctor import (
     CheckResult,
     _collect_environment_info,
     _conda_build_lines,
+    _dependency_specs,
     _editable_checkout_path,
     _get_script_for_package,
     _git_dirty,
@@ -76,6 +77,57 @@ def test_python_packages_excludes_optional_backends():
     mandatory = {'fwl-proteus', 'fwl-aragog', 'fwl-calliope', 'fwl-zalmoxis'}
     assert mandatory <= set(PYTHON_PACKAGES), (
         f'doctor lost mandatory package checks: {mandatory - set(PYTHON_PACKAGES)}'
+    )
+
+
+@pytest.mark.unit
+def test_python_packages_covers_every_pinned_fwl_dependency():
+    """Every FWL package pinned in pyproject must be one doctor checks.
+
+    A package carrying a version floor but absent from the list is a silent
+    hole: doctor reports the whole stack green while the installed version sits
+    below the bound the framework relies on. fwl-io is the costliest case to
+    miss, because its floor exists to keep out releases with neither a timeout
+    nor a retry on the data fetch, where an unreachable archive hangs a run
+    rather than failing it.
+
+    Both directions matter, and they fail differently. A pinned package missing
+    from the list is never checked at all. A listed package whose bound the
+    reader does not see is checked but always passes, since the version
+    comparison is skipped when no specifier is found; that is the same silent
+    green, reached from the other side. The spec reader matches dependency
+    names containing ``fwl-``, so a pin written with an underscore, or a
+    dependency dropped from pyproject, produces exactly that.
+
+    Verifies:
+    - Every dependency the spec reader discovers is checked.
+    - Every checked package carries a version bound the reader actually reads,
+      the project's own distribution aside.
+    - The spec reader found something, so neither comparison is vacuously
+      satisfied by an empty set.
+    """
+    specs = _dependency_specs()
+    pinned = set(specs)
+    assert pinned, 'no FWL dependencies were discovered; the comparisons below are vacuous'
+    assert 'fwl-io' in pinned, (
+        'fwl-io is no longer a pinned dependency, so this test is guarding nothing'
+    )
+
+    # `_dependency_specs` reads [project] dependencies only, so the optional
+    # extras are out of scope here by construction rather than by exclusion.
+    checked = set(PYTHON_PACKAGES)
+    missing = pinned - checked
+    assert not missing, (
+        f'pyproject pins these FWL packages but doctor does not check them: {sorted(missing)}'
+    )
+
+    # fwl-proteus is the distribution being diagnosed, not one of its own
+    # dependencies, so it carries no bound to read.
+    enforced = {name for name, spec in specs.items() if spec and spec.specifier}
+    unbounded = checked - enforced - {'fwl-proteus'}
+    assert not unbounded, (
+        f'doctor checks these but reads no version bound for them, so they pass at any '
+        f'installed version: {sorted(unbounded)}'
     )
 
 
