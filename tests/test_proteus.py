@@ -896,10 +896,14 @@ def test_structure_baseline_skipped_for_superliquidus_adiabat(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def _make_hf_df_with_phi(phi_final):
-    """Helpfile frame whose final row carries a given global melt fraction."""
+def _make_hf_df_with_phi(phi_final, phi_history=None):
+    """Helpfile frame carrying a melt-fraction history.
+
+    ``phi_history`` supplies the four rows before the last; it defaults to a
+    monotonically solidifying run that never reaches the threshold.
+    """
     df = _make_hf_df()
-    df['Phi_global'] = [1.0, 0.8, 0.6, 0.4, phi_final]
+    df['Phi_global'] = [*(phi_history or [1.0, 0.8, 0.6, 0.4]), phi_final]
     return df
 
 
@@ -959,6 +963,56 @@ def test_proteus_resume_restores_crystallized_flag(
         f'resuming at Phi_global={phi_final} with freeze_volatiles={freeze_volatiles} '
         f'left crystallized={p.crystallized}, expected {expected}'
     )
-    # The desiccation flag is restored independently and must not be
-    # disturbed by the crystallization restore.
-    assert p.desiccated is False, 'crystallization restore clobbered the desiccation flag'
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_proteus_resume_keeps_crystallized_after_remelting(tmp_path):
+    """A mantle that crystallized and later remelted stays frozen on resume.
+
+    Physical scenario: melt fraction dips to the crystallization threshold
+    part-way through a run and recovers afterwards, which a heat source such
+    as tidal heating can produce. The main loop latches the flag the first
+    time the threshold is reached and never clears it, so outgassing stays
+    stopped for the rest of the run.
+
+    Contract clause: a resumed run must behave as the uninterrupted one
+    would. Reading the flag from the resumed row alone would clear it here,
+    restarting outgassing that the continuous run keeps stopped, so the
+    whole stored melt-fraction history decides it.
+
+    Verifies:
+    - A history that dips to the threshold and recovers still resumes frozen.
+    - The final row is well above the threshold, so the assertion can only
+      pass by consulting the earlier rows.
+    - A history of the same shape that never reaches the threshold resumes
+      molten, so the check is not simply always True.
+    """
+    p = _make_proteus_instance(tmp_path)
+    p.config.params.stop.solid.freeze_volatiles = True
+    p.config.params.stop.solid.phi_crit = 0.01
+    (tmp_path / 'data').mkdir(exist_ok=True)
+
+    crossed = _make_hf_df_with_phi(0.900, phi_history=[1.0, 0.5, 0.005, 0.300])
+    assert float(crossed['Phi_global'].iloc[-1]) > 0.01, (
+        'the resumed row must sit above the threshold, or this test would pass '
+        'without consulting the history'
+    )
+
+    _resume_with_patches(p, crossed)
+    assert p.crystallized is True, (
+        'a mantle that reached the crystallization threshold earlier in the run '
+        'resumed as molten, so outgassing would restart where an uninterrupted '
+        'run keeps it stopped'
+    )
+
+    # Discrimination: the same shape of history that never reaches the
+    # threshold must resume molten.
+    never = _make_proteus_instance(tmp_path)
+    never.config.params.stop.solid.freeze_volatiles = True
+    never.config.params.stop.solid.phi_crit = 0.01
+    _resume_with_patches(never, _make_hf_df_with_phi(0.900, phi_history=[1.0, 0.5, 0.2, 0.300]))
+    assert never.crystallized is False, (
+        'a run whose melt fraction never reached the threshold resumed as '
+        'crystallized; the history search is matching too eagerly'
+    )

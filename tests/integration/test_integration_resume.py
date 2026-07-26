@@ -426,16 +426,14 @@ def test_resume_continues_trajectory_from_disk_state(tmp_path):
     # mantle is fully solid the melt fraction is pinned at zero, the
     # no-remelting check above is satisfied by a constant, and only the
     # temperature still moves, which is a much weaker thing to resume into.
+    # No bound is asserted on the first resumed row: the dummy interior
+    # derives melt fraction as a ratio clamped to [0, 1] at both ends, so a
+    # boundedness check there cannot fail whatever the resume did.
     phi_seam_pre = float(phi[n_stored - 1])
-    phi_seam_post = float(phi[n_stored])
     assert 0.0 < phi_seam_pre < 1.0, (
         f'melt fraction at the seam is {phi_seam_pre:.4f}, pinned at an endpoint; '
         'the first leg must stop while the mantle is still solidifying for the '
         'seam checks to bear on an evolving state'
-    )
-
-    assert 0.0 <= phi_seam_post <= 1.0, (
-        f'melt fraction outside [0, 1] on the first resumed row: {phi_seam_post}'
     )
 
     # The interior/atmosphere flux handshake carries across the seam. The
@@ -718,7 +716,11 @@ def test_resume_reproduces_uninterrupted_run(tmp_path):
             np.issubdtype(expected.dtype, np.number) and np.issubdtype(actual.dtype, np.number)
         ):
             continue
-        if not (np.all(np.isfinite(expected)) and np.all(np.isfinite(actual))):
+        # Only the reference side is screened. Screening the restarted side
+        # too would skip precisely the columns a resume corrupted into NaN,
+        # which is the signature this comparison exists to catch; leaving them
+        # in makes the comparison below fail on them instead.
+        if not np.all(np.isfinite(expected)):
             continue
         np.testing.assert_allclose(
             actual,
@@ -729,9 +731,12 @@ def test_resume_reproduces_uninterrupted_run(tmp_path):
         )
         compared += 1
 
-    # Guard against the comparison silently covering nothing, for instance
-    # if the helpfile schema changed to non-numeric columns.
-    assert compared > 50, (
+    # Guard against the comparison silently covering nothing, for instance if
+    # the helpfile schema changed to non-numeric columns. The dummy helpfile
+    # carries about 460 finite numeric columns, so the floor is set well above
+    # a token handful: a filter that started rejecting most columns shows up
+    # as a failure rather than as a comparison that quietly covers little.
+    assert compared > 400, (
         f'only {compared} numeric columns were compared; the parity check is not '
         'covering the helpfile'
     )
