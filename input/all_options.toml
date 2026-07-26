@@ -200,8 +200,8 @@ config_version = "3.0"
     axial_period              = "none"       # day length [hours]; none = tidally locked
 
     # Tidal evolution and rotation
-    star_planet_model         = "none"       # evolve star-planet orbital parameters (semi-major axis and eccentricity); options = "none" | "sp0dae"
-    planet_satellite_model    = "none"       # evolve planet-satellite orbital parameters (semi-major axis and eccentricity); options = "none" | "ps0d_evec"
+    star_planet_model         = "none"       # evolve star-planet orbital parameters (semi-major axis and eccentricity); options = "none" | "sp0d" | "sp1d"
+    planet_satellite_model    = "none"       # evolve planet-satellite orbital parameters (semi-major axis and eccentricity); options = "none" | "ps1d" | "ps1d_evec"
 
     perturber                 = "star"       # perturbing object ("star", "satellite") to induce tides on the primairy (planet)
 
@@ -249,6 +249,8 @@ config_version = "3.0"
         material_mu           = "andrade"    # material type for complex shear modulus ("andrade", "maxwell", "elastic")
         material_k            = "andrade"    # material type for complex bulk modulus ("andrade", "maxwell", "elastic")
         alpha                 = 0.3          # power-law exponent, only for Andrade rheology (free parameter)
+
+        verbosity             = 1            # Obliqua log level: 0 (silent) | 1 (info) | 2 (debug)
 
         # Solid interior model
         # Controls how the solid portion of the interior responds to tidal forcing.
