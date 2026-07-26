@@ -608,6 +608,26 @@ class Proteus:
             # Check if the planet is desiccated
             self.desiccated = check_desiccation(self.config, self.hf_row)
 
+            # Restore the crystallization flag from the melt fraction of the
+            # row being resumed from, using the same condition the main loop
+            # applies. Without this the flag returns as False on every
+            # restart, so the first resumed iteration runs escape over the
+            # whole volatile inventory of a mantle that has already
+            # crystallized, drawing from dissolved reservoirs that are meant
+            # to be trapped. The loop only re-derives the flag after escape
+            # has run, so the error lands on the first step of every restart.
+            if self.config.params.stop.solid.freeze_volatiles:
+                self.crystallized = (
+                    float(self.hf_row.get('Phi_global', 1.0))
+                    <= self.config.params.stop.solid.phi_crit
+                )
+                if self.crystallized:
+                    log.info(
+                        'Resuming a crystallized mantle (Phi_global <= %.3f); '
+                        'outgassing stays stopped.',
+                        self.config.params.stop.solid.phi_crit,
+                    )
+
             # Interior initial condition
             self.interior_o.ic = 2
 

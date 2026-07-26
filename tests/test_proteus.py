@@ -38,6 +38,11 @@ def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_modul
     config.params.stop.iters.minimum = 10
     config.params.stop.iters.maximum = 1000
     config.atmos_clim.albedo_from_file = False
+    # Real values, not mock attributes: the resume branch compares the melt
+    # fraction against phi_crit, which a bare MagicMock cannot be ordered
+    # against. Defaults mirror the schema.
+    config.params.stop.solid.freeze_volatiles = False
+    config.params.stop.solid.phi_crit = 0.01
 
     directories = {
         'output': str(tmp_path),
@@ -884,3 +889,76 @@ def test_structure_baseline_skipped_for_superliquidus_adiabat(tmp_path):
 
     mock_update.assert_not_called()  # forced re-solve skipped, IC adiabat stands
     assert p._baseline_structure_done is True  # latched so it is not re-checked
+
+
+# ---------------------------------------------------------------------------
+# Resume path: crystallization flag restoration (proteus.py, resume branch)
+# ---------------------------------------------------------------------------
+
+
+def _make_hf_df_with_phi(phi_final):
+    """Helpfile frame whose final row carries a given global melt fraction."""
+    df = _make_hf_df()
+    df['Phi_global'] = [1.0, 0.8, 0.6, 0.4, phi_final]
+    return df
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('freeze_volatiles', 'phi_final', 'expected'),
+    [
+        (True, 0.005, True),
+        (True, 0.010, True),
+        (True, 0.011, False),
+        (True, 0.900, False),
+        (False, 0.005, False),
+    ],
+    ids=[
+        'crystallized_below_threshold',
+        'crystallized_exactly_at_threshold',
+        'molten_just_above_threshold',
+        'molten_well_above_threshold',
+        'freezing_disabled_stays_molten',
+    ],
+)
+def test_proteus_resume_restores_crystallized_flag(
+    tmp_path, freeze_volatiles, phi_final, expected
+):
+    """Resuming a crystallized mantle keeps outgassing stopped.
+
+    Physical scenario: a run whose mantle has already crystallized is
+    stopped and resumed. The crystallization flag decides whether escape
+    draws from the atmosphere alone or from the whole volatile inventory,
+    so a flag that returns as False on restart lets escape draw from
+    dissolved reservoirs that crystallization is meant to have trapped.
+    The main loop only re-derives the flag after escape has run, which is
+    why it has to be restored during resume setup rather than left to the
+    loop.
+
+    Verifies:
+    - The flag is set from the resumed row's melt fraction, using the same
+      ``Phi_global <= phi_crit`` condition the main loop applies.
+    - The threshold is exercised from both sides, at and just above
+      ``phi_crit``, so an off-by-one comparison is caught.
+    - With ``freeze_volatiles`` disabled the flag stays False even for a
+      fully crystallized mantle, since the feature is off.
+    """
+    p = _make_proteus_instance(tmp_path)
+    p.config.params.stop.solid.freeze_volatiles = freeze_volatiles
+    p.config.params.stop.solid.phi_crit = 0.01
+    (tmp_path / 'data').mkdir(exist_ok=True)
+
+    # A fresh Proteus starts with the flag clear, so a passing result cannot
+    # come from the attribute happening to be True already.
+    assert p.crystallized is False, 'flag was already set before the resume'
+
+    _resume_with_patches(p, _make_hf_df_with_phi(phi_final))
+
+    assert p.crystallized is expected, (
+        f'resuming at Phi_global={phi_final} with freeze_volatiles={freeze_volatiles} '
+        f'left crystallized={p.crystallized}, expected {expected}'
+    )
+    # The desiccation flag is restored independently and must not be
+    # disturbed by the crystallization restore.
+    assert p.desiccated is False, 'crystallization restore clobbered the desiccation flag'
