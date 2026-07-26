@@ -64,6 +64,7 @@ nav:
           - Interior structure and energetics: Reference/config/interior.md
           - Atmosphere and chemistry: Reference/config/atmosphere.md
           - Escape and outgassing: Reference/config/escape_outgas.md
+          - Accretion: Reference/config/accretion.md
           - Observations: Reference/config/observe.md
       - Melting curves: Reference/melting_curves.md
       - Module versions: Reference/module_versions.md
@@ -112,6 +113,7 @@ nav:
       - Obliqua: https://proteus-framework.org/Obliqua/
       - VULCAN: https://proteus-framework.org/VULCAN/
       - Zalmoxis: https://proteus-framework.org/Zalmoxis/
+      - Morrigan: https://proteus-framework.org/Morrigan/
       - Aragog: https://proteus-framework.org/aragog/
       - SPIDER: https://proteus-framework.org/SPIDER/
       - Atmodeller: https://atmodeller.readthedocs.io/en/latest/

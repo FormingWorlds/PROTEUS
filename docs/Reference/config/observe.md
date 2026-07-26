@@ -4,9 +4,6 @@ The `[observe]` section configures synthetic observation generation. PROTEUS
 can compute transit and eclipse depth spectra from the simulated atmospheric
 state using the petitRADTRANS forward model.
 
-The `[accretion]` section is reserved for late accretion modelling (not yet
-implemented).
-
 ## Synthetic observations `[observe]`
 
 | Parameter | Type | Default | Description |
@@ -106,12 +103,6 @@ See [Output format](../../Reference/output.md) for the CSV column layout.
 | `include_rayleigh` | bool | `true` | Include Rayleigh scattering contributions |
 | `include_cia` | bool | `true` | Include collision-induced absorption contributions |
 | `silent` | bool | `false` | Suppress petitRADTRANS stdout/stderr during `Radtrans` initialization |
-
-## Late accretion `[accretion]`
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `module` | str or none | `none` | Late accretion module (reserved for future implementation) |
 
 ---
 

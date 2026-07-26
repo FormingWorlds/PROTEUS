@@ -121,11 +121,15 @@ Config section: `[orbit]`. Reference: [Star and orbit configuration](../Referenc
 
 ## Accretion: Morrigan
 
-**[Morrigan](https://proteus-framework.org/Morrigan/)** (Python) follows a system of protoplanets through the giant impacts and gravitational scattering by which they accrete, using the semi-analytical Monte Carlo model of [Kimura et al. (2025)](https://doi.org/10.3847/1538-4357/ade992). PROTEUS takes the impact history of one body from that system and applies each collision as it falls due: the impactor's rock grows the planet and the structure is re-solved at the new mass, the impactor's volatiles are delivered while part of the target's atmosphere is stripped, the mantle is re-melted, and the orbit takes the collision's change in semi-major axis and eccentricity.
+The accretion module supplies the giant impacts a planet experiences after the disk disperses, and PROTEUS applies each one to the planet it is evolving.
 
-Two further implementations take a history rather than derive one: `timeline` replays a table of impacts read from a file, and `dummy` grows the planet along an analytical accretion curve. With no accretion module selected the impact list is empty and the planet's mass is set only by its initial condition.
+**[Morrigan](https://proteus-framework.org/Morrigan/)** (Python) follows a system of planetary embryos through the secular eccentricity oscillations, orbit crossings, scatterings, ejections and giant impacts by which they accrete, until the system settles into a Hill-stable configuration. It implements the semi-analytical Monte Carlo model of Kimura et al. (2025) [^cite-kimura2025], which predicts when a system goes unstable and resolves each instability with prescriptions calibrated against N-body simulations, rather than integrating the orbits. That makes one system cheap enough to run inside a coupled framework, at the cost of any single history being a statistical realisation rather than a trajectory: ensemble statistics are the meaningful comparison. PROTEUS follows one survivor of that system, chosen by the configured selector, and takes its impact history.
 
-Config section: `[accretion]`. Reference: [Elemental delivery and accretion](../How-to/config.md#elemental-delivery-and-accretion).
+Each impact is applied at the timestep it falls in. The impactor's rock grows the planet and the interior structure is re-solved at the new mass, so radius, gravity and the core-mantle split follow the growth. The impactor's volatiles are delivered while the same collision fraction strips the target's atmosphere and the impactor's own, so a small impactor striking a heavily-clothed planet can leave it lighter than before. The mantle is re-melted by re-applying the run's temperature-mode initial condition, and the orbit takes the collision's change in semi-major axis and eccentricity, clamped to a bound orbit.
+
+Two further implementations take an impact history rather than derive one. `timeline` replays a table of impacts from a file, which reproduces a published history or drives PROTEUS from one computed elsewhere. `dummy` builds a history from scaling laws: the planet approaches an asymptotic mass exponentially, impacts are evenly spaced in time, and each delivers the mass the law accretes over its interval, so the increments decay and the largest impact is the first. With no accretion module selected the impact list is empty and the planet's mass is set by its initial condition alone.
+
+Config section: `[accretion]`. Reference: [Accretion configuration](../Reference/config/accretion.md).
 
 ## Synthetic observations: petitRADTRANS
 
@@ -173,9 +177,12 @@ architecture and for quick parameter exploration.
 | Escape | Constant bulk mass loss rate (user-specified kg/s), distributed proportionally across elements |
 | Outgassing | Melt-fraction-dependent volatile partitioning with fixed stoichiometry, no equilibrium chemistry |
 | Orbit | Fixed semi-major axis and eccentricity; configurable parameterised tidal heating |
+| Accretion | Exponential approach to an asymptotic mass, delivered as evenly spaced impacts; Noack & Lasbleis (2020) [^cite-noack2020] radii and momentum-conserving mergers |
 
-The [Quick start tutorial](../Tutorials/quick_start_dummy.md) runs PROTEUS
-with all modules set to dummy.
+The [Quick start tutorial](../Tutorials/quick_start_dummy.md) runs PROTEUS with
+every physics module set to dummy. Accretion is left out of that configuration,
+so the planet keeps the mass its initial condition gives it; add an
+`[accretion]` section with `module = "dummy"` to let it grow.
 
 ---
 
@@ -224,3 +231,5 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
  [^cite-baraffe2015]: Baraffe, I., Homeier, D., Allard, F. & Chabrier, G., *[New evolutionary models for pre-main sequence and main sequence low-mass stars down to the hydrogen-burning limit](https://doi.org/10.1051/0004-6361/201425481)*, Astronomy & Astrophysics, 577, A42, 2015. [SciX](https://scixplorer.org/abs/2015A%26A...577A..42B/abstract).
 
  [^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).
+
+ [^cite-kimura2025]: Kimura, T., Hoshino, H., Kokubo, E., Matsumoto, Y. & Ikoma, M., *[Semi-analytical model for the dynamical evolution of planetary systems via giant impacts](https://doi.org/10.3847/1538-4357/ade992)*, The Astrophysical Journal, 989, 109, 2025.

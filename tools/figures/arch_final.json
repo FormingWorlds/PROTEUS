@@ -3476,8 +3476,8 @@
     {
      "top": 1113.53125,
      "bottom": 1128.53125,
-     "left": 801.65625,
-     "right": 823.359375,
+     "left": 816.45625,
+     "right": 838.159375,
      "text": "Yes",
      "size": 13.3,
      "weight": "400",
@@ -3545,8 +3545,8 @@
     {
      "top": 974.53125,
      "bottom": 989.53125,
-     "left": 709,
-     "right": 726.015625,
+     "left": 721.5,
+     "right": 738.515625,
      "text": "No",
      "size": 13.3,
      "weight": "400",
@@ -4868,8 +4868,8 @@
     {
      "top": 275.7,
      "bottom": 291.3,
-     "left": 767.0,
-     "right": 856.0,
+     "left": 784.3,
+     "right": 838.7,
      "text": "Accretion",
      "size": 13.0,
      "color": "#FDFDFE"
@@ -4927,8 +4927,8 @@
     {
      "top": 329.0,
      "bottom": 341.0,
-     "left": 729.0,
-     "right": 894.0,
+     "left": 775.3,
+     "right": 847.7,
      "text": "M_planet, R_int, a, e",
      "size": 10.0,
      "color": "#3E4A55"
@@ -4990,8 +4990,8 @@
     {
      "top": 400.5,
      "bottom": 416.1,
-     "left": 416.625,
-     "right": 482.375,
+     "left": 423.05,
+     "right": 475.95,
      "text": "accretion",
      "size": 13.0,
      "color": "#FDFDFE"
@@ -4999,8 +4999,8 @@
     {
      "top": 416.09,
      "bottom": 431.69,
-     "left": 416.625,
-     "right": 482.375,
+     "left": 421.65,
+     "right": 477.35,
      "text": "(wrapper)",
      "size": 13.0,
      "color": "#FDFDFE"
@@ -5038,8 +5038,8 @@
     {
      "top": 483.703125,
      "bottom": 499.303125,
-     "left": 294.9921875,
-     "right": 354.9921875,
+     "left": 299.1421875,
+     "right": 350.8421875,
      "text": "Morrigan",
      "size": 13.0,
      "color": "#FDFDFE"
@@ -5077,8 +5077,8 @@
     {
      "top": 483.703125,
      "bottom": 499.303125,
-     "left": 419.0,
-     "right": 479.0,
+     "left": 424.35,
+     "right": 473.65,
      "text": "Timeline",
      "size": 13.0,
      "color": "#FDFDFE"
@@ -5116,8 +5116,8 @@
     {
      "top": 483.703125,
      "bottom": 499.303125,
-     "left": 535.0,
-     "right": 595.0,
+     "left": 542.65,
+     "right": 587.35,
      "text": "Dummy",
      "size": 13.0,
      "color": "#FDFDFE"

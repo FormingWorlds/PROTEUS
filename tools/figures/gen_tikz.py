@@ -288,6 +288,13 @@ def surfaces(items, mode: str):
 
 
 def background_at(surfs, x: float, y: float, mode: str) -> str:
+    """Colour of the surface under a point.
+
+    Shapes are compared by their bounding box and a translucent fill is blended
+    against the page rather than against whatever is stacked beneath it. Both
+    hold for this figure, where every label sits well inside its own chip and
+    the one translucent shape sits on the page.
+    """
     bg = PAGE_BG[mode]
     for x0, y0, x1, y1, col in surfs:
         if x0 <= x <= x1 and y0 <= y <= y1:
