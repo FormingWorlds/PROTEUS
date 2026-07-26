@@ -295,6 +295,7 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
                 rho_impactor=m_impactor / (4.0 / 3.0 * math.pi * r_impactor**3),
                 a_before=a_target,
                 a_after=a_after,
+                e_before=e_target,
                 e_after=e_after,
                 id_target=0,
                 id_impactor=index + 1,

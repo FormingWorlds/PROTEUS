@@ -34,6 +34,11 @@ _PPMW_ELEMENTS = ('H', 'C', 'N', 'S', 'O')
 # the module for a timeline again.
 _RESOLVED_TIMELINE_FILE = 'impact_timeline.csv'
 
+# Ceiling on the planet's eccentricity after an impact applies its change. An
+# impact excites a bound orbit; it cannot unbind one, and the rest of the model
+# assumes a closed orbit throughout.
+_ECC_MAX = 0.99
+
 
 def init_accretion(handler: Proteus) -> list[ImpactEvent]:
     """Prepare the impact timeline for a run.
@@ -278,11 +283,22 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
     # Move the orbit by the impact's proportional change in semi-major axis and
     # its post-impact eccentricity, writing both the configuration and the row.
+    # Both elements are applied as the change this impact made, not as the
+    # followed body's absolute values, because the configuration owns the
+    # planet's orbit: a borrowed impact history moves it, it does not replace
+    # it. The semi-major axis takes the ratio and the eccentricity the
+    # difference, since eccentricity is dimensionless and routinely zero, which
+    # a ratio cannot express. The result is clamped to a bound orbit, so an
+    # impact that excites a planet already near unity cannot unbind it on paper.
     ratio = event.semimajoraxis_ratio
+    eccentricity = min(
+        max(config.orbit.eccentricity + event.eccentricity_change, 0.0), _ECC_MAX
+    )
+
     config.orbit.semimajoraxis *= ratio
-    config.orbit.eccentricity = event.e_after
+    config.orbit.eccentricity = eccentricity
     hf_row['semimajorax'] *= ratio
-    hf_row['eccentricity'] = event.e_after
+    hf_row['eccentricity'] = eccentricity
 
     log.info(
         '    planet is now %.4f M_earth at %.5f AU, e = %.4f',

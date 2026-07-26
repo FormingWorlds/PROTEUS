@@ -38,6 +38,7 @@ _ROWS = (
         3930.0,
         1.496e11,
         1.4e11,
+        0.02,
         0.05,
         1,
         4,
@@ -56,6 +57,7 @@ _ROWS = (
         3930.0,
         1.4e11,
         1.35e11,
+        0.03,
         0.02,
         1,
         7,
@@ -211,6 +213,7 @@ def _impact_event(**overrides):
         rho_impactor=3930.0,
         a_before=1.496e11,
         a_after=1.4e11,
+        e_before=0.02,
         e_after=0.05,
         id_target=1,
         id_impactor=4,
@@ -356,11 +359,15 @@ def test_impact_on_a_crystallised_planet_reopens_outgassing(monkeypatch):
 def test_impact_moves_the_orbit_in_both_the_config_and_the_row(monkeypatch):
     """The orbit change is applied as a jump to both the config and the row.
 
-    The semi-major axis moves by the impact's proportional change and the
-    eccentricity takes its post-impact value. Both the configuration, which
-    pins the orbit when tides are off, and the running row, which the tidal
-    evolution carries forward when tides are on, must be written, or the
-    jump would be lost under one of the two orbit modes.
+    Both elements move by the change the impact made rather than taking the
+    followed body's absolute values, because the configuration owns the
+    planet's orbit: a borrowed impact history moves it, it does not replace it.
+    The semi-major axis takes the ratio and the eccentricity the difference,
+    since eccentricity is dimensionless and routinely zero, which a ratio
+    cannot express. Both the configuration, which pins the orbit when tides are
+    off, and the running row, which the tidal evolution carries forward when
+    tides are on, must be written, or the jump would be lost under one of the
+    two orbit modes.
     """
     from proteus.accretion.wrapper import apply_impact
     from proteus.utils.constants import AU
@@ -371,7 +378,8 @@ def test_impact_moves_the_orbit_in_both_the_config_and_the_row(monkeypatch):
 
     handler = _impact_handler(semimajoraxis=0.5, eccentricity=0.1)
     # a_after / a_before = 1.4e11 / 1.4e11 scaled: choose a clean 1.2 ratio.
-    event = _impact_event(a_before=1.0e11, a_after=1.2e11, e_after=0.03)
+    # The followed body goes 0.02 -> 0.03, so the impact excites it by +0.01.
+    event = _impact_event(a_before=1.0e11, a_after=1.2e11, e_before=0.02, e_after=0.03)
     ratio = 1.2
 
     apply_impact(handler, event)
@@ -382,19 +390,25 @@ def test_impact_moves_the_orbit_in_both_the_config_and_the_row(monkeypatch):
     assert handler.hf_row['semimajorax'] / AU == pytest.approx(
         handler.config.orbit.semimajoraxis, rel=1e-12
     )
-    # Eccentricity takes the post-impact value in both places.
-    assert handler.config.orbit.eccentricity == pytest.approx(0.03, rel=1e-12)
-    assert handler.hf_row['eccentricity'] == pytest.approx(0.03, rel=1e-12)
+    # The planet's own 0.1 is excited by the impact's +0.01, not replaced by
+    # the followed body's 0.03.
+    assert handler.config.orbit.eccentricity == pytest.approx(0.11, rel=1e-12)
+    assert handler.hf_row['eccentricity'] == pytest.approx(0.11, rel=1e-12)
+    # Discrimination: transplanting the absolute value would give 0.03, which
+    # is nearly four times away from the correct 0.11.
+    assert abs(0.03 - 0.11) > 0.5 * 0.11
 
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_a_grazing_head_on_impact_leaves_the_orbit_circular(monkeypatch):
-    """A zero post-impact eccentricity is a valid boundary and is applied.
+    """A circularising impact damps the planet's own eccentricity, and stops at zero.
 
-    The eccentricity is written directly, so the circular limit must come
-    through as exactly zero rather than being clamped away, and the
-    semi-major axis still moves by its ratio independently of it.
+    An impact that circularises the followed body applies a negative change,
+    which must reduce the planet's eccentricity rather than replace it. The
+    result is clamped at zero, since a negative eccentricity has no meaning and
+    would propagate into the separation and Hill-radius formulae as a sign
+    error. The semi-major axis still moves by its ratio independently of it.
     """
     from proteus.accretion.wrapper import apply_impact
 
@@ -402,15 +416,26 @@ def test_a_grazing_head_on_impact_leaves_the_orbit_circular(monkeypatch):
         'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
     )
 
+    # The followed body is circularised from 0.05 to 0, a change of -0.05,
+    # which damps a planet at 0.2 to 0.15 rather than resetting it.
     handler = _impact_handler(semimajoraxis=1.0, eccentricity=0.2)
-    event = _impact_event(a_before=1.0e11, a_after=1.0e11, e_after=0.0)
+    event = _impact_event(a_before=1.0e11, a_after=1.0e11, e_before=0.05, e_after=0.0)
     apply_impact(handler, event)
 
-    assert handler.config.orbit.eccentricity == 0.0
-    assert handler.hf_row['eccentricity'] == 0.0
+    assert handler.config.orbit.eccentricity == pytest.approx(0.15, rel=1e-12)
+    assert handler.hf_row['eccentricity'] == pytest.approx(0.15, rel=1e-12)
     # Equal before/after semi-major axis is a unit ratio, so the orbit size
-    # is unchanged while the eccentricity is reset.
+    # is unchanged while the eccentricity is damped.
     assert handler.config.orbit.semimajoraxis == pytest.approx(1.0, rel=1e-12)
+
+    # A change larger than the planet's own eccentricity clamps at zero rather
+    # than going negative, which is the boundary the clamp exists for.
+    floored = _impact_handler(semimajoraxis=1.0, eccentricity=0.01)
+    apply_impact(
+        floored, _impact_event(a_before=1.0e11, a_after=1.0e11, e_before=0.05, e_after=0.0)
+    )
+    assert floored.config.orbit.eccentricity == 0.0
+    assert floored.hf_row['eccentricity'] == 0.0
 
 
 @pytest.mark.unit

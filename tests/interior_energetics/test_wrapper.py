@@ -6089,6 +6089,7 @@ def test_the_remelt_injection_is_weighed_against_the_impact_energy(caplog):
         rho_impactor=3930.0,
         a_before=1.496e11,
         a_after=1.4e11,
+        e_before=0.02,
         e_after=0.05,
     )
     reduced = tiny.M_target_before * tiny.M_impactor / (tiny.M_target_before + tiny.M_impactor)
@@ -6134,6 +6135,7 @@ def test_the_remelt_injection_is_weighed_against_the_impact_energy(caplog):
         rho_impactor=5510.0,
         a_before=1.496e11,
         a_after=1.4e11,
+        e_before=0.02,
         e_after=0.05,
     )
     hf_row2 = {}

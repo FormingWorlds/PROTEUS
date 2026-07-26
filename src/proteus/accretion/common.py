@@ -31,6 +31,7 @@ TIMELINE_COLUMNS = (
     'rho_impactor',
     'a_before',
     'a_after',
+    'e_before',
     'e_after',
     'id_target',
     'id_impactor',
@@ -91,6 +92,8 @@ class ImpactEvent:
         Semi-major axis of the target before the impact [m].
     a_after: float
         Semi-major axis of the merged body [m].
+    e_before: float
+        Eccentricity of the target immediately before the impact [1].
     e_after: float
         Eccentricity of the merged body [1].
     id_target: int
@@ -112,6 +115,7 @@ class ImpactEvent:
     rho_impactor: float = field()
     a_before: float = field()
     a_after: float = field()
+    e_before: float = field()
     e_after: float = field()
     id_target: int = field(default=-1)
     id_impactor: int = field(default=-1)
@@ -131,6 +135,19 @@ class ImpactEvent:
         replacing it.
         """
         return self.a_after / self.a_before
+
+    @property
+    def eccentricity_change(self) -> float:
+        """Change in eccentricity this impact makes [1].
+
+        Applied as a change for the same reason the semi-major axis is applied
+        as a ratio: the configuration owns the planet's orbit, and the followed
+        body's absolute eccentricity belongs to its orbit rather than to the
+        planet being simulated. A change is used instead of a ratio because the
+        eccentricity is dimensionless and routinely zero, which a ratio cannot
+        express.
+        """
+        return self.e_after - self.e_before
 
 
 def _check_event_physics(event: ImpactEvent, index: int) -> None:
@@ -192,10 +209,10 @@ def _check_event_physics(event: ImpactEvent, index: int) -> None:
             f'{where}: impact parameter must be in [0, 1], got {event.impact_parameter!r}'
         )
 
-    if not 0.0 <= event.e_after < 1.0:
-        raise ValueError(
-            f'{where}: post-impact eccentricity must be in [0, 1), got {event.e_after!r}'
-        )
+    for name in ('e_before', 'e_after'):
+        value = getattr(event, name)
+        if not 0.0 <= value < 1.0:
+            raise ValueError(f'{where}: eccentricity {name} must be in [0, 1), got {value!r}')
 
 
 def validate_timeline(
@@ -334,6 +351,7 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
             rho_impactor=float(row['rho_impactor']),
             a_before=float(row['a_before']),
             a_after=float(row['a_after']),
+            e_before=float(row['e_before']),
             e_after=float(row['e_after']),
             id_target=int(row['id_target']),
             id_impactor=int(row['id_impactor']),
