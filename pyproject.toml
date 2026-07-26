@@ -121,7 +121,7 @@ vulcan = ["fwl-vulcan>=26.04.22"]
 # accretion.module = "morrigan". Supplies the giant-impact timeline the
 # accretion coupling replays. Also installable editable via
 # tools/get_morrigan.sh.
-morrigan = ["fwl-morrigan>=26.07.26"]
+morrigan = ["fwl-morrigan>=26.07.27"]
 
 develop = [
     # coverage[toml] enables standalone coverage tool with TOML config support (used by ratcheting script)
