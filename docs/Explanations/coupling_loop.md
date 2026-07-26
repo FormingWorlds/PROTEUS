@@ -42,47 +42,58 @@ upstream modules.
    melt fraction, and heat flux using the chosen solver (Aragog, SPIDER,
    boundary, or dummy). Advances simulation time by the interior timestep.
 
-2. **Structure update** (`update_structure_from_interior`): If Zalmoxis is
+2. **Giant impacts** (`apply_impact`): Applies every impact whose time falls
+   within the step just taken. The impactor's rock is added to the planet and
+   the interior structure is re-solved at the new mass, its volatiles are
+   delivered while part of the target's atmosphere is stripped, the mantle is
+   re-melted by re-applying the run's temperature-mode initial condition, and
+   the orbit takes the impact's change in semi-major axis and eccentricity.
+   How molten the re-melt leaves the mantle follows that initial condition:
+   only `planet.temperature_mode = "liquidus_super"` is fully molten for any
+   planet mass and melting curve. Runs only when an accretion module is
+   configured and an impact is due.
+
+3. **Structure update** (`update_structure_from_interior`): If Zalmoxis is
    active and a structure update is triggered (by elapsed time, melt fraction
    change, or temperature change exceeding configured thresholds), recomputes
    the hydrostatic density profile and planet radius.
 
-3. **Orbit and tides** (`run_orbit`): Updates orbital elements (semi-major
+4. **Orbit and tides** (`run_orbit`): Updates orbital elements (semi-major
    axis, eccentricity) and computes tidal heating rates. Tidal power is
    distributed radially and passed to the interior module for the next
    iteration.
 
-4. **Stellar evolution** (`update_stellar_quantities`): Interpolates the
+5. **Stellar evolution** (`update_stellar_quantities`): Interpolates the
    stellar mass, radius, effective temperature, and luminosity from
    pre-computed evolutionary tracks at the current stellar age. Recomputes
    the instellation flux and XUV flux. The stellar spectrum is updated on a
    separate, longer cadence controlled by `params.dt.starspec`.
 
-5. **Atmospheric escape** (`run_escape`): Computes mass loss rates for each
+6. **Atmospheric escape** (`run_escape`): Computes mass loss rates for each
    element (H, C, N, S, O) based on the XUV flux, planet mass, and current
    atmospheric composition. Updates element inventories by debiting the
    escaped mass. Only active after the initialisation stage.
 
-6. **Outgassing** (`run_outgassing`): Given the updated element inventories,
+7. **Outgassing** (`run_outgassing`): Given the updated element inventories,
    mantle temperature, and melt fraction, computes the thermodynamic
    equilibrium partitioning of volatiles between atmosphere, melt, and solid.
    Writes partial pressures, mixing ratios, and atmospheric mass to `hf_row`.
    Also calls `update_planet_mass` and `assert_mass_conservation` to verify
    the whole-planet mass budget.
 
-7. **Atmosphere climate** (`run_atmosphere`): Solves the radiative-convective
+8. **Atmosphere climate** (`run_atmosphere`): Solves the radiative-convective
    structure of the atmosphere using the chosen backend (AGNI, JANUS, or
    dummy). Takes the interior heat flux and atmospheric composition as input;
    returns the surface temperature, outgoing longwave radiation, and Bond
    albedo.
 
-8. **Atmospheric chemistry** (`run_chemistry`): If configured for online mode,
+9. **Atmospheric chemistry** (`run_chemistry`): If configured for online mode,
    runs photochemical kinetics (VULCAN) to compute steady-state mixing ratios.
    Most configurations skip this step or run it offline after the simulation.
 
-9. **Housekeeping**: Updates iteration counters, checks convergence criteria,
-   writes the helpfile row to `hf_all`, generates plots and archives if
-   scheduled.
+10. **Housekeeping**: Updates iteration counters, checks convergence criteria,
+    writes the helpfile row to `hf_all`, generates plots and archives if
+    scheduled.
 
 ## Initialisation stage
 

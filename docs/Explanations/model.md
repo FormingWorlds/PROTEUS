@@ -46,6 +46,7 @@ atmosphere), enabling hierarchical model intercomparison.
 | Escape | [ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS), dummy | Atmospheric escape |
 | Outgassing | [CALLIOPE](https://proteus-framework.org/CALLIOPE/), [atmodeller](https://github.com/djbower/atmodeller), dummy | Volatile exchange between interior and atmosphere |
 | Orbit | [Obliqua](https://github.com/FormingWorlds/Obliqua), dummy | Orbital evolution and tidal heating |
+| Accretion | [Morrigan](https://proteus-framework.org/Morrigan/), timeline, dummy | Protoplanet growth by giant impacts |
 | Observations | [petitRADTRANS](https://petitradtrans.readthedocs.io/), none | Synthetic transit and eclipse spectra |
 
 Each module is maintained in its own repository and can be used as a standalone package outside of PROTEUS. The following sections describe each module's physical role and how PROTEUS couples to it.
@@ -117,6 +118,14 @@ Config section: `[outgas]`. Reference: [Escape and outgassing configuration](../
 **[Obliqua](https://github.com/FormingWorlds/Obliqua)** (Julia) evolves the orbital semi-major axis and eccentricity under the influence of tidal dissipation. The tidal response of the planet is computed from its interior structure and rheology using a viscoelastic love-number solver (LovePy). Tidal heating power is distributed radially across the mantle and fed back into the interior energy equation. Obliqua also computes the spin-orbit evolution and checks for dynamical stability (Roche limit, Hill sphere).
 
 Config section: `[orbit]`. Reference: [Star and orbit configuration](../Reference/config/star_orbit.md).
+
+## Accretion: Morrigan
+
+**[Morrigan](https://proteus-framework.org/Morrigan/)** (Python) follows a system of protoplanets through the giant impacts and gravitational scattering by which they accrete, using the semi-analytical Monte Carlo model of [Kimura et al. (2025)](https://doi.org/10.3847/1538-4357/ade992). PROTEUS takes the impact history of one body from that system and applies each collision as it falls due: the impactor's rock grows the planet and the structure is re-solved at the new mass, the impactor's volatiles are delivered while part of the target's atmosphere is stripped, the mantle is re-melted, and the orbit takes the collision's change in semi-major axis and eccentricity.
+
+Two further implementations take a history rather than derive one: `timeline` replays a table of impacts read from a file, and `dummy` grows the planet along an analytical accretion curve. With no accretion module selected the impact list is empty and the planet's mass is set only by its initial condition.
+
+Config section: `[accretion]`. Reference: [Elemental delivery and accretion](../How-to/config.md#elemental-delivery-and-accretion).
 
 ## Synthetic observations: petitRADTRANS
 

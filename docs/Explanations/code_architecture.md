@@ -12,6 +12,7 @@ coupled planetary evolution simulation:
 - [`atmos_chem/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/atmos_chem): atmospheric photochemistry (VULCAN, dummy)
 - [`escape/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/escape): atmospheric mass loss (ZEPHYRUS, dummy)
 - [`outgas/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/outgas): volatile partitioning (CALLIOPE, atmodeller, dummy)
+- [`accretion/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/accretion): protoplanet growth by giant impacts (Morrigan, timeline, dummy)
 - [`orbit/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/orbit): orbital evolution and tides (Obliqua/LovePy, dummy)
 - [`star/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/star): stellar evolution and spectra (MORS, dummy)
 
