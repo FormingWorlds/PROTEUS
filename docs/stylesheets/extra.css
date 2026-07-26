@@ -40,8 +40,47 @@
   --pt-basalt: #0E131B;
   --pt-line-d: #1A2230;
 
+  /* Module domain colours. One hue per physical domain, held stable across
+     every artefact in the ecosystem: the website, the overview figures, and
+     these pages. A module inherits the colour of the domain it acts on, so a
+     reader who learns the mapping once can carry it between the flowchart, the
+     planet schematic and the module tables. Source of truth for these values is
+     the ecosystem site's design tokens; keep them identical. */
+  --pt-dom-interior: #E23D28;   /* SPIDER, Aragog, Zalmoxis */
+  --pt-dom-outgassing: #A03123; /* CALLIOPE, Atmodeller */
+  --pt-dom-tidal: #593E74;      /* LovePy, Obliqua; the red-to-blue midpoint, CVD-safe */
+  --pt-dom-chem: #1B6FA8;       /* VULCAN, ZEPHYRUS */
+  --pt-dom-atmos: #4FA3D9;      /* AGNI, JANUS */
+  --pt-dom-stellar: #E0A32E;    /* MORS; solar gold, deepened on light for contrast */
+  --pt-dom-accretion: #A38F7A;  /* Morrigan; clay, sits clear of the reds and the blues */
+
+  /* Diverging phase ramp, magma through void to ocean, for data that runs from
+     molten to frozen. Ordered, so an index maps to a position on the ramp. */
+  --pt-p1: #E23D28;
+  --pt-p2: #8E1F12;
+  --pt-p3: #3A120C;
+  --pt-p4: #05070B;
+  --pt-p5: #0E2A45;
+  --pt-p6: #14406B;
+  --pt-p7: #1B6FA8;
+  --pt-p8: #4FA3D9;
+  --pt-p9: #A8D4E8;
+
+  /* Status, kept apart from the domain hues so a red module and a failure
+     never have to be told apart by colour alone. */
+  --pt-positive: #2E8B57;
+  --pt-warning: #C77726;
+  --pt-danger: #C2362B;
+  --pt-info: #1B6FA8;
+
   --md-text-font: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --md-code-font: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* Solar deepens on the light scheme for adequate contrast, the one domain
+   colour that differs between schemes. */
+[data-md-color-scheme="default"] {
+  --pt-dom-stellar: #C8860F;
 }
 
 /* ---------- DARK (scheme: slate) — the primary mode ---------- */
