@@ -19,6 +19,7 @@ Functions tested:
 from __future__ import annotations
 
 import logging
+import math
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -5661,7 +5662,7 @@ def _remelt_config(
             dummy=SimpleNamespace(mantle_tliq=mantle_tliq, mantle_tsol=mantle_tsol),
             boundary=SimpleNamespace(T_solidus=b_tsol, T_liquidus=b_tliq),
         ),
-        planet=SimpleNamespace(tsurf_init=tsurf_init),
+        planet=SimpleNamespace(tsurf_init=tsurf_init, temperature_mode='liquidus_super'),
         interior_struct=SimpleNamespace(core_frac=0.55),
     )
 
@@ -5946,3 +5947,196 @@ def test_remelt_refuses_spider_and_rejects_an_unknown_backend():
 
         with pytest.raises(ValueError, match='unknown interior module'):
             remelt_mantle(dirs, _remelt_config('nonsense'), hf_row={}, interior_o=None)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_remelt_that_would_cool_the_mantle_is_refused():
+    """An impact adds energy, so the re-melt cannot lower the mantle entropy.
+
+    The re-melt re-applies the run's temperature-mode initial condition. Only
+    'liquidus_super' guarantees that condition is molten for any planet mass
+    and melting curve; a mode anchored on a user-supplied temperature can sit
+    below the current thermal state, in which case the "re-melt" would cool the
+    mantle and book negative impact heat. Negative impact heat is unphysical
+    and enters both sides of the energy budget, so it would corrupt the ledger
+    silently rather than fail. The run must stop instead, naming the mode.
+    """
+    cooled = np.full(6, 3900.0)  # already hotter than the IC below
+    solver = _FakeAragogSolver(cooled_profile=cooled)
+    interior_o = SimpleNamespace(
+        aragog_solver=solver, _last_entropy=cooled.copy(), impact_reset=False
+    )
+    config = _remelt_config('aragog')
+    config.planet.temperature_mode = 'adiabatic_from_cmb'
+
+    colder_ic = np.full(6, 2400.0)
+
+    hf_row = {}
+    with patch(
+        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+        side_effect=lambda cfg, io, outdir, row: colder_ic,
+    ):
+        with pytest.raises(RuntimeError, match='cool the mantle'):
+            remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
+
+    # The offending mode is named, so the message is actionable rather than
+    # just reporting that something went wrong.
+    with patch(
+        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+        side_effect=lambda cfg, io, outdir, row: colder_ic,
+    ):
+        with pytest.raises(RuntimeError, match='adiabatic_from_cmb'):
+            remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
+
+    # No heat was booked: the guard fires before the quadrature, so a corrupt
+    # value cannot reach the row even transiently.
+    assert hf_row.get('step_dE_impact_J', 0.0) == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_two_impacts_in_one_step_accumulate_their_booked_heat():
+    """A second impact in the same step must not erase the first one's heat.
+
+    The timestep clamp is floored at the minimum step, so two impacts can fall
+    inside one iteration, and the scheduler deliberately sweeps up every impact
+    in the overshot window. Each one re-melts, but the second measures a mantle
+    the first already made molten, so its own quadrature is near zero. Assigning
+    the booked heat rather than accumulating it would therefore replace a real
+    injection with that near-zero value and drop it from the row.
+    """
+    cooled = np.full(6, 2400.0)
+    molten = np.full(6, 3900.0)
+    solver = _FakeAragogSolver(cooled_profile=cooled)
+    interior_o = SimpleNamespace(
+        aragog_solver=solver, _last_entropy=cooled.copy(), impact_reset=False
+    )
+    config = _remelt_config('aragog')
+
+    hf_row = {}
+    with patch(
+        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+        side_effect=lambda cfg, io, outdir, row: molten,
+    ):
+        remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
+        first = hf_row['step_dE_impact_J']
+
+        # The second impact of the same step: the carrier now holds the molten
+        # profile, so this re-melt injects nothing further.
+        solver._solution = _FakeAragogSolver._Solution(molten)
+        remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
+
+    expected = 6 * (3900.0 - 2400.0) * _FakeAragogSolver._HEAT_PER_ENTROPY
+    assert first == pytest.approx(expected, rel=1e-12)
+    # The first impact's injection survives the second re-melt.
+    assert hf_row['step_dE_impact_J'] == pytest.approx(expected, rel=1e-12)
+    # Discrimination: assigning instead of accumulating would leave 0.0 here,
+    # which differs from the correct value by the whole injection.
+    assert abs(hf_row['step_dE_impact_J']) > 0.5 * expected
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_remelt_injection_is_weighed_against_the_impact_energy(caplog):
+    """The booked heat is reported as a fraction of the collision energy.
+
+    The coupler adds the re-melt injection to both sides of the energy budget,
+    so the conservation residual is invariant across an impact for any booked
+    value and cannot detect a wrong magnitude. This ratio is the only runtime
+    diagnostic that can. A re-melt costing far more than the collision carried
+    means the mantle, not the impact, set the thermal response, and that has to
+    be visible rather than left implicit in a log line nobody reads.
+    """
+    import logging
+
+    from proteus.accretion.common import ImpactEvent
+
+    cooled = np.full(6, 2400.0)
+    molten = np.full(6, 3900.0)
+    solver = _FakeAragogSolver(cooled_profile=cooled)
+    interior_o = SimpleNamespace(
+        aragog_solver=solver, _last_entropy=cooled.copy(), impact_reset=False
+    )
+    config = _remelt_config('aragog')
+
+    # The fake books 6 * 1500 * 2e27 = 1.8e31 J. An impactor carrying far less
+    # kinetic energy than that is the diagnostic's whole point: a small body
+    # cannot supply a mantle-scale re-melt.
+    booked = 6 * (3900.0 - 2400.0) * _FakeAragogSolver._HEAT_PER_ENTROPY
+    tiny = ImpactEvent(
+        time=1.0e5,
+        M_target_before=6.0e24,
+        M_impactor=6.0e21,
+        M_merged_after=6.006e24,
+        v_impact=1.0e4,
+        v_esc=9.0e3,
+        impact_parameter=0.5,
+        R_target_before=6.371e6,
+        R_impactor=8.0e5,
+        rho_target=5510.0,
+        rho_impactor=3930.0,
+        a_before=1.496e11,
+        a_after=1.4e11,
+        e_after=0.05,
+    )
+    reduced = tiny.M_target_before * tiny.M_impactor / (tiny.M_target_before + tiny.M_impactor)
+    e_impact = 0.5 * reduced * tiny.v_impact**2
+
+    # The booked injection is far above the energy the collision carried, so
+    # the ratio is well outside the band and must be flagged.
+    assert booked / e_impact > 1.0
+
+    hf_row = {}
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.wrapper'):
+        with patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            side_effect=lambda cfg, io, outdir, row: molten,
+        ):
+            remelt_mantle(
+                {'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o, event=tiny
+            )
+
+    assert 'outside' in caplog.text
+    assert hf_row['step_dE_impact_J'] == pytest.approx(booked, rel=1e-12)
+
+    # Discrimination: an impactor whose kinetic energy sits inside the band
+    # draws no warning, so the check discriminates rather than always firing.
+    caplog.clear()
+    solver2 = _FakeAragogSolver(cooled_profile=cooled)
+    interior_o2 = SimpleNamespace(
+        aragog_solver=solver2, _last_entropy=cooled.copy(), impact_reset=False
+    )
+    # v chosen so the reduced-mass kinetic energy is about twice the booked
+    # heat, putting the retained fraction near 0.5, inside [0.01, 1].
+    big = ImpactEvent(
+        time=1.0e5,
+        M_target_before=6.0e24,
+        M_impactor=6.0e24,
+        M_merged_after=1.2e25,
+        v_impact=math.sqrt(2.0 * (2.0 * booked) / (6.0e24 / 2.0)),
+        v_esc=9.0e3,
+        impact_parameter=0.5,
+        R_target_before=6.371e6,
+        R_impactor=6.371e6,
+        rho_target=5510.0,
+        rho_impactor=5510.0,
+        a_before=1.496e11,
+        a_after=1.4e11,
+        e_after=0.05,
+    )
+    hf_row2 = {}
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.wrapper'):
+        with patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            side_effect=lambda cfg, io, outdir, row: molten,
+        ):
+            remelt_mantle(
+                {'output': '/tmp/out'},
+                config,
+                hf_row=hf_row2,
+                interior_o=interior_o2,
+                event=big,
+            )
+
+    assert 'outside' not in caplog.text
