@@ -808,6 +808,14 @@ def GetHelpfileKeys():
         # gate's state.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
         'esc_kg_cumulative', # cumulative mass lost to space [kg] (escape + impact stripping)
+
+        # Giant-impact accretion ledger. The rock each impact adds to the
+        # interior mass anchor, summed over the run. The anchor itself lives in
+        # the configuration, which is rebuilt from file on every start, so this
+        # column is what lets a resumed run reconstruct how far the planet had
+        # already grown. Rock only: the volatile budgets are tracked separately
+        # in the per-element columns, so this is not the whole-planet mass.
+        'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
     ]
 
     # quantities for each gas, from outgassing

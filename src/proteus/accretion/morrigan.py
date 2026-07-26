@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.accretion.common import ImpactEvent, validate_timeline
+from proteus.accretion.common import TIMELINE_COLUMNS, ImpactEvent, validate_timeline
 from proteus.utils.constants import AU, M_earth
 
 if TYPE_CHECKING:
@@ -23,6 +23,10 @@ except ModuleNotFoundError:  # optional dependency
 
 # Entry point Morrigan must expose for PROTEUS to drive it.
 MORRIGAN_ENTRY_POINT = 'run_system'
+
+# Timeline fields that identify bodies rather than measure them, so they are
+# read as integers while every other field is a physical quantity.
+_ID_COLUMNS = ('id_target', 'id_impactor')
 
 INSTALL_HINT = (
     "accretion.module = 'morrigan' requires the morrigan package. "
@@ -200,6 +204,9 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
         If the morrigan package is unavailable.
     KeyError
         If the run reports no impact history for the selected body.
+    ValueError
+        If the model's outcome or its impact records do not carry the fields
+        the coupling requires.
     """
     package = require_morrigan()
 
@@ -208,13 +215,42 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
 
     outcome = getattr(package, MORRIGAN_ENTRY_POINT)(**params)
 
+    for key in ('survivors', 'impacts'):
+        if key not in outcome:
+            raise ValueError(
+                f"The giant-impact model returned no '{key}' entry. Expected a mapping "
+                f'carrying {sorted(("survivors", "impacts"))}, got '
+                f'{sorted(outcome.keys())}. This usually means the installed '
+                'fwl-morrigan is newer than the coupling expects.'
+            )
+
     chosen = select_planet(outcome['survivors'], config)
     records = outcome['impacts'][chosen['id']]
 
     offset = config.accretion.time_offset
-    events = [
-        ImpactEvent(**{**record, 'time': float(record['time']) + offset}) for record in records
-    ]
+    # Select the fields explicitly rather than splatting each record, the same
+    # way the file reader does. The dependency is pinned by a version floor, so
+    # a later release may add fields to its records; ignoring the ones the
+    # coupling does not consume keeps that from becoming a fatal argument error,
+    # and a missing field still reports which one by name.
+    events = []
+    for index, record in enumerate(records):
+        missing = [column for column in TIMELINE_COLUMNS if column not in record]
+        if missing:
+            raise ValueError(
+                f'Impact record {index} from the giant-impact model is missing '
+                f'required fields: {missing}. Expected all of: '
+                f'{list(TIMELINE_COLUMNS)}'
+            )
+        fields = {
+            column: float(record[column])
+            for column in TIMELINE_COLUMNS
+            if column not in _ID_COLUMNS
+        }
+        fields['time'] += offset
+        for column in _ID_COLUMNS:
+            fields[column] = int(record[column])
+        events.append(ImpactEvent(**fields))
     events.sort(key=lambda e: e.time)
 
     validate_timeline(events)

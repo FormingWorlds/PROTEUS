@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
-from proteus.utils.constants import M_earth, element_list
+from proteus.utils.constants import AU, M_earth, element_list
 
 if TYPE_CHECKING:
     from proteus.accretion.common import ImpactEvent
@@ -27,6 +28,11 @@ _VOLATILE_ELEMENTS = tuple(e for e in element_list if e not in _ROCK_ELEMENTS)
 # can only deliver these; the planet-matching mode covers the full volatile
 # set above, noble gases included.
 _PPMW_ELEMENTS = ('H', 'C', 'N', 'S', 'O')
+
+# Where the run records the impact timeline it resolved at initialisation, in
+# its own output directory. A resumed run replays this file instead of asking
+# the module for a timeline again.
+_RESOLVED_TIMELINE_FILE = 'impact_timeline.csv'
 
 
 def init_accretion(handler: Proteus) -> list[ImpactEvent]:
@@ -58,13 +64,16 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
 
     # Advise when the Aragog re-melt initial condition is not guaranteed molten.
     # The re-melt re-applies the run's temperature-mode initial condition, and
-    # only some modes guarantee it is fully molten; the others are only as molten
-    # as the user's temperature or entropy value. Emitted here, after the file
-    # logger exists, rather than in the config validator, which runs before it.
-    _MOLTEN_MODES = ('liquidus_super', 'accretion', 'adiabatic_from_cmb')
+    # only 'liquidus_super' guarantees it is fully molten for any planet mass and
+    # melting curve; every other mode is only as molten as the user's temperature
+    # or entropy value makes it. 'adiabatic_from_cmb' is commonly chosen to force
+    # a molten state, but whether it reaches one depends on tcmb_init, so it draws
+    # the advisory too. Emitted here, after the file logger exists, rather than in
+    # the config validator, which runs before it.
+    _GUARANTEED_MOLTEN_MODES = ('liquidus_super',)
     if (
         config.interior_energetics.module == 'aragog'
-        and config.planet.temperature_mode not in _MOLTEN_MODES
+        and config.planet.temperature_mode not in _GUARANTEED_MOLTEN_MODES
     ):
         log.warning(
             "Accretion on Aragog with temperature_mode='%s': each impact re-melts "
@@ -75,17 +84,92 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
         )
     log.info('')
 
-    match module:
-        case 'dummy':
-            from proteus.accretion.dummy import get_timeline
-        case 'morrigan':
-            from proteus.accretion.morrigan import get_timeline
-        case _:
-            raise ValueError(f"Invalid accretion module: '{module}'")
+    from proteus.accretion.common import read_timeline, write_timeline
 
-    events = get_timeline(config)
+    resolved_path = os.path.join(handler.directories['output'], _RESOLVED_TIMELINE_FILE)
+
+    # A resumed run replays the timeline the first session resolved rather than
+    # deriving it again. Re-deriving would repeat a dynamical model's whole
+    # evolution at every restart, and would only reproduce the original history
+    # if that model is bit-reproducible at a fixed seed, which is not something
+    # PROTEUS can check. Reading the file makes the impact history a property of
+    # the run rather than of the model's determinism.
+    if config.params.resume and os.path.exists(resolved_path):
+        # Written on the PROTEUS axis with the offset already applied, so it
+        # must not be offset a second time.
+        events = read_timeline(resolved_path, time_offset=0.0)
+        log.info('Replaying the impact timeline resolved at the start of this run')
+    else:
+        match module:
+            case 'dummy':
+                from proteus.accretion.dummy import get_timeline
+            case 'timeline':
+                from proteus.accretion.timeline import get_timeline
+            case 'morrigan':
+                from proteus.accretion.morrigan import get_timeline
+            case _:
+                raise ValueError(f"Invalid accretion module: '{module}'")
+
+        events = get_timeline(config)
+        write_timeline(events, resolved_path)
 
     return _drop_events_before_start(events, handler.hf_row.get('Time', 0.0))
+
+
+def restore_accretion_state(handler: Proteus) -> None:
+    """Rebuild the accretion state a resumed run cannot read from its TOML.
+
+    Each impact grows ``config.planet.mass_tot`` and moves
+    ``config.orbit.semimajoraxis`` and ``config.orbit.eccentricity``. The
+    configuration is the run's specification, rebuilt from file on every start,
+    so none of that survives a restart: without this, a resumed run would solve
+    the structure against the planet's original mass, discarding the growth of
+    every impact before the resume point, and would snap the orbit back to its
+    configured value on the first step whenever tides are off, because that
+    path re-pins the row from the configuration each iteration.
+
+    The mass is rebuilt from ``M_accreted_rock``, the cumulative rock the
+    impacts added, on top of the configured mass rather than from ``M_planet``:
+    the anchor carries rock alone, while ``M_planet`` also carries the volatile
+    budgets, so anchoring on it would fold the volatiles into the rock and
+    drift further on every subsequent resume.
+
+    Call after :func:`init_accretion`, so the timeline is still resolved
+    against the configured mass and orbit and a re-run dynamical model selects
+    the same body it selected originally.
+
+    Parameters
+    ----------
+    handler : Proteus
+        Proteus object instance, whose configuration is updated in place.
+    """
+    config = handler.config
+
+    if config.accretion.module is None or not config.params.resume:
+        return
+
+    hf_row = handler.hf_row
+
+    accreted = float(hf_row.get('M_accreted_rock') or 0.0)
+    if accreted <= 0.0:
+        return
+
+    config.planet.mass_tot += accreted / M_earth
+
+    semimajoraxis = float(hf_row.get('semimajorax') or 0.0)
+    eccentricity = float(hf_row.get('eccentricity') or 0.0)
+    if semimajoraxis > 0.0:
+        config.orbit.semimajoraxis = semimajoraxis / AU
+        config.orbit.eccentricity = eccentricity
+
+    log.info(
+        'Restored accretion state: %.4f M_earth at %.5f AU, e = %.4f '
+        '(%.3e kg of rock accreted before the resume)',
+        config.planet.mass_tot,
+        config.orbit.semimajoraxis,
+        config.orbit.eccentricity,
+        accreted,
+    )
 
 
 def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
@@ -155,6 +239,14 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # mass_tot is in Earth masses; the amounts are in kg.
     impactor_rock = event.mass_delta - sum(content.values())
     config.planet.mass_tot += impactor_rock / M_earth
+
+    # Record the growth in the helpfile as well as in the configuration. The
+    # configuration is rebuilt from the TOML on every start, so it cannot carry
+    # state across a resume; this column is what lets a resumed run rebuild the
+    # anchor. It holds rock only, matching what the anchor accumulates, so it
+    # must not be confused with the whole-planet mass, which also carries the
+    # volatile budgets.
+    hf_row['M_accreted_rock'] = float(hf_row.get('M_accreted_rock') or 0.0) + impactor_rock
     solve_structure(
         handler.directories, config, handler.hf_all, hf_row, handler.directories['output']
     )
@@ -243,10 +335,15 @@ def _apply_volatile_consequences(
             sum(impactor_lost.values()),
         )
 
-    # Refresh the tracked-element total from the conserved budgets plus the
-    # strip and delivery. solve_structure set M_ele from the mass-scaled
-    # values it computed, which the updates above have overridden.
-    _refresh_tracked_element_total(hf_row)
+    # Refresh the tracked-element total AND the whole-planet mass from the
+    # conserved budgets plus the strip and delivery. solve_structure set both
+    # from the mass-scaled values it computed, which the updates above have
+    # overridden; refreshing M_ele alone would leave M_planet disagreeing with
+    # M_int + M_ele for the rest of the iteration, and escape runs inside that
+    # window and reads M_planet.
+    from proteus.interior_energetics.wrapper import update_planet_mass
+
+    update_planet_mass(hf_row)
 
 
 def _primordial_mass_fractions(hf_all) -> dict:
@@ -409,13 +506,22 @@ def _partition_impactor_content(
 def _target_strip_amounts(config, hf_row: dict, f_loss: float) -> dict:
     """Mass the impact strips from the target's atmosphere, per element [kg].
 
-    Sizes the debit from the pre-impact state without mutating it: the loss
-    fraction times the atmospheric reservoir, partitioned over the elements in
-    proportion to their atmospheric masses through the same path continuous
-    escape uses, so the per-element loss can never exceed what the atmosphere
-    holds and the dissolved interior inventory is untouched. An atmosphere
-    below the outgassing mass threshold is treated as nothing to strip, the
-    same convention continuous escape applies to it.
+    Sizes the debit from the pre-impact state without mutating it: each element
+    loses the loss fraction of its own atmospheric mass, which is what
+    partitioning the total stripped mass in proportion to the atmospheric
+    abundances amounts to. The collision reaches only the atmosphere, so the
+    per-element loss is capped at the whole-planet total as well, and the
+    dissolved interior inventory is left intact.
+
+    The debit is deliberately NOT routed through the continuous-escape path.
+    That path applies a desiccation floor which zeroes an element's
+    whole-planet total once it falls below the outgassing mass threshold, a
+    reasonable convention for an element being ground down over many steps but
+    wrong for a single collision: it would delete dissolved mantle inventory
+    the impact never touched and book it as mass lost to space.
+
+    An atmosphere below the outgassing mass threshold is treated as nothing to
+    strip, the same convention continuous escape applies to it.
 
     Parameters
     ----------
@@ -426,8 +532,6 @@ def _target_strip_amounts(config, hf_row: dict, f_loss: float) -> dict:
     f_loss : float
         Collision loss fraction in [0, 1] from :func:`_impact_loss_fraction`.
     """
-    from proteus.escape.wrapper import calc_new_elements
-
     if f_loss <= 0.0:
         return {}
 
@@ -438,16 +542,10 @@ def _target_strip_amounts(config, hf_row: dict, f_loss: float) -> dict:
         )
         return {}
 
-    tgt = calc_new_elements(
-        hf_row,
-        dt=0.0,
-        reservoir='outgas',
-        min_thresh=config.outgas.mass_thresh,
-        esc_mass=f_loss * m_atm,
-    )
     strip = {}
-    for e, new_total in tgt.items():
-        removed = float(hf_row.get(f'{e}_kg_total', 0.0)) - float(new_total)
+    for e in element_list:
+        atm_e = float(hf_row.get(f'{e}_kg_atm', 0.0))
+        removed = min(f_loss * atm_e, float(hf_row.get(f'{e}_kg_total', 0.0)))
         if removed > 0.0:
             strip[e] = removed
     return strip
@@ -592,24 +690,6 @@ def _restore_volatile_budgets(hf_row: dict, budgets: dict) -> None:
     """
     for element, kg in budgets.items():
         hf_row[f'{element}_kg_total'] = kg
-
-
-def _refresh_tracked_element_total(hf_row: dict) -> None:
-    """Recompute the total tracked-element mass ``M_ele`` [kg].
-
-    Mirrors the aggregation in
-    :func:`proteus.outgas.wrapper.calc_target_elemental_inventories`, summing
-    every tracked element's ``<e>_kg_total``. Called after the volatile budgets
-    are restored and the impactor delivery is added, so ``M_ele`` reflects the
-    conserved-plus-delivered inventory rather than the mass-scaled values the
-    structure solve produced.
-
-    Parameters
-    ----------
-    hf_row : dict
-        Current helpfile row, whose ``M_ele`` is updated in place.
-    """
-    hf_row['M_ele'] = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
 
 
 def _drop_events_before_start(

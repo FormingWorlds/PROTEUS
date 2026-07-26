@@ -274,7 +274,7 @@ class Proteus:
         #    atmospheric chemistry
         #    giant-impact accretion
         from proteus.accretion.common import next_event
-        from proteus.accretion.wrapper import init_accretion
+        from proteus.accretion.wrapper import init_accretion, restore_accretion_state
         from proteus.atmos_chem.wrapper import run_chemistry
 
         #    atmosphere solver
@@ -714,6 +714,11 @@ class Proteus:
         # Prepare the giant-impact timeline. Fixed at initialisation and
         # consulted on every step, like the stellar evolution track.
         self.impact_events = init_accretion(self)
+
+        # Rebuild the mass and orbit that impacts before a resume point already
+        # applied. Runs after the timeline is resolved, so a re-run dynamical
+        # model still selects its body against the configured planet.
+        restore_accretion_state(self)
 
         # Track the last simulation time at which data was written to disk,
         # so that dt_write_rel can suppress high-frequency writes during

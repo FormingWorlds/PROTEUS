@@ -15,6 +15,7 @@ physics validity.
 
 from __future__ import annotations
 
+from functools import partial
 from types import SimpleNamespace
 
 import pytest
@@ -318,3 +319,97 @@ def test_generated_timeline_is_selected_ordered_and_validated(monkeypatch):
     config.accretion.time_offset = 0.0
     with pytest.raises(ValueError, match='does not close'):
         backend.get_timeline(config)
+
+
+def _return_outcome(outcome, **kwargs):
+    """Stand in for the model entry point, returning a prepared outcome."""
+    return outcome
+
+
+def _one_impact_record():
+    """A single physically consistent impact record, as the model reports it."""
+    return {
+        'time': 1.0e5,
+        'M_target_before': 6.0e24,
+        'M_impactor': 6.4e23,
+        'M_merged_after': 6.64e24,
+        'v_impact': 1.3e4,
+        'v_esc': 1.15e4,
+        'impact_parameter': 0.7,
+        'R_target_before': 6.371e6,
+        'R_impactor': 3.39e6,
+        'rho_target': 5510.0,
+        'rho_impactor': 3930.0,
+        'a_before': 1.496e11,
+        'a_after': 1.4e11,
+        'e_after': 0.05,
+        'id_target': 1,
+        'id_impactor': 4,
+    }
+
+
+@pytest.mark.unit
+def test_an_unknown_field_in_a_model_record_is_ignored(monkeypatch):
+    """A newer model may report more than the coupling consumes.
+
+    The dependency is pinned by a version floor, not an exact version, so a
+    later release is free to add fields to its impact records. Passing each
+    record straight into the event constructor would turn any such addition
+    into a fatal argument error at the first impact of a run, hours in. The
+    fields the coupling needs are selected by name instead, so an extra one is
+    simply not read.
+    """
+    record = _one_impact_record()
+    record['fragmentation_regime'] = 'graze_and_merge'  # a field a later release adds
+    record['n_fragments'] = 3
+
+    fake = SimpleNamespace(
+        run_system=lambda **kw: {'survivors': _SURVIVORS, 'impacts': {1: [record], 2: []}}
+    )
+    monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
+
+    events = backend.get_timeline(_config(selector='mass'))
+
+    assert len(events) == 1
+    assert events[0].M_impactor == pytest.approx(6.4e23)
+    assert not hasattr(events[0], 'fragmentation_regime')
+
+
+@pytest.mark.unit
+def test_a_missing_field_names_itself_rather_than_failing_obscurely(monkeypatch):
+    """A record short of a required field reports which one, and stops.
+
+    The alternative is a bare TypeError naming a constructor argument, which
+    tells a user nothing about which model version broke the contract or what
+    the contract is. The error must name the missing field and the required
+    set, matching the quality of the file reader's error for the same problem.
+    """
+    record = _one_impact_record()
+    del record['v_esc']
+
+    fake = SimpleNamespace(
+        run_system=lambda **kw: {'survivors': _SURVIVORS, 'impacts': {1: [record], 2: []}}
+    )
+    monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
+
+    with pytest.raises(ValueError, match='v_esc'):
+        backend.get_timeline(_config(selector='mass'))
+
+
+@pytest.mark.unit
+def test_an_outcome_missing_its_top_level_entries_is_refused(monkeypatch):
+    """A model result without survivors or impacts fails with a named cause.
+
+    Indexing the outcome directly would raise a bare KeyError carrying only
+    the key name, with no indication that the installed model version is the
+    problem. Both required entries are checked, so a result shaped like
+    neither is rejected the same way.
+    """
+    for absent in ('survivors', 'impacts'):
+        outcome = {'survivors': _SURVIVORS, 'impacts': {1: [_one_impact_record()], 2: []}}
+        del outcome[absent]
+        fake = SimpleNamespace(run_system=partial(_return_outcome, outcome))
+        monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
+
+        with pytest.raises(ValueError, match=absent):
+            backend.get_timeline(_config(selector='mass'))

@@ -78,6 +78,8 @@ def _handler(
     time_start=0.0,
     interior_module='dummy',
     temperature_mode='liquidus_super',
+    output_dir=None,
+    resume=False,
 ):
     """Build the minimal Proteus handler shape init_accretion reads."""
     return SimpleNamespace(
@@ -85,13 +87,15 @@ def _handler(
             accretion=SimpleNamespace(
                 module=module,
                 time_offset=time_offset,
-                dummy=SimpleNamespace(
+                timeline=SimpleNamespace(
                     timeline_path=None if timeline_path is None else str(timeline_path)
                 ),
             ),
             interior_energetics=SimpleNamespace(module=interior_module),
             planet=SimpleNamespace(temperature_mode=temperature_mode),
+            params=SimpleNamespace(resume=resume),
         ),
+        directories={'output': str(output_dir) if output_dir is not None else '.'},
         hf_row={'Time': time_start},
     )
 
@@ -124,7 +128,11 @@ def test_enabled_backend_returns_the_scheduled_impacts(tmp_path):
     read on every step, so it has to arrive complete and in time order,
     with the physical content of each record preserved.
     """
-    handler = _handler(module='dummy', timeline_path=_timeline_file(tmp_path / 't.csv'))
+    handler = _handler(
+        module='timeline',
+        timeline_path=_timeline_file(tmp_path / 't.csv'),
+        output_dir=tmp_path,
+    )
 
     events = init_accretion(handler)
 
@@ -150,7 +158,9 @@ def test_impacts_before_the_run_starts_are_reported_and_excluded(tmp_path, caplo
     path = _timeline_file(tmp_path / 't.csv')
 
     # Start the run after the first impact but before the second.
-    handler = _handler(module='dummy', timeline_path=path, time_start=2.0e5)
+    handler = _handler(
+        module='timeline', timeline_path=path, time_start=2.0e5, output_dir=tmp_path
+    )
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
         events = init_accretion(handler)
@@ -166,12 +176,20 @@ def test_impacts_before_the_run_starts_are_reported_and_excluded(tmp_path, caplo
 
     # An impact landing exactly on the start time is already accounted for
     # by the initial condition and is excluded too.
-    boundary = _handler(module='dummy', timeline_path=path, time_start=1.0e5)
+    boundary = _handler(
+        module='timeline', timeline_path=path, time_start=1.0e5, output_dir=tmp_path
+    )
     assert [e.time for e in init_accretion(boundary)] == [5.0e5]
 
     # Shifting the timeline forward brings both impacts back into range,
     # which is the documented remedy.
-    shifted = _handler(module='dummy', timeline_path=path, time_offset=3.0e5, time_start=2.0e5)
+    shifted = _handler(
+        module='timeline',
+        timeline_path=path,
+        time_offset=3.0e5,
+        time_start=2.0e5,
+        output_dir=tmp_path,
+    )
     assert len(init_accretion(shifted)) == 2
 
 
@@ -1330,3 +1348,235 @@ def test_mass_growth_conserves_then_delivery_adds_only_the_delivered_mass(monkey
     assert abs(handler.hf_row['H_kg_total'] - (4.0e22 * 1.5)) > 1.0e22
     assert abs(handler.hf_row['H_kg_total'] - (4.0e22 * 1.5 + delivered)) > 1.0e22
     assert handler.hf_row['M_ele'] == pytest.approx(expected, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_strip_never_reaches_the_dissolved_inventory(monkeypatch):
+    """A partial strip removes atmosphere only, whatever the threshold does.
+
+    The collision reaches the atmosphere, not the mantle, so an element's
+    dissolved inventory must survive the impact even when the post-strip total
+    lands below the outgassing mass threshold. The continuous-escape path
+    treats an element that falls under that threshold as fully depleted and
+    zeroes its whole-planet total, a reasonable convention for an element
+    ground down over many steps but wrong for one collision: it would delete
+    dissolved mass the impact never touched and book it as lost to space.
+
+    The threshold here is set so exactly that trap is sprung: H holds 1.0e16 kg
+    in the atmosphere and 0.2e16 kg dissolved, and stripping half the
+    atmosphere leaves 0.7e16 kg, below the 1.0e16 kg threshold.
+    """
+    from proteus.accretion.wrapper import _target_strip_amounts
+
+    config = SimpleNamespace(outgas=SimpleNamespace(mass_thresh=1.0e16))
+    hf_row = {}
+    _atm_state(hf_row, H=(1.0e16, 1.2e16))
+
+    strip = _target_strip_amounts(config, hf_row, f_loss=0.5)
+
+    # Exactly half the atmospheric mass, and not one kilogram of the 0.2e16 kg
+    # that is dissolved in the mantle.
+    assert strip['H'] == pytest.approx(0.5e16, rel=1e-12)
+    assert strip['H'] < hf_row['H_kg_total']
+
+    # Discrimination: routing this through the desiccation floor would remove
+    # the whole 1.2e16 kg budget, which is 2.4x the correct debit.
+    assert abs(1.2e16 - 0.5e16) > 0.5 * 0.5e16
+
+    # The strip can never exceed the atmosphere it is drawn from, at any loss
+    # fraction including a total one.
+    total_loss = _target_strip_amounts(config, hf_row, f_loss=1.0)
+    assert total_loss['H'] == pytest.approx(1.0e16, rel=1e-12)
+    assert total_loss['H'] <= hf_row['H_kg_atm']
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_impact_leaves_the_planet_mass_consistent_with_its_parts(monkeypatch):
+    """M_planet equals M_int + M_ele when apply_impact returns.
+
+    Escape runs later in the same iteration and reads M_planet, so leaving it
+    at the value the structure solve wrote, before the strip and the delivery
+    changed the volatile budgets, would size that iteration's escape against a
+    planet that does not exist. The structure solve is mocked to write a
+    deliberately stale M_planet, so a handler that failed to refresh it would
+    keep that value and fail here.
+    """
+    import proteus.accretion.wrapper as accretion_wrapper
+
+    handler = _impact_handler(
+        accretion=_impact_accretion(impactor_volatiles='ppmw', H_ppmw=1000.0)
+    )
+    _atm_state(handler.hf_row, H=(2.0e20, 5.0e20))
+    handler.hf_row['M_ele'] = 5.0e20
+    handler.hf_row['M_planet'] = 0.0  # stale sentinel; must not survive
+
+    def _solve(dirs, config, hf_all, hf_row, output):
+        hf_row['M_int'] = config.planet.mass_tot * 5.9736e24
+        # Write the inconsistent pair a real structure solve would leave.
+        hf_row['M_ele'] = 9.9e21
+        hf_row['M_planet'] = hf_row['M_int'] + 9.9e21
+
+    monkeypatch.setattr(accretion_wrapper, 'remelt_mantle', lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', _solve, raising=False
+    )
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.remelt_mantle', lambda *a, **k: None, raising=False
+    )
+
+    accretion_wrapper.apply_impact(handler, _impact_event())
+
+    hf_row = handler.hf_row
+    assert hf_row['M_planet'] == pytest.approx(hf_row['M_int'] + hf_row['M_ele'], rel=1e-12)
+    # The stale value the solve wrote is gone, so the refresh genuinely ran.
+    assert hf_row['M_ele'] != pytest.approx(9.9e21, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_a_resumed_run_rebuilds_the_mass_and_orbit_the_impacts_moved():
+    """Growth applied before a resume point is restored, not discarded.
+
+    The configuration is the run's specification and is rebuilt from file on
+    every start, so the mass and orbit that impacts moved live only in the
+    helpfile. Without the restore a resumed run would solve the structure
+    against the planet's original mass, throwing away every pre-resume impact,
+    and would snap the orbit back to its configured value on the first step.
+
+    The rock ledger is the discriminating input: restoring from M_planet
+    instead would fold the volatile budgets into the rock anchor, which this
+    row makes visible by carrying a volatile mass far larger than the rounding
+    of the rock itself.
+    """
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU, M_earth
+
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            accretion=SimpleNamespace(module='morrigan'),
+            params=SimpleNamespace(resume=True),
+            planet=SimpleNamespace(mass_tot=1.0),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row={
+            'M_accreted_rock': 0.5 * M_earth,
+            'M_planet': 2.5 * M_earth,  # carries volatiles too; must NOT be used
+            'semimajorax': 1.25 * AU,
+            'eccentricity': 0.04,
+        },
+    )
+
+    restore_accretion_state(handler)
+
+    assert handler.config.planet.mass_tot == pytest.approx(1.5, rel=1e-12)
+    assert handler.config.orbit.semimajoraxis == pytest.approx(1.25, rel=1e-12)
+    assert handler.config.orbit.eccentricity == pytest.approx(0.04, rel=1e-12)
+
+    # Discrimination: anchoring on M_planet would have given 2.5 M_earth, which
+    # differs from the correct 1.5 by two thirds of the correct value.
+    assert abs(2.5 - 1.5) > 0.5 * 1.5
+
+
+@pytest.mark.unit
+def test_the_accretion_restore_is_inert_outside_a_resume():
+    """A fresh run, a disabled module, and an impact-free resume change nothing.
+
+    The restore adds accreted rock on top of the configured mass, so running it
+    when the configuration already describes the current planet would double
+    the growth. It must therefore be a strict no-op unless the run is a resume
+    that has actually accreted something.
+    """
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import M_earth
+
+    def _handler_for(resume, module, accreted):
+        return SimpleNamespace(
+            config=SimpleNamespace(
+                accretion=SimpleNamespace(module=module),
+                params=SimpleNamespace(resume=resume),
+                planet=SimpleNamespace(mass_tot=1.0),
+                orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+            ),
+            hf_row={'M_accreted_rock': accreted, 'semimajorax': 9.9e11, 'eccentricity': 0.9},
+        )
+
+    for resume, module, accreted in (
+        (False, 'morrigan', 0.5 * M_earth),  # fresh run
+        (True, None, 0.5 * M_earth),  # module disabled
+        (True, 'morrigan', 0.0),  # resumed before any impact landed
+    ):
+        handler = _handler_for(resume, module, accreted)
+        restore_accretion_state(handler)
+        assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-12)
+        assert handler.config.orbit.semimajoraxis == pytest.approx(1.0, rel=1e-12)
+        assert handler.config.orbit.eccentricity == pytest.approx(0.0, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_a_resumed_run_replays_the_timeline_the_first_session_resolved(tmp_path):
+    """The impact history is a property of the run, not of model determinism.
+
+    Re-deriving the timeline on resume would reproduce the original history
+    only if the dynamical model is bit-reproducible at a fixed seed, which
+    PROTEUS cannot check. The first session therefore records what it resolved
+    and a resume reads that file back. The recorded file is authoritative: this
+    test makes the module raise if it is consulted at all on the resume, so a
+    fallback to re-deriving would fail rather than pass by coincidence.
+    """
+    from proteus.accretion.wrapper import init_accretion
+
+    handler = _handler(
+        module='timeline',
+        timeline_path=_timeline_file(tmp_path / 't.csv'),
+        output_dir=tmp_path,
+    )
+    first = init_accretion(handler)
+    assert (tmp_path / 'impact_timeline.csv').exists()
+
+    resumed = _handler(
+        module='timeline',
+        timeline_path=tmp_path / 'absent.csv',  # would raise if consulted
+        output_dir=tmp_path,
+        resume=True,
+    )
+    replayed = init_accretion(resumed)
+
+    assert [e.time for e in replayed] == [e.time for e in first]
+    assert [e.M_impactor for e in replayed] == pytest.approx(
+        [e.M_impactor for e in first], rel=1e-12
+    )
+
+
+@pytest.mark.unit
+def test_the_recorded_timeline_is_not_offset_a_second_time(tmp_path):
+    """Times are written on the PROTEUS axis and read back without the offset.
+
+    The recorded file already carries the configured offset, so re-applying it
+    on resume would move every impact by that amount again. A non-zero offset
+    makes the double application unmissable: it would double the shift.
+    """
+    from proteus.accretion.wrapper import init_accretion
+
+    offset = 3.0e5
+    handler = _handler(
+        module='timeline',
+        timeline_path=_timeline_file(tmp_path / 't.csv'),
+        time_offset=offset,
+        output_dir=tmp_path,
+    )
+    first = init_accretion(handler)
+    assert first[0].time == pytest.approx(1.0e5 + offset)
+
+    resumed = _handler(
+        module='timeline',
+        timeline_path=tmp_path / 'absent.csv',
+        time_offset=offset,
+        output_dir=tmp_path,
+        resume=True,
+    )
+    replayed = init_accretion(resumed)
+
+    assert replayed[0].time == pytest.approx(1.0e5 + offset)
+    # Discrimination: a second application would put it at 1.0e5 + 2 * offset.
+    assert abs((1.0e5 + 2 * offset) - replayed[0].time) > 0.5 * offset

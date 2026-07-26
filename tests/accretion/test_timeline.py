@@ -1,8 +1,7 @@
-"""Tests for the timeline-replay accretion module.
+"""Tests for the file-replay accretion module.
 
-This file targets accretion/dummy.py (get_timeline). The dummy module
-replays a timeline written earlier, which is how impact consequences are
-driven from a known event sequence, so what it must guarantee is that the
+This file targets accretion/timeline.py (get_timeline). The module replays a
+sequence of impacts computed elsewhere, so what it must guarantee is that the
 configured path is honoured, that path expansion happens, and that the
 configured time offset reaches the loaded events.
 
@@ -18,7 +17,7 @@ from types import SimpleNamespace
 import pytest
 
 from proteus.accretion.common import TIMELINE_COLUMNS
-from proteus.accretion.dummy import get_timeline
+from proteus.accretion.timeline import get_timeline
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -74,9 +73,9 @@ def _config(timeline_path, time_offset=0.0):
     """Build the minimal config shape get_timeline reads."""
     return SimpleNamespace(
         accretion=SimpleNamespace(
-            module='dummy',
+            module='timeline',
             time_offset=time_offset,
-            dummy=SimpleNamespace(timeline_path=str(timeline_path)),
+            timeline=SimpleNamespace(timeline_path=str(timeline_path)),
         )
     )
 

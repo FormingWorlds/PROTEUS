@@ -77,6 +77,7 @@ nav:
       - Validation:
           - Overview: Validation/index.md
           - Accretion:
+              - Analytical accretion (dummy.py): Validation/accretion/dummy.md
               - Impact atmosphere-loss dispatch (wrapper.py): Validation/accretion/wrapper.md
           - Interior structure:
               - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md

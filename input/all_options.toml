@@ -578,7 +578,7 @@ config_version = "3.0"
 
 # Giant-impact accretion and delivery
 [accretion]
-    module                    = "none"       # none | dummy | morrigan
+    module                    = "none"       # none | dummy | timeline | morrigan
     time_offset               = 0.0          # shift of impact times onto the PROTEUS time axis [yr]
 
     # Impactor volatile content source: dry impactors add silicate and iron
@@ -617,6 +617,20 @@ config_version = "3.0"
         selector_value        = "none"       # target orbit [AU] or embryo id, per selector
 
     [accretion.dummy]
+        # Analytical accretion: the planet approaches an asymptotic mass
+        # exponentially, impacts are placed at evenly spaced times, and each
+        # delivers the mass the law accretes over its interval, so the
+        # increments decay and the first impact is the largest. Radii follow
+        # the Noack & Lasbleis (2020) scaling and each merged orbit follows
+        # from conserving momentum through the collision.
+        mass_accreted         = 0.1          # total mass delivered over the timeline [M_earth]
+        num_impacts           = 3            # number of impacts
+        timescale             = 1.0e6        # e-folding time of the accretion law [yr]
+        time_last             = 5.0e6        # time of the final impact [yr]
+        eccentricity          = 0.05         # encounter eccentricity [0-1)
+        impact_parameter      = 0.5          # sine of the impact angle [0-1]
+
+    [accretion.timeline]
         timeline_path         = "none"       # impact timeline file to replay
 
 # Atmospheric chemistry (post-processing)

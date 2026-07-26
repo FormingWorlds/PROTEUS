@@ -347,6 +347,28 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
     return events
 
 
+def write_timeline(events: Sequence[ImpactEvent], path: str) -> None:
+    """Write an impact timeline to file, in the format :func:`read_timeline` reads.
+
+    Times are written on the PROTEUS axis, with any offset between the
+    dynamical model's zero point and the run already applied, so the file
+    round-trips through ``read_timeline(path, time_offset=0.0)``.
+
+    Parameters
+    ----------
+    events : sequence of ImpactEvent
+        Timeline to write, in time order.
+    path : str
+        Destination file.
+    """
+    table = pd.DataFrame(
+        [[getattr(event, column) for column in TIMELINE_COLUMNS] for event in events],
+        columns=list(TIMELINE_COLUMNS),
+    )
+    table.to_csv(path, index=False)
+    log.debug('Wrote %d impacts to %s', len(events), path)
+
+
 def next_event(events: Sequence[ImpactEvent], time: float) -> ImpactEvent | None:
     """Return the first impact strictly after the given time.
 

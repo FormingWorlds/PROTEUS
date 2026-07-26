@@ -110,3 +110,9 @@ bash tools/get_morrigan.sh
 An accretion run needs an interior module that can re-melt the mantle
 after an impact. Aragog is the production choice; SPIDER is refused at
 configuration load because it has no re-melt path.
+
+Two accretion modules need no installation at all. `accretion.module =
+"dummy"` builds an impact history from scaling laws, and `accretion.module
+= "timeline"` replays one from a file, which is how a published or
+externally computed impact history drives a run. Both apply the same
+impact physics as the dynamical model.

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from attr.validators import ge, gt, in_, le
+from attr.validators import ge, gt, in_, le, lt
 from attrs import define, field
 
 from ._converters import none_if_none
@@ -118,23 +118,26 @@ class Morrigan:
     selector_value: float | str | None = field(default=None, converter=none_if_none)
 
 
-def valid_accretiondummy(instance, attribute, value):
-    if instance.module != 'dummy':
+def valid_accretiontimeline(instance, attribute, value):
+    if instance.module != 'timeline':
         return
 
-    if instance.dummy.timeline_path is None:
+    if instance.timeline.timeline_path is None:
         raise ValueError(
-            '`accretion.dummy.timeline_path` must point at an impact timeline file '
-            "when accretion.module = 'dummy'"
+            '`accretion.timeline.timeline_path` must point at an impact timeline file '
+            "when accretion.module = 'timeline'"
         )
 
 
 @define
-class AccretionDummy:
-    """Dummy accretion module, driven by a pre-written impact timeline.
+class AccretionTimeline:
+    """Impact timeline replayed from a file.
 
-    Reads a timeline file instead of running a dynamical model, so impact
-    consequences can be exercised against a known event sequence.
+    Applies a pre-written sequence of impacts instead of deriving one from a
+    dynamical model. Every impact consequence is computed exactly as it is for
+    a model-derived timeline, so this reproduces a published impact history,
+    drives PROTEUS from a history computed elsewhere, or applies a hand-written
+    sequence for a controlled experiment.
 
     Attributes
     ----------
@@ -144,6 +147,55 @@ class AccretionDummy:
     """
 
     timeline_path: str | None = field(default=None, converter=none_if_none)
+
+
+@define
+class AccretionDummy:
+    """Analytical stand-in for a dynamical giant-impact model.
+
+    Builds a self-consistent accretion history from scaling laws rather than
+    integrating a system of embryos, in the same spirit as the other dummy
+    modules in PROTEUS: fast, deterministic, and dependency-free, at the cost
+    of the dynamics.
+
+    The planet approaches an asymptotic mass exponentially, the standard
+    picture of an accretion rate that decays as the feeding zone empties.
+    Impacts are placed at evenly spaced times and each one delivers the mass
+    the law accretes over its interval, so the increments decay with time and
+    the largest impact is the first. Radii follow the Noack & Lasbleis (2020)
+    mass-radius scaling, collision velocities combine the pair's mutual escape
+    velocity with an encounter velocity set by ``eccentricity``, and each
+    merged orbit follows from conserving linear momentum through the collision.
+
+    Attributes
+    ----------
+    mass_accreted: float
+        Total mass delivered over the whole timeline [M_earth]. The growth law
+        sets how this is distributed in time and between impacts; the
+        increments are scaled so they sum to exactly this value.
+    num_impacts: int
+        Number of impacts in the timeline.
+    timescale: float
+        E-folding time of the accretion law [yr]. Short compared with
+        ``time_last`` concentrates the mass in the first impacts; long
+        compared with it spreads the mass evenly.
+    time_last: float
+        Time of the final impact [yr]. Impacts are spaced evenly from
+        ``time_last / num_impacts`` up to this time.
+    eccentricity: float
+        Encounter eccentricity [1], setting both the approach velocity that
+        adds to the mutual escape velocity and the impactor's orbit.
+    impact_parameter: float
+        Impact parameter of every collision [1], the sine of the impact angle.
+        Zero is head-on, one is grazing.
+    """
+
+    mass_accreted: float = field(default=0.1, validator=gt(0))
+    num_impacts: int = field(default=3, validator=ge(1))
+    timescale: float = field(default=1.0e6, validator=gt(0))
+    time_last: float = field(default=5.0e6, validator=gt(0))
+    eccentricity: float = field(default=0.05, validator=[ge(0), lt(1)])
+    impact_parameter: float = field(default=0.5, validator=[ge(0), le(1)])
 
 
 def valid_impactor_volatiles(instance, attribute, value):
@@ -175,14 +227,31 @@ class Accretion:
     impactors carry the planet's own formation composition, and "ppmw"
     impactors carry the per-element budgets configured below.
 
+    The mantle re-melt is a thermodynamic reset, not an energy deposition.
+    It re-applies the run's ``planet.temperature_mode`` initial condition to
+    the whole mantle, so the heat it injects is set by the mantle's own state
+    and mass rather than by the energy the collision carried. The two agree in
+    order of magnitude for a large impact onto a mantle that has cooled
+    appreciably, which is the regime this coupling targets, and diverge outside
+    it: a mantle already near the initial condition absorbs almost nothing, and
+    a cool mantle struck by a small impactor absorbs far more than the impact
+    supplied. The run reports the ratio of the two at every impact and warns
+    when it leaves the physically expected band, because the conservation
+    residual cannot detect the discrepancy: the injection is added to both of
+    its sides, so it stays closed for any injected value. Interpret the thermal
+    response to an impact as a property of the chosen initial condition, and
+    check that ratio before reading it as a consequence of the collision.
+
     Attributes
     ----------
     module: str or None
-        Accretion module to use. Choices: None, "dummy", "morrigan".
+        Accretion module to use. Choices: None, "dummy", "timeline", "morrigan".
     morrigan: Morrigan
         Parameters for the Morrigan giant-impact module.
     dummy: AccretionDummy
-        Parameters for the timeline-driven dummy module.
+        Parameters for the analytical dummy module.
+    timeline: AccretionTimeline
+        Parameters for replaying an impact timeline from file.
     time_offset: float
         Offset applied to every impact time when mapping the timeline onto
         the PROTEUS time axis [yr]. A dynamical model measures time from
@@ -232,12 +301,15 @@ class Accretion:
 
     module: str | None = field(
         default='none',
-        validator=in_((None, 'dummy', 'morrigan')),
+        validator=in_((None, 'dummy', 'timeline', 'morrigan')),
         converter=none_if_none,
     )
 
     morrigan: Morrigan = field(factory=Morrigan, validator=valid_morrigan)
-    dummy: AccretionDummy = field(factory=AccretionDummy, validator=valid_accretiondummy)
+    dummy: AccretionDummy = field(factory=AccretionDummy)
+    timeline: AccretionTimeline = field(
+        factory=AccretionTimeline, validator=valid_accretiontimeline
+    )
 
     time_offset: float = field(default=0.0)
 

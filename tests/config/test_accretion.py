@@ -43,23 +43,30 @@ def test_accretion_defaults_leave_the_module_disabled():
 
     # Sub-configs exist even when unused, so downstream attribute access
     # never needs a None check before reading a backend parameter.
-    assert a.dummy.timeline_path is None
+    assert a.timeline.timeline_path is None
     assert a.morrigan.selector == 'match_config'
+
+    # The analytical backend's own defaults are a runnable timeline, so a
+    # user who selects it without tuning anything still gets impacts.
+    assert a.dummy.num_impacts >= 1
+    assert a.dummy.mass_accreted > 0.0
 
 
 @pytest.mark.unit
 def test_module_validator_admits_only_registered_backends():
-    """Module selection accepts the two backends and rejects anything else.
+    """Module selection accepts the three backends and rejects anything else.
 
     'kimura' and 'formation_model' are the names this model was known by
     before, so they are the realistic typo cases and must fail loudly
     rather than fall through to a silent no-op.
     """
-    from proteus.config._accretion import Accretion, AccretionDummy
+    from proteus.config._accretion import Accretion, AccretionTimeline
 
     assert Accretion(module='morrigan').module == 'morrigan'
+    assert Accretion(module='dummy').module == 'dummy'
     assert (
-        Accretion(module='dummy', dummy=AccretionDummy(timeline_path='x.csv')).module == 'dummy'
+        Accretion(module='timeline', timeline=AccretionTimeline(timeline_path='x.csv')).module
+        == 'timeline'
     )
     assert Accretion(module='none').module is None
 
@@ -69,27 +76,33 @@ def test_module_validator_admits_only_registered_backends():
 
 
 @pytest.mark.unit
-def test_dummy_backend_requires_a_timeline_path():
-    """The timeline-replay backend cannot run without a timeline to replay.
+def test_timeline_backend_requires_a_timeline_path():
+    """The file-replay backend cannot run without a timeline to replay.
 
-    Selecting the dummy backend with no path is a configuration error, not
-    a quiet no-op, because the user asked for impacts and would otherwise
-    get a run with none. The edge case in the other direction matters just
-    as much: the same missing path must be accepted while the module is
-    off, or every existing config would start failing validation.
+    Selecting it with no path is a configuration error, not a quiet no-op,
+    because the user asked for impacts and would otherwise get a run with
+    none. The edge case in the other direction matters just as much: the
+    same missing path must be accepted while the module is off, or every
+    existing config would start failing validation.
     """
-    from proteus.config._accretion import Accretion, AccretionDummy
+    from proteus.config._accretion import Accretion, AccretionTimeline
 
     with pytest.raises(ValueError, match='timeline_path'):
-        Accretion(module='dummy')
+        Accretion(module='timeline')
 
-    supplied = Accretion(module='dummy', dummy=AccretionDummy(timeline_path='/tmp/t.csv'))
-    assert supplied.dummy.timeline_path == '/tmp/t.csv'
+    supplied = Accretion(
+        module='timeline', timeline=AccretionTimeline(timeline_path='/tmp/t.csv')
+    )
+    assert supplied.timeline.timeline_path == '/tmp/t.csv'
+
+    # The analytical backend derives its own timeline, so it must NOT be
+    # caught by the same requirement.
+    assert Accretion(module='dummy').timeline.timeline_path is None
 
     # Inert while the backend is unselected, including the explicit
     # 'none' sentinel that the reference TOML ships.
-    assert Accretion(module='none').dummy.timeline_path is None
-    assert Accretion().dummy.timeline_path is None
+    assert Accretion(module='none').timeline.timeline_path is None
+    assert Accretion().timeline.timeline_path is None
 
 
 @pytest.mark.unit
@@ -370,7 +383,8 @@ def test_embryo_spacing_is_bounded_on_both_sides():
         """Spacing at which the layout condition's denominator vanishes."""
         return 2.0 / ((2 * mass_earth * m_earth) / (3 * stellar_mass_sun * m_sun)) ** (1 / 3)
 
-    assert 50.0 < pole(10.0, 1.0) == pytest.approx(73.6, rel=1e-2)
+    assert pole(10.0, 1.0) == pytest.approx(73.6, rel=1e-2)
+    assert pole(10.0, 1.0) > 50.0
     assert pole(10.0, 1.0) < pole(1.0, 1.0)
 
     # But the ceiling is NOT universally conservative: the pole scales as

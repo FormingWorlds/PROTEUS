@@ -1,4 +1,4 @@
-# Timeline-replay accretion module
+# Impact timeline replayed from file
 from __future__ import annotations
 
 import logging
@@ -16,9 +16,10 @@ log = logging.getLogger('fwl.' + __name__)
 def get_timeline(config: Config) -> list[ImpactEvent]:
     """Read a pre-written impact timeline.
 
-    Replays a timeline produced earlier instead of running a dynamical
-    model, so impact consequences can be driven from a known event
-    sequence.
+    Replays a sequence of impacts produced elsewhere instead of deriving one
+    from a dynamical model. Every consequence is applied exactly as it is for a
+    model-derived timeline, so a run reproduces a published impact history, an
+    externally computed one, or a hand-written sequence.
 
     Parameters
     ----------
@@ -30,7 +31,7 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
     events : list of ImpactEvent
         Impacts to apply during the run, in time order.
     """
-    path = config.accretion.dummy.timeline_path
+    path = config.accretion.timeline.timeline_path
     log.info('Reading impact timeline from file')
 
     return read_timeline(path, time_offset=config.accretion.time_offset)
