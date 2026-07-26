@@ -48,7 +48,7 @@ pinned commit.
 | LovePy | Multi-phase tidal heating (Julia) | [![LovePy](https://img.shields.io/badge/LovePy-main-lightgrey)](https://github.com/nichollsh/LovePy){target="_blank" rel="noopener"} | [GitHub](https://github.com/nichollsh/LovePy) |
 | atmodeller | Alternative outgassing backend (GPL-3.0) | [![atmodeller](https://img.shields.io/badge/atmodeller-%3E%3D1.0.2-blue)](https://pypi.org/project/atmodeller/1.0.2/){target="_blank" rel="noopener"} | [GitHub](https://github.com/djbower/atmodeller) |
 | VULCAN | Atmospheric chemistry (GPL-3.0) | [![VULCAN](https://img.shields.io/badge/VULCAN-%3E%3D26.04.22-blue)](https://pypi.org/project/fwl-vulcan/26.04.22/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/VULCAN) |
-| Morrigan | Protoplanet accretion via giant impacts | [![Morrigan](https://img.shields.io/badge/Morrigan-%3E%3D26.07.25-blue)](https://pypi.org/project/fwl-morrigan/26.07.25/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/Morrigan) |
+| Morrigan | Protoplanet accretion via giant impacts | [![Morrigan](https://img.shields.io/badge/Morrigan-%3E%3D26.07.26-blue)](https://pypi.org/project/fwl-morrigan/26.07.26/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/Morrigan) |
 | Obliqua | Orbital evolution and tides (Julia) | n/a | [GitHub](https://github.com/FormingWorlds/Obliqua) |
 <!-- END OPTIONAL_TABLE -->
 
