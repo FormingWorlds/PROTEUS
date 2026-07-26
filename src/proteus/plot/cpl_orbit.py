@@ -230,97 +230,111 @@ def plot_orbit_system(hf_all: pd.DataFrame, output_dir: str, plot_format: str = 
 
 
 def plot_Lovenumber(output_dir: str, times: list | np.ndarray, data: list, plot_format: str = 'pdf'):
+    if times is None or len(times) == 0:
+        log.debug('No times provided for plot_Lovenumber')
+        return
+
     if np.amax(times) < 2:
         log.debug('Insufficient data to make plot_interior')
         return
 
     log.info('Plot Lovenumber')
 
-    # Init figure with 2 panels (Real and Imaginary)
-    scale = 1.0
-    fig, axs = plt.subplots(1, 2, figsize=(14 * scale, 6 * scale), sharey=True)
+    # Structure data by unique mode across all time steps
+    # Key: (n, m, k), Value: dict of array lists
+    modes = {}
 
-    # Store data across all times to establish consistent global colorbar limits
-    all_real_log = []
-    all_imag_log = []
-
-    # Pre-parse loop to collect values for robust vmin/vmax limits
-    for i in range(len(times)):
+    for i, time in enumerate(times):
         ds = data[i]
-        raw_imag = ds.variables["knms_total"]
+
+        n_arr = ds["n"][:]
+        m_arr = ds["m"][:]
+        k_arr = ds["k"][:]
+        sigma_arr = ds["sigma_range"][:]
+        raw_imag = ds["knms_total"]
         knms_total = raw_imag[0, :] + 1j * raw_imag[1, :]
 
-        # Take absolute value to handle negative values safely before log10
-        all_real_log.extend(np.log10(np.abs(knms_total.real)))
-        all_imag_log.extend(np.log10(np.abs(knms_total.imag)))
+        # Group data per mode index
+        for j in range(len(n_arr)):
+            mode_key = (int(n_arr[j]), int(m_arr[j]), int(k_arr[j]))
+            if mode_key not in modes:
+                modes[mode_key] = {
+                    "time": [],
+                    "sigma": [],
+                    "real_log": [],
+                    "imag_log": []
+                }
+
+            real_val = np.log10(np.abs(knms_total[j].real)) if knms_total[j].real != 0 else -np.inf
+            imag_val = np.log10(np.abs(knms_total[j].imag)) if knms_total[j].imag != 0 else -np.inf
+
+            modes[mode_key]["time"].append(time)
+            modes[mode_key]["sigma"].append(np.abs(sigma_arr[j]))
+            modes[mode_key]["real_log"].append(real_val)
+            modes[mode_key]["imag_log"].append(imag_val)
+
+    # Determine global colorbar bounds across all mode points
+    all_real_log = [val for mode in modes.values() for val in mode["real_log"] if np.isfinite(val)]
+    all_imag_log = [val for mode in modes.values() for val in mode["imag_log"] if np.isfinite(val)]
+
+    if not all_real_log or not all_imag_log:
+        log.warning("No valid non-zero Love numbers to plot.")
+        return
 
     vmin_real, vmax_real = np.min(all_real_log), np.max(all_real_log)
     vmin_imag, vmax_imag = np.min(all_imag_log), np.max(all_imag_log)
 
-    # Loop over all times and plot on the same two panels
-    for i, time in enumerate(times):
-        ds = data[i]
+    # Setup Figure
+    scale = 1.0
+    fig, axs = plt.subplots(1, 2, figsize=(14 * scale, 6 * scale), sharey=True)
 
-        # Read dimensions
-        sigma_range = ds.variables["sigma_range"][:]
+    cmap_real = plt.get_cmap('plasma')
+    cmap_imag = plt.get_cmap('viridis')
 
-        # Extract complex Love numbers
-        raw_imag   = ds.variables["knms_total"]
-        knms_total = raw_imag[0, :] + 1j * raw_imag[1, :]
+    # Plot connecting lines and mode markers
+    for mode_key, mode_data in modes.items():
+        # Sort trajectories chronologically by time
+        sort_idx = np.argsort(mode_data["time"])
+        t_sorted = np.array(mode_data["time"])[sort_idx]
+        x_vals = np.log10(t_sorted)
+        y_vals = np.array(mode_data["sigma"])[sort_idx]
 
-        # 1. Coordinate transformations
-        # Horizontal: log10(time in years)
-        x_vals = np.full_like(sigma_range, np.log10(time))
+        real_vals = np.array(mode_data["real_log"])[sort_idx]
+        imag_vals = np.array(mode_data["imag_log"])[sort_idx]
 
-        # Vertical: forcing frequency. Ensure positive values for log10 y-axis
-        y_vals = np.abs(sigma_range)
+        # Draw connecting trajectory lines across time
+        axs[0].plot(x_vals, y_vals, color='gray', linestyle='-', linewidth=0.8, alpha=0.4, zorder=1)
+        axs[1].plot(x_vals, y_vals, color='gray', linestyle='-', linewidth=0.8, alpha=0.4, zorder=1)
 
-        # 2. Color metric transformations (convert to absolute + log10)
-        real_color_vals = np.log10(np.abs(knms_total.real))
-        imag_color_vals = np.log10(np.abs(knms_total.imag))
-
-        # Panel 0: Real Part
+        # Overlay scatter points colored by magnitude
         sc_real = axs[0].scatter(
-            x_vals,
-            y_vals,
-            c=real_color_vals,
-            cmap='plasma',
-            vmin=vmin_real,
-            vmax=vmax_real,
-            edgecolors='none',
-            alpha=0.7
+            x_vals, y_vals, c=real_vals, cmap=cmap_real,
+            vmin=vmin_real, vmax=vmax_real, edgecolors='none', s=20, alpha=0.8, zorder=2
         )
 
-        # Panel 1: Imaginary Part
         sc_imag = axs[1].scatter(
-            x_vals,
-            y_vals,
-            c=imag_color_vals,
-            cmap='viridis',
-            vmin=vmin_imag,
-            vmax=vmax_imag,
-            edgecolors='none',
-            alpha=0.7
+            x_vals, y_vals, c=imag_vals, cmap=cmap_imag,
+            vmin=vmin_imag, vmax=vmax_imag, edgecolors='none', s=20, alpha=0.8, zorder=2
         )
 
-    # Convert y-axis to logarithmic scaling for both panels
+    # Formatting & Colorbars
     for ax in axs:
         ax.set_yscale('log')
         ax.set_xlabel(r'$\log_{10}(\text{Time [yr]})$')
         ax.grid(True, which="both", ls="--", alpha=0.5)
 
     axs[0].set_ylabel(r'Forcing Frequency $|\sigma|$ (Log Scale)')
-    axs[0].set_title('Real Part: ' + r'$\log_{10}(|k_{nm}|)$')
-    axs[1].set_title('Imaginary Part: ' + r'$\log_{10}(|\text{Im}(k_{nm})|)$')
+    axs[0].set_title(r'Real Part: $\log_{10}(|\text{Re}(k_{nm})|)$')
+    axs[1].set_title(r'Imaginary Part: $\log_{10}(|\text{Im}(k_{nm})|)$')
 
-    # Add dedicated colorbars next to each subplot
     fig.colorbar(sc_real, ax=axs[0], orientation='vertical', shrink=0.8, label=r'$\log_{10}(|\text{Re}(k_{nm})|)$')
     fig.colorbar(sc_imag, ax=axs[1], orientation='vertical', shrink=0.8, label=r'$\log_{10}(|\text{Im}(k_{nm})|)$')
 
     fig.tight_layout()
 
-    # Save the figure
-    fpath = os.path.join(output_dir, 'plots', 'plot_Lovenumber.%s' % plot_format)
+    # Save figure
+    os.makedirs(os.path.join(output_dir, 'plots'), exist_ok=True)
+    fpath = os.path.join(output_dir, 'plots', f'plot_Lovenumber.{plot_format}')
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
     plt.close(fig)

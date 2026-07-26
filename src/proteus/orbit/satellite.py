@@ -35,66 +35,28 @@ def evolve_orbit_satellite(hf_row: dict, config: Config, tides_o: Tides_t, inter
 
     if model == 'ps0d':
         # Call the ps0d function to evolve the satellite's orbital parameters
-        ps0d(hf_row, config, interior_o.dt)
+        ps0d(hf_row, interior_o.dt)
+
+    elif model == 'ps1d':
+        # Compute planet principal moment of inertia (C_planet)
+        from proteus.orbit.common import get_C_planet
+        get_C_planet(hf_row, config, interior_o)
+
+        # Call the ps1d function to evolve the satellite's orbital parameters
+        ps1d(hf_row, tides_o, interior_o.dt)
 
     elif model == 'ps1d_evec':
         # Compute planet principal moment of inertia (C_planet)
+        from proteus.orbit.common import get_C_planet
         get_C_planet(hf_row, config, interior_o)
 
         # Call the ps1d_evec function to evolve the satellite's orbital parameters
-        ps1d_evec(hf_row, config, tides_o, interior_o.dt)
+        ps1d_evec(hf_row, tides_o, interior_o.dt)
 
     pass
 
 
-def get_C_planet(hf_row: dict, config: Config, interior_o: Interior_t):
-    """Compute the planet's principal moment of inertia (C_planet) based on the interior structure.
-
-    Parameters
-    ----------
-        hf_row : dict
-            Dictionary of current runtime variables
-        config : Config
-            Model configuration.
-        interior_o : Interior_t
-            Interior object containing interior arrays
-    """
-    # Calculate the planet's principal moment of inertia (C_planet)
-    # Assuming a spherically symmetric mass distribution, we can use the formula:
-    # C = (8/3) * pi * integral_0^R (rho(r) * r^4 dr)
-    # where rho(r) is the density profile and R is the radius of the planet.
-
-    # Get the radial grid and density profile from the interior object
-    arr_keys = ("density", "radius")
-    lov = {k:np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}
-
-    # Reverse arrays if using SPIDER
-    #  Such that i=0 is at the CMB
-    if config.interior_energetics.module == "spider":
-        for k in arr_keys:
-            lov[k] = lov[k][::-1]
-
-    r_edges = lov["radius"]      # length N+1
-    rho = lov["density"]         # length N
-
-    r0 = r_edges[:-1]
-    r1 = r_edges[1:]
-
-    integral = np.sum(
-        rho * (r1**5 - r0**5) / 5.0
-    )
-
-    C_planet = (8*np.pi/3.0) * integral
-
-    # Store C_planet in the helpfile row for later use
-    hf_row['C_planet'] = C_planet
-
-    # Check if C_planet is physically reasonable
-    C_factor_planet = C_planet / (hf_row['M_int'] * hf_row['R_int']**2)
-    log.info(f"Computed C_planet: {C_planet:.3e} kg.m^2, C_factor_planet: {C_factor_planet:.3f}")
-
-
-def ps0d(hf_row, config, dt):
+def ps0d(hf_row, dt):
     """Evolve the Satellite's orbital parameters module.
 
     Updates the semi-major axis and primary rotation
@@ -104,8 +66,6 @@ def ps0d(hf_row, config, dt):
     ----------
         hf_row : dict
             Dictionary of current runtime variables
-        config : dict
-            Dictionary of configuration options
         dt : float
             Time interval over which escape is occuring [yr]
     """
@@ -234,6 +194,9 @@ def ps0d(hf_row, config, dt):
     # Calculate moment of inertia of planet (assuming solid sphere)
     I = 2 / 5 * Mpl * Rpl**2  # kg.m-1
 
+    # Convert time to seconds
+    dt = float(dt) * secs_per_year
+
     # Time step
     current_time = float(hf_row['Time'])
 
@@ -247,15 +210,12 @@ def ps0d(hf_row, config, dt):
         L = Ltot(omega, sma, (hf_row['C_planet'], 0, const_G, Mpl, Msa, 0))
         hf_row['plan_sat_am'] = L
 
-    # Find previous_time from which to evolve orbit to current_time
-    previous_time = current_time - dt
-
     # Collect system parameters at previous_time
     params = (I, L, const_G, Mpl, Msa, dE_tidal)
 
     # Find new satellite semimajor axis and axial frequency using RK5(4) integration method
     log.debug("Integrating the ps0d orbital model with solve_ivp")
-    sol = solve_ivp(orbitals, [previous_time, current_time], [sma, omega], args=(params,))
+    sol = solve_ivp(orbitals, [0, dt], [sma, omega], args=(params,))
 
     # Update semimajor axis and axial period
     hf_row['semimajorax_sat'] = sol.y[0][-1]
@@ -264,7 +224,7 @@ def ps0d(hf_row, config, dt):
     pass
 
 
-def ps1d_evec(hf_row, config, tides_o, dt):
+def ps1d(hf_row, tides_o, dt):
     """Evolve the Satellite's orbital parameters module.
 
     Updates the semi-major axis and primary rotation
@@ -274,16 +234,269 @@ def ps1d_evec(hf_row, config, tides_o, dt):
     ----------
         hf_row : dict
             Dictionary of current runtime variables
-        config : dict
-            Dictionary of configuration options
         tides_o : Tides_t
             Tides object containing tidal interactions
         dt : float
             Time interval over which escape is occuring [yr]
     """
 
-    # Convert time to seconds (Fixes the unit mismatch bug)
-    dt = float(dt) * secs_per_year      # need to check this for other orbital models as well.
+    # Convert time to seconds
+    dt = float(dt) * secs_per_year
+
+    # Orbital parameters from helpfile
+    axial_p = 2 * np.pi / float(hf_row['axial_period'])
+    axial_s = 2 * np.pi / float(hf_row['axial_period_sat'])
+    sma = float(hf_row['semimajorax_sat'])
+    ecc = float(hf_row['eccentricity_sat'])
+
+    # Setup Initial State and Parameters
+    y0 = [
+        axial_p,
+        axial_s,
+        sma,
+        ecc
+    ]
+
+    params = {
+        'M_p': hf_row['M_planet'], 'M_s': hf_row['M_sat'],
+        'R_p': hf_row['R_int'],    'R_s': hf_row['R_sat'],
+        'C_p': hf_row['C_planet'], 'C_s': hf_row['C_sat']
+    }
+
+    # Retrieve tidal mode information from tides_o object
+    nmk_p = tides_o.get(primary="planet", perturber="satellite").nmk
+    LNk_p = tides_o.get(primary="planet", perturber="satellite").LNk
+
+    nmk_s = tides_o.get(primary="satellite", perturber="planet").nmk
+    LNk_s = tides_o.get(primary="satellite", perturber="planet").LNk
+
+    # Convert arrays into a dictionary mapping (n, m, k) -> Complex Love Number
+    love_dict_p = {tuple(nmk): ln for nmk, ln in zip(nmk_p, LNk_p)}
+    love_dict_s = {tuple(nmk): ln for nmk, ln in zip(nmk_s, LNk_s)}
+
+    kmin, kmax = np.min(nmk_p[:,2]), np.max(nmk_p[:,2])
+
+
+    def domega_dt(I_j, C_j, sum_dOmega):
+        """Planar secular tidal spin"""
+        return -(3.0 * I_j / (2.0 * C_j)) * sum_dOmega
+
+
+    def da_dt(a, E_p, E_s, sum_da_p, sum_da_s):
+        """Semimajor axis"""
+        return a * ((E_p / 2.0) * sum_da_p + (E_s / 2.0) * sum_da_s)
+
+
+    def de_dt(e, e_safe, E_p, E_s, sum_de_p, sum_de_s):
+        """Eccentricity"""
+        sqrt_term = np.sqrt(1.0 - e**2)
+
+        # Standard tidal dissipation (always active)
+        de_tide_p = (E_p * sqrt_term / (4.0 * e_safe)) * sum_de_p
+        de_tide_s = (E_s * sqrt_term / (4.0 * e_safe)) * sum_de_s
+
+        return de_tide_p + de_tide_s
+
+
+    def smooth_sign(sigma, scale=1e-12):
+        """Smooth approximation to sign(sigma) using tanh to avoid solver kinks."""
+        return np.tanh(sigma / scale)
+
+
+    def dE_dt(z, p):
+        """Tidal energy dissipation rate"""
+
+        Omega_p, Omega_s, a, e = z
+        e_safe = max(e, 1e-12)
+
+        # Basic Orbital and Physical Parameters
+        n_mm = np.sqrt(const_G * (p['M_p'] + p['M_s']) / a**3)
+
+        I_p = (const_G * p['M_s']**2 * p['R_p']**5) / a**6
+
+        I_s = (const_G * p['M_p']**2 * p['R_s']**5) / a**6
+
+        # Accumulators
+        sums = {
+            'dE_orb_p': 0.0, 'dE_orb_s': 0.0,
+            'dE_rot_p': 0.0, 'dE_rot_s': 0.0
+        }
+
+        k, X_all = get_all_m_hansen(e_safe, 2, kmin, kmax)  # 'n = 2' is fixed for this orbital evolution model
+
+        for si, s in enumerate(k):
+
+            # Fetch Hansen coefficients per mode 'm'
+            X_0  = X_all[0][si]
+            X_2  = X_all[2][si]
+
+            # Fetch complex Love number components (A = Real, K = -Imaginary)
+            # Look up the complex values, defaulting to 0.0 + 0j if not found
+            val_p0 = love_dict_p.get((2, 0, s), 0.0 + 0.0j)
+            val_p2 = love_dict_p.get((2, 2, s), 0.0 + 0.0j)
+            val_s0 = love_dict_s.get((2, 0, s), 0.0 + 0.0j)
+            val_s2 = love_dict_s.get((2, 2, s), 0.0 + 0.0j)
+
+            # Extract real and imaginary parts
+            K_p0 = -val_p0.imag
+            K_p2 = -val_p2.imag
+            K_s0 = -val_s0.imag
+            K_s2 = -val_s2.imag
+
+            # Accumulate
+            X0_sq = X_0**2
+            X2_sq = X_2**2
+
+            sums['dE_orb_p'] += s * (K_p0 * X0_sq + 3.0 * K_p2 * X2_sq)
+            sums['dE_orb_s'] += s * (K_s0 * X0_sq + 3.0 * K_s2 * X2_sq)
+
+            sums['dE_rot_p'] += K_p2 * X2_sq
+            sums['dE_rot_s'] += K_s2 * X2_sq
+
+        dE_orb_p = I_p * n_mm * sums['dE_orb_p'] / 4
+        dE_orb_s = I_s * n_mm * sums['dE_orb_s'] / 4
+
+        dE_rot_p = -I_p * 3 * Omega_p * sums['dE_rot_p'] / 2
+        dE_rot_s = -I_s * 3 * Omega_s * sums['dE_rot_s'] / 2
+
+        return -(dE_orb_p + dE_rot_p),  -(dE_orb_s + dE_rot_s)
+
+
+    def orbitals(t, z, p):
+        Omega_p, Omega_s, a, e = z
+        e_safe = max(e, 1e-12)
+
+        # Basic Orbital and Physical Parameters
+        n_mm = np.sqrt(const_G * (p['M_p'] + p['M_s']) / a**3)
+
+        # Tidal scaling factors
+        E_p = n_mm * (p['M_s'] / p['M_p']) * (p['R_p'] / a)**5
+        I_p = (const_G * p['M_s']**2 * p['R_p']**5) / a**6
+
+        E_s = n_mm * (p['M_p'] / p['M_s']) * (p['R_s'] / a)**5
+        I_s = (const_G * p['M_p']**2 * p['R_s']**5) / a**6
+
+        # Accumulators
+        sums = {
+            'dOmega_p': 0.0, 'dOmega_s': 0.0,
+            'da_p': 0.0, 'da_s': 0.0,
+            'de_p': 0.0, 'de_s': 0.0
+        }
+
+        k, X_all = get_all_m_hansen(e_safe, 2, kmin, kmax)  # 'n = 2' is fixed for this orbital evolution model
+
+        # Retrieve Hansen/Love properties for this specific (a, e) state
+        # Assuming tides_o and orbit_o handle the known caching efficiently
+        for si, s in enumerate(k):
+
+            # Fetch Hansen coefficients per mode 'm'
+            X_0  = X_all[0][si]
+            X_2  = X_all[2][si]
+
+            # A small fraction of mean motion (e.g., 1e-4 * n_mm) or absolute threshold (1e-12) works well.
+            sig_scale = max(1e-12, 1e-4 * n_mm)
+
+            # Compute forcing frequencies
+            sigma_0 = - s*n_mm
+            sigma_p2 = 2*Omega_p - s*n_mm
+            sigma_s2 = 2*Omega_s - s*n_mm
+
+            # Fetch complex Love number components (A = Real, K = -Imaginary)
+            # Look up the complex values, defaulting to 0.0 + 0j if not found
+            val_p0 = love_dict_p.get((2, 0, s), 0.0 + 0.0j)
+            val_p2 = love_dict_p.get((2, 2, s), 0.0 + 0.0j)
+            val_s0 = love_dict_s.get((2, 0, s), 0.0 + 0.0j)
+            val_s2 = love_dict_s.get((2, 2, s), 0.0 + 0.0j)
+
+            # Dynamically scale dissipation continuously through zero-crossing
+            K_p0 = np.abs(val_p0.imag) * smooth_sign(sigma_0, sig_scale)
+            K_p2 = np.abs(val_p2.imag) * smooth_sign(sigma_p2, sig_scale)
+            K_s0 = np.abs(val_s0.imag) * smooth_sign(sigma_0, sig_scale)
+            K_s2 = np.abs(val_s2.imag) * smooth_sign(sigma_s2, sig_scale)
+
+            # Accumulate
+            X0_sq = X_0**2
+            X2_sq = X_2**2
+            sqrt_e = np.sqrt(1.0 - e_safe**2)
+
+            sums['dOmega_p'] += K_p2 * X2_sq
+            sums['dOmega_s'] += K_s2 * X2_sq
+
+            sums['da_p'] += s * (K_p0 * X0_sq + 3.0 * K_p2 * X2_sq)
+            sums['da_s'] += s * (K_s0 * X0_sq + 3.0 * K_s2 * X2_sq)
+
+            sums['de_p'] += K_p0 * X0_sq * s * sqrt_e - 3.0 * K_p2 * X2_sq * (2.0 - s * sqrt_e)
+            sums['de_s'] += K_s0 * X0_sq * s * sqrt_e - 3.0 * K_s2 * X2_sq * (2.0 - s * sqrt_e)
+
+
+        # Compute the eccentricity derivative using the same filter value
+        de_dot = de_dt(
+            e, e_safe,
+            E_p, E_s,
+            sums['de_p'], sums['de_s']
+        )
+
+        # Final Evaluation using distinct functions
+        return [
+            domega_dt(I_p, p['C_p'], sums['dOmega_p']),
+            domega_dt(I_s, p['C_s'], sums['dOmega_s']),
+            da_dt(a, E_p, E_s, sums['da_p'], sums['da_s']),
+            de_dot
+        ]
+
+
+    # Integration
+    log.debug("Integrating the ps1d_evec orbital model with solve_ivp")
+    sol = solve_ivp(
+        fun=lambda t, y: orbitals(t, y, params),
+        t_span=(0, dt),
+        y0=y0,
+        method='Radau',
+        rtol=1e-6,
+        atol=1e-9
+    )
+
+    # Compute total angular momentum at the end of the integration
+    L_final = params['C_p'] * sol.y[0][-1] + params['C_s'] * sol.y[1][-1] + \
+              (params['M_s'] * params['M_s']) / (params['M_p'] + params['M_s']) * \
+              np.sqrt(const_G * (params['M_p'] + params['M_s']) * sol.y[2][-1] * \
+              (1 - sol.y[3][-1]**2))
+
+    # Compute total energy dissipated by tides over the time step
+    dE_tide_p, _ = dE_dt(y0, params)
+
+    # log energy per surface area for debugging
+    energy_per_area = dE_tide_p / (4 * np.pi * params['R_p']**2)
+    log.info(f"Total tidal power: {dE_tide_p:.3e} W, Energy per unit area: {energy_per_area:.3e} W/m^2")
+
+    # Update semimajor axis and axial period
+    hf_row['axial_period']     = 2 * np.pi / sol.y[0][-1]
+    hf_row['axial_period_sat'] = 2 * np.pi / sol.y[1][-1]
+    hf_row['semimajorax_sat']  = sol.y[2][-1]
+    hf_row['eccentricity_sat'] = sol.y[3][-1]
+    hf_row['plan_sat_am']      = L_final
+
+    pass
+
+
+def ps1d_evec(hf_row, tides_o, dt):
+    """Evolve the Satellite's orbital parameters module.
+
+    Updates the semi-major axis and primary rotation
+    frequency based on angular momentum conservation.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        tides_o : Tides_t
+            Tides object containing tidal interactions
+        dt : float
+            Time interval over which escape is occuring [yr]
+    """
+
+    # Convert time to seconds
+    dt = float(dt) * secs_per_year
 
     # Orbital parameters from helpfile
     axial_p = 2 * np.pi / float(hf_row['axial_period'])
@@ -311,6 +524,20 @@ def ps1d_evec(hf_row, config, tides_o, dt):
         'n_star': n_star,
         'J_struc': 0.313          # <-- How is this computed? ~0.3 - 0.5 depending on structure
     }
+
+
+    # Retrieve tidal mode information from tides_o object
+    nmk_p = tides_o.get(primary="planet", perturber="satellite").nmk
+    LNk_p = tides_o.get(primary="planet", perturber="satellite").LNk
+
+    nmk_s = tides_o.get(primary="satellite", perturber="planet").nmk
+    LNk_s = tides_o.get(primary="satellite", perturber="planet").LNk
+
+    # Convert arrays into a dictionary mapping (n, m, k) -> Complex Love Number
+    love_dict_p = {tuple(nmk): ln for nmk, ln in zip(nmk_p, LNk_p)}
+    love_dict_s = {tuple(nmk): ln for nmk, ln in zip(nmk_s, LNk_s)}
+
+    kmin, kmax = np.min(nmk_p[:,2]), np.max(nmk_p[:,2])
 
 
     def domega_dt(I_j, C_j, sum_dOmega):
@@ -383,6 +610,78 @@ def ps1d_evec(hf_row, config, tides_o, dt):
         return dphi, local_filter
 
 
+    def smooth_sign(sigma, scale=1e-12):
+        """Smooth approximation to sign(sigma) using tanh to avoid solver kinks."""
+        return np.tanh(sigma / scale)
+
+
+    def smooth_amplitude_near_zero(val_real, sigma, scale):
+        """Smoothly blend the amplitude of a real value towards a target (1.5) near zero forcing frequency."""
+        # Transition factor: 1 at sigma = 0, decaying smoothly to 0 as |sigma| >> scale
+        zero_weight = np.exp(-(sigma / scale)**2)
+        # Blend towards target (1.5) near zero, keep abs_real elsewhere
+        return zero_weight * 1.5 + (1.0 - zero_weight) * val_real
+
+
+    def dE_dt(z, p):
+        """Tidal energy dissipation rate"""
+
+        Omega_p, Omega_s, a, e = z
+        e_safe = max(e, 1e-12)
+
+        # Basic Orbital and Physical Parameters
+        n_mm = np.sqrt(const_G * (p['M_p'] + p['M_s']) / a**3)
+
+        I_p = (const_G * p['M_s']**2 * p['R_p']**5) / a**6
+
+        I_s = (const_G * p['M_p']**2 * p['R_s']**5) / a**6
+
+        # Accumulators
+        sums = {
+            'dE_orb_p': 0.0, 'dE_orb_s': 0.0,
+            'dE_rot_p': 0.0, 'dE_rot_s': 0.0
+        }
+
+        k, X_all = get_all_m_hansen(e_safe, 2, kmin, kmax)  # 'n = 2' is fixed for this orbital evolution model
+
+        for si, s in enumerate(k):
+
+            # Fetch Hansen coefficients per mode 'm'
+            X_0  = X_all[0][si]
+            X_2  = X_all[2][si]
+
+            # Fetch complex Love number components (A = Real, K = -Imaginary)
+            # Look up the complex values, defaulting to 0.0 + 0j if not found
+            val_p0 = love_dict_p.get((2, 0, s), 0.0 + 0.0j)
+            val_p2 = love_dict_p.get((2, 2, s), 0.0 + 0.0j)
+            val_s0 = love_dict_s.get((2, 0, s), 0.0 + 0.0j)
+            val_s2 = love_dict_s.get((2, 2, s), 0.0 + 0.0j)
+
+            # Extract real and imaginary parts
+            K_p0 = -val_p0.imag
+            K_p2 = -val_p2.imag
+            K_s0 = -val_s0.imag
+            K_s2 = -val_s2.imag
+
+            # Accumulate
+            X0_sq = X_0**2
+            X2_sq = X_2**2
+
+            sums['dE_orb_p'] += s * (K_p0 * X0_sq + 3.0 * K_p2 * X2_sq)
+            sums['dE_orb_s'] += s * (K_s0 * X0_sq + 3.0 * K_s2 * X2_sq)
+
+            sums['dE_rot_p'] += K_p2 * X2_sq
+            sums['dE_rot_s'] += K_s2 * X2_sq
+
+        dE_orb_p = I_p * n_mm * sums['dE_orb_p'] / 4
+        dE_orb_s = I_s * n_mm * sums['dE_orb_s'] / 4
+
+        dE_rot_p = -I_p * 3 * Omega_p * sums['dE_rot_p'] / 2
+        dE_rot_s = -I_s * 3 * Omega_s * sums['dE_rot_s'] / 2
+
+        return -(dE_orb_p + dE_rot_p),  -(dE_orb_s + dE_rot_s)
+
+
     def orbitals(t, z, p):
         Omega_p, Omega_s, a, e, phi = z
         e_safe = max(e, 1e-12)
@@ -410,19 +709,7 @@ def ps1d_evec(hf_row, config, tides_o, dt):
             'dw_p': 0.0, 'dw_s': 0.0
         }
 
-        # Retrieve tidal mode information from tides_o object
-        nmk_p = tides_o.get(primary="planet", perturber="satellite").nmk
-        LNk_p = tides_o.get(primary="planet", perturber="satellite").LNk
-
-        nmk_s = tides_o.get(primary="satellite", perturber="planet").nmk
-        LNk_s = tides_o.get(primary="satellite", perturber="planet").LNk
-
-        kmin, kmax = np.min(nmk_p[:,2]), np.max(nmk_p[:,2])
         k, X_all = get_all_m_hansen(e_safe, 2, kmin, kmax)  # 'n = 2' is fixed for this orbital evolution model
-
-        # Convert arrays into a dictionary mapping (n, m, k) -> Complex Love Number
-        love_dict_p = {tuple(nmk): ln for nmk, ln in zip(nmk_p, LNk_p)}
-        love_dict_s = {tuple(nmk): ln for nmk, ln in zip(nmk_s, LNk_s)}
 
         # Retrieve Hansen/Love properties for this specific (a, e) state
         # Assuming tides_o and orbit_o handle the known caching efficiently
@@ -435,19 +722,33 @@ def ps1d_evec(hf_row, config, tides_o, dt):
             X_1  = X_all[1][si]
             X_m2 = X_all[-2][si]
 
+            # A small fraction of mean motion (e.g., 1e-4 * n_mm) or absolute threshold (1e-12) works well.
+            sig_scale = max(1e-12, 1e-4 * n_mm)
+
+            # Compute forcing frequencies
+            sigma_0 = - s*n_mm
+            sigma_p2 = 2*Omega_p - s*n_mm
+            sigma_s2 = 2*Omega_s - s*n_mm
+
             # Fetch complex Love number components (A = Real, K = -Imaginary)
             # Look up the complex values, defaulting to 0.0 + 0j if not found
-            # Make sure user is aware of missing Love numbers
             val_p0 = love_dict_p.get((2, 0, s), 0.0 + 0.0j)
             val_p2 = love_dict_p.get((2, 2, s), 0.0 + 0.0j)
             val_s0 = love_dict_s.get((2, 0, s), 0.0 + 0.0j)
             val_s2 = love_dict_s.get((2, 2, s), 0.0 + 0.0j)
 
             # Extract real and imaginary parts
-            A_p0, K_p0 = val_p0.real, -val_p0.imag
-            A_p2, K_p2 = val_p2.real, -val_p2.imag
-            A_s0, K_s0 = val_s0.real, -val_s0.imag
-            A_s2, K_s2 = val_s2.real, -val_s2.imag
+            # Dynamically scale the amplitude of the real part near zero-crossing
+            A_p0 = smooth_amplitude_near_zero(val_p0.real, sigma_0, sig_scale)
+            A_p2 = smooth_amplitude_near_zero(val_p2.real, sigma_p2, sig_scale)
+            A_s0 = smooth_amplitude_near_zero(val_s0.real, sigma_0, sig_scale)
+            A_s2 = smooth_amplitude_near_zero(val_s2.real, sigma_s2, sig_scale)
+
+            # Dynamically scale dissipation continuously through zero-crossing
+            K_p0 = np.abs(val_p0.imag) * smooth_sign(sigma_0, sig_scale)
+            K_p2 = np.abs(val_p2.imag) * smooth_sign(sigma_p2, sig_scale)
+            K_s0 = np.abs(val_s0.imag) * smooth_sign(sigma_0, sig_scale)
+            K_s2 = np.abs(val_s2.imag) * smooth_sign(sigma_s2, sig_scale)
 
             # Accumulate
             X0_sq = X_0**2
@@ -498,9 +799,22 @@ def ps1d_evec(hf_row, config, tides_o, dt):
         t_span=(0, dt),
         y0=y0,
         method='Radau',
-        rtol=1e-8,
-        atol=1e-10
+        rtol=1e-6,
+        atol=1e-9
     )
+
+    # Compute total angular momentum at the end of the integration
+    L_final = params['C_p'] * sol.y[0][-1] + params['C_s'] * sol.y[1][-1] + \
+              (params['M_s'] * params['M_s']) / (params['M_p'] + params['M_s']) * \
+              np.sqrt(const_G * (params['M_p'] + params['M_s']) * sol.y[2][-1] * \
+              (1 - sol.y[3][-1]**2))
+
+    # Compute total energy dissipated by tides over the time step
+    dE_tide_p, _ = dE_dt(y0, params)
+
+    # log energy per surface area for debugging
+    energy_per_area = dE_tide_p / (4 * np.pi * params['R_p']**2)
+    log.info(f"Total tidal power: {dE_tide_p:.3e} W, Energy per unit area: {energy_per_area:.3e} W/m^2")
 
     # Update semimajor axis and axial period
     hf_row['axial_period']     = 2 * np.pi / sol.y[0][-1]
@@ -508,5 +822,6 @@ def ps1d_evec(hf_row, config, tides_o, dt):
     hf_row['semimajorax_sat']  = sol.y[2][-1]
     hf_row['eccentricity_sat'] = sol.y[3][-1]
     hf_row['aps_prec_angle']   = sol.y[4][-1]
+    hf_row['plan_sat_am']      = L_final
 
     pass

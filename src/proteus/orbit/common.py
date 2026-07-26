@@ -10,6 +10,9 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.fft import fft, fftshift
 
+from proteus.config import Config
+from proteus.interior_energetics.common import Interior_t
+
 log = logging.getLogger("fwl."+__name__)
 
 
@@ -205,3 +208,51 @@ def get_all_m_hansen(ecc, n, k_min, k_max):
         results[m] = X
 
     return k_range, results
+
+
+
+def get_C_planet(hf_row: dict, config: Config, interior_o: Interior_t):
+    """Compute the planet's principal moment of inertia (C_planet) based on the interior structure.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        config : Config
+            Model configuration.
+        interior_o : Interior_t
+            Interior object containing interior arrays
+    """
+    # Calculate the planet's principal moment of inertia (C_planet)
+    # Assuming a spherically symmetric mass distribution, we can use the formula:
+    # C = (8/3) * pi * integral_0^R (rho(r) * r^4 dr)
+    # where rho(r) is the density profile and R is the radius of the planet.
+
+    # Get the radial grid and density profile from the interior object
+    arr_keys = ("density", "radius")
+    lov = {k:np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}
+
+    # Reverse arrays if using SPIDER
+    #  Such that i=0 is at the CMB
+    if config.interior_energetics.module == "spider":
+        for k in arr_keys:
+            lov[k] = lov[k][::-1]
+
+    r_edges = lov["radius"]      # length N+1
+    rho = lov["density"]         # length N
+
+    r0 = r_edges[:-1]
+    r1 = r_edges[1:]
+
+    integral = np.sum(
+        rho * (r1**5 - r0**5) / 5.0
+    )
+
+    C_planet = (8*np.pi/3.0) * integral
+
+    # Store C_planet in the helpfile row for later use
+    hf_row['C_planet'] = C_planet
+
+    # Check if C_planet is physically reasonable
+    C_factor_planet = C_planet / (hf_row['M_int'] * hf_row['R_int']**2)
+    log.info(f"Computed C_planet: {C_planet:.3e} kg.m^2, C_factor_planet: {C_factor_planet:.3f}")

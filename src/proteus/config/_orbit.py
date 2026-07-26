@@ -163,6 +163,8 @@ class Obliqua:
         Rheology model for complex bulk modulus ("andrade" or "maxwell").
     alpha : float
         Andrade power-law exponent.
+    verbosity : int
+        Logging verbosity level (0=silent, 1=info, 2=debug).
     module_solid : str
         Solid-tide module to use ("none", "solid0d", "solid1d", "solid1d-relax", "solid1d-mush", "solid1d-mush-relax").
     module_mushy : str
@@ -205,6 +207,8 @@ class Obliqua:
         validator=in_(("andrade", "maxwell", "elastic"))
     )
     alpha: float = field(default=0.3, validator=gt(0))
+
+    verbosity: int = field(default=1, validator=in_((0, 1, 2)))
 
     # module selection
     module_solid: str = field(
@@ -342,7 +346,7 @@ class Orbit:
     s0_factor: float = field(default=0.375, validator=gt(0))
 
     # Orbital model to use for star-planet orbit evolution based on tides
-    star_planet_model: str | None = field(default='none', validator=in_((None, 'none', 'sp0dae')), converter=none_if_none)
+    star_planet_model: str | None = field(default='none', validator=in_((None, 'none', 'sp0d', 'sp1d')), converter=none_if_none)
     # Initial day length for planet [hours]
     # If none, assume 1:1 spin orbit synchronization and use orbital period as day length
     axial_period                  = field(default=None, validator=ax_valid, converter=none_if_none)
@@ -351,7 +355,7 @@ class Orbit:
     satellite: Satellite = field(factory=Satellite)
 
     # Orbital model to use for planet-satellite orbit evolution based on tides
-    planet_satellite_model: str | None = field(default='none', validator=in_((None, 'none', 'ps0d', 'ps1d_evec')), converter=none_if_none)
+    planet_satellite_model: str | None = field(default='none', validator=in_((None, 'none', 'ps0d', 'ps1d', 'ps1d_evec')), converter=none_if_none)
 
     # Perturber to induce tides on the planet. Options: 'none', 'star', 'satellite'.
     perturber: str | None = field(default=None, validator=in_((None, 'none', 'star', 'satellite')), converter=none_if_none)

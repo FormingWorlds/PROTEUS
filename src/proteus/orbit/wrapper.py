@@ -308,6 +308,8 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
         log.info('    Orb period = %.5f days  (Satellite)' % (hf_row['orbital_period_sat'] / secs_per_day))
         log.info('    Orb spin   = %.5f days  (Satellite)' % (hf_row['axial_period_sat'] / secs_per_day))
 
+        log.info('    Orb AM     = %.3e kg.m^2/s' % (hf_row['plan_sat_am']))
+
     # Update dependent orbital parameters, from independent variables above
     # Update separation
     update_separation(hf_row)
@@ -351,7 +353,10 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
         hf_row['Imk2'] = run_lovepy(hf_row, dirs, interior_o, tides_o, config)
 
     elif config.orbit.module == 'obliqua':
-        from proteus.orbit.obliqua import run_obliqua
+        from proteus.orbit.obliqua import run_obliqua, setup_logging
+
+        # setup logging for Obliqua
+        setup_logging(dirs, config.orbit.obliqua.verbosity)
 
         Imk = run_obliqua(hf_row, dirs, interior_o, tides_o, config)
 
@@ -380,7 +385,7 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
 
     # If satellite orbital evolution is enabled, then extract the satellite love number from
     # the provided lookup file
-    if config.orbit.planet_satellite_model == "ps1d_evec":
+    if config.orbit.planet_satellite_model in ["ps1d", "ps1d_evec"]:
         from proteus.orbit.obliqua import LN_from_lookup
 
         log.info('    Extracting Love number from satellite lookup table')

@@ -9,15 +9,19 @@ import juliacall
 import netCDF4 as nc
 import numpy as np
 from juliacall import Main as jl
+from scipy.interpolate import interp1d
 
 from proteus.interior_energetics.common import Interior_t
 from proteus.orbit.common import Tides_t
 from proteus.utils.helper import UpdateStatusfile
+from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
+
+Obliqua_LOGFILE_NAME = "obliqua_recent.log"
 
 
 def import_obliqua():
@@ -281,6 +285,9 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides
     storage.sigma  = sigma
     storage.LNk    = LNk
 
+    # Logging
+    sync_log_files(dirs['output'])
+
     return np.mean(np.imag(LNk))
 
 
@@ -336,63 +343,66 @@ def LN_from_lookup(hf_row: dict, tides_o: Tides_t, config: Config):
     nmk_lookup = np.asarray(lookup.nmk)
     LNk_lookup = np.asarray(lookup.LNk)
 
-    # Mirror lookup about sigma = 0 (symmetry valid for linear rheologies)
-    # Generates a clean negative-to-positive frequency sequence: [-c, -b, -a, a, b, c]
-    sigma_lookup = np.concatenate([
-        -sigma_lookup[::-1],
-        sigma_lookup
-    ])
+    # Interpolate Love numbers degree-by-degree
+    LNk_s = np.zeros(len(nmk_p), dtype=complex)
 
-    nmk_lookup = np.concatenate([
-        nmk_lookup[::-1],
-        nmk_lookup
-    ], axis=0)  # axis=0 explicitly ensures 2D array coordinates align properly
+    for n in np.unique(nmk_p[:, 0]):
 
-    LNk_lookup = np.concatenate([
-        np.conjugate(LNk_lookup)[::-1],
-        LNk_lookup
-    ])
+        # Lookup entries for this degree
+        lookup_mask = nmk_lookup[:, 0] == n
 
-    # Pre-index lookup table by degree n
-    unique_n = np.unique(nmk_p[:, 0])
-    lookup_by_n = {}
-
-    for n_val in unique_n:
-        # Create a boolean mask for the current degree n
-        mask = (nmk_lookup[:, 0] == n_val)
-
-        if not np.any(mask):
+        if not np.any(lookup_mask):
             raise ValueError(
-                f"Lookup table does not contain tidal data for degree n = {int(n_val)}."
+                f"Lookup table does not contain degree n = {int(n)}."
             )
 
-        lookup_by_n[n_val] = (
-            sigma_lookup[mask],
-            LNk_lookup[mask]
+        sigma_n = sigma_lookup[lookup_mask]
+        LNk_n = LNk_lookup[lookup_mask]
+
+        # Create symmetric lookup
+        sigma_sym = np.concatenate((-sigma_n[::-1], sigma_n))
+        LNk_sym = np.concatenate((np.conjugate(LNk_n[::-1]), LNk_n))
+
+        # Sort for interpolation
+        order = np.argsort(sigma_sym)
+        sigma_sym = sigma_sym[order]
+        LNk_sym = LNk_sym[order]
+
+        interp_real = interp1d(
+            sigma_sym,
+            LNk_sym.real,
+            kind="linear",
+            bounds_error=False,
+            fill_value="extrapolate",
         )
 
-    # Nearest-neighbor frequency matching
-    LNk_s = np.empty(len(nmk_p), dtype=LNk_lookup.dtype)
+        interp_imag = interp1d(
+            sigma_sym,
+            LNk_sym.imag,
+            kind="linear",
+            bounds_error=False,
+            fill_value="extrapolate",
+        )
 
-    for i, (n, _, _) in enumerate(nmk_p):
-        # Static tide
-        if np.isclose(sigma_s[i], 0.0, atol=1e-15):
-            LNk_s[i] = 0.0 + 0.0j
-            continue
+        # Modes requiring this degree
+        mode_mask = nmk_p[:, 0] == n
 
-        sigma_filtered, LNk_filtered = lookup_by_n[n]
+        sigma_eval = sigma_s[mode_mask]
 
-        # Find the index of the closest forcing frequency
-        idx = np.argmin(np.abs(sigma_filtered - sigma_s[i]))
-        LNk_s[i] = LNk_filtered[idx]
+        LNk_s[mode_mask] = (
+            interp_real(sigma_eval)
+            + 1j * interp_imag(sigma_eval)
+        )
 
-    # Store computed values back into the tides object
+    # Enforce normalization
+    zero_mask = (nmk_p[:, 1] < 0) & (nmk_p[:, 2] < 0)
+    LNk_s[zero_mask] = 0.0 + 0.0j
+
+    # Store results
     storage = tides_o.add(primary="satellite", perturber="planet")
     storage.nmk = nmk_p
     storage.sigma = sigma_s
     storage.LNk = LNk_s
-
-    pass
 
 
 def read_ncdf(fpath: str):
@@ -408,3 +418,46 @@ def read_ncdf(fpath: str):
 
 def read_ncdfs(output_dir: str, times: list):
     return [read_ncdf(os.path.join(output_dir, 'data', '%d_obliqua.nc' % t)) for t in times]
+
+
+def setup_logging(dirs: dict, verbosity: int):
+    # Setup logging from Obliqua
+    #    This handle will be kept open throughout the PROTEUS simulation, so the file
+    #    should not be deleted at runtime. However, it will be emptied when appropriate.
+    logpath = os.path.join(dirs['output'], Obliqua_LOGFILE_NAME)
+    jl.Obliqua.setup_logging(logpath, verbosity)
+
+    log.debug("Obliqua will log to '%s'" % logpath)
+
+
+def sync_log_files(outdir: str) -> list[str]:
+    """Move Obliqua logfile content into the PROTEUS logfile and clear it.
+
+    Returns the list of lines that were copied, so that callers can scan
+    them for failure-mode markers.
+    Returns an empty list if the Obliqua logfile cannot be read.
+    """
+    # Logfile paths
+    obliqua_logpath = os.path.join(outdir, Obliqua_LOGFILE_NAME)
+    logpath = GetLogfilePath(outdir, GetCurrentLogfileIndex(outdir))
+
+    # Copy logfile content
+    try:
+        with open(obliqua_logpath, 'r') as infile:
+            inlines = infile.readlines()
+    except OSError:
+        return []
+
+    with open(logpath, 'a') as outfile:
+        for i, line in enumerate(inlines):
+            # First line of obliqua logfile has NULL chars at the start, for some reason
+            if i == 0 and '[' in line:
+                line = '[' + line.split('[', 1)[1]
+            # copy the line
+            outfile.write(line)
+
+    # Remove logfile content
+    with open(obliqua_logpath, 'w') as hdl:
+        hdl.write('')
+
+    return inlines

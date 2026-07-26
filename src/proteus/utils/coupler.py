@@ -1127,6 +1127,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     # Import utilities
     from proteus.atmos_clim.common import read_atmosphere_data
     from proteus.interior_energetics.wrapper import read_interior_data
+    from proteus.orbit.wrapper import read_tides_data
 
     # Import plotting functions
     from proteus.plot.cpl_atmosphere import plot_atmosphere
@@ -1139,7 +1140,10 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     from proteus.plot.cpl_global import plot_global
     from proteus.plot.cpl_interior import plot_interior
     from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
-    from proteus.plot.cpl_orbit import plot_orbit
+    from proteus.plot.cpl_orbit import (
+        plot_Lovenumber,
+        plot_orbit,
+    )
     from proteus.plot.cpl_population import (
         plot_population_mass_radius,
         plot_population_time_density,
@@ -1160,6 +1164,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     agni = config.atmos_clim.module == 'agni'
     spider = config.interior_energetics.module == 'spider'
     aragog = config.interior_energetics.module == 'aragog'
+    obliqua = config.orbit.module == 'obliqua'
     observed = bool(config.observe.synthesis is not None)
 
     # Get all output times
@@ -1245,6 +1250,23 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
             # Energy flux profiles
             plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
+
+    # Lovenumber spectra for tidal dissipation
+    if obliqua:
+        # Which times do we have tides data for?
+        ncs = glob.glob(os.path.join(output_dir, 'data', '*_obliqua.nc'))
+        nc_times = [int(f.split('/')[-1].split('_obliqua')[0]) for f in ncs]
+
+        plot_times_obliqua = nc_times
+
+        tide_data = read_tides_data(output_dir, 'obliqua', plot_times_obliqua)
+
+        plot_Lovenumber(
+            output_dir=output_dir,
+            times=plot_times_obliqua,
+            data=tide_data,
+            plot_format=config.params.out.plot_fmt
+        )
 
     # Only at the end of the simulation
     if end:
