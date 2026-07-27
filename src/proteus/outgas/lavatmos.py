@@ -546,13 +546,17 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     for e in element_list:
         log.debug('element frac:  %s,  %s', e, element_fracs[e])
         if e in input_eles:
-            hf_row[e + '_kg_atm'] = (
+            if e == 'O': #in that case, O_kg_atm shoudl be representative of callioe only because this sets the escape rate if reservoir=outgas
+                log.info('Oxygen in atmosphere before outgassing: %.5e',hf_row[e + '_kg_atm'])
+                #Omass afater outgassing should still be tracked separately , as it is used for AGNI input VMRS computed with Fastchem
+                Omass_after_outgas += (
                 element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
-            )
-        if e == 'O':
-            Omass_after_outgas += (
-                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
-            )
+                )
+                log.info('Oxygen in atmosphere after outgassing: %.5e',Omass_after_outgas)
+            else:
+                hf_row[e + '_kg_atm'] = (
+                    element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+                )
         else:
             if e not in gas_list:
                 hf_row[e + '_kg_atm'] = (
@@ -571,6 +575,7 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
         'added oxygen from outagssing to initial O budget in atmosphere [kg]: %.4e ',
         Omass_after_outgas - hf_row['O_kg_atm'],
     )
+    hf_row['O_outgassed_kg'] = Omass_after_outgas - hf_row['O_kg_atm']
 
     pO2 = new_atmos_abundances['O2'][0]
     log.debug('O2 partial pressure  very small: %.3e', pO2)
