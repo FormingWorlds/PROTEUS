@@ -38,6 +38,11 @@ def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_modul
     config.params.stop.iters.minimum = 10
     config.params.stop.iters.maximum = 1000
     config.atmos_clim.albedo_from_file = False
+    # Real values, not mock attributes: the resume branch compares the melt
+    # fraction against phi_crit, which a bare MagicMock cannot be ordered
+    # against. Defaults mirror the schema.
+    config.params.stop.solid.freeze_volatiles = False
+    config.params.stop.solid.phi_crit = 0.01
 
     directories = {
         'output': str(tmp_path),
@@ -909,3 +914,130 @@ def test_structure_baseline_skipped_for_superliquidus_adiabat(tmp_path):
 
     mock_update.assert_not_called()  # forced re-solve skipped, IC adiabat stands
     assert p._baseline_structure_done is True  # latched so it is not re-checked
+
+
+# ---------------------------------------------------------------------------
+# Resume path: crystallization flag restoration (proteus.py, resume branch)
+# ---------------------------------------------------------------------------
+
+
+def _make_hf_df_with_phi(phi_final, phi_history=None):
+    """Helpfile frame carrying a melt-fraction history.
+
+    ``phi_history`` supplies the four rows before the last; it defaults to a
+    monotonically solidifying run that never reaches the threshold.
+    """
+    df = _make_hf_df()
+    df['Phi_global'] = [*(phi_history or [1.0, 0.8, 0.6, 0.4]), phi_final]
+    return df
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('freeze_volatiles', 'phi_final', 'expected'),
+    [
+        (True, 0.005, True),
+        (True, 0.010, True),
+        (True, 0.011, False),
+        (True, 0.900, False),
+        (False, 0.005, False),
+    ],
+    ids=[
+        'crystallized_below_threshold',
+        'crystallized_exactly_at_threshold',
+        'molten_just_above_threshold',
+        'molten_well_above_threshold',
+        'freezing_disabled_stays_molten',
+    ],
+)
+def test_proteus_resume_restores_crystallized_flag(
+    tmp_path, freeze_volatiles, phi_final, expected
+):
+    """Resuming a crystallized mantle keeps outgassing stopped.
+
+    Physical scenario: a run whose mantle has already crystallized is
+    stopped and resumed. The crystallization flag decides whether escape
+    draws from the atmosphere alone or from the whole volatile inventory,
+    so a flag that returns as False on restart lets escape draw from
+    dissolved reservoirs that crystallization is meant to have trapped.
+    The main loop only re-derives the flag after escape has run, which is
+    why it has to be restored during resume setup rather than left to the
+    loop.
+
+    Verifies:
+    - The flag is set from the resumed row's melt fraction, using the same
+      ``Phi_global <= phi_crit`` condition the main loop applies.
+    - The threshold is exercised from both sides, at and just above
+      ``phi_crit``, so an off-by-one comparison is caught.
+    - With ``freeze_volatiles`` disabled the flag stays False even for a
+      fully crystallized mantle, since the feature is off.
+    """
+    p = _make_proteus_instance(tmp_path)
+    p.config.params.stop.solid.freeze_volatiles = freeze_volatiles
+    p.config.params.stop.solid.phi_crit = 0.01
+    (tmp_path / 'data').mkdir(exist_ok=True)
+
+    # A fresh Proteus starts with the flag clear, so a passing result cannot
+    # come from the attribute happening to be True already.
+    assert p.crystallized is False, 'flag was already set before the resume'
+
+    _resume_with_patches(p, _make_hf_df_with_phi(phi_final))
+
+    assert p.crystallized is expected, (
+        f'resuming at Phi_global={phi_final} with freeze_volatiles={freeze_volatiles} '
+        f'left crystallized={p.crystallized}, expected {expected}'
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_proteus_resume_keeps_crystallized_after_remelting(tmp_path):
+    """A mantle that crystallized and later remelted stays frozen on resume.
+
+    Physical scenario: melt fraction dips to the crystallization threshold
+    part-way through a run and recovers afterwards, which a heat source such
+    as tidal heating can produce. The main loop latches the flag the first
+    time the threshold is reached and never clears it, so outgassing stays
+    stopped for the rest of the run.
+
+    Contract clause: a resumed run must behave as the uninterrupted one
+    would. Reading the flag from the resumed row alone would clear it here,
+    restarting outgassing that the continuous run keeps stopped, so the
+    whole stored melt-fraction history decides it.
+
+    Verifies:
+    - A history that dips to the threshold and recovers still resumes frozen.
+    - The final row is well above the threshold, so the assertion can only
+      pass by consulting the earlier rows.
+    - A history of the same shape that never reaches the threshold resumes
+      molten, so the check is not simply always True.
+    """
+    p = _make_proteus_instance(tmp_path)
+    p.config.params.stop.solid.freeze_volatiles = True
+    p.config.params.stop.solid.phi_crit = 0.01
+    (tmp_path / 'data').mkdir(exist_ok=True)
+
+    crossed = _make_hf_df_with_phi(0.900, phi_history=[1.0, 0.5, 0.005, 0.300])
+    assert float(crossed['Phi_global'].iloc[-1]) > 0.01, (
+        'the resumed row must sit above the threshold, or this test would pass '
+        'without consulting the history'
+    )
+
+    _resume_with_patches(p, crossed)
+    assert p.crystallized is True, (
+        'a mantle that reached the crystallization threshold earlier in the run '
+        'resumed as molten, so outgassing would restart where an uninterrupted '
+        'run keeps it stopped'
+    )
+
+    # Discrimination: the same shape of history that never reaches the
+    # threshold must resume molten.
+    never = _make_proteus_instance(tmp_path)
+    never.config.params.stop.solid.freeze_volatiles = True
+    never.config.params.stop.solid.phi_crit = 0.01
+    _resume_with_patches(never, _make_hf_df_with_phi(0.900, phi_history=[1.0, 0.5, 0.2, 0.300]))
+    assert never.crystallized is False, (
+        'a run whose melt fraction never reached the threshold resumed as '
+        'crystallized; the history search is matching too eagerly'
+    )

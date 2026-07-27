@@ -31,8 +31,15 @@ import pandas as pd
 import pytest
 import toml
 
-import proteus.inference.plot as plot_mod
-import proteus.inference.transforms as transforms_mod
+# The Bayesian-optimisation stack ships as the optional `inference` extra,
+# which installs all three together. Guarding the whole stack keeps a
+# partial environment skipping rather than failing collection.
+pytest.importorskip('torch')
+pytest.importorskip('botorch')
+pytest.importorskip('gpytorch')
+
+import proteus.inference.plot as plot_mod  # noqa: E402
+import proteus.inference.transforms as transforms_mod  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

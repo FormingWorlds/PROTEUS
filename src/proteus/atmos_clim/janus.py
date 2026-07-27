@@ -315,6 +315,12 @@ def RunJANUS(
         _, r_obs = get_oarr_from_parr(atm.p, r_arr, p_obs)
         _, t_obs = get_oarr_from_parr(atm.p, t_arr, p_obs)  # [Pa], [m]
 
+    # Gravity at the observed level. Derive it from r_obs by the inverse-square
+    # law rather than reading atm.grav_z: write_ncdf() above reintegrates the
+    # heights (atm.z) without writing gravity back, so atm.grav_z is stale.
+    # This neglects self-gravity but is self-consistent with JANUS internals.
+    g_obs = float(hf_row['gravity']) * (float(hf_row['R_int']) / r_obs) ** 2
+
     # p_xuv from R_xuv
     if config.escape.xuv_defined_by_radius:
         r_xuv = hf_row['R_xuv']  # m

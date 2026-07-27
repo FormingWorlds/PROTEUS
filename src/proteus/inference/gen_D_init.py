@@ -55,7 +55,7 @@ def create_init(config):
         if init_samps < 1:
             init_samps = int(config['n_workers'])
     else:
-        init_grid = os.path.join(get_proteus_directories()['proteus'], 'output', init_grid)
+        init_grid = get_proteus_directories(init_grid)['output']
         init_samps = None
 
     # create new initial guess data by sampling bounds

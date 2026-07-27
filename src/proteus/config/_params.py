@@ -230,7 +230,7 @@ class StopSolid:
         but the simulation continues. Dissolved volatiles are trapped in the
         solid mantle and preserved in the helpfile. The atmosphere retains
         its current composition. When False, outgassing continues regardless
-        of melt fraction. Default True.
+        of melt fraction.
     """
 
     phi_crit: float = field(default=0.01, validator=(gt(0), lt(1)))

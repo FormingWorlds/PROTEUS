@@ -77,16 +77,18 @@ dependencies = [
     "netCDF4",
     "numpy>=2.0.0",
     "pandas",
-    "scipy",
+    "scipy>=1.15.0",
     "pre-commit",
     "platformdirs",
     "ruff",
     "sympy",
     "astropy",
-    "torch",
-    "botorch",
-    "gpytorch",
     "toml",
+    # 26.7.25 bounds the time a fetch can take: every request carries an
+    # explicit connect and read timeout, and a transient failure is retried
+    # with backoff instead of ending the fetch. Below that floor a stalled
+    # mirror hangs the start of a run with no diagnostic.
+    "fwl-io>=26.7.25",
     "zenodo-get",
     "zenodo-client>=0.4.1",
     "osfclient",
@@ -118,6 +120,18 @@ atmodeller = ["atmodeller>=1.0.2"]
 # tools/get_vulcan.sh.
 vulcan = ["fwl-vulcan>=26.04.22"]
 
+# inference: the Bayesian-optimisation parameter inference run by
+# `proteus infer`. PyTorch and the two BoTorch/GPyTorch layers on top of
+# it are a several-hundred-megabyte dependency stack (larger on Linux,
+# where torch also pulls in the CUDA runtime packages) that nothing else
+# in the package imports, so a forward model or a grid does not pull them
+# in. Install on demand, e.g. `pip install "fwl-proteus[inference]"`.
+inference = [
+    "torch",
+    "botorch",
+    "gpytorch",
+]
+
 develop = [
     # coverage[toml] enables standalone coverage tool with TOML config support (used by ratcheting script)
     # pytest-cov provides pytest integration for "pytest --cov" convenience (slightly different from CI)
@@ -146,12 +160,19 @@ docs = [
 [project.scripts]
 proteus = "proteus.cli:cli"
 
+# Lets fwl-io discover the datasets PROTEUS declares without importing PROTEUS.
+[project.entry-points."fwl_io.manifests"]
+proteus = "proteus.data:manifest_path"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 include-package-data = true
 
 [tool.setuptools.package-data]
 proteus = ["juliapkg.json"]
+# The manifest and its registries are read from the installed package, so they
+# have to travel in the wheel; without this they resolve only in a source tree.
+"proteus.data" = ["*.toml", "*.registry.txt"]
 
 [tool.coverage.run]
 branch = true

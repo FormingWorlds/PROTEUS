@@ -2,6 +2,16 @@
 
 This project implements parallel-asynchronous Bayesian Optimization (BO) for parameter inference using PROTEUS as the  'simulator'. It uses multiple workers to efficiently explore the parameter space and find optimal matches between simulated and observed planetary characteristics. You can also run this BO inference scheme to refine the results of a grid.
 
+!!! info "Requires the `inference` extra"
+    The scheme is built on PyTorch, BoTorch and GPyTorch, which install
+    separately from the rest of PROTEUS:
+
+    ```console
+    pip install "fwl-proteus[inference]"
+    ```
+
+    See [optional modules](optionalmodules_installation.md#parameter-inference-bayesian-optimisation).
+
 ## Overview
 
 The system performs Bayesian optimization to infer planetary formation parameters by:

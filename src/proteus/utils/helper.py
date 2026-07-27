@@ -31,7 +31,10 @@ def resolve_fwl_data_dir() -> Path:
     """
     env = os.environ.get('FWL_DATA')
     if env:
-        return Path(env)
+        # expanduser matches how fwl-io resolves the same variable. Without it
+        # a value carrying a literal '~' becomes a directory of that name below
+        # the working directory, and the two resolvers point at different trees.
+        return Path(env).expanduser()
     return Path(__file__).resolve().parents[2] / 'FWL_DATA'
 
 
