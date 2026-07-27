@@ -868,6 +868,7 @@ def GetHelpfileKeys():
         'p_obs',            # transit pressure level [bar]
         'R_obs',            # transit radius [m]
         'T_obs',            # transit temperature [K]
+        'g_obs',            # transit gravity [m s-2]
         'rho_obs',          # transit bulk density [kg m-3]
         'transit_depth',    # primary transit light curve depth [1]
         'eclipse_depth',    # secondary eclipse light curve depth [1]
@@ -1486,9 +1487,6 @@ def variable_is_logarithmic(varname: str) -> bool:
         'eccentricity',
         'params.stop.time.maximum',
         'planet.elements.H_budget',
-        'planet.elements.C_budget',
-        'planet.elements.S_budget',
-        'planet.elements.N_budget',
         'orbit.semimajoraxis',
         'atm_kg_per_mol',
     ):
@@ -1736,6 +1734,35 @@ def remove_excess_files(outdir: str, rm_spectralfiles: bool = False):
         safe_rm(f)
 
 
+def get_output_root(root_dir: str) -> str:
+    """Resolve the root directory under which per-run output is written.
+
+    Defaults to ``<root_dir>/output``, keeping output alongside the code.
+    If the ``PROTEUS_OUTPUT_PATH`` environment variable is set to a
+    non-empty value, that path is used instead, so simulation output can be
+    relocated off the code tree (for example onto scratch storage on a
+    cluster, or to run several checkouts against a shared output area). A
+    value that is empty or only whitespace is treated as unset. User (``~``)
+    and environment-variable references in the value are expanded; an
+    absolute path is recommended, since a relative value is resolved against
+    the current working directory each time the paths are queried.
+
+    Parameters
+    ----------
+    root_dir : str
+        The PROTEUS installation root directory.
+
+    Returns
+    -------
+    str
+        The output root directory.
+    """
+    env_value = os.environ.get('PROTEUS_OUTPUT_PATH')
+    if env_value is None or not env_value.strip():
+        return os.path.join(root_dir, 'output')
+    return os.path.expanduser(os.path.expandvars(env_value))
+
+
 def get_proteus_directories(outdir='_unset') -> dict[str, str]:
     """Create dict of proteus directories from root dir.
 
@@ -1750,6 +1777,7 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         Proteus directories dict
     """
     root_dir = get_proteus_dir()
+    output_root = get_output_root(root_dir)
 
     return {
         'proteus': root_dir,
@@ -1762,11 +1790,11 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         'vulcan': os.path.join(root_dir, 'VULCAN'),
         'tools': os.path.join(root_dir, 'tools'),
         'utils': os.path.join(root_dir, 'src', 'proteus', 'utils'),
-        'output': os.path.join(root_dir, 'output', outdir),
-        'output/data': os.path.join(root_dir, 'output', outdir, 'data'),
-        'output/observe': os.path.join(root_dir, 'output', outdir, 'observe'),
-        'output/offchem': os.path.join(root_dir, 'output', outdir, 'offchem'),
-        'output/plots': os.path.join(root_dir, 'output', outdir, 'plots'),
+        'output': os.path.join(output_root, outdir),
+        'output/data': os.path.join(output_root, outdir, 'data'),
+        'output/observe': os.path.join(output_root, outdir, 'observe'),
+        'output/offchem': os.path.join(output_root, outdir, 'offchem'),
+        'output/plots': os.path.join(output_root, outdir, 'plots'),
     }
 
 

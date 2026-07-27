@@ -67,10 +67,12 @@ def run_inference(config):
     # Starting message
     log.info(f'Inference started at {str_time()}')
 
-    # Save a timestamped copy of the reference config
-    with open(os.path.join(dirs['output'], 'copy.infer.toml'), 'w') as file:
+    # Save a timestamped copy of the inference config
+    infer_config = os.path.abspath(os.path.join(dirs['output'], 'copy.infer.toml'))
+    with open(infer_config, 'w') as file:
         file.write(f'# Created: {str_time()}\n\n')
         toml.dump(config, file)
+    log.info(f'Inference config: {infer_config}')
 
     # Bound each child PROTEUS run so one wedged simulation cannot hang the
     # whole batch. Tunable via the optional `child_timeout_s` config field;

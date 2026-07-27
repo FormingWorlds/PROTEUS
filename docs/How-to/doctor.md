@@ -152,7 +152,8 @@ This lists the fixable issues and their commands but does not execute anything.
 | Issue | Fix action |
 |-------|-----------|
 | Missing Python package | `pip install <name>` |
-| Outdated Python package (editable) | `cd <checkout> && git pull && pip install -e .` |
+| Outdated Python package (editable, tag-pinned: aragog, zalmoxis) | `bash tools/get_<name>.sh` |
+| Outdated Python package (editable, tracking branch) | `cd <checkout> && git pull && pip install -e .` |
 | Outdated Python package (wheel) | `pip install -U "<name>>=<version>"` |
 | Missing AGNI | `bash tools/get_agni.sh` |
 | AGNI commit drift from pin | `bash tools/get_agni.sh` |
@@ -225,8 +226,11 @@ proteus update
 ```
 
 This updates any submodules whose installed version no longer satisfies the
-new bounds. For editable checkouts, it runs `git pull && pip install -e .` in
-each checkout directory.
+new bounds. For editable checkouts installed by a `tools/get_<name>.sh` script
+(aragog, zalmoxis), it re-runs that script, which fetches and checks out the
+pinned version tag; those checkouts sit on a detached HEAD where `git pull`
+would fail. For editable checkouts on a tracking branch, it runs
+`git pull && pip install -e .` in the checkout directory.
 
 ### Before submitting a simulation
 

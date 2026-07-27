@@ -69,6 +69,7 @@ pip install "fwl-proteus[atmodeller]"
     atmodeller is distributed under the GPL-3.0 license; review its terms
     before installing.
 
+<<<<<<< HEAD
 ## Rock vapours (LavAtmos + ThermoEngineLite)
 
 [LavAtmos](https://github.com/FormingWorlds/LavAtmos) computes the
@@ -106,6 +107,31 @@ vapourise = true
 
 See [`input/vapourise.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/vapourise.toml)
 for a full example configuration.
+=======
+## Parameter inference (Bayesian optimisation)
+
+`proteus infer` runs the Bayesian-optimisation scheme, which is built on
+PyTorch, BoTorch and GPyTorch. Those three are a several-hundred-megabyte
+install that nothing else in PROTEUS uses, so a forward model or a
+`proteus grid` sweep does not need them:
+
+```console
+pip install "fwl-proteus[inference]"
+```
+
+On Linux the default PyTorch wheel also pulls in the CUDA runtime packages.
+The scheme runs on CPU, so install PyTorch from its CPU index first if you do
+not want them:
+
+```console
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install "fwl-proteus[inference]"
+```
+
+Without the extra, `proteus infer` stops with a message naming the missing
+package; every other command is unaffected. See the
+[inference guide](inference.md) for how to configure a run.
+>>>>>>> 873e4711f954348f16dda1173067c13326282168
 
 ## Atmospheric chemistry (VULCAN)
 

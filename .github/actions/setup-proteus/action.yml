@@ -457,10 +457,11 @@ runs:
       run: |
         set -euo pipefail
         python -m pip install --upgrade pip
-        # Install the optional vulcan + atmodeller backends alongside the
-        # develop extras so their tests run in CI rather than skip. They
-        # are optional for end users (a standard run uses calliope).
-        pip install -e ".[develop,vulcan,atmodeller]"
+        # Install the optional vulcan + atmodeller backends and the
+        # inference extra alongside the develop extras so their tests run
+        # in CI rather than skip. All three are optional for end users (a
+        # standard run uses calliope and no Bayesian optimisation).
+        pip install -e ".[develop,vulcan,atmodeller,inference]"
 
     # ------------------------------------------------------------------
     # 8b. Paired-branch submodules (aragog, Zalmoxis). When PROTEUS is on a

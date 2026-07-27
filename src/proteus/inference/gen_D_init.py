@@ -55,7 +55,7 @@ def create_init(config):
         if init_samps < 1:
             init_samps = int(config['n_workers'])
     else:
-        init_grid = os.path.join(get_proteus_directories()['proteus'], 'output', init_grid)
+        init_grid = get_proteus_directories(init_grid)['output']
         init_samps = None
 
     # create new initial guess data by sampling bounds
@@ -259,7 +259,7 @@ def sample_from_bounds(
     #     Each of the parameters are evaluated in space 0-1, normalised to the bounds
     #     This variable is 2D, with shape [nsamp, dims]
 
-    sampler = Halton(d=dims, seed=np.random.default_rng(seed), scramble=True)
+    sampler = Halton(d=dims, rng=np.random.default_rng(seed), scramble=True)
     X = sampler.random(n=nsamp)
     X = torch.tensor(X, dtype=dtype)
 

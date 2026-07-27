@@ -8,21 +8,34 @@ config files. For instructions on switching between spectrum sources, see
 
 PROTEUS downloads reference data from
 [Zenodo](https://zenodo.org/communities/proteus_framework/) on first run.
-If Zenodo is unavailable, each dataset falls back automatically to its
-corresponding project on the [Open Science Framework](https://osf.io/)
-(OSF). A Zenodo API token is optional; without one, public access is used
-with lower rate limits.
+Each dataset is provisioned by one of two mechanisms, named per dataset in the
+table below.
 
-| Dataset | Downloaded by |
-|---|---|
-| Stellar spectra (solar, MUSCLES) | `proteus get solar`, `proteus get muscles` |
-| PHOENIX synthetic spectra | `proteus get phoenix` |
-| Stellar evolution tracks | `proteus get stellar` |
-| Spectral k-tables | `proteus get spectral` |
-| Surface albedos | `proteus get surfaces` |
-| Scattering properties | `proteus get scattering` |
-| Exoplanet populations, mass-radius curves | `proteus get reference` |
-| Interior EOS tables, melting curves | `proteus get interiordata` |
+**fwl-io.** [fwl-io](https://github.com/FormingWorlds/fwl-io) pins a dataset to
+a Zenodo version DOI declared in `src/proteus/data/proteus_manifest.toml`,
+verifies every file against a checksum registry committed beside that manifest,
+and places the files in a version directory named for the record, so a re-pinned
+deposit lands beside its predecessor rather than overwriting it. Every request
+carries a connect and read timeout, and a transient failure is retried with
+backoff. Zenodo is currently the only mirror these datasets declare, so an
+unreachable Zenodo means the fetch fails rather than falling back elsewhere.
+
+**The PROTEUS downloader.** `proteus.utils.data` fetches a whole Zenodo record,
+retrying a few times, and falls back to the corresponding project on the
+[Open Science Framework](https://osf.io/) (OSF) when Zenodo is unavailable. A
+Zenodo API token applies to this mechanism only; without one, public access is
+used with lower rate limits.
+
+| Dataset | Provisioned by | Downloaded by |
+|---|---|---|
+| Stellar spectra (solar, MUSCLES) | PROTEUS downloader | `proteus get solar`, `proteus get muscles` |
+| PHOENIX synthetic spectra | PROTEUS downloader | `proteus get phoenix` |
+| Stellar evolution tracks | PROTEUS downloader | `proteus get stellar` |
+| Spectral k-tables | PROTEUS downloader | `proteus get spectral` |
+| Surface albedos | PROTEUS downloader | `proteus get surfaces` |
+| Scattering properties | PROTEUS downloader | `proteus get scattering` |
+| Exoplanet populations, mass-radius curves | fwl-io | `proteus get reference` |
+| Interior EOS tables, melting curves | PROTEUS downloader | `proteus get interiordata` |
 
 To configure a Zenodo API token, see the
 [Troubleshooting guide](../How-to/troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
@@ -185,11 +198,29 @@ ls $FWL_DATA/surface_albedos/Hammond24
 Obtained from the DACE PlanetS database
 ([Parc et al., 2024](https://arxiv.org/abs/2406.04311)).
 
+Fetched through fwl-io into
+`$FWL_DATA/observe/exoplanet_reference/r<record-id>/`, where `<record-id>` is
+the Zenodo record the manifest pins. The population diagram resolves this
+directory from the pin, so the version segment never has to be typed by hand.
+The catalogue is decorative for a simulation: when it is absent or cannot be
+downloaded, the population diagram is skipped with a warning rather than
+failing the run.
+
+A copy under `$FWL_DATA/planet_reference/Exoplanets` is not read and can be
+deleted.
+
 ---
 
 ## Mass-radius relations
 
-Obtained from [Zeng et al. (2016)](https://iopscience.iop.org/article/10.3847/0004-637X/819/2/127/meta).
+Theoretical mass-radius curves for a range of interior and atmospheric
+structures, from [Zeng et al. (2019)](https://doi.org/10.1073/pnas.1812905116),
+taken from the author's [planet model tables](https://lweb.cfa.harvard.edu/~lzeng/planetmodels.html#mrtables).
+
+Fetched through fwl-io into
+`$FWL_DATA/observe/mass_radius/zeng_2019/r<record-id>/`, on the same terms as
+the exoplanet catalogue above. A copy under `$FWL_DATA/mass_radius/Zeng2019` is
+not read and can be deleted.
 
 ---
 

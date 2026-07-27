@@ -1165,9 +1165,11 @@ def run_agni(
     if bool(atmos.transparent):
         R_obs = float(hf_row['R_int'])
         T_obs = float(atmos.tmp_surf)
+        g_obs = float(hf_row['gravity'])
     else:
         R_obs = float(atmos.transspec_r)
         T_obs = float(atmos.transspec_tmp)
+        g_obs = float(atmos.transspec_grav)
 
     # Print info to user
     if config.atmos_clim.agni.oceans:
@@ -1212,6 +1214,7 @@ def run_agni(
     output['p_obs'] = float(atmos.transspec_p) / 1e5  # convert [Pa] to [bar]
     output['T_obs'] = T_obs
     output['R_obs'] = R_obs
+    output['g_obs'] = g_obs
     output['albedo'] = albedo
     output['tau_atm_TOA'] = tau_TOA
     output['tau_atm_surface'] = tau_surface

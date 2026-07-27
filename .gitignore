@@ -99,7 +99,11 @@ Boreas
 __pycache__
 !output/.gitkeep
 nogit*
+# Run outputs write a data/ directory; this matches one at any depth, so the
+# two data/ directories that are source rather than output are re-included.
 data/
+!src/proteus/data/
+!tests/data/
 
 # Local integration fixtures materialised at test time (never tracked)
 input/tests/zalmoxis_spider.toml

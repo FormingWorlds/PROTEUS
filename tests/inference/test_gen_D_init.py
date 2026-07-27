@@ -12,9 +12,15 @@ import numpy as np
 import pandas as pd
 import pytest
 import toml
-import torch
 
-import proteus.inference.gen_D_init as init_mod
+# The Bayesian-optimisation stack ships as the optional `inference` extra,
+# which installs all three together. Guarding the whole stack keeps a
+# partial environment skipping rather than failing collection.
+torch = pytest.importorskip('torch')
+pytest.importorskip('botorch')
+pytest.importorskip('gpytorch')
+
+import proteus.inference.gen_D_init as init_mod  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -84,11 +90,18 @@ def test_create_init_routes_to_sample_from_bounds(monkeypatch):
 @pytest.mark.unit
 def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
     """``create_init`` with a non-'none' ``init_grid`` dispatches to
-    ``sample_from_grid`` and resolves the grid path via
-    ``proteus_directories.output``.
+    ``sample_from_grid`` and resolves the grid path through the output root,
+    so a relocated output root (PROTEUS_OUTPUT_PATH) is honoured rather than
+    hard-coding ``<proteus>/output``.
     """
     observed = {}
-    monkeypatch.setattr(init_mod, 'get_proteus_directories', lambda: {'proteus': str(tmp_path)})
+    # Model the output root as <tmp_path>/output; the grid name is appended to
+    # it, mirroring get_proteus_directories(outdir)['output'].
+    monkeypatch.setattr(
+        init_mod,
+        'get_proteus_directories',
+        lambda outdir: {'output': str(tmp_path / 'output' / outdir)},
+    )
 
     def fake_sample_from_grid(output, params, observables, grid_dir):
         observed['grid_dir'] = grid_dir
@@ -105,6 +118,10 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
     }
 
     assert init_mod.create_init(config) == 6
+    # The grid dir is resolved through get_proteus_directories(grid)['output'],
+    # i.e. the (possibly relocated) output root joined with the grid name, not a
+    # hard-coded <proteus>/output. Pinning the full path discriminates a
+    # regression that ignored the grid name or reintroduced the hard-coded root.
     assert observed['grid_dir'] == str(tmp_path / 'output' / 'my_grid')
 
 
@@ -204,7 +221,7 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
     captured = {}
 
     class FakeHalton:
-        def __init__(self, d, seed, scramble):
+        def __init__(self, d, rng, scramble):
             captured['dims'] = d
             captured['scramble'] = scramble
 
@@ -265,3 +282,39 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
     # the default per-child timeout (6 h) yields a positive, finite pool cap.
     assert captured['pool_timeout'] is not None
     assert captured['pool_timeout'] > 0
+
+
+@pytest.mark.unit
+def test_real_halton_accepts_rng_keyword_and_is_deterministic():
+    """Check halton sampler accepts rng and behaves pseudo-deterministically.
+
+    ``sample_from_bounds`` constructs ``Halton(d=..., rng=..., scramble=True)``.
+    The ``rng=`` keyword replaced the deprecated ``seed=`` in scipy 1.15.0
+    """
+    import scipy
+    from packaging.version import Version
+    from scipy.stats.qmc import Halton
+
+    # Version floor recorded in pyproject.toml (scipy>=1.15.0).
+    assert Version(scipy.__version__) >= Version('1.15.0')
+
+    # Set up sampler with fixed seed of 42 (answer to life, universe, and everything).
+    dims = 3
+    nsamp = 5
+    sampler = Halton(d=dims, rng=np.random.default_rng(42), scramble=True)
+    x = np.asarray(sampler.random(nsamp))
+
+    # Shape and unit-hypercube bounds: Halton draws live in [0, 1).
+    assert x.shape == (nsamp, dims)
+    assert x.min() >= 0.0
+    assert x.max() < 1.0
+
+    # Determinism guard. This rules out a silently non-seeded sampler.
+    x_same = np.asarray(
+        Halton(d=dims, rng=np.random.default_rng(42), scramble=True).random(nsamp)
+    )
+    x_diff = np.asarray(
+        Halton(d=dims, rng=np.random.default_rng(7), scramble=True).random(nsamp)
+    )
+    np.testing.assert_allclose(x, x_same, rtol=0.0, atol=0.0)
+    assert not np.allclose(x, x_diff)
