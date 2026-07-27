@@ -107,10 +107,15 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     # Fall back to the final available snapshot on disk.
     if atmos is None:
         # Try to find the best one
+        # This is ideally the latest time available
         latest = find_latest_atmosphere_time(dirs['output'])
+
+        # Could not find NetCDF file for reading
         if latest is None:
             log.warning('No atmosphere NetCDFs available; skipping chemistry')
             return False
+
+        # Try to fall back to the latest available snapshot
         log.warning(
             'Atmosphere NetCDF t=%.0f yr missing; using available (t=%.0f yr)' % (year, latest)
         )
@@ -348,8 +353,8 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     vcfg.use_print_prog = True
     vcfg.use_print_delta = False
     vcfg.print_prog_num = 100  # print the progress every x steps
-    vcfg.dttry = 1.0e-5
-    vcfg.dt_min = 1.0e-6
+    vcfg.dttry = 1.0e-6
+    vcfg.dt_min = 1.0e-8
     vcfg.dt_max = vcfg.runtime * 1e-4
     vcfg.dt_var_max = 2.0
     vcfg.dt_var_min = 0.5

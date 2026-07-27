@@ -277,6 +277,7 @@ class Proteus:
         #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
         from proteus.atmos_clim.common import Albedo_t, Atmos_t
+        from proteus.atmos_clim.wrapper import write_atmosphere_snapshot
 
         #    escape and outgas
         from proteus.escape.wrapper import run_escape
@@ -1263,10 +1264,8 @@ class Proteus:
                 T_surf_coupled=self.hf_row.get('T_surf'),
             )
 
-        # Ensure the final atmosphere state is on disk. write_mod / dt_write_rel
-        # may have suppressed the atmosphere write on the last iteration.
-        from proteus.atmos_clim.wrapper import write_atmosphere_snapshot
-
+        # Ensure the final atmosphere state is on disk, since it won't always happen to
+        # be written on the last iteration of the model.
         write_atmosphere_snapshot(self.atmos_o, self.config, self.directories, self.hf_row)
 
         # Run offline chemistry

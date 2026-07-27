@@ -217,7 +217,9 @@ def run_atmosphere(
 
 
 def write_atmosphere_snapshot(atmos_o: Atmos_t, config: Config, dirs: dict, hf_row: dict):
-    """Force-write the current atmosphere state to a NetCDF snapshot.
+    """Write the current atmosphere state to a NetCDF snapshot.
+
+    Uses the corresponding module's writer, as appropriate.
 
     Arguments
     ---------
@@ -230,31 +232,28 @@ def write_atmosphere_snapshot(atmos_o: Atmos_t, config: Config, dirs: dict, hf_r
         hf_row : dict
             Dictionary containing simulation variables for current iteration
     """
+
+    # If unallocated, do nothing
     if atmos_o._atm is None:
+        log.warning('Cannot write atmosphere; atmosphere struct unallocated')
         return
 
     # Get time from this iteration
-    time = hf_row['Time']
-    try:
-        # Use AGNI writer
-        if config.atmos_clim.module == 'agni':
-            from proteus.atmos_clim.agni import write_atmos_ncdf
+    time = float(hf_row['Time'])
 
-            # Only a successfully allocated struct can be used.
-            if not bool(atmos_o._atm.is_alloc):
-                log.warning('Cannot write atmosphere; AGNI struct unallocated')
-                return
-            write_atmos_ncdf(atmos_o._atm, dirs, time)
+    # Use AGNI writer
+    if config.atmos_clim.module == 'agni':
+        from proteus.atmos_clim.agni import write_atmos_ncdf
 
-        # Use JANUS writer
-        elif config.atmos_clim.module == 'janus':
-            from proteus.atmos_clim.janus import write_atmos_ncdf
+        write_atmos_ncdf(atmos_o._atm, dirs, time)
 
-            write_atmos_ncdf(atmos_o._atm, dirs, time)
+    # Use JANUS writer
+    elif config.atmos_clim.module == 'janus':
+        from proteus.atmos_clim.janus import write_atmos_ncdf
 
-        # Otherwise, write no atmosphere NetCDF
-    except Exception as exc:
-        log.warning('Could not write final atmosphere NetCDF: %s' % exc)
+        write_atmos_ncdf(atmos_o._atm, dirs, time)
+
+    # Otherwise, write no atmosphere NetCDF
 
 
 def update_wtg_surf(hf_row: dict):

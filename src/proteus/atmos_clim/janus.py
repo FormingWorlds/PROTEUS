@@ -140,9 +140,22 @@ def UpdateStateAtm(atm, config: Config, hf_row: dict, tropopause):
     return
 
 
-def write_atmos_ncdf(atm, dirs: dict, time: float) -> None:
-    """Write the JANUS atmosphere object to a timestamped NetCDF file."""
+def write_atmos_ncdf(atm, dirs: dict, time: float):
+    """Write the JANUS atmosphere object to a timestamped NetCDF file.
+
+    Uses the internal `write_ncdf` function inside JANUS.
+
+    Arguments
+    ----------
+        atm : atmos
+            JANUS atmosphere Python object.
+        dirs : dict
+            Dictionary containing paths to directories.
+        time : float
+            Current simulation time (used for timestamping the output file).
+    """
     nc_fpath = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % time)
+    log.debug(f'Write JANUS atmosphere to {nc_fpath}')
     atm.write_ncdf(nc_fpath)
 
 
@@ -271,7 +284,7 @@ def RunJANUS(
         % (atm.net_flux[-1], atm.net_flux[0], atm.LW_flux_up[0])
     )
 
-    # Save atm data to disk (gated by write_data, matching the AGNI cadence)
+    # Save atm data to disk, as NetCDF, if requested
     if write_data:
         write_atmos_ncdf(atm, dirs, time)
 
@@ -302,16 +315,13 @@ def RunJANUS(
     # observables
     p_obs = float(config.atmos_clim.p_obs) * 1e5  # converted to Pa
     r_arr = np.array(atm.z[:], copy=True, dtype=float) + hf_row['R_int']
-    g_arr = np.array(atm.grav_z[:], copy=True, dtype=float)
     t_arr = np.array(atm.tmp[:], copy=True, dtype=float)
     if atm.height_error:
         log.error('Hydrostatic integration failed in JANUS!')
-        g_obs = float(hf_row['gravity'])
         r_obs = float(hf_row['R_int'])
         t_obs = float(hf_row['T_surf'])
     else:
         # find observed level [m] at p ~ p_obs
-        _, g_obs = get_oarr_from_parr(atm.p, g_arr, p_obs)
         _, r_obs = get_oarr_from_parr(atm.p, r_arr, p_obs)
         _, t_obs = get_oarr_from_parr(atm.p, t_arr, p_obs)  # [Pa], [m]
 
