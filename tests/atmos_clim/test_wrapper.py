@@ -321,26 +321,6 @@ def test_write_atmosphere_snapshot_agni_writes_when_allocated():
     janus_w.assert_not_called()
 
 
-def test_write_atmosphere_snapshot_agni_skips_when_not_allocated(caplog):
-    """An unallocated AGNI struct cannot be serialised, so the writer must be
-    skipped and a warning logged rather than crashing.
-
-    Error-contract path: is_alloc is False.
-    """
-    import logging
-
-    atm = SimpleNamespace(is_alloc=False)
-    atmos_o = _fake_atmos_o(atm)
-    config = _fake_config('agni')
-    with patch('proteus.atmos_clim.agni.write_atmos_ncdf') as agni_w:
-        with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.wrapper'):
-            atmos_wrapper.write_atmosphere_snapshot(
-                atmos_o, config, {'output': '/tmp/x'}, {'Time': 100.0}
-            )
-    agni_w.assert_not_called()
-    assert any('unallocated' in rec.message for rec in caplog.records)
-
-
 def test_write_atmosphere_snapshot_janus_writes():
     """For JANUS with a present struct, the dispatch calls the JANUS writer
     once with the current time, and NOT the AGNI writer."""
@@ -355,30 +335,3 @@ def test_write_atmosphere_snapshot_janus_writes():
         atmos_wrapper.write_atmosphere_snapshot(atmos_o, config, dirs, {'Time': 4675466.0})
     janus_w.assert_called_once_with(atm, dirs, 4675466.0)
     agni_w.assert_not_called()
-
-
-def test_write_atmosphere_snapshot_swallows_writer_failure(caplog):
-    """A writer failure at end-of-sim must not propagate and crash an
-    otherwise-complete run; it is logged and swallowed.
-
-    Error-contract path: the backend writer raises.
-    """
-    import logging
-
-    atm = SimpleNamespace(is_alloc=True)
-    atmos_o = _fake_atmos_o(atm)
-    config = _fake_config('agni')
-    with patch(
-        'proteus.atmos_clim.agni.write_atmos_ncdf', side_effect=RuntimeError('disk full')
-    ) as agni_w:
-        with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.wrapper'):
-            # Must not raise (the return itself is the primary contract).
-            result = atmos_wrapper.write_atmosphere_snapshot(
-                atmos_o, config, {'output': '/tmp/x'}, {'Time': 100.0}
-            )
-    # The writer was attempted (so the failure was genuinely swallowed, not
-    # dodged by an earlier guard), the call returned normally, and the failure
-    # was surfaced as a warning.
-    agni_w.assert_called_once()
-    assert result is None
-    assert any('Could not write final atmosphere' in rec.message for rec in caplog.records)

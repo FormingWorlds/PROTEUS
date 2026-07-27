@@ -13,6 +13,7 @@ See also:
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -237,6 +238,8 @@ class _FakeAtmosphere:
         self.tmp_magma = 1500.0
         # Solver flags
         self.is_converged = True
+        # Allocation flag, gating write_atmos_ncdf
+        self.is_alloc = True
         # Radiative fluxes
         self.flux_d_sw = [100.0]
         self.flux_u_lw = [300.0]
@@ -1477,12 +1480,38 @@ def test_write_atmos_ncdf_uses_rounded_time_and_data_dir(monkeypatch):
     fake_jl = SimpleNamespace(AGNI=SimpleNamespace(save=SimpleNamespace(write_ncdf=fake_write)))
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
 
-    atmos_sentinel = object()
+    # Write atmosphere to appropriately named file
+    atmos_sentinel = SimpleNamespace(is_alloc=True)
     write_atmos_ncdf(atmos_sentinel, {'output': '/tmp/run'}, 1000.6)
 
+    # Check function was called and file path is correct.
+    # This test doesn't actually write the file, since we mock the function.
     fake_write.assert_called_once()
     called_atmos, called_path = fake_write.call_args.args
     assert called_atmos is atmos_sentinel
     assert called_path == '/tmp/run/data/1001_atm.nc'
+
     # A regression to int() truncation would have produced 1000_atm.nc.
     assert '1000_atm.nc' not in called_path
+
+
+def test_write_atmos_ncdf_skips_unallocated_struct(monkeypatch, caplog):
+    """An unallocated AGNI struct contains no profile, so the writer
+    must warn rather than attempt to write it (and likely crash).
+    """
+    fake_write = MagicMock()
+    fake_jl = SimpleNamespace(AGNI=SimpleNamespace(save=SimpleNamespace(write_ncdf=fake_write)))
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+
+    # Suppress the warning log to avoid polluting the tests, but capture.
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.agni'):
+        write_atmos_ncdf(SimpleNamespace(is_alloc=False), {'output': '/tmp/run'}, 1000.6)
+
+    # Check that file is not written, and the refusal is surfaced to the log.
+    fake_write.assert_not_called()
+    assert any('unallocated' in rec.message for rec in caplog.records)
+
+    # Adjacent-valid: the identical call with is_alloc True does write, so the
+    # skip above is attributable to the flag and not to the fake or the path.
+    write_atmos_ncdf(SimpleNamespace(is_alloc=True), {'output': '/tmp/run'}, 1000.6)
+    fake_write.assert_called_once()
