@@ -52,9 +52,7 @@ class paths_importer:
         if fastchem_dir is None:
             raise ValueError('Environment variable "FC_DIR" is not set')
 
-
         self.lavatmos_dir = os.path.normpath(lava_dir) + '/'
-
 
         log.debug('LavAtmos Work directory set as: %s' % self.lavatmos_dir)
         self.input_dir = os.path.join(self.lavatmos_dir, 'input') + '/'
