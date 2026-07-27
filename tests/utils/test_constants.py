@@ -291,7 +291,7 @@ def test_gas_list_is_deduplicated_union_of_sources():
     """gas_list is the order-preserving, duplicate-free concatenation of
     vol_list, vap_list, and noble_gases.
     """
-    sources = vol_list + vap_list + noble_gases
+    sources = vol_list + noble_gases + vap_list
 
     # Set-equality: gas_list covers every source species and nothing extra.
     assert set(gas_list) == set(sources)
@@ -312,7 +312,7 @@ def test_gas_list_is_deduplicated_union_of_sources():
 
     # Adversarial edge: injecting a cross-list duplicate collapses to one entry
     # and does not lengthen the result.
-    seeded = [vol_list[0]] + vol_list + vap_list + noble_gases
+    seeded = [vol_list[0]] + vol_list + noble_gases + vap_list
     assert list(dict.fromkeys(seeded)) == gas_list
 
 

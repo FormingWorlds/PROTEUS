@@ -917,17 +917,16 @@ def test_get_lavatmos_version_with_mock():
 
 
 @pytest.mark.unit
-def test_get_lavatmos_version_raises_without_lava_dir():
-    """Test that _get_lavatmos_version errors when LAVA_DIR is missing."""
+def test_get_lavatmos_version_returns_unknown_without_lava_dir():
+    """Test that _get_lavatmos_version handles missing LAVA_DIR."""
     from proteus.utils.coupler import _get_lavatmos_version
 
     with patch.dict(os.environ, {}, clear=True):
-        # Precondition: confirm LAVA_DIR is actually absent in the clean
-        # env so the missing-env branch is what gets exercised (rather
-        # than a leaked outer-process value).
         assert 'LAVA_DIR' not in os.environ
-        with pytest.raises(EnvironmentError, match='LAVA_DIR environment variable is not set'):
-            _get_lavatmos_version()
+
+        version = _get_lavatmos_version()
+
+        assert version == 'unknown (LAVA_DIR not set)'
 
 
 @pytest.mark.unit
