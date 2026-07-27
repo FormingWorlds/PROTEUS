@@ -128,6 +128,14 @@ def test_run_vapourisation_combines_into_single_composition(tmp_path, monkeypatc
     guards against the previous pressure-ratio formula.
     """
     dirs = {'output': str(tmp_path)}
+
+    # Set up fake LavAtmos directory structure required by paths_importer
+    env_dir = tmp_path
+    (env_dir / 'input' / 'lava_compositions').mkdir(parents=True)
+
+    monkeypatch.setenv('LAVA_DIR', str(env_dir))
+    monkeypatch.setenv('FC_DIR', str(tmp_path / 'fastchem'))
+
     hf_row = _make_hf_row()
     element_fracs = {'H': 0.0, 'C': 0.0, 'N': 0.0, 'S': 0.0, 'O': 0.1, 'Fe': 0.6, 'Mg': 0.3}
     _install_common_mocks(monkeypatch, element_fracs, tmp_path)
@@ -190,6 +198,13 @@ def test_run_vapourisation_clamps_negative_P_vap(tmp_path, monkeypatch):
     Edge case: volatile input 5 bar but FastChem total only 2 bar.
     """
     dirs = {'output': str(tmp_path)}
+    # Set up fake LavAtmos directory structure required by paths_importer
+    env_dir = tmp_path
+    (env_dir / 'input' / 'lava_compositions').mkdir(parents=True)
+
+    monkeypatch.setenv('LAVA_DIR', str(env_dir))
+    monkeypatch.setenv('FC_DIR', str(tmp_path / 'fastchem'))
+
     hf_row = _make_hf_row()
     hf_row['P_surf'] = 5.0  # volatile input above the FastChem total
     element_fracs = {'H': 0.0, 'C': 0.0, 'N': 0.0, 'S': 0.0, 'O': 0.1, 'Fe': 0.6, 'Mg': 0.3}
@@ -218,6 +233,14 @@ def test_run_vapourisation_missing_fastchem_output_raises(tmp_path, monkeypatch)
     routine reaches the fastchem-output existence check, which is forced False.
     """
     dirs = {'output': str(tmp_path)}
+
+    # Set up fake LavAtmos directory structure required by paths_importer
+    env_dir = tmp_path
+    (env_dir / 'input' / 'lava_compositions').mkdir(parents=True)
+
+    monkeypatch.setenv('LAVA_DIR', str(env_dir))
+    monkeypatch.setenv('FC_DIR', str(tmp_path / 'fastchem'))
+
     hf_row = _make_hf_row()
     element_fracs = {'H': 0.0, 'C': 0.0, 'N': 0.0, 'S': 0.0, 'O': 0.1, 'Fe': 0.6, 'Mg': 0.3}
     _install_common_mocks(monkeypatch, element_fracs, tmp_path)
