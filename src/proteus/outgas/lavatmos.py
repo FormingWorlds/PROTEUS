@@ -11,7 +11,7 @@ import pandas as pd
 from calliope.oxygen_fugacity import OxygenFugacity
 
 # Local packages and paths
-# sys.path.insert(1,'wkdir')
+# sys.path.insert(1,'lavatmos_dir')
 from proteus.utils.constants import (
     const_Nav,
     electron_molar_mass,
@@ -40,7 +40,7 @@ class paths_importer:
         """
 
         Change the paths as needed. If you don't change the dir structure,
-        it should be enough to only change the wkdir.
+        it should be enough to only change the lavatmos_dir.
 
         """
 
