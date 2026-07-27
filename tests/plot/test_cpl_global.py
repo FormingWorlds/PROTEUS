@@ -163,6 +163,7 @@ def test_plot_global_writes_linear_axes_figure(monkeypatch, tmp_path):
     config = _make_config()
     config.interior_struct = MagicMock()
     config.interior_struct.core_frac = 0.325
+    config.star.age_ini = 4.5
     config.params.out.plot_fmt = 'png'
 
     global_mod.plot_global(_full_helpfile(), str(tmp_path), config, logt=False)

@@ -216,7 +216,11 @@ _REVIEWED_NEUTRAL = frozenset(
         'planet.tcmb_init',
         'planet.volatile_reservoir',
         'outgas.vapourise',
-        'params.stop.evap.enabled',
+        'outgas.lavatmos.P_melt',
+        'outgas.lavatmos.T_min',
+        'outgas.lavatmos.fO2_buffer_model',
+        'outgas.lavatmos.melt_comp_name',
+        'outgas.lavatmos.xatol',
     }
 )
 

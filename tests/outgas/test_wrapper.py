@@ -39,7 +39,7 @@ from proteus.outgas.wrapper import (
     run_outgassing,
     run_outgassing_and_vapourisation,
 )
-from proteus.utils.constants import element_list, gas_list, vap_list, vol_list
+from proteus.utils.constants import element_list, gas_list, noble_gases, vap_list, vol_list
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -475,7 +475,7 @@ def test_run_outgassing_disabled_module():
         # M_atm should still be aggregated over run_outgassing's own local
         # gas_list (vol_list + vap_list, since config.outgas.vapourise is
         # truthy on this MagicMock), which excludes noble gases.
-        expected_M_atm = len(vol_list + vap_list) * 1e18
+        expected_M_atm = len(vol_list + noble_gases + vap_list) * 1e18
         assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-12)
 
 
