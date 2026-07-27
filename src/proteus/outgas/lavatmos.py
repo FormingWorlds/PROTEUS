@@ -546,13 +546,15 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     for e in element_list:
         log.debug('element frac:  %s,  %s', e, element_fracs[e])
         if e in input_eles:
-            if e == 'O': #in that case, O_kg_atm shoudl be representative of callioe only because this sets the escape rate if reservoir=outgas
-                log.info('Oxygen in atmosphere before outgassing: %.5e',hf_row[e + '_kg_atm'])
-                #Omass afater outgassing should still be tracked separately , as it is used for AGNI input VMRS computed with Fastchem
+            if (
+                e == 'O'
+            ):  # in that case, O_kg_atm shoudl be representative of callioe only because this sets the escape rate if reservoir=outgas
+                log.info('Oxygen in atmosphere before outgassing: %.5e', hf_row[e + '_kg_atm'])
+                # Omass afater outgassing should still be tracked separately , as it is used for AGNI input VMRS computed with Fastchem
                 Omass_after_outgas += (
-                element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+                    element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
                 )
-                log.info('Oxygen in atmosphere after outgassing: %.5e',Omass_after_outgas)
+                log.info('Oxygen in atmosphere after outgassing: %.5e', Omass_after_outgas)
             else:
                 hf_row[e + '_kg_atm'] = (
                     element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
