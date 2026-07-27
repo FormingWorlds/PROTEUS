@@ -626,7 +626,7 @@ def ps1d_evec(hf_row, tides_o, dt):
     def dE_dt(z, p):
         """Tidal energy dissipation rate"""
 
-        Omega_p, Omega_s, a, e = z
+        Omega_p, Omega_s, a, e, _ = z
         e_safe = max(e, 1e-12)
 
         # Basic Orbital and Physical Parameters
