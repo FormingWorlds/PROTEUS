@@ -515,6 +515,9 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     hf_row['P_vol'] = hf_row.get('P_vol', 0.0) * retained
     hf_row['P_vap'] = hf_row.get('P_vap', 0.0) * retained
     hf_row['M_atm'] = m_atm * retained
+    # track the atmospheric volatile mass
+    # - important to kee separate from M_atm in case vapourisation is included
+    hf_row['M_vol_atm'] = hf_row['M_atm']
 
     log.info(
         'Crystallized mantle: volatile exchange frozen; escape removed '

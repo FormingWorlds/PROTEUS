@@ -25,6 +25,7 @@ from proteus.utils.constants import (
     gas_list,
     secs_per_hour,
     secs_per_minute,
+    vol_list,
 )
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -574,6 +575,9 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     """
     M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
+    M_vol_atm = float(hf_row.get('M_vol_atm', 0.0))
+    M_vaps = float(hf_row.get('M_vaps', 0.0))
+    M_mantle = float(hf_row.get('M_vaps', 0.0))
 
     # Pre-IC short-circuit: M_planet == 0 means the structure solve has
     # not yet populated the hf_row. The invariants are not meaningful
@@ -600,9 +604,9 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     # species kg_atm after M_atm is computed without refreshing M_atm. The
     # noble gases are members of gas_list, so their atmospheric mass is
     # counted here and in M_atm alike.
-    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
-    if M_atm > 0.0:
-        rel = abs(summed - M_atm) / M_atm
+    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_list)
+    if M_vol_atm > 0.0:
+        rel = abs(summed - M_vol_atm) / M_vol_atm
         if rel > atol_frac:
             raise RuntimeError(
                 f'M_atm bookkeeping inconsistency: M_atm={M_atm:.3e} kg but '
@@ -610,6 +614,15 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
                 f'{rel * 100:.3f}%). One of the gas-species kg_atm fields '
                 f'is stale or the M_atm sum loop is missing a species.'
             )
+
+    # check that the outgassing is not higher than the avialable mantle reservoir:
+    if M_vaps > M_mantle * (1.0 + atol_frac):
+        raise RuntimeError(
+            f'Mass conservation violation (issue #677 regression?): '
+            f'M_vaps={M_vaps:.3e} kg exceeds M_mantle={M_mantle:.3e} kg '
+            f'(relative excess {(M_vaps / M_mantle - 1) * 100:.3f}%). '
+            f'Likely cause: runaway of outgassing computations:  wrong tracking of vapour species.'
+        )
 
 
 def assert_surface_pressure_consistency(
@@ -868,6 +881,7 @@ def GetHelpfileKeys():
         'P_vap',            # rock vapour surface pressure [bar]
         'P_vol',            # volatiles surface pressure [bar]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
+        'M_vol_atm'         # mass of volatiles in teh atmosphere - vapours excluded [kg]
 
         # Iron-wustite buffer offset that the chemistry solver actually
         # equilibrated to, and the O mass-balance residual of that

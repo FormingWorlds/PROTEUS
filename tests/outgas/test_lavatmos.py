@@ -328,8 +328,11 @@ def test_run_vapourisation_preserves_noble_gases(tmp_path, monkeypatch):
     the noble mass.
     """
     dirs = {'output': str(tmp_path)}
-    monkeypatch.setenv('LAVA_DIR', str(tmp_path))
-    monkeypatch.setenv('FC_DIR', str(tmp_path))
+    env_dir = tmp_path
+    (env_dir / 'input' / 'lava_compositions').mkdir(parents=True)
+
+    monkeypatch.setenv('LAVA_DIR', str(env_dir))
+    monkeypatch.setenv('FC_DIR', str(tmp_path / 'fastchem'))
     monkeypatch.setattr(lavatmos_mod, 'vap_list', ['Fe'])  # a rock-vapour species
     monkeypatch.setattr(lavatmos_mod, 'noble_gases', ['He', 'Ar'])
     monkeypatch.setattr(

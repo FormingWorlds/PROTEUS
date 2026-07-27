@@ -589,10 +589,12 @@ class TestPathsImporterPhysicsInvariants:
         mock_dirs = {'output': '/output/base'}
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
+
         os.makedirs(
             os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
             exist_ok=True,
         )
+
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
