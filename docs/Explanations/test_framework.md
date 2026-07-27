@@ -189,3 +189,44 @@ assert result == pytest.approx(expected, rel=1e-3)
   `torch.manual_seed(42)`
 - Use `tmp_path` for temporary files (no large outputs)
 - Tests must produce the same result on every run
+
+## Trajectory parity
+
+Most tests state what a run should do. A trajectory-parity test states
+something weaker but far broader: that a run does what it did before.
+
+Two tests make that statement. The resume test asserts that a run stopped and
+restarted follows the same trajectory as one that ran straight through, which
+is the strongest thing that can be said about resuming. The golden-run test
+asserts that a fixed configuration follows the trajectory recorded beside it,
+which is what makes a refactor's claim to have changed nothing checkable. The
+second is built on the comparison in `proteus.utils.trajectory`; the first
+compares its two runs directly, since both are in hand at once and neither has
+to survive a trip through a file.
+
+Three properties make such a comparison worth having:
+
+- **It covers everything the run writes.** A curated list of quantities
+  covers only the failures somebody anticipated. Comparing every helpfile
+  column catches the ones nobody did.
+- **Undefined values are state, not noise.** Screening non-finite values out
+  before comparing skips precisely the columns a change corrupted into NaN.
+  In `proteus.utils.trajectory`, two NaNs at the same position agree and a NaN
+  against a number does not. The resume test screens its reference side
+  instead, which is sound there for a narrower reason: it compares a resumed
+  run against an uninterrupted one, so screening the uninterrupted side leaves
+  a corrupted resumed value to fail the comparison rather than skip it.
+- **It has to be able to fail.** A parity assertion that compares a run
+  against itself passes forever. The golden-run test carries a guard that
+  perturbs the trajectory by a stated amount and requires the comparison to
+  report it; the resume test instead asserts that its first leg really did
+  stop short, so the two runs it compares are not the same run.
+
+The tolerance sits in a band, not at a point: loose enough to absorb the
+last-bit differences between one platform's maths library and another's,
+tight enough that no change of behaviour fits underneath. Tests pin both ends
+by size rather than as multiples of the tolerance, since a test written in
+terms of the constant follows it wherever it is moved and pins nothing.
+
+Recording and comparing are covered in
+[the testing guide](../How-to/testing.md#checking-that-a-refactor-changed-nothing).
