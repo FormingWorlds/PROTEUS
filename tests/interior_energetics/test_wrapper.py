@@ -5904,8 +5904,6 @@ def test_aragog_remelt_without_a_prior_profile_warns_and_books_nothing(caplog):
     booking is left at zero with a warning, rather than inventing a value or
     failing the impact.
     """
-    import logging
-
     molten = np.full(6, 3900.0)
     solver = _FakeAragogSolver(cooled_profile=np.full(6, 2400.0))
     interior_o = SimpleNamespace(aragog_solver=solver, _last_entropy=None, impact_reset=False)
@@ -5968,8 +5966,6 @@ def test_a_remelt_that_would_cool_the_mantle_books_nothing(caplog):
     rho*T and those weightings disagree with depth: a profile that rises on
     average can still integrate to a loss.
     """
-    import logging
-
     cooled = np.full(6, 3900.0)  # already hotter than the IC below
     solver = _FakeAragogSolver(cooled_profile=cooled)
     interior_o = SimpleNamespace(
@@ -6059,8 +6055,6 @@ def test_the_remelt_injection_is_weighed_against_the_impact_energy(caplog):
     means the mantle, not the impact, set the thermal response, and that has to
     be visible rather than left implicit in a log line nobody reads.
     """
-    import logging
-
     from proteus.accretion.common import ImpactEvent
 
     cooled = np.full(6, 2400.0)

@@ -1212,8 +1212,6 @@ def test_zephyrus_loss_module_warns_outside_the_thin_atmosphere_regime(caplog):
     volatile-rich run cannot silently consume extrapolated fractions. The
     fraction is still returned in both cases.
     """
-    import logging
-
     import numpy as np
 
     pytest.importorskip('zephyrus.collision')
@@ -1428,7 +1426,7 @@ def test_the_impact_leaves_the_planet_mass_consistent_with_its_parts(monkeypatch
     deliberately stale M_planet, so a handler that failed to refresh it would
     keep that value and fail here.
     """
-    import proteus.accretion.wrapper as accretion_wrapper
+    from proteus.accretion.wrapper import apply_impact
 
     handler = _impact_handler(
         accretion=_impact_accretion(impactor_volatiles='ppmw', H_ppmw=1000.0)
@@ -1443,7 +1441,9 @@ def test_the_impact_leaves_the_planet_mass_consistent_with_its_parts(monkeypatch
         hf_row['M_ele'] = 9.9e21
         hf_row['M_planet'] = hf_row['M_int'] + 9.9e21
 
-    monkeypatch.setattr(accretion_wrapper, 'remelt_mantle', lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(
+        'proteus.accretion.wrapper.remelt_mantle', lambda *a, **k: None, raising=False
+    )
     monkeypatch.setattr(
         'proteus.interior_energetics.wrapper.solve_structure', _solve, raising=False
     )
@@ -1451,7 +1451,7 @@ def test_the_impact_leaves_the_planet_mass_consistent_with_its_parts(monkeypatch
         'proteus.interior_energetics.wrapper.remelt_mantle', lambda *a, **k: None, raising=False
     )
 
-    accretion_wrapper.apply_impact(handler, _impact_event())
+    apply_impact(handler, _impact_event())
 
     hf_row = handler.hf_row
     assert hf_row['M_planet'] == pytest.approx(hf_row['M_int'] + hf_row['M_ele'], rel=1e-12)
@@ -1559,8 +1559,6 @@ def test_a_resumed_run_replays_the_timeline_the_first_session_resolved(tmp_path)
     test makes the module raise if it is consulted at all on the resume, so a
     fallback to re-deriving would fail rather than pass by coincidence.
     """
-    from proteus.accretion.wrapper import init_accretion
-
     handler = _handler(
         module='timeline',
         timeline_path=_timeline_file(tmp_path / 't.csv'),
@@ -1591,8 +1589,6 @@ def test_the_recorded_timeline_is_not_offset_a_second_time(tmp_path):
     on resume would move every impact by that amount again. A non-zero offset
     makes the double application unmissable: it would double the shift.
     """
-    from proteus.accretion.wrapper import init_accretion
-
     offset = 3.0e5
     handler = _handler(
         module='timeline',
@@ -1628,10 +1624,6 @@ def test_a_temperature_mode_without_a_molten_guarantee_is_flagged(tmp_path, capl
     as guarantees is what lets a run apply an impact that melts nothing and
     report it as a re-melt.
     """
-    import logging
-
-    from proteus.accretion.wrapper import init_accretion
-
     path = _timeline_file(tmp_path / 't.csv')
 
     for mode in ('adiabatic_from_cmb', 'accretion', 'isothermal'):
@@ -1687,10 +1679,6 @@ def test_a_resumed_run_does_not_advise_changing_the_time_offset(tmp_path, caplog
     from the ledger, so repeating the fresh-run advice would tell a user to
     bring them back and accrete them a second time.
     """
-    import logging
-
-    from proteus.accretion.wrapper import init_accretion
-
     path = _timeline_file(tmp_path / 't.csv')
 
     # Fresh run starting after the first impact: the advice is correct there.
@@ -1731,8 +1719,6 @@ def test_the_impact_eccentricity_is_clamped_to_a_bound_orbit(monkeypatch, caplog
     itself, because absorbing it in silence is how a compounding drift in the
     applied change would hide for a whole run.
     """
-    import logging
-
     from proteus.accretion.wrapper import _ECC_MAX, apply_impact
 
     monkeypatch.setattr(
