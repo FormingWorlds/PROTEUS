@@ -282,7 +282,7 @@ class TestPathsImporterInitialization:
                         kwargs = call_obj.kwargs if hasattr(call_obj, 'kwargs') else call_obj[1]
                         assert kwargs.get('exist_ok')
 
-    def test_paths_importer_constructs_input_dir_from_wkdir(self):
+    def test_paths_importer_constructs_input_dir_from_lavatmos_dir(self):
         """Test that input_dir is constructed as lavatmos_dir + 'input/'.
 
         Physical scenario: LavAtmos input files are in a predictable location
@@ -384,26 +384,6 @@ class TestPathsImporterInitialization:
                     for path in path_attrs:
                         assert isinstance(path, str), f'Path {path} is not a string'
                         assert len(path) > 0, 'Path is an empty string'
-
-    def test_paths_importer_wkdir_equals_lavatmos_dir(self):
-        """Test that lavatmos_dir is always set equal to lavatmos_dir.
-
-        Physical scenario: LAVA_DIR serves as both the working directory and
-        module location; this assignment ensures consistency.
-        """
-        mock_lava_dir = '/lava/unique/path'
-        mock_dirs = {'output': '/output/base'}
-        mock_fc_dir = '/fc'
-
-        with patch.dict(
-            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
-        ):
-            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
-                with patch('proteus.outgas.lavatmos.os.makedirs'):
-                    importer = lavatmos.paths_importer(mock_dirs)
-
-                    # Monotonicity: lavatmos_dir must match lavatmos_dir
-                    assert importer.lavatmos_dir == importer.lavatmos_dir
 
     def test_paths_importer_input_dir_normalizes_slashes(self):
         """input_dir is built with os.path.join, so a trailing slash on LAVA_DIR
