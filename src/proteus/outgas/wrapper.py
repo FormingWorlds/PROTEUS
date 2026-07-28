@@ -566,7 +566,12 @@ def run_outgassing_and_vapourisation(
 ):
     """Runs volatile outgassing and rock vapourisation together and combines the results.
 
-    This allows for a consistent computation of melt outgassing and dissolution.
+    Two step process:
+     - outgassing calculated from solubility+thermochemical equilibrium
+     - vapourisation of refractory species from the surface.
+
+    Vapourisation re-equilibrates the combined gas, allowing for
+    computation of melt outgassing and dissolution.
 
     Parameters
     ----------
@@ -580,7 +585,7 @@ def run_outgassing_and_vapourisation(
             True if this is the first iteration of the simulation, False otherwise
     """
 
-    # reset all silicate masses to zero:
+    # reset all rock-vapour masses to zero:
     hf_row['M_vaps'] = 0.0
     for s in gas_list:
         if s not in vap_list:
@@ -598,14 +603,13 @@ def run_outgassing_and_vapourisation(
             hf_row[e + '_kg_atm'] = 0.0
             hf_row[e + '_kg_total'] = 0.0
 
-    # Do outgassing without rock vapours first
+    # Volatile outgassing
     run_outgassing(dirs, config, hf_row)
 
-    # Now do rock vapours
-    if (
-        hf_row['Phi_global'] < config.params.stop.solid.phi_crit or not config.outgas.vapourise
-    ):  # if vapourisation not running
-        log.info('no vapour outgassing')
-    else:
-        log.info('Calculating rock vapourisation at surface')
-        run_vapourisation(dirs, config, hf_row, first_iter)
+    # Vapourisation of refractories
+    if config.outgas.vapourise:
+        if hf_row['Phi_global'] < config.params.stop.solid.phi_crit:
+            log.info('Skipping rock vapourisation for crystallised mantle')
+        else:
+            log.info('Calculating rock vapourisation at surface')
+            run_vapourisation(dirs, config, hf_row, first_iter)

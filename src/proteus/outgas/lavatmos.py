@@ -1,4 +1,10 @@
-# Function used to run LavAtmos 2.0
+"""Rock vapourisation with LavAtmos.
+
+This module exists under outgas/ because it helps determine the atmospheric
+composition, but it models vapourisation of refractory species from the
+surface of the planet.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -290,7 +296,7 @@ def read_in_element_fracs_normalized(input_path):
     input:
     - inputpath: path to the directory where the element_abundance folder which contains the lavatmos output elements is located
         this file contains element abundances in fastchem format where ej=10^(xj-12)
-    - time: time of the current timestep wt ahich the outgassing is computed
+    - time: time of the current timestep at which the vapourisation is computed
 
     output:
     - dataframe with normalised element fractions ej/etot
@@ -375,7 +381,7 @@ def run_lavatmos(
     P_melt = config.outgas.lavatmos.P_melt
 
     # Guess for fO2 [bar]
-    fO2_initial_guess = 10 ** hf_row['log10_fO2_vapourise']
+    fO2_initial_guess = 10 ** hf_row['fO2_vapourise_derived']
 
     # Lavatmos tolerance
     xatol = config.outgas.lavatmos.xatol
@@ -401,8 +407,11 @@ def run_lavatmos(
 def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     """
 
-    This function runs the Thermoengine module Lavatmos. Outgassing of refractory species
-    are computed from a melt temperature and atmospheric pressure.
+    This function runs the ThermoEngine module LavAtmos. Vapourisation of
+    refractory species from the melt surface is computed from the magma
+    temperature and the volatile surface pressure. This is a phase change out
+    of the melt, distinct from the volatile outgassing (solubility) step that
+    runs before it.
 
     Parameters:
         dirs : dict
@@ -464,10 +473,10 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     if 'm(u)' in new_atmos_abundances.columns:
         new_atmos_abundances.rename(columns={'m(u)': 'mu'}, inplace=True)
 
-    mu_outgassed = new_atmos_abundances['mu'][0]
+    mu_combined = new_atmos_abundances['mu'][0]
 
     # Mean particle mass of the combined (volatile + rock-vapour) atmosphere.
-    kg_pp_new = mu_outgassed / const_Nav * 1e-3  # kg per particle
+    kg_pp_new = mu_combined / const_Nav * 1e-3  # kg per particle
     log.debug('new kg per particle: %.4e' % kg_pp_new)
 
     # New atmospheric mass from the hydrostatic relation
@@ -479,20 +488,20 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     # rock-vapour part (P_vap). P_vap is the excess of the LavAtmos+FastChem total
     # over the volatile-only pressure that went in; it cannot be negative.
     P_surf_new = new_atmos_abundances['Pbar'][0]
-    Poutgas = P_surf_new - hf_row['P_surf']  # rock-vapour pressure contribution
-    if Poutgas < 0.0:
+    P_vap_new = P_surf_new - hf_row['P_surf']  # rock-vapour pressure contribution
+    if P_vap_new < 0.0:
         log.warning(
-            'rock-vapour pressure computed negative (%.3e bar); clamping to zero', Poutgas
+            'rock-vapour pressure computed negative (%.3e bar); clamping to zero', P_vap_new
         )
-        Poutgas = 0.0
-    log.debug('pressure of outgassed species: %.4f' % Poutgas)
-    log.debug('pressure of volatiles before outgassing: %.4f' % hf_row['P_surf'])
+        P_vap_new = 0.0
+    log.debug('pressure of vapourised rock species: %.4f bar' % P_vap_new)
+    log.debug('pressure of volatiles before vapourisation: %.4f bar' % hf_row['P_surf'])
 
-    hf_row['P_vap'] = Poutgas
-    hf_row['P_vol'] = P_surf_new - Poutgas  # == old P_surf when Poutgas >= 0
+    hf_row['P_vap'] = P_vap_new
+    hf_row['P_vol'] = P_surf_new - P_vap_new  # == old P_surf when P_vap_new >= 0
 
-    # Update the tracked atmospheric MMW = volatile + rock-vapour
-    hf_row['atm_kg_per_mol'] = mu_outgassed * 1e-3
+    # Update the tracked atmospheric MMW of the combined volatile + rock-vapour gas
+    hf_row['atm_kg_per_mol'] = mu_combined * 1e-3
 
     mmw_elements = 0
     for e in element_fracs.keys():
@@ -522,7 +531,7 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
             new_atmos_abundances[vol_key][0]
             * M_atmo_new
             * species_lib[vol].weight
-            / mu_outgassed
+            / mu_combined
         )  # kg
         hf_row[vol + '_mol_atm'] = hf_row[vol + '_kg_atm'] / hf_row['atm_kg_per_mol']
 
@@ -542,19 +551,25 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
                 + hf_row[vol + '_mol_liquid']
             )
 
-    Omass_after_outgas = 0.0
+    Omass_after_vapourise = 0.0
     for e in element_list:
         log.debug('element frac:  %s,  %s', e, element_fracs[e])
         if e in input_eles:
-            if (
-                e == 'O'
-            ):  # in that case, O_kg_atm should be representative of callioe only because this sets the escape rate if reservoir=outgas
-                log.info('Oxygen in atmosphere before outgassing: %.5e', hf_row[e + '_kg_atm'])
-                # Omass afater outgassing should still be tracked separately , as it is used for AGNI input VMRS computed with Fastchem
-                Omass_after_outgas += (
+            if e == 'O':
+                # O_kg_atm must stay representative of the volatile outgassing
+                # step alone, because it sets the escape rate when
+                # reservoir=outgas
+                log.info(
+                    'Oxygen in atmosphere before vapourisation: %.5e', hf_row[e + '_kg_atm']
+                )
+                # The post-vapourisation O mass is tracked separately, since it
+                # feeds the AGNI input VMRs computed with FastChem
+                Omass_after_vapourise += (
                     element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
                 )
-                log.info('Oxygen in atmosphere after outgassing: %.5e', Omass_after_outgas)
+                log.info(
+                    'Oxygen in atmosphere after vapourisation: %.5e', Omass_after_vapourise
+                )
             else:
                 hf_row[e + '_kg_atm'] = (
                     element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
@@ -568,38 +583,43 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
                 element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
             )  # don't use hf_row[e + '_kg_atm'] because this only acounts for e.g. Si in atomic gas form not total Si
 
-    # saving new oxygen fugacity from lavatmos run, which is computed as log10 of the partial pressure of O2, to compare with the iron wustite buffer
-
     hf_row['M_vaps'] += (
-        Omass_after_outgas - hf_row['O_kg_atm']
-    )  # add outgassed oxygen mass to elemental vapour species mass
+        Omass_after_vapourise - hf_row['O_kg_atm']
+    )  # add vapourised oxygen mass to the rock-vapour element mass
     log.debug(
-        'added oxygen from outagssing to initial O budget in atmosphere [kg]: %.4e ',
-        Omass_after_outgas - hf_row['O_kg_atm'],
+        'added oxygen from vapourisation to initial O budget in atmosphere [kg]: %.4e ',
+        Omass_after_vapourise - hf_row['O_kg_atm'],
     )
-    hf_row['O_outgassed_kg'] = Omass_after_outgas - hf_row['O_kg_atm']
+    # Oxygen released by the vapourisation step, held separately from the
+    # volatile step's O_kg_atm.
+    hf_row['O_vapourised_kg'] = Omass_after_vapourise - hf_row['O_kg_atm']
 
-    pO2 = new_atmos_abundances['O2'][0]
-    log.debug('O2 partial pressure  very small: %.3e', pO2)
-    if pO2 < 1e-20:
-        log.debug('O2 partial pressure smaller than 1e-20')
-        pO2 = 1e-20
-    if new_atmos_abundances['Pbar'][0] < 1e-10:
-        psurf = 1e-10
-    else:
-        psurf = new_atmos_abundances['Pbar'][0]
-    log10_fO2 = np.log10(pO2) + np.log10(psurf)
+    # Oxygen fugacity of the combined atmosphere. FastChem re-equilibrated the
+    # volatile inventory (nfrac above, built from the *_kg_atm the volatile
+    # backend wrote) together with the vapourised rock, so its O2 mixing ratio
+    # already carries the oxygen of both sources; the partial pressure is that
+    # mixing ratio times the combined surface pressure P_vol + P_vap. The
+    # volatile-step O2 partial pressure is therefore NOT added on top of this:
+    # doing so would count the volatile oxygen twice.
+    vmr_O2 = new_atmos_abundances['O2'][0]
+    if vmr_O2 < 1e-20:
+        log.debug('O2 mixing ratio %.3e below 1e-20; flooring it for the log', vmr_O2)
+        vmr_O2 = 1e-20
+    psurf = max(hf_row['P_vol'] + hf_row['P_vap'], 1e-10)  # bar; == FastChem Pbar
+    pO2 = vmr_O2 * psurf  # bar
+    log.debug('combined O2 partial pressure: %.3e bar (VMR %.3e)', pO2, vmr_O2)
+    log10_fO2 = np.log10(pO2)
 
     # OxygenFugacity(T, fO2_shift=0) returns the absolute buffer value
     # IW(T); the shift relative to that buffer is log10_fO2 - IW(T).
     iw_buffer = OxygenFugacity(model=config.outgas.lavatmos.fO2_buffer_model)
-    hf_row['log10_fO2_vapourise'] = log10_fO2
-    hf_row['log10_fO2_shift_vapourise'] = log10_fO2 - iw_buffer(hf_row['T_magma'])
+    hf_row['fO2_vapourise_derived'] = log10_fO2
+    hf_row['fO2_vapourise_shift_IW_derived'] = log10_fO2 - iw_buffer(hf_row['T_magma'])
     hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
     hf_row['M_atm'] = M_atmo_new
 
     log.debug(
-        'log10 fO2 shift compared to IW buffer: %.6f' % hf_row['log10_fO2_shift_vapourise']
+        'log10 fO2 shift compared to IW buffer: %.6f' % hf_row['fO2_vapourise_shift_IW_derived']
     )
 
     mask = [hf_row[s + '_vmr'] for s in vap_list]

@@ -69,13 +69,18 @@ pip install "fwl-proteus[atmodeller]"
     atmodeller is distributed under the GPL-3.0 license; review its terms
     before installing.
 
-<<<<<<< HEAD
 ## Rock vapours (LavAtmos + ThermoEngineLite)
 
 [LavAtmos](https://github.com/FormingWorlds/LavAtmos) computes the
 thermodynamic vapourisation equilibrium of silicate melt, adding rock-vapour
-species to the outgassed atmosphere. It is optional, selected with
+species to the atmosphere. It is optional, selected with
 `outgas.vapourise = true`, and is not installed with PROTEUS by default.
+If you publish results that use it, cite van Buchem et al.
+([2023](https://doi.org/10.1111/maps.13994), _Meteoritics & Planetary Science_
+58, 1149) for the code and van Buchem et al.
+([2025](https://doi.org/10.1051/0004-6361/202450992), _Astronomy &
+Astrophysics_ 695, A154) for the volatile-inclusive vaporisation equilibrium
+that PROTEUS drives.
 LavAtmos needs [ThermoEngineLite](https://github.com/FormingWorlds/ThermoEngineLite)
 for melt thermodynamics and the FastChem chemistry solver already installed
 alongside AGNI (`FC_DIR`; see
@@ -98,7 +103,7 @@ variable for you. Export the printed path and add it to your shell rc file:
 export LAVA_DIR='<path-to-LavAtmos>/'
 ```
 
-Enable rock vapour outgassing in your config:
+Enable rock vapourisation in your config:
 
 ```toml
 [outgas]
@@ -107,7 +112,7 @@ vapourise = true
 
 See [`input/vapourise.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/vapourise.toml)
 for a full example configuration.
-=======
+
 ## Parameter inference (Bayesian optimisation)
 
 `proteus infer` runs the Bayesian-optimisation scheme, which is built on
@@ -131,7 +136,6 @@ pip install "fwl-proteus[inference]"
 Without the extra, `proteus infer` stops with a message naming the missing
 package; every other command is unaffected. See the
 [inference guide](inference.md) for how to configure a run.
->>>>>>> 873e4711f954348f16dda1173067c13326282168
 
 ## Atmospheric chemistry (VULCAN)
 

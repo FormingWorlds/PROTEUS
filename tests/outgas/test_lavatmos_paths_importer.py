@@ -479,7 +479,7 @@ class TestPathsImporterErrorHandling:
     def test_paths_importer_missing_lava_dir_env_var(self):
         """paths_importer fails fast with an error when LAVA_DIR is unset.
 
-        Error contract: rock-vapour outgassing cannot run without the LavAtmos
+        Error contract: rock vapourisation cannot run without the LavAtmos
         checkout, so construction raises ValueError naming LAVA_DIR rather than
         silently storing None and crashing cryptically downstream.
         """

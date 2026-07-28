@@ -202,9 +202,16 @@ For each element (H, C, N, O, S):
 
 | Column | Units | Description |
 |--------|-------|-------------|
-| `log10_fO2_shift_vapourise` | log$_{10}$ | Derived fO2 offset from iron-wustite buffer |
-| `log10_fO2_vapourise` | log$_{10}$| Derived fO2 |
+| `fO2_shift_IW_derived` | dex | Derived fO2 of the volatile outgassing step, relative to the iron-wustite buffer (zero means on the buffer) |
+| `fO2_vapourise_derived` | log$_{10}$ bar | Derived absolute fO2 of the combined atmosphere from rock vapourisation (zero means 1 bar of O$_2$) |
+| `fO2_vapourise_shift_IW_derived` | dex | The same quantity as `fO2_vapourise_derived`, relative to the iron-wustite buffer at `T_magma` |
 | `O_res` | kg | Oxygen mass-balance residual |
+| `O_vapourised_kg` | kg | Oxygen released by rock vapourisation, held separately from the volatile-step `O_kg_atm` |
+
+The two `fO2_vapourise*` columns differ only in their zero point: the first is
+absolute, the second is the first minus the buffer value, so it is a difference
+of two log$_{10}$ bar numbers and therefore a dimensionless dex offset. See
+[Model description](../Explanations/model.md#how-volatile-outgassing-and-rock-vapourisation-are-combined).
 
 ### Escape
 
