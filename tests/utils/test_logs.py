@@ -526,7 +526,8 @@ class TestSetupLogger:
             logging.getLogger('fwl').info('PLAINMARK')
             for h in logging.getLogger('fwl').handlers:
                 h.flush()
-            contents = open(logpath).read().strip()
+            with open(logpath) as f:
+                contents = f.read().strip()
         assert 'PLAINMARK' in contents
         # The plain layout must NOT carry the default '[ LEVEL ]' tag; this
         # discriminates the fmt path from the default-formatter path.
@@ -548,7 +549,8 @@ class TestSetupLogger:
             logging.getLogger('fwl').info('TAGMARK')
             for h in logging.getLogger('fwl').handlers:
                 h.flush()
-            contents = open(logpath).read().strip()
+            with open(logpath) as f:
+                contents = f.read().strip()
         assert 'TAGMARK' in contents
         # Default layout carries the level tag...
         assert '[ INFO' in contents
