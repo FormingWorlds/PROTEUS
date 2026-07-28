@@ -15,7 +15,13 @@ import numpy as np
 from juliacall import Main  # noqa: F401
 
 import proteus.utils.archive as archive
-from proteus.config import check_config_orphan_free, read_config, read_config_object
+from proteus.config import (
+    UnknownConfigKeyError,
+    find_key_problems,
+    format_orphan_message,
+    read_config,
+    read_config_object,
+)
 from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
@@ -41,19 +47,64 @@ _IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
-        # Read and parse configuration file
+        # Read and parse configuration file. Keys the schema cannot accept are
+        # collected here but reported further down: resolving the output
+        # directory needs a structured config, and the refusal is recorded in a
+        # status file under that directory.
         self.config_path = config_path
-        self.config = read_config_object(config_path)
+
+        # The keys are collected before the config is structured, because a
+        # misspelling is usually what makes a value fail validation and is the
+        # more useful of the two to report. The check re-reads the raw TOML, so
+        # it applies only when the path resolves to a file: a caller that
+        # substitutes the loader supplies the parsed config by other means and
+        # leaves nothing here to re-read.
+        orphans: list[str] = []
+        mistyped: list[str] = []
+        if os.path.isfile(config_path):
+            orphans, mistyped = find_key_problems(read_config(config_path))
+        orphan_error = (
+            format_orphan_message(orphans, config_path, mistyped)
+            if orphans or mistyped
+            else None
+        )
+
+        try:
+            self.config = read_config_object(config_path, strict=False)
+        except ValueError as exc:
+            # An unrecognised key is reported first because it is often what
+            # made the rest of the file fail, but the other complaint is kept
+            # alongside it: it may name a missing package or an unreadable
+            # path, which the key on its own does not explain. There is no
+            # output directory to record this in, since resolving one needs the
+            # config that just failed to structure.
+            if orphan_error:
+                raise UnknownConfigKeyError(
+                    f'{orphan_error}\nLoading the file also reported:\n{exc}'
+                ) from None
+            raise
 
         # Setup directories dictionary
         self.directories: dict = None  # Directories dictionary
-        self.init_directories()
+        try:
+            self.init_directories()
+        except Exception as exc:
+            # Resolving the directories needs a configured environment, so it
+            # can fail for reasons of its own. A key already found unrecognised
+            # is reported alongside that failure rather than dropped: someone
+            # setting up for the first time can easily have both, and being
+            # told only about the environment hides the typo until the next
+            # attempt.
+            if orphan_error:
+                raise UnknownConfigKeyError(
+                    f'{orphan_error}\nResolving the output directory also failed:\n{exc}'
+                ) from None
+            raise
 
-        # Check for orphan keys in the config
-        if self.directories and os.path.isfile(config_path):
-            if not check_config_orphan_free(read_config(config_path)):
-                UpdateStatusfile(self.directories, 20)
-                raise RuntimeError(f'Unknown configuration keys found in {config_path}.')
+        # Reject unrecognised keys now that the failure can be recorded.
+        if orphan_error:
+            UpdateStatusfile(self.directories, 20)
+            raise UnknownConfigKeyError(orphan_error)
 
         # Helpfile variables for the current iteration
         self.hf_row = None

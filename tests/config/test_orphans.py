@@ -6,12 +6,15 @@ being silently discarded by the cattrs-based config parser.
 
 from __future__ import annotations
 
+import attrs
 import pytest
 
 from proteus.config.orphans import (
     _collect_orphan_keys,
     _extract_attrs_class,
-    check_config_orphan_free,
+    find_key_problems,
+    find_orphan_keys,
+    format_orphan_message,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -20,6 +23,28 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+@attrs.define
+class _Leaf:
+    """Innermost class of the synthetic schema used below."""
+
+    value: int = 0
+
+
+@attrs.define
+class _Holder:
+    """Synthetic schema pairing a container of tables with a single table.
+
+    The real Config declares no container of nested classes, so the two shapes
+    can only be compared against a schema written for the purpose. Defined at
+    module scope because the walk resolves annotations through
+    `typing.get_type_hints`, which cannot see names local to a function.
+    """
+
+    many: list[_Leaf] = attrs.field(factory=list)
+    one: _Leaf = attrs.field(factory=_Leaf)
+
 
 _MINIMAL_VALID = {
     'config_version': '3.0',
@@ -250,25 +275,201 @@ def test_orphans_collect_orphan_keys_non_attrs_type_skips_recursion():
 
 
 # ---------------------------------------------------------------------------
-# check_config_orphan_free
+# find_orphan_keys
 # ---------------------------------------------------------------------------
 
 
-def test_orphans_check_config_orphan_free_clean_config_passes():
-    """A config with no orphans returns True without raising.
+def test_find_orphan_keys_reports_nested_paths_and_none_for_a_clean_config():
+    """Unknown keys come back as dotted paths; a schema-conforming config yields none.
 
-    The paired negative injects one unknown key into that config and expects
-    False rather than a raise.
+    The nested case is the one that matters: a misspelling two levels down in
+    ``planet.elements`` costs the user the same silently-applied default as one
+    at the top level, but only recursion into the nested class can see it.
     """
-    result = check_config_orphan_free(_MINIMAL_VALID)
-    assert result is True
+    from copy import deepcopy
 
-    # Error contract: the same config carrying one unknown key returns False
-    # rather than raising, because the caller reports the keys and decides. The
-    # pair also shows True is driven by the config content, not returned
-    # unconditionally.
-    dirty = {**_MINIMAL_VALID, 'planet': {**_MINIMAL_VALID['planet'], 'typo_field': 99}}
-    assert check_config_orphan_free(dirty) is False
+    dirty = deepcopy(_MINIMAL_VALID)
+    # Plural typo two levels deep, and an unknown top-level section.
+    dirty['planet']['elements']['H_budgets'] = 1.0
+    dirty['atmosphere'] = {'module': 'agni'}
+
+    orphans = find_orphan_keys(dirty)
+    assert set(orphans) == {'planet.elements.H_budgets', 'atmosphere'}
+
+    # The correctly spelled sibling sits right next to the typo and must not be
+    # swept up with it, otherwise every config with a typo would look wholly
+    # unrecognised.
+    assert 'planet.elements.H_budget' not in orphans
+
+    # An unknown section is reported once, at the section, rather than once per
+    # key inside it: there is no schema below an unrecognised branch to compare
+    # against.
+    assert 'atmosphere.module' not in orphans
+
+    # Edge case: the same config without the two injected keys is clean, so the
+    # result above is driven by the injection rather than by the fixture.
+    assert find_orphan_keys(_MINIMAL_VALID) == []
+
+
+# ---------------------------------------------------------------------------
+# find_key_problems
+# ---------------------------------------------------------------------------
+
+
+def test_find_key_problems_catches_a_section_that_is_not_a_table():
+    """A section given as anything but a table is reported, at any depth.
+
+    Writing ``[[planet]]`` instead of ``[planet]`` declares an array of tables.
+    The name still matches a schema field, so a check that only looks at names
+    sees nothing wrong, while structuring discards the section whole and every
+    parameter inside it silently reverts to its default. That is the same
+    outcome as a misspelling and is reported the same way.
+    """
+    from copy import deepcopy
+
+    # A discriminating value: it differs from the schema default, so a section
+    # that is dropped rather than read is visible in the result.
+    good = deepcopy(_MINIMAL_VALID)
+    good['planet']['mass_tot'] = 3.7
+    assert find_key_problems(good) == ([], [])
+
+    # Array of tables at the top level.
+    aot = deepcopy(good)
+    aot['planet'] = [good['planet']]
+    assert find_key_problems(aot) == ([], ['planet'])
+
+    # Array of tables one level down, where only recursion can see it.
+    nested = deepcopy(good)
+    nested['planet']['elements'] = [good['planet']['elements']]
+    assert find_key_problems(nested) == ([], ['planet.elements'])
+
+    # Edge cases: a scalar and a string in place of a table are the same fault.
+    for value in (5, 'earth'):
+        scalar = deepcopy(good)
+        scalar['planet'] = value
+        assert find_key_problems(scalar) == ([], ['planet'])
+
+    # The two kinds are reported separately rather than one masking the other.
+    both = deepcopy(good)
+    both['planet'] = [good['planet']]
+    both['star']['typo_field'] = 1
+    assert find_key_problems(both) == (['star.typo_field'], ['planet'])
+
+
+def test_collect_key_problems_allows_repeated_tables_for_a_container_field():
+    """A field holding several nested classes accepts a list rather than a table.
+
+    The schema declares no such field today, so this is checked against a
+    synthetic one. It matters because the rule that refuses a non-table is
+    otherwise applied to every nested class: adding a field typed as a list of
+    them later would start refusing configurations that are correct, which is a
+    worse failure than the one the refusal exists to prevent.
+    """
+    from proteus.config.orphans import _collect_key_problems
+
+    # A list against the container field is the intended shape, so neither list
+    # reports it.
+    assert _collect_key_problems({'many': [{'value': 1}]}, _Holder) == ([], [])
+
+    # Discriminator: the same list against the single-table field beside it is
+    # still refused, so the carve-out is driven by the field's type and is not
+    # a blanket exemption for lists.
+    assert _collect_key_problems({'one': [{'value': 1}]}, _Holder) == ([], ['one'])
+
+    # A table remains valid for the single-table field, and an unknown name
+    # inside it is still found, so recursion is unaffected.
+    assert _collect_key_problems({'one': {'value': 1}}, _Holder) == ([], [])
+    assert _collect_key_problems({'one': {'nope': 1}}, _Holder) == (['one.nope'], [])
+
+
+def test_find_key_problems_leaves_a_mistyped_section_out_of_the_orphan_list():
+    """A misdeclared section is not reported as an unrecognised key.
+
+    ``planet`` is a name the schema declares, so calling it unrecognised would
+    send the user looking for a spelling mistake that is not there. The two
+    faults need different advice and are kept apart.
+    """
+    from copy import deepcopy
+
+    aot = deepcopy(_MINIMAL_VALID)
+    aot['planet'] = [_MINIMAL_VALID['planet']]
+
+    orphans, mistyped = find_key_problems(aot)
+    assert mistyped == ['planet']
+    assert orphans == []
+    # The name-only helper agrees, so the split is a property of the walk and
+    # not of one caller's interpretation.
+    assert find_orphan_keys(aot) == []
+
+
+# ---------------------------------------------------------------------------
+# format_orphan_message
+# ---------------------------------------------------------------------------
+
+
+def test_format_orphan_message_quotes_every_key_and_names_the_file():
+    """The rejection message lists all unrecognised keys, the file, and the reference.
+
+    This message is the only guidance the user gets when a load is refused, so
+    it has to name every key rather than just the first one, and say where the
+    valid names are written down.
+    """
+    msg = format_orphan_message(['planet.mass_total', 'atmosphere'], '/runs/case.toml')
+
+    # Both keys, not just the head of the list.
+    assert '"planet.mass_total"' in msg
+    assert '"atmosphere"' in msg
+    assert '/runs/case.toml' in msg
+    assert 'all_options.toml' in msg
+
+    # Limit input: one key yields exactly one quoted name. A regression that
+    # padded the list with a stray empty entry would quote four times here.
+    single = format_orphan_message(['params.dt.maxium'], 'case.toml')
+    assert single.count('"') == 2
+    assert '"params.dt.maxium"' in single
+
+    # The wording agrees with the count. Telling someone who mistyped one key
+    # that "these keys are not part of the schema" reads as though the file has
+    # more wrong with it than it does.
+    assert 'Unrecognised configuration key in' in single
+    assert 'This key is not part' in single
+    assert 'these keys' not in single.lower()
+
+    # The many-key message keeps the plural, so the singular above is chosen
+    # from the count rather than applied to every message.
+    assert 'Unrecognised configuration keys in' in msg
+    assert 'These keys are not part' in msg
+
+
+def test_format_orphan_message_reports_mistyped_sections_in_their_own_block():
+    """A misdeclared section gets its own advice, not the spelling advice.
+
+    The remedy differs: an unrecognised key wants a spelling check, a section
+    written as an array of tables wants a bracket removed. Folding them into
+    one block would give whichever user is in the minority the wrong
+    instruction.
+    """
+    both = format_orphan_message(['planet.mass_total'], '/runs/case.toml', ['star'])
+
+    assert '"planet.mass_total"' in both
+    assert '"star"' in both
+    # The unrecognised key comes first: it is the more common mistake, and the
+    # section advice is useless to someone who has neither.
+    assert both.index('Unrecognised') < both.index('Misdeclared')
+    assert '[[name]]' in both
+    # The reference line is printed once, not once per block.
+    assert both.count('all_options.toml') == 1
+
+    # Only sections: the spelling block is absent rather than empty, so nobody
+    # is told to check a spelling when no name was misspelled.
+    sections_only = format_orphan_message([], '/runs/case.toml', ['star'])
+    assert 'Misdeclared configuration section in' in sections_only
+    assert 'Unrecognised' not in sections_only
+
+    # Only keys: symmetrically, no bracket advice appears.
+    keys_only = format_orphan_message(['planet.mass_total'], '/runs/case.toml')
+    assert 'Misdeclared' not in keys_only
+    assert '[[name]]' not in keys_only
 
 
 # ---------------------------------------------------------------------------
@@ -277,7 +478,7 @@ def test_orphans_check_config_orphan_free_clean_config_passes():
 
 
 def test_orphans_detected_in_raw_dict_from_toml_file(tmp_path):
-    """check_config_orphan_free detects orphan keys injected into a TOML file."""
+    """An orphan key injected into a TOML file is found by name."""
     import tomllib
 
     from helpers import PROTEUS_ROOT
@@ -295,17 +496,16 @@ def test_orphans_detected_in_raw_dict_from_toml_file(tmp_path):
     with open(cfg_path, 'rb') as f:
         raw = tomllib.load(f)
 
-    result = check_config_orphan_free(raw)
-    assert result is False
+    assert find_orphan_keys(raw) == ['planet.TYPO_FIELD']
     # Discrimination: the original dummy.toml must be orphan-free. A regression
-    # that always returned False would fail this second check.
+    # that always reported a key would fail this second check.
     with open(dummy_path, 'rb') as f:
         clean_raw = tomllib.load(f)
-    assert check_config_orphan_free(clean_raw) is True
+    assert find_orphan_keys(clean_raw) == []
 
 
 def test_orphans_detected_at_top_level_in_toml_file(tmp_path):
-    """check_config_orphan_free detects an unknown top-level key in a TOML file."""
+    """An unknown top-level key in a TOML file is found by name."""
     import tomllib
 
     from helpers import PROTEUS_ROOT
@@ -323,14 +523,14 @@ def test_orphans_detected_at_top_level_in_toml_file(tmp_path):
         raw = tomllib.load(f)
 
     # The orphan key is detected at the TOP level.
-    result = check_config_orphan_free(raw)
-    assert result is False
+    orphans = find_orphan_keys(raw)
+    assert orphans == ['EXTRA_SECTION']
 
-    # Discrimination: confirm the orphan is specifically EXTRA_SECTION
+    # Discrimination: the same walk over the schema root reports the identical
+    # key, so the public helper is not silently widening the search.
     from proteus.config._config import Config
 
-    orphans = _collect_orphan_keys(raw, Config)
-    assert 'EXTRA_SECTION' in orphans
+    assert _collect_orphan_keys(raw, Config) == orphans
 
 
 # ---------------------------------------------------------------------------
@@ -339,11 +539,14 @@ def test_orphans_detected_at_top_level_in_toml_file(tmp_path):
 
 
 def test_orphans_proteus_init_raises_on_dirty_config(tmp_path):
-    """Proteus.__init__ raises RuntimeError and writes status 20 for a dirty config.
+    """The runner names the unknown key and writes status 20 before refusing.
 
     The dummy.toml is used as the valid base; one orphan key is injected into
     the [planet] section. Proteus resolves the output directory from the config,
     writes the status file, and then raises before completing initialisation.
+    The key has to appear in the exception itself: at this point in startup no
+    log handler is attached, so anything reported only through the logger is
+    lost and the user is left with a run that stopped for no stated reason.
     """
     import tomllib
 
@@ -367,8 +570,11 @@ def test_orphans_proteus_init_raises_on_dirty_config(tmp_path):
     with open(dirty_path, 'w') as f:
         tomlkit.dump(raw, f)
 
-    with pytest.raises(RuntimeError, match='Unknown configuration keys'):
+    with pytest.raises(ValueError) as excinfo:
         Proteus(config_path=dirty_path)
+
+    # The offending key is carried by the exception, not only by a log line.
+    assert 'planet.TYPO_FIELD' in str(excinfo.value)
 
     # Status file must exist (this checks for regression where file isn't written)
     status_file = tmp_path / 'run_output' / 'status'
@@ -377,6 +583,160 @@ def test_orphans_proteus_init_raises_on_dirty_config(tmp_path):
     # Status file must be code 20
     content = status_file.read_text()
     assert content.startswith('20'), f'Expected status 20, got: {content!r}'
+
+
+def test_orphans_proteus_init_names_the_unknown_key_before_a_bad_value(tmp_path):
+    """The runner leads with an unknown key but keeps the other complaint too.
+
+    A misspelling is usually what leaves a value wrong, so reporting the value
+    first sends the user after a symptom. Dropping the value complaint is no
+    better: it can name a missing package or an unreadable path that the key
+    alone does not explain, so both belong in the message with the key first.
+
+    A file that fails to structure has no status file written for it, unlike a
+    file whose only fault is the key. The output directory is named inside the
+    configuration, so a file that cannot be structured has nowhere to record
+    anything; the message is the whole of the report. That limit is pinned here
+    so it stays a deliberate one.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    from proteus import Proteus
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    raw['params']['out']['path'] = str(tmp_path / 'run_output')
+    raw['planet']['mass_tot'] = -5.0  # rejected: the planet mass must be positive
+    raw['planet']['mass_total'] = 2.5  # unknown key
+
+    both = tmp_path / 'both.toml'
+    with open(both, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    with pytest.raises(ValueError) as excinfo:
+        Proteus(config_path=both)
+    message = str(excinfo.value)
+    assert 'planet.mass_total' in message
+    # The value complaint survives alongside it, and comes second.
+    assert 'must be > 0' in message
+    assert message.index('planet.mass_total') < message.index('must be > 0')
+
+    # Nothing was recorded on disk: structuring failed before the output
+    # directory could be resolved, so the refusal lives only in the message.
+    # The sibling test above, where the key is the only fault, does get a
+    # status file, and that contrast is the point.
+    assert not (tmp_path / 'run_output' / 'status').exists()
+
+    # Edge case: with the unknown key removed the negative mass is still the
+    # only thing reported, so the key does not crowd out an unrelated failure
+    # and does not attach itself to a file that has none.
+    del raw['planet']['mass_total']
+    value_only = tmp_path / 'value_only.toml'
+    with open(value_only, 'w') as f:
+        tomlkit.dump(raw, f)
+    with pytest.raises(ValueError) as value_info:
+        Proteus(config_path=value_only)
+    assert 'must be > 0' in str(value_info.value)
+    # Singular substring, so neither the one-key nor the many-key heading slips
+    # past this check.
+    assert 'Unrecognised configuration key' not in str(value_info.value)
+
+
+def test_orphans_proteus_init_refuses_a_section_written_as_an_array_of_tables(tmp_path):
+    """The runner refuses ``[[planet]]`` and records it, like any other refusal.
+
+    The runner checks the raw file itself rather than letting the strict loader
+    do it, so the loader being correct says nothing about this path, which is
+    the one an actual run takes. Left unrefused the section is discarded whole
+    and every parameter inside it reverts to its default.
+    """
+    from helpers import PROTEUS_ROOT
+
+    from proteus import Proteus
+
+    source = (PROTEUS_ROOT / 'input' / 'dummy.toml').read_text()
+    # A value distinct from the schema default, so a dropped section would be
+    # visible rather than having to be inferred.
+    source = source.replace('mass_tot      = 1.0', 'mass_tot      = 3.7')
+    assert 'mass_tot      = 3.7' in source, 'fixture no longer matches dummy.toml'
+    assert source.count('path = "auto"') == 1, 'fixture no longer matches dummy.toml'
+    source = source.replace('path = "auto"', f'path = "{tmp_path / "run_output"}"')
+
+    array = tmp_path / 'array_of_tables.toml'
+    array.write_text(source.replace('\n[planet]\n', '\n[[planet]]\n'))
+
+    with pytest.raises(ValueError) as excinfo:
+        Proteus(config_path=array)
+    assert 'planet' in str(excinfo.value)
+    assert 'Misdeclared' in str(excinfo.value)
+
+    # Recorded on disk as well, so a run stopped this way is distinguishable
+    # from one that died without reaching the check.
+    status_file = tmp_path / 'run_output' / 'status'
+    assert status_file.exists(), 'Status file must be written before the raise'
+    assert status_file.read_text().strip().startswith('20')
+
+    # Discriminator: the same file as a plain table is accepted and carries the
+    # value, so the refusal is caused by the brackets rather than by this
+    # fixture being unloadable.
+    single = tmp_path / 'single_table.toml'
+    single.write_text(source)
+    assert Proteus(config_path=single).config.planet.mass_tot == pytest.approx(3.7)
+
+
+def test_orphans_proteus_init_keeps_the_key_when_the_directories_fail(tmp_path, monkeypatch):
+    """A pending unknown key survives a failure to resolve the output directory.
+
+    Resolving the directories needs a configured environment and can fail on
+    its own, most often because FWL_DATA is unset. Someone installing for the
+    first time can easily have both that and a typo, and reporting only the
+    environment leaves the typo to be discovered on the next attempt.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    import proteus.utils.coupler as coupler
+    from proteus import Proteus
+
+    def _no_directories(_config):
+        raise OSError('The FWL_DATA environment variable has not been set.')
+
+    monkeypatch.setattr(coupler, 'set_directories', _no_directories)
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    raw['params']['out']['path'] = str(tmp_path / 'run_output')
+    raw['planet']['mass_total'] = 2.5  # unknown key, the only fault in the file
+
+    typo = tmp_path / 'typo.toml'
+    with open(typo, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    with pytest.raises(ValueError) as excinfo:
+        Proteus(config_path=typo)
+    message = str(excinfo.value)
+    # Both complaints reach the user, with the key first: the environment is
+    # the easier of the two to notice without being told.
+    assert 'planet.mass_total' in message
+    assert 'FWL_DATA' in message
+    assert message.index('planet.mass_total') < message.index('FWL_DATA')
+
+    # Edge case and discriminator: the same directory failure on a file with no
+    # unknown key propagates untouched, so the wrapping is driven by the pending
+    # key rather than applied to every startup failure.
+    del raw['planet']['mass_total']
+    clean = tmp_path / 'clean.toml'
+    with open(clean, 'w') as f:
+        tomlkit.dump(raw, f)
+    with pytest.raises(OSError) as os_info:
+        Proteus(config_path=clean)
+    assert 'FWL_DATA' in str(os_info.value)
+    assert 'Unrecognised configuration key' not in str(os_info.value)
 
 
 def test_orphans_proteus_init_succeeds_on_clean_config(tmp_path):
@@ -445,7 +805,7 @@ def test_all_options_phase_boundary_margin_declared_and_resolves():
 
     # The whole reference file stays orphan-free, so the new key has a schema
     # home and is not one of the silently-discarded orphans.
-    assert check_config_orphan_free(raw) is True
+    assert find_orphan_keys(raw) == []
 
     # End-to-end resolution through the parser yields the same 200.0. Pinning
     # the exact band is itself the discriminator: it rejects a 0.0 step-cap-

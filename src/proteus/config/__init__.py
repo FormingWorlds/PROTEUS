@@ -7,7 +7,12 @@ from pathlib import Path
 import cattrs
 
 from ._config import Config
-from .orphans import check_config_orphan_free
+from .orphans import (
+    UnknownConfigKeyError,
+    find_key_problems,
+    find_orphan_keys,
+    format_orphan_message,
+)
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -21,11 +26,44 @@ def read_config(path: Path | str) -> dict:
     return config
 
 
-def read_config_object(path: Path | str) -> Config:
-    """Read and validate config into Config object."""
+def read_config_object(path: Path | str, *, strict: bool = True) -> Config:
+    """Read and validate config into Config object.
+
+    Parameters
+    ----------
+    path:
+        Path to the TOML config file.
+    strict:
+        Reject keys the schema does not define, and sections it declares as a
+        table but the file supplies otherwise. cattrs discards both without
+        complaint, which turns a misspelling into a silent fallback to the
+        default, so rejection is the default here. Pass False only when the
+        caller performs the same check itself and can report the failure
+        better.
+
+    Returns
+    -------
+    Config
+        The structured configuration.
+
+    Raises
+    ------
+    UnknownConfigKeyError
+        If the file contains keys the schema cannot accept, when *strict*.
+    ValueError
+        If a value fails validation.
+    """
 
     # Read config from TOML file in path as a raw dict.
     cfg = read_config(path)
+
+    # Reject unrecognised keys before structuring, so that a typo is reported
+    # as a typo rather than as whatever the resulting default happens to break
+    # further downstream.
+    if strict:
+        orphans, mistyped = find_key_problems(cfg)
+        if orphans or mistyped:
+            raise UnknownConfigKeyError(format_orphan_message(orphans, path, mistyped))
 
     # Attempt to structure config with cattrs.
     try:
@@ -61,4 +99,12 @@ def read_config_object(path: Path | str) -> Config:
         ) from None
 
 
-__all__ = ['Config', 'read_config_object', 'read_config', 'check_config_orphan_free']
+__all__ = [
+    'Config',
+    'UnknownConfigKeyError',
+    'read_config_object',
+    'read_config',
+    'find_key_problems',
+    'find_orphan_keys',
+    'format_orphan_message',
+]
