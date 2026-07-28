@@ -387,6 +387,18 @@ runs:
           fi
           return $rc
         }
+        # Skip the fetch when a warm cache already holds a complete res/ tree.
+        # res_complete asserts every required artifact is present AND non-empty
+        # (a zero-byte file from a green-but-empty fetch fails the -s test), so a
+        # tree that passes needs no repair and re-pulling it is pure download
+        # cost (~200 s, dominated by the thermodynamics archive). An incomplete
+        # or partially-written tree fails the check and falls through to the
+        # retry loop below, which overwrites and repairs it, so the repair path
+        # the unconditional fetch was added for is preserved.
+        if res_complete 2>/dev/null; then
+          echo "AGNI basic data already complete in res/ (warm cache); skipping fetch."
+          exit 0
+        fi
         fetch="$GITHUB_WORKSPACE/AGNI/src/get_data.sh"
         delays=(10 30 60)
         attempts=$(( ${#delays[@]} + 1 ))
