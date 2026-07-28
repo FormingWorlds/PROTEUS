@@ -21,6 +21,7 @@ from types import SimpleNamespace
 import pytest
 
 from proteus.accretion import morrigan as backend
+from proteus.accretion.common import TIMELINE_COLUMNS
 from proteus.utils.constants import AU, M_earth
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -395,8 +396,26 @@ def test_a_missing_field_names_itself_rather_than_failing_obscurely(monkeypatch)
     )
     monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
 
-    with pytest.raises(ValueError, match='v_esc'):
+    with pytest.raises(ValueError, match='v_esc') as excinfo:
         backend.get_timeline(_config(selector='mass'))
+
+    # The message names the offending record and the whole required set, not
+    # just the one field, so a reader can see the contract that was broken
+    # rather than fixing one field at a time.
+    message = str(excinfo.value)
+    assert 'v_impact' in message, 'the required set is not quoted alongside the gap'
+    assert all(column in message for column in TIMELINE_COLUMNS)
+
+    # A complete record of the same shape passes, so the check is keyed on the
+    # missing field and not on the record being rejected outright.
+    whole = SimpleNamespace(
+        run_system=lambda **kw: {
+            'survivors': _SURVIVORS,
+            'impacts': {1: [_one_impact_record()], 2: []},
+        }
+    )
+    monkeypatch.setattr(backend, 'morrigan', whole, raising=False)
+    assert len(backend.get_timeline(_config(selector='mass'))) == 1
 
 
 @pytest.mark.unit
@@ -414,5 +433,18 @@ def test_an_outcome_missing_its_top_level_entries_is_refused(monkeypatch):
         fake = SimpleNamespace(run_system=partial(_return_outcome, outcome))
         monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
 
-        with pytest.raises(ValueError, match=absent):
+        with pytest.raises(ValueError, match=absent) as excinfo:
             backend.get_timeline(_config(selector='mass'))
+
+        # The message names both required entries and shows what did arrive,
+        # which is what points at the installed model version as the cause.
+        message = str(excinfo.value)
+        assert 'survivors' in message and 'impacts' in message
+        assert 'installed' in message, (
+            'the cause is not attributed, so the reader has no reason to '
+            'suspect their model version'
+        )
+        # The keys that were present are reported, so the message discriminates
+        # a partly-shaped outcome from one that is empty.
+        present = 'impacts' if absent == 'survivors' else 'survivors'
+        assert present in message

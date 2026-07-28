@@ -15,6 +15,8 @@ physics validity.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pytest
 
@@ -139,8 +141,23 @@ def test_collision_velocity_cannot_fall_below_mutual_escape_velocity():
     validate_timeline([_event(v_impact=2.00e4, v_esc=1.15e4)])
 
     # Swapped fields, the realistic mistake, must be caught.
-    with pytest.raises(ValueError, match='below the mutual escape velocity'):
+    with pytest.raises(ValueError, match='below the mutual escape velocity') as excinfo:
         validate_timeline([_event(v_impact=1.15e4, v_esc=1.30e4)])
+
+    # Both velocities appear, so the reader can see which pair was swapped
+    # without reopening the timeline file. Matched on the values rather than
+    # on their formatting, so reformatting the message does not fail this.
+    quoted = [float(n) for n in re.findall(r'[0-9.]+e[+-][0-9]+', str(excinfo.value))]
+    assert any(v == pytest.approx(1.15e4, rel=1e-6) for v in quoted)
+    assert any(v == pytest.approx(1.30e4, rel=1e-6) for v in quoted)
+
+    # The floor carries a relative tolerance for round-trip formatting only.
+    # A velocity a hair under the escape velocity is absorbed, one clearly
+    # under it is not, which discriminates the tolerance from an exact
+    # comparison and from a tolerance wide enough to swallow real errors.
+    validate_timeline([_event(v_impact=1.15e4 * (1.0 - 1.0e-7), v_esc=1.15e4)])
+    with pytest.raises(ValueError, match='below the mutual escape velocity'):
+        validate_timeline([_event(v_impact=1.15e4 * (1.0 - 1.0e-3), v_esc=1.15e4)])
 
 
 @pytest.mark.unit

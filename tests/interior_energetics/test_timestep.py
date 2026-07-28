@@ -714,6 +714,25 @@ class TestImpactClamp:
 
         assert dt == pytest.approx(8.0e3, rel=1e-6), f'Expected 8e3, got {dt}'
 
+        # The controller's own step, with no impact scheduled at all. A
+        # distant impact must return exactly this, which is what makes the
+        # clamp one-way rather than a step the timeline gets to set.
+        unclamped = next_step(
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=float('inf')),
+        )
+        assert dt == pytest.approx(unclamped, rel=1e-12), (
+            f'a distant impact moved the step from {unclamped} to {dt}, so the '
+            'timeline is steering the controller instead of only shortening it'
+        )
+
+        # It also stops short of the impact, the property the clamp exists for.
+        assert dt <= 2.0e4
+
     @pytest.mark.physics_invariant
     def test_an_imminent_impact_is_floored_at_the_minimum_step(self):
         """An impact inside the minimum step must not collapse dt.

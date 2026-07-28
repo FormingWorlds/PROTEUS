@@ -17,6 +17,7 @@ physics validity.
 from __future__ import annotations
 
 import math
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -271,8 +272,31 @@ def test_an_unusable_timescale_is_refused_with_an_actionable_message():
     masses that only surface much later as an opaque solver failure. The module
     must reject it at generation time and name both parameters involved.
     """
-    with pytest.raises(ValueError, match='timescale'):
+    with pytest.raises(ValueError, match='timescale') as excinfo:
         get_timeline(_config(timescale=1.0e-3, time_last=1.0e9, num_impacts=2))
+
+    # Both parameters that produced the failure are named, along with the
+    # spacing to bring the timescale towards, so the message says what to
+    # change rather than only that something is wrong.
+    message = str(excinfo.value)
+    assert 'accretion.dummy.timescale' in message
+    assert 'time_last' in message
+    # The spacing to aim for is quoted. Matched on the value rather than its
+    # formatting, so reformatting the message does not fail this.
+    quoted = [float(n) for n in re.findall(r'[0-9.]+e[+-][0-9]+', message)]
+    assert any(v == pytest.approx(5.0e8, rel=1e-6) for v in quoted), (
+        'the impact spacing to aim for is not quoted'
+    )
+
+    # A usable timescale carries real mass in every impact. This is the
+    # failure the guard exists to prevent: without it the weights underflow,
+    # the renormalisation divides by zero and the masses come back NaN.
+    events = get_timeline(_config(timescale=5.0e8, time_last=1.0e9, num_impacts=2))
+    masses = [event.M_impactor for event in events]
+    assert len(masses) == 2
+    assert all(math.isfinite(m) and m > 0.0 for m in masses), (
+        f'the accretion law produced unusable impactor masses: {masses}'
+    )
 
 
 @pytest.mark.unit
