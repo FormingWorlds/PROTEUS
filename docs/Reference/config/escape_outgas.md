@@ -136,7 +136,8 @@ real-gas equations of state.
 
 Rock vapourisation parameters, used when `outgas.vapourise = true`. Requires
 `LAVA_DIR` and `FC_DIR`; see
-[Installation: optional modules](../../How-to/optionalmodules_installation.md#rock-vapours-lavatmos-thermoenginelite).
+[Installation: optional modules](../../How-to/optionalmodules_installation.md#rock-vapours-lavatmos-thermoenginelite). See also
+[Model description](../../Explanations/model.md#Volatile outgassing and rock vapourisation are combined).
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|

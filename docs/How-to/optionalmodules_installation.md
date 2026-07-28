@@ -73,8 +73,14 @@ pip install "fwl-proteus[atmodeller]"
 
 [LavAtmos](https://github.com/FormingWorlds/LavAtmos) computes the
 thermodynamic vapourisation equilibrium of silicate melt, adding rock-vapour
-species to the outgassed atmosphere. It is optional, selected with
+species to the atmosphere. It is optional, selected with
 `outgas.vapourise = true`, and is not installed with PROTEUS by default.
+If you publish results that use it, cite van Buchem et al.
+([2023](https://doi.org/10.1111/maps.13994), _Meteoritics & Planetary Science_
+58, 1149) for the code and van Buchem et al.
+([2025](https://doi.org/10.1051/0004-6361/202450992), _Astronomy &
+Astrophysics_ 695, A154) for the volatile-inclusive vaporisation equilibrium
+that PROTEUS drives.
 LavAtmos needs [ThermoEngineLite](https://github.com/FormingWorlds/ThermoEngineLite)
 for melt thermodynamics and the FastChem chemistry solver already installed
 alongside AGNI (`FC_DIR`; see

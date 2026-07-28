@@ -110,7 +110,7 @@ The outgassing module computes the thermodynamic equilibrium partitioning of vol
 
 **[atmodeller](https://github.com/djbower/atmodeller)** (Python/JAX) is an alternative outgassing backend that uses a real-gas equation of state and a more detailed thermochemical treatment [^cite-bower2025]. atmodeller provides an independent cross-check on CALLIOPE for the same volatile partitioning problem.
 
-**[LavAtmos](https://github.com/FormingWorlds/LavAtmos)** (Python) is an optional addition, enabled with `outgas.vapourise = true`, that computes the thermodynamic vapourisation equilibrium of the surface melt and adds the resulting rock-vapour species to the volatile outgassing. Vapourisation is a distinct process from outgassing. It uses the FastChem equilibrium chemistry solver and requires [ThermoEngineLite](https://github.com/FormingWorlds/ThermoEngineLite) for melt thermodynamics. 
+**[LavAtmos](https://github.com/FormingWorlds/LavAtmos)** (Python) is an optional addition, enabled with `outgas.vapourise = true`, that computes the thermodynamic vapourisation equilibrium of the surface melt [^cite-vanbuchem2023] and adds the resulting rock-vapour species to the volatile outgassing [^cite-vanbuchem2025]. Vapourisation is a distinct process from outgassing. It uses the FastChem equilibrium chemistry solver and requires [ThermoEngineLite](https://github.com/FormingWorlds/ThermoEngineLite) for melt thermodynamics. 
 
 Config section: `[outgas]`. Reference: [Escape and outgassing configuration](../Reference/config/escape_outgas.md).
 
@@ -280,6 +280,10 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
  [^cite-bower2025]: Bower, D.J., Thompson, M.A., Hakim, K., et al., *[Diversity of low-mass planet atmospheres in the C-H-O-N-S-Cl system](https://doi.org/10.3847/1538-4357/ae1479)*, The Astrophysical Journal, 995, 59, 2025. [SciX](https://scixplorer.org/abs/2025ApJ...995...59B/abstract).
 
  [^cite-nicholls2024]: Nicholls, H., Lichtenberg, T., Bower, D.J. & Pierrehumbert, R., *[Magma ocean evolution at arbitrary redox state](https://doi.org/10.1029/2024JE008576)*, Journal of Geophysical Research: Planets, 129, e2024JE008576, 2024. [SciX](https://scixplorer.org/abs/2024JGRE..12908576N/abstract).
+
+ [^cite-vanbuchem2023]: van Buchem, C.P.A., Miguel, Y., Zilinskas, M. & van Westrenen, W., *[LavAtmos: An open-source chemical equilibrium vaporization code for lava worlds](https://doi.org/10.1111/maps.13994)*, Meteoritics & Planetary Science, 58, 1149-1161, 2023.
+
+ [^cite-vanbuchem2025]: van Buchem, C.P.A., Zilinskas, M., Miguel, Y. & van Westrenen, W., *[LavAtmos 2.0: Incorporating volatile species in vaporisation models](https://doi.org/10.1051/0004-6361/202450992)*, Astronomy & Astrophysics, 695, A154, 2025. 
 
  [^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).
 
