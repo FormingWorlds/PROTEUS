@@ -551,9 +551,9 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     by construction. This assertion catches any regression that
     re-introduces an asymmetry by dropping O from one side.
 
-    This invariant does not hold when rock-vapour outgassing
+    This invariant does not hold when rock vapourisation
     (``outgas.vapourise``) is enabled, because that path moves
-    non-volatile silicate mass into M_atm that M_planet does not track;
+    vapourised rock mass into M_atm that M_planet does not track;
     the caller skips this check in that mode rather than loosening the
     tolerance for volatile-only runs.
 
@@ -615,13 +615,13 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
                 f'is stale or the M_atm sum loop is missing a species.'
             )
 
-    # check that the outgassing is not higher than the avialable mantle reservoir:
+    # check that the vapourised mass does not exceed the available mantle reservoir:
     if M_vaps > M_mantle * (1.0 + atol_frac):
         raise RuntimeError(
             f'Mass conservation violation (issue #677 regression?): '
             f'M_vaps={M_vaps:.3e} kg exceeds M_mantle={M_mantle:.3e} kg '
             f'(relative excess {(M_vaps / M_mantle - 1) * 100:.3f}%). '
-            f'Likely cause: runaway of outgassing computations:  wrong tracking of vapour species.'
+            f'Likely cause: runaway vapourisation, or wrong tracking of vapour species.'
         )
 
 
@@ -629,7 +629,7 @@ def assert_surface_pressure_consistency(
     config: Config, hf_row: dict, atol_frac: float = 1e-6
 ) -> None:
     """Runtime invariant: P_surf == P_vol + P_vap, and P_vap == 0 when rock
-    vapour outgassing is disabled.
+    vapourisation is disabled.
 
     P_vol is the volatile-only surface pressure (CALLIOPE/atmodeller/dummy
     output) and P_vap is the rock-vapour contribution added by LavAtmos
@@ -744,7 +744,7 @@ def GetHelpfileKeys():
         'R_int',            # interior radius [m]
         'M_int',            # interior mass [kg]
         'M_planet',         # total planet wet+dry mass [kg]
-        'M_vaps',           # outgassed rock vapour mass including outgassed extra oxygen [kg]
+        'M_vaps',           # vapourised rock mass, including the vapourised oxygen [kg]
         'R_core',           # core radius [m]
         'R_solvus',         # solvus radius for global_miscibility mode [m]
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]
@@ -899,9 +899,16 @@ def GetHelpfileKeys():
         # cross-backend comparison of this column requires converting
         # one of the conventions; an independent comparison harness will
         # eventually pick a single canonical convention.
-        'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10]
+        # The rock-vapour columns below are the LavAtmos counterparts,
+        # derived from the O2 partial pressure of the vapourisation
+        # solve rather than from the volatile chemistry. They are
+        # independent of `fO2_shift_IW_derived` and are left at zero
+        # when vapourisation is disabled.
+        'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10 bar]
+        'fO2_vapourise_derived',         # rock-vapour fO2 [log10 bar]
+        'fO2_vapourise_shift_IW_derived',  # rock-vapour IW offset [log10 bar]
         'O_res',                 # O mass-balance residual [kg]
-        'O_outgassed_kg',         # Oxygen outgassed from rock (lavatmos) [kg]
+        'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
 
         # Desiccation escape-balance gate. M_vol_initial is the sum over
         # all elements (oxygen included) of *_kg_total captured on the
@@ -971,8 +978,6 @@ def GetHelpfileKeys():
 
     # Simulation's computational variables
     keys.append('runtime')          # Simulation wall-clock runtime [s]
-    keys.append("log10_fO2_vapourise") #relative to IW buffer
-    keys.append("log10_fO2_shift_vapourise") #relative to IW buffer
 
     return keys
 

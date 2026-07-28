@@ -172,7 +172,7 @@ class Atmodeller:
 
 @define
 class Lavatmos:
-    """Module parameters for LavAtmos rock-vapour outgassing.
+    """Module parameters for LavAtmos rock vapourisation.
 
     Attributes
     ----------
@@ -222,7 +222,7 @@ class Outgas:
     atmodeller: Atmodeller
         Parameters for atmodeller module.
     vapourise: bool
-        Enable rock vapour outgassing via LavAtmos/ThermoEngineLite. Requires
+        Enable rock vapourisation via LavAtmos/ThermoEngineLite. Requires
         `LAVA_DIR` and `FC_DIR` to be set; see the optional modules
         installation guide. LavAtmos parameters are set in `outgas.lavatmos`.
     lavatmos: Lavatmos

@@ -204,7 +204,7 @@ def test_run_lavatmos_calls_vaporise(tmp_path, monkeypatch):
     create_melt_file(paths)
     fake_system, _ = install_fake_lavatmos(monkeypatch)
 
-    run_lavatmos({'a': 1}, make_config(), {'log10_fO2_vapourise': -5}, {'H': 0.1}, True)
+    run_lavatmos({'a': 1}, make_config(), {'fO2_vapourise_derived': -5}, {'H': 0.1}, True)
 
     fake_system.vaporise.assert_called_once()
     # First iteration must not reuse the previous solve's fO2 as a warm start.
@@ -313,7 +313,7 @@ def test_run_lavatmos_calls_paths_importer(
     run_lavatmos(
         {'test': 1},
         make_config(),
-        {'log10_fO2_vapourise': -5},
+        {'fO2_vapourise_derived': -5},
         {},
         True,
     )
@@ -364,13 +364,13 @@ def test_run_lavatmos_calls_set_magmaproperties(
     run_lavatmos(
         {'a': 1},
         config,
-        {'log10_fO2_vapourise': -4},
+        {'fO2_vapourise_derived': -4},
         {'H': 0.1},
         True,
     )
 
     assert captured['config'] is config
-    assert captured['hf_row']['log10_fO2_vapourise'] == -4
+    assert captured['hf_row']['fO2_vapourise_derived'] == -4
     assert captured['volatile_fracs'] == {'H': 0.1}
     assert captured['dirs'] == {'a': 1}
 
@@ -399,7 +399,7 @@ def test_run_lavatmos_reads_melt_composition(
     run_lavatmos(
         {},
         make_config(),
-        {'log10_fO2_vapourise': -5},
+        {'fO2_vapourise_derived': -5},
         {},
         True,
     )
@@ -441,7 +441,7 @@ def test_run_lavatmos_uses_config_melt_pressure(
     run_lavatmos(
         {},
         make_config(p_melt=0.05),
-        {'log10_fO2_vapourise': -5},
+        {'fO2_vapourise_derived': -5},
         {},
         True,
     )
@@ -477,7 +477,7 @@ def test_run_lavatmos_converts_fO2_guess(
     run_lavatmos(
         {},
         make_config(),
-        {'log10_fO2_vapourise': -3},
+        {'fO2_vapourise_derived': -3},
         {},
         True,
     )
@@ -511,7 +511,7 @@ def test_run_lavatmos_first_iteration_disables_previous_fO2(
     run_lavatmos(
         {},
         make_config(),
-        {'log10_fO2_vapourise': -5},
+        {'fO2_vapourise_derived': -5},
         {},
         True,
     )
@@ -543,7 +543,7 @@ def test_run_lavatmos_second_iteration_uses_previous_fO2(
     run_lavatmos(
         {},
         make_config(),
-        {'log10_fO2_vapourise': -5},
+        {'fO2_vapourise_derived': -5},
         {},
         False,
     )
@@ -579,7 +579,7 @@ def test_run_lavatmos_uses_config_tolerance(
     run_lavatmos(
         {},
         make_config(xatol=2e-6),
-        {'log10_fO2_vapourise': -5},
+        {'fO2_vapourise_derived': -5},
         {},
         True,
     )
@@ -619,7 +619,7 @@ def test_run_lavatmos_output_filename(
     run_lavatmos(
         {},
         make_config(),
-        {'log10_fO2_vapourise': -5},
+        {'fO2_vapourise_derived': -5},
         {},
         True,
     )
@@ -659,7 +659,7 @@ def test_run_lavatmos_output_contents(
     run_lavatmos(
         {},
         make_config(),
-        {'log10_fO2_vapourise': -5},
+        {'fO2_vapourise_derived': -5},
         {},
         True,
     )
@@ -693,7 +693,7 @@ def test_run_lavatmos_missing_melt_file_raises(
         run_lavatmos(
             {},
             make_config(),
-            {'log10_fO2_vapourise': -5},
+            {'fO2_vapourise_derived': -5},
             {},
             True,
         )

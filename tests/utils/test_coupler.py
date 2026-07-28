@@ -2233,7 +2233,7 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
         assert any('Escape module     boreas version' in m for m in messages)
         assert any('Star module       mors version' in m for m in messages)
         assert any('Observe module    petitRADTRANS version' in m for m in messages)
-        # Discrimination: rock-vapour outgassing is disabled here
+        # Discrimination: rock vapourisation is disabled here
         # (vapourise=False), so LavAtmos must not be reported at all.
         assert not any('LavAtmos' in m for m in messages)
 
@@ -2267,7 +2267,7 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
         assert any('Interior module   aragog version' in m for m in messages)
         assert any('Atmos_clim module janus version' in m for m in messages)
         assert any('Escape module     zephyrus version' in m for m in messages)
-        # Rock-vapour outgassing (config.outgas.vapourise=True) must print the
+        # Rock vapourisation (config.outgas.vapourise=True) must print the
         # LavAtmos checkout version regardless of the outgas.module setting.
         assert any('LavAtmos' in m and 'ghi789' in m for m in messages)
 
