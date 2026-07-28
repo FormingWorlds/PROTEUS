@@ -882,7 +882,7 @@ def GetHelpfileKeys():
         'P_vap',            # rock vapour surface pressure [bar]
         'P_vol',            # volatiles surface pressure [bar]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
-        'M_vol_atm'         # mass of volatiles in teh atmosphere - vapours excluded [kg]
+        'M_vol_atm',         # mass of volatiles in teh atmosphere - vapours excluded [kg]
 
         # Iron-wustite buffer offset that the chemistry solver actually
         # equilibrated to, and the O mass-balance residual of that
