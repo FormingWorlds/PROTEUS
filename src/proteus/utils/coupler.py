@@ -901,7 +901,7 @@ def GetHelpfileKeys():
         # eventually pick a single canonical convention.
         'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10]
         'O_res',                 # O mass-balance residual [kg]
-        'O_outgassed_kg'         # Oxygen outgassed from rock (lavatmos) [kg]
+        'O_outgassed_kg',         # Oxygen outgassed from rock (lavatmos) [kg]
 
         # Desiccation escape-balance gate. M_vol_initial is the sum over
         # all elements (oxygen included) of *_kg_total captured on the
