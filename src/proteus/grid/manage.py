@@ -11,7 +11,6 @@ import multiprocessing
 import os
 import shutil
 import subprocess
-import sys
 import time
 from copy import deepcopy
 from datetime import datetime
@@ -22,63 +21,11 @@ import toml
 
 from proteus.config import Config, read_config_object
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
+from proteus.utils.logs import setup_logger
 
 PROTEUS_DIR = get_proteus_dir()
 
 log = logging.getLogger('fwl.' + __name__)
-
-
-# Custom logger instance
-def setup_logger(logpath: str = 'new.log', level=1, logterm=True):
-    # https://stackoverflow.com/a/61457119
-
-    custom_logger = logging.getLogger()
-    custom_logger.handlers.clear()
-
-    if os.path.exists(logpath):
-        os.remove(logpath)
-
-    fmt = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-
-    level_code = logging.INFO
-    match level:
-        case 0:
-            level_code = logging.DEBUG
-        case 2:
-            level_code = logging.WARNING
-        case 3:
-            level_code = logging.ERROR
-        case 4:
-            level_code = logging.CRITICAL
-
-    # Add terminal output to logger
-    if logterm:
-        sh = logging.StreamHandler(sys.stdout)
-        sh.setFormatter(fmt)
-        sh.setLevel(level_code)
-        custom_logger.addHandler(sh)
-
-    # Add file output to logger
-    fh = logging.FileHandler(logpath)
-    fh.setFormatter(fmt)
-    fh.setLevel(level)
-    custom_logger.addHandler(fh)
-    custom_logger.setLevel(level_code)
-
-    # Capture unhandled exceptions
-    # https://stackoverflow.com/a/16993115
-    def handle_exception(exc_type, exc_value, exc_traceback):
-        if issubclass(exc_type, KeyboardInterrupt):
-            custom_logger.error('KeyboardInterrupt')
-            sys.__excepthook__(exc_type, exc_value, exc_traceback)
-            return
-        custom_logger.critical(
-            'Uncaught exception', exc_info=(exc_type, exc_value, exc_traceback)
-        )
-
-    sys.excepthook = handle_exception
-
-    return
 
 
 # Thread target
@@ -170,8 +117,15 @@ class Grid:
         # Make copy of REFERENCE config file
         shutil.copyfile(self.conf, os.path.join(self.outdir, 'ref_config.toml'))
 
-        # Setup logging
-        setup_logger(logpath=os.path.join(self.outdir, 'manager.log'), logterm=True, level=1)
+        # Setup logging. Keep the plain timestamped layout the grid manager has
+        # always written to manager.log, via the shared setup_logger.
+        setup_logger(
+            logpath=os.path.join(self.outdir, 'manager.log'),
+            logterm=True,
+            level='INFO',
+            fmt='[%(asctime)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+        )
 
         log.info("Grid '%s' initialised empty" % self.name)
 
