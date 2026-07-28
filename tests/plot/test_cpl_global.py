@@ -36,6 +36,9 @@ def _make_config():
     cfg.orbit.s0_factor = 0.375
     cfg.orbit.zenith_angle = 48.2
     cfg.params.out.plot_fmt = 'pdf'
+    # Must be a real number, not a MagicMock: the x-axis label formats it
+    # with ':g', which raises TypeError on a mock.
+    cfg.star.age_ini = 4.5
     return cfg
 
 

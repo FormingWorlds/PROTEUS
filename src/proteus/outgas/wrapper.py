@@ -16,6 +16,7 @@ from proteus.utils.constants import (
     secs_per_year,
     vap_list,
     vol_element_list,
+    vol_gas_list,
 )
 
 if TYPE_CHECKING:
@@ -259,9 +260,16 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     inactive (no baseline tracked yet, e.g. resuming an old CSV without
     `M_vol_initial`), the function falls back to the old threshold-only
     behaviour.
+
+    Scope of "desiccated": the threshold loop below considers the volatile
+    elements only (`vol_element_list`: H, O, C, N, S). Noble gases and
+    rock-vapour elements are deliberately excluded, so a planet whose
+    H/O/C/N/S inventories have all fallen below `outgas.mass_thresh` is
+    reported as desiccated even if it still retains a noble-gas or
+    rock-vapour atmosphere.
     """
 
-    # Threshold check: refuse desiccation while ANY element is still above
+    # Threshold check: refuse desiccation while ANY volatile is still above
     # the per-element mass threshold. Issue #677 fix: O is included now.
     # Under D1A the user's choice was to require O_kg_total below threshold
     # as well, on the grounds that an atmosphere with substantial O is not
@@ -287,9 +295,12 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
         # No baseline -> fall back to old threshold-only behaviour.
         return True
 
-    # Issue #677 fix: include O in cur_m_ele to match the M_vol_initial
-    # baseline (which is now also summed over the full element_list).
-    cur_m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in vol_element_list)
+    # cur_m_ele must sum over the same element set as the M_vol_initial
+    # baseline (escape.wrapper.run_escape sums over the full element_list),
+    # or the (m_init - cur_m_ele) comparison mixes element sets and
+    # overstates "lost" mass by any noble-gas/rock-vapour inventory present
+    # at baseline time.
+    cur_m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
     lost = m_init - cur_m_ele
     esc_cum = float(hf_row.get('esc_kg_cumulative', 0.0))
 
@@ -401,6 +412,12 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     hf_row['M_atm'] = 0.0
     for s in gas_list:
         hf_row['M_atm'] += float(hf_row.get(s + '_kg_atm', 0.0))
+    # Volatile-only atmospheric mass (rock vapour excluded). The caller
+    # zeroes the rock-vapour species before this function runs, so the two
+    # agree here; setting the column explicitly keeps the
+    # assert_mass_conservation bookkeeping check live from the first
+    # iteration rather than only after the mantle crystallises.
+    hf_row['M_vol_atm'] = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
     # assure that hydrogen abundnace high enough for agni to run
 
     # Derive element mass ratios in atmosphere
@@ -515,9 +532,11 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     hf_row['P_vol'] = hf_row.get('P_vol', 0.0) * retained
     hf_row['P_vap'] = hf_row.get('P_vap', 0.0) * retained
     hf_row['M_atm'] = m_atm * retained
-    # track the atmospheric volatile mass
-    # - important to kee separate from M_atm in case vapourisation is included
-    hf_row['M_vol_atm'] = hf_row['M_atm']
+    # Track the atmospheric volatile mass separately from M_atm, which also
+    # carries the rock vapour when vapourisation is enabled. Summing
+    # vol_gas_list rather than scaling M_atm keeps the column equal to the
+    # species masses it is defined as, which assert_mass_conservation checks.
+    hf_row['M_vol_atm'] = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
 
     log.info(
         'Crystallized mantle: volatile exchange frozen; escape removed '

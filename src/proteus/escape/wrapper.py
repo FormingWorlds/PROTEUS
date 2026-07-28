@@ -304,7 +304,9 @@ def calc_new_elements(
         log.debug('Total mass of volatiles below threshold in escape calculation')
         return res
 
-    # compute mass ratios in escaping reservoir
+    # compute mass ratios in escaping reservoir.
+    # With `outgas.vapourise=True`, res includes rock-forming elements,
+    # so rock vapour dilutes the outflow available to H/C/N/O/S.
     emr = {e: (res[e] / M_vols if M_vols > 0 else 0.0) for e in res}
 
     # total escaped mass over dt [kg]

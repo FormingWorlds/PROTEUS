@@ -26,6 +26,7 @@ from proteus.utils.constants import (
     gas_list,
     noble_gases,
     vap_list,
+    vol_gas_list,
 )
 from proteus.utils.coupler import UpdateStatusfile
 from proteus.utils.helper import mol_to_ele
@@ -617,6 +618,10 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     hf_row['fO2_vapourise_shift_IW_derived'] = log10_fO2 - iw_buffer(hf_row['T_magma'])
     hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
     hf_row['M_atm'] = M_atmo_new
+    # Refresh the volatile-only atmospheric mass against the recombined
+    # species masses written above. M_atm now includes the rock vapour, so
+    # the two columns diverge from here on.
+    hf_row['M_vol_atm'] = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
 
     log.debug(
         'log10 fO2 shift compared to IW buffer: %.6f' % hf_row['fO2_vapourise_shift_IW_derived']

@@ -394,12 +394,16 @@ def test_run_outgassing_calliope_calculation():
         mock_calc.assert_called_once_with(dirs, config, hf_row)
 
         # Verify atmosphere mass aggregation: M_atm = sum of all gas masses.
-        # run_outgassing sums over its own local gas_list (vol_list +
-        # vap_list, since config.outgas.vapourise is truthy on this
-        # MagicMock), which excludes noble gases; match that here rather
-        # than the canonical constants.gas_list.
-        expected_M_atm = sum(hf_row[s + '_kg_atm'] for s in vol_list + vap_list)
+        # run_outgassing sums over the canonical constants.gas_list
+        # (vol_list + noble_gases + vap_list), so the noble gases are
+        # included regardless of config.outgas.vapourise.
+        expected_M_atm = sum(hf_row[s + '_kg_atm'] for s in gas_list)
         assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-10)
+        # Discrimination guard: dropping the noble gases from the sum (the
+        # most plausible wrong aggregation, and what this test previously
+        # asserted) changes the answer by far more than the tolerance.
+        without_nobles = sum(hf_row[s + '_kg_atm'] for s in vol_list + vap_list)
+        assert abs(expected_M_atm - without_nobles) / expected_M_atm > 1e-10 * 1e3
 
 
 @pytest.mark.unit
@@ -432,9 +436,17 @@ def test_run_outgassing_atmosphere_mass_conservation():
     with patch('proteus.outgas.calliope.calc_surface_pressures'):
         run_outgassing(dirs, config, hf_row)
 
-        # Check mass conservation with tolerance for floating point
+        # Check mass conservation. gas_masses is built over the canonical
+        # gas_list, which is exactly what run_outgassing sums, so the only
+        # admissible discrepancy is float-summation rounding.
         expected_M_atm = sum(gas_masses)
-        assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-1)
+        assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-10)
+        # Discrimination guard: summing over the wrong species list is the
+        # plausible regression here (an earlier revision aggregated over
+        # vol_list + vap_list and silently dropped the noble gases).
+        # Omitting them moves the total by far more than the tolerance.
+        without_nobles = sum(hf_row[s + '_kg_atm'] for s in gas_list if s not in noble_gases)
+        assert abs(expected_M_atm - without_nobles) / expected_M_atm > 1e-7
         # Positivity invariant: the sum is over strictly positive gas
         # masses spanning 10 orders of magnitude, so M_atm must be
         # dominated by the largest entry (1e20 kg) and never negative.
