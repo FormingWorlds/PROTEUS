@@ -760,3 +760,44 @@ def test_setup_or_update_solver_tracks_stale_structure_steps():
         interior_o.structure_stale = True
         AragogRunner.setup_or_update_solver(config, hf_row, interior_o, 1.0, dirs)
         assert interior_o._stale_struct_steps == 1
+
+
+@pytest.mark.unit
+def test_discard_snapshot_removes_only_the_named_time(tmp_path):
+    """A snapshot is discarded by its own time, leaving the others in place.
+
+    Contract clause: the discard is used when one step's snapshot no longer
+    describes the state that step ended in. It has to remove exactly that
+    step's file, because the resume walks back to the neighbouring snapshots
+    and would have nothing to land on if they went with it.
+
+    Verifies:
+    - The named snapshot is gone and the call reports that it removed one.
+    - A snapshot at another time is untouched, so the removal is not a wipe.
+    - A time with no snapshot reports False instead of raising, which is the
+      ordinary case for a step that wrote nothing.
+    - The time is truncated toward zero, matching the writer's convention, so
+      a fractional time still finds its file.
+    """
+    from proteus.interior_energetics.aragog import discard_snapshot
+
+    data = tmp_path / 'data'
+    data.mkdir()
+    (data / '300_int.nc').write_text('stale')
+    (data / '200_int.nc').write_text('keep')
+
+    assert discard_snapshot(str(tmp_path), 300.0) is True
+    assert not (data / '300_int.nc').exists()
+    assert (data / '200_int.nc').read_text() == 'keep', (
+        'discarding one step removed a neighbouring snapshot, leaving the '
+        'resume with nothing to walk back to'
+    )
+
+    # A missing snapshot is ordinary, not an error.
+    assert discard_snapshot(str(tmp_path), 300.0) is False
+    assert discard_snapshot(str(tmp_path), 999.0) is False
+
+    # Fractional times truncate, matching '%d_int.nc' in the writer.
+    (data / '410_int.nc').write_text('stale')
+    assert discard_snapshot(str(tmp_path), 410.9) is True
+    assert not (data / '410_int.nc').exists()

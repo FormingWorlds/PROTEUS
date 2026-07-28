@@ -622,16 +622,32 @@ class Proteus:
             # after escape has run, so the error lands on the first step of
             # every restart.
             #
-            # The flag latches: the loop sets it once the melt fraction drops
-            # to the threshold and never clears it, so a mantle that
-            # crystallized and later remelted stays frozen. Reading only the
-            # resumed row would clear it in exactly that case and diverge from
-            # an uninterrupted run, so the whole stored history is searched
-            # instead. Rows with no melt fraction recorded compare False and
-            # so leave the flag clear, which is the behaviour a helpfile
-            # written before the column existed had already.
+            # The flag latches within a run: the loop sets it once the melt
+            # fraction drops to the threshold and does not clear it, so a
+            # mantle that crystallized and later remelted by cooling alone
+            # stays frozen. Reading only the resumed row would clear it in
+            # exactly that case and diverge from an uninterrupted run, so the
+            # stored history is searched instead. Rows with no melt fraction
+            # recorded compare False and so leave the flag clear, which is the
+            # behaviour a helpfile written before the column existed had
+            # already.
+            #
+            # A giant impact is the one event that does clear the latch, since
+            # it remelts the mantle to a magma ocean. Only the history after
+            # the last impact can re-establish the flag; searching across an
+            # impact would restore a latch the run itself had lifted. The
+            # impact's own row is excluded because it records the melt
+            # fraction from before the remelt. Runs without accretion carry
+            # no accreted rock, so the search covers the whole history and
+            # matches the behaviour of a run that never had an impact.
             if self.config.params.stop.solid.freeze_volatiles:
                 phi_history = self.hf_all.get('Phi_global')
+                if phi_history is not None:
+                    accreted = self.hf_all.get('M_accreted_rock')
+                    if accreted is not None:
+                        impacted = (accreted.diff() > 0.0).to_numpy().nonzero()[0]
+                        if len(impacted) > 0:
+                            phi_history = phi_history.iloc[impacted[-1] + 1 :]
                 self.crystallized = phi_history is not None and bool(
                     (phi_history <= self.config.params.stop.solid.phi_crit).any()
                 )
@@ -892,12 +908,23 @@ class Proteus:
             # solve evolves it. Empty when no accretion module is selected.
             if self.impact_events:
                 from proteus.accretion.common import due_events
-                from proteus.accretion.wrapper import apply_impact
+                from proteus.accretion.wrapper import (
+                    apply_impact,
+                    discard_preimpact_snapshot,
+                )
 
                 time_now = self.hf_row['Time']
                 time_previous = time_now - self.interior_o.dt
-                for event in due_events(self.impact_events, time_previous, time_now):
+                landed = due_events(self.impact_events, time_previous, time_now)
+                for event in landed:
                     apply_impact(self, event)
+
+                # The interior wrote this step's snapshot before the re-melt
+                # above, so it no longer describes the state the step ended in.
+                # Drop it, or a resume would load a mantle the impact melted
+                # while treating the impact as already applied.
+                if landed and is_snapshot:
+                    discard_preimpact_snapshot(self)
 
             # One-time structure baseline in the interior-fed callable
             # representation (dynamic and static runs share an identical start).

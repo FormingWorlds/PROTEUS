@@ -2420,6 +2420,61 @@ class AragogRunner:
         ds.close()
 
 
+def earlier_snapshot_exists(output_dir: str, time: float) -> bool:
+    """Whether an interior snapshot older than a simulation time is on disk.
+
+    Used before discarding a snapshot, to check that the run keeps one to fall
+    back on rather than being left with none.
+
+    Parameters
+    ----------
+    output_dir : str
+        Run output directory (contains ``data/``).
+    time : float
+        Simulation time to compare against [yr].
+
+    Returns
+    -------
+    bool
+        Whether at least one older snapshot exists.
+    """
+    cutoff = int(time)
+    for fpath in glob.glob(os.path.join(output_dir, 'data', '*_int.nc')):
+        stem = os.path.basename(fpath).split('_int.nc')[0]
+        try:
+            if int(stem) < cutoff:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def discard_snapshot(output_dir: str, time: float) -> bool:
+    """Delete the interior snapshot written for a simulation time.
+
+    Used when a snapshot no longer describes the state the run ended the step
+    in, so that a resume walks back to the last snapshot that does rather than
+    loading one the helpfile has already moved past.
+
+    Parameters
+    ----------
+    output_dir : str
+        Run output directory (contains ``data/``).
+    time : float
+        Simulation time the snapshot is keyed on [yr].
+
+    Returns
+    -------
+    bool
+        Whether a snapshot was found and removed.
+    """
+    fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
+    if not os.path.exists(fpath):
+        return False
+    os.remove(fpath)
+    return True
+
+
 def read_last_Sfield(output_dir: str, time: float):
     """Read the entropy field from the previous Aragog NetCDF output."""
     fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)

@@ -1058,3 +1058,89 @@ def test_proteus_resume_keeps_crystallized_after_remelting(tmp_path):
         'a run whose melt fraction never reached the threshold resumed as '
         'crystallized; the history search is matching too eagerly'
     )
+
+
+def _make_hf_df_with_impact(phi_history, accreted_rock):
+    """Helpfile frame carrying a melt-fraction history and an impact ledger.
+
+    ``accreted_rock`` is the cumulative rock mass [kg] recorded on each row,
+    so a row where it rises above the previous one is a row on which a giant
+    impact landed.
+    """
+    df = _make_hf_df()
+    df['Phi_global'] = phi_history
+    df['M_accreted_rock'] = accreted_rock
+    return df
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_proteus_resume_lifts_the_crystallization_latch_across_an_impact(tmp_path):
+    """A giant impact that remelts a crystallized mantle stays lifted on resume.
+
+    Physical scenario: the mantle solidifies to the crystallization threshold,
+    a giant impact then remelts it to a magma ocean, and the run continues
+    molten until it is stopped. The impact clears the solidification latch,
+    so the uninterrupted run has outgassing running again from the impact
+    onwards.
+
+    Contract clause: a resumed run must behave as the uninterrupted one would.
+    Searching the whole melt-fraction history would find the pre-impact dip
+    and restore a latch the run itself had lifted, freezing outgassing for the
+    rest of a run whose mantle is molten.
+
+    Verifies:
+    - A dip before the impact does not resume frozen, because the impact
+      remelted the mantle.
+    - A dip after the impact does resume frozen, so the search is not simply
+      always clearing the flag.
+    - The impact's own row is excluded: it records the melt fraction from
+      before the remelt, so a threshold value there must not relatch.
+    - Without accreted rock the whole history is searched, so a run with no
+      accretion is unaffected.
+    """
+    phi_crit = 0.01
+    impact_on_row_3 = [0.0, 0.0, 0.0, 1.0e21, 1.0e21]
+
+    def _resume(hf_df):
+        p = _make_proteus_instance(tmp_path)
+        p.config.params.stop.solid.freeze_volatiles = True
+        p.config.params.stop.solid.phi_crit = phi_crit
+        (tmp_path / 'data').mkdir(exist_ok=True)
+        _resume_with_patches(p, hf_df)
+        return p
+
+    # Crystallized at row 2, impact at row 3, molten afterwards.
+    lifted = _resume(_make_hf_df_with_impact([1.0, 0.5, 0.005, 0.300, 0.900], impact_on_row_3))
+    assert lifted.crystallized is False, (
+        'a mantle remelted by a giant impact resumed as crystallized, so '
+        'outgassing would stay stopped where the uninterrupted run has it '
+        'running again'
+    )
+
+    # Discrimination: the same impact, but the mantle solidifies again after
+    # it. The latch must be restored, or the check would be always False.
+    relatched = _resume(
+        _make_hf_df_with_impact([1.0, 0.5, 0.005, 0.300, 0.008], impact_on_row_3)
+    )
+    assert relatched.crystallized is True, (
+        'a mantle that solidified again after the impact resumed as molten, so '
+        'the post-impact history is not being searched at all'
+    )
+
+    # Boundary: the impact row carries the melt fraction from before the
+    # remelt, so a threshold value on that row must not restore the latch.
+    on_impact_row = _resume(
+        _make_hf_df_with_impact([1.0, 0.5, 0.900, 0.005, 0.900], impact_on_row_3)
+    )
+    assert on_impact_row.crystallized is False, (
+        "the impact row's own pre-remelt melt fraction restored the latch; the "
+        'search must start after the impact, not on it'
+    )
+
+    # A run with no accretion searches the whole history, unchanged.
+    no_accretion = _resume(_make_hf_df_with_impact([1.0, 0.5, 0.005, 0.300, 0.900], [0.0] * 5))
+    assert no_accretion.crystallized is True, (
+        'a run that never had an impact stopped seeing its own crystallization '
+        'history; the impact search must not affect non-accretion runs'
+    )

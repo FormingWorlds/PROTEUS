@@ -1262,8 +1262,22 @@ def test_zephyrus_loss_module_without_the_law_fails_loudly(monkeypatch):
 
     cfg = SimpleNamespace(accretion=_impact_accretion(atmloss_module='zephyrus'))
     monkeypatch.setitem(sys.modules, 'zephyrus.collision', None)
-    with pytest.raises(ImportError, match='fwl-zephyrus'):
+    with pytest.raises(ImportError, match='fwl-zephyrus') as excinfo:
         _impact_loss_fraction(cfg, {'M_planet': 6.0e24}, _impact_event())
+
+    # The message names the setting that asked for it, the module that is
+    # absent, and the action that fixes it, so it can be acted on without
+    # reading the dispatch.
+    message = str(excinfo.value)
+    assert 'atmloss_module' in message
+    assert 'zephyrus.collision' in message
+    assert 'upgrade' in message
+
+    # With no loss module configured the same call is silent and loses
+    # nothing, so the error is specific to the selected module rather than
+    # raised on every impact.
+    off = SimpleNamespace(accretion=_impact_accretion(atmloss_module=None))
+    assert _impact_loss_fraction(off, {'M_planet': 6.0e24}, _impact_event()) == 0.0
 
 
 def _rescaling_solve_structure(factor):
@@ -1441,9 +1455,6 @@ def test_the_impact_leaves_the_planet_mass_consistent_with_its_parts(monkeypatch
         hf_row['M_ele'] = 9.9e21
         hf_row['M_planet'] = hf_row['M_int'] + 9.9e21
 
-    monkeypatch.setattr(
-        'proteus.accretion.wrapper.remelt_mantle', lambda *a, **k: None, raising=False
-    )
     monkeypatch.setattr(
         'proteus.interior_energetics.wrapper.solve_structure', _solve, raising=False
     )
@@ -1751,3 +1762,84 @@ def test_the_impact_eccentricity_is_clamped_to_a_bound_orbit(monkeypatch, caplog
         )
     assert quiet.config.orbit.eccentricity == pytest.approx(0.14, rel=1e-12)
     assert 'clamped' not in caplog.text
+
+
+@pytest.mark.unit
+def test_discard_preimpact_snapshot_drops_only_the_impact_steps_own_snapshot(tmp_path, caplog):
+    """A step that both wrote a snapshot and landed an impact discards it.
+
+    Physical scenario: the interior writes its snapshot while the step is
+    solved, which is before the impacts falling in that step are applied at
+    the end of it. On such a step the snapshot holds the mantle from before
+    the re-melt while the helpfile row it shares a time with already carries
+    the impact's mass, orbit and volatile budgets. Resuming from that pair
+    would restore a mantle the impact had melted while treating the impact as
+    already applied, silently losing the re-melt.
+
+    Contract clause: the stale snapshot is removed so the resume walks back to
+    the previous complete pair and applies the impact again in full.
+
+    Verifies:
+    - The impact step's snapshot is removed for the interior that writes one.
+    - The previous step's snapshot survives, so the resume has a pair to land
+      on rather than being left with none.
+    - An interior that writes no snapshot leaves the directory untouched, so
+      the discard cannot delete another writer's file.
+    - A step with no snapshot on disk is a no-op rather than an error.
+    - The last remaining snapshot is kept and reported, because removing it
+      would leave the run with no interior state to resume from at all.
+    """
+    from proteus.accretion.wrapper import discard_preimpact_snapshot
+
+    def _handler(module, time=300.0):
+        return SimpleNamespace(
+            config=SimpleNamespace(interior_energetics=SimpleNamespace(module=module)),
+            directories={'output': str(tmp_path)},
+            hf_row={'Time': time},
+        )
+
+    data = tmp_path / 'data'
+    data.mkdir()
+    (data / '300_int.nc').write_text('pre-remelt')
+    (data / '200_int.nc').write_text('previous')
+
+    discard_preimpact_snapshot(_handler('aragog'))
+    assert not (data / '300_int.nc').exists(), (
+        'the impact step kept its pre-remelt snapshot, so a resume would load '
+        'a mantle the impact had already melted'
+    )
+    assert (data / '200_int.nc').read_text() == 'previous', (
+        'the previous complete snapshot was removed too, leaving the resume '
+        'with nothing to walk back to'
+    )
+
+    # The scalar interiors carry their state in the helpfile row, which is
+    # already post-impact, so they must not have files removed under them.
+    (data / '300_int.nc').write_text('not mine to delete')
+    for module in ('dummy', 'boundary', 'spider'):
+        discard_preimpact_snapshot(_handler(module))
+        assert (data / '300_int.nc').read_text() == 'not mine to delete', (
+            f"the '{module}' interior discarded a snapshot it does not write"
+        )
+
+    # A step that wrote no snapshot is the ordinary case, not an error.
+    discard_preimpact_snapshot(_handler('aragog', time=999.0))
+
+    # The last snapshot is kept: discarding it would leave nothing for the
+    # resume to land on, so the inconsistency is reported instead of the run
+    # being stripped of its only interior state.
+    for stale in data.glob('*_int.nc'):
+        stale.unlink()
+    (data / '300_int.nc').write_text('only one left')
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        discard_preimpact_snapshot(_handler('aragog'))
+
+    assert (data / '300_int.nc').exists(), (
+        'the only interior snapshot was discarded, so the run has no state to '
+        'resume from and no interior history at its endpoint'
+    )
+    assert 'only one' in caplog.text, (
+        'the kept snapshot predates the re-melt, so staying silent would hide '
+        'an inconsistent resume'
+    )

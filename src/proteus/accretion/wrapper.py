@@ -196,6 +196,70 @@ def restore_accretion_state(handler: Proteus) -> None:
     )
 
 
+def discard_preimpact_snapshot(handler: Proteus) -> None:
+    """Drop the interior snapshot a step wrote before an impact re-melted it.
+
+    The interior writes its snapshot while the step is solved, which is before
+    the impacts falling in that step are applied at the end of it. When a step
+    both writes a snapshot and lands an impact, the snapshot therefore holds
+    the mantle from before the re-melt while the helpfile row it shares a time
+    with already carries the impact's mass, orbit and volatile budgets.
+    Resuming from that pair would restore a mantle the impact had melted while
+    treating the impact as already applied, so the re-melt would be lost with
+    nothing to signal it.
+
+    Removing the snapshot leaves the row without a complete pair, so
+    :func:`proteus.utils.coupler.select_resumable_snapshot` walks back to the
+    last step that has one and truncates the helpfile to it. The impact then
+    falls after the resume point and is applied again in full. The cost is the
+    steps between the two snapshots, which are recomputed.
+
+    The snapshot is only removed when an older one survives it. Removing the
+    last one would leave a run with no interior state on disk at all: a resume
+    would find no complete pair and refuse, and the run's own interior history
+    would end at the impact. That case is reported instead, since the snapshot
+    it keeps describes the mantle from before the re-melt and a resume from it
+    would carry that inconsistency.
+
+    Only the interior modules that write a snapshot need this. The dummy and
+    boundary interiors carry their state in the helpfile row itself, which is
+    already post-impact, and SPIDER has no re-melt path and is refused for
+    accretion runs before the first impact.
+
+    Parameters
+    ----------
+    handler : Proteus
+        Proteus object instance, read for the output directory, the interior
+        module and the current time.
+    """
+    if handler.config.interior_energetics.module != 'aragog':
+        return
+
+    from proteus.interior_energetics.aragog import (
+        discard_snapshot,
+        earlier_snapshot_exists,
+    )
+
+    output = handler.directories['output']
+    time = float(handler.hf_row['Time'])
+
+    if not earlier_snapshot_exists(output, time):
+        log.warning(
+            '    the interior snapshot at %.4e yr predates this step re-melt and '
+            'is the only one on disk, so it is kept: resuming from it would start '
+            'from a mantle this impact had already melted',
+            time,
+        )
+        return
+
+    if discard_snapshot(output, time):
+        log.info(
+            '    discarded the interior snapshot at %.4e yr: it predates this '
+            "step's re-melt, so a resume continues from the previous one",
+            time,
+        )
+
+
 def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     """Apply one giant impact's consequences to the running planet.
 
