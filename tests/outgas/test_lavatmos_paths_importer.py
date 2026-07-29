@@ -219,6 +219,12 @@ class TestPathsImporterInitialization:
                     expected = os.path.join(mock_lava_dir, 'data')
                     assert importer.janafdata == expected
 
+                    # The appropriate JANAF data exists inside LAVA_DIR
+                    # so pin the root explicitly here.
+                    assert importer.janafdata.startswith(mock_lava_dir)
+                    assert mock_fc_dir + '/' not in importer.janafdata
+                    assert mock_dirs['output'] not in importer.janafdata
+
     def test_paths_importer_handles_trailing_slashes_in_env_vars(self):
         """Test that paths are robust to trailing slashes in environment variables.
 
@@ -252,6 +258,10 @@ class TestPathsImporterInitialization:
 
             # Monotonicity: lava dir should be read identically regardless of trailing slash
             assert lava1 == lava2
+            # And the normalised form is the no-slash input plus exactly one
+            # separator, so neither input leaks a doubled separator through.
+            assert lava1 == mock_lava_dir_no_slash + '/'
+            assert not lava1.endswith('//')
 
     def test_paths_importer_makedirs_called_with_exist_ok_true(self):
         """Test that makedirs is called with exist_ok=True for idempotency.
@@ -269,10 +279,20 @@ class TestPathsImporterInitialization:
                 with patch('proteus.outgas.lavatmos.os.makedirs') as mock_makedirs:
                     lavatmos.paths_importer(mock_dirs)
 
+                    # The loop below would pass vacuously if nothing was
+                    # created, so pin that both output subdirectories are made.
+                    assert mock_makedirs.call_count == 2
+
                     # Verify all makedirs calls have exist_ok=True
                     for call_obj in mock_makedirs.call_args_list:
                         kwargs = call_obj.kwargs if hasattr(call_obj, 'kwargs') else call_obj[1]
                         assert kwargs.get('exist_ok')
+
+                    # Both created directories sit under the run output, never
+                    # under the read-only LAVA_DIR or FC_DIR installs.
+                    created = [call_obj.args[0] for call_obj in mock_makedirs.call_args_list]
+                    for path_str in created:
+                        assert path_str.startswith(mock_dirs['output'])
 
     def test_paths_importer_constructs_input_dir_from_lavatmos_dir(self):
         """Test that input_dir is constructed as lavatmos_dir + 'input/'.
@@ -438,9 +458,17 @@ class TestPathsImporterErrorHandling:
 
         with patch.dict(os.environ, env_dict, clear=True):
             with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
-                with patch('proteus.outgas.lavatmos.os.makedirs'):
-                    with pytest.raises(ValueError, match='LAVA_DIR'):
+                with patch('proteus.outgas.lavatmos.os.makedirs') as mock_makedirs:
+                    with pytest.raises(ValueError, match='LAVA_DIR') as excinfo:
                         lavatmos.paths_importer(mock_dirs)
+
+        # The error names the missing variable
+        assert 'LAVA_DIR' in str(excinfo.value)
+        assert 'FC_DIR' not in str(excinfo.value)
+
+        # No side effect: construction aborts before any output directory is
+        # created, so a failed init leaves no partial tree behind.
+        assert mock_makedirs.call_count == 0
 
     def test_paths_importer_missing_fc_dir_env_var(self):
         """paths_importer fails fast with an error when FC_DIR is unset.
@@ -455,9 +483,16 @@ class TestPathsImporterErrorHandling:
 
         with patch.dict(os.environ, env_dict, clear=True):
             with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
-                with patch('proteus.outgas.lavatmos.os.makedirs'):
-                    with pytest.raises(ValueError, match='FC_DIR'):
+                with patch('proteus.outgas.lavatmos.os.makedirs') as mock_makedirs:
+                    with pytest.raises(ValueError, match='FC_DIR') as excinfo:
                         lavatmos.paths_importer(mock_dirs)
+
+        # LAVA_DIR is set here, so the error must single out FC_DIR. A guard
+        # that checked the wrong variable would name LAVA_DIR instead.
+        assert 'FC_DIR' in str(excinfo.value)
+        assert 'LAVA_DIR' not in str(excinfo.value)
+        # No side effect: construction aborts before any directory is created.
+        assert mock_makedirs.call_count == 0
 
 
 class TestPathsImporterPhysicsInvariants:
@@ -518,6 +553,14 @@ class TestPathsImporterPhysicsInvariants:
                         assert path.startswith(mock_output_base), (
                             f'Path {path} does not start with {mock_output_base}'
                         )
+                        # Strictly below the base directory
+                        assert path != mock_output_base
+                        assert '..' not in path
+
+                    # The two fastchem accessors are aliases for the same
+                    # directory, while the abundance file is a distinct leaf.
+                    assert importer.fastchem3_output == importer.output_dir
+                    assert importer.element_abundance_output != importer.output_dir
 
     @pytest.mark.physics_invariant
     def test_paths_importer_all_paths_non_empty(self):
