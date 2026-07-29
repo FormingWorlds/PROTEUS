@@ -3324,3 +3324,135 @@ def test_select_resumable_snapshot_leaves_another_steps_file_in_place(tmp_path):
         'which is state no other file carries'
     )
     assert _snapshot_time(str(data / '70_int.nc')) == pytest.approx(70.8, rel=1e-12)
+
+
+def _write_spider_json(path: str, time: float | str | None) -> str:
+    """Create a SPIDER-shaped interior snapshot recording ``time_years``.
+
+    SPIDER writes the achieved time at the top level of its JSON, which is
+    what ``ReadSPIDER`` reads back in place of the rounded filename. Passing
+    None omits the field, which is what an older output directory looks like.
+    """
+    payload: dict = {'step': 7, 'data': {'S': [1.0, 2.0]}}
+    if time is not None:
+        payload['time_years'] = time
+    with open(path, 'w') as fh:
+        json.dump(payload, fh)
+    return path
+
+
+@pytest.mark.unit
+def test_snapshot_time_reads_a_spider_json_however_it_stores_the_number(tmp_path):
+    """SPIDER's recorded time is read whether it is a number or a string.
+
+    Contract clause: the interior half of a SPIDER resume is a JSON file, and
+    the field the resume matches on is the same one ``ReadSPIDER`` uses for
+    the coupling clock, where it is read through a ``float`` for the same
+    reason. SPIDER writes it as a JSON number today; the surrounding file
+    carries other quantities as strings, so the reader takes either and a run
+    does not fall back to matching on the filename if that ever changes.
+
+    Verifies:
+    - A numeric and a string ``time_years`` both read back as the same float.
+    - A file without the field reports None, so it is accepted on its name
+      rather than being read as a snapshot from time zero.
+    """
+    numeric = _write_spider_json(str(tmp_path / 'a.json'), 70.2)
+    stringy = _write_spider_json(str(tmp_path / 'b.json'), '70.2')
+    legacy = _write_spider_json(str(tmp_path / 'c.json'), None)
+
+    assert _snapshot_time(numeric) == pytest.approx(70.2, rel=1e-12)
+    assert _snapshot_time(stringy) == pytest.approx(70.2, rel=1e-12)
+    assert _snapshot_time(legacy) is None
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_matches_a_spider_row_to_its_own_json(tmp_path):
+    """A SPIDER row resumes from the JSON written for it, not a neighbour's.
+
+    Physical scenario: SPIDER names its snapshot for the time rounded to a
+    whole year and records the time it achieved inside, so two steps rounding
+    into the same year land on one file and the later one overwrites it. A
+    run killed between a write and the helpfile row it belongs to leaves that
+    file under a row whose state it does not hold, and resuming on the name
+    alone hands the run a mantle from a step the helpfile has no row for.
+
+    Verifies:
+    - A JSON recording another step's time is not accepted for this row, and
+      the walk continues to a row whose own snapshot is there.
+    - The same directory with the JSON recording the row's own time resumes at
+      that row, so the rejection is the recorded time and not the row being
+      unusable.
+    - A JSON with no recorded time is accepted on its name, so output written
+      before the field was read still resumes.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_spider_json(str(data / f'{t}.json'), float(t))
+    # Named for the 70.2 row, holding the step SPIDER achieved at 70.4.
+    _write_spider_json(str(data / '70.json'), 70.4)
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0), (
+        f'resumed at {out.iloc[-1]["Time"]} from a JSON recording 70.4, so SPIDER '
+        'would restart from a state the helpfile has no row for'
+    )
+
+    _write_spider_json(str(data / '70.json'), 70.2)
+    kept, none_dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert none_dropped == []
+    assert kept.iloc[-1]['Time'] == pytest.approx(70.2)
+
+    _write_spider_json(str(data / '70.json'), None)
+    legacy, legacy_dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert legacy_dropped == []
+    assert legacy.iloc[-1]['Time'] == pytest.approx(70.2)
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_leaves_another_spider_steps_json_in_place(tmp_path):
+    """Dropping a SPIDER row does not take a JSON written for another step.
+
+    Contract clause: a row without a complete pair has its own halves moved
+    aside so the module's latest-file glob cannot pick them up. A JSON that
+    records a different time is another step's, however closely its rounded
+    name fits this row, and removing it would destroy the only copy of that
+    step's interior state.
+
+    Verifies:
+    - The row is dropped and its own atmosphere half is swept.
+    - The JSON recording another step's time is still on disk afterwards and
+      still records that step.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_spider_json(str(data / f'{t}.json'), float(t))
+        _write_timed_nc(str(data / f'{t}_atm.nc'), float(t))
+    _write_spider_json(str(data / '70.json'), 70.4)  # another step's interior
+    _write_timed_nc(str(data / '70_atm.nc'), 70.2)  # the dropped row's own half
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path),
+        _hf_times([0, 1, 2, 70.2]),
+        require_atm=True,
+        interior_module='spider',
+        atmos_module='agni',
+    )
+
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0)
+    assert not (data / '70_atm.nc').exists()
+    assert (data / '70.json').is_file(), (
+        'dropping the row deleted a SPIDER snapshot belonging to a different '
+        'step, which is state no other file carries'
+    )
+    assert _snapshot_time(str(data / '70.json')) == pytest.approx(70.4, rel=1e-12)
