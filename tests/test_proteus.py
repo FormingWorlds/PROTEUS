@@ -1,8 +1,10 @@
 """
-Unit tests for proteus.proteus module: Zalmoxis mesh restoration on resume.
+Unit tests for proteus.proteus module: Zalmoxis mesh restoration on resume,
+atmosphere-interior deadlock detection, and main-loop plot cadence.
 
 Tests the resume code path in Proteus.start() that restores the Zalmoxis
-mesh file path when resuming a SPIDER interior simulation.
+mesh file path when resuming a SPIDER interior simulation, and the main
+loop's `params.out.plot_mod`-gated plot generation.
 
 Testing standards and documentation:
 - docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
@@ -10,13 +12,17 @@ Testing standards and documentation:
 
 Functions tested:
 - Proteus.start(): Resume path restoring spider_mesh and spider_mesh_prev
+- Proteus.start(): main-loop plot generation cadence (plot_mod)
+- Proteus._check_atmosphere_deadlock()
 """
 
 from __future__ import annotations
 
 from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -982,4 +988,261 @@ def test_proteus_resume_keeps_crystallized_after_remelting(tmp_path):
     assert never.crystallized is False, (
         'a run whose melt fraction never reached the threshold resumed as '
         'crystallized; the history search is matching too eagerly'
+    )
+
+
+# ---------------------------------------------------------------------------
+# Proteus.start() main loop: plot-cadence gating (proteus.py ~1200-1207).
+#
+# Plot generation is driven by `plot_mod` alone. It must NOT depend on
+# `is_snapshot` (the write_mod / dt_write_rel gate that governs helpfile
+# and archive writes) -- a plot cadence independent of the write cadence
+# is the documented contract for `params.out.plot_mod`.
+# ---------------------------------------------------------------------------
+
+
+class _FakeHelpfile:
+    """Stand-in for the helpfile DataFrame that only supports the one
+    access pattern the main loop uses: `hf_all.iloc[-1].to_dict()`.
+
+    Keeps `hf_row` a real, plain dict across loop iterations instead of
+    a MagicMock, so the loop's own dict/arithmetic operations on hf_row
+    behave exactly as they do in a real run.
+    """
+
+    def __init__(self, row):
+        self._row = dict(row)
+        self.iloc = _FakeHelpfile._ILoc(self._row)
+
+    class _ILoc:
+        def __init__(self, row):
+            self._row = row
+
+        def __getitem__(self, _index):
+            from types import SimpleNamespace
+
+            return SimpleNamespace(to_dict=lambda: dict(self._row))
+
+    def __len__(self):
+        return 1
+
+
+def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel):
+    """Build a Proteus instance configured for a fresh (non-resume) run
+    that can be driven through several main-loop iterations.
+
+    `interior_energetics.module` / `interior_struct.module` are set to
+    'dummy' so the Zalmoxis structure-update and SPIDER-specific branches
+    are no-ops; `outgas.vapourise=True` skips the mass-conservation
+    assertion (tested elsewhere, see mass-conservation-never-weaken
+    memory); `observe.module=None` and a non-'online'/'offline'
+    atmos_chem.when skip the postprocessing branches. None of these
+    short-circuits touch the plot-gating condition under test.
+    """
+    from proteus.proteus import Proteus
+
+    config = MagicMock()
+    config.interior_struct.module = 'dummy'
+    config.interior_struct.zalmoxis.update_interval = 0
+    config.interior_struct.eos_dir = None
+    config.interior_energetics.module = 'dummy'
+    config.interior_energetics.flux_guess = 100.0  # >=0: skips sigma*T^4 branch
+    config.orbit.module = None
+    config.observe.module = None
+    config.atmos_chem.when = 'never'
+    config.outgas.vapourise = True  # skips assert_mass_conservation
+    config.planet.temperature_mode = 'isothermal'
+    config.planet.volatile_mode = 'elements'
+    config.planet.gas_prs.get_pressure = lambda _s: 0.0
+    config.outgas.calliope.is_included = lambda _s: False
+    config.params.resume = False
+    config.params.out.logging = 'WARNING'
+    config.params.out.plot_mod = plot_mod
+    config.params.out.write_mod = write_mod
+    config.params.out.dt_write_rel = dt_write_rel
+    config.params.out.archive_mod = None
+    config.params.stop.iters.minimum = 10
+    config.params.stop.iters.maximum = 1000
+    config.params.stop.solid.freeze_volatiles = False
+    config.params.stop.solid.phi_crit = 0.01
+    config.params.dt.starinst = 1e8
+    config.params.dt.starspec = 1e8
+    config.atmos_clim.albedo_from_file = False
+
+    directories = {
+        'output': str(tmp_path),
+        'output/data': str(tmp_path / 'data'),
+        'output/observe': str(tmp_path / 'observe'),
+        'output/offchem': str(tmp_path / 'offchem'),
+        'output/plots': str(tmp_path / 'plots'),
+        'spider': str(tmp_path / 'spider'),
+        'fwl': str(tmp_path / 'fwl'),
+    }
+    for path in directories.values():
+        Path(path).mkdir(parents=True, exist_ok=True)
+
+    with (
+        patch('proteus.proteus.read_config_object', return_value=config),
+        patch('proteus.utils.coupler.set_directories', return_value=directories),
+    ):
+        p = Proteus(config_path='dummy.toml')
+
+    return p
+
+
+# Every dependency the main loop calls that is irrelevant to the
+# plot-gating condition itself: mocked as a no-op so the loop can run
+# several iterations without touching real physics, I/O, or Julia/AGNI.
+_MAIN_LOOP_NOOP_PATCHES = [
+    'proteus.utils.coupler.CreateLockFile',
+    'proteus.utils.data.download_sufficient_data',
+    'proteus.interior_energetics.wrapper.solve_structure',
+    'proteus.utils.coupler.print_citation',
+    'proteus.utils.coupler.print_header',
+    'proteus.utils.coupler.print_module_configuration',
+    'proteus.utils.coupler.print_system_configuration',
+    'proteus.utils.coupler.validate_module_versions',
+    'proteus.utils.terminate.print_termination_criteria',
+    'proteus.interior_energetics.wrapper.run_interior',
+    'proteus.interior_energetics.wrapper.update_planet_mass',
+    'proteus.orbit.wrapper.run_orbit',
+    'proteus.star.wrapper.scale_spectrum_to_toa',
+    'proteus.star.wrapper.update_stellar_mass',
+    'proteus.star.wrapper.update_stellar_quantities',
+    'proteus.star.wrapper.write_spectrum',
+    'proteus.outgas.wrapper.calc_target_elemental_inventories',
+    'proteus.outgas.wrapper.run_outgassing_and_vapourisation',
+    'proteus.outgas.wrapper.check_ic_oxygen_budget',
+    'proteus.outgas.wrapper.run_desiccated',
+    'proteus.outgas.wrapper.run_crystallized',
+    'proteus.outgas.wrapper.check_desiccation',
+    'proteus.escape.wrapper.run_escape',
+    'proteus.utils.coupler.assert_surface_pressure_consistency',
+    'proteus.atmos_clim.run_atmosphere',
+    'proteus.utils.coupler.PrintCurrentState',
+    'proteus.utils.coupler.WriteHelpfileToCSV',
+    'proteus.utils.coupler.remove_excess_files',
+    'proteus.utils.coupler.print_stoptime',
+    'proteus.observe.wrapper.run_observe',
+    'proteus.atmos_chem.wrapper.run_chemistry',
+]
+
+
+def _run_main_loop_capturing_plots(p, *, stop_at_loop):
+    """Run p.start(resume=False) with the main loop's physics mocked out,
+    capturing every main-loop UpdatePlots call as (loops_total, is_end).
+
+    `stop_at_loop` sets when check_termination first fires: it is only
+    ever invoked once `init_stage` has cleared (loops['total'] >
+    init_loops == 3), i.e. from the 5th iteration (loops['total'] == 4)
+    onward in an unmodified loop -- so `stop_at_loop` must be >= 4 for the
+    stop condition to actually engage before the loop's own init-stage
+    bookkeeping does.
+    """
+    from types import SimpleNamespace
+
+    plot_calls = []
+
+    def _record_plot(*args, **kwargs):
+        plot_calls.append((p.loops['total'], bool(kwargs.get('end', False))))
+
+    def _fake_check_termination(handler):
+        if handler.loops['total'] >= stop_at_loop:
+            handler.finished_both = True
+        return handler.finished_both
+
+    def _fake_create_helpfile(row):
+        return _FakeHelpfile(row)
+
+    def _fake_extend_helpfile(_hf_all, row):
+        return _FakeHelpfile(row)
+
+    with ExitStack() as stack:
+        for target in _MAIN_LOOP_NOOP_PATCHES:
+            stack.enter_context(patch(target))
+
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_interior_t.return_value = SimpleNamespace(dt=100.0, ic=1)
+
+        mock_atmos_t = stack.enter_context(patch('proteus.atmos_clim.common.Atmos_t'))
+        mock_atmos_t.return_value = SimpleNamespace(converged=True)
+
+        mock_spectrum = stack.enter_context(patch('proteus.star.wrapper.get_new_spectrum'))
+        mock_spectrum.return_value = (np.array([1.0]), np.array([1.0]))
+
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.CreateHelpfileFromDict',
+                side_effect=_fake_create_helpfile,
+            )
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.ExtendHelpfile', side_effect=_fake_extend_helpfile)
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.UpdatePlots', side_effect=_record_plot)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.terminate.check_termination', side_effect=_fake_check_termination
+            )
+        )
+
+        p.start(resume=False, offline=True)
+
+    return plot_calls
+
+
+def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
+    """Plots must be generated on every `plot_mod`-multiple iteration,
+    even on iterations that are NOT a write/archive snapshot.
+
+    Regression target: the main loop used to gate `UpdatePlots` on
+    `is_snapshot AND multiple(loops_total, plot_mod)`, tying the plot
+    cadence to `write_mod`/`dt_write_rel` instead of `plot_mod` alone.
+    `plot_mod=5` (or any value) then silently produced far fewer plots
+    than the config requested whenever `write_mod`/`dt_write_rel`
+    suppressed the snapshot on a plot-due iteration.
+
+    Discriminating setup: `plot_mod=1` (plot every iteration) is paired
+    with `write_mod=2` (`dt_write_rel=0`), so `is_snapshot` alternates
+    True/False/True across loop iterations 0/1/2 while the plot cadence
+    must fire on all three regardless. Note `is_snapshot`'s `write_mod`
+    check reads `loops['total']` *before* the per-iteration increment,
+    while the plot/archive checks read it *after*; the iteration with
+    pre-increment total 1 (post-increment total 2) is the one where
+    `is_snapshot` is False (1 is not a multiple of write_mod=2) but the
+    plot must still fire (2 is a multiple of plot_mod=1). Under the old
+    gated condition that iteration's plot would be silently skipped, so
+    the recorded plot sequence would be [1, 3] instead of [1, 2, 3].
+    """
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=2, dt_write_rel=0.0)
+
+    # check_termination is only consulted once init_stage clears
+    # (post-increment loops['total'] > init_loops == 3), which happens
+    # while processing pre-increment total 3 (post-increment 4). Stopping
+    # there gives exactly 4 executed iterations (pre-increment 0-3), of
+    # which the last one's plot is suppressed by the loop's own
+    # `and not self.finished_both` clause (unrelated to the fix under
+    # test) -- so 3 plot-eligible iterations remain for this assertion.
+    plot_calls = _run_main_loop_capturing_plots(p, stop_at_loop=4)
+
+    # Main-loop plot calls only (exclude the unconditional end-of-run
+    # "final plots" call, which always passes end=True).
+    main_loop_plots = [loop for loop, is_end in plot_calls if not is_end]
+
+    assert main_loop_plots == [1, 2, 3], (
+        f'expected plots at post-increment loop counts [1, 2, 3] (every '
+        f'plot_mod=1 iteration, independent of write_mod=2), got {main_loop_plots}'
+    )
+    # Discrimination guard: post-increment total 2 corresponds to the
+    # iteration where is_snapshot was False (write_mod=2 did not divide
+    # the pre-increment total of 1). A regression reintroducing the
+    # is_snapshot gate would drop it, leaving [1, 3] here.
+    assert 2 in main_loop_plots, (
+        'plot at a plot_mod-multiple iteration was skipped because it was '
+        'not also a write_mod snapshot -- the plot cadence must not depend '
+        'on the write/archive snapshot gate'
     )

@@ -1200,15 +1200,11 @@ class Proteus:
 
             # Make plots
             if (
-                is_snapshot
-                and multiple(self.loops['total'], self.config.params.out.plot_mod)
+                multiple(self.loops['total'], self.config.params.out.plot_mod)
                 and not self.finished_both
             ):
                 log.info('Making plots')
-                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
                 UpdatePlots(self.hf_all, self.directories, self.config)
-                if _IT_TIMING_ENABLED:
-                    _t_mod['plots'] = time.perf_counter() - _t0
 
             # Update or create data archive
             if (

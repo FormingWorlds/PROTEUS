@@ -1,7 +1,7 @@
 # PROTEUS Tutorial: Rock vapourisation
 #
-# Includes combined volatile outgassing and rock vapourisation. 
-# The planet is a 1 M_Earth rocky world, orbiting at 0.016 AU around a Sun-like star. 
+# Includes combined volatile outgassing and rock vapourisation.
+# The planet is a 1 M_Earth rocky world, orbiting closely around a Sun-like star.
 # The surface temperature is high enough to vaporise silicate rock, which yields a vapour
 # dominated atmosphere once the volatiles escape.
 #
@@ -17,7 +17,7 @@ config_version = "3.0"
     [params.out]
         path                  = "tutorial_vapourise"
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
-        plot_mod              = 1            # 0: at end | n: every n iters | none: never
+        plot_mod              = 5            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
         write_mod             = 1            # 0: at end | n: every n iters
         dt_write_rel          = 1e-3         # min write interval as fraction of elapsed simulation time (0: off)
@@ -28,13 +28,13 @@ config_version = "3.0"
         minimum               = 1e3          # minimum time step [yr]
         minimum_rel           = 1e-3         # minimum relative time step
         maximum               = 1e6          # maximum time step [yr]
-        initial               = 3e1          # initial step size [yr]
+        initial               = 3e2          # initial step size [yr]
         starspec              = 1e8          # recalculate stellar spectrum interval [yr]
         starinst              = 1e2          # recalculate instellation interval [yr]
-        method                = "adaptive"   # proportional | adaptive | maximum
+        method                = "maximum"   # proportional | adaptive | maximum
         propconst             = 52.0         # proportionality constant (proportional method)
-        atol                  = 0.02         # step size absolute tolerance (adaptive method)
-        rtol                  = 0.07        # step size relative tolerance (adaptive method)
+        atol                  = 0.03         # step size absolute tolerance (adaptive method)
+        rtol                  = 0.11        # step size relative tolerance (adaptive method)
         scale_incr            = 1.6          # growth factor on successful adaptive step
         scale_decr            = 0.8          # shrink factor on rejected adaptive step
         window                = 3            # lookback window for adaptive comparison [steps]
@@ -56,7 +56,7 @@ config_version = "3.0"
         [params.stop.time]                   # simulation time limits
             enabled           = true
             minimum           = 1.0e3        # run at least this long [yr]
-            maximum           = 5.0e+8       # stop after this time [yr]
+            maximum           = 2.0e+7       # stop after this time [yr]
 
         [params.stop.solid]                  # solidification criterion
             enabled           = false
@@ -69,7 +69,7 @@ config_version = "3.0"
             rtol              = 1e-3         # relative tolerance
 
         [params.stop.escape]                 # atmosphere loss criterion
-            enabled           = true
+            enabled           = false
             p_stop            = 1e-4          # stop when surface pressure < p_stop [bar]
 
         [params.stop.disint]                 # planetary disintegration criterion
@@ -155,7 +155,7 @@ config_version = "3.0"
 
     # Orbit geometry and instellation
     instellation_method       = "distance"   # "distance" (semi-major axis) | "inst" (flux)
-    semimajoraxis             = 0.016          # semi-major axis [AU] (if method = "distance")
+    semimajoraxis             = 0.04          # semi-major axis [AU] (if method = "distance")
     instellationflux          = 1.0          # instellation [S_Earth] (if method = "inst")
     eccentricity              = 0.0          # orbital eccentricity
     zenith_angle              = 48.19        # characteristic zenith angle [degrees]
@@ -351,7 +351,7 @@ config_version = "3.0"
 # Outgassing (volatile partitioning between interior and atmosphere)
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = 4        # atmosphere/interior boundary oxidation state [log10(ΔIW)]
+    fO2_shift_IW    = 2        # atmosphere/interior boundary oxidation state [log10(ΔIW)]
 
     vapourise = true
 
@@ -391,7 +391,7 @@ config_version = "3.0"
     module                    = "agni"       # agni | janus | dummy
 
     # Grid and spectral setup (shared by agni + janus)
-    spectral_group            = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
+    spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
     spectral_bands            = "48"         # wavenumber bands in k-table
     num_levels                = 45           # vertical atmosphere levels (min 15)
     p_top                     = 1.0e-5       # top-of-atmosphere pressure [bar]
@@ -421,7 +421,7 @@ config_version = "3.0"
         conduction            = false        # conductive heat transport (Fourier)
         sens_heat             = true         # sensible heat flux at surface
         rainout               = false         # volatile condensation and evaporation
-        oceans                = true         # surface liquid water oceans
+        oceans                = false         # surface liquid water oceans
         latent_heat           = false        # latent heat from condensation/evaporation
         real_gas              = false        # real-gas EOS where available
         chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem)
