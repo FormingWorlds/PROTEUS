@@ -387,6 +387,18 @@ runs:
           fi
           return $rc
         }
+        # Skip the fetch when a warm cache already holds a complete res/ tree.
+        # res_complete asserts every required artifact is present AND non-empty
+        # (a zero-byte file from a green-but-empty fetch fails the -s test), so a
+        # tree that passes needs no repair and re-pulling it is pure download
+        # cost (~200 s, dominated by the thermodynamics archive). An incomplete
+        # or partially-written tree fails the check and falls through to the
+        # retry loop below, which overwrites and repairs it, so the repair path
+        # the unconditional fetch was added for is preserved.
+        if res_complete 2>/dev/null; then
+          echo "AGNI basic data already complete in res/ (warm cache); skipping fetch."
+          exit 0
+        fi
         fetch="$GITHUB_WORKSPACE/AGNI/src/get_data.sh"
         delays=(10 30 60)
         attempts=$(( ${#delays[@]} + 1 ))
@@ -527,11 +539,20 @@ runs:
     # ------------------------------------------------------------------
     # 9. FWL_DATA cache + smoke / full data download
     # ------------------------------------------------------------------
+    # The key hashes BOTH dataset descriptors: .github/data-manifest.yaml (the
+    # older download() datasets: spectral files, stellar spectra, tracks) and
+    # src/proteus/data/proteus_manifest.toml (the fwl-io pins for the exoplanet
+    # + mass-radius reference data). Keying on the fwl-io manifest as well means
+    # a Zenodo re-pin busts the cache and forces a fresh save. Without it, files
+    # pinned after the cache was first frozen re-download on every run: the key
+    # stays constant, actions/cache exact-hits and never re-saves, so the stale
+    # tree can never pick them up. The restore-keys prefix still lets a fresh
+    # save build on the previous tree instead of re-downloading everything.
     - name: Cache FWL_DATA
       uses: actions/cache@v5
       with:
         path: ~/fwl_data
-        key: fwl-data-${{ runner.os }}-${{ hashFiles('.github/data-manifest.yaml') }}
+        key: fwl-data-${{ runner.os }}-${{ hashFiles('.github/data-manifest.yaml', 'src/proteus/data/proteus_manifest.toml') }}
         restore-keys: |
           fwl-data-${{ runner.os }}-
 
