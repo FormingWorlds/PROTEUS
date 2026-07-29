@@ -1272,6 +1272,94 @@ def _snapshot_readable(path: str) -> bool:
     return _netcdf_readable(path)
 
 
+def _snapshot_time(path: str) -> float | None:
+    """Simulation time a snapshot file records for itself [yr], if it does.
+
+    The writers name their files on the time rounded to a whole year, so the
+    name cannot tell two steps inside one year apart. Both interior writers
+    also record the time they wrote: Aragog's netCDF carries a ``time``
+    variable and SPIDER's JSON a ``time_years`` entry. Reading it back is what
+    lets a resume tell whether a file is the row's own state or one a later
+    step left under the same name.
+
+    Parameters
+    ----------
+    path : str
+        Snapshot file to read.
+
+    Returns
+    -------
+    float or None
+        The recorded time, or None when the file records none, which is what
+        a directory written before the field existed looks like.
+    """
+    # Imported outside the try for the same reason as the readability probe:
+    # a missing netCDF4 must raise rather than read as "no file records a
+    # time", which would quietly restore the name-only behaviour everywhere.
+    from netCDF4 import Dataset
+
+    try:
+        if path.endswith('.json'):
+            with open(path) as fh:
+                recorded = json.load(fh).get('time_years')
+            return None if recorded is None else float(recorded)
+        with Dataset(path) as ds:
+            if 'time' not in ds.variables:
+                return None
+            return float(ds['time'][0])
+    except Exception:
+        # Unreadable is not this function's call to make: the readability
+        # probe reports that, and reporting it here as well would turn a
+        # corrupt file into a silently skipped one.
+        return None
+
+
+def _snapshot_belongs_to(path: str, time: float) -> bool:
+    """Whether a snapshot is the one written for a simulation time.
+
+    True when the file records that time, and also when it records none: a
+    file without the field cannot be told apart from its neighbours, so it is
+    accepted on its name, which is the behaviour every directory written
+    before the field existed relies on. True as well once the simulation time
+    is large enough that the helpfile's own precision cannot separate two rows
+    inside one filename, which is a few Gyr in.
+
+    Parameters
+    ----------
+    path : str
+        Snapshot file to check.
+    time : float
+        Simulation time of the helpfile row [yr].
+
+    Returns
+    -------
+    bool
+        Whether the file can be this row's half.
+    """
+    recorded = _snapshot_time(path)
+    if recorded is None:
+        return True
+
+    # The row's time has been through the helpfile, which serialises at
+    # '%.10e' and so holds eleven significant digits: a round trip moves it by
+    # up to 4.94e-11 of its own magnitude. The margin has to clear that, and a
+    # factor of four does, while staying as tight as the stored data allows.
+    resolution = 5.0e-11 * max(1.0, abs(time))
+    tolerance = 4.0 * resolution
+
+    # What the margin must stay under is the one-year bucket the filenames are
+    # keyed on, since two rows sharing a name are what this tells apart. Past
+    # a few Gyr the helpfile's own resolution is itself a good fraction of a
+    # year, so no margin can both clear the round trip and separate two rows
+    # inside one bucket. There the file is accepted on its name, the behaviour
+    # this check refines rather than replaces, instead of rejecting rows that
+    # are perfectly resumable.
+    if tolerance >= 0.5:
+        return True
+
+    return abs(recorded - time) <= tolerance
+
+
 def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
     """Interior snapshot filename candidates for a simulation time, per writer.
 
@@ -1346,6 +1434,16 @@ def select_resumable_snapshot(
     an adjacent row's atmosphere file. See ``_interior_snapshot_names`` /
     ``_atm_snapshot_names``.
 
+    Every convention keys the name on a whole year, so rows less than a year
+    apart derive the same filename and one overwrites the other. The name
+    alone therefore cannot say which row a file belongs to. The interior
+    writers record the time they wrote inside the file (a ``time`` variable in
+    the netCDF, ``time_years`` in SPIDER's JSON), so where that is present it
+    is what the row is matched against: a file left by a different step is not
+    accepted as this row's half, and the walk continues past it. A file that
+    carries no recorded time, which is what a directory written before the
+    field existed looks like, is accepted on its name as before.
+
     Parameters
     ----------
     output_dir : str
@@ -1384,6 +1482,7 @@ def select_resumable_snapshot(
     dropped: list[int] = []
     quarantined: list[tuple[str, str]] = []  # (moved_to, original) for rollback
     keep_idx = None
+
     for i in range(len(times) - 1, -1, -1):
         t = times[i]
         int_paths = [
@@ -1396,15 +1495,23 @@ def select_resumable_snapshot(
         )
         # An empty interior candidate list means the interior module writes no
         # snapshot (dummy/boundary): that half imposes no resume constraint.
-        int_ok = (not int_paths) or any(_snapshot_readable(p) for p in int_paths)
-        atm_ok = (not require_atm) or any(_snapshot_readable(p) for p in atm_paths)
+        # A file that records a different time is another step's, so it does
+        # not count as this row's half however well its name fits.
+        int_ok = (not int_paths) or any(
+            _snapshot_readable(p) and _snapshot_belongs_to(p, t) for p in int_paths
+        )
+        atm_ok = (not require_atm) or any(
+            _snapshot_readable(p) and _snapshot_belongs_to(p, t) for p in atm_paths
+        )
         if int_ok and atm_ok:
             keep_idx = i
             break
         # Incomplete pair: move whichever candidate halves exist aside so the
-        # interior / atmosphere latest-file globs cannot pick them up.
+        # interior / atmosphere latest-file globs cannot pick them up. A file
+        # that records a different time is left where it is: it belongs to
+        # another step, and dropping this row must not take it down as well.
         for p in int_paths + atm_paths:
-            if os.path.exists(p):
+            if os.path.exists(p) and _snapshot_belongs_to(p, t):
                 dst = p + '.incomplete'
                 os.replace(p, dst)
                 quarantined.append((dst, p))

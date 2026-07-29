@@ -52,7 +52,9 @@ from proteus.utils.coupler import (
     _interior_snapshot_names,
     _netcdf_readable,
     _populate_energy_residual,
+    _snapshot_belongs_to,
     _snapshot_readable,
+    _snapshot_time,
     get_proteus_directories,
     print_citation,
     print_module_configuration,
@@ -3136,3 +3138,189 @@ def test_a_helpfile_missing_physical_state_is_refused_not_zero_filled():
 
         loaded = ReadHelpfileFromCSV(tmpdir)
         assert loaded['M_accreted_rock'].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+
+
+def _write_timed_nc(path: str, time: float | None) -> str:
+    """Create a valid interior snapshot recording ``time``, or none at all."""
+    from netCDF4 import Dataset
+
+    with Dataset(path, 'w') as ds:
+        ds.createDimension('x', 1)
+        if time is not None:
+            ds.createVariable('time', 'f8')
+            ds['time'][0] = float(time)
+    return path
+
+
+@pytest.mark.unit
+def test_snapshot_time_reads_what_the_writer_recorded(tmp_path):
+    """The recorded time is read back from either writer, or reported absent.
+
+    Contract clause: the snapshot filenames are keyed on a whole year, so the
+    name cannot tell two steps inside one year apart. Both interior writers
+    record the time they wrote, and reading it back is what lets a resume
+    tell a row's own state from one a neighbouring step left behind. A file
+    that records nothing has to be reported as such rather than guessed at,
+    because that is what every directory written before the field existed
+    looks like.
+
+    Verifies:
+    - The netCDF ``time`` variable and SPIDER's ``time_years`` entry are both
+      read, including a fractional time the filename cannot express.
+    - A file of either kind without the field reports None rather than zero,
+      which would otherwise read as a snapshot from the start of the run.
+    - A corrupt file and a missing one report None instead of raising, so the
+      readability probe stays the one place that judges those.
+    """
+    assert _snapshot_time(_write_timed_nc(str(tmp_path / 'a_int.nc'), 70.8)) == pytest.approx(
+        70.8, rel=1e-12
+    )
+    assert _snapshot_time(_write_timed_nc(str(tmp_path / 'b_int.nc'), None)) is None
+
+    spider = str(tmp_path / 'c.json')
+    with open(spider, 'w') as fh:
+        json.dump({'time_years': 70.2, 'data': {}}, fh)
+    assert _snapshot_time(spider) == pytest.approx(70.2, rel=1e-12)
+    assert _snapshot_time(_write_valid_json(str(tmp_path / 'd.json'))) is None
+
+    assert _snapshot_time(_write_corrupt_nc(str(tmp_path / 'e_int.nc'))) is None
+    assert _snapshot_time(str(tmp_path / 'missing_int.nc')) is None
+
+
+@pytest.mark.unit
+def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
+    """A file counts as a row's own only when it records that row's time.
+
+    Contract clause: a step less than a year from its neighbour writes to the
+    same filename, so a file found under a row's name may be another step's.
+    Matching on the recorded time is what separates them, and a file that
+    records nothing keeps the old behaviour of being accepted on its name.
+
+    Verifies:
+    - The row's own time matches and a neighbouring step's does not, at a
+      separation the filename itself cannot resolve.
+    - A file with no recorded time is accepted, so directories written before
+      the field existed still resume.
+    - The tolerance admits the helpfile's own serialisation round trip and
+      still rejects a step a thousandth of a year away.
+    """
+    own = _write_timed_nc(str(tmp_path / 'own_int.nc'), 70.2)
+    other = _write_timed_nc(str(tmp_path / 'other_int.nc'), 70.8)
+    legacy = _write_timed_nc(str(tmp_path / 'legacy_int.nc'), None)
+
+    assert _snapshot_belongs_to(own, 70.2) is True
+    assert _snapshot_belongs_to(other, 70.2) is False, (
+        'a snapshot written 0.6 yr later was accepted as this row, which is '
+        'the mismatch the whole-year filename cannot rule out'
+    )
+    assert _snapshot_belongs_to(legacy, 70.2) is True
+
+    # The helpfile round-trips Time through '%.10e', so a restored row differs
+    # from the written value in about the eleventh digit; that must still match.
+    assert _snapshot_belongs_to(own, float('%.10e' % 70.2)) is True
+    # A step a thousandth of a year away is a different step, not a round trip.
+    assert _snapshot_belongs_to(own, 70.201) is False
+
+    # The margin is relative to the time, because the helpfile's precision is,
+    # so it has to be checked where a run actually ends up. At 1 Gyr a round
+    # trip moves the row by about 0.05 yr and must still match, while a step
+    # 0.7 yr away shares the same filename and must not: a margin that grew to
+    # a whole year there would accept every neighbour and leave the check
+    # doing nothing exactly where runs spend most of their time.
+    gyr = 1.0e9
+    far = _write_timed_nc(str(tmp_path / 'gyr_int.nc'), gyr)
+    assert _snapshot_belongs_to(far, float('%.10e' % gyr)) is True
+    assert _snapshot_belongs_to(far, gyr + 0.7) is False
+    assert _snapshot_belongs_to(far, gyr + 0.2) is False
+
+    # Past a few Gyr the helpfile cannot resolve two rows inside one filename
+    # at all, so the file is accepted on its name rather than a row that is
+    # perfectly resumable being refused.
+    beyond = 1.0e10
+    unresolvable = _write_timed_nc(str(tmp_path / 'beyond_int.nc'), beyond)
+    assert _snapshot_belongs_to(unresolvable, beyond + 0.7) is True
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_rejects_a_later_steps_snapshot(tmp_path):
+    """A snapshot left by a step the helpfile never recorded is not resumed from.
+
+    Physical scenario: the interior writes its snapshot during a step and the
+    helpfile row is written at the end of it, so a run killed in between
+    leaves a file whose name rounds onto the previous row while its contents
+    are the next step's mantle. Resuming there would continue from a state
+    the helpfile has no row for, and nothing in the filename says so.
+
+    Verifies:
+    - The row is rejected and the walk continues to an earlier complete one.
+    - The same directory with the file recording the row's own time resumes at
+      that row, so the rejection is the recorded time doing its work rather
+      than the row being unusable for another reason.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_timed_nc(str(data / f'{t}_int.nc'), float(t))
+    # Named for the 70.2 row, holding the state written at 70.8.
+    _write_timed_nc(str(data / '70_int.nc'), 70.8)
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='aragog'
+    )
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0), (
+        f'resumed at {out.iloc[-1]["Time"]} from a snapshot written 0.6 yr later, '
+        'so the interior would continue from a state the helpfile has no row for'
+    )
+
+    # Discrimination: the same row with its own snapshot is resumable.
+    _write_timed_nc(str(data / '70_int.nc'), 70.2)
+    kept, none_dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='aragog'
+    )
+    assert none_dropped == []
+    assert kept.iloc[-1]['Time'] == pytest.approx(70.2)
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_leaves_another_steps_file_in_place(tmp_path):
+    """Dropping a row does not take a file that belongs to a different step.
+
+    Contract clause: a row without a complete pair has its own snapshot halves
+    moved aside so the modules' latest-file globs cannot pick them up. A file
+    that records a different time is not one of those halves, whatever its
+    name suggests, and removing it would destroy state the run may still need.
+
+    Verifies:
+    - The dropped row's own atmosphere half is quarantined and swept, as
+      before.
+    - The interior file recording another step's time survives untouched, and
+      still holds that step's time afterwards.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_timed_nc(str(data / f'{t}_int.nc'), float(t))
+        _write_timed_nc(str(data / f'{t}_atm.nc'), float(t))
+    _write_timed_nc(str(data / '70_int.nc'), 70.8)  # a later step's interior
+    _write_timed_nc(str(data / '70_atm.nc'), 70.2)  # the dropped row's own half
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path),
+        _hf_times([0, 1, 2, 70.2]),
+        require_atm=True,
+        interior_module='aragog',
+        atmos_module='agni',
+    )
+
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0)
+    assert not (data / '70_atm.nc').exists(), (
+        "the dropped row's own atmosphere half was left where a latest-file "
+        'glob can still reach it'
+    )
+    assert (data / '70_int.nc').is_file(), (
+        'dropping the row removed a snapshot belonging to a different step, '
+        'which is state no other file carries'
+    )
+    assert _snapshot_time(str(data / '70_int.nc')) == pytest.approx(70.8, rel=1e-12)
