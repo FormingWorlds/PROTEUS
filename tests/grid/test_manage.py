@@ -2,8 +2,8 @@
 
 The grid manager is plumbing-heavy: file IO, subprocess dispatch, TOML
 parsing, and a multiprocessing-driven worker loop. The tests below cover
-the public surface (``Grid``, ``setup_logger``, ``_thread_target``,
-``grid_from_config``) with all heavy callouts mocked. Each test pins at
+the public surface (``Grid``, ``_thread_target``, ``grid_from_config``)
+with all heavy callouts mocked. Each test pins at
 least two discriminating post-state facts so that a regression which
 silently no-ops one branch cannot pass.
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 from unittest import mock
 
 import numpy as np
@@ -28,7 +27,6 @@ from proteus.grid.manage import (
     Grid,
     _thread_target,
     grid_from_config,
-    setup_logger,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -73,89 +71,6 @@ def grid_with_mocks(fake_proteus_dir, base_config_path, monkeypatch):
         base_config_path=str(base_config_path),
     )
     return g
-
-
-# ---------------------------------------------------------------------------
-# setup_logger
-# ---------------------------------------------------------------------------
-
-
-class TestSetupLogger:
-    """Verify the custom logger setup: file handler, level mapping,
-    pre-existing log removal, and excepthook installation.
-    """
-
-    def test_creates_log_file_and_attaches_handlers(self, tmp_path):
-        """A fresh logger writes its log to logpath and attaches at least
-        one file handler. Default level=1 maps to INFO.
-        """
-        logpath = tmp_path / 'mgr.log'
-        # Run setup, then write a record and force a flush.
-        setup_logger(logpath=str(logpath), level=1, logterm=False)
-        root = logging.getLogger()
-        root.info('hello unit-test world')
-        for h in root.handlers:
-            h.flush()
-        assert logpath.exists()
-        # File contains the message (discriminates against an empty-flush bug)
-        contents = logpath.read_text()
-        assert 'hello unit-test world' in contents
-        # Level was mapped to INFO (not DEBUG / WARNING). Verify root level.
-        assert root.level == logging.INFO
-
-    def test_pre_existing_log_is_removed(self, tmp_path):
-        """If logpath exists at entry, ``setup_logger`` deletes it before
-        re-creating; old content is gone after the call.
-        """
-        logpath = tmp_path / 'stale.log'
-        logpath.write_text('STALE_CONTENT_DO_NOT_KEEP\n')
-        setup_logger(logpath=str(logpath), level=1, logterm=False)
-        root = logging.getLogger()
-        for h in root.handlers:
-            h.flush()
-        contents = logpath.read_text()
-        # The stale content must be gone (file was deleted and recreated).
-        assert 'STALE_CONTENT_DO_NOT_KEEP' not in contents
-        # And the file must still exist (recreated by FileHandler).
-        assert logpath.exists()
-
-    @pytest.mark.parametrize(
-        'level_arg,expected_level',
-        [
-            (0, logging.DEBUG),
-            (2, logging.WARNING),
-            (3, logging.ERROR),
-            (4, logging.CRITICAL),
-        ],
-        ids=['debug', 'warning', 'error', 'critical'],
-    )
-    def test_level_mapping(self, tmp_path, level_arg, expected_level):
-        """Each numeric level argument maps to the documented logging
-        level constant. The default branch (1 -> INFO) is covered by
-        ``test_creates_log_file_and_attaches_handlers``.
-        """
-        logpath = tmp_path / f'level_{level_arg}.log'
-        setup_logger(logpath=str(logpath), level=level_arg, logterm=False)
-        root = logging.getLogger()
-        # Discriminating across all four levels: each is distinct.
-        assert root.level == expected_level
-        # File handler still present (level argument should not disable IO).
-        assert any(isinstance(h, logging.FileHandler) for h in root.handlers)
-
-    def test_excepthook_installed(self, tmp_path):
-        """``setup_logger`` replaces ``sys.excepthook`` so unhandled
-        exceptions get logged. The hook must be callable and distinct
-        from the pre-call value (default ``sys.__excepthook__``).
-        """
-        logpath = tmp_path / 'hook.log'
-        original = sys.excepthook
-        try:
-            setup_logger(logpath=str(logpath), level=1, logterm=False)
-            new_hook = sys.excepthook
-            assert callable(new_hook)
-            assert new_hook is not original
-        finally:
-            sys.excepthook = original
 
 
 # ---------------------------------------------------------------------------

@@ -66,8 +66,61 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
+def _resolve_level(level: str) -> int:
+    """Normalise and validate a log-level string, returning its numeric code.
+
+    Shared by setup_logger and bootstrap_logger so the accepted level names and
+    the error message stay identical between the two entry points.
+    """
+    level = str(level).strip().upper()
+    if level not in ['INFO', 'DEBUG', 'ERROR', 'WARNING']:
+        raise ValueError(f'Invalid log level: {level}')
+    return logging.getLevelNamesMapping()[level]
+
+
+def _console_handler(
+    level_code: int, formatter: logging.Formatter | None = None
+) -> logging.StreamHandler:
+    """Build a stdout handler.
+
+    Uses the PROTEUS colour formatter by default; callers that want a plain,
+    logfile-style line (e.g. the grid manager) pass their own formatter. Shared
+    by setup_logger and bootstrap_logger so terminal output stays consistent
+    whichever installs the console handler.
+    """
+    sh = logging.StreamHandler(sys.stdout)
+    sh.setFormatter(formatter if formatter is not None else CustomFormatter())
+    sh.setLevel(level_code)
+    return sh
+
+
 # Custom logger instance
-def setup_logger(logpath: str = 'new.log', level: str = 'INFO', logterm: bool = True):
+def setup_logger(
+    logpath: str = 'new.log',
+    level: str = 'INFO',
+    logterm: bool = True,
+    fmt: str | None = None,
+    datefmt: str | None = None,
+):
+    """Configure the top-level 'fwl' logger with terminal and file handlers.
+
+    Parameters
+    ----------
+    logpath : str
+        Path of the logfile to (re)create.
+    level : str
+        Log level name: 'INFO', 'DEBUG', 'ERROR', or 'WARNING'.
+    logterm : bool
+        Whether to also emit to the terminal (stdout).
+    fmt : str | None
+        Optional logging format string. When given, both the terminal and file
+        handlers use a plain (uncoloured) ``logging.Formatter(fmt, datefmt)``;
+        for example the grid manager passes ``'[%(asctime)s] %(message)s'`` for a
+        clean, timestamped logfile. When None, the terminal uses the coloured
+        CustomFormatter and the file uses the '[ LEVEL ] message' layout.
+    datefmt : str | None
+        Date format for %(asctime)s, applied only when ``fmt`` is given.
+    """
     logger_name = 'fwl'
 
     # https://stackoverflow.com/a/61457119
@@ -80,23 +133,19 @@ def setup_logger(logpath: str = 'new.log', level: str = 'INFO', logterm: bool = 
     if os.path.exists(logpath):
         os.remove(logpath)
 
-    level = str(level).strip().upper()
-    if level not in ['INFO', 'DEBUG', 'ERROR', 'WARNING']:
-        raise ValueError(f'Invalid log level: {level}')
-    level_code = logging.getLevelNamesMapping()[level]
+    level_code = _resolve_level(level)
+
+    plain_formatter = logging.Formatter(fmt, datefmt=datefmt) if fmt is not None else None
 
     # Add terminal output to logger
     if logterm:
-        sh = logging.StreamHandler(sys.stdout)
-        sh.setFormatter(CustomFormatter())
-        sh.setLevel(level_code)
-        custom_logger.addHandler(sh)
+        custom_logger.addHandler(_console_handler(level_code, plain_formatter))
 
     # Add file output to logger
     fh = logging.FileHandler(logpath)
-    fh.setFormatter(logging.Formatter('[ %(levelname)-5s ] %(message)s'))
+    fh.setFormatter(plain_formatter or logging.Formatter('[ %(levelname)-5s ] %(message)s'))
 
-    fh.setLevel(level)
+    fh.setLevel(level_code)
     custom_logger.addHandler(fh)
     custom_logger.setLevel(level_code)
 
@@ -112,6 +161,48 @@ def setup_logger(logpath: str = 'new.log', level: str = 'INFO', logterm: bool = 
         )
 
     sys.excepthook = handle_exception
+
+    return custom_logger
+
+
+def bootstrap_logger(level: str = 'INFO'):
+    """Attach a console-only handler to the top-level 'fwl' logger if it has none.
+
+    ``setup_logger`` can only run once the output directory is known (it opens a
+    logfile there), but the 'fwl' logger is already used before that point --
+    e.g. by the directory-setting functions called from ``Proteus.__init__``,
+    and by CLI commands such as ``grid-summarise`` / ``grid-pack`` that never
+    call ``setup_logger`` at all. Without a handler those records fall through to
+    ``logging.lastResort``, which only emits WARNING and above, so INFO/DEBUG
+    messages are silently dropped (see issue #708).
+
+    This installs a lightweight stdout handler so those early messages reach the
+    terminal. It is idempotent and non-destructive: if the logger already has a
+    handler (e.g. from a previous ``setup_logger`` call) it does nothing, so it
+    never clobbers a fully configured file-backed logger. When a command later
+    calls ``setup_logger``, that function clears handlers and re-adds its own
+    terminal + file handlers, so there is no duplicate output.
+
+    Parameters
+    ----------
+    level : str
+        Log level for the bootstrap handler. Defaults to 'INFO', matching the
+        level at which the pre-config directory messages are emitted.
+
+    Returns
+    -------
+    logging.Logger
+        The 'fwl' logger.
+    """
+    custom_logger = logging.getLogger('fwl')
+
+    # Do not touch an already-configured logger.
+    if custom_logger.handlers:
+        return custom_logger
+
+    level_code = _resolve_level(level)
+    custom_logger.addHandler(_console_handler(level_code))
+    custom_logger.setLevel(level_code)
 
     return custom_logger
 

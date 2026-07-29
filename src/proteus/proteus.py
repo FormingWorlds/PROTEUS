@@ -1030,14 +1030,9 @@ class Proteus:
             # Add mass of total tracked element mass (M_ele) to total mass of mantle+core
             update_planet_mass(self.hf_row)
 
-            # Issue #677 mass-conservation invariant: M_atm <= M_planet
-            # and sum(s_kg_atm) == M_atm. Cheap end-of-outgas guardrail
-            # that hard-fails if any future change re-introduces the
-            # O-skipping asymmetry that could let M_atm exceed
-            # M_planet at high H_ppmw. Rock vapourisation moves
-            # non-volatile mass into M_atm that M_planet does not track,
-            # so the invariant does not hold there; skip it when vapourise
-            # is enabled rather than weaken the tolerance for every run.
+            # Vapourisation moves non-volatile mass into M_atm that M_planet
+            # does not track; skip conservation check rather than weaken the
+            # tolerance. Non-conservation is a simplification of vapourisation.
             if not self.config.outgas.vapourise:
                 assert_mass_conservation(self.hf_row)
 

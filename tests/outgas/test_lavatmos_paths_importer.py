@@ -47,10 +47,6 @@ class TestPathsImporterInitialization:
         mock_fc_dir = '/mock/fc/path/'
         mock_dirs = {'output': '/mock/output/'}
 
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ,
             {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir},
@@ -97,10 +93,6 @@ class TestPathsImporterInitialization:
         mock_dirs = {'output': '/output/base'}
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
@@ -125,10 +117,6 @@ class TestPathsImporterInitialization:
         mock_dirs = {'output': '/output/base'}
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
@@ -150,10 +138,6 @@ class TestPathsImporterInitialization:
         mock_fc_dir = '/fastchem3/install'
         mock_dirs = {'output': '/output/base'}
         mock_lava_dir = '/lava'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
@@ -179,10 +163,6 @@ class TestPathsImporterInitialization:
         mock_lava_dir = '/lava/install'
         mock_dirs = {'output': '/output/base'}
         mock_fc_dir = '/fc'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
@@ -206,10 +186,6 @@ class TestPathsImporterInitialization:
         mock_lava_dir = '/lava/install'
         mock_dirs = {'output': '/output/base'}
         mock_fc_dir = '/fc'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
@@ -233,10 +209,6 @@ class TestPathsImporterInitialization:
         mock_lava_dir = '/lava/install'
         mock_dirs = {'output': '/output/base'}
         mock_fc_dir = '/fc'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
@@ -265,10 +237,6 @@ class TestPathsImporterInitialization:
         ):
             with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
                 with patch('proteus.outgas.lavatmos.os.makedirs'):
-                    os.makedirs(
-                        os.path.join(mock_lava_dir_with_slash, 'input', 'lava_compositions'),
-                        exist_ok=True,
-                    )
                     importer1 = lavatmos.paths_importer(mock_dirs)
                     lava1 = importer1.lavatmos_dir
 
@@ -279,12 +247,6 @@ class TestPathsImporterInitialization:
             ):
                 with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
                     with patch('proteus.outgas.lavatmos.os.makedirs'):
-                        os.makedirs(
-                            os.path.join(
-                                mock_lava_dir_with_slash, 'input', 'lava_compositions'
-                            ),
-                            exist_ok=True,
-                        )
                         importer2 = lavatmos.paths_importer(mock_dirs)
                         lava2 = importer2.lavatmos_dir
 
@@ -300,10 +262,6 @@ class TestPathsImporterInitialization:
         mock_dirs = {'output': '/output/base'}
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
@@ -325,10 +283,6 @@ class TestPathsImporterInitialization:
         mock_lava_dir = '/lava/work'
         mock_dirs = {'output': '/output/base'}
         mock_fc_dir = '/fc'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
@@ -349,10 +303,6 @@ class TestPathsImporterInitialization:
         mock_lava_dir = '/lava/work'
         mock_dirs = {'output': '/output/base'}
         mock_fc_dir = '/fc'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
@@ -369,24 +319,34 @@ class TestPathsImporterInitialization:
     def test_paths_importer_handles_empty_dirs_output_key(self, tmp_path):
         """Test that paths_importer handles edge case of dirs dict with empty string.
 
-        Physical scenario: malformed configuration might pass an empty string;
-        the initializer should construct paths but may fail on directory creation.
+        Physical scenario: malformed configuration might pass an empty string.
+        The initializer still constructs output paths, but they come out
+        relative to the working directory rather than absolute, which is the
+        observable symptom a caller can check for.
         """
         mock_dirs = {'output': ''}
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
             with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
                 with patch('proteus.outgas.lavatmos.os.makedirs'):
                     importer = lavatmos.paths_importer(mock_dirs)
-                    # Path will start with '/' due to os.path.join(empty, 'suffix')
-                    assert isinstance(importer.element_abundance_output, str)
+
+                    # The output paths are built by joining onto the empty
+                    # string, so they lose their absolute root while keeping
+                    # the expected suffix.
+                    assert importer.element_abundance_output == os.path.join(
+                        'element_abundances', 'element_abundances_output.dat'
+                    )
+                    assert not importer.element_abundance_output.startswith('/')
+                    assert importer.fastchem3_output == os.path.join('fastchem', '')
+
+                    # The env-derived paths are unaffected by the bad output
+                    # key, so a caller can still tell which root went missing.
+                    assert importer.lavatmos_dir.startswith('/')
+                    assert importer.fastchem3_dir.startswith('/')
 
     def test_paths_importer_all_paths_are_strings_not_none(self):
         """Test that all paths are string instances, never None.
@@ -397,10 +357,6 @@ class TestPathsImporterInitialization:
         mock_dirs = {'output': '/mock/output/'}
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
@@ -448,10 +404,6 @@ class TestPathsImporterInitialization:
         ):
             with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
                 with patch('proteus.outgas.lavatmos.os.makedirs'):
-                    os.makedirs(
-                        os.path.join(mock_lava_dir_slash, 'input', 'lava_compositions'),
-                        exist_ok=True,
-                    )
                     input1 = lavatmos.paths_importer(mock_dirs).input_dir
 
         with patch.dict(
@@ -459,11 +411,7 @@ class TestPathsImporterInitialization:
         ):
             with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
                 with patch('proteus.outgas.lavatmos.os.makedirs'):
-                    os.makedirs(
-                        os.path.join(mock_lava_dir_no_slash, 'input', 'lava_compositions'),
-                        exist_ok=True,
-                    )
-                    input2 = lavatmos.path_importer(mock_dirs).input_dir
+                    input2 = lavatmos.paths_importer(mock_dirs).input_dir
 
         # Idempotent under the trailing slash, and correctly separated.
         assert input1 == input2 == os.path.join('/lava', 'input') + '/'
@@ -527,10 +475,6 @@ class TestPathsImporterPhysicsInvariants:
         mock_dirs = {'output': '/output/base'}
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
@@ -556,10 +500,6 @@ class TestPathsImporterPhysicsInvariants:
         mock_dirs = {'output': mock_output_base}
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
@@ -590,11 +530,6 @@ class TestPathsImporterPhysicsInvariants:
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
 
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
-
         with patch.dict(
             os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
         ):
@@ -603,14 +538,25 @@ class TestPathsImporterPhysicsInvariants:
                     importer = lavatmos.paths_importer(mock_dirs)
 
                     # Gather all string-type attributes that represent paths
-                    path_attrs = [
-                        v
+                    path_attrs = {
+                        k: v
                         for k, v in vars(importer).items()
                         if isinstance(v, str) and ('dir' in k or 'path' in k or 'file' in k)
-                    ]
+                    }
 
-                    for path_str in path_attrs:
-                        assert len(path_str) > 0, f'Empty path string in {path_attrs}'
+                    # The set must be non-trivial, otherwise the loop below
+                    # would pass over an empty collection.
+                    assert len(path_attrs) >= 5
+
+                    for name, path_str in path_attrs.items():
+                        assert len(path_str) > 0, f'Empty path string for {name}'
+                        # Every path is absolute: it is derived from LAVA_DIR,
+                        # FC_DIR, or dirs['output'], all absolute here. A
+                        # relative result would mean a lost join root.
+                        assert path_str.startswith('/'), f'Relative path for {name}: {path_str}'
+                        # No collapsed or doubled separators, which would signal
+                        # a stray manual concatenation instead of os.path.join.
+                        assert '//' not in path_str, f'Doubled separator for {name}: {path_str}'
 
     @pytest.mark.physics_invariant
     def test_paths_importer_config_template_path_invariant(self):
@@ -622,10 +568,6 @@ class TestPathsImporterPhysicsInvariants:
         mock_dirs = {'output': '/output/base'}
         mock_lava_dir = '/lava'
         mock_fc_dir = '/fc'
-        os.makedirs(
-            os.path.join(mock_lava_dir, 'input', 'lava_compositions'),
-            exist_ok=True,
-        )
         env = {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}
 
         with patch.dict(os.environ, env, clear=False):

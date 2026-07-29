@@ -25,7 +25,7 @@ from proteus.utils.constants import (
     gas_list,
     secs_per_hour,
     secs_per_minute,
-    vol_list,
+    vol_gas_list,
 )
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -576,8 +576,6 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
     M_vol_atm = float(hf_row.get('M_vol_atm', 0.0))
-    M_vaps = float(hf_row.get('M_vaps', 0.0))
-    M_mantle = float(hf_row.get('M_vaps', 0.0))
 
     # Pre-IC short-circuit: M_planet == 0 means the structure solve has
     # not yet populated the hf_row. The invariants are not meaningful
@@ -599,30 +597,26 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
             f'calc_target_elemental_inventories, and load_zalmoxis_configuration.'
         )
 
-    # Invariant 2: M_atm stays in sync with the per-species kg_atm fields it
-    # is summed from. This guards against a future reordering that mutates a
-    # species kg_atm after M_atm is computed without refreshing M_atm. The
-    # noble gases are members of gas_list, so their atmospheric mass is
-    # counted here and in M_atm alike.
-    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_list)
+    # Invariant 2: M_vol_atm stays in sync with the per-species kg_atm fields
+    # it is summed from. This guards against a future reordering that mutates
+    # a species kg_atm after M_vol_atm is computed without refreshing it.
+    # The sum runs over vol_gas_list (gas_list minus the rock vapours), which
+    # is the documented definition of M_vol_atm: volatiles and noble gases in
+    # the atmosphere, rock vapour excluded. Summing over vol_list alone would
+    # drop the noble gases and fire spuriously on any run that carries a
+    # noble inventory; summing over the full gas_list would pull in the rock
+    # vapour that M_vol_atm deliberately excludes.
+    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
     if M_vol_atm > 0.0:
         rel = abs(summed - M_vol_atm) / M_vol_atm
         if rel > atol_frac:
             raise RuntimeError(
-                f'M_atm bookkeeping inconsistency: M_atm={M_atm:.3e} kg but '
-                f'sum_s(s_kg_atm)={summed:.3e} kg (relative difference '
-                f'{rel * 100:.3f}%). One of the gas-species kg_atm fields '
-                f'is stale or the M_atm sum loop is missing a species.'
+                f'M_vol_atm bookkeeping inconsistency: M_vol_atm='
+                f'{M_vol_atm:.3e} kg but sum_s(s_kg_atm)={summed:.3e} kg '
+                f'(relative difference {rel * 100:.3f}%). One of the '
+                f'gas-species kg_atm fields is stale or the M_vol_atm sum '
+                f'loop is missing a species.'
             )
-
-    # check that the vapourised mass does not exceed the available mantle reservoir:
-    if M_vaps > M_mantle * (1.0 + atol_frac):
-        raise RuntimeError(
-            f'Mass conservation violation (issue #677 regression?): '
-            f'M_vaps={M_vaps:.3e} kg exceeds M_mantle={M_mantle:.3e} kg '
-            f'(relative excess {(M_vaps / M_mantle - 1) * 100:.3f}%). '
-            f'Likely cause: runaway vapourisation, or wrong tracking of vapour species.'
-        )
 
 
 def assert_surface_pressure_consistency(
@@ -978,6 +972,7 @@ def GetHelpfileKeys():
 
     # Simulation's computational variables
     keys.append('runtime')          # Simulation wall-clock runtime [s]
+    # fmt: on
 
     return keys
 

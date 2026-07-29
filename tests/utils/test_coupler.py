@@ -1839,31 +1839,71 @@ def test_assert_mass_conservation_fails_when_M_atm_exceeds_M_planet():
 
 @pytest.mark.unit
 def test_assert_mass_conservation_fails_when_species_sum_disagrees():
-    """assert_mass_conservation hard-fails when sum(s_kg_atm) != M_atm.
+    """assert_mass_conservation hard-fails when sum(s_kg_atm) != M_vol_atm.
 
     Edge case: per-species kg_atm values are stale or a species is missing
-    from the M_atm sum loop. Discriminating: sum = 4.0e24 but M_atm = 4.6e24
-    (a 15 percent disagreement).
+    from the M_vol_atm sum loop. Discriminating: the species sum is only
+    87 percent of the declared M_vol_atm, a 13 percent disagreement that is
+    five orders above the 1e-6 tolerance.
     """
-    from proteus.utils.constants import gas_list
+    from proteus.utils.constants import vol_gas_list
     from proteus.utils.coupler import assert_mass_conservation
 
     hf_row = {
         'M_atm': 4.6e24,
+        'M_vol_atm': 4.6e24,
         'M_planet': 5.97e24,
     }
-    # Intentionally under-report: per-species sum is only ~87 percent of M_atm.
-    per_species = (0.87 * 4.6e24) / len(gas_list)
-    for s in gas_list:
+    # Intentionally under-report: per-species sum is only ~87 percent of M_vol_atm.
+    per_species = (0.87 * 4.6e24) / len(vol_gas_list)
+    for s in vol_gas_list:
         hf_row[s + '_kg_atm'] = per_species
-    with pytest.raises(RuntimeError, match='M_atm bookkeeping inconsistency'):
+    with pytest.raises(RuntimeError, match='M_vol_atm bookkeeping inconsistency'):
         assert_mass_conservation(hf_row)
     # Discrimination: the M_atm <= M_planet invariant must HOLD here so
     # the failure must come from the per-species bookkeeping path, not
     # from the M_atm > M_planet path. Pin both legs.
     assert hf_row['M_atm'] < hf_row['M_planet']
-    species_sum = sum(hf_row[s + '_kg_atm'] for s in gas_list)
-    assert species_sum < 0.9 * hf_row['M_atm']
+    species_sum = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    assert species_sum < 0.9 * hf_row['M_vol_atm']
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_mass_conservation_accepts_noble_gas_inventory():
+    """A trace noble-gas inventory must not trip M_vol_atm check.
+
+    M_vol_atm is defined as the atmospheric mass of volatiles AND noble gases,
+    with rock vapour excluded. Summing the check over the reactive volatiles
+    alone would omit the noble gases and raise.
+
+    Discriminating: the noble gases hold 5e16 kg against 1.1e19 kg of reactive
+    volatiles, a 0.45 percent contribution.
+    """
+    from proteus.utils.constants import noble_gases, vol_gas_list, vol_list
+    from proteus.utils.coupler import assert_mass_conservation
+
+    hf_row = {'M_planet': 5.97e24}
+    for s in vol_gas_list:
+        hf_row[s + '_kg_atm'] = 0.0
+    for s in vol_list:
+        hf_row[s + '_kg_atm'] = 1e18
+    for s in noble_gases:
+        hf_row[s + '_kg_atm'] = 1e16
+    hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    hf_row['M_atm'] = hf_row['M_vol_atm']
+
+    # Must not raise: the row is internally consistent by construction.
+    assert assert_mass_conservation(hf_row) is None
+
+    # Discrimination guard: confirm the noble contribution really is large
+    # enough to have tripped a vol_list-only check at the default tolerance.
+    reactive_only = sum(hf_row[s + '_kg_atm'] for s in vol_list)
+    noble_frac = abs(hf_row['M_vol_atm'] - reactive_only) / hf_row['M_vol_atm']
+    assert noble_frac > 1e-6 * 1e3
+
+    # And the healthy row must still satisfy the primary mass invariant.
+    assert hf_row['M_atm'] < hf_row['M_planet']
 
 
 @pytest.mark.unit

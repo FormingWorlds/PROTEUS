@@ -179,9 +179,15 @@ Some notable consequences of step 3:
 
     The absolute value is fed back to LavAtmos as the fO2 initial guess for the next iteration's LavAtmos call.
 
-- **The vapourisation fO2 is separate from the volatile-chemistry fO2.**
-  `fO2_shift_IW_derived` is the redox buffer offset obtained from the volatile step (e.g. CALLIOPE or atmodeller rather than by LavAtmos). It is not expected
+- **The vapourisation fO2 is separate from the volatile-chemistry fO2.**  `fO2_shift_IW_derived` is the redox buffer offset obtained from the volatile step (e.g. CALLIOPE or atmodeller rather than by LavAtmos). It is not expected
   to equal `fO2_vapourise_shift_IW_derived` since the two come from different solvers.
+
+- **Rock vapour is added to the atmosphere without being removed from the interior.** The vapourised rock mass is accumulated into `M_vaps` and enters `M_atm`,but no matching mass is subtracted from the interior: `M_int`, `M_mantle`.
+
+- **Rock-vapour elements dilute the escape outflow but are not depleted by it.**  Rock-forming elements take part in the unfractionated escape partitioning and reduce the escape rate available to H/C/N/O/S.
+
+Consequently the runtime invariant `M_atm <= M_planet`, enforced by
+`utils.coupler.assert_mass_conservation`, is only checked when `outgas.vapourise` is `false`. 
 
 ## Orbital evolution: Obliqua
 

@@ -209,13 +209,17 @@ def update_planet_mass(hf_row: dict):
     """
     Calculate total planet mass, as sum of dry+wet parts.
 
-    Whole-planet volatile element accounting (issue #677): M_ele sums over ALL
-    elements in ``element_list``, including O.
+    Whole-planet volatile element accounting (issue #677): M_ele sums over
+    ``vol_element_list + noble_gases``, so oxygen is included.
 
-    The atmospheric anddissolved O mass produced by CALLIOPE (from fO2) is
+    The atmospheric and dissolved O mass produced by CALLIOPE (from fO2) is
     therefore counted in M_planet = M_int + M_ele, keeping the
     bookkeeping symmetric so M_atm cannot exceed M_planet at
-    high H budgets. This doesn't include rock vapours.
+    high H budgets.
+
+    The rock-forming elements of ``vap_element_list`` are deliberately NOT
+    summed here. Rock vapour is added to the atmosphere without being
+    debited from the interior.
 
     Mantle FeO-bound oxygen remains implicit in the PALEOS density
     tables that drive ``M_int``; we don't double-count it here.
