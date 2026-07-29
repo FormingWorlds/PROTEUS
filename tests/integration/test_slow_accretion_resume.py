@@ -30,7 +30,10 @@ Contract clauses exercised:
 
 Scope. The interior runs its production backend; every other module is on its
 dummy backend, which keeps two Aragog legs inside the tier budget and leaves
-the interior snapshot as the only state channel under test. The atmosphere is
+the interior snapshot as the only state channel under test. The mantle starts
+on a flat temperature profile and the EOS table is generated coarse, both to
+keep the wall time down; the run asserts the first is molten, and the second
+changes no quantity this file reads. The atmosphere is
 dummy and writes no ``_atm.nc``, so the resume's atmosphere half imposes no
 constraint and the interior half is what decides where the run lands.
 
@@ -51,10 +54,10 @@ from proteus import Proteus
 from proteus.utils.constants import M_earth
 from proteus.utils.data import download_sufficient_data
 
-# Slow tier. Two real Aragog legs, about 10 minutes locally, most of it in
-# the two solves of the molten initial condition: one at the start and one
-# for the grown planet at the impact. The 3600 s ceiling leaves room for
-# slower CI runners.
+# Slow tier. Two real Aragog legs, about 90 s locally. A CI runner takes
+# roughly twenty times that on this kind of work, measured against the other
+# Aragog tests in the same nightly shard, which puts the file around half an
+# hour there and well inside the 3600 s ceiling.
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 CONFIG = PROTEUS_ROOT / 'input' / 'dummy.toml'
@@ -84,6 +87,17 @@ DT_MAXIMUM = 1.0e2
 # module selects the shipped EOS rather than the PALEOS tables Zalmoxis
 # generates, and Aragog refuses to guess a melting curve for it.
 MELTING_DIR = 'Monteux-600'
+
+# Initial mantle temperature [K]. Hot enough that the whole mantle starts
+# molten on this planet, which the run itself confirms below, and hot enough
+# that re-applying it at the impact adds heat rather than removing it.
+TSURF_INIT = 4000.0
+
+# Interior EOS table resolution. Coarse on purpose: the table is regenerated
+# for the grown planet at the impact, and this test reads which snapshot a
+# resume takes rather than the table's own accuracy.
+LOOKUP_NP = 150
+LOOKUP_NS = 60
 
 
 # Scratch directories created by Proteus construction, cleared after the
@@ -138,10 +152,22 @@ def _make_runner(output_dir, stop_time):
     runner.config.interior_energetics.module = 'aragog'
     runner.config.interior_struct.melting_dir = MELTING_DIR
     # The re-melt re-applies the interior initial condition, so it only adds
-    # heat if that condition is molten for the grown planet. This one is, at
-    # any mass and on any melting curve, which is what makes the re-melt
-    # visible as a warming step below.
-    runner.config.planet.temperature_mode = 'liquidus_super'
+    # heat while that condition is hotter than the mantle it replaces. A flat
+    # profile at TSURF_INIT is, for this planet, and the test asserts the
+    # mantle it produces is fully molten rather than assuming it. The mode
+    # that guarantees a molten condition at any mass instead solves for it,
+    # which costs a root-find over the melting curve on every mass change and
+    # is what makes it too slow to run here.
+    runner.config.planet.temperature_mode = 'isothermal'
+    runner.config.planet.tsurf_init = TSURF_INIT
+
+    # The interior EOS table is generated per planet mass, so the impact pays
+    # for a second one. This test is about which snapshot a resume reads, not
+    # about EOS fidelity, and the coarse table costs a third of the wall time
+    # while leaving the trajectory's shape and every quantity asserted below
+    # unchanged.
+    runner.config.interior_struct.zalmoxis.lookup_nP = LOOKUP_NP
+    runner.config.interior_struct.zalmoxis.lookup_nS = LOOKUP_NS
 
     runner.config.params.stop.solid.enabled = False
     runner.config.params.stop.time.minimum = 0.0
@@ -206,6 +232,8 @@ def test_a_run_stopped_on_an_impact_resumes_from_before_it(tmp_path):
       the truncated rows were recomputed rather than appended alongside.
     - The impact is applied exactly once across both legs, in the accreted
       rock ledger and in the planet mass the configuration carries.
+    - The mantle starts fully molten, so re-applying the initial condition at
+      the impact is a re-melt rather than a cooling reset.
     - The mantle carried past the impact is hotter than the mantle before it,
       in a run that cools on every other step. A resume that had loaded the
       discarded snapshot would continue from the cooler pre-re-melt state
@@ -259,6 +287,16 @@ def test_a_run_stopped_on_an_impact_resumes_from_before_it(tmp_path):
     assert any(time < IMPACT_TIME for time in snapshots), (
         f'no interior snapshot older than the impact survived (times on disk: '
         f'{snapshots}); the run has nothing to walk back to'
+    )
+
+    # The initial condition has to be molten for the re-melt to add heat, and
+    # the run says whether it is rather than the configuration being trusted:
+    # a flat profile is only molten for a planet whose melting curve it clears,
+    # and this is the planet it was chosen for.
+    assert float(stored.iloc[0]['Phi_global']) == pytest.approx(1.0, rel=1e-9), (
+        f'the mantle starts at melt fraction {float(stored.iloc[0]["Phi_global"]):.4f}, '
+        f'so {TSURF_INIT:.0f} K is not molten for this planet and the impact would '
+        'reset it to a state that is not a magma ocean'
     )
 
     # The mantle cools into the impact and the impact warms it. That contrast
