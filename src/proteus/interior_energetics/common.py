@@ -566,6 +566,15 @@ class Interior_t:
         self.spider_fail_count = 0
         self.aragog_fail_count = 0
 
+        # Rolling record of what the interior's recent steps covered, as
+        # (advanced, requested) pairs in years. Kept separately from the
+        # failure counters above because these are all valid solves; what a
+        # run of them need not be is progress, and a run that covers almost
+        # none of the time it asks for is stalled at a phase change rather
+        # than crossing it. Read as a total over the window, so a normal step
+        # between short ones cannot disguise a stall.
+        self.aragog_step_progress: list[tuple[float, float]] = []
+
         # True when the interior is running on a fallback (previous-step)
         # structure because the last Zalmoxis re-solve did not converge; set on
         # that fall-back and cleared on the next successful re-solve. Downstream

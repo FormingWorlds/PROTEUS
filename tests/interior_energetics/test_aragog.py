@@ -15,10 +15,13 @@ Functions tested:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, create_autospec, patch
 
 import numpy as np
 import pytest
+
+from proteus.interior_energetics.aragog import InteriorStalledError
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -801,3 +804,310 @@ def test_discard_snapshot_removes_only_the_named_time(tmp_path):
     (data / '410_int.nc').write_text('stale')
     assert discard_snapshot(str(tmp_path), 410.9) is True
     assert not (data / '410_int.nc').exists()
+
+
+def _retry_ladder_runner(
+    *,
+    status,
+    dt_actual,
+    T_core=4000.0,
+    mass_tot=1.0,
+    dt_requested=100.0,
+    first_attempt_T_core=None,
+):
+    """Build an AragogRunner whose solver returns one fixed result.
+
+    The solver is a stand-in for the Aragog side of the call: the retry ladder
+    reads the solve result, the requested interval and the entropy hot-start
+    hooks, so the stub carries exactly those. Every attempt returns the same
+    result, which is what a step stopped by the same physical event on every
+    retry looks like.
+
+    Parameters
+    ----------
+    status : int
+        Solver status to report. 0 is a step integrated to its requested end,
+        1 a terminal event, and a negative value an integration failure.
+    dt_actual : float
+        Interval the solver advanced [yr].
+    T_core : float, optional
+        Core temperature the solve returns [K].
+    mass_tot : float, optional
+        Planet mass [M_earth], which scales the core-temperature jump guard.
+    dt_requested : float, optional
+        Interval the step is given [yr].
+    first_attempt_T_core : float, optional
+        Core temperature the first attempt returns [K]. Set it above the
+        sanity threshold to have that attempt rejected, so the accepted
+        result comes from a retry.
+
+    Returns
+    -------
+    tuple
+        The runner, an interior-state stub carrying the crawl counter, and an
+        ``attempts`` list the solver appends to on every ``solve()`` call.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    attempts: list[float] = []
+    states = [SimpleNamespace(status=status, T_core=T_core, dt_actual=dt_actual)]
+    if first_attempt_T_core is not None:
+        # A first attempt the core-temperature guard rejects, so the accepted
+        # result comes from a retry whose interval the ladder already halved.
+        states.insert(
+            0, SimpleNamespace(status=status, T_core=first_attempt_T_core, dt_actual=dt_actual)
+        )
+    solver = SimpleNamespace(
+        parameters=SimpleNamespace(
+            solver=SimpleNamespace(start_time=0.0, end_time=dt_requested)
+        ),
+        _atol_sf=1.0,
+        get_state=lambda: states[min(len(attempts), len(states)) - 1],
+        get_current_dSdr_cmb=lambda: -1.0e-6,
+        set_initial_dSdr_cmb=lambda value: None,
+        set_initial_entropy=lambda S: None,
+        reset=lambda: None,
+    )
+    solver.solve = lambda: attempts.append(float(solver.parameters.solver.end_time))
+
+    runner = AragogRunner.__new__(AragogRunner)
+    runner.aragog_solver = solver
+    runner._config = MagicMock()
+    runner._config.planet.mass_tot = mass_tot
+    interior_o = SimpleNamespace(aragog_step_progress=[], _last_entropy=None)
+    return runner, interior_o, attempts
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_step_stopped_by_the_terminal_event_is_accepted_as_it_stands():
+    """A step the solver cut short at a physical event is kept, not retried.
+
+    Physical scenario: the mantle reaches the onset of crystallization at the
+    bottom of the magma ocean, and the interior solver stops there rather than
+    integrating the melt fraction through the phase change in one step. The
+    state up to that point is a valid solution of the same equations; the step
+    is simply shorter than the coupling asked for.
+
+    Contract clause: the coupling advances by the interval actually
+    integrated, so a shortened step is carried correctly. Retrying it would
+    spend the whole ladder on a step that was never wrong, because the same
+    event fires again at the same place however small the step is.
+
+    Verifies:
+    - The result is returned on the first attempt, so the solver is called
+      once rather than run down the ladder.
+    - The advance is positive and no longer than the step requested, which is
+      what lets the coupling clock follow the interior rather than run ahead
+      of it.
+    - A step that covers a usable share of its interval leaves no crawl count
+      behind, so an isolated shortened step costs the run nothing.
+    - A step integrated to its requested end is still accepted the same way,
+      so the ordinary path did not move.
+    """
+    runner, interior_o, attempts = _retry_ladder_runner(status=1, dt_actual=8.0)
+    out = runner._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, interior_o)
+
+    assert len(attempts) == 1, (
+        f'the shortened step was retried {len(attempts)} times; the event that '
+        'stopped it fires again at the same place, so the ladder cannot help'
+    )
+    # Time advances, and by no more than was asked for. A zero or negative
+    # advance would leave the coupled loop standing still or moving backwards.
+    assert out.dt_actual > 0.0
+    assert out.dt_actual <= 100.0
+    assert interior_o.aragog_step_progress == [(8.0, 100.0)], (
+        'the step was not recorded against what it was given, so a stall '
+        'cannot be read from the ground the run covers'
+    )
+
+    full_step, full_interior, full_attempts = _retry_ladder_runner(status=0, dt_actual=100.0)
+    out_full = full_step._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, full_interior)
+    assert len(full_attempts) == 1
+    assert out_full.dt_actual == pytest.approx(100.0, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_a_step_that_never_advanced_is_still_refused():
+    """The ladder still refuses results that carry no usable state.
+
+    Contract clause: accepting a shortened step is conditioned on the step
+    having advanced. A terminal event that fires at the start of every attempt
+    returns no new state at all, and accepting it would leave the coupled loop
+    stalled at the same time forever, so it must exhaust the ladder and hand
+    over to the wrapper's skip-step fallback.
+
+    Verifies:
+    - A terminal event with no advance runs the full ladder and raises, naming
+      the no-advance case rather than reporting a bare status.
+    - A negative advance is refused the same way. It would otherwise move the
+      coupling clock backwards, since the clock is set from the advance the
+      solver reports.
+    - An integration failure is refused as before, so the acceptance is scoped
+      to the terminal event rather than to any non-zero status.
+    - A shortened step whose core temperature jumped past the sanity threshold
+      is refused too, and the run is told that is what rejected it rather than
+      being sent after an event that did nothing wrong.
+    """
+    stalled, interior_o, attempts = _retry_ladder_runner(status=1, dt_actual=0.0)
+    with pytest.raises(RuntimeError, match='without advancing') as excinfo:
+        stalled._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, interior_o)
+    assert len(attempts) == 6, (
+        f'the ladder stopped after {len(attempts)} attempts; a step that never '
+        'advanced must use its retries before the run gives up on it'
+    )
+    assert 'terminal event' in str(excinfo.value)
+
+    backwards, back_interior, back_attempts = _retry_ladder_runner(status=1, dt_actual=-4.0)
+    with pytest.raises(RuntimeError):
+        backwards._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, back_interior)
+    assert len(back_attempts) == 6, (
+        'a step reporting a negative advance was accepted; the coupling clock '
+        'is set from that advance, so the run would step backwards in time'
+    )
+
+    failed, failed_interior, failed_attempts = _retry_ladder_runner(status=-1, dt_actual=8.0)
+    with pytest.raises(RuntimeError, match='status=-1'):
+        failed._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, failed_interior)
+    assert len(failed_attempts) == 6
+
+    # The core-temperature jump guard applies to the shortened step as well:
+    # 12000 K against a 4000 K prior state is a corrupted solve whatever the
+    # status says, and the message has to say so rather than blame the event.
+    jumped, jumped_interior, jumped_attempts = _retry_ladder_runner(
+        status=1, dt_actual=8.0, T_core=12000.0
+    )
+    with pytest.raises(RuntimeError, match='T_core jump') as jump_info:
+        jumped._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, jumped_interior)
+    assert len(jumped_attempts) == 6
+    assert 'without advancing' not in str(jump_info.value), (
+        'the step advanced 8 yr on every attempt, so reporting it as one that '
+        'never advanced sends anyone reading the abort after the wrong thing'
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_run_that_covers_almost_none_of_its_time_is_stopped():
+    """Steps that cover almost nothing, over a run of them, end the run.
+
+    Physical scenario: the interior meets the crystallization front and the
+    integrator stops at it nearly every time it is called, advancing a sliver
+    of the interval it was given. Every solve succeeds, so nothing reports a
+    failure, while the run covers a few years of evolution per thousand it
+    asks for and never crosses the front.
+
+    Contract clause: a shortened step is accepted because it is real progress.
+    A run that covers under a percent of the time it asks for is not, and it
+    has to stop loudly rather than spend a night of wall time going nowhere.
+    The measure is the ground covered over a window of steps, not a run of
+    consecutive short ones, because a normal step every so often would
+    otherwise clear the count while the run still goes nowhere.
+
+    Verifies:
+    - The run survives while the window is filling, so a stiff patch it works
+      through costs nothing.
+    - It is stopped once the window is full and the covered share is below the
+      threshold, with a message giving the time advanced against the time
+      requested and naming the solver that integrates through the front.
+    - A crawl interrupted by an ordinary step every other step is stopped too,
+      which a consecutive-run count would let through.
+    - A run that covers a usable share is left alone, however many of its
+      steps the event shortened.
+    """
+    from proteus.interior_energetics.aragog import (
+        _STEP_PROGRESS_MIN_SHARE,
+        _STEP_PROGRESS_WINDOW,
+    )
+
+    hf_row = {'Time': 4.85e2, 'T_cmb': 4000.0}
+    # 2.3e-4 yr of a 100 yr step, the advance a real run showed at the front.
+    crawl = 2.3e-4
+    assert crawl / 100.0 < _STEP_PROGRESS_MIN_SHARE, 'the probe step is not a crawl'
+
+    runner, interior_o, _ = _retry_ladder_runner(status=1, dt_actual=crawl)
+    for step in range(_STEP_PROGRESS_WINDOW - 1):
+        runner._solve_with_retry(hf_row, interior_o)
+        assert len(interior_o.aragog_step_progress) == step + 1, (
+            'the progress window is not filling, so the stall would be read '
+            'from the wrong number of steps'
+        )
+
+    with pytest.raises(InteriorStalledError, match='steps the interior advanced') as excinfo:
+        runner._solve_with_retry(hf_row, interior_o)
+    message = str(excinfo.value)
+    assert 'cvode' in message.lower(), (
+        'the stop does not name the solver that integrates through the front, '
+        'so the operator is left without the remedy'
+    )
+    assert 'get_cvode.sh' in message
+
+    # A crawl broken by an ordinary step every other step covers 100 yr of
+    # every 20000 yr it asks for. That is still going nowhere, and a count of
+    # consecutive short steps would never reach its limit here.
+    alternating = SimpleNamespace(aragog_step_progress=[], _last_entropy=None)
+    crawler, _, _ = _retry_ladder_runner(status=1, dt_actual=crawl)
+    stepper, _, _ = _retry_ladder_runner(status=1, dt_actual=1.0)
+    with pytest.raises(InteriorStalledError):
+        for step in range(_STEP_PROGRESS_WINDOW):
+            which = stepper if step % 2 else crawler
+            which._solve_with_retry(hf_row, alternating)
+
+    # A run that covers half of what it asks for is left alone, even though
+    # every one of its steps was cut short by the event.
+    healthy = SimpleNamespace(aragog_step_progress=[], _last_entropy=None)
+    halver, _, _ = _retry_ladder_runner(status=1, dt_actual=50.0)
+    for _ in range(2 * _STEP_PROGRESS_WINDOW):
+        halver._solve_with_retry(hf_row, healthy)
+    assert len(healthy.aragog_step_progress) == _STEP_PROGRESS_WINDOW, (
+        'the window grew past its length, so an old stretch of the run would '
+        'keep weighing on the verdict'
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_progress_is_weighed_against_what_the_coupling_asked_for():
+    """A step accepted on a retry is scored against the coupling's interval.
+
+    Contract clause: the stall measure compares the time the interior covered
+    against the time the coupling gave it. The retry ladder halves that
+    interval on every rejected attempt, so scoring against the attempt's own
+    interval would credit a step that needed five retries with covering
+    thirty-two times more of the run than it did. Those are the steps a stall
+    is made of, so the measure has to hold the original interval.
+
+    Verifies:
+    - A step rejected once and accepted on the halved retry records the
+      interval the coupling asked for, not the halved one.
+    - The advance recorded is the one the solver reported, so only the
+      denominator is affected.
+    """
+    from proteus.interior_energetics.aragog import _STEP_PROGRESS_MIN_SHARE
+
+    asked = 100.0
+    # Under the threshold against the interval the coupling asked for, over it
+    # against the halved retry interval, so the two readings disagree.
+    advanced = 0.8
+    runner, interior_o, attempts = _retry_ladder_runner(
+        status=1,
+        dt_actual=advanced,
+        dt_requested=asked,
+        first_attempt_T_core=12000.0,
+    )
+    runner._solve_with_retry({'Time': 4.85e2, 'T_cmb': 4000.0}, interior_o)
+
+    assert len(attempts) == 2, (
+        f'the step was accepted on attempt {len(attempts)}; this test needs a '
+        'rejected first attempt so the retry halves the interval'
+    )
+    assert interior_o.aragog_step_progress == [(advanced, asked)], (
+        f'the step was recorded as {interior_o.aragog_step_progress}, scoring '
+        f'{advanced} yr against the halved retry interval rather than the '
+        f'{asked} yr the coupling asked for, which makes a stalling run look '
+        'twice as healthy for every retry it takes'
+    )
+    # The recorded share is what the stall measure reads, and here it is
+    # under the threshold: against the halved interval it would not be.
+    assert advanced / asked < _STEP_PROGRESS_MIN_SHARE
+    assert advanced / (0.5 * asked) > _STEP_PROGRESS_MIN_SHARE

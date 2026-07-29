@@ -6147,3 +6147,72 @@ def test_the_remelt_injection_is_weighed_against_the_impact_energy(caplog):
             )
 
     assert 'outside' not in caplog.text
+
+
+@pytest.mark.unit
+def test_a_stalled_interior_ends_the_run_instead_of_being_absorbed():
+    """A stall is passed up; an ordinary solver failure is still absorbed.
+
+    Contract clause: the wrapper absorbs a failed interior step by keeping the
+    previous state for that step, because the run is expected to move past
+    whatever caused it, and it clears the failure streak on the next success.
+    A stalled interior is made of steps that succeed, so absorbing it would
+    clear that streak every time and the run would go on writing rows that
+    carry it nowhere. It is raised as its own type and passed up.
+
+    Verifies:
+    - The stall reaches the caller rather than being turned into a
+      keep-previous-state step.
+    - The consecutive-failure counter is untouched by it, so it cannot be
+      confused with a solver failure streak.
+    - The status file records the interior-model error code, so an outside
+      observer sees why the run stopped.
+    - An ordinary RuntimeError from the same call is still absorbed, which is
+      what makes the distinction meaningful rather than a blanket change.
+    """
+    from proteus.interior_energetics.aragog import InteriorStalledError
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state()
+
+    def _drive(error):
+        interior_o = _mock_interior_o()
+        interior_o.ic = 2
+        runner = MagicMock()
+        runner.run_solver.side_effect = error
+        with (
+            patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner),
+            patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as status,
+            patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+            patch('proteus.interior_energetics.timestep.next_step', return_value=10.0),
+        ):
+            raised = None
+            try:
+                run_interior({}, config, hf_all, dict(hf_row), interior_o, MagicMock())
+            except Exception as exc:  # noqa: BLE001 - the type is the assertion
+                raised = exc
+        return raised, interior_o, status
+
+    stalled, stalled_interior, stalled_status = _drive(
+        InteriorStalledError('the interior has taken 10 consecutive steps')
+    )
+    assert isinstance(stalled, InteriorStalledError), (
+        f'the stall was absorbed and the run continued (raised {stalled!r}); '
+        'every following step would stall the same way'
+    )
+    assert stalled_interior.aragog_fail_count == 0, (
+        'the stall was counted as a solver failure, so a later genuine '
+        'failure streak would abort one step early'
+    )
+    assert 21 in [call.args[1] for call in stalled_status.call_args_list], (
+        'the status file does not record the interior-model error code, so a '
+        'stalled run looks the same from outside as one still going'
+    )
+
+    absorbed, absorbed_interior, _ = _drive(RuntimeError('retry ladder exhausted'))
+    assert absorbed is None, (
+        f'an ordinary solver failure was passed up ({absorbed!r}) instead of '
+        'being absorbed by the keep-previous-state fallback'
+    )
+    assert absorbed_interior.aragog_fail_count == 1

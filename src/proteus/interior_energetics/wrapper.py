@@ -2222,7 +2222,7 @@ def run_interior(
         sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
 
     elif config.interior_energetics.module == 'aragog':
-        from proteus.interior_energetics.aragog import AragogRunner
+        from proteus.interior_energetics.aragog import AragogRunner, InteriorStalledError
 
         runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
         try:
@@ -2233,6 +2233,15 @@ def run_interior(
                 write_data=write_data,
             )
             interior_o.aragog_fail_count = 0
+        except InteriorStalledError:
+            # Not absorbed like the failures below. The fallback there keeps
+            # the previous interior state for one step, on the expectation
+            # that the run steps past what caused it, and clears the failure
+            # streak as soon as one step succeeds. A stall is made of steps
+            # that do succeed, so it would clear that streak every time and
+            # the run would keep writing rows that go nowhere.
+            UpdateStatusfile(dirs, 21)
+            raise
         except RuntimeError as e:
             interior_o.aragog_fail_count += 1
             log.warning(

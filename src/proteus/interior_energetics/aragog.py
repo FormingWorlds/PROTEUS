@@ -141,6 +141,19 @@ _RHO_CORE_MAX = 30000.0
 # takes precedence. Sensitivity-tested across the m-series grid.
 _ZALMOXIS_DEFAULT_PHI_STEP_CAP = 0.1
 
+# How much of the time the interior is given it has to actually cover, and
+# over how many steps that is judged. A step the phase-change event cuts short
+# is fine on its own; a run that covers under a percent of everything it asks
+# for is not going anywhere, however healthy each individual solve is. The
+# share is read over a window rather than per step, and over a run of steps
+# rather than consecutive ones, because a run can alternate between stopping
+# at the front and stepping normally and still be stalled: what matters is the
+# ground covered, not how the short steps are spaced. Twenty steps is long
+# enough that an ordinary step or two cannot hide a stall and short enough to
+# catch one within seconds rather than after a night of wall time.
+_STEP_PROGRESS_MIN_SHARE = 0.01
+_STEP_PROGRESS_WINDOW = 20
+
 # Default per-cell temperature and entropy step caps auto-enabled for the
 # coupled zalmoxis stack, alongside the melt-fraction cap. The melt-fraction
 # cap goes blind once a cell is fully solid, so it cannot bound the core-
@@ -377,6 +390,18 @@ def _estimate_T_pot(out) -> float:
         if jconv[i] > jcond[i]:
             return float(T_stag[min(i, n_stag - 1)])
     return float(out.T_magma)
+
+
+class InteriorStalledError(RuntimeError):
+    """The interior is no longer carrying the run forward.
+
+    Raised when step after step stops at the same phase change having advanced
+    almost nothing. Distinct from the solver failures the wrapper absorbs by
+    keeping the previous interior state for a step: those are transient, and
+    the run is expected to step past them, while this one repeats for as long
+    as the front is there. The wrapper lets it through so the run ends where
+    an operator sees it, rather than continuing to write rows that go nowhere.
+    """
 
 
 class AragogRunner:
@@ -2068,8 +2093,25 @@ class AragogRunner:
                         float(hf_row.get('Time', 0.0)),
                     )
 
-                # Status check: did CVODE accept the step?
-                if out.status == 0:
+                # Status check: did the solver accept the step?
+                #
+                # Status 0 is a step integrated to its requested end. Status 1
+                # is a terminal event: the melt-fraction cap or the liquidus
+                # crossing at the bottom cell stopped the integration part-way
+                # and the state up to that point is valid, which is why Aragog
+                # reports it rather than raising. CVODE returns the same cap as
+                # a root flag that Aragog maps to status 0, so a shortened step
+                # is already the accepted outcome on the production solver; the
+                # scipy fallback surfaces it as status 1 instead. Retrying it
+                # gains nothing, because the event fires again at the same
+                # place however small the step, and spends the whole ladder on
+                # a step that was never wrong. The coupling advances by the
+                # interval the solver actually integrated, so a short step is
+                # carried correctly. A step that advanced nothing is a
+                # different case and is not accepted: the loop would stall at
+                # that time forever.
+                stopped_on_event = out.status == 1 and float(out.dt_actual) > 0.0
+                if out.status == 0 or stopped_on_event:
                     # Sanity check: reject suspiciously large T_core jumps
                     # that indicate the solver "succeeded" with garbage.
                     # Applies on ALL attempts (not just retries):
@@ -2096,6 +2138,26 @@ class AragogRunner:
                         )
                         # Fall through to the retry/exhaustion branch below
                     else:
+                        attempted_dt = float(solver.parameters.solver.end_time) - t_start
+                        if stopped_on_event:
+                            log.info(
+                                'Aragog stopped on its terminal event after '
+                                '%.3e yr of the %.3e yr step: the state is '
+                                'valid up to the event, so the coupling '
+                                'continues from there.',
+                                float(out.dt_actual),
+                                attempted_dt,
+                            )
+                        # Weighed against what the coupling asked for, not
+                        # against this attempt's interval. The ladder halves
+                        # the interval on every rejected attempt, so a step
+                        # accepted on a retry would otherwise be scored
+                        # against an interval already cut down by up to a
+                        # factor of thirty-two, and the steps that needed a
+                        # retry are exactly the ones a stall is made of.
+                        self._track_step_progress(
+                            interior_o, float(out.dt_actual), dt_requested, hf_row
+                        )
                         if attempt > 1:
                             log.info(
                                 'Aragog retry succeeded on attempt %d '
@@ -2116,6 +2178,23 @@ class AragogRunner:
                         reason = (
                             'status=0 but the T_core jump exceeded the '
                             f'{sanity_dT_core:.0f} K sanity threshold on every attempt'
+                        )
+                    elif out.status == 1 and float(out.dt_actual) > 0.0:
+                        # The step advanced, so what rejected it on every
+                        # attempt was the core-temperature guard above, not
+                        # the terminal event itself.
+                        reason = (
+                            'the solver stopped on its terminal event and the '
+                            f'T_core jump exceeded the {sanity_dT_core:.0f} K '
+                            'sanity threshold on every attempt'
+                        )
+                    elif out.status == 1:
+                        # Accepted above whenever it advanced the state, so
+                        # reaching here means the terminal event fired at the
+                        # start of every attempt and the step never moved.
+                        reason = (
+                            'the solver stopped on its terminal event without '
+                            'advancing the state on any attempt'
                         )
                     else:
                         reason = f'CVODE status={out.status}'
@@ -2176,6 +2255,86 @@ class AragogRunner:
                 solver._dSdr_cmb_init = None
 
         return out
+
+    @staticmethod
+    def _track_step_progress(interior_o, dt_actual, dt_attempted, hf_row) -> None:
+        """Refuse to keep taking steps that leave the run where it started.
+
+        A step the terminal event cuts short is a valid solve, and one of them
+        is nothing to worry about: the interior meets the phase change, stops
+        at it, and the next step carries on from there. A run that covers
+        almost none of the time it asks for is a different matter. Every solve
+        still reports success, so nothing marks it as a failure, and the
+        endpoint is a night of wall time spent a few years into the evolution.
+
+        Judged as the ground covered over the last
+        :data:`_STEP_PROGRESS_WINDOW` steps rather than step by step, and over
+        a run of steps rather than consecutive ones. A run can alternate
+        between stopping at the front and stepping normally and still be going
+        nowhere, so counting only unbroken runs of short steps would let
+        exactly that pattern through. Full steps enter the window on the same
+        terms, which is what lets a stiff patch the interior works through
+        leave nothing behind.
+
+        The wrapper absorbs an ordinary solver failure by keeping the previous
+        interior state for that step, on the expectation that the run steps
+        past whatever caused it. A stall is not that: it repeats for as long
+        as the front is there, and each absorbed one resets the failure streak
+        that would otherwise end the run. This is raised as its own type for
+        that reason, and the wrapper lets it through.
+
+        Parameters
+        ----------
+        interior_o : Interior_t
+            Interior state, whose progress window is updated in place.
+        dt_actual : float
+            Interval the step advanced [yr].
+        dt_attempted : float
+            Interval the coupling asked this step to cover [yr], before any
+            shortening the retry ladder applied.
+        hf_row : dict
+            Current helpfile row, read for the time to report.
+
+        Raises
+        ------
+        InteriorStalledError
+            When the window is full and the interior covered less than
+            :data:`_STEP_PROGRESS_MIN_SHARE` of the time it was given.
+        """
+        window = getattr(interior_o, 'aragog_step_progress', None)
+        if window is None:
+            window = []
+            interior_o.aragog_step_progress = window
+        window.append((float(dt_actual), float(dt_attempted)))
+        del window[:-_STEP_PROGRESS_WINDOW]
+
+        share = dt_actual / dt_attempted if dt_attempted > 0.0 else 0.0
+        if share < _STEP_PROGRESS_MIN_SHARE:
+            log.warning(
+                '    that is %.2f%% of the interval this step asked for',
+                100.0 * share,
+            )
+
+        if len(window) < _STEP_PROGRESS_WINDOW:
+            return
+        advanced = sum(step for step, _ in window)
+        requested = sum(asked for _, asked in window)
+        covered = advanced / requested if requested > 0.0 else 0.0
+        if covered >= _STEP_PROGRESS_MIN_SHARE:
+            return
+
+        # Cleared so a resumed run starts its own window rather than
+        # inheriting a verdict it cannot check.
+        interior_o.aragog_step_progress = []
+        raise InteriorStalledError(
+            f'Over its last {_STEP_PROGRESS_WINDOW} steps the interior advanced '
+            f'{advanced:.3e} yr of the {requested:.3e} yr those steps were given '
+            f'({100.0 * covered:.3f}%), reaching t={hf_row.get("Time", 0.0):.3e} yr. '
+            'The run is not crossing the phase change, it is stopping at it. The '
+            'scipy integrator does this where SUNDIALS CVODE integrates through: '
+            'check `proteus doctor` for the CVODE solver and install it with '
+            '`bash tools/get_cvode.sh` if it is missing.'
+        )
 
     @staticmethod
     def _build_helpfile_output(
