@@ -2,6 +2,7 @@
 from __future__ import annotations  # noqa: I001
 
 import glob
+import importlib.util
 import inspect
 import logging
 import os
@@ -153,6 +154,31 @@ _ZALMOXIS_DEFAULT_PHI_STEP_CAP = 0.1
 # catch one within seconds rather than after a night of wall time.
 _STEP_PROGRESS_MIN_SHARE = 0.01
 _STEP_PROGRESS_WINDOW = 20
+
+
+def _cvode_loads() -> bool:
+    """Report whether CVODE is importable, extension included.
+
+    Locating the package is not enough to know a run is integrating with it.
+    The wrapper is compiled against the SUNDIALS C library, so a version or
+    ABI mismatch leaves a package that is found and then fails on import, and
+    Aragog quietly falls back to the scipy integrator. Loading the submodule
+    is the same test the solver itself and `proteus doctor` apply, which is
+    what keeps a stall on a broken build from being reported as a healthy one.
+
+    Returns
+    -------
+    bool
+        True when ``scikits_odes_sundials.cvode`` imports.
+    """
+    if importlib.util.find_spec('scikits_odes_sundials') is None:
+        return False
+    try:
+        importlib.import_module('scikits_odes_sundials.cvode')
+    except Exception:
+        return False
+    return True
+
 
 # Default per-cell temperature and entropy step caps auto-enabled for the
 # coupled zalmoxis stack, alongside the melt-fraction cap. The melt-fraction
@@ -2256,8 +2282,7 @@ class AragogRunner:
 
         return out
 
-    @staticmethod
-    def _track_step_progress(interior_o, dt_actual, dt_attempted, hf_row) -> None:
+    def _track_step_progress(self, interior_o, dt_actual, dt_attempted, hf_row) -> None:
         """Refuse to keep taking steps that leave the run where it started.
 
         A step the terminal event cuts short is a valid solve, and one of them
@@ -2330,10 +2355,41 @@ class AragogRunner:
             f'Over its last {_STEP_PROGRESS_WINDOW} steps the interior advanced '
             f'{advanced:.3e} yr of the {requested:.3e} yr those steps were given '
             f'({100.0 * covered:.3f}%), reaching t={hf_row.get("Time", 0.0):.3e} yr. '
-            'The run is not crossing the phase change, it is stopping at it. The '
-            'scipy integrator does this where SUNDIALS CVODE integrates through: '
-            'check `proteus doctor` for the CVODE solver and install it with '
-            '`bash tools/get_cvode.sh` if it is missing.'
+            'The run is not crossing the phase change, it is stopping at it. '
+            + self._stall_remedy()
+        )
+
+    def _stall_remedy(self) -> str:
+        """Name the remedy that fits the integrator this run actually used.
+
+        Falling back to scipy and stopping at a sharp front are different
+        problems with the same symptom, and only one of them is fixed by
+        installing a solver. Reporting the install remedy to a run that
+        already integrates with CVODE sends the reader after a package that
+        is present, so the two cases are separated here and the message names
+        the front when the solver is not the cause.
+
+        Returns
+        -------
+        str
+            The remedy sentence for the configured and available integrator.
+        """
+        method = str(self._config.interior_energetics.aragog.solver_method or '')
+
+        if method != 'cvode' or not _cvode_loads():
+            return (
+                'The scipy integrator does this where SUNDIALS CVODE integrates '
+                'through: check `proteus doctor` for the CVODE solver and install '
+                'it with `bash tools/get_cvode.sh` if it is missing.'
+            )
+        return (
+            'CVODE is the integrator here and it loads, so a missing solver is '
+            'not the cause. Every step is being cut short at a phase boundary: '
+            'the melt-fraction, temperature and entropy step caps and the '
+            'liquidus crossing at the bottom cell each stop the integration, and '
+            'the run log records which one fired. Where the melt fraction '
+            'collapses across less than one radial cell at the solidus, adding '
+            'radial levels does not thin the front.'
         )
 
     @staticmethod

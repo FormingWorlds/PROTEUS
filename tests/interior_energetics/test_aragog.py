@@ -1041,6 +1041,10 @@ def test_a_run_that_covers_almost_none_of_its_time_is_stopped():
         'so the operator is left without the remedy'
     )
     assert 'get_cvode.sh' in message
+    assert f'{crawl * _STEP_PROGRESS_WINDOW:.3e} yr' in message, (
+        'the stop does not report the time actually advanced, which is the '
+        'number that separates a stall from a slow patch'
+    )
 
     # A crawl broken by an ordinary step every other step covers 100 yr of
     # every 20000 yr it asks for. That is still going nowhere, and a count of
@@ -1062,6 +1066,91 @@ def test_a_run_that_covers_almost_none_of_its_time_is_stopped():
     assert len(healthy.aragog_step_progress) == _STEP_PROGRESS_WINDOW, (
         'the window grew past its length, so an old stretch of the run would '
         'keep weighing on the verdict'
+    )
+
+
+@pytest.mark.unit
+def test_a_stall_names_the_front_when_cvode_is_already_integrating():
+    """The stall remedy matches the integrator the run actually used.
+
+    Physical scenario: a mantle re-melted by a giant impact cools back down
+    through the solidus, and the interior stops at that front step after step.
+    On the scipy fallback the same symptom means the production integrator is
+    missing; on CVODE it means the front itself is the limit.
+
+    Contract clause: the two cases have the same symptom and different
+    remedies, so the message has to separate them. Reporting the install
+    remedy to a run that already integrates with CVODE sends the reader after
+    a package that is present, and the front goes unnamed.
+
+    Verifies:
+    - With CVODE configured and loading, the message names the front and does
+      not tell the reader to install a solver they already have.
+    - With the scipy integrator configured, the install remedy is kept.
+    - With CVODE configured but the package absent, the install remedy is
+      kept, since that run really did fall back.
+    - With the package present but its compiled extension failing to import,
+      the install remedy is kept too. A version or ABI mismatch is found by a
+      package lookup and still drops Aragog to scipy, so treating the lookup
+      as proof of a working solver would withhold the one remedy that fixes
+      it, in exactly the case this message exists to separate.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    def remedy(method, *, found=True, imports=True):
+        runner = AragogRunner.__new__(AragogRunner)
+        runner._config = SimpleNamespace(
+            interior_energetics=SimpleNamespace(aragog=SimpleNamespace(solver_method=method))
+        )
+        with (
+            patch(
+                'proteus.interior_energetics.aragog.importlib.util.find_spec',
+                return_value=object() if found else None,
+            ),
+            patch(
+                'proteus.interior_energetics.aragog.importlib.import_module',
+                side_effect=None
+                if imports
+                else ImportError('libsundials_cvode.so.6: cannot open'),
+            ),
+        ):
+            return runner._stall_remedy()
+
+    on_cvode = remedy('cvode')
+    assert 'get_cvode.sh' not in on_cvode, (
+        'the stop tells a run that already has CVODE to install it, which '
+        'sends the reader after a package that is present'
+    )
+    assert 'solidus' in on_cvode, (
+        'the stop does not name the front, so a run on the production solver '
+        'is left with no cause at all'
+    )
+
+    on_scipy = remedy('bdf')
+    assert 'get_cvode.sh' in on_scipy, (
+        'a run on the scipy integrator lost the remedy that actually fixes it'
+    )
+
+    # Configured for CVODE but the wrapper is missing: Aragog falls back to
+    # scipy, so this run is the install case however it was configured.
+    absent = remedy('cvode', found=False)
+    assert 'get_cvode.sh' in absent, (
+        'a run configured for CVODE without the wrapper installed silently '
+        'falls back to scipy, and the install remedy is the one it needs'
+    )
+
+    # Found but broken: the discriminating case. A package lookup alone
+    # cannot tell this apart from a working build, and Aragog runs scipy
+    # either way.
+    broken = remedy('cvode', found=True, imports=False)
+    assert 'get_cvode.sh' in broken, (
+        'a CVODE wrapper whose compiled extension fails to load reads as a '
+        'working solver, so the stall is blamed on the front while the run '
+        'is actually on scipy and the install remedy is withheld'
+    )
+    assert broken == absent, (
+        'a broken build and a missing one both drop Aragog to scipy, so they '
+        'have to reach the same remedy'
     )
 
 
