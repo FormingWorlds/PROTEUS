@@ -183,7 +183,9 @@ class Lavatmos:
     P_melt: float
         Pressure used for melt activities [bar].
     xatol: float
-        Absolute tolerance on fO2 solve used by LavAtmos.
+        Absolute tolerance for LavAtmos fO2 solve.
+    fO2_buffer_model: str
+        IW buffer model used for LavAtmos fO2 solve. One of 'oneill', 'fischer'.
     """
 
     T_min: float = field(default=1500.0, validator=validators.gt(0.0))

@@ -369,6 +369,12 @@ def test_run_vapourisation_preserves_noble_gases(tmp_path, monkeypatch):
     mass M_vaps (they are inert atmospheric gas, not vaporised rock). A noble
     absent from the FastChem output keeps its prior value rather than crashing.
 
+    A noble gas shares its string with the matching element symbol, so its
+    whole-planet total is the element total that escape debits. The vapour step
+    must leave that total untouched: rebuilding it from the atmospheric and
+    dissolved reservoirs, which escape does not decrement, would restore the
+    mass escape had just removed.
+
     Edge case: He is emitted by FastChem (updated); Ar is not (guard keeps its
     prior value). M_vaps must count only the rock-forming Fe (+ extra O), never
     the noble mass.
@@ -449,6 +455,14 @@ def test_run_vapourisation_preserves_noble_gases(tmp_path, monkeypatch):
     hf_row['Ar_kg_atm'] = 1.0e15
     hf_row['He_vmr'] = 0.0
     hf_row['Ar_vmr'] = 0.123  # prior value; must survive (Ar not in FastChem output)
+    # He_kg_total as escape left it: already debited well below the atmospheric
+    # reservoir, so a recompute from kg_atm + kg_solid + kg_liquid would show up
+    # as a large increase rather than a rounding difference.
+    he_total_after_escape = 1.0e15
+    hf_row['He_kg_total'] = he_total_after_escape
+    # A stale mole total, deliberately inconsistent with the mass total above so
+    # the recompute is visible. 2.5e17 mol would be the consistent value.
+    hf_row['He_mol_total'] = 9.9e17
     for s in ('CO2', 'Fe', 'He'):
         for suff in ('_kg_solid', '_kg_liquid', '_mol_solid', '_mol_liquid'):
             hf_row.setdefault(s + suff, 0.0)
@@ -459,8 +473,21 @@ def test_run_vapourisation_preserves_noble_gases(tmp_path, monkeypatch):
     assert hf_row['He_vmr'] == pytest.approx(species_vmr['He'], rel=1e-9)
     assert hf_row['He_bar'] > 0.0
     assert hf_row['He_kg_atm'] > 0.0
-    # He is atmospheric-only, so kg_total equals kg_atm (not zeroed like rock vapour).
-    assert hf_row['He_kg_total'] == pytest.approx(hf_row['He_kg_atm'], rel=1e-12)
+    # The noble element total is escape's to write, so the vapour step leaves it
+    # exactly as it found it.
+    assert hf_row['He_kg_total'] == pytest.approx(he_total_after_escape, rel=1e-12)
+    # Discrimination: the atmospheric reservoir alone is several times the
+    # debited total, so the recompute this guards against would have raised
+    # He_kg_total by more than a factor of two rather than perturbing it.
+    assert hf_row['He_kg_atm'] > 2.0 * he_total_after_escape
+    # The mole total is the same quantity in different units, re-derived from the
+    # mass total the vapour step preserved rather than left at the seeded value.
+    # Mixing a pre-vapourisation mole total with a post-vapourisation mole
+    # atmosphere would let mol_total - mol_atm go negative in the plots.
+    assert hf_row['He_mol_total'] == pytest.approx(
+        he_total_after_escape / (species_lib['He'].weight * 1e-3), rel=1e-12
+    )
+    assert hf_row['He_mol_total'] != pytest.approx(9.9e17, rel=1e-3)  # the stale seed
     # The species route (VMR/mu) and the element route (frac/mmw) describe the
     # same atmosphere, so both must give the same He mass. The element route
     # writes last, so a mismatch here means the two normalisations disagree.

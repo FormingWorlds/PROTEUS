@@ -110,7 +110,7 @@ are grouped by category below.
 | `M_mantle` | kg | Mantle mass (solid + liquid) |
 | `M_mantle_solid` | kg | Solid mantle mass |
 | `M_mantle_liquid` | kg | Liquid mantle mass |
-| `M_vaps` | kg | vapour species mass|
+| `M_vaps` | kg | Rock-vapour mass, including the vapourised oxygen |
 | `P_center` | Pa | Central pressure |
 | `P_cmb` | Pa | Core-mantle boundary pressure |
 | `core_density` | kg m$^{-3}$ | Core density |
@@ -191,11 +191,12 @@ For each element (H, C, N, O, S):
 
 | Column | Units | Description |
 |--------|-------|-------------|
-| `M_atm` | kg | Total atmospheric mass |
-| `M_ele` | kg | volatile+noble element mass |
+| `M_atm` | kg | Total atmospheric mass, rock vapour included |
+| `M_vol_atm` | kg | Atmospheric mass of volatiles and noble gases, rock vapour excluded |
+| `M_ele` | kg | Whole-planet mass of the volatile and noble elements, rock vapour excluded |
 | `P_surf` | bar | Total surface pressure |
-| `P_vap` | bar | surface pressure of vapour species|
-| `P_vol` | bar | surface pressure of volatile species|
+| `P_vap` | bar | Surface pressure of the rock-vapour species |
+| `P_vol` | bar | Surface pressure of the volatile species |
 | `atm_kg_per_mol` | kg mol$^{-1}$ | Mean molecular weight |
 
 ### Redox state
@@ -211,7 +212,7 @@ For each element (H, C, N, O, S):
 The two `fO2_vapourise*` columns differ only in their zero point: the first is
 absolute, the second is the first minus the buffer value, so it is a difference
 of two log$_{10}$ bar numbers and therefore a dimensionless dex offset. See
-[Model description](../Explanations/model.md#how-volatile-outgassing-and-rock-vapourisation-are-combined).
+[Model description](../Explanations/model.md#volatile-outgassing-and-rock-vapourisation-are-combined).
 
 ### Escape
 

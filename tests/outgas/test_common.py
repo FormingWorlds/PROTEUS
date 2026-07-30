@@ -164,3 +164,28 @@ def test_expected_keys_contains_element_ratio_keys():
         canonical = tuple(sorted([e1, e2]))
         assert canonical not in pairs_seen, f'Duplicate pair: {canonical}'
         pairs_seen.add(canonical)
+
+
+def test_expected_keys_contains_every_atmosphere_mass_column():
+    """The three atmosphere-mass columns are all listed, so a caller that zeroes
+    ``expected_keys()`` empties the atmosphere consistently.
+
+    ``M_atm`` sums every gas species, ``M_vol_atm`` sums the volatiles and noble
+    gases only, and ``M_vaps`` holds the rock vapour. Leaving any of them out
+    lets it go stale against the per-species masses it is derived from, which the
+    runtime mass check reports as a bookkeeping inconsistency. Edge case: the
+    per-species masses these are summed from must be listed too, or zeroing the
+    aggregate alone would produce the mirror-image inconsistency.
+    """
+    keys = expected_keys()
+    for key in ('M_atm', 'M_vol_atm', 'M_vaps'):
+        assert key in keys, f'Missing atmosphere-mass column {key}'
+    # The columns the aggregates are summed from are present, so the aggregate
+    # and its parts can never be zeroed independently.
+    for gas in gas_list:
+        assert f'{gas}_kg_atm' in keys, f'Missing {gas}_kg_atm'
+    # The partial pressures that split P_surf are listed for the same reason.
+    for key in ('P_surf', 'P_vol', 'P_vap'):
+        assert key in keys, f'Missing pressure column {key}'
+    # No duplicates were introduced by adding the aggregates.
+    assert len(keys) == len(set(keys))

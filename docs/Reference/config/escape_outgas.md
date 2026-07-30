@@ -137,7 +137,7 @@ real-gas equations of state.
 Rock vapourisation parameters, used when `outgas.vapourise = true`. Requires
 `LAVA_DIR` and `FC_DIR`; see
 [Installation: optional modules](../../How-to/optionalmodules_installation.md#rock-vapours-lavatmos-thermoenginelite). See also
-[Model description](../../Explanations/model.md#Volatile outgassing and rock vapourisation are combined).
+[Model description](../../Explanations/model.md#volatile-outgassing-and-rock-vapourisation-are-combined).
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -145,6 +145,7 @@ Rock vapourisation parameters, used when `outgas.vapourise = true`. Requires
 | `melt_comp_name` | str | `"BSE_palm"` | Melt composition file name (without extension), read from the LavAtmos `lava_compositions` directory |
 | `P_melt` | float | `0.01` | Pressure used for melt activities \[bar] |
 | `xatol` | float | `1e-5` | Absolute tolerance on the fO$_2$ solve passed to LavAtmos |
+| `fO2_buffer_model` | str | `"oneill"` | Iron-wustite buffer used for the fO$_2$ solve. One of `"oneill"`, `"fischer"` |
 
 ---
 

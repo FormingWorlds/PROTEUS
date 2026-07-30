@@ -116,7 +116,7 @@ prt_cia_species = [
 ]
 prt_ignored_gases = {'e-', 'MMW', 'nabla_ad'}
 
-# Noble gases. They are full members of both gas_listand element_list.
+# Noble gases. They are full members of both gas_list and element_list.
 # They are tracked in the helpfile and the whole-planet mass balance.
 noble_gases = ['He', 'Ne', 'Ar', 'Kr', 'Xe']
 

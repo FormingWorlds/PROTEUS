@@ -364,6 +364,94 @@ def test_check_desiccation_single_element_prevents():
     assert check_desiccation(config, hf_row) is True
 
 
+@pytest.mark.physics_invariant
+def test_check_desiccation_counts_noble_gases():
+    """A retained noble-gas inventory prevents desiccation, because a planet that
+    still holds an atmosphere is not dry.
+
+    The volatile elements are all depleted here, so the noble inventory is the
+    only thing the gate can be responding to. Rock-forming elements are checked
+    at the same time and must NOT prevent desiccation: rock vapour is driven by
+    surface temperature rather than a retained volatile inventory, so it is
+    outside the scope of the word. Edge case: a noble inventory exactly at the
+    threshold is permitted, since the comparison is strict.
+    """
+    config = MagicMock()
+    config.outgas.mass_thresh = 1e16
+
+    # Every volatile depleted; helium alone is above threshold.
+    hf_row = {e + '_kg_total': 1e12 for e in element_list}
+    hf_row['He_kg_total'] = 4.0e18  # roughly 1 ppmw of an Earth mantle
+    assert check_desiccation(config, hf_row) is False
+
+    # Deplete helium and the gate flips, so the noble entry was load-bearing.
+    hf_row['He_kg_total'] = 1e12
+    assert check_desiccation(config, hf_row) is True
+
+    # Boundary: exactly at the threshold is not "above" it.
+    hf_row['He_kg_total'] = 1e16
+    assert check_desiccation(config, hf_row) is True
+    # One part in 1e6 above the threshold is, so the comparison is not rounding
+    # the boundary away.
+    hf_row['He_kg_total'] = 1e16 * (1.0 + 1e-6)
+    assert check_desiccation(config, hf_row) is False
+
+    # A rock-forming element above the threshold does not prevent desiccation.
+    hf_row['He_kg_total'] = 1e12
+    hf_row['Si_kg_total'] = 1e22
+    assert check_desiccation(config, hf_row) is True
+
+
+@pytest.mark.unit
+def test_run_desiccated_skips_vapourisation_for_a_crystallised_mantle():
+    """The desiccated path applies the same crystallised-mantle gate as the
+    outgassing path, so a frozen mantle produces no rock vapour.
+
+    The main loop dispatches desiccation ahead of crystallisation, so a planet
+    that is both desiccated and solidified reaches run_desiccated with a
+    sub-critical melt fraction. Vapourising a frozen mantle is the state the
+    sibling path already refuses. Edge case: melt fraction exactly at phi_crit
+    counts as crystallised, matching the main loop's own criterion, so
+    vapourisation is skipped there too.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = True
+    config.params.stop.solid.phi_crit = 0.01
+
+    def _row(phi):
+        hf_row = {'atm_kg_per_mol': 0.029, 'Phi_global': phi}
+        for s in gas_list:
+            hf_row[s + '_kg_atm'] = 1e18
+        return hf_row
+
+    with patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap:
+        run_desiccated({}, config, _row(0.0), False)
+        mock_vap.assert_not_called()
+
+    # Above the critical melt fraction the mantle is still molten, so rock
+    # vapour is computed as usual.
+    with patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap:
+        run_desiccated({}, config, _row(0.5), False)
+        mock_vap.assert_called_once()
+
+    # Boundary: exactly at phi_crit is crystallised, the same call the main loop
+    # makes when it sets its own crystallised flag, so vapourisation is skipped.
+    with patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap:
+        run_desiccated({}, config, _row(0.01), False)
+        mock_vap.assert_not_called()
+    # Just above it the mantle is molten and vapourisation runs, so the boundary
+    # is resolved rather than the gate always refusing.
+    with patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap:
+        run_desiccated({}, config, _row(0.01 * (1.0 + 1e-9)), False)
+        mock_vap.assert_called_once()
+
+    # With vapourisation switched off entirely the gate is never consulted.
+    config.outgas.vapourise = False
+    with patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap:
+        run_desiccated({}, config, _row(0.5), False)
+        mock_vap.assert_not_called()
+
+
 @pytest.mark.unit
 def test_run_outgassing_calliope_calculation():
     """
@@ -529,6 +617,56 @@ def test_run_desiccated_zeros_outgassing_keys():
     # zeroed like any other non-excepted key.
     for s in vol_list:
         assert hf_row[s + '_vmr'] == pytest.approx(0.1, rel=1e-12)  # Preserved
+
+
+@pytest.mark.physics_invariant
+def test_desiccation_leaves_the_mass_bookkeeping_self_consistent():
+    """A desiccated iteration empties the atmosphere without leaving any mass
+    aggregate stale, so the runtime mass check still passes afterwards.
+
+    ``run_desiccated`` zeroes every per-species mass. The aggregates summed from
+    them must go to zero in the same sweep: an aggregate left at its previous
+    value disagrees with a summed zero by 100 percent, which the check reports
+    rather than tolerating. Edge case: the check is exercised both before and
+    after desiccation, so a row that was consistent stays consistent across the
+    transition rather than only being consistent at one end.
+    """
+    from proteus.utils.constants import vol_gas_list
+    from proteus.utils.coupler import assert_mass_conservation
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+
+    # A consistent end-of-iteration row: asymmetric species split so a summation
+    # regression moves the aggregate instead of cancelling out.
+    hf_row = {}
+    weights = [1.0] + [0.02] * (len(vol_gas_list) - 1)
+    for s, w in zip(vol_gas_list, weights):
+        hf_row[s + '_kg_atm'] = 1.0e18 * w
+    hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    hf_row['M_atm'] = hf_row['M_vol_atm']
+    hf_row['M_vaps'] = 0.0
+    hf_row['M_planet'] = 5.97e24  # 1 M_earth
+    hf_row['P_surf'] = 90.0
+    hf_row['atm_kg_per_mol'] = 0.029
+    hf_row['Phi_global'] = 1.0
+
+    # The row is consistent to begin with, so a failure after desiccation is
+    # caused by desiccation and not by the fixture.
+    assert assert_mass_conservation(hf_row) is None
+    assert hf_row['M_vol_atm'] > 1.0e18  # the dominant species alone exceeds this
+
+    run_desiccated({}, config, hf_row, False)
+
+    # Every aggregate followed the species masses to zero.
+    assert hf_row['M_atm'] == pytest.approx(0.0, abs=1e-12)
+    assert hf_row['M_vol_atm'] == pytest.approx(0.0, abs=1e-12)
+    assert hf_row['M_vaps'] == pytest.approx(0.0, abs=1e-12)
+    assert sum(hf_row[s + '_kg_atm'] for s in vol_gas_list) == pytest.approx(0.0, abs=1e-12)
+    # So the invariant still holds on the first desiccated iteration.
+    assert assert_mass_conservation(hf_row) is None
+    # M_planet is untouched by desiccation: the interior is still there.
+    assert hf_row['M_planet'] == pytest.approx(5.97e24, rel=1e-12)
 
 
 @pytest.mark.unit

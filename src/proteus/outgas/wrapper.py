@@ -123,7 +123,7 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
         # ic_chemistry mode: leave O_kg_total at 0; first CALLIOPE call writes it.
         hf_row['O_kg_user_ic'] = -1.0  # sentinel: no user budget supplied
 
-    # Update total mass of tracked volatiles+nobel gases. This includes oxygen and
+    # Update total mass of tracked volatiles+noble gases. This includes oxygen and
     # therefore reflects the atmospheric+dissolved O mass that CALLIOPE
     # produces from the fO2 buffer. Does not include rock vapours.
     hf_row['M_ele'] = 0.0
@@ -262,22 +262,19 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     behaviour.
 
     Scope of "desiccated": the threshold loop below considers the volatile
-    elements only (`vol_element_list`: H, O, C, N, S). Noble gases and
-    rock-vapour elements are deliberately excluded, so a planet whose
-    H/O/C/N/S inventories have all fallen below `outgas.mass_thresh` is
-    reported as desiccated even if it still retains a noble-gas or
-    rock-vapour atmosphere.
+    elements (`vol_element_list`: H, O, C, N, S) together with the noble gases,
+    so a planet that with a noble-gas dominated atmosphere is not desiccated.
     """
 
-    # Threshold check: refuse desiccation while ANY volatile is still above
-    # the per-element mass threshold. Issue #677 fix: O is included now.
-    # Under D1A the user's choice was to require O_kg_total below threshold
+    # Threshold check: refuse desiccation while ANY volatile or noble gas is
+    # still above the per-element mass threshold. Issue #677 fix: O is included
+    # now. Under D1A the user's choice was to require O_kg_total below threshold
     # as well, on the grounds that an atmosphere with substantial O is not
     # meaningfully "desiccated" even if H/C/N/S are depleted. In practice
     # CALLIOPE drives O_kg_total to near-zero once H/C/N/S vanish, so this
     # change rarely affects the desiccation timing, but it keeps the
     # semantics honest under whole-planet O accounting.
-    for e in vol_element_list:
+    for e in vol_element_list + noble_gases:
         if float(hf_row.get(e + '_kg_total', 0.0)) > config.outgas.mass_thresh:
             log.info(
                 'Not desiccated, %s = %.2e kg' % (e, float(hf_row.get(e + '_kg_total', 0.0)))
@@ -418,7 +415,6 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     # assert_mass_conservation bookkeeping check live from the first
     # iteration rather than only after the mantle crystallises.
     hf_row['M_vol_atm'] = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
-    # assure that hydrogen abundnace high enough for agni to run
 
     # Derive element mass ratios in atmosphere
     for e1 in element_list:
@@ -532,6 +528,11 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     hf_row['P_vol'] = hf_row.get('P_vol', 0.0) * retained
     hf_row['P_vap'] = hf_row.get('P_vap', 0.0) * retained
     hf_row['M_atm'] = m_atm * retained
+
+    # The rock-vapour mass follows the same uniform scaling as its partial
+    # pressure. Left unscaled it would freeze at its last pre-solidification
+    # value while the vapour it describes is eroded by escape.
+    hf_row['M_vaps'] = hf_row.get('M_vaps', 0.0) * retained
     # Track the atmospheric volatile mass separately from M_atm, which also
     # carries the rock vapour when vapourisation is enabled. Summing
     # vol_gas_list rather than scaling M_atm keeps the column equal to the
@@ -576,8 +577,14 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
         if k not in excepted_keys:
             hf_row[k] = 0.0
 
+    # Vapourisation of refractories, under the same crystallised gate as
+    # volatile outgassing path.
     if config.outgas.vapourise:
-        run_vapourisation(dirs, config, hf_row, first_iter)
+        if hf_row['Phi_global'] <= config.params.stop.solid.phi_crit:
+            log.info('Skipping rock vapourisation for crystallised mantle')
+        else:
+            log.info('Calculating rock vapourisation at surface')
+            run_vapourisation(dirs, config, hf_row, first_iter)
 
 
 def run_outgassing_and_vapourisation(
@@ -615,19 +622,20 @@ def run_outgassing_and_vapourisation(
             hf_row[s + '_kg_atm'] = 0.0
             hf_row[s + '_kg_total'] = 0.0
 
+    # Only the rock-forming elements are reset: the volatile and noble totals are
+    # owned by the outgassing and escape steps respectively.
     for e in element_list:
-        if e in ['H', 'C', 'N', 'O', 'S'] or e in noble_gases:
+        if e in vol_element_list or e in noble_gases:
             continue
-        else:
-            hf_row[e + '_kg_atm'] = 0.0
-            hf_row[e + '_kg_total'] = 0.0
+        hf_row[e + '_kg_atm'] = 0.0
+        hf_row[e + '_kg_total'] = 0.0
 
     # Volatile outgassing
     run_outgassing(dirs, config, hf_row)
 
     # Vapourisation of refractories
     if config.outgas.vapourise:
-        if hf_row['Phi_global'] < config.params.stop.solid.phi_crit:
+        if hf_row['Phi_global'] <= config.params.stop.solid.phi_crit:
             log.info('Skipping rock vapourisation for crystallised mantle')
         else:
             log.info('Calculating rock vapourisation at surface')

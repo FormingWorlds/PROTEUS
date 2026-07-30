@@ -540,9 +540,14 @@ def print_stoptime(start_time):
     log.info(' ')
 
 
-def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
-    """Runtime invariant: M_atm <= M_planet and sum of per-species kg_atm
-    matches M_atm.
+def assert_mass_conservation(
+    hf_row: dict,
+    atol_frac: float = 1e-6,
+    *,
+    require_atm_le_planet: bool = True,
+) -> None:
+    """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, and
+    M_atm <= M_planet unless the caller disables that half.
 
     Issue #677 invariant. M_atm sums atmospheric oxygen (over gas_list of
     *_kg_atm, including the O atoms in H2O / CO2 / SO2), and M_planet =
@@ -551,11 +556,9 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     by construction. This assertion catches any regression that
     re-introduces an asymmetry by dropping O from one side.
 
-    This invariant does not hold when rock vapourisation
-    (``outgas.vapourise``) is enabled, because that path moves
-    vapourised rock mass into M_atm that M_planet does not track;
-    the caller skips this check in that mode rather than loosening the
-    tolerance for volatile-only runs.
+    Rock vapourisation (``outgas.vapourise``) moves vapourised rock mass into
+    M_atm without debiting it from the interior, so M_planet does not track it
+    and M_atm <= M_planet no longer holds.
 
     Parameters
     ----------
@@ -563,15 +566,20 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
         Helpfile row at the end of an iteration, after run_outgassing
         and update_planet_mass have written M_atm and M_planet.
     atol_frac : float
-        Relative tolerance for the two invariants. Default 1e-6 admits
+        Relative tolerance for invariants. Default 1e-6 admits
         accumulated float-rounding from the per-species sum but not
         any physically meaningful drift.
+    require_atm_le_planet : bool
+        Whether to enforce M_atm <= M_planet. Ignored when the row carries no
+        vapour column: rock vapour is the only mass the relaxation excuses, so
+        with M_vaps == 0 the invariant is enforced either way.
 
     Raises
     ------
     RuntimeError
-        If M_atm > M_planet (by more than ``atol_frac`` of M_planet) or
-        the per-species sum disagrees with M_atm by more than that.
+        If the per-species kg_atm sum over vol_gas_list disagrees with
+        M_vol_atm by more than ``atol_frac``. When ``require_atm_le_planet``,
+        raises if M_atm relatively exceeds M_planet.
     """
     M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
@@ -586,16 +594,32 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     if M_planet <= 0.0:
         return
 
+    M_vaps = float(hf_row.get('M_vaps', 0.0))
+    breached = M_atm > M_planet * (1.0 + atol_frac)
+
     # Invariant 1: atmosphere mass <= total planet mass.
-    if M_atm > M_planet * (1.0 + atol_frac):
-        raise RuntimeError(
-            f'Mass conservation violation (issue #677 regression?): '
-            f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
-            f'(relative excess {(M_atm / M_planet - 1) * 100:.3f}%). '
-            f'Likely cause: an aggregation site re-introduced the '
-            f'"if e == \'O\': continue" skip. Check update_planet_mass, '
-            f'calc_target_elemental_inventories, and load_zalmoxis_configuration.'
-        )
+    if require_atm_le_planet or M_vaps <= 0.0:
+        if breached:
+            raise RuntimeError(
+                f'Mass conservation violation (issue #677 regression?): '
+                f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
+                f'(relative excess {(M_atm / M_planet - 1) * 100:.3f}%). '
+                f'Likely cause: an aggregation site re-introduced the '
+                f'"if e == \'O\': continue" skip. Check update_planet_mass, '
+                f'calc_target_elemental_inventories, and load_zalmoxis_configuration.'
+            )
+    else:
+        # Vapourised rock can cause the atmosphere mass to exceed past
+        # the planet mass, so an excess larger than M_vaps is not explained by
+        # vapourisation and should raise a warning here.
+        if M_atm - M_planet > M_vaps + M_planet * atol_frac:
+            log.warning(
+                'Atmosphere mass exceeds planet mass by %.3e kg, more than the '
+                '%.3e kg of vapourised rock that accounts for the difference. '
+                'The imbalance is larger than vapourisation explains.',
+                M_atm - M_planet,
+                M_vaps,
+            )
 
     # Invariant 2: M_vol_atm stays in sync with the per-species kg_atm fields
     # it is summed from. This guards against a future reordering that mutates
@@ -607,8 +631,9 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     # noble inventory; summing over the full gas_list would pull in the rock
     # vapour that M_vol_atm deliberately excludes.
     summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
-    if M_vol_atm > 0.0:
-        rel = abs(summed - M_vol_atm) / M_vol_atm
+    scale = max(M_vol_atm, summed)
+    if scale > 0.0:
+        rel = abs(summed - M_vol_atm) / scale
         if rel > atol_frac:
             raise RuntimeError(
                 f'M_vol_atm bookkeeping inconsistency: M_vol_atm='
@@ -870,13 +895,13 @@ def GetHelpfileKeys():
         'bond_albedo',      # OUTPUT calculated bond albedo from radtrans: SW_UP/SW_DN, zero if no scattering [1]
 
         # Atmospheric composition from outgassing
-        'M_ele',            # total mass of tracked elements (utils.constants.element_list) rock vapour and volatile
+        'M_ele',            # total mass of volatile and noble elements; rock vapour excluded [kg]
         'M_atm',            # total mass of atmosphere [kg]
         'P_surf',           # total surface pressure [bar]
         'P_vap',            # rock vapour surface pressure [bar]
         'P_vol',            # volatiles surface pressure [bar]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
-        'M_vol_atm',         # mass of volatiles in teh atmosphere - vapours excluded [kg]
+        'M_vol_atm',        # atmospheric mass of volatiles and noble gases; rock vapour excluded [kg]
 
         # Iron-wustite buffer offset that the chemistry solver actually
         # equilibrated to, and the O mass-balance residual of that

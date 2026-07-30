@@ -305,8 +305,9 @@ def calc_new_elements(
         return res
 
     # compute mass ratios in escaping reservoir.
-    # With `outgas.vapourise=True`, res includes rock-forming elements,
-    # so rock vapour dilutes the outflow available to H/C/N/O/S.
+    # With `outgas.vapourise=True` the rock-forming elements can take a share of
+    # the outflow, diluting what is available to H/C/N/O/S. This depends on the
+    # selected reservoir (outgas vs bulk).
     emr = {e: (res[e] / M_vols if M_vols > 0 else 0.0) for e in res}
 
     # total escaped mass over dt [kg]

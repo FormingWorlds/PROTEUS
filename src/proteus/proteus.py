@@ -1029,10 +1029,13 @@ class Proteus:
             update_planet_mass(self.hf_row)
 
             # Vapourisation moves non-volatile mass into M_atm that M_planet
-            # does not track; skip conservation check rather than weaken the
-            # tolerance. Non-conservation is a simplification of vapourisation.
-            if not self.config.outgas.vapourise:
-                assert_mass_conservation(self.hf_row)
+            # does not track, so only the M_atm <= M_planet half is dropped in
+            # that mode and the drift is reported every iteration instead.
+            # Non-conservation is a simplification of vapourisation.
+            assert_mass_conservation(
+                self.hf_row,
+                require_atm_le_planet=not self.config.outgas.vapourise,
+            )
 
             # P_surf = P_vol + P_vap, and P_vap == 0 when rock
             # vapourisation is disabled. Cheap end-of-outgas guardrail against

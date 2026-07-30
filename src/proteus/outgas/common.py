@@ -10,6 +10,8 @@ def expected_keys():
         'P_vol',
         'P_vap',
         'M_atm',
+        'M_vol_atm',
+        'M_vaps',
         'atm_kg_per_mol',
         'fO2_shift_IW_derived',
         'O_res',

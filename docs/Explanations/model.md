@@ -182,10 +182,12 @@ Some notable consequences of step 3:
 - **The vapourisation fO2 is separate from the volatile-chemistry fO2.**  `fO2_shift_IW_derived` is the redox buffer offset obtained from the volatile step (e.g. CALLIOPE or atmodeller rather than by LavAtmos). It is not expected
   to equal `fO2_vapourise_shift_IW_derived` since the two come from different solvers.
 
-- **Rock vapour is added to the atmosphere without being removed from the interior.** The vapourised rock mass is accumulated into `M_vaps` and enters `M_atm`, but no matching mass is subtracted from the interior: `M_int`, `M_mantle`.
-- **Rock-vapour elements dilute the escape outflow but are not depleted by it.**  Rock-forming elements take part in the unfractionated escape partitioning and reduce the escape rate available to H/C/N/O/S.
+### Whole-planet mass is not conserved when vapourisation is enabled
 
-Consequently the runtime sanity check `M_atm <= M_planet`, enforced by `utils.coupler.assert_mass_conservation`, is intentially only performed when `outgas.vapourise=false`. 
+- **Rock vapour is added to the atmosphere without being removed from the interior.** The vapourised rock mass is accumulated into `M_vaps` and enters `M_atm`, but no matching mass is subtracted from the interior: `M_int`, `M_mantle`.
+- **Rock-vapour elements dilute the escape outflow but are not depleted by it.**  Rock-forming elements take part in the unfractionated escape partitioning and reduce the escape rate available to H/C/N/O/S. This applies when `escape.reservoir = "outgas"`, where the partitioning weights are atmospheric masses. With `escape.reservoir = "bulk"` the rock-forming whole-planet totals are reset to zero on every outgassing step, so they carry no weight and do not dilute the outflow.
+
+`utils.coupler.assert_mass_conservation` therefore checks two things separately. `M_atm <= M_planet` is enforced under `outgas.vapourise = false`. `M_vol_atm` equals the sum of the per-species atmospheric masses; rock vapour is excluded from `M_vol_atm` by definition.
 
 ## Orbital evolution: Obliqua
 

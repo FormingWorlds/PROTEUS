@@ -542,6 +542,13 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
             )
             # but saved separately later in M_vaps
             hf_row[vol + '_mol_total'] = 0.0
+        elif vol in noble_gases:
+            # A noble gas shares its string with the matching element symbol, so
+            # its `_kg_total` slot is set by escape. Here, set the mol total from
+            # the kg total so that it's counted, but don't overwrite it.
+            hf_row[vol + '_mol_total'] = float(hf_row.get(vol + '_kg_total', 0.0)) / (
+                species_lib[vol].weight * 1e-3
+            )
         else:
             hf_row[vol + '_kg_total'] = (
                 hf_row[vol + '_kg_atm'] + hf_row[vol + '_kg_solid'] + hf_row[vol + '_kg_liquid']
@@ -582,7 +589,7 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
                 )
             hf_row['M_vaps'] += (
                 element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
-            )  # don't use hf_row[e + '_kg_atm'] because this only acounts for e.g. Si in atomic gas form not total Si
+            )  # don't use hf_row[e + '_kg_atm'] because this only accounts for e.g. Si in atomic gas form not total Si
 
     hf_row['M_vaps'] += (
         Omass_after_vapourise - hf_row['O_kg_atm']

@@ -43,7 +43,6 @@ def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_modul
     config.params.out.logging = 'WARNING'
     config.params.stop.iters.minimum = 10
     config.params.stop.iters.maximum = 1000
-    config.atmos_clim.albedo_from_file = False
     # Real values, not mock attributes: the resume branch compares the melt
     # fraction against phi_crit, which a bare MagicMock cannot be ordered
     # against. Defaults mirror the schema.
@@ -1052,17 +1051,21 @@ class _FakeHelpfile:
         return 1
 
 
-def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel):
+def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel, vapourise=True):
     """Build a Proteus instance configured for a fresh (non-resume) run
     that can be driven through several main-loop iterations.
 
     `interior_energetics.module` / `interior_struct.module` are set to
     'dummy' so the Zalmoxis structure-update and SPIDER-specific branches
-    are no-ops; `outgas.vapourise=True` skips the mass-conservation
-    assertion (tested elsewhere, see mass-conservation-never-weaken
-    memory); `observe.module=None` and a non-'online'/'offline'
+    are no-ops; `observe.module=None` and a non-'online'/'offline'
     atmos_chem.when skip the postprocessing branches. None of these
     short-circuits touch the plot-gating condition under test.
+
+    `vapourise` selects which half of the mass-conservation invariant the loop
+    enforces: with it True the M_atm <= M_planet half is replaced by a warning,
+    and with it False that half is enforced at the strict tolerance. Callers
+    that leave `update_planet_mass` mocked keep M_planet at zero, which
+    short-circuits the invariant before either half runs.
     """
     from proteus.proteus import Proteus
 
@@ -1075,7 +1078,7 @@ def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel):
     config.orbit.module = None
     config.observe.module = None
     config.atmos_chem.when = 'never'
-    config.outgas.vapourise = True  # skips assert_mass_conservation
+    config.outgas.vapourise = vapourise
     config.planet.temperature_mode = 'isothermal'
     config.planet.volatile_mode = 'elements'
     config.planet.gas_prs.get_pressure = lambda _s: 0.0
@@ -1092,7 +1095,6 @@ def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel):
     config.params.stop.solid.phi_crit = 0.01
     config.params.dt.starinst = 1e8
     config.params.dt.starspec = 1e8
-    config.atmos_clim.albedo_from_file = False
 
     directories = {
         'output': str(tmp_path),
@@ -1271,3 +1273,244 @@ def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
         'not also a write_mod snapshot -- the plot cadence must not depend '
         'on the write/archive snapshot gate'
     )
+
+
+# =======================================================================================
+# SECTION: mass conservation across a multi-iteration run
+# =======================================================================================
+
+
+_MASS_PLANET_KG = 5.97e24  # 1 M_earth
+
+
+def _write_post_outgas_row(hf_row, step, *, vapour):
+    """Fill a helpfile row the way the outgas step leaves it.
+
+    The volatile inventory is split asymmetrically across ``vol_gas_list`` (one
+    dominant species plus traces) so a regression in the species sum moves
+    ``M_vol_atm`` instead of cancelling out. With ``vapour`` set, a rock-vapour
+    column grows with ``step`` and is the only mass in ``M_atm`` that is not in
+    ``M_vol_atm``, which is the whole content of the relaxed invariant.
+    """
+    from proteus.utils.constants import vol_gas_list
+
+    m_vol_atm = 1.0e-4 * _MASS_PLANET_KG  # ~6e20 kg, a few hundred bar of volatiles
+    weights = [1.0] + [0.01] * (len(vol_gas_list) - 1)
+    norm = sum(weights)
+    for s, w in zip(vol_gas_list, weights):
+        hf_row[s + '_kg_atm'] = m_vol_atm * w / norm
+    hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    hf_row['M_vaps'] = (2.0e-5 * _MASS_PLANET_KG * (1 + step)) if vapour else 0.0
+    hf_row['M_atm'] = hf_row['M_vol_atm'] + hf_row['M_vaps']
+    hf_row['M_planet'] = _MASS_PLANET_KG
+    hf_row['P_vol'] = 260.0
+    hf_row['P_vap'] = (40.0 * (1 + step)) if vapour else 0.0
+    hf_row['P_surf'] = hf_row['P_vol'] + hf_row['P_vap']
+    return hf_row
+
+
+def _run_main_loop_recording_mass(p, *, stop_at_loop, rows, row_writer, guard_calls=None):
+    """Run p.start with the physics mocked, recording the row each outgas step
+    wrote. ``row_writer(hf_row, step)`` fills the mass columns.
+
+    Mirrors `_run_main_loop_capturing_plots` but replaces the no-op outgas patch
+    with a side effect, and forces `check_desiccation` to False: the blanket
+    MagicMock patch returns a truthy value, which would divert every iteration
+    after the first into the desiccated branch and stop the outgas rows.
+
+    ``guard_calls``, when given, collects one ``(row, kwargs)`` pair per
+    mass-conservation call: the helpfile row as the check saw it, and the keyword
+    arguments the main loop chose. The real check still runs, so the recorded
+    keywords are the loop's own dispatch decision rather than a restatement of
+    the test's setup.
+    """
+    from types import SimpleNamespace
+
+    from proteus.utils import coupler as coupler_mod
+
+    real_guard = coupler_mod.assert_mass_conservation
+
+    def _spy_guard(hf_row, *args, **kwargs):
+        if guard_calls is not None:
+            guard_calls.append((dict(hf_row), dict(kwargs)))
+        return real_guard(hf_row, *args, **kwargs)
+
+    def _fake_check_termination(handler):
+        if handler.loops['total'] >= stop_at_loop:
+            handler.finished_both = True
+        return handler.finished_both
+
+    def _fake_create_helpfile(row):
+        return _FakeHelpfile(row)
+
+    def _fake_extend_helpfile(_hf_all, row):
+        return _FakeHelpfile(row)
+
+    def _fake_outgas(_dirs, _config, hf_row, _first_iter):
+        rows.append(dict(row_writer(hf_row, len(rows))))
+
+    with ExitStack() as stack:
+        for target in _MAIN_LOOP_NOOP_PATCHES:
+            stack.enter_context(patch(target))
+
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_interior_t.return_value = SimpleNamespace(dt=100.0, ic=1)
+
+        mock_atmos_t = stack.enter_context(patch('proteus.atmos_clim.common.Atmos_t'))
+        mock_atmos_t.return_value = SimpleNamespace(converged=True)
+
+        mock_spectrum = stack.enter_context(patch('proteus.star.wrapper.get_new_spectrum'))
+        mock_spectrum.return_value = (np.array([1.0]), np.array([1.0]))
+
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.CreateHelpfileFromDict',
+                side_effect=_fake_create_helpfile,
+            )
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.ExtendHelpfile', side_effect=_fake_extend_helpfile)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.UpdatePlots'))
+        stack.enter_context(
+            patch('proteus.utils.coupler.assert_mass_conservation', side_effect=_spy_guard)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.terminate.check_termination', side_effect=_fake_check_termination
+            )
+        )
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.outgas.wrapper.run_outgassing_and_vapourisation',
+                side_effect=_fake_outgas,
+            )
+        )
+
+        p.start(resume=False, offline=True)
+
+
+def _escalation_records(caplog):
+    """Records reporting an excess larger than the rock vapour explains."""
+    return [r for r in caplog.records if 'larger than vapourisation' in r.getMessage()]
+
+
+@pytest.mark.physics_invariant
+def test_vapourising_run_bounds_the_imbalance_across_steps(tmp_path, caplog):
+    """Across a multi-step vapourising run the loop relaxes only the
+    atmosphere-versus-planet half, and warns exactly on the step whose excess the
+    rock vapour cannot explain.
+
+    The atmosphere carries a fixed volatile inventory plus a rock-vapour column
+    that grows step by step. Four steps sit well inside the planet mass; one is
+    placed at the boundary where the excess over M_planet is exactly M_vaps, the
+    tightest state the relaxation must still accept; the last pushes the excess
+    past M_vaps, which is the signal that the imbalance is not vapourisation.
+
+    What this test covers is the loop's dispatch and the warning decision made
+    across iterations. The closure M_atm = M_vol_atm + M_vaps is a property of the
+    real outgassing step, which is mocked out here, so it is asserted in
+    tests/outgas, not here.
+    """
+    import logging
+
+    rows = []
+    guard_calls = []
+
+    def _writer(hf_row, step):
+        row = _write_post_outgas_row(hf_row, step, vapour=True)
+        if step == 4:
+            # Excess over the planet mass is exactly the rock vapour: accepted,
+            # and the escalation must not fire at the boundary.
+            row['M_planet'] = row['M_vol_atm']
+        elif step == 5:
+            # Excess now exceeds the rock vapour by half the volatile inventory.
+            row['M_planet'] = 0.5 * row['M_vol_atm']
+        return row
+
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=True
+    )
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.utils.coupler'):
+        _run_main_loop_recording_mass(
+            p, stop_at_loop=6, rows=rows, row_writer=_writer, guard_calls=guard_calls
+        )
+
+    # The run really did drive several outgas steps rather than stopping early,
+    # and it survived the two steps where the atmosphere exceeded the planet mass.
+    assert len(rows) == 6
+    assert len(guard_calls) == 6
+    # The loop asked for the relaxation on every iteration. This is the
+    # production decision under test: the keyword comes from proteus.py reading
+    # config.outgas.vapourise, not from this test.
+    assert all(kwargs.get('require_atm_le_planet') is False for _row, kwargs in guard_calls)
+    # The bound: the warning fires only on the step whose excess outruns M_vaps,
+    # and not on the boundary step where the excess equals it exactly. The four
+    # conserving steps and the boundary step pass silently.
+    escalated = _escalation_records(caplog)
+    assert len(escalated) == 1
+    assert escalated[0].levelno == logging.WARNING
+    # Both logged values are that step's own, read from the log arguments rather
+    # than the formatted string so a wrong value in the right slot cannot slip
+    # through.
+    assert escalated[0].args[0] == pytest.approx(
+        rows[5]['M_atm'] - rows[5]['M_planet'], rel=1e-12
+    )
+    assert escalated[0].args[1] == pytest.approx(rows[5]['M_vaps'], rel=1e-12)
+    # Discrimination: the boundary step really did breach M_planet, so a run with
+    # the strict half live would have aborted there, and the vapour column really
+    # grew, so none of the above is satisfied by a constant.
+    assert rows[4]['M_atm'] > rows[4]['M_planet'] > 0.0
+    assert rows[-1]['M_vaps'] > 4.0 * rows[0]['M_vaps']
+
+
+@pytest.mark.physics_invariant
+def test_non_vapourising_run_keeps_strict_mass_conservation(tmp_path, caplog):
+    """With rock vapourisation off, the loop demands the strict invariant and a
+    breach of it aborts the run.
+
+    Several conserving steps pass silently with the atmosphere entirely volatile,
+    then a step whose volatiles alone exceed the planet mass raises. That is the
+    issue #677 symptom. No relaxation report may appear on any step of a run that
+    never enables vapourisation.
+    """
+    import logging
+
+    rows = []
+    guard_calls = []
+
+    def _writer(hf_row, step):
+        row = _write_post_outgas_row(hf_row, step, vapour=False)
+        if step == 4:
+            # Volatiles alone breach the planet budget.
+            row['M_planet'] = 0.5 * row['M_atm']
+        return row
+
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
+    )
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.utils.coupler'):
+        with pytest.raises(RuntimeError, match='Mass conservation violation'):
+            _run_main_loop_recording_mass(
+                p, stop_at_loop=6, rows=rows, row_writer=_writer, guard_calls=guard_calls
+            )
+
+    # The run survived the conserving steps and died on the breaching one.
+    assert len(rows) == 5
+    assert len(guard_calls) == 5
+    # The loop demanded the strict invariant on every iteration. This is the
+    # other half of the production dispatch decision.
+    assert all(kwargs.get('require_atm_le_planet') is True for _row, kwargs in guard_calls)
+    for row in rows[:-1]:
+        assert 0.0 < row['M_atm'] < row['M_planet']
+    # Nothing was relaxed, so the vapour-imbalance warning is not admissible on
+    # this path: a breach here raises rather than being reported.
+    assert _escalation_records(caplog) == []
+    # Discrimination: the breach is a factor of two, far outside the 1e-6
+    # tolerance, so this is not passing on a rounding edge.
+    assert rows[-1]['M_atm'] / rows[-1]['M_planet'] == pytest.approx(2.0, rel=1e-12)

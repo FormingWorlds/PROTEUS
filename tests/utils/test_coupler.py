@@ -1779,33 +1779,46 @@ def test_get_proteus_directories_unset_env_matches_legacy_layout(monkeypatch):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_assert_mass_conservation_passes_when_invariants_hold():
-    """assert_mass_conservation accepts M_atm <= M_planet and per-species sum match.
+    """assert_mass_conservation accepts a row where the atmosphere fits inside
+    the planet and M_vol_atm agrees with the species masses it is summed from.
 
-    Physical scenario: post-outgas state with a non-trivial atmosphere.
-    M_atm = 4.6e24 kg (close to Earth's mantle), M_planet = 5.97e24 kg
-    (1 M_earth), per-species sum exactly equals M_atm.
+    Physical scenario: post-outgas state with a non-trivial volatile-only
+    atmosphere. M_atm = 4.6e24 kg (close to Earth's mantle), M_planet = 5.97e24
+    kg (1 M_earth). M_vol_atm is set from the species sum so the bookkeeping
+    half is exercised rather than skipped by its zero guard, and the species are
+    split asymmetrically (one dominant plus traces) so a summation regression
+    moves the total instead of cancelling out.
     """
-    from proteus.utils.constants import gas_list
+    from proteus.utils.constants import vol_gas_list
     from proteus.utils.coupler import assert_mass_conservation
 
-    hf_row = {
-        'M_atm': 4.6e24,
-        'M_planet': 5.97e24,
-    }
-    # Distribute M_atm across gas_list so the per-species sum equals M_atm.
-    # Use asymmetric values so the sum is a meaningful check (not all equal).
-    per_species = 4.6e24 / len(gas_list)
-    for s in gas_list:
-        hf_row[s + '_kg_atm'] = per_species
+    hf_row = {'M_planet': 5.97e24}
+    # Asymmetric split of a 4.6e24 kg atmosphere over the volatile and noble
+    # species. Rock vapours are absent: this is the vapourise = false path.
+    weights = [1.0] + [0.01] * (len(vol_gas_list) - 1)
+    norm = sum(weights)
+    for s, w in zip(vol_gas_list, weights):
+        hf_row[s + '_kg_atm'] = 4.6e24 * w / norm
+    hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    hf_row['M_atm'] = hf_row['M_vol_atm']
 
-    result = assert_mass_conservation(hf_row)
-    assert result is None  # contract: helper returns None silently when M_atm <= M_planet
-    # Discriminating check: M_atm < M_planet strictly (not vacuously zero), and
-    # the per-species sum exactly equals M_atm so the closure path is exercised.
-    assert hf_row['M_atm'] < hf_row['M_planet']
-    species_sum = sum(hf_row[s + '_kg_atm'] for s in gas_list)
-    assert math.isclose(species_sum, hf_row['M_atm'], rel_tol=1e-12)
+    assert assert_mass_conservation(hf_row) is None
+    # The same row is accepted with the planet-mass half switched off, so that
+    # keyword relaxes an invariant rather than changing what a valid row means.
+    assert assert_mass_conservation(hf_row, require_atm_le_planet=False) is None
+    # Discriminating checks: the atmosphere is strictly inside the planet (not
+    # vacuously zero), the bookkeeping half really ran (M_vol_atm > 0 opens its
+    # guard), and the species sum closes exactly.
+    assert 0.0 < hf_row['M_atm'] < hf_row['M_planet']
+    assert hf_row['M_vol_atm'] > 0.0
+    species_sum = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    assert math.isclose(species_sum, hf_row['M_vol_atm'], rel_tol=1e-12)
+    # The split is asymmetric, so the sum is order-sensitive in a way an
+    # all-equal split would hide.
+    masses = [hf_row[s + '_kg_atm'] for s in vol_gas_list]
+    assert max(masses) > 10.0 * min(masses)
 
 
 @pytest.mark.unit
@@ -1822,11 +1835,8 @@ def test_assert_mass_conservation_fails_when_M_atm_exceeds_M_planet():
         'M_atm': 7.2e24,  # Atmosphere exceeds planet (the issue #677 symptom)
         'M_planet': 5.97e24,
     }
-    for s_idx in range(15):
-        # Stub kg_atm columns so the per-species check doesn't fire first
-        # (we want to test the M_atm > M_planet path specifically).
-        pass
-
+    # The row carries no M_vol_atm, so the bookkeeping half is skipped by its
+    # zero guard and the planet-mass half is the only one that can fire.
     with pytest.raises(RuntimeError, match='Mass conservation violation'):
         assert_mass_conservation(hf_row)
     # Discrimination: confirm the excess is well above the 1e-6 tolerance
@@ -1928,6 +1938,146 @@ def test_assert_mass_conservation_skips_when_M_planet_zero():
     # can produce a silent pass on this row.
     assert hf_row['M_atm'] > 0.0
     assert hf_row['M_planet'] == 0.0
+
+
+def _vapourising_row(m_vaps=4.0e20, perturb_species=None):
+    """Row from a vapourising outgas step: volatiles plus a rock-vapour column.
+
+    ``m_vaps`` is added to M_atm without being taken from M_planet, which is the
+    whole content of the relaxed invariant. ``perturb_species`` scales one
+    species mass to break the M_vol_atm bookkeeping without touching the totals.
+    """
+    from proteus.utils.constants import vol_gas_list
+
+    hf_row = {'M_planet': 5.97e24, 'P_vol': 260.0, 'P_vap': 40.0}
+    weights = [1.0] + [0.01] * (len(vol_gas_list) - 1)
+    norm = sum(weights)
+    for s, w in zip(vol_gas_list, weights):
+        hf_row[s + '_kg_atm'] = 6.0e20 * w / norm
+    hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    hf_row['M_vaps'] = m_vaps
+    hf_row['M_atm'] = hf_row['M_vol_atm'] + m_vaps
+    if perturb_species is not None:
+        hf_row[perturb_species + '_kg_atm'] *= 1.01
+    return hf_row
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_species_sum_stays_enforced_without_the_planet_mass_leg():
+    """Switching off the M_atm <= M_planet half leaves the M_vol_atm bookkeeping
+    half fully enforced at the strict tolerance.
+
+    Rock vapourisation breaks only the relation between the atmosphere and the
+    planet mass. The volatile-only atmospheric mass is still the sum of the
+    species masses it is built from, so a stale species mass must still be
+    reported. Edge case: the row used here has M_atm above M_planet, so the
+    disabled half would have fired first had it still been active.
+    """
+    from proteus.utils.constants import vol_gas_list
+    from proteus.utils.coupler import assert_mass_conservation
+
+    # An extreme vapour column, so M_atm exceeds M_planet outright.
+    hf_row = _vapourising_row(m_vaps=6.0e24)
+    assert assert_mass_conservation(hf_row, require_atm_le_planet=False) is None
+
+    # Perturbing one species by 1 percent still raises, four orders above the
+    # 1e-6 tolerance.
+    stale = _vapourising_row(m_vaps=6.0e24, perturb_species='H2O')
+    with pytest.raises(RuntimeError, match='M_vol_atm bookkeeping inconsistency'):
+        assert_mass_conservation(stale, require_atm_le_planet=False)
+
+    # Discrimination: the very same row aborts when the planet-mass half is left
+    # on, so the raise above cannot have come from that half and the keyword is
+    # really the thing selecting between them.
+    with pytest.raises(RuntimeError, match='Mass conservation violation'):
+        assert_mass_conservation(hf_row)
+    assert hf_row['M_atm'] > hf_row['M_planet'] * (1.0 + 1.0e-6)
+    # The breach is three orders above the tolerance, not a rounding edge.
+    assert hf_row['M_atm'] / hf_row['M_planet'] - 1.0 > 1.0e-3
+    # And the species perturbation is far outside the tolerance it must beat.
+    summed = sum(stale[s + '_kg_atm'] for s in vol_gas_list)
+    rel = abs(summed - stale['M_vol_atm']) / stale['M_vol_atm']
+    assert rel > 1.0e3 * 1.0e-6
+
+
+@pytest.mark.unit
+def test_relaxed_planet_mass_leg_warns_only_on_an_unexplained_excess(caplog):
+    """With the planet-mass half relaxed, an excess the rock vapour accounts for
+    passes quietly and one it cannot is warned about.
+
+    Vapourised rock is the only mass the relaxation exists to excuse, so the
+    warning is what keeps a deliberately disabled invariant safe to run with: it
+    separates "the atmosphere is heavier than the planet because of rock vapour",
+    which is the accepted simplification, from "the atmosphere is heavier than
+    rock vapour explains", which is a bookkeeping fault.
+
+    Edge case: with no vapour column there is nothing for the relaxation to
+    excuse, so the invariant is enforced regardless of the keyword. That covers
+    the crystallised and desiccated states of a vapourising run.
+    """
+    import logging
+
+    from proteus.utils.coupler import assert_mass_conservation
+
+    def _warnings():
+        return [r for r in caplog.records if 'larger than vapourisation' in r.getMessage()]
+
+    caplog.set_level(logging.INFO, logger='fwl.proteus.utils.coupler')
+
+    # Rows whose atmosphere sits far inside the planet mass pass silently, at any
+    # vapour column size.
+    for m_vaps in (1.0e20, 2.0e20, 4.0e20):
+        row = _vapourising_row(m_vaps=m_vaps)
+        assert assert_mass_conservation(row, require_atm_le_planet=False) is None
+    assert _warnings() == []
+
+    # Limit input: vapourisation skipped for a crystallised mantle leaves no
+    # vapour column, so the invariant is enforced rather than relaxed. This row
+    # satisfies it, so it passes silently.
+    caplog.clear()
+    dry = _vapourising_row(m_vaps=0.0)
+    dry['P_vap'] = 0.0
+    assert assert_mass_conservation(dry, require_atm_le_planet=False) is None
+    assert _warnings() == []
+    assert dry['M_atm'] == pytest.approx(dry['M_vol_atm'], rel=1e-12)
+    assert dry['M_atm'] < dry['M_planet']
+
+    # The same empty-vapour row breaching the planet mass must raise, because
+    # with no rock vapour present there is nothing the relaxation can excuse.
+    caplog.clear()
+    dry_breach = _vapourising_row(m_vaps=0.0)
+    dry_breach['M_planet'] = 0.5 * dry_breach['M_atm']
+    with pytest.raises(RuntimeError, match='Mass conservation violation'):
+        assert_mass_conservation(dry_breach, require_atm_le_planet=False)
+    # Discrimination: the breach is a factor of two, far outside the tolerance.
+    assert dry_breach['M_atm'] / dry_breach['M_planet'] == pytest.approx(2.0, rel=1e-12)
+
+    # An excess the vapour column cannot account for warns, naming both the
+    # excess and the vapour mass it was measured against. Values are read from
+    # the log arguments so a wrong value in the right slot cannot pass.
+    caplog.clear()
+    unexplained = _vapourising_row(m_vaps=1.0e20)
+    unexplained['M_atm'] = 7.0e24  # far past M_planet, only 1e20 kg of vapour
+    assert assert_mass_conservation(unexplained, require_atm_le_planet=False) is None
+    warned = _warnings()
+    assert len(warned) == 1
+    assert warned[0].levelno == logging.WARNING
+    assert warned[0].args[0] == pytest.approx(
+        unexplained['M_atm'] - unexplained['M_planet'], rel=1e-12
+    )
+    assert warned[0].args[1] == pytest.approx(unexplained['M_vaps'], rel=1e-12)
+    assert unexplained['M_atm'] - unexplained['M_planet'] > 10.0 * unexplained['M_vaps']
+
+    # A vapour column large enough to explain the same excess does not warn, so
+    # the decision keys on the comparison and not on the breach alone.
+    caplog.clear()
+    explained = _vapourising_row(m_vaps=2.0e24)
+    explained['M_atm'] = explained['M_vol_atm'] + explained['M_vaps']
+    explained['M_planet'] = explained['M_vol_atm']
+    assert assert_mass_conservation(explained, require_atm_le_planet=False) is None
+    assert _warnings() == []
+    assert explained['M_atm'] > explained['M_planet']
 
 
 # ============================================================================
