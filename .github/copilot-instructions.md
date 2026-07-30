@@ -24,6 +24,12 @@ Follow the same standards for testing, coverage, code quality, and infrastructur
 > - [`.github/.claude/rules/proteus-code-review.md`](.claude/rules/proteus-code-review.md) -- review-pass gate, domain-aware physics review (Stefan-Boltzmann, hf_row save/restore, IC consistency, whole-element aggregation symmetry, etc.). **Required reading before any code review pass.**
 >
 > These two files plus this one are the canonical sources of truth for testing rigor and review criteria. Together they enforce PROTEUS's extreme-rigor stance on physics validity, anti-happy-path testing, and validation certification.
+>
+> Two further rule files in the same directory are scoped to one subsystem each.
+> Read them when the work touches that subsystem, not on every session:
+>
+> - [`.github/.claude/rules/proteus-socrates-build.md`](.claude/rules/proteus-socrates-build.md) -- SOCRATES configure flags, CPU portability, bit-reproducibility recipe.
+> - [`.github/.claude/rules/proteus-oxygen-accounting.md`](.claude/rules/proteus-oxygen-accounting.md) -- whole-planet oxygen budget, `O_mode` contract, aggregation symmetry (issue #677).
 
 1. **Always** read the two rule files above plus the testing standards in this document and `docs/How-to/testing.md` before any code change.
 2. **Always** inform the user that you are reading in this file by printing a message at the start of your response: "(Read in copilot-instructions.md...)"
@@ -82,29 +88,13 @@ modules. The traps that guide does not call out:
 
 **Always run** `pip install -e ".[develop]"` after code changes to update installation.
 
-#### SOCRATES build flags
-
-By default `tools/get_socrates.sh` keeps the configure flags `-Ofast
--march=native`, which give the best performance on the build host. Set
-`SOCRATES_PORTABLE_FLAGS=1` to compile with `-O2 -fno-fast-math` instead: the
-`-march=native` default bakes the build host's CPU extensions into the binary,
-so a compiled tree reused on a different processor aborts with an
-illegal-instruction fault, while the portable flags run on any CPU. CI sets the
-switch because its caches are restored across runner machines with mixed CPU
-generations. Dropping fast-math also removes compiler value reordering, the
-build-to-build component of the ULP-level non-determinism that AGNI's Newton
-solver amplifies into 1-2 % F_atm variance; run-to-run scatter from OpenMP
-threading remains while OMPARG is set. In portable mode the build fails loudly
-if a future SOCRATES release changes the flag string, so no manual edit is
-needed.
-
-For full bit-reproducibility (paper plots, CHILI, SPIDER-parity) install with
-`SOCRATES_PORTABLE_FLAGS=1 bash tools/get_socrates.sh` and also clear
-`OMPARG = -fopenmp` in `socrates/make/Mk_cmd`, then force a recompile with
-`cd socrates/bin && make clean && cd .. && ./build_code` (no make rule depends
-on `Mk_cmd`, so rebuilding without the clean reuses the OpenMP objects
-unchanged); the install path keeps OpenMP enabled and does not clear it
-automatically.
+SOCRATES compiles with `-Ofast -march=native` by default, which makes a built
+tree non-portable across CPUs and non-reproducible build-to-build.
+`SOCRATES_PORTABLE_FLAGS=1` switches to `-O2 -fno-fast-math`. Read
+[`.github/.claude/rules/proteus-socrates-build.md`](.claude/rules/proteus-socrates-build.md)
+before changing `tools/get_socrates.sh`, before debugging an
+illegal-instruction crash from a restored tree, or before producing numbers that
+must be bit-reproducible.
 
 ### Test Commands
 
@@ -329,13 +319,13 @@ stay local. Full conventions: `docs/How-to/development_standards.md`.
 
 ## Whole-planet oxygen accounting (issue #677)
 
-Every config must declare an explicit `planet.elements.O_mode`. Four valid modes:
-
-- `"ic_chemistry"`: defer the IC O budget to CALLIOPE's fO2-buffered equilibrium. Preserves pre-fix behaviour; backwards-compatible.
-- `"ppmw"`, `"kg"`: parallel to the H/C/N/S modes; sets O_kg directly.
-- `"FeO_mantle_wt_pct"`: alternative unit for petrologists. The number is interpreted as `O_kg = M_mantle * (wt% / 100) * (M_O / M_FeO)`. The mantle EOS density is NOT modified; PALEOS still assumes its built-in FeO content. The mode is a unit-of-convenience for setting the volatile-O budget in familiar terms.
-
-Under D1A (the chosen design), CALLIOPE / atmodeller chemistry is unchanged. Oxygen is treated as a buffered element at the chemistry step but a tracked element in PROTEUS-side mass accounting. The asymmetry that previously let `M_atm > M_planet` at high H budgets is closed by including O in M_ele, in the Zalmoxis dry-mass subtraction, in the proportional escape distribution, and in the desiccation gate. Escape includes O in the unfractionated partitioning so `sum(esc_rate_e) == esc_rate_total` to within rounding. The runtime invariant `M_atm <= M_planet` is enforced via `assert_mass_conservation` in the main loop. An IC consistency check (`check_ic_oxygen_budget`, called once after the first outgas call) hard-fails on >50% divergence between user-supplied O_budget and CALLIOPE's equilibrium value.
+Every config must declare an explicit `planet.elements.O_mode`. Oxygen is
+buffered at the chemistry step but tracked in PROTEUS-side mass accounting, and
+`assert_mass_conservation` enforces `M_atm <= M_planet` every iteration. Read
+[`.github/.claude/rules/proteus-oxygen-accounting.md`](.claude/rules/proteus-oxygen-accounting.md)
+before touching element budgets, `M_planet` bookkeeping, escape partitioning, or
+the desiccation gate. A new `if e == 'O': continue` skip in any aggregation site
+is a red flag.
 
 ## Documentation References
 
