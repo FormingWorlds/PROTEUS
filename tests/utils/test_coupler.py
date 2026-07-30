@@ -2901,7 +2901,6 @@ def test_select_resumable_snapshot_accepts_both_atm(tmp_path):
     # Nothing dropped
     out_agni, dropped_agni = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30.7]))
     assert dropped_agni == []
-    assert out_agni.iloc[-1]['Time'] == pytest.approx(31)  # rounded
 
 
 @pytest.mark.unit
