@@ -710,6 +710,18 @@ def PrintCurrentState(hf_row: dict):
     log.info('    T_surf     = %8.3f   K' % float(hf_row['T_surf']))
     log.info('    T_magma    = %8.3f   K' % float(hf_row['T_magma']))
     log.info('    P_surf     = %.2e   bar' % float(hf_row['P_surf']))
+
+    # Rock vapour breaks the whole-planet mass balance by design, so a run
+    # carrying a vapour column reports its budget alongside the totals every
+    # iteration. This makes drift visible while the run is going rather than
+    # at post-processing. Runs without rock vapour keep the shorter output.
+    M_vaps = float(hf_row.get('M_vaps', 0.0))
+    if M_vaps > 0.0:
+        log.info('    P_vol      = %.2e   bar' % float(hf_row.get('P_vol', 0.0)))
+        log.info('    P_vap      = %.2e   bar' % float(hf_row.get('P_vap', 0.0)))
+        log.info('    M_atm      = %.2e   kg' % float(hf_row.get('M_atm', 0.0)))
+        log.info('    M_vaps     = %.2e   kg' % M_vaps)
+
     log.info('    Phi_global = %.2e   ' % float(hf_row['Phi_global']))
     log.info('    F_atm      = %.2e   W m-2' % float(hf_row['F_atm']))
     log.info('    F_int      = %.2e   W m-2' % float(hf_row['F_int']))

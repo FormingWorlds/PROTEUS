@@ -1030,8 +1030,9 @@ class Proteus:
 
             # Vapourisation moves non-volatile mass into M_atm that M_planet
             # does not track, so only the M_atm <= M_planet half is dropped in
-            # that mode and the drift is reported every iteration instead.
-            # Non-conservation is a simplification of vapourisation.
+            # that mode. An excess larger than the vapour column explains still
+            # warns, and PrintCurrentState reports the vapour budget every
+            # iteration. Non-conservation is a simplification of vapourisation.
             assert_mass_conservation(
                 self.hf_row,
                 require_atm_le_planet=not self.config.outgas.vapourise,
@@ -1205,7 +1206,10 @@ class Proteus:
                 and not self.finished_both
             ):
                 log.info('Making plots')
+                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
                 UpdatePlots(self.hf_all, self.directories, self.config)
+                if _IT_TIMING_ENABLED:
+                    _t_mod['plots'] = time.perf_counter() - _t0
 
             # Update or create data archive
             if (

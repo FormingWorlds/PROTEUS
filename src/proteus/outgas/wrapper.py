@@ -263,7 +263,7 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
 
     Scope of "desiccated": the threshold loop below considers the volatile
     elements (`vol_element_list`: H, O, C, N, S) together with the noble gases,
-    so a planet that with a noble-gas dominated atmosphere is not desiccated.
+    so a planet with a noble-gas dominated atmosphere is not desiccated.
     """
 
     # Threshold check: refuse desiccation while ANY volatile or noble gas is

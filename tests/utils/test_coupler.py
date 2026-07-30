@@ -655,6 +655,75 @@ def test_print_current_state_includes_temperatures():
         assert any('2500.300' in str(call) for call in log_calls)
 
 
+@pytest.mark.unit
+def test_print_current_state_reports_the_vapour_budget_when_rock_vapour_is_present():
+    """A row carrying rock vapour reports the pressure split and both masses.
+
+    Whole-planet mass conservation is deliberately relaxed while rock vapour is
+    in the atmosphere, so the quantities that let a reader judge the size of the
+    imbalance have to reach the log on every iteration rather than only at
+    post-processing.
+    """
+    hf_row = ZeroHelpfileRow()
+    hf_row['Time'] = 1.0e8
+    hf_row['T_surf'] = 2500.0
+    hf_row['T_magma'] = 3000.0
+    # P_vol and P_vap are deliberately unequal, and neither equals P_surf, so a
+    # regression that printed the same quantity three times cannot pass.
+    hf_row['P_surf'] = 3.0e2
+    hf_row['P_vol'] = 2.6e2
+    hf_row['P_vap'] = 4.0e1
+    hf_row['M_atm'] = 7.0e20
+    hf_row['M_vaps'] = 1.2e20
+    hf_row['Phi_global'] = 0.9
+    hf_row['F_atm'] = 1.0e4
+    hf_row['F_int'] = 5.0e3
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        PrintCurrentState(hf_row)
+
+    log_calls = [str(call) for call in mock_log.info.call_args_list]
+    for label in ('P_vol', 'P_vap', 'M_atm', 'M_vaps'):
+        assert any(label in call for call in log_calls), f'{label} missing from the state print'
+    # The values, not only the labels: a regression that emitted the labels
+    # against the wrong hf_row keys would keep every assertion above.
+    for value in ('2.60e+02', '4.00e+01', '7.00e+20', '1.20e+20'):
+        assert any(value in call for call in log_calls), f'{value} missing from the state print'
+
+
+@pytest.mark.unit
+def test_print_current_state_omits_the_vapour_budget_without_rock_vapour():
+    """With no vapour column the extra lines stay out of the log.
+
+    Edge case: `M_vaps` exactly zero is the default path, where the strict mass
+    invariant is enforced and the vapour split carries no information. A stale
+    `P_vap` left in the row must not resurrect the block either, since the
+    presence of vapour mass is what the relaxation is keyed to.
+    """
+    hf_row = ZeroHelpfileRow()
+    hf_row['Time'] = 1.0e8
+    hf_row['T_surf'] = 287.0
+    hf_row['T_magma'] = 3000.0
+    hf_row['P_surf'] = 1.0
+    hf_row['P_vol'] = 1.0
+    hf_row['P_vap'] = 5.0  # stale, and must not be enough on its own
+    hf_row['M_vaps'] = 0.0
+    hf_row['Phi_global'] = 0.5
+    hf_row['F_atm'] = 100.0
+    hf_row['F_int'] = 50.0
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        PrintCurrentState(hf_row)
+
+    log_calls = [str(call) for call in mock_log.info.call_args_list]
+    for label in ('P_vap', 'M_vaps'):
+        assert not any(label in call for call in log_calls), f'{label} printed without vapour'
+    # Discrimination: the ordinary lines are still there, so the assertions
+    # above cannot be satisfied by a print that emitted nothing at all.
+    assert any('P_surf' in call for call in log_calls)
+    assert any('Phi_global' in call for call in log_calls)
+
+
 # =============================================================================
 # Test: Time Formatting
 # =============================================================================
@@ -2409,6 +2478,10 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
     monkeypatch.setitem(sys.modules, 'calliope', types.SimpleNamespace(__version__='1.2.3'))
     monkeypatch.setitem(sys.modules, 'boreas', types.SimpleNamespace(__version__='2.3.4'))
     monkeypatch.setitem(sys.modules, 'mors', types.SimpleNamespace(__version__='3.4.5'))
+    # VULCAN is an optional module and the atmos_chem branch under test imports
+    # it by name, so the stub belongs here rather than being inherited from
+    # whichever other test file happened to import first.
+    monkeypatch.setitem(sys.modules, 'vulcan', types.SimpleNamespace(__version__='5.6.7'))
     monkeypatch.setitem(
         sys.modules, 'petitRADTRANS', types.SimpleNamespace(__version__='4.5.6')
     )
@@ -2423,6 +2496,7 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
         assert any('Outgas module     calliope version' in m for m in messages)
         assert any('Escape module     boreas version' in m for m in messages)
         assert any('Star module       mors version' in m for m in messages)
+        assert any('Atmos_chem module vulcan version 5.6.7' in m for m in messages)
         assert any('Observe module    petitRADTRANS version' in m for m in messages)
         # Discrimination: rock vapourisation is disabled here
         # (vapourise=False), so LavAtmos must not be reported at all.
