@@ -75,16 +75,10 @@ pip install "fwl-proteus[atmodeller]"
 thermodynamic vapourisation equilibrium of silicate melt, adding rock-vapour
 species to the atmosphere. It is optional, selected with
 `outgas.vapourise = true`, and is not installed with PROTEUS by default.
-If you publish results that use it, cite van Buchem et al.
-([2023](https://doi.org/10.1111/maps.13994), _Meteoritics & Planetary Science_
-58, 1149) for the code and van Buchem et al.
-([2025](https://doi.org/10.1051/0004-6361/202450992), _Astronomy &
-Astrophysics_ 695, A154) for the volatile-inclusive vaporisation equilibrium
-that PROTEUS drives.
+
 LavAtmos needs [ThermoEngineLite](https://github.com/FormingWorlds/ThermoEngineLite)
 for melt thermodynamics and the FastChem chemistry solver already installed
-alongside AGNI (`FC_DIR`; see
-[Install AGNI and FastChem](manual_installation.md#6-install-agni-and-fastchem)
+alongside AGNI (`FC_DIR`; see [Install AGNI and FastChem](manual_installation.md#6-install-agni-and-fastchem)
 if that variable is not set).
 
 ```console
@@ -103,15 +97,7 @@ variable for you. Export the printed path and add it to your shell rc file:
 export LAVA_DIR='<path-to-LavAtmos>/'
 ```
 
-Enable rock vapourisation in your config:
-
-```toml
-[outgas]
-vapourise = true
-```
-
-See [`input/vapourise.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/vapourise.toml)
-for a full example configuration.
+See [`input/tutorials/tutorial_vapourise.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/tutorials/tutorial_vapourise.toml) for an example configuration.
 
 ## Parameter inference (Bayesian optimisation)
 
