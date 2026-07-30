@@ -239,7 +239,7 @@ When testing new routines, reviewing behavior, or investigating edge cases acros
 - **Always produce plots** that verify the requested behavior. Plots are the primary verification artifact for scientific simulation code.
 - **Store all generated plots and data in gitignored folders.** Use `output_files/` (already in `.gitignore`). Never commit generated plots or simulation output to the repository.
 - **Store raw simulation data** alongside plots (same gitignored folder) when feasible (up to a few hundred MB). Formats: `.txt`, `.csv`, or `.npz`. This allows replotting without re-running.
-- **Store plot-generating scripts in gitignored folders** unless the user explicitly asks to commit them. If committing, place in `src/tests/`.
+- **Store plot-generating scripts in gitignored folders** unless the user explicitly asks to commit them. If committing, place in `tests/`.
 - **At the end of a plotting task**, report: (1) output folder path, (2) what each plot shows, (3) notable findings or anomalies.
 - **Plot standards**: matplotlib with Wong colorblind-friendly palette, sans-serif font (Helvetica/Arial), inward ticks on all sides, `dpi >= 150`, clear axis labels with units, legends, descriptive titles.
 - **Documentation images**: use AVIF format (not PNG) for all plots committed to `docs/assets/`. AVIF is 3-5x smaller than PNG at equivalent quality. Convert with `magick input.png -quality 60 output.avif`. Reference in markdown as `![alt](path.avif)`.
