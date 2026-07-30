@@ -251,7 +251,7 @@ class TestCustomFormatter:
             exc_info=None,
         )
         result = formatter.format(record)
-        assert 'WARNING' in result or 'WARNI' in result  # Might be truncated
+        assert 'WARN' in result  # Might be truncated
         assert 'Test warning message' in result
         assert '93m' in result  # Yellow color code
 

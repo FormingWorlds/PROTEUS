@@ -50,6 +50,8 @@ Issue #677 surfaced when one site (M_atm via `gas_list` sum) implicitly included
 
 The runtime invariant `assert_mass_conservation(hf_row)` is called at the end of every iteration to hard-fail on a regression. If a review finds someone has weakened or removed that assertion, push back: it's the safety net that catches future O-skip reintroductions.
 
+The one sanctioned relaxation is `require_atm_le_planet=False`, which the main loop passes when `outgas.vapourise = true`. It disables the `M_atm <= M_planet` half only, replaces it with a warning raised when the excess over `M_planet` exceeds `M_vaps`, and leaves the `M_vol_atm` species-sum half and the `atol_frac` tolerance untouched. It applies only while `M_vaps > 0`. Flag any change that widens `atol_frac`, that disables the species-sum half, or that silences the warning.
+
 ## IC consistency checks at unit boundaries
 
 When a user supplies a value via config that gets re-derived by a downstream solver (e.g., O_budget from `planet.elements.O_mode` vs CALLIOPE's IC equilibrium), a one-shot reconciliation check at IC catches mis-specifications loudly rather than letting them silently corrupt the trajectory. Pattern from issue #677:

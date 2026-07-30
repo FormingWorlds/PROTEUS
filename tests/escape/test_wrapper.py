@@ -420,6 +420,52 @@ def test_calc_new_elements_exempts_noble_gases_from_desiccation_floor():
     assert 0.0 < out['H'] < 1.5e20
 
 
+@pytest.mark.physics_invariant
+def test_calc_new_elements_debits_only_the_element_total():
+    """The escape debit is returned as a new ``{e}_kg_total`` and nothing else in
+    the row is touched, so the caller determines the written values.
+
+    This is the ownership rule the outgassing side relies on: a noble gas shares
+    its string with the matching gas species, so anything downstream that rebuilds
+    ``{e}_kg_total`` from the reservoirs undoes the debit. The vapour step's half
+    of that contract is asserted in
+    tests/outgas/test_lavatmos.py::test_run_vapourisation_preserves_noble_gases.
+    Edge case: a zero escape rate must leave every total untouched rather than
+    drifting.
+    """
+    from proteus.escape.wrapper import calc_new_elements
+    from proteus.utils.constants import element_list
+
+    hf = {f'{e}_kg_total': 0.0 for e in element_list}
+    for e in element_list:
+        hf[f'{e}_kg_atm'] = 0.0
+    hf['H_kg_total'] = hf['H_kg_atm'] = 1.0e20
+    hf['He_kg_total'] = hf['He_kg_atm'] = 1.0e16
+    hf['esc_rate_total'] = 1.0e8  # kg/s, large enough to debit He visibly
+
+    out = calc_new_elements(hf, reservoir='bulk', dt=1.0e3, min_thresh=1.0e16)
+
+    # The helium total came back debited, and by a resolvable amount rather than
+    # a rounding difference.
+    assert out['He'] < 1.0e16
+    debited = 1.0e16 - out['He']
+    assert debited > 1.0e14
+
+    # calc_new_elements returns the new totals and writes nothing itself, so the
+    # row it was handed is unchanged: the total is still the pre-escape value and
+    # the per-reservoir masses are untouched. Rebuilding a total from those
+    # reservoirs downstream would therefore undo the debit entirely.
+    assert hf['He_kg_total'] == pytest.approx(1.0e16, rel=1e-12)
+    assert hf['He_kg_atm'] == pytest.approx(1.0e16, rel=1e-12)
+    assert hf['H_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
+
+    # Limit input: no escape means no debit on any element.
+    hf['esc_rate_total'] = 0.0
+    quiet = calc_new_elements(hf, reservoir='bulk', dt=1.0e3, min_thresh=1.0e16)
+    assert quiet['He'] == pytest.approx(1.0e16, rel=1e-12)
+    assert quiet['H'] == pytest.approx(1.0e20, rel=1e-12)
+
+
 @pytest.mark.unit
 def test_run_escape_baseline_persists_across_calls():
     """Test that subsequent run_escape calls do NOT overwrite M_vol_initial.

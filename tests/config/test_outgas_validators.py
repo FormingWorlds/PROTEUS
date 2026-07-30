@@ -84,6 +84,42 @@ def test_outgas_custom_solver_params():
     assert o.solver_atol == pytest.approx(1e-7, rel=1e-12)
 
 
+@pytest.mark.unit
+def test_lavatmos_defaults():
+    """Lavatmos initializes with the documented rock-vapour defaults."""
+    from proteus.config._outgas import Lavatmos
+
+    lav = Lavatmos()
+    assert lav.T_min == pytest.approx(1500.0, rel=1e-12)
+    assert lav.melt_comp_name == 'BSE_palm'
+    assert lav.P_melt == pytest.approx(0.01, rel=1e-12)
+    assert lav.xatol == pytest.approx(1e-5, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_lavatmos_custom_melt_pressure_and_tolerance():
+    """
+    P_melt and xatol are honoured verbatim and must stay strictly positive.
+    """
+    from proteus.config._outgas import Lavatmos
+
+    # Custom melt pressure and solver tol.
+    lav = Lavatmos(P_melt=0.05, xatol=2e-6)
+    assert lav.P_melt == pytest.approx(0.05, rel=1e-12)
+    assert lav.xatol == pytest.approx(2e-6, rel=1e-12)
+
+    # Discrimination: overrides are stored, not reset to the defaults.
+    assert lav.P_melt != pytest.approx(0.01, rel=1e-12)
+    assert lav.xatol != pytest.approx(1e-5, rel=1e-12)
+
+    # Check melt pressure and tol. are positive.
+    for bad in (0.0, -0.01):
+        with pytest.raises(ValueError):
+            Lavatmos(P_melt=bad)
+        with pytest.raises(ValueError):
+            Lavatmos(xatol=bad)
+
+
 def test_h2_binodal_enabled_is_rejected():
     """`h2_binodal = true` is rejected at config load.
 

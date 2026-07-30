@@ -105,11 +105,12 @@ are grouped by category below.
 | `R_int` | m | Interior (surface) radius |
 | `R_core` | m | Core radius |
 | `M_int` | kg | Interior dry mass (mantle + core) |
-| `M_planet` | kg | Total planet mass (interior + volatiles) |
+| `M_planet` | kg | Total planet mass (interior + atmosphere) |
 | `M_core` | kg | Core mass |
 | `M_mantle` | kg | Mantle mass (solid + liquid) |
 | `M_mantle_solid` | kg | Solid mantle mass |
 | `M_mantle_liquid` | kg | Liquid mantle mass |
+| `M_vaps` | kg | Rock-vapour mass, including the vapourised oxygen |
 | `P_center` | Pa | Central pressure |
 | `P_cmb` | Pa | Core-mantle boundary pressure |
 | `core_density` | kg m$^{-3}$ | Core density |
@@ -190,17 +191,28 @@ For each element (H, C, N, O, S):
 
 | Column | Units | Description |
 |--------|-------|-------------|
-| `M_atm` | kg | Total atmospheric mass |
-| `M_ele` | kg | Total volatile element mass |
+| `M_atm` | kg | Total atmospheric mass, rock vapour included |
+| `M_vol_atm` | kg | Atmospheric mass of volatiles and noble gases, rock vapour excluded |
+| `M_ele` | kg | Whole-planet mass of the volatile and noble elements, rock vapour excluded |
 | `P_surf` | bar | Total surface pressure |
+| `P_vap` | bar | Surface pressure of the rock-vapour species |
+| `P_vol` | bar | Surface pressure of the volatile species |
 | `atm_kg_per_mol` | kg mol$^{-1}$ | Mean molecular weight |
 
 ### Redox state
 
 | Column | Units | Description |
 |--------|-------|-------------|
-| `fO2_shift_IW_derived` | log$_{10}$ | Derived fO2 offset from iron-wustite buffer |
+| `fO2_shift_IW_derived` | dex | Derived fO2 of the volatile outgassing step, relative to the iron-wustite buffer (zero means on the buffer) |
+| `fO2_vapourise_derived` | log$_{10}$ bar | Derived absolute fO2 of the combined atmosphere from rock vapourisation (zero means 1 bar of O$_2$) |
+| `fO2_vapourise_shift_IW_derived` | dex | The same quantity as `fO2_vapourise_derived`, relative to the iron-wustite buffer at `T_magma` |
 | `O_res` | kg | Oxygen mass-balance residual |
+| `O_vapourised_kg` | kg | Oxygen released by rock vapourisation, held separately from the volatile-step `O_kg_atm` |
+
+The two `fO2_vapourise*` columns differ only in their zero point: the first is
+absolute, the second is the first minus the buffer value, so it is a difference
+of two log$_{10}$ bar numbers and therefore a dimensionless dex offset. See
+[Model description](../Explanations/model.md#volatile-outgassing-and-rock-vapourisation-are-combined).
 
 ### Escape
 

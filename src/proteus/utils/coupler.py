@@ -23,9 +23,9 @@ import pandas as pd
 from proteus.utils.constants import (
     element_list,
     gas_list,
-    noble_gases,
     secs_per_hour,
     secs_per_minute,
+    vol_gas_list,
 )
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -134,7 +134,34 @@ def _get_julia_version():
     """
     Get the installed Julia version
     """
-    return subprocess.check_output(['julia', '--version']).decode('utf-8').split()[-1]
+    try:
+        return subprocess.check_output(['julia', '--version']).decode('utf-8').split()[-1]
+    except FileNotFoundError:
+        return 'unknown (julia not installed)'
+
+
+def _get_lavatmos_version() -> str:
+    """
+    Get the installed LavAtmos version.
+    """
+    LAVA_DIR = os.environ.get('LAVA_DIR')
+    if LAVA_DIR is None:
+        return 'unknown (LAVA_DIR not set)'
+    return _get_git_revision(LAVA_DIR)
+
+
+def _get_thermoengine_version() -> str:
+    """
+    Get the installed ThermoEngine version.
+
+    This is a python module but is optional, so might not be installed.
+    """
+
+    try:
+        import thermoengine
+    except ImportError:
+        return 'unknown (thermoengine not installed)'
+    return thermoengine.__version__
 
 
 def validate_module_versions(dirs: dict, config: Config):
@@ -285,6 +312,7 @@ def print_system_configuration(dirs: dict):
 
     log.info('Current time      ' + _get_current_time())
     log.info('Python version    ' + sys.version.split(' ')[0])
+    log.info('Julia version     ' + _get_julia_version())
     log.info('System hostname   ' + str(os.uname()[1]))
     log.info('System username   ' + str(username))
     log.info('Platform type     ' + str(platform.system()))
@@ -332,16 +360,23 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info(write)
     if config.atmos_clim.module in ['janus', 'agni']:
         log.info('  - SOCRATES      version %s at %s' % (_get_socrates_version(), dirs['rad']))
-        if config.atmos_clim.module == 'agni':
-            log.info('  - Julia         version ' + _get_julia_version())
 
     # Outgassing module
     write = 'Outgas module     %s' % config.outgas.module
-    if config.outgas.module == 'calliope':
-        from calliope import __version__ as calliope_version
+    match config.outgas.module:
+        case 'calliope':
+            from calliope import __version__ as calliope_version
 
-        write += ' version ' + calliope_version
+            write += ' version ' + calliope_version
+        case 'atmodeller':
+            from atmodeller import __version__ as atmodeller_version
+
+            write += ' version ' + atmodeller_version
+
     log.info(write)
+    if config.outgas.vapourise:
+        log.info('  - LavAtmos      version ' + _get_lavatmos_version())
+        log.info('  - ThermoEngine  version ' + _get_thermoengine_version())
 
     # Escape module
     write = 'Escape module     %s' % config.escape.module
@@ -373,7 +408,13 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info('Accretion module  %s' % config.accretion.module)
 
     # Atmospheric chemistry module
-    log.info('Atmos_chem module %s' % config.atmos_chem.module)
+    write = 'Atmos_chem module %s' % config.atmos_chem.module
+    match config.atmos_chem.module:
+        case 'vulcan':
+            from vulcan import __version__ as vulcan_version
+
+            write += ' version ' + vulcan_version
+    log.info(write)
 
     # Observations synthesis module
     write = 'Observe module    %s' % config.observe.module
@@ -499,9 +540,14 @@ def print_stoptime(start_time):
     log.info(' ')
 
 
-def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
-    """Runtime invariant: M_atm <= M_planet and sum of per-species kg_atm
-    matches M_atm.
+def assert_mass_conservation(
+    hf_row: dict,
+    atol_frac: float = 1e-6,
+    *,
+    require_atm_le_planet: bool = True,
+) -> None:
+    """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, and
+    M_atm <= M_planet unless the caller disables that half.
 
     Issue #677 invariant. M_atm sums atmospheric oxygen (over gas_list of
     *_kg_atm, including the O atoms in H2O / CO2 / SO2), and M_planet =
@@ -510,24 +556,34 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     by construction. This assertion catches any regression that
     re-introduces an asymmetry by dropping O from one side.
 
+    Rock vapourisation (``outgas.vapourise``) moves vapourised rock mass into
+    M_atm without debiting it from the interior, so M_planet does not track it
+    and M_atm <= M_planet no longer holds.
+
     Parameters
     ----------
     hf_row : dict
         Helpfile row at the end of an iteration, after run_outgassing
         and update_planet_mass have written M_atm and M_planet.
     atol_frac : float
-        Relative tolerance for the two invariants. Default 1e-6 admits
+        Relative tolerance for invariants. Default 1e-6 admits
         accumulated float-rounding from the per-species sum but not
         any physically meaningful drift.
+    require_atm_le_planet : bool
+        Whether to enforce M_atm <= M_planet. Ignored when the row carries no
+        vapour column: rock vapour is the only mass the relaxation excuses, so
+        with M_vaps == 0 the invariant is enforced either way.
 
     Raises
     ------
     RuntimeError
-        If M_atm > M_planet (by more than ``atol_frac`` of M_planet) or
-        the per-species sum disagrees with M_atm by more than that.
+        If the per-species kg_atm sum over vol_gas_list disagrees with
+        M_vol_atm by more than ``atol_frac``. When ``require_atm_le_planet``,
+        raises if M_atm relatively exceeds M_planet.
     """
     M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
+    M_vol_atm = float(hf_row.get('M_vol_atm', 0.0))
 
     # Pre-IC short-circuit: M_planet == 0 means the structure solve has
     # not yet populated the hf_row. The invariants are not meaningful
@@ -538,32 +594,110 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     if M_planet <= 0.0:
         return
 
-    # Invariant 1: atmosphere mass <= total planet mass.
-    if M_atm > M_planet * (1.0 + atol_frac):
-        raise RuntimeError(
-            f'Mass conservation violation (issue #677 regression?): '
-            f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
-            f'(relative excess {(M_atm / M_planet - 1) * 100:.3f}%). '
-            f'Likely cause: an aggregation site re-introduced the '
-            f'"if e == \'O\': continue" skip. Check update_planet_mass, '
-            f'calc_target_elemental_inventories, and load_zalmoxis_configuration.'
-        )
+    M_vaps = float(hf_row.get('M_vaps', 0.0))
+    breached = M_atm > M_planet * (1.0 + atol_frac)
 
-    # Invariant 2: M_atm stays in sync with the per-species kg_atm fields it
-    # is summed from. This guards against a future reordering that mutates a
-    # species kg_atm after M_atm is computed without refreshing M_atm. The
-    # noble gases are members of gas_list, so their atmospheric mass is
-    # counted here and in M_atm alike.
-    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
-    if M_atm > 0.0:
-        rel = abs(summed - M_atm) / M_atm
+    # Invariant 1: atmosphere mass <= total planet mass.
+    if require_atm_le_planet or M_vaps <= 0.0:
+        if breached:
+            raise RuntimeError(
+                f'Mass conservation violation (issue #677 regression?): '
+                f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
+                f'(relative excess {(M_atm / M_planet - 1) * 100:.3f}%). '
+                f'Likely cause: an aggregation site re-introduced the '
+                f'"if e == \'O\': continue" skip. Check update_planet_mass, '
+                f'calc_target_elemental_inventories, and load_zalmoxis_configuration.'
+            )
+    else:
+        # Vapourised rock can cause the atmosphere mass to exceed past
+        # the planet mass, so an excess larger than M_vaps is not explained by
+        # vapourisation and should raise a warning here.
+        if M_atm - M_planet > M_vaps + M_planet * atol_frac:
+            log.warning(
+                'Atmosphere mass exceeds planet mass by %.3e kg, more than the '
+                '%.3e kg of vapourised rock that accounts for the difference. '
+                'The imbalance is larger than vapourisation explains.',
+                M_atm - M_planet,
+                M_vaps,
+            )
+
+    # Invariant 2: M_vol_atm stays in sync with the per-species kg_atm fields
+    # it is summed from. This guards against a future reordering that mutates
+    # a species kg_atm after M_vol_atm is computed without refreshing it.
+    # The sum runs over vol_gas_list (gas_list minus the rock vapours), which
+    # is the documented definition of M_vol_atm: volatiles and noble gases in
+    # the atmosphere, rock vapour excluded. Summing over vol_list alone would
+    # drop the noble gases and fire spuriously on any run that carries a
+    # noble inventory; summing over the full gas_list would pull in the rock
+    # vapour that M_vol_atm deliberately excludes.
+    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
+    scale = max(M_vol_atm, summed)
+    if scale > 0.0:
+        rel = abs(summed - M_vol_atm) / scale
         if rel > atol_frac:
             raise RuntimeError(
-                f'M_atm bookkeeping inconsistency: M_atm={M_atm:.3e} kg but '
-                f'sum_s(s_kg_atm)={summed:.3e} kg (relative difference '
-                f'{rel * 100:.3f}%). One of the gas-species kg_atm fields '
-                f'is stale or the M_atm sum loop is missing a species.'
+                f'M_vol_atm bookkeeping inconsistency: M_vol_atm='
+                f'{M_vol_atm:.3e} kg but sum_s(s_kg_atm)={summed:.3e} kg '
+                f'(relative difference {rel * 100:.3f}%). One of the '
+                f'gas-species kg_atm fields is stale or the M_vol_atm sum '
+                f'loop is missing a species.'
             )
+
+
+def assert_surface_pressure_consistency(
+    config: Config, hf_row: dict, atol_frac: float = 1e-6
+) -> None:
+    """Runtime invariant: P_surf == P_vol + P_vap, and P_vap == 0 when rock
+    vapourisation is disabled.
+
+    P_vol is the volatile-only surface pressure (CALLIOPE/atmodeller/dummy
+    output) and P_vap is the rock-vapour contribution added by LavAtmos
+    (`outgas.vapourise = True`). P_surf is the total the atmosphere modules
+    use as their lower boundary condition, so the two partial pressures must
+    always sum back to it.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row at the end of an outgassing call (run_outgassing,
+        run_vapourisation, run_desiccated, or run_crystallized).
+    atol_frac : float
+        Relative tolerance against max(|P_surf|, |P_vol + P_vap|).
+
+    Raises
+    ------
+    RuntimeError
+        If P_vap is nonzero while `outgas.vapourise` is False, or if
+        P_surf disagrees with P_vol + P_vap by more than `atol_frac`.
+    """
+
+    P_surf = float(hf_row.get('P_surf', 0.0))
+    P_vol = float(hf_row.get('P_vol', 0.0))
+    P_vap = float(hf_row.get('P_vap', 0.0))
+
+    if not config.outgas.vapourise and P_vap != 0.0:
+        raise RuntimeError(
+            f'P_vap={P_vap:.3e} bar is nonzero but outgas.vapourise=False: '
+            'rock-vapour pressure must stay at zero when vapourisation is '
+            'disabled. Check that the code path that set P_vap is gated on '
+            'config.outgas.vapourise.'
+        )
+
+    total = P_vol + P_vap
+    scale = max(abs(P_surf), abs(total))
+    if scale <= 0.0:
+        # Pre-IC / no atmosphere yet: nothing meaningful to compare.
+        return
+
+    rel = abs(P_surf - total) / scale
+    if rel > atol_frac:
+        raise RuntimeError(
+            f'Surface pressure inconsistency: P_surf={P_surf:.6e} bar but '
+            f'P_vol+P_vap={total:.6e} bar (P_vol={P_vol:.6e}, '
+            f'P_vap={P_vap:.6e}, relative difference {rel * 100:.3f}%). '
+            'One of the outgassing code paths updated P_surf without '
+            'keeping P_vol/P_vap in sync.'
+        )
 
 
 def PrintCurrentState(hf_row: dict):
@@ -576,6 +710,18 @@ def PrintCurrentState(hf_row: dict):
     log.info('    T_surf     = %8.3f   K' % float(hf_row['T_surf']))
     log.info('    T_magma    = %8.3f   K' % float(hf_row['T_magma']))
     log.info('    P_surf     = %.2e   bar' % float(hf_row['P_surf']))
+
+    # Rock vapour breaks the whole-planet mass balance by design, so a run
+    # carrying a vapour column reports its budget alongside the totals every
+    # iteration. This makes drift visible while the run is going rather than
+    # at post-processing. Runs without rock vapour keep the shorter output.
+    M_vaps = float(hf_row.get('M_vaps', 0.0))
+    if M_vaps > 0.0:
+        log.info('    P_vol      = %.2e   bar' % float(hf_row.get('P_vol', 0.0)))
+        log.info('    P_vap      = %.2e   bar' % float(hf_row.get('P_vap', 0.0)))
+        log.info('    M_atm      = %.2e   kg' % float(hf_row.get('M_atm', 0.0)))
+        log.info('    M_vaps     = %.2e   kg' % M_vaps)
+
     log.info('    Phi_global = %.2e   ' % float(hf_row['Phi_global']))
     log.info('    F_atm      = %.2e   W m-2' % float(hf_row['F_atm']))
     log.info('    F_int      = %.2e   W m-2' % float(hf_row['F_int']))
@@ -601,6 +747,7 @@ def GetHelpfileKeys():
     All dimensional quantites should be stored in SI units, except those noted below.
     * Pressure is in units of [bar].
     * Time is in units of [years].
+
     """
 
     # fmt: off
@@ -628,6 +775,7 @@ def GetHelpfileKeys():
         'R_int',            # interior radius [m]
         'M_int',            # interior mass [kg]
         'M_planet',         # total planet wet+dry mass [kg]
+        'M_vaps',           # vapourised rock mass, including the vapourised oxygen [kg]
         'R_core',           # core radius [m]
         'R_solvus',         # solvus radius for global_miscibility mode [m]
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]
@@ -755,14 +903,17 @@ def GetHelpfileKeys():
         'rho_obs',          # transit bulk density [kg m-3]
         'transit_depth',    # primary transit light curve depth [1]
         'eclipse_depth',    # secondary eclipse light curve depth [1]
-        'albedo_pl',        # INPUT bond albedo from config: constant value or interpolated from table [1]
+        'albedo_pl',        # INPUT bond albedo from config: constant value (0 to 1) [1]
         'bond_albedo',      # OUTPUT calculated bond albedo from radtrans: SW_UP/SW_DN, zero if no scattering [1]
 
         # Atmospheric composition from outgassing
-        'M_ele',            # total mass of tracked elements (utils.constants.element_list)
+        'M_ele',            # total mass of volatile and noble elements; rock vapour excluded [kg]
         'M_atm',            # total mass of atmosphere [kg]
         'P_surf',           # total surface pressure [bar]
+        'P_vap',            # rock vapour surface pressure [bar]
+        'P_vol',            # volatiles surface pressure [bar]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
+        'M_vol_atm',        # atmospheric mass of volatiles and noble gases; rock vapour excluded [kg]
 
         # Iron-wustite buffer offset that the chemistry solver actually
         # equilibrated to, and the O mass-balance residual of that
@@ -779,8 +930,16 @@ def GetHelpfileKeys():
         # cross-backend comparison of this column requires converting
         # one of the conventions; an independent comparison harness will
         # eventually pick a single canonical convention.
-        'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10]
+        # The rock-vapour columns below are the LavAtmos counterparts,
+        # derived from the O2 partial pressure of the vapourisation
+        # solve rather than from the volatile chemistry. They are
+        # independent of `fO2_shift_IW_derived` and are left at zero
+        # when vapourisation is disabled.
+        'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10 bar]
+        'fO2_vapourise_derived',         # rock-vapour fO2 [log10 bar]
+        'fO2_vapourise_shift_IW_derived',  # rock-vapour IW offset [log10 bar]
         'O_res',                 # O mass-balance residual [kg]
+        'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
 
         # Desiccation escape-balance gate. M_vol_initial is the sum over
         # all elements (oxygen included) of *_kg_total captured on the
@@ -792,9 +951,9 @@ def GetHelpfileKeys():
         # resume preserves the gate's state.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
         'esc_kg_cumulative', # cumulative escaped mass [kg]
-    ]
+        ]
 
-    # quantities for each gas, from outgassing
+    # gases from outgassing
     for s in gas_list:
         keys.append(s + '_mol_atm')     # number outgassed to atmosphere [mol]
         keys.append(s + '_mol_solid')   # number in solid mantle [mol]
@@ -808,11 +967,10 @@ def GetHelpfileKeys():
         keys.append(s + '_bar')         # partial surface pressure [bar]
         keys.append(s + '_vmr_xuv')     # volume mixing ratio at XUV level [1]
 
-    # quantities for each element. A noble gas is also a gas species, so its
-    # mass columns are already emitted by the gas-species loop above; skip it
-    # here to avoid duplicating them.
+    # quantities for each element. Some elements are also gas species in
+    # their own right (all noble gases, plus rock-forming elements)
     for e in element_list:
-        if e in noble_gases:
+        if e in gas_list:
             continue
         keys.append(e + '_kg_atm')      # mass outgassed to atmosphere [kg]
         keys.append(e + '_kg_solid')    # mass in solid mantle [kg]
@@ -851,8 +1009,8 @@ def GetHelpfileKeys():
 
     # Simulation's computational variables
     keys.append('runtime')          # Simulation wall-clock runtime [s]
-
     # fmt: on
+
     return keys
 
 
@@ -1011,6 +1169,7 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
 def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     """
     Extend helpfile with new row of variables
+
     """
     log.debug('Extending helpfile with new row')
 
@@ -1035,7 +1194,9 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     #   and string-valued fields (core_state_initial) don't break runs.
     # Private (underscore-prefixed) keys are intentionally transient and
     # are excluded from both checks.
+
     schema = set(GetHelpfileKeys())
+
     row_keys = {k for k in new_row.keys() if not k.startswith('_')}
     # Known non-numeric / non-persistent keys that are written into hf_row
     # but deliberately not tracked in the helpfile CSV schema.
@@ -1069,14 +1230,16 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
 
     # Check for NaN values. Print warning if any are found and convert to zero.
-    for col in new_row.columns:
-        if new_row[col].isna().any():
+    time_val = new_row['Time'].iloc[0]
+    for i, col in enumerate(new_row.columns):
+        col_data = new_row.iloc[:, i]
+        if col_data.isna().any():
             log.warning(
                 'hf_row[%s] is NaN at t=%.2e years; setting to zero.',
                 col,
-                new_row['Time'].iloc[0],
+                time_val,
             )
-            new_row[col] = new_row[col].fillna(0.0)
+            new_row.iloc[:, i] = col_data.fillna(0.0)
 
     # concatenate and return
     return pd.concat([current_hf, new_row], ignore_index=True)
@@ -1429,7 +1592,6 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     # snapshot, so profile plots cannot intersect against interior times.
     no_int_snapshots = config.interior_energetics.module in ('dummy', 'boundary')
     agni = config.atmos_clim.module == 'agni'
-
     spider = config.interior_energetics.module == 'spider'
     aragog = config.interior_energetics.module == 'aragog'
     observed = bool(config.observe.module is not None)

@@ -16,6 +16,7 @@ from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
     create_tmp_folder,
+    mol_to_ele,
     multiple,
     safe_rm,
 )
@@ -366,7 +367,7 @@ def activate_julia(dirs: dict, verbosity: int):
     log.debug("AGNI will log to '%s'" % logpath)
 
 
-def _construct_voldict(hf_row: dict, dirs: dict):
+def _construct_voldict(config: Config, hf_row: dict, dirs: dict):
     # Volume mixing ratio of every modelled gas, read from hf_row. AGNI
     # recognises the noble gases as species, so they enter the composition
     # handed to the radiative-convective solve like any other gas.
@@ -380,6 +381,40 @@ def _construct_voldict(hf_row: dict, dirs: dict):
     if vol_sum < 1e-4:
         UpdateStatusfile(dirs, 20)
         raise ValueError('All volatiles have a volume mixing ratio of zero')
+
+    if config.atmos_clim.agni.chemistry == 'eq':
+        vol_dict = _determine_Hfraction(hf_row, vol_dict)
+
+    return vol_dict
+
+
+def _determine_Hfraction(hf_row: dict, vol_dict: dict):
+    """Ensure that the hydrogen fraction is non-zero if chemistry is enabled.
+
+    Fastchem requires a non-zero H content in order to define metallicity ratios.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
+        vol_dict : dict
+            Dictionary containing volume mixing ratios of gases
+
+    Returns
+    ----------
+        vol_dict : dict
+            Updated dictionary containing volume mixing ratios of gases
+    """
+
+    # Loop through all molecules with hydrogen, and check if any are non-zero
+    H_abund = 0.0
+    for gas in vol_dict.keys():
+        if 'H' in gas:
+            H_abund += vol_dict[gas] * mol_to_ele(gas).get('H', 0)
+
+    # If H abundance is low, add a small amount of H2 to the atmosphere
+    if H_abund < 1e-10:
+        vol_dict['H2'] = 1e-10
 
     return vol_dict
 
@@ -523,7 +558,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     log.info(f'Temporary-file working dir: {io_dir}')
 
     # composition
-    vol_dict = _construct_voldict(hf_row, dirs)
+    vol_dict = _construct_voldict(config, hf_row, dirs)
 
     # set condensation
     condensates = []
@@ -701,10 +736,12 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     # ---------------------
     # Update instellation flux
     atmos.instellation = float(hf_row['F_ins'])
+    setfield = getattr(jl, 'setfield!')
+    setfield(atmos, jl.Symbol('albedo_b'), float(hf_row['albedo_pl']))
 
     # ---------------------
     # Update compositions
-    vol_dict = _construct_voldict(hf_row, dirs)
+    vol_dict = _construct_voldict(config, hf_row, dirs)
     for g in vol_dict.keys():
         atmos.gas_vmr[g][:] = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]
@@ -965,6 +1002,7 @@ def _solve_once(atmos, config: Config):
     rained = jl.AGNI.chemistry.calc_composition_b(
         atmos, config.atmos_clim.agni.oceans, False, False
     )
+
     rained = bool(rained)
     if rained:
         log.info('    gases are condensing at the surface')

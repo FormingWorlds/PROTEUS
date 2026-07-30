@@ -30,7 +30,7 @@ import sys
 import tempfile
 import types
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -655,6 +655,75 @@ def test_print_current_state_includes_temperatures():
         assert any('2500.300' in str(call) for call in log_calls)
 
 
+@pytest.mark.unit
+def test_print_current_state_reports_the_vapour_budget_when_rock_vapour_is_present():
+    """A row carrying rock vapour reports the pressure split and both masses.
+
+    Whole-planet mass conservation is deliberately relaxed while rock vapour is
+    in the atmosphere, so the quantities that let a reader judge the size of the
+    imbalance have to reach the log on every iteration rather than only at
+    post-processing.
+    """
+    hf_row = ZeroHelpfileRow()
+    hf_row['Time'] = 1.0e8
+    hf_row['T_surf'] = 2500.0
+    hf_row['T_magma'] = 3000.0
+    # P_vol and P_vap are deliberately unequal, and neither equals P_surf, so a
+    # regression that printed the same quantity three times cannot pass.
+    hf_row['P_surf'] = 3.0e2
+    hf_row['P_vol'] = 2.6e2
+    hf_row['P_vap'] = 4.0e1
+    hf_row['M_atm'] = 7.0e20
+    hf_row['M_vaps'] = 1.2e20
+    hf_row['Phi_global'] = 0.9
+    hf_row['F_atm'] = 1.0e4
+    hf_row['F_int'] = 5.0e3
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        PrintCurrentState(hf_row)
+
+    log_calls = [str(call) for call in mock_log.info.call_args_list]
+    for label in ('P_vol', 'P_vap', 'M_atm', 'M_vaps'):
+        assert any(label in call for call in log_calls), f'{label} missing from the state print'
+    # The values, not only the labels: a regression that emitted the labels
+    # against the wrong hf_row keys would keep every assertion above.
+    for value in ('2.60e+02', '4.00e+01', '7.00e+20', '1.20e+20'):
+        assert any(value in call for call in log_calls), f'{value} missing from the state print'
+
+
+@pytest.mark.unit
+def test_print_current_state_omits_the_vapour_budget_without_rock_vapour():
+    """With no vapour column the extra lines stay out of the log.
+
+    Edge case: `M_vaps` exactly zero is the default path, where the strict mass
+    invariant is enforced and the vapour split carries no information. A stale
+    `P_vap` left in the row must not resurrect the block either, since the
+    presence of vapour mass is what the relaxation is keyed to.
+    """
+    hf_row = ZeroHelpfileRow()
+    hf_row['Time'] = 1.0e8
+    hf_row['T_surf'] = 287.0
+    hf_row['T_magma'] = 3000.0
+    hf_row['P_surf'] = 1.0
+    hf_row['P_vol'] = 1.0
+    hf_row['P_vap'] = 5.0  # stale, and must not be enough on its own
+    hf_row['M_vaps'] = 0.0
+    hf_row['Phi_global'] = 0.5
+    hf_row['F_atm'] = 100.0
+    hf_row['F_int'] = 50.0
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        PrintCurrentState(hf_row)
+
+    log_calls = [str(call) for call in mock_log.info.call_args_list]
+    for label in ('P_vap', 'M_vaps'):
+        assert not any(label in call for call in log_calls), f'{label} printed without vapour'
+    # Discrimination: the ordinary lines are still there, so the assertions
+    # above cannot be satisfied by a print that emitted nothing at all.
+    assert any('P_surf' in call for call in log_calls)
+    assert any('Phi_global' in call for call in log_calls)
+
+
 # =============================================================================
 # Test: Time Formatting
 # =============================================================================
@@ -898,6 +967,36 @@ def test_get_agni_version_with_mock():
         # string. Pin the dotted-version shape explicitly.
         assert version.count('.') == 2
         assert version != 'AGNI'
+
+
+@pytest.mark.unit
+def test_get_lavatmos_version_with_mock():
+    """Test that _get_lavatmos_version reports the LAVA_DIR checkout's git hash."""
+    from proteus.utils.coupler import _get_lavatmos_version
+
+    with (
+        patch.dict(os.environ, {'LAVA_DIR': '/fake/lava'}),
+        patch('proteus.utils.coupler._get_git_revision', return_value='abc123def') as mock_rev,
+    ):
+        version = _get_lavatmos_version()
+
+    assert version == 'abc123def'
+    # Discrimination: the hash must come from the LAVA_DIR checkout, not
+    # some other directory a regression might pass by mistake.
+    mock_rev.assert_called_once_with('/fake/lava')
+
+
+@pytest.mark.unit
+def test_get_lavatmos_version_returns_unknown_without_lava_dir():
+    """Test that _get_lavatmos_version handles missing LAVA_DIR."""
+    from proteus.utils.coupler import _get_lavatmos_version
+
+    with patch.dict(os.environ, {}, clear=True):
+        assert 'LAVA_DIR' not in os.environ
+
+        version = _get_lavatmos_version()
+
+        assert version == 'unknown (LAVA_DIR not set)'
 
 
 @pytest.mark.unit
@@ -1315,6 +1414,7 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
     used the prior-row value as the starting point would miss the
     fact that step_solver_residual_J is itself the per-call increment.
     """
+
     E0 = 1.0e31
     # Three asymmetric increments, all sources active.
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
@@ -1748,33 +1848,46 @@ def test_get_proteus_directories_unset_env_matches_legacy_layout(monkeypatch):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_assert_mass_conservation_passes_when_invariants_hold():
-    """assert_mass_conservation accepts M_atm <= M_planet and per-species sum match.
+    """assert_mass_conservation accepts a row where the atmosphere fits inside
+    the planet and M_vol_atm agrees with the species masses it is summed from.
 
-    Physical scenario: post-outgas state with a non-trivial atmosphere.
-    M_atm = 4.6e24 kg (close to Earth's mantle), M_planet = 5.97e24 kg
-    (1 M_earth), per-species sum exactly equals M_atm.
+    Physical scenario: post-outgas state with a non-trivial volatile-only
+    atmosphere. M_atm = 4.6e24 kg (close to Earth's mantle), M_planet = 5.97e24
+    kg (1 M_earth). M_vol_atm is set from the species sum so the bookkeeping
+    half is exercised rather than skipped by its zero guard, and the species are
+    split asymmetrically (one dominant plus traces) so a summation regression
+    moves the total instead of cancelling out.
     """
-    from proteus.utils.constants import gas_list
+    from proteus.utils.constants import vol_gas_list
     from proteus.utils.coupler import assert_mass_conservation
 
-    hf_row = {
-        'M_atm': 4.6e24,
-        'M_planet': 5.97e24,
-    }
-    # Distribute M_atm across gas_list so the per-species sum equals M_atm.
-    # Use asymmetric values so the sum is a meaningful check (not all equal).
-    per_species = 4.6e24 / len(gas_list)
-    for s in gas_list:
-        hf_row[s + '_kg_atm'] = per_species
+    hf_row = {'M_planet': 5.97e24}
+    # Asymmetric split of a 4.6e24 kg atmosphere over the volatile and noble
+    # species. Rock vapours are absent: this is the vapourise = false path.
+    weights = [1.0] + [0.01] * (len(vol_gas_list) - 1)
+    norm = sum(weights)
+    for s, w in zip(vol_gas_list, weights):
+        hf_row[s + '_kg_atm'] = 4.6e24 * w / norm
+    hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    hf_row['M_atm'] = hf_row['M_vol_atm']
 
-    result = assert_mass_conservation(hf_row)
-    assert result is None  # contract: helper returns None silently when M_atm <= M_planet
-    # Discriminating check: M_atm < M_planet strictly (not vacuously zero), and
-    # the per-species sum exactly equals M_atm so the closure path is exercised.
-    assert hf_row['M_atm'] < hf_row['M_planet']
-    species_sum = sum(hf_row[s + '_kg_atm'] for s in gas_list)
-    assert math.isclose(species_sum, hf_row['M_atm'], rel_tol=1e-12)
+    assert assert_mass_conservation(hf_row) is None
+    # The same row is accepted with the planet-mass half switched off, so that
+    # keyword relaxes an invariant rather than changing what a valid row means.
+    assert assert_mass_conservation(hf_row, require_atm_le_planet=False) is None
+    # Discriminating checks: the atmosphere is strictly inside the planet (not
+    # vacuously zero), the bookkeeping half really ran (M_vol_atm > 0 opens its
+    # guard), and the species sum closes exactly.
+    assert 0.0 < hf_row['M_atm'] < hf_row['M_planet']
+    assert hf_row['M_vol_atm'] > 0.0
+    species_sum = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    assert math.isclose(species_sum, hf_row['M_vol_atm'], rel_tol=1e-12)
+    # The split is asymmetric, so the sum is order-sensitive in a way an
+    # all-equal split would hide.
+    masses = [hf_row[s + '_kg_atm'] for s in vol_gas_list]
+    assert max(masses) > 10.0 * min(masses)
 
 
 @pytest.mark.unit
@@ -1791,11 +1904,8 @@ def test_assert_mass_conservation_fails_when_M_atm_exceeds_M_planet():
         'M_atm': 7.2e24,  # Atmosphere exceeds planet (the issue #677 symptom)
         'M_planet': 5.97e24,
     }
-    for s_idx in range(15):
-        # Stub kg_atm columns so the per-species check doesn't fire first
-        # (we want to test the M_atm > M_planet path specifically).
-        pass
-
+    # The row carries no M_vol_atm, so the bookkeeping half is skipped by its
+    # zero guard and the planet-mass half is the only one that can fire.
     with pytest.raises(RuntimeError, match='Mass conservation violation'):
         assert_mass_conservation(hf_row)
     # Discrimination: confirm the excess is well above the 1e-6 tolerance
@@ -1809,32 +1919,71 @@ def test_assert_mass_conservation_fails_when_M_atm_exceeds_M_planet():
 
 @pytest.mark.unit
 def test_assert_mass_conservation_fails_when_species_sum_disagrees():
-    """assert_mass_conservation hard-fails when sum(s_kg_atm) != M_atm.
+    """assert_mass_conservation hard-fails when sum(s_kg_atm) != M_vol_atm.
 
     Edge case: per-species kg_atm values are stale or a species is missing
-    from the M_atm sum loop. Discriminating: sum = 4.0e24 but M_atm = 4.6e24
-    (a 15 percent disagreement).
+    from the M_vol_atm sum loop. Discriminating: the species sum is only
+    87 percent of the declared M_vol_atm, a 13 percent disagreement that is
+    five orders above the 1e-6 tolerance.
     """
-    from proteus.utils.constants import gas_list
+    from proteus.utils.constants import vol_gas_list
     from proteus.utils.coupler import assert_mass_conservation
 
     hf_row = {
         'M_atm': 4.6e24,
+        'M_vol_atm': 4.6e24,
         'M_planet': 5.97e24,
     }
-    # Intentionally under-report: per-species sum is only ~87 percent of M_atm.
-    per_species = (0.87 * 4.6e24) / len(gas_list)
-    for s in gas_list:
+    # Intentionally under-report: per-species sum is only ~87 percent of M_vol_atm.
+    per_species = (0.87 * 4.6e24) / len(vol_gas_list)
+    for s in vol_gas_list:
         hf_row[s + '_kg_atm'] = per_species
-
-    with pytest.raises(RuntimeError, match='M_atm bookkeeping inconsistency'):
+    with pytest.raises(RuntimeError, match='M_vol_atm bookkeeping inconsistency'):
         assert_mass_conservation(hf_row)
     # Discrimination: the M_atm <= M_planet invariant must HOLD here so
     # the failure must come from the per-species bookkeeping path, not
     # from the M_atm > M_planet path. Pin both legs.
     assert hf_row['M_atm'] < hf_row['M_planet']
-    species_sum = sum(hf_row[s + '_kg_atm'] for s in gas_list)
-    assert species_sum < 0.9 * hf_row['M_atm']
+    species_sum = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    assert species_sum < 0.9 * hf_row['M_vol_atm']
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_mass_conservation_accepts_noble_gas_inventory():
+    """A trace noble-gas inventory must not trip M_vol_atm check.
+
+    M_vol_atm is defined as the atmospheric mass of volatiles AND noble gases,
+    with rock vapour excluded. Summing the check over the reactive volatiles
+    alone would omit the noble gases and raise.
+
+    Discriminating: the noble gases hold 5e16 kg against 1.1e19 kg of reactive
+    volatiles, a 0.45 percent contribution.
+    """
+    from proteus.utils.constants import noble_gases, vol_gas_list, vol_list
+    from proteus.utils.coupler import assert_mass_conservation
+
+    hf_row = {'M_planet': 5.97e24}
+    for s in vol_gas_list:
+        hf_row[s + '_kg_atm'] = 0.0
+    for s in vol_list:
+        hf_row[s + '_kg_atm'] = 1e18
+    for s in noble_gases:
+        hf_row[s + '_kg_atm'] = 1e16
+    hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    hf_row['M_atm'] = hf_row['M_vol_atm']
+
+    # Must not raise: the row is internally consistent by construction.
+    assert assert_mass_conservation(hf_row) is None
+
+    # Discrimination guard: confirm the noble contribution really is large
+    # enough to have tripped a vol_list-only check at the default tolerance.
+    reactive_only = sum(hf_row[s + '_kg_atm'] for s in vol_list)
+    noble_frac = abs(hf_row['M_vol_atm'] - reactive_only) / hf_row['M_vol_atm']
+    assert noble_frac > 1e-6 * 1e3
+
+    # And the healthy row must still satisfy the primary mass invariant.
+    assert hf_row['M_atm'] < hf_row['M_planet']
 
 
 @pytest.mark.unit
@@ -1858,6 +2007,271 @@ def test_assert_mass_conservation_skips_when_M_planet_zero():
     # can produce a silent pass on this row.
     assert hf_row['M_atm'] > 0.0
     assert hf_row['M_planet'] == 0.0
+
+
+def _vapourising_row(m_vaps=4.0e20, perturb_species=None):
+    """Row from a vapourising outgas step: volatiles plus a rock-vapour column.
+
+    ``m_vaps`` is added to M_atm without being taken from M_planet, which is the
+    whole content of the relaxed invariant. ``perturb_species`` scales one
+    species mass to break the M_vol_atm bookkeeping without touching the totals.
+    """
+    from proteus.utils.constants import vol_gas_list
+
+    hf_row = {'M_planet': 5.97e24, 'P_vol': 260.0, 'P_vap': 40.0}
+    weights = [1.0] + [0.01] * (len(vol_gas_list) - 1)
+    norm = sum(weights)
+    for s, w in zip(vol_gas_list, weights):
+        hf_row[s + '_kg_atm'] = 6.0e20 * w / norm
+    hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    hf_row['M_vaps'] = m_vaps
+    hf_row['M_atm'] = hf_row['M_vol_atm'] + m_vaps
+    if perturb_species is not None:
+        hf_row[perturb_species + '_kg_atm'] *= 1.01
+    return hf_row
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_species_sum_stays_enforced_without_the_planet_mass_leg():
+    """Switching off the M_atm <= M_planet half leaves the M_vol_atm bookkeeping
+    half fully enforced at the strict tolerance.
+
+    Rock vapourisation breaks only the relation between the atmosphere and the
+    planet mass. The volatile-only atmospheric mass is still the sum of the
+    species masses it is built from, so a stale species mass must still be
+    reported. Edge case: the row used here has M_atm above M_planet, so the
+    disabled half would have fired first had it still been active.
+    """
+    from proteus.utils.constants import vol_gas_list
+    from proteus.utils.coupler import assert_mass_conservation
+
+    # An extreme vapour column, so M_atm exceeds M_planet outright.
+    hf_row = _vapourising_row(m_vaps=6.0e24)
+    assert assert_mass_conservation(hf_row, require_atm_le_planet=False) is None
+
+    # Perturbing one species by 1 percent still raises, four orders above the
+    # 1e-6 tolerance.
+    stale = _vapourising_row(m_vaps=6.0e24, perturb_species='H2O')
+    with pytest.raises(RuntimeError, match='M_vol_atm bookkeeping inconsistency'):
+        assert_mass_conservation(stale, require_atm_le_planet=False)
+
+    # Discrimination: the very same row aborts when the planet-mass half is left
+    # on, so the raise above cannot have come from that half and the keyword is
+    # really the thing selecting between them.
+    with pytest.raises(RuntimeError, match='Mass conservation violation'):
+        assert_mass_conservation(hf_row)
+    assert hf_row['M_atm'] > hf_row['M_planet'] * (1.0 + 1.0e-6)
+    # The breach is three orders above the tolerance, not a rounding edge.
+    assert hf_row['M_atm'] / hf_row['M_planet'] - 1.0 > 1.0e-3
+    # And the species perturbation is far outside the tolerance it must beat.
+    summed = sum(stale[s + '_kg_atm'] for s in vol_gas_list)
+    rel = abs(summed - stale['M_vol_atm']) / stale['M_vol_atm']
+    assert rel > 1.0e3 * 1.0e-6
+
+
+@pytest.mark.unit
+def test_relaxed_planet_mass_leg_warns_only_on_an_unexplained_excess(caplog):
+    """With the planet-mass half relaxed, an excess the rock vapour accounts for
+    passes quietly and one it cannot is warned about.
+
+    Vapourised rock is the only mass the relaxation exists to excuse, so the
+    warning is what keeps a deliberately disabled invariant safe to run with: it
+    separates "the atmosphere is heavier than the planet because of rock vapour",
+    which is the accepted simplification, from "the atmosphere is heavier than
+    rock vapour explains", which is a bookkeeping fault.
+
+    Edge case: with no vapour column there is nothing for the relaxation to
+    excuse, so the invariant is enforced regardless of the keyword. That covers
+    the crystallised and desiccated states of a vapourising run.
+    """
+    import logging
+
+    from proteus.utils.coupler import assert_mass_conservation
+
+    def _warnings():
+        return [r for r in caplog.records if 'larger than vapourisation' in r.getMessage()]
+
+    caplog.set_level(logging.INFO, logger='fwl.proteus.utils.coupler')
+
+    # Rows whose atmosphere sits far inside the planet mass pass silently, at any
+    # vapour column size.
+    for m_vaps in (1.0e20, 2.0e20, 4.0e20):
+        row = _vapourising_row(m_vaps=m_vaps)
+        assert assert_mass_conservation(row, require_atm_le_planet=False) is None
+    assert _warnings() == []
+
+    # Limit input: vapourisation skipped for a crystallised mantle leaves no
+    # vapour column, so the invariant is enforced rather than relaxed. This row
+    # satisfies it, so it passes silently.
+    caplog.clear()
+    dry = _vapourising_row(m_vaps=0.0)
+    dry['P_vap'] = 0.0
+    assert assert_mass_conservation(dry, require_atm_le_planet=False) is None
+    assert _warnings() == []
+    assert dry['M_atm'] == pytest.approx(dry['M_vol_atm'], rel=1e-12)
+    assert dry['M_atm'] < dry['M_planet']
+
+    # The same empty-vapour row breaching the planet mass must raise, because
+    # with no rock vapour present there is nothing the relaxation can excuse.
+    caplog.clear()
+    dry_breach = _vapourising_row(m_vaps=0.0)
+    dry_breach['M_planet'] = 0.5 * dry_breach['M_atm']
+    with pytest.raises(RuntimeError, match='Mass conservation violation'):
+        assert_mass_conservation(dry_breach, require_atm_le_planet=False)
+    # Discrimination: the breach is a factor of two, far outside the tolerance.
+    assert dry_breach['M_atm'] / dry_breach['M_planet'] == pytest.approx(2.0, rel=1e-12)
+
+    # An excess the vapour column cannot account for warns, naming both the
+    # excess and the vapour mass it was measured against. Values are read from
+    # the log arguments so a wrong value in the right slot cannot pass.
+    caplog.clear()
+    unexplained = _vapourising_row(m_vaps=1.0e20)
+    unexplained['M_atm'] = 7.0e24  # far past M_planet, only 1e20 kg of vapour
+    assert assert_mass_conservation(unexplained, require_atm_le_planet=False) is None
+    warned = _warnings()
+    assert len(warned) == 1
+    assert warned[0].levelno == logging.WARNING
+    assert warned[0].args[0] == pytest.approx(
+        unexplained['M_atm'] - unexplained['M_planet'], rel=1e-12
+    )
+    assert warned[0].args[1] == pytest.approx(unexplained['M_vaps'], rel=1e-12)
+    assert unexplained['M_atm'] - unexplained['M_planet'] > 10.0 * unexplained['M_vaps']
+
+    # A vapour column large enough to explain the same excess does not warn, so
+    # the decision keys on the comparison and not on the breach alone.
+    caplog.clear()
+    explained = _vapourising_row(m_vaps=2.0e24)
+    explained['M_atm'] = explained['M_vol_atm'] + explained['M_vaps']
+    explained['M_planet'] = explained['M_vol_atm']
+    assert assert_mass_conservation(explained, require_atm_le_planet=False) is None
+    assert _warnings() == []
+    assert explained['M_atm'] > explained['M_planet']
+
+
+# ============================================================================
+# P_surf = P_vol + P_vap surface-pressure invariant tests
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_passes_when_vapourise_disabled():
+    """P_surf == P_vol with P_vap == 0 is accepted when rock vapour is off.
+
+    Physical scenario: an ordinary CALLIOPE/atmodeller outgas step with
+    outgas.vapourise = False. P_vol mirrors P_surf exactly (no vapour
+    contribution), which is the state run_outgassing leaves hf_row in.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+
+    hf_row = {'P_surf': 120.0, 'P_vol': 120.0, 'P_vap': 0.0}
+
+    result = assert_surface_pressure_consistency(config, hf_row)
+    assert result is None  # contract: silent pass when the invariant holds
+    # Discriminating check: P_vol is non-trivially large (not a vacuous 0/0
+    # pass) and exactly equals P_surf, isolating the "vapourise off" branch.
+    assert hf_row['P_vol'] == pytest.approx(hf_row['P_surf'])
+    assert hf_row['P_vap'] == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_passes_when_vapourise_enabled():
+    """P_surf == P_vol + P_vap is accepted with a nonzero rock-vapour term.
+
+    Physical scenario: LavAtmos has run (outgas.vapourise = True) and added
+    a rock-vapour partial pressure on top of the volatile total, mirroring
+    run_vapourisation's P_vol/P_vap/P_surf bookkeeping.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = True
+
+    # Asymmetric split (not a 50/50 coincidence) so the sum genuinely
+    # exercises both terms rather than passing via a degenerate value.
+    hf_row = {'P_surf': 137.5, 'P_vol': 90.0, 'P_vap': 47.5}
+
+    result = assert_surface_pressure_consistency(config, hf_row)
+    assert result is None
+    assert hf_row['P_vap'] > 0.0
+    assert hf_row['P_vol'] + hf_row['P_vap'] == pytest.approx(hf_row['P_surf'])
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_rejects_nonzero_P_vap_when_disabled():
+    """P_vap must be exactly zero whenever outgas.vapourise is False.
+
+    Regression scenario this guards against: a stale rock-vapour pressure
+    (e.g. left over from a prior iteration, or written by a code path that
+    forgot to gate on the config flag) surviving into an iteration where
+    vapourise is disabled. Must raise before the P_surf==P_vol+P_vap check
+    even runs, since that check alone (100.0 == 95.0 + 5.0) would otherwise
+    pass and mask the real bug.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+
+    hf_row = {'P_surf': 100.0, 'P_vol': 95.0, 'P_vap': 5.0}
+
+    with pytest.raises(RuntimeError, match='outgas.vapourise=False'):
+        assert_surface_pressure_consistency(config, hf_row)
+    # Discrimination: P_surf == P_vol + P_vap holds exactly here (100 == 95 + 5),
+    # so a weaker implementation that only checked the sum would wrongly pass
+    # this row. Pin that the sum-consistent row is exactly what makes this a
+    # useful regression test, not an artifact of an already-broken sum.
+    assert hf_row['P_vol'] + hf_row['P_vap'] == pytest.approx(hf_row['P_surf'])
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_rejects_mismatched_total():
+    """P_surf disagreeing with P_vol + P_vap by more than the tolerance raises.
+
+    Discriminating: P_surf=150.0 but P_vol+P_vap=100.0, a 33 percent
+    disagreement, far above the default 1e-6 relative tolerance. Models a
+    code path (e.g. run_crystallized's escape scaling) that rescaled
+    P_surf without rescaling P_vol/P_vap in step.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = True
+
+    hf_row = {'P_surf': 150.0, 'P_vol': 80.0, 'P_vap': 20.0}
+
+    with pytest.raises(RuntimeError, match='Surface pressure inconsistency'):
+        assert_surface_pressure_consistency(config, hf_row)
+    # Discrimination: the mismatch (50.0) is far above what float rounding
+    # could produce, confirming the raise is the real bookkeeping check and
+    # not a numerical-noise false positive.
+    assert abs(hf_row['P_surf'] - (hf_row['P_vol'] + hf_row['P_vap'])) > 1.0
+
+
+@pytest.mark.unit
+def test_assert_surface_pressure_consistency_skips_pre_ic():
+    """No atmosphere yet (all pressures zero) short-circuits without raising.
+
+    Edge case: at the very first call, before any outgassing has run,
+    P_surf/P_vol/P_vap are all still at their ZeroHelpfileRow default.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = True
+
+    hf_row = {'P_surf': 0.0, 'P_vol': 0.0, 'P_vap': 0.0}
+
+    result = assert_surface_pressure_consistency(config, hf_row)
+    assert result is None
+    assert hf_row['P_surf'] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -2043,7 +2457,7 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
     config = types.SimpleNamespace(
         interior_energetics=types.SimpleNamespace(module='spider'),
         atmos_clim=types.SimpleNamespace(module='agni'),
-        outgas=types.SimpleNamespace(module='calliope'),
+        outgas=types.SimpleNamespace(module='calliope', vapourise=False),
         escape=types.SimpleNamespace(module='boreas'),
         star=types.SimpleNamespace(module='mors'),
         orbit=types.SimpleNamespace(module='lovepy'),
@@ -2064,6 +2478,10 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
     monkeypatch.setitem(sys.modules, 'calliope', types.SimpleNamespace(__version__='1.2.3'))
     monkeypatch.setitem(sys.modules, 'boreas', types.SimpleNamespace(__version__='2.3.4'))
     monkeypatch.setitem(sys.modules, 'mors', types.SimpleNamespace(__version__='3.4.5'))
+    # VULCAN is an optional module and the atmos_chem branch under test imports
+    # it by name, so the stub belongs here rather than being inherited from
+    # whichever other test file happened to import first.
+    monkeypatch.setitem(sys.modules, 'vulcan', types.SimpleNamespace(__version__='5.6.7'))
     monkeypatch.setitem(
         sys.modules, 'petitRADTRANS', types.SimpleNamespace(__version__='4.5.6')
     )
@@ -2078,7 +2496,11 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
         assert any('Outgas module     calliope version' in m for m in messages)
         assert any('Escape module     boreas version' in m for m in messages)
         assert any('Star module       mors version' in m for m in messages)
+        assert any('Atmos_chem module vulcan version 5.6.7' in m for m in messages)
         assert any('Observe module    petitRADTRANS version' in m for m in messages)
+        # Discrimination: rock vapourisation is disabled here
+        # (vapourise=False), so LavAtmos must not be reported at all.
+        assert not any('LavAtmos' in m for m in messages)
 
 
 @pytest.mark.unit
@@ -2087,7 +2509,7 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
     config = types.SimpleNamespace(
         interior_energetics=types.SimpleNamespace(module='aragog'),
         atmos_clim=types.SimpleNamespace(module='janus'),
-        outgas=types.SimpleNamespace(module='dummy'),
+        outgas=types.SimpleNamespace(module='dummy', vapourise=True),
         escape=types.SimpleNamespace(module='zephyrus'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='dummy'),
@@ -2099,6 +2521,7 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
 
     monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'def456')
     monkeypatch.setattr(coupler_mod, '_get_socrates_version', lambda: '24.1.0')
+    monkeypatch.setattr(coupler_mod, '_get_lavatmos_version', lambda: 'ghi789')
     monkeypatch.setitem(sys.modules, 'aragog', types.SimpleNamespace(__version__='0.7.0'))
     monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='0.5.0'))
     monkeypatch.setitem(sys.modules, 'zephyrus', types.SimpleNamespace(__version__='0.6.0'))
@@ -2109,6 +2532,9 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
         assert any('Interior module   aragog version' in m for m in messages)
         assert any('Atmos_clim module janus version' in m for m in messages)
         assert any('Escape module     zephyrus version' in m for m in messages)
+        # Rock vapourisation (config.outgas.vapourise=True) must print the
+        # LavAtmos checkout version regardless of the outgas.module setting.
+        assert any('LavAtmos' in m and 'ghi789' in m for m in messages)
 
 
 @pytest.mark.unit

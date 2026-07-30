@@ -203,7 +203,10 @@ def test_element_budget_survives_outgas_reservoir_escape():
     dt = 1.0  # yr
     esc_mass = 3.0e12 * secs_per_year * dt
     m_vols_atm = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in ('H', 'O', 'C'))
-    expected_h = h_budget - esc_mass * (hf_row['H_kg_atm'] / m_vols_atm)
+    if m_vols_atm > 0:
+        expected_h = h_budget - esc_mass * (hf_row['H_kg_atm'] / m_vols_atm)
+    else:
+        expected_h = h_budget  # No escape debit when no volatile atmosphere
 
     tgt = calc_new_elements(hf_row, dt=dt, reservoir='outgas')
 

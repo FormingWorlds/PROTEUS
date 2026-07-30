@@ -39,13 +39,11 @@ def print_termination_criteria(config: Config):
     # appears in stderr / launch logs), but the run logfile is opened
     # later by setup_logger and would otherwise miss it.
     if config.planet.prevent_warming:
+        log.warning('planet.prevent_warming = true')
         log.warning(
-            'planet.prevent_warming = true: T_magma is forced to monotonically '
-            'decrease each iteration. This suppresses physical temperature '
-            'oscillations and can hide energy non-conservation (T_magma '
-            'latching, F_atm = F_int reported as convergence by clamp '
-            'consistency rather than radiative balance). Default is false; '
-            'enable only for known strictly-cooling regimes.'
+            '    T_magma is forced to monotonically'
+            'decrease each iteration, which can hide energy non-conservation.'
+            'Enable only for known strictly-cooling regimes.'
         )
 
 
