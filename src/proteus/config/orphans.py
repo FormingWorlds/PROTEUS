@@ -35,7 +35,7 @@ def _extract_attrs_class(hint: type) -> type | None:
     """Return the attrs class from a type hint, unwrapping union types.
 
     This is required for handling recursion (nested classes) in the config
-    schema. It is called by `_collect_orphan_keys` below.
+    schema. It is called by `find_key_problems` below.
 
     Parameters
     ----------
@@ -84,46 +84,33 @@ def _expects_single_table(hint: type) -> bool:
     return False
 
 
-def _collect_orphan_keys(data: dict, cls: type, path: str = '') -> list[str]:
-    """Recursively collect TOML keys that have no matching field in *cls*.
+def find_key_problems(
+    data: dict, cls: type = Config, path: str = ''
+) -> tuple[list[str], list[str]]:
+    """Recursively collect the keys in *data* that the schema cannot accept.
+
+    Both kinds of fault leave the file saying one thing and the run doing
+    another, so both are collected in one walk and reported together.
 
     Parameters
     ----------
     data:
-        Raw TOML sub-dict to inspect.
+        Raw TOML dict as returned by `tomllib.load`, or a sub-dict of one.
     cls:
-        attrs-decorated class to compare against.
+        attrs-decorated class to compare against. Defaults to the whole Config
+        schema; the parameter exists so the walk can descend into nested
+        classes and is not normally passed by callers.
     path:
-        Dotted key prefix for building human-readable paths in error messages.
-
-    Returns
-    -------
-    list[str]
-        Dotted key paths (e.g. ``"planet.orphan_field"``) that appear in
-        *data* but are not declared fields of *cls* or any nested attrs class.
-    """
-
-    return _collect_key_problems(data, cls, path)[0]
-
-
-def _collect_key_problems(data: dict, cls: type, path: str = '') -> tuple[list[str], list[str]]:
-    """Recursively collect the keys in *data* that *cls* cannot accept.
-
-    Parameters
-    ----------
-    data:
-        Raw TOML sub-dict to inspect.
-    cls:
-        attrs-decorated class to compare against.
-    path:
-        Dotted key prefix for building human-readable paths in error messages.
+        Dotted key prefix for the paths in the returned lists. Carried by the
+        recursion; callers start at the root and leave it empty.
 
     Returns
     -------
     tuple[list[str], list[str]]
         Two lists of dotted key paths, in file order. The first holds names the
         schema does not declare. The second holds sections the schema declares
-        as a table but which the file supplies as something else.
+        as a table but which the file supplies as something else. Both are
+        empty for a conforming file.
     """
 
     # If the class is not an attrs class, then we cannot inspect it.
@@ -161,7 +148,7 @@ def _collect_key_problems(data: dict, cls: type, path: str = '') -> tuple[list[s
 
         # If this is a dict, then we need to go deeper.
         if isinstance(value, dict):
-            sub_orphans, sub_mistyped = _collect_key_problems(value, nested_cls, full_path)
+            sub_orphans, sub_mistyped = find_key_problems(value, nested_cls, full_path)
             orphans.extend(sub_orphans)
             mistyped.extend(sub_mistyped)
         elif _expects_single_table(hints.get(key)):
@@ -173,44 +160,6 @@ def _collect_key_problems(data: dict, cls: type, path: str = '') -> tuple[list[s
             mistyped.append(full_path)
 
     return orphans, mistyped
-
-
-def find_orphan_keys(raw_dict: dict) -> list[str]:
-    """List the keys in *raw_dict* that the Config schema does not define.
-
-    Parameters
-    ----------
-    raw_dict:
-        Raw TOML dict as returned by `tomllib.load`.
-
-    Returns
-    -------
-    list[str]
-        Dotted key paths (e.g. ``"planet.orphan_field"``) in file order.
-        Empty when every key maps onto a Config field.
-    """
-    return _collect_orphan_keys(raw_dict, Config)
-
-
-def find_key_problems(raw_dict: dict) -> tuple[list[str], list[str]]:
-    """List the keys in *raw_dict* that the Config schema cannot accept.
-
-    Both kinds leave the file saying one thing and the run doing another, so
-    both are reported together.
-
-    Parameters
-    ----------
-    raw_dict:
-        Raw TOML dict as returned by `tomllib.load`.
-
-    Returns
-    -------
-    tuple[list[str], list[str]]
-        Dotted key paths in file order: names the schema does not define, and
-        sections the schema declares as a table but which the file supplies as
-        something else. Both are empty for a conforming file.
-    """
-    return _collect_key_problems(raw_dict, Config)
 
 
 def format_orphan_message(

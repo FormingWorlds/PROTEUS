@@ -17,7 +17,7 @@ import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
-from proteus.config import Config, read_config, read_config_object
+from proteus.config import Config, read_config, read_config_object, structure_config
 from proteus.config._config import (
     instmethod_dummy,
     instmethod_evolve,
@@ -149,21 +149,22 @@ def test_read_config_object_rejects_a_section_written_as_an_array_of_tables(tmp_
         read_config_object(array)
     assert 'Misdeclared' in str(excinfo.value)
 
-    # Without the refusal the run would proceed on 1.0 while the file asks for
-    # 3.7. Pinning that here shows the check is what stands between the two.
-    dropped = read_config_object(array, strict=False)
+    # Structuring without the key check is what the runner does so it can
+    # resolve the output directory before refusing. Left unchecked it would run
+    # on 1.0 while the file asks for 3.7, so this pins what the check prevents.
+    dropped = structure_config(read_config(array), array)
     assert dropped.planet.mass_tot == pytest.approx(1.0)
     assert dropped.planet.mass_tot != pytest.approx(3.7)
 
 
 @pytest.mark.unit
-def test_read_config_object_without_strict_applies_the_default(tmp_path):
-    """With strict off the unknown key is dropped and the default takes over.
+def test_structure_config_drops_an_unknown_key_and_applies_the_default(tmp_path):
+    """Structuring without the key check lets the default take over.
 
-    This is exactly the outcome strict loading exists to prevent, and it is the
-    path the runner takes so it can record the failure in a status file before
-    refusing. Pinning it keeps the escape hatch honest: it tolerates the key, it
-    does not honour it.
+    This is exactly the outcome the checked loader exists to prevent, and it is
+    the path the runner takes so it can resolve the output directory and record
+    the failure before refusing. Pinning it keeps that step honest: it tolerates
+    the key, it does not honour it.
     """
 
     # Three distinct masses so the surviving value identifies its own source:
@@ -176,7 +177,7 @@ def test_read_config_object_without_strict_applies_the_default(tmp_path):
 
     path = _write_variant(tmp_path, 'typo.toml', _typo)
 
-    cfg = read_config_object(path, strict=False)
+    cfg = structure_config(read_config(path), path)
     assert cfg.planet.mass_tot == pytest.approx(1.75)
     assert cfg.planet.mass_tot != pytest.approx(2.5)
 
@@ -184,7 +185,7 @@ def test_read_config_object_without_strict_applies_the_default(tmp_path):
     # wholesale rather than just the unknown key would fail here.
     assert attrs.fields(Planet).mass_tot.default == pytest.approx(1.0)
 
-    # Same file, same content: only the parameter decides whether it loads.
+    # Same file, same content: only the entry point decides whether it loads.
     with pytest.raises(ValueError, match='planet.mass_total'):
         read_config_object(path)
 

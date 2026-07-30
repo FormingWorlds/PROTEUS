@@ -21,6 +21,7 @@ from proteus.config import (
     format_orphan_message,
     read_config,
     read_config_object,
+    structure_config,
 )
 from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
@@ -53,16 +54,20 @@ class Proteus:
         # status file under that directory.
         self.config_path = config_path
 
-        # The keys are collected before the config is structured, because a
+        # The keys are checked before the config is structured, because a
         # misspelling is usually what makes a value fail validation and is the
-        # more useful of the two to report. The check re-reads the raw TOML, so
-        # it applies only when the path resolves to a file: a caller that
-        # substitutes the loader supplies the parsed config by other means and
-        # leaves nothing here to re-read.
+        # more useful of the two to report. This reads the raw TOML itself and
+        # structures it separately, rather than going through the checked
+        # loader, so that a refusal can still be recorded under the output
+        # directory named inside the file. It applies only when the path
+        # resolves to a file: a caller that substitutes the loader supplies the
+        # parsed config by other means and leaves nothing here to read.
         orphans: list[str] = []
         mistyped: list[str] = []
+        raw: dict | None = None
         if os.path.isfile(config_path):
-            orphans, mistyped = find_key_problems(read_config(config_path))
+            raw = read_config(config_path)
+            orphans, mistyped = find_key_problems(raw)
         orphan_error = (
             format_orphan_message(orphans, config_path, mistyped)
             if orphans or mistyped
@@ -70,7 +75,11 @@ class Proteus:
         )
 
         try:
-            self.config = read_config_object(config_path, strict=False)
+            self.config = (
+                structure_config(raw, config_path)
+                if raw is not None
+                else read_config_object(config_path)
+            )
         except ValueError as exc:
             # An unrecognised key is reported first because it is often what
             # made the rest of the file fail, but the other complaint is kept

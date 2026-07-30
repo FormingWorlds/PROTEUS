@@ -10,10 +10,8 @@ import attrs
 import pytest
 
 from proteus.config.orphans import (
-    _collect_orphan_keys,
     _extract_attrs_class,
     find_key_problems,
-    find_orphan_keys,
     format_orphan_message,
 )
 
@@ -30,6 +28,18 @@ class _Leaf:
     """Innermost class of the synthetic schema used below."""
 
     value: int = 0
+
+
+@attrs.define
+class _Unresolvable:
+    """Synthetic schema whose annotation names a class that does not exist.
+
+    Used to drive the branch where `typing.get_type_hints` raises. A schema
+    that cannot be introspected must still let the walk report the names it can
+    compare, rather than aborting and letting every key through unchecked.
+    """
+
+    field: 'NoSuchClassAnywhere' = None  # noqa: F821
 
 
 @attrs.define
@@ -108,7 +118,7 @@ def test_orphans_extract_attrs_class_returns_none_for_non_attrs_hints():
     Two branches reach the same answer by different routes: a bare scalar has no
     ``__args__`` and exits early, while a parameterised container does enter the
     ``__args__`` loop but holds no attrs member. Both must fall through to None,
-    or ``_collect_orphan_keys`` would recurse into a value the schema never
+    or ``find_key_problems`` would recurse into a value the schema never
     declares as a sub-config and report its keys as orphans.
     """
     from proteus.config._planet import Planet
@@ -127,23 +137,23 @@ def test_orphans_extract_attrs_class_returns_none_for_non_attrs_hints():
 
 
 # ---------------------------------------------------------------------------
-# _collect_orphan_keys
+# find_key_problems, unknown names
 # ---------------------------------------------------------------------------
 
 
-def test_orphans_collect_orphan_keys_empty_dict_is_clean():
+def test_orphans_find_key_problems_empty_dict_is_clean():
     """An empty raw dict has no orphans; the result must be an empty list."""
     from proteus.config._config import Config
 
-    result = _collect_orphan_keys({}, Config)
+    result = find_key_problems({}, Config)[0]
     assert result == []
     # Discrimination: a non-empty invalid dict must NOT produce an empty list;
     # this verifies the clean path is really empty and not a degenerate always-pass.
     dirty = {'GHOST': 1}
-    assert _collect_orphan_keys(dirty, Config) != []
+    assert find_key_problems(dirty, Config)[0] != []
 
 
-def test_orphans_collect_orphan_keys_valid_top_level_keys():
+def test_orphans_find_key_problems_valid_top_level_keys():
     """Known top-level Config fields do not appear in the orphan list.
 
     The paired negative adds the same unknown key to that very dict and expects
@@ -152,7 +162,7 @@ def test_orphans_collect_orphan_keys_valid_top_level_keys():
     from proteus.config._config import Config
 
     data = {'star': {}, 'planet': {}, 'orbit': {}, 'config_version': '3.0'}
-    result = _collect_orphan_keys(data, Config)
+    result = find_key_problems(data, Config)[0]
     assert result == []
 
     # Discrimination: an unknown key alongside the very same valid keys is
@@ -162,42 +172,42 @@ def test_orphans_collect_orphan_keys_valid_top_level_keys():
     # membership; this pins exact-list equality against a mixed dict, so a scan
     # that reported a known sibling alongside the orphan would fail here.
     mixed = dict(data, NOT_A_FIELD=1)
-    assert _collect_orphan_keys(mixed, Config) == ['NOT_A_FIELD']
+    assert find_key_problems(mixed, Config)[0] == ['NOT_A_FIELD']
 
 
-def test_orphans_collect_orphan_keys_single_top_level_orphan():
+def test_orphans_find_key_problems_single_top_level_orphan():
     """A single unknown top-level key is returned with its bare name."""
     from proteus.config._config import Config
 
     data = {'UNKNOWN_TOP': 'bad'}
-    result = _collect_orphan_keys(data, Config)
+    result = find_key_problems(data, Config)[0]
     assert result == ['UNKNOWN_TOP']
 
     # Discrimination: the known key 'star' must not appear in orphans.
     data_mixed = {'star': {}, 'UNKNOWN_TOP': 'bad'}
-    mixed_result = _collect_orphan_keys(data_mixed, Config)
+    mixed_result = find_key_problems(data_mixed, Config)[0]
     assert 'star' not in mixed_result
     assert 'UNKNOWN_TOP' in mixed_result
 
 
-def test_orphans_collect_orphan_keys_nested_orphan_in_planet():
+def test_orphans_find_key_problems_nested_orphan_in_planet():
     """A typo inside the planet section is reported with its dotted path."""
     from proteus.config._config import Config
 
     data = {'planet': {'mass_tot': 1.0, 'typo_field': 99}}
-    result = _collect_orphan_keys(data, Config)
+    result = find_key_problems(data, Config)[0]
     assert result == ['planet.typo_field']
 
     # Discrimination: the valid key 'mass_tot' must not appear in orphans.
     assert 'planet.mass_tot' not in result
 
 
-def test_orphans_collect_orphan_keys_deeply_nested_orphan():
+def test_orphans_find_key_problems_deeply_nested_orphan():
     """Orphan keys inside doubly-nested sub-configs are reported with full path."""
     from proteus.config._config import Config
 
     data = {'star': {'mors': {'age_now': 4.5, 'bad_star_key': 'oops'}}}
-    result = _collect_orphan_keys(data, Config)
+    result = find_key_problems(data, Config)[0]
     assert result == ['star.mors.bad_star_key']
 
     # Orphans at two different depths in a single walk: each dotted path must
@@ -211,13 +221,13 @@ def test_orphans_collect_orphan_keys_deeply_nested_orphan():
             'mors': {'age_now': 4.5, 'bad_star_key': 'oops'},
         }
     }
-    assert sorted(_collect_orphan_keys(two_depths, Config)) == [
+    assert sorted(find_key_problems(two_depths, Config)[0]) == [
         'star.NOT_A_STAR_FIELD',
         'star.mors.bad_star_key',
     ]
 
 
-def test_orphans_collect_orphan_keys_multiple_orphans_all_reported():
+def test_orphans_find_key_problems_multiple_orphans_all_reported():
     """All orphan keys are collected; none is silently dropped."""
     from proteus.config._config import Config
 
@@ -226,13 +236,13 @@ def test_orphans_collect_orphan_keys_multiple_orphans_all_reported():
         'planet': {'mass_tot': 1.0, 'typo_b': 2},
         'star': {'extra_c': 3},
     }
-    result = _collect_orphan_keys(data, Config)
+    result = find_key_problems(data, Config)[0]
     assert set(result) == {'GHOST_A', 'planet.typo_b', 'star.extra_c'}
     # Discrimination: exactly three orphans; valid keys must not inflate the count.
     assert len(result) == 3
 
 
-def test_orphans_collect_orphan_keys_valid_nested_dict_does_not_raise():
+def test_orphans_find_key_problems_valid_nested_dict_does_not_raise():
     """A known nested dict with all valid keys produces an empty orphan list.
 
     The paired negative misspells one of those same nested keys and expects the
@@ -244,7 +254,7 @@ def test_orphans_collect_orphan_keys_valid_nested_dict_does_not_raise():
         'star': {'module': 'dummy'},
         'planet': {'mass_tot': 1.0},
     }
-    result = _collect_orphan_keys(data, Config)
+    result = find_key_problems(data, Config)[0]
     assert result == []
 
     # Discrimination: the walk does descend into these same nested dicts, so a
@@ -254,17 +264,17 @@ def test_orphans_collect_orphan_keys_valid_nested_dict_does_not_raise():
     # start; this one mutates the dict just asserted clean, so the two results
     # come from the same input and the empty list cannot be a shape artefact.
     data['planet']['mass_totl'] = 1.0
-    assert _collect_orphan_keys(data, Config) == ['planet.mass_totl']
+    assert find_key_problems(data, Config)[0] == ['planet.mass_totl']
 
 
-def test_orphans_collect_orphan_keys_non_attrs_type_skips_recursion():
+def test_orphans_find_key_problems_non_attrs_type_skips_recursion():
     """A known field with a plain scalar type does not trigger dict recursion."""
     from proteus.config._config import Config
 
     # config_version is a str field; a dict value for it is unusual but the
     # validator must not recurse into it (it has no attrs type).
     data = {'config_version': {'nested': 'should_not_recurse'}}
-    result = _collect_orphan_keys(data, Config)
+    result = find_key_problems(data, Config)[0]
 
     # 'config_version' itself is a known field, so it should not appear.
     assert 'config_version' not in result
@@ -275,11 +285,11 @@ def test_orphans_collect_orphan_keys_non_attrs_type_skips_recursion():
 
 
 # ---------------------------------------------------------------------------
-# find_orphan_keys
+# find_key_problems, nested paths
 # ---------------------------------------------------------------------------
 
 
-def test_find_orphan_keys_reports_nested_paths_and_none_for_a_clean_config():
+def test_find_key_problems_names_reports_nested_paths_and_none_for_a_clean_config():
     """Unknown keys come back as dotted paths; a schema-conforming config yields none.
 
     The nested case is the one that matters: a misspelling two levels down in
@@ -293,7 +303,7 @@ def test_find_orphan_keys_reports_nested_paths_and_none_for_a_clean_config():
     dirty['planet']['elements']['H_budgets'] = 1.0
     dirty['atmosphere'] = {'module': 'agni'}
 
-    orphans = find_orphan_keys(dirty)
+    orphans = find_key_problems(dirty)[0]
     assert set(orphans) == {'planet.elements.H_budgets', 'atmosphere'}
 
     # The correctly spelled sibling sits right next to the typo and must not be
@@ -308,7 +318,7 @@ def test_find_orphan_keys_reports_nested_paths_and_none_for_a_clean_config():
 
     # Edge case: the same config without the two injected keys is clean, so the
     # result above is driven by the injection rather than by the fixture.
-    assert find_orphan_keys(_MINIMAL_VALID) == []
+    assert find_key_problems(_MINIMAL_VALID)[0] == []
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +366,7 @@ def test_find_key_problems_catches_a_section_that_is_not_a_table():
     assert find_key_problems(both) == (['star.typo_field'], ['planet'])
 
 
-def test_collect_key_problems_allows_repeated_tables_for_a_container_field():
+def test_find_key_problems_allows_repeated_tables_for_a_container_field():
     """A field holding several nested classes accepts a list rather than a table.
 
     The schema declares no such field today, so this is checked against a
@@ -365,21 +375,69 @@ def test_collect_key_problems_allows_repeated_tables_for_a_container_field():
     them later would start refusing configurations that are correct, which is a
     worse failure than the one the refusal exists to prevent.
     """
-    from proteus.config.orphans import _collect_key_problems
-
     # A list against the container field is the intended shape, so neither list
     # reports it.
-    assert _collect_key_problems({'many': [{'value': 1}]}, _Holder) == ([], [])
+    assert find_key_problems({'many': [{'value': 1}]}, _Holder) == ([], [])
 
     # Discriminator: the same list against the single-table field beside it is
     # still refused, so the carve-out is driven by the field's type and is not
     # a blanket exemption for lists.
-    assert _collect_key_problems({'one': [{'value': 1}]}, _Holder) == ([], ['one'])
+    assert find_key_problems({'one': [{'value': 1}]}, _Holder) == ([], ['one'])
 
     # A table remains valid for the single-table field, and an unknown name
     # inside it is still found, so recursion is unaffected.
-    assert _collect_key_problems({'one': {'value': 1}}, _Holder) == ([], [])
-    assert _collect_key_problems({'one': {'nope': 1}}, _Holder) == (['one.nope'], [])
+    assert find_key_problems({'one': {'value': 1}}, _Holder) == ([], [])
+    assert find_key_problems({'one': {'nope': 1}}, _Holder) == (['one.nope'], [])
+
+
+def test_find_key_problems_catches_a_mistyped_optional_section():
+    """An optional section typed as a union is held to the same shape rule.
+
+    Module sections such as ``star.mors`` are declared ``Mors | None``, so the
+    class is reached through the union branch rather than directly. Without it
+    the most common optional sections in the schema would accept ``[[mors]]``
+    and silently default the whole block.
+    """
+    from copy import deepcopy
+
+    from proteus.config._star import Mors
+    from proteus.config.orphans import _expects_single_table
+
+    assert _expects_single_table(Mors | None) is True
+    # Discrimination: a union carrying no attrs member must not demand a table,
+    # or ordinary optional scalars would be refused.
+    assert _expects_single_table(float | None) is False
+
+    aot = deepcopy(_MINIMAL_VALID)
+    aot['star']['mors'] = [{'age_now': 4.5}]
+    assert find_key_problems(aot) == ([], ['star.mors'])
+
+    # Edge case: the same section as a table is accepted, and an unknown name
+    # inside it is still reported, so recursion through the union is intact.
+    good = deepcopy(_MINIMAL_VALID)
+    good['star']['mors'] = {'age_now': 4.5}
+    assert find_key_problems(good) == ([], [])
+    good['star']['mors']['bad_key'] = 1
+    assert find_key_problems(good) == (['star.mors.bad_key'], [])
+
+
+def test_find_key_problems_handles_a_schema_it_cannot_introspect():
+    """A class that is not attrs, or whose hints fail to resolve, is survivable.
+
+    Neither case should raise. The unintrospectable class contributes nothing,
+    and the class whose annotations cannot be resolved still has its own field
+    names compared, so an unknown key beside the broken one is reported rather
+    than the whole section being waved through.
+    """
+    # Not an attrs class at all: nothing to compare against, nothing reported.
+    assert find_key_problems({'anything': 1}, str) == ([], [])
+
+    # Annotations that cannot be resolved: the walk logs and carries on using
+    # the field names, so the known field is accepted and the unknown one is
+    # still named.
+    orphans, mistyped = find_key_problems({'field': {}, 'not_a_field': 1}, _Unresolvable)
+    assert orphans == ['not_a_field']
+    assert mistyped == []
 
 
 def test_find_key_problems_leaves_a_mistyped_section_out_of_the_orphan_list():
@@ -399,7 +457,7 @@ def test_find_key_problems_leaves_a_mistyped_section_out_of_the_orphan_list():
     assert orphans == []
     # The name-only helper agrees, so the split is a property of the walk and
     # not of one caller's interpretation.
-    assert find_orphan_keys(aot) == []
+    assert find_key_problems(aot)[0] == []
 
 
 # ---------------------------------------------------------------------------
@@ -496,12 +554,12 @@ def test_orphans_detected_in_raw_dict_from_toml_file(tmp_path):
     with open(cfg_path, 'rb') as f:
         raw = tomllib.load(f)
 
-    assert find_orphan_keys(raw) == ['planet.TYPO_FIELD']
+    assert find_key_problems(raw)[0] == ['planet.TYPO_FIELD']
     # Discrimination: the original dummy.toml must be orphan-free. A regression
     # that always reported a key would fail this second check.
     with open(dummy_path, 'rb') as f:
         clean_raw = tomllib.load(f)
-    assert find_orphan_keys(clean_raw) == []
+    assert find_key_problems(clean_raw)[0] == []
 
 
 def test_orphans_detected_at_top_level_in_toml_file(tmp_path):
@@ -523,14 +581,14 @@ def test_orphans_detected_at_top_level_in_toml_file(tmp_path):
         raw = tomllib.load(f)
 
     # The orphan key is detected at the TOP level.
-    orphans = find_orphan_keys(raw)
+    orphans = find_key_problems(raw)[0]
     assert orphans == ['EXTRA_SECTION']
 
     # Discrimination: the same walk over the schema root reports the identical
     # key, so the public helper is not silently widening the search.
     from proteus.config._config import Config
 
-    assert _collect_orphan_keys(raw, Config) == orphans
+    assert find_key_problems(raw, Config)[0] == orphans
 
 
 # ---------------------------------------------------------------------------
@@ -805,7 +863,7 @@ def test_all_options_phase_boundary_margin_declared_and_resolves():
 
     # The whole reference file stays orphan-free, so the new key has a schema
     # home and is not one of the silently-discarded orphans.
-    assert find_orphan_keys(raw) == []
+    assert find_key_problems(raw)[0] == []
 
     # End-to-end resolution through the parser yields the same 200.0. Pinning
     # the exact band is itself the discriminator: it rejects a 0.0 step-cap-
