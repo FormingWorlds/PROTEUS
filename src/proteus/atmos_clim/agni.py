@@ -1067,6 +1067,20 @@ def _solve_transparent(atmos, config: Config):
     return atmos
 
 
+def write_atmos_ncdf(atmos, dirs: dict, time: float) -> None:
+    """Write the AGNI atmosphere struct to a timestamped NetCDF file."""
+
+    # Only a successfully allocated struct can be used.
+    if not bool(atmos.is_alloc):
+        log.warning('Cannot write atmosphere; AGNI struct unallocated')
+        return
+
+    # Write the file
+    ncdf_path = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % time)
+    log.debug(f'Write AGNI atmosphere to {ncdf_path}')
+    jl.AGNI.save.write_ncdf(atmos, ncdf_path)
+
+
 def run_agni(
     atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict, write_data: bool = True
 ):
@@ -1141,9 +1155,7 @@ def run_agni(
 
     # Write output data
     if write_data:
-        log.debug('AGNI write to NetCDF file')
-        ncdf_path = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % hf_row['Time'])
-        jl.AGNI.save.write_ncdf(atmos, ncdf_path)
+        write_atmos_ncdf(atmos, dirs, hf_row['Time'])
 
     # Make plots
     if multiple(loops_total, config.params.out.plot_mod):

@@ -20,6 +20,7 @@ import numpy as np
 import pytest
 
 from proteus.atmos_clim.common import (
+    find_latest_atmosphere_time,
     get_oarr_from_parr,
     get_radius_from_pressure,
     get_spfile_name_and_bands,
@@ -576,3 +577,42 @@ def test_read_atmosphere_data_returns_none_when_any_profile_missing(
     messages = [r.message for r in caplog.records]
     assert any('NetCDF files could not be found' in m for m in messages)
     assert any('extract archived data' in m for m in messages)
+
+
+def test_find_latest_atmosphere_time_returns_max(tmp_path):
+    """The latest snapshot is the maximum parsed time, not the first globbed
+    or the file count.
+
+    Files are created out of chronological order and with a count (3) that
+    differs from every time key, so a regression returning the glob-order
+    first element, the minimum, or len(files) would all disagree with the
+    correct maximum (5000).
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (999, 5000, 100):
+        (data / f'{t}_atm.nc').write_text('x')
+    # An unrelated file must be ignored by the *_atm.nc glob.
+    (data / '5000.sflux').write_text('x')
+
+    latest = find_latest_atmosphere_time(str(tmp_path))
+    assert latest == pytest.approx(5000.0, rel=1e-12)
+    # Discrimination: not the count of files, not the minimum.
+    assert latest != pytest.approx(3.0)
+    assert latest != pytest.approx(100.0)
+
+
+def test_find_latest_atmosphere_time_empty_returns_none(tmp_path):
+    """With no atmosphere NetCDF files the helper returns None rather than
+    raising, so callers can degrade gracefully.
+
+    The data directory contains a non-matching file to confirm the glob is
+    specific to the ``*_atm.nc`` pattern.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    (data / '1000.sflux').write_text('x')
+
+    assert find_latest_atmosphere_time(str(tmp_path)) is None
+    # Also handles a missing data directory without raising.
+    assert find_latest_atmosphere_time(str(tmp_path / 'nonexistent')) is None

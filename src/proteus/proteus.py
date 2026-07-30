@@ -22,6 +22,7 @@ from proteus.utils.helper import (
     PrintHalfSeparator,
     PrintSeparator,
     UpdateStatusfile,
+    is_write_snapshot,
     multiple,
 )
 from proteus.utils.logs import (
@@ -276,6 +277,7 @@ class Proteus:
         #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
         from proteus.atmos_clim.common import Atmos_t
+        from proteus.atmos_clim.wrapper import write_atmosphere_snapshot
 
         #    escape and outgas
         from proteus.escape.wrapper import run_escape
@@ -566,7 +568,6 @@ class Proteus:
                 self.hf_all,
                 require_atm=require_atm,
                 interior_module=self.config.interior_energetics.module,
-                atmos_module=self.config.atmos_clim.module,
             )
             if dropped_snapshots:
                 log.warning(
@@ -726,10 +727,8 @@ class Proteus:
         # Prepare orbit stuff
         init_orbit(self)
 
-        # Track the last simulation time at which data was written to disk,
-        # so that dt_write_rel can suppress high-frequency writes during
-        # rapid early evolution. Initialised to -inf so the first eligible
-        # iteration always writes.
+        # Track the last simulation time at which data was written to disk.
+        # Initialised to -inf so the first eligible iteration always writes.
         self.last_write_time = -np.inf
 
         # Deadlock detector for the atmosphere-interior coupling.
@@ -749,17 +748,16 @@ class Proteus:
         UpdateStatusfile(self.directories, 1)
         while not self.finished_both:
             # Determine whether this iteration is a data-write snapshot.
-            # Two conditions must both be satisfied:
-            #   1. iteration count matches write_mod (existing behaviour)
-            #   2. enough simulation time has elapsed since the last write
-            #      (relative guard: min interval = dt_write_rel * Time)
-            iter_ok = multiple(self.loops['total'], self.config.params.out.write_mod)
-            dt_write_rel = self.config.params.out.dt_write_rel
-            cur_time = self.hf_row.get('Time', 0.0)
-            time_ok = dt_write_rel <= 0 or (
-                cur_time - self.last_write_time >= dt_write_rel * max(cur_time, 1.0)
+            # Conditions that are individually sufficient:
+            #   1. iteration count matches write_mod, or
+            #   2. time elapsed since the last write (>dt_write_rel * Time)
+            is_snapshot = is_write_snapshot(
+                self.loops['total'],
+                self.config.params.out.write_mod,
+                self.config.params.out.dt_write_rel,
+                self.hf_row.get('Time', 0.0),
+                self.last_write_time,
             )
-            is_snapshot = iter_ok and time_ok
             # New rows
             if self.loops['total'] > 0:
                 # Create new row to hold the updated variables. This will be
@@ -1246,7 +1244,6 @@ class Proteus:
         WriteHelpfileToCSV(self.directories['output'], self.hf_all)
 
         # Ensure the final interior state is on disk so resume can find it.
-        # dt_write_rel may have suppressed the write on the last iteration.
         if (
             self.config.interior_energetics.module == 'aragog'
             and self.interior_o.aragog_solver is not None
@@ -1260,6 +1257,10 @@ class Proteus:
                 out,
                 T_surf_coupled=self.hf_row.get('T_surf'),
             )
+
+        # Ensure the final atmosphere state is on disk, since it won't always happen to
+        # be written on the last iteration of the model.
+        write_atmosphere_snapshot(self.atmos_o, self.config, self.directories, self.hf_row)
 
         # Run offline chemistry
         if self.config.atmos_chem.when == 'offline':
@@ -1360,6 +1361,12 @@ class Proteus:
         from proteus.atmos_chem.wrapper import run_chemistry
 
         result = run_chemistry(self.directories, self.config, hf_row)
+
+        # Refresh the chemistry plot
+        if result is not None:
+            from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere_entry
+
+            plot_chem_atmosphere_entry(self)
 
         # return the dataframe
         return result

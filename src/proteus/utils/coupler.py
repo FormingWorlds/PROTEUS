@@ -1300,41 +1300,32 @@ def _snapshot_readable(path: str) -> bool:
 def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
     """Interior snapshot filename candidates for a simulation time, per writer.
 
-    Each interior module names its snapshot with its own convention, so the
-    resume probe must match the active writer:
-
-    - Aragog writes ``'%d_int.nc' % Time`` (truncates toward zero).
-    - SPIDER writes ``'%.0f.json' % Time`` (rounds to nearest).
-    - The dummy and boundary interiors write no interior snapshot, so resume
-      imposes no interior constraint (empty list).
-
-    An unrecognised module falls back to the Aragog convention, the default
-    interior for this branch.
+    Each interior module names its snapshot with the same str-format convention,
+    so the resume probes match. They differ by suffix.
+    The dummy and boundary interiors write no snapshot, so resume imposes
+    no interior constraint (empty list). Unknown module falls-back to Aragog.
     """
-    module = (interior_module or '').lower()
-    if module == 'spider':
-        return ['%.0f.json' % time]
-    if module in ('dummy', 'boundary'):
-        return []
-    return ['%d_int.nc' % time]
+
+    if time < 0.0:
+        raise ValueError(f'Negative time {time} cannot be formatted as filename')
+
+    match interior_module.lower().strip():
+        case 'dummy' | 'boundary':
+            return []
+        case 'spider':
+            return ['%.0f.json' % time]
+        case _:
+            return ['%.0f_int.nc' % time]
 
 
-def _atm_snapshot_names(time: float, atmos_module: str) -> list[str]:
+def _atm_snapshot_names(time: float) -> list[str]:
     """Atmosphere snapshot filename candidate for a simulation time, per writer.
 
-    Atmosphere writers round the time differently: AGNI writes
-    ``'%.0f_atm.nc' % Time`` (rounds to nearest) while JANUS writes
-    ``str(int(Time)) + '_atm.nc'`` (truncates toward zero). Only one atmosphere
-    module is active in a run, so the probe uses that writer's single
-    convention rather than accepting both integer names. Probing both would let
-    the truncated name of a fractional-Time row collide with an adjacent row's
-    rounded name (e.g. Time 30.7 truncates to ``30_atm.nc``, which is Time
-    30.2's rounded file), wrongly pairing one row's interior with another row's
-    atmosphere. An unrecognised module falls back to the AGNI (rounded)
-    convention, the default atmosphere for this branch.
+    All writers round the time with a string-floating point formatter
+    (rounds to nearest number with no decimals).
     """
-    if (atmos_module or '').lower() == 'janus':
-        return ['%d_atm.nc' % time]
+    if time < 0.0:
+        raise ValueError(f'Negative time {time} cannot be formatted as filename')
     return ['%.0f_atm.nc' % time]
 
 
@@ -1343,7 +1334,6 @@ def select_resumable_snapshot(
     hf_all: pd.DataFrame,
     require_atm: bool = True,
     interior_module: str = 'aragog',
-    atmos_module: str = 'agni',
 ) -> tuple[pd.DataFrame, list[int]]:
     """Trim the helpfile to the latest row backed by a complete snapshot pair.
 
@@ -1361,16 +1351,6 @@ def select_resumable_snapshot(
     can never back a resume and would otherwise be swept into the final
     data archive.
 
-    Each half is probed with its own writer's filename convention. The
-    interior name depends on the module: Aragog writes ``'%d_int.nc'``
-    (truncated), SPIDER writes ``'%.0f.json'`` (rounded), and the dummy and
-    boundary interiors write no snapshot at all (no interior constraint). The
-    atmosphere half is probed with the active writer's single convention: AGNI
-    rounds (``'%.0f_atm.nc'``), JANUS truncates (``str(int(Time)) + '_atm.nc'``).
-    Probing only the active convention keeps a fractional-Time row from matching
-    an adjacent row's atmosphere file. See ``_interior_snapshot_names`` /
-    ``_atm_snapshot_names``.
-
     Parameters
     ----------
     output_dir : str
@@ -1385,10 +1365,6 @@ def select_resumable_snapshot(
         ``'dummy'``, ``'boundary'``). Selects the interior filename
         convention; ``'dummy'`` and ``'boundary'`` write no interior snapshot
         so the interior half imposes no constraint.
-    atmos_module : str, optional
-        The active ``atmos_clim.module`` (``'agni'`` or ``'janus'``). Selects
-        the atmosphere filename convention: AGNI rounds, JANUS truncates.
-        Ignored when ``require_atm`` is False.
 
     Returns
     -------
@@ -1415,9 +1391,7 @@ def select_resumable_snapshot(
             os.path.join(data_dir, n) for n in _interior_snapshot_names(t, interior_module)
         ]
         atm_paths = (
-            [os.path.join(data_dir, n) for n in _atm_snapshot_names(t, atmos_module)]
-            if require_atm
-            else []
+            [os.path.join(data_dir, n) for n in _atm_snapshot_names(t)] if require_atm else []
         )
         # An empty interior candidate list means the interior module writes no
         # snapshot (dummy/boundary): that half imposes no resume constraint.
@@ -1501,6 +1475,30 @@ def variable_is_logarithmic(varname: str) -> bool:
     return out
 
 
+def select_profile_plot_times(
+    interior_times: list, nc_times: list, no_int_snapshots: bool
+) -> list:
+    """Select the times at which to plot atmosphere/interior profiles.
+
+    Parameters
+    ----------
+    interior_times : list
+        Interior snapshot times (empty for dummy/boundary interiors).
+    nc_times : list
+        Atmosphere ``*_atm.nc`` snapshot times.
+    no_int_snapshots : bool
+        True when the interior module writes no per-time snapshot.
+
+    Returns
+    -------
+    list
+        Sorted list of times at which profiles can be plotted.
+    """
+    if no_int_snapshots:
+        return sorted(nc_times)
+    return sorted(set(interior_times) & set(nc_times))
+
+
 def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
 
@@ -1553,7 +1551,9 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
-    dummy_int = config.interior_energetics.module == 'dummy'
+    # The dummy and boundary interiors write no per-time interior NetCDF
+    # snapshot, so profile plots cannot intersect against interior times.
+    no_int_snapshots = config.interior_energetics.module in ('dummy', 'boundary')
     agni = config.atmos_clim.module == 'agni'
     spider = config.interior_energetics.module == 'spider'
     aragog = config.interior_energetics.module == 'aragog'
@@ -1585,12 +1585,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     if not dummy_atm:
         ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
         nc_times = [int(f.split('/')[-1].split('_atm')[0]) for f in ncs]
-
-        # Check intersection of atmosphere and interior data
-        if dummy_int:
-            output_times = nc_times
-        else:
-            output_times = sorted(list(set(output_times) & set(nc_times)))
+        output_times = select_profile_plot_times(output_times, nc_times, no_int_snapshots)
 
     # Samples for plotting profiles
     if len(output_times) > 0:
@@ -1601,7 +1596,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
         log.debug('Snapshots to plot:' + str(plot_times))
 
         # Interior profiles
-        if not dummy_int:
+        if not no_int_snapshots:
             int_data = read_interior_data(
                 output_dir, config.interior_energetics.module, plot_times
             )
@@ -1629,7 +1624,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
             )
 
             # Atmosphere and interior, stacked radially
-            if not dummy_int:
+            if not no_int_snapshots:
                 plot_structure(
                     hf_all,
                     output_dir,
@@ -1690,7 +1685,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
                 output_dir, modern_age=modern_age, plot_format=config.params.out.plot_fmt
             )
 
-            if plot_times and not dummy_int:
+            if plot_times and not no_int_snapshots:
                 plot_interior_cmesh(
                     output_dir,
                     plot_times,

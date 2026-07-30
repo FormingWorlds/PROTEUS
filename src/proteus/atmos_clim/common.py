@@ -1,6 +1,7 @@
 # Common atmosphere climate model functions
 from __future__ import annotations
 
+import glob
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -207,8 +208,22 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
 
 
 def read_atmosphere_data(output_dir: str, times: list, extra_keys=[]):
-    """
-    Read all p,t,z profiles from NetCDF files in a PROTEUS output folder.
+    """Return atmosphere profiles from NetCDF in PROTEUS output folder, at the given times.
+
+    Arguments
+    ----------
+        output_dir : str
+            Path to PROTEUS output folder.
+        times : list
+            List of times (floats) to read in [yr].
+        extra_keys : list (optional)
+            List of extra keys to read from the NetCDF files.
+
+    Returns
+    ----------
+        list of dicts, or None.
+            Each dict contains atmos data at each time.
+            If any of the requested times cannot be read, None is returned.
     """
     profiles = [
         read_ncdf_profile(
@@ -223,6 +238,37 @@ def read_atmosphere_data(output_dir: str, times: list, extra_keys=[]):
         return
 
     return profiles
+
+
+def find_latest_atmosphere_time(output_dir: str) -> float | None:
+    """Return the largest available ``*_atm.nc`` snapshot time on disk.
+
+    Arguments
+    ----------
+        output_dir : str
+            Path to PROTEUS output folder.
+
+    Returns
+    ----------
+        float or None
+            Largest snapshot time [yr]. None if no snapshots found.
+    """
+
+    # Find netcdf files and get times from their names
+    ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
+    times = []
+    for f in ncs:
+        try:
+            times.append(float(os.path.basename(f).split('_atm')[0]))
+        except ValueError:
+            log.warning(f"Could not parse time from NetCDF file '{f}'")
+
+    # Return None if no files found
+    if not times:
+        return None
+
+    # Return latest (max) time
+    return float(max(times))
 
 
 def get_spfile_name_and_bands(config: Config):
