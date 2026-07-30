@@ -106,9 +106,10 @@ clauses to keep slow-marked files out:
 pytest -m "unit and not skip and not slow and not integration" --ignore=tests/examples
 ```
 
-Coverage thresholds live in `pyproject.toml` and are described under `Coverage
-architecture` in the Testing Standards section below. Repo-specific checks:
-`bash tools/validate_test_structure.sh` and `bash tools/coverage_analysis.sh`.
+Coverage thresholds live in `pyproject.toml`; the three PR gates and what they
+mean for adding tests are in `.github/.claude/rules/proteus-tests.md` section 15.
+Repo-specific checks: `bash tools/validate_test_structure.sh` and
+`bash tools/coverage_analysis.sh`.
 
 ### Validation Pipeline
 
@@ -192,87 +193,44 @@ Two markers track validation quality independently of line coverage:
 
 The new markers are registered in `pyproject.toml`. They do not gate CI by themselves; they are tracked via `tools/check_test_quality.py` for visibility.
 
-### Float and numerical comparison
+### Detail carried by the deep-dive
 
-- NEVER use `==` for floats. Use `pytest.approx(val, rel=1e-5)` (or `abs=...`) or `np.testing.assert_allclose(actual, expected, rtol=..., atol=...)`.
-- State the tolerance rationale in a comment when the choice is non-obvious (e.g. "rtol=1e-3 because Cp lookup truncates to 4 sig fig").
-- For pinned numeric values, include a **discrimination guard**: a follow-up `assert` showing the wrong-formula value would differ from the correct one by more than the tolerance. See `.github/.claude/rules/proteus-tests.md` Section 2 for the canonical pattern.
+These clauses are binding but stated once, in
+[`.github/.claude/rules/proteus-tests.md`](.claude/rules/proteus-tests.md).
+Read that file before editing anything under `tests/**` or `src/proteus/**`:
 
-### Mocking discipline
+| Clause | Section |
+|---|---|
+| Float comparison, `pytest.approx`, tolerance rationale | 8 |
+| Discrimination-guard pattern for pinned values | 2 |
+| Mocking discipline (narrowest scope, plausible return values) | 4 |
+| `pytest.importorskip` for optional dependencies | 5 |
+| `monkeypatch` on env-derived module constants | 6 |
+| Seeding, wall-time budgets, `tmp_path` | 10 |
+| Per-test docstring and comment requirements | 11 |
+| The > 50 lines of test code independent review trigger | 13 |
+| Tooling commands (`check_test_quality.py`, structure, coverage) | 14 |
+| Coverage gate values and what they mean for adding tests | 15 |
 
-- Default to `unittest.mock` for ALL external calls in unit tests: SOCRATES, AGNI, SPIDER, file I/O, network, Aragog/Zalmoxis solvers.
-- Mock at the narrowest scope: a specific function, not a whole module.
-- A mocked physics function must return **physically plausible** values; a mock that returns `0.0` or `1.0` for everything can mask real bugs.
-- NEVER mock the function under test.
-- Smoke tests use real binaries; integration tests use real submodules.
+### Voice rule
 
-### Optional-dependency imports
+Zero AI-process disclosure in any public artifact, with the same strictness for
+test code as for source. This one stays here rather than in the deep-dive
+because it governs every commit message and pull-request body, not only
+test-touching work.
 
-Any test that imports an optional dependency (`hypothesis`, `boreas`, `atmodeller`, `lovepy`, `mors`, `vulcan`, the `inference` extra's `torch` / `botorch` / `gpytorch`, also `zalmoxis` when not installed via editable) MUST call `pytest.importorskip('<dep>')` at module top. The PR Docker image is built with `pip install --no-deps`; tests that import optional deps unconditionally will fail to collect on CI even though they run locally. This trap has recurred multiple times and is now lint-enforced.
+In scope: test-skip reasons, test-file and test-function docstrings, test
+function and class names, parametrize ids, log-capture assertions, commit
+messages, pull-request titles and bodies, GitHub Actions job and step names,
+inline `src/proteus/**` comments, and shipped log strings. Out of scope: the rule
+documents themselves (this file, the files under `.github/.claude/rules/`,
+`docs/How-to/test_*.md`) may name the procedures they define.
 
-### Module-level constants and `monkeypatch`
-
-When the source under test reads an environment variable into a module-level constant at import time, e.g.
-
-```python
-FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', ...))
-```
-
-`monkeypatch.setenv` is **not sufficient**: the constant is frozen at the import that already happened. Patch the constant directly:
-
-```python
-monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path, raising=False)
-```
-
-Patch BOTH the env var (for downstream code that re-reads it) AND the constant (for code that reads only the constant).
-
-### Voice rule for test artifacts
-
-The repo-wide voice rule (zero AI-process disclosure in any public artifact, see top of this file) applies to test code with the same strictness as to source. The rule is scoped to artifacts other contributors and external readers see: test-skip reasons, test-file/function docstrings, test-function/class names, parametrize ids, log-capture assertions, **commit messages on test-touching commits, pull-request titles and bodies on test-touching PRs**, GitHub Actions job/step names, inline `src/proteus/**` comments, and shipped log strings. Out of scope: the rule documents themselves (this file, `.github/.claude/rules/proteus-tests.md`, `.github/.claude/rules/proteus-code-review.md`, `docs/How-to/test_*.md`) may legitimately name the procedures they define. Banned phrases inside in-scope artifacts: "audit", "review pass", "adversarial review", "Phase X" (AI-roadmap labels), "T1.x", "Group A/B/C/D" (AI work groups), `claude-config/...` paths, "Generated with Claude", em-dashes, en-dashes (except bibliographic page ranges). Write the OUTCOME, never the PROCESS.
-
-### Speed and determinism
-
-- Unit tests: < 100 ms wall-time each. The 30 s `timeout` is a defensive ceiling, not the target.
-- Aggressively mock heavy simulations, file I/O, and external APIs in unit tests.
-- Set seeds for any randomness: `np.random.seed(42)`, `torch.manual_seed(42)`, `random.seed(42)`. All three must be seeded if all three are exercised; deterministic-only-on-one is a known regression vector.
-- Use `tmp_path` (pytest fixture) for temporary files; do not produce large outputs in tests.
-
-### Documentation per test
-
-- File-level docstring: name the module under test, list the invariants and contract clauses the file exercises, and link to the test docs (`docs/How-to/testing.md`, `docs/Explanations/test_framework.md`).
-- Function-level docstring: state the physical scenario or contract clause being verified, in plain language. Required (lint-enforced).
-- Inline comments: explain **why** a specific input range was chosen ("T=300 K and T=1500 K so the T**3 vs T**4 difference is resolved well above tolerance").
-
-### Independent review trigger
-
-A pull request that adds or substantially modifies > 50 lines of test code across all its commits triggers an independent review pass before merge. The denominator is PR-level (`git diff origin/main...HEAD -- 'tests/**'`), not per-commit; splitting into many sub-50-line commits does not dodge the trigger. The reviewer cites the anti-happy-path rule, the discrimination-guard requirement, and the physics-invariant tier; flags single-assert tests, weak `is not None` patterns, missing module-level marker, missing `physics_invariant` tag on a physics-module test, and dead tests (tests that pass for the wrong reason).
-
-### Tooling
-
-- Validate test structure: `bash tools/validate_test_structure.sh`
-- Test-quality lint (anti-happy-path, marker, weak assertions): `python tools/check_test_quality.py --check`
-- Baseline (run after a deliberate sweep): `python tools/check_test_quality.py --baseline`
-- Coverage analysis: `bash tools/coverage_analysis.sh`
-- Format: `ruff format src/ tests/`
-- Lint: `ruff check src/ tests/`
-
-### Coverage architecture
-
-PROTEUS runs three gates on every pull request. The full gate is not a fourth: it is the pyproject value the estimated total is measured against.
-
-| Gate | Tests included | Target | Enforced |
-|---|---|---|---|
-| Fast gate (`tool.proteus.coverage_fast.fail_under`) | unit-only (PR) | Fixed **80%** | Every PR (warn-only on drafts) |
-| Estimated total (PR unit coverage union with latest nightly artifact) | unit + smoke + integration + slow | **90%**, the `tool.coverage.report.fail_under` value | Every PR (warn-only on drafts) |
-| Diff-cover | changed lines (fast + nightly union) | 80% (hard-coded; warn-only on drafts) | Every PR |
-
-**What this means for contributors**: the coverage ceilings are fixed, not ratcheting: the fast (unit-only) gate is held at **80%** and the full gate at the **90%** PROTEUS-ecosystem target (`tools/update_coverage_threshold.py` enforces `CEILINGS = {'fast': 80.0, 'full': 90.0}` and the PR threshold guard fails if either is edited away from its fixed value). Unit tests alone are not expected to reach 90% because wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is exercised only by the nightly tiers; that is why the fast gate sits at 80, not 90. The 90% target is reached via the estimated-total: the PR's unit coverage is unioned with the latest nightly artifact and compared against the full gate, and the diff-cover gate unions the fast and nightly reports the same way. Coverage gates run on draft PRs for visibility but are warn-only there; they block once the PR is marked ready for review.
-
-Reports: `pytest --cov=src --cov-report=html` and open `htmlcov/index.html`. Module-level analysis: `bash tools/coverage_analysis.sh`. Diff-cover thresholds are documented in `docs/How-to/testing.md`.
-
-## Safety & Determinism
-- **Randomness:** Explicitly set seeds (e.g., `np.random.seed(42)`) in tests.
-- **Files:** Do not generate tests that produce large output files (unless explicitly instructed); use `tempfile` or mocks.
+Banned inside in-scope artifacts: "audit", "review pass", "adversarial review",
+"Phase X" as an AI-roadmap label, "T1.x", "Group A/B/C/D" as AI work groups,
+`claude-config/...` paths, "Generated with Claude", AI-tool names, em-dashes,
+en-dashes (except bibliographic page ranges). Write the OUTCOME, never the
+PROCESS.
 
 ## Verification and Diagnostic Plots
 
