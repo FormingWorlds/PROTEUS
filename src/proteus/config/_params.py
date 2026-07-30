@@ -45,7 +45,7 @@ class OutputParams:
     plot_fmt: str
         Plotting output file format. Choices: "png", "pdf".
     write_mod: int
-        Write data iteration-interval trigger. 0: wait until completio. n: every n iterations.
+        Write data iteration-interval trigger. 0: wait until completion. n: every n iterations.
     dt_write_rel: float
         Write data time-interval trigger. Expressed as a fraction of the current simulation time. Set to 0 to disable.
     plot_mod: int | None
