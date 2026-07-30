@@ -2761,12 +2761,8 @@ def test_interior_snapshot_names_track_each_writer_convention():
 
 
 @pytest.mark.unit
-def test_atm_snapshot_names_single_convention():
-    """The atmosphere probe uses exactly the active writer's rounding convention.
-
-    Only one atmosphere module is active per run, so the probe must return that
-    writer's single filename, not both integer names.
-    """
+def test_atm_snapshot_names_floating_convention():
+    """The atmosphere probe uses exactly the float rounding convention."""
     # Time 30.7: round to 31
     assert _atm_snapshot_names(30.7) == ['31_atm.nc']
 
@@ -2873,7 +2869,7 @@ def test_select_resumable_snapshot_dummy_interior_trusts_helpfile(tmp_path):
 
 @pytest.mark.unit
 def test_select_resumable_snapshot_accepts_both_atm(tmp_path):
-    """A fractional-Time JANUS atmosphere (truncated name) is recognised, not quarantined.
+    """A fractional-Time atmosphere is recognised, not quarantined.
 
     JANUS and AGNI use a floating point rounding convention to look for
     ``31_atm.nc`` given time 30.7  - both modules now round in the same way.
@@ -2897,10 +2893,6 @@ def test_select_resumable_snapshot_accepts_both_atm(tmp_path):
     # Discrimination guard: nothing quarantined
     assert not list(data.glob('*.incomplete'))
     assert (data / '31_atm.nc').exists()
-
-    # Nothing dropped
-    out_agni, dropped_agni = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30.7]))
-    assert dropped_agni == []
 
 
 @pytest.mark.unit

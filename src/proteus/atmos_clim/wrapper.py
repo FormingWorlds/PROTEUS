@@ -233,11 +233,6 @@ def write_atmosphere_snapshot(atmos_o: Atmos_t, config: Config, dirs: dict, hf_r
             Dictionary containing simulation variables for current iteration
     """
 
-    # If unallocated, do nothing
-    if atmos_o._atm is None:
-        log.warning('Cannot write atmosphere; atmosphere struct unallocated')
-        return
-
     # Get time from this iteration
     time = float(hf_row['Time'])
 
@@ -245,11 +240,19 @@ def write_atmosphere_snapshot(atmos_o: Atmos_t, config: Config, dirs: dict, hf_r
     if config.atmos_clim.module == 'agni':
         from proteus.atmos_clim.agni import write_atmos_ncdf
 
+        if atmos_o._atm is None:
+            log.warning('Cannot write atmosphere; AGNI struct unallocated')
+            return
+
         write_atmos_ncdf(atmos_o._atm, dirs, time)
 
     # Use JANUS writer
     elif config.atmos_clim.module == 'janus':
         from proteus.atmos_clim.janus import write_atmos_ncdf
+
+        if atmos_o._atm is None:
+            log.warning('Cannot write atmosphere; JANUS object unallocated')
+            return
 
         write_atmos_ncdf(atmos_o._atm, dirs, time)
 

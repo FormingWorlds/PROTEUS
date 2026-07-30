@@ -736,10 +736,8 @@ class Proteus:
         # Prepare orbit stuff
         init_orbit(self)
 
-        # Track the last simulation time at which data was written to disk,
-        # so that dt_write_rel can suppress high-frequency writes during
-        # rapid early evolution. Initialised to -inf so the first eligible
-        # iteration always writes.
+        # Track the last simulation time at which data was written to disk.
+        # Initialised to -inf so the first eligible iteration always writes.
         self.last_write_time = -np.inf
 
         # Deadlock detector for the atmosphere-interior coupling.

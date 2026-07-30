@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import PchipInterpolator
 
-from proteus.utils.helper import UpdateStatusfile, find_nearest
+from proteus.utils.helper import find_nearest
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -266,7 +266,6 @@ def find_latest_atmosphere_time(output_dir: str) -> float | None:
         try:
             times.append(float(os.path.basename(f).split('_atm')[0]))
         except ValueError:
-            UpdateStatusfile(output_dir, 22)
             log.warning(f"Could not parse time from NetCDF file '{f}'")
 
     # Return None if no files found
