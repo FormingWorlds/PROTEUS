@@ -24,6 +24,12 @@ Follow the same standards for testing, coverage, code quality, and infrastructur
 > - [`.github/.claude/rules/proteus-code-review.md`](.claude/rules/proteus-code-review.md) -- review-pass gate, domain-aware physics review (Stefan-Boltzmann, hf_row save/restore, IC consistency, whole-element aggregation symmetry, etc.). **Required reading before any code review pass.**
 >
 > These two files plus this one are the canonical sources of truth for testing rigor and review criteria. Together they enforce PROTEUS's extreme-rigor stance on physics validity, anti-happy-path testing, and validation certification.
+>
+> Two further rule files in the same directory are scoped to one subsystem each.
+> Read them when the work touches that subsystem, not on every session:
+>
+> - [`.github/.claude/rules/proteus-socrates-build.md`](.claude/rules/proteus-socrates-build.md) -- SOCRATES configure flags, CPU portability, bit-reproducibility recipe.
+> - [`.github/.claude/rules/proteus-oxygen-accounting.md`](.claude/rules/proteus-oxygen-accounting.md) -- whole-planet oxygen budget, `O_mode` contract, aggregation symmetry (issue #677).
 
 1. **Always** read the two rule files above plus the testing standards in this document and `docs/How-to/testing.md` before any code change.
 2. **Always** inform the user that you are reading in this file by printing a message at the start of your response: "(Read in copilot-instructions.md...)"
@@ -49,15 +55,6 @@ PROTEUS is a coupled atmosphere-interior framework with a modular architecture:
 
 **Important:** Each module is maintained in its own GitHub repository but is typically cloned/installed within the PROTEUS directory structure for integrated development. When working on any module in the ecosystem, apply these guidelines consistently.
 
-
-**Project Type**: Scientific simulation framework
-
-**Languages**: Python 3.12 (primary), Julia, Fortran, C
-
-**Size**: ~100 Python files in `src/proteus/`, multiple submodules
-
-**Target Runtime**: Python 3.12 (Linux/macOS only; Windows not supported)
-
 ## Build & Validation
 
 For installation instructions and dependency management across the ecosystem:
@@ -70,92 +67,16 @@ When helping with installation or dependency issues, always reference these guid
 
 ### Environment Setup
 
-**Prerequisites**:
-
-1. Python 3.12 (via conda/miniforge or miniconda)
-2. Julia (official installer: `curl -fsSL https://install.julialang.org | sh`)
-3. Git (install via conda if needed: `conda install git`)
-4. ~20 GB disk space
-
-**Developer Install** (full editable installation - always use for development):
-
-```bash
-# 1. Set environment variables (REQUIRED - do this first)
-mkdir /your/local/path/FWL_DATA
-echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.bashrc"
-source "$HOME/.bashrc"
-
-# 2. Clone PROTEUS base
-git clone git@github.com:FormingWorlds/PROTEUS.git
-cd PROTEUS
-
-# 3. Create conda environment
-conda create -n proteus python=3.12
-conda activate proteus
-
-# 4. Install SOCRATES (Fortran radiative transfer)
-./tools/get_socrates.sh
-echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.bashrc"
-source "$HOME/.bashrc"
-
-# 5. Install AGNI (Julia radiative-convective atmosphere model)
-git clone git@github.com:nichollsh/AGNI.git
-cd AGNI
-bash src/get_agni.sh 0  # Argument 0 skips tests
-cd ../
-
-# 6. Install Python submodules as editable (in order)
-# MORS (stellar evolution)
-git clone git@github.com:FormingWorlds/MORS
-pip install -e MORS/.
-
-# JANUS (1D convective atmosphere)
-git clone git@github.com:FormingWorlds/JANUS
-pip install -e JANUS/.
-
-# CALLIOPE (volatile in-/outgassing)
-git clone git@github.com:FormingWorlds/CALLIOPE
-pip install -e CALLIOPE/.
-
-# ARAGOG (interior thermal evolution)
-git clone git@github.com:FormingWorlds/aragog.git
-pip install -e aragog/.
-
-# ZEPHYRUS (atmospheric escape)
-git clone git@github.com:FormingWorlds/ZEPHYRUS
-pip install -e ZEPHYRUS/.
-
-# 7. Install PETSc (numerical computing library - specific version from OSF)
-# NOTE: Must be done in Python <= 3.12 environment
-./tools/get_petsc.sh
-# Sets PETSC_DIR and PETSC_ARCH automatically (arch-linux-c-opt or arch-darwin-c-opt)
-
-# 8. Install SPIDER (interior evolution - requires PETSc)
-./tools/get_spider.sh
-
-# 9. Install PROTEUS framework
-pip install -e ".[develop]"
-
-# 10. Enable pre-commit hooks
-pre-commit install -f
-
-# 11. Optional modules (if needed)
-# LovePy (multi-phase tidal heating - Julia)
-./tools/get_lovepy.sh
-
-# VULCAN (chemical kinetics atmosphere model)
-./tools/get_vulcan.sh
-```
-
-**Important Notes**:
+Follow the developer install in `docs/How-to/installation.md` step by step; it is
+the single source of truth for the clone order, the PETSc pin, and the optional
+modules. The traps that guide does not call out:
 
 - **FWL_DATA** and **RAD_DIR** must be set before running PROTEUS
 - **PETSc** is downloaded as a specific pre-compiled version from OSF (not built from source)
 - **SPIDER** requires PETSc to be installed first
 - All Python submodules should be installed as editable (`-e`) for development
-- After installation, reload shell: `source ~/.bashrc` or `conda activate proteus`
 - After each file change or edit, ruff format all changed files with `ruff check --fix ` and `ruff format --check`
-- **Parallel tracks**: one conda env per git worktree. `conda create --clone` hardlinks pip-editable pointers, so a subsequent `pip install -e .` in one env can silently repoint another env's `import proteus`. Canary before each A/B run: `python -c "import proteus; print(proteus.__file__)"`; recipe in `~/.claude/memory/conda_env_split_pattern.md`.
+- **Parallel tracks**: one conda env per git worktree. `conda create --clone` hardlinks pip-editable pointers, so a subsequent `pip install -e .` in one env can silently repoint another env's `import proteus`. Canary before each A/B run: `python -c "import proteus; print(proteus.__file__)"`.
 
 ### Build Commands
 
@@ -167,97 +88,28 @@ pre-commit install -f
 
 **Always run** `pip install -e ".[develop]"` after code changes to update installation.
 
-#### SOCRATES build flags
-
-By default `tools/get_socrates.sh` keeps the configure flags `-Ofast
--march=native`, which give the best performance on the build host. Set
-`SOCRATES_PORTABLE_FLAGS=1` to compile with `-O2 -fno-fast-math` instead: the
-`-march=native` default bakes the build host's CPU extensions into the binary,
-so a compiled tree reused on a different processor aborts with an
-illegal-instruction fault, while the portable flags run on any CPU. CI sets the
-switch because its caches are restored across runner machines with mixed CPU
-generations. Dropping fast-math also removes compiler value reordering, the
-build-to-build component of the ULP-level non-determinism that AGNI's Newton
-solver amplifies into 1-2 % F_atm variance; run-to-run scatter from OpenMP
-threading remains while OMPARG is set. In portable mode the build fails loudly
-if a future SOCRATES release changes the flag string, so no manual edit is
-needed.
-
-For full bit-reproducibility (paper plots, CHILI, SPIDER-parity) install with
-`SOCRATES_PORTABLE_FLAGS=1 bash tools/get_socrates.sh` and also clear
-`OMPARG = -fopenmp` in `socrates/make/Mk_cmd`, then force a recompile with
-`cd socrates/bin && make clean && cd .. && ./build_code` (no make rule depends
-on `Mk_cmd`, so rebuilding without the clean reuses the OpenMP objects
-unchanged); the install path keeps OpenMP enabled and does not clear it
-automatically.
+SOCRATES compiles with `-Ofast -march=native` by default, which makes a built
+tree non-portable across CPUs and non-reproducible build-to-build.
+`SOCRATES_PORTABLE_FLAGS=1` switches to `-O2 -fno-fast-math`. Read
+[`.github/.claude/rules/proteus-socrates-build.md`](.claude/rules/proteus-socrates-build.md)
+before changing `tools/get_socrates.sh`, before debugging an
+illegal-instruction crash from a restored tree, or before producing numbers that
+must be bit-reproducible.
 
 ### Test Commands
 
-**Run all tests**:
+Tier selection is by marker (`pytest -m unit`, `-m smoke`, `-m integration`). The
+one invocation that is not guessable is the PR filter, which needs the extra
+clauses to keep slow-marked files out:
 
 ```bash
-pytest
-```
-
-**Run by category** (matches CI):
-
-```bash
-pytest -m unit              # Fast unit tests (<100ms each, mocked physics)
-pytest -m smoke             # Binary validation (1 timestep, low res)
-pytest -m integration       # Multi-module coupling
-pytest -m "not slow"        # Everything except slow tests
-
-# Exactly what the PR checks run (the extra filters keep slow-marked files out):
 pytest -m "unit and not skip and not slow and not integration" --ignore=tests/examples
 ```
 
-**With coverage**:
-
-```bash
-# Option 1: pytest-cov (convenient)
-pytest --cov=src --cov-report=html
-
-# Option 2: coverage run (matches CI exactly)
-coverage run -m pytest
-coverage report
-coverage html
-```
-
-**Coverage thresholds** (in `pyproject.toml`; fixed ceilings, never lowered):
-
-- Fast gate (`[tool.proteus.coverage_fast]`, unit-only on PR, every PR): fixed at **80%**. Unit tests alone cannot exercise wrapper paths that require real binaries, so the fast gate is held at 80 rather than chasing 90. Warn-only on draft PRs; blocking once the PR is ready for review.
-- Full gate value (`[tool.coverage.report]`): fixed at **90%**. The nightly does not enforce it; it is the number the PR estimated-total gate is measured against.
-- Estimated total (PR unit coverage union with the latest nightly artifact, every PR): compared against the 90% full gate. This is the 90% KPI; the nightly tier fills the wrapper / binary code paths.
-
-See the `Coverage architecture` block in the Testing Standards section below for the contract.
-
-**Validate test structure**:
-
-```bash
-bash tools/validate_test_structure.sh
-```
-
-**Coverage analysis**:
-
-```bash
-bash tools/coverage_analysis.sh
-```
-
-### Lint Commands
-
-**Always run before committing**:
-
-```bash
-ruff check src/ tests/        # Check for issues
-ruff check --fix src/ tests/ # Auto-fix issues
-ruff format src/ tests/      # Format code
-```
-
-**Pre-commit hook** (runs automatically on commit):
-
-```bash
-pre-commit install -f
-```
+Coverage thresholds live in `pyproject.toml`; the three PR gates and what they
+mean for adding tests are in `.github/.claude/rules/proteus-tests.md` section 15.
+Repo-specific checks: `bash tools/validate_test_structure.sh` and
+`bash tools/coverage_analysis.sh`.
 
 ### Validation Pipeline
 
@@ -272,51 +124,6 @@ pre-commit install -f
 7. **Test quality**: `python tools/check_test_quality.py --check` (reported, does not block)
 
 **All must pass** before merge. Coverage gates are warn-only on draft PRs and block once the PR is ready for review. Coverage ceilings are fixed (fast 80%, full 90%) and never lowered.
-
-## Project Layout
-
-### Key Directories
-
-- `src/proteus/` - Main Python source code
-  - `cli.py` - Command-line interface entry point
-  - `proteus.py` - Core `Proteus` class
-  - `doctor.py` - Environment diagnostics (`proteus doctor`)
-  - `config/` - Configuration system (TOML parsing, validation)
-  - `atmos_clim/`, `atmos_chem/`, `escape/`, `interior_struct/`, `interior_energetics/`, `outgas/`, `observe/`, `orbit/`, `star/` - Physics module wrappers
-  - `utils/` - Utilities (data, logging, plotting, helpers)
-  - `grid/`, `inference/`, `plot/` - Specialized functionality
-
-- `tests/` - Test suite (MUST mirror `src/proteus/` structure)
-  - `tests/<module>/test_<filename>.py` for each `src/proteus/<module>/<filename>.py`
-  - `tests/conftest.py` - Shared fixtures (parameter classes, config paths)
-  - `tests/integration/` - Multi-module integration tests
-
-- `input/` - TOML configuration files
-- `output/` - Simulation results (gitignored)
-- `tools/` - Build/utility scripts
-- `docs/` - Documentation (Zensical, built from `mkdocs.yml`)
-
-### Configuration Files
-
-- `pyproject.toml` - Package metadata, pytest config, coverage thresholds, ruff rules
-- `mkdocs.yml` - Documentation configuration (used by Zensical)
-- `.github/workflows/` - CI/CD pipelines
-  - `ci-pr-checks.yml` - Fast PR validation (unit + lint)
-  - `code-style.yaml` - Pre-commit hooks
-  - `proteus_test_quality_gate.yml` - Reusable test workflow
-
-### Entry Points
-
-- **CLI** (defined in `src/proteus/cli.py`):
-  - `proteus start -c <config.toml>` - Run a simulation
-  - `proteus plot -c <config.toml> all` - Generate plots from output
-  - `proteus get` - Download data files
-  - `proteus doctor` - Diagnose environment issues
-  - `proteus grid` / `proteus infer` - Parameter grid and inference workflows
-  - `proteus observe` / `proteus offchem` - Observation and offline chemistry
-  - `proteus create-archives` / `proteus extract-archives` - Archive management
-  - `proteus install-all` - Install all submodules
-- **Python API**: `from proteus import Proteus; p = Proteus(config_path)`
 
 ## Testing Standards
 
@@ -386,87 +193,44 @@ Two markers track validation quality independently of line coverage:
 
 The new markers are registered in `pyproject.toml`. They do not gate CI by themselves; they are tracked via `tools/check_test_quality.py` for visibility.
 
-### Float and numerical comparison
+### Detail carried by the deep-dive
 
-- NEVER use `==` for floats. Use `pytest.approx(val, rel=1e-5)` (or `abs=...`) or `np.testing.assert_allclose(actual, expected, rtol=..., atol=...)`.
-- State the tolerance rationale in a comment when the choice is non-obvious (e.g. "rtol=1e-3 because Cp lookup truncates to 4 sig fig").
-- For pinned numeric values, include a **discrimination guard**: a follow-up `assert` showing the wrong-formula value would differ from the correct one by more than the tolerance. See `.github/.claude/rules/proteus-tests.md` Section 2 for the canonical pattern.
+These clauses are binding but stated once, in
+[`.github/.claude/rules/proteus-tests.md`](.claude/rules/proteus-tests.md).
+Read that file before editing anything under `tests/**` or `src/proteus/**`:
 
-### Mocking discipline
+| Clause | Section |
+|---|---|
+| Float comparison, `pytest.approx`, tolerance rationale | 8 |
+| Discrimination-guard pattern for pinned values | 2 |
+| Mocking discipline (narrowest scope, plausible return values) | 4 |
+| `pytest.importorskip` for optional dependencies | 5 |
+| `monkeypatch` on env-derived module constants | 6 |
+| Seeding, wall-time budgets, `tmp_path` | 10 |
+| Per-test docstring and comment requirements | 11 |
+| The > 50 lines of test code independent review trigger | 13 |
+| Tooling commands (`check_test_quality.py`, structure, coverage) | 14 |
+| Coverage gate values and what they mean for adding tests | 15 |
 
-- Default to `unittest.mock` for ALL external calls in unit tests: SOCRATES, AGNI, SPIDER, file I/O, network, Aragog/Zalmoxis solvers.
-- Mock at the narrowest scope: a specific function, not a whole module.
-- A mocked physics function must return **physically plausible** values; a mock that returns `0.0` or `1.0` for everything can mask real bugs.
-- NEVER mock the function under test.
-- Smoke tests use real binaries; integration tests use real submodules.
+### Voice rule
 
-### Optional-dependency imports
+Zero AI-process disclosure in any public artifact, with the same strictness for
+test code as for source. This one stays here rather than in the deep-dive
+because it governs every commit message and pull-request body, not only
+test-touching work.
 
-Any test that imports an optional dependency (`hypothesis`, `boreas`, `atmodeller`, `lovepy`, `mors`, `vulcan`, the `inference` extra's `torch` / `botorch` / `gpytorch`, also `zalmoxis` when not installed via editable) MUST call `pytest.importorskip('<dep>')` at module top. The PR Docker image is built with `pip install --no-deps`; tests that import optional deps unconditionally will fail to collect on CI even though they run locally. This trap has recurred multiple times and is now lint-enforced.
+In scope: test-skip reasons, test-file and test-function docstrings, test
+function and class names, parametrize ids, log-capture assertions, commit
+messages, pull-request titles and bodies, GitHub Actions job and step names,
+inline `src/proteus/**` comments, and shipped log strings. Out of scope: the rule
+documents themselves (this file, the files under `.github/.claude/rules/`,
+`docs/How-to/test_*.md`) may name the procedures they define.
 
-### Module-level constants and `monkeypatch`
-
-When the source under test reads an environment variable into a module-level constant at import time, e.g.
-
-```python
-FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', ...))
-```
-
-`monkeypatch.setenv` is **not sufficient**: the constant is frozen at the import that already happened. Patch the constant directly:
-
-```python
-monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path, raising=False)
-```
-
-Patch BOTH the env var (for downstream code that re-reads it) AND the constant (for code that reads only the constant).
-
-### Voice rule for test artifacts
-
-The repo-wide voice rule (zero AI-process disclosure in any public artifact, see top of this file) applies to test code with the same strictness as to source. The rule is scoped to artifacts other contributors and external readers see: test-skip reasons, test-file/function docstrings, test-function/class names, parametrize ids, log-capture assertions, **commit messages on test-touching commits, pull-request titles and bodies on test-touching PRs**, GitHub Actions job/step names, inline `src/proteus/**` comments, and shipped log strings. Out of scope: the rule documents themselves (this file, `.github/.claude/rules/proteus-tests.md`, `.github/.claude/rules/proteus-code-review.md`, `docs/How-to/test_*.md`) may legitimately name the procedures they define. Banned phrases inside in-scope artifacts: "audit", "review pass", "adversarial review", "Phase X" (AI-roadmap labels), "T1.x", "Group A/B/C/D" (AI work groups), `claude-config/...` paths, "Generated with Claude", em-dashes, en-dashes (except bibliographic page ranges). Write the OUTCOME, never the PROCESS.
-
-### Speed and determinism
-
-- Unit tests: < 100 ms wall-time each. The 30 s `timeout` is a defensive ceiling, not the target.
-- Aggressively mock heavy simulations, file I/O, and external APIs in unit tests.
-- Set seeds for any randomness: `np.random.seed(42)`, `torch.manual_seed(42)`, `random.seed(42)`. All three must be seeded if all three are exercised; deterministic-only-on-one is a known regression vector.
-- Use `tmp_path` (pytest fixture) for temporary files; do not produce large outputs in tests.
-
-### Documentation per test
-
-- File-level docstring: name the module under test, list the invariants and contract clauses the file exercises, and link to the test docs (`docs/How-to/testing.md`, `docs/Explanations/test_framework.md`).
-- Function-level docstring: state the physical scenario or contract clause being verified, in plain language. Required (lint-enforced).
-- Inline comments: explain **why** a specific input range was chosen ("T=300 K and T=1500 K so the T**3 vs T**4 difference is resolved well above tolerance").
-
-### Independent review trigger
-
-A pull request that adds or substantially modifies > 50 lines of test code across all its commits triggers an independent review pass before merge. The denominator is PR-level (`git diff origin/main...HEAD -- 'tests/**'`), not per-commit; splitting into many sub-50-line commits does not dodge the trigger. The reviewer cites the anti-happy-path rule, the discrimination-guard requirement, and the physics-invariant tier; flags single-assert tests, weak `is not None` patterns, missing module-level marker, missing `physics_invariant` tag on a physics-module test, and dead tests (tests that pass for the wrong reason).
-
-### Tooling
-
-- Validate test structure: `bash tools/validate_test_structure.sh`
-- Test-quality lint (anti-happy-path, marker, weak assertions): `python tools/check_test_quality.py --check`
-- Baseline (run after a deliberate sweep): `python tools/check_test_quality.py --baseline`
-- Coverage analysis: `bash tools/coverage_analysis.sh`
-- Format: `ruff format src/ tests/`
-- Lint: `ruff check src/ tests/`
-
-### Coverage architecture
-
-PROTEUS runs three gates on every pull request. The full gate is not a fourth: it is the pyproject value the estimated total is measured against.
-
-| Gate | Tests included | Target | Enforced |
-|---|---|---|---|
-| Fast gate (`tool.proteus.coverage_fast.fail_under`) | unit-only (PR) | Fixed **80%** | Every PR (warn-only on drafts) |
-| Estimated total (PR unit coverage union with latest nightly artifact) | unit + smoke + integration + slow | **90%**, the `tool.coverage.report.fail_under` value | Every PR (warn-only on drafts) |
-| Diff-cover | changed lines (fast + nightly union) | 80% (hard-coded; warn-only on drafts) | Every PR |
-
-**What this means for contributors**: the coverage ceilings are fixed, not ratcheting: the fast (unit-only) gate is held at **80%** and the full gate at the **90%** PROTEUS-ecosystem target (`tools/update_coverage_threshold.py` enforces `CEILINGS = {'fast': 80.0, 'full': 90.0}` and the PR threshold guard fails if either is edited away from its fixed value). Unit tests alone are not expected to reach 90% because wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is exercised only by the nightly tiers; that is why the fast gate sits at 80, not 90. The 90% target is reached via the estimated-total: the PR's unit coverage is unioned with the latest nightly artifact and compared against the full gate, and the diff-cover gate unions the fast and nightly reports the same way. Coverage gates run on draft PRs for visibility but are warn-only there; they block once the PR is marked ready for review.
-
-Reports: `pytest --cov=src --cov-report=html` and open `htmlcov/index.html`. Module-level analysis: `bash tools/coverage_analysis.sh`. Diff-cover thresholds are documented in `docs/How-to/testing.md`.
-
-## Safety & Determinism
-- **Randomness:** Explicitly set seeds (e.g., `np.random.seed(42)`) in tests.
-- **Files:** Do not generate tests that produce large output files (unless explicitly instructed); use `tempfile` or mocks.
+Banned inside in-scope artifacts: "audit", "review pass", "adversarial review",
+"Phase X" as an AI-roadmap label, "T1.x", "Group A/B/C/D" as AI work groups,
+`claude-config/...` paths, "Generated with Claude", AI-tool names, em-dashes,
+en-dashes (except bibliographic page ranges). Write the OUTCOME, never the
+PROCESS.
 
 ## Verification and Diagnostic Plots
 
@@ -475,23 +239,18 @@ When testing new routines, reviewing behavior, or investigating edge cases acros
 - **Always produce plots** that verify the requested behavior. Plots are the primary verification artifact for scientific simulation code.
 - **Store all generated plots and data in gitignored folders.** Use `output_files/` (already in `.gitignore`). Never commit generated plots or simulation output to the repository.
 - **Store raw simulation data** alongside plots (same gitignored folder) when feasible (up to a few hundred MB). Formats: `.txt`, `.csv`, or `.npz`. This allows replotting without re-running.
-- **Store plot-generating scripts in gitignored folders** unless the user explicitly asks to commit them. If committing, place in `src/tests/`.
+- **Store plot-generating scripts in gitignored folders** unless the user explicitly asks to commit them. If committing, place in `tests/`.
 - **At the end of a plotting task**, report: (1) output folder path, (2) what each plot shows, (3) notable findings or anomalies.
 - **Plot standards**: matplotlib with Wong colorblind-friendly palette, sans-serif font (Helvetica/Arial), inward ticks on all sides, `dpi >= 150`, clear axis labels with units, legends, descriptive titles.
 - **Documentation images**: use AVIF format (not PNG) for all plots committed to `docs/assets/`. AVIF is 3-5x smaller than PNG at equivalent quality. Convert with `magick input.png -quality 60 output.avif`. Reference in markdown as `![alt](path.avif)`.
 
 ## Code Quality
 
-**Style** (enforced by ruff):
+Ruff enforces the mechanical style rules; its config in `pyproject.toml` is the
+source of truth. Two conventions ruff does NOT enforce:
 
-- Line length < 96 chars (config allows 96, but prefer < 92)
-- Max indentation 3 levels
-- Variables/functions: `snake_case`
-- Constants: `UPPER_CASE`
-- Type hints: Standard Python type hints
-- Docstrings: Brief descriptions of physical scenarios
-
-**Pre-commit**: Runs `ruff check` and `ruff format` automatically. Fix issues before committing.
+- Line length: the config allows 96, but prefer < 92.
+- Max indentation 3 levels.
 
 ### Code organization
 
@@ -508,67 +267,23 @@ stay local. Full conventions: `docs/How-to/development_standards.md`.
 - Add to shared files narrowly: a stage function over an inline edit; a column
   in its module's group over the end of the global list.
 
-## Common Workflows
-
-### Making a Code Change
-
-1. **Create branch**: `git checkout -b feature-name`
-2. **Make changes** in `src/proteus/`
-3. **Write/update tests** in `tests/` (mirror structure)
-4. **Run tests locally**: `pytest -m unit` (fast feedback)
-5. **Check coverage**: `pytest --cov=src --cov-report=html`
-6. **Lint**: `ruff check --fix src/ tests/ && ruff format src/ tests/`
-7. **Lint all new files**: `ruff check --fix` and `ruff format` on all newly changed files
-8. **Validate structure**: `bash tools/validate_test_structure.sh`
-9. **Commit**: `git commit -m "feat: description"`
-10. **Push**: CI runs automatically on PR
-
-### Adding a New Module
-
-1. Create `src/proteus/<module>/<file>.py`
-2. Create `tests/<module>/test_<file>.py` (mirror structure)
-3. Add tests with appropriate markers
-4. Run `bash tools/validate_test_structure.sh`
-5. Ensure coverage meets threshold
-
-### Debugging Test Failures
-
-```bash
-pytest -v --showlocals              # Verbose with local variables
-pytest -x                           # Stop at first failure
-pytest tests/module/test_file.py::test_function  # Run specific test
-pytest --pdb                        # Drop into debugger on failure
-```
-
-## Key Dependencies
-
-**Not obvious from layout**:
-
-- **SOCRATES** (Fortran): Radiative transfer (compiled, requires `RAD_DIR`)
-- **AGNI** (Julia): Atmospheric energy balance (Julia packages)
-- **SPIDER** (C): Interior evolution (compiled, requires PETSc)
-- **PETSc**: Numerical library (compiled)
-- **Submodules**: CALLIOPE, JANUS, MORS, ARAGOG, ZEPHYRUS (Python packages, see above for installation instructions)
-
-**Data**: Large input files stored on Zenodo/OSF, downloaded automatically on first run (unless `--offline`).
-
 ## Important Notes
 
+- **Data**: Large input files stored on Zenodo/OSF, downloaded automatically on first run (unless `--offline`).
 - **CI caching**: ubuntu-latest + macos-latest runners with `actions/cache` for SOCRATES build, Julia depot, FWL_DATA, AGNI clone, pip wheels. Composite action `.github/actions/setup-proteus` handles platform-aware setup. Cache keys derive from `[tool.proteus.modules]` in pyproject.toml plus `.github/data-manifest.yaml`.
-- **Coverage ceilings**: Fixed at 80% (fast, unit-only) and 90% (full); enforced by `tools/update_coverage_threshold.py` and the PR threshold guard. Gates are warn-only on draft PRs and block once the PR is ready for review.
 - **Test placeholders**: Some tests marked `@pytest.mark.skip` are placeholders. Excluded from CI.
 - **Windows**: Not supported. Linux/macOS only.
 - **Python version**: Must be 3.12 (PETSc/SPIDER require Python <= 3.12).
 
 ## Whole-planet oxygen accounting (issue #677)
 
-Every config must declare an explicit `planet.elements.O_mode`. Four valid modes:
-
-- `"ic_chemistry"`: defer the IC O budget to CALLIOPE's fO2-buffered equilibrium. Preserves pre-fix behaviour; backwards-compatible.
-- `"ppmw"`, `"kg"`: parallel to the H/C/N/S modes; sets O_kg directly.
-- `"FeO_mantle_wt_pct"`: alternative unit for petrologists. The number is interpreted as `O_kg = M_mantle * (wt% / 100) * (M_O / M_FeO)`. The mantle EOS density is NOT modified; PALEOS still assumes its built-in FeO content. The mode is a unit-of-convenience for setting the volatile-O budget in familiar terms.
-
-Under D1A (the chosen design), CALLIOPE / atmodeller chemistry is unchanged. Oxygen is treated as a buffered element at the chemistry step but a tracked element in PROTEUS-side mass accounting. The asymmetry that previously let `M_atm > M_planet` at high H budgets is closed by including O in M_ele, in the Zalmoxis dry-mass subtraction, in the proportional escape distribution, and in the desiccation gate. Escape includes O in the unfractionated partitioning so `sum(esc_rate_e) == esc_rate_total` to within rounding. The runtime invariant `M_atm <= M_planet` is enforced via `assert_mass_conservation` in the main loop. An IC consistency check (`check_ic_oxygen_budget`, called once after the first outgas call) hard-fails on >50% divergence between user-supplied O_budget and CALLIOPE's equilibrium value.
+Every config must declare an explicit `planet.elements.O_mode`. Oxygen is
+buffered at the chemistry step but tracked in PROTEUS-side mass accounting, and
+`assert_mass_conservation` enforces `M_atm <= M_planet` every iteration. Read
+[`.github/.claude/rules/proteus-oxygen-accounting.md`](.claude/rules/proteus-oxygen-accounting.md)
+before touching element budgets, `M_planet` bookkeeping, escape partitioning, or
+the desiccation gate. A new `if e == 'O': continue` skip in any aggregation site
+is a red flag.
 
 ## Documentation References
 
@@ -599,24 +314,7 @@ Do not introduce a new in-repo "memory" or "decisions log" file. The four channe
 ```bash
 # Setup ("[develop]" alone leaves the optional backends and the inference
 # stack out, and their tests then skip; the extras below match CI)
-conda activate proteus
 pip install -e ".[develop,vulcan,atmodeller,inference]"
-
-# Test
-pytest -m unit
-pytest --cov=src --cov-report=html
-
-# Lint
-ruff check --fix src/ tests/
-ruff format src/ tests/
-
-# Validate
-bash tools/validate_test_structure.sh
-bash tools/coverage_analysis.sh
-
-# Serve docs locally
-pip install -e '.[docs]'
-zensical serve
 
 # Run simulation (detached; add -r / --resume to continue a killed run,
 # add --deterministic for numerically fragile coupled runs)
@@ -628,10 +326,10 @@ Resume requires `len(hf_all) > init_loops + 1` and the archived `<iter>_int.nc` 
 ---
 
 > **⚠️ FILE SIZE LIMIT: This file must stay below 750 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`). File located at `.github/copilot-instructions.md`.
-
-**When approaching the limit, refactor by asking:**
-1. **Is this still accurate?** Remove outdated commands, deprecated workflows, or superseded patterns.
-2. **Is this actionable?** Keep instructions that guide behavior; remove explanations that don't change actions.
-3. **Is this duplicated?** Consolidate repeated information; reference docs instead of duplicating them.
-4. **Is this essential?** Prefer terse examples over verbose explanations. One good example beats three paragraphs.
-5. **Can this be shortened?** Compress lists, remove filler words, use tables for dense reference data.
+>
+> This file is loaded into every session in full, so length is a running cost, not
+> just a limit to stay under. Content a session could reconstruct by reading the
+> repo (directory layouts, dependency lists, standard tool invocations, anything
+> a lint config or CI check already enforces) belongs in the codebase or `docs/`,
+> not here. What belongs here: gotchas, non-standard conventions, design
+> rationale, and prohibitions.

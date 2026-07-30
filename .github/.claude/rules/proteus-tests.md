@@ -4,7 +4,13 @@ description: PROTEUS test quality deep-dive. Anti-happy-path patterns, discrimin
 
 # PROTEUS Test Quality Rules
 
-This file is the canonical deep-dive on test quality. The high-level summary lives in [`.github/copilot-instructions.md`](../../copilot-instructions.md) under "Testing Standards". The two files MUST stay in sync. If you change one, mirror the change in the other.
+This file is the canonical deep-dive on test quality, and for most clauses it is the ONLY statement of them. [`.github/copilot-instructions.md`](../../copilot-instructions.md) loads into every session in full, so it keeps only the contract a reader needs before knowing whether tests are in scope: the structure rule, the marker table, the physics-invariant tiers, the anti-happy-path rules, and the certification markers. Its "Detail carried by the deep-dive" table maps the remaining clauses to sections here.
+
+Consequences for editing:
+
+- A clause that lives only here can be changed here alone.
+- A clause the root file also states (structure, markers, invariant tiers, anti-happy-path, certification markers) must be changed in both files in the same commit.
+- Adding or removing a section here means updating the mapping table in the root file.
 
 > **Discovery note.** PROTEUS keeps its Claude-Code rule files under `.github/.claude/rules/` (not the conventional repo-root `.claude/`) so they can be tracked in git and shared across collaborators. Claude does NOT auto-discover them at this path; the repo-root `CLAUDE.md` (symlinked to `.github/copilot-instructions.md`) names this file and `proteus-code-review.md` explicitly so AI tooling and human readers know to load them. **When opening or editing any file under `tests/**` or `src/proteus/**`, read this file first.**
 
@@ -394,7 +400,7 @@ When you spot a new variant of these, add it here.
 
 ## 17. Sister rules (cross-link)
 
-- `.github/copilot-instructions.md` "Testing Standards" -- the high-level summary readers without `tests/**` context see first.
+- `.github/copilot-instructions.md` "Testing Standards" -- the contract summary readers without `tests/**` context see first, plus the mapping table pointing here for everything else.
 - `.claude/rules/proteus-code-review.md` "Test marker discipline" -- the review-pass gate that backs up the rules in this file. Also contains domain-aware physics checks (Stefan-Boltzmann exponent, hf_row override pattern, IC consistency, whole-element aggregation symmetry) that apply when reviewing the **source** code that tests cover.
 
-Any change to the rule set: update both files in the same commit and call out the cross-reference in the commit body.
+When changing a clause the root file also states, update both files in the same commit and call out the cross-reference in the commit body. When adding or removing a section here, update the root file's mapping table.
