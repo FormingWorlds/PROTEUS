@@ -1174,41 +1174,32 @@ def _snapshot_readable(path: str) -> bool:
 def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
     """Interior snapshot filename candidates for a simulation time, per writer.
 
-    Each interior module names its snapshot with its own convention, so the
-    resume probe must match the active writer:
-
-    - Aragog writes ``'%d_int.nc' % Time`` (truncates toward zero).
-    - SPIDER writes ``'%.0f.json' % Time`` (rounds to nearest).
-    - The dummy and boundary interiors write no interior snapshot, so resume
-      imposes no interior constraint (empty list).
-
-    An unrecognised module falls back to the Aragog convention, the default
-    interior for this branch.
+    Each interior module names its snapshot with the same str-format convention,
+    so the resume probes match. They differ by suffix.
+    The dummy and boundary interiors write no snapshot, so resume imposes
+    no interior constraint (empty list). Unknown module falls-back to Aragog.
     """
-    module = (interior_module or '').lower()
-    if module == 'spider':
-        return ['%.0f.json' % time]
-    if module in ('dummy', 'boundary'):
-        return []
-    return ['%d_int.nc' % time]
+
+    if time < 0.0:
+        raise ValueError(f'Negative time {time} cannot be formatted as filename')
+
+    match interior_module.lower().strip():
+        case 'dummy' | 'boundary':
+            return []
+        case 'spider':
+            return ['%.0f.json' % time]
+        case _:
+            return ['%.0f_int.nc' % time]
 
 
-def _atm_snapshot_names(time: float, atmos_module: str) -> list[str]:
+def _atm_snapshot_names(time: float) -> list[str]:
     """Atmosphere snapshot filename candidate for a simulation time, per writer.
 
-    Atmosphere writers round the time differently: AGNI writes
-    ``'%.0f_atm.nc' % Time`` (rounds to nearest) while JANUS writes
-    ``str(int(Time)) + '_atm.nc'`` (truncates toward zero). Only one atmosphere
-    module is active in a run, so the probe uses that writer's single
-    convention rather than accepting both integer names. Probing both would let
-    the truncated name of a fractional-Time row collide with an adjacent row's
-    rounded name (e.g. Time 30.7 truncates to ``30_atm.nc``, which is Time
-    30.2's rounded file), wrongly pairing one row's interior with another row's
-    atmosphere. An unrecognised module falls back to the AGNI (rounded)
-    convention, the default atmosphere for this branch.
+    All writers round the time with a string-floating point formatter
+    (rounds to nearest number with no decimals).
     """
-    if (atmos_module or '').lower() == 'janus':
-        return ['%d_atm.nc' % time]
+    if time < 0.0:
+        raise ValueError(f'Negative time {time} cannot be formatted as filename')
     return ['%.0f_atm.nc' % time]
 
 
@@ -1217,7 +1208,6 @@ def select_resumable_snapshot(
     hf_all: pd.DataFrame,
     require_atm: bool = True,
     interior_module: str = 'aragog',
-    atmos_module: str = 'agni',
 ) -> tuple[pd.DataFrame, list[int]]:
     """Trim the helpfile to the latest row backed by a complete snapshot pair.
 
@@ -1235,16 +1225,6 @@ def select_resumable_snapshot(
     can never back a resume and would otherwise be swept into the final
     data archive.
 
-    Each half is probed with its own writer's filename convention. The
-    interior name depends on the module: Aragog writes ``'%d_int.nc'``
-    (truncated), SPIDER writes ``'%.0f.json'`` (rounded), and the dummy and
-    boundary interiors write no snapshot at all (no interior constraint). The
-    atmosphere half is probed with the active writer's single convention: AGNI
-    rounds (``'%.0f_atm.nc'``), JANUS truncates (``str(int(Time)) + '_atm.nc'``).
-    Probing only the active convention keeps a fractional-Time row from matching
-    an adjacent row's atmosphere file. See ``_interior_snapshot_names`` /
-    ``_atm_snapshot_names``.
-
     Parameters
     ----------
     output_dir : str
@@ -1259,10 +1239,6 @@ def select_resumable_snapshot(
         ``'dummy'``, ``'boundary'``). Selects the interior filename
         convention; ``'dummy'`` and ``'boundary'`` write no interior snapshot
         so the interior half imposes no constraint.
-    atmos_module : str, optional
-        The active ``atmos_clim.module`` (``'agni'`` or ``'janus'``). Selects
-        the atmosphere filename convention: AGNI rounds, JANUS truncates.
-        Ignored when ``require_atm`` is False.
 
     Returns
     -------
@@ -1289,9 +1265,7 @@ def select_resumable_snapshot(
             os.path.join(data_dir, n) for n in _interior_snapshot_names(t, interior_module)
         ]
         atm_paths = (
-            [os.path.join(data_dir, n) for n in _atm_snapshot_names(t, atmos_module)]
-            if require_atm
-            else []
+            [os.path.join(data_dir, n) for n in _atm_snapshot_names(t)] if require_atm else []
         )
         # An empty interior candidate list means the interior module writes no
         # snapshot (dummy/boundary): that half imposes no resume constraint.

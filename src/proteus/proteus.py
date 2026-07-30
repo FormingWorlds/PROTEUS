@@ -572,7 +572,6 @@ class Proteus:
                 self.hf_all,
                 require_atm=require_atm,
                 interior_module=self.config.interior_energetics.module,
-                atmos_module=self.config.atmos_clim.module,
             )
             if dropped_snapshots:
                 log.warning(
@@ -763,7 +762,6 @@ class Proteus:
             # Conditions that are individually sufficient:
             #   1. iteration count matches write_mod, or
             #   2. time elapsed since the last write (>dt_write_rel * Time)
-            #   3. the final iteration is always written.
             is_snapshot = is_write_snapshot(
                 self.loops['total'],
                 self.config.params.out.write_mod,
@@ -1249,7 +1247,6 @@ class Proteus:
         WriteHelpfileToCSV(self.directories['output'], self.hf_all)
 
         # Ensure the final interior state is on disk so resume can find it.
-        # dt_write_rel may have suppressed the write on the last iteration.
         if (
             self.config.interior_energetics.module == 'aragog'
             and self.interior_o.aragog_solver is not None
