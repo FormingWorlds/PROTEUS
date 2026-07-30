@@ -2356,7 +2356,7 @@ class AragogRunner:
             correction). Stored alongside Aragog's adiabatic temp_s so
             resume can initialize AGNI at the correct T_surf.
         """
-        fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
+        fpath = os.path.join(output_dir, 'data', '%.0f_int.nc' % time)
         ds = nc.Dataset(fpath, mode='w')
         ds.description = 'Aragog entropy solver output'
 
@@ -2412,7 +2412,7 @@ class AragogRunner:
 
 def read_last_Sfield(output_dir: str, time: float):
     """Read the entropy field from the previous Aragog NetCDF output."""
-    fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
+    fpath = os.path.join(output_dir, 'data', '%.0f_int.nc' % time)
     ds = nc.Dataset(fpath)
     try:
         S_stag = np.array(ds['entropy_s'][:])
@@ -2444,4 +2444,4 @@ def read_ncdf(fpath: str):
 
 
 def read_ncdfs(output_dir: str, times: list):
-    return [read_ncdf(os.path.join(output_dir, 'data', '%d_int.nc' % t)) for t in times]
+    return [read_ncdf(os.path.join(output_dir, 'data', '%.0f_int.nc' % t)) for t in times]

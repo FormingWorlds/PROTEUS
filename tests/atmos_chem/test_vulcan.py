@@ -659,3 +659,73 @@ def test_run_vulcan_online_uses_exist_ok(
     # that took the offline branch in online mode would still satisfy the
     # `exist_ok=True` makedirs call but would also have wiped the directory.
     mock_rmtree.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.vulcan.find_latest_atmosphere_time')
+@patch('proteus.atmos_chem.vulcan.read_atmosphere_data')
+@patch('proteus.atmos_chem.vulcan.shutil.rmtree')
+@patch('proteus.atmos_chem.vulcan.os.makedirs')
+def test_run_vulcan_no_atmosphere_files_returns_false(
+    mock_makedirs, mock_rmtree, mock_read_atmos, mock_latest, tmp_path
+):
+    """
+    With no atmosphere NetCDF available, run_vulcan degrades gracefully.
+
+    Anti-crash contract: the exact-time read returns None and no snapshot
+    exists on disk (find_latest returns None), so the function returns False
+    rather than raising, and never dispatches into the VULCAN solver.
+    """
+    config = _make_mock_config()
+    hf_row = _make_mock_hf_row(year=1000.0)
+    dirs = {'output': str(tmp_path), 'output/offchem': str(tmp_path / 'offchem')}
+
+    mock_read_atmos.return_value = None
+    mock_latest.return_value = None
+    mock_vulcan_package.main.reset_mock()
+
+    result = run_vulcan(dirs, config, hf_row)
+
+    assert result is False
+    # The fallback was attempted (exact-time read failed) ...
+    mock_latest.assert_called_once()
+    # ... and the solver was never reached.
+    mock_vulcan_package.main.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.vulcan.find_latest_atmosphere_time')
+@patch('proteus.atmos_chem.vulcan.read_atmosphere_data')
+@patch('proteus.atmos_chem.vulcan.shutil.rmtree')
+@patch('proteus.atmos_chem.vulcan.os.makedirs')
+def test_run_vulcan_falls_back_to_latest_available_time(
+    mock_makedirs, mock_rmtree, mock_read_atmos, mock_latest, tmp_path
+):
+    """
+    A missing exact-time file makes run_vulcan re-read at the latest available
+    snapshot time before giving up.
+
+    Discrimination: the exact time is 1000 but the latest available is 42; the
+    second read must request [42.0] (not [1000.0]), proving the fallback drives
+    the snapshot selection. Here the fallback read also returns None so the run
+    still exits False without a TypeError (guarding the None[0] crash), while
+    demonstrating the selection.
+    """
+    config = _make_mock_config()
+    hf_row = _make_mock_hf_row(year=1000.0)
+    dirs = {'output': str(tmp_path), 'output/offchem': str(tmp_path / 'offchem')}
+
+    mock_read_atmos.return_value = None  # both the exact and fallback reads fail
+    mock_latest.return_value = 42.0
+    mock_vulcan_package.main.reset_mock()
+
+    result = run_vulcan(dirs, config, hf_row)
+
+    assert result is False
+    # Two reads: the exact time, then the fallback time.
+    assert mock_read_atmos.call_count == 2
+    first_times = mock_read_atmos.call_args_list[0].args[1]
+    second_times = mock_read_atmos.call_args_list[1].args[1]
+    assert first_times == [1000.0]
+    assert second_times == [42.0]
+    mock_vulcan_package.main.assert_not_called()

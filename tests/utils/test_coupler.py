@@ -57,6 +57,7 @@ from proteus.utils.coupler import (
     print_citation,
     print_module_configuration,
     remove_excess_files,
+    select_profile_plot_times,
     select_resumable_snapshot,
     set_directories,
     variable_is_logarithmic,
@@ -2629,22 +2630,15 @@ def test_select_resumable_snapshot_falls_back_on_corrupt_int(tmp_path):
 
 @pytest.mark.unit
 def test_select_resumable_snapshot_matches_writer_filename_conventions(tmp_path):
-    """Interior (truncated %d) and atmosphere (rounded %.0f) names can differ by 1.
-
-    Aragog writes <int(Time)>_int.nc and AGNI writes <round(Time)>_atm.nc, so
-    a fractional Time >= .5 puts the two halves at integer names one apart.
-    The selector must probe each half with its own writer's convention: the
-    Aragog interior at 30 and the AGNI atmosphere at 31 for Time 30.7. Probing
-    the interior name for the atmosphere half would miss the rounded file and
-    wrongly drop a valid latest snapshot.
-    """
+    """Interior and atmosphere (rounded %.0f) names match."""
     data = tmp_path / 'data'
     data.mkdir()
     for t in (10, 20):
         _write_valid_nc(str(data / f'{t}_int.nc'))
         _write_valid_nc(str(data / f'{t}_atm.nc'))
-    # Time 30.7: interior truncates to 30, atmosphere rounds to 31.
-    _write_valid_nc(str(data / '30_int.nc'))
+
+    # Time 30.7: interior and atmosphere round to 31.
+    _write_valid_nc(str(data / '31_int.nc'))
     _write_valid_nc(str(data / '31_atm.nc'))
 
     out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30.7]))
@@ -2748,51 +2742,39 @@ def _write_corrupt_json(path: str) -> str:
 def test_interior_snapshot_names_track_each_writer_convention():
     """Each interior module's probe uses that writer's own filename format.
 
-    Aragog truncates (``%d_int.nc``) and SPIDER rounds (``%.0f.json``), so at
-    a fractional Time the two land on integer stems one apart; the dummy and
-    boundary interiors write no snapshot at all. A probe that assumed the
-    Aragog name for every module would miss the SPIDER file and wrongly
-    quarantine a valid resume point.
+    Aragog and SPIDER round (``%.0f.json``). The dummy and
+    boundary interiors write no snapshot at all.
     """
-    # Time 30.7: Aragog truncates to 30, SPIDER rounds to 31.
-    assert _interior_snapshot_names(30.7, 'aragog') == ['30_int.nc']
+    # Time 30.7: Aragog and SPIDER rounds to 31.
+    assert _interior_snapshot_names(30.7, 'aragog') == ['31_int.nc']
     assert _interior_snapshot_names(30.7, 'spider') == ['31.json']
-    # Discrimination guard: the two conventions disagree on both stem and
-    # extension, so a single-convention probe cannot cover both.
-    assert _interior_snapshot_names(30.7, 'aragog') != _interior_snapshot_names(30.7, 'spider')
+
+    # Integer time rounds to 30
+    assert _interior_snapshot_names(30.0, 'aragog') == ['30_int.nc']
+
     # Dummy and boundary write no interior snapshot: empty constraint.
     assert _interior_snapshot_names(30.7, 'dummy') == []
     assert _interior_snapshot_names(30.7, 'boundary') == []
+
     # Unknown module falls back to the Aragog default rather than crashing.
-    assert _interior_snapshot_names(30.7, 'other') == ['30_int.nc']
+    assert _interior_snapshot_names(30.7, 'other') == ['31_int.nc']
 
 
 @pytest.mark.unit
-def test_atm_snapshot_names_single_convention_per_writer():
-    """The atmosphere probe uses exactly the active writer's rounding convention.
+def test_atm_snapshot_names_floating_convention():
+    """The atmosphere probe uses exactly the float rounding convention."""
+    # Time 30.7: round to 31
+    assert _atm_snapshot_names(30.7) == ['31_atm.nc']
 
-    Only one atmosphere module is active per run, so the probe must return that
-    writer's single filename, not both integer names. JANUS writes
-    ``str(int(Time))_atm.nc`` (truncates) while AGNI writes ``%.0f_atm.nc``
-    (rounds). For a fractional Time the two stems differ; probing both would let
-    a fractional row's truncated name collide with an adjacent row's rounded
-    name, so the single-convention rule is what prevents the cross-row mismatch.
-    """
-    # Time 30.7: JANUS truncates to 30, AGNI rounds to 31. Each writer yields
-    # its own single candidate, never both.
-    assert _atm_snapshot_names(30.7, 'janus') == ['30_atm.nc']
-    assert _atm_snapshot_names(30.7, 'agni') == ['31_atm.nc']
-    # Discrimination guard: the two conventions disagree at this fractional Time,
-    # which is exactly the collision (30.7 truncated == 30.2 rounded == 30) that
-    # probing both names would reintroduce.
-    assert _atm_snapshot_names(30.7, 'janus') != _atm_snapshot_names(30.7, 'agni')
-    # Integer Time: both conventions coincide, so the choice of writer is moot.
-    assert _atm_snapshot_names(30.0, 'janus') == ['30_atm.nc']
-    assert _atm_snapshot_names(30.0, 'agni') == ['30_atm.nc']
-    # Unknown or empty module falls back to the AGNI (rounded) default rather
-    # than crashing; 30.7 rounds to 31 under that fall-back.
-    assert _atm_snapshot_names(30.7, 'other') == ['31_atm.nc']
-    assert _atm_snapshot_names(30.7, '') == ['31_atm.nc']
+    # Integer Time: rounds to 30
+    assert _atm_snapshot_names(30.0) == ['30_atm.nc']
+
+    # Zero Time: should be fine
+    assert _atm_snapshot_names(0.0) == ['0_atm.nc']
+
+    # Negative Time: should raise ValueError
+    with pytest.raises(ValueError, match='Negative time'):
+        _atm_snapshot_names(-1.0)
 
 
 @pytest.mark.unit
@@ -2886,45 +2868,31 @@ def test_select_resumable_snapshot_dummy_interior_trusts_helpfile(tmp_path):
 
 
 @pytest.mark.unit
-def test_select_resumable_snapshot_accepts_truncated_janus_atm(tmp_path):
-    """A fractional-Time JANUS atmosphere (truncated name) is recognised, not quarantined.
+def test_select_resumable_snapshot_accepts_both_atm(tmp_path):
+    """A fractional-Time atmosphere is recognised, not quarantined.
 
-    JANUS writes ``str(int(Time))_atm.nc`` (truncates), so at Time 30.7 it
-    writes ``30_atm.nc`` while the rounded AGNI convention would look for
-    ``31_atm.nc``. With ``atmos_module='janus'`` the selector probes the
-    truncated name and accepts the valid row; the default AGNI convention would
-    look for the absent ``31_atm.nc`` and wrongly drop it.
+    JANUS and AGNI use a floating point rounding convention to look for
+    ``31_atm.nc`` given time 30.7  - both modules now round in the same way.
     """
     data = tmp_path / 'data'
     data.mkdir()
     for t in (10, 20):
         _write_valid_nc(str(data / f'{t}_int.nc'))
         _write_valid_nc(str(data / f'{t}_atm.nc'))
-    # Time 30.7: interior truncates to 30; JANUS atmosphere also truncates to 30.
-    _write_valid_nc(str(data / '30_int.nc'))
-    _write_valid_nc(str(data / '30_atm.nc'))  # JANUS truncated name, NOT 31
 
-    out, dropped = select_resumable_snapshot(
-        str(tmp_path), _hf_times([10, 20, 30.7]), atmos_module='janus'
-    )
+    # Time 30.7: interior rounds to 31
+    _write_valid_nc(str(data / '31_int.nc'))
+    _write_valid_nc(str(data / '31_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30.7]))
 
     assert dropped == []
     assert len(out) == 3
     assert out.iloc[-1]['Time'] == pytest.approx(30.7)
-    # Discrimination guard: nothing quarantined; the truncated atm name was
-    # accepted rather than treated as a missing rounded 31_atm.nc.
+
+    # Discrimination guard: nothing quarantined
     assert not list(data.glob('*.incomplete'))
-    assert (data / '30_atm.nc').exists()
-    # Under the default AGNI (rounded) convention the same layout finds no
-    # 31_atm.nc for Time 30.7 and drops the row, so the writer selection is
-    # what accepts the truncated file rather than a probe of both names. The
-    # JANUS probe above accepted 30.7 and quarantined nothing, so the files are
-    # untouched for this second probe.
-    out_agni, dropped_agni = select_resumable_snapshot(
-        str(tmp_path), _hf_times([10, 20, 30.7]), atmos_module='agni'
-    )
-    assert dropped_agni == [30]
-    assert out_agni.iloc[-1]['Time'] == pytest.approx(20)
+    assert (data / '31_atm.nc').exists()
 
 
 @pytest.mark.unit
@@ -2953,7 +2921,6 @@ def test_select_resumable_snapshot_rejects_cross_row_atm_collision(tmp_path):
         str(tmp_path),
         _hf_times([30.2, 30.7]),
         interior_module='spider',
-        atmos_module='agni',
     )
 
     # 30.7 is rejected (its own atmosphere is missing); resume falls to 30.2.
@@ -2969,3 +2936,51 @@ def test_select_resumable_snapshot_rejects_cross_row_atm_collision(tmp_path):
     # cannot load it against the 30.2-trimmed helpfile.
     assert not (data / '31.json.incomplete').exists()
     assert not (data / '31.json').exists()
+
+
+# =============================================================================
+# Test: select_profile_plot_times() - atmosphere/interior profile-time selection
+# =============================================================================
+
+
+def test_select_profile_plot_times_boundary_uses_atmosphere_times():
+    """When the interior writes no snapshots (dummy/boundary), the atmosphere
+    NetCDF times are used directly rather than intersected away.
+
+    Regression guard: the previous logic special-cased only 'dummy', so a
+    'boundary' interior produced an empty interior time list and the
+    intersection wiped out every atmosphere time (empty plot). Here the
+    interior list is empty but atmosphere times survive.
+    """
+    result = select_profile_plot_times([], [10, 30, 20], no_int_snapshots=True)
+    assert result == [10, 20, 30]
+    # A regression that intersected against the empty interior list would
+    # return [] here; assert non-empty and the full atmosphere set.
+    assert result != []
+    assert set(result) == {10, 20, 30}
+
+
+def test_select_profile_plot_times_intersects_for_snapshot_interiors():
+    """For spider/aragog, profiles are plotted only at times present in BOTH
+    the interior and atmosphere outputs (the intersection).
+
+    Discrimination: an atmosphere-only time (30) must be excluded AND a shared
+    time (10) must be included - a discriminating pair, not a single check. An
+    interior-only time (5) must also be excluded.
+    """
+    result = select_profile_plot_times([5, 10, 20], [10, 20, 30], no_int_snapshots=False)
+    assert result == [10, 20]
+    assert 30 not in result  # atmosphere-only time excluded
+    assert 5 not in result  # interior-only time excluded
+    assert 10 in result  # shared time included
+
+
+def test_select_profile_plot_times_empty_atmosphere_returns_empty():
+    """With no atmosphere NetCDF times, no profiles can be plotted regardless
+    of interior module.
+
+    Edge case: empty atmosphere list under both branches yields an empty
+    result (and never raises).
+    """
+    assert select_profile_plot_times([1, 2, 3], [], no_int_snapshots=False) == []
+    assert select_profile_plot_times([], [], no_int_snapshots=True) == []

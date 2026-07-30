@@ -24,6 +24,7 @@ from proteus.utils.helper import (
     UpdateStatusfile,
     create_tmp_folder,
     find_nearest,
+    is_write_snapshot,
     mol_to_ele,
     multiple,
     natural_sort,
@@ -700,3 +701,56 @@ class TestCreateTmpFolder:
             for tmpdir in [tmpdir1, tmpdir2]:
                 if os.path.exists(tmpdir):
                     shutil.rmtree(tmpdir)
+
+
+# ---------------------------------------------------------------------------
+# is_write_snapshot: OR-combined write cadence (write_mod OR dt_write_rel)
+# ---------------------------------------------------------------------------
+
+
+def test_is_write_snapshot_default_writes_on_write_mod_cadence():
+    """With dt_write_rel disabled (0), the decision reduces to the write_mod
+    iteration cadence, preserving the pre-OR default behaviour.
+
+    Discrimination: a write_mod-boundary iteration writes; an off-boundary
+    iteration does not. Both asserted so an always-True/always-False
+    regression is caught.
+    """
+    # On a write_mod=5 boundary -> write.
+    assert is_write_snapshot(10, 5, 0.0, 1.0e6, 0.0) is True
+    # Off the boundary, and time trigger disabled -> no write.
+    assert is_write_snapshot(11, 5, 0.0, 1.0e6, 0.0) is False
+
+
+def test_is_write_snapshot_time_trigger_is_individually_sufficient():
+    """A large elapsed time triggers a write even off the write_mod cadence,
+    and an insufficient elapsed time does not (when off-cadence).
+
+    This is the OR behaviour: either criterion alone suffices. Inputs chosen
+    so cur_time=1e6, last_write=0, dt_write_rel=1e-3 gives an interval of
+    1e3 yr, which 1e6 far exceeds (write); with last_write=1e6-1 the elapsed
+    1 yr is well below 1e3 (no write).
+    """
+    # Off-cadence (11 not a multiple of 5) but time elapsed >> interval.
+    assert is_write_snapshot(11, 5, 1.0e-3, 1.0e6, 0.0) is True
+    # Off-cadence and elapsed time (1 yr) below the interval (1e3 yr).
+    assert is_write_snapshot(11, 5, 1.0e-3, 1.0e6, 1.0e6 - 1.0) is False
+
+
+def test_is_write_snapshot_initial_iteration_and_disabled_time_guard():
+    """The initial iteration (loop 0 with the default write_mod=1) writes, and
+    the time criterion never fires on its own when dt_write_rel <= 0.
+
+    Edge/limit cases: loop 0 with last_write_time = -inf (initial condition),
+    and dt_write_rel = 0 with a huge elapsed time (must NOT force a write off
+    the write_mod cadence, guarding against the OR-with-always-true bug).
+    """
+    import math
+
+    # Initial iteration: loop 0 is a multiple of write_mod=1 -> write.
+    assert is_write_snapshot(0, 1, 0.0, 0.0, -math.inf) is True
+    # dt_write_rel = 0 must not let the time term fire even with huge elapsed
+    # time on an off-cadence iteration.
+    assert is_write_snapshot(3, 100, 0.0, 1.0e12, -math.inf) is False
+    # write_mod = 0 ("wait until completion") with time trigger off -> no write.
+    assert is_write_snapshot(50, 0, 0.0, 1.0e6, 0.0) is False
