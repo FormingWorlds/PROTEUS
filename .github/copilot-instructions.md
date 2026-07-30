@@ -49,15 +49,6 @@ PROTEUS is a coupled atmosphere-interior framework with a modular architecture:
 
 **Important:** Each module is maintained in its own GitHub repository but is typically cloned/installed within the PROTEUS directory structure for integrated development. When working on any module in the ecosystem, apply these guidelines consistently.
 
-
-**Project Type**: Scientific simulation framework
-
-**Languages**: Python 3.12 (primary), Julia, Fortran, C
-
-**Size**: ~100 Python files in `src/proteus/`, multiple submodules
-
-**Target Runtime**: Python 3.12 (Linux/macOS only; Windows not supported)
-
 ## Build & Validation
 
 For installation instructions and dependency management across the ecosystem:
@@ -70,92 +61,16 @@ When helping with installation or dependency issues, always reference these guid
 
 ### Environment Setup
 
-**Prerequisites**:
-
-1. Python 3.12 (via conda/miniforge or miniconda)
-2. Julia (official installer: `curl -fsSL https://install.julialang.org | sh`)
-3. Git (install via conda if needed: `conda install git`)
-4. ~20 GB disk space
-
-**Developer Install** (full editable installation - always use for development):
-
-```bash
-# 1. Set environment variables (REQUIRED - do this first)
-mkdir /your/local/path/FWL_DATA
-echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.bashrc"
-source "$HOME/.bashrc"
-
-# 2. Clone PROTEUS base
-git clone git@github.com:FormingWorlds/PROTEUS.git
-cd PROTEUS
-
-# 3. Create conda environment
-conda create -n proteus python=3.12
-conda activate proteus
-
-# 4. Install SOCRATES (Fortran radiative transfer)
-./tools/get_socrates.sh
-echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.bashrc"
-source "$HOME/.bashrc"
-
-# 5. Install AGNI (Julia radiative-convective atmosphere model)
-git clone git@github.com:nichollsh/AGNI.git
-cd AGNI
-bash src/get_agni.sh 0  # Argument 0 skips tests
-cd ../
-
-# 6. Install Python submodules as editable (in order)
-# MORS (stellar evolution)
-git clone git@github.com:FormingWorlds/MORS
-pip install -e MORS/.
-
-# JANUS (1D convective atmosphere)
-git clone git@github.com:FormingWorlds/JANUS
-pip install -e JANUS/.
-
-# CALLIOPE (volatile in-/outgassing)
-git clone git@github.com:FormingWorlds/CALLIOPE
-pip install -e CALLIOPE/.
-
-# ARAGOG (interior thermal evolution)
-git clone git@github.com:FormingWorlds/aragog.git
-pip install -e aragog/.
-
-# ZEPHYRUS (atmospheric escape)
-git clone git@github.com:FormingWorlds/ZEPHYRUS
-pip install -e ZEPHYRUS/.
-
-# 7. Install PETSc (numerical computing library - specific version from OSF)
-# NOTE: Must be done in Python <= 3.12 environment
-./tools/get_petsc.sh
-# Sets PETSC_DIR and PETSC_ARCH automatically (arch-linux-c-opt or arch-darwin-c-opt)
-
-# 8. Install SPIDER (interior evolution - requires PETSc)
-./tools/get_spider.sh
-
-# 9. Install PROTEUS framework
-pip install -e ".[develop]"
-
-# 10. Enable pre-commit hooks
-pre-commit install -f
-
-# 11. Optional modules (if needed)
-# LovePy (multi-phase tidal heating - Julia)
-./tools/get_lovepy.sh
-
-# VULCAN (chemical kinetics atmosphere model)
-./tools/get_vulcan.sh
-```
-
-**Important Notes**:
+Follow the developer install in `docs/How-to/installation.md` step by step; it is
+the single source of truth for the clone order, the PETSc pin, and the optional
+modules. The traps that guide does not call out:
 
 - **FWL_DATA** and **RAD_DIR** must be set before running PROTEUS
 - **PETSc** is downloaded as a specific pre-compiled version from OSF (not built from source)
 - **SPIDER** requires PETSc to be installed first
 - All Python submodules should be installed as editable (`-e`) for development
-- After installation, reload shell: `source ~/.bashrc` or `conda activate proteus`
 - After each file change or edit, ruff format all changed files with `ruff check --fix ` and `ruff format --check`
-- **Parallel tracks**: one conda env per git worktree. `conda create --clone` hardlinks pip-editable pointers, so a subsequent `pip install -e .` in one env can silently repoint another env's `import proteus`. Canary before each A/B run: `python -c "import proteus; print(proteus.__file__)"`; recipe in `~/.claude/memory/conda_env_split_pattern.md`.
+- **Parallel tracks**: one conda env per git worktree. `conda create --clone` hardlinks pip-editable pointers, so a subsequent `pip install -e .` in one env can silently repoint another env's `import proteus`. Canary before each A/B run: `python -c "import proteus; print(proteus.__file__)"`.
 
 ### Build Commands
 
@@ -193,71 +108,17 @@ automatically.
 
 ### Test Commands
 
-**Run all tests**:
+Tier selection is by marker (`pytest -m unit`, `-m smoke`, `-m integration`). The
+one invocation that is not guessable is the PR filter, which needs the extra
+clauses to keep slow-marked files out:
 
 ```bash
-pytest
-```
-
-**Run by category** (matches CI):
-
-```bash
-pytest -m unit              # Fast unit tests (<100ms each, mocked physics)
-pytest -m smoke             # Binary validation (1 timestep, low res)
-pytest -m integration       # Multi-module coupling
-pytest -m "not slow"        # Everything except slow tests
-
-# Exactly what the PR checks run (the extra filters keep slow-marked files out):
 pytest -m "unit and not skip and not slow and not integration" --ignore=tests/examples
 ```
 
-**With coverage**:
-
-```bash
-# Option 1: pytest-cov (convenient)
-pytest --cov=src --cov-report=html
-
-# Option 2: coverage run (matches CI exactly)
-coverage run -m pytest
-coverage report
-coverage html
-```
-
-**Coverage thresholds** (in `pyproject.toml`; fixed ceilings, never lowered):
-
-- Fast gate (`[tool.proteus.coverage_fast]`, unit-only on PR, every PR): fixed at **80%**. Unit tests alone cannot exercise wrapper paths that require real binaries, so the fast gate is held at 80 rather than chasing 90. Warn-only on draft PRs; blocking once the PR is ready for review.
-- Full gate value (`[tool.coverage.report]`): fixed at **90%**. The nightly does not enforce it; it is the number the PR estimated-total gate is measured against.
-- Estimated total (PR unit coverage union with the latest nightly artifact, every PR): compared against the 90% full gate. This is the 90% KPI; the nightly tier fills the wrapper / binary code paths.
-
-See the `Coverage architecture` block in the Testing Standards section below for the contract.
-
-**Validate test structure**:
-
-```bash
-bash tools/validate_test_structure.sh
-```
-
-**Coverage analysis**:
-
-```bash
-bash tools/coverage_analysis.sh
-```
-
-### Lint Commands
-
-**Always run before committing**:
-
-```bash
-ruff check src/ tests/        # Check for issues
-ruff check --fix src/ tests/ # Auto-fix issues
-ruff format src/ tests/      # Format code
-```
-
-**Pre-commit hook** (runs automatically on commit):
-
-```bash
-pre-commit install -f
-```
+Coverage thresholds live in `pyproject.toml` and are described under `Coverage
+architecture` in the Testing Standards section below. Repo-specific checks:
+`bash tools/validate_test_structure.sh` and `bash tools/coverage_analysis.sh`.
 
 ### Validation Pipeline
 
@@ -272,51 +133,6 @@ pre-commit install -f
 7. **Test quality**: `python tools/check_test_quality.py --check` (reported, does not block)
 
 **All must pass** before merge. Coverage gates are warn-only on draft PRs and block once the PR is ready for review. Coverage ceilings are fixed (fast 80%, full 90%) and never lowered.
-
-## Project Layout
-
-### Key Directories
-
-- `src/proteus/` - Main Python source code
-  - `cli.py` - Command-line interface entry point
-  - `proteus.py` - Core `Proteus` class
-  - `doctor.py` - Environment diagnostics (`proteus doctor`)
-  - `config/` - Configuration system (TOML parsing, validation)
-  - `atmos_clim/`, `atmos_chem/`, `escape/`, `interior_struct/`, `interior_energetics/`, `outgas/`, `observe/`, `orbit/`, `star/` - Physics module wrappers
-  - `utils/` - Utilities (data, logging, plotting, helpers)
-  - `grid/`, `inference/`, `plot/` - Specialized functionality
-
-- `tests/` - Test suite (MUST mirror `src/proteus/` structure)
-  - `tests/<module>/test_<filename>.py` for each `src/proteus/<module>/<filename>.py`
-  - `tests/conftest.py` - Shared fixtures (parameter classes, config paths)
-  - `tests/integration/` - Multi-module integration tests
-
-- `input/` - TOML configuration files
-- `output/` - Simulation results (gitignored)
-- `tools/` - Build/utility scripts
-- `docs/` - Documentation (Zensical, built from `mkdocs.yml`)
-
-### Configuration Files
-
-- `pyproject.toml` - Package metadata, pytest config, coverage thresholds, ruff rules
-- `mkdocs.yml` - Documentation configuration (used by Zensical)
-- `.github/workflows/` - CI/CD pipelines
-  - `ci-pr-checks.yml` - Fast PR validation (unit + lint)
-  - `code-style.yaml` - Pre-commit hooks
-  - `proteus_test_quality_gate.yml` - Reusable test workflow
-
-### Entry Points
-
-- **CLI** (defined in `src/proteus/cli.py`):
-  - `proteus start -c <config.toml>` - Run a simulation
-  - `proteus plot -c <config.toml> all` - Generate plots from output
-  - `proteus get` - Download data files
-  - `proteus doctor` - Diagnose environment issues
-  - `proteus grid` / `proteus infer` - Parameter grid and inference workflows
-  - `proteus observe` / `proteus offchem` - Observation and offline chemistry
-  - `proteus create-archives` / `proteus extract-archives` - Archive management
-  - `proteus install-all` - Install all submodules
-- **Python API**: `from proteus import Proteus; p = Proteus(config_path)`
 
 ## Testing Standards
 
@@ -482,16 +298,11 @@ When testing new routines, reviewing behavior, or investigating edge cases acros
 
 ## Code Quality
 
-**Style** (enforced by ruff):
+Ruff enforces the mechanical style rules; its config in `pyproject.toml` is the
+source of truth. Two conventions ruff does NOT enforce:
 
-- Line length < 96 chars (config allows 96, but prefer < 92)
-- Max indentation 3 levels
-- Variables/functions: `snake_case`
-- Constants: `UPPER_CASE`
-- Type hints: Standard Python type hints
-- Docstrings: Brief descriptions of physical scenarios
-
-**Pre-commit**: Runs `ruff check` and `ruff format` automatically. Fix issues before committing.
+- Line length: the config allows 96, but prefer < 92.
+- Max indentation 3 levels.
 
 ### Code organization
 
@@ -508,54 +319,10 @@ stay local. Full conventions: `docs/How-to/development_standards.md`.
 - Add to shared files narrowly: a stage function over an inline edit; a column
   in its module's group over the end of the global list.
 
-## Common Workflows
-
-### Making a Code Change
-
-1. **Create branch**: `git checkout -b feature-name`
-2. **Make changes** in `src/proteus/`
-3. **Write/update tests** in `tests/` (mirror structure)
-4. **Run tests locally**: `pytest -m unit` (fast feedback)
-5. **Check coverage**: `pytest --cov=src --cov-report=html`
-6. **Lint**: `ruff check --fix src/ tests/ && ruff format src/ tests/`
-7. **Lint all new files**: `ruff check --fix` and `ruff format` on all newly changed files
-8. **Validate structure**: `bash tools/validate_test_structure.sh`
-9. **Commit**: `git commit -m "feat: description"`
-10. **Push**: CI runs automatically on PR
-
-### Adding a New Module
-
-1. Create `src/proteus/<module>/<file>.py`
-2. Create `tests/<module>/test_<file>.py` (mirror structure)
-3. Add tests with appropriate markers
-4. Run `bash tools/validate_test_structure.sh`
-5. Ensure coverage meets threshold
-
-### Debugging Test Failures
-
-```bash
-pytest -v --showlocals              # Verbose with local variables
-pytest -x                           # Stop at first failure
-pytest tests/module/test_file.py::test_function  # Run specific test
-pytest --pdb                        # Drop into debugger on failure
-```
-
-## Key Dependencies
-
-**Not obvious from layout**:
-
-- **SOCRATES** (Fortran): Radiative transfer (compiled, requires `RAD_DIR`)
-- **AGNI** (Julia): Atmospheric energy balance (Julia packages)
-- **SPIDER** (C): Interior evolution (compiled, requires PETSc)
-- **PETSc**: Numerical library (compiled)
-- **Submodules**: CALLIOPE, JANUS, MORS, ARAGOG, ZEPHYRUS (Python packages, see above for installation instructions)
-
-**Data**: Large input files stored on Zenodo/OSF, downloaded automatically on first run (unless `--offline`).
-
 ## Important Notes
 
+- **Data**: Large input files stored on Zenodo/OSF, downloaded automatically on first run (unless `--offline`).
 - **CI caching**: ubuntu-latest + macos-latest runners with `actions/cache` for SOCRATES build, Julia depot, FWL_DATA, AGNI clone, pip wheels. Composite action `.github/actions/setup-proteus` handles platform-aware setup. Cache keys derive from `[tool.proteus.modules]` in pyproject.toml plus `.github/data-manifest.yaml`.
-- **Coverage ceilings**: Fixed at 80% (fast, unit-only) and 90% (full); enforced by `tools/update_coverage_threshold.py` and the PR threshold guard. Gates are warn-only on draft PRs and block once the PR is ready for review.
 - **Test placeholders**: Some tests marked `@pytest.mark.skip` are placeholders. Excluded from CI.
 - **Windows**: Not supported. Linux/macOS only.
 - **Python version**: Must be 3.12 (PETSc/SPIDER require Python <= 3.12).
@@ -599,24 +366,7 @@ Do not introduce a new in-repo "memory" or "decisions log" file. The four channe
 ```bash
 # Setup ("[develop]" alone leaves the optional backends and the inference
 # stack out, and their tests then skip; the extras below match CI)
-conda activate proteus
 pip install -e ".[develop,vulcan,atmodeller,inference]"
-
-# Test
-pytest -m unit
-pytest --cov=src --cov-report=html
-
-# Lint
-ruff check --fix src/ tests/
-ruff format src/ tests/
-
-# Validate
-bash tools/validate_test_structure.sh
-bash tools/coverage_analysis.sh
-
-# Serve docs locally
-pip install -e '.[docs]'
-zensical serve
 
 # Run simulation (detached; add -r / --resume to continue a killed run,
 # add --deterministic for numerically fragile coupled runs)
@@ -628,10 +378,10 @@ Resume requires `len(hf_all) > init_loops + 1` and the archived `<iter>_int.nc` 
 ---
 
 > **⚠️ FILE SIZE LIMIT: This file must stay below 750 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`). File located at `.github/copilot-instructions.md`.
-
-**When approaching the limit, refactor by asking:**
-1. **Is this still accurate?** Remove outdated commands, deprecated workflows, or superseded patterns.
-2. **Is this actionable?** Keep instructions that guide behavior; remove explanations that don't change actions.
-3. **Is this duplicated?** Consolidate repeated information; reference docs instead of duplicating them.
-4. **Is this essential?** Prefer terse examples over verbose explanations. One good example beats three paragraphs.
-5. **Can this be shortened?** Compress lists, remove filler words, use tables for dense reference data.
+>
+> This file is loaded into every session in full, so length is a running cost, not
+> just a limit to stay under. Content a session could reconstruct by reading the
+> repo (directory layouts, dependency lists, standard tool invocations, anything
+> a lint config or CI check already enforces) belongs in the codebase or `docs/`,
+> not here. What belongs here: gotchas, non-standard conventions, design
+> rationale, and prohibitions.
