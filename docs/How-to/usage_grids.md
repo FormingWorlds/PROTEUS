@@ -19,7 +19,7 @@ The top-level settings are:
 
 | Setting | Meaning |
 |---|---|
-| `ref_config` | Base ("reference") config file, relative to the PROTEUS root. Every case starts from this file and overrides only the swept parameters. |
+| `ref_config` | Base ("reference") config file. Every case starts from this file and overrides only the swept parameters. A relative path resolves against the PROTEUS root; give an absolute path when the base config lives outside the PROTEUS directory. |
 | `output` | Output folder name created inside `output/`. Use `"auto"` for a timestamped `grid_YYYYMMDD_HHMMSS_xxxx` name, or any fixed string. |
 | `symlink` | Absolute path used to redirect the output to alternative storage (for example a scratch disk); set to `""` to disable. |
 | `use_slurm` | Whether to dispatch through Slurm (see below). |
