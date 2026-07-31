@@ -593,7 +593,7 @@ def update_instellation(hf_row: dict, config: Config, stellar_track=None):
 
     # Determine if bolometric scaling is enabled
     bol_scale_apply = 1.0
-    if config.star.bol_scale != 1.0 or config.star.bol_scale_start is not None:
+    if config.star.bol_scale != 1.0 and config.star.bol_scale_start is not None:
         # Determine when bolometric is currently active
         bol_scale_ini = config.star.bol_scale_start * 1e9
         bol_scale_end = bol_scale_ini + config.star.bol_scale_duration * 1e9

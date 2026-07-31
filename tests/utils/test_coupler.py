@@ -102,6 +102,11 @@ def test_get_helpfile_keys_contains_required_keys():
     assert 'F_atm' in keys
     assert 'F_net' in keys
 
+    # Stellar fluxes
+    assert 'bol_scale' in keys
+    assert 'F_ins' in keys
+    assert 'F_xuv' in keys
+
 
 @pytest.mark.unit
 def test_get_helpfile_keys_includes_gas_species():

@@ -226,6 +226,99 @@ def test_update_instellation_dummy_branch_zeroes_fxuv_and_computes_finstellation
     assert hf_row['F_xuv'] == pytest.approx(0.0, abs=1e-12)
 
 
+# ---------------------------------------------------------------------------
+# update_instellation: bolometric-scaling time window (bol_scale_start /
+# bol_scale_duration). These gate the pre-existing `bol_scale` factor to a
+# stellar-age window [start, start + duration] instead of applying it for
+# the whole run.
+# ---------------------------------------------------------------------------
+
+
+def _dummy_config_for_bolscale(bol_scale, bol_scale_start, bol_scale_duration):
+    """Dummy-star config with the three bolometric-scaling fields set."""
+    from unittest.mock import MagicMock
+
+    config = MagicMock()
+    config.star.module = 'dummy'
+    config.star.dummy.Teff = 5778.0
+    config.star.bol_scale = bol_scale
+    config.star.bol_scale_start = bol_scale_start
+    config.star.bol_scale_duration = bol_scale_duration
+    return config
+
+
+def _run_update_instellation_dummy(config, age_star, s0_return=1361.0):
+    from unittest.mock import patch
+
+    from proteus.star.wrapper import update_instellation
+
+    hf_row = {'R_star': 6.957e8, 'separation': 1.496e11, 'age_star': age_star}
+    with patch('proteus.star.dummy.calc_instellation', return_value=s0_return):
+        update_instellation(hf_row, config)
+    return hf_row
+
+
+@pytest.mark.physics_invariant
+def test_update_instellation_applies_scaling_inside_window():
+    """Inside [bol_scale_start, bol_scale_start + bol_scale_duration], F_ins
+    and F_xuv are multiplied by bol_scale and hf_row['bol_scale'] records
+    the applied factor.
+
+    Window: start=0.5 Gyr, duration=0.5 Gyr -> [0.5e9, 1.0e9] yr.
+    age_star=0.7e9 yr sits inside it.
+    """
+    config = _dummy_config_for_bolscale(
+        bol_scale=2.0, bol_scale_start=0.5, bol_scale_duration=0.5
+    )
+    hf_row = _run_update_instellation_dummy(config, age_star=0.7e9)
+    assert hf_row['F_ins'] == pytest.approx(1361.0 * 2.0, rel=1e-12)
+    assert hf_row['bol_scale'] == pytest.approx(2.0)
+
+
+@pytest.mark.physics_invariant
+def test_update_instellation_no_scaling_before_window():
+    """age_star before bol_scale_start: scaling not yet active."""
+    config = _dummy_config_for_bolscale(
+        bol_scale=2.0, bol_scale_start=0.5, bol_scale_duration=0.5
+    )
+    hf_row = _run_update_instellation_dummy(config, age_star=0.4e9)
+    assert hf_row['F_ins'] == pytest.approx(1361.0, rel=1e-12)
+    assert hf_row['bol_scale'] == pytest.approx(1.0)
+
+
+@pytest.mark.physics_invariant
+def test_update_instellation_no_scaling_after_window():
+    """age_star after bol_scale_start + bol_scale_duration: scaling has
+    already ended."""
+    config = _dummy_config_for_bolscale(
+        bol_scale=2.0, bol_scale_start=0.5, bol_scale_duration=0.5
+    )
+    hf_row = _run_update_instellation_dummy(config, age_star=1.1e9)
+    assert hf_row['F_ins'] == pytest.approx(1361.0, rel=1e-12)
+    assert hf_row['bol_scale'] == pytest.approx(1.0)
+
+
+@pytest.mark.physics_invariant
+def test_update_instellation_window_boundaries_are_inclusive():
+    """Both edges of the window are inclusive (`<=` on both sides in the
+    source): age_star exactly equal to the start age, and exactly equal to
+    the end age, must both apply scaling. Boundary edge case for a window
+    defined by two closed inequalities.
+    """
+    config = _dummy_config_for_bolscale(
+        bol_scale=3.0, bol_scale_start=0.5, bol_scale_duration=0.5
+    )
+    hf_row_start = _run_update_instellation_dummy(config, age_star=0.5e9)
+    assert hf_row_start['bol_scale'] == pytest.approx(3.0)
+
+    hf_row_end = _run_update_instellation_dummy(config, age_star=1.0e9)
+    assert hf_row_end['bol_scale'] == pytest.approx(3.0)
+    # Discrimination: nudging just past the end boundary must fall back to
+    # unscaled, so the inclusivity is specific to the exact boundary value.
+    hf_row_after = _run_update_instellation_dummy(config, age_star=1.0e9 + 1.0)
+    assert hf_row_after['bol_scale'] == pytest.approx(1.0)
+
+
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
 def test_update_equilibrium_temperature_pins_stefan_boltzmann_closed_form():

@@ -341,6 +341,28 @@ def test_kappah_floor_and_maximum_rel_overrides():
     assert mig.OVERRIDES['params.dt.maximum_rel'] == 0.0
 
 
+def test_bol_scale_window_override_reproduces_unwindowed_2_0_scaling():
+    """2.0 had no time-gating on bol_scale: a non-unity factor applied for
+    the whole run. The live 3.0 default (bol_scale_start=None) disables
+    scaling outright regardless of bol_scale, so a naive migration would
+    silently turn off any bol_scale a 2.0 config had set. The override
+    must pin an always-open window: start at t=0 and a duration far
+    longer than any plausible run.
+    """
+    assert mig.OVERRIDES['star.bol_scale_start'] == pytest.approx(0.0)
+    # Discrimination: the duration must be large enough that no
+    # realistic stellar age (even the ~13.8 Gyr age of the universe)
+    # falls outside the window; a duration comparable to a typical run
+    # length (e.g. 1-10 Gyr) would silently reintroduce a cutoff 2.0
+    # never had.
+    assert mig.OVERRIDES['star.bol_scale_duration'] > 20.0
+
+    v3_defaults, _ = _v3()
+    # The pin is doing the work: the live 3.0 schema default disables
+    # scaling entirely, so letting the field default (rather than pinning
+    # it) would silently change a migrated run's stellar flux.
+    assert v3_defaults['star.bol_scale_start'] is None
+
 def _translate(v2_dict):
     nested, report = mig.translate(v2_dict)
     return mig._flatten(nested), report

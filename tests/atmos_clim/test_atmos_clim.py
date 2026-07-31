@@ -571,6 +571,82 @@ def test_rundummyatm_albedo_calculation():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+def test_rundummyatm_albedo_zero_when_no_downwelling_flux():
+    """Regression: zero instellation (F_ins=0, e.g. night side / a star
+    that has switched off) drives the downwelling shortwave flux to zero.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.3
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.5
+    config.atmos_clim.surf_state = 'fixed'
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 1400.0,
+        'albedo_pl': 0.2,
+        'F_ins': 0.0,  # no instellation -> fl_D_SW == 0.0
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+
+    # Zero instellation gives zero albedo
+    output = RunDummyAtm({}, config, hf_row)
+    assert output['albedo'] == pytest.approx(0.0, abs=1e-15)
+
+    # Discrimination: the rest of the flux chain (surface emission) is
+    # unaffected by the F_ins=0 change, so F_olr must stay positive
+    assert output['F_olr'] > 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_albedo_formula_flux_positive():
+    """The zero-flux guard must only fire on the degenerate F_ins=0 case;
+    with positive instellation, albedo is still the closed-form
+    ``surf_greyalbedo / (1 - surf_greyalbedo)`` (the F_ins-dependent
+    prefactor cancels between numerator and denominator).
+
+    surf_greyalbedo=0.25 -> expected = 0.25 / 0.75 = 1/3.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.3
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.25
+    config.atmos_clim.surf_state = 'fixed'
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 1400.0,
+        'albedo_pl': 0.2,
+        'F_ins': 1361.0,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+
+    # albedo derived correctly from F_ins and surf_greyalbedo
+    output = RunDummyAtm({}, config, hf_row)
+    assert output['albedo'] == pytest.approx(1.0 / 3.0, rel=1e-12)
+
+    # Discrimination: the zero-flux guard's hardcoded 0.0 must NOT have
+    # leaked into this positive-flux case
+    assert output['albedo'] != pytest.approx(0.0, abs=1e-6)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_output_keys():
     """Test that all expected output keys are present in returned dictionary.
 

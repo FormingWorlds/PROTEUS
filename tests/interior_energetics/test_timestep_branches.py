@@ -67,7 +67,8 @@ def _build_config(method='adaptive', dt_initial=10.0, dt_max=1.0e7, propconst=50
         hysteresis_sfinc=1.1,
         max_growth_factor=0.0,
     )
-    return SimpleNamespace(params=SimpleNamespace(dt=dt, stop=_stop_namespace()))
+    star = SimpleNamespace(bol_scale=1.0, bol_scale_start=None, bol_scale_duration=0.0)
+    return SimpleNamespace(params=SimpleNamespace(dt=dt, stop=_stop_namespace()), star=star)
 
 
 def _two_row_hf():

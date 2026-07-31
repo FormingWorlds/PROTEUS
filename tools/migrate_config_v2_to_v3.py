@@ -254,6 +254,10 @@ OVERRIDES = {
     # 3.0 adds dt.maximum + maximum_rel * Time with a default maximum_rel of 1.0,
     # a time-growing cap 2.0 lacked. Pin 0.0 to recover the strict 2.0 cap.
     'params.dt.maximum_rel': 0.0,
+    
+    # 2.0 had no time-gating on bol_scale
+    'star.bol_scale_start': 0.0,
+    'star.bol_scale_duration': 100.0,
 }
 
 # Element-budget fields consumed by the element handler (not mapped directly).
