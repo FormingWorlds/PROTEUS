@@ -1133,3 +1133,188 @@ def test_run_escape_zephyrus_zeroes_elemental_rates_when_unfract_raises():
     # Scale guard: 1.234e5 kg/s is a plausible XUV-limited MLR (~kg/s for
     # an Earth-like XUV setup), not 1.234e+15 (units flipped) or 0.0.
     assert 1e3 < hf_row['esc_rate_total'] < 1e7
+
+
+# =======================================================================================
+# SECTION: clamp_radii_to_hill(), bounding the escape cross-section
+# =======================================================================================
+
+
+def _hill_config(enabled: bool, frac: float = 1.0):
+    """Build a config exposing only the fields the clamp reads."""
+    from proteus.config._escape import Escape
+
+    config = MagicMock()
+    config.escape = Escape(hill_clamp=enabled, hill_clamp_frac=frac)
+    return config
+
+
+# GJ 9827 d, fO2 = -3, at the step that stripped the envelope. A H2-dominated
+# atmosphere (mmw 2.81 g/mol) whose XUV radius the solver puts at 6.17 Hill radii.
+_UNBOUND_ROW = {
+    'R_int': 9.8703e6,
+    'R_xuv': 8.7773e8,
+    'R_obs': 3.2773e8,
+    'hill_radius': 1.4225e8,
+}
+
+
+@pytest.mark.unit
+def test_clamp_radii_to_hill_disabled_leaves_row_untouched():
+    """Escape radii are unchanged when the clamp is not enabled.
+
+    Physical scenario: the default configuration, where the escape cross-section is
+    sized by whatever radius the atmosphere module returned. Guards the opt-in
+    contract, so enabling the correction is the only way to change existing results.
+    """
+    from proteus.escape.wrapper import clamp_radii_to_hill
+
+    row = dict(_UNBOUND_ROW)
+    clamp_radii_to_hill(_hill_config(False), row)
+
+    assert row['R_xuv'] == pytest.approx(_UNBOUND_ROW['R_xuv'], rel=1e-12)
+    assert row['R_obs'] == pytest.approx(_UNBOUND_ROW['R_obs'], rel=1e-12)
+    # Discrimination guard: had the clamp run, R_xuv would sit at the Hill radius,
+    # which differs from the unclamped value by a factor of 6.17, far outside rtol.
+    assert row['R_xuv'] > 5.0 * row['hill_radius']
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_clamp_radii_to_hill_bounds_unbound_atmosphere():
+    """An atmosphere extending past the Hill radius is limited to it.
+
+    Physical scenario: gas beyond the Hill radius is not gravitationally bound to the
+    planet, so it cannot absorb XUV on the planet's behalf. Boundedness invariant:
+    every radius that sizes the escape cross-section must satisfy R <= R_hill.
+    """
+    from proteus.escape.wrapper import clamp_radii_to_hill
+
+    row = dict(_UNBOUND_ROW)
+    clamp_radii_to_hill(_hill_config(True), row)
+
+    assert row['R_xuv'] == pytest.approx(row['hill_radius'], rel=1e-12)
+    assert row['R_obs'] == pytest.approx(row['hill_radius'], rel=1e-12)
+    # The bound must hold for both radii, which is the invariant under test.
+    assert row['R_xuv'] <= row['hill_radius']
+    assert row['R_obs'] <= row['hill_radius']
+    # Discrimination guard: the clamp must actually bite here. A no-op would leave
+    # R_xuv at 8.7773e8 m, and clamping to R_int would give 9.8703e6 m; both differ
+    # from the Hill radius by more than a factor of six.
+    assert row['R_xuv'] > 10.0 * _UNBOUND_ROW['R_int']
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_clamp_radii_to_hill_suppresses_energy_limited_rate_below_the_floor():
+    """Limiting the radius brings the envelope lifetime above the timestep floor.
+
+    Physical scenario: energy-limited escape scales as R_xuv**3 (PROTEUS calls
+    ZEPHYRUS with scaling=3), so an unbound radius inflates the rate by the cube of
+    its excess. Verifies the resulting envelope lifetime crosses from below the
+    10 kyr timestep floor to above it, which is what turns a single-step collapse
+    into a resolvable trajectory.
+    """
+    from proteus.escape.wrapper import clamp_radii_to_hill
+
+    m_atm = 2.8367e23  # kg, atmospheric mass at the same step
+    rate_unclamped = 5.713e13  # kg s-1, as returned for the unbound radius
+    secs_per_yr = 3.15576e7
+    floor_yr = 1.0e4
+
+    row = dict(_UNBOUND_ROW)
+    excess = row['R_xuv'] / row['hill_radius']
+    clamp_radii_to_hill(_hill_config(True), row)
+
+    rate_clamped = rate_unclamped / excess**3
+    life_unclamped = m_atm / rate_unclamped / secs_per_yr
+    life_clamped = m_atm / rate_clamped / secs_per_yr
+
+    # Closed form: excess = 6.1703, so the rate falls by 234.9x.
+    assert excess == pytest.approx(6.1703, rel=1e-4)
+    assert rate_clamped == pytest.approx(2.432e11, rel=1e-3)
+    # The invariant that matters: lifetime crosses the floor.
+    assert life_unclamped < floor_yr
+    assert life_clamped > floor_yr
+    # Discrimination guard: an R**2 scaling would give only a 38x reduction and a
+    # 5.99 kyr lifetime, which is still below the floor, so the exponent is
+    # distinguished by this assertion rather than assumed.
+    assert m_atm / (rate_unclamped / excess**2) / secs_per_yr < floor_yr
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_clamp_radii_to_hill_never_clamps_inside_the_solid_body():
+    """The limit is never allowed below the solid-body radius.
+
+    Physical scenario: a close-in planet whose Hill radius falls below its own
+    surface. The solid body is bound by definition, so clamping inside it would
+    report a planet smaller than its own core. Positivity/ordering invariant:
+    R_xuv >= R_int always.
+    """
+    from proteus.escape.wrapper import clamp_radii_to_hill
+
+    row = dict(_UNBOUND_ROW, hill_radius=1.0e6)  # Hill radius inside R_int
+    clamp_radii_to_hill(_hill_config(True), row)
+
+    assert row['R_xuv'] == pytest.approx(row['R_int'], rel=1e-12)
+    assert row['R_xuv'] >= row['R_int']
+    # Discrimination guard: naive clamping would have produced 1.0e6 m, which is
+    # an order of magnitude below R_int.
+    assert row['R_xuv'] > 5.0 * row['hill_radius']
+
+
+@pytest.mark.unit
+def test_clamp_radii_to_hill_leaves_bound_atmosphere_alone():
+    """A radius already inside the Hill sphere is not modified.
+
+    Physical scenario: the high-fO2 cases, where a high mean-molecular-weight
+    atmosphere sits at 0.07 Hill radii. The correction must be inert for them, so
+    it cannot shift results that were never affected by the artefact.
+    """
+    from proteus.escape.wrapper import clamp_radii_to_hill
+
+    bound = 0.07 * _UNBOUND_ROW['hill_radius']
+    row = dict(_UNBOUND_ROW, R_xuv=bound, R_obs=bound)
+    clamp_radii_to_hill(_hill_config(True), row)
+
+    assert row['R_xuv'] == pytest.approx(bound, rel=1e-12)
+    assert row['R_obs'] == pytest.approx(bound, rel=1e-12)
+    assert row['R_xuv'] < row['hill_radius']
+
+
+@pytest.mark.unit
+def test_clamp_radii_to_hill_honours_the_fraction():
+    """The limit scales with hill_clamp_frac.
+
+    Physical scenario: the L1 point sits near two thirds of the Hill radius, so a
+    user may want a stricter bound than the Hill radius itself. Checks the limit
+    tracks the fraction rather than being hard-wired.
+    """
+    from proteus.escape.wrapper import clamp_radii_to_hill
+
+    row = dict(_UNBOUND_ROW)
+    clamp_radii_to_hill(_hill_config(True, frac=0.66), row)
+
+    assert row['R_xuv'] == pytest.approx(0.66 * _UNBOUND_ROW['hill_radius'], rel=1e-12)
+    # Discrimination guard: the full-Hill limit would be 1.4225e8 m; two thirds of
+    # it is 9.3885e7 m, a 34% difference that no tolerance here could absorb.
+    assert row['R_xuv'] < 0.9 * _UNBOUND_ROW['hill_radius']
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('bad_hill', [0.0, -1.0, float('nan'), None, 'unset'])
+def test_clamp_radii_to_hill_skips_when_hill_radius_is_unusable(bad_hill):
+    """A missing or non-physical Hill radius leaves the row untouched.
+
+    Physical scenario: escape evaluated before the orbit update has populated
+    hill_radius. Exercises the guard-return contract: the clamp must decline
+    rather than divide by zero or write a nonsense radius.
+    """
+    from proteus.escape.wrapper import clamp_radii_to_hill
+
+    row = dict(_UNBOUND_ROW, hill_radius=bad_hill)
+    clamp_radii_to_hill(_hill_config(True), row)
+
+    assert row['R_xuv'] == pytest.approx(_UNBOUND_ROW['R_xuv'], rel=1e-12)
+    assert row['R_obs'] == pytest.approx(_UNBOUND_ROW['R_obs'], rel=1e-12)

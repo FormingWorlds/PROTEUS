@@ -16,6 +16,72 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
+def clamp_radii_to_hill(config: Config, hf_row: dict) -> None:
+    """Limit the radii that size the escape cross-section to the Hill radius.
+
+    Energy-limited escape scales with the XUV absorption radius, so an atmosphere
+    whose radius exceeds the Hill radius yields a mass-loss rate computed over a
+    cross-section that reaches past the last gravitationally bound surface. Gas
+    beyond that surface is not held by the planet, so it cannot absorb XUV on the
+    planet's behalf, and the resulting rate is an overestimate rather than a
+    physical result. Low mean-molecular-weight envelopes are where this bites: a
+    H2-dominated atmosphere has a large scale height, and the radius solver can
+    return several Hill radii.
+
+    Both ``R_xuv`` and ``R_obs`` are limited, ``R_xuv`` because it enters the
+    energy-limited rate and ``R_obs`` so the recorded radius stays consistent with
+    the one used for escape. The limit is never allowed below ``R_int``, since the
+    solid body itself is always bound.
+
+    Does nothing unless ``config.escape.hill_clamp`` is enabled, or if the Hill
+    radius is missing or non-positive.
+
+    Parameters
+    ----------
+        config : Config
+            Model configuration.
+        hf_row : dict
+            Current helpfile row, modified in place.
+    """
+    if not getattr(config.escape, 'hill_clamp', False):
+        return
+
+    try:
+        r_hill = float(hf_row.get('hill_radius', 0.0))
+    except (TypeError, ValueError):
+        return
+    if not np.isfinite(r_hill) or r_hill <= 0.0:
+        # run_orbit populates hill_radius; a missing value means escape ran
+        # before the orbit update, so there is nothing to clamp against.
+        log.warning('Hill-radius clamp enabled but hill_radius is unset; skipping')
+        return
+
+    frac = float(getattr(config.escape, 'hill_clamp_frac', 1.0))
+    r_limit = frac * r_hill
+
+    # The solid body is bound by definition, so never clamp inside it.
+    r_int = float(hf_row.get('R_int', 0.0))
+    if np.isfinite(r_int) and r_int > r_limit:
+        r_limit = r_int
+
+    for key in ('R_xuv', 'R_obs'):
+        try:
+            r_old = float(hf_row.get(key, 0.0))
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(r_old) and r_old > r_limit:
+            hf_row[key] = r_limit
+            log.warning(
+                '%s = %.3e m exceeds %.2f x the Hill radius (%.3e m); '
+                'limited to %.3e m for the escape calculation',
+                key,
+                r_old,
+                frac,
+                r_hill,
+                r_limit,
+            )
+
+
 def run_escape(
     config: Config,
     hf_row: dict,
@@ -76,6 +142,10 @@ def run_escape(
         # Reset the cumulative escape counter alongside the baseline so the
         # ratio (lost vs escaped) starts from a consistent zero.
         hf_row['esc_kg_cumulative'] = 0.0
+
+    # Limit the escape cross-section to the bound atmosphere before any module
+    # reads the radii, so every module sizes escape from the same surface.
+    clamp_radii_to_hill(config, hf_row)
 
     if config.escape.module == 'dummy':
         run_dummy(config, hf_row, atmosphere_only=atmosphere_only)

@@ -84,6 +84,11 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.agni.spectral_file',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
+        # Both default to the pre-existing behaviour: hill_clamp is off, so a
+        # migrated config sizes escape from the unmodified radii exactly as before,
+        # and hill_clamp_frac is inert while it is off.
+        'escape.hill_clamp',
+        'escape.hill_clamp_frac',
         'interior_energetics.adams_williamson_beta',
         'interior_energetics.adams_williamson_rhos',
         'interior_energetics.adiabatic_bulk_modulus',
