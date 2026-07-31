@@ -255,9 +255,14 @@ def test_shallow_mixed_ocean_layer_zero_flux_keeps_temperature_constant():
 # ---------------------------------------------------------------------------
 
 
-def _fake_atmos_o(atm):
-    """Minimal Atmos_t stand-in exposing only the `_atm` attribute."""
-    return SimpleNamespace(_atm=atm)
+def _fake_atmos_o(atm, solved=None):
+    """Minimal Atmos_t stand-in exposing the two atmosphere attributes.
+
+    `_atm` is the module's own struct; `_atm_solved` is the column JANUS
+    returns from a solve, which is a different object from the one it was
+    given and is the only one whose profiles and fluxes share a grid.
+    """
+    return SimpleNamespace(_atm=atm, _atm_solved=solved)
 
 
 def _fake_config(module):
@@ -322,10 +327,20 @@ def test_write_atmosphere_snapshot_agni_writes_when_allocated():
 
 
 def test_write_atmosphere_snapshot_janus_writes():
-    """For JANUS with a present struct, the dispatch calls the JANUS writer
-    once with the current time, and NOT the AGNI writer."""
-    atm = object()
-    atmos_o = _fake_atmos_o(atm)
+    """For JANUS the dispatch writes the solved column, not the seed.
+
+    JANUS integrates its adiabat on a high-resolution grid and resamples onto
+    the radiative grid when it solves, so the object it was handed keeps the
+    integration profiles while the fluxes written back onto it sit on the
+    radiative grid. Writing that object mixes two grids and the NetCDF write
+    fails on the shape mismatch, so the snapshot has to come from the solved
+    column the solver returned.
+
+    Edge case: a run that has not solved a column yet has nothing coherent to
+    write, and the dispatch must return rather than fall back to the seed.
+    """
+    seed, solved = object(), object()
+    atmos_o = _fake_atmos_o(seed, solved=solved)
     config = _fake_config('janus')
     dirs = {'output': '/tmp/x'}
     with (
@@ -333,5 +348,18 @@ def test_write_atmosphere_snapshot_janus_writes():
         patch('proteus.atmos_clim.janus.write_atmos_ncdf') as janus_w,
     ):
         atmos_wrapper.write_atmosphere_snapshot(atmos_o, config, dirs, {'Time': 4675466.0})
-    janus_w.assert_called_once_with(atm, dirs, 4675466.0)
+    janus_w.assert_called_once_with(solved, dirs, 4675466.0)
+    # Discrimination: the seed is a different object, so a dispatch that still
+    # reached for `_atm` would have been called with it instead.
+    assert janus_w.call_args.args[0] is not seed
     agni_w.assert_not_called()
+
+    # Seed present but never solved: nothing is written.
+    unsolved = _fake_atmos_o(seed, solved=None)
+    with (
+        patch('proteus.atmos_clim.agni.write_atmos_ncdf') as agni_w2,
+        patch('proteus.atmos_clim.janus.write_atmos_ncdf') as janus_w2,
+    ):
+        atmos_wrapper.write_atmosphere_snapshot(unsolved, config, dirs, {'Time': 4675466.0})
+    janus_w2.assert_not_called()
+    agni_w2.assert_not_called()
