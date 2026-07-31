@@ -232,3 +232,45 @@ def test_next_step_skips_bolscale_clip_when_hf_all_is_none():
     # Static time-step branch returns exactly 1.0 yr
     dt = next_step(config, {}, hf_row, None, step_sf=1.0)
     assert dt == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# interior_o.bolscale_clamped: flag consumed by the main loop to force a
+# stellar update at the window edge (proteus.py STELLAR FLUX MANAGEMENT).
+# ---------------------------------------------------------------------------
+
+
+def test_next_step_flags_interior_o_when_bolscale_clamps_the_step():
+    """When the bolometric-scaling window opens before the controller's own
+    dt would, next_step must mark ``interior_o.bolscale_clamped = True`` so
+    the main loop can force a stellar update even if the resulting step is
+    shorter than ``params.dt.starinst``."""
+    config = _next_step_config(
+        dt_maximum=1.0e5, bol_scale=2.0, bol_scale_start=0.5, bol_scale_duration=0.5
+    )
+    hf_row = {'Time': 100.0}
+    hf_all = _next_step_hf_all(age_star=5.0e8 - 5.0e4)
+    interior_o = SimpleNamespace(bolscale_clamped=False)
+
+    dt = next_step(config, {}, hf_row, hf_all, step_sf=1.0, interior_o=interior_o)
+
+    assert dt == pytest.approx(5.0e4, rel=1e-9)
+    assert interior_o.bolscale_clamped is True
+
+
+def test_next_step_does_not_flag_interior_o_when_window_is_far_away():
+    """Discrimination case: when the controller's own dt is already smaller
+    than the remaining time to the window, the bolscale estimate did not
+    bind, so the flag must stay False (else every step would force a
+    stellar update, defeating the dt.starinst cadence entirely)."""
+    config = _next_step_config(
+        dt_maximum=1.0e5, bol_scale=2.0, bol_scale_start=50.0, bol_scale_duration=0.5
+    )
+    hf_row = {'Time': 100.0}
+    hf_all = _next_step_hf_all(age_star=1.0e8)  # window opens at 5e10 yr, far away
+    interior_o = SimpleNamespace(bolscale_clamped=True)  # start True to prove it flips
+
+    dt = next_step(config, {}, hf_row, hf_all, step_sf=1.0, interior_o=interior_o)
+
+    assert dt == pytest.approx(1.0e5, rel=1e-9)
+    assert interior_o.bolscale_clamped is False

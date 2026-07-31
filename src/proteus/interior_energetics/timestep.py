@@ -329,7 +329,13 @@ def next_step(
 
     # Do not allow step size to skip bolometric scaling start/stop
     if hf_all is not None:
-        dtswitch = min(dtswitch, _estimate_bolscale(hf_all, config))
+        # Clamp dtswitch
+        dt_bolscale = _estimate_bolscale(hf_all, config)
+        dtswitch = min(dtswitch, dt_bolscale)
+
+        # Record the timestep as having been clamped
+        if interior_o is not None:
+            interior_o.timestep_clamped = bool(dt_bolscale <= dtswitch)
 
     # Apply the SPIDER-retry step scale factor uniformly to all branches.
     # In the "static" (Time < 2 yr) and "initial" branches, step_sf is

@@ -72,6 +72,24 @@ def test_star_bol_scale_nonunity_requires_start():
     star_default = Star(bol_scale_start=None)
     assert star_default.bol_scale == pytest.approx(1.0)
 
-    # Providing a start with a non-unity scale is accepted.
-    star_windowed = Star(bol_scale=2.0, bol_scale_start=0.5)
+    # Providing a start and a positive duration with a non-unity scale is
+    # accepted.
+    star_windowed = Star(bol_scale=2.0, bol_scale_start=0.5, bol_scale_duration=0.1)
     assert star_windowed.bol_scale_start == pytest.approx(0.5)
+
+
+@pytest.mark.unit
+def test_star_bol_scale_nonunity_requires_positive_duration():
+    """A non-unity ``bol_scale`` with ``bol_scale_start`` set but
+    ``bol_scale_duration`` left at its zero default would define a window
+    that never opens (start == end), silently scaling nothing anywhere.
+    That combination must be rejected, not just the missing-start case."""
+    with pytest.raises(Exception, match='bol_scale_duration'):
+        Star(bol_scale=2.0, bol_scale_start=0.5)
+
+    with pytest.raises(Exception, match='bol_scale_duration'):
+        Star(bol_scale=2.0, bol_scale_start=0.5, bol_scale_duration=0.0)
+
+    # The default bol_scale=1.0 is exempt: a zero duration is a real no-op.
+    star_default = Star(bol_scale_duration=0.0)
+    assert star_default.bol_scale == pytest.approx(1.0)

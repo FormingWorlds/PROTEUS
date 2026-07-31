@@ -257,8 +257,11 @@ def test_bol_scale_window_applies_across_dummy_run():
         # open for far longer (2 Gyr) than the run can possibly advance
         # (stop.time.maximum=1e5 yr), so the window covers every row.
         runner.config.star.bol_scale = 2.0
-        runner.config.star.bol_scale_start = runner.config.star.age_ini
+
+        # Set duration before start: valid_bol_scale_start performs its checks
+        # when bol_scale_start is assigned.
         runner.config.star.bol_scale_duration = 2.0
+        runner.config.star.bol_scale_start = runner.config.star.age_ini
 
         runner.config.params.out.plot_mod = 0
         runner.config.params.out.write_mod = 0
