@@ -199,7 +199,12 @@ def RunJANUS(
     Returns
     ----------
         atm : atmos
-            Updated atmos object
+            The solved atmosphere. This is not the object passed in: the
+            adiabat solve copies that one before integrating and returns a
+            copy resampled onto the radiative grid, and only the copy carries
+            a profile and fluxes on one common grid. The object passed in is
+            left holding the surface boundary condition alone and remains the
+            seed for the next call.
         output : dict
             Output variables, as a dict
 
@@ -366,4 +371,4 @@ def RunJANUS(
             x_xuv = 0.0
         hf_row[f'{g}_vmr_xuv'] = x_xuv
 
-    return output
+    return atm, output
