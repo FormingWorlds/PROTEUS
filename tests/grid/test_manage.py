@@ -577,6 +577,61 @@ class TestWriteConfigFiles:
         values = {v for _attr, v in recursive_calls}
         assert values == {0.5, 1.0, 200.0}
 
+    def test_unknown_key_in_the_base_config_stops_the_grid(
+        self, fake_proteus_dir, tmp_path, monkeypatch
+    ):
+        """A misspelled key in the base config halts the grid before any case is written.
+
+        Per-case configs are serialised out of the structured object, so an
+        unrecognised key in the base file never survives into them. Nothing
+        downstream can notice it: every case config reads as clean while the
+        whole grid runs on a default the user did not choose. Loading the base
+        file is the only place the mistake is still visible.
+        """
+        import tomllib
+
+        import tomlkit
+        from helpers import PROTEUS_ROOT
+
+        with open(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml', 'rb') as f:
+            raw = tomllib.load(f)
+        # Misspell the maximum time-step. Left unchecked this silently reverts
+        # to the schema default for every case in the grid.
+        raw['params']['dt']['maxium'] = raw['params']['dt'].pop('maximum')
+        dirty = tmp_path / 'dirty_base.toml'
+        with open(dirty, 'w') as f:
+            tomlkit.dump(raw, f)
+
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        g = Grid(name='typo_base_grid', base_config_path=str(dirty))
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        with pytest.raises(ValueError, match='params.dt.maxium'):
+            g.write_config_files()
+
+        # No case config was written, so the grid cannot proceed on the
+        # silently defaulted value.
+        assert not [p for p in os.listdir(g.cfgdir) if p.startswith('case_')]
+
+        # Edge case and discriminator: the unmodified base file writes both
+        # cases, so the refusal above is caused by the misspelling and not by
+        # this base config being unloadable in the first place.
+        clean = tmp_path / 'clean_base.toml'
+        with open(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml', 'rb') as f:
+            with open(clean, 'w') as out:
+                tomlkit.dump(tomllib.load(f), out)
+        g2 = Grid(name='clean_base_grid', base_config_path=str(clean))
+        g2.add_dimension('m', 'planet.mass_tot')
+        g2.set_dimension_direct('m', [0.5, 1.0])
+        g2.generate()
+        g2.write_config_files()
+        assert sorted(p for p in os.listdir(g2.cfgdir) if p.startswith('case_')) == [
+            'case_000000.toml',
+            'case_000001.toml',
+        ]
+
 
 # ---------------------------------------------------------------------------
 # Grid.slurm_config
