@@ -130,7 +130,7 @@ def run_atmosphere(
             InitStellarSpectrum(dirs, wl_un, fl_un, spectral_file_nostar)
             atmos_o._atm = InitAtm(dirs, config)
 
-        atmos_o._atm_solved, atm_output = RunJANUS(
+        atmos_o._atm_janus_last, atm_output = RunJANUS(
             atmos_o._atm, dirs, config, hf_row, hf_all, write_data=write_data
         )
 
@@ -254,11 +254,11 @@ def write_atmosphere_snapshot(atmos_o: Atmos_t, config: Config, dirs: dict, hf_r
         # back onto it. Its arrays are sized for the integration grid while
         # those fluxes are on the radiative one, so it cannot be written as a
         # single consistent snapshot.
-        if atmos_o._atm_solved is None:
+        if atmos_o._atm_janus_last is None:
             log.warning('Cannot write atmosphere; JANUS has not solved a column yet')
             return
 
-        write_atmos_ncdf(atmos_o._atm_solved, dirs, time)
+        write_atmos_ncdf(atmos_o._atm_janus_last, dirs, time)
 
     # Otherwise, write no atmosphere NetCDF
 

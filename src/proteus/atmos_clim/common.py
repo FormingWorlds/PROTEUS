@@ -22,15 +22,15 @@ class Atmos_t:
         # Atmosphere object internal to JANUS or AGNI
         self._atm = None
 
-        # The most recently solved atmosphere, for the modules whose solver
-        # returns a column that is not the one it was given. JANUS copies
-        # `_atm` before it integrates and resamples the copy onto the radiative
-        # grid, so only the copy carries a profile at all: `_atm` keeps the
-        # surface boundary condition between iterations and nothing else, its
-        # profile arrays sitting at their allocated length with only the
-        # boundary cell written. Read this one, never `_atm`, for anything that
-        # wants the atmosphere itself. AGNI solves in place and leaves it None.
-        self._atm_solved = None
+        # The column JANUS last solved, and JANUS only: None under every other
+        # atmosphere module. JANUS copies `_atm` before it integrates and
+        # resamples the copy onto the radiative grid, so only the copy carries
+        # a profile at all. `_atm` keeps the surface boundary condition between
+        # iterations and nothing else, its profile arrays sitting at their
+        # allocated length with only the boundary cell written, so anything
+        # that wants the atmosphere itself has to read this instead. AGNI
+        # solves its column in place and needs no second reference.
+        self._atm_janus_last = None
 
         # Whether the most recent atmosphere call converged. For AGNI this
         # is True iff the Newton/LM solver converged on at least one attempt;
