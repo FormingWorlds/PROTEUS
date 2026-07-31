@@ -490,13 +490,15 @@ def test_format_orphan_message_quotes_every_key_and_names_the_file():
     # that "these keys are not part of the schema" reads as though the file has
     # more wrong with it than it does.
     assert 'Unrecognised configuration key in' in single
-    assert 'This key is not part' in single
+    assert 'This key is unrecognised' in single
+    assert 'setting it will have no effect' in single
     assert 'these keys' not in single.lower()
 
     # The many-key message keeps the plural, so the singular above is chosen
     # from the count rather than applied to every message.
     assert 'Unrecognised configuration keys in' in msg
-    assert 'These keys are not part' in msg
+    assert 'These keys are unrecognised' in msg
+    assert 'setting them will have no effect' in msg
 
 
 def test_format_orphan_message_reports_mistyped_sections_in_their_own_block():
@@ -514,7 +516,7 @@ def test_format_orphan_message_reports_mistyped_sections_in_their_own_block():
     # The unrecognised key comes first: it is the more common mistake, and the
     # section advice is useless to someone who has neither.
     assert both.index('Unrecognised') < both.index('Misdeclared')
-    assert '[[name]]' in both
+    assert 'double-brackets' in both
     # The reference line is printed once, not once per block.
     assert both.count('all_options.toml') == 1
 
@@ -527,7 +529,7 @@ def test_format_orphan_message_reports_mistyped_sections_in_their_own_block():
     # Only keys: symmetrically, no bracket advice appears.
     keys_only = format_orphan_message(['planet.mass_total'], '/runs/case.toml')
     assert 'Misdeclared' not in keys_only
-    assert '[[name]]' not in keys_only
+    assert 'double-brackets' not in keys_only
 
 
 # ---------------------------------------------------------------------------

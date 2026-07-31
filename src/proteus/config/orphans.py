@@ -191,14 +191,12 @@ def format_orphan_message(
             'Unrecognised configuration key' if single else 'Unrecognised configuration keys'
         )
         subject = 'This key is' if single else 'These keys are'
-        setting = 'Setting it' if single else 'Setting them'
+        setting = 'setting it' if single else 'setting them'
         blocks.append(
             f'{heading} in {path}:\n'
             f'  {keys}\n'
-            f'  {subject} not part of the configuration schema. {setting} '
-            f'has no effect, so the file is refused rather than run on defaults '
-            f'that were not asked for. Check for a typo or an outdated option '
-            f'name.'
+            f'  {subject} unrecognised, so {setting} will have no effect. '
+            f'Check for typos or outdated option names.'
         )
 
     if mistyped:
@@ -214,10 +212,9 @@ def format_orphan_message(
             f'{heading} in {path}:\n'
             f'  {sections}\n'
             f'  {subject} declared as a table by the schema, but the file gives '
-            f'another kind of value. Writing a section as [[name]] rather than '
-            f'[name] is the usual cause. As written the whole section is '
-            f'discarded and every parameter inside it falls back to its default.'
+            f'another kind of value. Check for typos or double-brackets.'
         )
 
-    blocks.append('See input/all_options.toml for the full parameter reference.')
+    blocks.append('See input/all_options.toml for reference, or read the docs:')
+    blocks.append('https://proteus-framework.org/PROTEUS/Reference/config/params.html')
     return '\n'.join(blocks)
