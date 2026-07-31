@@ -255,9 +255,14 @@ def test_shallow_mixed_ocean_layer_zero_flux_keeps_temperature_constant():
 # ---------------------------------------------------------------------------
 
 
-def _fake_atmos_o(atm):
-    """Minimal Atmos_t stand-in exposing only the `_atm` attribute."""
-    return SimpleNamespace(_atm=atm)
+def _fake_atmos_o(atm, solved=None):
+    """Minimal Atmos_t stand-in exposing the two atmosphere attributes.
+
+    `_atm` is the module's own struct; `_atm_janus_last` is the column JANUS
+    returns from a solve, which is a different object from the one it was
+    given and is the only one whose profiles and fluxes share a grid.
+    """
+    return SimpleNamespace(_atm=atm, _atm_janus_last=solved)
 
 
 def _fake_config(module):
@@ -322,10 +327,20 @@ def test_write_atmosphere_snapshot_agni_writes_when_allocated():
 
 
 def test_write_atmosphere_snapshot_janus_writes():
-    """For JANUS with a present struct, the dispatch calls the JANUS writer
-    once with the current time, and NOT the AGNI writer."""
-    atm = object()
-    atmos_o = _fake_atmos_o(atm)
+    """For JANUS the dispatch writes the solved column, not the seed.
+
+    JANUS integrates its adiabat on a high-resolution grid and resamples onto
+    the radiative grid when it solves, so the object it was handed keeps the
+    integration profiles while the fluxes written back onto it sit on the
+    radiative grid. Writing that object mixes two grids and the NetCDF write
+    fails on the shape mismatch, so the snapshot has to come from the solved
+    column the solver returned.
+
+    Edge case: a run that has not solved a column yet has nothing coherent to
+    write, and the dispatch must return rather than fall back to the seed.
+    """
+    seed, solved = object(), object()
+    atmos_o = _fake_atmos_o(seed, solved=solved)
     config = _fake_config('janus')
     dirs = {'output': '/tmp/x'}
     with (
@@ -333,5 +348,92 @@ def test_write_atmosphere_snapshot_janus_writes():
         patch('proteus.atmos_clim.janus.write_atmos_ncdf') as janus_w,
     ):
         atmos_wrapper.write_atmosphere_snapshot(atmos_o, config, dirs, {'Time': 4675466.0})
-    janus_w.assert_called_once_with(atm, dirs, 4675466.0)
+    janus_w.assert_called_once_with(solved, dirs, 4675466.0)
+    # Discrimination: the seed is a different object, so a dispatch that still
+    # reached for `_atm` would have been called with it instead.
+    assert janus_w.call_args.args[0] is not seed
     agni_w.assert_not_called()
+
+    # Seed present but never solved: nothing is written.
+    unsolved = _fake_atmos_o(seed, solved=None)
+    with (
+        patch('proteus.atmos_clim.agni.write_atmos_ncdf') as agni_w2,
+        patch('proteus.atmos_clim.janus.write_atmos_ncdf') as janus_w2,
+    ):
+        atmos_wrapper.write_atmosphere_snapshot(unsolved, config, dirs, {'Time': 4675466.0})
+    janus_w2.assert_not_called()
+    agni_w2.assert_not_called()
+
+
+def test_run_atmosphere_keeps_the_column_janus_solved():
+    """The JANUS dispatch stores the solved column where the writer reads it.
+
+    JANUS returns a column that is not the object it was given, and the
+    end-of-run snapshot is written from the returned one. That wiring is the
+    single point where a regression would silently put the run back to writing
+    the seed, which cannot be written at all: its profile arrays are sized for
+    the integration grid while the fluxes on it are on the radiative grid.
+
+    Verifies:
+    - What the solver returned is what the struct carries afterwards.
+    - The seed is left in place, so the next iteration still integrates from
+      the object JANUS expects rather than from a resampled column.
+    - The struct starts out carrying nothing, so the attribute is genuinely
+      written by the call rather than pre-set by the fixture.
+    """
+    from proteus.atmos_clim.common import Atmos_t
+
+    seed, solved = object(), object()
+    atmos_o = Atmos_t()
+    atmos_o._atm = seed
+    assert atmos_o._atm_janus_last is None
+
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='janus',
+            albedo_pl=0.0,
+            rayleigh=False,
+            cloud_enabled=False,
+            surf_state='fixed',
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+    )
+    hf_row = {
+        'T_magma': 1800.0,
+        'M_planet': 6.0e24,
+        'R_obs': 6.4e6,
+        'F_int': 120.0,
+        'F_atm': 100.0,
+        'axial_period': 86400.0,
+        'atm_kg_per_mol': 0.029,
+        'T_surf': 0.0,
+        'R_int': 6.371e6,
+        'R_star': 6.96e8,
+        'F_olr': 200.0,
+        'F_sct': 100.0,
+        'F_ins': 1361.0,
+        'separation': 1.5e11,
+    }
+    atm_output = {'albedo': 0.2, 'F_atm': 100.0}
+
+    with patch(
+        'proteus.atmos_clim.janus.RunJANUS', return_value=(solved, atm_output)
+    ) as run_janus:
+        atmos_wrapper.run_atmosphere(
+            atmos_o,
+            config,
+            {'output': '/tmp/x'},
+            {'total': 5},
+            [1.0],
+            [1.0],
+            False,
+            None,
+            hf_row,
+        )
+
+    run_janus.assert_called_once()
+    # The seed is what JANUS was handed, and it is what the struct keeps as
+    # its seed; the solved column is stored separately.
+    assert run_janus.call_args.args[0] is seed
+    assert atmos_o._atm is seed
+    assert atmos_o._atm_janus_last is solved

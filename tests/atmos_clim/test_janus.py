@@ -386,10 +386,15 @@ def test_run_janus_gobs_inverse_square_of_robs(monkeypatch, tmp_path):
     R_int = 6.371e6
     z_obs_height = 8.0e4  # m; observed level sits this far above the surface
 
-    atm = _build_run_atm(g_surf=g_surf, z_obs_height=z_obs_height, stale_grav=g_surf)
+    solved_atm = _build_run_atm(g_surf=g_surf, z_obs_height=z_obs_height, stale_grav=g_surf)
+    # The seed the caller holds between iterations. JANUS deep-copies it before
+    # integrating and resamples the copy, so the solved column is always a
+    # different object; keeping them distinct here is what lets the return
+    # value below tell the two apart.
+    seed_atm = SimpleNamespace()
 
-    # Solver is mocked to return the fake atmosphere unchanged.
-    monkeypatch.setattr('janus.modules.MCPA', lambda *a, **kw: atm)
+    # Solver is mocked to return the solved column, not the seed it was given.
+    monkeypatch.setattr('janus.modules.MCPA', lambda *a, **kw: solved_atm)
     # State push and hydrostatic solve are covered by their own unit tests.
     monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
     # Deterministic "observed level" = last array entry, independent of p_obs.
@@ -407,8 +412,15 @@ def test_run_janus_gobs_inverse_square_of_robs(monkeypatch, tmp_path):
     }
     dirs = {'output': str(tmp_path)}
 
-    # Run JANUS
-    output = RunJANUS(atm, dirs, config, hf_row, None, write_in_tmp_dir=False)
+    # Run JANUS. The solved column comes back alongside the outputs; it is what
+    # a snapshot must be written from, so the caller can reach it.
+    solved, output = RunJANUS(seed_atm, dirs, config, hf_row, None, write_in_tmp_dir=False)
+
+    # Discrimination: the seed and the solved column are different objects, so
+    # handing back the seed, which is what the caller used to be left holding,
+    # fails here rather than passing an is-not-None check.
+    assert solved is solved_atm
+    assert solved is not seed_atm
 
     # Check additive radii
     R_obs_expected = R_int + z_obs_height

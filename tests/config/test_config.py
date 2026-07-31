@@ -12,11 +12,12 @@ import os
 from itertools import chain
 from types import SimpleNamespace
 
+import attrs
 import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
-from proteus.config import Config, read_config, read_config_object
+from proteus.config import Config, read_config, read_config_object, structure_config
 from proteus.config._config import (
     instmethod_dummy,
     instmethod_evolve,
@@ -63,6 +64,157 @@ def test_read_config_returns_dict():
     raw = read_config(path)
     assert isinstance(raw, dict)
     assert 'params' in raw or 'star' in raw or 'orbit' in raw
+
+
+def _write_variant(tmp_path, name, mutate):
+    """Copy input/dummy.toml, apply *mutate* to the raw dict, write it back.
+
+    Returns the path of the written file. Used by the strict-loading tests
+    below to build near-identical configs that differ only in the key under
+    test.
+    """
+    import tomllib
+
+    import tomlkit
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    mutate(raw)
+    path = tmp_path / name
+    with open(path, 'w') as f:
+        tomlkit.dump(raw, f)
+    return path
+
+
+@pytest.mark.unit
+def test_read_config_object_rejects_a_misspelled_field(tmp_path):
+    """A misspelled field is refused instead of falling back to its default.
+
+    The two files here differ only in the spelling of one key. Spelled wrong,
+    the load is refused and the offending key is named; spelled right, the same
+    number reaches the Config. Without the refusal both files would load and
+    the user would have no way to tell which value took effect.
+    """
+
+    def _typo(raw):
+        del raw['planet']['mass_tot']
+        raw['planet']['mass_total'] = 2.5  # deliberate misspelling
+
+    def _correct(raw):
+        raw['planet']['mass_tot'] = 2.5
+
+    with pytest.raises(ValueError, match='planet.mass_total'):
+        read_config_object(_write_variant(tmp_path, 'typo.toml', _typo))
+
+    # The correctly spelled file carries the value through, so the refusal
+    # above is about the spelling and not about the value 2.5 itself.
+    cfg = read_config_object(_write_variant(tmp_path, 'correct.toml', _correct))
+    assert cfg.planet.mass_tot == pytest.approx(2.5)
+
+    # 2.5 differs from what dummy.toml sets, so a loader that ignored the file
+    # and returned the untouched config would fail the check above.
+    assert read_config(PROTEUS_ROOT / 'input' / 'dummy.toml')['planet'][
+        'mass_tot'
+    ] != pytest.approx(2.5)
+
+
+@pytest.mark.unit
+def test_read_config_object_rejects_a_section_written_as_an_array_of_tables(tmp_path):
+    """``[[planet]]`` is refused instead of dropping the whole section.
+
+    An array of tables carries a name the schema declares, so nothing about the
+    name is wrong and a check that only compares names passes it. Structuring
+    then discards the section entirely and every parameter inside it reverts to
+    its default, which is the silent fallback this loader exists to stop, and a
+    worse case than one misspelled key because it takes the whole section with
+    it.
+    """
+    source = (PROTEUS_ROOT / 'input' / 'dummy.toml').read_text()
+
+    # 3.7 differs from the schema default, so whether the section was read or
+    # dropped is visible in the loaded value rather than having to be inferred.
+    source = source.replace('mass_tot      = 1.0', 'mass_tot      = 3.7')
+    assert 'mass_tot      = 3.7' in source, 'fixture no longer matches dummy.toml'
+    assert attrs.fields(Planet).mass_tot.default == pytest.approx(1.0)
+
+    single = tmp_path / 'single_table.toml'
+    single.write_text(source)
+    # Control: as a plain table the value reaches the Config, so the refusal
+    # below is caused by the brackets and not by the value or this fixture.
+    assert read_config_object(single).planet.mass_tot == pytest.approx(3.7)
+
+    array = tmp_path / 'array_of_tables.toml'
+    array.write_text(source.replace('\n[planet]\n', '\n[[planet]]\n'))
+    with pytest.raises(ValueError, match='planet') as excinfo:
+        read_config_object(array)
+    assert 'Misdeclared' in str(excinfo.value)
+
+    # Structuring without the key check is what the runner does so it can
+    # resolve the output directory before refusing. Left unchecked it would run
+    # on 1.0 while the file asks for 3.7, so this pins what the check prevents.
+    dropped = structure_config(read_config(array), array)
+    assert dropped.planet.mass_tot == pytest.approx(1.0)
+    assert dropped.planet.mass_tot != pytest.approx(3.7)
+
+
+@pytest.mark.unit
+def test_structure_config_drops_an_unknown_key_and_applies_the_default(tmp_path):
+    """Structuring without the key check lets the default take over.
+
+    This is exactly the outcome the checked loader exists to prevent, and it is
+    the path the runner takes so it can resolve the output directory and record
+    the failure before refusing. Pinning it keeps that step honest: it tolerates
+    the key, it does not honour it.
+    """
+
+    # Three distinct masses so the surviving value identifies its own source:
+    # 2.5 would mean the misspelling was honoured, 1.0 (the Planet.mass_tot
+    # schema default) would mean the whole section was dropped, 1.75 means the
+    # correctly spelled sibling key was read and only the typo discarded.
+    def _typo(raw):
+        raw['planet']['mass_tot'] = 1.75
+        raw['planet']['mass_total'] = 2.5
+
+    path = _write_variant(tmp_path, 'typo.toml', _typo)
+
+    cfg = structure_config(read_config(path), path)
+    assert cfg.planet.mass_tot == pytest.approx(1.75)
+    assert cfg.planet.mass_tot != pytest.approx(2.5)
+
+    # Not the schema default either, so a loader that discarded the section
+    # wholesale rather than just the unknown key would fail here.
+    assert attrs.fields(Planet).mass_tot.default == pytest.approx(1.0)
+
+    # Same file, same content: only the entry point decides whether it loads.
+    with pytest.raises(ValueError, match='planet.mass_total'):
+        read_config_object(path)
+
+
+@pytest.mark.unit
+def test_read_config_object_names_the_unknown_key_before_a_bad_value(tmp_path):
+    """An unknown key is reported ahead of a value that fails validation.
+
+    A misspelling is usually what caused the downstream value to be wrong, so
+    reporting the value error first would send the user after a symptom while
+    the cause stays invisible.
+    """
+
+    def _both(raw):
+        raw['planet']['mass_tot'] = -5.0  # invalid: mass must be positive
+        raw['planet']['mass_total'] = 2.5  # unknown key
+
+    def _value_only(raw):
+        raw['planet']['mass_tot'] = -5.0
+
+    with pytest.raises(ValueError, match='planet.mass_total') as excinfo:
+        read_config_object(_write_variant(tmp_path, 'both.toml', _both))
+    # The value complaint is held back until the schema mismatch is resolved.
+    assert 'must be > 0' not in str(excinfo.value)
+
+    # Edge case: with the unknown key removed the negative mass is still caught,
+    # so the ordering above suppresses the message rather than the check.
+    with pytest.raises(ValueError, match='must be > 0'):
+        read_config_object(_write_variant(tmp_path, 'value_only.toml', _value_only))
 
 
 @pytest.mark.unit
