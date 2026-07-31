@@ -73,10 +73,17 @@ CONFIG = PROTEUS_ROOT / 'tests' / 'integration' / 'golden_run.toml'
 REFERENCE = PROTEUS_ROOT / 'tests' / 'integration' / 'golden_run.tsv'
 
 # Floor on how much of the helpfile the comparison has to cover. The
-# configuration writes about 460 columns; a filter or a schema change that
+# configuration writes about 756 columns; a filter or a schema change that
 # started dropping most of them would otherwise leave the comparison passing
-# over almost nothing.
-MIN_COLUMNS_COMPARED = 400
+# over almost nothing, since a reference recorded from the same narrowed run
+# would agree with it.
+#
+# Set to about 86% of what the configuration writes, so the floor still
+# catches a collapse while leaving room for a schema change that retires a
+# handful of columns. It has to be raised whenever the helpfile grows
+# substantially, or it stops discriminating: at 400 it would accept losing
+# nearly half of the columns written today.
+MIN_COLUMNS_COMPARED = 650
 
 # Column perturbed to show the comparison can fail on this data, and by how
 # much. Stated as a size rather than as a multiple of the tolerance, so that
