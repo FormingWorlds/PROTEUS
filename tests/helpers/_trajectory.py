@@ -359,6 +359,17 @@ def write_reference(
     digest = config_digest(config_path) if config_path is not None else ''
     lines = [
         f'{_HEADER_PREFIX} PROTEUS reference trajectory',
+        _HEADER_PREFIX,
+        f'{_HEADER_PREFIX} One line per helpfile column rather than one per timestep, which is',
+        f'{_HEADER_PREFIX} the transpose of the helpfile itself. A quantity that moves then shows',
+        f'{_HEADER_PREFIX} up as a single changed line in a diff, naming itself, instead of',
+        f'{_HEADER_PREFIX} changing every row of the file.',
+        _HEADER_PREFIX,
+        f'{_HEADER_PREFIX} A column holding one value for the whole run is written as "const" and',
+        f'{_HEADER_PREFIX} that value; a column that varies is written as "series" and one value',
+        f'{_HEADER_PREFIX} per row. Most of the helpfile is constant over any given run, so',
+        f'{_HEADER_PREFIX} storing those once is most of the difference in file size.',
+        _HEADER_PREFIX,
         f'{_HEADER_PREFIX} rows = {len(frame)}',
         f'{_HEADER_PREFIX} columns = {len(columns)}',
         f'{_HEADER_PREFIX} config_digest = {digest}',

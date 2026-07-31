@@ -1,4 +1,15 @@
 # PROTEUS reference trajectory
+#
+# One line per helpfile column rather than one per timestep, which is
+# the transpose of the helpfile itself. A quantity that moves then shows
+# up as a single changed line in a diff, naming itself, instead of
+# changing every row of the file.
+#
+# A column holding one value for the whole run is written as "const" and
+# that value; a column that varies is written as "series" and one value
+# per row. Most of the helpfile is constant over any given run, so
+# storing those once is most of the difference in file size.
+#
 # rows = 56
 # columns = 756
 # config_digest = e03eb5415f0067b5c4f8558c32a35159999d56d09377b43321abdb07edb59b3d
