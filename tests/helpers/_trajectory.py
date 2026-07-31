@@ -1,4 +1,23 @@
-# Comparison of run trajectories against a recorded reference
+"""Recording and comparison of run trajectories, for the golden-run check.
+
+A change that is meant to leave behaviour alone can only be shown to have left
+it alone by running the same configuration before and after and finding the
+same numbers. This module holds everything that decides what "the same
+trajectory" means: running a configuration and collecting its helpfile, the
+reference file format, the tolerance model, and the column-wise comparison.
+
+Its one consumer is ``tests/integration/test_integration_golden_run.py``, which
+compares a fixed configuration against the trajectory recorded beside it, and
+records that trajectory again when run with ``--record-golden``.
+
+The tolerance is relative with an absolute term scaled to each column's own
+range, so that "unchanged" keeps one meaning along a column that passes through
+zero. An undefined value is treated as state rather than screened out: two NaNs
+at the same row agree, a NaN against a number does not.
+
+Testing standards: docs/How-to/testing.md,
+docs/Explanations/test_framework.md
+"""
 
 from __future__ import annotations
 
@@ -12,6 +31,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+
+from proteus import Proteus
 
 if TYPE_CHECKING:
     from os import PathLike
@@ -239,13 +260,6 @@ def run_trajectory(
         If the configuration does not carry exactly one ``"auto"`` output path,
         since the run would then write somewhere the caller did not ask for.
     """
-    # Imported here rather than at module scope so that nothing inside the
-    # package has to avoid importing this module. At module scope this would
-    # be a package importing itself through its own top level, which works
-    # today only because no module the top level pulls in reaches here; the
-    # first one that did would fail on a partly initialised package.
-    from proteus import Proteus
-
     output_dir = Path(output_dir)
     text = Path(config_path).read_text()
     # A function replacement, so a directory name containing a backslash escape
@@ -579,3 +593,117 @@ def _sort_key(difference: ColumnDifference) -> float:
     if difference.reason != 'value':
         return float('inf')
     return float(difference.deviation)
+
+
+@dataclass(frozen=True)
+class ReferenceCheck:
+    """Outcome of holding a run against the reference recorded beside it.
+
+    Attributes
+    ----------
+    reproduces : bool
+        Whether the run reproduces the reference.
+    report : str
+        What to tell the reader, whether it reproduced or not.
+    comparison : TrajectoryComparison or None
+        The column-by-column comparison, where one was made. ``None`` when the
+        reference is missing or belongs to another configuration, since
+        neither leaves anything worth comparing against.
+    """
+
+    reproduces: bool
+    report: str
+    comparison: TrajectoryComparison | None = None
+
+
+def check_against_reference(
+    frame: pd.DataFrame,
+    reference_path: str | PathLike,
+    config_path: str | PathLike,
+) -> ReferenceCheck:
+    """Hold a trajectory against a recorded reference and say what happened.
+
+    Parameters
+    ----------
+    frame : pandas.DataFrame
+        Trajectory the run produced.
+    reference_path : str or path-like
+        Reference file to compare against.
+    config_path : str or path-like
+        Configuration the run was made from.
+
+    Returns
+    -------
+    ReferenceCheck
+        Whether the run reproduced the reference, and the text describing it.
+
+    Notes
+    -----
+    A reference recorded from a different configuration is reported as that,
+    on its own, ahead of the columns it makes differ. Such a reference explains
+    any number of differing columns, and a reader who meets the column list
+    first will look for the cause in the code rather than in the configuration.
+    """
+    reference_path = Path(reference_path)
+    if not reference_path.is_file():
+        return ReferenceCheck(
+            reproduces=False,
+            report=(
+                f'no reference trajectory at {reference_path}; record one by running '
+                'this test with --record-golden'
+            ),
+        )
+
+    stored = read_reference(reference_path)
+    if stored.config_digest != config_digest(config_path):
+        return ReferenceCheck(
+            reproduces=False,
+            report=(
+                f'{reference_path.name} was recorded from a different '
+                f'{Path(config_path).name} than the one committed beside it; record it '
+                'again with --record-golden, in the commit that changed the '
+                'configuration'
+            ),
+        )
+
+    comparison = compare_trajectories(stored.frame, frame)
+    return ReferenceCheck(
+        reproduces=comparison.agrees,
+        report=comparison.report(),
+        comparison=comparison,
+    )
+
+
+def record_reference(
+    frame: pd.DataFrame,
+    reference_path: str | PathLike,
+    config_path: str | PathLike,
+) -> str:
+    """Record a trajectory as the reference, and say what that changed.
+
+    Parameters
+    ----------
+    frame : pandas.DataFrame
+        Trajectory to record.
+    reference_path : str or path-like
+        Reference file to write.
+    config_path : str or path-like
+        Configuration the trajectory was produced from, whose digest is stored
+        alongside it.
+
+    Returns
+    -------
+    str
+        What was written, and how it differs from the reference it replaced.
+        Recording is how a deliberate change to the trajectory is accepted, so
+        it states what it accepted rather than rewriting the file silently.
+    """
+    reference_path = Path(reference_path)
+    previous = read_reference(reference_path) if reference_path.is_file() else None
+
+    write_reference(frame, reference_path, config_path=config_path)
+    lines = [f'wrote {reference_path} ({len(frame)} rows)']
+    if previous is not None:
+        lines.append('against the reference it replaces:')
+        lines.append(compare_trajectories(previous.frame, frame).report())
+    return '\n'.join(lines)

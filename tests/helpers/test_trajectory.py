@@ -1,4 +1,4 @@
-"""Unit tests for trajectory comparison in `proteus.utils.trajectory`.
+"""Unit tests for trajectory comparison in `tests/helpers/_trajectory.py`.
 
 The module records a run's helpfile trajectory and compares a later run
 against it, which is how a change that is meant to leave behaviour untouched
@@ -23,6 +23,11 @@ Contract clauses exercised:
   is exactly what the comparison exists to catch.
 - A column that appears or disappears is reported, as is a run of a different
   length, since neither can be judged value by value.
+- A run is held to the reference only when that reference belongs to the
+  configuration the run was made from, and recording one states what it
+  changed rather than rewriting the file silently.
+- The committed reference belongs to the committed configuration, and records
+  a run that evolves rather than one that sits at its initial condition.
 
 See also:
 - docs/How-to/testing.md
@@ -34,22 +39,39 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import _trajectory
 import numpy as np
 import pandas as pd
 import pytest
-
-from proteus.utils.trajectory import (
+from _trajectory import (
     DEFAULT_ATOL_SCALE,
     DEFAULT_RTOL,
     ReferenceFormatError,
+    check_against_reference,
     compare_trajectories,
     config_digest,
     read_reference,
+    record_reference,
     run_trajectory,
     write_reference,
 )
+from helpers import PROTEUS_ROOT
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+# The configuration and reference the golden-run check compares, read here so
+# that a configuration edited without recording the trajectory again, or a
+# reference that has lost its discriminating power, is caught on every pull
+# request rather than waiting for the nightly run that produces a trajectory.
+GOLDEN_CONFIG = PROTEUS_ROOT / 'tests' / 'integration' / 'golden_run.toml'
+GOLDEN_REFERENCE = PROTEUS_ROOT / 'tests' / 'integration' / 'golden_run.tsv'
+
+# Floor on how many recorded columns move over the run. A column that holds its
+# initial value throughout still catches a change that disturbs it, but it
+# cannot discriminate between two trajectories, so this is the part of the
+# helpfile that does the work. The recorded run moves about a hundred; with
+# escape switched off it would move about twenty.
+MIN_COLUMNS_VARYING = 80
 
 
 def _frame(**columns) -> pd.DataFrame:
@@ -680,7 +702,6 @@ def _fake_proteus(monkeypatch, seen, frame, *, output, fails_in=None):
     running, since those leave the caller with different amounts of the
     object to clean up after.
     """
-    import proteus
 
     class FakeProteus:
         def __init__(self, *, config_path):
@@ -701,7 +722,9 @@ def _fake_proteus(monkeypatch, seen, frame, *, output, fails_in=None):
             if fails_in == 'start':
                 raise RuntimeError('the run failed')
 
-    monkeypatch.setattr(proteus, 'Proteus', FakeProteus)
+    # Patched on the module under test rather than on the package, since that
+    # is where the name the helper calls is bound.
+    monkeypatch.setattr(_trajectory, 'Proteus', FakeProteus)
 
 
 def test_run_trajectory_redirects_the_output_and_returns_the_trajectory(tmp_path, monkeypatch):
@@ -851,3 +874,314 @@ def test_run_trajectory_keeps_the_output_when_it_is_also_the_scratch_directory(
     )
     assert shared.is_dir(), 'the output directory itself was removed'
     pd.testing.assert_frame_equal(returned, frame)
+
+
+def _cooling_trajectory(t_magma) -> pd.DataFrame:
+    """Build a short trajectory carrying one quantity that moves."""
+    return pd.DataFrame(
+        {
+            'T_magma': np.asarray(t_magma, dtype=float),
+            'M_planet': np.full(len(t_magma), 5.972e24),
+        }
+    )
+
+
+def test_a_run_is_held_to_the_reference_only_while_the_trajectory_holds(tmp_path):
+    """The check distinguishes a tree that changed nothing from one that did.
+
+    Contract clause: this is what a refactor is checked with, so it has to
+    separate a run that reproduced the reference from one that did not, and
+    name the column that moved when it did.
+
+    Verifies:
+    - An unchanged trajectory reproduces the reference and reports that
+      everything agreed.
+    - A trajectory moved by one part in 1e3 does not, and names the column
+      that moved. Pinned from both sides, since a check that always passed and
+      one that always failed would each satisfy only one half.
+    - The reference file is left untouched either way, so a failing check does
+      not quietly become a recording.
+    """
+    reference = tmp_path / 'reference.tsv'
+    config = tmp_path / 'golden.toml'
+    config.write_text('mass_tot = 1.0\n')
+    recorded = _cooling_trajectory([3000.0, 2800.0, 2600.0])
+    write_reference(recorded, reference, config_path=config)
+    stored_bytes = reference.read_bytes()
+
+    held = check_against_reference(recorded, reference, config)
+    assert held.reproduces, held.report
+    assert 'reproduce the reference' in held.report
+
+    moved = check_against_reference(
+        _cooling_trajectory([3000.0, 2800.0, 2600.0 * 1.001]), reference, config
+    )
+    assert not moved.reproduces
+    assert 'T_magma' in moved.report
+    assert reference.read_bytes() == stored_bytes, 'a comparison rewrote the reference'
+
+
+def test_a_reference_from_another_configuration_is_named_as_such(tmp_path):
+    """A reference taken from a different configuration is reported as that.
+
+    Contract clause: a configuration edited without recording the trajectory
+    again makes every dependent column differ, and reporting those columns
+    instead of the cause sends the reader looking in the code for a change
+    that is in the configuration.
+
+    Verifies:
+    - The check fails, and says the reference came from a different
+      configuration.
+    - It says so instead of listing columns, so the cause is what the reader
+      meets first, and it carries no comparison to be read as the problem.
+    """
+    reference = tmp_path / 'reference.tsv'
+    recorded = _cooling_trajectory([3000.0, 2800.0, 2600.0])
+    other_config = tmp_path / 'other.toml'
+    other_config.write_text('mass_tot = 2.0\n')
+    write_reference(recorded, reference, config_path=other_config)
+
+    config = tmp_path / 'golden.toml'
+    config.write_text('mass_tot = 1.0\n')
+
+    check = check_against_reference(recorded, reference, config)
+    assert not check.reproduces
+    assert 'recorded from a different' in check.report
+    assert 'reproduce the reference' not in check.report, (
+        'the comparison was reported alongside the configuration mismatch, which '
+        'invites the reader to treat the columns as the problem'
+    )
+    assert check.comparison is None, (
+        'a comparison was carried alongside a reference that cannot be compared against'
+    )
+
+
+def test_a_missing_reference_says_so_rather_than_passing(tmp_path):
+    """A check against a reference that does not exist explains itself.
+
+    Contract clause: the first use of the check is on a tree that has no
+    reference yet, and a bare failure there reads as a broken trajectory
+    rather than as a missing file.
+
+    Verifies:
+    - The check does not reproduce, so it cannot pass by having nothing to
+      compare against.
+    - The message names the missing path and how to write it.
+    """
+    config = tmp_path / 'golden.toml'
+    config.write_text('mass_tot = 1.0\n')
+    missing = tmp_path / 'absent.tsv'
+
+    check = check_against_reference(_cooling_trajectory([3000.0, 2800.0]), missing, config)
+
+    assert not check.reproduces
+    assert str(missing) in check.report
+    assert '--record-golden' in check.report
+    assert check.comparison is None
+
+
+def test_recording_overwrites_the_reference_and_states_what_moved(tmp_path):
+    """Recording replaces the reference and reports the change it makes.
+
+    Contract clause: recording is how a deliberate change to the trajectory is
+    accepted, so it has to say what it accepted rather than silently rewriting
+    the file.
+
+    Verifies:
+    - The new trajectory is on disk afterwards and reads back as what the run
+      produced.
+    - The column that moved is named against the reference being replaced,
+      and a column that held still is not.
+    - Recording where no reference exists yet writes one and reports no
+      comparison, since there is nothing to compare against.
+    """
+    reference = tmp_path / 'reference.tsv'
+    config = tmp_path / 'golden.toml'
+    config.write_text('mass_tot = 1.0\n')
+
+    first = record_reference(_cooling_trajectory([3000.0, 2800.0, 2600.0]), reference, config)
+    assert 'wrote' in first
+    assert 'replaces' not in first, 'a first recording compared against nothing'
+
+    moved = _cooling_trajectory([3000.0, 2800.0, 2500.0])
+    second = record_reference(moved, reference, config)
+    assert 'replaces' in second
+    assert 'T_magma' in second
+    assert 'M_planet' not in second, 'a column that held still was reported as moved'
+
+    np.testing.assert_array_equal(
+        read_reference(reference).frame['T_magma'].to_numpy(),
+        moved['T_magma'].to_numpy(),
+        err_msg='the reference on disk is not the trajectory that was recorded',
+    )
+
+
+def _count_varying(frame: pd.DataFrame) -> int:
+    """Count the columns of ``frame`` that do not hold one value throughout.
+
+    Counted against the column's first value rather than by comparing its
+    extremes, because a column that is undefined throughout has undefined
+    extremes and an undefined value does not equal itself, which would report
+    it as varying. That is backwards for a count of how much of the helpfile
+    can discriminate one trajectory from another.
+    """
+    return sum(
+        1
+        for column in frame.columns
+        if not np.array_equal(
+            frame[column].to_numpy(),
+            np.full(len(frame), frame[column].to_numpy()[0]),
+            equal_nan=True,
+        )
+    )
+
+
+def test_a_column_that_is_never_defined_does_not_count_as_varying():
+    """An undefined column carries no trajectory and is not counted as one.
+
+    Contract clause: the count of varying columns is what certifies that the
+    recorded run discriminates between trajectories, so a column that holds no
+    information must not inflate it. An undefined value does not equal itself,
+    so the obvious way of writing this count reports such a column as the most
+    varying thing in the file.
+
+    Verifies:
+    - A column that is undefined at every row is counted as constant.
+    - A column that becomes undefined part way through is counted as varying,
+      since where it became undefined is itself part of the trajectory.
+    - An ordinary constant and an ordinary series are counted as before, so
+      the undefined case has not been special-cased into a wrong answer.
+    """
+    frame = pd.DataFrame(
+        {
+            'never_defined': np.full(4, np.nan),
+            'becomes_undefined': np.asarray([1.0, 2.0, np.nan, 4.0]),
+            'constant': np.full(4, 7.0),
+            'series': np.asarray([1.0, 2.0, 3.0, 4.0]),
+        }
+    )
+    assert _count_varying(frame) == 2, (
+        'expected the two columns that move to be counted, and the undefined and '
+        'constant ones to be left out'
+    )
+    assert _count_varying(frame[['never_defined']]) == 0
+    assert _count_varying(frame[['becomes_undefined']]) == 1
+
+
+def test_the_committed_reference_is_worth_comparing_against():
+    """The recorded run evolves rather than sitting at its initial condition.
+
+    Physical scenario: the fixed configuration behind the golden-run check,
+    examined for whether the trajectory recorded from it covers a stretch of
+    evolution where quantities are actually moving.
+
+    A comparison against a run that never left its initial state would pass on
+    almost any change to the physics, since there would be nothing in the
+    trajectory for a change to disturb. This holds the recorded run to the
+    regime the configuration was chosen for. It reads the recorded file rather
+    than producing one, so it costs nothing and runs on every pull request.
+
+    Verifies:
+    - The reference belongs to the configuration committed beside it, so a
+      configuration edited without recording the trajectory again is reported
+      here rather than as an unexplained numerical difference in the nightly
+      run.
+    - The mantle crosses its entire melting interval, from wholly molten to
+      wholly solid, so the trajectory spans both regimes and the transition
+      between them rather than an endpoint where the melt fraction is pinned.
+    - The magma ocean cools monotonically and the mantle never remelts.
+      Nothing in this configuration can heat the interior, so a single warming
+      or remelting step anywhere is unphysical.
+    - Escape draws the volatile inventory down over the run, which is what
+      puts the volatile columns in motion; with escape off they hold their
+      initial values and four fifths of the helpfile is constants.
+    - A large part of the helpfile moves over the run, so the comparison rests
+      on quantities that discriminate between trajectories.
+    """
+    reference = read_reference(GOLDEN_REFERENCE)
+    assert reference.config_digest == config_digest(GOLDEN_CONFIG), (
+        f'{GOLDEN_REFERENCE.name} was recorded from a different '
+        f'{GOLDEN_CONFIG.name} than the one committed beside it. Record it again '
+        'with --record-golden, in the commit that changed the configuration.'
+    )
+    stored = reference.frame
+
+    phi = stored['Phi_global'].to_numpy()
+    assert phi[0] == pytest.approx(1.0), (
+        f'the run starts at a melt fraction of {phi[0]:.4f} rather than a wholly '
+        'molten mantle, so it does not cover the upper end of the melting interval'
+    )
+    assert phi[-1] == pytest.approx(0.0), (
+        f'the run ends at a melt fraction of {phi[-1]:.4f} rather than a wholly '
+        'solid mantle, so it stops short of solidification'
+    )
+    mushy = np.count_nonzero((phi > 0.0) & (phi < 1.0))
+    assert mushy >= 10, (
+        f'only {mushy} rows sit between a molten and a solid mantle, so the '
+        'trajectory crosses the melting interval too fast to be discriminating there'
+    )
+
+    # The initialisation loops write several rows at t = 0 before the first
+    # step is taken, holding the interior at its initial condition, so the
+    # cooling checks below start where the evolution does.
+    times = stored['Time'].to_numpy()
+    first_evolution = int(np.argmax(times > 0.0))
+    assert times[first_evolution] > 0.0, 'the recorded run never left t = 0'
+
+    # Strictly greater than zero, matching the remelting and escape checks
+    # below: what no heat source in this configuration can produce is a rise,
+    # and a step that holds a temperature is not one.
+    t_magma = stored['T_magma'].to_numpy()[first_evolution:]
+    warming = np.flatnonzero(np.diff(t_magma) > 0.0)
+    assert warming.size == 0, (
+        f'the magma ocean warms at step(s) {warming.tolist()}; nothing in '
+        'this configuration can heat the interior'
+    )
+    remelting = np.flatnonzero(np.diff(phi[first_evolution:]) > 0.0)
+    assert remelting.size == 0, (
+        f'the mantle remelts at step(s) {remelting.tolist()}, which no heat source '
+        'in this configuration can produce'
+    )
+
+    # Escape is what puts the volatile inventory in motion. Hydrogen is the
+    # discriminating element: it carries the largest budget, so a drawdown
+    # visible in it is well clear of the rounding in the recorded values.
+    hydrogen = stored['H_kg_total'].to_numpy()
+    assert hydrogen[-1] < hydrogen[0], (
+        'the hydrogen inventory does not fall over the run, so escape is not '
+        'acting and the volatile columns are constants'
+    )
+    escaped = stored['esc_kg_cumulative'].to_numpy()
+    assert escaped[-1] > 0.0, 'no mass escaped over the run'
+    assert np.all(np.diff(escaped) >= 0.0), 'cumulative escaped mass is not monotonic'
+
+    varying = _count_varying(stored)
+    assert varying >= MIN_COLUMNS_VARYING, (
+        f'only {varying} of {len(stored.columns)} recorded columns move over the run, '
+        f'below the {MIN_COLUMNS_VARYING} the configuration is chosen to put in '
+        'motion; the comparison would rest mostly on constants'
+    )
+
+
+def test_the_record_option_is_registered_and_defaults_to_comparing(pytestconfig):
+    """Recording happens only when it is asked for.
+
+    Contract clause: the golden-run check compares by default and records only
+    under ``--record-golden``. If the option were dropped from the suite's
+    configuration, the documented way of accepting a deliberate change to the
+    trajectory would stop existing; if it defaulted to recording, the nightly
+    run would overwrite the reference with whatever it produced and the check
+    would never fail again.
+
+    Verifies:
+    - The option is registered, so asking for it does not raise.
+    - It is off unless asked for, which is what keeps the default path a
+      comparison rather than a recording.
+    - An option that was never registered does raise, so the assertion above
+      rests on the registration rather than on ``getoption`` returning a
+      falsy value for anything it is handed.
+    """
+    assert pytestconfig.getoption('--record-golden') is False
+
+    with pytest.raises(ValueError):
+        pytestconfig.getoption('--record-golden-nonexistent')

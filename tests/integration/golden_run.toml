@@ -19,8 +19,9 @@
 # the intended reading: the default is part of the behaviour under test.
 #
 # Changing this file changes the trajectory, so the reference has to be
-# recorded again in the same commit. tools/record_golden_run.py does that, and
-# the comparison refuses a reference recorded against different text.
+# recorded again in the same commit. Running the golden-run test with
+# --record-golden does that, and the comparison refuses a reference recorded
+# against different text.
 config_version = "3.0"
 
 [params]

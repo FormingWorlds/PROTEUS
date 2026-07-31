@@ -200,7 +200,7 @@ restarted follows the same trajectory as one that ran straight through, which
 is the strongest thing that can be said about resuming. The golden-run test
 asserts that a fixed configuration follows the trajectory recorded beside it,
 which is what makes a refactor's claim to have changed nothing checkable. The
-second is built on the comparison in `proteus.utils.trajectory`; the first
+second is built on the comparison in `tests/helpers/_trajectory.py`; the first
 compares its two runs directly, since both are in hand at once and neither has
 to survive a trip through a file.
 
@@ -211,7 +211,7 @@ Three properties make such a comparison worth having:
   column catches the ones nobody did.
 - **Undefined values are state, not noise.** Screening non-finite values out
   before comparing skips precisely the columns a change corrupted into NaN.
-  In `proteus.utils.trajectory`, two NaNs at the same position agree and a NaN
+  In `tests/helpers/_trajectory.py`, two NaNs at the same position agree and a NaN
   against a number does not. The resume test screens its reference side
   instead, which is sound there for a narrower reason: it compares a resumed
   run against an uninterrupted one, so screening the uninterrupted side leaves

@@ -12,7 +12,7 @@ recorded one.
 Contract clauses exercised:
 
 - The run reproduces the recorded trajectory: same number of rows, and every
-  column agreeing within the tolerance in ``proteus.utils.trajectory``.
+  column agreeing within the tolerance in ``tests/helpers/_trajectory.py``.
 - The recorded trajectory was taken from the configuration in this directory,
   not from an earlier version of it.
 - The comparison covers the whole helpfile rather than a handful of columns,
@@ -20,7 +20,7 @@ Contract clauses exercised:
 
 That the recorded trajectory is worth comparing against at all, meaning that
 it belongs to this configuration and covers a stretch where quantities are
-moving, is checked in ``tests/tools/test_record_golden_run.py``. Reading the
+moving, is checked in ``tests/helpers/test_trajectory.py``. Reading the
 recorded file needs no run, so those checks sit in the tier that runs on every
 pull request rather than waiting for this one.
 
@@ -42,9 +42,17 @@ fixes what this file can and cannot show:
   tolerance into the trajectory, at a level the comparison resolves. The
   configuration says where it avoids one.
 
-Recording the trajectory again: ``python tools/record_golden_run.py``. Do that
-in the same commit as whatever moved it, so the diff of ``golden_run.tsv``
-shows which quantities changed and by how much.
+While working on a change, running this test reports which quantities moved,
+at which row, and by how much relative to the tolerance::
+
+    pytest tests/integration/test_integration_golden_run.py
+
+Recording the trajectory again, once a change to it is the intended outcome::
+
+    pytest tests/integration/test_integration_golden_run.py --record-golden
+
+Do that in the same commit as whatever moved it, so the diff of
+``golden_run.tsv`` shows which quantities changed and by how much.
 
 See also:
 - docs/How-to/testing.md
@@ -54,14 +62,8 @@ See also:
 from __future__ import annotations
 
 import pytest
+from _trajectory import check_against_reference, record_reference, run_trajectory
 from helpers import PROTEUS_ROOT
-
-from proteus.utils.trajectory import (
-    compare_trajectories,
-    config_digest,
-    read_reference,
-    run_trajectory,
-)
 
 # Integration tier. The run itself takes a few seconds on the dummy backends;
 # the 300 s ceiling leaves room for slower CI runners.
@@ -93,7 +95,7 @@ GUARD_COLUMN = 'T_magma'
 GUARD_RELATIVE_SIZE = 1.0e-5
 
 
-def test_fixed_run_reproduces_the_recorded_trajectory(tmp_path):
+def test_fixed_run_reproduces_the_recorded_trajectory(tmp_path, request):
     """The fixed configuration produces the trajectory recorded beside it.
 
     Physical scenario: a magma-ocean planet on all-dummy backends is evolved
@@ -113,25 +115,28 @@ def test_fixed_run_reproduces_the_recorded_trajectory(tmp_path):
       one part in 1e5, so a passing comparison is evidence rather than an
       artefact of comparing something to itself, and the tolerance cannot be
       loosened past that without this failing.
+
+    Under ``--record-golden`` the run is recorded as the new reference and
+    nothing is compared, so the test reports itself as skipped rather than as
+    having held the run to anything.
     """
-    stored = read_reference(REFERENCE)
-    assert stored.config_digest == config_digest(CONFIG), (
-        f'{REFERENCE.name} was recorded from a different {CONFIG.name} than the one '
-        'in this directory. Record it again with tools/record_golden_run.py, in the '
-        'commit that changed the configuration.'
-    )
-
     frame = run_trajectory(CONFIG, tmp_path / 'golden')
-    comparison = compare_trajectories(stored.frame, frame)
 
-    assert comparison.agrees, (
-        'the run no longer reproduces the recorded trajectory.\n'
-        f'{comparison.report()}\n'
+    if request.config.getoption('--record-golden'):
+        # Reported through the skip rather than printed, so that what moved is
+        # visible under the suite's ordinary output capture. A print here is
+        # swallowed unless the caller also passes -s, which would leave a
+        # recording that says nothing about what it accepted.
+        pytest.skip(record_reference(frame, REFERENCE, CONFIG))
+
+    check = check_against_reference(frame, REFERENCE, CONFIG)
+    assert check.reproduces, (
+        f'the run no longer reproduces the recorded trajectory.\n{check.report}\n'
         'If the change was intended, record the trajectory again with '
-        'tools/record_golden_run.py in the same commit, so the diff shows what moved.'
+        '--record-golden in the same commit, so the diff shows what moved.'
     )
-    assert len(comparison.compared) >= MIN_COLUMNS_COMPARED, (
-        f'only {len(comparison.compared)} columns were compared, below the '
+    assert len(check.comparison.compared) >= MIN_COLUMNS_COMPARED, (
+        f'only {len(check.comparison.compared)} columns were compared, below the '
         f'{MIN_COLUMNS_COMPARED} this configuration writes; the comparison is no '
         'longer covering the helpfile'
     )
@@ -141,12 +146,16 @@ def test_fixed_run_reproduces_the_recorded_trajectory(tmp_path):
     # than any behavioural change and has to be reported.
     perturbed = frame.copy()
     perturbed[GUARD_COLUMN] = perturbed[GUARD_COLUMN] * (1.0 + GUARD_RELATIVE_SIZE)
-    guard = compare_trajectories(stored.frame, perturbed)
-    assert not guard.agrees, (
+    guard = check_against_reference(perturbed, REFERENCE, CONFIG)
+    assert not guard.reproduces, (
         f'moving {GUARD_COLUMN} by one part in {1.0 / GUARD_RELATIVE_SIZE:.0e} was not '
         'reported, so the comparison above cannot fail on this trajectory'
     )
-    assert [difference.column for difference in guard.differences] == [GUARD_COLUMN], (
+    assert guard.comparison is not None, (
+        f'the perturbed run was refused before any column was compared: {guard.report}'
+    )
+    guard_columns = [difference.column for difference in guard.comparison.differences]
+    assert guard_columns == [GUARD_COLUMN], (
         'perturbing one column was reported on more than that column, so the '
         'comparison is not localising a difference to where it happened'
     )

@@ -209,12 +209,11 @@ While working on a refactor, compare the working tree against the recorded
 trajectory:
 
 ```bash
-python tools/record_golden_run.py --dry-run
+pytest tests/integration/test_integration_golden_run.py
 ```
 
-It exits non-zero and names the columns that moved, the row where each moved
-most, and by how much relative to the tolerance. The same comparison runs
-nightly as `tests/integration/test_integration_golden_run.py`.
+It fails and names the columns that moved, the row where each moved most, and
+by how much relative to the tolerance. The same check runs nightly.
 
 How small a change it resolves, measured by scaling the cooling rate in
 `src/proteus/interior_energetics/dummy.py` by `1 + eps` and running the
@@ -244,10 +243,10 @@ A change to the physics, to the coupling loop or to the configuration moves
 the trajectory, and the reference then has to be recorded again:
 
 ```bash
-python tools/record_golden_run.py
+pytest tests/integration/test_integration_golden_run.py --record-golden
 ```
 
-Do that in the same commit as the change that moved it. The command prints
+Do that in the same commit as the change that moved it. Recording prints
 what moved against the reference it replaces, and the diff of `golden_run.tsv`
 is the record of which quantities changed and by how much, so a reviewer sees
 the behavioural consequence of the change rather than only its code.
