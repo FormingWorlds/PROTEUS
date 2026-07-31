@@ -593,6 +593,10 @@ class Interior_t:
         # escaped from.
         self.dt_hysteresis_remaining = 0
 
+        # True when the most recent call to next_step() had its step size
+        # clamped. For example, by `_estimate_bolscale()`.
+        self.timestep_clamped = False
+
         # Lookup data for SPIDER (P-S tables, used by E_th and
         # melt-volume bookkeeping). Each is a (nS, nP, 3) array, the
         # third channel being the SI value of the quantity.

@@ -810,6 +810,7 @@ def GetHelpfileKeys():
         'F_sct',            # outgoing shortwave radiation [W m-2]
         'F_ins',            # incoming instellation flux [W m-2]
         'F_xuv',            # incoming XUV radiation flux [W m-2]
+        'bol_scale',        # bolometric scaling factor [1]
         'tau_atm_TOA',      # optical depth at TOA, at ref wavelength [1]
         'tau_atm_surface',  # optical depth at surface, at ref wavelength [1]
         'atm_Ra_max',      # maximum Rayleigh number across levels [1]

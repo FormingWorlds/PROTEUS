@@ -132,6 +132,12 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     atm_H = const_R * T_surf_atm / (hf_row['atm_kg_per_mol'] * hf_row['gravity'])
     R_obs = hf_row['R_int'] + atm_H * config.atmos_clim.dummy.height_factor
 
+    # Bond albedo - handle zero instellation case to avoid divide by zero
+    if fluxes['fl_D_SW'] <= 0.0:
+        bond_albedo = 0.0
+    else:
+        bond_albedo = fluxes['fl_U_SW'] / fluxes['fl_D_SW']
+
     # Return result
     log.info('    T_surf     =  %.3e  K' % T_surf_atm)
     log.info('    F_atm      =  %.3e  W m-2' % F_atm_lim)
@@ -145,7 +151,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     output['F_olr'] = fluxes['fl_U_LW']  # OLR
     output['F_sct'] = fluxes['fl_U_SW']  # Scattered SW flux
     output['R_obs'] = R_obs
-    output['albedo'] = fluxes['fl_U_SW'] / fluxes['fl_D_SW']
+    output['albedo'] = bond_albedo
     output['p_xuv'] = hf_row['P_surf']
     output['R_xuv'] = R_obs
     output['p_obs'] = hf_row['P_surf']

@@ -17,6 +17,10 @@ See also [Model description](../../Explanations/model.md#stellar-evolution-mors)
 | `mass` | float | `1.0` | Stellar mass \[M$_\odot$] |
 | `age_ini` | float | `0.1` | Model start age \[Gyr] |
 | `bol_scale` | float | `1.0` | Bolometric luminosity scaling factor |
+| `bol_scale_start` | float or none | `none` | Stellar age from which `bol_scale` is applied \[Gyr]; `none` to disable, in which case `bol_scale` should be set to unity |
+| `bol_scale_duration` | float | `0.0` | Duration for which `bol_scale` is applied \[Gyr], starting at `bol_scale_start` |
+
+`bol_scale` only takes effect while the model's stellar age lies within the start-plus-duration interval. So, all three options should be set together. The scaling factor is applied uniformly to all stellar flux terms.
 
 ### MORS stellar tracks `[star.mors]`
 

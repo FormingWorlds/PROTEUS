@@ -287,9 +287,13 @@ def update_bolometry(hf_row: dict):
 
     # Eclipse depth
     #    Accounting for fact that F_ins is scaled to TOA, not to stellar surface.
-    hf_row['eclipse_depth'] = ((hf_row['F_olr'] + hf_row['F_sct']) / hf_row['F_ins']) * (
-        hf_row['R_obs'] / hf_row['separation']
-    ) ** 2.0
+    #    Also, F_ins can be zero when bol_scale is being appled.
+    if hf_row['F_ins'] == 0.0:
+        hf_row['eclipse_depth'] = 0.0
+    else:
+        hf_row['eclipse_depth'] = ((hf_row['F_olr'] + hf_row['F_sct']) / hf_row['F_ins']) * (
+            hf_row['R_obs'] / hf_row['separation']
+        ) ** 2.0
 
 
 def ShallowMixedOceanLayer(hf_cur: dict, hf_pre: dict):
