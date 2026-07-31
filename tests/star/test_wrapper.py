@@ -320,6 +320,20 @@ def test_update_instellation_window_boundaries_are_inclusive():
 
 
 @pytest.mark.physics_invariant
+def test_update_instellation_disabled_when_bol_scale_start_is_none():
+    """bol_scale_start=None disables scaling regardless of bol_scale.
+
+    Enabling condition (not None) requires bol_scale_start to be set.
+    """
+    config = _dummy_config_for_bolscale(
+        bol_scale=2.0, bol_scale_start=None, bol_scale_duration=0.0
+    )
+    hf_row = _run_update_instellation_dummy(config, age_star=0.7e9)
+    assert hf_row['F_ins'] == pytest.approx(1361.0, rel=1e-12)
+    assert hf_row['bol_scale'] == pytest.approx(1.0)
+
+
+@pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
 def test_update_equilibrium_temperature_pins_stefan_boltzmann_closed_form():
     """T_eqm = ((1 - albedo) * S * s0_factor / sigma) ** 0.25.
