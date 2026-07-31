@@ -2581,7 +2581,7 @@ class AragogRunner:
             correction). Stored alongside Aragog's adiabatic temp_s so
             resume can initialize AGNI at the correct T_surf.
         """
-        fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
+        fpath = os.path.join(output_dir, 'data', '%.0f_int.nc' % time)
         ds = nc.Dataset(fpath, mode='w')
         ds.description = 'Aragog entropy solver output'
 
@@ -2653,7 +2653,9 @@ def earlier_snapshot_exists(output_dir: str, time: float) -> bool:
     bool
         Whether at least one older snapshot exists.
     """
-    cutoff = int(time)
+    # Compared against the stems on disk, so it has to be derived the way the
+    # writer derives them: rounded, not truncated.
+    cutoff = int(round(float(time)))
     for fpath in glob.glob(os.path.join(output_dir, 'data', '*_int.nc')):
         stem = os.path.basename(fpath).split('_int.nc')[0]
         try:
@@ -2683,7 +2685,7 @@ def discard_snapshot(output_dir: str, time: float) -> bool:
     bool
         Whether a snapshot was found and removed.
     """
-    fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
+    fpath = os.path.join(output_dir, 'data', '%.0f_int.nc' % time)
     if not os.path.exists(fpath):
         return False
     os.remove(fpath)
@@ -2692,7 +2694,7 @@ def discard_snapshot(output_dir: str, time: float) -> bool:
 
 def read_last_Sfield(output_dir: str, time: float):
     """Read the entropy field from the previous Aragog NetCDF output."""
-    fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
+    fpath = os.path.join(output_dir, 'data', '%.0f_int.nc' % time)
     ds = nc.Dataset(fpath)
     try:
         S_stag = np.array(ds['entropy_s'][:])
@@ -2724,4 +2726,4 @@ def read_ncdf(fpath: str):
 
 
 def read_ncdfs(output_dir: str, times: list):
-    return [read_ncdf(os.path.join(output_dir, 'data', '%d_int.nc' % t)) for t in times]
+    return [read_ncdf(os.path.join(output_dir, 'data', '%.0f_int.nc' % t)) for t in times]

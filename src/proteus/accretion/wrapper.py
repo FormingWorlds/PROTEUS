@@ -5,7 +5,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from proteus.utils.constants import AU, M_earth, element_list
+from proteus.utils.constants import AU, M_earth, element_list, vap_element_list
 
 if TYPE_CHECKING:
     from proteus.accretion.common import ImpactEvent
@@ -14,8 +14,11 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 # Rock-forming elements, whose mass grows through the structure solve
-# (mass_tot and the equation of state) rather than the volatile budgets.
-_ROCK_ELEMENTS = ('Si', 'Mg', 'Fe', 'Na')
+# (mass_tot and the equation of state) rather than the volatile budgets. Taken
+# from the element registry's own rock-forming set, which is the same set
+# ``update_planet_mass`` leaves out of M_ele, so the two stay in step when an
+# element is added there.
+_ROCK_ELEMENTS = tuple(vap_element_list)
 
 # Every other tracked element's whole-planet budget is conserved across an
 # impact's mass growth. Derived from the tracked-element registry so an

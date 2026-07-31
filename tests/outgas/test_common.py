@@ -24,7 +24,6 @@ from proteus.utils.constants import element_list, gas_list, noble_gases
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-
 # -----------------------------------------------------------------------
 # Key completeness
 # -----------------------------------------------------------------------
@@ -115,14 +114,25 @@ def test_expected_keys_no_duplicates():
 
 
 def test_expected_keys_contains_scalar_diagnostics():
-    """The scalar diagnostic keys (P_surf, M_atm, atm_kg_per_mol,
-    fO2_shift_IW_derived, O_res) are present.
+    """The scalar diagnostic keys (P_surf, P_vol, P_vap, M_atm,
+    atm_kg_per_mol, fO2_shift_IW_derived, O_res) are present.
 
     These are critical coupling variables between the outgassing
-    solver and the main loop.
+    solver and the main loop. P_vol/P_vap must be listed alongside
+    P_surf so that run_desiccated (which zeroes every expected_keys()
+    entry) resets the volatile/vapour partial-pressure split together
+    with the total, instead of leaving one of the three stale.
     """
     keys = expected_keys()
-    for k in ('P_surf', 'M_atm', 'atm_kg_per_mol', 'fO2_shift_IW_derived', 'O_res'):
+    for k in (
+        'P_surf',
+        'P_vol',
+        'P_vap',
+        'M_atm',
+        'atm_kg_per_mol',
+        'fO2_shift_IW_derived',
+        'O_res',
+    ):
         assert k in keys, f'Missing scalar key: {k}'
     assert len(keys) > len(('P_surf', 'M_atm', 'atm_kg_per_mol'))  # more than just scalars
 
@@ -154,3 +164,28 @@ def test_expected_keys_contains_element_ratio_keys():
         canonical = tuple(sorted([e1, e2]))
         assert canonical not in pairs_seen, f'Duplicate pair: {canonical}'
         pairs_seen.add(canonical)
+
+
+def test_expected_keys_contains_every_atmosphere_mass_column():
+    """The three atmosphere-mass columns are all listed, so a caller that zeroes
+    ``expected_keys()`` empties the atmosphere consistently.
+
+    ``M_atm`` sums every gas species, ``M_vol_atm`` sums the volatiles and noble
+    gases only, and ``M_vaps`` holds the rock vapour. Leaving any of them out
+    lets it go stale against the per-species masses it is derived from, which the
+    runtime mass check reports as a bookkeeping inconsistency. Edge case: the
+    per-species masses these are summed from must be listed too, or zeroing the
+    aggregate alone would produce the mirror-image inconsistency.
+    """
+    keys = expected_keys()
+    for key in ('M_atm', 'M_vol_atm', 'M_vaps'):
+        assert key in keys, f'Missing atmosphere-mass column {key}'
+    # The columns the aggregates are summed from are present, so the aggregate
+    # and its parts can never be zeroed independently.
+    for gas in gas_list:
+        assert f'{gas}_kg_atm' in keys, f'Missing {gas}_kg_atm'
+    # The partial pressures that split P_surf are listed for the same reason.
+    for key in ('P_surf', 'P_vol', 'P_vap'):
+        assert key in keys, f'Missing pressure column {key}'
+    # No duplicates were introduced by adding the aggregates.
+    assert len(keys) == len(set(keys))

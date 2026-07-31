@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.atmos_clim.common import get_oarr_from_parr
-from proteus.utils.constants import gas_list, vap_list, vol_list
+from proteus.utils.constants import vap_list, vol_list, gas_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder
 
 if TYPE_CHECKING:
@@ -140,6 +140,25 @@ def UpdateStateAtm(atm, config: Config, hf_row: dict, tropopause):
     return
 
 
+def write_atmos_ncdf(atm, dirs: dict, time: float):
+    """Write the JANUS atmosphere object to a timestamped NetCDF file.
+
+    Uses the internal `write_ncdf` function inside JANUS.
+
+    Arguments
+    ----------
+        atm : atmos
+            JANUS atmosphere Python object.
+        dirs : dict
+            Dictionary containing paths to directories.
+        time : float
+            Current simulation time (used for timestamping the output file).
+    """
+    nc_fpath = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % time)
+    log.debug(f'Write JANUS atmosphere to {nc_fpath}')
+    atm.write_ncdf(nc_fpath)
+
+
 def RunJANUS(
     atm,
     dirs: dict,
@@ -149,6 +168,7 @@ def RunJANUS(
     write_in_tmp_dir=True,
     search_method=0,
     rtol=1.0e-4,
+    write_data: bool = True,
 ):
     """Run JANUS.
 
@@ -174,6 +194,8 @@ def RunJANUS(
             Root finding method used by JANUS
         rtol : float
             Relative tolerance on solution for root finding method
+        write_data : bool
+            Whether to write the atmosphere NetCDF file this iteration.
     Returns
     ----------
         atm : atmos
@@ -262,9 +284,9 @@ def RunJANUS(
         % (atm.net_flux[-1], atm.net_flux[0], atm.LW_flux_up[0])
     )
 
-    # Save atm data to disk
-    nc_fpath = dirs['output'] + '/data/' + str(int(time)) + '_atm.nc'
-    atm.write_ncdf(nc_fpath)
+    # Save atm data to disk, as NetCDF, if requested
+    if write_data:
+        write_atmos_ncdf(atm, dirs, time)
 
     # Check for NaNs
     if not np.isfinite(atm.net_flux).all():

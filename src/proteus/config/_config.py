@@ -146,6 +146,31 @@ def check_accretion_interior_compatibility(instance, attribute, value):
         )
 
 
+def check_accretion_vapourise_compatibility(instance, attribute, value):
+    """Reject accretion runs that also vapourise rock into the atmosphere.
+
+    The two models keep incompatible books on the rock-forming elements. Rock
+    vapourisation moves rock mass into the atmosphere without debiting it from
+    the interior, which is why those elements are deliberately left out of
+    ``M_ele`` and the whole-planet mass. An impact, in contrast, grows the
+    planet's rock through the structure solve and conserves the per-element
+    volatile budgets across that growth, and it sizes both the atmosphere it
+    strips and the volatiles the impactor delivers from those same per-element
+    columns. Run together, the vapour column would be stripped and delivered as
+    though it were a tracked volatile budget while the mass it stands for is
+    accounted nowhere, so the combination is refused at configuration load.
+    """
+    if instance.accretion.module is not None and instance.outgas.vapourise:
+        raise ValueError(
+            "accretion.module = '"
+            + str(instance.accretion.module)
+            + "' cannot run with outgas.vapourise = true: rock vapour adds "
+            'rock-forming mass to the atmosphere that the whole-planet mass does '
+            'not track, and an impact sizes its atmospheric stripping and volatile '
+            'delivery from budgets that do. Disable one of the two.'
+        )
+
+
 def boreas_requires_atmosphere(instance, attribute, value):
     """BOREAS escape requires a radiative atmosphere (not dummy)."""
     if (instance.escape.module == 'boreas') and (instance.atmos_clim.module == 'dummy'):
@@ -381,6 +406,7 @@ class Config:
             valid_config_version,
             check_module_dependencies,
             check_accretion_interior_compatibility,
+            check_accretion_vapourise_compatibility,
         ),
     )
 

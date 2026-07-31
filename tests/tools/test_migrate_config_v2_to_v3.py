@@ -233,6 +233,12 @@ _REVIEWED_NEUTRAL = frozenset(
         'outgas.calliope.nsolve',
         'outgas.calliope.p_guess_max',
         'outgas.h2_binodal',
+        'outgas.lavatmos.P_melt',
+        'outgas.lavatmos.T_min',
+        'outgas.lavatmos.fO2_buffer_model',
+        'outgas.lavatmos.melt_comp_name',
+        'outgas.lavatmos.xatol',
+        'outgas.vapourise',
         'params.dt.hysteresis_iters',
         'params.dt.hysteresis_sfinc',
         'params.dt.max_growth_factor',
@@ -639,6 +645,44 @@ def test_radius_int_converts_earth_radii_to_metres():
     assert flat['planet.R_int_override'] > 1e6
     # planet.mass_tot is left at the 3.0 default with a warning.
     assert any('radius-specified' in w for w in report.warnings)
+
+
+def test_albedo_lookup_table_is_dropped_with_a_warning():
+    """A 2.0 config whose ``albedo_pl`` names a CSV lookup table migrates to a
+    valid 3.0 config, leaving the field at its default and saying so.
+
+    2.0 accepted either a constant or a path; 3.0 narrowed the field to a float
+    and removed the lookup. Copying the path through would emit a 3.0 config
+    that fails validation, and quietly substituting a number would change the
+    physics without telling the user. Edge case: a numeric ``albedo_pl`` is
+    unaffected and must still be copied verbatim.
+    """
+    v2 = _minimal_spider_v2()
+    v2['atmos_clim']['albedo_pl'] = 'surface_albedos/lookup.csv'
+    flat, report = _translate(v2)
+
+    # The emitted config is valid: the field is absent, so 3.0 supplies its own
+    # default rather than inheriting a string.
+    assert 'atmos_clim.albedo_pl' not in flat
+    # The user is told, by name, what was dropped and what to do about it.
+    albedo_warnings = [w for w in report.warnings if 'albedo_pl' in w]
+    assert len(albedo_warnings) == 1
+    assert 'surface_albedos/lookup.csv' in albedo_warnings[0]
+    assert 'constant' in albedo_warnings[0]
+
+    # Discrimination: a numeric albedo is a different case and must survive
+    # unchanged, so the branch keys on the value type and not on the field name.
+    numeric = _minimal_spider_v2()
+    numeric['atmos_clim']['albedo_pl'] = 0.3
+    flat_numeric, report_numeric = _translate(numeric)
+    assert flat_numeric['atmos_clim.albedo_pl'] == pytest.approx(0.3, rel=1e-12)
+    assert [w for w in report_numeric.warnings if 'albedo_pl' in w] == []
+    # Limit input: zero is a legitimate albedo and must not be confused with
+    # "unset" by the keep filter.
+    zero = _minimal_spider_v2()
+    zero['atmos_clim']['albedo_pl'] = 0.0
+    flat_zero, _ = _translate(zero)
+    assert flat_zero['atmos_clim.albedo_pl'] == pytest.approx(0.0, abs=1e-15)
 
 
 def test_clean_spider_config_warns_only_about_legacy_observe_synthesis():

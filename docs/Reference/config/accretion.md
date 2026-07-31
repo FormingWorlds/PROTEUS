@@ -35,6 +35,13 @@ condition to the whole mantle, so how molten the result is follows that
 condition. Only `liquidus_super` is fully molten for any planet mass and melting
 curve.
 
+Accretion requires an interior module that can be re-melted, so
+`interior_energetics.module = "spider"` is refused at configuration load. It is
+also refused together with `outgas.vapourise = true`: rock vapour adds
+rock-forming mass to the atmosphere that the whole-planet mass does not track,
+while an impact sizes its atmospheric stripping and its volatile delivery from
+budgets that are tracked, and the two accountings are not reconciled.
+
 ### Morrigan `[accretion.morrigan]`
 
 Evolves a system of embryos after disk dispersal with the semi-analytical Monte

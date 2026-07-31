@@ -304,13 +304,16 @@ def test_reference_config_declares_the_accretion_section():
         )
 
 
-def _compat_instance(accretion_module, interior_module, temperature_mode='liquidus_super'):
-    """Duck-typed config instance the interior-compatibility validator reads."""
+def _compat_instance(
+    accretion_module, interior_module, temperature_mode='liquidus_super', vapourise=False
+):
+    """Duck-typed config instance the compatibility validators read."""
     from types import SimpleNamespace
 
     return SimpleNamespace(
         accretion=SimpleNamespace(module=accretion_module),
         interior_energetics=SimpleNamespace(module=interior_module),
+        outgas=SimpleNamespace(vapourise=vapourise),
         planet=SimpleNamespace(temperature_mode=temperature_mode),
     )
 
@@ -341,6 +344,38 @@ def test_accretion_on_spider_is_refused_at_config_load():
         )
     # No accretion: SPIDER is fine, the check does not fire.
     check_accretion_interior_compatibility(_compat_instance(None, 'spider'), None, None)
+
+
+@pytest.mark.unit
+def test_accretion_with_rock_vapour_is_refused_at_config_load():
+    """An accretion run that also vapourises rock is rejected before it starts.
+
+    Rock vapour puts rock-forming mass into the atmosphere that the
+    whole-planet mass deliberately does not track, while an impact sizes the
+    atmosphere it strips and the volatiles it delivers from budgets that are
+    tracked. The two accountings are not reconciled, so the pairing must fail
+    at configuration load rather than produce a mass budget neither model owns.
+    Each feature on its own is unaffected.
+    """
+    from proteus.config._config import check_accretion_vapourise_compatibility
+
+    # The unreconciled pairing is refused, whichever accretion module drives it.
+    for module in ('morrigan', 'dummy', 'timeline'):
+        with pytest.raises(ValueError, match='outgas.vapourise'):
+            check_accretion_vapourise_compatibility(
+                _compat_instance(module, 'aragog', vapourise=True), None, None
+            )
+
+    # Either feature alone passes, and so does a run using neither.
+    check_accretion_vapourise_compatibility(
+        _compat_instance('morrigan', 'aragog', vapourise=False), None, None
+    )
+    check_accretion_vapourise_compatibility(
+        _compat_instance(None, 'aragog', vapourise=True), None, None
+    )
+    check_accretion_vapourise_compatibility(
+        _compat_instance(None, 'aragog', vapourise=False), None, None
+    )
 
 
 def test_embryo_spacing_is_bounded_on_both_sides():

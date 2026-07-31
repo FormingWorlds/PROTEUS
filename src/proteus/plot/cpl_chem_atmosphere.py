@@ -11,7 +11,7 @@ from matplotlib.ticker import LogLocator
 
 from proteus.atmos_chem.common import read_result
 from proteus.atmos_clim.common import read_ncdf_profile
-from proteus.utils.constants import gas_list
+from proteus.utils.constants import gas_list, vap_list
 from proteus.utils.helper import natural_sort
 from proteus.utils.plot import get_colour, latexify
 
@@ -64,7 +64,16 @@ GASES_STANDARD = (
     'S',
     'SO',
     'CS2',
+    'SiO',
+    'SiO2',
+    'TiO',
+    'FeO',
+    'MgO',
+    'Na',
 )
+
+
+REFRACTORY_GASES = tuple(vap_list)
 
 
 def plot_chem_atmosphere(
@@ -73,12 +82,31 @@ def plot_chem_atmosphere(
     plot_format='pdf',
     plot_gases: list = None,
     plot_offchem: bool = True,
-    xmin: float = 1e-14,
+    xmin: float = 1e-10,
 ):
+    """
+    Plot the chemical composition of the atmosphere.
+
+    Arguments
+    ---------
+    output_dir : str
+        Path to the output directory for the simulation.
+    chem_module : str
+        Name of the chemistry module that was used.
+    plot_format : str, optional
+        Format for the output plot file.
+    plot_gases : list, optional
+        List of gases to plot (otherwise uses default list)
+    plot_offchem : bool, optional
+        Whether to plot offline chemistry results.
+    xmin : float, optional
+        Minimum VMR for x-axis of the plot.
+    """
     log.info('Plot atmosphere chemical composition')
 
     # Default species.
     #     Ensure that members of gas_list are first
+
     if not plot_gases:
         plot_gases = list(gas_list) + list(GASES_STANDARD)
 
@@ -125,7 +153,6 @@ def plot_chem_atmosphere(
         col = get_colour(gas)
         lbl = latexify(gas)
         vmr = 0.0
-
         _lw = lw
         if gas in gas_list:
             _lw *= 1.25

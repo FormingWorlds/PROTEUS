@@ -41,7 +41,7 @@ config_version = "3.0"
         plot_mod              = 5            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
         write_mod             = 1            # 0: at end | n: every n iters
-        dt_write_rel          = 0.0         # min write interval as fraction of elapsed simulation time (0: off)
+        dt_write_rel          = 0.0         # extra time-based write trigger as fraction of sim time, OR-ed with write_mod (0: off)
         archive_mod           = "none"       # 0: at end | n: every n iters | none: never
         remove_sf             = false        # remove spectral file when done
 
@@ -508,7 +508,7 @@ config_version = "3.0"
     cloud_enabled             = false        # water cloud radiative effects
     cloud_alpha               = 0.0          # condensate retention fraction (0 to 1)
     aerosols_enabled          = false        # enable aerosol radiative effects (agni only)
-    albedo_pl                 = 0.0          # planetary bond albedo; float or path to CSV lookup
+    albedo_pl                 = 0.0          # planetary bond albedo (0 to 1)
     surf_greyalbedo           = 0.1          # grey surface albedo (used when agni.surf_material = "greybody")
 
     # Surface boundary condition

@@ -1843,3 +1843,64 @@ def test_discard_preimpact_snapshot_drops_only_the_impact_steps_own_snapshot(tmp
         'the kept snapshot predates the re-melt, so staying silent would hide '
         'an inconsistent resume'
     )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_rock_and_volatile_element_sets_partition_the_registry():
+    """An impact grows rock through the structure solve and volatiles through
+    the budgets, and no element may travel by both routes.
+
+    Contract clause: the mass an impact adds arrives as rock, through the
+    planet's mass anchor and the equation of state. Separately, the impact
+    conserves the per-element whole-planet budgets across that growth and sizes
+    both its atmospheric stripping and its volatile delivery from them. An
+    element counted in both places would have its mass booked twice, once in
+    the rock and once in a budget, and the whole-planet total would drift
+    upward on every impact.
+
+    The registry already draws that line for the rest of the model:
+    ``update_planet_mass`` sums M_ele over the volatile elements and the noble
+    gases and deliberately leaves the rock-forming elements out, because rock
+    vapour puts their mass in the atmosphere without debiting the interior.
+    The accretion module must draw it in the same place, so this pins the two
+    sets against the registry rather than against a copy of it.
+
+    Verifies:
+    - The rock set is exactly the registry's rock-forming set.
+    - The two sets are disjoint and together cover every tracked element.
+    - The conserved set is exactly what M_ele sums over, so nothing an impact
+      conserves is left out of the planet mass and nothing it grows is in.
+    """
+    from proteus.accretion.wrapper import _ROCK_ELEMENTS, _VOLATILE_ELEMENTS
+    from proteus.utils.constants import (
+        element_list,
+        noble_gases,
+        vap_element_list,
+        vol_element_list,
+    )
+
+    rock = set(_ROCK_ELEMENTS)
+    conserved = set(_VOLATILE_ELEMENTS)
+
+    assert rock == set(vap_element_list)
+    assert conserved == set(vol_element_list) | set(noble_gases)
+
+    # A partition: no element travels by both routes, and none is dropped.
+    assert rock & conserved == set()
+    assert rock | conserved == set(element_list)
+
+    # Discrimination: the rock-forming set is not a subset of some smaller
+    # hard-coded group. Every element the registry calls rock-forming is
+    # excluded from the conserved budgets, including any added after the
+    # accretion module was written.
+    for element in vap_element_list:
+        assert element not in conserved, (
+            f"'{element}' is rock-forming in the element registry but is "
+            'conserved as a volatile budget across an impact, so its mass is '
+            'counted both in the rock the impact adds and in the budget'
+        )
+
+    # The conserved set is what the planet mass is built from, so an impact
+    # cannot conserve a budget the planet mass does not see.
+    assert conserved == set(vol_element_list + noble_gases)

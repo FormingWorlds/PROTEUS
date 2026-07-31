@@ -161,12 +161,14 @@ each outgassing call, `assert_mass_conservation` verifies:
 
 1. $M_\mathrm{atm} \leq M_\mathrm{planet}$ (atmospheric mass cannot exceed
    total planet mass)
-2. $\sum_s m_{s,\mathrm{atm}} = M_\mathrm{atm}$ within a relative tolerance
-   of $10^{-6}$ (species masses sum to the total atmospheric mass)
+2. $\sum_s m_{s,\mathrm{atm}} = M_\mathrm{vol,atm}$ within a relative tolerance
+   of $10^{-6}$, summed over the volatile and noble species (excludes rock vapours)
 
 A violation raises a `RuntimeError` and halts the simulation. This invariant
 was introduced as part of the whole-planet oxygen accounting framework to
 prevent the mass budget from silently diverging.
+
+With `outgas.vapourise = true`, rock vapour enters the atmosphere without being taken from the interior, so the first mass conservation check is not applied. See [Model description](model.md#whole-planet-mass-is-not-conserved-when-vapourisation-is-enabled).
 
 ## Deadlock detection
 

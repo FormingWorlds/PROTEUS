@@ -779,8 +779,10 @@ def test_discard_snapshot_removes_only_the_named_time(tmp_path):
     - A snapshot at another time is untouched, so the removal is not a wipe.
     - A time with no snapshot reports False instead of raising, which is the
       ordinary case for a step that wrote nothing.
-    - The time is truncated toward zero, matching the writer's convention, so
-      a fractional time still finds its file.
+    - The time is rounded, matching the writer's convention, so a fractional
+      time still finds its file. A fraction above a half discriminates that:
+      truncating would look for the year below and miss the file entirely,
+      leaving a step's stale snapshot on disk for a resume to load.
     """
     from proteus.interior_energetics.aragog import discard_snapshot
 
@@ -800,10 +802,60 @@ def test_discard_snapshot_removes_only_the_named_time(tmp_path):
     assert discard_snapshot(str(tmp_path), 300.0) is False
     assert discard_snapshot(str(tmp_path), 999.0) is False
 
-    # Fractional times truncate, matching '%d_int.nc' in the writer.
-    (data / '410_int.nc').write_text('stale')
+    # Fractional times round, matching '%.0f_int.nc' in the writer.
+    (data / '411_int.nc').write_text('stale')
     assert discard_snapshot(str(tmp_path), 410.9) is True
-    assert not (data / '410_int.nc').exists()
+    assert not (data / '411_int.nc').exists()
+
+    # Discrimination: the year below is not what the writer named, so a
+    # truncating discard would remove a different step's snapshot.
+    (data / '420_int.nc').write_text('keep')
+    assert discard_snapshot(str(tmp_path), 420.9) is False
+    assert (data / '420_int.nc').read_text() == 'keep'
+
+
+@pytest.mark.unit
+def test_earlier_snapshot_exists_counts_by_the_writers_naming(tmp_path):
+    """The fallback check reads the same year the writer wrote.
+
+    Contract clause: a snapshot is only discarded when an older one survives
+    it, so this check decides whether the run keeps any interior state on disk.
+    It compares against the stems the writer produced, and the writer rounds,
+    so the cutoff has to round as well.
+
+    Verifies:
+    - A strictly older snapshot is found, and the step's own is not counted as
+      older than itself.
+    - An empty directory reports False rather than raising, which is what the
+      first step of a run looks like.
+    - A file whose stem is not a number is skipped rather than raising.
+    - A step whose time rounds up sees the snapshot below it. Truncating the
+      cutoff would put it on the same year as that file, report no fallback,
+      and leave a stale post-impact snapshot in place for a resume to load.
+    """
+    from proteus.interior_energetics.aragog import earlier_snapshot_exists
+
+    data = tmp_path / 'data'
+    data.mkdir()
+
+    # Nothing on disk: the first step of a run, not an error.
+    assert earlier_snapshot_exists(str(tmp_path), 100.0) is False
+
+    (data / '100_int.nc').write_text('older')
+    assert earlier_snapshot_exists(str(tmp_path), 200.0) is True
+    # A step does not count its own snapshot as one it can fall back on.
+    assert earlier_snapshot_exists(str(tmp_path), 100.0) is False
+    assert earlier_snapshot_exists(str(tmp_path), 100.4) is False
+
+    # A stem that is not a year is passed over, not raised on.
+    (data / 'merged_int.nc').write_text('not a snapshot time')
+    assert earlier_snapshot_exists(str(tmp_path), 100.0) is False
+    assert earlier_snapshot_exists(str(tmp_path), 200.0) is True
+
+    # Discrimination: the writer names this step 101, so 100 belongs to an
+    # earlier step and is a genuine fallback. A truncating cutoff of 100 would
+    # report none and leave this step's stale snapshot in place.
+    assert earlier_snapshot_exists(str(tmp_path), 100.6) is True
 
 
 def _retry_ladder_runner(

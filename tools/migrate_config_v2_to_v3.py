@@ -681,6 +681,19 @@ def translate(v2_toml: dict):
             if v2_path in explicit:
                 report.dropped_inactive.append(v2_path)
             continue
+        if v2_path == 'atmos_clim.albedo_pl' and isinstance(val, str):
+            # 2.0 accepted either a constant or a path to a CSV lookup table;
+            # 3.0 narrowed the field to a float and removed the lookup. Copying
+            # the path through would emit a 3.0 config that fails validation, and
+            # substituting a number would silently change the physics, so leave
+            # the field at its 3.0 default and say so.
+            report.warnings.append(
+                'atmos_clim.albedo_pl was a lookup-table path in 2.0 '
+                f'({val!r}); 3.0 accepts a constant only and the lookup has '
+                'been removed. Left at the 3.0 default. Set a constant bond '
+                'albedo by hand to approximate the 2.0 run.'
+            )
+            continue
         # transform value if a transform is registered
         tval = TRANSFORMS[v2_path](val) if v2_path in TRANSFORMS else val
         # destination

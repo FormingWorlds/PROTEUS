@@ -13,13 +13,19 @@ See also:
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import proteus.atmos_clim.agni as agni_mod
-from proteus.atmos_clim.agni import _determine_aerosols, _determine_condensates, init_agni_atmos
+from proteus.atmos_clim.agni import (
+    _determine_aerosols,
+    _determine_condensates,
+    init_agni_atmos,
+    write_atmos_ncdf,
+)
 from proteus.utils.constants import noble_gases
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -232,6 +238,8 @@ class _FakeAtmosphere:
         self.tmp_magma = 1500.0
         # Solver flags
         self.is_converged = True
+        # Allocation flag, gating write_atmos_ncdf
+        self.is_alloc = True
         # Radiative fluxes
         self.flux_d_sw = [100.0]
         self.flux_u_lw = [300.0]
@@ -1367,8 +1375,9 @@ def test_construct_voldict_raises_on_zero_vmr(monkeypatch):
         agni_mod, 'UpdateStatusfile', lambda dirs, code: update_calls.append(code)
     )
 
+    cfg = SimpleNamespace(atmos_clim=SimpleNamespace(agni=SimpleNamespace(chemistry='none')))
     with pytest.raises(ValueError, match='zero'):
-        agni_mod._construct_voldict(hf_row, {'output': '/tmp'})
+        agni_mod._construct_voldict(cfg, hf_row, {'output': '/tmp'})
 
     assert update_calls == [20]
 
@@ -1386,7 +1395,8 @@ def test_construct_voldict_includes_noble_gases():
     for g in agni_mod.gas_list:
         hf_row[g + '_vmr'] = 0.01
 
-    vol_dict = agni_mod._construct_voldict(hf_row, {'output': '/tmp'})
+    cfg = SimpleNamespace(atmos_clim=SimpleNamespace(agni=SimpleNamespace(chemistry='none')))
+    vol_dict = agni_mod._construct_voldict(cfg, hf_row, {'output': '/tmp'})
     assert set(vol_dict.keys()) == set(agni_mod.gas_list)
     for gas in noble_gases:
         assert vol_dict[gas] == pytest.approx(0.01, rel=1e-12)
@@ -1411,10 +1421,56 @@ def test_construct_voldict_handles_noble_only_atmosphere():
     for gas in noble_gases:
         hf_row[gas + '_vmr'] = 0.2  # noble-only atmosphere
 
-    vol_dict = agni_mod._construct_voldict(hf_row, {'output': '/tmp'})
+    cfg = SimpleNamespace(atmos_clim=SimpleNamespace(agni=SimpleNamespace(chemistry='none')))
+    vol_dict = agni_mod._construct_voldict(cfg, hf_row, {'output': '/tmp'})
     for gas in noble_gases:
         assert vol_dict[gas] == pytest.approx(0.2, rel=1e-12)
     assert sum(vol_dict.values()) == pytest.approx(0.2 * len(noble_gases), rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# _determine_Hfraction: hydrogen floor for equilibrium chemistry
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.physics_invariant
+def test_determine_Hfraction_leaves_hydrogen_rich_atmosphere_unchanged():
+    """When the atmosphere already contains hydrogen, _determine_Hfraction does
+    not inject the H2 floor and leaves the mixing ratios untouched.
+
+    Physical scenario: an H2O/CO2 atmosphere. H2O carries 2 H atoms per molecule,
+    so the H abundance (1.0) is far above the 1e-10 floor and no H2 is added.
+    """
+    vol_dict = {'H2O': 0.5, 'CO2': 0.5}
+    result = agni_mod._determine_Hfraction({}, vol_dict)
+
+    # No hydrogen floor injected; the reactive VMRs are preserved.
+    assert 'H2' not in result
+    assert result['H2O'] == pytest.approx(0.5, rel=1e-12)
+    # All mixing ratios remain valid.
+    for vmr in result.values():
+        assert 0.0 <= vmr <= 1.0
+
+
+@pytest.mark.physics_invariant
+def test_determine_Hfraction_injects_floor_when_hydrogen_absent():
+    """When no molecule contributes hydrogen atoms, _determine_Hfraction injects
+    a small H2 floor so FastChem can define metallicity ratios.
+
+    Edge case: a CO2/N2 atmosphere with a noble gas (He) whose name contains 'H'
+    but contributes zero H atoms. The substring 'H' in 'He' must not be counted
+    as hydrogen, so the floor still fires. Pins the injected VMR to 1e-10 (not
+    the earlier 1e-10/2), and confirms it is positive and bounded.
+    """
+    vol_dict = {'CO2': 0.6, 'N2': 0.1, 'He': 0.3}
+    result = agni_mod._determine_Hfraction({}, vol_dict)
+
+    assert result['H2'] == pytest.approx(1e-10, rel=1e-9)
+    # Discrimination: the old formula injected half this (5e-11); the values
+    # differ by 5e-11, well outside the tolerance.
+    assert abs(result['H2'] - 5e-11) > 1e-11
+    assert result['H2'] > 0.0
+    assert 0.0 <= result['H2'] <= 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -1452,3 +1508,58 @@ def test_determine_condensates_single_gas_returns_empty():
     # Adjacent-valid: two gases (one dry, one condensable) works
     result2 = agni_mod._determine_condensates(['H2O', 'N2'])
     assert result2 == ['H2O']
+
+
+# ---------------------------------------------------------------------------
+# write_atmos_ncdf: AGNI NetCDF snapshot writer
+# ---------------------------------------------------------------------------
+
+
+def test_write_atmos_ncdf_uses_rounded_time_and_data_dir(monkeypatch):
+    """The AGNI writer serialises the struct to ``<output>/data/<%.0f>_atm.nc``
+    via ``jl.AGNI.save.write_ncdf``.
+
+    Discrimination: time=1000.6 rounds to 1001 under AGNI's ``%.0f``
+    convention (not 1000 as an ``int()`` truncation would give), so the pinned
+    path distinguishes the rounding convention. The struct is passed through
+    unchanged as the first argument.
+    """
+    fake_write = MagicMock()
+    fake_jl = SimpleNamespace(AGNI=SimpleNamespace(save=SimpleNamespace(write_ncdf=fake_write)))
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+
+    # Write atmosphere to appropriately named file
+    atmos_sentinel = SimpleNamespace(is_alloc=True)
+    write_atmos_ncdf(atmos_sentinel, {'output': '/tmp/run'}, 1000.6)
+
+    # Check function was called and file path is correct.
+    # This test doesn't actually write the file, since we mock the function.
+    fake_write.assert_called_once()
+    called_atmos, called_path = fake_write.call_args.args
+    assert called_atmos is atmos_sentinel
+    assert called_path == '/tmp/run/data/1001_atm.nc'
+
+    # A regression to int() truncation would have produced 1000_atm.nc.
+    assert '1000_atm.nc' not in called_path
+
+
+def test_write_atmos_ncdf_skips_unallocated_struct(monkeypatch, caplog):
+    """An unallocated AGNI struct contains no profile, so the writer
+    must warn rather than attempt to write it (and likely crash).
+    """
+    fake_write = MagicMock()
+    fake_jl = SimpleNamespace(AGNI=SimpleNamespace(save=SimpleNamespace(write_ncdf=fake_write)))
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+
+    # Suppress the warning log to avoid polluting the tests, but capture.
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.agni'):
+        write_atmos_ncdf(SimpleNamespace(is_alloc=False), {'output': '/tmp/run'}, 1000.6)
+
+    # Check that file is not written, and the refusal is surfaced to the log.
+    fake_write.assert_not_called()
+    assert any('unallocated' in rec.message for rec in caplog.records)
+
+    # Adjacent-valid: the identical call with is_alloc True does write, so the
+    # skip above is attributable to the flag and not to the fake or the path.
+    write_atmos_ncdf(SimpleNamespace(is_alloc=True), {'output': '/tmp/run'}, 1000.6)
+    fake_write.assert_called_once()

@@ -111,7 +111,84 @@ The outgassing module computes the thermodynamic equilibrium partitioning of vol
 
 **[atmodeller](https://github.com/djbower/atmodeller)** (Python/JAX) is an alternative outgassing backend that uses a real-gas equation of state and a more detailed thermochemical treatment [^cite-bower2025]. atmodeller provides an independent cross-check on CALLIOPE for the same volatile partitioning problem.
 
+**[LavAtmos](https://github.com/FormingWorlds/LavAtmos)** (Python) is an optional addition, enabled with `outgas.vapourise = true`, that computes the thermodynamic vapourisation equilibrium of the surface melt [^cite-vanbuchem2023] and adds the resulting rock-vapour species to the volatile outgassing [^cite-vanbuchem2025]. Vapourisation is a distinct process from outgassing. It uses the FastChem equilibrium chemistry solver and requires [ThermoEngineLite](https://github.com/FormingWorlds/ThermoEngineLite) for melt thermodynamics. 
+
 Config section: `[outgas]`. Reference: [Escape and outgassing configuration](../Reference/config/escape_outgas.md).
+
+### Volatile outgassing and rock vapourisation are combined
+
+With `outgas.vapourise = true` the following steps run sequentially, at each PROTEUS iteration:
+
+- The volatile outgassing backend runs first on its own
+- The vapourisation step then re-equilibrates the volatile atmosphere **together with** the rock vapour
+- Returns one combined composition
+
+```text
+ reset rock-vapour species and rock element reservoirs; M_vaps = 0
+                          |
+                          v
+ [1] run_outgassing  (CALLIOPE / atmodeller / dummy)
+     volatile equilibrium at fO2 = IW + outgas.fO2_shift_IW
+     -> <gas>_bar, <gas>_vmr, <gas>_kg_*, atm_kg_per_mol
+     -> P_surf = volatile total ;  P_vol = P_surf ;  P_vap = 0
+     -> M_atm  = sum over gases of <gas>_kg_atm
+     -> fO2_shift_IW_derived                       (volatile redox column)
+                          |
+          Phi_global < params.stop.solid.phi_crit ? ---- yes ---> stop here
+                          | no                                   (no vapour)
+                          v
+ [2] run_vapourisation  (LavAtmos + FastChem)
+     input  = melt at T = max(T_magma, outgas.lavatmos.T_min),
+              P_volatile = P_vol from [1],
+              element number fractions of: 
+              (H, C, N, S, O + noble gases, from <e>_kg_atm),
+              fO2 initial guess = 10 ** fO2_vapourise_derived (previous step)
+     output = FastChem boa_chem: total pressure Pbar, mean mass mu,
+              mixing ratios of ALL species
+                          |
+                          v
+ [3] combine, in this order:
+     P_vap  = max(Pbar - P_vol_from_[1], 0)        rock-vapour part
+     P_surf = Pbar                                 combined total
+     P_vol  = P_surf - P_vap                       volatile part (identity holds)
+     M_atm  = Pbar * 4*pi*R_int^2 / gravity        hydrostatic column
+     atm_kg_per_mol = mu                           combined MMW
+     per gas:      <gas>_bar    = vmr * Pbar
+                   <gas>_kg_atm = vmr * M_atm * W_gas / mu
+                   <gas>_kg_total = 0 for rock-vapour species (kept in M_vaps),
+                                    else atm + liquid + solid
+     per element:  <e>_kg_atm = frac_e * M_atm * W_e / mmw_elements
+                   O_kg_atm stays at the volatile-step
+                   value and the vapour-derived excess goes to O_vapourised_kg
+                   rock-forming elements accumulate into M_vaps
+     fO2_vapourise_derived          = log10( vmr_O2 * (P_vol + P_vap) )
+                                      absolute, log10 bar
+     fO2_vapourise_shift_IW_derived = fO2_vapourise_derived - IW(T_magma)
+                                      relative to the buffer, dex
+```
+
+Some notable consequences of step 3:
+
+- **Pressures add, compositions do not.** `P_surf = P_vol + P_vap`, with `P_vap` defined as the excess of the combined FastChem total. The per-gas and per-element amounts are taken from the combined equilibrium, not summed across the two steps since adding them would count the volatile inventory twice.
+
+- **The vapourisation step reports its redox state twice**, absolute and buffer-relative. The two must not be used interchangeably:
+
+    | Column | Meaning | Units |
+    |---|---|---|
+    | `fO2_vapourise_derived` | **Absolute** fO2 of the combined atmosphere: the FastChem O2 mixing ratio times the total pressure `P_vol + P_vap`. Zero means 1 bar of O2. | log$_{10}$ bar |
+    | `fO2_vapourise_shift_IW_derived` | **Relative** to the iron-wustite buffer at `T_magma`: `fO2_vapourise_derived - IW(T_magma)`. Zero means "exactly on the buffer", so it moves as `T_magma` evolves, even at fixed absolute fO2. | dex |
+
+    The absolute value is fed back to LavAtmos as the fO2 initial guess for the next iteration's LavAtmos call.
+
+- **The vapourisation fO2 is separate from the volatile-chemistry fO2.**  `fO2_shift_IW_derived` is the redox buffer offset obtained from the volatile step (e.g. CALLIOPE or atmodeller rather than by LavAtmos). It is not expected
+  to equal `fO2_vapourise_shift_IW_derived` since the two come from different solvers.
+
+### Whole-planet mass is not conserved when vapourisation is enabled
+
+- **Rock vapour is added to the atmosphere without being removed from the interior.** The vapourised rock mass is accumulated into `M_vaps` and enters `M_atm`, but no matching mass is subtracted from the interior: `M_int`, `M_mantle`.
+- **Rock-vapour elements dilute the escape outflow but are not depleted by it.**  Rock-forming elements take part in the unfractionated escape partitioning and reduce the escape rate available to H/C/N/O/S. This applies when `escape.reservoir = "outgas"`, where the partitioning weights are atmospheric masses. With `escape.reservoir = "bulk"` the rock-forming whole-planet totals are reset to zero on every outgassing step, so they carry no weight and do not dilute the outflow.
+
+`utils.coupler.assert_mass_conservation` therefore checks two things separately. `M_atm <= M_planet` is enforced under `outgas.vapourise = false`. `M_vol_atm` equals the sum of the per-species atmospheric masses; rock vapour is excluded from `M_vol_atm` by definition.
 
 ## Orbital evolution: Obliqua
 
@@ -225,6 +302,10 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
  [^cite-bower2025]: Bower, D.J., Thompson, M.A., Hakim, K., et al., *[Diversity of low-mass planet atmospheres in the C-H-O-N-S-Cl system](https://doi.org/10.3847/1538-4357/ae1479)*, The Astrophysical Journal, 995, 59, 2025. [SciX](https://scixplorer.org/abs/2025ApJ...995...59B/abstract).
 
  [^cite-nicholls2024]: Nicholls, H., Lichtenberg, T., Bower, D.J. & Pierrehumbert, R., *[Magma ocean evolution at arbitrary redox state](https://doi.org/10.1029/2024JE008576)*, Journal of Geophysical Research: Planets, 129, e2024JE008576, 2024. [SciX](https://scixplorer.org/abs/2024JGRE..12908576N/abstract).
+
+ [^cite-vanbuchem2023]: van Buchem, C.P.A., Miguel, Y., Zilinskas, M. & van Westrenen, W., *[LavAtmos: An open-source chemical equilibrium vaporization code for lava worlds](https://doi.org/10.1111/maps.13994)*, Meteoritics & Planetary Science, 58, 1149-1161, 2023.
+
+ [^cite-vanbuchem2025]: van Buchem, C.P.A., Zilinskas, M., Miguel, Y. & van Westrenen, W., *[LavAtmos 2.0: Incorporating volatile species in vaporisation models](https://doi.org/10.1051/0004-6361/202450992)*, Astronomy & Astrophysics, 695, A154, 2025. 
 
  [^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).
 

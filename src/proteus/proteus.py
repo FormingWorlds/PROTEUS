@@ -22,6 +22,7 @@ from proteus.utils.helper import (
     PrintHalfSeparator,
     PrintSeparator,
     UpdateStatusfile,
+    is_write_snapshot,
     multiple,
 )
 from proteus.utils.logs import (
@@ -281,7 +282,8 @@ class Proteus:
 
         #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
-        from proteus.atmos_clim.common import Albedo_t, Atmos_t
+        from proteus.atmos_clim.common import Atmos_t
+        from proteus.atmos_clim.wrapper import write_atmosphere_snapshot
 
         #    escape and outgas
         from proteus.escape.wrapper import run_escape
@@ -307,7 +309,7 @@ class Proteus:
             check_desiccation,
             run_crystallized,
             run_desiccated,
-            run_outgassing,
+            run_outgassing_and_vapourisation,
         )
 
         #   stellar spectrum and evolution
@@ -331,6 +333,7 @@ class Proteus:
             WriteHelpfileToCSV,
             ZeroHelpfileRow,
             assert_mass_conservation,
+            assert_surface_pressure_consistency,
             print_citation,
             print_header,
             print_module_configuration,
@@ -417,12 +420,6 @@ class Proteus:
 
         # Initialise atmosphere object
         self.atmos_o = Atmos_t()
-        if self.config.atmos_clim.albedo_from_file:
-            log.debug('Reading albedo data from file')
-            self.atmos_o.albedo_o = Albedo_t(self.config.atmos_clim.albedo_pl)
-            if not self.atmos_o.albedo_o.ok:
-                UpdateStatusfile(self.directories, 22)
-                raise RuntimeError('Problem when loading albedo data file')
 
         # Is the model resuming from a previous state?
         if not self.config.params.resume:
@@ -489,6 +486,7 @@ class Proteus:
 
             # Store partial pressures and list of included volatiles
             inc_gases = []
+
             for s in vol_list:
                 if s != 'O2':
                     pp_val = self.config.planet.gas_prs.get_pressure(s)
@@ -576,7 +574,6 @@ class Proteus:
                 self.hf_all,
                 require_atm=require_atm,
                 interior_module=self.config.interior_energetics.module,
-                atmos_module=self.config.atmos_clim.module,
             )
             if dropped_snapshots:
                 log.warning(
@@ -596,20 +593,15 @@ class Proteus:
             # Get last row from helpfile dataframe
             self.hf_row = self.hf_all.iloc[-1].to_dict()
 
-            # Resume banner: since proteus_00.log is opened in append mode on
-            # resume, every prior session's banner + output stays in the file
-            # with no visible marker of where the new session picks up. A
-            # self-contained three-line resume banner makes log triage
-            # (grep, tail -f, monitor cron filters) tractable. This is
-            # cosmetic only; no state is changed.
-            log.info('=' * 60)
+            # Resume banner. The '==== RESUME' prefix is added to output,
+            # since this makes log triage (grep, tail -f, cron filters) easy
             log.info(
                 '=== RESUME at helpfile row %d, t = %.3e yr, Phi = %.4f',
                 len(self.hf_all),
                 float(self.hf_row.get('Time', 0.0)),
                 float(self.hf_row.get('Phi_global', float('nan'))),
             )
-            log.info('=' * 60)
+            log.info('')
 
             # Check if the planet is desiccated
             self.desiccated = check_desiccation(self.config, self.hf_row)
@@ -766,10 +758,8 @@ class Proteus:
         # model still selects its body against the configured planet.
         restore_accretion_state(self)
 
-        # Track the last simulation time at which data was written to disk,
-        # so that dt_write_rel can suppress high-frequency writes during
-        # rapid early evolution. Initialised to -inf so the first eligible
-        # iteration always writes.
+        # Track the last simulation time at which data was written to disk.
+        # Initialised to -inf so the first eligible iteration always writes.
         self.last_write_time = -np.inf
 
         # Deadlock detector for the atmosphere-interior coupling.
@@ -789,17 +779,16 @@ class Proteus:
         UpdateStatusfile(self.directories, 1)
         while not self.finished_both:
             # Determine whether this iteration is a data-write snapshot.
-            # Two conditions must both be satisfied:
-            #   1. iteration count matches write_mod (existing behaviour)
-            #   2. enough simulation time has elapsed since the last write
-            #      (relative guard: min interval = dt_write_rel * Time)
-            iter_ok = multiple(self.loops['total'], self.config.params.out.write_mod)
-            dt_write_rel = self.config.params.out.dt_write_rel
-            cur_time = self.hf_row.get('Time', 0.0)
-            time_ok = dt_write_rel <= 0 or (
-                cur_time - self.last_write_time >= dt_write_rel * max(cur_time, 1.0)
+            # Conditions that are individually sufficient:
+            #   1. iteration count matches write_mod, or
+            #   2. time elapsed since the last write (>dt_write_rel * Time)
+            is_snapshot = is_write_snapshot(
+                self.loops['total'],
+                self.config.params.out.write_mod,
+                self.config.params.out.dt_write_rel,
+                self.hf_row.get('Time', 0.0),
+                self.last_write_time,
             )
-            is_snapshot = iter_ok and time_ok
             # New rows
             if self.loops['total'] > 0:
                 # Create new row to hold the updated variables. This will be
@@ -992,7 +981,6 @@ class Proteus:
                     self.hf_row, self.config, stellar_track=self.stellar_track
                 )
 
-            # Calculate a new (historical) stellar spectrum
             if (
                 abs(self.hf_row['Time'] - self.sspec_prev) > self.config.params.dt.starspec
             ) or (self.loops['total'] == 0):
@@ -1089,12 +1077,20 @@ class Proteus:
                     self.desiccated = check_desiccation(self.config, self.hf_row)
 
             # Handle volatile exchange
+            log.info('Solving for atmosphere composition...')
+            first_iter = bool(self.loops['total'] <= self.loops['init_loops'])
             if self.desiccated:
-                run_desiccated(self.config, self.hf_row)
+                # no volatiles
+                run_desiccated(self.directories, self.config, self.hf_row, first_iter)
+
             elif self.crystallized:
+                # post solidification
                 run_crystallized(self.config, self.hf_row, self.interior_o.dt)
+
             else:
-                run_outgassing(self.directories, self.config, self.hf_row)
+                run_outgassing_and_vapourisation(
+                    self.directories, self.config, self.hf_row, first_iter
+                )
 
                 # Issue #677 IC consistency check. Fires once at the first
                 # outgas call (subsequent init_stage calls find the sentinel
@@ -1108,15 +1104,24 @@ class Proteus:
 
                 check_ic_oxygen_budget(self.config, self.hf_row)
 
-            # Add mass of total volatile element mass (M_ele) to total mass of mantle+core
+            # Add mass of total tracked element mass (M_ele) to total mass of mantle+core
             update_planet_mass(self.hf_row)
 
-            # Issue #677 mass-conservation invariant: M_atm <= M_planet
-            # and sum(s_kg_atm) == M_atm. Cheap end-of-outgas guardrail
-            # that hard-fails if any future change re-introduces the
-            # O-skipping asymmetry that could let M_atm exceed
-            # M_planet at high H_ppmw.
-            assert_mass_conservation(self.hf_row)
+            # Vapourisation moves non-volatile mass into M_atm that M_planet
+            # does not track, so only the M_atm <= M_planet half is dropped in
+            # that mode. An excess larger than the vapour column explains still
+            # warns, and PrintCurrentState reports the vapour budget every
+            # iteration. Non-conservation is a simplification of vapourisation.
+            assert_mass_conservation(
+                self.hf_row,
+                require_atm_le_planet=not self.config.outgas.vapourise,
+            )
+
+            # P_surf = P_vol + P_vap, and P_vap == 0 when rock
+            # vapourisation is disabled. Cheap end-of-outgas guardrail against
+            # a code path updating P_surf without keeping the partial
+            # pressures in sync.
+            assert_surface_pressure_consistency(self.config, self.hf_row)
 
             if _IT_TIMING_ENABLED:
                 _t_mod['outgas'] = time.perf_counter() - _t0_outgas
@@ -1276,8 +1281,7 @@ class Proteus:
 
             # Make plots
             if (
-                is_snapshot
-                and multiple(self.loops['total'], self.config.params.out.plot_mod)
+                multiple(self.loops['total'], self.config.params.out.plot_mod)
                 and not self.finished_both
             ):
                 log.info('Making plots')
@@ -1326,7 +1330,6 @@ class Proteus:
         WriteHelpfileToCSV(self.directories['output'], self.hf_all)
 
         # Ensure the final interior state is on disk so resume can find it.
-        # dt_write_rel may have suppressed the write on the last iteration.
         # A giant-impact re-melt on the last iteration clears the solver's
         # solution object, so guard on it: get_state() dereferences it.
         if (
@@ -1343,6 +1346,10 @@ class Proteus:
                 out,
                 T_surf_coupled=self.hf_row.get('T_surf'),
             )
+
+        # Ensure the final atmosphere state is on disk, since it won't always happen to
+        # be written on the last iteration of the model.
+        write_atmosphere_snapshot(self.atmos_o, self.config, self.directories, self.hf_row)
 
         # Run offline chemistry
         if self.config.atmos_chem.when == 'offline':
@@ -1368,6 +1375,7 @@ class Proteus:
 
         # Make final plots
         if self.config.params.out.plot_mod is not None:
+            log.info(' ')
             log.info('Making final plots')
             UpdatePlots(self.hf_all, self.directories, self.config, end=True)
 
@@ -1442,6 +1450,12 @@ class Proteus:
         from proteus.atmos_chem.wrapper import run_chemistry
 
         result = run_chemistry(self.directories, self.config, hf_row)
+
+        # Refresh the chemistry plot
+        if result is not None:
+            from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere_entry
+
+            plot_chem_atmosphere_entry(self)
 
         # return the dataframe
         return result

@@ -2587,14 +2587,23 @@ def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_update_planet_mass_sums_internal_and_volatile_elements():
-    """update_planet_mass writes M_ele as the sum over element_list of
-    each element's _kg_total mass, and writes M_planet = M_int + M_ele.
+    """update_planet_mass writes M_ele as the sum of the volatile and noble
+    element _kg_total masses, and writes M_planet = M_int + M_ele.
 
-    Conservation: the resulting M_planet must equal the dry mass plus
-    the total volatile-bearing element mass exactly.
+    Conservation: the resulting M_planet must equal the dry mass plus the
+    total volatile-bearing element mass exactly. The rock-forming elements
+    are excluded because rock vapour is not debited from the interior, so
+    counting it would inflate M_planet as vapour accumulates.
     """
     from proteus.interior_energetics.wrapper import update_planet_mass
-    from proteus.utils.constants import element_list
+    from proteus.utils.constants import (
+        element_list,
+        noble_gases,
+        vap_element_list,
+        vol_element_list,
+    )
+
+    counted = vol_element_list + noble_gases
 
     hf_row = {'M_int': 5.972e24}
     # Asymmetric element budget so an off-by-one indexing bug shows.
@@ -2603,19 +2612,31 @@ def test_update_planet_mass_sums_internal_and_volatile_elements():
 
     update_planet_mass(hf_row)
 
-    expected_ele = sum(float(hf_row[e + '_kg_total']) for e in element_list)
+    expected_ele = sum(float(hf_row[e + '_kg_total']) for e in counted)
     assert hf_row['M_ele'] == pytest.approx(expected_ele, rel=1e-12)
     assert hf_row['M_planet'] == pytest.approx(hf_row['M_int'] + expected_ele, rel=1e-12)
-    # Anti-happy-path: skipping ANY single element (e.g. the old O-skip)
-    # produces a strictly smaller M_planet. The largest element in the
-    # asymmetric budget dominates, so dropping it would change the result
-    # by orders of magnitude.
-    largest_elem = max(element_list, key=lambda e: hf_row[e + '_kg_total'])
+    # Anti-happy-path: skipping ANY single counted element (e.g. the old
+    # O-skip) produces a strictly smaller M_planet. The largest element in
+    # the asymmetric budget dominates, so dropping it would change the
+    # result by orders of magnitude.
+    largest_elem = max(counted, key=lambda e: hf_row[e + '_kg_total'])
     expected_without_largest = expected_ele - hf_row[largest_elem + '_kg_total']
     assert (
         abs(hf_row['M_ele'] - expected_without_largest)
         > 0.5 * hf_row[largest_elem + '_kg_total']
     )
+
+    # Discrimination guard on the exclusion itself: the plausible regression
+    # is summing the full element_list, which would fold the rock-vapour
+    # mass in. M_ele must NOT match that sum.
+    full_sum = sum(float(hf_row[e + '_kg_total']) for e in element_list)
+    vapour_mass = sum(float(hf_row[e + '_kg_total']) for e in vap_element_list)
+    assert abs(full_sum - hf_row['M_ele']) == pytest.approx(vapour_mass, rel=1e-9)
+
+    # The rock-vapour mass is ~1e-5 of the total here, far above the rel=1e-12
+    # pin above, so that pin genuinely distinguishes the two element sets
+    # rather than passing either way.
+    assert vapour_mass / expected_ele > 1e-9
 
 
 @pytest.mark.unit

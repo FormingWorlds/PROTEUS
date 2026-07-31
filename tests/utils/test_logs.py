@@ -21,10 +21,34 @@ from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
     StreamToLogger,
+    bootstrap_logger,
     setup_logger,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+@pytest.fixture
+def tmpdir_that_closes_logger_files():
+    """Yield a temp dir, then close the 'fwl' file handlers before removing it.
+
+    setup_logger attaches a FileHandler to the shared 'fwl' logger. If the logfile
+    is still open when the directory is torn down, cleanup fails on an NFS TMPDIR:
+    the server keeps the open file as a .nfsXXXX entry, so rmdir raises OSError
+    [Errno 39]. Owning the TemporaryDirectory here and closing the handlers after
+    the test yields but before this with-block removes the directory releases the
+    descriptors first, so cleanup succeeds on NFS as well as local disk. A plain
+    post-test teardown fixture would be too late: an inline with-block
+    TemporaryDirectory inside a test removes the directory when the method returns,
+    before any fixture teardown runs. Shared by the setup_logger and
+    bootstrap_logger tests that write a logfile. See issue #791.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield tmpdir
+        logger = logging.getLogger('fwl')
+        for handler in list(logger.handlers):
+            handler.close()
+            logger.removeHandler(handler)
 
 
 class TestStreamToLogger:
@@ -227,7 +251,7 @@ class TestCustomFormatter:
             exc_info=None,
         )
         result = formatter.format(record)
-        assert 'WARNING' in result or 'WARNI' in result  # Might be truncated
+        assert 'WARN' in result  # Might be truncated
         assert 'Test warning message' in result
         assert '93m' in result  # Yellow color code
 
@@ -299,209 +323,387 @@ class TestSetupLogger:
     """
 
     @pytest.mark.unit
-    def test_setup_logger_creates_file(self):
+    def test_setup_logger_creates_file(self, tmpdir_that_closes_logger_files):
         """Verify setup_logger creates FormingWorlds logger with file handler.
 
         Each PROTEUS run writes to separate log file for parallel ensemble tracking.
         """
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
-            logger = setup_logger(logpath=logpath, logterm=False)
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        logger = setup_logger(logpath=logpath, logterm=False)
 
-            # Verify logger instance and canonical name
-            assert isinstance(logger, logging.Logger)
-            assert logger.name == 'fwl'  # FormingWorlds standard logger
+        # Verify logger instance and canonical name
+        assert isinstance(logger, logging.Logger)
+        assert logger.name == 'fwl'  # FormingWorlds standard logger
 
     @pytest.mark.unit
-    def test_setup_logger_removes_existing_file(self):
+    def test_setup_logger_removes_existing_file(self, tmpdir_that_closes_logger_files):
         """setup_logger removes pre-existing logfile."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
-            # Create existing file
-            pathlib.Path(logpath).touch()
-            assert os.path.exists(logpath)
-            logger = setup_logger(logpath=logpath, logterm=False)
-            assert logger is not None
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        # Create existing file
+        pathlib.Path(logpath).touch()
+        assert os.path.exists(logpath)
+        logger = setup_logger(logpath=logpath, logterm=False)
+        assert logger is not None
 
     @pytest.mark.unit
-    def test_setup_logger_default_level_info(self):
+    def test_setup_logger_default_level_info(self, tmpdir_that_closes_logger_files):
         """setup_logger uses INFO as default log level."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
-            logger = setup_logger(logpath=logpath, level='INFO', logterm=False)
-            assert logger.level == logging.INFO
-            # Discrimination: confirm a FileHandler was registered against the
-            # requested logpath. A regression that silently dropped the file
-            # handler would still pass the level check but break the contract
-            # (route fwl output to logpath).
-            file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
-            assert any(h.baseFilename == os.path.abspath(logpath) for h in file_handlers)
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        logger = setup_logger(logpath=logpath, level='INFO', logterm=False)
+        assert logger.level == logging.INFO
+        # Discrimination: confirm a FileHandler was registered against the
+        # requested logpath. A regression that silently dropped the file
+        # handler would still pass the level check but break the contract
+        # (route fwl output to logpath).
+        file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
+        assert any(h.baseFilename == os.path.abspath(logpath) for h in file_handlers)
 
     @pytest.mark.unit
-    def test_setup_logger_level_debug(self):
+    def test_setup_logger_level_debug(self, tmpdir_that_closes_logger_files):
         """setup_logger accepts DEBUG log level."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
-            logger = setup_logger(logpath=logpath, level='DEBUG', logterm=False)
-            assert logger.level == logging.DEBUG
-            # Discrimination: pin the canonical logger name ('fwl'). A
-            # regression that returned the root logger or a per-call named
-            # instance would still expose the correct .level and pass the
-            # primary check but break downstream getLogger('fwl') lookups.
-            assert logger.name == 'fwl'
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        logger = setup_logger(logpath=logpath, level='DEBUG', logterm=False)
+        assert logger.level == logging.DEBUG
+        # Discrimination: pin the canonical logger name ('fwl'). A
+        # regression that returned the root logger or a per-call named
+        # instance would still expose the correct .level and pass the
+        # primary check but break downstream getLogger('fwl') lookups.
+        assert logger.name == 'fwl'
 
     @pytest.mark.unit
-    def test_setup_logger_level_error(self):
+    def test_setup_logger_level_error(self, tmpdir_that_closes_logger_files):
         """setup_logger accepts ERROR log level."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
-            logger = setup_logger(logpath=logpath, level='ERROR', logterm=False)
-            assert logger.level == logging.ERROR
-            # Discrimination: ERROR (40) must sit strictly above WARNING (30).
-            # A regression that mapped 'ERROR' to a lower numeric level would
-            # pass the equality check only if both literal constants moved,
-            # but would fail the strict-ordering pin against WARNING.
-            assert logger.level > logging.WARNING
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        logger = setup_logger(logpath=logpath, level='ERROR', logterm=False)
+        assert logger.level == logging.ERROR
+        # Discrimination: ERROR (40) must sit strictly above WARNING (30).
+        # A regression that mapped 'ERROR' to a lower numeric level would
+        # pass the equality check only if both literal constants moved,
+        # but would fail the strict-ordering pin against WARNING.
+        assert logger.level > logging.WARNING
 
     @pytest.mark.unit
-    def test_setup_logger_level_warning(self):
+    def test_setup_logger_level_warning(self, tmpdir_that_closes_logger_files):
         """setup_logger accepts WARNING log level."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
-            logger = setup_logger(logpath=logpath, level='WARNING', logterm=False)
-            assert logger.level == logging.WARNING
-            # Discrimination: WARNING (30) sits strictly between INFO (20) and
-            # ERROR (40). Pin both inequalities to catch a regression that
-            # silently mapped 'WARNING' to INFO or ERROR.
-            assert logging.INFO < logger.level < logging.ERROR
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        logger = setup_logger(logpath=logpath, level='WARNING', logterm=False)
+        assert logger.level == logging.WARNING
+        # Discrimination: WARNING (30) sits strictly between INFO (20) and
+        # ERROR (40). Pin both inequalities to catch a regression that
+        # silently mapped 'WARNING' to INFO or ERROR.
+        assert logging.INFO < logger.level < logging.ERROR
 
     @pytest.mark.unit
-    def test_setup_logger_invalid_level_raises(self):
+    def test_setup_logger_invalid_level_raises(self, tmpdir_that_closes_logger_files):
         """Verify setup_logger raises ValueError for invalid log levels.
 
         Prevents silent failures when config specifies typo in log level
         (e.g., 'INFOO' instead of 'INFO').
         """
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
 
-            # Invalid level should raise immediately, not silently default
-            with pytest.raises(ValueError, match='Invalid log level'):
-                setup_logger(logpath=logpath, level='INVALID', logterm=False)
-            # Discrimination: failure must happen BEFORE any side effect on
-            # disk. A regression that opened the FileHandler before validating
-            # the level would have left the logfile behind even though the
-            # exception fired.
-            assert not os.path.exists(logpath)
+        # Invalid level should raise immediately, not silently default
+        with pytest.raises(ValueError, match='Invalid log level'):
+            setup_logger(logpath=logpath, level='INVALID', logterm=False)
+        # Discrimination: failure must happen BEFORE any side effect on
+        # disk. A regression that opened the FileHandler before validating
+        # the level would have left the logfile behind even though the
+        # exception fired.
+        assert not os.path.exists(logpath)
 
     @pytest.mark.unit
-    def test_setup_logger_level_case_insensitive(self):
+    def test_setup_logger_level_case_insensitive(self, tmpdir_that_closes_logger_files):
         """setup_logger accepts log level in any case."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
-            logger = setup_logger(logpath=logpath, level='info', logterm=False)
-            assert logger.level == logging.INFO
-            # Discrimination: lowercase 'info' must resolve to the SAME numeric
-            # level as uppercase 'INFO'. A regression that dropped the .upper()
-            # call and returned a different default for unrecognized strings
-            # would diverge here. Pin parity with the canonical form.
-            logger2 = setup_logger(logpath=logpath + '.up', level='INFO', logterm=False)
-            assert logger2.level == logger.level
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        logger = setup_logger(logpath=logpath, level='info', logterm=False)
+        assert logger.level == logging.INFO
+        # Discrimination: lowercase 'info' must resolve to the SAME numeric
+        # level as uppercase 'INFO'. A regression that dropped the .upper()
+        # call and returned a different default for unrecognized strings
+        # would diverge here. Pin parity with the canonical form.
+        logger2 = setup_logger(logpath=logpath + '.up', level='INFO', logterm=False)
+        assert logger2.level == logger.level
 
     @pytest.mark.unit
-    def test_setup_logger_level_with_whitespace(self):
+    def test_setup_logger_level_with_whitespace(self, tmpdir_that_closes_logger_files):
         """setup_logger strips whitespace from log level."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
-            logger = setup_logger(logpath=logpath, level='  DEBUG  ', logterm=False)
-            assert logger.level == logging.DEBUG
-            # Discrimination: whitespace-padded input must resolve to the same
-            # level as the stripped form. A regression that dropped the
-            # `.strip()` call would raise ValueError before reaching this line.
-            # Pin parity with the canonical form to lock the contract.
-            logger2 = setup_logger(logpath=logpath + '.bare', level='DEBUG', logterm=False)
-            assert logger2.level == logger.level
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        logger = setup_logger(logpath=logpath, level='  DEBUG  ', logterm=False)
+        assert logger.level == logging.DEBUG
+        # Discrimination: whitespace-padded input must resolve to the same
+        # level as the stripped form. A regression that dropped the
+        # `.strip()` call would raise ValueError before reaching this line.
+        # Pin parity with the canonical form to lock the contract.
+        logger2 = setup_logger(logpath=logpath + '.bare', level='DEBUG', logterm=False)
+        assert logger2.level == logger.level
 
     @pytest.mark.unit
-    def test_setup_logger_with_terminal_output(self):
+    def test_setup_logger_with_terminal_output(self, tmpdir_that_closes_logger_files):
         """setup_logger adds terminal handler when logterm=True."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
-            logger = setup_logger(logpath=logpath, logterm=True)
-            # Check for StreamHandler (or similar terminal output handler)
-            handlers = [h for h in logger.handlers if not isinstance(h, logging.FileHandler)]
-            assert len(handlers) > 0
-            # Discriminating check: at least one of the non-file handlers is a
-            # StreamHandler (the contract that logterm=True must add). A
-            # regression that attached a NullHandler instead would still pass
-            # the bare ``len > 0`` check.
-            assert any(isinstance(h, logging.StreamHandler) for h in handlers)
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        logger = setup_logger(logpath=logpath, logterm=True)
+        # Check for StreamHandler (or similar terminal output handler)
+        handlers = [h for h in logger.handlers if not isinstance(h, logging.FileHandler)]
+        assert len(handlers) > 0
+        # Discriminating check: at least one of the non-file handlers is a
+        # StreamHandler (the contract that logterm=True must add). A
+        # regression that attached a NullHandler instead would still pass
+        # the bare ``len > 0`` check.
+        assert any(isinstance(h, logging.StreamHandler) for h in handlers)
 
     @pytest.mark.unit
-    def test_setup_logger_without_terminal_output(self):
+    def test_setup_logger_without_terminal_output(self, tmpdir_that_closes_logger_files):
         """setup_logger with logterm=False does not add additional terminal handlers."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
-            # Count handlers before call
-            logger = setup_logger(logpath=logpath, logterm=False)
-            # Logger is a singleton so just verify that file logging works
-            logger.info('Test without terminal')
-            with open(logpath) as f:
-                content = f.read()
-            assert 'Test without terminal' in content
-            # Discrimination: with logterm=False no plain StreamHandler routed
-            # to sys.stdout should have been registered by this call. The
-            # FileHandler subclass is still allowed; check the non-file
-            # handlers do not include a stdout-routed StreamHandler.
-            stream_to_stdout = [
-                h
-                for h in logger.handlers
-                if type(h) is logging.StreamHandler and getattr(h, 'stream', None) is sys.stdout
-            ]
-            assert stream_to_stdout == []
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        # Count handlers before call
+        logger = setup_logger(logpath=logpath, logterm=False)
+        # Logger is a singleton so just verify that file logging works
+        logger.info('Test without terminal')
+        with open(logpath) as f:
+            content = f.read()
+        assert 'Test without terminal' in content
+        # Discrimination: with logterm=False no plain StreamHandler routed
+        # to sys.stdout should have been registered by this call. The
+        # FileHandler subclass is still allowed; check the non-file
+        # handlers do not include a stdout-routed StreamHandler.
+        stream_to_stdout = [
+            h
+            for h in logger.handlers
+            if type(h) is logging.StreamHandler and getattr(h, 'stream', None) is sys.stdout
+        ]
+        assert stream_to_stdout == []
 
     @pytest.mark.unit
-    def test_setup_logger_file_handler_has_custom_formatter(self):
+    def test_setup_logger_file_handler_has_custom_formatter(
+        self, tmpdir_that_closes_logger_files
+    ):
         """setup_logger file handler uses simple formatter (no colors)."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
-            logger = setup_logger(logpath=logpath, logterm=False)
-            file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
-            # Logger is singleton, may have many handlers from other tests
-            # Just verify at least one file handler has a formatter
-            assert len(file_handlers) > 0
-            assert any(h.formatter is not None for h in file_handlers)
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        logger = setup_logger(logpath=logpath, logterm=False)
+        file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
+        # Logger is singleton, may have many handlers from other tests
+        # Just verify at least one file handler has a formatter
+        assert len(file_handlers) > 0
+        assert any(h.formatter is not None for h in file_handlers)
 
     @pytest.mark.unit
-    def test_setup_logger_logs_to_file(self):
+    def test_setup_logger_logs_to_file(self, tmpdir_that_closes_logger_files):
         """setup_logger actually writes logs to file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
-            logger = setup_logger(logpath=logpath, logterm=False)
-            logger.info('Test message')
-            with open(logpath) as f:
-                content = f.read()
-            assert 'Test message' in content
-            # Discrimination: the file formatter emits a level prefix
-            # ('[ INFO  ] ...' per the source). A regression that wrote raw
-            # messages without the level tag would pass the substring check
-            # above but break log post-processing tools that key on the prefix.
-            assert 'INFO' in content
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        logger = setup_logger(logpath=logpath, logterm=False)
+        logger.info('Test message')
+        with open(logpath) as f:
+            content = f.read()
+        assert 'Test message' in content
+        # Discrimination: the file formatter emits a level prefix
+        # ('[ INFO  ] ...' per the source). A regression that wrote raw
+        # messages without the level tag would pass the substring check
+        # above but break log post-processing tools that key on the prefix.
+        assert 'INFO' in content
 
     @pytest.mark.unit
-    def test_setup_logger_exception_handler(self):
+    def test_setup_logger_exception_handler(self, tmpdir_that_closes_logger_files):
         """setup_logger installs custom exception hook."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logpath = os.path.join(tmpdir, 'test.log')
-            original_hook = sys.excepthook
-            setup_logger(logpath=logpath, logterm=False)
-            # Verify exception hook was set
-            assert sys.excepthook != original_hook
-            # Discrimination: the installed hook must be callable. A regression
-            # that stored a non-callable sentinel would pass the !=-original
-            # check but break on the first uncaught exception.
-            assert callable(sys.excepthook)
-            sys.excepthook = original_hook  # Restore original hook
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        original_hook = sys.excepthook
+        setup_logger(logpath=logpath, logterm=False)
+        # Verify exception hook was set
+        assert sys.excepthook != original_hook
+        # Discrimination: the installed hook must be callable. A regression
+        # that stored a non-callable sentinel would pass the !=-original
+        # check but break on the first uncaught exception.
+        assert callable(sys.excepthook)
+        sys.excepthook = original_hook  # Restore original hook
+
+    @pytest.mark.unit
+    def test_plain_fmt_writes_uncoloured_timestamped_file(
+        self, tmpdir_that_closes_logger_files
+    ):
+        """An explicit fmt makes the file use that plain layout.
+
+        The grid manager passes a timestamped, colourless format so its
+        manager.log stays clean; verify the file carries the requested
+        timestamp layout and not the default level tag.
+        """
+        import re
+
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'plain.log')
+        setup_logger(
+            logpath=logpath,
+            level='INFO',
+            logterm=False,
+            fmt='[%(asctime)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+        )
+        logging.getLogger('fwl').info('PLAINMARK')
+        for h in logging.getLogger('fwl').handlers:
+            h.flush()
+        with open(logpath) as f:
+            contents = f.read().strip()
+        assert 'PLAINMARK' in contents
+        # The plain layout must NOT carry the default '[ LEVEL ]' tag; this
+        # discriminates the fmt path from the default-formatter path.
+        assert '[ INFO' not in contents
+        # And the line must match the requested datefmt exactly (a regression
+        # that ignored datefmt would emit the default comma-millisecond stamp).
+        assert re.match(r'^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] PLAINMARK$', contents)
+
+    @pytest.mark.unit
+    def test_default_fmt_keeps_level_tag(self, tmpdir_that_closes_logger_files):
+        """Without fmt, the file keeps the default '[ LEVEL ] message' layout.
+
+        This pins that the new fmt parameter is opt-in and does not change the
+        layout of existing (non-grid) logs.
+        """
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'tagged.log')
+        setup_logger(logpath=logpath, level='INFO', logterm=False)
+        logging.getLogger('fwl').info('TAGMARK')
+        for h in logging.getLogger('fwl').handlers:
+            h.flush()
+        with open(logpath) as f:
+            contents = f.read().strip()
+        assert 'TAGMARK' in contents
+        # Default layout carries the level tag...
+        assert '[ INFO' in contents
+        # ...and must NOT look like the timestamped grid layout, so the two
+        # code paths are distinguishable.
+        assert not contents.startswith('[20')
+
+
+class TestBootstrapLogger:
+    """Test suite for bootstrap_logger early console fallback.
+
+    bootstrap_logger guarantees the 'fwl' logger has a handler at CLI entry,
+    before any command constructs Proteus() or calls setup_logger. Without it,
+    INFO/DEBUG records emitted early (e.g. from Proteus.__init__ ->
+    set_directories, or from grid-summarise / grid-pack) fall through to
+    logging.lastResort and are dropped.
+    """
+
+    @pytest.fixture(autouse=True)
+    def pristine_fwl(self):
+        """Give each test a handler-free 'fwl' singleton and restore it after.
+
+        'fwl' is a process-wide logging singleton, so a test that installs a
+        handler would leak it into later tests and files. Snapshot the handler
+        list and level, hand each test a pristine WARNING-level logger with no
+        handlers, then restore the snapshot on teardown so no state escapes the
+        class. This is why the tests below can assert exact handler counts.
+        """
+        logger = logging.getLogger('fwl')
+        saved_handlers = logger.handlers[:]
+        saved_level = logger.level
+        logger.handlers.clear()
+        logger.setLevel(logging.WARNING)
+        yield logger
+        logger.handlers[:] = saved_handlers
+        logger.setLevel(saved_level)
+
+    @pytest.mark.unit
+    def test_adds_single_stdout_handler_at_info(self):
+        """Verify a handler-free 'fwl' logger gains exactly one stdout handler.
+
+        This is the contract that keeps early INFO messages from being dropped:
+        the default INFO level matches the level of the pre-config directory
+        messages the fix targets.
+        """
+        logger = bootstrap_logger()
+        assert logger.name == 'fwl'
+        stdout_handlers = [
+            h
+            for h in logger.handlers
+            if type(h) is logging.StreamHandler and getattr(h, 'stream', None) is sys.stdout
+        ]
+        assert len(stdout_handlers) == 1
+        # Discrimination: level must be INFO (20), not left at the pre-existing
+        # WARNING (30). A regression that skipped setLevel would drop the very
+        # INFO messages this function exists to preserve.
+        assert logger.level == logging.INFO
+        assert stdout_handlers[0].level == logging.INFO
+
+    @pytest.mark.unit
+    def test_idempotent_no_duplicate_handler(self):
+        """A second call must not stack a second handler on the singleton.
+
+        CLI group callbacks and Proteus construction can both reach this code
+        in one process; repeated calls must not duplicate terminal output.
+        """
+        bootstrap_logger()
+        n_after_first = len(logging.getLogger('fwl').handlers)
+        bootstrap_logger()
+        assert len(logging.getLogger('fwl').handlers) == n_after_first
+        # Discrimination: pin the count to exactly one so a regression that
+        # appended on every call (rather than guarding on existing handlers)
+        # is caught rather than merely "did not grow unboundedly".
+        assert n_after_first == 1
+
+    @pytest.mark.unit
+    def test_noop_when_handler_already_present(self, tmpdir_that_closes_logger_files):
+        """bootstrap_logger must not clobber a configured file logger.
+
+        If setup_logger has already installed a file handler, calling
+        bootstrap_logger afterwards must leave that configuration untouched so a
+        real run keeps logging to its proteus_XX.log file.
+        """
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        setup_logger(logpath=logpath, logterm=False)
+        handlers_before = list(logging.getLogger('fwl').handlers)
+        bootstrap_logger()
+        assert logging.getLogger('fwl').handlers == handlers_before
+        # Discrimination: the file handler must survive so file logging is
+        # unaffected. A regression that added a stdout handler anyway would
+        # change the handler list identity checked above.
+        file_handlers = [
+            h for h in logging.getLogger('fwl').handlers if isinstance(h, logging.FileHandler)
+        ]
+        assert len(file_handlers) == 1
+
+    @pytest.mark.unit
+    def test_setup_logger_after_bootstrap_has_no_duplicate_stdout(
+        self, tmpdir_that_closes_logger_files
+    ):
+        """setup_logger after bootstrap yields exactly one stdout handler.
+
+        setup_logger clears handlers before adding its own, so the bootstrap
+        console handler must not survive to double every terminal line.
+        """
+        bootstrap_logger()
+        logpath = os.path.join(tmpdir_that_closes_logger_files, 'test.log')
+        setup_logger(logpath=logpath, logterm=True, level='INFO')
+        logger = logging.getLogger('fwl')
+        stdout_handlers = [
+            h
+            for h in logger.handlers
+            if type(h) is logging.StreamHandler and getattr(h, 'stream', None) is sys.stdout
+        ]
+        assert len(stdout_handlers) == 1
+
+    @pytest.mark.unit
+    def test_info_record_reaches_handler(self):
+        """A child-logger INFO record is emitted, not dropped.
+
+        The fix exists so that records from 'fwl.<module>' children (e.g.
+        'fwl.proteus.utils.coupler') are handled instead of hitting
+        logging.lastResort. Route the handler to a buffer and confirm the text
+        arrives.
+        """
+        import io
+
+        bootstrap_logger()
+        buf = io.StringIO()
+        logging.getLogger('fwl').handlers[0].stream = buf
+        logging.getLogger('fwl.proteus.utils.coupler').info('Temporary-file working dir: /x')
+        assert 'Temporary-file working dir: /x' in buf.getvalue()
+
+    @pytest.mark.unit
+    def test_invalid_level_raises(self):
+        """An unrecognised level must raise rather than silently default.
+
+        Mirrors setup_logger's contract so a typo in a level string fails fast
+        instead of quietly falling back to INFO.
+        """
+        with pytest.raises(ValueError, match='Invalid log level'):
+            bootstrap_logger(level='INVALID')
 
 
 class TestGetCurrentLogfileIndex:
