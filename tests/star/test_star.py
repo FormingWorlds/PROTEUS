@@ -230,9 +230,8 @@ def test_calc_instellation_earth_like():
     assert 1e3 < s < 2e3
 
 
-@pytest.mark.smoke
 @pytest.mark.physics_invariant
-def test_smoke_bol_scale_window_applies_across_dummy_run():
+def test_bol_scale_window_applies_across_dummy_run():
     """A bol_scale window spanning the whole run must stay active for
     every post-init row, and the scaled F_ins must match an independently
     recomputed unscaled instellation times the configured factor.
@@ -242,7 +241,7 @@ def test_smoke_bol_scale_window_applies_across_dummy_run():
         config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
         runner = Proteus(config_path=config_path)
 
-        runner.config.params.out.path = str(Path(tmpdir) / f'smoke_bolscale_{unique_id}')
+        runner.config.params.out.path = str(Path(tmpdir) / f'bolscale_{unique_id}')
         runner.init_directories()
 
         runner.config.planet.tsurf_init = 2000.0
