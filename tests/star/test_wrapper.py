@@ -299,11 +299,10 @@ def test_update_instellation_no_scaling_after_window():
 
 
 @pytest.mark.physics_invariant
-def test_update_instellation_window_boundaries_are_inclusive():
-    """Both edges of the window are inclusive (`<=` on both sides in the
-    source): age_star exactly equal to the start age, and exactly equal to
-    the end age, must both apply scaling. Boundary edge case for a window
-    defined by two closed inequalities.
+def test_update_instellation_window_is_half_open():
+    """The window is half-open, [start, start + duration): age_star exactly
+    equal to the start age applies scaling, but age_star exactly equal to the
+    end age must not apply it.
     """
     config = _dummy_config_for_bolscale(
         bol_scale=3.0, bol_scale_start=0.5, bol_scale_duration=0.5
@@ -311,12 +310,27 @@ def test_update_instellation_window_boundaries_are_inclusive():
     hf_row_start = _run_update_instellation_dummy(config, age_star=0.5e9)
     assert hf_row_start['bol_scale'] == pytest.approx(3.0)
 
+    # Discrimination: exactly at the end boundary must already be unscaled,
+    # not merely "just past" it
     hf_row_end = _run_update_instellation_dummy(config, age_star=1.0e9)
-    assert hf_row_end['bol_scale'] == pytest.approx(3.0)
-    # Discrimination: nudging just past the end boundary must fall back to
-    # unscaled, so the inclusivity is specific to the exact boundary value.
-    hf_row_after = _run_update_instellation_dummy(config, age_star=1.0e9 + 1.0)
-    assert hf_row_after['bol_scale'] == pytest.approx(1.0)
+    assert hf_row_end['bol_scale'] == pytest.approx(1.0)
+
+    hf_row_before_end = _run_update_instellation_dummy(config, age_star=1.0e9 - 1.0)
+    assert hf_row_before_end['bol_scale'] == pytest.approx(3.0)
+
+
+@pytest.mark.physics_invariant
+def test_update_instellation_zero_duration_is_no_op():
+    """bol_scale_duration=0.0 collapses the window to a single instant, so
+    the half-open upper edge makes even age_star exactly equal to
+    bol_scale_start fall outside [start, start) and scaling never applies.
+    """
+    config = _dummy_config_for_bolscale(
+        bol_scale=5.0, bol_scale_start=0.5, bol_scale_duration=0.0
+    )
+    hf_row = _run_update_instellation_dummy(config, age_star=0.5e9)
+    assert hf_row['F_ins'] == pytest.approx(1361.0, rel=1e-12)
+    assert hf_row['bol_scale'] == pytest.approx(1.0)
 
 
 @pytest.mark.physics_invariant

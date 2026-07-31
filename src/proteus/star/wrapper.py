@@ -599,7 +599,7 @@ def update_instellation(hf_row: dict, config: Config, stellar_track=None):
         bol_scale_end = bol_scale_ini + config.star.bol_scale_duration * 1e9
 
         # Apply it if age is within the range
-        if bol_scale_ini <= hf_row['age_star'] <= bol_scale_end:
+        if bol_scale_ini <= hf_row['age_star'] < bol_scale_end:
             bol_scale_apply = config.star.bol_scale
 
     # Update hf_row dictionary

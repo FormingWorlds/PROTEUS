@@ -109,6 +109,11 @@ class Mors:
     )
 
 
+def valid_bol_scale_start(instance, attribute, value):
+    if instance.bol_scale != 1.0 and value is None:
+        raise ValueError('star.bol_scale_start must be set when star.bol_scale != 1.0')
+
+
 def valid_stardummy(instance, attribute, value):
     if instance.module != 'dummy':
         return
@@ -185,5 +190,9 @@ class Star:
     dummy: StarDummy = field(factory=StarDummy, validator=valid_stardummy)
 
     bol_scale: float = field(default=1.0, validator=ge(0.0))
-    bol_scale_start = field(default=None, converter=none_if_none, validator=optional(ge(0.0)))
+    bol_scale_start: float | str | None = field(
+        default=None,
+        converter=none_if_none,
+        validator=[optional(ge(0.0)), valid_bol_scale_start],
+    )
     bol_scale_duration: float = field(default=0.0, validator=ge(0.0))

@@ -58,3 +58,20 @@ def test_star_bol_scale_duration_accepts_zero_boundary():
     (zero-width) window."""
     star = Star(bol_scale_duration=0.0)
     assert star.bol_scale_duration == pytest.approx(0.0, abs=1e-15)
+
+
+@pytest.mark.unit
+def test_star_bol_scale_nonunity_requires_start():
+    """A non-unity ``bol_scale`` with no ``bol_scale_start`` would silently
+    apply nowhere (the window is undefined), so the combination is rejected
+    outright rather than left as a config that quietly does nothing."""
+    with pytest.raises(Exception, match='bol_scale_start'):
+        Star(bol_scale=2.0, bol_scale_start=None)
+
+    # The default bol_scale=1.0 is exempt: no window is needed for a no-op.
+    star_default = Star(bol_scale_start=None)
+    assert star_default.bol_scale == pytest.approx(1.0)
+
+    # Providing a start with a non-unity scale is accepted.
+    star_windowed = Star(bol_scale=2.0, bol_scale_start=0.5)
+    assert star_windowed.bol_scale_start == pytest.approx(0.5)
