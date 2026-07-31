@@ -153,13 +153,17 @@ class Star:
     Attributes
     ----------
     bol_scale: float
-        Scale factor to increase the luminosity.
+        Scale factor applied to bolometrically modulate the stellar fluxes.
+    bol_scale_start: float | None
+        Stellar age from which bol_scale is applied [Gyr]. 'None' to disable.
+    bol_scale_duration: float
+        Duration for which bol_scale is applied [Gyr].
     mass: float
         Stellar mass [M_sun]. Note that for Mors,
         it should be between 0.1 and 1.25 solar masses.
         Values outside of the valid range will be clipped.
     age_ini: float
-        Age of system at model initialisation [Gyr].
+        Stellar age at model initialisation, relative to stellar birthline [Gyr].
     module: str | None
         Select star module to use.
     mors: Mors
@@ -181,3 +185,5 @@ class Star:
     dummy: StarDummy = field(factory=StarDummy, validator=valid_stardummy)
 
     bol_scale: float = field(default=1.0, validator=ge(0.0))
+    bol_scale_start = field(default=None, converter=none_if_none)
+    bol_scale_duration: float = field(default=0.0, validator=ge(0.0))

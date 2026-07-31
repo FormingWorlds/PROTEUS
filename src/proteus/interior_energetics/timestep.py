@@ -129,6 +129,51 @@ def _estimate_escape(hf_all: pd.DataFrame, i1: int, i2: int) -> float:
     return dt_escape
 
 
+def _estimate_bolscale(hf_all: pd.DataFrame, config: Config) -> float:
+    """
+    Estimate the time remaining until the bolometric scaling begins or ends.
+
+    This ensures that the timestep does not skip over the bolometric scaling
+    period, if the period is small and the timestep is large.
+
+    Arguments
+    ----------
+    hf_all : pd.DataFrame
+        Dataframe containing simulation variables
+    config : Config
+        Configuration object
+
+    Returns
+    ----------
+    dt_bolscale : float
+        Time remaining until bolometric scaling begins or ends [years].
+    """
+
+    dt_bolscale = np.inf
+
+    # Trivial case: bolometric scaling is not enabled
+    if config.star.bol_scale == 1.0 or config.star.bol_scale_start is None:
+        log.debug('Bolometric scaling is disabled')
+        return dt_bolscale
+
+    # Stellar age now, and the start/end of bolometric scaling
+    age_now = hf_all.iloc[-1].get('age_star', 0.0)
+    age_ini = config.star.bol_scale_start * 1e9
+    age_end = age_ini + config.star.bol_scale_duration * 1e9
+
+    # Before bolometric scaling begins
+    if age_now < age_ini:
+        dt_bolscale = abs(age_ini - age_now)
+        log.debug('Bolometric scaling starts in %.3e yrs' % dt_bolscale)
+
+    # During bolometric scaling
+    elif age_now < age_end:
+        dt_bolscale = abs(age_end - age_now)
+        log.debug('Bolometric scaling ends in %.3e yrs' % dt_bolscale)
+
+    return dt_bolscale
+
+
 def next_step(
     config: Config,
     dirs: dict,
@@ -281,6 +326,10 @@ def next_step(
         dtminimum = config.params.dt.minimum  # absolute
         dtminimum += config.params.dt.minimum_rel * hf_row['Time']  # allow small steps
         dtswitch = max(dtswitch, dtminimum)
+
+    # Do not allow step size to skip bolometric scaling start/stop
+    if hf_all is not None:
+        dtswitch = min(dtswitch, _estimate_bolscale(hf_all, config))
 
     # Apply the SPIDER-retry step scale factor uniformly to all branches.
     # In the "static" (Time < 2 yr) and "initial" branches, step_sf is

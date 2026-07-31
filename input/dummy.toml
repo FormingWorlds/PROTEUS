@@ -10,13 +10,15 @@ config_version = "3.0"
 
     [params.dt]
         initial  = 1e2           # initial step [yr]
-        minimum  = 1e2           # min step [yr]
-        maximum  = 3e7           # max step [yr]
+        minimum  = 1e3           # min step [yr]
+        maximum  = 2e8           # max step [yr]
+        method = 'maximum'
 
         [params.stop.time]
+            enabled = true
             maximum = 1e9        # stop time [yr]
         [params.stop.solid]
-            enabled = true
+            enabled = false
         [params.stop.escape]
             enabled = false
         [params.stop.radeqm]
@@ -25,6 +27,11 @@ config_version = "3.0"
 # Star: fixed solar luminosity (no evolution)
 [star]
     module = "dummy"
+
+    bol_scale                 = 0.0          # bolometric luminosity scaling factor
+    bol_scale_start           = 0.2          # stellar age from which bol_scale is applied [Gyr]
+    bol_scale_duration        = 0.05          # duration for which bol_scale is applied [Gyr]
+
     [star.dummy]
         radius = 1.0                 # [R_sun]
 
