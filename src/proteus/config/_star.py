@@ -185,7 +185,5 @@ class Star:
     dummy: StarDummy = field(factory=StarDummy, validator=valid_stardummy)
 
     bol_scale: float = field(default=1.0, validator=ge(0.0))
-    bol_scale_start: float | None = field(
-        default=None, converter=none_if_none, validator=optional(ge(0.0))
-    )
+    bol_scale_start = field(default=None, converter=none_if_none, validator=optional(ge(0.0)))
     bol_scale_duration: float = field(default=0.0, validator=ge(0.0))
