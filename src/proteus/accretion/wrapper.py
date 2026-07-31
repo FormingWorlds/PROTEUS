@@ -5,7 +5,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from proteus.utils.constants import AU, M_earth, element_list, vap_element_list
+from proteus.utils.constants import AU, M_earth, element_list, noble_gases, vol_element_list
 
 if TYPE_CHECKING:
     from proteus.accretion.common import ImpactEvent
@@ -13,19 +13,19 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Rock-forming elements, whose mass grows through the structure solve
-# (mass_tot and the equation of state) rather than the volatile budgets. Taken
-# from the element registry's own rock-forming set, which is the same set
-# ``update_planet_mass`` leaves out of M_ele, so the two stay in step when an
-# element is added there.
-_ROCK_ELEMENTS = tuple(vap_element_list)
+# Elements whose whole-planet budget is conserved across an impact's mass
+# growth, and which the strip and the delivery are sized from. This is the set
+# ``update_planet_mass`` sums into M_ele, so what an impact conserves and what
+# the whole-planet mass is built from are the same elements by construction.
+# The noble gases are in it, so a planet-matching impactor carries them in
+# proportion like every other volatile.
+_VOLATILE_ELEMENTS = tuple(e for e in element_list if e in vol_element_list or e in noble_gases)
 
-# Every other tracked element's whole-planet budget is conserved across an
-# impact's mass growth. Derived from the tracked-element registry so an
-# element added there is conserved by default unless declared rock-forming.
-# The set includes the noble gases, so a planet-matching impactor carries
-# them in proportion like every other volatile.
-_VOLATILE_ELEMENTS = tuple(e for e in element_list if e not in _ROCK_ELEMENTS)
+# Everything else is rock-forming: its mass grows through the structure solve
+# (mass_tot and the equation of state) rather than through a budget, which is
+# why M_ele leaves it out. Taken as the complement rather than as its own list,
+# so an element cannot be counted in both channels or in neither.
+_ROCK_ELEMENTS = tuple(e for e in element_list if e not in _VOLATILE_ELEMENTS)
 
 # Elements configurable through the per-element ppmw fields. The ppmw mode
 # can only deliver these; the planet-matching mode covers the full volatile
@@ -360,6 +360,17 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     if getattr(handler, 'crystallized', False):
         handler.crystallized = False
         log.info('    solidification latch cleared: the mantle is molten again')
+
+    # An impactor that brought volatiles to a planet that had run dry gives it
+    # an inventory again, so lift the one-way desiccation latch too. The
+    # desiccated path zeroes every volatile column it is given, so leaving the
+    # latch set would erase the delivery on the next outgassing call and the
+    # planet would stay dry no matter how wet the impactors were. The latch is
+    # only lifted, not re-decided: the desiccation check runs again on the next
+    # iteration and re-sets it if the delivery was too small to matter.
+    if delivered and getattr(handler, 'desiccated', False):
+        handler.desiccated = False
+        log.info('    desiccation latch cleared: the impact delivered volatiles')
 
     # Move the orbit by the impact's proportional change in semi-major axis and
     # its post-impact eccentricity, writing both the configuration and the row.

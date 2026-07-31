@@ -248,6 +248,7 @@ def _impact_handler(
     eccentricity=0.1,
     tsurf_init=4000.0,
     crystallized=False,
+    desiccated=False,
     accretion=None,
 ):
     """Build the minimal handler shape apply_impact reads and mutates.
@@ -280,6 +281,7 @@ def _impact_handler(
         hf_all=None,
         interior_o=SimpleNamespace(impact_reset=False),
         crystallized=crystallized,
+        desiccated=desiccated,
         directories={'output': '/tmp/unused'},
     )
 
@@ -352,6 +354,58 @@ def test_impact_on_a_crystallised_planet_reopens_outgassing(monkeypatch):
 
     # The impact re-melted the mantle, so the latch is lifted.
     assert handler.crystallized is False
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_wet_impact_on_a_desiccated_planet_restores_its_inventory(monkeypatch):
+    """A volatile-bearing impact clears the one-way desiccation latch.
+
+    Once a planet loses its whole volatile inventory the run latches into the
+    desiccated path, which zeroes every volatile column it is handed. An
+    impactor that arrives carrying volatiles gives the planet an inventory
+    again, so that latch has to lift with the delivery: otherwise the next
+    outgassing call erases what the impact just delivered and the planet stays
+    dry however wet the impactors are.
+
+    The latch is lifted, not re-decided. The desiccation check runs again on
+    the following iteration and re-sets it if the delivery was too small to
+    count, so nothing here asserts the planet is wet, only that it is allowed
+    to be re-evaluated.
+
+    Edge case: a dry impactor delivers nothing, so there is no inventory to
+    restore and the latch must stay set. That is the discriminating half; a
+    fix that cleared the latch on every impact would pass the first assertion
+    and fail this one.
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    # 1000 ppmw of hydrogen on a 6.4e23 kg impactor is 6.4e20 kg delivered,
+    # far above any threshold the desiccation check applies.
+    wet = _impact_handler(desiccated=True, accretion=_impact_accretion(H=1.0e3))
+    assert wet.desiccated is True  # latched before the impact
+    apply_impact(wet, _impact_event())
+
+    assert wet.desiccated is False, (
+        'the planet stayed latched as desiccated after an impact delivered '
+        'volatiles, so the desiccated path will zero the delivery on the next '
+        'outgassing call'
+    )
+    assert wet.hf_row['H_kg_total'] == pytest.approx(6.4e20, rel=1e-12)
+
+    # A dry impactor brings nothing, so the planet is still dry and the latch
+    # must hold.
+    dry = _impact_handler(desiccated=True)
+    apply_impact(dry, _impact_event())
+    assert dry.desiccated is True, (
+        'a dry impact lifted the desiccation latch, so the run resumes '
+        'outgassing a planet that still has no volatiles'
+    )
+    assert dry.hf_row.get('H_kg_total', 0.0) == pytest.approx(0.0)
 
 
 @pytest.mark.unit
@@ -1861,18 +1915,23 @@ def test_the_rock_and_volatile_element_sets_partition_the_registry():
 
     The registry already draws that line for the rest of the model:
     ``update_planet_mass`` sums M_ele over the volatile elements and the noble
-    gases and deliberately leaves the rock-forming elements out, because rock
-    vapour puts their mass in the atmosphere without debiting the interior.
-    The accretion module must draw it in the same place, so this pins the two
-    sets against the registry rather than against a copy of it.
+    gases and leaves the rock-forming elements out, because rock vapour puts
+    their mass in the atmosphere without debiting the interior. The accretion
+    module must draw it in the same place, so this pins the conserved set
+    against the M_ele definition rather than against a copy of it, and takes
+    the rock set as the complement.
 
     Verifies:
-    - The rock set is exactly the registry's rock-forming set.
-    - The two sets are disjoint and together cover every tracked element.
     - The conserved set is exactly what M_ele sums over, so nothing an impact
       conserves is left out of the planet mass and nothing it grows is in.
+    - The two sets are disjoint and together cover every tracked element.
+    - Every element the registry calls rock-forming is outside the conserved
+      set, including those added after the accretion module was written.
     """
+    import inspect
+
     from proteus.accretion.wrapper import _ROCK_ELEMENTS, _VOLATILE_ELEMENTS
+    from proteus.interior_energetics.wrapper import update_planet_mass
     from proteus.utils.constants import (
         element_list,
         noble_gases,
@@ -1883,7 +1942,6 @@ def test_the_rock_and_volatile_element_sets_partition_the_registry():
     rock = set(_ROCK_ELEMENTS)
     conserved = set(_VOLATILE_ELEMENTS)
 
-    assert rock == set(vap_element_list)
     assert conserved == set(vol_element_list) | set(noble_gases)
 
     # A partition: no element travels by both routes, and none is dropped.
@@ -1891,9 +1949,10 @@ def test_the_rock_and_volatile_element_sets_partition_the_registry():
     assert rock | conserved == set(element_list)
 
     # Discrimination: the rock-forming set is not a subset of some smaller
-    # hard-coded group. Every element the registry calls rock-forming is
-    # excluded from the conserved budgets, including any added after the
-    # accretion module was written.
+    # hard-coded group. Al, Ti, Ca and K are rock-forming and were added to the
+    # registry after the accretion module was written; a copied four-element
+    # tuple would conserve them as volatile budgets.
+    assert {'Al', 'Ti', 'Ca', 'K'} <= rock
     for element in vap_element_list:
         assert element not in conserved, (
             f"'{element}' is rock-forming in the element registry but is "
@@ -1901,6 +1960,92 @@ def test_the_rock_and_volatile_element_sets_partition_the_registry():
             'counted both in the rock the impact adds and in the budget'
         )
 
-    # The conserved set is what the planet mass is built from, so an impact
-    # cannot conserve a budget the planet mass does not see.
-    assert conserved == set(vol_element_list + noble_gases)
+    # The conserved set is the one M_ele is summed over, read off the source of
+    # that sum rather than restated here, so the two cannot drift apart.
+    m_ele_source = inspect.getsource(update_planet_mass)
+    assert 'for e in vol_element_list + noble_gases:' in m_ele_source, (
+        'update_planet_mass no longer sums M_ele over vol_element_list + '
+        'noble_gases, so what an impact conserves and what the whole-planet '
+        'mass is built from may now be different sets'
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_row_an_impact_leaves_satisfies_the_runtime_mass_invariants(monkeypatch):
+    """The main loop's own invariant checks pass on a post-impact row.
+
+    Contract clause: every iteration ends by asserting that the atmosphere is
+    no heavier than the planet and that the summed per-species atmospheric
+    masses still equal ``M_vol_atm``. An impact rewrites ``M_planet`` through
+    the mass anchor and rewrites the per-element budgets through the strip and
+    the delivery, all inside the same iteration those checks close, so the row
+    it hands on has to satisfy them rather than relying on the outgassing step
+    to repair it.
+
+    The impact here both strips a heavy atmosphere and delivers a wet
+    impactor's volatiles, so the two channels that move mass in opposite
+    directions are exercised together.
+
+    Edge case: the same checks are run on the pre-impact row first, so a row
+    that was already failing them cannot be mistaken for one the impact fixed.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.coupler import (
+        assert_mass_conservation,
+        assert_surface_pressure_consistency,
+    )
+
+    handler = _impact_handler(
+        accretion=_impact_accretion(
+            atmloss_module='constant', atmloss_frac=0.4, impactor_volatiles='ppmw', H=500.0
+        )
+    )
+    hf_row = handler.hf_row
+    _atm_state(hf_row, H=(3.0e19, 4.0e20), O=(2.0e19, 3.0e20))
+    # The gas-species columns the invariant sums over, consistent with the
+    # per-element atmospheric masses above: H2O carries both H and O.
+    hf_row['H2O_kg_atm'] = 5.0e19
+    hf_row['M_vol_atm'] = 5.0e19
+    hf_row['M_atm'] = 5.0e19
+    hf_row['M_ele'] = 7.0e20
+    hf_row['M_int'] = 5.9736e24
+    hf_row['M_planet'] = hf_row['M_int'] + hf_row['M_ele']
+    hf_row['P_surf'] = 120.0
+    hf_row['P_vol'] = 120.0
+    hf_row['P_vap'] = 0.0
+    hf_row['outgas_mass_thresh'] = 0.0
+
+    config = SimpleNamespace(outgas=SimpleNamespace(mass_thresh=1.0e10, vapourise=False))
+    handler.config.outgas = config.outgas
+
+    # The starting row already satisfies both checks, so anything raised after
+    # the impact is the impact's doing.
+    assert_mass_conservation(hf_row, require_atm_le_planet=True)
+    assert_surface_pressure_consistency(config, hf_row)
+
+    def _solve(dirs, cfg, hf_all, row, output):
+        row['M_int'] = cfg.planet.mass_tot * 5.9736e24
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', _solve, raising=False
+    )
+
+    apply_impact(handler, _impact_event())
+
+    # Neither invariant is breached by the row the impact hands on.
+    assert_mass_conservation(hf_row, require_atm_le_planet=True)
+    assert_surface_pressure_consistency(config, hf_row)
+
+    # Discrimination: the checks above ran against a row both channels moved,
+    # not a copy of the starting one. Hydrogen closes as
+    #   4.0e20 - 0.4 * 3.0e19        (the strip, 40% of the atmospheric H)
+    #   + 3.2e20 - 0.4 * 0.075 * 3.2e20   (delivery, less the impactor's own
+    #                                      atmospheric part lost in the
+    #                                      collision at the target's 7.5%
+    #                                      atmospheric fraction)
+    # = 6.984e20 kg. A run that skipped either channel lands elsewhere.
+    assert hf_row['H_kg_total'] == pytest.approx(6.984e20, rel=1e-12)
+    # Both strips are booked as loss: 40% of the H and of the O atmosphere.
+    assert hf_row['esc_kg_cumulative'] == pytest.approx(2.0e19, rel=1e-12)
+    assert hf_row['M_planet'] > 5.9736e24, 'the planet did not grow'
