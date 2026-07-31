@@ -7,7 +7,7 @@ from pathlib import Path
 import cattrs
 
 from ._config import Config
-from .orphans import check_config_orphan_free
+from .orphans import UnknownConfigKeyError, find_key_problems, format_orphan_message
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -21,16 +21,36 @@ def read_config(path: Path | str) -> dict:
     return config
 
 
-def read_config_object(path: Path | str) -> Config:
-    """Read and validate config into Config object."""
+def structure_config(raw: dict, path: Path | str) -> Config:
+    """Structure a raw config dict into a Config object.
 
-    # Read config from TOML file in path as a raw dict.
-    cfg = read_config(path)
+    This performs no key checking: cattrs discards anything the schema does not
+    map, so a caller that uses this directly is responsible for having checked
+    the keys itself. `read_config_object` is the checked entry point and is
+    what almost every caller wants. The step is separate so the runner can
+    obtain a configuration, resolve the output directory named inside it, and
+    record a refusal there before raising.
 
-    # Attempt to structure config with cattrs.
+    Parameters
+    ----------
+    raw:
+        Raw TOML dict as returned by `read_config`.
+    path:
+        Config file the dict came from, quoted back in any error.
+
+    Returns
+    -------
+    Config
+        The structured configuration.
+
+    Raises
+    ------
+    ValueError
+        If a value fails validation.
+    """
+
     try:
-        # Structure the config
-        obj = cattrs.structure(cfg, Config)
+        obj = cattrs.structure(raw, Config)
         log.debug(
             'Config structured: star.module=%s, interior_energetics.module=%s, '
             'outgas.module=%s, atmos_clim.module=%s, escape.module=%s',
@@ -40,8 +60,6 @@ def read_config_object(path: Path | str) -> Config:
             obj.atmos_clim.module,
             obj.escape.module,
         )
-
-        # Looks good! Return the structured config object.
         return obj
 
     # Catch validation exceptions
@@ -61,4 +79,46 @@ def read_config_object(path: Path | str) -> Config:
         ) from None
 
 
-__all__ = ['Config', 'read_config_object', 'read_config', 'check_config_orphan_free']
+def read_config_object(path: Path | str) -> Config:
+    """Read and validate config into Config object.
+
+    Parameters
+    ----------
+    path:
+        Path to the TOML config file.
+
+    Returns
+    -------
+    Config
+        The structured configuration.
+
+    Raises
+    ------
+    UnknownConfigKeyError
+        If the file carries keys the schema cannot accept.
+    ValueError
+        If a value fails validation.
+    """
+
+    # Read config from TOML file in path as a raw dict.
+    cfg = read_config(path)
+
+    # Reject unusable keys before structuring, so that a typo is reported as a
+    # typo rather than as whatever the resulting default happens to break
+    # further downstream.
+    orphans, mistyped = find_key_problems(cfg)
+    if orphans or mistyped:
+        raise UnknownConfigKeyError(format_orphan_message(orphans, path, mistyped))
+
+    return structure_config(cfg, path)
+
+
+__all__ = [
+    'Config',
+    'UnknownConfigKeyError',
+    'read_config_object',
+    'read_config',
+    'structure_config',
+    'find_key_problems',
+    'format_orphan_message',
+]

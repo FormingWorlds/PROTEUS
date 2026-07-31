@@ -10,6 +10,7 @@ from click.testing import CliRunner
 
 from proteus import __version__ as proteus_version
 from proteus import cli
+from proteus.config import UnknownConfigKeyError
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -558,6 +559,59 @@ def test_get_interiordata_calls_clean_downloads(monkeypatch, tmp_path):
     # No structure module in the fake config: the Zalmoxis EOS download
     # must not be attempted.
     assert not any(c[0] == 'zalmoxis_eos' for c in calls)
+
+
+@pytest.mark.unit
+def test_get_interiordata_reports_an_unknown_config_key_cleanly(monkeypatch, tmp_path):
+    """A misspelled key stops the download and is reported as a CLI error.
+
+    The download commands act on the configuration, so acting on one whose keys
+    were silently discarded would fetch data for a setup the user did not ask
+    for. The failure has to arrive in the CLI's own error style with the key
+    named, not as a traceback.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    runner = CliRunner()
+    downloads = []
+    monkeypatch.setattr(
+        'proteus.utils.data.download_interior_lookuptables',
+        lambda clean=False: downloads.append('interior'),
+    )
+    monkeypatch.setattr(
+        'proteus.utils.data.download_melting_curves',
+        lambda configuration, clean=False: downloads.append('melt'),
+    )
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    raw['planet']['mass_total'] = 2.5  # deliberate misspelling of mass_tot
+    cfg = tmp_path / 'typo.toml'
+    with open(cfg, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    res = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(cfg)])
+    assert res.exit_code != 0
+    assert 'planet.mass_total' in res.output
+    # A ClickException prints "Error: ..." and does not surface a traceback.
+    assert 'Traceback' not in res.output
+    # The config-dependent download is not reached; the config-independent one
+    # ahead of it may already have run, which is why only the former is pinned.
+    assert 'melt' not in downloads
+
+    # Discrimination: with the key spelled correctly the same command completes
+    # and the melting-curve download does run, so the refusal is caused by the
+    # misspelling rather than by this config being unusable.
+    raw['planet']['mass_tot'] = raw['planet'].pop('mass_total')
+    good = tmp_path / 'good.toml'
+    with open(good, 'w') as f:
+        tomlkit.dump(raw, f)
+    res_ok = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(good)])
+    assert res_ok.exit_code == 0
+    assert 'melt' in downloads
 
 
 @pytest.mark.unit
@@ -1139,6 +1193,144 @@ def test_grid_calls_grid_from_config(monkeypatch, tmp_path):
     assert received[0][0].name == 'cfg.toml'
     # Without --dry-run the dispatch must request a real run, not a stubbed one.
     assert received[0][1] is False
+
+
+def test_start_reports_an_unknown_config_key_cleanly(tmp_path):
+    """``proteus start`` refuses a misspelled key in the CLI's own error style.
+
+    This is the command most runs go through, so a refusal that arrives as a
+    bare traceback leaves the name of the offending key buried in it.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    raw['params']['out']['path'] = str(tmp_path / 'run_output')
+    raw['planet']['mass_total'] = 2.5  # deliberate misspelling of mass_tot
+    cfg = tmp_path / 'typo.toml'
+    with open(cfg, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    res = runner.invoke(cli.cli, ['start', '-c', str(cfg), '--offline'])
+    assert res.exit_code != 0
+    assert 'planet.mass_total' in res.output
+    assert 'Traceback' not in res.output
+
+
+def test_cli_does_not_convert_unrelated_value_errors(tmp_path, monkeypatch):
+    """A failure that is not about configuration keys keeps its traceback.
+
+    Presenting every ValueError as a tidy CLI message would hide real bugs, so
+    the group converts only the configuration-key error.
+    """
+
+    def boom(*_args, **_kwargs):
+        raise ValueError('something else went wrong entirely')
+
+    monkeypatch.setattr(cli, 'Proteus', boom)
+
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('config_version = "3.0"\n')
+
+    res = runner.invoke(cli.cli, ['start', '-c', str(cfg), '--offline'])
+    assert res.exit_code != 0
+    # Not laundered into "Error: ...": the exception escapes for the traceback.
+    assert isinstance(res.exception, ValueError)
+    assert 'something else went wrong entirely' in str(res.exception)
+
+
+def test_grid_reports_an_unknown_key_in_the_base_config_cleanly(tmp_path, monkeypatch):
+    """``proteus grid`` refuses a base config with a misspelled key, in CLI style.
+
+    Case config files are written out from the parsed base config, so an
+    unrecognised key in the base never reaches them and the grid would
+    otherwise run every case on a default nobody chose. The refusal has to name
+    the key and arrive as a CLI error, since the whole ensemble depends on it.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    import proteus.grid.manage as gmanage
+
+    monkeypatch.setattr(gmanage, 'PROTEUS_DIR', str(tmp_path))
+    monkeypatch.setattr(gmanage.time, 'sleep', lambda *_a, **_k: None)
+
+    with open(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml', 'rb') as f:
+        base = tomllib.load(f)
+    base['params']['dt']['maxium'] = base['params']['dt'].pop('maximum')
+    base_path = tmp_path / 'base.toml'
+    with open(base_path, 'w') as f:
+        tomlkit.dump(base, f)
+
+    grid_toml = tmp_path / 'run.grid.toml'
+    grid_toml.write_text(
+        'config_version = "3.0"\n'
+        'output = "cli_typo_grid"\n'
+        'symlink = ""\n'
+        f'ref_config = "{base_path}"\n'
+        'use_slurm = false\n'
+        'max_jobs = 1\n'
+        'max_days = 1\n'
+        'max_mem = 1\n'
+        '["planet.mass_tot"]\n'
+        '    method = "direct"\n'
+        '    values = [0.7]\n'
+    )
+
+    res = runner.invoke(cli.cli, ['grid', '-c', str(grid_toml), '--dry-run'])
+    assert res.exit_code != 0
+    assert 'params.dt.maxium' in res.output
+    # A ClickException prints "Error: ..."; an unwrapped raise prints a traceback.
+    assert 'Traceback' not in res.output
+
+
+def test_update_input_data_refuses_an_unknown_config_key_before_downloading(
+    tmp_path, monkeypatch
+):
+    """A misspelled key stops the data refresh before anything is fetched.
+
+    This helper runs at the tail of installing and of updating, after every
+    other step has reported success, so refusing here has to happen before the
+    download rather than after it. The helper is called directly because the
+    commands that reach it, ``install-all`` and ``update-all``, perform a full
+    installation; that the error it raises is presented in the CLI's own style
+    rather than as a traceback is pinned by the group-level tests above.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    downloads = []
+    monkeypatch.setattr(
+        cli, 'download_sufficient_data', lambda configuration, clean: downloads.append(clean)
+    )
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    raw['planet']['mass_total'] = 2.5  # deliberate misspelling of mass_tot
+    cfg = tmp_path / 'typo.toml'
+    with open(cfg, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    with pytest.raises(UnknownConfigKeyError) as excinfo:
+        cli._update_input_data(cfg)
+    assert 'planet.mass_total' in str(excinfo.value)
+    assert not downloads
+
+    # Discrimination: spelled correctly the same config completes the refresh,
+    # so the refusal is caused by the misspelling and not by this config.
+    raw['planet']['mass_tot'] = raw['planet'].pop('mass_total')
+    good = tmp_path / 'good.toml'
+    with open(good, 'w') as f:
+        tomlkit.dump(raw, f)
+    assert cli._update_input_data(good) is True
+    assert downloads == [True]
 
 
 def test_grid_dry_run_passes_test_run_flag(monkeypatch, tmp_path):

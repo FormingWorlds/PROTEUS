@@ -274,14 +274,24 @@ def test_reference_config_declares_the_accretion_section():
 
     from proteus.config import read_config_object
     from proteus.config._accretion import Accretion, Morrigan
-    from proteus.config.orphans import check_config_orphan_free
+    from proteus.config.orphans import find_key_problems
 
     all_options = PROTEUS_ROOT / 'input' / 'all_options.toml'
     with open(all_options, 'rb') as f:
         raw = tomllib.load(f)
 
     assert 'accretion' in raw
-    assert check_config_orphan_free(raw) is True
+    orphans, mistyped = find_key_problems(raw)
+    accretion_orphans = [k for k in orphans if k.startswith('accretion')]
+    accretion_mistyped = [k for k in mistyped if k.startswith('accretion')]
+    assert accretion_orphans == [], (
+        f'{accretion_orphans} are set in the reference config but absent from the '
+        'schema, so a user copying the file gets settings that do nothing'
+    )
+    assert accretion_mistyped == [], (
+        f'{accretion_mistyped} are shaped in the file the way the schema does not '
+        'expect, so the value the run uses is not the one the file states'
+    )
 
     # The reference file ships the section disabled.
     cfg = read_config_object(all_options)

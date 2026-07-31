@@ -46,6 +46,24 @@ example, the `mors` stellar evolution module (`star.module = 'mors'`) requires
 loader reports an error at startup if a required parameter is missing for the
 chosen modules.
 
+**Keys outside the schema are refused.** Loading a configuration fails if the
+file contains a key that the schema does not define, and the error names every
+such key. Because each parameter has a default, a misspelled or outdated option
+name would otherwise take no effect at all: the run would proceed on the
+default while the file appears to say otherwise. The check covers nested keys,
+so `planet.elements.H_budgets` is caught as readily as a stray top-level
+section. It runs when a run configuration is loaded, which includes `proteus
+start`, the data-download commands, and the base configuration of a parameter
+grid. If a key is rejected that you expect to exist, check its spelling against
+the configuration reference pages above or against `all_options.toml`.
+
+**Sections must be written as single tables.** Writing `[[planet]]` rather than
+`[planet]` declares an array of tables, which the parser cannot map onto the
+schema: the section is discarded whole and every parameter inside it reverts to
+its default. The name itself is spelled correctly in that case, so nothing
+about it looks wrong in the file. Loading refuses such a section and names it,
+and the fix is to remove the extra brackets.
+
 See [`all_options.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/all_options.toml) for a comprehensive example. Have a look at the other [input configs](https://github.com/FormingWorlds/PROTEUS/tree/main/input) for ideas of how to set up your config in practice.
 
 ## Root parameters
