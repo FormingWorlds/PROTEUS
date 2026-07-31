@@ -363,6 +363,7 @@ def test_bol_scale_window_override_reproduces_unwindowed_2_0_scaling():
     # it) would silently change a migrated run's stellar flux.
     assert v3_defaults['star.bol_scale_start'] is None
 
+
 def _translate(v2_dict):
     nested, report = mig.translate(v2_dict)
     return mig._flatten(nested), report
