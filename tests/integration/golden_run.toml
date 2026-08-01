@@ -191,7 +191,7 @@ config_version = "3.0"
         # Solidification alone already moves the volatile columns here, by
         # degassing the mantle as it freezes, so escape is not what makes them
         # move; measured on this configuration it takes the count of moving
-        # columns from 82 to 104 out of 459. What it adds that nothing else
+        # columns from 84 to 106 out of 757. What it adds that nothing else
         # does is the escape path itself: with no escape the elemental totals,
         # the per-element rates, the cumulative escaped mass and the planet
         # mass are all constants, and a constant can catch a change that

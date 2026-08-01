@@ -95,9 +95,12 @@ MIN_COLUMNS_COMPARED = 650
 # last-bit drift the tolerance absorbs. It is also well inside what the check
 # resolves in practice: scaling dTdt in interior_energetics/dummy.py by
 # 1 + 1e-7 is reported at 4.9 times the tolerance and 1 + 1e-6 at 49 times,
-# while 1 + 2e-8 sits inside it, so the threshold is just above 2e-8. The
-# column that reports it is not the one perturbed, since a change to the
-# interior is amplified on its way into the volatile partitioning.
+# while 1 + 2e-8 sits inside it, so the threshold is just above 2e-8. In that
+# experiment the column reporting the change is not the one perturbed, since a
+# change to the interior is amplified on its way into the volatile
+# partitioning. The guard below instead moves a recorded column directly, so
+# there the difference is reported on the column it was made to, which is what
+# the guard asserts.
 GUARD_COLUMN = 'T_magma'
 GUARD_RELATIVE_SIZE = 1.0e-5
 
