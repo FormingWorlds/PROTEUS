@@ -21,11 +21,11 @@ log = logging.getLogger('fwl.' + __name__)
 # proportion like every other volatile.
 _VOLATILE_ELEMENTS = tuple(e for e in element_list if e in vol_element_list or e in noble_gases)
 
-# Everything else is rock-forming: its mass grows through the structure solve
-# (mass_tot and the equation of state) rather than through a budget, which is
-# why M_ele leaves it out. Taken as the complement rather than as its own list,
-# so an element cannot be counted in both channels or in neither.
-_ROCK_ELEMENTS = tuple(e for e in element_list if e not in _VOLATILE_ELEMENTS)
+# Every other element in the registry is rock-forming. Its mass grows through
+# the structure solve (mass_tot and the equation of state) rather than through a
+# budget, which is why M_ele leaves it out and why nothing here iterates over it:
+# rock is the complement of the set above, never a list of its own, so an element
+# cannot be counted in both channels or in neither.
 
 # Elements configurable through the per-element ppmw fields. The ppmw mode
 # can only deliver these; the planet-matching mode covers the full volatile

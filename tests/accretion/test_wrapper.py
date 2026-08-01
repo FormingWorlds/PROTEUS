@@ -1930,7 +1930,7 @@ def test_the_rock_and_volatile_element_sets_partition_the_registry():
     """
     import inspect
 
-    from proteus.accretion.wrapper import _ROCK_ELEMENTS, _VOLATILE_ELEMENTS
+    from proteus.accretion.wrapper import _VOLATILE_ELEMENTS
     from proteus.interior_energetics.wrapper import update_planet_mass
     from proteus.utils.constants import (
         element_list,
@@ -1939,14 +1939,18 @@ def test_the_rock_and_volatile_element_sets_partition_the_registry():
         vol_element_list,
     )
 
-    rock = set(_ROCK_ELEMENTS)
     conserved = set(_VOLATILE_ELEMENTS)
+    # Rock is whatever the conserved set leaves behind. Taking the complement
+    # here rather than reading a second list is the point: an element cannot
+    # then be counted in both channels or in neither, whatever the registry
+    # grows next.
+    rock = set(element_list) - conserved
 
     assert conserved == set(vol_element_list) | set(noble_gases)
 
-    # A partition: no element travels by both routes, and none is dropped.
-    assert rock & conserved == set()
-    assert rock | conserved == set(element_list)
+    # The conserved set is drawn from the registry, so an element the registry
+    # tracks cannot fall outside both channels.
+    assert conserved <= set(element_list)
 
     # Discrimination: the rock-forming set is not a subset of some smaller
     # hard-coded group. Al, Ti, Ca and K are rock-forming and were added to the
