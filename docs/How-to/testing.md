@@ -196,6 +196,65 @@ This AST-based linter flags:
 - Float `==` comparisons
 - Missing module-level tier markers
 
+## Checking that a refactor changed nothing
+
+A change meant to leave behaviour alone is shown to have left it alone by
+running the same configuration before and after and finding the same numbers.
+`tests/integration/golden_run.toml` is a fixed all-dummy configuration for
+that, and `tests/integration/golden_run.tsv` holds the trajectory it produces:
+one line per helpfile column, so a quantity that moves shows up as a single
+changed line in a diff.
+
+While working on a refactor, compare the working tree against the recorded
+trajectory:
+
+```bash
+pytest tests/integration/test_integration_golden_run.py
+```
+
+It fails and names the columns that moved, the row where each moved most, and
+by how much relative to the tolerance. The same check runs nightly.
+
+How small a change it resolves, measured by scaling the cooling rate in
+`src/proteus/interior_energetics/dummy.py` by `1 + eps` and running the
+comparison:
+
+| `eps` | outcome |
+|---|---|
+| `1e-6` | reported, at 49 times the tolerance |
+| `1e-7` | reported, at 4.9 times |
+| `2e-8` | inside the tolerance |
+
+So the threshold sits just above `2e-8`. The most sensitive column is not the
+one perturbed: a change to the interior is amplified about fiftyfold on its
+way into the volatile partitioning, because dissolved volatiles depend steeply
+on melt fraction near solidification. That threshold is far below any change
+of behaviour and well above the last-bit differences between one platform's
+maths library and another's.
+
+What it covers is the coupling framework: the main loop, the timestep
+controller, the module handshakes, the helpfile round-trip, and every
+configuration field the run reads. It does not cover the physics modules
+themselves, which run on their dummy backends here.
+
+### Recording the trajectory again
+
+A change to the physics, to the coupling loop or to the configuration moves
+the trajectory, and the reference then has to be recorded again:
+
+```bash
+pytest tests/integration/test_integration_golden_run.py --record-golden
+```
+
+Do that in the same commit as the change that moved it. Recording prints
+what moved against the reference it replaces, and the diff of `golden_run.tsv`
+is the record of which quantities changed and by how much, so a reviewer sees
+the behavioural consequence of the change rather than only its code.
+
+Editing `golden_run.toml` without recording the trajectory again fails the
+check with a message saying so, rather than as an unexplained numerical
+difference: the reference stores a digest of the configuration it came from.
+
 ## CI/CD pipeline
 
 ### Pull request checks
