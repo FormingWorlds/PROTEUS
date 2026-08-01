@@ -73,7 +73,7 @@ CONFIG = PROTEUS_ROOT / 'tests' / 'integration' / 'golden_run.toml'
 REFERENCE = PROTEUS_ROOT / 'tests' / 'integration' / 'golden_run.tsv'
 
 # Floor on how much of the helpfile the comparison has to cover. The
-# configuration writes about 756 columns; a filter or a schema change that
+# configuration writes about 757 columns; a filter or a schema change that
 # started dropping most of them would otherwise leave the comparison passing
 # over almost nothing, since a reference recorded from the same narrowed run
 # would agree with it.
