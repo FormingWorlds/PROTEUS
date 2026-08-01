@@ -357,6 +357,40 @@ def test_accretion_on_spider_is_refused_at_config_load():
 
 
 @pytest.mark.unit
+def test_accretion_on_the_boundary_interior_is_refused_at_config_load():
+    """An accretion run on the boundary interior is rejected before it starts.
+
+    That interior does not pass its state to the time-stepper, so the step is
+    never shortened to land on a scheduled impact and every impact would be
+    applied late by however far the controller happened to step. The refusal
+    names the offending interior so the message is actionable, and it does not
+    reach for the reason the SPIDER refusal gives, which is a different defect.
+    """
+    from proteus.config._config import check_accretion_interior_compatibility
+
+    for module in ('morrigan', 'dummy', 'timeline'):
+        with pytest.raises(ValueError, match='land on a scheduled impact'):
+            check_accretion_interior_compatibility(
+                _compat_instance(module, 'boundary'), None, None
+            )
+
+    # Discrimination: the two refusals give different reasons, so a check that
+    # collapsed them into one message would pass the assertion above and fail here.
+    with pytest.raises(ValueError, match='boundary'):
+        check_accretion_interior_compatibility(
+            _compat_instance('morrigan', 'boundary'), None, None
+        )
+    with pytest.raises(ValueError) as spider_err:
+        check_accretion_interior_compatibility(
+            _compat_instance('morrigan', 'spider'), None, None
+        )
+    assert 'land on a scheduled impact' not in str(spider_err.value)
+
+    # The boundary interior is only refused when accretion is actually on.
+    check_accretion_interior_compatibility(_compat_instance(None, 'boundary'), None, None)
+
+
+@pytest.mark.unit
 def test_accretion_with_rock_vapour_is_refused_at_config_load():
     """An accretion run that also vapourises rock is rejected before it starts.
 

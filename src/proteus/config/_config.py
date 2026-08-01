@@ -125,24 +125,46 @@ def check_module_dependencies(instance, attribute, value):
                 raise ImportError(f'{msg}\n  Original error: {e}') from e
 
 
-def check_accretion_interior_compatibility(instance, attribute, value):
-    """Reject accretion runs on an interior that cannot re-melt after an impact.
+# Interiors that cannot carry a giant impact, and the reason each cannot, keyed
+# by `interior_energetics.module`. One entry per line so a new interior adds a
+# line rather than editing a sentence.
+_ACCRETION_INCOMPATIBLE_INTERIORS = {
+    'spider': 'SPIDER has no supported re-melt path',
+    'boundary': (
+        'the boundary interior does not forward its interior state object to '
+        'the time-stepper, so the step cannot be shortened to land on a '
+        'scheduled impact'
+    ),
+}
 
-    A giant impact fully re-melts the mantle, and the SPIDER interior keeps its
-    state in a restart file written by the external binary with no validated
-    re-melt path, so the combination is refused here at configuration load
-    rather than at the first impact, which can be many hours into a run.
+
+def check_accretion_interior_compatibility(instance, attribute, value):
+    """Reject accretion runs on an interior that cannot apply an impact.
+
+    A giant impact re-melts the mantle and has to be applied at the state the
+    timeline places it at. An interior that cannot do both is refused here at
+    configuration load rather than at the first impact, which can be many hours
+    into a run. SPIDER keeps its state in a restart file written by the external
+    binary; the boundary interior never forwards its interior state object to the
+    time-stepper, so the step cannot be capped to land on the impact and impacts
+    would be applied late by an unbounded amount, or several would collapse onto
+    the end of one long step.
     """
-    if (
-        instance.accretion.module is not None
-        and instance.interior_energetics.module == 'spider'
-    ):
+    if instance.accretion.module is None:
+        return
+
+    interior = instance.interior_energetics.module
+    reason = _ACCRETION_INCOMPATIBLE_INTERIORS.get(interior)
+    if reason is not None:
         raise ValueError(
             "accretion.module = '"
             + str(instance.accretion.module)
-            + "' cannot run with interior_energetics.module = 'spider': a giant "
-            'impact re-melts the mantle and SPIDER has no supported re-melt path. '
-            "Use interior_energetics.module = 'aragog' (or 'dummy' for a test)."
+            + "' cannot run with interior_energetics.module = '"
+            + str(interior)
+            + "': a giant impact re-melts the mantle and has to be applied where "
+            'the timeline places it, but '
+            + reason
+            + ". Use interior_energetics.module = 'aragog' (or 'dummy' for a test)."
         )
 
 
