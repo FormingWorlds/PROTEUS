@@ -1031,6 +1031,10 @@ class Proteus:
             _t0_stellar = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
             update_stellar_spectrum = False
 
+            # Ensure stellar quantities are updated when time-step is clamped.
+            if getattr(self.interior_o, 'timestep_clamped', False):
+                self.sinst_prev = -np.inf
+
             # Calculate new instellation and radius
             if (
                 abs(self.hf_row['Time'] - self.sinst_prev) > self.config.params.dt.starinst

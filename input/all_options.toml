@@ -173,6 +173,8 @@ config_version = "3.0"
     age_ini                   = 0.100        # model start age [Gyr]
     module                    = "mors"       # mors | dummy
     bol_scale                 = 1.0          # bolometric luminosity scaling factor
+    bol_scale_start           = "none"       # stellar age from which bol_scale is applied [Gyr]; None to disable
+    bol_scale_duration        = 0.0          # duration for which bol_scale is applied [Gyr]
 
     [star.mors]
         # Rotation and evolution
