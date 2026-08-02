@@ -24,7 +24,7 @@ import pandas as pd
 import pytest
 
 import proteus.atmos_clim.wrapper as atmos_wrapper
-from proteus.atmos_clim.common import Atmos_t
+from proteus.atmos_clim.common import Atmos_t, LevelsSource
 from proteus.utils.constants import const_R
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -472,6 +472,8 @@ def _levels(r_obs: float, r_xuv: float, h2o_vmr: float = 0.4) -> dict:
         'g_obs': 9.8 * (2.0e7 / r_obs) ** 2,  # m s-2
         'R_xuv': r_xuv,
         'p_xuv': 1.0e-6 * (2.4e7 / r_xuv) ** 2,  # bar
+        'T_xuv': 400.0 * (2.4e7 / r_xuv),  # K
+        'g_xuv': 6.8 * (2.4e7 / r_xuv) ** 2,  # m s-2
         'H2O_vmr_xuv': h2o_vmr,
     }
 
@@ -752,6 +754,9 @@ def test_run_atmosphere_carries_levels_into_the_row_escape_reads():
 
     _call(_levels(r_obs=2.0e7, r_xuv=2.4e7, h2o_vmr=0.4), converged=True)
     assert hf_row['R_xuv'] == pytest.approx(2.4e7, rel=1e-12)
+    # A converged row is marked as such, with no stale streak.
+    assert hf_row['atm_converged'] == pytest.approx(1.0, rel=1e-12)
+    assert hf_row['atm_levels_stale'] == pytest.approx(0.0, abs=1e-12)
 
     _call(_levels(r_obs=2.4e8, r_xuv=2.88e8, h2o_vmr=0.9), converged=False)
 
@@ -770,6 +775,12 @@ def test_run_atmosphere_carries_levels_into_the_row_escape_reads():
     assert atmos_o.converged is False
     # And the transient flag never reaches the row.
     assert 'agni_converged' not in hf_row
+    # The persisted outcome columns record the rejection and the streak, so a
+    # carried row is identifiable from the output alone.
+    assert hf_row['atm_converged'] == pytest.approx(-1.0, rel=1e-12)
+    assert hf_row['atm_levels_stale'] == pytest.approx(1.0, rel=1e-12)
+    # The carried temperature at the XUV level came back with the radius.
+    assert hf_row['T_xuv'] == pytest.approx(400.0, rel=1e-12)
 
 
 @pytest.mark.physics_invariant
@@ -871,7 +882,7 @@ def test_carry_levels_escalates_on_a_long_streak(caplog):
         for _ in range(atmos_wrapper.CARRIED_LEVELS_ALERT - 1):
             atmos_wrapper.carry_converged_levels(atmos_o, _levels(2.4e8, 2.88e8))
 
-    assert atmos_o.levels_carried == atmos_wrapper.CARRIED_LEVELS_ALERT - 1
+    assert atmos_o.levels_stale_iters == atmos_wrapper.CARRIED_LEVELS_ALERT - 1
     errors = [r for r in caplog.records if r.levelname == 'ERROR']
     assert not errors  # one short of the threshold, so nothing has escalated
 
@@ -884,7 +895,7 @@ def test_carry_levels_escalates_on_a_long_streak(caplog):
     # A solve that converges clears the streak, so the next failure starts over.
     atmos_o.converged = True
     atmos_wrapper.carry_converged_levels(atmos_o, _levels(2.0e7, 2.4e7))
-    assert atmos_o.levels_carried == 0
+    assert atmos_o.levels_stale_iters == 0
 
 
 def test_carry_levels_does_not_trust_rows_this_run_rejected(caplog):
@@ -927,7 +938,7 @@ def test_carry_levels_escalates_when_there_is_nothing_to_fall_back_on(caplog):
         for _ in range(atmos_wrapper.CARRIED_LEVELS_ALERT):
             atmos_wrapper.carry_converged_levels(atmos_o, _levels(2.4e8, 2.88e8))
 
-    assert atmos_o.levels_carried == atmos_wrapper.CARRIED_LEVELS_ALERT
+    assert atmos_o.levels_stale_iters == atmos_wrapper.CARRIED_LEVELS_ALERT
     assert atmos_o.levels_converged == {}  # still nothing recorded
     errors = [r for r in caplog.records if r.levelname == 'ERROR']
     assert len(errors) == 1
@@ -957,4 +968,4 @@ def test_carry_levels_counts_converged_solves_towards_the_first_solve_rule():
     assert failed['R_obs'] == pytest.approx(2.0e7, rel=1e-12)
     assert failed['R_xuv'] == pytest.approx(2.4e7, rel=1e-12)
     assert failed['R_obs'] != pytest.approx(5.0e6, rel=1e-1)
-    assert atmos_o.levels_source == 'last converged solve'
+    assert atmos_o.levels_source is LevelsSource.CONVERGED_SOLVE

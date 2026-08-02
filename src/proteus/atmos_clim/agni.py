@@ -47,6 +47,8 @@ _REQUIRED_ATMOS_FIELDS = (
     'p_oboa',
     'tmp_surf',
     'tmp_magma',
+    # Cell-centre gravity, read at the XUV level
+    'g',
     # Solver flags
     'is_converged',
     'transparent',
@@ -1212,6 +1214,17 @@ def run_agni(
         p_xuv = hf_row['p_xuv']  # bar
         r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv * 1e5)[1]  # m
 
+    # Temperature and gravity at the XUV level, from the cell-centre profiles.
+    # The transparent solver updates only the surface scalars, so in that
+    # branch the profiles hold the pre-solve guess and the surface values are
+    # the solved ones, exactly as for the observed level above.
+    if bool(atmos.transparent):
+        t_xuv = float(atmos.tmp_surf)  # K
+        g_xuv = float(hf_row['gravity'])  # m s-2
+    else:
+        t_xuv = get_oarr_from_parr(atmos.p, atmos.tmp, p_xuv * 1e5)[1]  # K
+        g_xuv = get_oarr_from_parr(atmos.p, atmos.g, p_xuv * 1e5)[1]  # m s-2
+
     # Diagnostics surfaced into hf_row: median optical depth at TOA
     # and at the surface, plus the Ra_max and timescale ratios.
     tau_TOA, tau_surface = _summarise_tau_band(atmos)
@@ -1239,6 +1252,8 @@ def run_agni(
     output['agni_converged'] = bool(agni_converged)
     output['p_xuv'] = p_xuv  # Pressure at Rxuv   [bars]
     output['R_xuv'] = r_xuv  # Radius at Pxuv     [m]
+    output['T_xuv'] = float(t_xuv)  # Temperature at Pxuv [K]
+    output['g_xuv'] = float(g_xuv)  # Gravity at Pxuv    [m s-2]
     output['ocean_areacov'] = float(atmos.ocean_areacov)
     output['ocean_maxdepth'] = float(atmos.ocean_maxdepth)
     output['P_surf_clim'] = float(atmos.p_boa) / 1e5  # Calculated Psurf [bar]

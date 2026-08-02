@@ -690,11 +690,19 @@ def test_rundummyatm_output_keys():
         'albedo',
         'p_xuv',
         'R_xuv',
+        'T_xuv',
+        'g_xuv',
         'p_obs',
         'P_surf_clim',
     ]
     for key in required_keys:
         assert key in output
+    # The dummy XUV level coincides with the observed one, so its temperature
+    # is the surface temperature and its gravity matches g_obs; hardcoded
+    # zeros would fail both pins.
+    assert output['T_xuv'] == pytest.approx(output['T_surf'], rel=1e-12)
+    assert output['g_xuv'] == pytest.approx(output['g_obs'], rel=1e-12)
+    assert output['g_xuv'] > 0.0
     # Positivity guard on the physical quantities: temperature, radii,
     # and pressures must all be strictly positive. A regression that
     # populated these keys with default zeros or NaN would still pass

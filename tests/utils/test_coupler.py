@@ -431,6 +431,50 @@ def test_write_and_read_helpfile_roundtrip():
 
 
 @pytest.mark.unit
+def test_read_helpfile_backfills_columns_added_since_the_file_was_written():
+    """A helpfile written before the schema gained a column must still resume.
+
+    The resume path seeds `hf_row` from the last row of the loaded file, and
+    `ExtendHelpfile` raises on a row that lacks a schema key, so a file from an
+    older PROTEUS would otherwise make every resume fail. Missing columns are
+    filled with zero, the value they hold on a fresh row before their module
+    first writes them, and the recorded columns keep their values exactly.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        row['Time'] = 3.0e7
+        row['T_surf'] = 1650.0
+        hf = CreateHelpfileFromDict(row)
+        # Drop columns to mimic a file written before they existed, one from
+        # the middle of the schema and one from the end. Written directly in
+        # the on-disk format, since the writer itself refuses a partial schema.
+        hf_old = hf.drop(columns=['T_xuv', 'g_xuv', 'atm_levels_stale'])
+        hf_old.to_csv(
+            os.path.join(tmpdir, 'runtime_helpfile.csv'),
+            index=False,
+            sep='\t',
+            float_format='%.10e',
+        )
+
+        hf_read = ReadHelpfileFromCSV(tmpdir)
+
+        # The dropped columns are back, zero-filled, in schema order.
+        assert list(hf_read.columns) == GetHelpfileKeys()
+        assert hf_read['T_xuv'].iloc[0] == pytest.approx(0.0, abs=1e-300)
+        assert hf_read['g_xuv'].iloc[0] == pytest.approx(0.0, abs=1e-300)
+        assert hf_read['atm_levels_stale'].iloc[0] == pytest.approx(0.0, abs=1e-300)
+        # Recorded values survive untouched, so the backfill cannot have
+        # shifted columns against each other.
+        assert hf_read['Time'].iloc[0] == pytest.approx(3.0e7)
+        assert hf_read['T_surf'].iloc[0] == pytest.approx(1650.0)
+
+        # The row a resume would build from this file extends cleanly.
+        resumed_row = hf_read.iloc[-1].to_dict()
+        extended = ExtendHelpfile(hf_read, resumed_row)
+        assert len(extended) == 2
+
+
+@pytest.mark.unit
 def test_write_helpfile_preserves_prior_file_on_failed_write():
     """A crash or full disk mid-write must not destroy the existing helpfile.
 

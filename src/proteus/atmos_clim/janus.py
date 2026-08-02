@@ -346,6 +346,18 @@ def RunJANUS(
         p_xuv = hf_row['p_xuv']  # bar
         r_xuv = get_oarr_from_parr(atm.p, r_arr, p_xuv * 1e5)[1]  # m
 
+    # Temperature at the XUV level from the temperature profile; gravity by the
+    # inverse-square law from the surface value, for the same reason as g_obs
+    # above (atm.grav_z is stale after write_ncdf reintegrates the heights).
+    # When the hydrostatic integration failed the heights are unusable, so fall
+    # back to the surface values, matching the r_obs fallback above.
+    if atm.height_error or r_xuv <= 0.0:
+        t_xuv = float(hf_row['T_surf'])
+        g_xuv = float(hf_row['gravity'])
+    else:
+        _, t_xuv = get_oarr_from_parr(atm.p, t_arr, p_xuv * 1e5)  # K
+        g_xuv = float(hf_row['gravity']) * (float(hf_row['R_int']) / r_xuv) ** 2  # m s-2
+
     # final things to store
     output = {}
     output['T_surf'] = atm.ts  # Surface temperature [K]
@@ -359,6 +371,8 @@ def RunJANUS(
     output['g_obs'] = g_obs  # observed gravity [m/s^2]
     output['p_xuv'] = p_xuv  # Closest pressure to Pxuv [bar]
     output['R_xuv'] = r_xuv  # Radius at Pxuv [m]
+    output['T_xuv'] = float(t_xuv)  # Temperature at Pxuv [K]
+    output['g_xuv'] = g_xuv  # Gravity at Pxuv [m s-2]
     output['P_surf_clim'] = P_surf_clim  # calculated surface pressure [bar]
     output['ocean_areacov'] = 0.0
     output['ocean_maxdepth'] = 0.0

@@ -437,6 +437,67 @@ def test_run_janus_gobs_inverse_square_of_robs(monkeypatch, tmp_path):
     # Discrimination guard: the stale grav_z value is the surface gravity
     assert output['g_obs'] != pytest.approx(g_surf, rel=1e-3)
 
+    # The XUV level follows the same conventions: temperature off the profile
+    # (patched interpolation returns the last entry) and gravity by the
+    # inverse-square law at r_xuv, which the patch also pins to the last entry
+    # of the radius array, so it coincides with the observed level here.
+    assert output['T_xuv'] == pytest.approx(500.0, rel=1e-12)
+    assert output['g_xuv'] == pytest.approx(g_obs_expected, rel=1e-10)
+    assert output['g_xuv'] != pytest.approx(g_surf, rel=1e-3)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_janus_failed_hydrostatic_falls_back_to_surface_values(monkeypatch, tmp_path):
+    """A failed hydrostatic integration leaves the heights unusable, so the
+    XUV-level outputs fall back to the surface values instead of dividing by a
+    height the solver never produced.
+
+    With `atm.z` zeroed by the failure, `r_arr = z + R_int` puts every level at
+    the surface, and the patched interpolation returns the last entry, so a
+    regression that skipped the fallback would compute g_xuv from r_xuv = R_int
+    and still pass a positivity check; the discriminating signal is that T_xuv
+    reads the surface temperature rather than the top of the stale profile.
+    """
+    g_surf = 9.81
+    R_int = 6.371e6
+
+    solved_atm = _build_run_atm(g_surf=g_surf, z_obs_height=8.0e4, stale_grav=g_surf)
+    solved_atm.height_error = True
+    solved_atm.z = np.zeros(3, dtype=float)
+
+    monkeypatch.setattr('janus.modules.MCPA', lambda *a, **kw: solved_atm)
+    monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
+    monkeypatch.setattr(
+        janus_mod, 'get_oarr_from_parr', lambda p_arr, o_arr, val: (0, o_arr[-1])
+    )
+
+    config = _build_run_config()
+    hf_row = {
+        'Time': 100.0,
+        'R_int': R_int,
+        'gravity': g_surf,
+        'p_xuv': 1e-3,  # bar
+        'T_surf': 1400.0,
+    }
+
+    _, output = RunJANUS(
+        SimpleNamespace(),
+        {'output': str(tmp_path)},
+        config,
+        hf_row,
+        None,
+        write_in_tmp_dir=False,
+    )
+
+    # Surface fallbacks on both levels, not values read off the failed column.
+    assert output['R_obs'] == pytest.approx(R_int, rel=1e-12)
+    assert output['T_obs'] == pytest.approx(1400.0, rel=1e-12)
+    assert output['T_xuv'] == pytest.approx(1400.0, rel=1e-12)
+    assert output['g_xuv'] == pytest.approx(g_surf, rel=1e-12)
+    # Discrimination: the stale profile top is far from the surface temperature.
+    assert output['T_xuv'] != pytest.approx(500.0, rel=1e-2)
+
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.janus.os.remove')

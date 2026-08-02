@@ -181,17 +181,18 @@ planet. Escape reads $R_\mathrm{xuv}$ from the previous iteration, and the
 energy-limited rate goes as $R_\mathrm{xuv}^3$, so an unusable structure would
 otherwise become a large mass-loss rate that looks like a physical result.
 
-When the atmosphere solve does not converge, PROTEUS therefore substitutes
-$R_\mathrm{obs}$, $p_\mathrm{obs}$, $T_\mathrm{obs}$, $g_\mathrm{obs}$,
-$R_\mathrm{xuv}$, $p_\mathrm{xuv}$ and the volume mixing ratios at the XUV level
-with the values from the most recent converged solve, and logs the substituted
-value of each of the six scalars as a warning. They are carried as a group, so a
-held radius is never
-combined with the pressure, temperature, gravity or composition of a rejected
-structure; the quantities derived from the radius, such as $\rho_\mathrm{obs}$
-and the transit depth, are computed from the carried value. Fluxes and surface
-state are never carried: the coupling advances on them, and the deadlock
-detector above needs to see them stop moving.
+When the atmosphere solve does not converge, PROTEUS therefore substitutes the
+radius, pressure, temperature and gravity of both levels ($R_\mathrm{obs}$,
+$p_\mathrm{obs}$, $T_\mathrm{obs}$, $g_\mathrm{obs}$, $R_\mathrm{xuv}$,
+$p_\mathrm{xuv}$, $T_\mathrm{xuv}$, $g_\mathrm{xuv}$) together with the volume
+mixing ratios at the XUV level, using the values from the most recent converged
+solve. A warning reports each such iteration, and the substituted values are
+listed at debug level. The levels are carried as a group, so a held radius is
+never combined with the pressure, temperature, gravity or composition of a
+rejected structure; the quantities derived from the radius, such as
+$\rho_\mathrm{obs}$ and the transit depth, are computed from the carried value.
+Fluxes and surface state are never carried: the coupling advances on them, and
+the deadlock detector above needs to see them stop moving.
 
 The record of converged levels is not written to the output files, so a resumed
 run starts without one. If the first solve of such a run is rejected, it falls
@@ -210,8 +211,11 @@ row the run reports it at error level. A streak that long means the interior is
 evolving while the levels stand still, which the deadlock detector above cannot
 catch: it fires only when the interior has stopped moving too.
 
-The substitution appears in the log, not in the helpfile: no output column marks
-a row whose levels were carried.
+Two helpfile columns persist the outcome, so a carried row is identifiable from
+the output alone: `atm_converged` records the solve outcome of each row (+1
+converged, -1 rejected, 0 before the first atmosphere call), and
+`atm_levels_stale` records the number of consecutive iterations without a
+converged solve of the run, zero on every converged row.
 
 ## Energy conservation diagnostics
 

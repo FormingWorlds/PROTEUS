@@ -4,6 +4,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+from enum import Enum, auto
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -14,6 +15,19 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+class LevelsSource(Enum):
+    """Origin of the fallback level properties held on `Atmos_t`.
+
+    CONVERGED_SOLVE: levels recorded from a solve this run accepted.
+    COMMITTED_ROW: levels taken from the last helpfile row written before this
+    run began, which is what a resumed run has until it converges a solve of
+    its own.
+    """
+
+    CONVERGED_SOLVE = auto()
+    COMMITTED_ROW = auto()
 
 
 # Atmosphere structure class
@@ -45,13 +59,18 @@ class Atmos_t:
         # then falls back on the last committed row. Transient, not persisted.
         self.levels_converged: dict[str, float] = {}
 
-        # Where the levels above came from, and how many consecutive iterations
-        # have run on levels this run did not resolve itself. The source is
-        # tracked here rather than re-derived per call, since a run that has
-        # only ever fallen back on the committed row must not report those
-        # levels as converged. Transient, not persisted.
-        self.levels_source: str = 'last converged solve'
-        self.levels_carried: int = 0
+        # Where the levels above came from. Tracked here rather than re-derived
+        # per call, since a run that has only ever fallen back on the committed
+        # row must not report those levels as converged. Transient.
+        self.levels_source: LevelsSource = LevelsSource.CONVERGED_SOLVE
+
+        # Number of consecutive iterations whose level properties were not
+        # produced by a converged solve of this run, whether they were
+        # substituted from the record or kept from a rejected structure for
+        # want of anything better. Reset to zero by the next converged solve.
+        # Mirrored to the helpfile column `atm_levels_stale` on every
+        # iteration, so it is readable per row after the run.
+        self.levels_stale_iters: int = 0
 
         # Atmosphere solves this run has made. Only the first one may fall back
         # on the rows committed before the run started; after that, an empty

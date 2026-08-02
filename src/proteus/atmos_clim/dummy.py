@@ -44,6 +44,9 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
             'R_xuv': R_obs,
             'p_obs': hf_row['P_surf'],
             'T_obs': T_surf_atm,
+            # The dummy XUV level coincides with the observed one
+            'T_xuv': T_surf_atm,
+            'g_xuv': hf_row['gravity'] * (hf_row['R_int'] / R_obs) ** 2,
             'ocean_areacov': 0.0,
             'ocean_maxdepth': 0.0,
             'P_surf_clim': hf_row['P_surf'],
@@ -159,6 +162,9 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     # Use the locally computed value to avoid requiring hf_row["T_surf"] in unit tests.
     output['T_obs'] = T_surf_atm
     output['g_obs'] = hf_row['gravity'] * (hf_row['R_int'] / R_obs) ** 2
+    # The dummy XUV level coincides with the observed one
+    output['T_xuv'] = T_surf_atm
+    output['g_xuv'] = output['g_obs']
     output['ocean_areacov'] = 0.0
     output['ocean_maxdepth'] = 0.0
     output['P_surf_clim'] = hf_row['P_surf']

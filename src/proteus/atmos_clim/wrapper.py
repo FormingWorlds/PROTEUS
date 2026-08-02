@@ -12,7 +12,7 @@ from numpy import pi, unique
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.atmos_clim.common import Atmos_t, get_spfile_path
+from proteus.atmos_clim.common import Atmos_t, LevelsSource, get_spfile_path
 from proteus.utils.constants import const_R, gas_list
 from proteus.utils.helper import UpdateStatusfile, safe_rm
 
@@ -23,7 +23,13 @@ log = logging.getLogger('fwl.' + __name__)
 # each level keeps a radius, pressure, temperature and gravity that describe the
 # same structure. Fluxes and surface state are deliberately absent: the coupling
 # and the deadlock detector both need to see those move when a solve fails.
-LEVEL_KEYS = ('R_obs', 'p_obs', 'T_obs', 'g_obs', 'R_xuv', 'p_xuv')
+LEVEL_KEYS = ('R_obs', 'p_obs', 'T_obs', 'g_obs', 'R_xuv', 'p_xuv', 'T_xuv', 'g_xuv')
+
+# Phrase used for each level source in the substitution warning.
+_SOURCE_PHRASE = {
+    LevelsSource.CONVERGED_SOLVE: 'last converged solve',
+    LevelsSource.COMMITTED_ROW: 'last committed row',
+}
 
 # Composition at the XUV level, read off the same structure and used by BOREAS
 # to set the mean molecular weight of the outflow. Carried with the levels, so
@@ -62,11 +68,11 @@ def _alert_on_long_streak(atmos_o: Atmos_t):
     planet that has moved on, and the deadlock detector cannot see it: that
     detector fires only when the interior has stopped moving as well.
     """
-    if atmos_o.levels_carried >= CARRIED_LEVELS_ALERT:
+    if atmos_o.levels_stale_iters >= CARRIED_LEVELS_ALERT:
         log.error(
             'Atmosphere levels have been unresolved for %d consecutive iterations; '
             'escape is running on a structure this run has not converged',
-            atmos_o.levels_carried,
+            atmos_o.levels_stale_iters,
         )
 
 
@@ -84,17 +90,17 @@ def carry_converged_levels(atmos_o: Atmos_t, hf_row: dict, previous_row: dict | 
     prescribed-temperature branches) always report convergence, so this records
     their levels and never substitutes.
 
-    A resumed run starts with an empty record, since the record is not written
-    to the output files. If its very first solve is rejected it falls back on the
-    last committed row, which was written before this run began and is the state
-    escape would have used in any case. That row is the last one written, not
-    necessarily one that converged, so the substitution says which of the two
-    sources it used.
+    The record of converged levels lives only in memory, so a resumed run starts
+    without one. If the first solve after the resume is rejected, the fallback is
+    taken from the last helpfile row instead: that row was written before this
+    run began, and it is the state escape used on the resumed iteration anyway.
+    The warning states which of the two sources was used, because a helpfile row
+    is not guaranteed to come from a converged solve.
 
-    Later solves never reach back to the committed rows. Once this run has begun
-    writing rows, an empty record means every solve so far was rejected, so those
-    rows carry rejected levels themselves and are worth no more than the levels
-    in hand.
+    The helpfile fallback applies to the first solve only. If every solve since
+    then was rejected, the record is empty, but each helpfile row written since
+    the resume contains rejected levels too, so there is nothing better to read
+    back and the rejected levels are kept.
 
     Parameters
     ----------
@@ -118,27 +124,27 @@ def carry_converged_levels(atmos_o: Atmos_t, hf_row: dict, previous_row: dict | 
     # does not empty the record of that level.
     if atmos_o.converged:
         atmos_o.levels_converged.update(_finite_levels(hf_row, keys))
-        atmos_o.levels_source = 'last converged solve'
-        atmos_o.levels_carried = 0
+        atmos_o.levels_source = LevelsSource.CONVERGED_SOLVE
+        atmos_o.levels_stale_iters = 0
         return
 
     # First solve of this run, and it failed. The last committed row predates
     # the run, which is the situation a resumed run is in, so fall back on that.
     if atmos_o.solves_seen == 1 and previous_row:
         atmos_o.levels_converged.update(_finite_levels(previous_row, keys))
-        atmos_o.levels_source = 'last committed row'
+        atmos_o.levels_source = LevelsSource.COMMITTED_ROW
 
     # Counts every iteration whose levels this run did not resolve itself, so a
     # run with nothing to fall back on is counted too. That case is the worse
     # of the two, since escape then runs on the rejected structure directly.
-    atmos_o.levels_carried += 1
+    atmos_o.levels_stale_iters += 1
 
     if not atmos_o.levels_converged:
         log.warning(
             'Atmosphere solve did not converge and no earlier levels are '
             'available; using the levels of the rejected structure '
             '(%d consecutive iterations)',
-            atmos_o.levels_carried,
+            atmos_o.levels_stale_iters,
         )
         _alert_on_long_streak(atmos_o)
         return
@@ -146,14 +152,14 @@ def carry_converged_levels(atmos_o: Atmos_t, hf_row: dict, previous_row: dict | 
     log.warning(
         'Atmosphere solve did not converge; holding levels from the %s '
         '(%d consecutive iterations)',
-        atmos_o.levels_source,
-        atmos_o.levels_carried,
+        _SOURCE_PHRASE[atmos_o.levels_source],
+        atmos_o.levels_stale_iters,
     )
     _alert_on_long_streak(atmos_o)
 
     for key in LEVEL_KEYS:
         if key in atmos_o.levels_converged and key in hf_row:
-            log.warning(
+            log.debug(
                 '    %-5s %.5e  ->  %.5e'
                 % (key, float(hf_row[key]), atmos_o.levels_converged[key])
             )
@@ -353,6 +359,11 @@ def run_atmosphere(
     if hf_all is not None and len(hf_all) > 0:
         previous_row = hf_all.iloc[-1].to_dict()
     carry_converged_levels(atmos_o, hf_row, previous_row=previous_row)
+
+    # Persist the solve outcome, so a row whose levels were carried can be
+    # identified from the output alone rather than from the log.
+    hf_row['atm_converged'] = 1.0 if atmos_o.converged else -1.0
+    hf_row['atm_levels_stale'] = float(atmos_o.levels_stale_iters)
 
     # Copy special cases
     hf_row['rho_obs'] = 3 * hf_row['M_planet'] / (4 * pi * hf_row['R_obs'] ** 3)
