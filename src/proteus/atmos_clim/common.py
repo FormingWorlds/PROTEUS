@@ -342,6 +342,52 @@ def get_spfile_path(fwl_dir: str, config: Config):
     return os.path.join(fwl_dir, 'spectral_files', group, bands, group) + '.sf'
 
 
+def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:
+    """Limit a level radius to the Hill radius, never below the solid body.
+
+    Gas beyond the Hill radius is not bound to the planet, so an XUV radius
+    outside it sizes the escape cross-section with material the planet does
+    not hold, and the energy-limited rate grows as the cube of the excess.
+    The limit is ``escape.hill_clamp_frac`` of the Hill radius, floored at
+    ``R_int`` since the solid body is always bound.
+
+    Parameters
+    ----------
+        config : Config
+            Configuration options for PROTEUS.
+        hf_row : dict
+            Current helpfile row; provides ``hill_radius`` and ``R_int``.
+        radius : float
+            Level radius to limit [m].
+
+    Returns
+    ----------
+        float
+            The radius, limited when the clip is enabled and applicable.
+    """
+    if not getattr(config.escape, 'hill_clamp', False):
+        return radius
+
+    # Zero before the first orbit update; nothing to clip against yet.
+    r_hill = float(hf_row.get('hill_radius', 0.0))
+    if not np.isfinite(r_hill) or r_hill <= 0.0:
+        return radius
+
+    frac = float(getattr(config.escape, 'hill_clamp_frac', 1.0))
+    r_limit = max(frac * r_hill, float(hf_row.get('R_int', 0.0)))
+    if radius <= r_limit:
+        return radius
+
+    log.warning(
+        'Level radius %.4e m exceeds %.3g of the Hill radius (%.4e m); clipping to %.4e m',
+        radius,
+        frac,
+        r_hill,
+        r_limit,
+    )
+    return r_limit
+
+
 def get_oarr_from_parr(p_arr: list, o_arr: list, p_tgt: float) -> tuple:
     """
     Get the value of o_array corresponding to the p_tgt level in p_arr.

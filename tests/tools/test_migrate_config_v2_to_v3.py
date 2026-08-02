@@ -84,6 +84,8 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.agni.spectral_file',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
+        # Inert while escape.hill_clamp is pinned off for migrated configs.
+        'escape.hill_clamp_frac',
         'interior_energetics.adams_williamson_beta',
         'interior_energetics.adams_williamson_rhos',
         'interior_energetics.adiabatic_bulk_modulus',

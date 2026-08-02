@@ -217,6 +217,21 @@ converged, -1 rejected, 0 before the first atmosphere call), and
 `atm_levels_stale` records the number of consecutive iterations without a
 converged solve of the run, zero on every converged row.
 
+## The XUV level is limited to the Hill radius
+
+Independently of convergence, the XUV level itself is bounded: gas beyond the
+Hill radius is not bound to the planet, so an XUV radius outside it would size
+the escape cross-section with material the planet does not hold, and the
+energy-limited rate grows as the cube of the excess. With `escape.hill_clamp`
+enabled (the default), each atmosphere module limits $R_\mathrm{xuv}$ to
+`escape.hill_clamp_frac` of the Hill radius, floored at $R_\mathrm{int}$ since
+the solid body is always bound. The level moves as a whole: $p_\mathrm{xuv}$,
+$T_\mathrm{xuv}$, $g_\mathrm{xuv}$ and the XUV-level mixing ratios are read at
+the clipped radius, so escape never sees a radius from one level combined with
+a composition from another. Each engagement is logged as a warning. The
+observed level is not clipped; a transit radius beyond the Hill radius is
+reported as computed and flagged by the orbit module's existing warning.
+
 ## Energy conservation diagnostics
 
 When using the Aragog interior module, PROTEUS tracks cumulative energy

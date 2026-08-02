@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from proteus.atmos_clim.common import get_oarr_from_parr
+from proteus.atmos_clim.common import clip_radius_to_hill, get_oarr_from_parr
 from proteus.utils.constants import vap_list, vol_list, gas_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder
 
@@ -336,15 +336,20 @@ def RunJANUS(
     # This neglects self-gravity but is self-consistent with JANUS internals.
     g_obs = float(hf_row['gravity']) * (float(hf_row['R_int']) / r_obs) ** 2
 
-    # p_xuv from R_xuv
+    # p_xuv from R_xuv, clipping the radius before the pressure lookup
     if config.escape.xuv_defined_by_radius:
-        r_xuv = hf_row['R_xuv']  # m
+        r_xuv = clip_radius_to_hill(config, hf_row, float(hf_row['R_xuv']))  # m
         p_xuv = get_oarr_from_parr(r_arr, atm.p, r_xuv)[1] * 1e-5  # bar
 
-    # R_xuv from p_xuv
+    # R_xuv from p_xuv; a clipped radius moves the level, so the pressure is
+    # re-read at the clipped radius to keep the level self-consistent
     else:
         p_xuv = hf_row['p_xuv']  # bar
         r_xuv = get_oarr_from_parr(atm.p, r_arr, p_xuv * 1e5)[1]  # m
+        r_clip = clip_radius_to_hill(config, hf_row, r_xuv)
+        if r_clip != r_xuv:
+            r_xuv = r_clip
+            p_xuv = get_oarr_from_parr(r_arr, atm.p, r_xuv)[1] * 1e-5  # bar
 
     # Temperature at the XUV level from the temperature profile; gravity by the
     # inverse-square law from the surface value, for the same reason as g_obs

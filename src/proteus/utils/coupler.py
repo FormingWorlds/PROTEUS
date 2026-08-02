@@ -1287,26 +1287,12 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
 
 def ReadHelpfileFromCSV(output_dir: str):
     """
-    Read helpfile from disk CSV file to DataFrame.
-
-    The loaded columns are reconciled against the current schema, so a run can
-    be resumed with a PROTEUS whose schema has since gained columns: keys the
-    file does not have are filled with zero, matching the value they hold on a
-    fresh row before their module first writes them. Columns the schema no
-    longer defines are dropped.
+    Read helpfile from disk CSV file to DataFrame
     """
     fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
-    df = pd.read_csv(fpath, sep=r'\s+')
-    missing = [key for key in GetHelpfileKeys() if key not in df.columns]
-    if missing:
-        log.warning(
-            'Helpfile lacks %d column(s) added since it was written; filling with zero: %s',
-            len(missing),
-            missing,
-        )
-    return df.reindex(columns=GetHelpfileKeys(), fill_value=0.0)
+    return pd.read_csv(fpath, sep=r'\s+')
 
 
 def _netcdf_readable(path: str) -> bool:
