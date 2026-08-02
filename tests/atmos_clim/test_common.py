@@ -20,6 +20,7 @@ import numpy as np
 import pytest
 
 from proteus.atmos_clim.common import (
+    clip_radius_to_hill,
     find_latest_atmosphere_time,
     get_oarr_from_parr,
     get_radius_from_pressure,
@@ -616,3 +617,62 @@ def test_find_latest_atmosphere_time_empty_returns_none(tmp_path):
     assert find_latest_atmosphere_time(str(tmp_path)) is None
     # Also handles a missing data directory without raising.
     assert find_latest_atmosphere_time(str(tmp_path / 'nonexistent')) is None
+
+
+# ---------------------------------------------------------------------------
+# clip_radius_to_hill: the XUV level never sizes escape beyond the Hill radius
+# ---------------------------------------------------------------------------
+
+
+def _clip_config(enabled: bool = True, frac: float = 1.0):
+    """Escape-config namespace carrying only what the clip reads."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(escape=SimpleNamespace(hill_clamp=enabled, hill_clamp_frac=frac))
+
+
+@pytest.mark.physics_invariant
+def test_clip_radius_to_hill_bounds_the_radius():
+    """A radius beyond the Hill radius comes back at frac * R_Hill, and one
+    inside comes back untouched, so the escape cross-section is bounded.
+
+    The energy-limited rate goes as the radius cubed: the unclipped input at
+    6x the Hill radius would inflate the rate 216-fold, so the discriminating
+    check is that the clipped output removes that factor entirely.
+    """
+    hf_row = {'hill_radius': 1.0e8, 'R_int': 6.4e6}
+
+    clipped = clip_radius_to_hill(_clip_config(), hf_row, 6.0e8)
+    assert clipped == pytest.approx(1.0e8, rel=1e-12)
+    assert (6.0e8 / clipped) ** 3 == pytest.approx(216.0, rel=1e-9)
+
+    inside = clip_radius_to_hill(_clip_config(), hf_row, 7.0e7)
+    assert inside == pytest.approx(7.0e7, rel=1e-12)
+
+    # The fraction scales the limit, not the radius.
+    half = clip_radius_to_hill(_clip_config(frac=0.5), hf_row, 6.0e8)
+    assert half == pytest.approx(5.0e7, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_clip_radius_to_hill_never_goes_below_the_solid_body():
+    """The limit floors at R_int: the solid body is bound by definition, so a
+    Hill radius inside the planet must not shrink the level below the surface.
+    """
+    hf_row = {'hill_radius': 3.0e6, 'R_int': 6.4e6}  # Hill inside the planet
+    clipped = clip_radius_to_hill(_clip_config(), hf_row, 1.0e7)
+    assert clipped == pytest.approx(6.4e6, rel=1e-12)
+    # Discrimination: the naive frac * R_Hill limit is a factor 2.1 smaller.
+    assert clipped != pytest.approx(3.0e6, rel=1e-1)
+
+
+def test_clip_radius_to_hill_skips_when_disabled_or_unset():
+    """Disabled config or a Hill radius that is zero (before the first orbit
+    update) or non-finite leaves the radius untouched rather than clipping
+    against a value that does not exist.
+    """
+    r = 6.0e8
+    assert clip_radius_to_hill(_clip_config(enabled=False), {'hill_radius': 1.0e8}, r) == r
+    assert clip_radius_to_hill(_clip_config(), {'hill_radius': 0.0}, r) == r
+    assert clip_radius_to_hill(_clip_config(), {'hill_radius': float('nan')}, r) == r
+    assert clip_radius_to_hill(_clip_config(), {}, r) == r

@@ -16,6 +16,8 @@ See also [Model description](../../Explanations/model.md#atmospheric-escape-zeph
 |-----------|------|---------|-------------|
 | `module` | str or none | `"zephyrus"` | Escape module: `zephyrus` (energy-limited), `dummy` (fixed rate), `none` (disabled) |
 | `reservoir` | str | `"outgas"` | Composition reservoir for escaping gas: `outgas`, `bulk`, `pxuv` |
+| `hill_clamp` | bool | `true` | Limit the XUV level to the Hill radius; gas beyond it is not bound to the planet |
+| `hill_clamp_frac` | float | `1.0` | Fraction of the Hill radius used as that limit, in (0, 1] |
 
 ### ZEPHYRUS `[escape.zephyrus]`
 

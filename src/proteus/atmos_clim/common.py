@@ -4,6 +4,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+from enum import Enum, auto
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -14,6 +15,19 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+class LevelsSource(Enum):
+    """Origin of the fallback level properties held on `Atmos_t`.
+
+    CONVERGED_SOLVE: levels recorded from a solve this run accepted.
+    COMMITTED_ROW: levels taken from the last helpfile row written before this
+    run began, which is what a resumed run has until it converges a solve of
+    its own.
+    """
+
+    CONVERGED_SOLVE = auto()
+    COMMITTED_ROW = auto()
 
 
 # Atmosphere structure class
@@ -38,6 +52,30 @@ class Atmos_t:
         # coupling loop reads this to detect AGNI deadlocks (consecutive
         # failures with no interior state change). Transient, not persisted.
         self.converged: bool = True
+
+        # Photospheric and XUV level properties from the most recent solve
+        # that converged, keyed as in the helpfile row. Empty until this run
+        # converges a solve of its own; a run that has to substitute before
+        # then falls back on the last committed row. Transient, not persisted.
+        self.levels_converged: dict[str, float] = {}
+
+        # Where the levels above came from. Tracked here rather than re-derived
+        # per call, since a run that has only ever fallen back on the committed
+        # row must not report those levels as converged. Transient.
+        self.levels_source: LevelsSource = LevelsSource.CONVERGED_SOLVE
+
+        # Number of consecutive iterations whose level properties were not
+        # produced by a converged solve of this run, whether they were
+        # substituted from the record or kept from a rejected structure for
+        # want of anything better. Reset to zero by the next converged solve.
+        # Mirrored to the helpfile column `atm_levels_stale` on every
+        # iteration, so it is readable per row after the run.
+        self.levels_stale_iters: int = 0
+
+        # Atmosphere solves this run has made. Only the first one may fall back
+        # on the rows committed before the run started; after that, an empty
+        # record means this run's own rows carry rejected levels too.
+        self.solves_seen: int = 0
 
 
 def ncdf_flag_to_bool(var) -> bool:
@@ -302,6 +340,52 @@ def get_spfile_path(fwl_dir: str, config: Config):
 
     # Construct file path
     return os.path.join(fwl_dir, 'spectral_files', group, bands, group) + '.sf'
+
+
+def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:
+    """Limit a level radius to the Hill radius, never below the solid body.
+
+    Gas beyond the Hill radius is not bound to the planet, so an XUV radius
+    outside it sizes the escape cross-section with material the planet does
+    not hold, and the energy-limited rate grows as the cube of the excess.
+    The limit is ``escape.hill_clamp_frac`` of the Hill radius, floored at
+    ``R_int`` since the solid body is always bound.
+
+    Parameters
+    ----------
+        config : Config
+            Configuration options for PROTEUS.
+        hf_row : dict
+            Current helpfile row; provides ``hill_radius`` and ``R_int``.
+        radius : float
+            Level radius to limit [m].
+
+    Returns
+    ----------
+        float
+            The radius, limited when the clip is enabled and applicable.
+    """
+    if not getattr(config.escape, 'hill_clamp', False):
+        return radius
+
+    # Zero before the first orbit update; nothing to clip against yet.
+    r_hill = float(hf_row.get('hill_radius', 0.0))
+    if not np.isfinite(r_hill) or r_hill <= 0.0:
+        return radius
+
+    frac = float(getattr(config.escape, 'hill_clamp_frac', 1.0))
+    r_limit = max(frac * r_hill, float(hf_row.get('R_int', 0.0)))
+    if radius <= r_limit:
+        return radius
+
+    log.warning(
+        'Level radius %.4e m exceeds %.3g of the Hill radius (%.4e m); clipping to %.4e m',
+        radius,
+        frac,
+        r_hill,
+        r_limit,
+    )
+    return r_limit
 
 
 def get_oarr_from_parr(p_arr: list, o_arr: list, p_tgt: float) -> tuple:

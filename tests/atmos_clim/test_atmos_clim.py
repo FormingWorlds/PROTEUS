@@ -690,11 +690,19 @@ def test_rundummyatm_output_keys():
         'albedo',
         'p_xuv',
         'R_xuv',
+        'T_xuv',
+        'g_xuv',
         'p_obs',
         'P_surf_clim',
     ]
     for key in required_keys:
         assert key in output
+    # The dummy XUV level coincides with the observed one, so its temperature
+    # is the surface temperature and its gravity matches g_obs; hardcoded
+    # zeros would fail both pins.
+    assert output['T_xuv'] == pytest.approx(output['T_surf'], rel=1e-12)
+    assert output['g_xuv'] == pytest.approx(output['g_obs'], rel=1e-12)
+    assert output['g_xuv'] > 0.0
     # Positivity guard on the physical quantities: temperature, radii,
     # and pressures must all be strictly positive. A regression that
     # populated these keys with default zeros or NaN would still pass
@@ -702,6 +710,56 @@ def test_rundummyatm_output_keys():
     assert output['T_surf'] > 0.0
     assert output['R_obs'] > 0.0
     assert output['P_surf_clim'] > 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_clips_the_xuv_radius_to_the_hill_radius():
+    """With the clip enabled and a Hill radius below the observed radius, the
+    dummy XUV level moves to the Hill radius while the observed level stays,
+    and g_xuv strengthens by the inverse square of the ratio.
+
+    Discrimination: without the clip the XUV level coincides with the observed
+    one and g_xuv equals g_obs; with it, g_xuv exceeds g_obs by the squared
+    radius ratio, which the final pin resolves far outside tolerance.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.5
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.atmos_clim.dummy.fixed_flux = -1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.surf_state = 'fixed'
+    config.planet.prevent_warming = False
+    config.escape.hill_clamp = True
+    config.escape.hill_clamp_frac = 1.0
+
+    hf_row = {
+        'T_magma': 2500.0,
+        'albedo_pl': 0.1,
+        'F_ins': 1000.0,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+    output = RunDummyAtm({}, config, dict(hf_row))
+    r_obs = output['R_obs']
+    assert r_obs > 6.371e6  # the scale height lifted the observed level
+
+    # Hill radius between R_int and R_obs, so the clip engages.
+    hf_row['hill_radius'] = 6.371e6 + 0.4 * (r_obs - 6.371e6)
+    clipped = RunDummyAtm({}, config, dict(hf_row))
+
+    assert clipped['R_xuv'] == pytest.approx(hf_row['hill_radius'], rel=1e-12)
+    assert clipped['R_obs'] == pytest.approx(r_obs, rel=1e-12)  # untouched
+    expected_g = 9.8 * (6.371e6 / hf_row['hill_radius']) ** 2
+    assert clipped['g_xuv'] == pytest.approx(expected_g, rel=1e-10)
+    assert clipped['g_xuv'] > clipped['g_obs']  # deeper level, stronger gravity
+    assert clipped['g_xuv'] != pytest.approx(clipped['g_obs'], rel=1e-3)
 
 
 # =======================================================================================

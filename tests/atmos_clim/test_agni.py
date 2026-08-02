@@ -236,6 +236,8 @@ class _FakeAtmosphere:
         self.p_oboa = 1e5
         self.tmp_surf = 1500.0
         self.tmp_magma = 1500.0
+        # Cell-centre gravity, read at the XUV level
+        self.g = [9.8]
         # Solver flags
         self.is_converged = True
         # Allocation flag, gating write_atmos_ncdf
@@ -565,6 +567,7 @@ def _build_complete_atmos_stub() -> SimpleNamespace:
         p_oboa=1e5,
         tmp_surf=1500.0,
         tmp_magma=1500.0,
+        g=[9.8],
         is_converged=True,
         transparent=False,
         flux_d_sw=[100.0],
@@ -965,6 +968,9 @@ def _make_run_agni_atmos(*, transparent=False):
     atmos.gas_ovmr = {'H2O': [0.9], 'CO2': [0.1]}
     atmos.p = [1e3, 1e5]
     atmos.r = [6.5e6, 6.4e6]
+    # Cell-centre profiles read at the XUV level; two entries to match p
+    atmos.tmp = [280.0, 900.0]
+    atmos.g = [9.5, 9.8]
     atmos.is_converged = True
     atmos.tau_band = [[0.01, 0.02], [0.5, 0.6]]
     atmos.diagnostic_Ra = [0.1, 5.0]
@@ -976,7 +982,12 @@ def _make_run_agni_atmos(*, transparent=False):
 
 
 def _make_run_agni_config(
-    *, solve_energy=True, prevent_warming=False, oceans=False, xuv_defined_by_radius=False
+    *,
+    solve_energy=True,
+    prevent_warming=False,
+    oceans=False,
+    xuv_defined_by_radius=False,
+    hill_clamp=False,
 ):
     """Build the config namespace run_agni reads."""
     return SimpleNamespace(
@@ -999,7 +1010,11 @@ def _make_run_agni_config(
             surf_state_int=1,
         ),
         planet=SimpleNamespace(prevent_warming=prevent_warming),
-        escape=SimpleNamespace(xuv_defined_by_radius=xuv_defined_by_radius),
+        escape=SimpleNamespace(
+            xuv_defined_by_radius=xuv_defined_by_radius,
+            hill_clamp=hill_clamp,
+            hill_clamp_frac=1.0,
+        ),
         params=SimpleNamespace(
             out=SimpleNamespace(
                 logging='WARNING',
@@ -1217,6 +1232,148 @@ def test_run_agni_opaque_gobs_inverse_square_of_robs(monkeypatch):
 
     # Discrimination guard: rules out a pass-through of the surface gravity
     assert output['g_obs'] != pytest.approx(g_surf, rel=1e-3)
+
+
+@pytest.mark.physics_invariant
+def test_run_agni_xuv_level_temperature_and_gravity_from_profiles(monkeypatch):
+    """T_xuv and g_xuv are read off the cell-centre profiles at the XUV level.
+
+    With p_xuv = 1e-3 bar = 100 Pa against a profile p = [1e3, 1e5] Pa, the
+    nearest level is the upper cell, so T_xuv = 280 K and g_xuv = 9.5 m/s2.
+    The lower cell holds 900 K and 9.8 m/s2, so reading the wrong end of the
+    column misses by a factor of 3.2 in temperature, far outside tolerance.
+    """
+    atmos = _make_run_agni_atmos(transparent=False)
+    config = _make_run_agni_config(solve_energy=False)
+    hf_row = {
+        'P_surf': 100.0,
+        'p_xuv': 1e-3,
+        'R_xuv': 6.5e6,
+        'R_int': 6.371e6,
+        'gravity': 9.8,
+        'Time': 100.0,
+    }
+    for g in ['H2O', 'CO2']:
+        hf_row[g + '_vmr'] = 0.5
+
+    dirs = {'output': '/tmp/fake', 'output/plots': '/tmp/fake_plots'}
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(
+            atmosphere=SimpleNamespace(estimate_photosphere_b=lambda *a, **kw: None),
+            save=SimpleNamespace(write_ncdf=lambda a, p: None),
+            plotting=SimpleNamespace(plot_contfunc1=lambda a, p: None),
+            chemistry=SimpleNamespace(calc_composition_b=lambda *a: False),
+            setpt=SimpleNamespace(
+                dry_adiabat_b=lambda a: None,
+                saturation_b=lambda a, g: None,
+                stratosphere_b=lambda a, v: None,
+            ),
+            energy=SimpleNamespace(
+                calc_fluxes_b=lambda a, **kw: None,
+                fill_Kzz_b=lambda a: None,
+            ),
+        ),
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *a: [])
+    # The real interpolator, so the pin discriminates which cell was read
+
+    _, output = agni_mod.run_agni(atmos, 1, dirs, config, hf_row)
+
+    assert output['T_xuv'] == pytest.approx(280.0, rel=1e-12)
+    assert output['g_xuv'] == pytest.approx(9.5, rel=1e-12)
+    assert output['R_xuv'] == pytest.approx(6.5e6, rel=1e-12)
+    # Discrimination: the other end of the column is far outside tolerance.
+    assert output['T_xuv'] != pytest.approx(900.0, rel=1e-2)
+    assert output['g_xuv'] != pytest.approx(9.8, rel=1e-3)
+
+
+def _make_run_agni_jl():
+    """Julia stand-in for the run_agni post-solve path."""
+    return SimpleNamespace(
+        AGNI=SimpleNamespace(
+            atmosphere=SimpleNamespace(estimate_photosphere_b=lambda *a, **kw: None),
+            save=SimpleNamespace(write_ncdf=lambda a, p: None),
+            plotting=SimpleNamespace(plot_contfunc1=lambda a, p: None),
+            chemistry=SimpleNamespace(calc_composition_b=lambda *a: False),
+            setpt=SimpleNamespace(
+                dry_adiabat_b=lambda a: None,
+                saturation_b=lambda a, g: None,
+                stratosphere_b=lambda a, v: None,
+            ),
+            energy=SimpleNamespace(
+                calc_fluxes_b=lambda a, **kw: None,
+                fill_Kzz_b=lambda a: None,
+            ),
+        ),
+    )
+
+
+def _clip_test_hf_row():
+    """Row for the clip tests: Hill radius between the two profile cells."""
+    hf_row = {
+        'P_surf': 100.0,
+        'p_xuv': 1e-3,
+        'R_xuv': 6.5e6,
+        'R_int': 6.371e6,
+        'gravity': 9.8,
+        'Time': 100.0,
+        'hill_radius': 6.42e6,
+    }
+    for g in ['H2O', 'CO2']:
+        hf_row[g + '_vmr'] = 0.5
+    return hf_row
+
+
+@pytest.mark.physics_invariant
+def test_run_agni_clips_the_xuv_level_to_the_hill_radius(monkeypatch):
+    """With the clip enabled and a Hill radius inside the unclipped XUV level,
+    the level moves to the Hill radius and p, T, g are re-read there, so the
+    whole group describes the clipped level rather than mixing two levels.
+
+    Unclipped, p_xuv = 1e-3 bar lands on the upper cell (r = 6.5e6 m, 280 K,
+    9.5 m/s2). The Hill radius at 6.42e6 m forces the level down; the nearest
+    profile point is then the lower cell, so every quantity flips to its other
+    end: p 1e5 Pa, T 900 K, g 9.8 m/s2. A clip that moved only the radius
+    would keep 280 K and fail by a factor of 3.2.
+    """
+    atmos = _make_run_agni_atmos(transparent=False)
+    config = _make_run_agni_config(solve_energy=False, hill_clamp=True)
+    hf_row = _clip_test_hf_row()
+
+    dirs = {'output': '/tmp/fake', 'output/plots': '/tmp/fake_plots'}
+    monkeypatch.setattr(agni_mod, 'jl', _make_run_agni_jl())
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *a: [])
+
+    _, output = agni_mod.run_agni(atmos, 1, dirs, config, hf_row)
+
+    # The level sits at the Hill radius, not at the unclipped 6.5e6 m.
+    assert output['R_xuv'] == pytest.approx(6.42e6, rel=1e-12)
+    # Pressure, temperature and gravity are re-read at the clipped level.
+    assert output['p_xuv'] == pytest.approx(1.0, rel=1e-12)  # 1e5 Pa in bar
+    assert output['T_xuv'] == pytest.approx(900.0, rel=1e-12)
+    assert output['g_xuv'] == pytest.approx(9.8, rel=1e-12)
+    # Discrimination: the unclipped level's values are far outside tolerance.
+    assert output['T_xuv'] != pytest.approx(280.0, rel=1e-2)
+    assert output['p_xuv'] != pytest.approx(1e-3, rel=1e-2)
+
+
+def test_run_agni_clip_disabled_leaves_the_level_alone(monkeypatch):
+    """With the clip disabled the same setup keeps the unclipped level, so the
+    clip cannot silently engage for configs that turned it off."""
+    atmos = _make_run_agni_atmos(transparent=False)
+    config = _make_run_agni_config(solve_energy=False, hill_clamp=False)
+    hf_row = _clip_test_hf_row()
+
+    dirs = {'output': '/tmp/fake', 'output/plots': '/tmp/fake_plots'}
+    monkeypatch.setattr(agni_mod, 'jl', _make_run_agni_jl())
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *a: [])
+
+    _, output = agni_mod.run_agni(atmos, 1, dirs, config, hf_row)
+
+    assert output['R_xuv'] == pytest.approx(6.5e6, rel=1e-12)
+    assert output['T_xuv'] == pytest.approx(280.0, rel=1e-12)
+    assert output['g_xuv'] == pytest.approx(9.5, rel=1e-12)
 
 
 # ---------------------------------------------------------------------------
