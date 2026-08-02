@@ -12,7 +12,12 @@ from numpy import pi, unique
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.atmos_clim.common import Atmos_t, LevelsSource, get_spfile_path
+from proteus.atmos_clim.common import (
+    Atmos_t,
+    LevelsSource,
+    clip_radius_to_hill,
+    get_spfile_path,
+)
 from proteus.utils.constants import const_R, gas_list
 from proteus.utils.helper import UpdateStatusfile, safe_rm
 
@@ -359,6 +364,13 @@ def run_atmosphere(
     if hf_all is not None and len(hf_all) > 0:
         previous_row = hf_all.iloc[-1].to_dict()
     carry_converged_levels(atmos_o, hf_row, previous_row=previous_row)
+
+    # A carried radius can come from a row written before the clip existed, or
+    # under a different Hill radius, so bound it here as well. There is no
+    # profile on this path to re-read the rest of the level from, and the
+    # rate escape computes goes as the cube of this radius, so the bound wins.
+    if hasattr(config, 'escape') and 'R_xuv' in hf_row:
+        hf_row['R_xuv'] = clip_radius_to_hill(config, hf_row, float(hf_row['R_xuv']))
 
     # Persist the solve outcome, so a row whose levels were carried can be
     # identified from the output alone rather than from the log.

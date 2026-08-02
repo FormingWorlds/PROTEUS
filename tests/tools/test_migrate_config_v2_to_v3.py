@@ -343,6 +343,19 @@ def test_kappah_floor_and_maximum_rel_overrides():
     assert mig.OVERRIDES['params.dt.maximum_rel'] == 0.0
 
 
+def test_hill_clamp_override_reproduces_unclipped_2_0_escape():
+    """2.0 sized escape from the unmodified XUV radius; the 3.0 default clips
+    it to the Hill radius. The override pins the clip off, so a migrated
+    config keeps its 2.0 escape rates rather than silently gaining the bound.
+    """
+    assert mig.OVERRIDES['escape.hill_clamp'] is False
+    # The live 3.0 default is the opposite; that difference is what the pin
+    # exists to bridge, so it is asserted here too.
+    from proteus.config._escape import Escape
+
+    assert Escape(module='zephyrus').hill_clamp is True
+
+
 def test_bol_scale_window_override_reproduces_unwindowed_2_0_scaling():
     """2.0 had no time-gating on bol_scale: a non-unity factor applied for
     the whole run. The live 3.0 default (bol_scale_start=None) disables

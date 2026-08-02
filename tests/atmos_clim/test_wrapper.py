@@ -969,3 +969,81 @@ def test_carry_levels_counts_converged_solves_towards_the_first_solve_rule():
     assert failed['R_xuv'] == pytest.approx(2.4e7, rel=1e-12)
     assert failed['R_obs'] != pytest.approx(5.0e6, rel=1e-1)
     assert atmos_o.levels_source is LevelsSource.CONVERGED_SOLVE
+
+
+@pytest.mark.physics_invariant
+def test_run_atmosphere_clips_a_carried_radius_from_an_unclipped_row():
+    """A committed row from before the clip existed can carry an XUV radius of
+    several Hill radii; when the resume fallback substitutes it, the radius is
+    bounded before escape can read it.
+
+    The committed radius here is five Hill radii, the exact pathology of the
+    issue; unbounded it would inflate the energy-limited rate 125-fold, so the
+    discriminating check is that the row ends at the Hill radius itself.
+    """
+    atmos_o = Atmos_t()
+    atmos_o._atm = object()
+
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='agni',
+            albedo_pl=0.0,
+            rayleigh=False,
+            cloud_enabled=False,
+            surf_state='fixed',
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+        escape=SimpleNamespace(hill_clamp=True, hill_clamp_frac=1.0),
+    )
+    hf_row = {
+        'T_magma': 1800.0,
+        'M_planet': 6.0e24,
+        'F_int': 120.0,
+        'F_atm': 100.0,
+        'axial_period': 86400.0,
+        'atm_kg_per_mol': 0.029,
+        'T_surf': 0.0,
+        'R_int': 6.371e6,
+        'R_star': 6.96e8,
+        'F_olr': 200.0,
+        'F_sct': 100.0,
+        'F_ins': 1361.0,
+        'separation': 1.5e11,
+        'hill_radius': 1.0e8,
+        **{key: 0.0 for key in _levels(1.0, 1.0)},
+    }
+
+    # One committed row whose radii predate the clip: five Hill radii.
+    hf_all = pd.DataFrame([_levels(4.0e8, 5.0e8, 0.4)])
+
+    rejected = _levels(2.4e9, 2.88e9, 0.9)
+    out = dict(rejected)
+    out.update({'albedo': 0.2, 'F_atm': 100.0, 'agni_converged': False})
+    vmr = out.pop('H2O_vmr_xuv')
+
+    def _run_agni(atm, *args, **kwargs):
+        hf_row['H2O_vmr_xuv'] = vmr
+        return atm, out
+
+    with (
+        patch('proteus.atmos_clim.agni.update_agni_atmos', side_effect=lambda a, *_, **__: a),
+        patch('proteus.atmos_clim.agni.run_agni', side_effect=_run_agni),
+    ):
+        atmos_wrapper.run_atmosphere(
+            atmos_o,
+            config,
+            {'output': '/tmp/x'},
+            {'total': 5},
+            [1.0],
+            [1.0],
+            False,
+            hf_all,
+            hf_row,
+        )
+
+    # The carried radius is bounded at the Hill radius, not at the committed
+    # row's five Hill radii and not at the rejected structure's value.
+    assert hf_row['R_xuv'] == pytest.approx(1.0e8, rel=1e-12)
+    assert hf_row['R_xuv'] != pytest.approx(5.0e8, rel=1e-1)
+    # The rest of the level still comes from the committed row.
+    assert hf_row['H2O_vmr_xuv'] == pytest.approx(0.4, rel=1e-12)
