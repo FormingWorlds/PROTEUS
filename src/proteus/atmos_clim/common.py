@@ -39,6 +39,25 @@ class Atmos_t:
         # failures with no interior state change). Transient, not persisted.
         self.converged: bool = True
 
+        # Photospheric and XUV level properties from the most recent solve
+        # that converged, keyed as in the helpfile row. Empty until this run
+        # converges a solve of its own; a run that has to substitute before
+        # then falls back on the last committed row. Transient, not persisted.
+        self.levels_converged: dict[str, float] = {}
+
+        # Where the levels above came from, and how many consecutive iterations
+        # have run on levels this run did not resolve itself. The source is
+        # tracked here rather than re-derived per call, since a run that has
+        # only ever fallen back on the committed row must not report those
+        # levels as converged. Transient, not persisted.
+        self.levels_source: str = 'last converged solve'
+        self.levels_carried: int = 0
+
+        # Atmosphere solves this run has made. Only the first one may fall back
+        # on the rows committed before the run started; after that, an empty
+        # record means this run's own rows carry rejected levels too.
+        self.solves_seen: int = 0
+
 
 def ncdf_flag_to_bool(var) -> bool:
     """Convert NetCDF flag (y/n) to Python bool (true/false)"""

@@ -173,6 +173,46 @@ by tracking consecutive iterations where:
 After three consecutive deadlocked iterations, PROTEUS aborts with a
 diagnostic message identifying the stuck state.
 
+## Levels from a rejected atmosphere solve
+
+A solver that rejects its solution still returns an atmospheric structure, and
+the photospheric and XUV levels read off that structure can sit far outside the
+planet. Escape reads $R_\mathrm{xuv}$ from the previous iteration, and the
+energy-limited rate goes as $R_\mathrm{xuv}^3$, so an unusable structure would
+otherwise become a large mass-loss rate that looks like a physical result.
+
+When the atmosphere solve does not converge, PROTEUS therefore substitutes
+$R_\mathrm{obs}$, $p_\mathrm{obs}$, $T_\mathrm{obs}$, $g_\mathrm{obs}$,
+$R_\mathrm{xuv}$, $p_\mathrm{xuv}$ and the volume mixing ratios at the XUV level
+with the values from the most recent converged solve, and logs the substituted
+value of each of the six scalars as a warning. They are carried as a group, so a
+held radius is never
+combined with the pressure, temperature, gravity or composition of a rejected
+structure; the quantities derived from the radius, such as $\rho_\mathrm{obs}$
+and the transit depth, are computed from the carried value. Fluxes and surface
+state are never carried: the coupling advances on them, and the deadlock
+detector above needs to see them stop moving.
+
+The record of converged levels is not written to the output files, so a resumed
+run starts without one. If the first solve of such a run is rejected, it falls
+back on the last committed row instead, which was written before the run began
+and is the state escape would have used in any case; the warning names which of
+the two sources it used. Later solves never reach back to the committed rows,
+because once a run has begun writing rows, an empty record means those rows carry
+rejected levels themselves. A run with nothing to fall back on keeps the levels of
+the rejected structure and warns that it is doing so. Modules without a nonlinear
+solve (JANUS, the dummy module, and AGNI's transparent and prescribed-temperature
+branches) always report convergence and are unaffected.
+
+Each warning counts the consecutive iterations whose levels the run did not
+resolve itself, the ones with nothing to fall back on included, and past ten in a
+row the run reports it at error level. A streak that long means the interior is
+evolving while the levels stand still, which the deadlock detector above cannot
+catch: it fires only when the interior has stopped moving too.
+
+The substitution appears in the log, not in the helpfile: no output column marks
+a row whose levels were carried.
+
 ## Energy conservation diagnostics
 
 When using the Aragog interior module, PROTEUS tracks cumulative energy

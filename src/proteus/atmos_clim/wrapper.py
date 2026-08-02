@@ -13,10 +13,153 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 from proteus.atmos_clim.common import Atmos_t, get_spfile_path
-from proteus.utils.constants import const_R
+from proteus.utils.constants import const_R, gas_list
 from proteus.utils.helper import UpdateStatusfile, safe_rm
 
 log = logging.getLogger('fwl.' + __name__)
+
+# Scalar properties of the photospheric and XUV levels, all read off the
+# atmospheric structure the solver returns. They are carried together so that
+# each level keeps a radius, pressure, temperature and gravity that describe the
+# same structure. Fluxes and surface state are deliberately absent: the coupling
+# and the deadlock detector both need to see those move when a solve fails.
+LEVEL_KEYS = ('R_obs', 'p_obs', 'T_obs', 'g_obs', 'R_xuv', 'p_xuv')
+
+# Composition at the XUV level, read off the same structure and used by BOREAS
+# to set the mean molecular weight of the outflow. Carried with the levels, so
+# a held radius is never combined with the composition of a rejected structure.
+XUV_VMR_KEYS = tuple(f'{gas}_vmr_xuv' for gas in gas_list)
+
+# Number of consecutive iterations on carried levels after which the run says so
+# at error level. Long enough that a solver which stumbles for an iteration or
+# two passes unremarked, short enough to appear while a run is still worth
+# steering.
+CARRIED_LEVELS_ALERT = 10
+
+
+def _finite_levels(source: dict, keys) -> dict:
+    """Read the level properties out of `source`, skipping the unusable ones.
+
+    A key is taken only when it is present and its value is finite. A solver
+    that returns NaN for a level has not measured it, so storing that value
+    would replace the fallback with something that cannot be fallen back on.
+    """
+    out = {}
+    for key in keys:
+        if key not in source:
+            continue
+        val = float(source[key])
+        if np.isfinite(val):
+            out[key] = val
+    return out
+
+
+def _alert_on_long_streak(atmos_o: Atmos_t):
+    """Report a long run of iterations whose levels the run did not resolve.
+
+    A streak this long is no longer a solver that stumbled once. The interior
+    keeps evolving while the levels stand still, so escape is computed on a
+    planet that has moved on, and the deadlock detector cannot see it: that
+    detector fires only when the interior has stopped moving as well.
+    """
+    if atmos_o.levels_carried >= CARRIED_LEVELS_ALERT:
+        log.error(
+            'Atmosphere levels have been unresolved for %d consecutive iterations; '
+            'escape is running on a structure this run has not converged',
+            atmos_o.levels_carried,
+        )
+
+
+def carry_converged_levels(atmos_o: Atmos_t, hf_row: dict, previous_row: dict | None = None):
+    """Carry the photospheric and XUV levels across a solve that was rejected.
+
+    A solver that rejects its solution still returns an atmospheric structure,
+    and the levels read off that structure can sit far outside the planet. The
+    energy-limited escape rate goes as the cube of the XUV radius, so a rejected
+    structure otherwise becomes a large mass-loss rate that looks like a
+    physical result. Each converged solve records its levels; a rejected one has
+    its levels replaced by that record, and the substitution is logged.
+
+    Modules without a nonlinear solve (JANUS, dummy, and AGNI's transparent and
+    prescribed-temperature branches) always report convergence, so this records
+    their levels and never substitutes.
+
+    A resumed run starts with an empty record, since the record is not written
+    to the output files. If its very first solve is rejected it falls back on the
+    last committed row, which was written before this run began and is the state
+    escape would have used in any case. That row is the last one written, not
+    necessarily one that converged, so the substitution says which of the two
+    sources it used.
+
+    Later solves never reach back to the committed rows. Once this run has begun
+    writing rows, an empty record means every solve so far was rejected, so those
+    rows carry rejected levels themselves and are worth no more than the levels
+    in hand.
+
+    Parameters
+    ----------
+        atmos_o : Atmos_t
+            Atmosphere struct. Carries the convergence flag of the solve that
+            has just run, and the record of converged levels, which this
+            function updates.
+        hf_row : dict
+            Simulation variables for this iteration, modified in place. Holds
+            the levels the atmosphere module has just written.
+        previous_row : dict, optional
+            The last committed row, used only when this run's first solve is
+            rejected.
+    """
+
+    keys = LEVEL_KEYS + XUV_VMR_KEYS
+    atmos_o.solves_seen += 1
+
+    # Solve was accepted: its levels become the ones to fall back on. Merged
+    # rather than replaced, so a module that reports one level intermittently
+    # does not empty the record of that level.
+    if atmos_o.converged:
+        atmos_o.levels_converged.update(_finite_levels(hf_row, keys))
+        atmos_o.levels_source = 'last converged solve'
+        atmos_o.levels_carried = 0
+        return
+
+    # First solve of this run, and it failed. The last committed row predates
+    # the run, which is the situation a resumed run is in, so fall back on that.
+    if atmos_o.solves_seen == 1 and previous_row:
+        atmos_o.levels_converged.update(_finite_levels(previous_row, keys))
+        atmos_o.levels_source = 'last committed row'
+
+    # Counts every iteration whose levels this run did not resolve itself, so a
+    # run with nothing to fall back on is counted too. That case is the worse
+    # of the two, since escape then runs on the rejected structure directly.
+    atmos_o.levels_carried += 1
+
+    if not atmos_o.levels_converged:
+        log.warning(
+            'Atmosphere solve did not converge and no earlier levels are '
+            'available; using the levels of the rejected structure '
+            '(%d consecutive iterations)',
+            atmos_o.levels_carried,
+        )
+        _alert_on_long_streak(atmos_o)
+        return
+
+    log.warning(
+        'Atmosphere solve did not converge; holding levels from the %s '
+        '(%d consecutive iterations)',
+        atmos_o.levels_source,
+        atmos_o.levels_carried,
+    )
+    _alert_on_long_streak(atmos_o)
+
+    for key in LEVEL_KEYS:
+        if key in atmos_o.levels_converged and key in hf_row:
+            log.warning(
+                '    %-5s %.5e  ->  %.5e'
+                % (key, float(hf_row[key]), atmos_o.levels_converged[key])
+            )
+    for key in keys:
+        if key in atmos_o.levels_converged and key in hf_row:
+            hf_row[key] = atmos_o.levels_converged[key]
 
 
 def run_atmosphere(
@@ -201,6 +344,15 @@ def run_atmosphere(
     for key in atm_output.keys():
         if key in hf_row.keys():
             hf_row[key] = atm_output[key]
+
+    # Keep escape and the observables off a structure the solver rejected. This
+    # runs on the merged row, after the module output and the module's direct
+    # writes to `hf_row` are both in place, and before the quantities derived
+    # from the levels below.
+    previous_row = None
+    if hf_all is not None and len(hf_all) > 0:
+        previous_row = hf_all.iloc[-1].to_dict()
+    carry_converged_levels(atmos_o, hf_row, previous_row=previous_row)
 
     # Copy special cases
     hf_row['rho_obs'] = 3 * hf_row['M_planet'] / (4 * pi * hf_row['R_obs'] ** 3)
