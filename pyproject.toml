@@ -342,6 +342,12 @@ sha256 = ""
 fail_under = 80
 
 [tool.ruff]
+# Directories searched for the names that count as first party. The default
+# also searches the repository root, where the ecosystem modules are installed
+# as clones, so a module whose clone directory carries its own name is read as
+# part of this project and its imports sort into the group holding proteus.
+# Names pinned under [tool.ruff.lint.isort] are honoured either way.
+src = ["src"]
 line-length = 96
 target-version = "py312"
 extend-exclude = ["*ipynb"]
