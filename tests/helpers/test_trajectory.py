@@ -26,8 +26,9 @@ Contract clauses exercised:
 - A run is held to the reference only when that reference belongs to the
   configuration the run was made from, and recording one states what it
   changed rather than rewriting the file silently.
-- The committed reference belongs to the committed configuration, and records
-  a run that evolves rather than one that sits at its initial condition.
+- The committed reference belongs to the committed configuration, records a
+  run that evolves rather than one that sits at its initial condition, and
+  carries every column the helpfile schema declares.
 
 See also:
 - docs/How-to/testing.md
@@ -1185,3 +1186,47 @@ def test_the_record_option_is_registered_and_defaults_to_comparing(pytestconfig)
 
     with pytest.raises(ValueError):
         pytestconfig.getoption('--record-golden-nonexistent')
+
+
+def test_the_committed_reference_covers_every_column_the_helpfile_writes():
+    """The reference carries the whole helpfile schema, not part of it.
+
+    Contract clause: a run is compared column by column, so a column the
+    schema declares and the reference does not carry is a quantity nothing
+    holds to anything. Adding a helpfile key without recording the trajectory
+    again leaves exactly that hole, and the run that would report it is in the
+    nightly tier. Reading the schema and the recorded file needs no run, so
+    this reports the mismatch on the pull request that opens it.
+
+    Verifies:
+    - Every key the helpfile schema declares, apart from those that describe
+      how the run was executed rather than what it simulated, appears in the
+      reference. A key added without recording the trajectory again fails here.
+    - The reference carries nothing the schema does not declare, so a key
+      retired from the schema leaves no stale column behind.
+    - The schema is substantial rather than degenerate, so the comparison
+      above cannot pass by holding an empty set against an empty one.
+    """
+    from proteus.utils.coupler import GetHelpfileKeys
+
+    schema = set(GetHelpfileKeys()) - set(_trajectory.NON_STATE_COLUMNS)
+    recorded = set(read_reference(GOLDEN_REFERENCE).frame.columns)
+
+    assert len(schema) > 500, (
+        f'the helpfile schema declares only {len(schema)} state columns, so the '
+        'comparison below is no longer holding the reference to a whole helpfile'
+    )
+
+    missing = sorted(schema - recorded)
+    assert not missing, (
+        f'{GOLDEN_REFERENCE.name} is missing {len(missing)} column(s) the helpfile '
+        f'writes: {missing[:10]}. Record the trajectory again with --record-golden, '
+        'in the commit that added them.'
+    )
+
+    stale = sorted(recorded - schema)
+    assert not stale, (
+        f'{GOLDEN_REFERENCE.name} carries {len(stale)} column(s) the helpfile no '
+        f'longer writes: {stale[:10]}. Record the trajectory again with '
+        '--record-golden, in the commit that retired them.'
+    )

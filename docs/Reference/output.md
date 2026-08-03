@@ -198,6 +198,8 @@ For each element (H, C, N, O, S):
 | `P_vap` | bar | Surface pressure of the rock-vapour species |
 | `P_vol` | bar | Surface pressure of the volatile species |
 | `atm_kg_per_mol` | kg mol$^{-1}$ | Mean molecular weight |
+| `atm_converged` | 1 | Atmosphere solve outcome: +1 converged, -1 rejected, 0 no solve |
+| `atm_levels_stale` | 1 | Consecutive iterations without a converged solve of this run |
 
 ### Redox state
 
@@ -228,6 +230,8 @@ of two log$_{10}$ bar numbers and therefore a dimensionless dex offset. See
 | `M_vol_initial` | kg | Initial volatile inventory baseline |
 | `p_xuv` | bar | XUV absorption pressure level |
 | `R_xuv` | m | XUV absorption radius |
+| `T_xuv` | K | Temperature at the XUV absorption radius |
+| `g_xuv` | m s$^{-2}$ | Gravity at the XUV absorption radius |
 
 ### Observables
 
