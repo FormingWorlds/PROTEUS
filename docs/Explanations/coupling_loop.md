@@ -184,6 +184,65 @@ by tracking consecutive iterations where:
 After three consecutive deadlocked iterations, PROTEUS aborts with a
 diagnostic message identifying the stuck state.
 
+## Levels from a rejected atmosphere solve
+
+A solver that rejects its solution still returns an atmospheric structure, and
+the photospheric and XUV levels read off that structure can sit far outside the
+planet. Escape reads $R_\mathrm{xuv}$ from the previous iteration, and the
+energy-limited rate goes as $R_\mathrm{xuv}^3$, so an unusable structure would
+otherwise become a large mass-loss rate that looks like a physical result.
+
+When the atmosphere solve does not converge, PROTEUS therefore substitutes the
+radius, pressure, temperature and gravity of both levels ($R_\mathrm{obs}$,
+$p_\mathrm{obs}$, $T_\mathrm{obs}$, $g_\mathrm{obs}$, $R_\mathrm{xuv}$,
+$p_\mathrm{xuv}$, $T_\mathrm{xuv}$, $g_\mathrm{xuv}$) together with the volume
+mixing ratios at the XUV level, using the values from the most recent converged
+solve. A warning reports each such iteration, and the substituted values are
+listed at debug level. The levels are carried as a group, so a held radius is
+never combined with the pressure, temperature, gravity or composition of a
+rejected structure; the quantities derived from the radius, such as
+$\rho_\mathrm{obs}$ and the transit depth, are computed from the carried value.
+Fluxes and surface state are never carried: the coupling advances on them, and
+the deadlock detector above needs to see them stop moving.
+
+The record of converged levels is not written to the output files, so a resumed
+run starts without one. If the first solve of such a run is rejected, it falls
+back on the last committed row instead, which was written before the run began
+and is the state escape would have used in any case; the warning names which of
+the two sources it used. Later solves never reach back to the committed rows,
+because once a run has begun writing rows, an empty record means those rows carry
+rejected levels themselves. A run with nothing to fall back on keeps the levels of
+the rejected structure and warns that it is doing so. Modules without a nonlinear
+solve (JANUS, the dummy module, and AGNI's transparent and prescribed-temperature
+branches) always report convergence and are unaffected.
+
+Each warning counts the consecutive iterations whose levels the run did not
+resolve itself, the ones with nothing to fall back on included, and past ten in a
+row the run reports it at error level. A streak that long means the interior is
+evolving while the levels stand still, which the deadlock detector above cannot
+catch: it fires only when the interior has stopped moving too.
+
+Two helpfile columns persist the outcome, so a carried row is identifiable from
+the output alone: `atm_converged` records the solve outcome of each row (+1
+converged, -1 rejected, 0 before the first atmosphere call), and
+`atm_levels_stale` records the number of consecutive iterations without a
+converged solve of the run, zero on every converged row.
+
+## The XUV level is limited to the Hill radius
+
+Independently of convergence, the XUV level itself is bounded: gas beyond the
+Hill radius is not bound to the planet, so an XUV radius outside it would size
+the escape cross-section with material the planet does not hold, and the
+energy-limited rate grows as the cube of the excess. With `escape.hill_clamp`
+enabled (the default), each atmosphere module limits $R_\mathrm{xuv}$ to
+`escape.hill_clamp_frac` of the Hill radius, floored at $R_\mathrm{int}$ since
+the solid body is always bound. The level moves as a whole: $p_\mathrm{xuv}$,
+$T_\mathrm{xuv}$, $g_\mathrm{xuv}$ and the XUV-level mixing ratios are read at
+the clipped radius, so escape never sees a radius from one level combined with
+a composition from another. Each engagement is logged as a warning. The
+observed level is not clipped; a transit radius beyond the Hill radius is
+reported as computed and flagged by the orbit module's existing warning.
+
 ## Energy conservation diagnostics
 
 When using the Aragog interior module, PROTEUS tracks cumulative energy

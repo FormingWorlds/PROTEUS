@@ -831,6 +831,8 @@ def GetHelpfileKeys():
         'tau_atm_surface',  # optical depth at surface, at ref wavelength [1]
         'atm_Ra_max',      # maximum Rayleigh number across levels [1]
         'atm_t_conv_over_t_rad',  # convective vs radiative timescale ratio [1]
+        'atm_converged',    # atmosphere solve outcome: +1 converged, -1 rejected, 0 no solve [1]
+        'atm_levels_stale',  # consecutive iterations without a converged solve of this run [1]
         'F_tidal',          # tidal heat flux arising at surface [W m-2]
         'F_radio',          # radiogenic heat flux arising at surface [W m-2]
         'F_cmb',             # heat flux at the CMB (signed, +out-of-core) [W m-2]
@@ -1028,6 +1030,8 @@ def GetHelpfileKeys():
     # Atmospheric escape
     keys.append('p_xuv')                # pressure of XUV absorption [bar]
     keys.append('R_xuv')                # radius of XUV absorption [m]
+    keys.append('T_xuv')                # temperature at R_xuv [K]
+    keys.append('g_xuv')                # gravity at R_xuv [m s-2]
     keys.append('cs_xuv')               # sound speed, at R_xuv [m s-1]
     keys.append('esc_rate_total')       # bulk escape rate [kg s-1]
     for e in element_list:

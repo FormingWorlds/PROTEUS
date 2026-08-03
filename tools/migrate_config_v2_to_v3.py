@@ -257,6 +257,9 @@ OVERRIDES = {
     # 2.0 had no time-gating on bol_scale
     'star.bol_scale_start': 0.0,
     'star.bol_scale_duration': 100.0,
+    # 2.0 sized escape from the unmodified XUV radius; the 3.0 default clips
+    # it to the Hill radius. Pin off so migrated runs reproduce 2.0 rates.
+    'escape.hill_clamp': False,
 }
 
 # Element-budget fields consumed by the element handler (not mapped directly).

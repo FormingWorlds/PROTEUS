@@ -119,6 +119,8 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.agni.spectral_file',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
+        # Inert while escape.hill_clamp is pinned off for migrated configs.
+        'escape.hill_clamp_frac',
         'interior_energetics.adams_williamson_beta',
         'interior_energetics.adams_williamson_rhos',
         'interior_energetics.adiabatic_bulk_modulus',
@@ -374,6 +376,19 @@ def test_kappah_floor_and_maximum_rel_overrides():
     """kappah_floor pins 0.0 (no floor) and maximum_rel pins 0.0 (strict dt cap)."""
     assert mig.OVERRIDES['interior_energetics.kappah_floor'] == 0.0
     assert mig.OVERRIDES['params.dt.maximum_rel'] == 0.0
+
+
+def test_hill_clamp_override_reproduces_unclipped_2_0_escape():
+    """2.0 sized escape from the unmodified XUV radius; the 3.0 default clips
+    it to the Hill radius. The override pins the clip off, so a migrated
+    config keeps its 2.0 escape rates rather than silently gaining the bound.
+    """
+    assert mig.OVERRIDES['escape.hill_clamp'] is False
+    # The live 3.0 default is the opposite; that difference is what the pin
+    # exists to bridge, so it is asserted here too.
+    from proteus.config._escape import Escape
+
+    assert Escape(module='zephyrus').hill_clamp is True
 
 
 def test_bol_scale_window_override_reproduces_unwindowed_2_0_scaling():

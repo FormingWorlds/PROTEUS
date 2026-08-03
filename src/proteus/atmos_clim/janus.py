@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from proteus.atmos_clim.common import get_oarr_from_parr
+from proteus.atmos_clim.common import clip_radius_to_hill, get_oarr_from_parr
 from proteus.utils.constants import vap_list, vol_list, gas_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder
 
@@ -336,15 +336,32 @@ def RunJANUS(
     # This neglects self-gravity but is self-consistent with JANUS internals.
     g_obs = float(hf_row['gravity']) * (float(hf_row['R_int']) / r_obs) ** 2
 
-    # p_xuv from R_xuv
+    # p_xuv from R_xuv, clipping the radius before the pressure lookup
     if config.escape.xuv_defined_by_radius:
-        r_xuv = hf_row['R_xuv']  # m
+        r_xuv = clip_radius_to_hill(config, hf_row, float(hf_row['R_xuv']))  # m
         p_xuv = get_oarr_from_parr(r_arr, atm.p, r_xuv)[1] * 1e-5  # bar
 
-    # R_xuv from p_xuv
+    # R_xuv from p_xuv; a clipped radius moves the level, so the pressure is
+    # re-read at the clipped radius to keep the level self-consistent
     else:
         p_xuv = hf_row['p_xuv']  # bar
         r_xuv = get_oarr_from_parr(atm.p, r_arr, p_xuv * 1e5)[1]  # m
+        r_clip = clip_radius_to_hill(config, hf_row, r_xuv)
+        if r_clip != r_xuv:
+            r_xuv = r_clip
+            p_xuv = get_oarr_from_parr(r_arr, atm.p, r_xuv)[1] * 1e-5  # bar
+
+    # Temperature at the XUV level from the temperature profile; gravity by the
+    # inverse-square law from the surface value, for the same reason as g_obs
+    # above (atm.grav_z is stale after write_ncdf reintegrates the heights).
+    # When the hydrostatic integration failed the heights are unusable, so fall
+    # back to the surface values, matching the r_obs fallback above.
+    if atm.height_error or r_xuv <= 0.0:
+        t_xuv = float(hf_row['T_surf'])
+        g_xuv = float(hf_row['gravity'])
+    else:
+        _, t_xuv = get_oarr_from_parr(atm.p, t_arr, p_xuv * 1e5)  # K
+        g_xuv = float(hf_row['gravity']) * (float(hf_row['R_int']) / r_xuv) ** 2  # m s-2
 
     # final things to store
     output = {}
@@ -359,6 +376,8 @@ def RunJANUS(
     output['g_obs'] = g_obs  # observed gravity [m/s^2]
     output['p_xuv'] = p_xuv  # Closest pressure to Pxuv [bar]
     output['R_xuv'] = r_xuv  # Radius at Pxuv [m]
+    output['T_xuv'] = float(t_xuv)  # Temperature at Pxuv [K]
+    output['g_xuv'] = g_xuv  # Gravity at Pxuv [m s-2]
     output['P_surf_clim'] = P_surf_clim  # calculated surface pressure [bar]
     output['ocean_areacov'] = 0.0
     output['ocean_maxdepth'] = 0.0
