@@ -328,19 +328,38 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # closes to before + rock + delivered - stripped, which can be a net
     # shrink when a small impactor blows off a heavier atmosphere.
     # mass_tot is in Earth masses; the amounts are in kg.
+    from proteus.accretion.common import MASS_CLOSURE_RTOL
+
     impactor_rock = event.mass_delta - sum(content.values())
-    # A volatile content larger than the impactor is not a collision. The ppmw
-    # budgets are bounded at config load, but 'match_planet' composes the
-    # content from the planet at the moment of impact and so is not, and the
-    # whole-planet mass stays self-consistent either way, which leaves nothing
-    # downstream able to notice the anchor going backwards.
-    if impactor_rock < 0.0:
+    # A volatile content larger than the impactor is not a collision: the anchor
+    # would go backwards while the planet still keeps the volatiles, and because
+    # both halves move together the whole-planet mass stays self-consistent and
+    # nothing downstream notices. The ppmw budgets are bounded at config load,
+    # but 'match_planet' composes the content at the moment of impact and is not.
+    #
+    # The content is a fraction of M_impactor while the remainder is taken from
+    # mass_delta, and a timeline is accepted when the merged mass closes to
+    # MASS_CLOSURE_RTOL, so a budget approaching the whole impactor can leave a
+    # remainder that is negative by that rounding alone. The closure is measured
+    # against the merged mass, so the tolerance is too, which for a small
+    # impactor is far wider than the same fraction of mass_delta would be. Only
+    # a deficit beyond it is real; within it the rock is zero.
+    rock_tol = MASS_CLOSURE_RTOL * (event.M_target_before + event.M_impactor)
+    if impactor_rock < -rock_tol:
         raise ValueError(
-            f'Impactor volatile content {sum(content.values()):.4g} kg exceeds its '
-            f'total mass {event.mass_delta:.4g} kg, so the impact would remove '
-            f'{-impactor_rock:.4g} kg of rock from the interior. Check '
-            f'accretion.impactor_volatiles = {config.accretion.impactor_volatiles!r}.'
+            f'Impactor volatile content {sum(content.values()):.6e} kg exceeds the '
+            f'{event.mass_delta:.6e} kg it adds to the planet, so the impact would '
+            f'remove {-impactor_rock:.4e} kg of rock from the interior. With '
+            f'accretion.impactor_volatiles = {config.accretion.impactor_volatiles!r}, '
+            'the content is set by '
+            + (
+                'the per-element accretion.impactor_<e>_ppmw budgets, which must '
+                'total below 1e6 ppmw.'
+                if config.accretion.impactor_volatiles == 'ppmw'
+                else "the planet's own composition at the time of impact."
+            )
         )
+    impactor_rock = max(impactor_rock, 0.0)
     config.planet.mass_tot += impactor_rock / M_earth
 
     # Record the growth in the helpfile as well as in the configuration. The

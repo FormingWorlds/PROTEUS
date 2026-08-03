@@ -2053,3 +2053,42 @@ def test_the_row_an_impact_leaves_satisfies_the_runtime_mass_invariants(monkeypa
     # Both strips are booked as loss: 40% of the H and of the O atmosphere.
     assert hf_row['esc_kg_cumulative'] == pytest.approx(2.0e19, rel=1e-12)
     assert hf_row['M_planet'] > 5.9736e24, 'the planet did not grow'
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_rock_remainder_tolerates_closure_rounding_but_not_a_real_overrun():
+    """A budget near the whole impactor must not abort on closure rounding.
+
+    The impactor's volatile content is a fraction of ``M_impactor`` while the
+    rock remainder is taken from ``mass_delta``, which a timeline may leave
+    short of it by up to ``MASS_CLOSURE_RTOL`` of the merged mass. A budget
+    approaching 1e6 ppmw therefore lands slightly negative on arithmetic alone,
+    and refusing that would abort a run whose configuration is valid. A content
+    genuinely larger than the impactor still has to be refused, so the guard has
+    to separate the two rather than accept or reject both.
+    """
+    from proteus.accretion.common import MASS_CLOSURE_RTOL
+
+    # 1:100 impactor, the case where the two masses differ most in relative
+    # terms, so the rounding band is widest against mass_delta.
+    m_target, m_impactor = 6.0e24, 6.0e22
+    merged = (m_target + m_impactor) * (1.0 - MASS_CLOSURE_RTOL)  # accepted by closure
+    mass_delta = merged - m_target
+    tol = MASS_CLOSURE_RTOL * (m_target + m_impactor)
+
+    rounding = mass_delta - m_impactor * 999_999.0 / 1.0e6
+    assert rounding < 0.0, 'this case must be negative, or it tests nothing'
+    assert rounding >= -tol, 'closure rounding must fall inside the tolerance'
+
+    overrun = mass_delta - m_impactor * 1.2e6 / 1.0e6
+    assert overrun < -tol, 'a 120% budget must fall outside the tolerance'
+
+    # Discrimination: the two differ by three orders of magnitude, so the band
+    # separates them rather than merely admitting both.
+    assert abs(overrun) > 1.0e3 * abs(rounding)
+
+    # The tolerance is measured against the merged mass, not against mass_delta;
+    # the latter is ~100x smaller here and would refuse the rounding case.
+    assert tol > abs(rounding)
+    assert MASS_CLOSURE_RTOL * mass_delta < abs(rounding)

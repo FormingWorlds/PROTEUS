@@ -244,6 +244,13 @@ def valid_impactor_budget_total(instance, attribute, value):
     impact would shrink the anchor while still crediting the full volatile
     mass to the planet. Whole-planet mass stays self-consistent through that,
     so nothing downstream can detect it.
+
+    Cross-field checks only see a complete object, so this rides on the last
+    ppmw field and covers construction, which is where every entry point
+    arrives: a config read from TOML, and a grid case, which is written out
+    and read back before it runs. Assigning to one of the earlier budgets on
+    a live object does not re-run it, so ``apply_impact`` refuses a negative
+    rock remainder as well rather than relying on this alone.
     """
     if instance.impactor_volatiles != 'ppmw':
         return

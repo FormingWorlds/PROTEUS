@@ -922,14 +922,14 @@ def test_the_per_step_impact_heat_starts_each_row_at_zero():
     clears = [m.start() for m in re.finditer(re.escape(clear_stmt), source)]
     assert copies, 'the row-copy statement this test pins has been renamed'
     assert clears, 'the impact-heat clear has been removed from Proteus.start'
+    # Every copy must be followed by a clear. Checking the last one is what
+    # discriminates: a clear placed before it satisfies a first-occurrence
+    # comparison while leaving the stepped row carrying the previous value.
     for copy_at in copies:
         assert any(clear_at > copy_at for clear_at in clears), (
             f'the row copy at offset {copy_at} is not followed by a clear of '
             'step_dE_impact_J, so that row carries the previous impact heat'
         )
-    # Discrimination: a clear placed before the last copy satisfies a
-    # first-occurrence comparison but leaves the stepped row carrying the value.
-    assert max(clears) > max(copies)
 
     # Behavioural check on the same two operations, which is what a row carrying
     # a booked value through to the next step would break.

@@ -528,8 +528,12 @@ def test_impactor_volatile_budgets_cannot_exceed_the_impactor_mass():
         Accretion(impactor_volatiles='ppmw', impactor_H_ppmw=1.0e6)
 
     # The check is on the SUM, not on any single field: five budgets that each
-    # look modest can still total more than the impactor. A per-field bound
-    # would pass this and is the wrong-formula case worth discriminating.
+    # load happily on their own still total more than the impactor. That the
+    # same values are individually accepted is what makes the summed form the
+    # only one that catches this, and it is asserted rather than asserted about.
+    for element in ('H', 'C', 'N', 'S', 'O'):
+        alone = Accretion(impactor_volatiles='ppmw', **{f'impactor_{element}_ppmw': 3.0e5})
+        assert getattr(alone, f'impactor_{element}_ppmw') == pytest.approx(3.0e5)
     with pytest.raises(ValueError, match='no rock'):
         Accretion(
             impactor_volatiles='ppmw',
@@ -539,9 +543,6 @@ def test_impactor_volatile_budgets_cannot_exceed_the_impactor_mass():
             impactor_S_ppmw=3.0e5,
             impactor_O_ppmw=3.0e5,
         )
-    # Each of those is far below any single-field ceiling, which is what makes
-    # the summed form the only one that catches it.
-    assert 3.0e5 < 1.0e6
 
     # The bound applies only where the budgets are read. Under a mode that
     # ignores them the existing mode check owns the refusal, and its message
