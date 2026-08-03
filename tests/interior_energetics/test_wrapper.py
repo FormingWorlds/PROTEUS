@@ -6237,3 +6237,139 @@ def test_a_stalled_interior_ends_the_run_instead_of_being_absorbed():
         'being absorbed by the keep-previous-state fallback'
     )
     assert absorbed_interior.aragog_fail_count == 1
+
+
+# ----------------------------------------------------------------------------
+# Closed-form magnitude of the impact heat.
+#
+# The re-melt injection is added to both sides of the coupler's energy budget,
+# so E_residual_cons_frac is invariant to its value and cannot detect a wrong
+# magnitude. These tests pin the quadrature that produces it against an
+# analytic integral instead.
+# ----------------------------------------------------------------------------
+
+
+class _LinearCapacitanceEOS:
+    """EOS whose rho*T is linear in entropy, so the heat integral is closed form.
+
+    Density is uniform and temperature is affine in specific entropy,
+    ``T(S) = a + b*S``, independent of pressure. The heat-content integrand
+    ``rho*T`` is then linear in ``S`` and
+
+        int_{S0}^{Sf} rho (a + b S) dS = rho [a (Sf - S0) + b (Sf^2 - S0^2) / 2]
+
+    exactly. Trapezoidal quadrature is exact on a linear integrand, so the
+    solver's value must match this to floating-point precision rather than to
+    a discretisation tolerance.
+    """
+
+    def __init__(self, rho: float, a: float, b: float):
+        self.rho, self.a, self.b = rho, a, b
+
+    def density(self, P, S):
+        return np.full_like(np.asarray(S, dtype=float), self.rho)
+
+    def temperature(self, P, S):
+        return self.a + self.b * np.asarray(S, dtype=float)
+
+    def exact_heat(self, S0, Sf, vol):
+        """Closed-form ``Sum_i V_i int rho T dS`` for the same inputs."""
+        S0, Sf, vol = (np.asarray(x, dtype=float) for x in (S0, Sf, vol))
+        cell = self.rho * (self.a * (Sf - S0) + 0.5 * self.b * (Sf**2 - S0**2))
+        return float(np.sum(cell * vol))
+
+
+def _heat_content_probe(eos, P, vol, S0, Sf, n_quad=16):
+    """Run the real solver quadrature against a bare attribute carrier."""
+    from aragog.solver.entropy_solver import EntropySolver
+
+    carrier = SimpleNamespace(
+        entropy_eos=eos,
+        _P_stag_flat=np.asarray(P, dtype=float),
+        _volume_flat=np.asarray(vol, dtype=float),
+    )
+    return EntropySolver._step_heat_content(carrier, S0, Sf, n_quad=n_quad)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_impact_heat_quadrature_matches_the_closed_form_integral():
+    """The booked injection equals the analytic integral of rho*T dS by volume.
+
+    Pins the magnitude of the impact heat, which the conservation residual
+    cannot check because the term enters both sides of the budget and cancels.
+    The reference is the exact integral for an EOS whose capacitance is affine
+    in entropy, not a re-statement of the implementation.
+    """
+    pytest.importorskip('aragog')
+
+    # Entropies spanning a real cooled-to-molten jump, deliberately unequal per
+    # cell and off any round number, so a per-cell error cannot cancel in the sum.
+    S0 = np.array([2411.0, 2530.5, 2688.25, 2802.0, 2955.75, 3101.5])
+    Sf = np.array([3897.0, 3902.5, 3915.25, 3928.0, 3944.75, 3960.5])
+    P = np.linspace(1.4e11, 2.0e9, S0.size)
+    # Shell volumes falling with radius, spanning a decade so the volume
+    # weighting is discriminating rather than a near-uniform average.
+    vol = np.array([4.1e18, 6.3e18, 9.8e18, 1.6e19, 2.7e19, 4.4e19])
+
+    # b != 0 is what makes the integral differ from any single-point estimate.
+    eos = _LinearCapacitanceEOS(rho=4200.0, a=350.0, b=1.05)
+    expected = eos.exact_heat(S0, Sf, vol)
+
+    got = _heat_content_probe(eos, P, vol, S0, Sf)
+    assert got == pytest.approx(expected, rel=1e-12)
+
+    # An impact deposits energy into the mantle.
+    assert got > 0.0
+
+    # Discrimination guards. Each is a formula a wrong implementation would
+    # plausibly use; every one must sit far outside the tolerance above.
+    dS = Sf - S0
+    end_point = float(np.sum(eos.rho * (eos.a + eos.b * Sf) * dS * vol))
+    start_point = float(np.sum(eos.rho * (eos.a + eos.b * S0) * dS * vol))
+    no_volume = float(np.sum(eos.rho * (eos.a * dS + 0.5 * eos.b * (Sf**2 - S0**2))))
+    no_density = float(np.sum((eos.a * dS + 0.5 * eos.b * (Sf**2 - S0**2)) * vol))
+    for name, wrong in (
+        ('end-point capacitance', end_point),
+        ('start-point capacitance', start_point),
+        ('missing volume weight', no_volume),
+        ('missing density', no_density),
+    ):
+        assert abs(wrong - expected) > 1e-3 * abs(expected), (
+            f'{name} is within tolerance of the correct value, so this test '
+            'cannot discriminate it'
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_impact_heat_is_antisymmetric_and_vanishes_on_no_jump():
+    """Cooling books the negation of heating, and an unchanged profile books zero.
+
+    The re-melt clamps a negative booking to zero upstream, so the sign
+    convention of the quadrature itself is what decides whether a real
+    injection is ever booked at all.
+    """
+    pytest.importorskip('aragog')
+
+    S0 = np.array([2450.0, 2601.5, 2777.25, 2903.0])
+    Sf = np.array([3888.0, 3901.5, 3919.25, 3937.0])
+    P = np.linspace(1.2e11, 3.0e9, S0.size)
+    vol = np.array([5.2e18, 8.9e18, 1.5e19, 2.6e19])
+    eos = _LinearCapacitanceEOS(rho=4050.0, a=410.0, b=0.97)
+
+    heating = _heat_content_probe(eos, P, vol, S0, Sf)
+    cooling = _heat_content_probe(eos, P, vol, Sf, S0)
+    assert heating > 0.0 > cooling
+    assert cooling == pytest.approx(-heating, rel=1e-12)
+
+    # Edge case: a mantle already at the molten profile absorbs nothing.
+    unchanged = _heat_content_probe(eos, P, vol, Sf, Sf)
+    assert unchanged == pytest.approx(0.0, abs=1e-6 * abs(heating))
+
+    # Error contract: no EOS attached is a documented zero, not a crash.
+    from aragog.solver.entropy_solver import EntropySolver
+
+    bare = SimpleNamespace(entropy_eos=None, _P_stag_flat=P, _volume_flat=vol)
+    assert EntropySolver._step_heat_content(bare, S0, Sf) == 0.0
