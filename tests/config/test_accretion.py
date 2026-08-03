@@ -501,3 +501,50 @@ def test_a_timeline_path_aimed_at_the_analytical_module_is_refused():
 
     # The analytical module without a path is the ordinary case and loads.
     assert Accretion(module='dummy').dummy.timeline_path is None
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_impactor_volatile_budgets_cannot_exceed_the_impactor_mass():
+    """A volatile budget above the impactor's own mass is refused at load.
+
+    The budgets are fractions of the impactor mass and the rock the impact adds
+    to the interior anchor is the remainder, so a total at or above 1e6 ppmw
+    makes that remainder zero or negative and the collision removes rock from
+    the planet. Whole-planet mass stays self-consistent across that, because
+    the anchor and the volatile budgets are both updated, so no runtime
+    conservation check can see it and the refusal has to happen here.
+    """
+    from proteus.config._accretion import Accretion
+
+    # Boundary: just under the impactor mass is physically extreme but valid,
+    # and must still load, so the guard cannot be a blanket ceiling on ppmw.
+    ok = Accretion(impactor_volatiles='ppmw', impactor_H_ppmw=999_999.0)
+    assert ok.delivers_volatiles is True
+    assert ok.impactor_H_ppmw == pytest.approx(999_999.0)
+
+    # Exactly the impactor mass leaves no rock at all.
+    with pytest.raises(ValueError, match='no rock'):
+        Accretion(impactor_volatiles='ppmw', impactor_H_ppmw=1.0e6)
+
+    # The check is on the SUM, not on any single field: five budgets that each
+    # look modest can still total more than the impactor. A per-field bound
+    # would pass this and is the wrong-formula case worth discriminating.
+    with pytest.raises(ValueError, match='no rock'):
+        Accretion(
+            impactor_volatiles='ppmw',
+            impactor_H_ppmw=3.0e5,
+            impactor_C_ppmw=3.0e5,
+            impactor_N_ppmw=3.0e5,
+            impactor_S_ppmw=3.0e5,
+            impactor_O_ppmw=3.0e5,
+        )
+    # Each of those is far below any single-field ceiling, which is what makes
+    # the summed form the only one that catches it.
+    assert 3.0e5 < 1.0e6
+
+    # The bound applies only where the budgets are read. Under a mode that
+    # ignores them the existing mode check owns the refusal, and its message
+    # names the mode rather than the rock, so the two guards stay distinct.
+    with pytest.raises(ValueError, match='ppmw budgets are read only'):
+        Accretion(impactor_volatiles='match_planet', impactor_H_ppmw=3.0e5)

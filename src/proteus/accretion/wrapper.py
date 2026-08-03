@@ -329,6 +329,18 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # shrink when a small impactor blows off a heavier atmosphere.
     # mass_tot is in Earth masses; the amounts are in kg.
     impactor_rock = event.mass_delta - sum(content.values())
+    # A volatile content larger than the impactor is not a collision. The ppmw
+    # budgets are bounded at config load, but 'match_planet' composes the
+    # content from the planet at the moment of impact and so is not, and the
+    # whole-planet mass stays self-consistent either way, which leaves nothing
+    # downstream able to notice the anchor going backwards.
+    if impactor_rock < 0.0:
+        raise ValueError(
+            f'Impactor volatile content {sum(content.values()):.4g} kg exceeds its '
+            f'total mass {event.mass_delta:.4g} kg, so the impact would remove '
+            f'{-impactor_rock:.4g} kg of rock from the interior. Check '
+            f'accretion.impactor_volatiles = {config.accretion.impactor_volatiles!r}.'
+        )
     config.planet.mass_tot += impactor_rock / M_earth
 
     # Record the growth in the helpfile as well as in the configuration. The

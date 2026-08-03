@@ -235,6 +235,30 @@ def valid_impactor_volatiles(instance, attribute, value):
         )
 
 
+def valid_impactor_budget_total(instance, attribute, value):
+    """Refuse a volatile budget that exceeds the impactor's own mass.
+
+    The budgets are fractions of the impactor mass, and the rock the impact
+    adds to the interior anchor is what is left once they are taken out. A
+    total at or above 1e6 ppmw leaves nothing or less than nothing, so the
+    impact would shrink the anchor while still crediting the full volatile
+    mass to the planet. Whole-planet mass stays self-consistent through that,
+    so nothing downstream can detect it.
+    """
+    if instance.impactor_volatiles != 'ppmw':
+        return
+    budgets = {e: getattr(instance, f'impactor_{e}_ppmw') for e in ('H', 'C', 'N', 'S', 'O')}
+    total = sum(budgets.values())
+    if total >= 1.0e6:
+        named = ', '.join(f'{e}={v:g}' for e, v in budgets.items() if v > 0.0)
+        raise ValueError(
+            f'The impactor volatile budgets sum to {total:g} ppmw ({total / 1.0e4:.3g}% '
+            f'of the impactor mass), which leaves no rock to accrete ({named}). '
+            'Each budget is a fraction of the impactor mass, so they must total '
+            'below 1e6 ppmw.'
+        )
+
+
 @define
 class Accretion:
     """Giant-impact accretion, delivery, and module selection.
@@ -352,7 +376,10 @@ class Accretion:
     # The cross-field check rides on the LAST ppmw field: attrs runs field
     # validators in definition order, so only here are the mode selector and
     # every budget it guards populated.
-    impactor_O_ppmw: float = field(default=0.0, validator=[ge(0), valid_impactor_volatiles])
+    impactor_O_ppmw: float = field(
+        default=0.0,
+        validator=[ge(0), valid_impactor_volatiles, valid_impactor_budget_total],
+    )
 
     # Impact atmosphere loss. Disabled by default; the constant module
     # applies a fixed fraction, the zephyrus module the Kegerreis et al.

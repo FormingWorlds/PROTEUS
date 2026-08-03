@@ -905,6 +905,7 @@ def test_the_per_step_impact_heat_starts_each_row_at_zero():
     the retry paths that return before that branch is reached.
     """
     import inspect
+    import re
 
     from proteus.proteus import Proteus
 
@@ -912,9 +913,23 @@ def test_the_per_step_impact_heat_starts_each_row_at_zero():
 
     # The row is created by copying the previous one; the clear must follow that
     # copy, or it would be overwritten by the very value it exists to drop.
-    copy_at = source.index('self.hf_row = self.hf_all.iloc[-1].to_dict()')
-    clear_at = source.index("self.hf_row['step_dE_impact_J'] = 0.0")
-    assert clear_at > copy_at
+    # ``start`` copies the row in more than one place, so every copy has to be
+    # cleared afterwards: comparing against the first one alone would pass with
+    # the clear sitting before the copy that creates the stepped row.
+    copy_stmt = 'self.hf_row = self.hf_all.iloc[-1].to_dict()'
+    clear_stmt = "self.hf_row['step_dE_impact_J'] = 0.0"
+    copies = [m.start() for m in re.finditer(re.escape(copy_stmt), source)]
+    clears = [m.start() for m in re.finditer(re.escape(clear_stmt), source)]
+    assert copies, 'the row-copy statement this test pins has been renamed'
+    assert clears, 'the impact-heat clear has been removed from Proteus.start'
+    for copy_at in copies:
+        assert any(clear_at > copy_at for clear_at in clears), (
+            f'the row copy at offset {copy_at} is not followed by a clear of '
+            'step_dE_impact_J, so that row carries the previous impact heat'
+        )
+    # Discrimination: a clear placed before the last copy satisfies a
+    # first-occurrence comparison but leaves the stepped row carrying the value.
+    assert max(clears) > max(copies)
 
     # Behavioural check on the same two operations, which is what a row carrying
     # a booked value through to the next step would break.
