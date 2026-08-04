@@ -681,28 +681,48 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
 
     # Otherwise, set profile initial guess
     else:
-        # do as requested by user in the config
-        log.info(f'Initialising T(p) as {config.atmos_clim.agni.ini_profile}')
-        match config.atmos_clim.agni.ini_profile:
-            case 'loglinear':
-                jl.AGNI.setpt.loglinear_b(atmos, -0.5 * hf_row['T_surf'])
-            case 'isothermal':
-                jl.AGNI.setpt.isothermal_b(atmos, hf_row['T_surf'])
-            case 'dry_adiabat':
-                jl.AGNI.setpt.dry_adiabat_b(atmos)
-            case 'analytic':
-                jl.AGNI.setpt.analytic_b(atmos)
-            case _:
-                UpdateStatusfile(dirs, 20)
-                raise ValueError('Invalid initial T(p) profile selected')
-
-        # lower-limit on initial profile
-        jl.AGNI.setpt.stratosphere_b(atmos, min(400.0, hf_row['T_surf']))
+        _set_guess_profile(atmos, hf_row, dirs, config)
 
     # Logging
     sync_log_files(dirs['output'])
 
     return atmos
+
+
+def _set_guess_profile(atmos, hf_row: dict, dirs: dict, config: Config):
+    """Set the temperature profile to the initial guess requested in the config.
+
+    The guess is anchored on the surface boundary condition, so it needs no
+    usable temperature structure on the struct beforehand.
+
+    Parameters
+    ----------
+        atmos : AGNI.atmosphere.Atmos_t
+            AGNI atmosphere struct, with its pressure grid already generated
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
+        dirs : dict
+            Directories dictionary
+        config: Config
+            PROTEUS config object
+    """
+
+    log.info(f'Initialising T(p) as {config.atmos_clim.agni.ini_profile}')
+    match config.atmos_clim.agni.ini_profile:
+        case 'loglinear':
+            jl.AGNI.setpt.loglinear_b(atmos, -0.5 * hf_row['T_surf'])
+        case 'isothermal':
+            jl.AGNI.setpt.isothermal_b(atmos, hf_row['T_surf'])
+        case 'dry_adiabat':
+            jl.AGNI.setpt.dry_adiabat_b(atmos)
+        case 'analytic':
+            jl.AGNI.setpt.analytic_b(atmos)
+        case _:
+            UpdateStatusfile(dirs, 20)
+            raise ValueError('Invalid initial T(p) profile selected')
+
+    # lower-limit on initial profile
+    jl.AGNI.setpt.stratosphere_b(atmos, min(400.0, hf_row['T_surf']))
 
 
 def deallocate_atmos(atmos):
@@ -711,6 +731,116 @@ def deallocate_atmos(atmos):
     """
     jl.AGNI.atmosphere.deallocate_b(atmos)
     safe_rm(str(atmos.fastchem_work))
+
+
+def _check_stored_profile(p_old, t_old) -> tuple[bool, str]:
+    """Check that the profile held on the struct can be interpolated.
+
+    The interpolation onto the new pressure grid takes the base-10 logarithm
+    of the stored pressures, so a pressure that is not finite and positive
+    aborts the run inside scipy. A temperature that is not finite and positive
+    is carried into the new profile and poisons the next solve.
+
+    Parameters
+    ----------
+        p_old : array_like
+            Cell-centre pressures held on the struct [Pa]
+        t_old : array_like
+            Cell-centre temperatures held on the struct [K]
+
+    Returns
+    -------
+        usable : bool
+            True if the profile can be interpolated onto a new grid.
+        reason : str
+            Empty string if usable, otherwise which quantity went bad.
+    """
+
+    p_arr = np.asarray(p_old, dtype=float)
+    t_arr = np.asarray(t_old, dtype=float)
+
+    if p_arr.size == 0 or t_arr.size == 0:
+        return False, 'the stored profile is empty'
+
+    if p_arr.size != t_arr.size:
+        return False, (
+            f'the stored profile holds {p_arr.size} pressures for {t_arr.size} temperatures'
+        )
+
+    n_bad = int(np.sum(~np.isfinite(p_arr)))
+    if n_bad:
+        return False, f'atmos.p holds {n_bad} non-finite value(s)'
+
+    n_bad = int(np.sum(p_arr <= 0.0))
+    if n_bad:
+        return False, f'atmos.p holds {n_bad} value(s) <= 0 Pa'
+
+    n_bad = int(np.sum(~np.isfinite(t_arr)))
+    if n_bad:
+        return False, f'atmos.tmp holds {n_bad} non-finite value(s)'
+
+    n_bad = int(np.sum(t_arr <= 0.0))
+    if n_bad:
+        return False, f'atmos.tmp holds {n_bad} value(s) <= 0 K'
+
+    return True, ''
+
+
+def _rebuild_agni_profile(atmos, hf_row: dict, dirs: dict, config: Config, reason: str):
+    """Discard the profile held on the struct and set the initial guess again.
+
+    Used when the stored profile cannot be interpolated onto the new pressure
+    grid. The surface boundary condition is all the guess needs, so the run
+    continues from a clean structure; a boundary condition that is itself
+    unusable ends the run as an atmosphere failure.
+
+    Parameters
+    ----------
+        atmos : AGNI.atmosphere.Atmos_t
+            AGNI atmosphere struct
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
+        dirs : dict
+            Directories dictionary
+        config: Config
+            PROTEUS config object
+        reason : str
+            Which quantity on the stored profile went bad
+
+    Returns
+    -------
+        atmos : AGNI.atmosphere.Atmos_t
+            Atmosphere struct carrying the new guess profile
+    """
+
+    log.warning('Cannot use the stored temperature profile: %s', reason)
+
+    t_surf = float(hf_row['T_surf'])
+    p_surf = float(hf_row['P_surf'])
+
+    if not np.isfinite(t_surf) or t_surf <= 0.0:
+        UpdateStatusfile(dirs, 22)
+        raise RuntimeError(
+            f'Cannot rebuild the temperature profile ({reason}) because T_surf = {t_surf} K'
+        )
+
+    if not np.isfinite(p_surf) or p_surf <= 0.0:
+        UpdateStatusfile(dirs, 22)
+        raise RuntimeError(
+            f'Cannot rebuild the temperature profile ({reason}) because P_surf = {p_surf} bar'
+        )
+
+    log.warning('Rebuilding it from the surface boundary condition')
+
+    # Same grid update as the interpolated path, done here because the guess
+    # routines write onto the new grid
+    atmos.p_oboa = 1.0e5 * p_surf
+    atmos.p_boa = atmos.p_oboa
+    jl.AGNI.atmosphere.generate_pgrid_b(atmos)
+
+    _set_guess_profile(atmos, hf_row, dirs, config)
+
+    return atmos
 
 
 def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
@@ -770,6 +900,13 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     # Store old/current log-pressure vs temperature arrays
     p_old = list(atmos.p)  # pascals
     t_old = list(atmos.tmp)
+
+    # A solve that was rejected can leave a profile that cannot be
+    # interpolated, so rebuild it from the surface boundary condition instead.
+    usable, reason = _check_stored_profile(p_old, t_old)
+    if not usable:
+        return _rebuild_agni_profile(atmos, hf_row, dirs, config, reason)
+
     nlev_c = len(p_old)
 
     #    extend to lower pressures
