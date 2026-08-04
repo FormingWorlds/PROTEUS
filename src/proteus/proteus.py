@@ -51,6 +51,11 @@ _IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true
 # while still recovers on its own before anything gives up on it.
 ATMOS_STALL_MAX = 25
 
+# Consecutive iterations of a failed atmosphere solve on an interior that has
+# not moved, after which a run ends. Much shorter than the cap above, because
+# neither side of the coupling can leave that state on its own.
+AGNI_DEADLOCK_MAX = 3
+
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
@@ -127,9 +132,10 @@ class Proteus:
         # Helpfile variables from all previous iterations
         self.hf_all = None
 
-        # Cap on consecutive unresolved atmosphere solves. Fixed for the run
-        # rather than reset per start, unlike the counters it is compared with.
+        # Caps on the two abort paths. Fixed for the run rather than reset per
+        # start, unlike the counters they are compared with.
         self.atmos_stall_max = ATMOS_STALL_MAX
+        self.agni_deadlock_max = AGNI_DEADLOCK_MAX
 
         # Loop counters
         self.init_stage = False
@@ -839,7 +845,6 @@ class Proteus:
         # and PROTEUS would otherwise silently accept a frozen state and
         # advance Time indefinitely.
         self.agni_deadlock_count = 0
-        self.agni_deadlock_max = 3
 
         # Main loop
         # Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:

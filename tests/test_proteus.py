@@ -248,14 +248,14 @@ def _make_deadlock_proteus(
     """
     from types import SimpleNamespace
 
-    from proteus.proteus import ATMOS_STALL_MAX
+    from proteus.proteus import AGNI_DEADLOCK_MAX, ATMOS_STALL_MAX
 
     p = _make_proteus_instance(tmp_path)
     p.atmos_o = SimpleNamespace(converged=bool(converged), levels_stale_iters=int(stale_iters))
     p.hf_all = hf_all
     p.hf_row = hf_row if hf_row is not None else {}
     p.agni_deadlock_count = 0
-    p.agni_deadlock_max = 3
+    p.agni_deadlock_max = AGNI_DEADLOCK_MAX
     p.atmos_stall_max = ATMOS_STALL_MAX
     return p
 
@@ -569,15 +569,17 @@ def test_atmos_stall_max_is_the_value_the_run_actually_uses(tmp_path):
     the earlier of the two.
     """
     from proteus.atmos_clim.wrapper import CARRIED_LEVELS_ALERT
-    from proteus.proteus import ATMOS_STALL_MAX
+    from proteus.proteus import AGNI_DEADLOCK_MAX, ATMOS_STALL_MAX
 
     assert ATMOS_STALL_MAX == 25
     assert ATMOS_STALL_MAX > CARRIED_LEVELS_ALERT
-    assert ATMOS_STALL_MAX > 3
+    assert ATMOS_STALL_MAX > AGNI_DEADLOCK_MAX
 
     # A constructed run carries the constant, so a literal reintroduced on
     # the instance would diverge from the pin above.
-    assert _make_proteus_instance(tmp_path).atmos_stall_max == ATMOS_STALL_MAX
+    built = _make_proteus_instance(tmp_path)
+    assert built.atmos_stall_max == ATMOS_STALL_MAX
+    assert built.agni_deadlock_max == AGNI_DEADLOCK_MAX
 
     moving = {
         'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
