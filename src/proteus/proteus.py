@@ -45,6 +45,12 @@ from proteus.utils.logs import (
 # in the loop body.
 _IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
 
+# Consecutive iterations without a converged atmosphere after which a run ends,
+# whatever the interior is doing. It has to stay above the streak the
+# atmosphere wrapper reports at error level, so a solver that stumbles for a
+# while still recovers on its own before anything gives up on it.
+ATMOS_STALL_MAX = 25
+
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
@@ -120,6 +126,10 @@ class Proteus:
 
         # Helpfile variables from all previous iterations
         self.hf_all = None
+
+        # Cap on consecutive unresolved atmosphere solves. Fixed for the run
+        # rather than reset per start, unlike the counters it is compared with.
+        self.atmos_stall_max = ATMOS_STALL_MAX
 
         # Loop counters
         self.init_stage = False
@@ -830,12 +840,6 @@ class Proteus:
         # advance Time indefinitely.
         self.agni_deadlock_count = 0
         self.agni_deadlock_max = 3
-
-        # Consecutive iterations without a converged atmosphere after which the
-        # run aborts whatever the interior is doing. Well above the streak the
-        # atmosphere wrapper already reports at error level, so a solver that
-        # stumbles for a while still recovers on its own.
-        self.atmos_stall_max = 25
 
         # Main loop
         # Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:

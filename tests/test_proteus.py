@@ -248,13 +248,15 @@ def _make_deadlock_proteus(
     """
     from types import SimpleNamespace
 
+    from proteus.proteus import ATMOS_STALL_MAX
+
     p = _make_proteus_instance(tmp_path)
     p.atmos_o = SimpleNamespace(converged=bool(converged), levels_stale_iters=int(stale_iters))
     p.hf_all = hf_all
     p.hf_row = hf_row if hf_row is not None else {}
     p.agni_deadlock_count = 0
     p.agni_deadlock_max = 3
-    p.atmos_stall_max = 25
+    p.atmos_stall_max = ATMOS_STALL_MAX
     return p
 
 
@@ -553,6 +555,50 @@ def test_proteus_resume_restores_the_unresolved_atmosphere_count(tmp_path, store
     _resume_with_patches(p, df)
 
     assert p.atmos_o.levels_stale_iters == expected
+
+
+@pytest.mark.unit
+def test_atmos_stall_max_is_the_value_the_run_actually_uses(tmp_path):
+    """The stall cap is pinned, and the abort reads it rather than a literal.
+
+    Contract clause: the number decides when a run is given up on, so it must
+    not be changeable without a test noticing, and the check must not carry a
+    second copy of it. The ordering against the two neighbouring thresholds is
+    what has to hold whatever the number becomes: the wrapper reports a long
+    streak before anything aborts on it, and the frozen-interior abort stays
+    the earlier of the two.
+    """
+    from proteus.atmos_clim.wrapper import CARRIED_LEVELS_ALERT
+    from proteus.proteus import ATMOS_STALL_MAX
+
+    assert ATMOS_STALL_MAX == 25
+    assert ATMOS_STALL_MAX > CARRIED_LEVELS_ALERT
+    assert ATMOS_STALL_MAX > 3
+
+    # A constructed run carries the constant, so a literal reintroduced on
+    # the instance would diverge from the pin above.
+    assert _make_proteus_instance(tmp_path).atmos_stall_max == ATMOS_STALL_MAX
+
+    moving = {
+        'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
+        'hf_row': {'F_atm': 140.0, 'T_magma': 3000.0, 'Phi_global': 0.9},
+    }
+
+    # The cap the check enforces is the one the constant carries, so moving
+    # the constant moves the abort with it.
+    p = _make_deadlock_proteus(tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX, **moving)
+    p.atmos_stall_max = ATMOS_STALL_MAX
+    with patch('proteus.proteus.UpdateStatusfile'):
+        with pytest.raises(RuntimeError, match=f'{ATMOS_STALL_MAX} consecutive solves'):
+            p._check_atmosphere_deadlock()
+
+    q = _make_deadlock_proteus(
+        tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX - 1, **moving
+    )
+    q.atmos_stall_max = ATMOS_STALL_MAX
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        q._check_atmosphere_deadlock()
+    mock_update.assert_not_called()
 
 
 @pytest.mark.unit
