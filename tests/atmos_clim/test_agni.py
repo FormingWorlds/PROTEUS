@@ -5,7 +5,7 @@ This module tests the AGNI atmosphere interface including:
 - Aerosol discovery (_determine_aerosols)
 - Condensate species determination (_determine_condensates)
 - AGNI atmosphere initialization (init_agni_atmos)
-- Temperature-profile carry-over between iterations (_check_stored_profile,
+- Temperature-profile carry-over between iterations (_validate_stored_profile,
   update_agni_atmos), covering pressure and temperature positivity, profile
   monotonicity under interpolation, and the atmosphere-failure contract when
   the surface boundary condition cannot seed a new profile
@@ -27,9 +27,9 @@ from scipy.interpolate import PchipInterpolator
 
 import proteus.atmos_clim.agni as agni_mod
 from proteus.atmos_clim.agni import (
-    _check_stored_profile,
     _determine_aerosols,
     _determine_condensates,
+    _validate_stored_profile,
     init_agni_atmos,
     write_atmos_ncdf,
 )
@@ -1835,7 +1835,7 @@ def _install_profile_fakes(monkeypatch, fake_agni):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_check_stored_profile_accepts_a_physical_profile():
+def test_validate_stored_profile_accepts_a_physical_profile():
     """A profile of positive pressures and temperatures is interpolable.
 
     Physical scenario: the profile left by a converged solve, spanning seven
@@ -1844,7 +1844,7 @@ def test_check_stored_profile_accepts_a_physical_profile():
     p_centres = [1.0e-1, 1.0e2, 1.0e5, 1.0e7]
     t_centres = [180.0, 400.0, 1200.0, 2400.0]
 
-    usable, reason = _check_stored_profile(p_centres, t_centres)
+    usable, reason = _validate_stored_profile(p_centres, t_centres)
     assert usable
     assert reason == ''
 
@@ -1855,14 +1855,14 @@ def test_check_stored_profile_accepts_a_physical_profile():
 
     # Edge case: a single-cell profile carries no gradient but is still
     # a valid structure to hold.
-    usable_one, reason_one = _check_stored_profile([5.0e6], [1900.0])
+    usable_one, reason_one = _validate_stored_profile([5.0e6], [1900.0])
     assert usable_one
     assert reason_one == ''
 
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_check_stored_profile_rejects_non_finite_pressure():
+def test_validate_stored_profile_rejects_non_finite_pressure():
     """A NaN or infinite pressure cannot be turned into a log-pressure.
 
     Physical scenario: the solver diverged and wrote NaN into the pressure
@@ -1871,13 +1871,13 @@ def test_check_stored_profile_rejects_non_finite_pressure():
     p_nan = [1.0e2, float('nan'), 1.0e6]
     t_ok = [400.0, 900.0, 1800.0]
 
-    usable, reason = _check_stored_profile(p_nan, t_ok)
+    usable, reason = _validate_stored_profile(p_nan, t_ok)
     assert not usable
     assert 'atmos.p' in reason
     assert '1 non-finite' in reason
 
     # Both non-finite kinds are caught, and the count reports every one.
-    usable_inf, reason_inf = _check_stored_profile([float('inf'), float('nan'), 1.0e6], t_ok)
+    usable_inf, reason_inf = _validate_stored_profile([float('inf'), float('nan'), 1.0e6], t_ok)
     assert not usable_inf
     assert '2 non-finite' in reason_inf
 
@@ -1889,7 +1889,7 @@ def test_check_stored_profile_rejects_non_finite_pressure():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_check_stored_profile_rejects_non_positive_pressure():
+def test_validate_stored_profile_rejects_non_positive_pressure():
     """Pressure must be positive for the profile to be interpolable.
 
     Physical scenario: a collapsed grid holding zero or negative pressure.
@@ -1898,12 +1898,12 @@ def test_check_stored_profile_rejects_non_positive_pressure():
     """
     t_ok = [400.0, 900.0, 1800.0]
 
-    usable_zero, reason_zero = _check_stored_profile([1.0e2, 0.0, 1.0e6], t_ok)
+    usable_zero, reason_zero = _validate_stored_profile([1.0e2, 0.0, 1.0e6], t_ok)
     assert not usable_zero
     assert 'atmos.p' in reason_zero
     assert '<= 0 Pa' in reason_zero
 
-    usable_neg, reason_neg = _check_stored_profile([1.0e2, -3.0e4, 1.0e6], t_ok)
+    usable_neg, reason_neg = _validate_stored_profile([1.0e2, -3.0e4, 1.0e6], t_ok)
     assert not usable_neg
     assert '<= 0 Pa' in reason_neg
 
@@ -1918,7 +1918,37 @@ def test_check_stored_profile_rejects_non_positive_pressure():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_check_stored_profile_rejects_unphysical_temperature():
+def test_validate_stored_profile_rejects_a_grid_that_stops_rising():
+    """Pressure must rise with depth for the profile to be interpolable.
+
+    Physical scenario: a grid that repeats a level or folds back on itself. It
+    is finite and positive everywhere, so only the ordering distinguishes it
+    from a usable column.
+    """
+    t_ok = [400.0, 900.0, 1800.0, 2200.0]
+
+    p_flat = [1.0e2, 1.0e5, 1.0e5, 1.0e7]
+    usable_flat, reason_flat = _validate_stored_profile(p_flat, t_ok)
+    assert not usable_flat
+    assert 'atmos.p' in reason_flat
+    assert '1 level(s)' in reason_flat
+
+    # A grid that folds back on itself is caught at the step that descends.
+    usable_back, reason_back = _validate_stored_profile([1.0e2, 1.0e6, 1.0e4, 1.0e7], t_ok)
+    assert not usable_back
+    assert '1 level(s)' in reason_back
+
+    # Discrimination against a finiteness-and-positivity guard: every value
+    # passes both of those, and only the ordering is wrong.
+    assert np.all(np.isfinite(p_flat))
+    assert min(p_flat) > 0.0
+    with pytest.raises(ValueError, match='strictly increasing'):
+        PchipInterpolator(np.log10(p_flat), t_ok)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_validate_stored_profile_rejects_unphysical_temperature():
     """Temperature must be finite and above absolute zero.
 
     Physical scenario: the pressure grid survived the rejected solve but the
@@ -1927,39 +1957,39 @@ def test_check_stored_profile_rejects_unphysical_temperature():
     """
     p_ok = [1.0e2, 1.0e4, 1.0e6]
 
-    usable_nan, reason_nan = _check_stored_profile(p_ok, [400.0, float('nan'), 1800.0])
+    usable_nan, reason_nan = _validate_stored_profile(p_ok, [400.0, float('nan'), 1800.0])
     assert not usable_nan
     assert 'atmos.tmp' in reason_nan
     assert 'non-finite' in reason_nan
 
-    usable_zero, reason_zero = _check_stored_profile(p_ok, [400.0, 0.0, 1800.0])
+    usable_zero, reason_zero = _validate_stored_profile(p_ok, [400.0, 0.0, 1800.0])
     assert not usable_zero
     assert '<= 0 K' in reason_zero
 
-    usable_neg, _ = _check_stored_profile(p_ok, [400.0, -12.0, 1800.0])
+    usable_neg, _ = _validate_stored_profile(p_ok, [400.0, -12.0, 1800.0])
     assert not usable_neg
 
     # The pressures here are the ones accepted above, so the rejection is
     # attributable to the temperatures alone.
-    assert _check_stored_profile(p_ok, [400.0, 900.0, 1800.0])[0]
+    assert _validate_stored_profile(p_ok, [400.0, 900.0, 1800.0])[0]
 
 
 @pytest.mark.unit
-def test_check_stored_profile_rejects_empty_and_ragged_input():
+def test_validate_stored_profile_rejects_empty_and_ragged_input():
     """A profile with no cells, or with mismatched arrays, is not a profile.
 
     Contract clause: the guard runs before any array is indexed, so it has to
     survive the degenerate shapes rather than raise on them.
     """
-    usable_empty, reason_empty = _check_stored_profile([], [])
+    usable_empty, reason_empty = _validate_stored_profile([], [])
     assert not usable_empty
     assert 'empty' in reason_empty
 
-    usable_half, reason_half = _check_stored_profile([1.0e5], [])
+    usable_half, reason_half = _validate_stored_profile([1.0e5], [])
     assert not usable_half
     assert 'empty' in reason_half
 
-    usable_ragged, reason_ragged = _check_stored_profile([1.0e2, 1.0e5], [300.0])
+    usable_ragged, reason_ragged = _validate_stored_profile([1.0e2, 1.0e5], [300.0])
     assert not usable_ragged
     assert '2 pressures' in reason_ragged
     assert '1 temperatures' in reason_ragged
@@ -2030,7 +2060,7 @@ def test_update_agni_atmos_rebuilds_profile_left_non_finite(monkeypatch, caplog)
 
     atmos = _ProfileAtmosphere(
         [1.0e1, float('nan'), 1.0e5, float('nan')],
-        [200.0, 500.0, float('nan'), 1900.0],
+        [200.0, 500.0, 1100.0, 1900.0],
     )
     hf_row = {
         'F_ins': 1361.0,
@@ -2064,10 +2094,57 @@ def test_update_agni_atmos_rebuilds_profile_left_non_finite(monkeypatch, caplog)
     assert min(atmos.tmpl) > 0.0
 
     # The log says which quantity went bad, so the cause is recoverable
-    # from the run's own output.
+    # from the run's own output. Only the pressures were poisoned here, so
+    # naming the temperatures would be wrong.
     messages = ' '.join(rec.getMessage() for rec in caplog.records)
-    assert 'atmos.p' in messages
-    assert 'non-finite' in messages
+    assert 'atmos.p holds 2 non-finite value(s)' in messages
+    assert 'atmos.tmp' not in messages
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_update_agni_atmos_rebuilds_when_only_temperatures_are_poisoned(monkeypatch, caplog):
+    """A NaN temperature on a clean grid is caught in its own right.
+
+    Physical scenario: the solver iterates on temperature, so a rejected solve
+    can leave the pressure grid intact and the profile unusable. The
+    interpolator refuses that too, and for a different reason.
+    """
+    fake_agni = _ProfileAGNI()
+    _install_profile_fakes(monkeypatch, fake_agni)
+    no_interp = MagicMock(side_effect=AssertionError('interpolator must not be built'))
+    monkeypatch.setattr(agni_mod, 'PchipInterpolator', no_interp)
+
+    p_clean = [1.0e1, 1.0e3, 1.0e5, 1.0e7]
+    atmos = _ProfileAtmosphere(p_clean, [200.0, float('nan'), 1100.0, 1900.0])
+    hf_row = {
+        'F_ins': 1361.0,
+        'albedo_pl': 0.1,
+        'T_surf': 2000.0,
+        'T_magma': 2000.0,
+        'P_surf': 50.0,
+    }
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.agni'):
+        agni_mod.update_agni_atmos(
+            atmos, hf_row, {'output': '/tmp/run'}, _build_profile_config()
+        )
+
+    no_interp.assert_not_called()
+    assert 'isothermal' in fake_agni.calls
+
+    # Positivity: the profile that comes back is the surface condition.
+    assert np.all(np.isfinite(atmos.tmp))
+    assert atmos.tmp == pytest.approx([2000.0] * len(atmos.p))
+
+    # The offending quantity is named, and the clean pressures are not.
+    messages = ' '.join(rec.getMessage() for rec in caplog.records)
+    assert 'atmos.tmp holds 1 non-finite value(s)' in messages
+    assert 'atmos.p ' not in messages
+
+    # Discrimination: the pressures used here are the ones the interpolated
+    # path accepts, so the rebuild is attributable to the temperatures.
+    assert _validate_stored_profile(p_clean, [200.0, 600.0, 1100.0, 1900.0])[0]
 
 
 @pytest.mark.unit
@@ -2164,3 +2241,19 @@ def test_update_agni_atmos_fails_as_atmosphere_error_without_a_usable_bc(monkeyp
     atmos_ok = _ProfileAtmosphere([1.0e2, 1.0e5], [600.0, 1200.0])
     agni_mod.update_agni_atmos(atmos_ok, dict(hf_row, T_surf=1800.0), dirs, config)
     status.assert_not_called()
+
+    # A surface pressure of zero leaves no column to lay a grid over. In a run
+    # it is diverted to transparent mode upstream, so the rebuild is called
+    # directly to hold it to its own contract.
+    status.reset_mock()
+    atmos_z = _ProfileAtmosphere([1.0e2, 1.0e5], [float('nan'), 1200.0])
+    calls_before = len(fake_agni.calls)
+    with pytest.raises(RuntimeError, match='P_surf'):
+        agni_mod._rebuild_agni_profile(
+            atmos_z, dict(hf_row, T_surf=1800.0, P_surf=0.0), dirs, config, 'test reason'
+        )
+    status.assert_called_once_with(dirs, 22)
+
+    # It fails before touching the struct, so the grid is never laid down.
+    assert len(fake_agni.calls) == calls_before
+    assert atmos_z.p_boa == pytest.approx(2.0e5)

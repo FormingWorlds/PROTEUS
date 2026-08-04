@@ -733,13 +733,15 @@ def deallocate_atmos(atmos):
     safe_rm(str(atmos.fastchem_work))
 
 
-def _check_stored_profile(p_old, t_old) -> tuple[bool, str]:
+def _validate_stored_profile(p_old, t_old) -> tuple[bool, str]:
     """Check that the profile held on the struct can be interpolated.
 
-    The interpolation onto the new pressure grid takes the base-10 logarithm
-    of the stored pressures, so a pressure that is not finite and positive
-    aborts the run inside scipy. A temperature that is not finite and positive
-    is carried into the new profile and poisons the next solve.
+    The interpolation onto the new pressure grid takes the base-10 logarithm of
+    the stored pressures, so pressures that are not finite, positive and rising
+    with depth abort the run inside scipy. A temperature that is not finite and
+    positive is carried into the new profile and poisons the next solve. The
+    arrays are taken directly rather than read off the struct, because the
+    caller has already materialised them for the interpolation itself.
 
     Parameters
     ----------
@@ -774,6 +776,10 @@ def _check_stored_profile(p_old, t_old) -> tuple[bool, str]:
     n_bad = int(np.sum(p_arr <= 0.0))
     if n_bad:
         return False, f'atmos.p holds {n_bad} value(s) <= 0 Pa'
+
+    n_bad = int(np.sum(np.diff(p_arr) <= 0.0))
+    if n_bad:
+        return False, f'atmos.p stops rising with depth at {n_bad} level(s)'
 
     n_bad = int(np.sum(~np.isfinite(t_arr)))
     if n_bad:
@@ -832,15 +838,28 @@ def _rebuild_agni_profile(atmos, hf_row: dict, dirs: dict, config: Config, reaso
 
     log.warning('Rebuilding it from the surface boundary condition')
 
-    # Same grid update as the interpolated path, done here because the guess
-    # routines write onto the new grid
-    atmos.p_oboa = 1.0e5 * p_surf
-    atmos.p_boa = atmos.p_oboa
-    jl.AGNI.atmosphere.generate_pgrid_b(atmos)
+    # The guess routines write onto the new grid, so lay it down first
+    _apply_surface_pressure(atmos, p_surf)
 
     _set_guess_profile(atmos, hf_row, dirs, config)
 
     return atmos
+
+
+def _apply_surface_pressure(atmos, p_surf: float):
+    """Move the bottom of the atmosphere to the surface and regrid onto it.
+
+    Parameters
+    ----------
+        atmos : AGNI.atmosphere.Atmos_t
+            AGNI atmosphere struct
+        p_surf : float
+            Surface pressure [bar]
+    """
+
+    atmos.p_oboa = 1.0e5 * float(p_surf)
+    atmos.p_boa = atmos.p_oboa
+    jl.AGNI.atmosphere.generate_pgrid_b(atmos)
 
 
 def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
@@ -903,7 +922,7 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
 
     # A solve that was rejected can leave a profile that cannot be
     # interpolated, so rebuild it from the surface boundary condition instead.
-    usable, reason = _check_stored_profile(p_old, t_old)
+    usable, reason = _validate_stored_profile(p_old, t_old)
     if not usable:
         return _rebuild_agni_profile(atmos, hf_row, dirs, config, reason)
 
@@ -921,10 +940,8 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     itp = PchipInterpolator(np.log10(p_old), t_old)
 
     # ---------------------
-    # Update surface pressure [Pa] and generate new grid
-    atmos.p_oboa = 1.0e5 * float(hf_row['P_surf'])
-    atmos.p_boa = atmos.p_oboa
-    jl.AGNI.atmosphere.generate_pgrid_b(atmos)
+    # Update surface pressure and generate new grid
+    _apply_surface_pressure(atmos, hf_row['P_surf'])
 
     # ---------------------
     # Set temperatures at all levels
