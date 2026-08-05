@@ -2165,6 +2165,9 @@ def run_interior(
     # cannot wrongly suppress the clip on a later, ordinary step.
     impact_reset = getattr(interior_o, 'impact_reset', False)
     interior_o.impact_reset = False
+    # The interior solvers run below, after the flag is cleared, so keep the
+    # value readable for the rest of this step.
+    interior_o.impact_reset_this_step = impact_reset
 
     # Write tidal heating file
     if config.interior_energetics.heat_tidal:

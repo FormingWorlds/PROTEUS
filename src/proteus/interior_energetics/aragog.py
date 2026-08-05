@@ -586,10 +586,53 @@ class AragogRunner:
             else:
                 AragogRunner.update_structure(config, hf_row, interior_o)
                 AragogRunner.update_solver(dt, hf_row, interior_o)
+            AragogRunner._refresh_jax_cvode_factory_if_mesh_moved(config, interior_o)
             interior_o.aragog_solver.reset()
             # Restore entropy IC from previous solve
             if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
                 interior_o.aragog_solver.set_initial_entropy(interior_o._last_entropy)
+
+    @staticmethod
+    def _refresh_jax_cvode_factory_if_mesh_moved(
+        config: Config, interior_o: Interior_t
+    ) -> None:
+        """Rebuild the JAX CVODE factory when the mesh no longer matches it.
+
+        The factory captures the mesh by value at install time, so a structure
+        change (a giant impact grows the planet, and Zalmoxis re-solves the
+        radius and the core/mantle split) leaves its right-hand side integrating
+        the old geometry while every other consumer sees the new one. Rebuilding
+        costs a JAX retrace, so it happens only when the geometry actually moved,
+        which for a run without impacts is never.
+
+        Parameters
+        ----------
+        config : Config
+            PROTEUS configuration, forwarded to the factory installer.
+        interior_o : Interior_t
+            Interior state holding the live Aragog solver.
+        """
+        solver = interior_o.aragog_solver
+        installed = getattr(solver, '_jax_mesh_key', None)
+        if not isinstance(installed, tuple):
+            return  # option Z inactive, or the install failed and fell back
+
+        current = AragogRunner._jax_mesh_key(solver)
+        if current == installed:
+            return
+
+        log.info(
+            'Option Z: mesh moved under the JAX factory (r_surf %.6e -> %.6e m, '
+            'r_cmb %.6e -> %.6e m, n_stag %d -> %d); rebuilding it so the '
+            'right-hand side integrates the current structure.',
+            installed[2],
+            current[2],
+            installed[1],
+            current[1],
+            installed[0],
+            current[0],
+        )
+        AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
 
     @staticmethod
     def setup_solver(config: Config, hf_row: dict, interior_o: Interior_t, outdir: str):
@@ -1224,6 +1267,28 @@ class AragogRunner:
             )
 
     @staticmethod
+    def _jax_mesh_key(solver) -> tuple[int, float, float]:
+        """Geometry fingerprint of the solver's current mesh.
+
+        The JAX CVODE factory captures the mesh by value, so this is what has
+        to match for its right-hand side to describe the planet the rest of the
+        step describes. Cell count plus the two bounding radii is enough: the
+        mesh is rebuilt whole on a structure change, never edited in place.
+
+        Parameters
+        ----------
+        solver : EntropySolver
+            Aragog solver whose mesh is being fingerprinted.
+
+        Returns
+        -------
+        tuple of (int, float, float)
+            Staggered cell count, CMB radius [m], surface radius [m].
+        """
+        r_basic = np.asarray(solver._r_basic_flat).ravel()
+        return (int(solver._n_stag), float(r_basic[0]), float(r_basic[-1]))
+
+    @staticmethod
     def _maybe_install_jax_cvode_factory(config: Config, interior_o: Interior_t) -> None:
         """Install a JAX CVODE callback factory on the solver (option Z).
 
@@ -1401,11 +1466,18 @@ class AragogRunner:
                 return rhs_fn, jac_fn
 
             solver.set_jax_cvode_factory(factory)
+            # The factory closes over mesh_jax by value, so the geometry it
+            # integrates is frozen here. Record it so a later structure change
+            # (a giant impact grows the planet) can be detected and the factory
+            # rebuilt, rather than integrating the old planet silently.
+            solver._jax_mesh_key = AragogRunner._jax_mesh_key(solver)
             log.info(
                 'Option Z: JAX CVODE factory installed on aragog solver '
-                '(core_bc=%s, n_stag=%d).',
+                '(core_bc=%s, n_stag=%d, r_cmb=%.6e m, r_surf=%.6e m).',
                 solver._core_bc,
                 n_stag,
+                solver._jax_mesh_key[1],
+                solver._jax_mesh_key[2],
             )
         except Exception as exc:
             msg = f'Option Z factory install failed ({exc}); falling back to FD Jacobian.'
@@ -2065,6 +2137,11 @@ class AragogRunner:
         sanity_dT_core = max(
             3000.0, 1500.0 * mass_tot
         )  # max plausible T_core change per retry [K]
+        # A giant impact re-melts the mantle between solves, so the T_core jump
+        # it produces is real and is identical at every step size. Retrying
+        # cannot shrink it, so the guard would spend the whole ladder and kill
+        # the run. Skip it on that one step; every other step keeps it.
+        impact_step = bool(getattr(interior_o, 'impact_reset_this_step', False))
 
         # Capture IC for restoration on retry, and pre-call T_core for
         # the sanity check on retry success.
@@ -2153,7 +2230,15 @@ class AragogRunner:
                     # converged core temperature exists to compare against, so
                     # the jump guard is necessarily inactive on that one step.
                     dT = abs(T_core_post - T_core_pre) if T_core_pre > 0 else 0.0
-                    if dT > sanity_dT_core:
+                    if dT > sanity_dT_core and impact_step:
+                        log.info(
+                            'T_core jumped %.1f K (>%.0f K threshold) on the '
+                            'step a giant impact re-melted the mantle. The '
+                            'jump is the impact, so the guard is skipped here.',
+                            dT,
+                            sanity_dT_core,
+                        )
+                    if dT > sanity_dT_core and not impact_step:
                         log.warning(
                             'Aragog attempt %d returned status=0 but T_core '
                             'jumped %.1f K (>%.0f K threshold). Treating as '

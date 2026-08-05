@@ -1252,3 +1252,117 @@ def test_progress_is_weighed_against_what_the_coupling_asked_for():
     # under the threshold: against the halved interval it would not be.
     assert advanced / asked < _STEP_PROGRESS_MIN_SHARE
     assert advanced / (0.5 * asked) > _STEP_PROGRESS_MIN_SHARE
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_core_temperature_guard_stands_aside_for_a_giant_impact():
+    """A giant impact's core-temperature jump is kept, not retried away.
+
+    Physical scenario: an impactor merges with the planet and re-melts the
+    mantle between two interior solves, so the core temperature moves by
+    thousands of kelvin in one coupling step. That jump is the impact, applied
+    outside the solver, and it is identical at every step size.
+
+    Contract clause: the jump guard exists to reject a solve that returned
+    garbage, which a smaller step can fix. It cannot fix an impact, so on the
+    step a re-melt fires the guard stands aside; on every other step it keeps
+    its full strength.
+
+    Verifies:
+    - The same 8000 K jump is accepted on the first attempt with the impact
+      flag raised and rejected down the whole ladder without it, which is the
+      discriminating pair: only the flag differs.
+    - The exemption is scoped to the jump guard, so a solve that actually
+      failed is still retried even on an impact step.
+    """
+    prior = {'Time': 7.68e5, 'T_cmb': 4000.0}
+
+    # 12000 K against a 4000 K prior state is an 8000 K jump, well past the
+    # 3000 K floor the guard applies at 1 M_earth.
+    impacted, impacted_interior, impacted_attempts = _retry_ladder_runner(
+        status=0, dt_actual=100.0, T_core=12000.0
+    )
+    impacted_interior.impact_reset_this_step = True
+    out = impacted._solve_with_retry(prior, impacted_interior)
+
+    assert len(impacted_attempts) == 1, (
+        'the impact jump cannot shrink with the step, so retrying it burns the '
+        'ladder and kills the run at the impact'
+    )
+    assert out.T_core == pytest.approx(12000.0, rel=1e-12)
+
+    # Same solver result, same prior state, flag down: the guard must reject.
+    ordinary, ordinary_interior, ordinary_attempts = _retry_ladder_runner(
+        status=0, dt_actual=100.0, T_core=12000.0
+    )
+    with pytest.raises(RuntimeError, match='T_core jump'):
+        ordinary._solve_with_retry(prior, ordinary_interior)
+    assert len(ordinary_attempts) == 6, (
+        'without an impact to explain it, a jump of this size is a corrupted '
+        'solve and has to go down the ladder'
+    )
+
+    # The exemption covers the jump guard only. A solver that reports failure
+    # is still retried on an impact step, or a genuinely broken solve would be
+    # waved through whenever it landed on an impact.
+    failed, failed_interior, failed_attempts = _retry_ladder_runner(
+        status=-1, dt_actual=0.0, T_core=12000.0
+    )
+    failed_interior.impact_reset_this_step = True
+    with pytest.raises(RuntimeError):
+        failed._solve_with_retry(prior, failed_interior)
+    assert len(failed_attempts) == 6
+
+
+@pytest.mark.unit
+def test_the_jax_factory_is_rebuilt_only_when_the_mesh_moves():
+    """The JAX right-hand side follows the structure across a giant impact.
+
+    The factory captures the mesh by value, so a structure change leaves it
+    integrating the old planet while every other consumer sees the new one.
+    It is rebuilt when the geometry moves and left alone when it has not,
+    because the rebuild costs a JAX retrace on every step that triggers it.
+
+    Verifies:
+    - An unchanged mesh triggers no rebuild, so a run without impacts never
+      pays the retrace.
+    - A grown planet triggers exactly one rebuild.
+    - A solver with no recorded key (option Z inactive, or its install fell
+      back) is left alone rather than raising.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    def _solver(n_stag, r_cmb, r_surf, key):
+        s = SimpleNamespace(
+            _n_stag=n_stag, _r_basic_flat=np.linspace(r_cmb, r_surf, n_stag + 1)
+        )
+        if key is not None:
+            s._jax_mesh_key = key
+        return s
+
+    config = MagicMock()
+    settled = _solver(79, 2.86e6, 5.84e6, (79, 2.86e6, 5.84e6))
+    assert AragogRunner._jax_mesh_key(settled) == (79, 2.86e6, 5.84e6)
+
+    with patch.object(AragogRunner, '_maybe_install_jax_cvode_factory') as install:
+        AragogRunner._refresh_jax_cvode_factory_if_mesh_moved(
+            config, SimpleNamespace(aragog_solver=settled)
+        )
+        assert install.call_count == 0
+
+    # An impact grows the planet: both radii move and the key no longer matches.
+    grown = _solver(79, 3.46e6, 7.16e6, (79, 2.86e6, 5.84e6))
+    with patch.object(AragogRunner, '_maybe_install_jax_cvode_factory') as install:
+        AragogRunner._refresh_jax_cvode_factory_if_mesh_moved(
+            config, SimpleNamespace(aragog_solver=grown)
+        )
+        assert install.call_count == 1
+
+    # No key recorded: nothing to compare against, and nothing to rebuild.
+    absent = _solver(79, 2.86e6, 5.84e6, None)
+    with patch.object(AragogRunner, '_maybe_install_jax_cvode_factory') as install:
+        AragogRunner._refresh_jax_cvode_factory_if_mesh_moved(
+            config, SimpleNamespace(aragog_solver=absent)
+        )
+        assert install.call_count == 0
