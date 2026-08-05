@@ -586,7 +586,6 @@ class AragogRunner:
             else:
                 AragogRunner.update_structure(config, hf_row, interior_o)
                 AragogRunner.update_solver(dt, hf_row, interior_o)
-            AragogRunner._refresh_jax_cvode_factory_if_mesh_moved(config, interior_o)
             interior_o.aragog_solver.reset()
             # Restore entropy IC from previous solve
             if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
@@ -612,7 +611,7 @@ class AragogRunner:
         interior_o : Interior_t
             Interior state holding the live Aragog solver.
         """
-        solver = interior_o.aragog_solver
+        solver = getattr(interior_o, 'aragog_solver', None)
         installed = getattr(solver, '_jax_mesh_key', None)
         if not isinstance(installed, tuple):
             return  # option Z inactive, or the install failed and fell back
@@ -2142,6 +2141,12 @@ class AragogRunner:
         # cannot shrink it, so the guard would spend the whole ladder and kill
         # the run. Skip it on that one step; every other step keeps it.
         impact_step = bool(getattr(interior_o, 'impact_reset_this_step', False))
+
+        # Checked here rather than at solver setup: the mesh reaches its final
+        # geometry for the step only once the structure update has propagated,
+        # which lags setup by a step, and the factory has to match the mesh this
+        # solve actually integrates.
+        AragogRunner._refresh_jax_cvode_factory_if_mesh_moved(self._config, interior_o)
 
         # Capture IC for restoration on retry, and pre-call T_core for
         # the sanity check on retry success.
