@@ -592,48 +592,6 @@ class AragogRunner:
                 interior_o.aragog_solver.set_initial_entropy(interior_o._last_entropy)
 
     @staticmethod
-    def _refresh_jax_cvode_factory_if_mesh_moved(
-        config: Config, interior_o: Interior_t
-    ) -> None:
-        """Rebuild the JAX CVODE factory when the mesh no longer matches it.
-
-        The factory captures the mesh by value at install time, so a structure
-        change (a giant impact grows the planet, and Zalmoxis re-solves the
-        radius and the core/mantle split) leaves its right-hand side integrating
-        the old geometry while every other consumer sees the new one. Rebuilding
-        costs a JAX retrace, so it happens only when the geometry actually moved,
-        which for a run without impacts is never.
-
-        Parameters
-        ----------
-        config : Config
-            PROTEUS configuration, forwarded to the factory installer.
-        interior_o : Interior_t
-            Interior state holding the live Aragog solver.
-        """
-        solver = getattr(interior_o, 'aragog_solver', None)
-        installed = getattr(solver, '_jax_mesh_key', None)
-        if not isinstance(installed, tuple):
-            return  # option Z inactive, or the install failed and fell back
-
-        current = AragogRunner._jax_mesh_key(solver)
-        if current == installed:
-            return
-
-        log.info(
-            'Option Z: mesh moved under the JAX factory (r_surf %.6e -> %.6e m, '
-            'r_cmb %.6e -> %.6e m, n_stag %d -> %d); rebuilding it so the '
-            'right-hand side integrates the current structure.',
-            installed[2],
-            current[2],
-            installed[1],
-            current[1],
-            installed[0],
-            current[0],
-        )
-        AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
-
-    @staticmethod
     def setup_solver(config: Config, hf_row: dict, interior_o: Interior_t, outdir: str):
         solver = _SolverParameters(
             start_time=0,
@@ -1266,28 +1224,6 @@ class AragogRunner:
             )
 
     @staticmethod
-    def _jax_mesh_key(solver) -> tuple[int, float, float]:
-        """Geometry fingerprint of the solver's current mesh.
-
-        The JAX CVODE factory captures the mesh by value, so this is what has
-        to match for its right-hand side to describe the planet the rest of the
-        step describes. Cell count plus the two bounding radii is enough: the
-        mesh is rebuilt whole on a structure change, never edited in place.
-
-        Parameters
-        ----------
-        solver : EntropySolver
-            Aragog solver whose mesh is being fingerprinted.
-
-        Returns
-        -------
-        tuple of (int, float, float)
-            Staggered cell count, CMB radius [m], surface radius [m].
-        """
-        r_basic = np.asarray(solver._r_basic_flat).ravel()
-        return (int(solver._n_stag), float(r_basic[0]), float(r_basic[-1]))
-
-    @staticmethod
     def _maybe_install_jax_cvode_factory(config: Config, interior_o: Interior_t) -> None:
         """Install a JAX CVODE callback factory on the solver (option Z).
 
@@ -1377,14 +1313,10 @@ class AragogRunner:
                 phase_smoothing_width=0.01,
             )
 
-            _t_pre_mesh = time.perf_counter()
-            mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
-            _t_post_mesh = time.perf_counter()
-            n_stag = solver._n_stag
             if nightly_strict:
                 log.info(
-                    'aragog diag: jax_cvode_factory phases params_jax+mesh=%.2fs',
-                    _t_post_mesh - _t_post_jax_eos,
+                    'aragog diag: jax_cvode_factory phases params_jax=%.2fs',
+                    time.perf_counter() - _t_post_jax_eos,
                 )
 
             def factory(scales, core_bc_mode):
@@ -1393,6 +1325,14 @@ class AragogRunner:
                 # consumed the analytic Jacobian rather than silently falling
                 # back to the FD path.
                 solver._jax_factory_call_count += 1
+                # Rebuild the mesh from live solver state every solve() call,
+                # for the same reason the boundary conditions below are. A giant
+                # impact grows the planet and Zalmoxis re-solves the structure as
+                # the mantle freezes; either one replaces the mesh, and a copy
+                # taken once at install time would keep integrating the planet
+                # from before the change.
+                mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
+                n_stag = solver._n_stag
                 # ``scales`` is an aragog.jax.nondim.NonDimScales single
                 # source of truth.
                 # Rebuild BoundaryParams from live solver state every
@@ -1465,29 +1405,24 @@ class AragogRunner:
                 return rhs_fn, jac_fn
 
             solver.set_jax_cvode_factory(factory)
-            # The factory closes over mesh_jax by value, so the geometry it
-            # integrates is frozen here. Record it so a later structure change
-            # (a giant impact grows the planet) can be detected and the factory
-            # rebuilt, rather than integrating the old planet silently.
-            solver._jax_mesh_key = AragogRunner._jax_mesh_key(solver)
+            r_basic = np.asarray(solver._r_basic_flat).ravel()
             log.info(
                 'Option Z: JAX CVODE factory installed on aragog solver '
-                '(core_bc=%s, n_stag=%d, r_cmb=%.6e m, r_surf=%.6e m).',
+                '(core_bc=%s, n_stag=%d, r_cmb=%.6e m, r_surf=%.6e m). The mesh '
+                'is read from the solver on every solve, so these are the '
+                'geometry at install time, not for the run.',
                 solver._core_bc,
-                n_stag,
-                solver._jax_mesh_key[1],
-                solver._jax_mesh_key[2],
+                solver._n_stag,
+                float(r_basic[0]),
+                float(r_basic[-1]),
             )
         except Exception as exc:
             msg = f'Option Z factory install failed ({exc}); falling back to FD Jacobian.'
             if nightly_strict:
                 raise RuntimeError(msg) from exc
-            # On a rebuild the solver already carries a factory built against the
-            # previous geometry. Leaving it installed would keep the solve on that
-            # geometry while this message claims the opposite, so clear both it and
-            # the key that records what it was built against.
+            # A failed rebuild would otherwise leave the previously installed
+            # factory in charge while this message claims the run fell back.
             solver.set_jax_cvode_factory(None)
-            solver._jax_mesh_key = None
             log.warning(msg)
 
     @staticmethod
@@ -2147,12 +2082,6 @@ class AragogRunner:
         # cannot shrink it, so the guard would spend the whole ladder and kill
         # the run. Skip it on that one step; every other step keeps it.
         impact_step = bool(getattr(interior_o, 'impact_reset_this_step', False))
-
-        # Checked here rather than at solver setup: the mesh reaches its final
-        # geometry for the step only once the structure update has propagated,
-        # which lags setup by a step, and the factory has to match the mesh this
-        # solve actually integrates.
-        AragogRunner._refresh_jax_cvode_factory_if_mesh_moved(self._config, interior_o)
 
         # Capture IC for restoration on retry, and pre-call T_core for
         # the sanity check on retry success.
