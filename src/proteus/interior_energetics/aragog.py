@@ -1404,24 +1404,26 @@ class AragogRunner:
                 )
                 return rhs_fn, jac_fn
 
-            solver.set_jax_cvode_factory(factory)
+            # Read the diagnostic geometry before installing, so that the
+            # install is the last thing here that can fail. Anything raising
+            # after it would send a working factory into the handler below.
             r_basic = np.asarray(solver._r_basic_flat).ravel()
-            log.info(
+            installed = (
                 'Option Z: JAX CVODE factory installed on aragog solver '
-                '(core_bc=%s, n_stag=%d, r_cmb=%.6e m, r_surf=%.6e m). The mesh '
-                'is read from the solver on every solve, so these are the '
-                'geometry at install time, not for the run.',
-                solver._core_bc,
-                solver._n_stag,
-                float(r_basic[0]),
-                float(r_basic[-1]),
+                f'(core_bc={solver._core_bc}, n_stag={int(solver._n_stag)}, '
+                f'r_cmb={float(r_basic[0]):.6e} m, r_surf={float(r_basic[-1]):.6e} m). '
+                'The mesh is read from the solver on every solve, so this is the '
+                'geometry at install time, not for the run.'
             )
+            solver.set_jax_cvode_factory(factory)
+            log.info(installed)
         except Exception as exc:
             msg = f'Option Z factory install failed ({exc}); falling back to FD Jacobian.'
             if nightly_strict:
                 raise RuntimeError(msg) from exc
-            # A failed rebuild would otherwise leave the previously installed
-            # factory in charge while this message claims the run fell back.
+            # Leave nothing half-installed: the solve-time check is only that a
+            # factory is present, so a partial install would run this path on
+            # state the failure above left incomplete.
             solver.set_jax_cvode_factory(None)
             log.warning(msg)
 

@@ -1315,7 +1315,6 @@ def test_the_core_temperature_guard_stands_aside_for_a_giant_impact():
     assert len(failed_attempts) == 6
 
 
-@pytest.mark.unit
 def _jax_factory_config():
     """Config carrying the numeric fields the option Z factory install reads."""
     config = MagicMock()
@@ -1340,6 +1339,7 @@ def _jax_factory_config():
     return config
 
 
+@pytest.mark.unit
 def test_the_jax_right_hand_side_reads_the_mesh_on_every_solve(monkeypatch):
     """The JAX right-hand side follows the structure it is asked to integrate.
 
@@ -1409,6 +1409,85 @@ def test_the_jax_right_hand_side_reads_the_mesh_on_every_solve(monkeypatch):
     assert meshes == [before_mesh, after_mesh]
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_an_interior_that_moves_under_fixed_radii_is_still_followed(monkeypatch):
+    """A structure change that leaves both bounding radii untouched is followed.
+
+    With mass coordinates the mesh pins its first and last node to the core and
+    surface radii and solves every interior node from the density profile, so a
+    Zalmoxis re-solve can redistribute the whole interior, and with it pressure,
+    gravity, area and volume, while both bounding radii and the cell count stay
+    bit-identical. Comparing geometry by those three numbers reports nothing has
+    changed and leaves the right-hand side on the previous structure.
+
+    Verifies:
+    - The second solve is handed the moved mesh even though cell count and both
+      bounding radii are unchanged, which is what a fingerprint on those three
+      would miss.
+    - The interior really does differ, so the case is not vacuous.
+    """
+    pytest.importorskip('jax')
+    pytest.importorskip('aragog.jax.phase')
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    monkeypatch.delenv('PROTEUS_CI_NIGHTLY', raising=False)
+
+    n = 8
+    r_cmb, r_surf = 2.86e6, 5.84e6
+    # Same endpoints and same count; only the interior node placement differs,
+    # as a denser mantle would produce after a re-solve.
+    before = SimpleNamespace(radii=np.linspace(r_cmb, r_surf, n))
+    moved = np.linspace(r_cmb, r_surf, n) ** 1.02
+    moved *= (r_surf - r_cmb) / (moved[-1] - moved[0])
+    moved += r_cmb - moved[0]
+    after = SimpleNamespace(radii=moved)
+
+    assert after.radii[0] == pytest.approx(before.radii[0], rel=1e-15)
+    assert after.radii[-1] == pytest.approx(before.radii[-1], rel=1e-15)
+    assert len(after.radii) == len(before.radii)
+    # The interior genuinely moved, well beyond any tolerance a check could use.
+    assert np.max(np.abs(after.radii[1:-1] - before.radii[1:-1])) > 1.0e3
+
+    solver = SimpleNamespace(
+        _n_stag=n,
+        _r_basic_flat=before.radii,
+        _core_bc='energy_balance',
+        evaluator=SimpleNamespace(mesh=before),
+        parameters=SimpleNamespace(
+            boundary_conditions=MagicMock(),
+            energy=SimpleNamespace(tidal_array=np.zeros(n)),
+            radionuclides=[],
+            mesh=SimpleNamespace(core_density=10800.0),
+        ),
+    )
+    installed = {}
+    solver.set_jax_cvode_factory = lambda f: installed.update(factory=f)
+    interior_o = SimpleNamespace(aragog_solver=solver, _spider_eos_dir='/nonexistent')
+
+    with (
+        patch('aragog.jax.phase.MeshArrays') as mesh_arrays,
+        patch('aragog.jax.phase.PhaseParams'),
+        patch('aragog.jax.solver.BoundaryParams'),
+        patch(
+            'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
+            return_value=('rhs', 'jac', {}),
+        ),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos_jax'),
+    ):
+        AragogRunner._maybe_install_jax_cvode_factory(_jax_factory_config(), interior_o)
+        factory = installed['factory']
+
+        factory(MagicMock(), 'energy_balance')
+        solver.evaluator.mesh = after
+        factory(MagicMock(), 'energy_balance')
+
+    seen = [c.args[0] for c in mesh_arrays.from_numpy_mesh.call_args_list]
+    assert seen == [before, after]
+    np.testing.assert_allclose(seen[1].radii, moved)
+
+
+@pytest.mark.unit
 def test_a_failed_factory_install_leaves_no_factory_behind(monkeypatch):
     """A failed install must not leave a previous factory in charge.
 
