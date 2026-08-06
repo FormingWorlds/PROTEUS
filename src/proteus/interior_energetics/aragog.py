@@ -1482,6 +1482,12 @@ class AragogRunner:
             msg = f'Option Z factory install failed ({exc}); falling back to FD Jacobian.'
             if nightly_strict:
                 raise RuntimeError(msg) from exc
+            # On a rebuild the solver already carries a factory built against the
+            # previous geometry. Leaving it installed would keep the solve on that
+            # geometry while this message claims the opposite, so clear both it and
+            # the key that records what it was built against.
+            solver.set_jax_cvode_factory(None)
+            solver._jax_mesh_key = None
             log.warning(msg)
 
     @staticmethod

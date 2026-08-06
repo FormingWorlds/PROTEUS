@@ -1366,3 +1366,52 @@ def test_the_jax_factory_is_rebuilt_only_when_the_mesh_moves():
             config, SimpleNamespace(aragog_solver=absent)
         )
         assert install.call_count == 0
+
+
+def test_a_failed_rebuild_stops_the_solver_integrating_the_old_geometry(monkeypatch):
+    """A rebuild that fails must not leave the previous factory in charge.
+
+    A first install has no factory to leave behind, so reporting a fallback to
+    the finite-difference Jacobian is accurate. A rebuild does have one: the
+    solver still carries the factory built against the geometry the rebuild was
+    meant to replace, and keeping it would integrate the old planet while the
+    log reports a fallback that did not happen.
+
+    Verifies:
+    - The factory is cleared, so the solve-time gate (factory is not None)
+      turns the option Z path off rather than running it on stale geometry.
+    - The recorded mesh key is cleared with it, so the geometry check cannot
+      later compare against a key describing a factory that is not installed.
+    """
+    pytest.importorskip('jax')
+    pytest.importorskip('aragog.jax.phase')
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    # Nightly escalates every fallback to a hard failure; this test is about the
+    # non-strict path that a production run actually takes.
+    monkeypatch.delenv('PROTEUS_CI_NIGHTLY', raising=False)
+
+    stale_factory = object()
+    solver = SimpleNamespace(
+        _n_stag=79,
+        _r_basic_flat=np.linspace(2.86e6, 5.84e6, 80),
+        _jax_cvode_factory=stale_factory,
+        _jax_mesh_key=(79, 2.86e6, 5.84e6),
+    )
+    solver.set_jax_cvode_factory = lambda f: setattr(solver, '_jax_cvode_factory', f)
+
+    config = MagicMock()
+    config.interior_energetics.aragog.backend = 'jax'
+    # interior_o carries no _spider_eos_dir, so the EOS lookup raises part-way
+    # through the rebuild: the failure a live solver has to survive.
+    interior_o = SimpleNamespace(aragog_solver=solver)
+
+    AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
+
+    assert solver._jax_cvode_factory is not stale_factory
+    assert solver._jax_cvode_factory is None
+    assert solver._jax_mesh_key is None
+
+    with patch.object(AragogRunner, '_maybe_install_jax_cvode_factory') as install:
+        AragogRunner._refresh_jax_cvode_factory_if_mesh_moved(config, interior_o)
+        assert install.call_count == 0
