@@ -1133,3 +1133,214 @@ def test_run_escape_zephyrus_zeroes_elemental_rates_when_unfract_raises():
     # Scale guard: 1.234e5 kg/s is a plausible XUV-limited MLR (~kg/s for
     # an Earth-like XUV setup), not 1.234e+15 (units flipped) or 0.0.
     assert 1e3 < hf_row['esc_rate_total'] < 1e7
+
+
+# =======================================================================================
+# SECTION: limit_escape_step(), per-step cap on the mass escape may remove
+# =======================================================================================
+
+
+@pytest.mark.physics_invariant
+def test_limit_escape_step_caps_a_request_larger_than_the_reservoir():
+    """The bulk rate is set without reference to how much mass is left, so over a
+    long step it can ask for more than the whole escapable reservoir. The applied
+    loss must stay bounded by that reservoir.
+
+    Boundedness is the invariant: the mass removed in one step cannot exceed the
+    mass present. The requested value is 2.5 times the reservoir here, an
+    overshoot of the size seen on real grid cases, so a pass-through
+    implementation is separated from a capped one by an order of magnitude
+    rather than by a tolerance.
+    """
+    from proteus.escape.wrapper import ESCAPE_STEP_MAX_FRAC, limit_escape_step
+    from proteus.utils.constants import element_list, secs_per_year
+
+    dt = 1.0e4  # yr
+    escapable = 8.0e22  # kg held in the atmosphere
+    requested = 2.0e23  # kg the bulk rate asks for, 2.5x the reservoir
+
+    hf = {f'{e}_kg_atm': 0.0 for e in element_list}
+    hf['H_kg_atm'] = escapable
+    hf['esc_rate_total'] = requested / (secs_per_year * dt)
+
+    applied = limit_escape_step(hf, dt, 'outgas')
+
+    assert applied == pytest.approx(ESCAPE_STEP_MAX_FRAC * escapable, rel=1e-9)
+    # Boundedness: a step never removes more than the reservoir holds.
+    assert 0.0 < applied <= escapable
+    # Discrimination guard: an uncapped implementation returns 2.0e23, which is
+    # 10x the capped value, far outside any tolerance either assertion allows.
+    assert applied < 0.2 * requested
+
+
+@pytest.mark.physics_invariant
+def test_limit_escape_step_passes_a_typical_step_through_unchanged():
+    """A step that asks for a small share of the reservoir must be returned
+    exactly, so the cap changes nothing on healthy evolution.
+
+    The fraction used is 1.9e-05, the median per-step loss measured across the
+    grid, which is four orders of magnitude below the cap. Edge case: a request
+    sitting exactly at the cap is also passed through, since the cap is the
+    largest admissible step rather than the first forbidden one.
+    """
+    from proteus.escape.wrapper import ESCAPE_STEP_MAX_FRAC, limit_escape_step
+    from proteus.utils.constants import element_list, secs_per_year
+
+    dt = 1.0e3
+    escapable = 5.0e21
+    requested = 1.9e-05 * escapable
+
+    hf = {f'{e}_kg_atm': 0.0 for e in element_list}
+    hf['H_kg_atm'] = escapable
+    hf['esc_rate_total'] = requested / (secs_per_year * dt)
+
+    applied = limit_escape_step(hf, dt, 'outgas')
+    assert applied == pytest.approx(requested, rel=1e-9)
+    assert hf['esc_clamp_frac'] == pytest.approx(1.9e-05, rel=1e-6)
+
+    # Exactly at the cap: still passed through, so the boundary is inclusive.
+    hf['esc_rate_total'] = ESCAPE_STEP_MAX_FRAC * escapable / (secs_per_year * dt)
+    at_cap = limit_escape_step(hf, dt, 'outgas')
+    assert at_cap == pytest.approx(ESCAPE_STEP_MAX_FRAC * escapable, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_limit_escape_step_keeps_the_overshoot_visible_after_capping():
+    """Capping the loss must not hide how large the request was, otherwise a
+    capped run-down is indistinguishable from a physical one.
+
+    ``esc_clamp_frac`` therefore records the requested fraction, not the applied
+    one, and stays above the cap on a capped step. Edge case: a request far
+    beyond the reservoir, 2.1e+09 times it, is the largest overshoot measured on
+    the grid and must still be recorded rather than saturating.
+    """
+    from proteus.escape.wrapper import ESCAPE_STEP_MAX_FRAC, limit_escape_step
+    from proteus.utils.constants import element_list, secs_per_year
+
+    dt = 1.0e2
+    escapable = 1.0e20
+    hf = {f'{e}_kg_atm': 0.0 for e in element_list}
+    hf['H_kg_atm'] = escapable
+    hf['esc_rate_total'] = 2.1e09 * escapable / (secs_per_year * dt)
+
+    applied = limit_escape_step(hf, dt, 'outgas')
+
+    assert hf['esc_clamp_frac'] == pytest.approx(2.1e09, rel=1e-6)
+    assert hf['esc_clamp_frac'] > ESCAPE_STEP_MAX_FRAC
+    # The applied loss is still bounded, however extreme the request.
+    assert applied == pytest.approx(ESCAPE_STEP_MAX_FRAC * escapable, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_limit_escape_step_handles_no_loss_and_an_empty_reservoir():
+    """Degenerate inputs must return a well-formed zero or pass through rather
+    than dividing by an empty reservoir.
+
+    Three edge cases: a zero escape rate, a non-finite rate, and a reservoir that
+    holds nothing. An unrecognised reservoir name is the documented error path
+    and raises.
+    """
+    import math
+
+    from proteus.escape.wrapper import limit_escape_step
+    from proteus.utils.constants import element_list
+
+    base = {f'{e}_kg_atm': 0.0 for e in element_list}
+
+    hf = dict(base, H_kg_atm=1.0e20, esc_rate_total=0.0)
+    assert limit_escape_step(hf, 1.0e3, 'outgas') == 0.0
+    assert hf['esc_clamp_frac'] == 0.0
+
+    hf = dict(base, H_kg_atm=1.0e20, esc_rate_total=float('nan'))
+    assert limit_escape_step(hf, 1.0e3, 'outgas') == 0.0
+    assert hf['esc_clamp_frac'] == 0.0
+
+    # Empty reservoir: the request cannot be expressed as a fraction, so it is
+    # passed through for the desiccation floor downstream to absorb.
+    hf = dict(base, esc_rate_total=1.0e5)
+    passed = limit_escape_step(hf, 1.0e3, 'outgas')
+    assert passed > 0.0
+    assert math.isfinite(passed)
+    assert hf['esc_clamp_frac'] == 0.0
+
+    with pytest.raises(ValueError, match='Invalid escape reservoir'):
+        limit_escape_step(dict(base, esc_rate_total=1.0e5), 1.0e3, 'nonsense')
+
+
+@pytest.mark.physics_invariant
+def test_capped_step_stops_the_silent_interior_drain():
+    """With ``reservoir = "outgas"`` the per-element ratios come from the
+    atmosphere while the debit lands on the whole-planet total, so a request
+    larger than the atmosphere drains interior inventory without any
+    non-negativity clamp firing.
+
+    The cap is what bounds that debit. Here the atmosphere holds 8.0e22 kg and
+    escape asks for 2.0e23 kg, while the planet holds 4.0e23 kg, so nothing goes
+    negative and the uncapped debit passes silently.
+    """
+    from proteus.escape.wrapper import calc_new_elements, limit_escape_step
+    from proteus.utils.constants import element_list, secs_per_year
+
+    dt = 1.0e4
+    hf = {f'{e}_kg_atm': 0.0 for e in element_list}
+    hf.update({f'{e}_kg_total': 0.0 for e in element_list})
+    hf['H_kg_atm'] = 8.0e22
+    hf['H_kg_total'] = 4.0e23
+    hf['esc_rate_total'] = 2.0e23 / (secs_per_year * dt)
+
+    applied = limit_escape_step(hf, dt, 'outgas')
+    capped = calc_new_elements(hf, dt, 'outgas', min_thresh=1.0e10, esc_mass=applied)
+    uncapped = calc_new_elements(hf, dt, 'outgas', min_thresh=1.0e10)
+
+    # Capped: only a quarter of the atmosphere leaves, so the planet keeps 3.8e23.
+    assert capped['H'] == pytest.approx(3.8e23, rel=1e-9)
+    # Uncapped: 2.0e23 kg is debited, over twice what the atmosphere held, and
+    # the result stays positive so no existing guard would have caught it.
+    assert uncapped['H'] == pytest.approx(2.0e23, rel=1e-9)
+    assert uncapped['H'] > 0.0
+    # The two differ by 1.8e23 kg, which is the mass the cap protects.
+    assert capped['H'] - uncapped['H'] == pytest.approx(1.8e23, rel=1e-9)
+
+
+@pytest.mark.physics_invariant
+def test_run_escape_cumulative_matches_the_mass_actually_removed():
+    """The cumulative escape counter and the per-element debit must be built from
+    the same mass, otherwise the desiccation gate compares a loss that happened
+    against a loss that was only requested.
+
+    Mass closure is the invariant: the increment in ``esc_kg_cumulative`` equals
+    the summed drop in ``{e}_kg_total`` over the step. Edge case: the step here
+    is capped, which is exactly where the two could diverge.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.escape.wrapper import ESCAPE_STEP_MAX_FRAC, run_escape
+    from proteus.utils.constants import element_list, secs_per_year
+
+    dt = 1.0e4
+    escapable = 8.0e22
+    rate = 2.0e23 / (secs_per_year * dt)
+
+    hf = {f'{e}_kg_atm': 0.0 for e in element_list}
+    hf.update({f'{e}_kg_total': 0.0 for e in element_list})
+    hf['H_kg_atm'] = escapable
+    hf['H_kg_total'] = 4.0e23
+    hf['esc_kg_cumulative'] = 0.0
+    hf['M_vol_initial'] = 4.0e23
+
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = rate
+    config.outgas.mass_thresh = 1.0e10
+
+    before = sum(float(hf[f'{e}_kg_total']) for e in element_list)
+    run_escape(config, hf, dt=dt)
+    after = sum(float(hf[f'{e}_kg_total']) for e in element_list)
+
+    removed = before - after
+    assert removed == pytest.approx(hf['esc_kg_cumulative'], rel=1e-9)
+    assert removed == pytest.approx(ESCAPE_STEP_MAX_FRAC * escapable, rel=1e-9)
+    # Discrimination guard: accumulating the request instead would record
+    # 2.0e23 kg, ten times the mass that actually left.
+    assert hf['esc_kg_cumulative'] < 0.2 * 2.0e23

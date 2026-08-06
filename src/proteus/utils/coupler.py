@@ -954,6 +954,12 @@ def GetHelpfileKeys():
         # resume preserves the gate's state.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
         'esc_kg_cumulative', # cumulative escaped mass [kg]
+
+        # Loss the bulk rate asked for on this step, as a fraction of the
+        # reservoir escape draws from. Values above the per-step cap mark a
+        # step whose loss was limited, so a limited trajectory stays
+        # distinguishable from one that ran down on its own.
+        'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
         ]
 
     # gases from outgassing
