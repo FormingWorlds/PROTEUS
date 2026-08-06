@@ -1489,6 +1489,64 @@ def test_an_interior_that_moves_under_fixed_radii_is_still_followed(monkeypatch)
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+def test_the_solver_is_pointed_at_the_current_tables_before_each_solve(tmp_path):
+    """The energy diagnostic integrates the tables the step actually runs on.
+
+    The solver keeps the table object it was built with, and `_step_heat_content`
+    integrates that object to produce the state side of the energy budget. The
+    tables are rewritten with a higher pressure ceiling whenever the planet
+    grows, so a solver left on the startup tables misreports the budget on
+    exactly the runs that outgrow them.
+
+    Verifies:
+    - The solver is repointed when the tables have been rewritten.
+    - A const-properties run, which has no tables at all, is left alone rather
+      than being handed one.
+    - A missing table directory is a no-op, not a crash mid-run.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    d = tmp_path / 'spider_eos'
+    d.mkdir()
+    (d / '.cache_info.txt').write_text('P_max=2.750000e+11_nP=1350_nS=280')
+    (d / 'density_melt.dat').write_bytes(b'x' * 512)
+
+    startup = object()
+    solver = SimpleNamespace(entropy_eos=startup)
+    interior_o = SimpleNamespace(aragog_solver=solver, _spider_eos_dir=str(d))
+    config = MagicMock()
+    config.interior_energetics.const_properties = False
+
+    loaded = object()
+    with patch(
+        'proteus.interior_energetics.aragog._cached_entropy_eos', return_value=loaded
+    ) as loader:
+        AragogRunner._refresh_entropy_eos(config, interior_o)
+        assert loader.call_count == 1
+        assert loader.call_args.args[0] == str(d)
+    assert solver.entropy_eos is loaded
+    assert solver.entropy_eos is not startup
+
+    # const_properties carries no tables, so nothing may be attached.
+    const_cfg = MagicMock()
+    const_cfg.interior_energetics.const_properties = True
+    solver.entropy_eos = None
+    with patch('proteus.interior_energetics.aragog._cached_entropy_eos') as loader:
+        AragogRunner._refresh_entropy_eos(const_cfg, interior_o)
+        assert loader.call_count == 0
+    assert solver.entropy_eos is None
+
+    # A directory that is not there is a no-op: the run keeps whatever it had.
+    solver.entropy_eos = startup
+    gone = SimpleNamespace(aragog_solver=solver, _spider_eos_dir=str(tmp_path / 'absent'))
+    with patch('proteus.interior_energetics.aragog._cached_entropy_eos') as loader:
+        AragogRunner._refresh_entropy_eos(config, gone)
+        assert loader.call_count == 0
+    assert solver.entropy_eos is startup
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_regenerated_eos_tables_are_seen_even_at_identical_file_sizes(tmp_path):
     """Tables rewritten to a higher pressure ceiling are treated as new tables.
 

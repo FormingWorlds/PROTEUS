@@ -1234,6 +1234,33 @@ class AragogRunner:
             )
 
     @staticmethod
+    def _refresh_entropy_eos(config: Config, interior_o: Interior_t) -> None:
+        """Point the solver at the P-S tables as they stand now.
+
+        The solver keeps whatever table object it was built with, and the tables
+        are rewritten whenever the structure solve reruns, with a pressure
+        ceiling that grows with the planet. That object is what
+        ``_step_heat_content`` integrates, which is the state side of the energy
+        budget, so a stale one misreports that budget on exactly the runs that
+        outgrow their starting table. The loader is cached on the table
+        parameters, so an unchanged table costs one small read.
+
+        Parameters
+        ----------
+        config : Config
+            PROTEUS configuration; a const-properties run carries no tables.
+        interior_o : Interior_t
+            Interior state holding the live Aragog solver.
+        """
+        if config.interior_energetics.const_properties:
+            return
+        solver = getattr(interior_o, 'aragog_solver', None)
+        eos_dir = getattr(interior_o, '_spider_eos_dir', '')
+        if solver is None or not eos_dir or not os.path.isdir(str(eos_dir)):
+            return
+        solver.entropy_eos = _cached_entropy_eos(str(eos_dir))
+
+    @staticmethod
     def _maybe_install_jax_cvode_factory(config: Config, interior_o: Interior_t) -> None:
         """Install a JAX CVODE callback factory on the solver (option Z).
 
@@ -2103,6 +2130,10 @@ class AragogRunner:
         # cannot shrink it, so the guard would spend the whole ladder and kill
         # the run. Skip it on that one step; every other step keeps it.
         impact_step = bool(getattr(interior_o, 'impact_reset_this_step', False))
+
+        # Immediately before the solve, so the state-heat integral this step
+        # books is taken against the tables the step actually runs on.
+        AragogRunner._refresh_entropy_eos(self._config, interior_o)
 
         # Capture IC for restoration on retry, and pre-call T_core for
         # the sanity check on retry success.
