@@ -3342,17 +3342,14 @@ def update_structure_from_interior(
     # MgSiO3 is a planet-state-invariant material EOS, so the pre-built
     # tables are stable for the entire evolution. The comp_changed path
     # is reached in wet runs where binodal redistribution or degassing
-    # shifts mantle volatile fractions by > 5% (SPIDER reads the fresh
-    # file on next call; Aragog's in-memory EntropyEOS, built once during
-    # AragogRunner.setup_solver, is NOT invalidated here, so Aragog would
-    # silently use the stale in-memory tables).
+    # shifts mantle volatile fractions by > 5%. SPIDER reads the fresh file on
+    # its next call. Aragog's JAX right-hand side reloads the tables per solve
+    # through a loader cached on the table parameters, so it follows them here
+    # and at the ungated regeneration a giant impact triggers.
     #
-    # KNOWN GAP: for Aragog + wet runs we would need to (i) reload
-    # EntropyEOS from the regenerated files, (ii) re-install the JAX
-    # CVODE factory so its captured eos_jax pytree matches the new
-    # tables, (iii) bounds-check the cached _last_entropy against the
-    # new [S_min, S_max] range. Dry runs do not need this; it is a
-    # precondition for quantitative wet-run work.
+    # REMAINING GAP: the cached _last_entropy is not bounds-checked against the
+    # regenerated [S_min, S_max]. A composition change can move that range; a
+    # pressure-ceiling change alone does not.
     if comp_changed and config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 
@@ -3363,10 +3360,10 @@ def update_structure_from_interior(
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
             log.info('Regenerated SPIDER EOS tables (composition change)')
             if config.interior_energetics.module == 'aragog':
-                log.warning(
-                    'Aragog: regenerated P-S tables on composition change, '
-                    'but Aragog in-memory EntropyEOS is not refreshed. '
-                    'Known gap for wet runs. Dry runs are not affected.'
+                log.info(
+                    'Aragog reloads the regenerated tables on its next solve; '
+                    'the entropy carried over from the previous step is not '
+                    'bounds-checked against their new range.'
                 )
 
     # Update composition sentinels for next trigger check

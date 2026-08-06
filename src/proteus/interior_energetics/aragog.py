@@ -62,13 +62,23 @@ def _eos_content_key(eos_dir_str: str) -> str:
 
     The PROTEUS test fixture materialises the EOS tables into a fresh
     per-test ``outdir/data/spider_eos`` directory each time, so a path
-    based cache key misses across tests. The content fingerprint is a
-    sorted tuple of ``(filename, file size)`` pairs for every regular
-    file in the directory; it is stable across distinct on-disk copies
-    of the same tables but cheap to compute (one ``os.listdir`` + one
-    ``getsize`` per file).
+    based cache key misses across tests.
+
+    The generator writes the parameters that define the tables into
+    ``.cache_info.txt``: the pressure ceiling, the grid shape, the mushy-zone
+    factor and the EOS identity. That marker is the key when present. Sizes
+    alone are not enough on the accretion path: a giant impact grows the planet
+    and the tables are rewritten to a higher pressure ceiling on the same grid,
+    so every file keeps its length and a size-based key cannot see that the
+    tables now describe a different planet.
     """
     try:
+        marker = os.path.join(eos_dir_str, '.cache_info.txt')
+        if os.path.isfile(marker):
+            with open(marker) as f:
+                key = f.read().strip()
+            if key:
+                return key
         pairs = []
         for name in sorted(os.listdir(eos_dir_str)):
             full = os.path.join(eos_dir_str, name)
@@ -1280,7 +1290,9 @@ class AragogRunner:
         try:
             eos_dir = interior_o._spider_eos_dir
             _t_pre_jax_eos = time.perf_counter()
-            eos_jax = _cached_entropy_eos_jax(str(eos_dir))
+            # Build once here so an unreadable EOS directory fails the install
+            # rather than the first solve. The factory reloads it per call.
+            _cached_entropy_eos_jax(str(eos_dir))
             _t_post_jax_eos = time.perf_counter()
             if nightly_strict:
                 log.info(
@@ -1333,6 +1345,13 @@ class AragogRunner:
                 # from before the change.
                 mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
                 n_stag = solver._n_stag
+                # Same for the EOS tables. They are regenerated whenever the
+                # structure solve reruns, and a giant impact raises their
+                # pressure ceiling with the planet's mass, so a copy taken at
+                # install time would have the deep mantle clamped to the edge of
+                # a table built for a smaller planet. The loader is cached on the
+                # table parameters, so an unchanged table costs one small read.
+                eos_jax = _cached_entropy_eos_jax(str(interior_o._spider_eos_dir))
                 # ``scales`` is an aragog.jax.nondim.NonDimScales single
                 # source of truth.
                 # Rebuild BoundaryParams from live solver state every
