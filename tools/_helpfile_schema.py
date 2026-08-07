@@ -27,10 +27,10 @@ COUPLER = REPO_ROOT / 'src' / 'proteus' / 'utils' / 'coupler.py'
 # 'name',  # description [unit]   (list entries; name group used by the walk)
 _ENTRY_RE = re.compile(r"'([^']+)'\s*,?\s*\)?\s*#\s*(.*?)\s*\[([^\]]*)\]\s*,?\s*$")
 _ENTRY_NO_UNIT_RE = re.compile(r"'([^']+)'\s*,?\s*\)?\s*(?:#\s*(.*))?$")
-# Trailing comment alone, for lines whose key is recovered from the AST
-# (loop appends concatenate or format the key, so the name regexes miss).
-_COMMENT_UNIT_RE = re.compile(r'#\s*(.*?)\s*\[([^\]]*)\]\s*,?\s*$')
+# The unit is the LAST bracketed group in the trailing comment; text after it
+# (e.g. "(do not use for conservation)") stays part of the description.
 _COMMENT_RE = re.compile(r'#\s*(.*?)\s*$')
+_UNIT_RE = re.compile(r'\[([^\][]+)\](?!.*\[)')
 
 
 def _constants():
@@ -81,20 +81,24 @@ def parse_schema() -> list[dict]:
 
     def line_meta(lineno: int) -> tuple[str, str]:
         raw = lines[lineno - 1]
-        match = _COMMENT_UNIT_RE.search(raw)
-        if match:
-            return match.group(1).strip(), match.group(2).strip()
-        match = _COMMENT_RE.search(raw)
-        return (match.group(1).strip() if match else ''), ''
+        comment = _COMMENT_RE.search(raw)
+        if not comment:
+            return '', ''
+        text = comment.group(1).strip().rstrip(',').strip()
+        unit_match = _UNIT_RE.search(text)
+        if not unit_match:
+            return text, ''
+        description = (text[: unit_match.start()] + text[unit_match.end() :]).strip()
+        return ' '.join(description.split()), unit_match.group(1).strip()
 
-    def add(name: str, lineno: int, origin: str, expand_desc=None) -> None:
+    def add(name: str, lineno: int, origin: str, expand_desc=None, unit_override=None) -> None:
         description, unit = line_meta(lineno)
         if expand_desc is not None:
             description = expand_desc(description)
         records.append(
             {
                 'name': name,
-                'unit': unit or None,
+                'unit': unit_override or unit or None,
                 'description': description,
                 'group': group,
                 'origin': origin,
@@ -204,7 +208,9 @@ def _expand_loop(node: ast.For, add, gas_list: list, element_list: list) -> None
         raise _docgen.DocgenError(f'coupler.py:{node.lineno}: loop over unrecognised iterable')
 
     # The element-ratio block is a nested double loop with a dedup guard;
-    # recognise it by shape and mirror the guard exactly.
+    # recognise it by shape and mirror the guard exactly. The append line
+    # carries no unit comment; the ratio is a dimensionless mass ratio, as
+    # the block comment above the loop states.
     inner = [n for n in node.body if isinstance(n, ast.For)]
     if inner:
         seen: set[tuple[str, str]] = set()
@@ -213,7 +219,15 @@ def _expand_loop(node: ast.For, add, gas_list: list, element_list: list) -> None
                 if e1 == e2 or (e2, e1) in seen:
                     continue
                 seen.add((e1, e2))
-                add(f'{e2}/{e1}_atm', inner[0].body[-1].end_lineno, '<e2>/<e1>_atm')
+                add(
+                    f'{e2}/{e1}_atm',
+                    inner[0].body[-1].end_lineno,
+                    '<e2>/<e1>_atm',
+                    expand_desc=lambda _d, e1=e1, e2=e2: (
+                        f'mass ratio of {e2} to {e1} in the atmosphere'
+                    ),
+                    unit_override='1',
+                )
         return
 
     # An `if <var> in gas_list: continue` guard restricts the domain.

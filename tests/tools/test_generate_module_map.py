@@ -141,3 +141,18 @@ def test_render_and_json_agree_row_for_row(schema):
     entries = {o['option']: o['entry'] for o in interior['options']}
     assert entries['spider'] == 'src/proteus/interior_energetics/spider.py:RunSPIDER'
     assert entries['aragog'] == 'src/proteus/interior_energetics/aragog.py:AragogRunner'
+
+
+def test_committed_page_and_json_are_current(schema):
+    """The committed module_map.md region and JSON byte-match a fresh render;
+    a wrapper or validator edit cannot land without regeneration."""
+    fresh_page = _docgen.normalize(
+        _docgen.replace_between_markers(
+            _gmm.PAGE.read_text(), 'GENERATED: module-map', _gmm.render()
+        )
+    )
+    assert _gmm.PAGE.read_text() == fresh_page
+    assert _gmm.JSON_PATH.read_text() == _docgen.dump_json(_gmm.build_json())
+    # Every module-selection field in the schema is mapped or exempt; the
+    # verify pass enforces it, so the committed tree must satisfy it too.
+    assert _gmm.verify(schema) == []

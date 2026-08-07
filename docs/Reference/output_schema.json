@@ -1493,8 +1493,8 @@
     },
     {
       "name": "E_th_mantle",
-      "unit": null,
-      "description": "thermal-energy proxy [J] (do not use for conservation)",
+      "unit": "J",
+      "description": "thermal-energy proxy (do not use for conservation)",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
@@ -1515,8 +1515,8 @@
     },
     {
       "name": "E_state_J",
-      "unit": null,
-      "description": "state-mass integrated mantle enthalpy [J] (diagnostic only)",
+      "unit": "J",
+      "description": "state-mass integrated mantle enthalpy (diagnostic only)",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
@@ -1529,8 +1529,8 @@
     },
     {
       "name": "E_state_cons_J",
-      "unit": null,
-      "description": "frozen-mass integrated mantle enthalpy [J] (diagnostic only)",
+      "unit": "J",
+      "description": "frozen-mass integrated mantle enthalpy (diagnostic only)",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
@@ -1605,8 +1605,8 @@
     },
     {
       "name": "step_dE_Q_radio_J",
-      "unit": null,
-      "description": "per-call ∫ +Q_radio dt [J] (live-density, predicted side)",
+      "unit": "J",
+      "description": "per-call ∫ +Q_radio dt (live-density, predicted side)",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
@@ -1621,8 +1621,8 @@
     },
     {
       "name": "step_dE_Q_tidal_J",
-      "unit": null,
-      "description": "per-call ∫ +Q_tidal dt [J] (live-density, predicted side)",
+      "unit": "J",
+      "description": "per-call ∫ +Q_tidal dt (live-density, predicted side)",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
@@ -1637,8 +1637,8 @@
     },
     {
       "name": "step_dE_Q_radio_cons_J",
-      "unit": null,
-      "description": "per-call ∫ +Q_radio dt [J] (frozen-mass, diagnostic)",
+      "unit": "J",
+      "description": "per-call ∫ +Q_radio dt (frozen-mass, diagnostic)",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
@@ -1651,8 +1651,8 @@
     },
     {
       "name": "step_dE_Q_tidal_cons_J",
-      "unit": null,
-      "description": "per-call ∫ +Q_tidal dt [J] (frozen-mass, diagnostic)",
+      "unit": "J",
+      "description": "per-call ∫ +Q_tidal dt (frozen-mass, diagnostic)",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
@@ -1681,8 +1681,8 @@
     },
     {
       "name": "step_dE_compression_J",
-      "unit": null,
-      "description": "per-call structure-re-solve compression work [J] (diagnostic)",
+      "unit": "J",
+      "description": "per-call structure-re-solve compression work (diagnostic)",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
@@ -15109,8 +15109,8 @@
     },
     {
       "name": "O/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of O to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15131,8 +15131,8 @@
     },
     {
       "name": "C/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of C to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15153,8 +15153,8 @@
     },
     {
       "name": "N/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of N to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15175,8 +15175,8 @@
     },
     {
       "name": "S/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of S to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15197,8 +15197,8 @@
     },
     {
       "name": "Si/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Si to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15219,8 +15219,8 @@
     },
     {
       "name": "Mg/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Mg to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15241,8 +15241,8 @@
     },
     {
       "name": "Fe/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Fe to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15263,8 +15263,8 @@
     },
     {
       "name": "Na/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Na to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15285,8 +15285,8 @@
     },
     {
       "name": "Al/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Al to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15307,8 +15307,8 @@
     },
     {
       "name": "Ti/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ti to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15329,8 +15329,8 @@
     },
     {
       "name": "Ca/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ca to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15351,8 +15351,8 @@
     },
     {
       "name": "K/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of K to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15373,8 +15373,8 @@
     },
     {
       "name": "He/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of He to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15395,8 +15395,8 @@
     },
     {
       "name": "Ne/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15417,8 +15417,8 @@
     },
     {
       "name": "Ar/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15439,8 +15439,8 @@
     },
     {
       "name": "Kr/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15461,8 +15461,8 @@
     },
     {
       "name": "Xe/H_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to H in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15483,8 +15483,8 @@
     },
     {
       "name": "C/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of C to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15505,8 +15505,8 @@
     },
     {
       "name": "N/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of N to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15527,8 +15527,8 @@
     },
     {
       "name": "S/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of S to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15549,8 +15549,8 @@
     },
     {
       "name": "Si/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Si to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15571,8 +15571,8 @@
     },
     {
       "name": "Mg/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Mg to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15593,8 +15593,8 @@
     },
     {
       "name": "Fe/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Fe to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15615,8 +15615,8 @@
     },
     {
       "name": "Na/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Na to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15637,8 +15637,8 @@
     },
     {
       "name": "Al/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Al to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15659,8 +15659,8 @@
     },
     {
       "name": "Ti/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ti to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15681,8 +15681,8 @@
     },
     {
       "name": "Ca/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ca to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15703,8 +15703,8 @@
     },
     {
       "name": "K/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of K to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15725,8 +15725,8 @@
     },
     {
       "name": "He/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of He to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15747,8 +15747,8 @@
     },
     {
       "name": "Ne/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15769,8 +15769,8 @@
     },
     {
       "name": "Ar/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15791,8 +15791,8 @@
     },
     {
       "name": "Kr/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15813,8 +15813,8 @@
     },
     {
       "name": "Xe/O_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to O in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15835,8 +15835,8 @@
     },
     {
       "name": "N/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of N to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15857,8 +15857,8 @@
     },
     {
       "name": "S/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of S to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15879,8 +15879,8 @@
     },
     {
       "name": "Si/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Si to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15901,8 +15901,8 @@
     },
     {
       "name": "Mg/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Mg to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15923,8 +15923,8 @@
     },
     {
       "name": "Fe/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Fe to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15945,8 +15945,8 @@
     },
     {
       "name": "Na/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Na to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15967,8 +15967,8 @@
     },
     {
       "name": "Al/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Al to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -15989,8 +15989,8 @@
     },
     {
       "name": "Ti/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ti to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16011,8 +16011,8 @@
     },
     {
       "name": "Ca/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ca to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16033,8 +16033,8 @@
     },
     {
       "name": "K/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of K to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16055,8 +16055,8 @@
     },
     {
       "name": "He/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of He to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16077,8 +16077,8 @@
     },
     {
       "name": "Ne/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16099,8 +16099,8 @@
     },
     {
       "name": "Ar/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16121,8 +16121,8 @@
     },
     {
       "name": "Kr/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16143,8 +16143,8 @@
     },
     {
       "name": "Xe/C_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to C in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16165,8 +16165,8 @@
     },
     {
       "name": "S/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of S to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16187,8 +16187,8 @@
     },
     {
       "name": "Si/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Si to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16209,8 +16209,8 @@
     },
     {
       "name": "Mg/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Mg to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16231,8 +16231,8 @@
     },
     {
       "name": "Fe/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Fe to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16253,8 +16253,8 @@
     },
     {
       "name": "Na/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Na to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16275,8 +16275,8 @@
     },
     {
       "name": "Al/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Al to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16297,8 +16297,8 @@
     },
     {
       "name": "Ti/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ti to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16319,8 +16319,8 @@
     },
     {
       "name": "Ca/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ca to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16341,8 +16341,8 @@
     },
     {
       "name": "K/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of K to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16363,8 +16363,8 @@
     },
     {
       "name": "He/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of He to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16385,8 +16385,8 @@
     },
     {
       "name": "Ne/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16407,8 +16407,8 @@
     },
     {
       "name": "Ar/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16429,8 +16429,8 @@
     },
     {
       "name": "Kr/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16451,8 +16451,8 @@
     },
     {
       "name": "Xe/N_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to N in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16473,8 +16473,8 @@
     },
     {
       "name": "Si/S_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Si to S in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16495,8 +16495,8 @@
     },
     {
       "name": "Mg/S_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Mg to S in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16517,8 +16517,8 @@
     },
     {
       "name": "Fe/S_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Fe to S in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16539,8 +16539,8 @@
     },
     {
       "name": "Na/S_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Na to S in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16561,8 +16561,8 @@
     },
     {
       "name": "Al/S_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Al to S in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16583,8 +16583,8 @@
     },
     {
       "name": "Ti/S_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ti to S in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16605,8 +16605,8 @@
     },
     {
       "name": "Ca/S_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ca to S in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16627,8 +16627,8 @@
     },
     {
       "name": "K/S_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of K to S in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16649,8 +16649,8 @@
     },
     {
       "name": "He/S_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of He to S in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16671,8 +16671,8 @@
     },
     {
       "name": "Ne/S_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to S in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16693,8 +16693,8 @@
     },
     {
       "name": "Ar/S_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to S in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16715,8 +16715,8 @@
     },
     {
       "name": "Kr/S_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to S in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16737,8 +16737,8 @@
     },
     {
       "name": "Xe/S_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to S in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16759,8 +16759,8 @@
     },
     {
       "name": "Mg/Si_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Mg to Si in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16781,8 +16781,8 @@
     },
     {
       "name": "Fe/Si_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Fe to Si in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16803,8 +16803,8 @@
     },
     {
       "name": "Na/Si_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Na to Si in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16825,8 +16825,8 @@
     },
     {
       "name": "Al/Si_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Al to Si in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16847,8 +16847,8 @@
     },
     {
       "name": "Ti/Si_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ti to Si in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16869,8 +16869,8 @@
     },
     {
       "name": "Ca/Si_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ca to Si in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16891,8 +16891,8 @@
     },
     {
       "name": "K/Si_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of K to Si in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16913,8 +16913,8 @@
     },
     {
       "name": "He/Si_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of He to Si in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16935,8 +16935,8 @@
     },
     {
       "name": "Ne/Si_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to Si in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16957,8 +16957,8 @@
     },
     {
       "name": "Ar/Si_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to Si in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -16979,8 +16979,8 @@
     },
     {
       "name": "Kr/Si_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to Si in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17001,8 +17001,8 @@
     },
     {
       "name": "Xe/Si_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to Si in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17023,8 +17023,8 @@
     },
     {
       "name": "Fe/Mg_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Fe to Mg in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17045,8 +17045,8 @@
     },
     {
       "name": "Na/Mg_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Na to Mg in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17067,8 +17067,8 @@
     },
     {
       "name": "Al/Mg_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Al to Mg in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17089,8 +17089,8 @@
     },
     {
       "name": "Ti/Mg_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ti to Mg in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17111,8 +17111,8 @@
     },
     {
       "name": "Ca/Mg_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ca to Mg in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17133,8 +17133,8 @@
     },
     {
       "name": "K/Mg_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of K to Mg in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17155,8 +17155,8 @@
     },
     {
       "name": "He/Mg_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of He to Mg in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17177,8 +17177,8 @@
     },
     {
       "name": "Ne/Mg_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to Mg in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17199,8 +17199,8 @@
     },
     {
       "name": "Ar/Mg_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to Mg in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17221,8 +17221,8 @@
     },
     {
       "name": "Kr/Mg_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to Mg in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17243,8 +17243,8 @@
     },
     {
       "name": "Xe/Mg_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to Mg in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17265,8 +17265,8 @@
     },
     {
       "name": "Na/Fe_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Na to Fe in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17287,8 +17287,8 @@
     },
     {
       "name": "Al/Fe_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Al to Fe in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17309,8 +17309,8 @@
     },
     {
       "name": "Ti/Fe_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ti to Fe in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17331,8 +17331,8 @@
     },
     {
       "name": "Ca/Fe_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ca to Fe in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17353,8 +17353,8 @@
     },
     {
       "name": "K/Fe_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of K to Fe in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17375,8 +17375,8 @@
     },
     {
       "name": "He/Fe_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of He to Fe in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17397,8 +17397,8 @@
     },
     {
       "name": "Ne/Fe_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to Fe in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17419,8 +17419,8 @@
     },
     {
       "name": "Ar/Fe_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to Fe in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17441,8 +17441,8 @@
     },
     {
       "name": "Kr/Fe_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to Fe in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17463,8 +17463,8 @@
     },
     {
       "name": "Xe/Fe_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to Fe in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17485,8 +17485,8 @@
     },
     {
       "name": "Al/Na_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Al to Na in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17507,8 +17507,8 @@
     },
     {
       "name": "Ti/Na_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ti to Na in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17529,8 +17529,8 @@
     },
     {
       "name": "Ca/Na_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ca to Na in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17551,8 +17551,8 @@
     },
     {
       "name": "K/Na_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of K to Na in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17573,8 +17573,8 @@
     },
     {
       "name": "He/Na_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of He to Na in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17595,8 +17595,8 @@
     },
     {
       "name": "Ne/Na_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to Na in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17617,8 +17617,8 @@
     },
     {
       "name": "Ar/Na_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to Na in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17639,8 +17639,8 @@
     },
     {
       "name": "Kr/Na_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to Na in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17661,8 +17661,8 @@
     },
     {
       "name": "Xe/Na_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to Na in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17683,8 +17683,8 @@
     },
     {
       "name": "Ti/Al_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ti to Al in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17705,8 +17705,8 @@
     },
     {
       "name": "Ca/Al_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ca to Al in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17727,8 +17727,8 @@
     },
     {
       "name": "K/Al_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of K to Al in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17749,8 +17749,8 @@
     },
     {
       "name": "He/Al_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of He to Al in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17771,8 +17771,8 @@
     },
     {
       "name": "Ne/Al_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to Al in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17793,8 +17793,8 @@
     },
     {
       "name": "Ar/Al_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to Al in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17815,8 +17815,8 @@
     },
     {
       "name": "Kr/Al_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to Al in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17837,8 +17837,8 @@
     },
     {
       "name": "Xe/Al_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to Al in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17859,8 +17859,8 @@
     },
     {
       "name": "Ca/Ti_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ca to Ti in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17881,8 +17881,8 @@
     },
     {
       "name": "K/Ti_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of K to Ti in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17903,8 +17903,8 @@
     },
     {
       "name": "He/Ti_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of He to Ti in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17925,8 +17925,8 @@
     },
     {
       "name": "Ne/Ti_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to Ti in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17947,8 +17947,8 @@
     },
     {
       "name": "Ar/Ti_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to Ti in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17969,8 +17969,8 @@
     },
     {
       "name": "Kr/Ti_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to Ti in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -17991,8 +17991,8 @@
     },
     {
       "name": "Xe/Ti_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to Ti in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18013,8 +18013,8 @@
     },
     {
       "name": "K/Ca_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of K to Ca in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18035,8 +18035,8 @@
     },
     {
       "name": "He/Ca_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of He to Ca in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18057,8 +18057,8 @@
     },
     {
       "name": "Ne/Ca_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to Ca in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18079,8 +18079,8 @@
     },
     {
       "name": "Ar/Ca_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to Ca in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18101,8 +18101,8 @@
     },
     {
       "name": "Kr/Ca_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to Ca in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18123,8 +18123,8 @@
     },
     {
       "name": "Xe/Ca_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to Ca in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18145,8 +18145,8 @@
     },
     {
       "name": "He/K_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of He to K in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18167,8 +18167,8 @@
     },
     {
       "name": "Ne/K_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to K in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18189,8 +18189,8 @@
     },
     {
       "name": "Ar/K_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to K in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18211,8 +18211,8 @@
     },
     {
       "name": "Kr/K_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to K in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18233,8 +18233,8 @@
     },
     {
       "name": "Xe/K_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to K in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18255,8 +18255,8 @@
     },
     {
       "name": "Ne/He_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ne to He in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18277,8 +18277,8 @@
     },
     {
       "name": "Ar/He_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to He in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18299,8 +18299,8 @@
     },
     {
       "name": "Kr/He_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to He in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18321,8 +18321,8 @@
     },
     {
       "name": "Xe/He_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to He in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18343,8 +18343,8 @@
     },
     {
       "name": "Ar/Ne_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Ar to Ne in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18365,8 +18365,8 @@
     },
     {
       "name": "Kr/Ne_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to Ne in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18387,8 +18387,8 @@
     },
     {
       "name": "Xe/Ne_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to Ne in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18409,8 +18409,8 @@
     },
     {
       "name": "Kr/Ar_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Kr to Ar in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18431,8 +18431,8 @@
     },
     {
       "name": "Xe/Ar_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to Ar in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [
@@ -18453,8 +18453,8 @@
     },
     {
       "name": "Xe/Kr_atm",
-      "unit": null,
-      "description": "",
+      "unit": "1",
+      "description": "mass ratio of Xe to Kr in the atmosphere",
       "group": "Element mass ratios in atmosphere",
       "origin": "<e2>/<e1>_atm",
       "producers": [

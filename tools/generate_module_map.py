@@ -323,6 +323,20 @@ def verify(schema: dict) -> list[str]:
     problems: list[str] = []
     choices_by_path = {f['path']: f['choices'] for f in schema['fields']}
 
+    # Completeness: every module-selection field with at least one non-None
+    # option must have a dispatch site here. accretion.module accepts only
+    # None today, so it is exempt until an implementation lands.
+    mapped = {site['config_path'] for site in DISPATCH_SITES}
+    for field in schema['fields']:
+        if not field['path'].endswith('.module') or field['path'].count('.') != 1:
+            continue
+        options = field['choices'] or []
+        if any(o is not None for o in options) and field['path'] not in mapped:
+            problems.append(
+                f'{field["path"]} selects between {sorted(o for o in options if o)} '
+                f'but has no DISPATCH_SITES entry'
+            )
+
     for site in DISPATCH_SITES:
         cfg_path = site['config_path']
         options = choices_by_path.get(cfg_path)

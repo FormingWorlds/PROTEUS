@@ -606,7 +606,7 @@ config_version = "3.0"
 
 # Atmospheric escape
 [escape]
-    module                    = "zephyrus"   # zephyrus | dummy
+    module                    = "zephyrus"   # zephyrus | dummy | boreas | none
     reservoir                 = "outgas"     # reservoir setting escaping composition
     hill_clamp                = true         # limit the XUV level to the Hill radius
     hill_clamp_frac           = 1.0          # fraction of the Hill radius used as that limit

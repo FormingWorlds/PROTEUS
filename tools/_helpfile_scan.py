@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import importlib.util
 
 import _docgen
 
@@ -89,6 +90,9 @@ SUPPRESSED_DYNAMIC_WRITES = {
     # The mass-ratio loop assembles its key in a local; EXTRA_PRODUCERS
     # declares the full expansion for it.
     ('outgas/wrapper.py', 'run_outgassing'),
+    # hf_row.update(saved) restores of pre-call snapshots.
+    ('interior_energetics/wrapper.py', '_solve_structure_with_adiabat_or_rollback'),
+    ('interior_energetics/wrapper.py', 'update_structure_from_interior'),
 }
 
 # Producers that assemble their key through a local variable the visitor
@@ -98,8 +102,12 @@ EXTRA_PRODUCERS = [
 ]
 
 
-class ScanError(Exception):
-    """The scan hit a shape it cannot attribute (surfaced, not fatal)."""
+class ScanError(_docgen.DocgenError):
+    """The scan hit a shape it cannot attribute.
+
+    A subclass of DocgenError so the generator CLIs map it to exit code 2
+    (structural error) without a separate handler.
+    """
 
 
 def _species_lists() -> dict[str, list]:
@@ -232,17 +240,23 @@ class HfRowVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Call(self, node):
-        # hf_row.get('key', ...) reads a column.
+        # hf_row.get('key', ...) reads a column; hf_row.update(...) writes an
+        # unknowable key set and must never pass silently.
         func = node.func
-        if (
-            isinstance(func, ast.Attribute)
-            and func.attr == 'get'
-            and isinstance(func.value, (ast.Name, ast.Attribute))
+        if isinstance(func, ast.Attribute) and isinstance(
+            func.value, (ast.Name, ast.Attribute)
         ):
             owner = func.value.id if isinstance(func.value, ast.Name) else func.value.attr
-            if owner in ROW_NAMES | FRAME_NAMES and node.args:
-                self._record(node.args[0], node.lineno, is_write=False)
+            if owner in ROW_NAMES | FRAME_NAMES:
+                if func.attr == 'get' and node.args:
+                    self._record(node.args[0], node.lineno, is_write=False)
+                elif func.attr == 'update' and owner in ROW_NAMES and not self._suppressed():
+                    self.unresolved.append((node.lineno, f'{owner}.update(...) bulk write'))
         self.generic_visit(node)
+
+    def _suppressed(self) -> bool:
+        """Whether any enclosing function is a declared non-producer site."""
+        return any((self.rel_file, fn) in SUPPRESSED_DYNAMIC_WRITES for fn in self.func_stack)
 
     def _record(self, key_node, lineno: int, is_write: bool) -> None:
         func = self.func_stack[-1] if self.func_stack else '<module>'
@@ -256,8 +270,7 @@ class HfRowVisitor(ast.NodeVisitor):
     def _resolve_keys(self, key_node, lineno: int, is_write: bool) -> list[str]:
         if isinstance(key_node, ast.Constant):
             return [key_node.value] if isinstance(key_node.value, str) else []
-        func = self.func_stack[-1] if self.func_stack else '<module>'
-        suppressed = (self.rel_file, func) in SUPPRESSED_DYNAMIC_WRITES
+        suppressed = self._suppressed()
         template = _template_of(key_node)
         if template is not None:
             prefix, var, suffix = template

@@ -168,3 +168,52 @@ def test_check_mode_detects_page_drift(matrix, tmp_path, monkeypatch, capsys):
     assert _gor.main() == 0
     out = capsys.readouterr().out
     assert 'python tools/generate_output_reference.py' in out
+
+
+def test_committed_page_and_json_are_current(matrix):
+    """The committed output.md region and JSON byte-match a fresh render, and
+    every column row carries a unit; a coupler edit cannot land without
+    regeneration, and a unit-extraction regression surfaces here."""
+    fresh_page = _docgen.normalize(
+        _docgen.replace_between_markers(
+            _gor.PAGE.read_text(), 'GENERATED: helpfile-matrix', _gor.render(matrix)
+        )
+    )
+    assert _gor.PAGE.read_text() == fresh_page
+    assert _gor.JSON_PATH.read_text() == _docgen.dump_json(matrix)
+    unitless = [k['name'] for k in matrix['keys'] if not k['unit']]
+    assert unitless == []
+
+
+def test_declared_scan_tables_are_all_live(monkeypatch):
+    """Staleness guard for the declared attribution tables: with the template
+    overrides and suppression list emptied, the scan must report an
+    unresolved event matching every table entry, proving each entry still
+    corresponds to a live write site in the source. A stale entry (its code
+    refactored away) would produce no event and fail here."""
+    overrides = dict(_scan.TEMPLATE_OVERRIDES)
+    suppressed = set(_scan.SUPPRESSED_DYNAMIC_WRITES)
+    assert overrides and suppressed  # the guard itself must have teeth
+
+    monkeypatch.setattr(_scan, 'TEMPLATE_OVERRIDES', {})
+    monkeypatch.setattr(_scan, 'SUPPRESSED_DYNAMIC_WRITES', set())
+    events = _scan.scan_tree()['unresolved']
+    by_file: dict[str, list[str]] = {}
+    for rel, _line, reason in events:
+        by_file.setdefault(rel, []).append(reason)
+
+    for rel, pattern in overrides:
+        needle = pattern.replace('<?>', '<')  # events name the real variable
+        prefix, _sep, suffix = needle.partition('<')
+        matched = any(
+            reason.startswith(f'template {prefix}') and reason.endswith(suffix)
+            for reason in by_file.get(rel, [])
+        )
+        assert matched, f'TEMPLATE_OVERRIDES entry ({rel}, {pattern}) matches no write site'
+
+    for rel, _function in suppressed:
+        assert by_file.get(rel), f'SUPPRESSED_DYNAMIC_WRITES names {rel} but no event arises'
+
+    # EXTRA_PRODUCERS: the ratio loop must still be a live dynamic write.
+    for rel, _function, _pattern in _scan.EXTRA_PRODUCERS:
+        assert by_file.get(rel), f'EXTRA_PRODUCERS names {rel} but no event arises'
