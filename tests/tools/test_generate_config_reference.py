@@ -209,3 +209,16 @@ def test_section_table_and_choices_dedup(schema):
         line for line in table.split('\n') if line.startswith('| `hill_clamp_frac`')
     )
     assert 'Must be > 0.' in rate_row
+
+
+def test_committed_pages_are_current_and_fully_described(schema):
+    """The committed pages and JSON byte-match a fresh render, every field
+    carries a description, and all_options.toml agrees with the schema; any
+    of these failing means a source edit landed without regeneration."""
+    targets = _gcr.build_targets(schema)
+    assert len(targets) == 8  # seven pages plus the JSON sidecar
+    for path, content in targets:
+        assert path.read_text() == content, f'{path.name} is stale'
+    assert _gcr.check_all_options(schema) == []
+    undocumented = [f['path'] for f in schema['fields'] if f['doc_source'] == 'missing']
+    assert undocumented == []

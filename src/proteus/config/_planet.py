@@ -69,6 +69,27 @@ class Elements:
         Scale C/N/S from solar metallicity (overrides C/N/S mode+budget).
     metallicity: float
         Metallicity relative to solar, by mass (only if use_metallicity=True).
+    He_mode: str
+        How He_budget is interpreted: 'kg', 'ppmw' (relative to the volatile
+        reservoir), or 'solar' (multiple of the protosolar He/H mass ratio).
+    He_budget: float
+        Helium inventory value (units depend on He_mode).
+    Ne_mode: str
+        As He_mode, for neon.
+    Ne_budget: float
+        Neon inventory value (units depend on Ne_mode).
+    Ar_mode: str
+        As He_mode, for argon.
+    Ar_budget: float
+        Argon inventory value (units depend on Ar_mode).
+    Kr_mode: str
+        As He_mode, for krypton.
+    Kr_budget: float
+        Krypton inventory value (units depend on Kr_mode).
+    Xe_mode: str
+        As He_mode, for xenon.
+    Xe_budget: float
+        Xenon inventory value (units depend on Xe_mode).
     """
 
     H_mode: str = field(default='oceans', validator=in_(('oceans', 'ppmw', 'kg')))
@@ -283,6 +304,11 @@ class Planet:
     prevent_warming: bool
         When True, require the planet to monotonically cool over time.
         Enforced in all atmosphere modules and termination checks.
+    R_int_override: float
+        Bypass the radius root finder and force a fixed interior radius [m];
+        'none' (default) uses the root finder. Used for SPIDER/Aragog parity
+        runs where the two energetics modules have different
+        Adams-Williamson density implementations.
     """
 
     mass_tot: float = field(default=1.0, validator=gt(0))

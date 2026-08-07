@@ -131,6 +131,59 @@ class Zalmoxis:
         Number of pressure points in SPIDER P-S tables generated from PALEOS.
     lookup_nS: int
         Number of entropy points in SPIDER P-S tables generated from PALEOS.
+    outer_solver: str
+        Outer mass-radius solver: 'newton' (recommended) or 'picard'.
+    use_jax: bool
+        Use the JAX backend for the structure solver.
+    use_anderson: bool
+        Anderson Type-II Picard acceleration on the density loop.
+    newton_max_iter: int
+        Maximum Newton iterations (outer_solver = 'newton').
+    newton_tol: float
+        Newton convergence tolerance (outer_solver = 'newton').
+    newton_relative_tolerance: float
+        Integrator relative tolerance for the Newton path.
+    newton_absolute_tolerance: float
+        Integrator absolute tolerance for the Newton path.
+    update_dphi_abs: float
+        Re-solve the structure when the global melt fraction changes by
+        this absolute amount since the last solve.
+    update_dtmagma_frac: float
+        Re-solve the structure when T_magma changes by this fraction.
+    update_dw_comp_abs: float
+        Re-solve when the relative dissolved-volatile (H2O or H2) mantle
+        mass fraction changes by this amount.
+    update_interval: float
+        Maximum time between structure updates [yr]; effectively disabled
+        at the default.
+    update_min_interval: float
+        Minimum time between structure updates [yr]; prevents thrashing.
+    update_stale_ceiling: float
+        Time since the last successful re-solve after which a trigger
+        refires [yr]; 0 disables.
+    mesh_max_shift: float
+        Maximum fractional radius shift per structure update.
+    mesh_convergence_interval: float
+        Convergence relaxation time after a mesh update [yr].
+    equilibrate_init: bool
+        Equilibrate structure and composition before the main loop.
+    equilibrate_max_iter: int
+        Maximum equilibration iterations.
+    equilibrate_tol: float
+        Equilibration convergence tolerance.
+    dry_mantle: bool
+        Structure EOS assumes a dry mantle. Set False for
+        melt-fraction-aware dissolved-volatile mixing in the mantle
+        density (per-shell volatile profile); the dissolved mass then
+        stays inside the interior mass target.
+    global_miscibility: bool
+        Enable the H2-silicate binodal-aware radial structure. True is
+        rejected at config load: it requires the binodal handoff on the
+        Zalmoxis side, which is not yet implemented.
+    miscibility_max_iter: int
+        Maximum miscibility iterations.
+    miscibility_tol: float
+        Miscibility convergence tolerance.
     """
 
     core_eos: str = field(default='PALEOS:iron')
@@ -261,6 +314,11 @@ class Struct:
     core_heatcap: float or str
         Specific heat capacity of the planet's core [J kg-1 K-1]. Set to 'self'
         for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis').
+    melting_dir: str
+        Melting curve folder name in FWL_DATA, for the SPIDER structure
+        module.
+    eos_dir: str
+        EOS folder name in FWL_DATA, for the SPIDER structure module.
     """
 
     core_frac: float = field(default=0.325, validator=(gt(0), lt(1)))

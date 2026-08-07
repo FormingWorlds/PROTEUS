@@ -153,6 +153,8 @@ class Agni:
         Include sensible heat flux at surface
     real_gas: bool
         Use real gas equations of state in atmosphere, where possible.
+    thermo_functions: bool
+        Use temperature-dependent thermodynamic properties.
     psurf_thresh: float
         Use the transparent-atmosphere solver when P_surf is less than this value [bar].
     dx_max: float
@@ -365,6 +367,8 @@ class AtmosClim:
         Grey surface albedo.
     albedo_pl: float
         Planetary bond albedo (0 to 1).
+    cloud_alpha: float
+        Condensate retention fraction (0 = full rainout, 1 = fully retained).
     rayleigh: bool
         Include Rayleigh scattering (AGNI, JANUS only).
     tmp_minimum: float

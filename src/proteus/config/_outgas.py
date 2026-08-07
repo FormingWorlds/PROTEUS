@@ -52,6 +52,16 @@ class Calliope:
         If True, include CH4.
     include_CO: bool
         If True, include CO.
+    include_He: bool
+        If True, include He (noble gas; budget set in planet.elements).
+    include_Ne: bool
+        If True, include Ne (noble gas; budget set in planet.elements).
+    include_Ar: bool
+        If True, include Ar (noble gas; budget set in planet.elements).
+    include_Kr: bool
+        If True, include Kr (noble gas; budget set in planet.elements).
+    include_Xe: bool
+        If True, include Xe (noble gas; budget set in planet.elements).
     solubility: bool
         Enable solubility of volatiles into melt.
     nguess: int

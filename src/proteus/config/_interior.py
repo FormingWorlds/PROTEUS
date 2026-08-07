@@ -100,6 +100,10 @@ class Spider:
         across the solidus/liquidus. Passed to SPIDER as
         ``-matprop_smooth_width`` and to Aragog via
         ``_PhaseMixedParameters``.
+    tolerance_struct: float
+        Absolute mass tolerance [kg] for the interior-radius secant solver.
+    log_output: bool
+        Write SPIDER solver log output.
     """
 
     solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
@@ -411,6 +415,11 @@ class Interior:
         Concentration (ppmw) of uranium at reference age t=radio_tref.
     radio_Th: float
         Concentration (ppmw) of thorium-232 at reference age t=radio_tref.
+    radio_Al: float
+        Concentration (ppmw) of aluminium-26 at reference age t=radio_tref;
+        1.23 is the canonical early solar system value.
+    radio_Fe: float
+        Concentration (ppmw) of iron-60 at reference age t=radio_tref.
     heat_radiogenic: bool
         Include radiogenic heat production?
     heat_tidal: bool
@@ -419,6 +428,40 @@ class Interior:
         Centre of rheological transition in terms of melt fraction
     rfront_wid: float
         Width of rheological transition in terms of melt fraction
+    num_levels: int
+        Number of radial grid levels for the energetics domain.
+    num_tolerance: float
+        Deprecated alias for rtol; emits a DeprecationWarning when set.
+    trans_conduction: bool
+        Include conductive heat transfer.
+    trans_convection: bool
+        Include convective heat transfer (mixing length theory).
+    trans_grav_sep: bool
+        Include gravitational separation (Stokes settling).
+    trans_mixing: bool
+        Include the chemical mixing flux.
+    mixing_length: str
+        Mixing-length scale: 'nearest' (distance to nearest boundary) or
+        'constant' (a quarter of the mantle depth).
+    kappah_floor: float
+        Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport
+        from freezing out.
+    tmagma_atol: float
+        Maximum absolute change in T_magma per PROTEUS step [K].
+    tmagma_rtol: float
+        Maximum relative change in T_magma per PROTEUS step.
+    param_utbl: bool
+        Enable the ultra-thin boundary layer parameterisation.
+    param_utbl_const: float
+        Ultra-thin boundary layer scaling constant [K-1].
+    surface_bc_mode: str
+        Surface boundary condition for SPIDER/Aragog: 'flux' (prescribed
+        F_atm from the atmosphere module) or 'grey_body' (native grey-body
+        boundary condition computed inside the interior solver).
+    const_properties: bool
+        Enable constant-properties mode: bypass the EOS tables and use the
+        analytical T(S) = T_ref * exp((S - S_ref) / Cp) relationship, for
+        controlled parity tests.
 
     module: str
         Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.

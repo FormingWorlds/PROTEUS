@@ -108,6 +108,10 @@ class TimeStepParams:
     window: int
         Number of previous steps to consider for adaptive-method comparison
         [dimensionless].
+    max_growth_factor: float
+        Cap on the dt growth ratio between consecutive steps [dimensionless].
+        Bounds dtswitch / dtprev, preventing large jumps that can wedge the
+        interior solver; 0 (default) disables the cap.
     maximum_rel: float
         Time-fraction allowance added to ``dt.maximum`` on every step
         [dimensionless]. The effective per-step cap is the sum
@@ -392,6 +396,12 @@ class Params:
         Parameters for time-stepping.
     stop: StopParams
         Parameters for stopping criteria.
+    resume: bool
+        Resume the simulation from the last archived state in the output
+        folder, instead of starting from scratch.
+    offline: bool
+        Run without network access; never download reference data, and fail
+        if a required file is missing locally.
     """
 
     out: OutputParams = field(factory=OutputParams)
