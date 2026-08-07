@@ -1000,6 +1000,8 @@ def test_run_escape_recomputes_baseline_when_m_vol_initial_is_unparseable():
     config.escape.reservoir = 'bulk'
     config.escape.dummy.rate = 0.0
     config.outgas.mass_thresh = 1.0e10
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
     # M_vol_initial is a non-numeric string: triggers the except branch.
     hf_row = {
         'M_vol_initial': 'corrupted',
@@ -1047,6 +1049,8 @@ def test_run_escape_dummy_zeroes_elemental_rates_when_unfract_raises():
     config.escape.reservoir = 'bulk'
     config.escape.dummy.rate = 0.0
     config.outgas.mass_thresh = 1.0e10
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
 
     hf_row = {
         'P_surf': 1.0e5,
@@ -1098,6 +1102,8 @@ def test_run_escape_zephyrus_zeroes_elemental_rates_when_unfract_raises():
     config.escape.zephyrus.Pxuv = 1.0e-2
     config.star.mass = 1.0  # M_sun units
     config.outgas.mass_thresh = 1.0e10
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
 
     hf_row = {
         'semimajorax': 1.5e11,
@@ -1235,15 +1241,13 @@ def test_limit_escape_step_keeps_the_overshoot_visible_after_capping():
 
 @pytest.mark.unit
 def test_limit_escape_step_handles_no_loss_and_an_empty_reservoir():
-    """Degenerate inputs must return a well-formed zero or pass through rather
-    than dividing by an empty reservoir.
+    """Degenerate inputs must return a well-formed zero rather than dividing by
+    an empty reservoir or inventing mass that cannot leave.
 
     Three edge cases: a zero escape rate, a non-finite rate, and a reservoir that
     holds nothing. An unrecognised reservoir name is the documented error path
     and raises.
     """
-    import math
-
     from proteus.escape.wrapper import limit_escape_step
     from proteus.utils.constants import element_list
 
@@ -1257,12 +1261,11 @@ def test_limit_escape_step_handles_no_loss_and_an_empty_reservoir():
     assert limit_escape_step(hf, 1.0e3, 'outgas') == 0.0
     assert hf['esc_clamp_frac'] == 0.0
 
-    # Empty reservoir: the request cannot be expressed as a fraction, so it is
-    # passed through for the desiccation floor downstream to absorb.
+    # Empty reservoir: nothing can leave, so the step removes nothing. Returning
+    # the request instead would credit the cumulative counter with mass that was
+    # never debited from any inventory.
     hf = dict(base, esc_rate_total=1.0e5)
-    passed = limit_escape_step(hf, 1.0e3, 'outgas')
-    assert passed > 0.0
-    assert math.isfinite(passed)
+    assert limit_escape_step(hf, 1.0e3, 'outgas') == 0.0
     assert hf['esc_clamp_frac'] == 0.0
 
     with pytest.raises(ValueError, match='Invalid escape reservoir'):
@@ -1335,6 +1338,8 @@ def test_run_escape_cumulative_matches_the_mass_actually_removed():
     config.escape.reservoir = 'outgas'
     config.escape.dummy.rate = rate
     config.outgas.mass_thresh = 1.0e10
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
 
     before = sum(float(hf[f'{e}_kg_total']) for e in element_list)
     run_escape(config, hf, dt=dt)
@@ -1459,6 +1464,8 @@ def test_run_escape_publishes_the_step_limit_and_clears_it_again():
     config.escape.module = 'dummy'
     config.escape.reservoir = 'outgas'
     config.outgas.mass_thresh = 1.0e10
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
 
     interior_o = SimpleNamespace(escape_dt_limit=float('inf'))
 
@@ -1481,3 +1488,124 @@ def test_run_escape_publishes_the_step_limit_and_clears_it_again():
     run_escape(config, _fresh_hf(calm_rate), dt=dt, interior_o=interior_o)
 
     assert np.isinf(interior_o.escape_dt_limit)
+
+
+@pytest.mark.physics_invariant
+def test_cap_bounds_the_bulk_reservoir_too():
+    """Under `reservoir='bulk'` the cap must bound the whole-planet inventory,
+    not just the atmospheric one, since that is the reservoir the debit lands on.
+
+    The same 0.25 means a different physical bound in the two modes, because the
+    bulk reservoir includes mass dissolved in the interior. This pins that the
+    bulk mode measures against `*_kg_total`: a request of 2.5 times the bulk
+    inventory is capped to a quarter of it, ten times smaller.
+    """
+    from proteus.escape.wrapper import ESCAPE_STEP_MAX_FRAC, limit_escape_step
+    from proteus.utils.constants import element_list, secs_per_year
+
+    dt = 1.0e4
+    bulk = 4.0e23  # kg held across interior and atmosphere
+    atm = 8.0e22  # kg in the atmosphere alone, deliberately different
+
+    hf = {f'{e}_kg_total': 0.0 for e in element_list}
+    hf.update({f'{e}_kg_atm': 0.0 for e in element_list})
+    hf['H_kg_total'] = bulk
+    hf['H_kg_atm'] = atm
+    hf['esc_rate_total'] = 2.5 * bulk / (secs_per_year * dt)
+
+    applied = limit_escape_step(hf, dt, 'bulk')
+
+    assert applied == pytest.approx(ESCAPE_STEP_MAX_FRAC * bulk, rel=1e-9)
+    assert hf['esc_clamp_frac'] == pytest.approx(2.5, rel=1e-9)
+    # Boundedness against the reservoir actually debited.
+    assert 0.0 < applied <= bulk
+    # Discrimination guard: measuring against the atmosphere instead would give
+    # 0.25 * 8.0e22 = 2.0e22, a factor of five below the bulk answer.
+    assert applied > 2.0 * ESCAPE_STEP_MAX_FRAC * atm
+
+
+@pytest.mark.physics_invariant
+def test_crystallized_atmosphere_scaling_uses_the_capped_loss():
+    """Once the mantle has solidified the atmosphere is rescaled by the escaped
+    mass, and that must be the capped mass, or the atmosphere empties while the
+    elemental totals keep all but the capped share.
+
+    Sizing the rescale from the raw rate on an overshoot drives the retained
+    fraction to zero, so `P_surf` and `M_atm` collapse while `*_kg_total` still
+    holds three quarters of the inventory. The planet then reads as having an
+    intact volatile budget and no atmosphere at once.
+    """
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.constants import secs_per_year
+
+    dt = 1.0e4
+    m_atm = 8.0e22
+    over_rate = 2.0e23 / (secs_per_year * dt)  # asks for 2.5x the atmosphere
+
+    config = MagicMock()
+    config.escape.reservoir = 'outgas'
+    config.escape.module = 'dummy'
+
+    capped = 0.25 * m_atm
+    hf = {
+        'M_atm': m_atm,
+        'P_surf': 1.0e3,
+        'P_vol': 8.0e2,
+        'P_vap': 2.0e2,
+        'M_vaps': 0.0,
+        'esc_rate_total': over_rate,
+        'esc_step_kg': capped,
+    }
+    run_crystallized(config, hf, dt)
+
+    # Retained fraction follows the capped loss: 1 - 0.25 = 0.75.
+    assert hf['M_atm'] == pytest.approx(0.75 * m_atm, rel=1e-9)
+    assert hf['P_surf'] == pytest.approx(0.75 * 1.0e3, rel=1e-9)
+    # Positivity: an atmosphere that survived the step still has mass and pressure.
+    assert hf['M_atm'] > 0.0 and hf['P_surf'] > 0.0
+    # Discrimination guard: the uncapped rate gives retained = 0, so both would
+    # be exactly zero rather than three quarters of their starting values.
+    assert hf['P_surf'] > 0.5 * 1.0e3
+
+    # Without the published value it falls back to the raw rate, which is the
+    # pre-cap behaviour and does empty the atmosphere.
+    hf_fallback = dict(hf, M_atm=m_atm, P_surf=1.0e3)
+    hf_fallback.pop('esc_step_kg')
+    run_crystallized(config, hf_fallback, dt)
+    assert hf_fallback['M_atm'] == pytest.approx(0.0, abs=1e-6)
+
+
+@pytest.mark.unit
+def test_cumulative_counter_ignores_a_step_that_debited_nothing():
+    """The cumulative escape counter must track mass that actually left an
+    inventory, because the desiccation gate compares it against the starting
+    budget to tell real escape from an atmosphere wiped by an upstream failure.
+
+    Edge case: a desiccated planet with a live escape rate. Nothing can leave an
+    empty reservoir, so the counter must not move at all.
+    """
+    from proteus.escape.wrapper import run_escape
+    from proteus.utils.constants import element_list, secs_per_year
+
+    dt = 1.0e4
+    hf = {f'{e}_kg_atm': 0.0 for e in element_list}
+    hf.update({f'{e}_kg_total': 0.0 for e in element_list})
+    hf['esc_kg_cumulative'] = 0.0
+    hf['M_vol_initial'] = 1.0e23
+
+    rate = 1.0e4  # kg/s, live rate against nothing to lose
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = rate
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = 1.0e10
+
+    run_escape(config, hf, dt=dt)
+
+    assert hf['esc_kg_cumulative'] == pytest.approx(0.0, abs=1e-6)
+    # Discrimination guard: crediting the request instead would add
+    # 1.0e4 * secs_per_year * 1.0e4 = 3.16e15 kg to a planet that lost nothing.
+    assert hf['esc_kg_cumulative'] < 1.0e10
+    assert rate * secs_per_year * dt > 1.0e15  # the request really was large

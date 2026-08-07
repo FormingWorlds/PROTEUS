@@ -960,6 +960,7 @@ def GetHelpfileKeys():
         # step whose loss was limited, so a limited trajectory stays
         # distinguishable from one that ran down on its own.
         'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
+        'esc_step_kg',      # loss applied on this step, after the cap [kg]
         ]
 
     # gases from outgassing

@@ -110,11 +110,10 @@ def limit_escape_step(
 
     escapable = escapable_mass(hf_row, reservoir)
     if escapable <= 0.0:
-        # Nothing left to draw on; calc_new_elements returns the reservoir
-        # untouched on the same condition, so the request is passed through.
+        # Nothing left to draw on, so nothing can leave.
         hf_row['esc_clamp_frac'] = 0.0
-        log.debug('Escapable reservoir is empty, leaving the requested loss uncapped')
-        return requested
+        log.debug('Escapable reservoir is empty, so this step removes nothing')
+        return 0.0
 
     frac = requested / escapable
     hf_row['esc_clamp_frac'] = frac
@@ -265,23 +264,26 @@ def run_escape(
     # scaling that `outgas.wrapper.run_crystallized` applies in the same step.
     reservoir = 'outgas' if atmosphere_only else config.escape.reservoir
 
-    # Cap what one step may remove before anything acts on it, so the debit and
-    # the cumulative counter below agree on the mass that actually left.
-    esc_step_kg = limit_escape_step(hf_row, dt, reservoir)
+    max_frac = float(config.escape.step_max_frac)
+
+    # Cap what one step may remove before anything acts on it.
+    esc_step_kg = limit_escape_step(hf_row, dt, reservoir, max_frac=max_frac)
 
     # Ask the interior for a shorter next step when the cap bound this one, so
     # the same rate stops re-requesting the same excess. Set on every call, so
     # a step that stays within the cap clears any limit left by an earlier one.
     if interior_o is not None:
         interior_o.escape_dt_limit = escape_dt_limit(
-            float(hf_row.get('esc_clamp_frac', 0.0)), dt
+            float(hf_row.get('esc_clamp_frac', 0.0)), dt, max_frac=max_frac
         )
 
-    # Accumulate cumulative escaped mass [kg] for the desiccation gate. This
-    # is the integral of the applied per-step loss over all escape calls and is
-    # persisted to the helpfile so it survives resume.
-    if np.isfinite(esc_step_kg) and esc_step_kg > 0.0:
-        hf_row['esc_kg_cumulative'] = float(hf_row.get('esc_kg_cumulative', 0.0)) + esc_step_kg
+    # Publish the capped loss so every consumer of this step works from the same
+    # mass. `outgas.wrapper.run_crystallized` scales the atmosphere by it, and
+    # sizing that from the uncapped rate would empty the atmosphere while the
+    # elemental totals kept only a quarter of the loss.
+    hf_row['esc_step_kg'] = esc_step_kg
+
+    before_kg = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
 
     # calculate new elemental inventories from loss over duration `dt`
     solvevol_target = calc_new_elements(
@@ -295,6 +297,13 @@ def run_escape(
     # store new elemental inventories
     for e, mass in solvevol_target.items():
         hf_row[f'{e}_kg_total'] = mass
+
+    # Accumulate the mass that actually left, for the desiccation gate. Measured
+    # from the inventories rather than taken from the request, because the
+    # threshold gate in calc_new_elements can decline to debit it.
+    removed_kg = before_kg - sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
+    if np.isfinite(removed_kg) and removed_kg > 0.0:
+        hf_row['esc_kg_cumulative'] = float(hf_row.get('esc_kg_cumulative', 0.0)) + removed_kg
 
 
 def run_dummy(config: Config, hf_row: dict, atmosphere_only: bool = False):

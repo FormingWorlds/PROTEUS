@@ -1028,8 +1028,11 @@ class Proteus:
                     _t_mod['escape'] = time.perf_counter() - _t0
             else:
                 # No escape step this loop, so nothing justifies holding the
-                # step short on account of one.
+                # step short on account of one, and last step's request would
+                # otherwise carry forward and read as a still-clamped run.
                 self.interior_o.escape_dt_limit = np.inf
+                self.hf_row['esc_clamp_frac'] = 0.0
+                self.hf_row['esc_step_kg'] = 0.0
 
             ############### / ESCAPE
 

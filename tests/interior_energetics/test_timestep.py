@@ -36,6 +36,7 @@ def _make_config(
     dt_max: float = 1.0e7,
     phi_crit: float = 0.05,
     max_growth_factor: float = 0.0,
+    escape_dt_floor_frac: float = 1.0e-3,
 ):
     """Build a minimal duck-typed config that ``next_step`` reads from.
 
@@ -75,7 +76,8 @@ def _make_config(
     )
     params = SimpleNamespace(dt=dt, stop=stop)
     star = SimpleNamespace(bol_scale=1.0, bol_scale_start=None, bol_scale_duration=0.0)
-    return SimpleNamespace(params=params, star=star)
+    escape = SimpleNamespace(step_dt_floor_frac=escape_dt_floor_frac)
+    return SimpleNamespace(params=params, star=star, escape=escape)
 
 
 def _make_hf_all(n_rows: int = 10, dt_prev: float = 1.0e3, phi: float = 1.0):
@@ -439,7 +441,8 @@ def _make_overshoot_config(*, dt_maximum, stop_time_enabled, stop_time_maximum):
         time=SimpleNamespace(enabled=stop_time_enabled, maximum=stop_time_maximum),
     )
     star = SimpleNamespace(bol_scale=1.0, bol_scale_start=None, bol_scale_duration=0.0)
-    return SimpleNamespace(params=SimpleNamespace(dt=dt, stop=stop), star=star)
+    escape = SimpleNamespace(step_dt_floor_frac=1.0e-3)
+    return SimpleNamespace(params=SimpleNamespace(dt=dt, stop=stop), star=star, escape=escape)
 
 
 def _make_overshoot_hf_all():
@@ -668,27 +671,35 @@ class TestEscapeStepLimit:
 
     @pytest.mark.unit
     def test_escape_limit_does_not_breach_the_configured_minimum(self):
-        """An escape limit below the run's minimum step must not drive dt under
-        that floor, because a step at zero would stall the run rather than slow
-        it.
+        """An escape limit may take the step below `dt.minimum`, but only as far
+        as the escape floor, so a runaway overshoot slows the run instead of
+        stopping it dead.
 
-        Edge case: the limit is set far below `dt.minimum`, the regime a runaway
-        overshoot produces, and the floor has to win.
+        The ordinary floor would otherwise override the shortened step on almost
+        every step the cap binds on, leaving the reduction inert exactly where it
+        is needed. Edge case: the limit is set far below both floors, the regime
+        a runaway overshoot produces, and the escape floor has to win.
         """
         from proteus.interior_energetics.timestep import next_step
 
         config = _make_config()
         hf_all = _make_hf_all(n_rows=10, dt_prev=1.0e3)
         hf_row = {'Time': float(hf_all['Time'].iloc[-1]), 'Phi_global': 1.0}
-        floor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
+        dt_min = config.params.dt.minimum
+        esc_floor = dt_min * config.escape.step_dt_floor_frac
 
         interior_o = _make_interior_o()
-        interior_o.escape_dt_limit = 1.0e-6  # far below the floor
+        interior_o.escape_dt_limit = 1.0e-9  # far below the escape floor
 
         limited = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=interior_o)
 
-        assert limited == pytest.approx(floor, rel=1e-9)
-        assert limited > 1.0e-6
+        assert limited == pytest.approx(esc_floor, rel=1e-9)
+        # It went below the ordinary floor, which is the whole point.
+        assert limited < dt_min
+        # Positivity: a bounded reduction is still a usable forward step, and it
+        # is 1000x the raw limit, so a pass-through would be plainly separated.
+        assert limited > 1.0e-9
+        assert limited == pytest.approx(dt_min / 1000.0, rel=1e-9)
 
     @pytest.mark.unit
     def test_absent_escape_limit_leaves_the_step_untouched(self):
@@ -713,3 +724,60 @@ class TestEscapeStepLimit:
 
         assert without == pytest.approx(with_inf, rel=1e-12)
         assert without > 0.0
+
+    @pytest.mark.unit
+    def test_escape_limit_applies_in_the_static_and_initial_regimes(self):
+        """Escape can be running before the controller reaches its adaptive
+        branch, so the limit must bind in the early regimes too.
+
+        The static branch fixes dt at 1.0 yr and the initial branch at
+        `dt.initial`; a limit below both must win in each. The value used is
+        neither of those two fixed numbers, so a branch that ignores the limit
+        returns its own constant and is separated by three orders of magnitude.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        interior_o = _make_interior_o()
+        interior_o.escape_dt_limit = 0.001  # differs from 1.0 and dt.initial
+
+        static = next_step(
+            config, {}, {'Time': 1.0, 'Phi_global': 1.0}, None, 1.0, interior_o=interior_o
+        )
+        short = _make_hf_all(n_rows=4, dt_prev=1.0e3)
+        initial = next_step(
+            config,
+            {},
+            {'Time': float(short['Time'].iloc[-1]), 'Phi_global': 1.0},
+            short,
+            1.0,
+            interior_o=interior_o,
+        )
+
+        esc_floor = config.params.dt.minimum * config.escape.step_dt_floor_frac
+        assert static == pytest.approx(esc_floor, rel=1e-9)
+        assert initial == pytest.approx(esc_floor, rel=1e-9)
+        # Discrimination guard: ignoring the limit returns 1.0 and dt.initial
+        # (10.0), both far above the escape floor of 0.1.
+        assert static < 1.0
+        assert initial < config.params.dt.initial
+
+    @pytest.mark.unit
+    def test_boundary_backend_forwards_the_interior_to_the_controller(self):
+        """The boundary interior module must pass `interior_o` into the
+        controller, or an escape overshoot never shortens its next step.
+
+        Checked by call inspection rather than by running the solver, because the
+        defect is a dropped argument: the limit is honoured by `next_step` and the
+        only question is whether this backend hands it over.
+        """
+        import inspect
+
+        from proteus.interior_energetics.boundary import BoundaryRunner
+
+        src = inspect.getsource(BoundaryRunner.compute_time_step)
+        call = src.split('next_step(')[1]
+        assert 'interior_o=interior_o' in call
+        # The parameter exists to be forwarded, so its presence in the signature
+        # without the forwarding is exactly the silent-failure shape.
+        assert 'interior_o' in inspect.signature(BoundaryRunner.compute_time_step).parameters

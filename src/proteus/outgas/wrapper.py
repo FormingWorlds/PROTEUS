@@ -506,9 +506,14 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
         log.info('Crystallized mantle: volatile exchange frozen, reservoirs preserved')
         return
 
-    # Mass lost to escape over this step (esc_rate is kg s-1, dt is yr). With
-    # the mantle frozen it comes entirely out of the atmosphere.
-    esc_step_kg = esc_rate * secs_per_year * dt
+    # Mass lost to escape over this step. With the mantle frozen it comes
+    # entirely out of the atmosphere. Prefer the loss the escape step actually
+    # applied: sizing this from the raw rate instead would empty the atmosphere
+    # on an overshoot while the elemental totals kept all but the capped share.
+    esc_step_kg = hf_row.get('esc_step_kg')
+    if esc_step_kg is None or not np.isfinite(float(esc_step_kg)):
+        esc_step_kg = esc_rate * secs_per_year * dt
+    esc_step_kg = float(esc_step_kg)
     retained = max(0.0, (m_atm - esc_step_kg) / m_atm)
 
     # Scale the atmospheric reservoirs by the retained fraction. Uniform
