@@ -134,6 +134,41 @@ def limit_escape_step(
     return allowed
 
 
+def escape_dt_limit(
+    clamp_frac: float,
+    dt: float,
+    max_frac: float = ESCAPE_STEP_MAX_FRAC,
+) -> float:
+    """Return the largest next step [yr] that would not repeat this overshoot.
+
+    The cap bounds the loss on the step that overshot, but leaves the step
+    length that produced it unchanged, so the same rate asks for the same
+    excess again. Shortening the next step by the overshoot ratio puts an
+    unchanged rate exactly at the cap instead of above it.
+
+    Parameters
+    ----------
+        clamp_frac : float
+            Requested loss as a fraction of the escapable reservoir, as
+            recorded by :func:`limit_escape_step`.
+        dt : float
+            Length of the step that produced the request [yr].
+        max_frac : float
+            Largest share of the reservoir one step may remove.
+
+    Returns
+    -------
+        dt_limit : float
+            Step length that would place the same rate at ``max_frac`` [yr].
+            Infinite when the request was within the cap, so no limit applies.
+    """
+    if not np.isfinite(clamp_frac) or clamp_frac <= max_frac:
+        return float('inf')
+    if not np.isfinite(dt) or dt <= 0.0:
+        return float('inf')
+    return dt * max_frac / clamp_frac
+
+
 def run_escape(
     config: Config,
     hf_row: dict,
@@ -141,6 +176,7 @@ def run_escape(
     dt: float = 0.0,
     stellar_track=None,
     atmosphere_only: bool = False,
+    interior_o=None,
 ) -> None:
     """Run Escape submodule.
 
@@ -161,6 +197,9 @@ def run_escape(
             regardless of ``config.escape.reservoir``. Set once the mantle has
             solidified: dissolved volatiles are then frozen into the solid and
             the atmosphere is the only reservoir that can supply escape.
+        interior_o : Interior_t | None
+            Interior state. When given, its ``escape_dt_limit`` is set so a
+            capped step shortens the next one; see :func:`escape_dt_limit`.
     """
     dirs = dirs or {}
 
@@ -229,6 +268,14 @@ def run_escape(
     # Cap what one step may remove before anything acts on it, so the debit and
     # the cumulative counter below agree on the mass that actually left.
     esc_step_kg = limit_escape_step(hf_row, dt, reservoir)
+
+    # Ask the interior for a shorter next step when the cap bound this one, so
+    # the same rate stops re-requesting the same excess. Set on every call, so
+    # a step that stays within the cap clears any limit left by an earlier one.
+    if interior_o is not None:
+        interior_o.escape_dt_limit = escape_dt_limit(
+            float(hf_row.get('esc_clamp_frac', 0.0)), dt
+        )
 
     # Accumulate cumulative escaped mass [kg] for the desiccation gate. This
     # is the integral of the applied per-step loss over all escape calls and is

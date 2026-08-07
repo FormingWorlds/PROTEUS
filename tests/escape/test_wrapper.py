@@ -23,8 +23,10 @@ Related documentation:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 pytest.importorskip('zephyrus')
@@ -1344,3 +1346,138 @@ def test_run_escape_cumulative_matches_the_mass_actually_removed():
     # Discrimination guard: accumulating the request instead would record
     # 2.0e23 kg, ten times the mass that actually left.
     assert hf['esc_kg_cumulative'] < 0.2 * 2.0e23
+
+
+@pytest.mark.physics_invariant
+def test_escape_dt_limit_puts_an_unchanged_rate_exactly_at_the_cap():
+    """The limit must be the step length at which the same escape rate stops
+    overshooting, so a rate that does not change is admitted rather than capped
+    again.
+
+    This is a round trip: cap a deliberate overshoot, shorten the step by the
+    returned limit, then re-run the same rate over the shorter step and require
+    the requested fraction to land on the cap. Pinning the round trip rather
+    than the formula means an inverted ratio, which would lengthen the step, is
+    caught by the invariant itself.
+    """
+    from proteus.escape.wrapper import (
+        ESCAPE_STEP_MAX_FRAC,
+        escape_dt_limit,
+        limit_escape_step,
+    )
+    from proteus.utils.constants import element_list, secs_per_year
+
+    dt = 1.0e4  # yr
+    escapable = 8.0e22  # kg
+    rate = 2.0e23 / (secs_per_year * dt)  # asks for 2.5x the reservoir
+
+    hf = {f'{e}_kg_atm': 0.0 for e in element_list}
+    hf['H_kg_atm'] = escapable
+    hf['esc_rate_total'] = rate
+
+    limit_escape_step(hf, dt, 'outgas')
+    frac = float(hf['esc_clamp_frac'])
+    assert frac > ESCAPE_STEP_MAX_FRAC  # the step really did overshoot
+
+    dt_next = escape_dt_limit(frac, dt)
+    # The limit shortens the step; an inverted ratio would return 1.0e5 yr.
+    assert 0.0 < dt_next < dt
+
+    # Same rate, same reservoir, shorter step: now exactly at the cap.
+    hf_next = {f'{e}_kg_atm': 0.0 for e in element_list}
+    hf_next['H_kg_atm'] = escapable
+    hf_next['esc_rate_total'] = rate
+    applied = limit_escape_step(hf_next, dt_next, 'outgas')
+
+    assert hf_next['esc_clamp_frac'] == pytest.approx(ESCAPE_STEP_MAX_FRAC, rel=1e-9)
+    # Boundedness holds at the limit: the loss still cannot exceed the reservoir.
+    assert applied == pytest.approx(ESCAPE_STEP_MAX_FRAC * escapable, rel=1e-9)
+    assert 0.0 < applied <= escapable
+
+
+@pytest.mark.unit
+def test_escape_dt_limit_is_inert_within_the_cap_and_on_bad_input():
+    """A step that stayed within the cap must impose no limit, and neither must
+    a degenerate request, so the controller is never pinned short by a value it
+    cannot interpret.
+
+    Covers the boundary (a request sitting exactly at the cap is not an
+    overshoot), a zero-loss step, and the non-finite and non-positive inputs a
+    failed solve can produce.
+    """
+    import math
+
+    from proteus.escape.wrapper import ESCAPE_STEP_MAX_FRAC, escape_dt_limit
+
+    dt = 1.0e3
+
+    assert math.isinf(escape_dt_limit(0.0, dt))
+    assert math.isinf(escape_dt_limit(1.9e-05, dt))
+    # Boundary is inclusive: exactly at the cap is not an overshoot.
+    assert math.isinf(escape_dt_limit(ESCAPE_STEP_MAX_FRAC, dt))
+    assert math.isinf(escape_dt_limit(float('nan'), dt))
+
+    # A real overshoot with a degenerate step imposes nothing, because there is
+    # no step length to scale down from.
+    assert math.isinf(escape_dt_limit(4.0, 0.0))
+    assert math.isinf(escape_dt_limit(4.0, -1.0))
+    assert math.isinf(escape_dt_limit(4.0, float('inf')))
+
+    # Just past the cap it engages, and mildly: a 1% overshoot must not collapse
+    # the step, which a naive "halve it" rule would.
+    mild = escape_dt_limit(ESCAPE_STEP_MAX_FRAC * 1.01, dt)
+    assert mild == pytest.approx(dt / 1.01, rel=1e-9)
+    assert mild > 0.9 * dt
+
+
+@pytest.mark.unit
+def test_run_escape_publishes_the_step_limit_and_clears_it_again():
+    """A capped step must hand the interior a shorter next step, and a step that
+    stays within the cap must withdraw that request, so one overshoot does not
+    pin the controller short for the rest of the run.
+
+    Both directions are exercised on the same interior object, because the
+    failure that matters is a stale limit surviving a healthy step.
+    """
+    from proteus.escape.wrapper import ESCAPE_STEP_MAX_FRAC, run_escape
+    from proteus.utils.constants import element_list, secs_per_year
+
+    dt = 1.0e4
+    escapable = 8.0e22
+
+    def _fresh_hf(rate):
+        hf = {f'{e}_kg_atm': 0.0 for e in element_list}
+        hf.update({f'{e}_kg_total': 0.0 for e in element_list})
+        hf['H_kg_atm'] = escapable
+        hf['H_kg_total'] = escapable
+        hf['esc_kg_cumulative'] = 0.0
+        hf['M_vol_initial'] = escapable
+        hf['esc_rate_total'] = rate
+        return hf
+
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.outgas.mass_thresh = 1.0e10
+
+    interior_o = SimpleNamespace(escape_dt_limit=float('inf'))
+
+    # An overshooting step asks for a shorter next step.
+    over_rate = 2.0e23 / (secs_per_year * dt)
+    config.escape.dummy.rate = over_rate
+    run_escape(config, _fresh_hf(over_rate), dt=dt, interior_o=interior_o)
+
+    assert np.isfinite(interior_o.escape_dt_limit)
+    assert 0.0 < interior_o.escape_dt_limit < dt
+    # Discrimination guard: the limit is the cap-over-request share of the step,
+    # 0.25/2.5 = 0.1, so a rule that merely halved dt would give 5.0e3 yr.
+    assert interior_o.escape_dt_limit == pytest.approx(
+        dt * ESCAPE_STEP_MAX_FRAC / 2.5, rel=1e-6
+    )
+
+    # A healthy step withdraws it again.
+    calm_rate = 1.9e-05 * escapable / (secs_per_year * dt)
+    config.escape.dummy.rate = calm_rate
+    run_escape(config, _fresh_hf(calm_rate), dt=dt, interior_o=interior_o)
+
+    assert np.isinf(interior_o.escape_dt_limit)

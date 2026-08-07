@@ -630,3 +630,86 @@ def test_next_step_maximum_rel_default_widens_cap_proportional_to_Time():
     # maximum_rel would land at 10 here; the gap of 40 is well above
     # any reasonable rounding error.
     assert dt > 10.0
+
+
+class TestEscapeStepLimit:
+    """The controller must honour a shorter step requested by a capped escape
+    step, without letting it override the run's own floor."""
+
+    @pytest.mark.physics_invariant
+    def test_next_step_shortens_dt_to_the_escape_limit(self):
+        """A capped escape step hands the controller a maximum next step, and the
+        controller must take it rather than the value its own error estimate
+        wanted.
+
+        The limit is set an order of magnitude below the unconstrained step, so a
+        controller that ignored it would return a value ten times larger, which no
+        tolerance could confuse with the limited one.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        hf_all = _make_hf_all(n_rows=10, dt_prev=1.0e3)
+        hf_row = {'Time': float(hf_all['Time'].iloc[-1]), 'Phi_global': 1.0}
+
+        interior_o = _make_interior_o()
+        interior_o.escape_dt_limit = np.inf
+        unconstrained = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=interior_o)
+
+        interior_o.escape_dt_limit = unconstrained / 10.0
+        limited = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=interior_o)
+
+        assert limited == pytest.approx(unconstrained / 10.0, rel=1e-9)
+        # Positivity: a limited step is still a usable forward step.
+        assert limited > 0.0
+        # Discrimination guard: ignoring the limit returns the unconstrained
+        # value, ten times larger than the assertion above admits.
+        assert limited < 0.2 * unconstrained
+
+    @pytest.mark.unit
+    def test_escape_limit_does_not_breach_the_configured_minimum(self):
+        """An escape limit below the run's minimum step must not drive dt under
+        that floor, because a step at zero would stall the run rather than slow
+        it.
+
+        Edge case: the limit is set far below `dt.minimum`, the regime a runaway
+        overshoot produces, and the floor has to win.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        hf_all = _make_hf_all(n_rows=10, dt_prev=1.0e3)
+        hf_row = {'Time': float(hf_all['Time'].iloc[-1]), 'Phi_global': 1.0}
+        floor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
+
+        interior_o = _make_interior_o()
+        interior_o.escape_dt_limit = 1.0e-6  # far below the floor
+
+        limited = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=interior_o)
+
+        assert limited == pytest.approx(floor, rel=1e-9)
+        assert limited > 1.0e-6
+
+    @pytest.mark.unit
+    def test_absent_escape_limit_leaves_the_step_untouched(self):
+        """An interior object that never saw an escape step must step exactly as
+        it did before, so the limit is inert on every run where escape is off.
+
+        Exercises both shapes the controller can meet: the attribute missing
+        entirely, and the attribute present but infinite.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        hf_all = _make_hf_all(n_rows=10, dt_prev=1.0e3)
+        hf_row = {'Time': float(hf_all['Time'].iloc[-1]), 'Phi_global': 1.0}
+
+        bare = _make_interior_o()  # no escape_dt_limit attribute at all
+        without = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=bare)
+
+        explicit = _make_interior_o()
+        explicit.escape_dt_limit = np.inf
+        with_inf = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=explicit)
+
+        assert without == pytest.approx(with_inf, rel=1e-12)
+        assert without > 0.0

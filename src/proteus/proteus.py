@@ -1022,9 +1022,14 @@ class Proteus:
                     self.directories,
                     self.interior_o.dt,
                     atmosphere_only=self.crystallized,
+                    interior_o=self.interior_o,
                 )
                 if _IT_TIMING_ENABLED:
                     _t_mod['escape'] = time.perf_counter() - _t0
+            else:
+                # No escape step this loop, so nothing justifies holding the
+                # step short on account of one.
+                self.interior_o.escape_dt_limit = np.inf
 
             ############### / ESCAPE
 

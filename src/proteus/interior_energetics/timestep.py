@@ -319,6 +319,23 @@ def next_step(
             UpdateStatusfile(dirs, 20)
             raise ValueError(f'Invalid time-stepping method: {config.params.dt.method}')
 
+        # Do not let the step repeat an escape overshoot at the same size. The
+        # limit is the step that would have put the previous escape rate at the
+        # cap, so it shrinks in proportion to how far over the request went.
+        esc_dt_limit = (
+            getattr(interior_o, 'escape_dt_limit', float('inf'))
+            if interior_o is not None
+            else float('inf')
+        )
+        if np.isfinite(esc_dt_limit) and esc_dt_limit < dtswitch:
+            log.info(
+                'Time-stepping: escape hit the per-step cap, limiting dt to %.2e yr '
+                'instead of %.2e yr',
+                esc_dt_limit,
+                dtswitch,
+            )
+            dtswitch = esc_dt_limit
+
         # Minimum step size. Applies to every dynamic-stepping method
         # (proportional, adaptive, maximum); the static (Time < 2 yr) and
         # initial branches keep their explicit config value and are not
