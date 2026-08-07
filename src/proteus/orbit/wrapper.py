@@ -20,8 +20,8 @@ def init_orbit(handler: Proteus):
     """
     Initialise orbit and tides stuff.
     """
-    module = str(handler.config.orbit.module)
-    if module == 'None':
+    module = handler.config.orbit.module
+    if module is None:
         return
 
     log.info(f"Preparing tides model '{module}'")

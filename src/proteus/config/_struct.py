@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, le, lt
+from attrs.validators import ge, gt, in_, le, lt, optional
 
 from ._converters import none_if_none
 
@@ -268,11 +268,11 @@ class Struct:
 
     module: Optional[str] = field(
         default='zalmoxis',
-        validator=lambda inst, attr, val: val is None or val in ('dummy', 'spider', 'zalmoxis'),
+        validator=in_((None, 'dummy', 'spider', 'zalmoxis')),
     )
     zalmoxis: Optional[Zalmoxis] = field(
         factory=Zalmoxis,
-        validator=lambda inst, attr, val: val is None or valid_zalmoxis(inst, attr, val),
+        validator=optional(valid_zalmoxis),
     )
 
     core_density = field(default='self')

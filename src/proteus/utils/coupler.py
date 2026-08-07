@@ -474,7 +474,7 @@ def print_citation(config: Config):
             pass
 
     # Escape module
-    match config.outgas.module:
+    match config.escape.module:
         case 'zephyrus':
             # _cite("Postolec et al. (2025)", "in prep")
             pass
