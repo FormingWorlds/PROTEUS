@@ -15,6 +15,7 @@ def valid_path(instance, attribute, value):
 
 
 def max_bigger_than_min(instance, attribute, value):
+    """The maximum must exceed the minimum on the same section."""
     if value <= instance.minimum:
         raise ValueError("'maximum' has to be bigger than 'minimum'.")
 

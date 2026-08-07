@@ -9,11 +9,13 @@ from ._converters import lowercase, none_if_none
 
 
 def warn_if_dummy(instance, attribute, value):
+    """Reject enabling this option when the dummy atmos_clim module is selected."""
     if (instance.module == 'dummy') and value:
         raise ValueError(f'Dummy atmos_clim module is incompatible with {attribute.name}=True')
 
 
 def valid_rayleigh(instance, attribute, value):
+    """Reject Rayleigh scattering with the dummy module or AGNI in grey-gas mode."""
     if not value:
         return
 
@@ -53,6 +55,7 @@ def check_overlap(instance, attribute, value):
 
 
 def valid_agni(instance, attribute, value):
+    """Validate AGNI settings: pressure ordering, surface-state support, rainout, spectral file."""
     if instance.module != 'agni':
         return
 
@@ -256,6 +259,7 @@ class Agni:
 
 
 def valid_janus(instance, attribute, value):
+    """Validate JANUS settings: spectral file selection and temperature-bound ordering."""
     if instance.module != 'janus':
         return
 

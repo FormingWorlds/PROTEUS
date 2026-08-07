@@ -9,6 +9,7 @@ from ._converters import none_if_none
 
 
 def valid_zalmoxis(instance, attribute, value):
+    """Validate Zalmoxis EOS format strings and reject unsupported miscibility options."""
     if instance.module == 'spider':
         return
 

@@ -23,8 +23,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def spada_zephyrus(instance, attribute, value):
-    # using zephyrus
-    #     zephyrus requires MORS + Spada
+    """ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks."""
     if (instance.escape.module == 'zephyrus') and not (
         (instance.star.module == 'mors') and (instance.star.mors.tracks == 'spada')
     ):
@@ -32,13 +31,13 @@ def spada_zephyrus(instance, attribute, value):
 
 
 def instmethod_dummy(instance, attribute, value):
-    # Instellation method 'inst' only support for dummy star module
+    """Instellation method 'inst' is only available with the dummy star module."""
     if (instance.orbit.instellation_method == 'inst') and not (instance.star.module == 'dummy'):
         raise ValueError("Instellation method can only be 'inst' when star.module=dummy ")
 
 
 def instmethod_evolve(instance, attribute, value):
-    # Orbital evolution not supported when installation_method is 'inst'
+    """Orbital evolution cannot be combined with instellation method 'inst'."""
     if (instance.orbit.instellation_method == 'inst') and instance.orbit.evolve:
         raise ValueError(
             "Planet orbital evolution not supported for `instellation_method='inst'`"
@@ -46,7 +45,7 @@ def instmethod_evolve(instance, attribute, value):
 
 
 def satellite_evolve(instance, attribute, value):
-    # Planetary orbital evolution not supported when also modelling satellite
+    """Planetary orbital evolution and the satellite model are mutually exclusive."""
     if instance.orbit.satellite and instance.orbit.evolve:
         raise ValueError(
             'Planet orbital evolution cannot be used simultaneously with a satellite'
@@ -54,7 +53,7 @@ def satellite_evolve(instance, attribute, value):
 
 
 def tides_enabled_orbit(instance, attribute, value):
-    # Tides in interior requires orbit module to not be None
+    """Interior tidal heating requires an orbit module to be enabled."""
     if (instance.interior_energetics.heat_tidal) and (instance.orbit.module is None):
         raise ValueError('Interior tidal heating requires an orbit module to be enabled')
 
@@ -126,13 +125,13 @@ def boreas_requires_atmosphere(instance, attribute, value):
 
 
 def observe_resolved_atmosphere(instance, attribute, value):
-    # Synthetic observations require a spatially resolved atmosphere profile
+    """Synthetic observations require a spatially resolved atmosphere (not dummy)."""
     if (instance.observe.module is not None) and (instance.atmos_clim.module == 'dummy'):
         raise ValueError('Observational synthesis requires that atmos_clim != dummy')
 
 
 def janus_escape_atmosphere(instance, attribute, value):
-    # Using escape.zephyrus with JANUS requires params.stop.escape to be True
+    """ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled."""
     if (
         (instance.escape.module == 'zephyrus')
         and (instance.atmos_clim.module == 'janus')

@@ -48,6 +48,7 @@ def _step_cap_valid(instance, attribute, value):
 
 
 def valid_spider(instance, attribute, value):
+    """SPIDER requires at least one energy transport term to be enabled."""
     if instance.module != 'spider':
         return
 
@@ -129,6 +130,7 @@ class Spider:
 
 
 def valid_aragog(instance, attribute, value):
+    """Aragog requires at least one energy transport term to be enabled."""
     if instance.module != 'aragog':
         return
 
@@ -271,6 +273,7 @@ class Aragog:
 
 
 def valid_interiordummy(instance, attribute, value):
+    """Dummy interior requires the liquidus to sit above the solidus."""
     if instance.module != 'dummy':
         return
 
