@@ -66,6 +66,7 @@ nav:
           - Escape and outgassing: Reference/config/escape_outgas.md
           - Observations: Reference/config/observe.md
       - Melting curves: Reference/melting_curves.md
+      - Module map: Reference/module_map.md
       - Module versions: Reference/module_versions.md
       - Output format: Reference/output.md
       - Reference data: Reference/data.md
