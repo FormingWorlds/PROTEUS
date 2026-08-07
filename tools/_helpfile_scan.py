@@ -110,11 +110,20 @@ def _species_lists() -> dict[str, list]:
 
 
 def expected_registry_keys() -> list[str]:
-    """The outgassing copy-registry, executed from the checkout."""
+    """The outgassing copy-registry, executed from the checkout.
+
+    Loaded from its file directly: importing ``proteus.outgas`` would execute
+    the package ``__init__``, which pulls the outgassing backends (calliope
+    and friends) that the docs-freshness environment does not install.
+    """
     if 'proteus' not in importlib.sys.modules:
         _docgen.import_proteus_config()
-    common = importlib.import_module('proteus.outgas.common')
-    return list(common.expected_keys())
+    spec = importlib.util.spec_from_file_location(
+        '_proteus_outgas_common', SRC / 'outgas' / 'common.py'
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return list(module.expected_keys())
 
 
 def _row_name(node) -> str | None:

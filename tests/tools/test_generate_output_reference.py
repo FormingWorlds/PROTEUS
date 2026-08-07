@@ -94,11 +94,16 @@ def test_backend_extraction_resolves_templates_and_renames():
 
 def test_backend_extraction_missing_function_raises():
     """Error contract: a declared merge site whose function vanished raises
-    ScanError naming the file, instead of yielding an empty key set that
-    would silently blank the producer column."""
+    ScanError naming both the missing symbol and the file, instead of
+    yielding an empty key set that would silently blank the producer
+    column; the same file still extracts through a valid function after
+    the failure (no broken state left behind)."""
     species = _scan._species_lists()
     with pytest.raises(_scan.ScanError, match='no_such_backend'):
         _scan.extract_backend_keys('atmos_clim/agni.py', 'no_such_backend', species)
+    with pytest.raises(_scan.ScanError, match='agni'):
+        _scan.extract_backend_keys('atmos_clim/agni.py', 'no_such_backend', species)
+    assert 'F_olr' in _scan.extract_backend_keys('atmos_clim/agni.py', 'run_agni', species)
 
 
 def test_every_column_attributed_or_listed_unresolved(matrix):
