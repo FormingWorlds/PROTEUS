@@ -22,7 +22,10 @@ a check that stops reaching its subject fails rather than passing on nothing.
 What they conclude rests on how ruff reads a search path, which is described
 here rather than consulted. ``tests/test_import_sorting_ruff.py`` puts that
 description to the tool itself, on a project built for the question, and runs
-in the tier that carries the real binary.
+in the nightly tier because it carries a real binary. The shapes
+``_entries_holding_a_module`` counts and the spellings
+``_entries_on_the_repository_root`` resolves are the ones pinned over there, so
+a change to either belongs in both files.
 
 Whether a clone at the root is read as a module follows the filesystem, since
 ruff looks the name up as a path: a case-folding filesystem answers to

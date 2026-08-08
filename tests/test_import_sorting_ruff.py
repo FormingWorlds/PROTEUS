@@ -1,19 +1,40 @@
 """Ask ruff itself how it decides that an import is first party.
 
 ``tests/test_import_sorting_config.py`` reads the configuration and reasons
-about what ruff does with it, and everything it concludes rests on three
-behaviours of the tool: a directory standing in a search path entry names a
-first-party module, a bare module file does the same, and the first-party list
-is matched as written. A ruff release that changed any of them would leave
-every assertion over there green while the repository broke in the way that
-file exists to prevent.
+about what ruff does with it, and what it concludes rests on how ruff reads a
+search path: a directory standing in a searched entry names a first-party
+module whether or not it holds an ``__init__.py``, a bare module file or stub
+does the same, an entry reaching the root by an oblique spelling reaches it,
+and the first-party list is matched as written. Those are the shapes
+``_entries_holding_a_module`` and ``_entries_on_the_repository_root`` count
+over there, and they are pinned against the tool here.
 
-The checks here build a project for the question rather than reading the one
-around them, so nothing they report depends on which modules happen to be
-installed. They run the real binary, which puts them in the tier that does, and
-they fail rather than skip when it is absent: ruff is a requirement of this
-project rather than an optional tool, and a skipped check and a passing one
-read the same in a run log.
+Three ruffs meet this repository and none is coordinated with the others. The
+one that rewrites import groups belongs to the pre-commit hook and is held at a
+pinned revision in ``.pre-commit-config.yaml``. The one that rejects the
+rewrite belongs to the checks and is installed unpinned. The one resolved here
+is whatever ``ruff`` stands on the path, which this project requires without
+pinning. So what these checks read is a real ruff rather than the one doing the
+rewriting, which is deliberate: reaching for the hook's binary would tie this
+file to the hook's internals.
+
+They belong to the nightly tier rather than the pull request checks, because
+they carry a real binary. A change in how ruff reads a search path therefore
+surfaces within a day of the release that brings it rather than on the pull
+request that installs it.
+
+Each check builds its own project, so nothing it reports depends on which
+modules are installed. That project carries its own ``pyproject.toml`` above
+the probe, which is what ruff reads, and the environment handed to it is
+stripped of the home and configuration paths as well, so a setting belonging to
+whoever runs the checks cannot reach the probe. Whether a directory is matched
+with regard to case is left out: ruff looks the name up as a path, so the
+answer follows the filesystem, and an assertion about a capitalised directory
+would hold on a case-folding machine and fail on a case-sensitive one.
+
+They fail rather than skip when ruff is absent, since it is a requirement of
+this project rather than an optional tool, and a skipped check and a passing
+one read the same in a run log.
 
 References:
   - docs/How-to/testing.md
@@ -22,6 +43,7 @@ References:
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -69,6 +91,9 @@ def _sorted_probe(
     leaves behind are the group boundaries. Anything it wrote to its error
     stream comes back too, so a run that failed says why rather than arriving
     as an unexplained grouping.
+
+    The home and configuration paths are pointed inside the project, so the
+    only settings ruff can reach are the ones written here.
     """
     entries = ', '.join(f'"{entry}"' for entry in search_path)
     isort = ''
@@ -82,12 +107,14 @@ def _sorted_probe(
         encoding='utf-8',
     )
     probe.write_text(source, encoding='utf-8')
+    sandboxed = project / 'settings_of_no_one'
     completed = subprocess.run(
         [RUFF, 'check', '--no-cache', '--fix', '--quiet', str(probe)],
         cwd=project,
         capture_output=True,
         text=True,
         check=False,
+        env={**os.environ, 'HOME': str(sandboxed), 'XDG_CONFIG_HOME': str(sandboxed)},
     )
     blocks: list[list[str]] = []
     current: list[str] = []
@@ -125,11 +152,16 @@ def test_ruff_reads_a_module_beside_the_source_as_first_party(tmp_path):
     and that is only true while ruff still behaves this way.
 
     Verifies:
-    - ruff sorts the probe at all, under both search paths, which is what says
-      the groupings below describe its reading rather than an untouched file.
+    - ruff sorts the probe at all, under every search path read, which is what
+      says the groupings below describe its reading rather than an untouched
+      file.
     - With the root searched, the module beside the source joins the group that
       holds the package standing inside it.
     - With the source tree alone searched, it does not.
+    - An entry that arrives at the root by climbing back out of the source tree
+      reaches it as surely as the bare dot does, which is the reading the
+      configuration check takes when it resolves an entry rather than comparing
+      how it is spelled.
     """
     _require_ruff()
     probe = _build_probe_project(tmp_path)
@@ -138,6 +170,8 @@ def test_ruff_reads_a_module_beside_the_source_as_first_party(tmp_path):
     _assert_ruff_sorted(searched, searched_report, 'the root searched')
     source_only, source_report = _sorted_probe(tmp_path, probe, ['src'])
     _assert_ruff_sorted(source_only, source_report, 'the source tree alone searched')
+    oblique, oblique_report = _sorted_probe(tmp_path, probe, ['src/..', 'src'])
+    _assert_ruff_sorted(oblique, oblique_report, 'the root reached obliquely')
 
     assert 'import proteus' in _block_holding(searched, 'mors'), (
         'with the repository root on the import search path, ruff no longer sorts a '
@@ -148,6 +182,11 @@ def test_ruff_reads_a_module_beside_the_source_as_first_party(tmp_path):
         'with the source tree alone searched, ruff still sorts a module standing beside '
         'it into this project, so keeping the root off the search path is no longer '
         'enough to prevent the misreading'
+    )
+    assert 'import proteus' in _block_holding(oblique, 'mors'), (
+        'an entry climbing back out of the source tree no longer reaches the repository '
+        'root, so resolving an entry rather than reading its spelling reports a hazard '
+        'ruff would not act on'
     )
 
 
@@ -198,15 +237,22 @@ def test_ruff_reads_a_bare_module_file_as_first_party(tmp_path):
     - A bare ``.py`` file in a searched directory sorts its import into the
       group that holds this project.
     - A bare ``.pyi`` stub does the same, so the stub shape is not a gap.
-    - Neither is read that way once the directory holding them is off the
-      search path, so the file is what carries the name rather than something
-      else about the project.
+    - A directory carrying no ``__init__.py`` does the same, which is the
+      breadth the configuration check takes when it counts every directory
+      standing in an entry rather than only the ones laid out as packages.
+    - None of them is read that way once the directory holding them is off the
+      search path, so what carries the name is the entry being searched rather
+      than something else about the project.
     """
     _require_ruff()
     probe = _build_probe_project(tmp_path)
     (tmp_path / 'filemodule.py').write_text('', encoding='utf-8')
     (tmp_path / 'stubmodule.pyi').write_text('value: int\n', encoding='utf-8')
-    source = 'import filemodule\nimport os\nimport proteus\nimport stubmodule\n'
+    (tmp_path / 'baredirectory').mkdir()
+    source = (
+        'import baredirectory\nimport filemodule\nimport os\n'
+        'import proteus\nimport stubmodule\n'
+    )
 
     searched, searched_report = _sorted_probe(tmp_path, probe, ['.', 'src'], source=source)
     _assert_ruff_sorted(searched, searched_report, 'the root searched')
@@ -220,6 +266,11 @@ def test_ruff_reads_a_bare_module_file_as_first_party(tmp_path):
     assert 'import proteus' in _block_holding(searched, 'stubmodule'), (
         'a module standing as a stub file in a searched directory is no longer read as '
         'part of this project, so counting stubs is guarding against nothing'
+    )
+    assert 'import proteus' in _block_holding(searched, 'baredirectory'), (
+        'a directory carrying no __init__.py in a searched directory is no longer read '
+        'as part of this project, so counting every directory rather than the ones laid '
+        'out as packages reports a hazard ruff would not act on'
     )
     assert 'import proteus' not in _block_holding(source_only, 'filemodule'), (
         'a module file outside every search path entry is still read as part of this '
