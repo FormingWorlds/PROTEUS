@@ -1214,6 +1214,7 @@ def test_limit_escape_step_passes_a_typical_step_through_unchanged():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_limit_escape_step_keeps_the_overshoot_visible_after_capping():
     """Capping the loss must not hide how large the request was, otherwise a
     capped run-down is indistinguishable from a physical one.
@@ -1255,19 +1256,19 @@ def test_limit_escape_step_handles_no_loss_and_an_empty_reservoir():
     base = {f'{e}_kg_atm': 0.0 for e in element_list}
 
     hf = dict(base, H_kg_atm=1.0e20, esc_rate_total=0.0)
-    assert limit_escape_step(hf, 1.0e3, 'outgas') == 0.0
-    assert hf['esc_clamp_frac'] == 0.0
+    assert limit_escape_step(hf, 1.0e3, 'outgas') == pytest.approx(0.0, abs=1e-12)
+    assert hf['esc_clamp_frac'] == pytest.approx(0.0, abs=1e-12)
 
     hf = dict(base, H_kg_atm=1.0e20, esc_rate_total=float('nan'))
-    assert limit_escape_step(hf, 1.0e3, 'outgas') == 0.0
-    assert hf['esc_clamp_frac'] == 0.0
+    assert limit_escape_step(hf, 1.0e3, 'outgas') == pytest.approx(0.0, abs=1e-12)
+    assert hf['esc_clamp_frac'] == pytest.approx(0.0, abs=1e-12)
 
     # Empty reservoir: nothing can leave, so the step removes nothing. Returning
     # the request instead would credit the cumulative counter with mass that was
     # never debited from any inventory.
     hf = dict(base, esc_rate_total=1.0e5)
-    assert limit_escape_step(hf, 1.0e3, 'outgas') == 0.0
-    assert hf['esc_clamp_frac'] == 0.0
+    assert limit_escape_step(hf, 1.0e3, 'outgas') == pytest.approx(0.0, abs=1e-12)
+    assert hf['esc_clamp_frac'] == pytest.approx(0.0, abs=1e-12)
 
     with pytest.raises(ValueError, match='Invalid escape reservoir'):
         limit_escape_step(dict(base, esc_rate_total=1.0e5), 1.0e3, 'nonsense')
@@ -1841,3 +1842,100 @@ def test_crystallized_step_moves_the_same_mass_in_every_record():
             # 1.25e9 kg from the atmosphere that no inventory ever recorded.
             assert fell_atmos == pytest.approx(0.0, abs=1e-6)
             assert 0.25 * atmos_kg > 1.0e9  # that drain would have been large
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_unreadable_reservoir_debits_nothing_and_credits_nothing():
+    """A reservoir left non-finite by an upstream failure must debit nothing and
+    credit nothing, because the desiccation check exists to tell a wiped
+    atmosphere apart from real escape and cannot do so if the wipe is credited.
+
+    Physical scenario: an atmosphere solve fails and leaves a non-finite mass in
+    the atmospheric reservoir while the whole-planet inventory is still intact.
+    Edge case: the comparisons that would ordinarily catch a bad value all
+    return False against a NaN, so the guard has to be explicit.
+    """
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.wrapper import check_desiccation
+    from proteus.utils.constants import element_list
+
+    budget_kg = 1.0e23
+    hf = {f'{e}_kg_atm': 0.0 for e in element_list}
+    hf.update({f'{e}_kg_total': 0.0 for e in element_list})
+    hf['H_kg_atm'] = float('nan')
+    hf['H_kg_total'] = budget_kg
+    hf['esc_kg_cumulative'] = 0.0
+    hf['M_vol_initial'] = budget_kg
+
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = 1.0e5  # kg/s, a live rate against a bad reservoir
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = 1.0e10
+
+    run_escape(config, hf, dt=1.0e4, atmosphere_only=True)
+
+    assert hf['H_kg_total'] == pytest.approx(budget_kg, rel=1e-12)
+    assert hf['esc_step_kg'] == pytest.approx(0.0, abs=1e-6)
+    assert hf['esc_kg_cumulative'] == pytest.approx(0.0, abs=1e-6)
+    # Discrimination: letting the non-finite value through zeroes every element
+    # and credits the whole budget, which reads to the check as accounted loss.
+    assert hf['H_kg_total'] > 0.5 * budget_kg
+    assert check_desiccation(config, hf) is False
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_atmosphere_rescale_is_bounded_when_the_loss_outsizes_the_column():
+    """The atmospheric rescale must never remove more than the share one step is
+    allowed, so a loss sized against a reservoir larger than the atmosphere
+    cannot empty the column while the whole-planet totals stay whole.
+
+    Physical scenario: the iteration the mantle solidifies. Escape still sizes
+    its loss from the bulk reservoir there, which for a mostly dissolved
+    inventory is orders of magnitude larger than the atmosphere above it.
+    """
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.constants import element_list
+
+    bulk_kg, atmos_kg = 1.0e22, 1.0e17
+
+    hf = {f'{e}_kg_atm': 0.0 for e in element_list}
+    hf.update({f'{e}_kg_total': 0.0 for e in element_list})
+    hf['H_kg_total'] = bulk_kg
+    hf['H_kg_atm'] = atmos_kg
+    hf['M_atm'] = atmos_kg
+    hf['P_surf'] = 1.0
+    hf['esc_kg_cumulative'] = 0.0
+    hf['M_vol_initial'] = bulk_kg
+    for gas in ('H2O', 'CO2', 'O2', 'H2', 'CO', 'CH4', 'N2', 'S2', 'SO2'):
+        hf[f'{gas}_kg_atm'] = 0.0
+        hf[f'{gas}_bar'] = 0.0
+    hf['H2O_kg_atm'] = atmos_kg
+    hf['H2O_bar'] = 1.0
+
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'bulk'  # sized from the whole planet, not the column
+    config.escape.dummy.rate = 1.0e9  # kg/s
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = 1.0e10
+    config.outgas.vapourise = False
+
+    # The mantle solidifies this iteration, so escape still runs on the bulk
+    # reservoir and the rescale that follows it runs on the frozen atmosphere.
+    run_escape(config, hf, dt=1.0e4, atmosphere_only=False)
+    assert hf['esc_step_kg'] > 100.0 * atmos_kg  # the mismatch really is large
+    run_crystallized(config, hf, dt=1.0e4)
+
+    retained = hf['M_atm'] / atmos_kg
+    assert retained == pytest.approx(1.0 - config.escape.step_max_frac, rel=1e-9)
+    # Discrimination: rescaling by the raw loss leaves nothing, and a surface
+    # pressure of zero over a full volatile budget is the state to avoid.
+    assert hf['M_atm'] > 0.5 * atmos_kg
+    assert hf['P_surf'] > 0.5

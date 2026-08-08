@@ -514,7 +514,13 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     if esc_step_kg is None or not np.isfinite(float(esc_step_kg)):
         esc_step_kg = esc_rate * secs_per_year * dt
     esc_step_kg = float(esc_step_kg)
-    retained = max(0.0, (m_atm - esc_step_kg) / m_atm)
+
+    # Hold the rescale to the share one step may take. On the iteration the
+    # mantle solidifies the loss was still sized against `escape.reservoir`,
+    # which for the bulk reservoir can be many times the atmosphere, and an
+    # unbounded rescale would empty the column while the totals stayed whole.
+    max_frac = float(config.escape.step_max_frac)
+    retained = max(1.0 - max_frac, (m_atm - esc_step_kg) / m_atm)
 
     # Scale the atmospheric reservoirs by the retained fraction. Uniform
     # scaling preserves composition, so `*_vmr` and `atm_kg_per_mol` (mmw)

@@ -781,3 +781,28 @@ class TestEscapeStepLimit:
         # The parameter exists to be forwarded, so its presence in the signature
         # without the forwarding is exactly the silent-failure shape.
         assert 'interior_o' in inspect.signature(BoundaryRunner.compute_time_step).parameters
+
+    @pytest.mark.unit
+    def test_main_loop_wires_and_clears_the_escape_step_limit(self):
+        """The coupling loop must hand the interior state to escape, and must
+        clear the per-step records on an iteration where escape does not run.
+
+        Without the hand-over the shortening is inert for every run, which is the
+        silent-failure shape a backend already hit. Without the clearing, the
+        request from an earlier step carries forward and a run that is stepping
+        freely still reads as one held short by the cap.
+        """
+        import inspect
+
+        from proteus.proteus import Proteus
+
+        src = inspect.getsource(Proteus.start)
+        assert 'run_escape(' in src  # the anchor below depends on it
+        call = src.split('run_escape(')[1].split(')')[0]
+        assert 'interior_o=self.interior_o' in call
+
+        # The branch taken when escape does not run has to reset all three, so
+        # the limit, the request and the applied loss cannot outlive their step.
+        skipped = src.split('run_escape(')[1]
+        for field in ('escape_dt_limit', 'esc_clamp_frac', 'esc_step_kg'):
+            assert field in skipped, f'{field} is never cleared when escape is skipped'

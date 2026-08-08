@@ -109,6 +109,15 @@ def limit_escape_step(
         return 0.0
 
     escapable = escapable_mass(hf_row, reservoir)
+    if not np.isfinite(escapable):
+        # An upstream failure has left the reservoir unreadable. Sizing a loss
+        # against it would spread the non-finite value through every inventory.
+        hf_row['esc_clamp_frac'] = 0.0
+        log.warning(
+            'Escapable reservoir is not finite, so this step removes nothing; '
+            'the inventories it is drawn from need checking.'
+        )
+        return 0.0
     if escapable <= 0.0:
         # Nothing left to draw on, so nothing can leave.
         hf_row['esc_clamp_frac'] = 0.0
@@ -212,10 +221,16 @@ def run_escape(
     dirs = dirs or {}
 
     if not config.escape.module:
-        # Keep a minimal, dependency-free disabled path for unit tests.
+        # Keep a minimal, dependency-free disabled path for unit tests. The
+        # per-step records are cleared alongside the rates so a step that ran
+        # before escape was switched off cannot read as the current one.
         hf_row['esc_rate_total'] = 0.0
         for e in element_list:
             hf_row[f'esc_rate_{e}'] = 0.0
+        hf_row['esc_clamp_frac'] = 0.0
+        hf_row['esc_step_kg'] = 0.0
+        if interior_o is not None:
+            interior_o.escape_dt_limit = float('inf')
         log.info(f'Escape is disabled, bulk rate = {hf_row["esc_rate_total"]:.2e} kg s-1')
         return
 
@@ -306,8 +321,11 @@ def run_escape(
     # applied loss, because that same gate also zeroes an element under the
     # threshold and escape must not be credited with the truncation.
     drop_kg = before_kg - sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
-    removed_kg = min(drop_kg, esc_step_kg)
-    if not np.isfinite(removed_kg) or removed_kg < 0.0:
+    # Test both operands, not the result: `min` returns whichever argument comes
+    # first when the other is not a number, so a non-finite one would survive.
+    if np.isfinite(drop_kg) and np.isfinite(esc_step_kg):
+        removed_kg = max(0.0, min(drop_kg, esc_step_kg))
+    else:
         removed_kg = 0.0
 
     # Publish it so every consumer of this step works from the same mass.
@@ -488,12 +506,18 @@ def calc_new_elements(
         res[e] = float(hf_row.get(f'{e}{key}', 0.0))
 
     M_vols = float(sum(res.values()))
-    # check if we just desiccated the planet...
+    # Nothing to share out, either because the reservoir is spent or because an
+    # upstream failure left it unreadable. Return the totals unchanged: `res`
+    # holds the reservoir the loss is sized from, which is `*_kg_atm` for
+    # `outgas`, so returning it would overwrite the whole-planet inventory with
+    # the atmospheric one and erase volatiles still held in the mantle.
+    if not np.isfinite(M_vols):
+        log.warning(
+            'Volatile reservoir is not finite in the escape calculation, so no '
+            'inventory is debited this step; the reservoir needs checking.'
+        )
+        return {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
     if M_vols < min_thresh:
-        # Return the totals unchanged. `res` holds the reservoir the loss is
-        # sized from, which is `*_kg_atm` for `outgas`, so returning it here
-        # would overwrite the whole-planet inventory with the atmospheric one
-        # and erase volatiles still held in the mantle.
         log.debug('Total mass of volatiles below threshold in escape calculation')
         return {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
 
