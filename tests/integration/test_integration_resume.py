@@ -63,8 +63,9 @@ from helpers import PROTEUS_ROOT
 from proteus import Proteus
 
 # Integration tier. Each test runs two or three real dummy-module
-# simulations, so the file costs about 39 s locally and the slowest single
-# test about 14 s. The 300 s tier ceiling leaves room for slower CI runners.
+# simulations, so the file costs roughly 80 to 105 s locally and its slowest
+# single test 26 to 36 s, depending on machine load. The 300 s tier ceiling is
+# per test and leaves room for slower CI runners.
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
 CONFIG = PROTEUS_ROOT / 'input' / 'dummy.toml'
@@ -135,6 +136,12 @@ PARITY_RTOL = 1.0e-6
 # Columns excluded from that comparison because they are not part of the
 # simulated state.
 PARITY_SKIP = ('runtime',)
+
+# Backstop on the comparison's coverage, for a helpfile that collapsed
+# outright. The screens below are asserted to drop nothing, so this fires only
+# if the schema itself lost most of its columns, which both sides would lose
+# together while still agreeing over the few that remained.
+MIN_COLUMNS_COMPARED = 400
 
 
 # Scratch directories created by Proteus construction, cleared after each
@@ -707,6 +714,8 @@ def test_resume_reproduces_uninterrupted_run(tmp_path):
     )
 
     compared = 0
+    non_numeric: list[str] = []
+    non_finite: list[str] = []
     for column in reference.columns:
         if column in PARITY_SKIP:
             continue
@@ -715,12 +724,14 @@ def test_resume_reproduces_uninterrupted_run(tmp_path):
         if not (
             np.issubdtype(expected.dtype, np.number) and np.issubdtype(actual.dtype, np.number)
         ):
+            non_numeric.append(column)
             continue
         # Only the reference side is screened. Screening the restarted side
         # too would skip precisely the columns a resume corrupted into NaN,
         # which is the signature this comparison exists to catch; leaving them
         # in makes the comparison below fail on them instead.
         if not np.all(np.isfinite(expected)):
+            non_finite.append(column)
             continue
         np.testing.assert_allclose(
             actual,
@@ -731,12 +742,19 @@ def test_resume_reproduces_uninterrupted_run(tmp_path):
         )
         compared += 1
 
-    # Guard against the comparison silently covering nothing, for instance if
-    # the helpfile schema changed to non-numeric columns. The dummy helpfile
-    # carries about 460 finite numeric columns, so the floor is set well above
-    # a token handful: a filter that started rejecting most columns shows up
-    # as a failure rather than as a comparison that quietly covers little.
-    assert compared > 400, (
-        f'only {compared} numeric columns were compared; the parity check is not '
-        'covering the helpfile'
+    # The screens above drop columns without comparing them, and most of what
+    # this configuration writes holds still for the whole run, so a count of
+    # compared columns cannot tell a covered helpfile from a sparse one.
+    # Nothing here is non-numeric or non-finite, so anything dropped is a
+    # change to look at rather than an expected loss.
+    dropped = non_numeric + non_finite
+    assert not dropped, (
+        f'{len(non_numeric)} non-numeric and {len(non_finite)} non-finite columns were '
+        f'dropped before comparison ({", ".join(dropped[:8])}); the parity check no '
+        'longer covers them'
+    )
+
+    assert compared >= MIN_COLUMNS_COMPARED, (
+        f'only {compared} of the {len(reference.columns)} columns written were '
+        'compared; the parity check is not covering the helpfile'
     )
