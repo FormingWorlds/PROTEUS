@@ -760,3 +760,73 @@ def test_setup_or_update_solver_tracks_stale_structure_steps():
         interior_o.structure_stale = True
         AragogRunner.setup_or_update_solver(config, hf_row, interior_o, 1.0, dirs)
         assert interior_o._stale_struct_steps == 1
+
+
+@pytest.mark.unit
+def test_setup_solver_threads_core_module_params(tmp_path):
+    """With core_bc='core_module' the wrapper passes the full sub-config as
+    a dict into the boundary-conditions parameters (every field of both
+    melting-curve parameterisations included, geometry excluded), and with
+    any other mode it passes None, so the aragog factory's key contract is
+    exercised from the PROTEUS side."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    outdir = str(tmp_path)
+    from proteus.config._interior import AragogCoreModule
+
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.interior_energetics.aragog.core_bc = 'core_module'
+    # A real attrs instance: the wrapper serialises it with attrs.asdict.
+    config.interior_energetics.aragog.core_module = AragogCoreModule(
+        light_element_fraction=0.08, q_radio=2.0e12
+    )
+
+    hf_row = {
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+    }
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    spider_eos_dir = tmp_path / 'spider_eos'
+    spider_eos_dir.mkdir(parents=True)
+    interior_o._spider_eos_dir = str(spider_eos_dir)
+    eos_dir = (
+        tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
+    )
+    eos_dir.mkdir(parents=True)
+    (eos_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    (tmp_path / 'interior_lookup_tables' / 'Melting_curves').mkdir(parents=True)
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters') as mock_params,
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog.EntropyEOS'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+    bc = mock_params.call_args.kwargs.get('boundary_conditions')
+    assert bc.core_bc == 'core_module'
+    params = bc.core_module_params
+    assert isinstance(params, dict)
+    # The overridden fields arrive with their values, the full surface of
+    # both curves is present, and geometry never travels in the dict.
+    assert params['light_element_fraction'] == pytest.approx(0.08)
+    assert params['q_radio'] == pytest.approx(2.0e12)
+    assert {'t_m0', 't_m1', 't_m2', 'depression', 'melting_curve'} <= set(params)
+    assert 'r_cmb' not in params and 'p_cmb' not in params
+
+    # Any other mode sends no dict at all.
+    config2 = _make_aragog_config(struct_module='zalmoxis')
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters') as mock_params2,
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog.EntropyEOS'),
+    ):
+        AragogRunner.setup_solver(config2, hf_row, interior_o, outdir)
+    assert mock_params2.call_args.kwargs.get('boundary_conditions').core_module_params is None
