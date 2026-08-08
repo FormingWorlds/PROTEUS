@@ -660,6 +660,12 @@ class TestGetScriptForPackage:
         mixed-case name still resolves (dist names are normally lowercase, but
         the helper must not depend on that)."""
         assert _get_script_for_package('FWL-Zalmoxis') == 'tools/get_zalmoxis.sh'
+        # Discrimination: the lowercase spelling reaches the same script. A
+        # helper that did not fold case would resolve one of the two and not
+        # the other, so agreement is what says the folding happened.
+        assert _get_script_for_package('FWL-Zalmoxis') == _get_script_for_package(
+            'fwl-zalmoxis'
+        )
 
     def test_name_without_fwl_prefix_is_used_verbatim(self):
         """The fwl- strip is conditional: a name lacking the prefix is looked up
