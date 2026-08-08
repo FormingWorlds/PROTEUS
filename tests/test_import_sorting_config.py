@@ -4,7 +4,8 @@ The ecosystem modules are installed as clones beside ``src/`` at the repository
 root. Whatever ruff treats as an import search path is also where it looks for
 first-party names, so with the root searched, a clone directory carrying its
 own module name makes that module read as part of this project and its imports
-sort into the group that holds ``proteus``.
+sort into the group that holds ``proteus``. Naming a module in the first-party
+list of the isort settings arrives at the same place by a shorter route.
 
 The damage is not symmetric between a contributor's machine and the checks,
 because only the machine with the module installed carries the clone. The lint
@@ -18,6 +19,14 @@ machine that installed no modules at all, which is the case the checks
 themselves run in. Each derivation carries a canary as well as an assertion,
 so a check that stops reaching its subject fails rather than passing on
 nothing.
+
+``docs/Explanations/test_framework.md`` asks every check for an edge case and a
+path through the error contract, in wording written for the physics modules.
+Read here, the edge cases are the limits a configuration and a scan can reach:
+a spelling of the root nobody wrote down, an import that does not begin its
+line, a candidate set with nothing in it. The contract a failure reports is the
+assertion message, which says what the setting defends rather than only that it
+changed.
 
 References:
   - docs/How-to/testing.md
@@ -40,10 +49,6 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCANNED_ROOTS = (REPO_ROOT / 'src', REPO_ROOT / 'tests')
 
-# Spellings of the repository root as a search path entry. Anything resolving
-# to the root puts the module clones back in front of ruff.
-ROOT_SPELLINGS = frozenset({'.', './', '', str(REPO_ROOT)})
-
 # Directories that belong to this repository rather than to a module beside it.
 REPO_OWN_DIRECTORIES = frozenset({'src', 'tests', 'tools', 'docs', 'examples', 'input'})
 
@@ -64,58 +69,94 @@ def _python_files() -> tuple[Path, ...]:
     return tuple(sorted(path for root in SCANNED_ROOTS for path in root.rglob('*.py')))
 
 
-def _import_line_pattern(candidates: frozenset[str]) -> re.Pattern[str]:
-    """Return a pattern matching an import statement that names a candidate.
+@cache
+def _candidate_pattern(candidates: frozenset[str]) -> re.Pattern[str] | None:
+    """Return a pattern selecting the files worth parsing, or ``None`` for none.
 
-    Indentation is allowed, so a nested import matches as readily as one at
-    module scope, and the whole statement is searched rather than the position
-    after the keyword, so a name reached through a comma list or a dotted path
-    still matches. Matching without case keeps the filter wider than the parse
-    behind it. Callers join continued lines first, since the name of a module
-    imported across a backslash stands on a line of its own.
+    An import keyword and the name it brings in stand on one line, so a line
+    holding both is the narrowest thing that can be required without losing an
+    import: a clause header, a semicolon or indentation in front of the keyword
+    all leave the pair together. Callers join continued lines first, since a
+    backslash can carry the name onto the next line. Matching without case
+    keeps the filter wider than the parse behind it. An empty candidate set
+    would alternate to a pattern matching at every position, so it gets no
+    pattern at all.
     """
+    if not candidates:
+        return None
     alternation = '|'.join(re.escape(name) for name in sorted(candidates))
-    return re.compile(rf'(?m)^\s*(?:import|from)\b.*\b(?:{alternation})\b', re.IGNORECASE)
+    return re.compile(rf'(?m)^.*\b(?:import|from)\b.*\b(?:{alternation})\b', re.IGNORECASE)
+
+
+def _imported_names_in_source(source: str, candidates: frozenset[str]) -> frozenset[str]:
+    """Return the members of ``candidates`` that ``source`` imports.
+
+    A file whose lines never hold an import keyword beside a candidate name
+    cannot contribute one and is not parsed. What survives the filter is read
+    with ``ast`` rather than by pattern, so a name written in a comment or a
+    string is not mistaken for an import. ``ast`` also sees imports nested in
+    functions and classes: ruff sorts a nested import block exactly as it sorts
+    one at module scope, and the defect this file guards against was nested.
+
+    Line endings are normalised before the continued lines are joined, so the
+    filter reads a source handed to it as text the same way it reads one that
+    arrived through a file.
+    """
+    pattern = _candidate_pattern(candidates)
+    joined = source.replace('\r\n', '\n').replace('\\\n', ' ')
+    if pattern is None or not pattern.search(joined):
+        return frozenset()
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:  # pragma: no cover - none today
+        return frozenset()
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(alias.name.split('.', 1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            names.add(node.module.split('.', 1)[0])
+    return frozenset(names & candidates)
+
+
+@cache
+def _python_sources() -> tuple[str, ...]:
+    """Return the text of every Python file under the scanned roots.
+
+    Held for the file, since several checks ask the same tree about different
+    names and the reading is the part none of them need to repeat.
+    """
+    sources = []
+    for path in _python_files():
+        try:
+            sources.append(path.read_text(encoding='utf-8'))
+        except UnicodeDecodeError:  # pragma: no cover - none today
+            continue
+    return tuple(sources)
 
 
 @cache
 def _imported_module_names(candidates: frozenset[str]) -> frozenset[str]:
-    """Return the members of ``candidates`` that the repository imports.
+    """Return the members of ``candidates`` the repository imports anywhere.
 
-    Only a name that can stand at the root as a clone decides how imports sort,
-    so a file whose import statements never spell one cannot contribute and is
-    not parsed. That leaves about a fifth of the tree, and what remains is read
-    with ``ast`` rather than by pattern, so a name written in a comment or a
-    docstring is not mistaken for an import. ``ast`` also sees imports nested in
-    functions and classes: ruff sorts a nested import block exactly as it sorts
-    one at module scope, and the defect this file guards against was nested.
+    Two costs sit behind this. The filter runs over every source and stands
+    whatever is asked for; the parse runs only on what the filter keeps, and
+    that is where asking for fewer names pays, since the two witnesses below
+    reach about a twentieth of the tree where the whole declared set reaches a
+    quarter of it. Asking for a set the configuration already accounts for,
+    which is the usual case for the staleness check, builds no filter and
+    parses nothing.
 
-    The scan costs a few tenths of a second, over the 100 ms that
+    The result is a couple of tenths of a second, over the 100 ms that
     ``docs/How-to/testing.md`` sets for the unit marker and well inside the
-    ``timeout`` ceiling above. What is left is the parse itself, on the files
-    that really do import an ecosystem module.
+    ``timeout`` ceiling above. Answering what the repository imports means
+    reading the repository, so the cost is taken rather than traded for a
+    narrower question.
     """
-    if not candidates:
-        return frozenset()
-    pattern = _import_line_pattern(candidates)
     names: set[str] = set()
-    for path in _python_files():
-        try:
-            source = path.read_text(encoding='utf-8')
-        except UnicodeDecodeError:  # pragma: no cover - none today
-            continue
-        if not pattern.search(source.replace('\\\n', ' ')):
-            continue
-        try:
-            tree = ast.parse(source)
-        except SyntaxError:  # pragma: no cover - none today
-            continue
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                names.update(alias.name.split('.', 1)[0] for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-                names.add(node.module.split('.', 1)[0])
-    return frozenset(names & candidates)
+    for source in _python_sources():
+        names |= _imported_names_in_source(source, candidates)
+    return frozenset(names)
 
 
 @cache
@@ -159,21 +200,56 @@ def _declared_module_names() -> set[str]:
     return names
 
 
+def _entries_on_the_repository_root(entries: list[str]) -> list[str]:
+    """Return the search path entries that lead to the repository root.
+
+    Each entry is resolved against the directory holding the configuration, the
+    way ruff reads it, so entries are separated by where they arrive rather
+    than by how they are written and a spelling nobody listed is caught with
+    the rest.
+    """
+    return sorted(entry for entry in entries if (REPO_ROOT / entry).resolve() == REPO_ROOT)
+
+
+def _entries_holding_a_module(entries: list[str], modules: frozenset[str]) -> list[str]:
+    """Return the search path entries that a module could stand in.
+
+    This is what makes a clone read as first party: not that an entry is the
+    root, but that a module stands inside it. ruff reads a directory and a bare
+    ``.py`` file alike as a module, so both count. An entry naming a directory
+    that is not there holds nothing and is left alone.
+    """
+    holding = []
+    for entry in entries:
+        directory = (REPO_ROOT / entry).resolve()
+        if not directory.is_dir():
+            continue
+        held = {
+            child.name.lower() if child.is_dir() else child.stem.lower()
+            for child in directory.iterdir()
+            if child.is_dir() or child.suffix == '.py'
+        }
+        if held & modules:
+            holding.append(entry)
+    return sorted(holding)
+
+
 def test_the_repository_root_is_not_searched_for_first_party_imports():
     """Import grouping is decided from the source tree alone.
 
-    Contract clause: the root holds module clones, so searching it for
-    first-party names makes an ecosystem module read as part of this project.
+    Contract clause: the root holds the module clones, so a search path entry
+    that reaches them makes an ecosystem module read as part of this project.
     ``ruff check --fix`` then rewrites import groups on a machine that has the
     module and the checks reject the result on a machine that does not.
 
     Verifies:
     - A search path is configured at all, rather than left at the default,
       which searches the root.
-    - No entry on it resolves to the repository root, under any of the
-      spellings that would name it.
-    - Only the source tree is searched, so a directory added at the root later
-      cannot change how anything is sorted.
+    - No entry leads to the repository root, under any spelling of it.
+    - No entry is one a module could stand in, which covers an entry that
+      reaches the clones without being the root itself. An entry outside
+      ``src/`` is not a defect in itself: a package kept elsewhere in the
+      repository can join the search path as long as no module can stand in it.
     """
     ruff = _read_config()['tool']['ruff']
 
@@ -183,16 +259,216 @@ def test_the_repository_root_is_not_searched_for_first_party_imports():
     )
 
     configured = [str(entry) for entry in ruff['src']]
-    on_the_root = sorted(entry for entry in configured if entry.strip() in ROOT_SPELLINGS)
+    on_the_root = _entries_on_the_repository_root(configured)
     assert not on_the_root, (
         f'{on_the_root} put the repository root on the import search path, where the '
         f'module clones are installed. Clones present here: {sorted(_cloned_module_directories())}'
     )
-    assert configured == ['src'], (
-        f'the import search path is {configured} rather than the source tree alone. '
-        'Every entry on it is a directory whose contents decide how imports sort, so '
-        'the path is held to one; a second entry that is genuinely wanted belongs in '
-        'the same change as the contract here'
+
+    modules = frozenset(_declared_module_names()) | _cloned_module_directories()
+    holding = _entries_holding_a_module(configured, modules)
+    assert not holding, (
+        f'{holding} are on the import search path and an ecosystem module stands in them, '
+        'so ruff reads that module as part of this project and sorts its imports into the '
+        'group that holds proteus'
+    )
+
+
+def test_no_ecosystem_module_is_declared_first_party():
+    """The isort settings do not name a module the search path keeps out.
+
+    Contract clause: ``known-first-party`` overrides whatever the search path
+    would have decided, so a module listed there sorts with ``proteus`` on
+    every machine, installed or not. That is the same misreading the search
+    path guard prevents, reached by a shorter route.
+
+    Verifies:
+    - This project is named first party, so the settings are being read at the
+      key that decides the question rather than at one that no longer exists.
+    - No ecosystem module is named alongside it.
+    """
+    lint = _read_config()['tool']['ruff'].get('lint', {})
+    first_party = {name.lower() for name in lint.get('isort', {}).get('known-first-party', [])}
+
+    assert 'proteus' in first_party, (
+        f'known-first-party is {sorted(first_party)} and does not name this project, so '
+        'either the key moved or the setting was dropped, and the check below no longer '
+        'reads what decides whether a module sorts as first party'
+    )
+
+    ecosystem = sorted(first_party & _declared_module_names())
+    assert not ecosystem, (
+        f'{ecosystem} are ecosystem modules named as first party, so their imports sort '
+        'into the group that holds proteus even on a machine that keeps the module clones '
+        'off the import search path'
+    )
+
+
+def test_the_repository_root_is_recognised_under_every_spelling():
+    """A search path entry is judged by where it leads, not by how it reads.
+
+    Contract clause: the entry that puts the clones in front of ruff is the one
+    that arrives at the repository root, and a configuration can arrive there
+    several ways. Comparing the text would leave whichever spellings nobody
+    listed unguarded.
+
+    Verifies:
+    - Every spelling that arrives at the root is reported: the bare dot, a
+      trailing separator, an empty entry, the absolute path, and a path that
+      climbs back out of a subdirectory.
+    - The source tree is not reported, so the check separates the root from an
+      ordinary entry rather than reporting whatever it is given.
+    """
+    spellings = ['.', './', '', str(REPO_ROOT), 'src/..']
+
+    assert _entries_on_the_repository_root(spellings) == sorted(spellings), (
+        'a spelling of the repository root went unreported, so a configuration writing '
+        'the root that way would put the module clones on the import search path'
+    )
+    assert _entries_on_the_repository_root(['src', 'src/proteus']) == [], (
+        'an entry inside the source tree was reported as the repository root, so the '
+        'check no longer separates the two and would fail on a configuration that is fine'
+    )
+
+
+def test_a_path_entry_a_module_could_stand_in_is_reported(tmp_path):
+    """A module standing inside a path entry is what makes it first party.
+
+    Contract clause: ruff reads what sits inside a search path entry as module
+    names, so an entry is a hazard when a module can stand in it, whatever the
+    entry itself is called.
+
+    Verifies:
+    - An entry holding a module as a directory is reported, and the match
+      ignores case, since the clone directories are capitalised and the module
+      names are not.
+    - An entry holding a module as a bare ``.py`` file is reported too, which
+      is the other shape ruff reads as a module name.
+    - An entry holding unrelated directories and files is not reported, so a
+      path entry is not condemned for existing.
+    - An entry naming a directory that is not there is not reported, so a
+      configuration written ahead of a directory does not fail on its absence.
+    """
+    packaged = tmp_path / 'with_package'
+    (packaged / 'AGNI').mkdir(parents=True)
+    single = tmp_path / 'with_single_file'
+    single.mkdir()
+    (single / 'agni.py').write_text('', encoding='utf-8')
+    plain = tmp_path / 'without_module'
+    (plain / 'notes').mkdir(parents=True)
+    (plain / 'notes.py').write_text('', encoding='utf-8')
+
+    modules = frozenset({'agni'})
+    assert _entries_holding_a_module([str(packaged)], modules) == [str(packaged)], (
+        'a directory named like an ecosystem module was not seen inside a search path '
+        'entry, so the guard above would pass on a configuration that reaches the clones'
+    )
+    assert _entries_holding_a_module([str(single)], modules) == [str(single)], (
+        'a module standing as a single file was not seen inside a search path entry, and '
+        'ruff reads that as a first-party name exactly as it reads a package directory'
+    )
+    assert _entries_holding_a_module([str(plain)], modules) == [], (
+        'a search path entry holding nothing but unrelated names was reported, so the '
+        'check condemns any entry rather than the ones a module can stand in'
+    )
+    assert _entries_holding_a_module([str(tmp_path / 'absent')], modules) == [], (
+        'an entry naming a directory that does not exist was reported, so the check reads '
+        'the absence of a directory as a module standing in it'
+    )
+
+
+def test_an_import_away_from_the_start_of_its_line_is_counted():
+    """A module imported from inside a compound statement counts as imported.
+
+    Contract clause: the scan skips a file whose lines never hold an import
+    keyword beside a candidate name. A statement following a clause header or a
+    semicolon is an import like any other and ruff sorts its group the same
+    way, so a skip that hid one would leave every derivation below reading a
+    smaller repository than the real one.
+
+    Verifies:
+    - Each shape that keeps an import away from the start of its line is found:
+      after a clause header, in an else branch, and after a semicolon.
+    - A name carried onto the next line by a backslash is found, so continued
+      lines are joined before the filter runs, whichever ending the source
+      separates its lines with.
+    - A name written in a comment or inside a string is not counted, so the
+      filter still leaves the decision to the parse behind it.
+    """
+    candidates = frozenset({'mors', 'zephyrus'})
+
+    compound = {
+        'clause header': 'try: import mors\nexcept ImportError: mors = None\n',
+        'else branch': 'if True:\n    pass\nelse: import zephyrus\n',
+        'after a semicolon': 'started = True; import mors\n',
+        'continued line': 'import \\\n    mors\n',
+        'continued line, other endings': 'import \\\r\n    mors\r\n',
+    }
+    found = {
+        label: _imported_names_in_source(src, candidates) for label, src in compound.items()
+    }
+    missed = sorted(label for label, names in found.items() if not names)
+    assert not missed, (
+        f'an import reached {missed} was not counted, so a file whose only import of an '
+        'ecosystem module takes that shape reads as importing nothing'
+    )
+
+    quoted = '# import mors for the stellar track\nEXAMPLE = "from zephyrus import escape"\n'
+    assert _imported_names_in_source(quoted, candidates) == frozenset(), (
+        'a name written in a comment or a string was counted as an import, so the scan '
+        'reports modules this repository does not import'
+    )
+
+
+def test_a_scan_with_no_candidate_names_looks_for_nothing(monkeypatch):
+    """An empty candidate set reads as no names to look for, not as all of them.
+
+    Contract clause: the filter alternates the candidate names, and an empty
+    alternation matches at every position, so an empty set would select the
+    whole tree to parse. The scan intersects what it finds with the candidates,
+    so the answer that comes back is empty either way and only the parse that
+    never happens shows the guard doing anything.
+
+    Verifies:
+    - No pattern is built for an empty set, so the indiscriminate one is never
+      reached, while a one-name set still builds one that selects a file
+      importing that name.
+    - A source that plainly imports a candidate is never handed to the parser
+      under an empty candidate set, with every parse recorded to say so.
+    - The same source is parsed and found once the name is a candidate, so the
+      silence above is the guard rather than a scan that reads nothing at all.
+    """
+    assert _candidate_pattern(frozenset()) is None, (
+        'a pattern was built from an empty candidate set, and an empty alternation '
+        'matches everywhere, so the scan would parse the whole tree to find nothing'
+    )
+    probe = _candidate_pattern(frozenset({'mors'}))
+    assert probe is not None and probe.search('import mors'), (
+        'the filter built for a single name no longer selects a file importing it, so '
+        'the empty result above says nothing about the guard'
+    )
+
+    parsed: list[str] = []
+    real_parse = ast.parse
+
+    def record(source, *args, **kwargs):
+        parsed.append(source)
+        return real_parse(source, *args, **kwargs)
+
+    monkeypatch.setattr(ast, 'parse', record)
+
+    witness = sorted(NESTED_ONLY_IMPORTS)[0]
+    source = f'import {witness}\n'
+    assert _imported_names_in_source(source, frozenset()) == frozenset()
+    assert parsed == [], (
+        'the scan parsed a file although it had been given no names to look for, so the '
+        'empty-set guard no longer stands in front of a pattern that matches everywhere'
+    )
+
+    assert _imported_names_in_source(source, frozenset({witness})) == frozenset({witness})
+    assert parsed == [source], (
+        f'the same source was not parsed with {witness!r} among the candidates, so the '
+        'refusal above comes from a scan that parses nothing rather than from the guard'
     )
 
 
@@ -205,22 +481,22 @@ def test_the_modules_beside_the_source_are_the_ones_that_would_be_misread():
     rather than leaving it passing on nothing.
 
     Verifies:
-    - The walk reaches the source tree, and the scan finds a name imported only
-      inside function bodies, which is the shape the sorting defect took.
-    - Several ecosystem modules are imported by this repository, so a clone of
-      any of them at the root would be misread. This reads the configuration
-      rather than the filesystem and so holds where none is installed.
-    - Every clone standing at the root that this repository imports is one the
-      configuration already names, so the two ways of arriving at the set agree
+    - The walk reaches the source tree, and the scan finds both names imported
+      only inside function bodies, which is the shape the sorting defect took.
+    - No clone standing at the root that this repository imports is missing
+      from the configuration, so the two ways of arriving at the set agree
       wherever both have something to say. A directory nothing imports cannot
       change how imports sort and so is not the subject here.
+    - Those two names are themselves modules the configuration names, so what
+      the setting above covers is a family rather than a single import. This
+      reads the configuration rather than the filesystem and so holds where no
+      module is installed.
     - An ordinary dependency is not mistaken for one of those modules, so the
       reasoning separates the ecosystem from the rest of what the repository
       imports rather than sweeping both together.
     """
     declared = _declared_module_names()
     cloned = _cloned_module_directories()
-    imported = _imported_module_names(frozenset(declared | cloned))
 
     scanned = _python_files()
     assert len(scanned) > 100, (
@@ -230,29 +506,30 @@ def test_the_modules_beside_the_source_are_the_ones_that_would_be_misread():
     # Nothing imports these at module scope, so they are what says the scan
     # reaches an import nested in a function body rather than only the ones
     # standing at the start of a line.
-    missing = sorted(NESTED_ONLY_IMPORTS - imported)
+    missing = sorted(NESTED_ONLY_IMPORTS - _imported_module_names(NESTED_ONLY_IMPORTS))
     assert not missing, (
         f'{missing} are imported only inside function bodies and the scan no longer '
         'sees them, so either nested imports are escaping it or those imports were '
         'renamed or dropped; which of the two decides whether anything below holds'
     )
 
-    collidable = sorted(declared & imported)
-    assert len(collidable) >= 5, (
-        f'only {collidable} of the ecosystem modules are imported by this repository, '
-        'so the search path guard is protecting far less than it appears to and the '
-        'reasoning behind it should be revisited rather than left in place'
-    )
-
     # Both routes to the set should agree: a clone this repository imports that
     # the configuration does not name would mean one of them has gone stale.
-    # A root directory nothing imports is left alone, since a fork or a working
-    # tree kept beside the clones cannot decide how any import sorts.
-    unaccounted = sorted((cloned & imported) - declared)
+    # Only the names the configuration leaves unaccounted for are looked for, so
+    # a fork or a working tree kept beside the clones costs nothing and, being
+    # imported by nothing, decides nothing.
+    unaccounted = sorted(_imported_module_names(frozenset(cloned - declared)))
     assert not unaccounted, (
         f'{unaccounted} stand at the repository root and are imported here but are '
         'named nowhere in the configuration, so the set read from it no longer covers '
         'what is installed'
+    )
+
+    uncovered = sorted(NESTED_ONLY_IMPORTS - declared)
+    assert not uncovered, (
+        f'{uncovered} are what says the scan reaches a nested import, but the '
+        'configuration has stopped naming them as ecosystem modules, so they no longer '
+        'say that the setting above covers a family rather than a single import'
     )
 
     # A dependency that never stands at the root cannot collide, so finding one
@@ -262,24 +539,3 @@ def test_the_modules_beside_the_source_are_the_ones_that_would_be_misread():
         'repository root, so the derivation no longer separates the ecosystem from '
         'the rest of what the repository imports'
     )
-
-
-def test_a_scan_with_no_candidate_names_finds_nothing():
-    """An empty candidate set reads as no names to look for, not as all of them.
-
-    Contract clause: the scan builds its filter by alternating the candidate
-    names, and an empty alternation matches at every position, so an empty set
-    would sweep in every import in the tree rather than none. The guard returns
-    ahead of that, which is the reading a configuration naming no modules
-    should get.
-
-    Verifies:
-    - The empty case returns nothing, so the boundary is handled rather than
-      falling through to a pattern that matches indiscriminately.
-    - A single-name scan still finds that name, so the empty result above comes
-      from the guard rather than from a scan that has stopped working.
-    """
-    assert _imported_module_names(frozenset()) == frozenset()
-
-    witness = sorted(NESTED_ONLY_IMPORTS)[0]
-    assert _imported_module_names(frozenset({witness})) == frozenset({witness})
