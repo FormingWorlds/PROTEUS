@@ -412,6 +412,26 @@ config_version = "3.0"
         # the run; keep it of order a few hundred.
         phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
 
+        # Staged core evolution; read when core_bc = "core_module". The CMB radius and
+        # pressure always come from the running mesh, so only material and model
+        # choices appear here.
+        [interior_energetics.aragog.core_module]
+            rho_cen                = 12500.0   # central density [kg m-3] of the Gaussian core profile
+            length_scale           = 7272e3    # Gaussian density length scale L [m]
+            alpha                  = 1.35e-5   # core thermal expansion coefficient [K-1]
+            c_p                    = 840.0     # core specific heat capacity [J kg-1 K-1]
+            melting_curve          = "iron"    # iron (Anzellini et al. 2013 via PALEOS) | quadratic (Nimmo 2015 Eq. 6)
+            light_element_fraction = 0.0       # mole fraction of light elements depressing the iron curve
+            depression             = 0.0       # melting-point depression per unit mole fraction
+            t_m0                   = 2677.0    # quadratic-curve prefactor [K]
+            t_m1                   = 2.95e-12  # quadratic-curve linear coefficient [Pa-1]
+            t_m2                   = 8.37e-25  # quadratic-curve quadratic coefficient [Pa-2]
+            ds_fusion              = 172.8     # entropy of fusion at the inner-core boundary [J kg-1 K-1]
+            icn_width              = 10.0      # temperature width [K] of the smoothed nucleation switch
+            alpha_c                = 0.0       # compositional expansivity of the outer-core alloy; 0 disables the gravitational term
+            c_light                = 0.0       # light-element mass fraction of the outer core
+            q_radio                = 0.0       # core radiogenic power [W], constant over a run
+
     # SPIDER-only parameters
     [interior_energetics.spider]
         solver_type           = "bdf"        # SUNDIALS method: adams | bdf

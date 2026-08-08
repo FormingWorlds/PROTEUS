@@ -566,12 +566,20 @@ class AragogRunner:
         #   'quasi_steady'   (alpha-factor approximation)
         #   'gradient'       (gradient-based state)
         #   'bower2018'      (EXPERIMENTAL, not recommended)
+        #   'core_module'    (staged core-evolution budget; T_cmb as ODE state)
         # Validation lives on the attrs schema (config._interior.Aragog).
         # The attrs schema (config._interior.Aragog) already restricts
-        # core_bc to the four valid modes, so it is consumed directly here
+        # core_bc to the five valid modes, so it is consumed directly here
         # rather than re-checked with a silent fallback that could swap in a
         # different core model.
         core_bc_str = config.interior_energetics.aragog.core_bc
+        core_module_params = None
+        if core_bc_str == 'core_module':
+            import attrs as _attrs
+
+            # The attrs sub-config maps one-to-one onto the aragog factory
+            # keys plus q_radio; geometry stays with the mesh.
+            core_module_params = _attrs.asdict(config.interior_energetics.aragog.core_module)
 
         boundary_conditions = _BoundaryConditionsParameters(
             # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])
@@ -598,6 +606,7 @@ class AragogRunner:
             param_utbl_const=config.interior_energetics.param_utbl_const,
             # core BC mode (the 'energy_balance' option is available)
             core_bc=core_bc_str,
+            core_module_params=core_module_params,
         )
 
         # Define the inner_radius for the mesh.

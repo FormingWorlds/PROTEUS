@@ -149,6 +149,67 @@ def valid_aragog(instance, attribute, value):
 
 
 @define
+class AragogCoreModule:
+    """Parameters of the staged core-evolution module (core_bc = 'core_module').
+
+    The core carries its own state: an energy budget with inner-core
+    nucleation and light-element gravitational energy, evolved as an extra
+    ODE state inside Aragog. The CMB radius and pressure always come from
+    the running mesh, so only material and model choices live here.
+
+    Attributes
+    ----------
+    rho_cen: float
+        Density at the planet centre [kg m-3] of the Gaussian core profile.
+    length_scale: float
+        Gaussian density length scale L [m].
+    alpha: float
+        Core thermal expansion coefficient [K-1].
+    c_p: float
+        Core specific heat capacity [J kg-1 K-1].
+    melting_curve: str
+        'iron' (Anzellini et al. 2013 via PALEOS, with light-element
+        depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation).
+    light_element_fraction: float
+        Mole fraction of light elements depressing the iron melting curve.
+    depression: float
+        Melting-point depression per unit mole fraction.
+    t_m0: float
+        Quadratic-curve prefactor [K] (melting_curve = 'quadratic').
+    t_m1: float
+        Quadratic-curve linear coefficient [Pa-1].
+    t_m2: float
+        Quadratic-curve quadratic coefficient [Pa-2].
+    ds_fusion: float
+        Entropy of fusion at the inner-core boundary [J kg-1 K-1].
+    icn_width: float
+        Temperature width [K] of the smoothed inner-core-nucleation switch.
+    alpha_c: float
+        Compositional expansivity of the outer-core alloy.
+    c_light: float
+        Light-element mass fraction of the outer core (complete rejection).
+    q_radio: float
+        Core radiogenic power [W], constant over a run.
+    """
+
+    rho_cen: float = field(default=12500.0, validator=gt(0))
+    length_scale: float = field(default=7272e3, validator=gt(0))
+    alpha: float = field(default=1.35e-5, validator=gt(0))
+    c_p: float = field(default=840.0, validator=gt(0))
+    melting_curve: str = field(default='iron', validator=in_(('iron', 'quadratic')))
+    light_element_fraction: float = field(default=0.0, validator=(ge(0), lt(1)))
+    depression: float = field(default=0.0, validator=ge(0))
+    t_m0: float = field(default=2677.0, validator=gt(0))
+    t_m1: float = field(default=2.95e-12)
+    t_m2: float = field(default=8.37e-25)
+    ds_fusion: float = field(default=172.8, validator=gt(0))
+    icn_width: float = field(default=10.0, validator=gt(0))
+    alpha_c: float = field(default=0.0, validator=ge(0))
+    c_light: float = field(default=0.0, validator=ge(0))
+    q_radio: float = field(default=0.0, validator=ge(0))
+
+
+@define
 class Aragog:
     """Aragog-specific parameters.
 
@@ -199,7 +260,9 @@ class Aragog:
     equilibration."""
     core_bc: str = field(
         default='energy_balance',
-        validator=in_(('quasi_steady', 'energy_balance', 'gradient', 'bower2018')),
+        validator=in_(
+            ('quasi_steady', 'energy_balance', 'gradient', 'bower2018', 'core_module')
+        ),
     )
     phase_smoothing: str = field(
         default='tanh',
@@ -230,6 +293,12 @@ class Aragog:
     interior stack; a positive value here overrides that. -1.0 is the single
     off sentinel that keeps the cap disabled even on zalmoxis; any other
     negative, NaN, or infinity is rejected at load."""
+    core_module: AragogCoreModule = field(factory=AragogCoreModule)
+    """Staged core-evolution module parameters, active when core_bc =
+    'core_module': the core evolves its own energy budget (inner-core
+    nucleation, latent and gravitational terms) as an extra ODE state, and
+    the reported core temperature is that boundary state rather than the
+    lowermost mantle node."""
 
     temperature_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell temperature step cap [K]. Shares the same root

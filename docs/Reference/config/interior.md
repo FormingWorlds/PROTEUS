@@ -280,7 +280,7 @@ Jacobians for robust convergence.
 | `mass_coordinates` | bool | `true` | Whether to use mass coordinates in the model. Default is True. Uses uniform spacing in mass coordinate space, giving larger cells at the surface where density is lower, matching SPIDER's mesh. |
 | `backend` | str | `"jax"` | ODE backend selector. Default 'jax'. - 'jax'   : CVODE with JAX-derived RHS and JAX analytic Jacobian (`jax.jacrev`). Recommended for production. - 'numpy' : CVODE with numpy RHS and CVODE finite-difference Jacobian. Available for development and SPIDER-parity comparisons; less robust than 'jax' at production resolution because the FD-Jacobian noise can trip Aragog's T_core-jump retry guard at tight tolerances. The diffrax direct-JAX integration path is research-only and gated on a code-level flag in `proteus.interior_energetics.aragog`. Choices: `"numpy"`, `"jax"`. |
 | `atol_temperature_equivalent` | float | `1e-08` | Effective temperature-scale absolute tolerance \[K\] for Aragog's ODE integrator. Default 1e-8 matches SPIDER's atol=rtol=1e-8 setting; this tight tolerance avoids a marginal-stability bifurcation at the first dt jump after equilibration. Must be > 0. |
-| `core_bc` | str | `"energy_balance"` | Core-mantle boundary condition mode. Default 'energy_balance'. Valid values: - 'quasi_steady': alpha-factor heat-flux partition; gives about -19% T_core offset vs SPIDER. - 'energy_balance': SPIDER bit-parity BC with dSdr_cmb as a new state variable (mirrors SPIDER bc.c:76-131). - 'gradient': gradient-based state with two boundary entropies as state variables. - 'bower2018': experimental, do not use for production. Choices: `"quasi_steady"`, `"energy_balance"`, `"gradient"`, `"bower2018"`. |
+| `core_bc` | str | `"energy_balance"` | Core-mantle boundary condition mode. Default 'energy_balance'. Valid values: - 'quasi_steady': alpha-factor heat-flux partition; gives about -19% T_core offset vs SPIDER. - 'energy_balance': SPIDER bit-parity BC with dSdr_cmb as a new state variable (mirrors SPIDER bc.c:76-131). - 'gradient': gradient-based state with two boundary entropies as state variables. - 'bower2018': experimental, do not use for production. Choices: `"quasi_steady"`, `"energy_balance"`, `"gradient"`, `"bower2018"`, `"core_module"`. |
 | `phase_smoothing` | str | `"tanh"` | Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'. Choices: `"tanh"`, `"cubic_hermite"`. |
 | `solver_method` | str | `"cvode"` | ODE solver: 'cvode' (SUNDIALS, SPIDER parity), 'radau' (scipy), 'bdf' (scipy). Choices: `"cvode"`, `"radau"`, `"bdf"`. |
 | `scalar_gravity_override` | bool | `false` | Scalar-gravity comparison knob. When True, the external mesh file that Zalmoxis writes has its gravity column overwritten with a uniform scalar (the surface value from ``hf_row['gravity']``) before Aragog reads it, so Aragog's per-node gravity path interpolates to that scalar everywhere. False by default; set True only when running a paired scalar-gravity comparison. |
@@ -290,6 +290,36 @@ Jacobians for robust convergence.
 | `phase_boundary_entropy_margin` | float | `200.0` | Phase-boundary proximity band \[J/kg/K\] within which a staggered cell counts as near a solidus or liquidus crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase RHS across the boundary. This is a solver-accuracy control, not a cosmetic step-size setting: at the default it reproduces the fixed band and the converged trajectory is unchanged, but lowering it below the default can under-resolve a real phase crossing and shift the converged state, because CVODE's local error control can accept an over-large step across the near-discontinuous RHS. Keeping the default reproduces current behaviour, and modestly widening the band does not move a converged result because tighter steps only refine an adaptive integrator; but a value orders of magnitude above the default makes every cell count as near a boundary at all times, clamping the integrator to 1 yr steps (max_step = 1 yr, versus 100 yr otherwise) for the whole run and stalling it, so keep the band of order a few hundred J/kg/K. Default 200.0, matching Aragog's own default; a positive value is required (0 or negative is not a valid disabled state for a proximity band). Must be > 0. |
 | `tolerance_struct` | float | `100.0` | Absolute mass tolerance \[kg\] for the secant solver in determine_interior_radius. Default 100 kg; pairs with Spider's matching field so both backends drive the same outer-loop convergence criterion. Must be > 0. |
 <!-- END GENERATED: config-table [interior_energetics.aragog] -->
+
+### Staged core evolution `[interior_energetics.aragog.core_module]`
+
+Active when `core_bc = "core_module"`. The core carries its own state: an
+energy budget with smoothed inner-core nucleation, latent heat, and
+light-element gravitational energy, integrated as an extra ODE state inside
+Aragog, so the reported core temperature is boundary-layer state rather than
+the lowermost mantle node's value. The CMB radius and pressure always come
+from the running mesh.
+
+<!-- BEGIN GENERATED: config-table [interior_energetics.aragog.core_module] -->
+<!-- Generated by tools/generate_config_reference.py; edit src/proteus/config/, not this table -->
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `rho_cen` | float | `12500.0` | Density at the planet centre \[kg m-3\] of the Gaussian core profile. Must be > 0. |
+| `length_scale` | float | `7272000.0` | Gaussian density length scale L \[m\]. Must be > 0. |
+| `alpha` | float | `1.35e-05` | Core thermal expansion coefficient \[K-1\]. Must be > 0. |
+| `c_p` | float | `840.0` | Core specific heat capacity \[J kg-1 K-1\]. Must be > 0. |
+| `melting_curve` | str | `"iron"` | 'iron' (Anzellini et al. 2013 via PALEOS, with light-element depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation). Choices: `"iron"`, `"quadratic"`. |
+| `light_element_fraction` | float | `0.0` | Mole fraction of light elements depressing the iron melting curve. Must be >= 0 and < 1. |
+| `depression` | float | `0.0` | Melting-point depression per unit mole fraction. Must be >= 0. |
+| `t_m0` | float | `2677.0` | Quadratic-curve prefactor \[K\] (melting_curve = 'quadratic'). Must be > 0. |
+| `t_m1` | float | `2.95e-12` | Quadratic-curve linear coefficient \[Pa-1\]. |
+| `t_m2` | float | `8.37e-25` | Quadratic-curve quadratic coefficient \[Pa-2\]. |
+| `ds_fusion` | float | `172.8` | Entropy of fusion at the inner-core boundary \[J kg-1 K-1\]. Must be > 0. |
+| `icn_width` | float | `10.0` | Temperature width \[K\] of the smoothed inner-core-nucleation switch. Must be > 0. |
+| `alpha_c` | float | `0.0` | Compositional expansivity of the outer-core alloy. Must be >= 0. |
+| `c_light` | float | `0.0` | Light-element mass fraction of the outer core (complete rejection). Must be >= 0. |
+| `q_radio` | float | `0.0` | Core radiogenic power \[W\], constant over a run. Must be >= 0. |
+<!-- END GENERATED: config-table [interior_energetics.aragog.core_module] -->
 
 ### SPIDER `[interior_energetics.spider]`
 
