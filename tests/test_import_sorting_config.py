@@ -16,9 +16,21 @@ for every module rather than one name at a time.
 
 The checks below read the configuration and the source, so they hold on a
 machine that installed no modules at all, which is the case the checks
-themselves run in. Each derivation carries a canary as well as an assertion,
-so a check that stops reaching its subject fails rather than passing on
-nothing.
+themselves run in. Each derivation carries a canary as well as an assertion, so
+a check that stops reaching its subject fails rather than passing on nothing.
+
+What they conclude rests on how ruff reads a search path, which is described
+here rather than consulted. ``tests/test_import_sorting_ruff.py`` puts that
+description to the tool itself, on a project built for the question, and runs
+in the tier that carries the real binary.
+
+Whether a clone at the root is read as a module follows the filesystem, since
+ruff looks the name up as a path: a case-folding filesystem answers to
+``MORS/`` for ``import mors`` and a case-sensitive one does not. The clone names
+are compared folded here, which matches the machines where the rewrite happens
+and is wider than the machines where it does not. The first-party list is a
+different matter and is compared as written, because ruff matches those names
+itself rather than through the filesystem.
 
 ``docs/Explanations/test_framework.md`` asks every check for an edge case and a
 path through the error contract, in wording written for the physics modules.
@@ -47,7 +59,15 @@ import pytest
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCANNED_ROOTS = (REPO_ROOT / 'src', REPO_ROOT / 'tests')
+
+# The directories holding Python this repository lints. The hook that rewrites
+# import groups reaches all of them rather than the two the checks run over, so
+# an ecosystem import added to any of them is one the scan should see.
+SCANNED_ROOTS = (REPO_ROOT / 'src', REPO_ROOT / 'tests', REPO_ROOT / 'tools')
+
+# Both suffixes the lint hook takes, since a stub carries imports and is sorted
+# exactly as a module is.
+PYTHON_SUFFIXES = ('*.py', '*.pyi')
 
 # Directories that belong to this repository rather than to a module beside it.
 REPO_OWN_DIRECTORIES = frozenset({'src', 'tests', 'tools', 'docs', 'examples', 'input'})
@@ -57,6 +77,11 @@ REPO_OWN_DIRECTORIES = frozenset({'src', 'tests', 'tools', 'docs', 'examples', '
 # scan reading module scope alone would lose.
 NESTED_ONLY_IMPORTS = frozenset({'mors', 'zephyrus'})
 
+# Ecosystem modules the configuration names only through an optional extra.
+# Neither the pinned clone list nor the base requirements reach them, so they
+# are what says that reading the extras is still part of the derivation.
+OPTIONAL_EXTRA_ONLY = frozenset({'vulcan'})
+
 
 def _read_config() -> dict:
     """Return the parsed ``pyproject.toml``."""
@@ -65,8 +90,15 @@ def _read_config() -> dict:
 
 @cache
 def _python_files() -> tuple[Path, ...]:
-    """Return every Python file under the scanned roots."""
-    return tuple(sorted(path for root in SCANNED_ROOTS for path in root.rglob('*.py')))
+    """Return every Python file under the scanned roots and at the root itself."""
+    found = {
+        path
+        for root in SCANNED_ROOTS
+        for suffix in PYTHON_SUFFIXES
+        for path in root.rglob(suffix)
+    }
+    found.update(path for suffix in PYTHON_SUFFIXES for path in REPO_ROOT.glob(suffix))
+    return tuple(sorted(found))
 
 
 @cache
@@ -215,9 +247,10 @@ def _entries_holding_a_module(entries: list[str], modules: frozenset[str]) -> li
     """Return the search path entries that a module could stand in.
 
     This is what makes a clone read as first party: not that an entry is the
-    root, but that a module stands inside it. ruff reads a directory and a bare
-    ``.py`` file alike as a module, so both count. An entry naming a directory
-    that is not there holds nothing and is left alone.
+    root, but that a module stands inside it. ruff reads a directory, a bare
+    ``.py`` file and a bare ``.pyi`` stub alike as a module, so all three count.
+    An entry naming a directory that is not there holds nothing and is left
+    alone.
     """
     holding = []
     for entry in entries:
@@ -227,7 +260,7 @@ def _entries_holding_a_module(entries: list[str], modules: frozenset[str]) -> li
         held = {
             child.name.lower() if child.is_dir() else child.stem.lower()
             for child in directory.iterdir()
-            if child.is_dir() or child.suffix == '.py'
+            if child.is_dir() or child.suffix in {'.py', '.pyi'}
         }
         if held & modules:
             holding.append(entry)
@@ -282,13 +315,18 @@ def test_no_ecosystem_module_is_declared_first_party():
     every machine, installed or not. That is the same misreading the search
     path guard prevents, reached by a shorter route.
 
+    The names are compared as written. ruff matches this list against the
+    imported name exactly, so ``Mors`` leaves ``import mors`` where it was and
+    only ``mors`` moves it, which holds whatever the filesystem does about
+    case. Folding here would report a spelling that changes nothing.
+
     Verifies:
     - This project is named first party, so the settings are being read at the
       key that decides the question rather than at one that no longer exists.
     - No ecosystem module is named alongside it.
     """
     lint = _read_config()['tool']['ruff'].get('lint', {})
-    first_party = {name.lower() for name in lint.get('isort', {}).get('known-first-party', [])}
+    first_party = set(lint.get('isort', {}).get('known-first-party', []))
 
     assert 'proteus' in first_party, (
         f'known-first-party is {sorted(first_party)} and does not name this project, so '
@@ -342,8 +380,9 @@ def test_a_path_entry_a_module_could_stand_in_is_reported(tmp_path):
     - An entry holding a module as a directory is reported, and the match
       ignores case, since the clone directories are capitalised and the module
       names are not.
-    - An entry holding a module as a bare ``.py`` file is reported too, which
-      is the other shape ruff reads as a module name.
+    - An entry holding a module as a bare ``.py`` file is reported too, and so
+      is one holding it as a bare ``.pyi`` stub, since ruff reads either as a
+      module name exactly as it reads a package directory.
     - An entry holding unrelated directories and files is not reported, so a
       path entry is not condemned for existing.
     - An entry naming a directory that is not there is not reported, so a
@@ -354,6 +393,9 @@ def test_a_path_entry_a_module_could_stand_in_is_reported(tmp_path):
     single = tmp_path / 'with_single_file'
     single.mkdir()
     (single / 'agni.py').write_text('', encoding='utf-8')
+    stubbed = tmp_path / 'with_stub'
+    stubbed.mkdir()
+    (stubbed / 'agni.pyi').write_text('', encoding='utf-8')
     plain = tmp_path / 'without_module'
     (plain / 'notes').mkdir(parents=True)
     (plain / 'notes.py').write_text('', encoding='utf-8')
@@ -366,6 +408,10 @@ def test_a_path_entry_a_module_could_stand_in_is_reported(tmp_path):
     assert _entries_holding_a_module([str(single)], modules) == [str(single)], (
         'a module standing as a single file was not seen inside a search path entry, and '
         'ruff reads that as a first-party name exactly as it reads a package directory'
+    )
+    assert _entries_holding_a_module([str(stubbed)], modules) == [str(stubbed)], (
+        'a module standing as a stub file was not seen inside a search path entry, and '
+        'ruff reads a bare .pyi as a first-party name just as it reads a .py'
     )
     assert _entries_holding_a_module([str(plain)], modules) == [], (
         'a search path entry holding nothing but unrelated names was reported, so the '
@@ -530,6 +576,15 @@ def test_the_modules_beside_the_source_are_the_ones_that_would_be_misread():
         f'{uncovered} are what says the scan reaches a nested import, but the '
         'configuration has stopped naming them as ecosystem modules, so they no longer '
         'say that the setting above covers a family rather than a single import'
+    )
+
+    # An extra is the only route to these, so they say the requirements are read
+    # past the ones installed by default rather than stopping at them.
+    from_extras = sorted(OPTIONAL_EXTRA_ONLY - declared)
+    assert not from_extras, (
+        f'{from_extras} are named only in an optional extra and the derivation no longer '
+        'reaches them, so a module installed through an extra can stand at the root '
+        'without the configuration accounting for it'
     )
 
     # A dependency that never stands at the root cannot collide, so finding one
