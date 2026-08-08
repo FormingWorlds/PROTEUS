@@ -404,13 +404,15 @@ def test_check_atmosphere_deadlock_aborts_a_stalled_atmosphere(tmp_path):
     same input that resets the deadlock counter above, so an abort here is
     attributable to the stall count alone.
     """
+    from proteus.proteus import ATMOS_STALL_MAX
+
     moving = {
         'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
         'hf_row': {'F_atm': 140.0, 'T_magma': 3000.0, 'Phi_global': 0.9},
     }
-    p = _make_deadlock_proteus(tmp_path, converged=False, stale_iters=25, **moving)
+    p = _make_deadlock_proteus(tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX, **moving)
     with patch('proteus.proteus.UpdateStatusfile') as mock_update:
-        with pytest.raises(RuntimeError, match='25 consecutive solves'):
+        with pytest.raises(RuntimeError, match=f'{ATMOS_STALL_MAX} consecutive solves'):
             p._check_atmosphere_deadlock()
     mock_update.assert_called_once()
     args, _ = mock_update.call_args
@@ -436,10 +438,12 @@ def test_check_atmosphere_deadlock_stall_yields_to_a_converged_solve(tmp_path):
     coupled run. What is pinned here is the order of the two tests, so a
     count left on the struct can never kill a run whose atmosphere converged.
     """
+    from proteus.proteus import ATMOS_STALL_MAX
+
     p = _make_deadlock_proteus(
         tmp_path,
         converged=True,
-        stale_iters=99,
+        stale_iters=ATMOS_STALL_MAX + 1,
         hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
         hf_row={'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0},
     )
@@ -454,12 +458,12 @@ def test_check_atmosphere_deadlock_stall_yields_to_a_converged_solve(tmp_path):
     q = _make_deadlock_proteus(
         tmp_path,
         converged=False,
-        stale_iters=99,
+        stale_iters=ATMOS_STALL_MAX + 1,
         hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
         hf_row={'F_atm': 180.0, 'T_magma': 2900.0, 'Phi_global': 0.8},
     )
     with patch('proteus.proteus.UpdateStatusfile'):
-        with pytest.raises(RuntimeError, match='99 consecutive solves'):
+        with pytest.raises(RuntimeError, match=f'{ATMOS_STALL_MAX + 1} consecutive solves'):
             q._check_atmosphere_deadlock()
 
 
@@ -497,6 +501,7 @@ def test_check_atmosphere_deadlock_reads_the_count_the_wrapper_produces(tmp_path
     """
     from proteus.atmos_clim.common import Atmos_t
     from proteus.atmos_clim.wrapper import carry_converged_levels
+    from proteus.proteus import ATMOS_STALL_MAX
 
     atmos_o = Atmos_t()
     converged_row = {'R_xuv': 7.0e6, 'p_xuv': 1.0e2, 'T_xuv': 900.0, 'g_xuv': 9.5}
@@ -508,7 +513,7 @@ def test_check_atmosphere_deadlock_reads_the_count_the_wrapper_produces(tmp_path
 
     # Then the atmosphere stops resolving, once per iteration.
     atmos_o.converged = False
-    for expected in range(1, 26):
+    for expected in range(1, ATMOS_STALL_MAX + 1):
         carry_converged_levels(atmos_o, dict(converged_row))
         assert atmos_o.levels_stale_iters == expected
 
@@ -520,7 +525,7 @@ def test_check_atmosphere_deadlock_reads_the_count_the_wrapper_produces(tmp_path
     )
     p.atmos_o = atmos_o
     with patch('proteus.proteus.UpdateStatusfile') as mock_update:
-        with pytest.raises(RuntimeError, match='25 consecutive solves'):
+        with pytest.raises(RuntimeError, match=f'{ATMOS_STALL_MAX} consecutive solves'):
             p._check_atmosphere_deadlock()
     args, _ = mock_update.call_args
     assert args[1] == 22
@@ -571,7 +576,7 @@ def test_atmos_stall_max_is_the_value_the_run_actually_uses(tmp_path):
     from proteus.atmos_clim.wrapper import CARRIED_LEVELS_ALERT
     from proteus.proteus import AGNI_DEADLOCK_MAX, ATMOS_STALL_MAX
 
-    assert ATMOS_STALL_MAX == 25
+    assert ATMOS_STALL_MAX == 150
     assert ATMOS_STALL_MAX > CARRIED_LEVELS_ALERT
     assert ATMOS_STALL_MAX > AGNI_DEADLOCK_MAX
 

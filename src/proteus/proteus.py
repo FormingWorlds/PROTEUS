@@ -46,10 +46,11 @@ from proteus.utils.logs import (
 _IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
 
 # Consecutive iterations without a converged atmosphere after which a run ends,
-# whatever the interior is doing. It has to stay above the streak the
-# atmosphere wrapper reports at error level, so a solver that stumbles for a
-# while still recovers on its own before anything gives up on it.
-ATMOS_STALL_MAX = 25
+# whatever the interior is doing. Measured over 27 stalled cases: the deepest
+# stall a run recovered from is 126 iterations and the deepest seen is 233, so
+# this sits above the first with margin. It has to stay above the streak the
+# atmosphere wrapper reports at error level.
+ATMOS_STALL_MAX = 150
 
 # Consecutive iterations of a failed atmosphere solve on an interior that has
 # not moved, after which a run ends. Much shorter than the cap above, because
