@@ -1774,7 +1774,10 @@ class _ProfileAGNI:
     def __init__(self):
         self.calls = []
         self.guess_arg = None
-        self.atmosphere = SimpleNamespace(generate_pgrid_b=self._generate_pgrid_b)
+        self.atmosphere = SimpleNamespace(
+            generate_pgrid_b=self._generate_pgrid_b,
+            make_transparent_b=self._record('make_transparent'),
+        )
         self.setpt = SimpleNamespace(
             loglinear_b=self._record('loglinear'),
             isothermal_b=self._isothermal_b,
@@ -2199,6 +2202,7 @@ def test_update_agni_atmos_honours_the_configured_guess_on_rebuild(monkeypatch):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_update_agni_atmos_fails_as_atmosphere_error_without_a_usable_bc(monkeypatch):
     """With no usable surface condition the run ends as an atmosphere failure.
 
@@ -2257,3 +2261,133 @@ def test_update_agni_atmos_fails_as_atmosphere_error_without_a_usable_bc(monkeyp
     # It fails before touching the struct, so the grid is never laid down.
     assert len(fake_agni.calls) == calls_before
     assert atmos_z.p_boa == pytest.approx(2.0e5)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_update_agni_atmos_rejects_a_bad_surface_state_behind_a_good_profile(monkeypatch):
+    """A surface state that is not finite and positive ends the run even when
+    the stored profile is perfectly usable.
+
+    Contract clause: temperature and pressure are positive quantities, and the
+    check on the stored profile cannot see the boundary condition carried
+    beside it. Edge case: a surface pressure of infinity, which sets the top of
+    the interpolation grid and raises inside scipy, and one of NaN, which is
+    invisible because every comparison against it is false.
+    """
+    fake_agni = _ProfileAGNI()
+    _install_profile_fakes(monkeypatch, fake_agni)
+    status = MagicMock()
+    monkeypatch.setattr(agni_mod, 'UpdateStatusfile', status)
+    dirs = {'output': '/tmp/run'}
+    config = _build_profile_config()
+
+    healthy = {
+        'F_ins': 1361.0,
+        'albedo_pl': 0.0,
+        'T_surf': 1800.0,
+        'T_magma': 3000.0,
+        'P_surf': 260.0,
+    }
+
+    # The same profile with a usable surface state goes through, so each
+    # failure below is attributable to the boundary condition alone.
+    agni_mod.update_agni_atmos(
+        _ProfileAtmosphere([1.0e2, 1.0e5], [600.0, 1200.0]), dict(healthy), dirs, config
+    )
+    status.assert_not_called()
+
+    for field, value in (
+        ('P_surf', float('inf')),
+        ('P_surf', float('nan')),
+        ('P_surf', -1.0),
+        ('T_surf', float('nan')),
+        ('T_surf', 0.0),
+        ('T_magma', float('nan')),
+        ('T_magma', -1.0),
+    ):
+        status.reset_mock()
+        atmos = _ProfileAtmosphere([1.0e2, 1.0e5], [600.0, 1200.0])
+        with pytest.raises(RuntimeError, match=field):
+            agni_mod.update_agni_atmos(atmos, dict(healthy, **{field: value}), dirs, config)
+        status.assert_called_once_with(dirs, 22)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_surface_state_accepts_a_planet_that_has_lost_its_atmosphere():
+    """A surface pressure of zero is a planet with no atmosphere left, not a
+    spoiled boundary condition, so it must pass the surface-state check.
+
+    Contract clause: zero means different things either side of the boundary
+    condition. Desiccation sets ``P_surf`` to exactly zero deliberately and an
+    escape step that outpaces the column clamps it there, and transparent mode
+    handles that case without ever reading the value. A temperature of zero is
+    not a temperature and stays refused. Edge case: both boundaries at once.
+    """
+    from proteus.atmos_clim.agni import _validate_surface_state
+
+    healthy = {'T_surf': 1800.0, 'T_magma': 3000.0, 'P_surf': 260.0}
+
+    with patch('proteus.atmos_clim.agni.UpdateStatusfile') as status:
+        # The terminal state, and a pressure below the transparent threshold.
+        _validate_surface_state(dict(healthy, P_surf=0.0), {})
+        _validate_surface_state(dict(healthy, P_surf=1.0e-5), {})
+        status.assert_not_called()
+
+    # Discrimination: the neighbouring values on either side of that zero are
+    # still refused, so accepting it is not the check going slack.
+    for field, value in (('P_surf', -1.0e-30), ('T_surf', 0.0), ('T_magma', 0.0)):
+        with patch('proteus.atmos_clim.agni.UpdateStatusfile') as status:
+            with pytest.raises(RuntimeError, match=field):
+                _validate_surface_state(dict(healthy, **{field: value}), {})
+            status.assert_called_once_with({}, 22)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_lost_atmosphere_goes_to_transparent_mode_not_the_pressure_grid(monkeypatch):
+    """A planet with no atmosphere left must reach transparent mode, which is
+    what makes accepting a surface pressure of zero safe.
+
+    Contract clause: the surface-state check lets zero through because the
+    branch below it handles that case without reading the value. Laying a
+    log-spaced grid on a surface pressure of zero is what the routing avoids,
+    so the test pins the routing rather than the check. Edge case: exactly
+    zero, which desiccation produces, against a pressure that takes the grid.
+    """
+    fake_agni = _ProfileAGNI()
+    _install_profile_fakes(monkeypatch, fake_agni)
+    status = MagicMock()
+    monkeypatch.setattr(agni_mod, 'UpdateStatusfile', status)
+    dirs = {'output': '/tmp/run'}
+    config = _build_profile_config()
+    healthy = {
+        'F_ins': 1361.0,
+        'albedo_pl': 0.0,
+        'T_surf': 1800.0,
+        'T_magma': 3000.0,
+        'P_surf': 260.0,
+    }
+
+    agni_mod.update_agni_atmos(
+        _ProfileAtmosphere([1.0e2, 1.0e5], [600.0, 1200.0]),
+        dict(healthy, P_surf=0.0),
+        dirs,
+        config,
+    )
+    status.assert_not_called()
+    assert 'make_transparent' in fake_agni.calls
+    assert 'isothermal' in fake_agni.calls
+    # The grid is what a surface pressure of zero must never reach.
+    assert 'generate_pgrid' not in fake_agni.calls
+
+    # Discrimination: a pressure that clears the threshold does take the grid,
+    # so the routing above is the branch and not simply what the fake does.
+    fake_agni.calls.clear()
+    agni_mod.update_agni_atmos(
+        _ProfileAtmosphere([1.0e2, 1.0e5], [600.0, 1200.0]), dict(healthy), dirs, config
+    )
+    assert 'generate_pgrid' in fake_agni.calls
+    assert 'make_transparent' not in fake_agni.calls
+    status.assert_not_called()

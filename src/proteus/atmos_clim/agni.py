@@ -792,6 +792,51 @@ def _validate_stored_profile(p_old, t_old) -> tuple[bool, str]:
     return True, ''
 
 
+def _validate_surface_state(hf_row: dict, dirs: dict):
+    """End the run if the surface boundary condition cannot be used.
+
+    Checking the stored profile is not enough on its own: a healthy profile
+    carried alongside a surface state an upstream failure has spoiled passes
+    that check and then reaches the interpolation, where a non-finite surface
+    pressure sets the top of the pressure grid and raises inside scipy. The
+    temperatures reach the solver instead, which starts from a value that is
+    not a temperature. Every comparison against a value that is not a number
+    is false, so each quantity is tested rather than compared.
+
+    Zero means different things either side of the boundary condition. A
+    temperature of zero is not a temperature, but a surface pressure of zero
+    is a planet that has lost its atmosphere, which transparent mode below
+    handles and which desiccation produces deliberately. Pressure is therefore
+    held to being finite and non-negative, and only the temperatures to being
+    positive.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
+        dirs : dict
+            Directories dictionary
+
+    Raises
+    ------
+        RuntimeError
+            If a temperature is not finite and positive, or the surface
+            pressure is not finite and non-negative.
+    """
+
+    checks = (
+        ('T_surf', 'K', False),
+        ('T_magma', 'K', False),
+        ('P_surf', 'bar', True),
+    )
+    for name, unit, zero_ok in checks:
+        value = float(hf_row[name])
+        bad = value < 0.0 if zero_ok else value <= 0.0
+        if not np.isfinite(value) or bad:
+            UpdateStatusfile(dirs, 22)
+            raise RuntimeError(f'Cannot update the atmosphere because {name} = {value} {unit}')
+
+
 def _rebuild_agni_profile(atmos, hf_row: dict, dirs: dict, config: Config, reason: str):
     """Discard the profile held on the struct and set the initial guess again.
 
@@ -899,6 +944,7 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
 
     # ---------------------
     # Update surface temperature(s)
+    _validate_surface_state(hf_row, dirs)
     atmos.tmp_surf = float(hf_row['T_surf'])
     atmos.tmp_magma = float(hf_row['T_magma'])
 
