@@ -1898,11 +1898,22 @@ def test_unreadable_reservoir_debits_nothing_and_credits_nothing():
     hf2['esc_kg_cumulative'] = 0.0
     hf2['M_vol_initial'] = 5.0e21
 
-    run_escape(config, hf2, dt=1.0e4, atmosphere_only=True)
+    # Two steps, because an unreadable element that stopped the accounting
+    # would still look right on the first one and wrong on every one after.
+    for _ in range(2):
+        c_before = hf2['C_kg_total']
+        run_escape(config, hf2, dt=1.0e4, atmosphere_only=True)
+        c_debited = c_before - hf2['C_kg_total']
 
-    assert math.isnan(hf2['H_kg_total'])
-    assert hf2['C_kg_total'] < 5.0e21  # the readable element still escapes
-    assert hf2['C_kg_total'] > 0.9 * 5.0e21  # and only by its share
+        assert math.isnan(hf2['H_kg_total'])
+        assert hf2['C_kg_total'] < 5.0e21  # the readable element still escapes
+        assert hf2['C_kg_total'] > 0.9 * 5.0e21  # and only by its share
+        # The accounting has to keep working for the elements that are fine:
+        # carrying the unreadable one into the sums pins both of these at zero
+        # while real mass keeps leaving, and the run never recovers.
+        assert c_debited > 0.0
+        assert hf2['esc_step_kg'] == pytest.approx(c_debited, rel=1e-6)
+    assert hf2['esc_kg_cumulative'] == pytest.approx(2.0 * hf2['esc_step_kg'], rel=1e-6)
 
 
 @pytest.mark.unit

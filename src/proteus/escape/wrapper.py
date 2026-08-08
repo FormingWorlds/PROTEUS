@@ -69,6 +69,31 @@ def escapable_mass(hf_row: dict, reservoir: str) -> float:
     return float(sum(float(hf_row.get(f'{e}{key}', 0.0)) for e in element_list))
 
 
+def readable_total(hf_row: dict) -> float:
+    """Return the summed whole-planet inventory over the readable elements [kg].
+
+    An element an upstream failure left unreadable is skipped rather than
+    carried into the sum, where it would make every later difference unreadable
+    too and stop the accounting for elements that are perfectly fine.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+
+    Returns
+    -------
+        mass : float
+            Summed ``*_kg_total`` over the elements holding a finite value [kg].
+    """
+    total = 0.0
+    for e in element_list:
+        mass = float(hf_row.get(f'{e}_kg_total', 0.0))
+        if np.isfinite(mass):
+            total += mass
+    return total
+
+
 def limit_escape_step(
     hf_row: dict,
     dt: float,
@@ -301,7 +326,7 @@ def run_escape(
             float(hf_row.get('esc_clamp_frac', 0.0)), dt, max_frac=max_frac
         )
 
-    before_kg = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
+    before_kg = readable_total(hf_row)
 
     # calculate new elemental inventories from loss over duration `dt`
     solvevol_target = calc_new_elements(
@@ -320,7 +345,7 @@ def run_escape(
     # request, because the threshold gate can decline to debit; bounded by the
     # applied loss, because that same gate also zeroes an element under the
     # threshold and escape must not be credited with the truncation.
-    drop_kg = before_kg - sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
+    drop_kg = before_kg - readable_total(hf_row)
     # Test both operands, not the result: `min` returns whichever argument comes
     # first when the other is not a number, so a non-finite one would survive.
     if np.isfinite(drop_kg) and np.isfinite(esc_step_kg):
