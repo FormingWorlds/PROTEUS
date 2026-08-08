@@ -46,10 +46,10 @@ from proteus.utils.logs import (
 _IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
 
 # Consecutive iterations without a converged atmosphere after which a run ends,
-# whatever the interior is doing. Measured over 27 stalled cases: the deepest
-# stall a run recovered from is 126 iterations and the deepest seen is 233, so
-# this sits above the first with margin. It has to stay above the streak the
-# atmosphere wrapper reports at error level.
+# whatever the interior is doing, and always above the streak the atmosphere
+# wrapper reports at error level. Sized on 27 stalled GJ 9827 d cases as they
+# stood on 2026-08-08: deepest recovered streak 126, deepest open streak 233,
+# which never converged. This clears the recovery and stays under the open one.
 ATMOS_STALL_MAX = 150
 
 # Consecutive iterations of a failed atmosphere solve on an interior that has

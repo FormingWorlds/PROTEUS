@@ -423,7 +423,9 @@ def test_check_atmosphere_deadlock_aborts_a_stalled_atmosphere(tmp_path):
 
     # One short of the cap the run continues, so the abort is on the
     # threshold rather than on any non-converged solve.
-    q = _make_deadlock_proteus(tmp_path, converged=False, stale_iters=24, **moving)
+    q = _make_deadlock_proteus(
+        tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX - 1, **moving
+    )
     with patch('proteus.proteus.UpdateStatusfile') as mock_update:
         q._check_atmosphere_deadlock()
     mock_update.assert_not_called()
