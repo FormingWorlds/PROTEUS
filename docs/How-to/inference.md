@@ -90,7 +90,7 @@ better fits, while smaller values (including negative ones) are worse fits.
 
 The optimization will run until `n_steps` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
 
-### Acqusition functions
+### Acquisition functions
 
 The acquisition function is an analytical function that is aware of the current state of the optimisation.
 It is used to evaluate the *potential* value of sampling a candidate particular point in the parameter space, to 

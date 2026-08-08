@@ -213,8 +213,10 @@ def test_section_table_and_choices_dedup(schema):
     assert 'Must be > 0.' in rate_row
 
 
-# Independent of the generator's own pattern, so a bug there cannot hide here.
-_CODE_OR_LINK = re.compile(r'(`+)[^`]*?\1|\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\[[^\]]*\]')
+# Independently written, but CommonMark-faithful on backtick runs: a span
+# delimited by N backticks may hold shorter runs, so the content is .+?, not
+# [^`]*?, or a ``code with ` inside`` span would desynchronise the sweep.
+_CODE_OR_LINK = re.compile(r'(?s:(`+).+?\1)|\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\[[^\]]*\]')
 
 
 def test_generated_blocks_leave_no_bare_square_bracket(schema):
@@ -241,6 +243,46 @@ def test_generated_blocks_leave_no_bare_square_bracket(schema):
     assert offenders == []
     # The sweep must have something to check, or it passes vacuously.
     assert sum(block.count('\\[') for block in blocks) > 100
+
+
+def test_describe_escapes_pipes_region_aware():
+    """The cell renderer must escape a free-text pipe (table syntax) while a
+    pipe inside a code span survives; a blind replace would backslash both."""
+    field = {
+        'description': 'Selector `H2|CO2` keyed on |X|.',
+        'choices': [],
+        'bounds': [{'op': '>', 'value': 0}],
+    }
+    cell = _gcr._describe(field)
+    assert '`H2|CO2`' in cell  # a backslash inside the span renders literally
+    assert '\\|X\\|' in cell
+    assert 'Must be > 0.' in cell  # bounds still folded into the same cell
+
+
+def test_json_sidecar_descriptions_stay_raw(schema):
+    """The sidecar carries unrendered text: markdown escaping belongs to the
+    page render, so no description or constraint doc may hold an escaped
+    bracket or pipe, while the bracketed units are still present and bare."""
+    for f in schema['fields']:
+        assert '\\[' not in f['description'] and '\\]' not in f['description']
+        assert '\\|' not in f['description']
+    for c in schema['constraints']:
+        assert '\\[' not in c['doc'] and '\\]' not in c['doc']
+    # Non-vacuity: the raw text really does carry bare bracketed units.
+    assert any('[bar]' in f['description'] for f in schema['fields'])
+    assert any('[' in c['doc'] for c in schema['constraints'])
+
+
+def test_every_real_link_survives_rendering(schema):
+    """Every inline link written in a source docstring must reach the page
+    verbatim; over-escaping would silently turn a working link into text."""
+    link = re.compile(r'\[[^\]]*\]\([^()]*(?:\([^()]*\)[^()]*)*\)')
+    found = 0
+    for f in schema['fields']:
+        for m in link.finditer(f['description']):
+            found += 1
+            assert m.group(0) in _gcr._describe(f), f'{f["path"]} lost {m.group(0)}'
+    assert found >= 1  # the sweep is not vacuous: the schema has real links
 
 
 def test_committed_pages_are_current_and_fully_described(schema):

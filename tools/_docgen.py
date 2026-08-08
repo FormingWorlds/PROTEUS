@@ -85,21 +85,28 @@ _PROTECTED = re.compile(
 _BARE_BRACKET = re.compile(r'(?<!\\)([\[\]])')
 
 
-def escape_link_brackets(text: str) -> str:
+_BARE_PIPE_BRACKET = re.compile(r'(?<!\\)([\[\]|])')
+
+
+def escape_link_brackets(text: str, *, escape_pipes: bool = False) -> str:
     """Escape square brackets that markdown would read as a link reference.
 
     Descriptions carry units in brackets ("[bar]", "[W m-1 K-1]"), which is
     correct scientific style and also markdown's shortcut reference syntax.
     Real links keep working, and code spans are left alone because a
-    backslash renders literally inside one.
+    backslash renders literally inside one. With ``escape_pipes`` the same
+    protected regions also keep their ``|`` while free-text pipes are escaped
+    for table cells. Call this only in the markdown render path; the JSON
+    sidecars carry the raw text.
     """
+    bare = _BARE_PIPE_BRACKET if escape_pipes else _BARE_BRACKET
     out: list[str] = []
     pos = 0
     for match in _PROTECTED.finditer(text):
-        out.append(_BARE_BRACKET.sub(r'\\\1', text[pos : match.start()]))
+        out.append(bare.sub(r'\\\1', text[pos : match.start()]))
         out.append(match.group(0))
         pos = match.end()
-    out.append(_BARE_BRACKET.sub(r'\\\1', text[pos:]))
+    out.append(bare.sub(r'\\\1', text[pos:]))
     return ''.join(out)
 
 

@@ -133,6 +133,40 @@ def test_escape_link_brackets_leaves_code_spans_alone_and_is_idempotent():
     assert _dg.escape_link_brackets('') == ''
 
 
+def test_escape_link_brackets_pins_regex_edge_cases():
+    """The protection grammar is a fixed regex; these pins freeze its behavior
+    on the shapes most likely to regress under a future 'simplification'."""
+    e = _dg.escape_link_brackets
+    # A double-backtick span may hold a single backtick (CommonMark run rule).
+    assert e('``code with ` inside`` and [K]') == '``code with ` inside`` and \\[K\\]'
+    # A description that is nothing but a unit, and a span ending the string.
+    assert e('[K]') == '\\[K\\]'
+    assert e('prefix `code[b]`') == 'prefix `code[b]`'
+    # Empty and collapsed reference links count as links and stay bare.
+    assert e('see [][] and [a][]') == 'see [][] and [a][]'
+    # Documented limits, pinned so a change is a conscious decision: a link
+    # whose text holds brackets, or whose URL nests parens two deep, is not
+    # recognised and gets escaped (the link degrades to literal text).
+    assert e('[a [b]](url)') == '\\[a \\[b\\]\\](url)'
+    assert e('[F](https://x.test/A_(B_(C)))') == '\\[F\\](https://x.test/A_(B_(C)))'
+
+
+def test_escape_link_brackets_pipe_mode_respects_protected_regions():
+    """Table cells need free-text pipes escaped, but a pipe inside a code span
+    or link URL must survive: a backslash there renders literally."""
+    e = _dg.escape_link_brackets
+    assert e('`a|b` and x|y', escape_pipes=True) == '`a|b` and x\\|y'
+    assert e('[t](https://x.test/a|b) then |c|', escape_pipes=True) == (
+        '[t](https://x.test/a|b) then \\|c\\|'
+    )
+    # Default mode leaves pipes entirely alone, escaped or not.
+    assert e('x|y and `a|b`') == 'x|y and `a|b`'
+    # Idempotent in pipe mode too, and brackets still handled in the same pass.
+    once = e('|flux| in [W m-2]', escape_pipes=True)
+    assert once == '\\|flux\\| in \\[W m-2\\]'
+    assert e(once, escape_pipes=True) == once
+
+
 def test_dump_json_is_deterministic_and_newline_terminated():
     """Two serialisations of the same object are byte-identical, insertion
     order is preserved (the generators sort upstream), and non-ASCII survives

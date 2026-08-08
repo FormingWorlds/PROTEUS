@@ -88,7 +88,7 @@ def _describe(field: dict) -> str:
     if field['bounds']:
         clauses = ' and '.join(f'{b["op"]} {b["value"]}' for b in field['bounds'])
         parts.append(f'Must be {clauses}.')
-    return _docgen.escape_link_brackets(' '.join(parts)).replace('|', '\\|')
+    return _docgen.escape_link_brackets(' '.join(parts), escape_pipes=True)
 
 
 def _section_table(fields: list[dict]) -> str:

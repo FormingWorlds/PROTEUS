@@ -342,7 +342,8 @@ def build_schema() -> dict:
     def visit(cls, prefix: str, seen: frozenset) -> None:
         # Best-effort: resolving string annotations needs every name in the
         # defining module's namespace. Where that fails, ``_type_hints``
-        # falls back to the raw annotation text.
+        # returns empty and ``_display_type`` recovers the display type
+        # from the raw ``field.type`` annotation string instead.
         try:
             attrs.resolve_types(cls)
         except Exception:
