@@ -2121,6 +2121,52 @@ def _run_interior_with_dummy(config, hf_all, hf_row, *, ic: int, output: dict):
 
 
 @pytest.mark.unit
+def test_run_interior_consumes_the_impact_flag_into_the_step_flag():
+    """run_interior translates the one-shot impact flag into the per-step flag.
+
+    Verifies:
+    - An armed ``impact_reset`` is consumed (cleared) and surfaces as
+      ``impact_reset_this_step`` for the rest of the step, which is what the
+      temperature-jump clip and the solver's core-temperature guard read.
+    - The very next step reads False again, so one impact cannot exempt two
+      steps from the guards.
+    """
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False)
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=1.0)
+    out = {
+        'T_magma': 3005.0,
+        'T_surf': 2805.0,
+        'Phi_global': 0.7,
+        'F_int': 2.0,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    interior_o = Interior_t(nlev_b=10)
+    interior_o.ic = 2
+    interior_o.impact_reset = True
+
+    with (
+        patch(
+            'proteus.interior_energetics.dummy.run_dummy_int',
+            return_value=(110.0, out),
+        ),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
+        assert interior_o.impact_reset_this_step is True
+        assert interior_o.impact_reset is False, 'the one-shot flag was not consumed'
+
+        # The following step is ordinary again: nothing re-armed the flag.
+        run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
+        assert interior_o.impact_reset_this_step is False
+
+
+@pytest.mark.unit
 def test_run_interior_prevent_warming_clamps_T_and_Fint_on_ic2():
     """prevent_warming=True + ic=2 must clip Phi/T_magma/T_surf to previous values
     and floor F_int to 1e-8 when the previous step had F_int < 0."""

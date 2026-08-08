@@ -3,7 +3,10 @@ Unit tests for proteus.interior_energetics.aragog module: Zalmoxis integration p
 
 Tests the Zalmoxis-specific branches in AragogRunner.setup_solver() that set
 inner_radius from zalmoxis_solver and configure temperature-dependent initial
-conditions.
+conditions, plus the contracts that keep the solver on the planet as it grows:
+the retry ladder and its giant-impact exemption, per-solve mesh re-reads, the
+EOS-table reload and its content-keyed cache, and the JAX factory install and
+failure paths.
 
 Testing standards and documentation:
 - docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
@@ -11,6 +14,9 @@ Testing standards and documentation:
 
 Functions tested:
 - AragogRunner.setup_solver(): Zalmoxis branches for inner_radius, EOS fallback
+- AragogRunner._solve_with_retry(): ladder policy, guards, table refresh wiring
+- AragogRunner._refresh_entropy_eos() and _eos_content_key(): reload discipline
+- AragogRunner._maybe_install_jax_cvode_factory(): install-last and clear-on-fail
 """
 
 from __future__ import annotations
@@ -980,6 +986,54 @@ def test_a_step_stopped_by_the_terminal_event_is_accepted_as_it_stands():
 
 
 @pytest.mark.unit
+def test_the_ladder_refreshes_the_tables_before_the_first_solve(monkeypatch, tmp_path):
+    """The retry ladder points the solver at the current tables before solving.
+
+    Verifies:
+    - The ladder swaps ``solver.entropy_eos`` to the freshly loaded table
+      object before the first ``solve()`` call, so the step integrates on the
+      tables as regenerated, not on the object the solver was built with.
+    - The loader is handed the interior's table directory, not a cached path.
+    - The const-properties guard holds: a run with no tables refreshes
+      nothing, so the exemption cannot silently load a table set.
+    """
+    runner, interior_o, attempts = _retry_ladder_runner(status=0, dt_actual=100.0)
+    runner._config.interior_energetics.const_properties = False
+    solver = interior_o.aragog_solver = runner.aragog_solver
+    interior_o._spider_eos_dir = str(tmp_path)
+
+    order: list[str] = []
+    sentinel = object()
+    orig_solve = solver.solve
+    solver.solve = lambda: (order.append('solve'), orig_solve())[1]
+
+    def fake_loader(path):
+        order.append('refresh')
+        assert path == str(tmp_path)
+        return sentinel
+
+    monkeypatch.setattr('proteus.interior_energetics.aragog._cached_entropy_eos', fake_loader)
+    runner._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, interior_o)
+
+    assert solver.entropy_eos is sentinel
+    assert order.index('refresh') < order.index('solve'), (
+        'the tables were refreshed after the solve had already run on the stale object'
+    )
+    assert order.count('refresh') == 1
+
+    # Guard: a const-properties run carries no tables, so nothing is loaded
+    # and no entropy_eos is installed on the solver.
+    guarded, guarded_interior, _ = _retry_ladder_runner(status=0, dt_actual=100.0)
+    guarded._config.interior_energetics.const_properties = True
+    guarded_interior.aragog_solver = guarded.aragog_solver
+    guarded_interior._spider_eos_dir = str(tmp_path)
+    order.clear()
+    guarded._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, guarded_interior)
+    assert order == []
+    assert not hasattr(guarded.aragog_solver, 'entropy_eos')
+
+
+@pytest.mark.unit
 def test_a_step_that_never_advanced_is_still_refused():
     """The ladder still refuses results that carry no usable state.
 
@@ -1255,7 +1309,6 @@ def test_progress_is_weighed_against_what_the_coupling_asked_for():
 
 
 @pytest.mark.unit
-@pytest.mark.physics_invariant
 def test_the_core_temperature_guard_stands_aside_for_a_giant_impact():
     """A giant impact's core-temperature jump is kept, not retried away.
 
@@ -1410,7 +1463,6 @@ def test_the_jax_right_hand_side_reads_the_mesh_on_every_solve(monkeypatch):
 
 
 @pytest.mark.unit
-@pytest.mark.physics_invariant
 def test_an_interior_that_moves_under_fixed_radii_is_still_followed(monkeypatch):
     """A structure change that leaves both bounding radii untouched is followed.
 
@@ -1488,7 +1540,6 @@ def test_an_interior_that_moves_under_fixed_radii_is_still_followed(monkeypatch)
 
 
 @pytest.mark.unit
-@pytest.mark.physics_invariant
 def test_the_solver_is_pointed_at_the_current_tables_before_each_solve(tmp_path):
     """The energy diagnostic integrates the tables the step actually runs on.
 
@@ -1546,7 +1597,6 @@ def test_the_solver_is_pointed_at_the_current_tables_before_each_solve(tmp_path)
 
 
 @pytest.mark.unit
-@pytest.mark.physics_invariant
 def test_regenerated_eos_tables_are_seen_even_at_identical_file_sizes(tmp_path):
     """Tables rewritten to a higher pressure ceiling are treated as new tables.
 

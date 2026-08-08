@@ -3348,8 +3348,9 @@ def update_structure_from_interior(
     # and at the ungated regeneration a giant impact triggers.
     #
     # REMAINING GAP: the cached _last_entropy is not bounds-checked against the
-    # regenerated [S_min, S_max]. A composition change can move that range; a
-    # pressure-ceiling change alone does not.
+    # regenerated [S_min, S_max]. Both a composition change and a raised
+    # pressure ceiling can move that range (it is scanned up to the ceiling),
+    # so out-of-range carried entropy clamps at the table edge in the solve.
     if comp_changed and config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 

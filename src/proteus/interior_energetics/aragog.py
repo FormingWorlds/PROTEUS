@@ -596,6 +596,10 @@ class AragogRunner:
             else:
                 AragogRunner.update_structure(config, hf_row, interior_o)
                 AragogRunner.update_solver(dt, hf_row, interior_o)
+            # Refresh before reset(): the compression-work diagnostic inside
+            # reset() evaluates the new mesh pressures against the installed
+            # table, which clamps at a stale ceiling on impact steps.
+            AragogRunner._refresh_entropy_eos(config, interior_o)
             interior_o.aragog_solver.reset()
             # Restore entropy IC from previous solve
             if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
@@ -1239,11 +1243,12 @@ class AragogRunner:
 
         The solver keeps whatever table object it was built with, and the tables
         are rewritten whenever the structure solve reruns, with a pressure
-        ceiling that grows with the planet. That object is what
-        ``_step_heat_content`` integrates, which is the state side of the energy
-        budget, so a stale one misreports that budget on exactly the runs that
-        outgrow their starting table. The loader is cached on the table
-        parameters, so an unchanged table costs one small read.
+        ceiling that grows with the planet. ``solver.entropy_eos`` is read live
+        throughout the solve (the RHS, the per-call energy integrals, and the
+        compression-work diagnostic inside ``reset()``), so a stale object
+        misreports the energy budget on exactly the runs that outgrow their
+        starting table. The loader is cached on the table parameters, so an
+        unchanged table costs one small read.
 
         Parameters
         ----------
@@ -1364,20 +1369,15 @@ class AragogRunner:
                 # consumed the analytic Jacobian rather than silently falling
                 # back to the FD path.
                 solver._jax_factory_call_count += 1
-                # Rebuild the mesh from live solver state every solve() call,
-                # for the same reason the boundary conditions below are. A giant
-                # impact grows the planet and Zalmoxis re-solves the structure as
-                # the mantle freezes; either one replaces the mesh, and a copy
-                # taken once at install time would keep integrating the planet
-                # from before the change.
+                # Rebuild the mesh from live solver state every solve() call:
+                # impacts and structure re-solves replace it, and a copy taken
+                # at install time would keep integrating the pre-change planet.
                 mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
                 n_stag = solver._n_stag
-                # Same for the EOS tables. They are regenerated whenever the
-                # structure solve reruns, and a giant impact raises their
-                # pressure ceiling with the planet's mass, so a copy taken at
-                # install time would have the deep mantle clamped to the edge of
-                # a table built for a smaller planet. The loader is cached on the
-                # table parameters, so an unchanged table costs one small read.
+                # Same for the EOS tables: regeneration raises their pressure
+                # ceiling with the planet's mass, and an install-time copy would
+                # clamp the deep mantle at the smaller planet's table edge. The
+                # loader is cached, so an unchanged table costs one small read.
                 eos_jax = _cached_entropy_eos_jax(str(interior_o._spider_eos_dir))
                 # ``scales`` is an aragog.jax.nondim.NonDimScales single
                 # source of truth.
