@@ -265,10 +265,33 @@ Jacobians for robust convergence.
 | `solver_method` | str | `"cvode"` | ODE solver: `cvode` (SUNDIALS), `radau` (scipy), `bdf` (scipy) |
 | `atol_temperature_equivalent` | float | `1e-8` | Effective temperature-scale absolute tolerance \[K] |
 | `phase_smoothing` | str | `"tanh"` | Phase-boundary smoothing: `tanh` or `cubic_hermite` |
-| `core_bc` | str | `"energy_balance"` | Core-mantle boundary condition: `energy_balance` (SPIDER bit-parity), `quasi_steady`, `gradient`, or `bower2018` (experimental) |
+| `core_bc` | str | `"energy_balance"` | Core-mantle boundary condition: `energy_balance` (SPIDER bit-parity), `quasi_steady`, `gradient`, `bower2018` (experimental), or `core_module` (staged core evolution; see below) |
 | `tolerance_struct` | float | `100` | Absolute mass tolerance \[kg] for the interior-radius secant solver |
 | `scalar_gravity_override` | bool | `false` | Overwrite the mesh gravity column with a uniform surface scalar; set `true` only for paired scalar-gravity comparisons |
 | `phi_step_cap` | float | `0.0` | Per-call melt-fraction step cap. A CVODE root function returns control at the exact time the larger of the global mass-weighted $|\Delta\Phi|$ and the maximum single-cell $|\Delta\varphi|$ reaches this cap, which removes the discontinuous core-temperature drop at crystallisation onset. `0.0` is the schema default and the Aragog wrapper promotes it to `0.1` on the coupled Zalmoxis stack; a positive value overrides that promotion, and `-1.0` is the single off sentinel that keeps the cap off even on Zalmoxis; any other negative, NaN, or infinity is rejected at load |
+
+
+### Staged core-evolution module (`[interior_energetics.aragog.core_module]`)
+
+Active when `core_bc = "core_module"`. The core carries its own state: an energy budget with smoothed inner-core nucleation, latent heat, and light-element gravitational energy, integrated as an extra ODE state inside Aragog, so the reported core temperature is boundary-layer state rather than the lowermost mantle node's value. The CMB radius and pressure always come from the running mesh.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `rho_cen` | float | `12500.0` | Density at the planet centre \[kg m-3] of the Gaussian core profile |
+| `length_scale` | float | `7272e3` | Gaussian density length scale $L$ \[m] |
+| `alpha` | float | `1.35e-5` | Core thermal expansion coefficient \[K-1] |
+| `c_p` | float | `840.0` | Core specific heat capacity \[J kg-1 K-1] |
+| `melting_curve` | str | `"iron"` | `iron` (Anzellini et al. 2013 via PALEOS, with light-element depression) or `quadratic` (Nimmo 2015 Eq. 6) |
+| `light_element_fraction` | float | `0.0` | Mole fraction of light elements depressing the iron curve; `0` is pure iron |
+| `depression` | float | `0.0` | Melting-point depression per unit mole fraction |
+| `t_m0` | float | `2677.0` | Quadratic-curve prefactor \[K] |
+| `t_m1` | float | `2.95e-12` | Quadratic-curve linear coefficient \[Pa-1] |
+| `t_m2` | float | `8.37e-25` | Quadratic-curve quadratic coefficient \[Pa-2] |
+| `ds_fusion` | float | `172.8` | Entropy of fusion at the inner-core boundary \[J kg-1 K-1] |
+| `icn_width` | float | `10.0` | Temperature width \[K] of the smoothed nucleation and freeze-out factors |
+| `alpha_c` | float | `0.0` | Compositional expansivity of the outer-core alloy; `0` disables the gravitational term |
+| `c_light` | float | `0.0` | Light-element mass fraction of the outer core (complete rejection at the boundary) |
+| `q_radio` | float | `0.0` | Core radiogenic power \[W], constant over a run |
 | `temperature_step_cap` | float | `0.0` | Per-call per-cell temperature step cap \[K]. Shares the same root function as `phi_step_cap` and fires on the maximum single-cell $|\Delta T|$, bounding the core-temperature drop on the solid adiabat just below the solidus where the melt-fraction cap goes blind. `0.0` promotes to `100.0` on the Zalmoxis stack; positive overrides, `-1.0` keeps it off; any other negative, NaN, or infinity is rejected at load |
 | `entropy_step_cap` | float | `0.0` | Per-call per-cell entropy step cap \[J kg$^{-1}$ K$^{-1}$] in the native solver variable; same role as `temperature_step_cap` without an EOS lookup in the root function. `0.0` promotes to `100.0` on the Zalmoxis stack; positive overrides, `-1.0` keeps it off; any other negative, NaN, or infinity is rejected at load |
 | `phase_boundary_entropy_margin` | float | `200.0` | Phase-boundary proximity band \[J kg$^{-1}$ K$^{-1}$] within which a staggered cell counts as near a solidus or liquidus crossing, tightening the integrator `max_step` so CVODE resolves the stiff two-phase RHS. A positive value is required. Keep it of order a few hundred; a value orders of magnitude above the default makes every cell count as near a boundary at all times, clamping the integrator to 1 yr steps for the whole run and stalling it |
