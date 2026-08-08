@@ -26,19 +26,19 @@ parameter selects the surface energy balance scheme (`mixed_layer`,
 | `spectral_group` | str | `"Honeyside"` | Spectral file group defining gas opacities. See https://proteus-framework.org/SOCRATES/Reference/proteus_spectral_file_reference.html. |
 | `spectral_bands` | str | `"48"` | Number of wavenumber bands in k-table. |
 | `num_levels` | int | `50` | Number of vertical atmosphere levels. Must be >= 15. |
-| `p_top` | float | `1e-06` | Top-of-atmosphere pressure [bar]. Must be > 0. |
-| `p_obs` | float | `0.02` | Observation pressure level [bar] (transit radius). Must be > 0. |
+| `p_top` | float | `1e-06` | Top-of-atmosphere pressure \[bar\]. Must be > 0. |
+| `p_obs` | float | `0.02` | Observation pressure level \[bar\] (transit radius). Must be > 0. |
 | `overlap_method` | str | `"ee"` | Gas overlap method. Choices: 'ro', 'rorr', 'ee'. |
 | `surf_state` | str | `"skin"` | Surface energy balance scheme. Choices: `"mixed_layer"`, `"fixed"`, `"skin"`. |
-| `surface_d` | float | `0.01` | Conductive skin thickness [m]. Must be > 0. |
-| `surface_k` | float | `2.0` | Conductive skin thermal conductivity [W m-1 K-1]. Must be > 0. |
+| `surface_d` | float | `0.01` | Conductive skin thickness \[m\]. Must be > 0. |
+| `surface_k` | float | `2.0` | Conductive skin thermal conductivity \[W m-1 K-1\]. Must be > 0. |
 | `aerosols_enabled` | bool | `false` | Enable aerosol radiative effects. |
 | `cloud_enabled` | bool | `false` | Enable water cloud radiative effects (AGNI, JANUS only). |
 | `cloud_alpha` | float | `0.0` | Condensate retention fraction (0 = full rainout, 1 = fully retained). Must be >= 0 and <= 1. |
 | `surf_greyalbedo` | float | `0.1` | Grey surface albedo. Must be >= 0 and <= 1. |
 | `albedo_pl` | float | `0.0` | Planetary bond albedo (0 to 1). Must be >= 0 and <= 1. |
 | `rayleigh` | bool | `true` | Include Rayleigh scattering (AGNI, JANUS only). |
-| `tmp_minimum` | float | `0.5` | Minimum temperature throughout the atmosphere [K] (AGNI, JANUS only). Must be > 0. |
+| `tmp_minimum` | float | `0.5` | Minimum temperature throughout the atmosphere \[K\] (AGNI, JANUS only). Must be > 0. |
 <!-- END GENERATED: config-table [atmos_clim] -->
 
 ### AGNI `[atmos_clim.agni]`
@@ -58,11 +58,11 @@ interior heat flux. The `fastchem_*` parameters apply when
 | `surf_material` | str | `"greybody"` | Surface scattering material file. Set to 'greybody' to use surf_greyalbedo. |
 | `chemistry` | str or none | `none` | Atmospheric chemistry treatment. Choices: `none`, `"eq"`. |
 | `solve_energy` | bool | `true` | Solve for an energy-conserving atmosphere solution. |
-| `solution_atol` | float | `0.5` | Absolute tolerance on the atmosphere solution [W/m2]. Must be > 0. |
+| `solution_atol` | float | `0.5` | Absolute tolerance on the atmosphere solution \[W/m2\]. Must be > 0. |
 | `solution_rtol` | float | `0.15` | Relative tolerance on the atmosphere solution. Must be > 0. |
-| `surf_roughness` | float | `0.001` | Characteristic surface roughness scale [metres]. Must be > 0. |
-| `surf_windspeed` | float | `2.0` | Characteristic surface wind speed [m/s]. Must be > 0. |
-| `phs_timescale` | float | `1000000.0` | Relaxation timescale for phase changes (condensation/evaporation) [seconds]. Must be > 0. |
+| `surf_roughness` | float | `0.001` | Characteristic surface roughness scale \[metres\]. Must be > 0. |
+| `surf_windspeed` | float | `2.0` | Characteristic surface wind speed \[m/s\]. Must be > 0. |
+| `phs_timescale` | float | `1000000.0` | Relaxation timescale for phase changes (condensation/evaporation) \[seconds\]. Must be > 0. |
 | `evap_efficiency` | float | `0.01` | Efficiency of raindrop re-evaporation (0 to 1). Must be <= 1 and >= 0. |
 | `rainout` | bool | `true` | Enable volatile condensation and evaporation in the atmosphere. |
 | `oceans` | bool | `true` | Enable volatile ocean formation at the surface. |
@@ -72,7 +72,7 @@ interior heat flux. The `fastchem_*` parameters apply when
 | `sens_heat` | bool | `true` | Include sensible heat flux at surface. |
 | `real_gas` | bool | `false` | Use real gas equations of state in atmosphere, where possible. |
 | `thermo_functions` | bool | `true` | Use temperature-dependent thermodynamic properties. |
-| `psurf_thresh` | float | `0.1` | Use the transparent-atmosphere solver when P_surf is less than this value [bar]. Must be >= 0. |
+| `psurf_thresh` | float | `0.1` | Use the transparent-atmosphere solver when P_surf is less than this value \[bar\]. Must be >= 0. |
 | `dx_max` | float | `35.0` | Nominal maximum step size to T(p) during the solver process, although this is dynamic. Must be > 1. |
 | `dx_max_ini` | float | `50.0` | Initial maximum step size to T(p) when AGNI is called in the first few PROTEUS loops. Must be > 1. |
 | `max_steps` | int | `200` | Maximum number of iterations before giving up. Must be > 2. |
@@ -88,8 +88,8 @@ interior heat flux. The `fastchem_*` parameters apply when
 | `fdo` | int | `2` | Numerical order of finite-difference for jacobian. 2 or 4. Choices: `2`, `4`. |
 | `check_safe_gas` | bool | `true` | Require at least one "safe" gas (dry, has opacity, has thermo) when allocating AGNI atmosphere. Set False to allow compositions that AGNI would otherwise reject (e.g. for tests or exotic setups). |
 | `spectral_file` | str or none | `none` | Path to AGNI spectral file, or 'greygas' to enable the grey-gas RT scheme. If None, will use atmos_clim.spectral_group and atmos_clim.spectral_bands. |
-| `grey_opacity_lw` | float | `10.0` | Grey longwave opacity [m2 kg-1], used when `spectral_file='greygas'`. Must be > 0. |
-| `grey_opacity_sw` | float | `0.0001` | Grey shortwave opacity [m2 kg-1], used when `spectral_file='greygas'`. Must be > 0. |
+| `grey_opacity_lw` | float | `10.0` | Grey longwave opacity \[m2 kg-1\], used when `spectral_file='greygas'`. Must be > 0. |
+| `grey_opacity_sw` | float | `0.0001` | Grey shortwave opacity \[m2 kg-1\], used when `spectral_file='greygas'`. Must be > 0. |
 <!-- END GENERATED: config-table [atmos_clim.agni] -->
 
 ### JANUS `[atmos_clim.janus]`
@@ -104,7 +104,7 @@ computationally lighter than AGNI and suitable for parameter sweeps.
 | `F_atm_bc` | int | `0` | Outgoing flux boundary: 0 (TOA) or 1 (surface). Choices: `0`, `1`. |
 | `tropopause` | str or none | `none` | Tropopause scheme. Choices: `none`, `"skin"`, `"dynamic"`. |
 | `cloud_alpha` | float | `0.0` | Condensate retention fraction (0 = full rainout, 1 = fully retained). Must be >= 0 and <= 1. |
-| `tmp_maximum` | float | `5000.0` | Solver temperature ceiling [K]. Must be > 0. |
+| `tmp_maximum` | float | `5000.0` | Solver temperature ceiling \[K\]. Must be > 0. |
 <!-- END GENERATED: config-table [atmos_clim.janus] -->
 
 ### Dummy atmosphere `[atmos_clim.dummy]`
@@ -117,7 +117,7 @@ A grey-body parameterisation: $T_\mathrm{rad} = T_\mathrm{surf} \cdot (1 - \gamm
 |---|---|---|---|
 | `gamma` | float | `0.5` | Atmosphere opacity factor between 0 and 1. Must be >= 0 and <= 1. |
 | `height_factor` | float | `3.0` | A multiplying factor applied to the ideal-gas scale height. Must be >= 0. |
-| `fixed_flux` | float | `-1.0` | If > 0, return this constant flux [W/m2] instead of computing it. Default -1 (disabled, use the grey-body calculation). |
+| `fixed_flux` | float | `-1.0` | If > 0, return this constant flux \[W/m2\] instead of computing it. Default -1 (disabled, use the grey-body calculation). |
 <!-- END GENERATED: config-table [atmos_clim.dummy] -->
 
 ---
@@ -132,9 +132,9 @@ A grey-body parameterisation: $T_\mathrm{rad} = T_\mathrm{surf} \cdot (1 - \gamm
 | `when` | str | `"manually"` | When to run the chemistry module. Options: manually, offline, online. Choices: `"manually"`, `"offline"`, `"online"`. |
 | `photo_on` | bool | `true` | Use photochemistry. |
 | `Kzz_on` | bool | `true` | Use Kzz. |
-| `Kzz_const` | float or none | `none` | Constant Kzz value [cm2/s]. If 'none', Kzz is read from NetCDF file. |
+| `Kzz_const` | float or none | `none` | Constant Kzz value \[cm2/s\]. If 'none', Kzz is read from NetCDF file. |
 | `moldiff_on` | bool | `true` | Use molecular diffusion. |
-| `updraft_const` | float | `0.0` | Updraft velocity [cm/s]. |
+| `updraft_const` | float | `0.0` | Updraft velocity \[cm/s\]. |
 <!-- END GENERATED: config-table [atmos_chem] -->
 
 ### VULCAN `[atmos_chem.vulcan]`
@@ -146,7 +146,7 @@ steady-state mixing ratios from a chemical reaction network.
 <!-- Generated by tools/generate_config_reference.py; edit src/proteus/config/, not this table -->
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `clip_fl` | float | `1e-20` | Stellar flux floor [ergs cm-2 s-1 nm-1]. |
+| `clip_fl` | float | `1e-20` | Stellar flux floor \[ergs cm-2 s-1 nm-1\]. |
 | `clip_vmr` | float | `1e-10` | Neglect species with surface VMR < clip_vmr. |
 | `make_funs` | bool | `true` | Make functions from chemical network. |
 | `ini_mix` | str | `"profile"` | Initial mixing ratios. Options: profile, outgas. Choices: `"profile"`, `"outgas"`. |

@@ -18,6 +18,7 @@ for the test framework.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -210,6 +211,36 @@ def test_section_table_and_choices_dedup(schema):
         line for line in table.split('\n') if line.startswith('| `hill_clamp_frac`')
     )
     assert 'Must be > 0.' in rate_row
+
+
+# Independent of the generator's own pattern, so a bug there cannot hide here.
+_CODE_OR_LINK = re.compile(r'(`+)[^`]*?\1|\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\[[^\]]*\]')
+
+
+def test_generated_blocks_leave_no_bare_square_bracket(schema):
+    """Units keep their brackets but escaped, so markdown cannot read them as a
+    shortcut reference, while code spans and real links stay verbatim."""
+    p_top = next(f for f in schema['fields'] if f['path'] == 'atmos_clim.p_top')
+    assert '\\[bar\\]' in _gcr._describe(p_top)
+    linked = next(f for f in schema['fields'] if '](' in f['description'])
+    assert '](' in _gcr._describe(linked)
+    code_span = next(f for f in schema['fields'] if '``[' in f['description'])
+    assert '``[' in _gcr._describe(code_span)  # a backslash would render literally
+
+    sections = sorted({f['toml_section'] for f in schema['fields']})
+    blocks = [
+        _gcr._section_table([f for f in schema['fields'] if f['toml_section'] == s])
+        for s in sections
+    ]
+    blocks.append(_gcr._constraints_block(schema['constraints']))
+    offenders = []
+    for block in blocks:
+        for line in _CODE_OR_LINK.sub('', block).split('\n'):
+            if re.search(r'(?<!\\)[\[\]]', line):
+                offenders.append(line)
+    assert offenders == []
+    # The sweep must have something to check, or it passes vacuously.
+    assert sum(block.count('\\[') for block in blocks) > 100
 
 
 def test_committed_pages_are_current_and_fully_described(schema):

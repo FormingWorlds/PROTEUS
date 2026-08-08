@@ -88,7 +88,7 @@ def _describe(field: dict) -> str:
     if field['bounds']:
         clauses = ' and '.join(f'{b["op"]} {b["value"]}' for b in field['bounds'])
         parts.append(f'Must be {clauses}.')
-    return ' '.join(parts).replace('|', '\\|')
+    return _docgen.escape_link_brackets(' '.join(parts)).replace('|', '\\|')
 
 
 def _section_table(fields: list[dict]) -> str:
@@ -103,7 +103,7 @@ def _section_table(fields: list[dict]) -> str:
 def _constraints_block(constraints: list[dict]) -> str:
     lines = [GENERATED_NOTE, 'Cross-field constraints enforced when the config file loads:', '']
     for c in sorted(constraints, key=lambda c: c['validator']):
-        lines.append(f'- {c["doc"].rstrip(".")}.')
+        lines.append(f'- {_docgen.escape_link_brackets(c["doc"].rstrip("."))}.')
     return '\n'.join(lines)
 
 

@@ -73,6 +73,36 @@ def normalize(text: str) -> str:
     return '\n'.join(lines).rstrip('\n') + '\n'
 
 
+# A code span first, so a bracket inside one is never read as a link, then
+# the two real link forms. The URL part tolerates one level of nested
+# parentheses. Anything outside these is free text.
+_PROTECTED = re.compile(
+    r'(?P<ticks>`+).+?(?P=ticks)'
+    r'|\[[^\[\]]*\]\([^()]*(?:\([^()]*\)[^()]*)*\)'
+    r'|\[[^\[\]]*\]\[[^\[\]]*\]',
+    re.DOTALL,
+)
+_BARE_BRACKET = re.compile(r'(?<!\\)([\[\]])')
+
+
+def escape_link_brackets(text: str) -> str:
+    """Escape square brackets that markdown would read as a link reference.
+
+    Descriptions carry units in brackets ("[bar]", "[W m-1 K-1]"), which is
+    correct scientific style and also markdown's shortcut reference syntax.
+    Real links keep working, and code spans are left alone because a
+    backslash renders literally inside one.
+    """
+    out: list[str] = []
+    pos = 0
+    for match in _PROTECTED.finditer(text):
+        out.append(_BARE_BRACKET.sub(r'\\\1', text[pos : match.start()]))
+        out.append(match.group(0))
+        pos = match.end()
+    out.append(_BARE_BRACKET.sub(r'\\\1', text[pos:]))
+    return ''.join(out)
+
+
 def dump_json(obj) -> str:
     """Serialise deterministically: stable key order as inserted, no ASCII escaping."""
     return json.dumps(obj, indent=2, ensure_ascii=False) + '\n'

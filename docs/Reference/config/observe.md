@@ -15,7 +15,7 @@ implemented).
 |---|---|---|---|
 | `module` | str or none | `none` | Module to use for calculating synthetic spectra. Choices: `none`, `"petitRADTRANS"`. |
 | `clip_vmr` | float | `1e-08` | Minimum VMR to include a species in radiative transfer. Must be > 0 and < 1. |
-| `reference_pressure` | float | `10` | Reference pressure for synthetic spectrum generation [bar]. Must be > 0. |
+| `reference_pressure` | float | `10` | Reference pressure for synthetic spectrum generation \[bar\]. Must be > 0. |
 | `source` | str | `"all"` | Composition source selection: 'all', 'outgas', 'profile', or 'offchem'. Choices: `"all"`, `"outgas"`, `"profile"`, `"offchem"`. |
 | `spectrum_type` | str | `"both"` | Synthetic spectrum products to compute: 'both', 'transit', or 'eclipse'. Choices: `"both"`, `"transit"`, `"eclipse"`. |
 | `remove_one_gas` | bool | `true` | If True, generate additional leave-one-out spectra with each gas removed. |

@@ -104,6 +104,35 @@ def test_normalize_enforces_hygiene_contract():
     assert _dg.normalize('x\n\n\n') == 'x\n'
 
 
+def test_escape_link_brackets_protects_units_but_not_real_links():
+    """Bracketed units stop being shortcut reference syntax, while both
+    markdown link forms survive untouched."""
+    assert _dg.escape_link_brackets('pressure [bar].') == 'pressure \\[bar\\].'
+    assert _dg.escape_link_brackets('k [W m-1 K-1]') == 'k \\[W m-1 K-1\\]'
+    inline = 'See [documentation](https://example.org/a.html).'
+    assert _dg.escape_link_brackets(inline) == inline
+    # A URL carrying parentheses must not defeat the link protection.
+    nested = 'See [entry](https://example.org/Foo_(bar)#x).'
+    assert _dg.escape_link_brackets(nested) == nested
+    reference = 'A ref link [text][label] stays.'
+    assert _dg.escape_link_brackets(reference) == reference
+    # A closing bracket with no opener is interval notation, not a link.
+    assert _dg.escape_link_brackets('within (0, 10] bar') == 'within (0, 10\\] bar'
+
+
+def test_escape_link_brackets_leaves_code_spans_alone_and_is_idempotent():
+    """A backslash renders literally inside a code span, so brackets there must
+    survive; escaping an already-escaped string is a fixed point."""
+    code = "gravity from ``hf_row['gravity']`` before"
+    assert _dg.escape_link_brackets(code) == code
+    mixed = 'Distinct from ``[a.b].c`` unlike [K] here.'
+    assert _dg.escape_link_brackets(mixed) == 'Distinct from ``[a.b].c`` unlike \\[K\\] here.'
+    once = _dg.escape_link_brackets('pressure [bar] and [K]')
+    assert _dg.escape_link_brackets(once) == once
+    assert once.count('\\\\') == 0  # never doubles an existing escape
+    assert _dg.escape_link_brackets('') == ''
+
+
 def test_dump_json_is_deterministic_and_newline_terminated():
     """Two serialisations of the same object are byte-identical, insertion
     order is preserved (the generators sort upstream), and non-ASCII survives
