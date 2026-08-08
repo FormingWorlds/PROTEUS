@@ -28,8 +28,8 @@ import tomllib
 
 import _config_schema
 import _docgen
-from _docgen import REPO_ROOT
 
+REPO_ROOT = _docgen.REPO_ROOT
 CONFIG_DOCS = REPO_ROOT / 'docs' / 'Reference' / 'config'
 ALL_OPTIONS = REPO_ROOT / 'input' / 'all_options.toml'
 JSON_PATH = CONFIG_DOCS / 'config_schema.json'

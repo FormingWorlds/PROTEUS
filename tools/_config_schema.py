@@ -305,6 +305,9 @@ def _default_repr(field) -> str:
     if factory is not None:
         default = factory()
     if field.converter is not None:
+        # Converters are arbitrary callables and some reject their own field's
+        # default (an accepts-none probe, a path that must exist). The raw
+        # default is the right thing to display when that happens.
         try:
             default = field.converter(default)
         except Exception:
@@ -337,6 +340,9 @@ def build_schema() -> dict:
     attached: dict[str, list[str]] = {}
 
     def visit(cls, prefix: str, seen: frozenset) -> None:
+        # Best-effort: resolving string annotations needs every name in the
+        # defining module's namespace. Where that fails, ``_type_hints``
+        # falls back to the raw annotation text.
         try:
             attrs.resolve_types(cls)
         except Exception:

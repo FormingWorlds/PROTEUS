@@ -28,8 +28,8 @@ from pathlib import Path
 
 import _config_schema
 import _docgen
-from _docgen import REPO_ROOT
 
+REPO_ROOT = _docgen.REPO_ROOT
 PAGE = REPO_ROOT / 'docs' / 'Reference' / 'module_map.md'
 JSON_PATH = REPO_ROOT / 'docs' / 'Reference' / 'module_map.json'
 SRC = REPO_ROOT / 'src' / 'proteus'

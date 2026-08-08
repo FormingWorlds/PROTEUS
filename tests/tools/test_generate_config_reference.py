@@ -46,7 +46,8 @@ def _load(name: str):
     return module
 
 
-_docgen = _load('_docgen')
+# Registered for its sys.modules side effect only; the scripts import it by name.
+_load('_docgen')
 _cs = _load('_config_schema')
 _gcr = _load('generate_config_reference')
 

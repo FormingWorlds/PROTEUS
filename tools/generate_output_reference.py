@@ -27,8 +27,8 @@ import sys
 import _docgen
 import _helpfile_scan
 import _helpfile_schema
-from _docgen import REPO_ROOT
 
+REPO_ROOT = _docgen.REPO_ROOT
 PAGE = REPO_ROOT / 'docs' / 'Reference' / 'output.md'
 JSON_PATH = REPO_ROOT / 'docs' / 'Reference' / 'output_schema.json'
 REGEN_CMD = 'python tools/generate_output_reference.py'

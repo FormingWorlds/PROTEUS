@@ -27,8 +27,8 @@ import tomllib
 from urllib.parse import quote
 
 import _docgen
-from _docgen import REPO_ROOT
 
+REPO_ROOT = _docgen.REPO_ROOT
 PYPROJECT = REPO_ROOT / 'pyproject.toml'
 TARGET = REPO_ROOT / 'docs' / 'Reference' / 'module_versions.md'
 REGEN_CMD = 'python tools/generate_version_badges.py'
