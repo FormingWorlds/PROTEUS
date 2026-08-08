@@ -1004,6 +1004,9 @@ def test_run_atmosphere_clips_a_carried_radius_from_an_unclipped_row():
         'atm_kg_per_mol': 0.029,
         'T_surf': 0.0,
         'R_int': 6.371e6,
+        # Surface gravity, which the interior writes before the atmosphere runs
+        # and the atmosphere modules already read to place the XUV level.
+        'gravity': 9.81,
         'R_star': 6.96e8,
         'F_olr': 200.0,
         'F_sct': 100.0,
@@ -1047,3 +1050,150 @@ def test_run_atmosphere_clips_a_carried_radius_from_an_unclipped_row():
     assert hf_row['R_xuv'] != pytest.approx(5.0e8, rel=1e-1)
     # The rest of the level still comes from the committed row.
     assert hf_row['H2O_vmr_xuv'] == pytest.approx(0.4, rel=1e-12)
+
+    # The bound moved the radius, so the level follows it: gravity is placed at
+    # the radius the row now carries, and the two quantities that would need the
+    # profile are marked unmeasured rather than left at the committed height.
+    assert hf_row['g_xuv'] == pytest.approx(
+        hf_row['gravity'] * (hf_row['R_int'] / 1.0e8) ** 2, rel=1e-12
+    )
+    assert math.isnan(hf_row['p_xuv'])
+    assert math.isnan(hf_row['T_xuv'])
+
+
+def test_run_atmosphere_keeps_a_level_the_bound_does_not_move():
+    """A solved level sitting inside the Hill radius is written as the module
+    measured it. The bound changes nothing there, so nothing is realigned.
+
+    This is the other side of the check above: a realignment that ran on every
+    row rather than only where the radius moved would mark the pressure and
+    temperature of every converged row unmeasured, which is a loss of exactly
+    the data the level exists to record.
+    """
+    atmos_o = Atmos_t()
+    atmos_o._atm = object()
+
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='agni',
+            albedo_pl=0.0,
+            rayleigh=False,
+            cloud_enabled=False,
+            surf_state='fixed',
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+        escape=SimpleNamespace(hill_clamp=True, hill_clamp_frac=1.0),
+    )
+    hf_row = {
+        'T_magma': 1800.0,
+        'M_planet': 6.0e24,
+        'F_int': 120.0,
+        'F_atm': 100.0,
+        'axial_period': 86400.0,
+        'atm_kg_per_mol': 0.029,
+        'T_surf': 0.0,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'R_star': 6.96e8,
+        'F_olr': 200.0,
+        'F_sct': 100.0,
+        'F_ins': 1361.0,
+        'separation': 1.5e11,
+        'hill_radius': 1.0e8,
+        **{key: 0.0 for key in _levels(1.0, 1.0)},
+    }
+
+    # A converged solve whose XUV level sits well inside the Hill radius.
+    solved = _levels(2.0e7, 2.4e7, 0.4)
+    out = dict(solved)
+    out.update({'albedo': 0.2, 'F_atm': 100.0, 'agni_converged': True})
+    vmr = out.pop('H2O_vmr_xuv')
+
+    def _run_agni(atm, *args, **kwargs):
+        hf_row['H2O_vmr_xuv'] = vmr
+        return atm, out
+
+    with (
+        patch('proteus.atmos_clim.agni.update_agni_atmos', side_effect=lambda a, *_, **__: a),
+        patch('proteus.atmos_clim.agni.run_agni', side_effect=_run_agni),
+    ):
+        atmos_wrapper.run_atmosphere(
+            atmos_o,
+            config,
+            {'output': '/tmp/x'},
+            {'total': 5},
+            [1.0],
+            [1.0],
+            False,
+            None,
+            hf_row,
+        )
+
+    # The radius is inside the bound, so it is written unchanged.
+    assert hf_row['R_xuv'] == pytest.approx(2.4e7, rel=1e-12)
+    assert hf_row['R_xuv'] < hf_row['hill_radius']
+    # The level the solve measured survives, rather than being marked unmeasured.
+    assert hf_row['p_xuv'] == pytest.approx(solved['p_xuv'], rel=1e-12)
+    assert hf_row['T_xuv'] == pytest.approx(solved['T_xuv'], rel=1e-12)
+    assert hf_row['g_xuv'] == pytest.approx(solved['g_xuv'], rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_realign_xuv_level_puts_gravity_at_the_moved_radius():
+    """A level whose radius has been moved takes the gravity of the height it
+    now sits at, and gives up the pressure and temperature of the one it left.
+
+    Gravity falls as the inverse square of the radius, so the square is what
+    discriminates: at twice the interior radius the surface value is quartered.
+    A realignment carrying the ratio rather than its square lands at half the
+    surface value, and one inverting the ratio lands at sixteen times it, both
+    far outside the tolerance on a quarter.
+    """
+    hf_row = {
+        'gravity': 9.8,
+        'R_int': 6.0e6,
+        'g_xuv': 6.8,
+        'p_xuv': 1.0e-6,
+        'T_xuv': 400.0,
+    }
+
+    atmos_wrapper.realign_xuv_level(hf_row, 1.2e7)
+
+    assert hf_row['g_xuv'] == pytest.approx(2.45, rel=1e-12)
+    # The two wrong forms this could take, each far enough from the right one
+    # that the pin above separates them rather than merely admitting them.
+    unsquared = 9.8 * (6.0e6 / 1.2e7)
+    inverted = 9.8 * (1.2e7 / 6.0e6) ** 2
+    assert abs(hf_row['g_xuv'] - unsquared) > 2.0
+    assert abs(hf_row['g_xuv'] - inverted) > 2.0
+    # Neither of these can be recomputed without the profile the solve held.
+    assert math.isnan(hf_row['p_xuv'])
+    assert math.isnan(hf_row['T_xuv'])
+
+
+def test_realign_xuv_level_marks_gravity_unmeasured_where_it_cannot_be_placed():
+    """A radius of zero places no level, and a row without the interior radius
+    or the surface gravity gives nothing to place one from. Neither leaves the
+    gravity of the height the radius came away from.
+
+    A stale value here is worse than none, since it reads as a measurement of a
+    level the row no longer describes, which is the pairing this realignment
+    exists to prevent.
+    """
+    at_zero = {'gravity': 9.8, 'R_int': 6.0e6, 'g_xuv': 6.8, 'p_xuv': 1.0e-6, 'T_xuv': 400.0}
+    atmos_wrapper.realign_xuv_level(at_zero, 0.0)
+    assert math.isnan(at_zero['g_xuv'])
+    assert math.isnan(at_zero['p_xuv'])
+    assert math.isnan(at_zero['T_xuv'])
+
+    without_planet = {'g_xuv': 6.8, 'p_xuv': 1.0e-6, 'T_xuv': 400.0}
+    atmos_wrapper.realign_xuv_level(without_planet, 1.2e7)
+    assert math.isnan(without_planet['g_xuv'])
+    assert math.isnan(without_planet['p_xuv'])
+
+    # A row carrying no XUV level at all is left as it is rather than given one.
+    empty: dict = {'gravity': 9.8, 'R_int': 6.0e6}
+    atmos_wrapper.realign_xuv_level(empty, 1.2e7)
+    assert 'g_xuv' not in empty
+    assert 'p_xuv' not in empty
+    assert 'T_xuv' not in empty
