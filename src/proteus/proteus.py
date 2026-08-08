@@ -1016,12 +1016,22 @@ class Proteus:
             if (self.loops['total'] > self.loops['init_loops'] + 2) and (not self.desiccated):
                 PrintHalfSeparator()
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                # The mantle can cross the solidification threshold on this
+                # iteration and the check that records it runs further down the
+                # loop, so read the same condition here: escape must draw on the
+                # atmosphere alone from the step the mantle freezes, not the one
+                # after, or it sizes its loss from a reservoir already frozen.
+                frozen = self.crystallized or (
+                    self.config.params.stop.solid.freeze_volatiles
+                    and float(self.hf_row.get('Phi_global', 1.0))
+                    <= float(self.config.params.stop.solid.phi_crit)
+                )
                 run_escape(
                     self.config,
                     self.hf_row,
                     self.directories,
                     self.interior_o.dt,
-                    atmosphere_only=self.crystallized,
+                    atmosphere_only=frozen,
                     interior_o=self.interior_o,
                 )
                 if _IT_TIMING_ENABLED:

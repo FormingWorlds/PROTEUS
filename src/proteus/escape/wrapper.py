@@ -537,6 +537,17 @@ def calc_new_elements(
     for e in res:
         lost = esc_mass * emr[e]
         old_total = float(hf_row.get(f'{e}_kg_total', 0.0))
+        if not np.isfinite(old_total):
+            # Leave it as it stands. Clamping below would turn it into a zero
+            # that reads as an element escape has depleted, hiding whatever
+            # upstream failure produced it.
+            log.warning(
+                'Whole-planet inventory of %s is not finite, so escape leaves '
+                'it untouched this step; it needs checking upstream.',
+                e,
+            )
+            tgt[e] = old_total
+            continue
         new_total = old_total - lost
         # The desiccation floor treats a major volatile that drops below
         # min_thresh as fully depleted. Noble gases are intrinsically trace

@@ -801,6 +801,13 @@ class TestEscapeStepLimit:
         call = src.split('run_escape(')[1].split(')')[0]
         assert 'interior_o=self.interior_o' in call
 
+        # The reservoir escape draws on has to account for a mantle that freezes
+        # on this iteration, since the flag recording it is set further down the
+        # loop and reading it alone sizes the loss from a reservoir already gone.
+        before_call = src.split('run_escape(')[0]
+        assert 'freeze_volatiles' in before_call
+        assert 'atmosphere_only=self.crystallized,' not in call
+
         # The branch taken when escape does not run has to reset all three, so
         # the limit, the request and the applied loss cannot outlive their step.
         skipped = src.split('run_escape(')[1]

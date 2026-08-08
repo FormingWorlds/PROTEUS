@@ -1886,17 +1886,37 @@ def test_unreadable_reservoir_debits_nothing_and_credits_nothing():
     assert hf['H_kg_total'] > 0.5 * budget_kg
     assert check_desiccation(config, hf) is False
 
+    # The same applies one field over: a whole-planet total left non-finite by
+    # an upstream failure must survive the step as it is. Clamping it would
+    # produce a zero indistinguishable from an element escape has depleted.
+    hf2 = {f'{e}_kg_atm': 0.0 for e in element_list}
+    hf2.update({f'{e}_kg_total': 0.0 for e in element_list})
+    hf2['H_kg_atm'] = 1.0e18  # a readable reservoir, so the guards above pass
+    hf2['H_kg_total'] = float('nan')
+    hf2['C_kg_atm'] = 1.0e17
+    hf2['C_kg_total'] = 5.0e21  # a healthy neighbour that must still be debited
+    hf2['esc_kg_cumulative'] = 0.0
+    hf2['M_vol_initial'] = 5.0e21
+
+    run_escape(config, hf2, dt=1.0e4, atmosphere_only=True)
+
+    assert math.isnan(hf2['H_kg_total'])
+    assert hf2['C_kg_total'] < 5.0e21  # the readable element still escapes
+    assert hf2['C_kg_total'] > 0.9 * 5.0e21  # and only by its share
+
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_atmosphere_rescale_is_bounded_when_the_loss_outsizes_the_column():
-    """The atmospheric rescale must never remove more than the share one step is
-    allowed, so a loss sized against a reservoir larger than the atmosphere
-    cannot empty the column while the whole-planet totals stay whole.
+def test_frozen_mantle_sizes_the_loss_from_the_column_it_will_rescale():
+    """Once the mantle is frozen the loss must be sized from the atmosphere, so
+    the mass debited from the whole-planet totals is the mass the atmospheric
+    rescale then removes and the two records of the step agree.
 
-    Physical scenario: the iteration the mantle solidifies. Escape still sizes
-    its loss from the bulk reservoir there, which for a mostly dissolved
-    inventory is orders of magnitude larger than the atmosphere above it.
+    Physical scenario: the iteration the mantle solidifies, on a planet whose
+    volatiles are mostly dissolved. Sizing from the whole planet there would
+    debit the totals for mass the frozen mantle no longer supplies, which the
+    column cannot give up. Edge case: a bulk reservoir five orders of magnitude
+    larger than the atmosphere above it.
     """
     from proteus.escape.wrapper import run_escape
     from proteus.outgas.wrapper import run_crystallized
@@ -1904,38 +1924,95 @@ def test_atmosphere_rescale_is_bounded_when_the_loss_outsizes_the_column():
 
     bulk_kg, atmos_kg = 1.0e22, 1.0e17
 
-    hf = {f'{e}_kg_atm': 0.0 for e in element_list}
-    hf.update({f'{e}_kg_total': 0.0 for e in element_list})
-    hf['H_kg_total'] = bulk_kg
-    hf['H_kg_atm'] = atmos_kg
-    hf['M_atm'] = atmos_kg
-    hf['P_surf'] = 1.0
-    hf['esc_kg_cumulative'] = 0.0
-    hf['M_vol_initial'] = bulk_kg
-    for gas in ('H2O', 'CO2', 'O2', 'H2', 'CO', 'CH4', 'N2', 'S2', 'SO2'):
-        hf[f'{gas}_kg_atm'] = 0.0
-        hf[f'{gas}_bar'] = 0.0
-    hf['H2O_kg_atm'] = atmos_kg
-    hf['H2O_bar'] = 1.0
+    def build():
+        hf = {f'{e}_kg_atm': 0.0 for e in element_list}
+        hf.update({f'{e}_kg_total': 0.0 for e in element_list})
+        hf['H_kg_total'] = bulk_kg
+        hf['H_kg_atm'] = atmos_kg
+        hf['M_atm'] = atmos_kg
+        hf['P_surf'] = 1.0
+        hf['esc_kg_cumulative'] = 0.0
+        hf['M_vol_initial'] = bulk_kg
+        for gas in ('H2O', 'CO2', 'O2', 'H2', 'CO', 'CH4', 'N2', 'S2', 'SO2'):
+            hf[f'{gas}_kg_atm'] = 0.0
+            hf[f'{gas}_bar'] = 0.0
+        hf['H2O_kg_atm'] = atmos_kg
+        hf['H2O_bar'] = 1.0
+        return hf
 
     config = MagicMock()
     config.escape.module = 'dummy'
-    config.escape.reservoir = 'bulk'  # sized from the whole planet, not the column
+    config.escape.reservoir = 'bulk'  # the whole planet, not the frozen column
     config.escape.dummy.rate = 1.0e9  # kg/s
     config.escape.step_max_frac = 0.25
     config.escape.step_dt_floor_frac = 1.0e-3
     config.outgas.mass_thresh = 1.0e10
     config.outgas.vapourise = False
 
-    # The mantle solidifies this iteration, so escape still runs on the bulk
-    # reservoir and the rescale that follows it runs on the frozen atmosphere.
-    run_escape(config, hf, dt=1.0e4, atmosphere_only=False)
-    assert hf['esc_step_kg'] > 100.0 * atmos_kg  # the mismatch really is large
-    run_crystallized(config, hf, dt=1.0e4)
+    def coupled(atmosphere_only):
+        hf = build()
+        run_escape(config, hf, dt=1.0e4, atmosphere_only=atmosphere_only)
+        totals_lost = bulk_kg - hf['H_kg_total']
+        run_crystallized(config, hf, dt=1.0e4)
+        return totals_lost, atmos_kg - hf['M_atm'], hf['M_atm'], hf['P_surf']
 
-    retained = hf['M_atm'] / atmos_kg
-    assert retained == pytest.approx(1.0 - config.escape.step_max_frac, rel=1e-9)
-    # Discrimination: rescaling by the raw loss leaves nothing, and a surface
-    # pressure of zero over a full volatile budget is the state to avoid.
-    assert hf['M_atm'] > 0.5 * atmos_kg
-    assert hf['P_surf'] > 0.5
+    frozen_totals, frozen_atmos, m_atm, p_surf = coupled(True)
+
+    # Treated as frozen: one mass, both records, and the column survives.
+    assert frozen_totals == pytest.approx(frozen_atmos, rel=1e-9)
+    assert frozen_totals == pytest.approx(0.25 * atmos_kg, rel=1e-9)
+    assert m_atm == pytest.approx(0.75 * atmos_kg, rel=1e-9)
+    assert p_surf == pytest.approx(0.75, rel=1e-9)
+
+    # Discrimination: sizing from the whole planet debits the totals for
+    # thousands of times the column, which then empties at zero pressure.
+    bulk_totals, bulk_atmos, bulk_m_atm, bulk_p_surf = coupled(False)
+    assert bulk_totals > 1.0e3 * bulk_atmos
+    assert bulk_m_atm == pytest.approx(0.0, abs=1e-6)
+    assert bulk_p_surf == pytest.approx(0.0, abs=1e-9)
+
+
+@pytest.mark.unit
+def test_disabled_escape_clears_the_records_of_an_earlier_step():
+    """Switching escape off must clear the per-step records as well as the
+    rates, so a step taken while it was on cannot be read as the current one.
+
+    Exercises the disabled path directly, with the records carrying values from
+    a capped step and the controller holding the shortened step that went with
+    them. Edge case: no interior object supplied, where the clearing of the
+    helpfile records still has to happen.
+    """
+    from types import SimpleNamespace
+
+    from proteus.escape.wrapper import run_escape
+    from proteus.utils.constants import element_list
+
+    config = MagicMock()
+    config.escape.module = None  # escape switched off
+
+    interior_o = SimpleNamespace(escape_dt_limit=12.5)
+    hf = {f'{e}_kg_total': 1.0e20 for e in element_list}
+    hf['esc_clamp_frac'] = 2.1e9  # a heavily overshooting earlier step
+    hf['esc_step_kg'] = 3.3e19
+    hf['esc_rate_total'] = 5.0e7
+
+    run_escape(config, hf, dt=1.0e3, interior_o=interior_o)
+
+    assert hf['esc_clamp_frac'] == pytest.approx(0.0, abs=1e-12)
+    assert hf['esc_step_kg'] == pytest.approx(0.0, abs=1e-12)
+    assert hf['esc_rate_total'] == pytest.approx(0.0, abs=1e-12)
+    # The controller must stop holding the step short on account of a step that
+    # is no longer being taken; a finite limit here shortens every later step.
+    assert interior_o.escape_dt_limit == float('inf')
+    # Discrimination: leaving the records alone keeps 2.1e9 and 3.3e19, which
+    # read downstream as a run still being held back by the cap.
+    assert hf['esc_clamp_frac'] < 1.0
+    assert hf['esc_step_kg'] < 1.0
+
+    # Without an interior object the helpfile records are still cleared.
+    hf2 = {f'{e}_kg_total': 1.0e20 for e in element_list}
+    hf2['esc_clamp_frac'] = 7.0
+    hf2['esc_step_kg'] = 1.0e18
+    run_escape(config, hf2, dt=1.0e3)
+    assert hf2['esc_clamp_frac'] == pytest.approx(0.0, abs=1e-12)
+    assert hf2['esc_step_kg'] == pytest.approx(0.0, abs=1e-12)
