@@ -31,7 +31,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_module='spider'):
     """Build a Proteus object with mocked config and directories."""
-    from proteus.proteus import Proteus
+    from proteus.proteus import ATMOS_STALL_MAX, Proteus
 
     config = MagicMock()
     config.interior_struct.module = struct_module
@@ -48,6 +48,10 @@ def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_modul
     # against. Defaults mirror the schema.
     config.params.stop.solid.freeze_volatiles = False
     config.params.stop.solid.phi_crit = 0.01
+    # Same reason: an unset mock integer reads as 1, which would silently give
+    # the run a stall cap of one iteration instead of the schema default.
+    config.params.stop.stall.enabled = True
+    config.params.stop.stall.maximum = ATMOS_STALL_MAX
 
     directories = {
         'output': str(tmp_path),
@@ -1764,3 +1768,61 @@ def test_non_vapourising_run_keeps_strict_mass_conservation(tmp_path, caplog):
     # Discrimination: the breach is a factor of two, far outside the 1e-6
     # tolerance, so this is not passing on a rounding edge.
     assert rows[-1]['M_atm'] / rows[-1]['M_planet'] == pytest.approx(2.0, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_stall_criterion_is_configurable_and_matches_its_constant(tmp_path):
+    """The stall abort reads its cap and its on/off state from the config, and
+    the schema default is the same number the module constant carries.
+
+    Contract clause: the cap is a termination criterion like the seven beside
+    it, so a run that stalls legitimately can raise it or switch it off without
+    editing source. The default is duplicated between the schema and the
+    constant, so it is pinned here: two records of one number are only safe
+    while something fails when they disagree.
+    """
+    from proteus.config._params import StopParams, StopStall
+    from proteus.proteus import ATMOS_STALL_MAX
+
+    assert StopStall().maximum == ATMOS_STALL_MAX
+    assert StopStall().enabled is True
+    assert StopParams().stall.maximum == ATMOS_STALL_MAX
+
+    # A non-positive cap is refused: it would abort before a run had a chance.
+    for bad in (0, -1):
+        with pytest.raises(ValueError):
+            StopStall(maximum=bad)
+
+    moving = {
+        'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
+        'hf_row': {'F_atm': 140.0, 'T_magma': 3000.0, 'Phi_global': 0.9},
+    }
+
+    # A raised cap moves the abort with it: the streak that ended the run at the
+    # default is now allowed to continue.
+    raised = _make_deadlock_proteus(
+        tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX, **moving
+    )
+    raised.atmos_stall_max = ATMOS_STALL_MAX * 2
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        raised._check_atmosphere_deadlock()
+    mock_update.assert_not_called()
+
+    # Switching the criterion off spares a streak far past any cap, which is
+    # the recourse a legitimately long-stalling run has.
+    off = _make_deadlock_proteus(
+        tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX * 10, **moving
+    )
+    off.atmos_stall_enabled = False
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        off._check_atmosphere_deadlock()
+    mock_update.assert_not_called()
+
+    # Discrimination: the same streak with the criterion on does abort, so the
+    # two results above are attributable to the switch and the cap.
+    on = _make_deadlock_proteus(
+        tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX * 10, **moving
+    )
+    with patch('proteus.proteus.UpdateStatusfile'):
+        with pytest.raises(RuntimeError, match='consecutive solves'):
+            on._check_atmosphere_deadlock()

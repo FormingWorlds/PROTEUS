@@ -98,6 +98,10 @@ config_version = "3.0"
             spin_enabled      = true         # check rotational breakup
             offset_spin       = 0            # correction to breakup period [s]
 
+        [params.stop.stall]                  # unconverged atmosphere criterion
+            enabled           = true
+            maximum           = 150          # stop after this many consecutive iterations without a converged atmosphere
+
 # ----------------------------------------------------
 
 # Bulk planet properties, initial temperature, and volatile inventory

@@ -134,8 +134,12 @@ class Proteus:
         self.hf_all = None
 
         # Caps on the two abort paths. Fixed for the run rather than reset per
-        # start, unlike the counters they are compared with.
-        self.atmos_stall_max = ATMOS_STALL_MAX
+        # start, unlike the counters they are compared with. The stall cap is a
+        # stop criterion like the seven beside it, so the config carries it and
+        # the constant is only the default that config field already holds.
+        stall_cfg = getattr(self.config.params.stop, 'stall', None)
+        self.atmos_stall_enabled = True if stall_cfg is None else bool(stall_cfg.enabled)
+        self.atmos_stall_max = ATMOS_STALL_MAX if stall_cfg is None else int(stall_cfg.maximum)
         self.agni_deadlock_max = AGNI_DEADLOCK_MAX
 
         # Loop counters
@@ -229,7 +233,7 @@ class Proteus:
             return
 
         stalled = int(self.atmos_o.levels_stale_iters)
-        if stalled >= self.atmos_stall_max:
+        if self.atmos_stall_enabled and stalled >= self.atmos_stall_max:
             log.error(
                 'Atmosphere has not converged for %d consecutive iterations, so escape '
                 'and the observables are running on a structure this run never resolved. '
