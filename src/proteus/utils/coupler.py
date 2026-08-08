@@ -944,14 +944,11 @@ def GetHelpfileKeys():
         'O_res',                 # O mass-balance residual [kg]
         'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
 
-        # Desiccation escape-balance gate. M_vol_initial is the sum over
-        # all elements (oxygen included) of *_kg_total captured on the
-        # first escape call, used
-        # as the reference point for `outgas.wrapper.check_desiccation`'s
-        # "is the loss accounted for by escape?" sanity check.
-        # esc_kg_cumulative is the running sum of esc_rate_total * dt
-        # over the whole run. Both must be persisted to the CSV so
-        # resume preserves the gate's state.
+        # Desiccation escape-balance gate for `outgas.wrapper.check_desiccation`.
+        # M_vol_initial is the summed *_kg_total (oxygen included) captured on
+        # the first escape call; esc_kg_cumulative is the mass each step took
+        # out of those inventories, never more than it was allowed to remove.
+        # Both persist to the CSV so resume preserves the gate's state.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
         'esc_kg_cumulative', # cumulative escaped mass [kg]
 

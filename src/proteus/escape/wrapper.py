@@ -142,8 +142,16 @@ def escape_dt_limit(
 
     The cap bounds the loss on the step that overshot, but leaves the step
     length that produced it unchanged, so the same rate asks for the same
-    excess again. Shortening the next step by the overshoot ratio puts an
-    unchanged rate exactly at the cap instead of above it.
+    excess again. Shortening the next step by the overshoot ratio brings the
+    request back to the cap, measured against the reservoir the step started
+    from.
+
+    That step then removes ``max_frac`` of that reservoir, so measured against
+    what remains an unchanged rate settles at ``max_frac / (1 - max_frac)``,
+    still above the cap. The cap therefore keeps binding and the step keeps
+    shortening while the rate holds, which runs a reservoir down over many
+    steps rather than emptying it in one. The step stops shortening at the
+    floor set by ``escape.step_dt_floor_frac``.
 
     Parameters
     ----------
@@ -158,8 +166,9 @@ def escape_dt_limit(
     Returns
     -------
         dt_limit : float
-            Step length that would place the same rate at ``max_frac`` [yr].
-            Infinite when the request was within the cap, so no limit applies.
+            Step length that places the same rate at ``max_frac`` of the
+            reservoir this step drew on [yr]. Infinite when the request was
+            within the cap, so no limit applies.
     """
     if not np.isfinite(clamp_frac) or clamp_frac <= max_frac:
         return float('inf')
@@ -277,12 +286,6 @@ def run_escape(
             float(hf_row.get('esc_clamp_frac', 0.0)), dt, max_frac=max_frac
         )
 
-    # Publish the capped loss so every consumer of this step works from the same
-    # mass. `outgas.wrapper.run_crystallized` scales the atmosphere by it, and
-    # sizing that from the uncapped rate would empty the atmosphere while the
-    # elemental totals kept only a quarter of the loss.
-    hf_row['esc_step_kg'] = esc_step_kg
-
     before_kg = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
 
     # calculate new elemental inventories from loss over duration `dt`
@@ -298,11 +301,22 @@ def run_escape(
     for e, mass in solvevol_target.items():
         hf_row[f'{e}_kg_total'] = mass
 
-    # Accumulate the mass that actually left, for the desiccation gate. Measured
-    # from the inventories rather than taken from the request, because the
-    # threshold gate in calc_new_elements can decline to debit it.
-    removed_kg = before_kg - sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
-    if np.isfinite(removed_kg) and removed_kg > 0.0:
+    # The mass that actually left. Measured from the inventories, not the
+    # request, because the threshold gate can decline to debit; bounded by the
+    # applied loss, because that same gate also zeroes an element under the
+    # threshold and escape must not be credited with the truncation.
+    drop_kg = before_kg - sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
+    removed_kg = min(drop_kg, esc_step_kg)
+    if not np.isfinite(removed_kg) or removed_kg < 0.0:
+        removed_kg = 0.0
+
+    # Publish it so every consumer of this step works from the same mass.
+    # `outgas.wrapper.run_crystallized` rescales the atmosphere by this value,
+    # so it has to be the loss the inventories took rather than the one the
+    # rate asked for: a declined debit that still drained the atmosphere would
+    # part the two records of the same step.
+    hf_row['esc_step_kg'] = removed_kg
+    if removed_kg > 0.0:
         hf_row['esc_kg_cumulative'] = float(hf_row.get('esc_kg_cumulative', 0.0)) + removed_kg
 
 
@@ -476,8 +490,12 @@ def calc_new_elements(
     M_vols = float(sum(res.values()))
     # check if we just desiccated the planet...
     if M_vols < min_thresh:
+        # Return the totals unchanged. `res` holds the reservoir the loss is
+        # sized from, which is `*_kg_atm` for `outgas`, so returning it here
+        # would overwrite the whole-planet inventory with the atmospheric one
+        # and erase volatiles still held in the mantle.
         log.debug('Total mass of volatiles below threshold in escape calculation')
-        return res
+        return {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
 
     # compute mass ratios in escaping reservoir.
     # With `outgas.vapourise=True` the rock-forming elements can take a share of
