@@ -72,17 +72,11 @@ pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 CONFIG = PROTEUS_ROOT / 'tests' / 'integration' / 'golden_run.toml'
 REFERENCE = PROTEUS_ROOT / 'tests' / 'integration' / 'golden_run.tsv'
 
-# Floor on how much of the helpfile the comparison has to cover. The
-# configuration writes about 761 columns; a filter or a schema change that
-# started dropping most of them would otherwise leave the comparison passing
-# over almost nothing, since a reference recorded from the same narrowed run
-# would agree with it.
-#
-# Set to about 85% of what the configuration writes, so the floor still
-# catches a collapse while leaving room for a schema change that retires a
-# handful of columns. It has to be raised whenever the helpfile grows
-# substantially, or it stops discriminating: at 400 it would accept losing
-# nearly half of the columns written today.
+# Floor on how much of the helpfile the comparison has to cover. A filter or a
+# schema change that started dropping most of the columns would otherwise leave
+# the comparison passing over almost nothing, since a reference recorded from
+# the same narrowed run would agree with it. Raise it as the helpfile grows, or
+# it stops discriminating.
 MIN_COLUMNS_COMPARED = 650
 
 # Column perturbed to show the comparison can fail on this data, and by how
@@ -146,9 +140,8 @@ def test_fixed_run_reproduces_the_recorded_trajectory(tmp_path, request):
         '--record-golden in the same commit, so the diff shows what moved.'
     )
     assert len(check.comparison.compared) >= MIN_COLUMNS_COMPARED, (
-        f'only {len(check.comparison.compared)} columns were compared, below the '
-        f'{MIN_COLUMNS_COMPARED} this configuration writes; the comparison is no '
-        'longer covering the helpfile'
+        f'only {len(check.comparison.compared)} columns were compared, below the floor '
+        f'of {MIN_COLUMNS_COMPARED}; the comparison is no longer covering the helpfile'
     )
 
     # The comparison has to be able to fail on this data, not only on
