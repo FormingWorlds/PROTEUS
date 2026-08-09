@@ -171,6 +171,17 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `T_pot` | `K` | characteristic mantle potential temperature | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider" |   |
 | `boundary_layer_thickness` | `m` | thermal boundary layer thickness | `interior_energetics/aragog.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider" |   |
 
+### Core evolution (interior_energetics
+
+| Column | Unit | Description | Producer | Written when | Read by |
+|---|---|---|---|---|---|
+| `core_r_icb` | `m` | inner-core boundary radius | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
+| `core_C_eff` | `J K-1` | core effective heat capacity incl. nucleation terms | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
+| `core_dynamo_margin` | `W K-1` | entropy margin for dynamo action | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
+| `core_B_rms` | `T` | rms internal field strength (Christensen+2009 scaling) | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
+| `core_regime` | `1` | crystallisation-regime code (see aragog.core.regime) | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
+| `core_strat_depth` | `m` | thermally stratified layer depth below the CMB | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
+
 ### Energy-conservation columns
 
 | Column | Unit | Description | Producer | Written when | Read by |

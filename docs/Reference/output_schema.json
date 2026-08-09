@@ -1494,6 +1494,90 @@
       "consumers": []
     },
     {
+      "name": "core_r_icb",
+      "unit": "m",
+      "description": "inner-core boundary radius",
+      "group": "Core evolution (interior_energetics",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "core_C_eff",
+      "unit": "J K-1",
+      "description": "core effective heat capacity incl. nucleation terms",
+      "group": "Core evolution (interior_energetics",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "core_dynamo_margin",
+      "unit": "W K-1",
+      "description": "entropy margin for dynamo action",
+      "group": "Core evolution (interior_energetics",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "core_B_rms",
+      "unit": "T",
+      "description": "rms internal field strength (Christensen+2009 scaling)",
+      "group": "Core evolution (interior_energetics",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "core_regime",
+      "unit": "1",
+      "description": "crystallisation-regime code (see aragog.core.regime)",
+      "group": "Core evolution (interior_energetics",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "core_strat_depth",
+      "unit": "m",
+      "description": "thermally stratified layer depth below the CMB",
+      "group": "Core evolution (interior_energetics",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": []
+    },
+    {
       "name": "E_th_mantle",
       "unit": "J",
       "description": "thermal-energy proxy (do not use for conservation)",

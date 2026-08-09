@@ -297,3 +297,17 @@ def test_aragog_core_module_defaults_and_mode_validator():
         AragogCoreModule(melting_curve='cubic')
     with pytest.raises(ValueError):
         AragogCoreModule(icn_width=0.0)
+
+    # Diagnostics fields: Nimmo (2015) conductivity default, ohmic
+    # fraction bounded on (0, 1], and the two printed CHR09 geometries.
+    assert cm.k_core == pytest.approx(130.0)
+    assert cm.f_ohm == pytest.approx(1.0)
+    assert cm.flux_geometry == 'const_flux'
+    with pytest.raises(ValueError):
+        AragogCoreModule(k_core=0.0)
+    with pytest.raises(ValueError):
+        AragogCoreModule(f_ohm=1.5)  # bound is inclusive at 1
+    with pytest.raises(ValueError):
+        AragogCoreModule(f_ohm=0.0)  # bound is exclusive at 0
+    with pytest.raises(ValueError):
+        AragogCoreModule(flux_geometry='spherical_cow')

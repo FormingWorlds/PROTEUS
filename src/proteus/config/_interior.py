@@ -4,7 +4,7 @@ import math
 import warnings
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, lt
+from attrs.validators import ge, gt, in_, le, lt
 
 # Default relative tolerance for the interior ODE solver. ``rtol`` and its
 # deprecated alias ``num_tolerance`` default to a sentinel so that "left at
@@ -190,6 +190,16 @@ class AragogCoreModule:
         Light-element mass fraction of the outer core (complete rejection).
     q_radio: float
         Core radiogenic power [W], constant over a run.
+    k_core: float
+        Core thermal conductivity [W m-1 K-1] for the entropy and dynamo
+        diagnostics; the default is the Nimmo (2015) Table 2 value.
+    f_ohm: float
+        Ohmic fraction of the dissipation in the field-strength scaling,
+        in (0, 1]; Christensen et al. (2009) adopt 1 for planets.
+    flux_geometry: str
+        Which printed Earth-core efficiency factor converts the
+        superadiabatic flux into the field-strength scaling's F:
+        'const_flux' or 'zero_outer'.
     """
 
     rho_cen: float = field(default=12500.0, validator=gt(0))
@@ -207,6 +217,11 @@ class AragogCoreModule:
     alpha_c: float = field(default=0.0, validator=ge(0))
     c_light: float = field(default=0.0, validator=ge(0))
     q_radio: float = field(default=0.0, validator=ge(0))
+    k_core: float = field(default=130.0, validator=gt(0))
+    f_ohm: float = field(default=1.0, validator=(gt(0), le(1)))
+    flux_geometry: str = field(
+        default='const_flux', validator=in_(('const_flux', 'zero_outer'))
+    )
 
 
 @define

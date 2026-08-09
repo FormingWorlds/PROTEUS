@@ -431,6 +431,9 @@ config_version = "3.0"
             alpha_c                = 0.0       # compositional expansivity of the outer-core alloy; 0 disables the gravitational term
             c_light                = 0.0       # light-element mass fraction of the outer core
             q_radio                = 0.0       # core radiogenic power [W], constant over a run
+            k_core                 = 130.0     # core thermal conductivity [W m-1 K-1] for the entropy and dynamo diagnostics
+            f_ohm                  = 1.0       # ohmic fraction of the dissipation in the field-strength scaling
+            flux_geometry          = "const_flux"  # field-strength efficiency geometry: const_flux | zero_outer
 
     # SPIDER-only parameters
     [interior_energetics.spider]

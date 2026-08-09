@@ -319,7 +319,15 @@ from the running mesh.
 | `alpha_c` | float | `0.0` | Compositional expansivity of the outer-core alloy. Must be >= 0. |
 | `c_light` | float | `0.0` | Light-element mass fraction of the outer core (complete rejection). Must be >= 0. |
 | `q_radio` | float | `0.0` | Core radiogenic power \[W\], constant over a run. Must be >= 0. |
+| `k_core` | float | `130.0` | Core thermal conductivity \[W m-1 K-1\] for the entropy and dynamo diagnostics; the default is the Nimmo (2015) Table 2 value. Must be > 0. |
+| `f_ohm` | float | `1.0` | Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1\]; Christensen et al. (2009) adopt 1 for planets. Must be > 0 and <= 1. |
+| `flux_geometry` | str | `"const_flux"` | Which printed Earth-core efficiency factor converts the superadiabatic flux into the field-strength scaling's F: 'const_flux' or 'zero_outer'. Choices: `"const_flux"`, `"zero_outer"`. |
 <!-- END GENERATED: config-table [interior_energetics.aragog.core_module] -->
+
+When this mode is active, per-step diagnostics are written to the helpfile
+columns `core_r_icb`, `core_C_eff`, `core_dynamo_margin`, `core_B_rms`,
+`core_regime`, and `core_strat_depth`; every other `core_bc` mode leaves
+them at zero.
 
 ### SPIDER `[interior_energetics.spider]`
 
