@@ -163,9 +163,15 @@ class Escape:
     step_max_frac: float
         Largest share of the escapable reservoir a single step may remove. The
         bulk rate is sized without reference to how much mass remains, so over
-        a long step it can ask for many times the reservoir. Measured across
-        835606 escape steps: the median step loses 1.9e-05 of the reservoir and
-        the p99 6.4e-03, so the default binds on 0.044 % of steps.
+        a long step it can ask for many times the reservoir.
+
+        The default guards reduced compositions rather than limiting the grid.
+        Measured on production cases, every one at IW-5 asks for more than it at
+        some step and the worst for eighty times the reservoir, while cases from
+        IW-1 to IW+5 stay under a thousandth of it and never meet the cap at
+        all. Raising it past about a third leaves the reduced cases unbounded,
+        since an unchanged rate settles there once a capped step has taken its
+        share of the reservoir.
     step_dt_floor_frac: float
         How far below ``params.dt.minimum`` a capped step may shorten the next
         one. The floor otherwise overrides the shortened step on 94 % of the

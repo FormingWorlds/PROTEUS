@@ -15,9 +15,11 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Largest share of the escapable reservoir a single step may remove. Measured
-# across 835606 escape steps in 470 grid cases: the median step loses 1.9e-05 of
-# the reservoir and the p99 6.4e-03, so 0.25 binds on 0.044 % of steps.
+# Largest share of the escapable reservoir a single step may remove. This guards
+# reduced compositions rather than limiting the grid: measured on production
+# cases, every one at IW-5 asks for more than this at some step and the worst for
+# eighty times the reservoir, while cases from IW-1 to IW+5 never reach a
+# thousandth of it and the cap never acts on them.
 ESCAPE_STEP_MAX_FRAC = 0.25
 
 
