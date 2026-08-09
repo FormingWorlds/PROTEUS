@@ -851,12 +851,14 @@ def GetHelpfileKeys():
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
         # Core evolution (interior_energetics.aragog.core_bc = 'core_module';
-        # zero in every other mode)
+        # zero in every other mode, but zero is ALSO a reachable physical
+        # value for most of these while the mode is active, so consumers
+        # key on the configured core_bc, never on the column values.
         'core_r_icb',           # inner-core boundary radius [m]
         'core_C_eff',           # core effective heat capacity incl. nucleation terms [J K-1]
         'core_dynamo_margin',   # entropy margin for dynamo action [W K-1]
-        'core_B_rms',           # rms internal field strength (Christensen+2009 scaling) [T]
-        'core_regime',          # crystallisation-regime code (see aragog.core.regime) [1]
+        'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic) [T]
+        'core_regime',          # crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow [1]
         'core_strat_depth',     # thermally stratified layer depth below the CMB [m]
 
         # Energy-conservation columns: per-call integrals plus their

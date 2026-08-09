@@ -1538,7 +1538,7 @@
     {
       "name": "core_B_rms",
       "unit": "T",
-      "description": "rms internal field strength (Christensen+2009 scaling)",
+      "description": "rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic)",
       "group": "Core evolution (interior_energetics",
       "origin": "literal",
       "producers": [
@@ -1552,7 +1552,7 @@
     {
       "name": "core_regime",
       "unit": "1",
-      "description": "crystallisation-regime code (see aragog.core.regime)",
+      "description": "crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow",
       "group": "Core evolution (interior_energetics",
       "origin": "literal",
       "producers": [
