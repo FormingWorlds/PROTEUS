@@ -127,6 +127,7 @@ def test_estimate_bolscale_after_window_returns_inf():
     assert np.isfinite(_estimate_bolscale(inside, config))
 
 
+@pytest.mark.physics_invariant
 def test_estimate_bolscale_boundary_at_exact_start_uses_during_branch():
     """age_now exactly equal to age_ini fails the strict `age_now <
     age_ini` "before" check and falls into the `elif age_now < age_end`
@@ -142,6 +143,7 @@ def test_estimate_bolscale_boundary_at_exact_start_uses_during_branch():
     assert dt_bolscale > 1.0e7
 
 
+@pytest.mark.physics_invariant
 def test_estimate_bolscale_defaults_missing_age_star_column_to_zero():
     """hf_all without an 'age_star' column must not raise: the source
     reads it via ``.get('age_star', 0.0)``. This is the error-contract
@@ -152,12 +154,12 @@ def test_estimate_bolscale_defaults_missing_age_star_column_to_zero():
     hf_all = pd.DataFrame({'Time': [0.0, 1.0, 2.0]})  # no age_star column
     dt_bolscale = _estimate_bolscale(hf_all, config)
     assert dt_bolscale == pytest.approx(5.0e8, rel=1e-9)
-    # Discrimination: a frame carrying the column at zero gives the same
-    # answer, so the missing column is read as zero rather than skipping the
-    # age comparison altogether.
-    assert dt_bolscale == pytest.approx(
-        _estimate_bolscale(_hf_all_with_age(age_star=0.0), config), rel=1e-9
-    )
+    # Discrimination: an age inside the window takes the other branch and
+    # returns the time to its end, so the value above is the default of zero
+    # driving the before-the-window formula rather than a figure this
+    # configuration returns for any frame it is handed.
+    during = _estimate_bolscale(_hf_all_with_age(age_star=7.0e8), config)
+    assert during == pytest.approx(3.0e8, rel=1e-9)
 
 
 # ---------------------------------------------------------------------------
@@ -257,11 +259,12 @@ def test_next_step_does_not_clip_when_window_is_far_away():
     assert next_step(near, {}, hf_row, close, step_sf=1.0) < 1.0e5
 
 
+@pytest.mark.physics_invariant
 def test_next_step_skips_bolscale_clip_when_hf_all_is_none():
-    """On the very first call (no history yet), hf_all is None; the
-    ``if hf_all is not None`` gate must skip `_estimate_bolscale` entirely
-    rather than crashing on ``None.iloc[-1]``. Force the static branch
-    (Time < 2 yr) so no other part of next_step needs hf_all either.
+    """On the very first call there is no history yet, so hf_all is None and
+    ``if hf_all is not None`` must skip `_estimate_bolscale` rather than
+    crashing on ``None.iloc[-1]``. Force the static branch (Time < 2 yr) so
+    no other part of next_step needs hf_all either.
     """
     config = _next_step_config(
         dt_maximum=1.0e5, bol_scale=2.0, bol_scale_start=0.5, bol_scale_duration=0.5
@@ -271,11 +274,15 @@ def test_next_step_skips_bolscale_clip_when_hf_all_is_none():
     # Static time-step branch returns exactly 1.0 yr
     dt = next_step(config, {}, hf_row, None, step_sf=1.0)
     assert dt == pytest.approx(1.0)
-    # Discrimination: handing the same call a history rather than None leaves
-    # the static branch answering the same way, so what is pinned above is the
-    # gate holding rather than the history being what produced the value.
-    with_history = next_step(config, {}, hf_row, _next_step_hf_all(age_star=7.0e8), step_sf=1.0)
-    assert with_history == pytest.approx(1.0)
+
+    # Discrimination: the same call given a history whose window opens a
+    # quarter of a year out clips the static step to that remaining time, so
+    # the value above is the clamp being skipped rather than a step no window
+    # could shorten. The window opens at 5.0e8 yr.
+    near_edge = _next_step_hf_all(age_star=5.0e8 - 0.25)
+    assert next_step(config, {}, hf_row, near_edge, step_sf=1.0) == pytest.approx(
+        0.25, rel=1e-9
+    )
 
 
 # ---------------------------------------------------------------------------

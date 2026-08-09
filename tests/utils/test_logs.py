@@ -677,10 +677,13 @@ class TestBootstrapLogger:
             if type(h) is logging.StreamHandler and getattr(h, 'stream', None) is sys.stdout
         ]
         assert len(stdout_handlers) == 1
-        # Discrimination: the file handler setup_logger adds is present too, so
-        # the count above comes from the bootstrap console handler being
-        # cleared rather than from setup_logger having added nothing at all.
-        assert any(isinstance(h, logging.FileHandler) for h in logger.handlers)
+        # Discrimination: exactly one file handler, on the path asked for. The
+        # stdout count above says nothing about file output, so a setup_logger
+        # that dropped, duplicated or misdirected the file handler would leave
+        # it unchanged.
+        file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
+        assert len(file_handlers) == 1
+        assert file_handlers[0].baseFilename == os.path.abspath(logpath)
 
     @pytest.mark.unit
     def test_info_record_reaches_handler(self):

@@ -163,10 +163,10 @@ def test_unknown_dataset_key_is_rejected():
     with pytest.raises(KeyError):
         _dataset('observe.not_a_declared_dataset')
 
-    # Discrimination: a key the manifest does declare resolves, so the raise
-    # above follows from the key being absent rather than from the lookup
-    # refusing everything it is asked for.
-    assert _dataset(MASS_RADIUS_ZENG_2019) is not None
+    # Discrimination: a key the manifest does declare resolves, and to that
+    # same dataset, so the raise above follows from the key being absent
+    # rather than from the lookup refusing or mis-resolving what it is asked.
+    assert _dataset(MASS_RADIUS_ZENG_2019).key == MASS_RADIUS_ZENG_2019
 
 
 def test_stale_fwl_io_is_named_as_the_stale_side(monkeypatch):
@@ -255,11 +255,10 @@ def test_declared_floor_matches_the_requirement():
         if spec.operator == '>='
     ]
 
-    assert bounds == [FWL_IO_FLOOR], f'pyproject floor {bounds} vs module floor {FWL_IO_FLOOR}'
-    # Discrimination: the requirement really does carry a lower bound. Were the
-    # `>=` dropped from pyproject, `bounds` would be empty and the comparison
-    # above would report a mismatch rather than the absence it actually is.
+    # Checked first so a dropped `>=` reports the absence it is, rather than
+    # reaching the comparison below and reading as a version mismatch.
     assert len(bounds) == 1, f'expected one lower bound on fwl-io, found {bounds}'
+    assert bounds == [FWL_IO_FLOOR], f'pyproject floor {bounds} vs module floor {FWL_IO_FLOOR}'
 
 
 def test_manifest_and_registries_are_declared_as_package_data():
