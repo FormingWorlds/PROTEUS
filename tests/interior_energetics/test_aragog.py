@@ -819,9 +819,13 @@ def test_setup_solver_threads_core_module_params(tmp_path):
     assert params['q_radio'] == pytest.approx(2.0e12)
     assert {'t_m0', 't_m1', 't_m2', 'depression', 'melting_curve'} <= set(params)
     assert 'r_cmb' not in params and 'p_cmb' not in params
-    # Diagnostics-only fields feed the wrapper-side entropy budget and
-    # must never reach the aragog factory, whose key contract rejects them.
-    assert {'k_core', 'f_ohm', 'flux_geometry'}.isdisjoint(params)
+    # The field-strength fields feed the wrapper-side entropy budget and
+    # must never reach the aragog factory, whose key contract rejects
+    # them; k_core and stratification travel, since the stratified-layer
+    # depth lives inside the budget.
+    assert {'f_ohm', 'flux_geometry'}.isdisjoint(params)
+    assert params['k_core'] == pytest.approx(130.0)
+    assert params['stratification'] is False
 
     # Any other mode sends no dict at all.
     config2 = _make_aragog_config(struct_module='zalmoxis')

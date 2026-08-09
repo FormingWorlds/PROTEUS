@@ -578,12 +578,13 @@ class AragogRunner:
             import attrs as _attrs
 
             # The attrs sub-config maps one-to-one onto the aragog factory
-            # keys plus q_radio; geometry stays with the mesh. The entropy
-            # and dynamo diagnostics fields feed the wrapper-side
+            # keys plus q_radio; geometry stays with the mesh. k_core
+            # travels (the stratified-layer depth needs it inside the
+            # budget); the field-strength fields feed the wrapper-side
             # CoreEntropyBudget only, and the factory validates its keys
-            # strictly, so they are stripped here.
+            # strictly, so those two are stripped here.
             core_module_params = _attrs.asdict(config.interior_energetics.aragog.core_module)
-            for _diag_key in ('k_core', 'f_ohm', 'flux_geometry'):
+            for _diag_key in ('f_ohm', 'flux_geometry'):
                 core_module_params.pop(_diag_key)
 
         boundary_conditions = _BoundaryConditionsParameters(
@@ -1360,6 +1361,10 @@ class AragogRunner:
                     scales,
                     core_bc_mode=core_bc_mode,
                     radio_isotope_params=radio_isotope_params,
+                    # core_module closure: the solver's own budget and
+                    # constant core source; None/0 in every other mode.
+                    core_module_budget=getattr(solver, '_core_module_budget', None),
+                    core_module_q_radio=float(getattr(solver, '_core_module_q_radio', 0.0)),
                 )
                 return rhs_fn, jac_fn
 
@@ -1958,7 +1963,9 @@ class AragogRunner:
         area = 4.0 * np.pi * float(budget.profiles.r_cmb) ** 2
         q_cmb = float(output['F_cmb']) * area
         output['core_r_icb'] = float(budget.r_icb(t_cmb))
-        output['core_C_eff'] = float(budget.effective_capacity(t_cmb))
+        # With stratification the capacity depends on the heat flow; the
+        # recorded value reflects the active convecting volume.
+        output['core_C_eff'] = float(budget.effective_capacity(t_cmb, q_cmb))
         output['core_dynamo_margin'] = float(
             ent.entropy_margin(t_cmb, q_cmb, q_radio=cm_cfg.q_radio)
         )
