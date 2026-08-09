@@ -299,7 +299,7 @@ Active when `core_bc = "core_module"`. The core carries its own state: an energy
 | `f_ohm` | float | `1.0` | Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1] |
 | `flux_geometry` | str | `"const_flux"` | Efficiency-factor geometry of the field-strength scaling: `const_flux` or `zero_outer` |
 
-When this mode is active, per-step diagnostics are written to the helpfile columns `core_r_icb`, `core_C_eff`, `core_dynamo_margin`, `core_B_rms`, `core_regime`, and `core_strat_depth`; every other `core_bc` mode leaves them at zero.
+When this mode is active, per-step diagnostics are written to the helpfile columns `core_r_icb`, `core_C_eff`, `core_dynamo_margin`, `core_B_rms`, `core_regime`, and `core_strat_depth`, driven by the step-averaged CMB heat flow. Every other `core_bc` mode leaves them at zero; note that zero is also a reachable physical value for most of them while the mode is active (no inner core yet, no stratified layer, subadiabatic field estimate), so key any analysis on the configured `core_bc`, not on the column values. `core_regime` encodes the crystallisation topology as 0 = fully liquid, 1 = bottom-up, 2 = top-down, 3 = snow (the `aragog.core.regime` taxonomy). `core_B_rms` uses only the superadiabatic part of the heat flow as its reference flux, so a compositionally driven dynamo under a subadiabatic CMB reports a positive `core_dynamo_margin` with `core_B_rms = 0`; that pairing is the documented conservative floor of the field estimate, not an inconsistency.
 
 
 ### SPIDER `[interior_energetics.spider]`

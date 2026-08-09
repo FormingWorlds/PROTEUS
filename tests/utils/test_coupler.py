@@ -3415,3 +3415,31 @@ def test_select_profile_plot_times_empty_atmosphere_returns_empty():
     """
     assert select_profile_plot_times([1, 2, 3], [], no_int_snapshots=False) == []
     assert select_profile_plot_times([], [], no_int_snapshots=True) == []
+
+
+def test_core_module_columns_registered_and_zero_seeded():
+    """The six core-evolution diagnostics are registered in the helpfile
+    schema exactly once each and seed to exactly 0.0 in a fresh row,
+    which is the documented default every non-core_module run keeps.
+
+    Edge case: uniqueness guards against a duplicate registration, which
+    pandas would silently disambiguate into misaligned columns; the
+    exact-equality zero check is on the seed (an assignment, not an
+    arithmetic result), where approx would weaken the contract.
+    """
+    from proteus.utils.coupler import GetHelpfileKeys, ZeroHelpfileRow
+
+    core_cols = [
+        'core_r_icb',
+        'core_C_eff',
+        'core_dynamo_margin',
+        'core_B_rms',
+        'core_regime',
+        'core_strat_depth',
+    ]
+    keys = GetHelpfileKeys()
+    for col in core_cols:
+        assert keys.count(col) == 1, f'{col} must be registered exactly once'
+    row = ZeroHelpfileRow()
+    for col in core_cols:
+        assert row[col] == 0.0  # seed value, assigned not computed

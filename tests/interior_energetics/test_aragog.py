@@ -887,7 +887,8 @@ def test_write_core_module_diagnostics_wiring_and_cache():
         # Entropy budget built once from the config's diagnostics fields.
         assert mock_ent_cls.call_args.kwargs['k_core'] == pytest.approx(90.0)
 
-        # q_cmb carries the area factor: F * 4 pi r_cmb^2.
+        # No elapsed time (the init call): the fallback carries the
+        # area factor, q = F * 4 pi r_cmb^2.
         q_expected = 1.5e5 * 4.0 * np.pi * r_cmb**2
         args = entropy.entropy_margin.call_args
         assert args.args[0] == pytest.approx(4864.0)
@@ -895,6 +896,19 @@ def test_write_core_module_diagnostics_wiring_and_cache():
         assert args.kwargs['q_radio'] == pytest.approx(2.0e12)
         assert mock_strat.call_args.args[2] == pytest.approx(q_expected, rel=1e-12)
         _ = mock_regime  # regime asserted through the output below
+
+        # With elapsed time, the diagnostics use the step-averaged power
+        # from the trajectory-integrated CMB energy, not the end-of-step
+        # flux snapshot (which spikes at phase boundaries). The two paths
+        # differ here by construction so a regression to the snapshot
+        # fails the argument pin.
+        from proteus.utils.constants import secs_per_year
+
+        output_dt = {'T_cmb': 4864.0, 'F_cmb': 1.5e5, 'step_dE_F_cmb_J': 3.0e28}
+        runner._write_core_module_diagnostics(output_dt, dt_actual_yr=100.0)
+        q_avg = 3.0e28 / (100.0 * secs_per_year)
+        assert abs(q_avg - q_expected) > 0.1 * q_expected  # paths distinguishable
+        assert entropy.entropy_margin.call_args.args[1] == pytest.approx(q_avg, rel=1e-12)
 
         assert output['core_r_icb'] == pytest.approx(1.22e6)
         assert output['core_C_eff'] == pytest.approx(1.77e27)

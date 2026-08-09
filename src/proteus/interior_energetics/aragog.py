@@ -1927,7 +1927,7 @@ class AragogRunner:
             )
         solver._prev_struct_log = (t_new, R_int_new, R_core_new, g_new)
 
-    def _write_core_module_diagnostics(self, output: dict) -> None:
+    def _write_core_module_diagnostics(self, output: dict, dt_actual_yr: float = 0.0) -> None:
         """Fill the ``core_*`` helpfile columns from the staged core budget.
 
         Evaluates the energy-side quantities on the solver's own
@@ -1937,6 +1937,12 @@ class AragogRunner:
         budget is rebuilt whenever the solver's budget object changes (a
         structure re-solve rebuilds it with the new CMB radius), keyed on
         object identity.
+
+        The CMB heat flow driving the diagnostics is the step-averaged
+        power ``step_dE_F_cmb_J / dt`` rather than the end-of-step flux
+        snapshot, which spikes at phase boundaries (the same reason the
+        energy ledger integrates over the sub-step trajectory); the
+        snapshot is the fallback when no time elapsed (the init call).
         """
         solver = self.aragog_solver
         budget = getattr(solver, '_core_module_budget', None)
@@ -1961,7 +1967,13 @@ class AragogRunner:
 
         t_cmb = float(output['T_cmb'])
         area = 4.0 * np.pi * float(budget.profiles.r_cmb) ** 2
-        q_cmb = float(output['F_cmb']) * area
+        from proteus.utils.constants import secs_per_year
+
+        span_s = float(dt_actual_yr) * secs_per_year
+        if span_s > 0.0:
+            q_cmb = float(output.get('step_dE_F_cmb_J', 0.0)) / span_s
+        else:
+            q_cmb = float(output['F_cmb']) * area
         output['core_r_icb'] = float(budget.r_icb(t_cmb))
         # With stratification the capacity depends on the heat flow; the
         # recorded value reflects the active convecting volume.
@@ -1999,7 +2011,7 @@ class AragogRunner:
         # Core-evolution diagnostics ride along when the staged core
         # budget is active; every other mode leaves the zero defaults.
         if self._config.interior_energetics.aragog.core_bc == 'core_module':
-            self._write_core_module_diagnostics(output)
+            self._write_core_module_diagnostics(output, dt_actual_yr=float(out.dt_actual))
 
         # Store arrays on interior object for inter-module access.
         # Radius is stored in metres (SI), matching SPIDER's convention
