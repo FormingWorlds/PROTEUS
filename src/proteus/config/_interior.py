@@ -184,9 +184,15 @@ class AragogCoreModule:
         Light-element mass fraction of the outer core (complete rejection).
     q_radio: float
         Core radiogenic power [W], constant over a run.
+    stratification: bool
+        When true, a stably stratified sub-CMB layer at its equilibrium
+        conductive-matching depth reduces the convecting volume in the
+        core's energy and entropy budgets whenever the CMB heat flow is
+        subadiabatic.
     k_core: float
-        Core thermal conductivity [W m-1 K-1] for the entropy and dynamo
-        diagnostics; the default is the Nimmo (2015) Table 2 value.
+        Core thermal conductivity [W m-1 K-1] for the stratified-layer
+        depth and the entropy and dynamo diagnostics; the default is the
+        Nimmo (2015) Table 2 value.
     f_ohm: float
         Ohmic fraction of the dissipation in the field-strength scaling,
         in (0, 1]; Christensen et al. (2009) adopt 1 for planets.
@@ -211,6 +217,7 @@ class AragogCoreModule:
     alpha_c: float = field(default=0.0, validator=ge(0))
     c_light: float = field(default=0.0, validator=ge(0))
     q_radio: float = field(default=0.0, validator=ge(0))
+    stratification: bool = field(default=False)
     k_core: float = field(default=130.0, validator=gt(0))
     f_ohm: float = field(default=1.0, validator=(gt(0), le(1)))
     flux_geometry: str = field(
