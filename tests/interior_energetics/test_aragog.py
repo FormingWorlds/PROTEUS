@@ -819,6 +819,9 @@ def test_setup_solver_threads_core_module_params(tmp_path):
     assert params['q_radio'] == pytest.approx(2.0e12)
     assert {'t_m0', 't_m1', 't_m2', 'depression', 'melting_curve'} <= set(params)
     assert 'r_cmb' not in params and 'p_cmb' not in params
+    # Diagnostics-only fields feed the wrapper-side entropy budget and
+    # must never reach the aragog factory, whose key contract rejects them.
+    assert {'k_core', 'f_ohm', 'flux_geometry'}.isdisjoint(params)
 
     # Any other mode sends no dict at all.
     config2 = _make_aragog_config(struct_module='zalmoxis')
@@ -830,3 +833,88 @@ def test_setup_solver_threads_core_module_params(tmp_path):
     ):
         AragogRunner.setup_solver(config2, hf_row, interior_o, outdir)
     assert mock_params2.call_args.kwargs.get('boundary_conditions').core_module_params is None
+
+
+@pytest.mark.unit
+def test_write_core_module_diagnostics_wiring_and_cache():
+    """The diagnostics writer converts the helpfile F_cmb into a CMB heat
+    flow through the budget's own area (q = F * 4 pi r_cmb^2), forwards
+    the configured q_radio, writes all six core_* columns, and rebuilds
+    the wrapper-side entropy budget only when the solver's budget object
+    changes identity (a structure re-solve), not on every call.
+
+    The mocked budget returns physically plausible Earth-core values
+    (r_icb ~ 1.2e6 m, C_eff ~ 1.8e27 J/K) so a units slip (missing area
+    factor, W vs W/m2) shifts q_cmb by 14 orders of magnitude and fails
+    the call-argument assertion rather than passing on round numbers.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    runner = AragogRunner.__new__(AragogRunner)
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.interior_energetics.aragog.core_bc = 'core_module'
+    from proteus.config._interior import AragogCoreModule
+
+    config.interior_energetics.aragog.core_module = AragogCoreModule(
+        q_radio=2.0e12, k_core=90.0
+    )
+    runner._config = config
+
+    r_cmb = 3.48e6
+    budget = MagicMock()
+    budget.profiles.r_cmb = r_cmb
+    budget.r_icb.return_value = 1.22e6
+    budget.effective_capacity.return_value = 1.77e27
+    solver = MagicMock()
+    solver._core_module_budget = budget
+    runner.aragog_solver = solver
+
+    entropy = MagicMock()
+    entropy.entropy_margin.return_value = 9.6e8
+    entropy.b_rms_core.return_value = 1.1e-3
+    output = {'T_cmb': 4864.0, 'F_cmb': 1.5e5}
+    with (
+        patch('aragog.core.CoreEntropyBudget', return_value=entropy) as mock_ent_cls,
+        patch('aragog.core.crystallization_regime', return_value=1) as mock_regime,
+        patch('aragog.core.stratification_depth', return_value=0.0) as mock_strat,
+    ):
+        runner._write_core_module_diagnostics(output)
+
+        # Entropy budget built once from the config's diagnostics fields.
+        assert mock_ent_cls.call_args.kwargs['k_core'] == pytest.approx(90.0)
+
+        # q_cmb carries the area factor: F * 4 pi r_cmb^2.
+        q_expected = 1.5e5 * 4.0 * np.pi * r_cmb**2
+        args = entropy.entropy_margin.call_args
+        assert args.args[0] == pytest.approx(4864.0)
+        assert args.args[1] == pytest.approx(q_expected, rel=1e-12)
+        assert args.kwargs['q_radio'] == pytest.approx(2.0e12)
+        assert mock_strat.call_args.args[2] == pytest.approx(q_expected, rel=1e-12)
+        _ = mock_regime  # regime asserted through the output below
+
+        assert output['core_r_icb'] == pytest.approx(1.22e6)
+        assert output['core_C_eff'] == pytest.approx(1.77e27)
+        assert output['core_dynamo_margin'] == pytest.approx(9.6e8)
+        assert output['core_B_rms'] == pytest.approx(1.1e-3)
+        assert output['core_regime'] == pytest.approx(1.0)
+        assert output['core_strat_depth'] == pytest.approx(0.0)
+
+        # Second call, same budget object: the entropy budget is reused.
+        runner._write_core_module_diagnostics(output)
+        assert mock_ent_cls.call_count == 1
+
+        # New budget object (structure re-solve): rebuilt once.
+        solver._core_module_budget = MagicMock()
+        solver._core_module_budget.profiles.r_cmb = r_cmb
+        solver._core_module_budget.r_icb.return_value = 1.22e6
+        solver._core_module_budget.effective_capacity.return_value = 1.77e27
+        runner._write_core_module_diagnostics(output)
+        assert mock_ent_cls.call_count == 2
+
+    # Guard return: a solver without the budget (mode mismatch after a
+    # config edit mid-run) writes nothing rather than crashing.
+    bare = MagicMock(spec=[])
+    runner.aragog_solver = bare
+    before = dict(output)
+    runner._write_core_module_diagnostics(output)
+    assert output == before

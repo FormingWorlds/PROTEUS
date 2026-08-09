@@ -833,6 +833,15 @@ def GetHelpfileKeys():
         'T_pot',            # characteristic mantle potential temperature [K]
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
+        # Core evolution (interior_energetics.aragog.core_bc = 'core_module';
+        # zero in every other mode)
+        'core_r_icb',           # inner-core boundary radius [m]
+        'core_C_eff',           # core effective heat capacity incl. nucleation terms [J K-1]
+        'core_dynamo_margin',   # entropy margin for dynamo action [W K-1]
+        'core_B_rms',           # rms internal field strength (Christensen+2009 scaling) [T]
+        'core_regime',          # crystallisation-regime code (see aragog.core.regime) [1]
+        'core_strat_depth',     # thermally stratified layer depth below the CMB [m]
+
         # Energy-conservation columns: per-call integrals plus their
         # cumulative residual. The residual pairs the entropy-transported
         # heat (state side) against the boundary-flux and source prediction
