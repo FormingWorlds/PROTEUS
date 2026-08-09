@@ -604,8 +604,17 @@ class Proteus:
             # Resuming from disk
             log.info('Resuming the simulation from the disk')
 
-            # Read helpfile from disk
-            self.hf_all = ReadHelpfileFromCSV(self.directories['output'])
+            # Read helpfile from disk. A run written before the output schema
+            # gained columns stops here, rather than continuing from a row that
+            # is missing those keys. A helpfile that cannot be loaded at all
+            # stops the same way: either leaves the run dead, and a run that
+            # dies without recording it reads as still running to anything
+            # polling the output directory.
+            try:
+                self.hf_all = ReadHelpfileFromCSV(self.directories['output'])
+            except Exception:
+                UpdateStatusfile(self.directories, 20)
+                raise
 
             # Check length
             if len(self.hf_all) <= self.loops['init_loops'] + 1:
@@ -1392,20 +1401,31 @@ class Proteus:
         archive.create(self.directories['output/data'], remove_files=True)
 
     def observe(self):
-        # Extract archived data
-        self.extract_archives()
+        # Load data from helpfile. Read it before unpacking the archive, so a
+        # run this cannot postprocess is left archived as it was found.
+        from proteus.utils.coupler import (
+            GetPostprocessingKeys,
+            HelpfileRow,
+            ReadHelpfileFromCSV,
+            helpfile_path,
+        )
 
-        # Load data from helpfile
-        from proteus.utils.coupler import ReadHelpfileFromCSV
-
-        hf_all = ReadHelpfileFromCSV(self.directories['output'])
+        hf_all = ReadHelpfileFromCSV(
+            self.directories['output'], required_columns=GetPostprocessingKeys()
+        )
 
         # Check length
         if len(hf_all) < 1:
             raise Exception('Simulation is too short to be postprocessed')
 
-        # Get last row
-        hf_row = hf_all.iloc[-1].to_dict()
+        # Extract archived data
+        self.extract_archives()
+
+        # Get last row. Wrapped so a column outside the postprocessing set,
+        # which the check above does not cover, still reports itself.
+        hf_row = HelpfileRow(
+            hf_all.iloc[-1].to_dict(), helpfile_path(self.directories['output'])
+        )
 
         # Run observations pipeline, typically invoked via CLI
         from proteus.observe.wrapper import run_observe
@@ -1413,20 +1433,31 @@ class Proteus:
         run_observe(hf_row, self.config, self.directories)
 
     def offline_chemistry(self):
-        # Extract archived data
-        self.extract_archives()
+        # Load data from helpfile. Read it before unpacking the archive, so a
+        # run this cannot postprocess is left archived as it was found.
+        from proteus.utils.coupler import (
+            GetPostprocessingKeys,
+            HelpfileRow,
+            ReadHelpfileFromCSV,
+            helpfile_path,
+        )
 
-        # Load data from helpfile
-        from proteus.utils.coupler import ReadHelpfileFromCSV
-
-        hf_all = ReadHelpfileFromCSV(self.directories['output'])
+        hf_all = ReadHelpfileFromCSV(
+            self.directories['output'], required_columns=GetPostprocessingKeys()
+        )
 
         # Check length
         if len(hf_all) < 1:
             raise Exception('Simulation is too short to be postprocessed')
 
-        # Get last row
-        hf_row = hf_all.iloc[-1].to_dict()
+        # Extract archived data
+        self.extract_archives()
+
+        # Get last row. Wrapped so a column outside the postprocessing set,
+        # which the check above does not cover, still reports itself.
+        hf_row = HelpfileRow(
+            hf_all.iloc[-1].to_dict(), helpfile_path(self.directories['output'])
+        )
 
         # Run offline chemistry, typically invoked via CLI
         from proteus.atmos_chem.wrapper import run_chemistry
