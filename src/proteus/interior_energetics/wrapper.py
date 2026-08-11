@@ -86,6 +86,15 @@ _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 # counter resets on each successful Aragog call.
 _ARAGOG_MAX_CONSECUTIVE_FAILS = 3
 
+# Band the giant-impact re-melt injection is expected to occupy as a fraction
+# of the collision's kinetic energy. Giant-impact studies retain of order tens
+# of percent of the impact energy as mantle heat, the rest leaving as ejecta
+# and radiation, so a value spanning a percent to unity covers the physical
+# range with margin. Outside it the re-melt is being set by the initial
+# condition rather than by the collision, which the energy residual cannot
+# reveal because the injection enters both of its sides.
+_REMELT_RETAINED_BAND = (0.01, 1.0)
+
 # Resume-settling guard for the dynamic structure re-solve. After a resume the
 # interior relaxes thermally over the first loops, swinging T_magma enough to
 # fire the dT/T structure-re-solve trigger every loop. The structure radius,
@@ -1797,6 +1806,270 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
 
 
+def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
+    """Re-melt a temperature-state backend (dummy or boundary) in place.
+
+    These backends carry the mantle thermal state as a surface magma
+    temperature they cool from the configured initial value. Resetting that
+    temperature, and every melt quantity derived from it, returns the mantle
+    to its molten start. Writing the derived quantities as well, and the melt
+    fraction and temperature onto the interior arrays the same-iteration tidal
+    call reads, keeps the impact iteration self-consistent rather than leaving
+    those quantities a step behind the reset temperature.
+    """
+    import numpy as np
+
+    from proteus.interior_energetics.dummy import melt_state_from_temperature
+
+    t_reset = config.planet.tsurf_init
+    state = melt_state_from_temperature(config, hf_row, t_reset)
+    hf_row.update(state)
+    # The boundary backend also cools a surface temperature that the atmosphere
+    # reads, so keep it in step with the magma temperature.
+    if config.interior_energetics.module == 'boundary':
+        hf_row['T_surf'] = t_reset
+
+    # Refresh the single-cell interior arrays the orbit/tides block reads later
+    # in this same iteration, so tidal heating uses the re-melted melt fraction.
+    interior_o.phi = np.array([state['Phi_global']])
+    interior_o.temp = np.array([t_reset])
+
+    if state['Phi_global'] < 1.0:
+        log.warning(
+            '    mantle re-melt left it only %.0f%% molten: tsurf_init=%.0f K is below '
+            'the liquidus. Raise planet.tsurf_init for a full re-melt.',
+            100.0 * state['Phi_global'],
+            t_reset,
+        )
+    log.info(
+        '    mantle re-melted: T_magma reset to %.0f K (melt fraction %.2f)',
+        t_reset,
+        state['Phi_global'],
+    )
+
+
+def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None:
+    """Re-melt the Aragog mantle so the reset survives to the next solve.
+
+    ``_set_entropy_ic`` alone only rewrites the solver's initial-state vector,
+    which the next coupling step overwrites when it restores the entropy from
+    the previous (cooled) solution. To make the re-melt stick, the restored
+    profile carrier ``interior_o._last_entropy`` is set to the molten profile,
+    the stale trajectory is cleared so the restore path cannot resurrect it,
+    and the cached CMB-gradient state is cleared so it is re-derived from the
+    molten profile rather than inherited from the cooled one.
+
+    The heat the re-melt injects is booked into ``hf_row['step_dE_impact_J']``
+    using the solver's own entropy-transported heat quadrature over the jump
+    from the cooled to the molten profile, the same ``rho(P,S) T dS`` frame the
+    conservation residual integrates. The quadrature runs on the solver's
+    current, pre-impact mesh (the solver is rebuilt for the grown planet only
+    at its next solve), so the booked value is the heat that re-melts the
+    mantle the planet had when the impact struck; the impactor's own heat
+    content arrives as part of the new initial condition and is not booked,
+    the same way the run's t=0 heat content is not. The coupler adds the
+    column to both sides of the energy budget, which keeps the residual closed
+    across the impact for any booked value; the magnitude is therefore a
+    defined convention quantified in the helpfile, not a quantity the residual
+    itself can validate.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    if interior_o.aragog_solver is None:
+        raise RuntimeError(
+            'Cannot re-melt the mantle: the Aragog solver is not yet initialised. '
+            'An impact cannot precede the first interior solve.'
+        )
+
+    solver = interior_o.aragog_solver
+
+    # Capture the cooled entropy profile before the reset replaces it; it is
+    # the start state of the heat-injection quadrature below.
+    S_cooled = getattr(interior_o, '_last_entropy', None)
+    if S_cooled is not None:
+        S_cooled = np.asarray(S_cooled, dtype=float).ravel().copy()
+
+    # Drop the cooled trajectory and its cached CMB gradient BEFORE rebuilding
+    # the initial condition. This has to come first: _set_entropy_ic hot-starts
+    # the boundary gradient from the solution when one is present, so clearing
+    # it first forces a cold-start derived from the molten profile. Clearing the
+    # trajectory also stops the next step's restore from re-deriving the cooled
+    # field over the molten one.
+    solver._solution = None
+    if hasattr(solver, '_dSdr_cmb_init'):
+        solver._dSdr_cmb_init = None
+
+    # _set_entropy_ic returns the staggered molten profile it just set. Take it
+    # from the return value rather than from the solver's solution object, which
+    # holds no valid trajectory now and would in any case lag the reset.
+    S_molten = AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
+    S_molten = np.asarray(S_molten, dtype=float).ravel()
+
+    # Book the injected heat over the cooled-to-molten entropy jump, in the
+    # residual's own frame: the solver's Σ V_i ∫ rho(P_i,S) T(P_i,S) dS
+    # quadrature evaluated between the two profiles. Positive when the re-melt
+    # heats the mantle. The jump falls between solver calls, so no per-call
+    # state integral carries it; this column is how it enters the budget.
+    if S_cooled is not None and S_cooled.size > 0:
+        dE_impact = float(solver._step_heat_content(S_cooled, S_molten))
+
+        # An impact deposits energy, so the re-melt cannot book a heat loss. The
+        # test is on the booked quantity itself rather than on a summary of the
+        # entropy profiles: the quadrature weights each cell by its volume and
+        # by rho*T, and those weightings pull in opposite directions with depth,
+        # so a profile that rises on average can still integrate to a loss.
+        #
+        # A negative value means the mantle is already above the state this
+        # impact resets it to, which happens when two impacts fall close
+        # together, when the initial condition shifts with the grown planet, or
+        # when the temperature mode is anchored below the current state. None of
+        # those is an energy source, so nothing is booked; clamping rather than
+        # aborting keeps a long run alive, and the warning carries the size of
+        # the discrepancy so it can be judged from the log.
+        if dE_impact < 0.0:
+            log.warning(
+                '    re-melt would remove %.3e J rather than add heat: the mantle is '
+                "above the temperature_mode='%s' state this impact resets it to. "
+                'Nothing is booked. If this is not a pair of impacts landing together, '
+                'the initial condition is too cool for this planet; temperature_mode='
+                "'liquidus_super' is molten for any mass and melting curve.",
+                abs(dE_impact),
+                config.planet.temperature_mode,
+            )
+            dE_impact = 0.0
+
+        interior_o._last_entropy = S_molten.copy()
+
+        # Accumulate rather than assign: when two impacts fall inside one
+        # timestep the second re-melt measures an already-molten mantle and
+        # contributes almost nothing, and assigning would discard the first
+        # impact's injection from the row. The row is zeroed when it is created,
+        # so the column cannot accumulate across steps.
+        hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0) + dE_impact
+        log.info('    re-melt heat injection %.3e J booked into the energy budget', dE_impact)
+    else:
+        interior_o._last_entropy = S_molten.copy()
+        # No prior profile to measure the jump from (no completed solve has
+        # stored one). The injection cannot be quantified, so it is left
+        # unbooked and said so, rather than booking a silent zero. An earlier
+        # impact in the same step may already have booked one; leave it.
+        hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0)
+        log.warning(
+            '    re-melt heat injection not booked: no pre-impact entropy '
+            'profile is available to measure the jump from'
+        )
+
+    log.info('    mantle re-melted: Aragog entropy reset to the molten initial condition')
+
+
+def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=None) -> None:
+    """Reset the mantle to its molten initial condition after a giant impact.
+
+    A giant impact re-melts the mantle in full (no energy threshold), so the
+    interior is returned to a molten initial condition recomputed for the
+    current, grown planet. The reset is applied to the running interior state,
+    and an ``impact_reset`` flag is raised on ``interior_o`` so the next
+    interior solve does not clip the resulting temperature jump as if it were
+    a solver glitch.
+
+    The backends carry their state differently, so each is reset in its own
+    terms: the dummy and boundary backends cool a surface temperature and are
+    reset to the configured initial value together with every quantity derived
+    from it; Aragog re-applies its entropy initial condition and carries the
+    molten profile through the reset the coupling performs on the next step.
+    SPIDER keeps its state in a restart file written by the external binary and
+    has no validated re-melt path; an accretion run on SPIDER is refused at
+    configuration load, and this backstop refuses it at the first impact.
+
+    Parameters
+    ----------
+    dirs : dict
+        Directories dictionary.
+    config : Config
+        Model configuration.
+    hf_row : dict
+        Current helpfile row, mutated in place for the scalar backends.
+    interior_o : Interior_t
+        Interior state, reset in place; its ``impact_reset`` flag is raised.
+    event : ImpactEvent, optional
+        The impact being applied, used only to log the impact energy against
+        the enthalpy the re-melt injects.
+
+    Raises
+    ------
+    NotImplementedError
+        If the interior module has no supported re-melt path (SPIDER).
+    ValueError
+        If the interior module is unrecognised.
+    RuntimeError
+        If the Aragog solver has not been initialised.
+    """
+    module = config.interior_energetics.module
+
+    # The column accumulates over a step, so a second impact inside one
+    # timestep would otherwise be weighed against the running total instead of
+    # against its own injection.
+    booked_before = float(hf_row.get('step_dE_impact_J') or 0.0)
+
+    match module:
+        case 'dummy' | 'boundary':
+            _remelt_scalar_backend(config, hf_row, interior_o)
+        case 'aragog':
+            _remelt_aragog(config, dirs, hf_row, interior_o)
+        case 'spider':
+            UpdateStatusfile(dirs, 20)
+            raise NotImplementedError(
+                'Giant-impact mantle re-melt is not supported with the SPIDER '
+                'interior. SPIDER holds its state in a restart file written by the '
+                'external binary, and no validated re-melt path exists yet. Use '
+                "interior_energetics.module = 'aragog' for accretion runs."
+            )
+        case _:
+            UpdateStatusfile(dirs, 20)
+            raise ValueError(f'Cannot re-melt the mantle: unknown interior module {module!r}')
+
+    # Tell the time-stepper's limiter the coming temperature jump is a
+    # deliberate impact re-melt, not a solver anomaly to be clipped away.
+    interior_o.impact_reset = True
+
+    # Weigh the booked injection against the energy the collision actually
+    # carried. The re-melt is a thermodynamic reset: it re-applies the run's
+    # initial condition to the whole mantle, so the enthalpy it injects scales
+    # with the mantle, not with the impactor, and the coupler adds it to both
+    # sides of the energy budget. The residual is therefore invariant across an
+    # impact for any booked value and cannot detect a wrong magnitude. This
+    # ratio is the only diagnostic that can, so it is always reported, and a
+    # value outside the physical band is called out rather than left for a
+    # reader to notice in a log they may never open.
+    if event is not None:
+        reduced = (
+            event.M_target_before
+            * event.M_impactor
+            / (event.M_target_before + event.M_impactor)
+        )
+        e_impact = 0.5 * reduced * event.v_impact**2
+        dE_impact = float(hf_row.get('step_dE_impact_J') or 0.0) - booked_before
+        log.info('    impact kinetic energy %.3e J', e_impact)
+
+        if e_impact > 0.0 and dE_impact != 0.0:
+            retained = dE_impact / e_impact
+            log.info('    re-melt injection is %.3f of the impact kinetic energy', retained)
+            if not _REMELT_RETAINED_BAND[0] <= retained <= _REMELT_RETAINED_BAND[1]:
+                log.warning(
+                    '    re-melt injection is %.3g of the impact kinetic energy, outside '
+                    'the physically expected band [%.2g, %.2g]. The re-melt re-applies the '
+                    'temperature-mode initial condition to the whole mantle, so its cost '
+                    'is set by the mantle rather than by this collision: a cool mantle '
+                    'struck by a small impactor absorbs far more than the impact carried, '
+                    'and a mantle already near the initial condition absorbs far less. '
+                    'Treat the thermal response to this impact as a property of the '
+                    'initial condition, not of the collision.',
+                    retained,
+                    _REMELT_RETAINED_BAND[0],
+                    _REMELT_RETAINED_BAND[1],
+                )
+
+
 def solve_structure(
     dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
 ):
@@ -1886,6 +2159,13 @@ def run_interior(
         log.info('Evolve interior...')
     log.debug('Using %s module to evolve interior' % config.interior_energetics.module)
 
+    # Consume the one-shot giant-impact re-melt flag up front, so the step after
+    # a re-melt skips the temperature-jump clip below, and so the flag is cleared
+    # even on an early return further down (e.g. a solver retry-ladder exit) and
+    # cannot wrongly suppress the clip on a later, ordinary step.
+    impact_reset = getattr(interior_o, 'impact_reset', False)
+    interior_o.impact_reset = False
+
     # Write tidal heating file
     if config.interior_energetics.heat_tidal:
         interior_o.write_tides(dirs['output'])
@@ -1944,7 +2224,7 @@ def run_interior(
         sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
 
     elif config.interior_energetics.module == 'aragog':
-        from proteus.interior_energetics.aragog import AragogRunner
+        from proteus.interior_energetics.aragog import AragogRunner, InteriorStalledError
 
         runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
         try:
@@ -1955,6 +2235,15 @@ def run_interior(
                 write_data=write_data,
             )
             interior_o.aragog_fail_count = 0
+        except InteriorStalledError:
+            # Not absorbed like the failures below. The fallback there keeps
+            # the previous interior state for one step, on the expectation
+            # that the run steps past what caused it, and clears the failure
+            # streak as soon as one step succeeds. A stall is made of steps
+            # that do succeed, so it would clear that streak every time and
+            # the run would keep writing rows that go nowhere.
+            UpdateStatusfile(dirs, 21)
+            raise
         except RuntimeError as e:
             interior_o.aragog_fail_count += 1
             log.warning(
@@ -2047,7 +2336,10 @@ def run_interior(
     # Update planet mass
     update_planet_mass(hf_row)
 
-    # Apply step limiters
+    # Apply step limiters. The F_int positivity floor is applied unconditionally
+    # (below); the warming clamp and the large-increase clips are skipped on the
+    # single step after a giant-impact re-melt, whose deliberate temperature jump
+    # must not be treated as a solver anomaly.
     if hf_row['Time'] > 0:
         # Prevent increasing surface temperature, if enabled. Gated by
         # _prevent_warming_clamp_active(); the runaway-T fallback below
@@ -2056,23 +2348,24 @@ def run_interior(
         T_surf_prev = float(hf_all.iloc[-1]['T_surf'])
         Phi_global_prev = float(hf_all.iloc[-1]['Phi_global'])
         F_int_prev = float(hf_all.iloc[-1]['F_int'])
-        if _prevent_warming_clamp_active(config) and (interior_o.ic == 2):
+        if _prevent_warming_clamp_active(config) and (interior_o.ic == 2) and not impact_reset:
             hf_row['Phi_global'] = min(hf_row['Phi_global'], Phi_global_prev)
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
             hf_row['T_surf'] = min(hf_row['T_surf'], T_surf_prev)
             hf_row['F_int'] = min(hf_row['F_int'], F_int_prev)
 
         # F_int positivity floor under prevent_warming, applied for all
-        # ic values (not just ic == 2). SPIDER's JSON output can produce
-        # a slightly-negative F_int on the first post-restart step (ic
-        # = 1) because the thermal state is read from the previous
-        # solver epoch; the floor is what stopped a negative flux from
-        # propagating to the helpfile + atmosphere BC before this floor
-        # was relocated out of ReadSPIDER in the 7g commit.
+        # ic values (not just ic == 2), and NOT skipped on the impact-reset
+        # step: a negative flux must never reach the helpfile or the atmosphere
+        # BC. SPIDER's JSON output can produce a slightly-negative F_int on the
+        # first post-restart step (ic = 1) because the thermal state is read from
+        # the previous solver epoch; the floor is what stopped a negative flux
+        # from propagating before this floor was relocated out of ReadSPIDER.
         if _prevent_warming_clamp_active(config):
             hf_row['F_int'] = max(1.0e-8, hf_row['F_int'])
 
-        # Do not allow massive increases to T_magma or T_surf.
+        # Do not allow massive increases to T_magma or T_surf. Skipped on the
+        # impact-reset step so the re-melt's jump survives.
         #
         # T_magma uses the SPIDER/Aragog/dummy tolerance formula for
         # every backend. For all backends T_surf shares the
@@ -2082,13 +2375,13 @@ def run_interior(
 
         dT_delta_surf = dT_delta_magma
 
-        if hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
+        if (not impact_reset) and hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
             log.warning('Prevented large increase to T_magma!')
             log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
             hf_row['T_magma'] = T_magma_prev + dT_delta_magma
             hf_row['Phi_global'] = Phi_global_prev
 
-        if hf_row['T_surf'] > T_surf_prev + dT_delta_surf:
+        if (not impact_reset) and hf_row['T_surf'] > T_surf_prev + dT_delta_surf:
             log.warning('Prevented large increase to T_surf!')
             log.warning('   Clipped from %.2f K' % hf_row['T_surf'])
             hf_row['T_surf'] = T_surf_prev + dT_delta_surf

@@ -101,9 +101,11 @@ def run_escape(
         if esc_e > 0:
             log.info('    %2s = %.2e kg s-1' % (e, esc_e))
 
-    # Accumulate cumulative escaped mass [kg] for the desiccation gate. This
-    # is the integral of `esc_rate_total * dt` over all escape calls and is
-    # persisted to the helpfile so it survives resume.
+    # Accumulate this call's contribution to the atmospheric-loss ledger the
+    # desiccation gate audits. The ledger carries the integral of
+    # `esc_rate_total * dt` over all escape calls plus the mass each giant
+    # impact strips from the atmosphere (booked by the accretion handler),
+    # and is persisted to the helpfile so it survives resume.
     esc_step_kg = float(hf_row.get('esc_rate_total', 0.0)) * secs_per_year * float(dt)
     if np.isfinite(esc_step_kg) and esc_step_kg > 0.0:
         hf_row['esc_kg_cumulative'] = float(hf_row.get('esc_kg_cumulative', 0.0)) + esc_step_kg
@@ -299,10 +301,15 @@ def calc_new_elements(
         res[e] = float(hf_row.get(f'{e}{key}', 0.0))
 
     M_vols = float(sum(res.values()))
-    # check if we just desiccated the planet...
+
+    # Below-threshold reservoir: nothing to remove. Return the TOTAL
+    # inventories unchanged, whatever reservoir sized the loss: every caller
+    # writes the returned dict into ``<e>_kg_total``, so returning the
+    # atmospheric masses here would replace the totals with them and delete
+    # the dissolved inventory whenever the atmosphere is thin.
     if M_vols < min_thresh:
-        log.debug('Total mass of volatiles below threshold in escape calculation')
-        return res
+        log.debug('    Total mass of volatiles below threshold in escape calculation')
+        return {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
 
     # compute mass ratios in escaping reservoir.
     # With `outgas.vapourise=True` the rock-forming elements can take a share of

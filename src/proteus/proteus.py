@@ -182,6 +182,9 @@ class Proteus:
         self.star_wl = None
         self.star_fl = None
 
+        # Giant impacts scheduled for this run, empty when accretion is off
+        self.impact_events: list = []
+
         # Time at which star was last updated
         self.sspec_prev = -np.inf  # spectrum
         self.sinst_prev = -np.inf  # instellation and radius
@@ -375,6 +378,9 @@ class Proteus:
 
         # Import things needed to run PROTEUS
         #    atmospheric chemistry
+        #    giant-impact accretion
+        from proteus.accretion.common import next_event
+        from proteus.accretion.wrapper import init_accretion, restore_accretion_state
         from proteus.atmos_chem.wrapper import run_chemistry
 
         #    atmosphere solver
@@ -711,16 +717,32 @@ class Proteus:
             # after escape has run, so the error lands on the first step of
             # every restart.
             #
-            # The flag latches: the loop sets it once the melt fraction drops
-            # to the threshold and never clears it, so a mantle that
-            # crystallized and later remelted stays frozen. Reading only the
-            # resumed row would clear it in exactly that case and diverge from
-            # an uninterrupted run, so the whole stored history is searched
-            # instead. Rows with no melt fraction recorded compare False and
-            # so leave the flag clear, which is the behaviour a helpfile
-            # written before the column existed had already.
+            # The flag latches within a run: the loop sets it once the melt
+            # fraction drops to the threshold and does not clear it, so a
+            # mantle that crystallized and later remelted by cooling alone
+            # stays frozen. Reading only the resumed row would clear it in
+            # exactly that case and diverge from an uninterrupted run, so the
+            # stored history is searched instead. Rows with no melt fraction
+            # recorded compare False and so leave the flag clear, which is the
+            # behaviour a helpfile written before the column existed had
+            # already.
+            #
+            # A giant impact is the one event that does clear the latch, since
+            # it remelts the mantle to a magma ocean. Only the history after
+            # the last impact can re-establish the flag; searching across an
+            # impact would restore a latch the run itself had lifted. The
+            # impact's own row is excluded because it records the melt
+            # fraction from before the remelt. Runs without accretion carry
+            # no accreted rock, so the search covers the whole history and
+            # matches the behaviour of a run that never had an impact.
             if self.config.params.stop.solid.freeze_volatiles:
                 phi_history = self.hf_all.get('Phi_global')
+                if phi_history is not None:
+                    accreted = self.hf_all.get('M_accreted_rock')
+                    if accreted is not None:
+                        impacted = (accreted.diff() > 0.0).to_numpy().nonzero()[0]
+                        if len(impacted) > 0:
+                            phi_history = phi_history.iloc[impacted[-1] + 1 :]
                 self.crystallized = phi_history is not None and bool(
                     (phi_history <= self.config.params.stop.solid.phi_crit).any()
                 )
@@ -837,6 +859,15 @@ class Proteus:
         # Prepare orbit stuff
         init_orbit(self)
 
+        # Prepare the giant-impact timeline. Fixed at initialisation and
+        # consulted on every step, like the stellar evolution track.
+        self.impact_events = init_accretion(self)
+
+        # Rebuild the mass and orbit that impacts before a resume point already
+        # applied. Runs after the timeline is resolved, so a re-run dynamical
+        # model still selects its body against the configured planet.
+        restore_accretion_state(self)
+
         # Track the last simulation time at which data was written to disk.
         # Initialised to -inf so the first eligible iteration always writes.
         self.last_write_time = -np.inf
@@ -872,6 +903,14 @@ class Proteus:
                 # Create new row to hold the updated variables. This will be
                 #    overwritten by the routines below.
                 self.hf_row = self.hf_all.iloc[-1].to_dict()
+
+                # Per-step impact heat starts at zero on every row. The column
+                # accumulates within a step, because several impacts can land
+                # in one, so carrying the previous row's value forward would
+                # book an earlier impact's heat again. Cleared here rather than
+                # in a solver's success branch so it holds for every interior
+                # module and for the paths that return before that branch.
+                self.hf_row['step_dE_impact_J'] = 0.0
             log.info(' ')
             PrintSeparator()
             log.info('Loop counters')
@@ -893,6 +932,11 @@ class Proteus:
 
             ############### INTERIOR
             PrintHalfSeparator()
+
+            # Tell the time-stepper when the next giant impact is due, so
+            # it can shorten the step to land on it.
+            pending = next_event(self.impact_events, self.hf_row['Time'])
+            self.interior_o.t_next_impact = float('inf') if pending is None else pending.time
 
             # Evolve interior
             _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
@@ -953,6 +997,32 @@ class Proteus:
             # Advance current time in main loop according to interior step
             self.hf_row['Time'] += self.interior_o.dt  # in years
             self.hf_row['age_star'] += self.interior_o.dt  # in years
+
+            # Apply any giant impacts falling in this step. The time-stepper
+            # lands the step on the next impact time, and the window is
+            # half-open, so each impact fires exactly once no matter how the
+            # step straddles it. Applied after the time advance, so this step's
+            # orbit and structure use the grown planet and the next interior
+            # solve evolves it. Empty when no accretion module is selected.
+            if self.impact_events:
+                from proteus.accretion.common import due_events
+                from proteus.accretion.wrapper import (
+                    apply_impact,
+                    discard_preimpact_snapshot,
+                )
+
+                time_now = self.hf_row['Time']
+                time_previous = time_now - self.interior_o.dt
+                landed = due_events(self.impact_events, time_previous, time_now)
+                for event in landed:
+                    apply_impact(self, event)
+
+                # The interior wrote this step's snapshot before the re-melt
+                # above, so it no longer describes the state the step ended in.
+                # Drop it, or a resume would load a mantle the impact melted
+                # while treating the impact as already applied.
+                if landed and is_snapshot:
+                    discard_preimpact_snapshot(self)
 
             # One-time structure baseline in the interior-fed callable
             # representation (dynamic and static runs share an identical start).
@@ -1094,7 +1164,16 @@ class Proteus:
                 # Fractional crystallization with compositional zonation requires
                 # explicit tracking of the solid composition field, which is beyond
                 # the current solver capabilities. See Boujibar+2020 for discussion.
-                if self.config.params.stop.solid.freeze_volatiles and not self.crystallized:
+                # A giant impact this iteration just re-melted the mantle; its
+                # true melt state is regenerated by the next interior solve, so
+                # do not re-arm the latch from this iteration's stale Phi_global
+                # (which for Aragog still reads the pre-impact cooled value).
+                impact_this_iter = getattr(self.interior_o, 'impact_reset', False)
+                if (
+                    self.config.params.stop.solid.freeze_volatiles
+                    and not self.crystallized
+                    and not impact_this_iter
+                ):
                     if (
                         self.hf_row.get('Phi_global', 1.0)
                         <= self.config.params.stop.solid.phi_crit
@@ -1364,9 +1443,12 @@ class Proteus:
         WriteHelpfileToCSV(self.directories['output'], self.hf_all)
 
         # Ensure the final interior state is on disk so resume can find it.
+        # A giant-impact re-melt on the last iteration clears the solver's
+        # solution object, so guard on it: get_state() dereferences it.
         if (
             self.config.interior_energetics.module == 'aragog'
             and self.interior_o.aragog_solver is not None
+            and self.interior_o.aragog_solver.solution is not None
         ):
             from proteus.interior_energetics.aragog import AragogRunner
 

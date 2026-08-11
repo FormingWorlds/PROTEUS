@@ -106,6 +106,15 @@ def check_module_dependencies(instance, attribute, value):
             'escape.module = "boreas" requires the optional boreas package. '
             'Install it with: bash tools/get_boreas.sh',
         ),
+        'morrigan': (
+            instance.accretion.module == 'morrigan',
+            'morrigan',
+            'accretion.module = "morrigan" requires the optional morrigan package, '
+            'which runs the giant-impact model. Morrigan is not needed for a '
+            'standard PROTEUS run. Install it with: pip install '
+            '"fwl-proteus[morrigan]" (or bash tools/get_morrigan.sh for an '
+            'editable checkout).',
+        ),
     }
 
     for name, (needed, pkg, msg) in checks.items():
@@ -114,6 +123,74 @@ def check_module_dependencies(instance, attribute, value):
                 importlib.import_module(pkg)
             except ImportError as e:
                 raise ImportError(f'{msg}\n  Original error: {e}') from e
+
+
+# Interiors that cannot carry a giant impact, and the reason each cannot, keyed
+# by `interior_energetics.module`. One entry per line so a new interior adds a
+# line rather than editing a sentence.
+_ACCRETION_INCOMPATIBLE_INTERIORS = {
+    'spider': 'SPIDER has no supported re-melt path',
+    'boundary': (
+        'the boundary interior does not forward its interior state object to '
+        'the time-stepper, so the step cannot be shortened to land on a '
+        'scheduled impact'
+    ),
+}
+
+
+def check_accretion_interior_compatibility(instance, attribute, value):
+    """Reject accretion runs on an interior that cannot apply an impact.
+
+    A giant impact re-melts the mantle and has to be applied at the state the
+    timeline places it at. An interior that cannot do both is refused here at
+    configuration load rather than at the first impact, which can be many hours
+    into a run. SPIDER keeps its state in a restart file written by the external
+    binary; the boundary interior never forwards its interior state object to the
+    time-stepper, so the step cannot be capped to land on the impact and impacts
+    would be applied late by an unbounded amount, or several would collapse onto
+    the end of one long step.
+    """
+    if instance.accretion.module is None:
+        return
+
+    interior = instance.interior_energetics.module
+    reason = _ACCRETION_INCOMPATIBLE_INTERIORS.get(interior)
+    if reason is not None:
+        raise ValueError(
+            "accretion.module = '"
+            + str(instance.accretion.module)
+            + "' cannot run with interior_energetics.module = '"
+            + str(interior)
+            + "': a giant impact re-melts the mantle and has to be applied where "
+            'the timeline places it, but '
+            + reason
+            + ". Use interior_energetics.module = 'aragog' (or 'dummy' for a test)."
+        )
+
+
+def check_accretion_vapourise_compatibility(instance, attribute, value):
+    """Reject accretion runs that also vapourise rock into the atmosphere.
+
+    The two models keep incompatible books on the rock-forming elements. Rock
+    vapourisation moves rock mass into the atmosphere without debiting it from
+    the interior, which is why those elements are deliberately left out of
+    ``M_ele`` and the whole-planet mass. An impact, in contrast, grows the
+    planet's rock through the structure solve and conserves the per-element
+    volatile budgets across that growth, and it sizes both the atmosphere it
+    strips and the volatiles the impactor delivers from those same per-element
+    columns. Run together, the vapour column would be stripped and delivered as
+    though it were a tracked volatile budget while the mass it stands for is
+    accounted nowhere, so the combination is refused at configuration load.
+    """
+    if instance.accretion.module is not None and instance.outgas.vapourise:
+        raise ValueError(
+            "accretion.module = '"
+            + str(instance.accretion.module)
+            + "' cannot run with outgas.vapourise = true: rock vapour adds "
+            'rock-forming mass to the atmosphere that the whole-planet mass does '
+            'not track, and an impact sizes its atmospheric stripping and volatile '
+            'delivery from budgets that do. Disable one of the two.'
+        )
 
 
 def boreas_requires_atmosphere(instance, attribute, value):
@@ -347,7 +424,12 @@ class Config:
 
     config_version: str = field(
         default='3.0',
-        validator=(valid_config_version, check_module_dependencies),
+        validator=(
+            valid_config_version,
+            check_module_dependencies,
+            check_accretion_interior_compatibility,
+            check_accretion_vapourise_compatibility,
+        ),
     )
 
     def write(self, out: str):

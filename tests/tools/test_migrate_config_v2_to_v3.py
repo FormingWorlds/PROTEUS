@@ -78,6 +78,41 @@ _DROP_PREFIXES = (
 # decision: pin it (OVERRIDES) or certify it neutral (add it here).
 _REVIEWED_NEUTRAL = frozenset(
     {
+        # Accretion is off by default and every impactor budget starts at
+        # zero, so a migrated config experiences no impacts, no delivery,
+        # and no impact atmosphere loss (atmloss_module is off and its
+        # fraction is zero). The morrigan and dummy sub-blocks are only
+        # read once their backend is selected, which migration never does.
+        'accretion.atmloss_frac',
+        'accretion.atmloss_module',
+        'accretion.dummy.eccentricity',
+        'accretion.dummy.timeline_path',
+        'accretion.dummy.impact_parameter',
+        'accretion.dummy.mass_accreted',
+        'accretion.dummy.num_impacts',
+        'accretion.dummy.time_last',
+        'accretion.dummy.timescale',
+        'accretion.timeline.timeline_path',
+        'accretion.impactor_volatiles',
+        'accretion.impactor_C_ppmw',
+        'accretion.impactor_H_ppmw',
+        'accretion.impactor_N_ppmw',
+        'accretion.impactor_O_ppmw',
+        'accretion.impactor_S_ppmw',
+        'accretion.morrigan.density',
+        'accretion.morrigan.eccentricity_init',
+        'accretion.morrigan.evolution_time',
+        'accretion.morrigan.impact_angle',
+        'accretion.morrigan.inner_cutoff',
+        'accretion.morrigan.inner_edge',
+        'accretion.morrigan.mass_equal',
+        'accretion.morrigan.masses',
+        'accretion.morrigan.num_planets',
+        'accretion.morrigan.seed',
+        'accretion.morrigan.selector',
+        'accretion.morrigan.selector_value',
+        'accretion.morrigan.spacing',
+        'accretion.time_offset',
         'atmos_clim.aerosols_enabled',
         'atmos_clim.agni.grey_opacity_lw',
         'atmos_clim.agni.grey_opacity_sw',

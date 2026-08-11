@@ -226,8 +226,9 @@ of two log$_{10}$ bar numbers and therefore a dimensionless dex offset. See
 | `esc_rate_N` | kg s$^{-1}$ | Nitrogen escape rate |
 | `esc_rate_O` | kg s$^{-1}$ | Oxygen escape rate |
 | `esc_rate_S` | kg s$^{-1}$ | Sulfur escape rate |
-| `esc_kg_cumulative` | kg | Cumulative escaped mass |
+| `esc_kg_cumulative` | kg | Cumulative mass lost to space, from escape and impact stripping |
 | `M_vol_initial` | kg | Initial volatile inventory baseline |
+| `M_accreted_rock` | kg | Cumulative rock mass added by giant impacts |
 | `p_xuv` | bar | XUV absorption pressure level |
 | `R_xuv` | m | XUV absorption radius |
 | `T_xuv` | K | Temperature at the XUV absorption radius |

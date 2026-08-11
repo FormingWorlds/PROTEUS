@@ -52,7 +52,9 @@ from proteus.utils.coupler import (
     _interior_snapshot_names,
     _netcdf_readable,
     _populate_energy_residual,
+    _snapshot_belongs_to,
     _snapshot_readable,
+    _snapshot_time,
     get_proteus_directories,
     print_citation,
     print_module_configuration,
@@ -1280,6 +1282,7 @@ def _aragog_row(
     step_dE_Q_tidal_J: float = 0.0,
     step_solver_residual_J: float = 0.0,
     step_dE_state_heat_J: float = 0.0,
+    step_dE_impact_J: float = 0.0,
     F_cmb: float = 0.0,
     R_int: float = 6.371e6,
     R_core: float = 3.481e6,
@@ -1303,6 +1306,7 @@ def _aragog_row(
     row['step_dE_Q_tidal_J'] = step_dE_Q_tidal_J
     row['step_solver_residual_J'] = step_solver_residual_J
     row['step_dE_state_heat_J'] = step_dE_state_heat_J
+    row['step_dE_impact_J'] = step_dE_impact_J
     row['F_cmb'] = F_cmb
     row['R_int'] = R_int
     row['R_core'] = R_core
@@ -1326,6 +1330,8 @@ def test_helpfile_keys_include_energy_conservation_columns():
         'step_solver_residual_J',
         # State-side primitive: the entropy-transported heat content change.
         'step_dE_state_heat_J',
+        # Giant-impact re-melt heat injection (enters both residual sides).
+        'step_dE_impact_J',
         # Cumulative columns derived from the primitives above.
         'E_state_heat_cons_J',
         'dE_predicted_cons_J',
@@ -1663,6 +1669,72 @@ def test_populate_energy_residual_predicted_uses_live_mass_heating():
     # Frozen-mass variant would have given +4e29; guard the gap.
     assert abs(row1['dE_predicted_cons_J'] - frozen_radio) > 1e29
     assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(live_radio)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_populate_energy_residual_is_invariant_across_a_giant_impact():
+    """A giant-impact re-melt is booked on both sides, leaving the residual closed.
+
+    The re-melt injects mantle-scale heat as an entropy jump between solver
+    calls, so no per-call state integral carries it. The booking enters the
+    impact heat on BOTH cumulatives: the state side gains the heat that was
+    actually added, the predicted side gains the impact as an energy source,
+    and the residual is unchanged across the impact. A one-sided booking would
+    shift the residual by the full injection, which dwarfs every physical
+    increment here, so closure is the discriminating signature.
+    """
+    E0 = 1.0e31
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    # Ordinary cooling step before the impact.
+    cool = -2.0e29
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_cons_J=E0 + cool,
+        step_dE_F_int_J=cool,
+        step_dE_state_heat_J=cool,
+    )
+    _populate_energy_residual(hf, row1)
+    hf = ExtendHelpfile(hf, row1)
+    residual_before = row1['E_residual_cons_J']
+
+    # Impact row: the solve itself cooled a little more, then the re-melt
+    # injected mantle-scale heat (two orders above the step increments).
+    dE_impact = +5.0e30
+    row2 = _aragog_row(
+        time_yr=20.0,
+        E_state_cons_J=E0 + 2 * cool + dE_impact,
+        step_dE_F_int_J=cool,
+        step_dE_state_heat_J=cool,
+        step_dE_impact_J=dE_impact,
+    )
+    _populate_energy_residual(hf, row2)
+
+    # Both cumulatives carry the injection.
+    assert row2['dE_predicted_cons_J'] == pytest.approx(2 * cool + dE_impact, rel=1e-12)
+    assert row2['E_state_heat_cons_J'] == pytest.approx(2 * cool + dE_impact, rel=1e-12)
+    # The residual is invariant across the impact: booked, not leaked.
+    assert row2['E_residual_cons_J'] == pytest.approx(residual_before, abs=1e-3 * abs(cool))
+    # Discrimination: booking on only one side would shift the residual by the
+    # full 5e30 J injection, twenty-five times the physical step increment.
+    assert abs(dE_impact) > 20 * abs(cool)
+
+    # Boundary case: a zero-impact row must reduce to the ordinary bookkeeping,
+    # so the column's default cannot perturb quiet steps.
+    row3 = _aragog_row(
+        time_yr=30.0,
+        E_state_cons_J=E0 + 3 * cool + dE_impact,
+        step_dE_F_int_J=cool,
+        step_dE_state_heat_J=cool,
+        step_dE_impact_J=0.0,
+    )
+    hf = ExtendHelpfile(hf, row2)
+    _populate_energy_residual(hf, row3)
+    assert row3['E_residual_cons_J'] == pytest.approx(
+        row2['E_residual_cons_J'], abs=1e-3 * abs(cool)
+    )
 
 
 @pytest.mark.unit
@@ -3367,6 +3439,419 @@ def test_select_resumable_snapshot_rejects_cross_row_atm_collision(tmp_path):
     # cannot load it against the 30.2-trimmed helpfile.
     assert not (data / '31.json.incomplete').exists()
     assert not (data / '31.json').exists()
+
+
+@pytest.mark.unit
+def test_a_helpfile_predating_a_schema_column_still_resumes(tmp_path):
+    """A run in flight when a column is added must survive its own resume.
+
+    The helpfile a run writes carries the schema in force when it started.
+    Adding a column and resuming feeds that file's last row straight back into
+    ExtendHelpfile, which rejects a row missing any schema key, so without a
+    backfill every in-flight run in the fleet dies on its next restart, whether
+    or not it uses the feature the column belongs to. The backfill is zero,
+    which is correct for the cumulative ledgers this affects: nothing was
+    recorded, so nothing accrued.
+    """
+    from proteus.utils.coupler import (
+        ExtendHelpfile,
+        GetHelpfileKeys,
+        ReadHelpfileFromCSV,
+        ZeroHelpfileRow,
+    )
+
+    absent = ('M_accreted_rock', 'esc_kg_cumulative')
+    row = ZeroHelpfileRow()
+    for key in absent:
+        assert key in row, f'{key} must be in the current schema for this test to mean anything'
+        del row[key]
+
+    pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+
+    # Every schema column is present, and the ones that were absent read zero
+    # rather than NaN, which would poison any later arithmetic on them.
+    for key in GetHelpfileKeys():
+        assert key in loaded.columns, f'{key} missing after backfill'
+    for key in absent:
+        assert loaded[key].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+        assert np.isfinite(loaded[key].iloc[-1])
+
+    # The resume path itself: the restored row is accepted.
+    ExtendHelpfile(loaded, loaded.iloc[-1].to_dict())
+
+    # Columns the file did carry are untouched, so the backfill does not
+    # overwrite real data with zeros.
+    original = ZeroHelpfileRow()
+    original['T_surf'] = 1234.5
+    for key in absent:
+        del original[key]
+    pd.DataFrame([original]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+    reloaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert reloaded['T_surf'].iloc[-1] == pytest.approx(1234.5, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_a_helpfile_missing_physical_state_is_refused_not_zero_filled():
+    """Only cumulative columns may be read as zero; state columns must fail.
+
+    Zero is a true statement about a ledger a file never recorded: nothing was
+    written, so nothing accrued. It is a specific and wrong statement about
+    instantaneous state. A zero-filled surface temperature or planet mass would
+    be read as real by everything downstream and would quietly poison a resumed
+    run, which is worse than the loud failure this function gave before the
+    backfill existed. So the backfill is scoped to a declared set, and anything
+    outside it still stops the run.
+    """
+    from proteus.utils.coupler import (
+        RESUMABLE_ZERO_FILL_KEYS,
+        GetHelpfileKeys,
+        ReadHelpfileFromCSV,
+    )
+
+    # Every fillable key is in the schema, so the set cannot drift into naming
+    # columns that no longer exist.
+    assert RESUMABLE_ZERO_FILL_KEYS <= set(GetHelpfileKeys())
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        row['T_surf'] = 1500.0
+        del row['T_surf']  # a state column, not a ledger
+        pd.DataFrame([row]).to_csv(
+            os.path.join(tmpdir, 'runtime_helpfile.csv'), sep='\t', index=False
+        )
+
+        with pytest.raises(Exception, match='physical state'):
+            ReadHelpfileFromCSV(tmpdir)
+
+    # The same function still fills a ledger column, so the guard discriminates
+    # between the two rather than refusing every schema change.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        del row['M_accreted_rock']
+        pd.DataFrame([row]).to_csv(
+            os.path.join(tmpdir, 'runtime_helpfile.csv'), sep='\t', index=False
+        )
+
+        loaded = ReadHelpfileFromCSV(tmpdir)
+        assert loaded['M_accreted_rock'].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+
+
+def _write_timed_nc(path: str, time: float | None) -> str:
+    """Create a valid interior snapshot recording ``time``, or none at all."""
+    from netCDF4 import Dataset
+
+    with Dataset(path, 'w') as ds:
+        ds.createDimension('x', 1)
+        if time is not None:
+            ds.createVariable('time', 'f8')
+            ds['time'][0] = float(time)
+    return path
+
+
+@pytest.mark.unit
+def test_snapshot_time_reads_what_the_writer_recorded(tmp_path):
+    """The recorded time is read back from either writer, or reported absent.
+
+    Contract clause: the snapshot filenames are keyed on a whole year, so the
+    name cannot tell two steps inside one year apart. Both interior writers
+    record the time they wrote, and reading it back is what lets a resume
+    tell a row's own state from one a neighbouring step left behind. A file
+    that records nothing has to be reported as such rather than guessed at,
+    because that is what every directory written before the field existed
+    looks like.
+
+    Verifies:
+    - The netCDF ``time`` variable and SPIDER's ``time_years`` entry are both
+      read, including a fractional time the filename cannot express.
+    - A file of either kind without the field reports None rather than zero,
+      which would otherwise read as a snapshot from the start of the run.
+    - A corrupt file and a missing one report None instead of raising, so the
+      readability probe stays the one place that judges those.
+    """
+    assert _snapshot_time(_write_timed_nc(str(tmp_path / 'a_int.nc'), 70.8)) == pytest.approx(
+        70.8, rel=1e-12
+    )
+    assert _snapshot_time(_write_timed_nc(str(tmp_path / 'b_int.nc'), None)) is None
+
+    spider = str(tmp_path / 'c.json')
+    with open(spider, 'w') as fh:
+        json.dump({'time_years': 70.2, 'data': {}}, fh)
+    assert _snapshot_time(spider) == pytest.approx(70.2, rel=1e-12)
+    assert _snapshot_time(_write_valid_json(str(tmp_path / 'd.json'))) is None
+
+    assert _snapshot_time(_write_corrupt_nc(str(tmp_path / 'e_int.nc'))) is None
+    assert _snapshot_time(str(tmp_path / 'missing_int.nc')) is None
+
+
+@pytest.mark.unit
+def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
+    """A file counts as a row's own only when it records that row's time.
+
+    Contract clause: a step less than a year from its neighbour writes to the
+    same filename, so a file found under a row's name may be another step's.
+    Matching on the recorded time is what separates them, and a file that
+    records nothing keeps the old behaviour of being accepted on its name.
+
+    Verifies:
+    - The row's own time matches and a neighbouring step's does not, at a
+      separation the filename itself cannot resolve.
+    - A file with no recorded time is accepted, so directories written before
+      the field existed still resume.
+    - The tolerance admits the helpfile's own serialisation round trip and
+      still rejects a step a thousandth of a year away.
+    """
+    own = _write_timed_nc(str(tmp_path / 'own_int.nc'), 70.2)
+    other = _write_timed_nc(str(tmp_path / 'other_int.nc'), 70.8)
+    legacy = _write_timed_nc(str(tmp_path / 'legacy_int.nc'), None)
+
+    assert _snapshot_belongs_to(own, 70.2) is True
+    assert _snapshot_belongs_to(other, 70.2) is False, (
+        'a snapshot written 0.6 yr later was accepted as this row, which is '
+        'the mismatch the whole-year filename cannot rule out'
+    )
+    assert _snapshot_belongs_to(legacy, 70.2) is True
+
+    # The helpfile round-trips Time through '%.10e', so a restored row differs
+    # from the written value in about the eleventh digit; that must still match.
+    assert _snapshot_belongs_to(own, float('%.10e' % 70.2)) is True
+    # A step a thousandth of a year away is a different step, not a round trip.
+    assert _snapshot_belongs_to(own, 70.201) is False
+
+    # The margin is relative to the time, because the helpfile's precision is,
+    # so it has to be checked where a run actually ends up. At 1 Gyr a round
+    # trip moves the row by about 0.05 yr and must still match, while a step
+    # 0.7 yr away shares the same filename and must not: a margin that grew to
+    # a whole year there would accept every neighbour and leave the check
+    # doing nothing exactly where runs spend most of their time.
+    gyr = 1.0e9
+    far = _write_timed_nc(str(tmp_path / 'gyr_int.nc'), gyr)
+    assert _snapshot_belongs_to(far, float('%.10e' % gyr)) is True
+    assert _snapshot_belongs_to(far, gyr + 0.7) is False
+    assert _snapshot_belongs_to(far, gyr + 0.2) is False
+
+    # Past a few Gyr the helpfile cannot resolve two rows inside one filename
+    # at all, so the file is accepted on its name rather than a row that is
+    # perfectly resumable being refused.
+    beyond = 1.0e10
+    unresolvable = _write_timed_nc(str(tmp_path / 'beyond_int.nc'), beyond)
+    assert _snapshot_belongs_to(unresolvable, beyond + 0.7) is True
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_rejects_a_later_steps_snapshot(tmp_path):
+    """A snapshot left by a step the helpfile never recorded is not resumed from.
+
+    Physical scenario: the interior writes its snapshot during a step and the
+    helpfile row is written at the end of it, so a run killed in between
+    leaves a file whose name rounds onto the previous row while its contents
+    are the next step's mantle. Resuming there would continue from a state
+    the helpfile has no row for, and nothing in the filename says so.
+
+    Verifies:
+    - The row is rejected and the walk continues to an earlier complete one.
+    - The same directory with the file recording the row's own time resumes at
+      that row, so the rejection is the recorded time doing its work rather
+      than the row being unusable for another reason.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_timed_nc(str(data / f'{t}_int.nc'), float(t))
+    # Named for the 70.2 row, holding the state written at 70.8.
+    _write_timed_nc(str(data / '70_int.nc'), 70.8)
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='aragog'
+    )
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0), (
+        f'resumed at {out.iloc[-1]["Time"]} from a snapshot written 0.6 yr later, '
+        'so the interior would continue from a state the helpfile has no row for'
+    )
+
+    # Discrimination: the same row with its own snapshot is resumable.
+    _write_timed_nc(str(data / '70_int.nc'), 70.2)
+    kept, none_dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='aragog'
+    )
+    assert none_dropped == []
+    assert kept.iloc[-1]['Time'] == pytest.approx(70.2)
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_leaves_another_steps_file_in_place(tmp_path):
+    """Dropping a row does not take a file that belongs to a different step.
+
+    Contract clause: a row without a complete pair has its own snapshot halves
+    moved aside so the modules' latest-file globs cannot pick them up. A file
+    that records a different time is not one of those halves, whatever its
+    name suggests, and removing it would destroy state the run may still need.
+
+    Verifies:
+    - The dropped row's own atmosphere half is quarantined and swept, as
+      before.
+    - The interior file recording another step's time survives untouched, and
+      still holds that step's time afterwards.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_timed_nc(str(data / f'{t}_int.nc'), float(t))
+        _write_timed_nc(str(data / f'{t}_atm.nc'), float(t))
+    _write_timed_nc(str(data / '70_int.nc'), 70.8)  # a later step's interior
+    _write_timed_nc(str(data / '70_atm.nc'), 70.2)  # the dropped row's own half
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path),
+        _hf_times([0, 1, 2, 70.2]),
+        require_atm=True,
+        interior_module='aragog',
+    )
+
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0)
+    assert not (data / '70_atm.nc').exists(), (
+        "the dropped row's own atmosphere half was left where a latest-file "
+        'glob can still reach it'
+    )
+    assert (data / '70_int.nc').is_file(), (
+        'dropping the row removed a snapshot belonging to a different step, '
+        'which is state no other file carries'
+    )
+    assert _snapshot_time(str(data / '70_int.nc')) == pytest.approx(70.8, rel=1e-12)
+
+
+def _write_spider_json(path: str, time: float | str | None) -> str:
+    """Create a SPIDER-shaped interior snapshot recording ``time_years``.
+
+    SPIDER writes the achieved time at the top level of its JSON, which is
+    what ``ReadSPIDER`` reads back in place of the rounded filename. Passing
+    None omits the field, which is what an older output directory looks like.
+    """
+    payload: dict = {'step': 7, 'data': {'S': [1.0, 2.0]}}
+    if time is not None:
+        payload['time_years'] = time
+    with open(path, 'w') as fh:
+        json.dump(payload, fh)
+    return path
+
+
+@pytest.mark.unit
+def test_snapshot_time_reads_a_spider_json_however_it_stores_the_number(tmp_path):
+    """SPIDER's recorded time is read whether it is a number or a string.
+
+    Contract clause: the interior half of a SPIDER resume is a JSON file, and
+    the field the resume matches on is the same one ``ReadSPIDER`` uses for
+    the coupling clock, where it is read through a ``float`` for the same
+    reason. SPIDER writes it as a JSON number today; the surrounding file
+    carries other quantities as strings, so the reader takes either and a run
+    does not fall back to matching on the filename if that ever changes.
+
+    Verifies:
+    - A numeric and a string ``time_years`` both read back as the same float.
+    - A file without the field reports None, so it is accepted on its name
+      rather than being read as a snapshot from time zero.
+    """
+    numeric = _write_spider_json(str(tmp_path / 'a.json'), 70.2)
+    stringy = _write_spider_json(str(tmp_path / 'b.json'), '70.2')
+    legacy = _write_spider_json(str(tmp_path / 'c.json'), None)
+
+    assert _snapshot_time(numeric) == pytest.approx(70.2, rel=1e-12)
+    assert _snapshot_time(stringy) == pytest.approx(70.2, rel=1e-12)
+    assert _snapshot_time(legacy) is None
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_matches_a_spider_row_to_its_own_json(tmp_path):
+    """A SPIDER row resumes from the JSON written for it, not a neighbour's.
+
+    Physical scenario: SPIDER names its snapshot for the time rounded to a
+    whole year and records the time it achieved inside, so two steps rounding
+    into the same year land on one file and the later one overwrites it. A
+    run killed between a write and the helpfile row it belongs to leaves that
+    file under a row whose state it does not hold, and resuming on the name
+    alone hands the run a mantle from a step the helpfile has no row for.
+
+    Verifies:
+    - A JSON recording another step's time is not accepted for this row, and
+      the walk continues to a row whose own snapshot is there.
+    - The same directory with the JSON recording the row's own time resumes at
+      that row, so the rejection is the recorded time and not the row being
+      unusable.
+    - A JSON with no recorded time is accepted on its name, so output written
+      before the field was read still resumes.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_spider_json(str(data / f'{t}.json'), float(t))
+    # Named for the 70.2 row, holding the step SPIDER achieved at 70.4.
+    _write_spider_json(str(data / '70.json'), 70.4)
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0), (
+        f'resumed at {out.iloc[-1]["Time"]} from a JSON recording 70.4, so SPIDER '
+        'would restart from a state the helpfile has no row for'
+    )
+
+    _write_spider_json(str(data / '70.json'), 70.2)
+    kept, none_dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert none_dropped == []
+    assert kept.iloc[-1]['Time'] == pytest.approx(70.2)
+
+    _write_spider_json(str(data / '70.json'), None)
+    legacy, legacy_dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert legacy_dropped == []
+    assert legacy.iloc[-1]['Time'] == pytest.approx(70.2)
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_leaves_another_spider_steps_json_in_place(tmp_path):
+    """Dropping a SPIDER row does not take a JSON written for another step.
+
+    Contract clause: a row without a complete pair has its own halves moved
+    aside so the module's latest-file glob cannot pick them up. A JSON that
+    records a different time is another step's, however closely its rounded
+    name fits this row, and removing it would destroy the only copy of that
+    step's interior state.
+
+    Verifies:
+    - The row is dropped and its own atmosphere half is swept.
+    - The JSON recording another step's time is still on disk afterwards and
+      still records that step.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_spider_json(str(data / f'{t}.json'), float(t))
+        _write_timed_nc(str(data / f'{t}_atm.nc'), float(t))
+    _write_spider_json(str(data / '70.json'), 70.4)  # another step's interior
+    _write_timed_nc(str(data / '70_atm.nc'), 70.2)  # the dropped row's own half
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path),
+        _hf_times([0, 1, 2, 70.2]),
+        require_atm=True,
+        interior_module='spider',
+    )
+
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0)
+    assert not (data / '70_atm.nc').exists()
+    assert (data / '70.json').is_file(), (
+        'dropping the row deleted a SPIDER snapshot belonging to a different '
+        'step, which is state no other file carries'
+    )
+    assert _snapshot_time(str(data / '70.json')) == pytest.approx(70.4, rel=1e-12)
 
 
 # =============================================================================

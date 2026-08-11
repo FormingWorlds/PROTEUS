@@ -1133,3 +1133,59 @@ def test_run_escape_zephyrus_zeroes_elemental_rates_when_unfract_raises():
     # Scale guard: 1.234e5 kg/s is a plausible XUV-limited MLR (~kg/s for
     # an Earth-like XUV setup), not 1.234e+15 (units flipped) or 0.0.
     assert 1e3 < hf_row['esc_rate_total'] < 1e7
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_thin_atmosphere_does_not_erase_the_dissolved_inventory():
+    """A below-threshold atmosphere leaves the whole-planet budgets alone.
+
+    Physical scenario: a wet planet whose atmosphere has almost all dissolved
+    back into the magma ocean. The escape reservoir is the atmosphere, which is
+    what sizes the loss, but what the function returns is written straight into
+    ``<e>_kg_total`` by its only caller (``run_escape``). Returning the
+    atmospheric masses when the atmosphere is too thin to lose anything would
+    therefore overwrite the whole-planet totals with them and delete the
+    dissolved inventory, which escape never touched.
+
+    Discrimination: the returned budgets are compared against the totals, and
+    the totals are eleven orders of magnitude above the atmospheric masses, so
+    a returned reservoir dict cannot pass on a rounding edge. The same call
+    with ``reservoir='bulk'`` cannot discriminate at all, because there the two
+    dicts are the same by construction, which is why this uses ``'outgas'``.
+    """
+    from proteus.escape.wrapper import calc_new_elements
+
+    # Dissolved-dominated: 1e21 kg of H in the planet, 1e5 kg of it in the air.
+    hf_row = {
+        'esc_rate_total': 1e4,  # kg s-1
+        'H_kg_total': 1.0e21,
+        'C_kg_total': 1.0e19,
+        'N_kg_total': 1.0e18,
+        'S_kg_total': 1.0e17,
+        'O_kg_total': 1.0e20,
+        'H_kg_atm': 1.0e5,
+        'C_kg_atm': 1.0e4,
+        'N_kg_atm': 1.0e3,
+        'S_kg_atm': 1.0e2,
+        'O_kg_atm': 1.0e4,
+    }
+    totals_before = {e: v for e, v in hf_row.items() if e.endswith('_kg_total')}
+
+    # The atmosphere sums to ~1.1e5 kg, far below the threshold.
+    tgt = calc_new_elements(hf_row, dt=500.0, reservoir='outgas', min_thresh=1.0e10)
+
+    for element in ('H', 'C', 'N', 'S', 'O'):
+        assert tgt[element] == pytest.approx(totals_before[f'{element}_kg_total'], rel=1e-12), (
+            f'{element} came back as its atmospheric mass rather than its '
+            'whole-planet total, so the caller would write the thin atmosphere '
+            'over the dissolved inventory and desiccate the planet on paper'
+        )
+        # Discrimination: the atmospheric value is nowhere near the total.
+        assert tgt[element] > 1.0e3 * hf_row[f'{element}_kg_atm']
+
+    # An element the run does not track comes back as zero rather than raising.
+    assert tgt['Kr'] == pytest.approx(0.0)
+
+    # The row itself is not mutated by the sizing call.
+    assert hf_row['H_kg_total'] == pytest.approx(1.0e21, rel=1e-12)
