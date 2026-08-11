@@ -1073,7 +1073,9 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [
+        "main loop"
+      ]
     },
     {
       "name": "F_tidal",
@@ -18592,6 +18594,10 @@
         {
           "file": "src/proteus/atmos_clim/janus.py",
           "condition": "atmos_clim.module = \"janus\""
+        },
+        {
+          "file": "src/proteus/atmos_clim/wrapper.py",
+          "condition": "always"
         }
       ],
       "consumers": []
