@@ -84,6 +84,8 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.agni.spectral_file',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
+        # Inert while escape.hill_clamp is pinned off for migrated configs.
+        'escape.hill_clamp_frac',
         'interior_energetics.adams_williamson_beta',
         'interior_energetics.adams_williamson_rhos',
         'interior_energetics.adiabatic_bulk_modulus',
@@ -339,6 +341,42 @@ def test_kappah_floor_and_maximum_rel_overrides():
     """kappah_floor pins 0.0 (no floor) and maximum_rel pins 0.0 (strict dt cap)."""
     assert mig.OVERRIDES['interior_energetics.kappah_floor'] == 0.0
     assert mig.OVERRIDES['params.dt.maximum_rel'] == 0.0
+
+
+def test_hill_clamp_override_reproduces_unclipped_2_0_escape():
+    """2.0 sized escape from the unmodified XUV radius; the 3.0 default clips
+    it to the Hill radius. The override pins the clip off, so a migrated
+    config keeps its 2.0 escape rates rather than silently gaining the bound.
+    """
+    assert mig.OVERRIDES['escape.hill_clamp'] is False
+    # The live 3.0 default is the opposite; that difference is what the pin
+    # exists to bridge, so it is asserted here too.
+    from proteus.config._escape import Escape
+
+    assert Escape(module='zephyrus').hill_clamp is True
+
+
+def test_bol_scale_window_override_reproduces_unwindowed_2_0_scaling():
+    """2.0 had no time-gating on bol_scale: a non-unity factor applied for
+    the whole run. The live 3.0 default (bol_scale_start=None) disables
+    scaling outright regardless of bol_scale, so a naive migration would
+    silently turn off any bol_scale a 2.0 config had set. The override
+    must pin an always-open window: start at t=0 and a duration far
+    longer than any plausible run.
+    """
+    assert mig.OVERRIDES['star.bol_scale_start'] == pytest.approx(0.0)
+    # Discrimination: the duration must be large enough that no
+    # realistic stellar age (even the ~13.8 Gyr age of the universe)
+    # falls outside the window; a duration comparable to a typical run
+    # length (e.g. 1-10 Gyr) would silently reintroduce a cutoff 2.0
+    # never had.
+    assert mig.OVERRIDES['star.bol_scale_duration'] > 20.0
+
+    v3_defaults, _ = _v3()
+    # The pin is doing the work: the live 3.0 schema default disables
+    # scaling entirely, so letting the field default (rather than pinning
+    # it) would silently change a migrated run's stellar flux.
+    assert v3_defaults['star.bol_scale_start'] is None
 
 
 def _translate(v2_dict):

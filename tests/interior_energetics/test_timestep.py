@@ -74,7 +74,8 @@ def _make_config(
         time=stop_time,
     )
     params = SimpleNamespace(dt=dt, stop=stop)
-    return SimpleNamespace(params=params)
+    star = SimpleNamespace(bol_scale=1.0, bol_scale_start=None, bol_scale_duration=0.0)
+    return SimpleNamespace(params=params, star=star)
 
 
 def _make_hf_all(n_rows: int = 10, dt_prev: float = 1.0e3, phi: float = 1.0):
@@ -437,7 +438,8 @@ def _make_overshoot_config(*, dt_maximum, stop_time_enabled, stop_time_maximum):
         escape=SimpleNamespace(enabled=False),
         time=SimpleNamespace(enabled=stop_time_enabled, maximum=stop_time_maximum),
     )
-    return SimpleNamespace(params=SimpleNamespace(dt=dt, stop=stop))
+    star = SimpleNamespace(bol_scale=1.0, bol_scale_start=None, bol_scale_duration=0.0)
+    return SimpleNamespace(params=SimpleNamespace(dt=dt, stop=stop), star=star)
 
 
 def _make_overshoot_hf_all():

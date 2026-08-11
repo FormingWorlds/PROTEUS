@@ -12,11 +12,165 @@ from numpy import pi, unique
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.atmos_clim.common import Atmos_t, get_spfile_path
-from proteus.utils.constants import const_R
+from proteus.atmos_clim.common import (
+    Atmos_t,
+    LevelsSource,
+    clip_radius_to_hill,
+    get_spfile_path,
+)
+from proteus.utils.constants import const_R, gas_list
 from proteus.utils.helper import UpdateStatusfile, safe_rm
 
 log = logging.getLogger('fwl.' + __name__)
+
+# Scalar properties of the photospheric and XUV levels, all read off the
+# atmospheric structure the solver returns. They are carried together so that
+# each level keeps a radius, pressure, temperature and gravity that describe the
+# same structure. Fluxes and surface state are deliberately absent: the coupling
+# and the deadlock detector both need to see those move when a solve fails.
+LEVEL_KEYS = ('R_obs', 'p_obs', 'T_obs', 'g_obs', 'R_xuv', 'p_xuv', 'T_xuv', 'g_xuv')
+
+# Phrase used for each level source in the substitution warning.
+_SOURCE_PHRASE = {
+    LevelsSource.CONVERGED_SOLVE: 'last converged solve',
+    LevelsSource.COMMITTED_ROW: 'last committed row',
+}
+
+# Composition at the XUV level, read off the same structure and used by BOREAS
+# to set the mean molecular weight of the outflow. Carried with the levels, so
+# a held radius is never combined with the composition of a rejected structure.
+XUV_VMR_KEYS = tuple(f'{gas}_vmr_xuv' for gas in gas_list)
+
+# Number of consecutive iterations on carried levels after which the run says so
+# at error level. Long enough that a solver which stumbles for an iteration or
+# two passes unremarked, short enough to appear while a run is still worth
+# steering.
+CARRIED_LEVELS_ALERT = 10
+
+
+def _finite_levels(source: dict, keys) -> dict:
+    """Read the level properties out of `source`, skipping the unusable ones.
+
+    A key is taken only when it is present and its value is finite. A solver
+    that returns NaN for a level has not measured it, so storing that value
+    would replace the fallback with something that cannot be fallen back on.
+    """
+    out = {}
+    for key in keys:
+        if key not in source:
+            continue
+        val = float(source[key])
+        if np.isfinite(val):
+            out[key] = val
+    return out
+
+
+def _alert_on_long_streak(atmos_o: Atmos_t):
+    """Report a long run of iterations whose levels the run did not resolve.
+
+    A streak this long is no longer a solver that stumbled once. The interior
+    keeps evolving while the levels stand still, so escape is computed on a
+    planet that has moved on, and the deadlock detector cannot see it: that
+    detector fires only when the interior has stopped moving as well.
+    """
+    if atmos_o.levels_stale_iters >= CARRIED_LEVELS_ALERT:
+        log.error(
+            'Atmosphere levels have been unresolved for %d consecutive iterations; '
+            'escape is running on a structure this run has not converged',
+            atmos_o.levels_stale_iters,
+        )
+
+
+def carry_converged_levels(atmos_o: Atmos_t, hf_row: dict, previous_row: dict | None = None):
+    """Carry the photospheric and XUV levels across a solve that was rejected.
+
+    A solver that rejects its solution still returns an atmospheric structure,
+    and the levels read off that structure can sit far outside the planet. The
+    energy-limited escape rate goes as the cube of the XUV radius, so a rejected
+    structure otherwise becomes a large mass-loss rate that looks like a
+    physical result. Each converged solve records its levels; a rejected one has
+    its levels replaced by that record, and the substitution is logged.
+
+    Modules without a nonlinear solve (JANUS, dummy, and AGNI's transparent and
+    prescribed-temperature branches) always report convergence, so this records
+    their levels and never substitutes.
+
+    The record of converged levels lives only in memory, so a resumed run starts
+    without one. If the first solve after the resume is rejected, the fallback is
+    taken from the last helpfile row instead: that row was written before this
+    run began, and it is the state escape used on the resumed iteration anyway.
+    The warning states which of the two sources was used, because a helpfile row
+    is not guaranteed to come from a converged solve.
+
+    The helpfile fallback applies to the first solve only. If every solve since
+    then was rejected, the record is empty, but each helpfile row written since
+    the resume contains rejected levels too, so there is nothing better to read
+    back and the rejected levels are kept.
+
+    Parameters
+    ----------
+        atmos_o : Atmos_t
+            Atmosphere struct. Carries the convergence flag of the solve that
+            has just run, and the record of converged levels, which this
+            function updates.
+        hf_row : dict
+            Simulation variables for this iteration, modified in place. Holds
+            the levels the atmosphere module has just written.
+        previous_row : dict, optional
+            The last committed row, used only when this run's first solve is
+            rejected.
+    """
+
+    keys = LEVEL_KEYS + XUV_VMR_KEYS
+    atmos_o.solves_seen += 1
+
+    # Solve was accepted: its levels become the ones to fall back on. Merged
+    # rather than replaced, so a module that reports one level intermittently
+    # does not empty the record of that level.
+    if atmos_o.converged:
+        atmos_o.levels_converged.update(_finite_levels(hf_row, keys))
+        atmos_o.levels_source = LevelsSource.CONVERGED_SOLVE
+        atmos_o.levels_stale_iters = 0
+        return
+
+    # First solve of this run, and it failed. The last committed row predates
+    # the run, which is the situation a resumed run is in, so fall back on that.
+    if atmos_o.solves_seen == 1 and previous_row:
+        atmos_o.levels_converged.update(_finite_levels(previous_row, keys))
+        atmos_o.levels_source = LevelsSource.COMMITTED_ROW
+
+    # Counts every iteration whose levels this run did not resolve itself, so a
+    # run with nothing to fall back on is counted too. That case is the worse
+    # of the two, since escape then runs on the rejected structure directly.
+    atmos_o.levels_stale_iters += 1
+
+    if not atmos_o.levels_converged:
+        log.warning(
+            'Atmosphere solve did not converge and no earlier levels are '
+            'available; using the levels of the rejected structure '
+            '(%d consecutive iterations)',
+            atmos_o.levels_stale_iters,
+        )
+        _alert_on_long_streak(atmos_o)
+        return
+
+    log.warning(
+        'Atmosphere solve did not converge; holding levels from the %s '
+        '(%d consecutive iterations)',
+        _SOURCE_PHRASE[atmos_o.levels_source],
+        atmos_o.levels_stale_iters,
+    )
+    _alert_on_long_streak(atmos_o)
+
+    for key in LEVEL_KEYS:
+        if key in atmos_o.levels_converged and key in hf_row:
+            log.debug(
+                '    %-5s %.5e  ->  %.5e'
+                % (key, float(hf_row[key]), atmos_o.levels_converged[key])
+            )
+    for key in keys:
+        if key in atmos_o.levels_converged and key in hf_row:
+            hf_row[key] = atmos_o.levels_converged[key]
 
 
 def run_atmosphere(
@@ -130,7 +284,9 @@ def run_atmosphere(
             InitStellarSpectrum(dirs, wl_un, fl_un, spectral_file_nostar)
             atmos_o._atm = InitAtm(dirs, config)
 
-        atm_output = RunJANUS(atmos_o._atm, dirs, config, hf_row, hf_all, write_data=write_data)
+        atmos_o._atm_janus_last, atm_output = RunJANUS(
+            atmos_o._atm, dirs, config, hf_row, hf_all, write_data=write_data
+        )
 
     elif config.atmos_clim.module == 'agni':
         # Import
@@ -200,6 +356,27 @@ def run_atmosphere(
         if key in hf_row.keys():
             hf_row[key] = atm_output[key]
 
+    # Keep escape and the observables off a structure the solver rejected. This
+    # runs on the merged row, after the module output and the module's direct
+    # writes to `hf_row` are both in place, and before the quantities derived
+    # from the levels below.
+    previous_row = None
+    if hf_all is not None and len(hf_all) > 0:
+        previous_row = hf_all.iloc[-1].to_dict()
+    carry_converged_levels(atmos_o, hf_row, previous_row=previous_row)
+
+    # A carried radius can come from a row written before the clip existed, or
+    # under a different Hill radius, so bound it here as well. There is no
+    # profile on this path to re-read the rest of the level from, and the
+    # rate escape computes goes as the cube of this radius, so the bound wins.
+    if hasattr(config, 'escape') and 'R_xuv' in hf_row:
+        hf_row['R_xuv'] = clip_radius_to_hill(config, hf_row, float(hf_row['R_xuv']))
+
+    # Persist the solve outcome, so a row whose levels were carried can be
+    # identified from the output alone rather than from the log.
+    hf_row['atm_converged'] = 1.0 if atmos_o.converged else -1.0
+    hf_row['atm_levels_stale'] = float(atmos_o.levels_stale_iters)
+
     # Copy special cases
     hf_row['rho_obs'] = 3 * hf_row['M_planet'] / (4 * pi * hf_row['R_obs'] ** 3)
     hf_row['F_net'] = hf_row['F_int'] - hf_row['F_atm']
@@ -246,11 +423,17 @@ def write_atmosphere_snapshot(atmos_o: Atmos_t, config: Config, dirs: dict, hf_r
     elif config.atmos_clim.module == 'janus':
         from proteus.atmos_clim.janus import write_atmos_ncdf
 
-        if atmos_o._atm is None:
-            log.warning('Cannot write atmosphere; JANUS object unallocated')
+        # The solved column, not `_atm`: JANUS copies `_atm` before it
+        # integrates and resamples the copy, so `_atm` carries no profile of
+        # its own, only the surface boundary condition and the fluxes written
+        # back onto it. Its arrays are sized for the integration grid while
+        # those fluxes are on the radiative one, so it cannot be written as a
+        # single consistent snapshot.
+        if atmos_o._atm_janus_last is None:
+            log.warning('Cannot write atmosphere; JANUS has not solved a column yet')
             return
 
-        write_atmos_ncdf(atmos_o._atm, dirs, time)
+        write_atmos_ncdf(atmos_o._atm_janus_last, dirs, time)
 
     # Otherwise, write no atmosphere NetCDF
 
@@ -279,9 +462,13 @@ def update_bolometry(hf_row: dict):
 
     # Eclipse depth
     #    Accounting for fact that F_ins is scaled to TOA, not to stellar surface.
-    hf_row['eclipse_depth'] = ((hf_row['F_olr'] + hf_row['F_sct']) / hf_row['F_ins']) * (
-        hf_row['R_obs'] / hf_row['separation']
-    ) ** 2.0
+    #    Also, F_ins can be zero when bol_scale is being appled.
+    if hf_row['F_ins'] == 0.0:
+        hf_row['eclipse_depth'] = 0.0
+    else:
+        hf_row['eclipse_depth'] = ((hf_row['F_olr'] + hf_row['F_sct']) / hf_row['F_ins']) * (
+            hf_row['R_obs'] / hf_row['separation']
+        ) ** 2.0
 
 
 def ShallowMixedOceanLayer(hf_cur: dict, hf_pre: dict):

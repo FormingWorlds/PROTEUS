@@ -337,7 +337,7 @@ def test_update_state_atm_default_tropopause_uses_floor():
     assert fake_atm.trppT < 10.0
 
 
-def _build_run_config():
+def _build_run_config(*, hill_clamp=False):
     """Config namespace covering the fields ``RunJANUS`` reads."""
     return SimpleNamespace(
         atmos_clim=SimpleNamespace(
@@ -347,7 +347,9 @@ def _build_run_config():
             janus=SimpleNamespace(tropopause=None, F_atm_bc=0),
         ),
         planet=SimpleNamespace(prevent_warming=False),
-        escape=SimpleNamespace(xuv_defined_by_radius=False),
+        escape=SimpleNamespace(
+            xuv_defined_by_radius=False, hill_clamp=hill_clamp, hill_clamp_frac=1.0
+        ),
     )
 
 
@@ -386,10 +388,15 @@ def test_run_janus_gobs_inverse_square_of_robs(monkeypatch, tmp_path):
     R_int = 6.371e6
     z_obs_height = 8.0e4  # m; observed level sits this far above the surface
 
-    atm = _build_run_atm(g_surf=g_surf, z_obs_height=z_obs_height, stale_grav=g_surf)
+    solved_atm = _build_run_atm(g_surf=g_surf, z_obs_height=z_obs_height, stale_grav=g_surf)
+    # The seed the caller holds between iterations. JANUS deep-copies it before
+    # integrating and resamples the copy, so the solved column is always a
+    # different object; keeping them distinct here is what lets the return
+    # value below tell the two apart.
+    seed_atm = SimpleNamespace()
 
-    # Solver is mocked to return the fake atmosphere unchanged.
-    monkeypatch.setattr('janus.modules.MCPA', lambda *a, **kw: atm)
+    # Solver is mocked to return the solved column, not the seed it was given.
+    monkeypatch.setattr('janus.modules.MCPA', lambda *a, **kw: solved_atm)
     # State push and hydrostatic solve are covered by their own unit tests.
     monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
     # Deterministic "observed level" = last array entry, independent of p_obs.
@@ -407,8 +414,15 @@ def test_run_janus_gobs_inverse_square_of_robs(monkeypatch, tmp_path):
     }
     dirs = {'output': str(tmp_path)}
 
-    # Run JANUS
-    output = RunJANUS(atm, dirs, config, hf_row, None, write_in_tmp_dir=False)
+    # Run JANUS. The solved column comes back alongside the outputs; it is what
+    # a snapshot must be written from, so the caller can reach it.
+    solved, output = RunJANUS(seed_atm, dirs, config, hf_row, None, write_in_tmp_dir=False)
+
+    # Discrimination: the seed and the solved column are different objects, so
+    # handing back the seed, which is what the caller used to be left holding,
+    # fails here rather than passing an is-not-None check.
+    assert solved is solved_atm
+    assert solved is not seed_atm
 
     # Check additive radii
     R_obs_expected = R_int + z_obs_height
@@ -424,6 +438,67 @@ def test_run_janus_gobs_inverse_square_of_robs(monkeypatch, tmp_path):
 
     # Discrimination guard: the stale grav_z value is the surface gravity
     assert output['g_obs'] != pytest.approx(g_surf, rel=1e-3)
+
+    # The XUV level follows the same conventions: temperature off the profile
+    # (patched interpolation returns the last entry) and gravity by the
+    # inverse-square law at r_xuv, which the patch also pins to the last entry
+    # of the radius array, so it coincides with the observed level here.
+    assert output['T_xuv'] == pytest.approx(500.0, rel=1e-12)
+    assert output['g_xuv'] == pytest.approx(g_obs_expected, rel=1e-10)
+    assert output['g_xuv'] != pytest.approx(g_surf, rel=1e-3)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_janus_failed_hydrostatic_falls_back_to_surface_values(monkeypatch, tmp_path):
+    """A failed hydrostatic integration leaves the heights unusable, so the
+    XUV-level outputs fall back to the surface values instead of dividing by a
+    height the solver never produced.
+
+    With `atm.z` zeroed by the failure, `r_arr = z + R_int` puts every level at
+    the surface, and the patched interpolation returns the last entry, so a
+    regression that skipped the fallback would compute g_xuv from r_xuv = R_int
+    and still pass a positivity check; the discriminating signal is that T_xuv
+    reads the surface temperature rather than the top of the stale profile.
+    """
+    g_surf = 9.81
+    R_int = 6.371e6
+
+    solved_atm = _build_run_atm(g_surf=g_surf, z_obs_height=8.0e4, stale_grav=g_surf)
+    solved_atm.height_error = True
+    solved_atm.z = np.zeros(3, dtype=float)
+
+    monkeypatch.setattr('janus.modules.MCPA', lambda *a, **kw: solved_atm)
+    monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
+    monkeypatch.setattr(
+        janus_mod, 'get_oarr_from_parr', lambda p_arr, o_arr, val: (0, o_arr[-1])
+    )
+
+    config = _build_run_config()
+    hf_row = {
+        'Time': 100.0,
+        'R_int': R_int,
+        'gravity': g_surf,
+        'p_xuv': 1e-3,  # bar
+        'T_surf': 1400.0,
+    }
+
+    _, output = RunJANUS(
+        SimpleNamespace(),
+        {'output': str(tmp_path)},
+        config,
+        hf_row,
+        None,
+        write_in_tmp_dir=False,
+    )
+
+    # Surface fallbacks on both levels, not values read off the failed column.
+    assert output['R_obs'] == pytest.approx(R_int, rel=1e-12)
+    assert output['T_obs'] == pytest.approx(1400.0, rel=1e-12)
+    assert output['T_xuv'] == pytest.approx(1400.0, rel=1e-12)
+    assert output['g_xuv'] == pytest.approx(g_surf, rel=1e-12)
+    # Discrimination: the stale profile top is far from the surface temperature.
+    assert output['T_xuv'] != pytest.approx(500.0, rel=1e-2)
 
 
 @pytest.mark.unit
@@ -488,3 +563,50 @@ def test_write_atmos_ncdf_uses_rounded_time_convention():
     assert '1000_atm.nc' not in str(atm.write_ncdf.call_args)
     # Discrimination on the directory: the file lands under data/, not output/.
     assert atm.write_ncdf.call_args.args[0].endswith('/data/1001_atm.nc')
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_janus_clips_the_xuv_radius_to_the_hill_radius(monkeypatch, tmp_path):
+    """With the clip enabled and a Hill radius inside the unclipped XUV level,
+    JANUS reports the level at the Hill radius with gravity re-derived there.
+
+    The patched interpolation pins the unclipped level to the top of the
+    column at 6.451e6 m; the Hill radius at 6.4e6 m is below it, so R_xuv
+    must come back at exactly the Hill radius and g_xuv at the inverse-square
+    value for that radius, not for the column top.
+    """
+    g_surf = 9.81
+    R_int = 6.371e6
+
+    solved_atm = _build_run_atm(g_surf=g_surf, z_obs_height=8.0e4, stale_grav=g_surf)
+    monkeypatch.setattr('janus.modules.MCPA', lambda *a, **kw: solved_atm)
+    monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
+    monkeypatch.setattr(
+        janus_mod, 'get_oarr_from_parr', lambda p_arr, o_arr, val: (0, o_arr[-1])
+    )
+
+    config = _build_run_config(hill_clamp=True)
+    hf_row = {
+        'Time': 100.0,
+        'R_int': R_int,
+        'gravity': g_surf,
+        'p_xuv': 1e-3,  # bar
+        'T_surf': 1400.0,
+        'hill_radius': 6.4e6,
+    }
+
+    _, output = RunJANUS(
+        SimpleNamespace(),
+        {'output': str(tmp_path)},
+        config,
+        hf_row,
+        None,
+        write_in_tmp_dir=False,
+    )
+
+    assert output['R_xuv'] == pytest.approx(6.4e6, rel=1e-12)
+    expected_g = g_surf * (R_int / 6.4e6) ** 2
+    assert output['g_xuv'] == pytest.approx(expected_g, rel=1e-10)
+    # Discrimination: the unclipped column top gives a discriminably weaker g.
+    assert output['g_xuv'] != pytest.approx(g_surf * (R_int / 6.451e6) ** 2, rel=1e-3)

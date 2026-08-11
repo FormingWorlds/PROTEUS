@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import ge, in_, le
+from attrs.validators import ge, gt, in_, le
 
 from ._converters import none_if_none, zero_if_none
 
@@ -153,6 +153,13 @@ class Escape:
         Parameters for dummy escape module.
     boreas: EscapeBoreas
         Parameters for BOREAS escape module.
+    hill_clamp: bool
+        Limit the XUV level to the Hill radius. Gas beyond the Hill radius is
+        not bound to the planet, so an XUV radius outside it sizes the escape
+        cross-section with material the planet does not hold.
+    hill_clamp_frac: float
+        Fraction of the Hill radius used as that limit, when hill_clamp is
+        enabled.
     """
 
     module: str | None = field(
@@ -166,6 +173,9 @@ class Escape:
     boreas: EscapeBoreas = field(factory=EscapeBoreas, validator=valid_escapeboreas)
 
     reservoir: str = field(default='outgas', validator=valid_reservoir)
+
+    hill_clamp: bool = field(default=True)
+    hill_clamp_frac: float = field(default=1.0, validator=(gt(0.0), le(1.0)))
 
     @property
     def xuv_defined_by_radius(self) -> bool:

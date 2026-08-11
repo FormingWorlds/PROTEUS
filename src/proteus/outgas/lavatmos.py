@@ -119,7 +119,7 @@ class set_magmaproperties:
 
         # Import input from config
         self.T_surf = max(config.outgas.lavatmos.T_min, hf_row['T_magma'])
-        self.P_volatile = hf_row['P_surf']
+        self.P_volatile = hf_row['P_vol']
         self.melt_comp_name = config.outgas.lavatmos.melt_comp_name
         self.output_dir = paths.output_dir
         self.run_name = 'proteus_run'
@@ -646,6 +646,8 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
             # don't spam log with species of negligible abundance
             log.debug(_s)
 
+    # print O2 abundance:
+    log.info('    %-6s     = %-9.2f bar (%.4e VMR)' % ('O2', hf_row['O2_bar'], hf_row['O2_vmr']))
     # print total pressure and mmw
     log.info('    total      = %-9.2f bar' % hf_row['P_surf'])
     log.info('    mmw        = %-9.5f g mol-1' % (hf_row['atm_kg_per_mol'] * 1e3))

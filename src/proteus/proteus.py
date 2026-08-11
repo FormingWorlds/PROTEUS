@@ -15,7 +15,14 @@ import numpy as np
 from juliacall import Main  # noqa: F401
 
 import proteus.utils.archive as archive
-from proteus.config import check_config_orphan_free, read_config, read_config_object
+from proteus.config import (
+    UnknownConfigKeyError,
+    find_key_problems,
+    format_orphan_message,
+    read_config,
+    read_config_object,
+    structure_config,
+)
 from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
@@ -41,19 +48,72 @@ _IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
-        # Read and parse configuration file
+        # Read and parse configuration file. Keys the schema cannot accept are
+        # collected here but reported further down: resolving the output
+        # directory needs a structured config, and the refusal is recorded in a
+        # status file under that directory.
         self.config_path = config_path
-        self.config = read_config_object(config_path)
+
+        # The keys are checked before the config is structured, because a
+        # misspelling is usually what makes a value fail validation and is the
+        # more useful of the two to report. This reads the raw TOML itself and
+        # structures it separately, rather than going through the checked
+        # loader, so that a refusal can still be recorded under the output
+        # directory named inside the file. It applies only when the path
+        # resolves to a file: a caller that substitutes the loader supplies the
+        # parsed config by other means and leaves nothing here to read.
+        orphans: list[str] = []
+        mistyped: list[str] = []
+        raw: dict | None = None
+        if os.path.isfile(config_path):
+            raw = read_config(config_path)
+            orphans, mistyped = find_key_problems(raw)
+        orphan_error = (
+            format_orphan_message(orphans, config_path, mistyped)
+            if orphans or mistyped
+            else None
+        )
+
+        try:
+            self.config = (
+                structure_config(raw, config_path)
+                if raw is not None
+                else read_config_object(config_path)
+            )
+        except ValueError as exc:
+            # An unrecognised key is reported first because it is often what
+            # made the rest of the file fail, but the other complaint is kept
+            # alongside it: it may name a missing package or an unreadable
+            # path, which the key on its own does not explain. There is no
+            # output directory to record this in, since resolving one needs the
+            # config that just failed to structure.
+            if orphan_error:
+                raise UnknownConfigKeyError(
+                    f'{orphan_error}\nLoading the file also reported:\n{exc}'
+                ) from None
+            raise
 
         # Setup directories dictionary
         self.directories: dict = None  # Directories dictionary
-        self.init_directories()
+        try:
+            self.init_directories()
+        except Exception as exc:
+            # Resolving the directories needs a configured environment, so it
+            # can fail for reasons of its own. A key already found unrecognised
+            # is reported alongside that failure rather than dropped: someone
+            # setting up for the first time can easily have both, and being
+            # told only about the environment hides the typo until the next
+            # attempt.
+            if orphan_error:
+                raise UnknownConfigKeyError(
+                    f'{orphan_error}\nResolving the output directory also failed:\n{exc}'
+                ) from None
+            raise
 
-        # Check for orphan keys in the config
-        if self.directories and os.path.isfile(config_path):
-            if not check_config_orphan_free(read_config(config_path)):
-                UpdateStatusfile(self.directories, 20)
-                raise RuntimeError(f'Unknown configuration keys found in {config_path}.')
+        # Reject unrecognised keys now that the failure can be recorded.
+        if orphan_error:
+            UpdateStatusfile(self.directories, 20)
+            raise UnknownConfigKeyError(orphan_error)
 
         # Helpfile variables for the current iteration
         self.hf_row = None
@@ -901,6 +961,10 @@ class Proteus:
             _t0_stellar = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
             update_stellar_spectrum = False
 
+            # Ensure stellar quantities are updated when time-step is clamped.
+            if getattr(self.interior_o, 'timestep_clamped', False):
+                self.sinst_prev = -np.inf
+
             # Calculate new instellation and radius
             if (
                 abs(self.hf_row['Time'] - self.sinst_prev) > self.config.params.dt.starinst
@@ -1030,8 +1094,9 @@ class Proteus:
 
             # Vapourisation moves non-volatile mass into M_atm that M_planet
             # does not track, so only the M_atm <= M_planet half is dropped in
-            # that mode and the drift is reported every iteration instead.
-            # Non-conservation is a simplification of vapourisation.
+            # that mode. An excess larger than the vapour column explains still
+            # warns, and PrintCurrentState reports the vapour budget every
+            # iteration. Non-conservation is a simplification of vapourisation.
             assert_mass_conservation(
                 self.hf_row,
                 require_atm_le_planet=not self.config.outgas.vapourise,

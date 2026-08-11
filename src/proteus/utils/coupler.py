@@ -710,6 +710,18 @@ def PrintCurrentState(hf_row: dict):
     log.info('    T_surf     = %8.3f   K' % float(hf_row['T_surf']))
     log.info('    T_magma    = %8.3f   K' % float(hf_row['T_magma']))
     log.info('    P_surf     = %.2e   bar' % float(hf_row['P_surf']))
+
+    # Rock vapour breaks the whole-planet mass balance by design, so a run
+    # carrying a vapour column reports its budget alongside the totals every
+    # iteration. This makes drift visible while the run is going rather than
+    # at post-processing. Runs without rock vapour keep the shorter output.
+    M_vaps = float(hf_row.get('M_vaps', 0.0))
+    if M_vaps > 0.0:
+        log.info('    P_vol      = %.2e   bar' % float(hf_row.get('P_vol', 0.0)))
+        log.info('    P_vap      = %.2e   bar' % float(hf_row.get('P_vap', 0.0)))
+        log.info('    M_atm      = %.2e   kg' % float(hf_row.get('M_atm', 0.0)))
+        log.info('    M_vaps     = %.2e   kg' % M_vaps)
+
     log.info('    Phi_global = %.2e   ' % float(hf_row['Phi_global']))
     log.info('    F_atm      = %.2e   W m-2' % float(hf_row['F_atm']))
     log.info('    F_int      = %.2e   W m-2' % float(hf_row['F_int']))
@@ -798,10 +810,13 @@ def GetHelpfileKeys():
         'F_sct',            # outgoing shortwave radiation [W m-2]
         'F_ins',            # incoming instellation flux [W m-2]
         'F_xuv',            # incoming XUV radiation flux [W m-2]
+        'bol_scale',        # bolometric scaling factor [1]
         'tau_atm_TOA',      # optical depth at TOA, at ref wavelength [1]
         'tau_atm_surface',  # optical depth at surface, at ref wavelength [1]
         'atm_Ra_max',      # maximum Rayleigh number across levels [1]
         'atm_t_conv_over_t_rad',  # convective vs radiative timescale ratio [1]
+        'atm_converged',    # atmosphere solve outcome: +1 converged, -1 rejected, 0 no solve [1]
+        'atm_levels_stale',  # consecutive iterations without a converged solve of this run [1]
         'F_tidal',          # tidal heat flux arising at surface [W m-2]
         'F_radio',          # radiogenic heat flux arising at surface [W m-2]
         'F_cmb',             # heat flux at the CMB (signed, +out-of-core) [W m-2]
@@ -977,6 +992,8 @@ def GetHelpfileKeys():
     # Atmospheric escape
     keys.append('p_xuv')                # pressure of XUV absorption [bar]
     keys.append('R_xuv')                # radius of XUV absorption [m]
+    keys.append('T_xuv')                # temperature at R_xuv [K]
+    keys.append('g_xuv')                # gravity at R_xuv [m s-2]
     keys.append('cs_xuv')               # sound speed, at R_xuv [m s-1]
     keys.append('esc_rate_total')       # bulk escape rate [kg s-1]
     for e in element_list:

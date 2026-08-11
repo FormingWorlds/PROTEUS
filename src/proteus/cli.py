@@ -65,7 +65,7 @@ import click  # noqa: E402
 
 from proteus import Proteus  # noqa: E402
 from proteus import __version__ as proteus_version  # noqa: E402
-from proteus.config import read_config_object  # noqa: E402
+from proteus.config import UnknownConfigKeyError, read_config_object  # noqa: E402
 from proteus.utils.data import download_sufficient_data  # noqa: E402
 from proteus.utils.helper import get_proteus_dir, resolve_fwl_data_dir  # noqa: E402
 from proteus.utils.logs import bootstrap_logger, setup_logger  # noqa: E402
@@ -89,7 +89,24 @@ output_option = click.option(
 )
 
 
-@click.group()
+class ConfigAwareGroup(click.Group):
+    """Command group that presents a refused configuration as a CLI error.
+
+    Every command that reads a configuration can refuse it over unrecognised
+    keys. Catching that here rather than in each command keeps the message in
+    the same style as the rest of the CLI, and reaches subcommands too, since
+    they are invoked through this group. Only the configuration-key error is
+    caught, so an unrelated failure still surfaces with its traceback.
+    """
+
+    def invoke(self, ctx):
+        try:
+            return super().invoke(ctx)
+        except UnknownConfigKeyError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+
+@click.group(cls=ConfigAwareGroup)
 @click.version_option(version=proteus_version)
 def cli():
     # Ensure the 'fwl' logger has a handler as early as possible, before any
