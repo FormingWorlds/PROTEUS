@@ -585,6 +585,22 @@ def assert_mass_conservation(
     M_planet = float(hf_row.get('M_planet', 0.0))
     M_vol_atm = float(hf_row.get('M_vol_atm', 0.0))
 
+    # A non-finite mass slips past every comparison below, because both
+    # `nan <= 0.0` and `nan > nan` are False, so neither the short-circuit nor
+    # the breach test fires and the row reports clean. Refuse it here instead of
+    # returning a verdict on a row this cannot actually check.
+    for name, value in (
+        ('M_atm', M_atm),
+        ('M_planet', M_planet),
+        ('M_vol_atm', M_vol_atm),
+    ):
+        if not np.isfinite(value):
+            raise RuntimeError(
+                f'Mass conservation cannot be checked: {name}={value} is not '
+                f'finite. An upstream step wrote a non-finite mass, so the '
+                f'reservoir it came from needs checking before the run goes on.'
+            )
+
     # Pre-IC short-circuit: M_planet == 0 means the structure solve has
     # not yet populated the hf_row. The invariants are not meaningful
     # before update_planet_mass has run, so we skip silently. The runtime

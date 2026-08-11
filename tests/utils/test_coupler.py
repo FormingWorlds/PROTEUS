@@ -3415,3 +3415,65 @@ def test_select_profile_plot_times_empty_atmosphere_returns_empty():
     """
     assert select_profile_plot_times([1, 2, 3], [], no_int_snapshots=False) == []
     assert select_profile_plot_times([], [], no_int_snapshots=True) == []
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_mass_conservation_refuses_a_non_finite_mass():
+    """A non-finite mass is refused rather than silently reported as clean.
+
+    Both comparisons the invariant relies on are False for NaN, so without an
+    explicit check a row carrying an atmosphere five times its own interior
+    passes, which is the opposite of what the invariant exists to say.
+    """
+    from proteus.utils.coupler import assert_mass_conservation
+
+    # Textbook violation: 5e23 kg of atmosphere over a 1e23 kg interior.
+    broken = {
+        'M_atm': 5.0e23,
+        'M_int': 1.0e23,
+        'M_ele': float('nan'),
+        'M_planet': float('nan'),
+        'M_vol_atm': 0.0,
+        'M_vaps': 0.0,
+    }
+    with pytest.raises(RuntimeError, match='not finite'):
+        assert_mass_conservation(broken)
+
+    # The mechanism the check replaces: neither comparison fires on NaN.
+    assert not (float('nan') <= 0.0)
+    assert not (float('nan') > float('nan') * 1.000001)
+
+    # Each mass is covered, not just the one that happened to be checked first.
+    for key in ('M_atm', 'M_planet', 'M_vol_atm'):
+        row = {'M_atm': 1.0e20, 'M_planet': 6.0e24, 'M_vol_atm': 1.0e20, 'M_vaps': 0.0}
+        row[key] = float('inf')
+        with pytest.raises(RuntimeError, match=key):
+            assert_mass_conservation(row)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_mass_conservation_still_passes_a_finite_row():
+    """Finite rows are unaffected, including the pre-IC row of zeros.
+
+    A guard that refused ordinary rows would stop every run, so the healthy
+    paths are pinned alongside the rejection above.
+    """
+    from proteus.utils.coupler import assert_mass_conservation
+
+    # Ordinary row: a thin atmosphere on an Earth-mass planet.
+    assert (
+        assert_mass_conservation(
+            {'M_atm': 5.0e18, 'M_planet': 5.97e24, 'M_vol_atm': 0.0, 'M_vaps': 0.0}
+        )
+        is None
+    )
+    # Pre-IC row, before the structure solve has written a planet mass.
+    assert assert_mass_conservation({'M_atm': 0.0, 'M_planet': 0.0, 'M_vol_atm': 0.0}) is None
+    # Discrimination: a genuine breach on finite values must still raise, so
+    # the two passes above reflect healthy rows and not a disabled check.
+    with pytest.raises(RuntimeError, match='exceeds M_planet'):
+        assert_mass_conservation(
+            {'M_atm': 9.0e24, 'M_planet': 5.97e24, 'M_vol_atm': 0.0, 'M_vaps': 0.0}
+        )
