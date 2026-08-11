@@ -540,6 +540,15 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     for s in gas_list:
         hf_row[f'{s}_kg_atm'] = hf_row.get(f'{s}_kg_atm', 0.0) * retained
         hf_row[f'{s}_bar'] = hf_row.get(f'{s}_bar', 0.0) * retained
+    # Element reservoirs whose symbol is not also a species name. The loop above
+    # already scales the rock formers and noble gases through the species they
+    # share a symbol with; H, O, C, N and S have no such twin, and escape sizes
+    # the next step's loss from these keys, so leaving them would hold the
+    # escapable reservoir at its pre-solidification value as the column empties.
+    for e in element_list:
+        if e in gas_list:
+            continue
+        hf_row[f'{e}_kg_atm'] = hf_row.get(f'{e}_kg_atm', 0.0) * retained
     hf_row['P_surf'] = hf_row.get('P_surf', 0.0) * retained
     # Keep the volatile/vapour partial-pressure split consistent with the
     # rescaled total (same uniform, composition-preserving scaling as above).
