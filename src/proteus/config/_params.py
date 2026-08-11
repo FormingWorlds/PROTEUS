@@ -321,6 +321,27 @@ class StopClock:
 
 
 @define
+class StopStall:
+    """Parameters for the unconverged-atmosphere stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable criteria if True
+    maximum: int
+        Model will terminate after this many consecutive iterations without a
+        converged atmosphere solve, whatever the interior is doing. Sized on 27
+        stalled GJ 9827 d cases as they stood on 2026-08-08: the deepest streak
+        a run recovered from is 126 and the deepest open one, which never
+        converged, is 233. Raising it past the open streak defeats the
+        criterion; lowering it below the recovered one ends runs that come back.
+    """
+
+    enabled: bool = field(default=True)
+    maximum: int = field(default=150, validator=gt(0))
+
+
+@define
 class StopParams:
     """Parameters for termination criteria.
 
@@ -342,6 +363,8 @@ class StopParams:
         Parameters for planet disintegration criteria.
     clock: StopClock
         Parameters for maximum clock runtime criteria.
+    stall: StopStall
+        Parameters for the unconverged-atmosphere criteria.
     """
 
     iters: StopIters = field(factory=StopIters)
@@ -351,6 +374,7 @@ class StopParams:
     escape: StopEscape = field(factory=StopEscape)
     disint: StopDisint = field(factory=StopDisint)
     clock: StopClock = field(factory=StopClock)
+    stall: StopStall = field(factory=StopStall)
 
     strict: bool = field(default=False)
 

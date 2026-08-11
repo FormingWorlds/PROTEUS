@@ -31,7 +31,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_module='spider'):
     """Build a Proteus object with mocked config and directories."""
-    from proteus.proteus import Proteus
+    from proteus.proteus import ATMOS_STALL_MAX, Proteus
 
     config = MagicMock()
     config.interior_struct.module = struct_module
@@ -48,6 +48,10 @@ def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_modul
     # against. Defaults mirror the schema.
     config.params.stop.solid.freeze_volatiles = False
     config.params.stop.solid.phi_crit = 0.01
+    # Same reason: an unset mock integer reads as 1, which would silently give
+    # the run a stall cap of one iteration instead of the schema default.
+    config.params.stop.stall.enabled = True
+    config.params.stop.stall.maximum = ATMOS_STALL_MAX
 
     directories = {
         'output': str(tmp_path),
@@ -236,21 +240,27 @@ def test_proteus_resume_mesh_no_prev(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def _make_deadlock_proteus(tmp_path, *, converged=False, hf_all=None, hf_row=None):
+def _make_deadlock_proteus(
+    tmp_path, *, converged=False, hf_all=None, hf_row=None, stale_iters=0
+):
     """Build a Proteus instance pre-positioned for the deadlock check.
 
-    All the fields the check reads (atmos_o.converged, hf_all, hf_row,
-    agni_deadlock_count, agni_deadlock_max, directories) are set
-    explicitly; everything else is left at its post-__init__ default.
+    All the fields the check reads (atmos_o.converged,
+    atmos_o.levels_stale_iters, hf_all, hf_row, agni_deadlock_count,
+    agni_deadlock_max, atmos_stall_max, directories) are set explicitly;
+    everything else is left at its post-__init__ default.
     """
     from types import SimpleNamespace
 
+    from proteus.proteus import AGNI_DEADLOCK_MAX, ATMOS_STALL_MAX
+
     p = _make_proteus_instance(tmp_path)
-    p.atmos_o = SimpleNamespace(converged=bool(converged))
+    p.atmos_o = SimpleNamespace(converged=bool(converged), levels_stale_iters=int(stale_iters))
     p.hf_all = hf_all
     p.hf_row = hf_row if hf_row is not None else {}
     p.agni_deadlock_count = 0
-    p.agni_deadlock_max = 3
+    p.agni_deadlock_max = AGNI_DEADLOCK_MAX
+    p.atmos_stall_max = ATMOS_STALL_MAX
     return p
 
 
@@ -384,6 +394,250 @@ def test_check_atmosphere_deadlock_f_atm_tolerance_boundary(tmp_path):
     p.hf_row = {'F_atm': 200.0, 'T_magma': 3000.0, 'Phi_global': 1.0}
     p._check_atmosphere_deadlock()
     assert p.agni_deadlock_count == 0
+
+
+def test_check_atmosphere_deadlock_aborts_a_stalled_atmosphere(tmp_path):
+    """An atmosphere that never converges ends the run even while the
+    interior is still moving.
+
+    Physical scenario: the interior keeps cooling on levels carried from an
+    older solve, so the frozen-state test never fires and the run would
+    otherwise spend its whole budget on a structure it never resolved.
+
+    Discriminating: the interior moves by 50 K between the rows, which is the
+    same input that resets the deadlock counter above, so an abort here is
+    attributable to the stall count alone.
+    """
+    from proteus.proteus import ATMOS_STALL_MAX
+
+    moving = {
+        'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
+        'hf_row': {'F_atm': 140.0, 'T_magma': 3000.0, 'Phi_global': 0.9},
+    }
+    p = _make_deadlock_proteus(tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX, **moving)
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        with pytest.raises(RuntimeError, match=f'{ATMOS_STALL_MAX} consecutive solves'):
+            p._check_atmosphere_deadlock()
+    mock_update.assert_called_once()
+    args, _ = mock_update.call_args
+    assert args[1] == 22
+
+    # The frozen-interior counter is not what fired: it never left zero.
+    assert p.agni_deadlock_count == 0
+
+    # One short of the cap the run continues, so the abort is on the
+    # threshold rather than on any non-converged solve.
+    q = _make_deadlock_proteus(
+        tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX - 1, **moving
+    )
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        q._check_atmosphere_deadlock()
+    mock_update.assert_not_called()
+    assert q.agni_deadlock_count == 0
+
+
+def test_check_atmosphere_deadlock_stall_yields_to_a_converged_solve(tmp_path):
+    """The convergence flag short-circuits the check before the count is read.
+
+    Contract clause only: the wrapper zeroes the count on a converged solve
+    before this method ever runs, so the pairing below cannot arise in a
+    coupled run. What is pinned here is the order of the two tests, so a
+    count left on the struct can never kill a run whose atmosphere converged.
+    """
+    from proteus.proteus import ATMOS_STALL_MAX
+
+    p = _make_deadlock_proteus(
+        tmp_path,
+        converged=True,
+        stale_iters=ATMOS_STALL_MAX + 1,
+        hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
+        hf_row={'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0},
+    )
+    p.agni_deadlock_count = 2
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        p._check_atmosphere_deadlock()
+    mock_update.assert_not_called()
+    assert p.agni_deadlock_count == 0
+
+    # The same count with a failed solve does abort, so the convergence flag
+    # is what spared it.
+    q = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        stale_iters=ATMOS_STALL_MAX + 1,
+        hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
+        hf_row={'F_atm': 180.0, 'T_magma': 2900.0, 'Phi_global': 0.8},
+    )
+    with patch('proteus.proteus.UpdateStatusfile'):
+        with pytest.raises(RuntimeError, match=f'{ATMOS_STALL_MAX + 1} consecutive solves'):
+            q._check_atmosphere_deadlock()
+
+
+def test_check_atmosphere_deadlock_frozen_interior_still_aborts_first(tmp_path):
+    """A frozen interior keeps its own, much earlier abort.
+
+    Contract clause: the stall cap is a backstop for the case the frozen test
+    cannot see, so it must not delay the three-iteration abort that fires
+    when the interior has stopped moving as well.
+    """
+    frozen = {
+        'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
+        'hf_row': {'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0},
+    }
+    p = _make_deadlock_proteus(tmp_path, converged=False, stale_iters=3, **frozen)
+    p.agni_deadlock_count = 2
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        with pytest.raises(RuntimeError, match='consecutive AGNI failures'):
+            p._check_atmosphere_deadlock()
+    args, _ = mock_update.call_args
+    assert args[1] == 22
+
+    # Three frozen iterations is well inside the stall cap, so the two paths
+    # are not being confused for one another.
+    assert p.agni_deadlock_count == 3
+    assert p.agni_deadlock_count < p.atmos_stall_max
+
+
+def test_check_atmosphere_deadlock_reads_the_count_the_wrapper_produces(tmp_path):
+    """The count the abort reads is the one the atmosphere wrapper writes.
+
+    Contract clause: the two halves live in different modules, so this drives
+    the real producer, `carry_converged_levels`, rather than setting the
+    field by hand, and feeds the struct it leaves behind to the check.
+    """
+    from proteus.atmos_clim.common import Atmos_t
+    from proteus.atmos_clim.wrapper import carry_converged_levels
+    from proteus.proteus import ATMOS_STALL_MAX
+
+    atmos_o = Atmos_t()
+    converged_row = {'R_xuv': 7.0e6, 'p_xuv': 1.0e2, 'T_xuv': 900.0, 'g_xuv': 9.5}
+
+    # One accepted solve gives the run something to fall back on.
+    atmos_o.converged = True
+    carry_converged_levels(atmos_o, dict(converged_row))
+    assert atmos_o.levels_stale_iters == 0
+
+    # Then the atmosphere stops resolving, once per iteration.
+    atmos_o.converged = False
+    for expected in range(1, ATMOS_STALL_MAX + 1):
+        carry_converged_levels(atmos_o, dict(converged_row))
+        assert atmos_o.levels_stale_iters == expected
+
+    p = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
+        hf_row={'F_atm': 140.0, 'T_magma': 3000.0, 'Phi_global': 0.9},
+    )
+    p.atmos_o = atmos_o
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        with pytest.raises(RuntimeError, match=f'{ATMOS_STALL_MAX} consecutive solves'):
+            p._check_atmosphere_deadlock()
+    args, _ = mock_update.call_args
+    assert args[1] == 22
+
+    # A single accepted solve clears the count the wrapper keeps, so the run
+    # that recovers on its next iteration is not carrying a near-fatal state.
+    atmos_o.converged = True
+    carry_converged_levels(atmos_o, dict(converged_row))
+    assert atmos_o.levels_stale_iters == 0
+    p._check_atmosphere_deadlock()
+
+
+@pytest.mark.parametrize(
+    ('stored', 'expected'),
+    [(24.0, 24), (7.0, 7), (0.0, 0), (float('nan'), 0)],
+    ids=['one_short_of_the_cap', 'mid_streak', 'not_stalling', 'unreadable'],
+)
+def test_proteus_resume_restores_the_unresolved_atmosphere_count(tmp_path, stored, expected):
+    """A resume does not hand a stalling run a fresh allowance.
+
+    Contract clause: the count lives on a struct rebuilt at every start, and
+    the helpfile carries it, so a run killed part-way through a stall comes
+    back where it left off. Without this, any resume cadence shorter than the
+    cap defeats the abort entirely, which is the case a chronically stalling
+    run is most likely to be in.
+    """
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    df = _make_hf_df()
+    df['atm_levels_stale'] = [0.0, 0.0, 0.0, 0.0, stored]
+
+    _resume_with_patches(p, df)
+
+    assert p.atmos_o.levels_stale_iters == expected
+
+
+@pytest.mark.unit
+def test_atmos_stall_max_is_the_value_the_run_actually_uses(tmp_path):
+    """The stall cap is pinned, and the abort reads it rather than a literal.
+
+    Contract clause: the number decides when a run is given up on, so it must
+    not be changeable without a test noticing, and the check must not carry a
+    second copy of it. The ordering against the two neighbouring thresholds is
+    what has to hold whatever the number becomes: the wrapper reports a long
+    streak before anything aborts on it, and the frozen-interior abort stays
+    the earlier of the two.
+    """
+    from proteus.atmos_clim.wrapper import CARRIED_LEVELS_ALERT
+    from proteus.proteus import AGNI_DEADLOCK_MAX, ATMOS_STALL_MAX
+
+    assert ATMOS_STALL_MAX == 150
+    assert ATMOS_STALL_MAX > CARRIED_LEVELS_ALERT
+    assert ATMOS_STALL_MAX > AGNI_DEADLOCK_MAX
+
+    # A constructed run carries the constant, so a literal reintroduced on
+    # the instance would diverge from the pin above.
+    built = _make_proteus_instance(tmp_path)
+    assert built.atmos_stall_max == ATMOS_STALL_MAX
+    assert built.agni_deadlock_max == AGNI_DEADLOCK_MAX
+
+    moving = {
+        'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
+        'hf_row': {'F_atm': 140.0, 'T_magma': 3000.0, 'Phi_global': 0.9},
+    }
+
+    # The cap the check enforces is the one the constant carries, so moving
+    # the constant moves the abort with it.
+    p = _make_deadlock_proteus(tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX, **moving)
+    p.atmos_stall_max = ATMOS_STALL_MAX
+    with patch('proteus.proteus.UpdateStatusfile'):
+        with pytest.raises(RuntimeError, match=f'{ATMOS_STALL_MAX} consecutive solves'):
+            p._check_atmosphere_deadlock()
+
+    q = _make_deadlock_proteus(
+        tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX - 1, **moving
+    )
+    q.atmos_stall_max = ATMOS_STALL_MAX
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        q._check_atmosphere_deadlock()
+    mock_update.assert_not_called()
+
+
+@pytest.mark.unit
+def test_proteus_resume_without_the_stale_column_starts_at_zero(tmp_path):
+    """A helpfile written before the column existed resumes as unstalled.
+
+    Contract clause: the restoration reads a column that older runs do not
+    carry, so its absence has to read as a run that has not stalled rather
+    than end the resume.
+    """
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    df = _make_hf_df()
+    assert 'atm_levels_stale' not in df.columns
+
+    _resume_with_patches(p, df)
+
+    assert p.atmos_o.levels_stale_iters == 0
+
+    # The same frame with the column present restores the stored value, so
+    # the zero above is the absent-column path and not a dropped read.
+    q = _make_proteus_instance(tmp_path)
+    df_with = _make_hf_df()
+    df_with['atm_levels_stale'] = [0.0, 0.0, 0.0, 0.0, 19.0]
+    _resume_with_patches(q, df_with)
+    assert q.atmos_o.levels_stale_iters == 19
 
 
 # ---------------------------------------------------------------------------
@@ -1514,3 +1768,61 @@ def test_non_vapourising_run_keeps_strict_mass_conservation(tmp_path, caplog):
     # Discrimination: the breach is a factor of two, far outside the 1e-6
     # tolerance, so this is not passing on a rounding edge.
     assert rows[-1]['M_atm'] / rows[-1]['M_planet'] == pytest.approx(2.0, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_stall_criterion_is_configurable_and_matches_its_constant(tmp_path):
+    """The stall abort reads its cap and its on/off state from the config, and
+    the schema default is the same number the module constant carries.
+
+    Contract clause: the cap is a termination criterion like the seven beside
+    it, so a run that stalls legitimately can raise it or switch it off without
+    editing source. The default is duplicated between the schema and the
+    constant, so it is pinned here: two records of one number are only safe
+    while something fails when they disagree.
+    """
+    from proteus.config._params import StopParams, StopStall
+    from proteus.proteus import ATMOS_STALL_MAX
+
+    assert StopStall().maximum == ATMOS_STALL_MAX
+    assert StopStall().enabled is True
+    assert StopParams().stall.maximum == ATMOS_STALL_MAX
+
+    # A non-positive cap is refused: it would abort before a run had a chance.
+    for bad in (0, -1):
+        with pytest.raises(ValueError):
+            StopStall(maximum=bad)
+
+    moving = {
+        'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
+        'hf_row': {'F_atm': 140.0, 'T_magma': 3000.0, 'Phi_global': 0.9},
+    }
+
+    # A raised cap moves the abort with it: the streak that ended the run at the
+    # default is now allowed to continue.
+    raised = _make_deadlock_proteus(
+        tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX, **moving
+    )
+    raised.atmos_stall_max = ATMOS_STALL_MAX * 2
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        raised._check_atmosphere_deadlock()
+    mock_update.assert_not_called()
+
+    # Switching the criterion off spares a streak far past any cap, which is
+    # the recourse a legitimately long-stalling run has.
+    off = _make_deadlock_proteus(
+        tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX * 10, **moving
+    )
+    off.atmos_stall_enabled = False
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        off._check_atmosphere_deadlock()
+    mock_update.assert_not_called()
+
+    # Discrimination: the same streak with the criterion on does abort, so the
+    # two results above are attributable to the switch and the cap.
+    on = _make_deadlock_proteus(
+        tmp_path, converged=False, stale_iters=ATMOS_STALL_MAX * 10, **moving
+    )
+    with patch('proteus.proteus.UpdateStatusfile'):
+        with pytest.raises(RuntimeError, match='consecutive solves'):
+            on._check_atmosphere_deadlock()

@@ -131,3 +131,16 @@ to be satisfied for two consecutive iterations before terminating.
 | `offset_roche` | float | `0` | Correction to Roche limit \[m] |
 | `spin_enabled` | bool | `true` | Check rotational breakup |
 | `offset_spin` | float | `0` | Correction to breakup period \[s] |
+
+### Unconverged atmosphere `[params.stop.stall]`
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `enabled` | bool | `true` | Terminate when the atmosphere stops converging |
+| `maximum` | int | `150` | Stop after this many consecutive iterations without a converged atmosphere solve |
+
+The default is measured rather than chosen. Across 27 stalled cases the deepest
+streak a run recovered from is 126 consecutive rejected solves, and the deepest
+streak that never converged is 233. Raising `maximum` past the second defeats
+the criterion, and lowering it below the first ends runs that would have come
+back on their own.

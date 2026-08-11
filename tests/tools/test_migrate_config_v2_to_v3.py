@@ -212,6 +212,10 @@ _REVIEWED_NEUTRAL = frozenset(
         'params.dt.mushy_maximum',
         'params.dt.mushy_upper',
         'params.dt.scale_decr',
+        # The unconverged-atmosphere criterion applies at its measured
+        # default, so a migrated config needs no explicit value for it.
+        'params.stop.stall.enabled',
+        'params.stop.stall.maximum',
         'params.dt.scale_incr',
         'params.dt.window',
         'params.out.dt_write_rel',

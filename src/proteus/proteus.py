@@ -45,6 +45,18 @@ from proteus.utils.logs import (
 # in the loop body.
 _IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
 
+# Consecutive iterations without a converged atmosphere after which a run ends,
+# whatever the interior is doing, and always above the streak the atmosphere
+# wrapper reports at error level. Sized on 27 stalled GJ 9827 d cases as they
+# stood on 2026-08-08: deepest recovered streak 126, deepest open streak 233,
+# which never converged. This clears the recovery and stays under the open one.
+ATMOS_STALL_MAX = 150
+
+# Consecutive iterations of a failed atmosphere solve on an interior that has
+# not moved, after which a run ends. Much shorter than the cap above, because
+# neither side of the coupling can leave that state on its own.
+AGNI_DEADLOCK_MAX = 3
+
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
@@ -121,6 +133,15 @@ class Proteus:
         # Helpfile variables from all previous iterations
         self.hf_all = None
 
+        # Caps on the two abort paths. Fixed for the run rather than reset per
+        # start, unlike the counters they are compared with. The stall cap is a
+        # stop criterion like the seven beside it, so the config carries it and
+        # the constant is only the default that config field already holds.
+        stall_cfg = getattr(self.config.params.stop, 'stall', None)
+        self.atmos_stall_enabled = True if stall_cfg is None else bool(stall_cfg.enabled)
+        self.atmos_stall_max = ATMOS_STALL_MAX if stall_cfg is None else int(stall_cfg.maximum)
+        self.agni_deadlock_max = AGNI_DEADLOCK_MAX
+
         # Loop counters
         self.init_stage = False
         self.loops = None
@@ -196,6 +217,12 @@ class Proteus:
           deadlock).
         - When the counter reaches ``agni_deadlock_max``, write
           status code 22 and raise ``RuntimeError`` to abort the run.
+        - Independently of the interior, abort once the atmosphere has
+          gone ``atmos_stall_max`` consecutive iterations without a
+          converged solve. An interior that keeps cooling on carried
+          levels holds the deadlock counter at 0 forever, so without
+          this the run spends its whole budget on an atmosphere it
+          never resolved.
 
         On the first iteration ``hf_all`` is None: no previous row
         exists, so the deadlock cannot fire. The counter stays at 0.
@@ -204,6 +231,22 @@ class Proteus:
         if self.atmos_o.converged:
             self.agni_deadlock_count = 0
             return
+
+        stalled = int(self.atmos_o.levels_stale_iters)
+        if self.atmos_stall_enabled and stalled >= self.atmos_stall_max:
+            log.error(
+                'Atmosphere has not converged for %d consecutive iterations, so escape '
+                'and the observables are running on a structure this run never resolved. '
+                'Aborting rather than spending the remaining budget on it. Try (a) a '
+                'shorter interior dt, (b) a more robust AGNI solver mode, or (c) '
+                'checking whether the surface boundary condition has left the regime '
+                'AGNI can represent.',
+                stalled,
+            )
+            UpdateStatusfile(self.directories, 22)
+            raise RuntimeError(
+                f'Atmosphere stalled: {stalled} consecutive solves without convergence.'
+            )
 
         if self.hf_all is not None and len(self.hf_all) >= 1:
             prev = self.hf_all.iloc[-1]
@@ -688,6 +731,13 @@ class Proteus:
                         self.config.params.stop.solid.phi_crit,
                     )
 
+            # Restore the count of consecutive unresolved atmosphere solves, so
+            # a run that stalls is not handed a fresh allowance by every
+            # resume. Absent in helpfiles written before the column existed,
+            # which read as a run that has not stalled.
+            stale = self.hf_row.get('atm_levels_stale', 0.0)
+            self.atmos_o.levels_stale_iters = int(stale) if np.isfinite(stale) else 0
+
             # Interior initial condition
             self.interior_o.ic = 2
 
@@ -800,7 +850,6 @@ class Proteus:
         # and PROTEUS would otherwise silently accept a frozen state and
         # advance Time indefinitely.
         self.agni_deadlock_count = 0
-        self.agni_deadlock_max = 3
 
         # Main loop
         # Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
