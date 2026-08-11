@@ -173,24 +173,27 @@ def carry_converged_levels(atmos_o: Atmos_t, hf_row: dict, previous_row: dict | 
             hf_row[key] = atmos_o.levels_converged[key]
 
 
-def realign_xuv_level(hf_row: dict, radius: float):
-    """Bring the XUV level onto a radius that has been moved on its own.
+def realign_xuv_gravity(hf_row: dict, radius: float):
+    """Place the XUV gravity at a radius that has been moved on its own.
 
     The level properties describe one height and are carried as a group, so
     moving the radius by itself leaves a pressure, temperature and gravity
-    belonging to a different one. Gravity is the one that can be recovered from
-    the radius alone, by the inverse-square form the dummy and JANUS modules use
-    to place it; AGNI instead reads gravity off the profile it solved, which is
-    not held once the solve is behind us, so the radius-only form is the closest
-    available estimate on every module. Pressure and temperature need that same
-    profile and have no such form, so they are marked unmeasured, in the sense
-    ``_finite_levels`` already reads, as is gravity where the planet is unknown.
+    belonging to a different one. Gravity is the only one recoverable from the
+    radius alone, by the inverse-square form the dummy and JANUS modules use to
+    place it, so it is the only one brought along. AGNI reads gravity off the
+    profile it solved, which is not held once the solve is behind us, so the
+    radius-only form is the closest available estimate on every module.
 
-    The composition at the level, in ``XUV_VMR_KEYS``, is read off the profile
-    at the same height and is left as it was. BOREAS builds the mean molecular
-    weight of the outflow from it and has no reading to fall back on, so marking
-    it unmeasured would replace a composition from a nearby height with none at
-    all. It is the one part of the level this does not bring along.
+    Pressure, temperature and the composition in ``XUV_VMR_KEYS`` keep the
+    values the last converged solve read, at the height it read them from. A
+    reading from a nearby height is worth more than none: ``p_xuv`` is what
+    AGNI and JANUS derive ``R_xuv`` from when ``xuv_defined_by_radius`` is off,
+    BOREAS builds the outflow mean molecular weight from the composition, and
+    every helpfile column is required to stay finite.
+
+    The gravity is left alone rather than invalidated where the planet is
+    unknown, for the same reason: a stale gravity is readable and a missing one
+    is not.
 
     Parameters
     ----------
@@ -199,16 +202,20 @@ def realign_xuv_level(hf_row: dict, radius: float):
         radius : float
             The radius the level now sits at [m].
     """
-    placeable = radius > 0.0 and 'gravity' in hf_row and 'R_int' in hf_row
-    if 'g_xuv' in hf_row:
-        hf_row['g_xuv'] = (
-            float(hf_row['gravity']) * (float(hf_row['R_int']) / radius) ** 2
-            if placeable
-            else np.nan
-        )
-    for key in ('p_xuv', 'T_xuv'):
-        if key in hf_row:
-            hf_row[key] = np.nan
+    if 'g_xuv' not in hf_row:
+        return
+
+    gravity = float(hf_row.get('gravity', np.nan))
+    r_int = float(hf_row.get('R_int', np.nan))
+    placeable = (
+        np.isfinite(radius)
+        and radius > 0.0
+        and np.isfinite(gravity)
+        and np.isfinite(r_int)
+        and r_int > 0.0
+    )
+    if placeable:
+        hf_row['g_xuv'] = gravity * (r_int / radius) ** 2
 
 
 def run_atmosphere(
@@ -405,15 +412,17 @@ def run_atmosphere(
 
     # A carried radius can come from a row written before the clip existed, or
     # under a different Hill radius, so bound it here as well. The rate escape
-    # computes goes as the cube of this radius, so the bound wins; the rest of
-    # the level is then brought onto the radius the bound left behind. The
-    # comparison is exact because an inapplicable clip returns what it was
-    # given, so a moved radius is the only thing that reaches the realignment.
+    # computes goes as the cube of this radius, so the bound wins; the gravity
+    # is then placed at the radius the bound left behind. The finiteness test is
+    # on the RESULT rather than on the carried value, because a radius of NaN
+    # compares unequal to everything: testing it there skips the placement in
+    # the one case where the bound does supply a real radius.
     if hasattr(config, 'escape') and 'R_xuv' in hf_row:
         carried = float(hf_row['R_xuv'])
-        hf_row['R_xuv'] = clip_radius_to_hill(config, hf_row, carried)
-        if hf_row['R_xuv'] != carried:
-            realign_xuv_level(hf_row, hf_row['R_xuv'])
+        clipped = clip_radius_to_hill(config, hf_row, carried)
+        hf_row['R_xuv'] = clipped
+        if np.isfinite(clipped) and clipped != carried:
+            realign_xuv_gravity(hf_row, clipped)
 
     # Persist the solve outcome, so a row whose levels were carried can be
     # identified from the output alone rather than from the log.
