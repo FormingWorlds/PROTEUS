@@ -76,6 +76,8 @@ nav:
           - Interior energetics wrapper: Reference/api/interior_energetics_wrapper.md
       - Validation:
           - Overview: Validation/index.md
+          - Atmosphere climate:
+              - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
           - Interior structure:
               - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
           - Orbit:
