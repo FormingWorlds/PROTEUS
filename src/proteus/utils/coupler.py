@@ -586,6 +586,22 @@ def assert_mass_conservation(
     M_planet = float(hf_row.get('M_planet', 0.0))
     M_vol_atm = float(hf_row.get('M_vol_atm', 0.0))
 
+    # A non-finite mass slips past every comparison below, because both
+    # `nan <= 0.0` and `nan > nan` are False, so neither the short-circuit nor
+    # the breach test fires and the row reports clean. Refuse it here instead of
+    # returning a verdict on a row this cannot actually check.
+    for name, value in (
+        ('M_atm', M_atm),
+        ('M_planet', M_planet),
+        ('M_vol_atm', M_vol_atm),
+    ):
+        if not np.isfinite(value):
+            raise RuntimeError(
+                f'Mass conservation cannot be checked: {name}={value} is not '
+                f'finite. An upstream step wrote a non-finite mass, so the '
+                f'reservoir it came from needs checking before the run goes on.'
+            )
+
     # Pre-IC short-circuit: M_planet == 0 means the structure solve has
     # not yet populated the hf_row. The invariants are not meaningful
     # before update_planet_mass has run, so we skip silently. The runtime
@@ -945,16 +961,20 @@ def GetHelpfileKeys():
         'O_res',                 # O mass-balance residual [kg]
         'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
 
-        # Desiccation escape-balance gate. M_vol_initial is the sum over
-        # all elements (oxygen included) of *_kg_total captured on the
-        # first escape call, used
-        # as the reference point for `outgas.wrapper.check_desiccation`'s
-        # "is the loss accounted for by escape?" sanity check.
-        # esc_kg_cumulative is the running sum of esc_rate_total * dt
-        # over the whole run. Both must be persisted to the CSV so
-        # resume preserves the gate's state.
+        # Desiccation escape-balance gate for `outgas.wrapper.check_desiccation`.
+        # M_vol_initial is the summed *_kg_total (oxygen included) captured on
+        # the first escape call; esc_kg_cumulative is the mass each step took
+        # out of those inventories, never more than it was allowed to remove.
+        # Both persist to the CSV so resume preserves the gate's state.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
         'esc_kg_cumulative', # cumulative escaped mass [kg]
+
+        # Loss the bulk rate asked for on this step, as a fraction of the
+        # reservoir escape draws from. Values above the per-step cap mark a
+        # step whose loss was limited, so a limited trajectory stays
+        # distinguishable from one that ran down on its own.
+        'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
+        'esc_step_kg',      # loss applied on this step, after the cap [kg]
         ]
 
     # gases from outgassing

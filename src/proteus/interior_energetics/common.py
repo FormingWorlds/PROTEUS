@@ -597,6 +597,13 @@ class Interior_t:
         # clamped. For example, by `_estimate_bolscale()`.
         self.timestep_clamped = False
 
+        # Largest step [yr] the next call to next_step() may return, set by an
+        # escape step whose loss hit the per-step cap. It is the step length
+        # that would have put the same escape rate exactly at the cap, so the
+        # overshoot is not repeated at the same size. Infinite when the most
+        # recent escape step was not capped.
+        self.escape_dt_limit = float('inf')
+
         # Lookup data for SPIDER (P-S tables, used by E_th and
         # melt-volume bookkeeping). Each is a (nS, nP, 3) array, the
         # third channel being the SI value of the quantity.

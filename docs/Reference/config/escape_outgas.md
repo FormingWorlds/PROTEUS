@@ -18,6 +18,8 @@ See also [Model description](../../Explanations/model.md#atmospheric-escape-zeph
 | `reservoir` | str | `"outgas"` | Composition reservoir for escaping gas: `outgas`, `bulk`, `pxuv` |
 | `hill_clamp` | bool | `true` | Limit the XUV level to the Hill radius; gas beyond it is not bound to the planet |
 | `hill_clamp_frac` | float | `1.0` | Fraction of the Hill radius used as that limit, in (0, 1] |
+| `step_max_frac` | float | `0.25` | Largest share of the escapable reservoir one step may remove, in (0, 1] |
+| `step_dt_floor_frac` | float | `1.0e-3` | Shortest step the escape limiter may ask for, as a fraction of the step it bounds, in (0, 1] |
 
 ### ZEPHYRUS `[escape.zephyrus]`
 

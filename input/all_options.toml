@@ -581,6 +581,8 @@ config_version = "3.0"
 [escape]
     module                    = "zephyrus"   # zephyrus | dummy
     reservoir                 = "outgas"     # reservoir setting escaping composition
+    step_max_frac             = 0.25         # largest share of the reservoir one step may remove
+    step_dt_floor_frac        = 1e-3         # how far below dt.minimum a capped step may shorten the next
 
     [escape.zephyrus]
         Pxuv                  = 5e-5         # XUV opacity pressure level [bar]

@@ -506,9 +506,27 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
         log.info('Crystallized mantle: volatile exchange frozen, reservoirs preserved')
         return
 
-    # Mass lost to escape over this step (esc_rate is kg s-1, dt is yr). With
-    # the mantle frozen it comes entirely out of the atmosphere.
-    esc_step_kg = esc_rate * secs_per_year * dt
+    # Mass lost to escape over this step. With the mantle frozen it comes
+    # entirely out of the atmosphere. Prefer the loss the escape step actually
+    # applied: sizing this from the raw rate instead would empty the atmosphere
+    # on an overshoot while the elemental totals kept all but the capped share.
+    esc_step_kg = hf_row.get('esc_step_kg')
+    if esc_step_kg is None or not np.isfinite(float(esc_step_kg)):
+        esc_step_kg = esc_rate * secs_per_year * dt
+    esc_step_kg = float(esc_step_kg)
+
+    if esc_step_kg > m_atm:
+        # Escape took more from the elemental totals than the column holds, so
+        # the loss was sized from a reservoir the frozen mantle no longer
+        # supplies and the two records of this step disagree by the excess.
+        log.warning(
+            'Escape removed %.3e kg from the elemental totals while the '
+            'atmosphere holds only %.3e kg; the column empties and the excess '
+            '%.3e kg leaves no reservoir that tracks it.',
+            esc_step_kg,
+            m_atm,
+            esc_step_kg - m_atm,
+        )
     retained = max(0.0, (m_atm - esc_step_kg) / m_atm)
 
     # Scale the atmospheric reservoirs by the retained fraction. Uniform
@@ -522,6 +540,15 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     for s in gas_list:
         hf_row[f'{s}_kg_atm'] = hf_row.get(f'{s}_kg_atm', 0.0) * retained
         hf_row[f'{s}_bar'] = hf_row.get(f'{s}_bar', 0.0) * retained
+    # Element reservoirs whose symbol is not also a species name. The loop above
+    # already scales the rock formers and noble gases through the species they
+    # share a symbol with; H, O, C, N and S have no such twin, and escape sizes
+    # the next step's loss from these keys, so leaving them would hold the
+    # escapable reservoir at its pre-solidification value as the column empties.
+    for e in element_list:
+        if e in gas_list:
+            continue
+        hf_row[f'{e}_kg_atm'] = hf_row.get(f'{e}_kg_atm', 0.0) * retained
     hf_row['P_surf'] = hf_row.get('P_surf', 0.0) * retained
     # Keep the volatile/vapour partial-pressure split consistent with the
     # rescaled total (same uniform, composition-preserving scaling as above).
