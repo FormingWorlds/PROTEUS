@@ -134,8 +134,8 @@ jobs:
   integration-tier:
     name: Integration tier (${{ matrix.os }})
     needs: unit-tier
-    # Ordered after the unit tier for a warm cache, not gated on it passing.
-    # Cancellation still stops it; only a failure upstream is tolerated.
+    # Ordered after the unit tier for a warm cache; it does not require the
+    # unit tier to pass. Cancelling the workflow still stops it.
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
@@ -203,7 +203,8 @@ jobs:
   slow-tier:
     name: Slow tier (${{ matrix.shard }} / ${{ matrix.os }})
     needs: integration-tier
-    # Same ordering-not-gating rule as the integration tier above.
+    # Same rule as the integration tier above: ordered after it, and it does
+    # not require that tier to pass.
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
