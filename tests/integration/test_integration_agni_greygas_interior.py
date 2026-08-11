@@ -33,6 +33,7 @@ RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
     not RUN_NIGHTLY_SMOKE,
     reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
 )
+@pytest.mark.timeout(600)
 def test_agni_greygas_dummy_interior_coupling():
     """AGNI (grey gas) + dummy interior coupled step.
 
