@@ -2785,7 +2785,7 @@
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
-      "group": null,
+      "group": "Equation of state",
       "group_qualifier": null
     },
     {
@@ -2800,8 +2800,8 @@
       "description": "EOS for the mantle layer. Format: \"<source>:<material>\". Tabulated: \"PALEOS:MgSiO3\" (default), \"PALEOS-2phase:MgSiO3\", \"Seager2007:MgSiO3\", \"WolfBower2018:MgSiO3\". Analytic: \"Analytic:MgSiO3\", \"Analytic:MgFeSiO3\", etc.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_position": 1,
+      "group": "Equation of state",
       "group_qualifier": null
     },
     {
@@ -2816,8 +2816,8 @@
       "description": "EOS for the ice/water layer (3-layer model). 'none' for 2-layer model (core + mantle only). Tabulated: \"PALEOS:H2O\", \"Seager2007:H2O\". Analytic: \"Analytic:H2O\".",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_position": 2,
+      "group": "Equation of state",
       "group_qualifier": null
     },
     {
@@ -2841,8 +2841,8 @@
       "description": "Cryoscopic depression factor controlling the width of the mushy zone (partially molten region) in the PALEOS unified EOS. Defines the solidus as T_sol = T_liq * mushy_zone_factor. 1.0 = sharp phase boundary (no mushy zone). 0.8 = solidus at 80% of the liquidus temperature, roughly matching the Stixrude+2014 cryoscopic depression for MgSiO3. Must be in [0.7, 1.0]. Only applies to PALEOS unified EOS; ignored for WolfBower2018 and RTPress100TPa (which use explicit melting curve files). This factor is applied consistently across Zalmoxis (density interpolation), SPIDER (phase boundaries), and the VolatileProfile phi-blending.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_position": 3,
+      "group": "Equation of state",
       "group_qualifier": null
     },
     {
@@ -2866,8 +2866,8 @@
       "description": "Fraction of the planet's interior mass corresponding to the mantle. Required for 3-layer models (with ice layer) and for T-dependent 2-layer models (WolfBower2018, RTPress100TPa) where it partitions mass between core and mantle layers.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_position": 4,
+      "group": "Equation of state",
       "group_qualifier": null
     },
     {
@@ -2881,9 +2881,9 @@
       "bounds": null,
       "description": "Number of Zalmoxis radius layers.",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 1,
       "group_position": 0,
-      "group": null,
+      "group": "Grid and solver",
       "group_qualifier": null
     },
     {
@@ -2902,9 +2902,9 @@
       ],
       "description": "Relative tolerance for mass convergence (outer loop).",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 1,
+      "group_position": 4,
+      "group": "Grid and solver",
       "group_qualifier": null
     },
     {
@@ -2923,9 +2923,9 @@
       ],
       "description": "Relative tolerance for density convergence (inner loop).",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 1,
+      "group_position": 5,
+      "group": "Grid and solver",
       "group_qualifier": null
     },
     {
@@ -2944,9 +2944,9 @@
       ],
       "description": "Max iterations for mass convergence (outer loop).",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 1,
+      "group_position": 6,
+      "group": "Grid and solver",
       "group_qualifier": null
     },
     {
@@ -2965,9 +2965,9 @@
       ],
       "description": "Max iterations for density convergence (inner loop).",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 1,
+      "group_position": 7,
+      "group": "Grid and solver",
       "group_qualifier": null
     },
     {
@@ -2986,9 +2986,9 @@
       ],
       "description": "Maximum time between structure updates [yr]; effectively disabled at the default.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 3,
+      "group_position": 3,
+      "group": "Structure update triggers",
       "group_qualifier": null
     },
     {
@@ -3007,9 +3007,9 @@
       ],
       "description": "Minimum time between structure updates [yr]; prevents thrashing.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 3,
+      "group_position": 4,
+      "group": "Structure update triggers",
       "group_qualifier": null
     },
     {
@@ -3032,9 +3032,9 @@
       ],
       "description": "Re-solve the structure when T_magma changes by this fraction.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 3,
+      "group_position": 1,
+      "group": "Structure update triggers",
       "group_qualifier": null
     },
     {
@@ -3057,9 +3057,9 @@
       ],
       "description": "Re-solve the structure when the global melt fraction changes by this absolute amount since the last solve.",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 3,
       "group_position": 0,
-      "group": null,
+      "group": "Structure update triggers",
       "group_qualifier": null
     },
     {
@@ -3082,9 +3082,9 @@
       ],
       "description": "Re-solve when the relative dissolved-volatile (H2O or H2) mantle mass fraction changes by this amount.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 3,
+      "group_position": 2,
+      "group": "Structure update triggers",
       "group_qualifier": null
     },
     {
@@ -3103,9 +3103,9 @@
       ],
       "description": "Time since the last successful re-solve after which a trigger refires [yr]; 0 disables.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 3,
+      "group_position": 5,
+      "group": "Structure update triggers",
       "group_qualifier": null
     },
     {
@@ -3128,9 +3128,9 @@
       ],
       "description": "Maximum fractional radius shift per structure update.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 3,
+      "group_position": 6,
+      "group": "Structure update triggers",
       "group_qualifier": null
     },
     {
@@ -3149,9 +3149,9 @@
       ],
       "description": "Convergence relaxation time after a mesh update [yr].",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 3,
+      "group_position": 7,
+      "group": "Structure update triggers",
       "group_qualifier": null
     },
     {
@@ -3165,9 +3165,9 @@
       "bounds": null,
       "description": "Equilibrate structure and composition before the main loop.",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 4,
       "group_position": 0,
-      "group": null,
+      "group": "Initialisation",
       "group_qualifier": null
     },
     {
@@ -3186,9 +3186,9 @@
       ],
       "description": "Maximum equilibration iterations.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 4,
+      "group_position": 1,
+      "group": "Initialisation",
       "group_qualifier": null
     },
     {
@@ -3207,9 +3207,9 @@
       ],
       "description": "Equilibration convergence tolerance.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 4,
+      "group_position": 2,
+      "group": "Initialisation",
       "group_qualifier": null
     },
     {
@@ -3224,8 +3224,8 @@
       "description": "Structure EOS assumes a dry mantle. Set False for melt-fraction-aware dissolved-volatile mixing in the mantle density (per-shell volatile profile); the dissolved mass then stays inside the interior mass target.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_position": 5,
+      "group": "Equation of state",
       "group_qualifier": null
     },
     {
@@ -3244,9 +3244,9 @@
       ],
       "description": "Number of pressure points in SPIDER P-S tables generated from PALEOS.",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 5,
       "group_position": 0,
-      "group": null,
+      "group": "P-S entropy lookup tables",
       "group_qualifier": null
     },
     {
@@ -3265,9 +3265,9 @@
       ],
       "description": "Number of entropy points in SPIDER P-S tables generated from PALEOS.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 5,
+      "group_position": 1,
+      "group": "P-S entropy lookup tables",
       "group_qualifier": null
     },
     {
@@ -3281,10 +3281,10 @@
       "bounds": null,
       "description": "Enable the H2-silicate binodal-aware radial structure. True is rejected at config load: it requires the binodal handoff on the Zalmoxis side, which is not yet implemented.",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 6,
       "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group": "Miscibility",
+      "group_qualifier": "experimental, not production-ready"
     },
     {
       "path": "interior_struct.zalmoxis.miscibility_max_iter",
@@ -3302,10 +3302,10 @@
       ],
       "description": "Maximum miscibility iterations.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 6,
+      "group_position": 1,
+      "group": "Miscibility",
+      "group_qualifier": "experimental, not production-ready"
     },
     {
       "path": "interior_struct.zalmoxis.miscibility_tol",
@@ -3323,10 +3323,10 @@
       ],
       "description": "Miscibility convergence tolerance.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 6,
+      "group_position": 2,
+      "group": "Miscibility",
+      "group_qualifier": "experimental, not production-ready"
     },
     {
       "path": "interior_struct.zalmoxis.use_jax",
@@ -3339,9 +3339,9 @@
       "bounds": null,
       "description": "Use the JAX backend for the structure solver.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 1,
+      "group_position": 2,
+      "group": "Grid and solver",
       "group_qualifier": null
     },
     {
@@ -3355,9 +3355,9 @@
       "bounds": null,
       "description": "Anderson Type-II Picard acceleration on the density loop.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 1,
+      "group_position": 3,
+      "group": "Grid and solver",
       "group_qualifier": null
     },
     {
@@ -3374,9 +3374,9 @@
       "bounds": null,
       "description": "Outer mass-radius solver: 'newton' (recommended) or 'picard'.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 1,
+      "group_position": 1,
+      "group": "Grid and solver",
       "group_qualifier": null
     },
     {
@@ -3395,10 +3395,10 @@
       ],
       "description": "Maximum Newton iterations (outer_solver = 'newton').",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 2,
       "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group": "Newton solver tuning",
+      "group_qualifier": "used when `outer_solver = \"newton\"`"
     },
     {
       "path": "interior_struct.zalmoxis.newton_tol",
@@ -3416,10 +3416,10 @@
       ],
       "description": "Newton convergence tolerance (outer_solver = 'newton').",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 2,
+      "group_position": 1,
+      "group": "Newton solver tuning",
+      "group_qualifier": "used when `outer_solver = \"newton\"`"
     },
     {
       "path": "interior_struct.zalmoxis.newton_relative_tolerance",
@@ -3437,10 +3437,10 @@
       ],
       "description": "Integrator relative tolerance for the Newton path.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 2,
+      "group_position": 2,
+      "group": "Newton solver tuning",
+      "group_qualifier": "used when `outer_solver = \"newton\"`"
     },
     {
       "path": "interior_struct.zalmoxis.newton_absolute_tolerance",
@@ -3458,10 +3458,10 @@
       ],
       "description": "Integrator absolute tolerance for the Newton path.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 2,
+      "group_position": 3,
+      "group": "Newton solver tuning",
+      "group_qualifier": "used when `outer_solver = \"newton\"`"
     },
     {
       "path": "interior_struct.core_density",
@@ -3565,7 +3565,7 @@
       "description": "Number of radial grid levels for the energetics domain.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
+      "group_position": 1,
       "group": null,
       "group_qualifier": null
     },
@@ -3581,7 +3581,7 @@
       "description": "Relative numerical tolerance for the interior ODE solver. SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling). Aragog: scipy solve_ivp rtol. The deprecated aliases num_tolerance and [interior_energetics.spider].tolerance_rel copy into this field. Resolves to 1e-10 when left unset.",
       "doc_source": "field_docstring",
       "group_order": 0,
-      "group_position": 0,
+      "group_position": 2,
       "group": null,
       "group_qualifier": null
     },
@@ -3602,7 +3602,7 @@
       "description": "Absolute numerical tolerance for the interior ODE solver. SPIDER: -ts_sundials_atol (scaled by atol_sf at runtime). Aragog uses [interior_energetics.aragog].atol_temperature_equivalent instead because its state variable is entropy, not temperature, and a direct entropy-scale atol would be unintuitive to tune.",
       "doc_source": "field_docstring",
       "group_order": 0,
-      "group_position": 0,
+      "group_position": 4,
       "group": null,
       "group_qualifier": null
     },
@@ -3618,7 +3618,7 @@
       "description": "Deprecated alias for rtol; emits a DeprecationWarning when set.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
+      "group_position": 3,
       "group": null,
       "group_qualifier": null
     },
@@ -3633,9 +3633,9 @@
       "bounds": null,
       "description": "Include conductive heat transfer.",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 1,
       "group_position": 0,
-      "group": null,
+      "group": "Transport physics",
       "group_qualifier": null
     },
     {
@@ -3649,9 +3649,9 @@
       "bounds": null,
       "description": "Include convective heat transfer (mixing length theory).",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 1,
+      "group_position": 1,
+      "group": "Transport physics",
       "group_qualifier": null
     },
     {
@@ -3665,9 +3665,9 @@
       "bounds": null,
       "description": "Include gravitational separation (Stokes settling).",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 1,
+      "group_position": 2,
+      "group": "Transport physics",
       "group_qualifier": null
     },
     {
@@ -3681,9 +3681,9 @@
       "bounds": null,
       "description": "Include the chemical mixing flux.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 1,
+      "group_position": 3,
+      "group": "Transport physics",
       "group_qualifier": null
     },
     {
@@ -3697,9 +3697,9 @@
       "bounds": null,
       "description": "Include radiogenic heat production?",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 2,
+      "group_position": 1,
+      "group": "Heating",
       "group_qualifier": null
     },
     {
@@ -3713,9 +3713,9 @@
       "bounds": null,
       "description": "Include tidal heating?",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 2,
       "group_position": 0,
-      "group": null,
+      "group": "Heating",
       "group_qualifier": null
     },
     {
@@ -4544,9 +4544,9 @@
       "bounds": null,
       "description": "Mixing-length scale: 'nearest' (distance to nearest boundary) or 'constant' (a quarter of the mantle depth).",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 3,
+      "group_position": 3,
+      "group": "Rheology and convection",
       "group_qualifier": null
     },
     {
@@ -4565,9 +4565,9 @@
       ],
       "description": "Crystal settling grain size [m].",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 3,
+      "group_position": 2,
+      "group": "Rheology and convection",
       "group_qualifier": null
     },
     {
@@ -4582,7 +4582,7 @@
       "description": "Initial heat flux guess [W m-2]. When < 0 (default), computed automatically as sigma * T_magma^4. Set to a positive value to prescribe a specific initial flux. Set to 0 for zero initial flux.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
+      "group_position": 5,
       "group": null,
       "group_qualifier": null
     },
@@ -4602,9 +4602,9 @@
       ],
       "description": "Maximum absolute change in T_magma per PROTEUS step [K].",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 4,
       "group_position": 0,
-      "group": null,
+      "group": "Coupling limits",
       "group_qualifier": null
     },
     {
@@ -4623,9 +4623,9 @@
       ],
       "description": "Maximum relative change in T_magma per PROTEUS step.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 4,
+      "group_position": 1,
+      "group": "Coupling limits",
       "group_qualifier": null
     },
     {
@@ -4644,9 +4644,9 @@
       ],
       "description": "Reference age for setting radioactive decay [Gyr].",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 2,
+      "group_position": 2,
+      "group": "Heating",
       "group_qualifier": null
     },
     {
@@ -4665,9 +4665,9 @@
       ],
       "description": "Concentration (ppmw) of aluminium-26 at reference age t=radio_tref; 1.23 is the canonical early solar system value.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 2,
+      "group_position": 3,
+      "group": "Heating",
       "group_qualifier": null
     },
     {
@@ -4686,9 +4686,9 @@
       ],
       "description": "Concentration (ppmw) of iron-60 at reference age t=radio_tref.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 2,
+      "group_position": 4,
+      "group": "Heating",
       "group_qualifier": null
     },
     {
@@ -4707,9 +4707,9 @@
       ],
       "description": "Concentration (ppmw) of potassium-40 at reference age t=radio_tref.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 2,
+      "group_position": 5,
+      "group": "Heating",
       "group_qualifier": null
     },
     {
@@ -4728,9 +4728,9 @@
       ],
       "description": "Concentration (ppmw) of uranium at reference age t=radio_tref.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 2,
+      "group_position": 6,
+      "group": "Heating",
       "group_qualifier": null
     },
     {
@@ -4749,9 +4749,9 @@
       ],
       "description": "Concentration (ppmw) of thorium-232 at reference age t=radio_tref.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 2,
+      "group_position": 7,
+      "group": "Heating",
       "group_qualifier": null
     },
     {
@@ -4774,9 +4774,9 @@
       ],
       "description": "Centre of rheological transition in terms of melt fraction",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 3,
       "group_position": 0,
-      "group": null,
+      "group": "Rheology and convection",
       "group_qualifier": null
     },
     {
@@ -4799,9 +4799,9 @@
       ],
       "description": "Width of rheological transition in terms of melt fraction",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 3,
+      "group_position": 1,
+      "group": "Rheology and convection",
       "group_qualifier": null
     },
     {
@@ -4820,9 +4820,9 @@
       ],
       "description": "Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport from freezing out.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 3,
+      "group_position": 4,
+      "group": "Rheology and convection",
       "group_qualifier": null
     },
     {
@@ -4836,9 +4836,9 @@
       "bounds": null,
       "description": "Enable the ultra-thin boundary layer parameterisation.",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 5,
       "group_position": 0,
-      "group": null,
+      "group": "Ultra-thin boundary layer",
       "group_qualifier": null
     },
     {
@@ -4857,9 +4857,9 @@
       ],
       "description": "Ultra-thin boundary layer scaling constant [K-1].",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 5,
+      "group_position": 1,
+      "group": "Ultra-thin boundary layer",
       "group_qualifier": null
     },
     {
@@ -4877,7 +4877,7 @@
       "description": "Surface boundary condition for SPIDER/Aragog: 'flux' (prescribed F_atm from the atmosphere module) or 'grey_body' (native grey-body boundary condition computed inside the interior solver).",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
+      "group_position": 6,
       "group": null,
       "group_qualifier": null
     },
@@ -4897,9 +4897,9 @@
       ],
       "description": "Adams-Williamson surface density [kg/m^3]. Matches SPIDER -adams_williamson_rhos and Aragog _MeshParameters.surface_density.",
       "doc_source": "field_docstring",
-      "group_order": 0,
+      "group_order": 6,
       "group_position": 0,
-      "group": null,
+      "group": "Hydrostatic EOS (Adams-Williamson)",
       "group_qualifier": null
     },
     {
@@ -4918,9 +4918,9 @@
       ],
       "description": "Adams-Williamson density gradient [1/m]. Matches SPIDER -adams_williamson_beta. Aragog derives its own via bulk modulus, so this value applies to SPIDER only.",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 6,
+      "group_position": 1,
+      "group": "Hydrostatic EOS (Adams-Williamson)",
       "group_qualifier": null
     },
     {
@@ -4939,9 +4939,9 @@
       ],
       "description": "Adiabatic bulk modulus [Pa] used by Aragog's Adams-Williamson EOS (_MeshParameters.adiabatic_bulk_modulus). SPIDER derives its own.",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 6,
+      "group_position": 2,
+      "group": "Hydrostatic EOS (Adams-Williamson)",
       "group_qualifier": null
     },
     {
@@ -4955,9 +4955,9 @@
       "bounds": null,
       "description": "log10 viscosity of molten silicate [Pa s]. Matches SPIDER -melt_log10visc (2.0 = 1e2 Pa s).",
       "doc_source": "field_docstring",
-      "group_order": 0,
+      "group_order": 7,
       "group_position": 0,
-      "group": null,
+      "group": "Phase material properties",
       "group_qualifier": null
     },
     {
@@ -4971,9 +4971,9 @@
       "bounds": null,
       "description": "log10 viscosity of solid silicate [Pa s]. Matches SPIDER -solid_log10visc (22.0 = 1e22 Pa s). Shared by SPIDER and Aragog so both apply the same solid-phase rheology; a mis-set value diverges both solvers' solid-phase rheology by the same factor.",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 7,
+      "group_position": 1,
+      "group": "Phase material properties",
       "group_qualifier": null
     },
     {
@@ -4992,9 +4992,9 @@
       ],
       "description": "Thermal conductivity of molten silicate [W/m/K]. Matches SPIDER -melt_cond.",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 7,
+      "group_position": 2,
+      "group": "Phase material properties",
       "group_qualifier": null
     },
     {
@@ -5013,9 +5013,9 @@
       ],
       "description": "Thermal conductivity of solid silicate [W/m/K]. Matches SPIDER -solid_cond.",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 7,
+      "group_position": 3,
+      "group": "Phase material properties",
       "group_qualifier": null
     },
     {
@@ -5029,9 +5029,9 @@
       "bounds": null,
       "description": "Multiplier on the internally-computed thermal eddy diffusivity. SPIDER: -eddy_diffusivity_thermal (1.0 default).",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 7,
+      "group_position": 4,
+      "group": "Phase material properties",
       "group_qualifier": null
     },
     {
@@ -5045,9 +5045,9 @@
       "bounds": null,
       "description": "Multiplier on the internally-computed chemical eddy diffusivity. SPIDER: -eddy_diffusivity_chemical (1.0 default).",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 7,
+      "group_position": 5,
+      "group": "Phase material properties",
       "group_qualifier": null
     },
     {
@@ -5061,9 +5061,9 @@
       "bounds": null,
       "description": "Enable constant-properties mode: bypass the EOS tables and use the analytical T(S) = T_ref * exp((S - S_ref) / Cp) relationship, for controlled parity tests.",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 10,
       "group_position": 0,
-      "group": null,
+      "group": "Constant-properties mode",
       "group_qualifier": null
     },
     {
@@ -5082,9 +5082,9 @@
       ],
       "description": "Constant density [kg/m3].",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 10,
+      "group_position": 1,
+      "group": "Constant-properties mode",
       "group_qualifier": null
     },
     {
@@ -5103,9 +5103,9 @@
       ],
       "description": "Constant heat capacity [J/kg/K].",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 10,
+      "group_position": 2,
+      "group": "Constant-properties mode",
       "group_qualifier": null
     },
     {
@@ -5124,9 +5124,9 @@
       ],
       "description": "Constant thermal expansivity [1/K].",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 10,
+      "group_position": 3,
+      "group": "Constant-properties mode",
       "group_qualifier": null
     },
     {
@@ -5145,9 +5145,9 @@
       ],
       "description": "Constant thermal conductivity [W/m/K].",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 10,
+      "group_position": 4,
+      "group": "Constant-properties mode",
       "group_qualifier": null
     },
     {
@@ -5161,9 +5161,9 @@
       "bounds": null,
       "description": "Constant log10 dynamic viscosity [Pa.s].",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 10,
+      "group_position": 5,
+      "group": "Constant-properties mode",
       "group_qualifier": null
     },
     {
@@ -5182,9 +5182,9 @@
       ],
       "description": "Reference temperature for T(S) = T_ref * exp((S-S_ref)/Cp) [K].",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 10,
+      "group_position": 6,
+      "group": "Constant-properties mode",
       "group_qualifier": null
     },
     {
@@ -5198,9 +5198,9 @@
       "bounds": null,
       "description": "Reference entropy for T(S) [J/kg/K]. No positivity constraint since entropy reference states can be zero or negative.",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 10,
+      "group_position": 7,
+      "group": "Constant-properties mode",
       "group_qualifier": null
     },
     {
@@ -5219,9 +5219,9 @@
       ],
       "description": "Latent heat of fusion of silicate [J/kg]. Aragog uses this as a scalar in _PhaseMixedParameters. SPIDER derives it per-(P,S) from dS * T_fus via the EOS tables; the SPIDER derivation is more physically correct but this scalar is good to ~10% at Earth-mantle conditions. TODO: switch Aragog to SPIDER's derivation once the EntropyEOS exposes a dS_fus(P) method.",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 7,
+      "group_position": 6,
+      "group": "Phase material properties",
       "group_qualifier": null
     },
     {
@@ -5244,9 +5244,9 @@
       ],
       "description": "Width [fraction] of the mushy-zone transition in Aragog's _PhaseMixedParameters. Sets the width of the phase boundary in Aragog's mixed-phase blending (viscosity, thermal conductivity etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width`` which is SPIDER's analogous knob for its own solver.",
       "doc_source": "field_docstring",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 7,
+      "group_position": 7,
+      "group": "Phase material properties",
       "group_qualifier": null
     },
     {
@@ -5265,9 +5265,9 @@
       ],
       "description": "Core T_avg / T_cmb ratio from adiabatic gradient (Bower+2018 Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg. SPIDER derives its own internally.",
       "doc_source": "field_docstring",
-      "group_order": 0,
+      "group_order": 8,
       "group_position": 0,
-      "group": null,
+      "group": "Core thermal model",
       "group_qualifier": null
     },
     {
@@ -5281,9 +5281,9 @@
       "bounds": null,
       "description": "When True, Aragog's NetCDF output includes per-component flux decomposition (Jcond_b, Jconv_b, Jgrav_b, Jmix_b) and basic-node state variables (dSdr_b, eddy_diff_b, phi_basic_b, T/cp/rho_basic_b). Adds ~10 fields per snapshot; default False keeps output compact. Useful for diagnosing T_core and CMB-closure behaviour near phi=0. SPIDER path ignores this flag (uses SPIDER's own JSON output which already includes Jcond_b, Jconv_b, Jgrav_b, Jmix_b).",
       "doc_source": "field_docstring",
-      "group_order": 0,
+      "group_order": 9,
       "group_position": 0,
-      "group": null,
+      "group": "Diagnostics",
       "group_qualifier": null
     },
     {
@@ -5444,8 +5444,8 @@
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_CO2",
@@ -5459,9 +5459,9 @@
       "description": "If True, include CO2.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 1,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_N2",
@@ -5475,9 +5475,9 @@
       "description": "If True, include N2.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 2,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_S2",
@@ -5491,9 +5491,9 @@
       "description": "If True, include S2.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 3,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_SO2",
@@ -5507,9 +5507,9 @@
       "description": "If True, include SO2.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 4,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_H2S",
@@ -5523,9 +5523,9 @@
       "description": "If True, include H2S.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 5,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_NH3",
@@ -5539,9 +5539,9 @@
       "description": "If True, include NH3.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 6,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_H2",
@@ -5555,9 +5555,9 @@
       "description": "If True, include H2.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 7,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_CH4",
@@ -5571,9 +5571,9 @@
       "description": "If True, include CH4.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 8,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_CO",
@@ -5587,9 +5587,9 @@
       "description": "If True, include CO.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 9,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_He",
@@ -5603,9 +5603,9 @@
       "description": "If True, include He (noble gas; budget set in planet.elements).",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 10,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_Ne",
@@ -5619,9 +5619,9 @@
       "description": "If True, include Ne (noble gas; budget set in planet.elements).",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 11,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_Ar",
@@ -5635,9 +5635,9 @@
       "description": "If True, include Ar (noble gas; budget set in planet.elements).",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 12,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_Kr",
@@ -5651,9 +5651,9 @@
       "description": "If True, include Kr (noble gas; budget set in planet.elements).",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 13,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.include_Xe",
@@ -5667,9 +5667,9 @@
       "description": "If True, include Xe (noble gas; budget set in planet.elements).",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 14,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.solubility",
@@ -5683,9 +5683,9 @@
       "description": "Enable solubility of volatiles into melt.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_position": 15,
+      "group": "Species switches",
+      "group_qualifier": "set to `false` to exclude a species from the equilibrium"
     },
     {
       "path": "outgas.calliope.nguess",
@@ -5703,9 +5703,9 @@
       ],
       "description": "Maximum number of initial-guess samples for the CALLIOPE equilibrium solver. Default 1000.",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 1,
       "group_position": 0,
-      "group": null,
+      "group": "Solver",
       "group_qualifier": null
     },
     {
@@ -5724,9 +5724,9 @@
       ],
       "description": "Maximum number of iterations of the CALLIOPE equilibrium solver per call. Default 3000.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 1,
+      "group_position": 1,
+      "group": "Solver",
       "group_qualifier": null
     },
     {
@@ -5749,9 +5749,9 @@
       ],
       "description": "Upper bound [bar] of the CALLIOPE Monte-Carlo cold-start surface- pressure draw. Sets where the cold start samples, so raising it helps the solver find a high-pressure (e.g. sub-Neptune) basin faster. It does NOT raise the maximum pressure the solver can accept (CALLIOPE's fixed 1e7 bar box), so it is bounded to (0, 1e7]. Default 1e5.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
+      "group_order": 1,
+      "group_position": 2,
+      "group": "Solver",
       "group_qualifier": null
     },
     {
@@ -5790,7 +5790,7 @@
       "description": "Maximum iterations for the root-finder.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
+      "group_position": 1,
       "group": null,
       "group_qualifier": null
     },
@@ -5811,7 +5811,7 @@
       "description": "Number of random restarts for the root-finder.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
+      "group_position": 2,
       "group": null,
       "group_qualifier": null
     },
@@ -5827,7 +5827,7 @@
       "description": "Enable condensate phases (graphite, etc.) in the equilibrium.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 0,
+      "group_position": 3,
       "group": null,
       "group_qualifier": null
     },
@@ -5842,10 +5842,10 @@
       "bounds": null,
       "description": "Solubility law for H2O. See atmodeller.solubility.library.",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 1,
       "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group": "Solubility laws",
+      "group_qualifier": "set to `\"none\"` to disable dissolution for a species"
     },
     {
       "path": "outgas.atmodeller.solubility_CO2",
@@ -5858,10 +5858,10 @@
       "bounds": null,
       "description": "Solubility law for CO2.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 1,
+      "group_position": 1,
+      "group": "Solubility laws",
+      "group_qualifier": "set to `\"none\"` to disable dissolution for a species"
     },
     {
       "path": "outgas.atmodeller.solubility_H2",
@@ -5874,10 +5874,10 @@
       "bounds": null,
       "description": "Solubility law for H2.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 1,
+      "group_position": 2,
+      "group": "Solubility laws",
+      "group_qualifier": "set to `\"none\"` to disable dissolution for a species"
     },
     {
       "path": "outgas.atmodeller.solubility_N2",
@@ -5890,10 +5890,10 @@
       "bounds": null,
       "description": "Solubility law for N2.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 1,
+      "group_position": 3,
+      "group": "Solubility laws",
+      "group_qualifier": "set to `\"none\"` to disable dissolution for a species"
     },
     {
       "path": "outgas.atmodeller.solubility_S2",
@@ -5906,10 +5906,10 @@
       "bounds": null,
       "description": "Solubility law for S2.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 1,
+      "group_position": 4,
+      "group": "Solubility laws",
+      "group_qualifier": "set to `\"none\"` to disable dissolution for a species"
     },
     {
       "path": "outgas.atmodeller.solubility_CO",
@@ -5922,10 +5922,10 @@
       "bounds": null,
       "description": "Solubility law for CO. 'none' = no solubility.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 1,
+      "group_position": 5,
+      "group": "Solubility laws",
+      "group_qualifier": "set to `\"none\"` to disable dissolution for a species"
     },
     {
       "path": "outgas.atmodeller.solubility_CH4",
@@ -5938,10 +5938,10 @@
       "bounds": null,
       "description": "Solubility law for CH4. 'none' = no solubility.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 1,
+      "group_position": 6,
+      "group": "Solubility laws",
+      "group_qualifier": "set to `\"none\"` to disable dissolution for a species"
     },
     {
       "path": "outgas.atmodeller.eos_H2O",
@@ -5954,10 +5954,10 @@
       "bounds": null,
       "description": "Real gas EOS for H2O. 'none' = ideal gas.",
       "doc_source": "attributes",
-      "group_order": 0,
+      "group_order": 2,
       "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group": "Real gas EOS",
+      "group_qualifier": "set to `\"none\"` for ideal gas"
     },
     {
       "path": "outgas.atmodeller.eos_CO2",
@@ -5970,10 +5970,10 @@
       "bounds": null,
       "description": "Real gas EOS for CO2. 'none' = ideal gas.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 2,
+      "group_position": 1,
+      "group": "Real gas EOS",
+      "group_qualifier": "set to `\"none\"` for ideal gas"
     },
     {
       "path": "outgas.atmodeller.eos_H2",
@@ -5986,10 +5986,10 @@
       "bounds": null,
       "description": "Real gas EOS for H2. 'none' = ideal gas.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 2,
+      "group_position": 2,
+      "group": "Real gas EOS",
+      "group_qualifier": "set to `\"none\"` for ideal gas"
     },
     {
       "path": "outgas.atmodeller.eos_CH4",
@@ -6002,10 +6002,10 @@
       "bounds": null,
       "description": "Real gas EOS for CH4. 'none' = ideal gas.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 2,
+      "group_position": 3,
+      "group": "Real gas EOS",
+      "group_qualifier": "set to `\"none\"` for ideal gas"
     },
     {
       "path": "outgas.atmodeller.eos_CO",
@@ -6018,10 +6018,10 @@
       "bounds": null,
       "description": "Real gas EOS for CO. 'none' = ideal gas.",
       "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
+      "group_order": 2,
+      "group_position": 4,
+      "group": "Real gas EOS",
+      "group_qualifier": "set to `\"none\"` for ideal gas"
     },
     {
       "path": "outgas.lavatmos.T_min",

@@ -376,3 +376,89 @@ class Struct:
                     'Provide an EOS folder name (e.g. "WolfBower2018_MgSiO3") from '
                     'FWL_DATA/interior_lookup_tables/EOS/dynamic/.'
                 )
+
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and is independent of the order the fields are declared in.
+DOC_GROUPS = {
+    'Zalmoxis': (
+        (
+            'Equation of state',
+            None,
+            (
+                'core_eos',
+                'mantle_eos',
+                'ice_layer_eos',
+                'mushy_zone_factor',
+                'mantle_mass_fraction',
+                'dry_mantle',
+            ),
+        ),
+        (
+            'Grid and solver',
+            None,
+            (
+                'num_levels',
+                'outer_solver',
+                'use_jax',
+                'use_anderson',
+                'solver_tol_outer',
+                'solver_tol_inner',
+                'solver_max_iter_outer',
+                'solver_max_iter_inner',
+            ),
+        ),
+        (
+            'Newton solver tuning',
+            'used when `outer_solver = "newton"`',
+            (
+                'newton_max_iter',
+                'newton_tol',
+                'newton_relative_tolerance',
+                'newton_absolute_tolerance',
+            ),
+        ),
+        (
+            'Structure update triggers',
+            None,
+            (
+                'update_dphi_abs',
+                'update_dtmagma_frac',
+                'update_dw_comp_abs',
+                'update_interval',
+                'update_min_interval',
+                'update_stale_ceiling',
+                'mesh_max_shift',
+                'mesh_convergence_interval',
+            ),
+        ),
+        (
+            'Initialisation',
+            None,
+            (
+                'equilibrate_init',
+                'equilibrate_max_iter',
+                'equilibrate_tol',
+            ),
+        ),
+        (
+            'P-S entropy lookup tables',
+            None,
+            (
+                'lookup_nP',
+                'lookup_nS',
+            ),
+        ),
+        (
+            'Miscibility',
+            'experimental, not production-ready',
+            (
+                'global_miscibility',
+                'miscibility_max_iter',
+                'miscibility_tol',
+            ),
+        ),
+    ),
+}

@@ -269,3 +269,66 @@ class Outgas:
 
     # LavAtmos / silicate coupling is opt-in: default to disabled.
     vapourise: bool = field(default=False)
+
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and is independent of the order the fields are declared in.
+DOC_GROUPS = {
+    'Calliope': (
+        (
+            'Species switches',
+            'set to `false` to exclude a species from the equilibrium',
+            (
+                'include_H2O',
+                'include_CO2',
+                'include_N2',
+                'include_S2',
+                'include_SO2',
+                'include_H2S',
+                'include_NH3',
+                'include_H2',
+                'include_CH4',
+                'include_CO',
+                'include_He',
+                'include_Ne',
+                'include_Ar',
+                'include_Kr',
+                'include_Xe',
+                'solubility',
+            ),
+        ),
+        ('Solver', None, ('nguess', 'nsolve', 'p_guess_max')),
+    ),
+    'Atmodeller': (
+        (
+            None,
+            None,
+            (
+                'solver_mode',
+                'solver_max_steps',
+                'solver_multistart',
+                'include_condensates',
+            ),
+        ),
+        (
+            'Solubility laws',
+            'set to `"none"` to disable dissolution for a species',
+            (
+                'solubility_H2O',
+                'solubility_CO2',
+                'solubility_H2',
+                'solubility_N2',
+                'solubility_S2',
+                'solubility_CO',
+                'solubility_CH4',
+            ),
+        ),
+        (
+            'Real gas EOS',
+            'set to `"none"` for ideal gas',
+            ('eos_H2O', 'eos_CO2', 'eos_H2', 'eos_CH4', 'eos_CO'),
+        ),
+    ),
+}

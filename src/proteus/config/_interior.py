@@ -764,3 +764,124 @@ class Interior:
         # Resolve the sentinel to the real default if nothing set rtol.
         if not rtol_set:
             object.__setattr__(self, 'rtol', _DEFAULT_RTOL)
+
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and is independent of the order the fields are declared in.
+DOC_GROUPS = {
+    'Interior': (
+        (
+            None,
+            None,
+            (
+                'module',
+                'num_levels',
+                'rtol',
+                'num_tolerance',
+                'atol',
+                'flux_guess',
+                'surface_bc_mode',
+            ),
+        ),
+        (
+            'Transport physics',
+            None,
+            (
+                'trans_conduction',
+                'trans_convection',
+                'trans_grav_sep',
+                'trans_mixing',
+            ),
+        ),
+        (
+            'Heating',
+            None,
+            (
+                'heat_tidal',
+                'heat_radiogenic',
+                'radio_tref',
+                'radio_Al',
+                'radio_Fe',
+                'radio_K',
+                'radio_U',
+                'radio_Th',
+            ),
+        ),
+        (
+            'Rheology and convection',
+            None,
+            (
+                'rfront_loc',
+                'rfront_wid',
+                'grain_size',
+                'mixing_length',
+                'kappah_floor',
+            ),
+        ),
+        (
+            'Coupling limits',
+            None,
+            (
+                'tmagma_atol',
+                'tmagma_rtol',
+            ),
+        ),
+        (
+            'Ultra-thin boundary layer',
+            None,
+            (
+                'param_utbl',
+                'param_utbl_const',
+            ),
+        ),
+        (
+            'Hydrostatic EOS (Adams-Williamson)',
+            None,
+            (
+                'adams_williamson_rhos',
+                'adams_williamson_beta',
+                'adiabatic_bulk_modulus',
+            ),
+        ),
+        (
+            'Phase material properties',
+            None,
+            (
+                'melt_log10visc',
+                'solid_log10visc',
+                'melt_cond',
+                'solid_cond',
+                'eddy_diffusivity_thermal',
+                'eddy_diffusivity_chemical',
+                'latent_heat_of_fusion',
+                'phase_transition_width',
+            ),
+        ),
+        (
+            'Core thermal model',
+            None,
+            ('core_tfac_avg',),
+        ),
+        (
+            'Diagnostics',
+            None,
+            ('write_flux_diagnostics',),
+        ),
+        (
+            'Constant-properties mode',
+            None,
+            (
+                'const_properties',
+                'const_rho',
+                'const_Cp',
+                'const_alpha',
+                'const_cond',
+                'const_log10visc',
+                'const_T_ref',
+                'const_S_ref',
+            ),
+        ),
+    ),
+}
