@@ -2027,3 +2027,67 @@ def test_disabled_escape_clears_the_records_of_an_earlier_step():
     run_escape(config, hf2, dt=1.0e3)
     assert hf2['esc_clamp_frac'] == pytest.approx(0.0, abs=1e-12)
     assert hf2['esc_step_kg'] == pytest.approx(0.0, abs=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_step_cap_does_not_throttle_a_step_that_removes_nothing():
+    """A reservoir below the decline threshold arms no step-shortening request.
+
+    The cap and the debit sum the same reservoir over the same elements, so a
+    reservoir the debit will decline is one the cap must not treat as an
+    overshoot; otherwise the next step is shortened to pay for a loss that
+    never happened.
+    """
+    from proteus.escape.wrapper import (
+        calc_new_elements,
+        escape_dt_limit,
+        limit_escape_step,
+    )
+    from proteus.utils.constants import element_list
+
+    min_thresh = 1.0e6
+    hf = {f'{e}_kg_atm': 0.0 for e in element_list}
+    hf.update({f'{e}_kg_total': 1.0e20 for e in element_list})
+    hf['H_kg_atm'] = 0.5 * min_thresh  # half the threshold, so the debit declines
+    hf['esc_rate_total'] = 1.0e3
+    dt = 1.0e3
+
+    allowed = limit_escape_step(hf, dt, 'outgas', max_frac=0.25, min_thresh=min_thresh)
+
+    assert allowed == pytest.approx(0.0, abs=1e-12)
+    assert hf['esc_clamp_frac'] == pytest.approx(0.0, abs=1e-12)
+    # The throttle reads that fraction; zero must leave the next step unbounded.
+    assert not np.isfinite(escape_dt_limit(hf['esc_clamp_frac'], dt, max_frac=0.25))
+    # The debit agrees: nothing is removed from any element total.
+    before = {e: hf[f'{e}_kg_total'] for e in element_list}
+    tgt = calc_new_elements(hf, dt, 'outgas', min_thresh=min_thresh, esc_mass=allowed)
+    assert all(tgt[e] == before[e] for e in element_list)
+
+    # Discrimination: the same reservoir just above the threshold does cap, so
+    # the zeros above come from the decline and not from a disabled limiter.
+    hf['H_kg_atm'] = 2.0 * min_thresh
+    capped = limit_escape_step(hf, dt, 'outgas', max_frac=0.25, min_thresh=min_thresh)
+    assert capped == pytest.approx(0.25 * 2.0 * min_thresh, rel=1e-9)
+    assert hf['esc_clamp_frac'] > 0.25
+
+
+@pytest.mark.unit
+def test_module_default_cap_matches_the_schema_default():
+    """The module constant and the config default name the same cap.
+
+    Two independent copies of one number drift apart silently: the schema
+    would accept a value the functions never see, and a caller relying on the
+    module default would bound the step differently from a configured run.
+    """
+    from proteus.config._escape import Escape
+    from proteus.escape.wrapper import ESCAPE_STEP_MAX_FRAC
+
+    schema_default = next(
+        f.default for f in Escape.__attrs_attrs__ if f.name == 'step_max_frac'
+    )
+    assert ESCAPE_STEP_MAX_FRAC == pytest.approx(schema_default, rel=1e-12)
+    # Discrimination: pin the value itself, so a coordinated edit of both
+    # copies to something outside the documented range still fails here.
+    assert ESCAPE_STEP_MAX_FRAC == pytest.approx(0.25, rel=1e-12)
+    assert 0.0 < ESCAPE_STEP_MAX_FRAC <= 1.0

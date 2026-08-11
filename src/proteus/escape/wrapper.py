@@ -101,6 +101,7 @@ def limit_escape_step(
     dt: float,
     reservoir: str,
     max_frac: float = ESCAPE_STEP_MAX_FRAC,
+    min_thresh: float = 0.0,
 ) -> float:
     """Cap the mass a single escape step may remove, and record what it asked for.
 
@@ -144,6 +145,13 @@ def limit_escape_step(
             'Escapable reservoir is not finite, so this step removes nothing; '
             'the inventories it is drawn from need checking.'
         )
+        return 0.0
+    if escapable < min_thresh:
+        # calc_new_elements declines the debit below this same threshold, over
+        # the same reservoir sum. Recording a clamp fraction here would arm the
+        # step-shortening throttle on a step that provably removes nothing.
+        hf_row['esc_clamp_frac'] = 0.0
+        log.debug('Escapable reservoir is below the mass threshold, so nothing leaves')
         return 0.0
     if escapable <= 0.0:
         # Nothing left to draw on, so nothing can leave.
@@ -318,7 +326,9 @@ def run_escape(
     max_frac = float(config.escape.step_max_frac)
 
     # Cap what one step may remove before anything acts on it.
-    esc_step_kg = limit_escape_step(hf_row, dt, reservoir, max_frac=max_frac)
+    esc_step_kg = limit_escape_step(
+        hf_row, dt, reservoir, max_frac=max_frac, min_thresh=config.outgas.mass_thresh
+    )
 
     # Ask the interior for a shorter next step when the cap bound this one, so
     # the same rate stops re-requesting the same excess. Set on every call, so

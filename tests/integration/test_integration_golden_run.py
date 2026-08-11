@@ -126,6 +126,12 @@ def test_fixed_run_reproduces_the_recorded_trajectory(tmp_path, request):
       artefact of comparing something to itself, and the tolerance cannot be
       loosened past that without this failing.
 
+    Not covered: the per-step escape cap. This trajectory asks for at most
+    5.9e-09 of the escapable reservoir in any step, against a 0.25 default, so
+    the capped path is never taken here and a change to it leaves this
+    comparison green. The cap is covered by the unit tests in
+    tests/escape/test_wrapper.py instead.
+
     Under ``--record-golden`` the run is recorded as the new reference and
     nothing is compared, so the test reports itself as skipped rather than as
     having held the run to anything.

@@ -169,9 +169,11 @@ class Escape:
         Measured on production cases, every one at IW-5 asks for more than it at
         some step and the worst for eighty times the reservoir, while cases from
         IW-1 to IW+5 stay under a thousandth of it and never meet the cap at
-        all. Raising it past about a third leaves the reduced cases unbounded,
-        since an unchanged rate settles there once a capped step has taken its
-        share of the reservoir.
+        all. A larger value lets one step take more of what is left, so a
+        reduced case draws its reservoir down in fewer and coarser steps. The
+        cap keeps binding at every setting in this range, because an unchanged
+        rate settles at ``max_frac / (1 - max_frac)``, which is above the cap
+        for every value it accepts.
     step_dt_floor_frac: float
         How far below ``params.dt.minimum`` a capped step may shorten the next
         one. The floor otherwise overrides the shortened step on 94 % of the
