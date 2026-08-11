@@ -655,6 +655,51 @@ jobs:
         run: ruff format --check src/ tests/
 
   # --------------------------------------------------------------------
+  # Documentation link check.
+  # --------------------------------------------------------------------
+  docs-links:
+    name: Documentation links
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          # setuptools-scm derives the version from git tags, so the full tag
+          # history must be present for the editable install.
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # Matches the dependency set the deploy build uses, so a link that
+      # resolves here resolves there. The zensical pin in pyproject.toml
+      # decides which checks the build runs.
+      - name: Install documentation dependencies
+        run: pip install -e '.[develop,docs]'
+
+      - name: Confirm a broken link fails the build
+        run: |
+          # Whether links are checked at all depends on the site generator and
+          # its version. Point a page at a target that does not exist and
+          # require the build to abort, so a build that checks nothing cannot
+          # be read as a site with nothing wrong.
+          printf '# Link check\n\n[target](How-to/no_such_page.md)\n' > docs/_link_check_canary.md
+          if zensical build --clean --strict > canary.log 2>&1; then
+            rm -f docs/_link_check_canary.md
+            echo "::error::A link to a missing page did not fail the build. The link check is not running."
+            cat canary.log
+            exit 1
+          fi
+          rm -f docs/_link_check_canary.md
+          echo "A link to a missing page fails the build, as expected."
+
+      - name: Build the documentation
+        run: zensical build --clean --strict
+
+  # --------------------------------------------------------------------
   # Editable submodule install verification.
   # --------------------------------------------------------------------
   editable-install-check:
