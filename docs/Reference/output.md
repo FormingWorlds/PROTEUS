@@ -236,12 +236,14 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `O_res` | `kg` | O mass-balance residual | `outgas/atmodeller.py`<br>`outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller"; outgas.module = "calliope"; outgas.module = "dummy" |   |
 | `O_vapourised_kg` | `kg` | oxygen released by rock vapourisation (LavAtmos) | `outgas/lavatmos.py` | outgas.vapourise = true |   |
 
-### Desiccation escape-balance gate
+### Desiccation escape balance
 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
 | `M_vol_initial` | `kg` | bulk volatile inventory baseline | `escape/wrapper.py` | always | escape, outgas |
 | `esc_kg_cumulative` | `kg` | cumulative escaped mass | `escape/wrapper.py` | always | escape, outgas |
+| `esc_clamp_frac` | `1` | requested per-step loss / escapable reservoir | `escape/wrapper.py`<br>`proteus.py` | always | escape |
+| `esc_step_kg` | `kg` | loss applied on this step, after the cap | `escape/wrapper.py`<br>`proteus.py` | always | outgas |
 
 ### Gases from outgassing
 

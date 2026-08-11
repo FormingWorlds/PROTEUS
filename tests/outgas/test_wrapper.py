@@ -2032,3 +2032,77 @@ def test_run_outgassing_and_vapourisation_skips_vapour_step_when_disabled():
     mock_outgas.assert_called_once_with(dirs, config, hf_row)
     mock_vap.assert_not_called()
     assert hf_row['M_vaps'] == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_crystallized_scales_the_volatile_element_reservoirs():
+    """A frozen-mantle step shrinks the per-element atmospheric reservoirs too.
+
+    Escape sizes the next step's loss from the ``{element}_kg_atm`` keys, so a
+    step that erodes the column without moving them leaves escape drawing on
+    an atmosphere that is no longer there.
+    """
+    from proteus.outgas.wrapper import run_crystallized
+
+    hf_row = {
+        'M_atm': 100.0,
+        'esc_rate_total': 1.0,
+        'esc_step_kg': 10.0,  # 10 of 100 leaves, so 0.90 is retained
+        'H2O_kg_atm': 100.0,
+        'H2O_bar': 10.0,
+        'P_surf': 10.0,
+        'H_kg_atm': 20.0,
+        'O_kg_atm': 80.0,
+        'C_kg_atm': 0.0,
+        'Si_kg_atm': 5.0,  # symbol is also a species, so it must scale once
+    }
+    run_crystallized(_cryst_cfg(), hf_row, dt=1.0)
+
+    assert hf_row['H_kg_atm'] == pytest.approx(18.0, rel=1e-9)
+    assert hf_row['O_kg_atm'] == pytest.approx(72.0, rel=1e-9)
+    # Discrimination: an unscaled reservoir stays at 20.0, which is 2 kg from
+    # the correct value and far outside the tolerance above.
+    assert abs(hf_row['H_kg_atm'] - 20.0) > 1.0
+    # Si is reached through the species loop and the element loop must not
+    # scale it a second time; 0.9 twice would land on 4.05, not 4.5.
+    assert hf_row['Si_kg_atm'] == pytest.approx(4.5, rel=1e-9)
+    # An element the column never held stays empty rather than going negative.
+    assert hf_row['C_kg_atm'] == pytest.approx(0.0, abs=1e-30)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_two_frozen_mantle_steps_keep_the_escapable_reservoir_with_the_column():
+    """Across consecutive frozen-mantle steps the escapable reservoir tracks
+    the column it is drawn from, rather than holding its starting value.
+
+    The reservoir escape may draw on cannot exceed the atmosphere that holds
+    it, so a run that erodes the column must shrink both together.
+    """
+    from proteus.escape.wrapper import escapable_mass
+    from proteus.outgas.wrapper import run_crystallized
+
+    hf_row = {
+        'M_atm': 1.0e20,
+        'esc_rate_total': 1.0,
+        'P_surf': 100.0,
+        'H2O_kg_atm': 1.0e20,
+        'H2O_bar': 100.0,
+        'H_kg_atm': 2.0e19,
+        'O_kg_atm': 8.0e19,
+    }
+    for step in range(2):
+        hf_row['esc_step_kg'] = 0.5 * hf_row['M_atm']
+        run_crystallized(_cryst_cfg(), hf_row, dt=1.0)
+        # The invariant, checked at every step rather than only at the end.
+        assert escapable_mass(hf_row, 'outgas') <= hf_row['M_atm'] * (1.0 + 1e-12), (
+            f'step {step}: escape may draw on more mass than the column holds'
+        )
+
+    # Half leaves twice, so a quarter of the column and of each element remains.
+    assert hf_row['M_atm'] == pytest.approx(2.5e19, rel=1e-9)
+    assert hf_row['H_kg_atm'] == pytest.approx(5.0e18, rel=1e-9)
+    # Discrimination: reservoirs pinned at their starting value would report
+    # 1.0e20 escapable against a 2.5e19 column, a factor of four out.
+    assert escapable_mass(hf_row, 'outgas') == pytest.approx(2.5e19, rel=1e-9)

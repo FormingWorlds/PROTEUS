@@ -2387,7 +2387,7 @@
       "name": "M_vol_initial",
       "unit": "kg",
       "description": "bulk volatile inventory baseline",
-      "group": "Desiccation escape-balance gate",
+      "group": "Desiccation escape balance",
       "origin": "literal",
       "producers": [
         {
@@ -2404,7 +2404,7 @@
       "name": "esc_kg_cumulative",
       "unit": "kg",
       "description": "cumulative escaped mass",
-      "group": "Desiccation escape-balance gate",
+      "group": "Desiccation escape balance",
       "origin": "literal",
       "producers": [
         {
@@ -2414,6 +2414,46 @@
       ],
       "consumers": [
         "escape",
+        "outgas"
+      ]
+    },
+    {
+      "name": "esc_clamp_frac",
+      "unit": "1",
+      "description": "requested per-step loss / escapable reservoir",
+      "group": "Desiccation escape balance",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/wrapper.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "escape"
+      ]
+    },
+    {
+      "name": "esc_step_kg",
+      "unit": "kg",
+      "description": "loss applied on this step, after the cap",
+      "group": "Desiccation escape balance",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/wrapper.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
         "outgas"
       ]
     },

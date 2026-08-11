@@ -221,7 +221,7 @@ class BoundaryRunner:
             return 0.0
         else:
             step_sf = 1.0  # dt scale factor
-            return next_step(config, dirs, hf_row, hf_all, step_sf)
+            return next_step(config, dirs, hf_row, hf_all, step_sf, interior_o=interior_o)
 
     def viscosity_aggregate_model(self, phi: float) -> float:
         """

@@ -15,6 +15,211 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
+# Largest share of the escapable reservoir a single step may remove. This guards
+# reduced compositions rather than limiting the grid: measured on production
+# cases, every one at IW-5 asks for more than this at some step and the worst for
+# eighty times the reservoir, while cases from IW-1 to IW+5 never reach a
+# thousandth of it and the cap never acts on them.
+ESCAPE_STEP_MAX_FRAC = 0.25
+
+
+def reservoir_key(reservoir: str) -> str:
+    """Return the helpfile suffix naming the reservoir escape draws from.
+
+    Parameters
+    ----------
+        reservoir : str
+            Reservoir name from ``config.escape.reservoir``.
+
+    Returns
+    -------
+        key : str
+            Helpfile column suffix, appended to an element symbol.
+
+    Raises
+    ------
+        ValueError
+            If the reservoir is unsupported or unrecognised.
+    """
+    match reservoir:
+        case 'bulk':
+            return '_kg_total'
+        case 'outgas':
+            return '_kg_atm'
+        case 'pxuv':
+            raise ValueError('Fractionation at p_xuv is not yet supported')
+        case _:
+            raise ValueError(f"Invalid escape reservoir '{reservoir}'")
+
+
+def escapable_mass(hf_row: dict, reservoir: str) -> float:
+    """Return the mass escape can draw on this step [kg].
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+        reservoir : str
+            Reservoir name from ``config.escape.reservoir``.
+
+    Returns
+    -------
+        mass : float
+            Summed elemental mass held in that reservoir [kg].
+    """
+    key = reservoir_key(reservoir)
+    return float(sum(float(hf_row.get(f'{e}{key}', 0.0)) for e in element_list))
+
+
+def readable_total(hf_row: dict) -> float:
+    """Return the summed whole-planet inventory over the readable elements [kg].
+
+    An element an upstream failure left unreadable is skipped rather than
+    carried into the sum, where it would make every later difference unreadable
+    too and stop the accounting for elements that are perfectly fine.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+
+    Returns
+    -------
+        mass : float
+            Summed ``*_kg_total`` over the elements holding a finite value [kg].
+    """
+    total = 0.0
+    for e in element_list:
+        mass = float(hf_row.get(f'{e}_kg_total', 0.0))
+        if np.isfinite(mass):
+            total += mass
+    return total
+
+
+def limit_escape_step(
+    hf_row: dict,
+    dt: float,
+    reservoir: str,
+    max_frac: float = ESCAPE_STEP_MAX_FRAC,
+    min_thresh: float = 0.0,
+) -> float:
+    """Cap the mass a single escape step may remove, and record what it asked for.
+
+    The bulk rate is set without reference to how much mass is actually left, so
+    over a long step it can ask for many times the escapable reservoir. Nothing
+    downstream catches that: with ``reservoir = "outgas"`` the per-element ratios
+    come from ``*_kg_atm`` while the debit lands on ``*_kg_total``, so the
+    non-negativity clamp in :func:`calc_new_elements` never fires and interior
+    inventory is drained without a trace.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only. Gains
+            ``esc_clamp_frac``, the requested loss as a fraction of the
+            reservoir, which stays above ``max_frac`` on a capped step.
+        dt : float
+            Time interval over which escape is occuring [yr]
+        reservoir : str
+            Reservoir the per-element loss is drawn from.
+        max_frac : float
+            Largest share of the reservoir one step may remove.
+
+    Returns
+    -------
+        esc_mass : float
+            Mass to remove over this step [kg], capped at ``max_frac`` of the
+            reservoir.
+    """
+    requested = float(hf_row.get('esc_rate_total', 0.0)) * secs_per_year * float(dt)
+    if not np.isfinite(requested) or requested <= 0.0:
+        hf_row['esc_clamp_frac'] = 0.0
+        return 0.0
+
+    escapable = escapable_mass(hf_row, reservoir)
+    if not np.isfinite(escapable):
+        # An upstream failure has left the reservoir unreadable. Sizing a loss
+        # against it would spread the non-finite value through every inventory.
+        hf_row['esc_clamp_frac'] = 0.0
+        log.warning(
+            'Escapable reservoir is not finite, so this step removes nothing; '
+            'the inventories it is drawn from need checking.'
+        )
+        return 0.0
+    if escapable < min_thresh:
+        # calc_new_elements declines the debit below this same threshold, over
+        # the same reservoir sum. Recording a clamp fraction here would arm the
+        # step-shortening throttle on a step that provably removes nothing.
+        hf_row['esc_clamp_frac'] = 0.0
+        log.debug('Escapable reservoir is below the mass threshold, so nothing leaves')
+        return 0.0
+    if escapable <= 0.0:
+        # Nothing left to draw on, so nothing can leave.
+        hf_row['esc_clamp_frac'] = 0.0
+        log.debug('Escapable reservoir is empty, so this step removes nothing')
+        return 0.0
+
+    frac = requested / escapable
+    hf_row['esc_clamp_frac'] = frac
+    if frac <= max_frac:
+        return requested
+
+    allowed = max_frac * escapable
+    log.warning(
+        'Escape asked for %.3e kg this step, %.3gx the escapable reservoir of '
+        '%.3e kg; the loss is capped at %.3e kg, a fraction %.3g of it.',
+        requested,
+        frac,
+        escapable,
+        allowed,
+        max_frac,
+    )
+    return allowed
+
+
+def escape_dt_limit(
+    clamp_frac: float,
+    dt: float,
+    max_frac: float = ESCAPE_STEP_MAX_FRAC,
+) -> float:
+    """Return the largest next step [yr] that would not repeat this overshoot.
+
+    The cap bounds the loss on the step that overshot, but leaves the step
+    length that produced it unchanged, so the same rate asks for the same
+    excess again. Shortening the next step by the overshoot ratio brings the
+    request back to the cap, measured against the reservoir the step started
+    from.
+
+    That step then removes ``max_frac`` of that reservoir, so measured against
+    what remains an unchanged rate settles at ``max_frac / (1 - max_frac)``,
+    still above the cap. The cap therefore keeps binding and the step keeps
+    shortening while the rate holds, which runs a reservoir down over many
+    steps rather than emptying it in one. The step stops shortening at the
+    floor set by ``escape.step_dt_floor_frac``.
+
+    Parameters
+    ----------
+        clamp_frac : float
+            Requested loss as a fraction of the escapable reservoir, as
+            recorded by :func:`limit_escape_step`.
+        dt : float
+            Length of the step that produced the request [yr].
+        max_frac : float
+            Largest share of the reservoir one step may remove.
+
+    Returns
+    -------
+        dt_limit : float
+            Step length that places the same rate at ``max_frac`` of the
+            reservoir this step drew on [yr]. Infinite when the request was
+            within the cap, so no limit applies.
+    """
+    if not np.isfinite(clamp_frac) or clamp_frac <= max_frac:
+        return float('inf')
+    if not np.isfinite(dt) or dt <= 0.0:
+        return float('inf')
+    return dt * max_frac / clamp_frac
+
 
 def run_escape(
     config: Config,
@@ -23,6 +228,7 @@ def run_escape(
     dt: float = 0.0,
     stellar_track=None,
     atmosphere_only: bool = False,
+    interior_o=None,
 ) -> None:
     """Run Escape submodule.
 
@@ -43,14 +249,23 @@ def run_escape(
             regardless of ``config.escape.reservoir``. Set once the mantle has
             solidified: dissolved volatiles are then frozen into the solid and
             the atmosphere is the only reservoir that can supply escape.
+        interior_o : Interior_t | None
+            Interior state. When given, its ``escape_dt_limit`` is set so a
+            capped step shortens the next one; see :func:`escape_dt_limit`.
     """
     dirs = dirs or {}
 
     if not config.escape.module:
-        # Keep a minimal, dependency-free disabled path for unit tests.
+        # Keep a minimal, dependency-free disabled path for unit tests. The
+        # per-step records are cleared alongside the rates so a step that ran
+        # before escape was switched off cannot read as the current one.
         hf_row['esc_rate_total'] = 0.0
         for e in element_list:
             hf_row[f'esc_rate_{e}'] = 0.0
+        hf_row['esc_clamp_frac'] = 0.0
+        hf_row['esc_step_kg'] = 0.0
+        if interior_o is not None:
+            interior_o.escape_dt_limit = float('inf')
         log.info(f'Escape is disabled, bulk rate = {hf_row["esc_rate_total"]:.2e} kg s-1')
         return
 
@@ -101,13 +316,6 @@ def run_escape(
         if esc_e > 0:
             log.info('    %2s = %.2e kg s-1' % (e, esc_e))
 
-    # Accumulate cumulative escaped mass [kg] for the desiccation gate. This
-    # is the integral of `esc_rate_total * dt` over all escape calls and is
-    # persisted to the helpfile so it survives resume.
-    esc_step_kg = float(hf_row.get('esc_rate_total', 0.0)) * secs_per_year * float(dt)
-    if np.isfinite(esc_step_kg) and esc_step_kg > 0.0:
-        hf_row['esc_kg_cumulative'] = float(hf_row.get('esc_kg_cumulative', 0.0)) + esc_step_kg
-
     # Reservoir the per-element loss is drawn from. With a solidified mantle
     # the atmosphere is the only escapable reservoir, so the loss is sized from
     # `*_kg_atm` (atmospheric abundance). This keeps the per-element `*_kg_total`
@@ -115,17 +323,56 @@ def run_escape(
     # scaling that `outgas.wrapper.run_crystallized` applies in the same step.
     reservoir = 'outgas' if atmosphere_only else config.escape.reservoir
 
+    max_frac = float(config.escape.step_max_frac)
+
+    # Cap what one step may remove before anything acts on it.
+    esc_step_kg = limit_escape_step(
+        hf_row, dt, reservoir, max_frac=max_frac, min_thresh=config.outgas.mass_thresh
+    )
+
+    # Ask the interior for a shorter next step when the cap bound this one, so
+    # the same rate stops re-requesting the same excess. Set on every call, so
+    # a step that stays within the cap clears any limit left by an earlier one.
+    if interior_o is not None:
+        interior_o.escape_dt_limit = escape_dt_limit(
+            float(hf_row.get('esc_clamp_frac', 0.0)), dt, max_frac=max_frac
+        )
+
+    before_kg = readable_total(hf_row)
+
     # calculate new elemental inventories from loss over duration `dt`
     solvevol_target = calc_new_elements(
         hf_row,
         dt,
         reservoir,
         min_thresh=config.outgas.mass_thresh,
+        esc_mass=esc_step_kg,
     )
 
     # store new elemental inventories
     for e, mass in solvevol_target.items():
         hf_row[f'{e}_kg_total'] = mass
+
+    # The mass that actually left. Measured from the inventories, not the
+    # request, because the threshold gate can decline to debit; bounded by the
+    # applied loss, because that same gate also zeroes an element under the
+    # threshold and escape must not be credited with the truncation.
+    drop_kg = before_kg - readable_total(hf_row)
+    # Test both operands, not the result: `min` returns whichever argument comes
+    # first when the other is not a number, so a non-finite one would survive.
+    if np.isfinite(drop_kg) and np.isfinite(esc_step_kg):
+        removed_kg = max(0.0, min(drop_kg, esc_step_kg))
+    else:
+        removed_kg = 0.0
+
+    # Publish it so every consumer of this step works from the same mass.
+    # `outgas.wrapper.run_crystallized` rescales the atmosphere by this value,
+    # so it has to be the loss the inventories took rather than the one the
+    # rate asked for: a declined debit that still drained the atmosphere would
+    # part the two records of the same step.
+    hf_row['esc_step_kg'] = removed_kg
+    if removed_kg > 0.0:
+        hf_row['esc_kg_cumulative'] = float(hf_row.get('esc_kg_cumulative', 0.0)) + removed_kg
 
 
 def run_dummy(config: Config, hf_row: dict, atmosphere_only: bool = False):
@@ -258,6 +505,7 @@ def calc_new_elements(
     dt: float,
     reservoir: str,
     min_thresh: float = 1e10,
+    esc_mass: float | None = None,
 ):
     """Calculate new elemental inventory based on escape rate.
 
@@ -269,6 +517,10 @@ def calc_new_elements(
             Time-step length [years]
         min_thresh: float
             Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+        esc_mass : float | None
+            Mass to remove over this step [kg]. Defaults to the unrestricted
+            ``esc_rate_total * dt``; pass the value from
+            :func:`limit_escape_step` to apply the per-step cap.
 
     Returns
     -------
@@ -279,15 +531,7 @@ def calc_new_elements(
 
     log.info(f'Calculating new elemental inventories from escape, reservoir = {reservoir}')
 
-    match reservoir:
-        case 'bulk':
-            key = '_kg_total'
-        case 'outgas':
-            key = '_kg_atm'
-        case 'pxuv':
-            raise ValueError('Fractionation at p_xuv is not yet supported')
-        case _:
-            raise ValueError(f"Invalid escape reservoir '{reservoir}'")
+    key = reservoir_key(reservoir)
 
     # Calculate mass of elements in the reservoir. Issue #677 fix:
     # include O so the per-element subtraction sums to esc_mass and
@@ -299,10 +543,20 @@ def calc_new_elements(
         res[e] = float(hf_row.get(f'{e}{key}', 0.0))
 
     M_vols = float(sum(res.values()))
-    # check if we just desiccated the planet...
+    # Nothing to share out, either because the reservoir is spent or because an
+    # upstream failure left it unreadable. Return the totals unchanged: `res`
+    # holds the reservoir the loss is sized from, which is `*_kg_atm` for
+    # `outgas`, so returning it would overwrite the whole-planet inventory with
+    # the atmospheric one and erase volatiles still held in the mantle.
+    if not np.isfinite(M_vols):
+        log.warning(
+            'Volatile reservoir is not finite in the escape calculation, so no '
+            'inventory is debited this step; the reservoir needs checking.'
+        )
+        return {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
     if M_vols < min_thresh:
         log.debug('Total mass of volatiles below threshold in escape calculation')
-        return res
+        return {e: float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list}
 
     # compute mass ratios in escaping reservoir.
     # With `outgas.vapourise=True` the rock-forming elements can take a share of
@@ -311,13 +565,26 @@ def calc_new_elements(
     emr = {e: (res[e] / M_vols if M_vols > 0 else 0.0) for e in res}
 
     # total escaped mass over dt [kg]
-    esc_mass = float(hf_row.get('esc_rate_total', 0.0)) * secs_per_year * float(dt)
+    if esc_mass is None:
+        esc_mass = float(hf_row.get('esc_rate_total', 0.0)) * secs_per_year * float(dt)
+    esc_mass = float(esc_mass)
 
     # compute new TOTAL inventories
     tgt: dict[str, float] = {}
     for e in res:
         lost = esc_mass * emr[e]
         old_total = float(hf_row.get(f'{e}_kg_total', 0.0))
+        if not np.isfinite(old_total):
+            # Leave it as it stands. Clamping below would turn it into a zero
+            # that reads as an element escape has depleted, hiding whatever
+            # upstream failure produced it.
+            log.warning(
+                'Whole-planet inventory of %s is not finite, so escape leaves '
+                'it untouched this step; it needs checking upstream.',
+                e,
+            )
+            tgt[e] = old_total
+            continue
         new_total = old_total - lost
         # The desiccation floor treats a major volatile that drops below
         # min_thresh as fully depleted. Noble gases are intrinsically trace

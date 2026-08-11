@@ -610,6 +610,8 @@ config_version = "3.0"
     reservoir                 = "outgas"     # reservoir setting escaping composition
     hill_clamp                = true         # limit the XUV level to the Hill radius
     hill_clamp_frac           = 1.0          # fraction of the Hill radius used as that limit
+    step_max_frac             = 0.25         # largest share of the reservoir one step may remove
+    step_dt_floor_frac        = 1e-3         # how far below dt.minimum a capped step may shorten the next
 
     [escape.zephyrus]
         Pxuv                  = 5e-5         # XUV opacity pressure level [bar]

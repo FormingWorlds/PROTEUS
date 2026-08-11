@@ -327,6 +327,38 @@ def next_step(
         dtminimum += config.params.dt.minimum_rel * hf_row['Time']  # allow small steps
         dtswitch = max(dtswitch, dtminimum)
 
+    # Do not let the step repeat an escape overshoot at the same size. The limit
+    # is the step that would have put the previous escape rate at the cap, so it
+    # shrinks in proportion to how far over the request went. Applied to every
+    # branch, because escape can be running during the static and initial ones.
+    esc_dt_limit = (
+        getattr(interior_o, 'escape_dt_limit', float('inf'))
+        if interior_o is not None
+        else float('inf')
+    )
+    if np.isfinite(esc_dt_limit) and esc_dt_limit < dtswitch:
+        # The escape limit may go below dt.minimum, but only by a bounded
+        # factor: the floor otherwise overrides it on almost every step the cap
+        # binds on, while an unbounded shrink produces a step no run finishes.
+        esc_floor = config.params.dt.minimum * float(config.escape.step_dt_floor_frac)
+        allowed = max(esc_dt_limit, esc_floor)
+        if allowed < dtswitch:
+            log.info(
+                'Time-stepping: escape hit the per-step cap, limiting dt to %.2e yr '
+                'instead of %.2e yr',
+                allowed,
+                dtswitch,
+            )
+            dtswitch = allowed
+        if esc_dt_limit < esc_floor:
+            log.warning(
+                'Escape asked for a step of %.2e yr, below the escape floor of '
+                '%.2e yr; the loss stays capped and the run-down is spread over '
+                'more steps than the rate implies.',
+                esc_dt_limit,
+                esc_floor,
+            )
+
     # Do not allow step size to skip bolometric scaling start/stop
     if hf_all is not None:
         # Clamp dtswitch
