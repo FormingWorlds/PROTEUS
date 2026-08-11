@@ -818,6 +818,12 @@ def test_atmos_stall_max_is_the_value_the_run_actually_uses(tmp_path):
     assert default.atmos_stall_max == ATMOS_STALL_MAX
     assert default.agni_deadlock_max == AGNI_DEADLOCK_MAX
 
+    # The schema default equals the constant, so the pin above cannot tell a
+    # config read from a literal. A configured value that differs from it can.
+    configured = _make_proteus_instance(tmp_path, stall_maximum=STALL_MAX_CONFIGURED)
+    assert configured.atmos_stall_max == STALL_MAX_CONFIGURED
+    assert configured.atmos_stall_max != ATMOS_STALL_MAX
+
     moving = {
         'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
         'hf_row': {'F_atm': 140.0, 'T_magma': 3000.0, 'Phi_global': 0.9},
