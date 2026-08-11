@@ -66,7 +66,7 @@ decreasing atmospheric partial pressures.
 A grey-body model for the atmospheric radiative properties. The upward
 longwave flux is:
 
-$$F_\mathrm{OLR} = \sigma \bigl[T_\mathrm{surf} (1 - \gamma)\bigr]^4$$
+$$F_\mathrm{OLR} = \sigma \bigl\lbrack T_\mathrm{surf} (1 - \gamma)\bigr\rbrack^4$$
 
 where $\gamma$ reduces the effective radiating temperature
 (0 = transparent atmosphere, 1 = perfectly opaque). The transit radius
