@@ -145,8 +145,13 @@ def test_dataset_dir_rejects_an_unversioned_resolution(tmp_path, monkeypatch):
 
     monkeypatch.setattr('proteus.data._fetcher', lambda *a, **k: _UnversionedFetcher())
 
-    with pytest.raises(RuntimeError, match='unversioned'):
+    with pytest.raises(RuntimeError, match='unversioned') as raised:
         dataset_dir(MASS_RADIUS_ZENG_2019, data_root=tmp_path)
+
+    # Discrimination: the guard names the path it refused, which is what sends
+    # the reader to the right directory. A message saying only that something
+    # was unversioned would satisfy the match above and tell them nothing.
+    assert 'zeng_2019' in str(raised.value)
 
 
 def test_unknown_dataset_key_is_rejected():
@@ -157,6 +162,11 @@ def test_unknown_dataset_key_is_rejected():
     """
     with pytest.raises(KeyError):
         _dataset('observe.not_a_declared_dataset')
+
+    # Discrimination: a key the manifest does declare resolves, and to that
+    # same dataset, so the raise above follows from the key being absent
+    # rather than from the lookup refusing or mis-resolving what it is asked.
+    assert _dataset(MASS_RADIUS_ZENG_2019).key == MASS_RADIUS_ZENG_2019
 
 
 def test_stale_fwl_io_is_named_as_the_stale_side(monkeypatch):
@@ -194,8 +204,13 @@ def test_manifest_error_under_a_current_fwl_io_propagates(monkeypatch):
     monkeypatch.setattr(fwl_io, 'load_manifest', _rejects)
     monkeypatch.setattr('proteus.data._fwl_io_derives_the_location', lambda: True)
 
-    with pytest.raises(ValueError, match='malformed'):
+    with pytest.raises(ValueError, match='malformed') as raised:
         _dataset(MASS_RADIUS_ZENG_2019)
+
+    # Discrimination: the message carries the manifest's own complaint and not
+    # an upgrade instruction, which is the whole point of separating a defect
+    # we ship from a dependency that is out of date.
+    assert 'fwl-io' not in str(raised.value).lower()
 
 
 def test_capability_check_reads_the_installed_fwl_io(monkeypatch):
@@ -240,6 +255,9 @@ def test_declared_floor_matches_the_requirement():
         if spec.operator == '>='
     ]
 
+    # Checked first so a dropped `>=` reports the absence it is, rather than
+    # reaching the comparison below and reading as a version mismatch.
+    assert len(bounds) == 1, f'expected one lower bound on fwl-io, found {bounds}'
     assert bounds == [FWL_IO_FLOOR], f'pyproject floor {bounds} vs module floor {FWL_IO_FLOOR}'
 
 
