@@ -263,11 +263,7 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
 
     Scope of "desiccated": the threshold loop below considers the volatile
     elements (`vol_element_list`: H, O, C, N, S) together with the noble gases,
-<<<<<<< HEAD
-    so a planet that with a noble-gas dominated atmosphere is not desiccated.
-=======
     so a planet with a noble-gas dominated atmosphere is not desiccated.
->>>>>>> d3cbdbd5950dfb382e306894c0b46d6e8fe8e793
     """
 
     # Threshold check: refuse desiccation while ANY volatile or noble gas is
@@ -573,13 +569,32 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
 
     # Do not set these to zero - avoid divide by zero elsewhere in the code
     excepted_keys = ['atm_kg_per_mol']
+    hf_row['M_vaps'] = 0.0 #nned to rezero vapour mass
     for g in gas_list:
         excepted_keys.append(f'{g}_vmr')
+        if g not in vap_list:
+            continue
+        else:
+            hf_row[g + '_bar'] = 0.0
+            hf_row[g + '_vmr'] = 0.0
+            hf_row[g + '_kg_atm'] = 0.0
+            hf_row[g + '_kg_total'] = 0.0
 
-    # Set most values to zero
+
+    # Set most values to zero now also for volatile species
     for k in expected_keys():
         if k not in excepted_keys:
             hf_row[k] = 0.0
+
+    # reset all rock-vapour elements to zero as well before vapourisation occures again - otherwise atmosphere will keep building up!
+    # Only the rock-forming elements are reset: the volatile and noble totals are
+    # owned by the outgassing and escape steps respectively.
+    for e in element_list:
+        if e in vol_element_list or e in noble_gases:
+            continue
+        hf_row[e + '_kg_atm'] = 0.0
+        hf_row[e + '_kg_total'] = 0.0
+
 
     # Vapourisation of refractories, under the same crystallised gate as
     # volatile outgassing path.
