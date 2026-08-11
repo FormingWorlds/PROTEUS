@@ -15,12 +15,12 @@ Anti-happy-path discipline (per .github/.claude/rules/proteus-tests.md):
   match the schema; if a new module is added without updating this list,
   the assert in test_module_field_inventory_matches_schema fires.
 
-- The slow-tier hypothesis test fuzzes the cross-product of module enum
-  values for the eight backend fields, asserting every combination either
-  validates and yields a usable Config OR raises with a specific message.
-  Catastrophic exceptions (TypeError, AttributeError, KeyError) fail the
-  test. The cross-product covers ~5000 combinations; hypothesis samples
-  200 by default; derandomize=True so CI is reproducible.
+- The cross-product test sweeps the module enum values for the eight
+  backend fields, asserting every combination either validates and yields
+  a usable Config OR raises with a specific message. Catastrophic
+  exceptions (TypeError, AttributeError, KeyError) fail the test. The
+  sweep is exhaustive over all 5184 combinations and needs no seed to be
+  reproducible.
 
 The original failure that motivated this file: outgas.module defaulted to
 "atmodeller" while atmodeller is not in pyproject hard deps; CI runners
@@ -51,12 +51,11 @@ from proteus.config._config import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Every test here is unit tier, including the 5184-combo cross-product, which
-# sweeps in ~2.5 s. Keep it that way: a second tier marker on any function in
-# this file would combine with the module mark above, and the tier filters are
-# mutually exclusive (`unit and not slow` against `slow and not unit`), so a
-# doubly-marked test is selected by neither and silently stops running. A test
-# that outgrows the 30 s ceiling belongs in its own single-tier file.
+# Every test here is unit tier, including the 5184-combo cross-product. Keep it
+# that way: a second tier marker on any function combines with the module mark
+# above, and the unit and slow filters exclude each other (`unit and not slow`
+# against `slow and not unit`), so a test carrying both runs in neither. The
+# cross-product runs far longer than its neighbours, so it sets its own budget.
 
 # ---------------------------------------------------------------------------
 # Schema enum inventory: kept here so a schema change that adds a backend
@@ -812,7 +811,7 @@ def test_satellite_evolve_passes_without_satellite():
 
 
 # ---------------------------------------------------------------------------
-# Slow-tier hypothesis cross-product over module enums
+# Exhaustive cross-product over module enums
 # ---------------------------------------------------------------------------
 # Every importable module backend × every importable module backend × ...
 # Either the Config validates and is usable, or a validator raises with a
@@ -866,6 +865,7 @@ def _make_combo_toml(combo, tmp_path):
     return p
 
 
+@pytest.mark.timeout(120)
 def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
     """Exhaustive cross-product over the importable backend combinations.
 
@@ -887,17 +887,17 @@ def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
 
     Notes on tooling choice:
     - hypothesis would be the natural tool but adds strategy-driven
-      sampling overhead per example. Cattrs+IO for one combo is ~0.4 ms,
-      so an exhaustive sweep finishes in well under 5 s. Deterministic
-      itertools.product is reproducible without a seed and exercises every
-      combo every time.
+      sampling overhead per example. Deterministic itertools.product is
+      reproducible without a seed and exercises every combo every time.
     - We only enumerate combos with backends in the hard-dep set; the
       check_module_dependencies positive/negative logic (atmodeller, boreas
       missing) is covered by the explicit tests above.
-    - The sweep runs in ~2.5 s, so it sits at unit tier with the rest of this
-      file rather than waiting for the nightly. It is over the 100 ms unit
-      target but far inside the 30 s ceiling, and an exhaustive validator
-      sweep is worth that on every pull request.
+    - One combo costs about 0.5 ms, so the sweep takes around 2.5 s here and
+      roughly twice that under coverage. The test carries its own 120 s
+      timeout in place of the file-level 30 s unit ceiling, which keeps a
+      runner several times slower than this one from failing it on elapsed
+      time rather than on a schema fault. It stays at unit tier because an
+      exhaustive validator sweep is worth those seconds on every pull request.
     """
     import itertools
 

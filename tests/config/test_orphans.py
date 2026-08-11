@@ -6,11 +6,16 @@ being silently discarded by the cattrs-based config parser.
 
 from __future__ import annotations
 
+import logging
+import typing
+
 import attrs
 import pytest
 
+import proteus.config.orphans as orphans_module
 from proteus.config.orphans import (
     _extract_attrs_class,
+    _type_hints_for,
     find_key_problems,
     format_orphan_message,
 )
@@ -910,3 +915,146 @@ def test_omitted_phase_boundary_margin_resolves_to_default(tmp_path):
     # Exact 200.0 default, not the 0.0 sentinel the step caps use: an omitted
     # band must not silently disable the near-boundary max_step tightening.
     assert resolved == pytest.approx(200.0)
+
+
+# ---------------------------------------------------------------------------
+# Type-hint resolution
+# ---------------------------------------------------------------------------
+
+
+def test_type_hints_for_returns_one_shared_mapping_per_class():
+    """Repeated hint lookups on one class resolve once and share the result.
+
+    The walk asks for the hints of every nested class on every config load, so
+    a fresh resolution each time is pure repeated work. Equality cannot tell a
+    reused mapping from a rebuilt one, so identity is what is asserted.
+    """
+    first = _type_hints_for(_Leaf)
+    second = _type_hints_for(_Leaf)
+    assert first is second  # a rebuild would give an equal but distinct dict
+    assert first == typing.get_type_hints(_Leaf)  # and it is the true mapping
+    assert first['value'] is int
+
+    # Two classes must not share one entry, so a second class resolves apart.
+    holder = _type_hints_for(_Holder)
+    assert holder is not first
+    assert set(holder) == {'many', 'one'}
+
+    # Everyone holds the same object, so a write must be refused rather than
+    # rewriting the schema view for every later config load in the process.
+    with pytest.raises(TypeError):
+        first['value'] = str
+    assert _type_hints_for(_Leaf)['value'] is int
+
+
+def test_type_hints_for_does_not_cache_a_failed_resolution():
+    """A class whose annotations cannot be resolved raises on every lookup.
+
+    Storing the failure would let a later lookup return whatever placeholder
+    was kept, and the walk would then stop reporting a schema it cannot read.
+    """
+    before = _type_hints_for.cache_info()
+    with pytest.raises(NameError):
+        _type_hints_for(_Unresolvable)
+    with pytest.raises(NameError):
+        _type_hints_for(_Unresolvable)
+    after = _type_hints_for.cache_info()
+
+    # A stored failure would add an entry and make the second call a hit.
+    assert after.currsize == before.currsize
+    assert after.hits == before.hits
+
+
+def test_find_key_problems_verdicts_survive_the_hint_cache(monkeypatch):
+    """Orphan detection over the real schema does not change when hints cache.
+
+    A mapping that went stale or answered for the wrong class would show up as
+    a key accepted or refused differently, so the cached walk is compared
+    against one driven by uncached resolution over the same data.
+    """
+    from copy import deepcopy
+
+    data = deepcopy(_MINIMAL_VALID)
+    data['planet']['not_a_planet_field'] = 1
+    data['star']['also_wrong'] = 2
+
+    cached = find_key_problems(data)
+    monkeypatch.setattr(orphans_module, '_type_hints_for', typing.get_type_hints)
+    uncached = find_key_problems(data)
+
+    assert cached == uncached
+    # Both paths agreeing on an empty result would pass the line above while
+    # detecting nothing, so the planted keys are named explicitly.
+    assert sorted(cached[0]) == ['planet.not_a_planet_field', 'star.also_wrong']
+    assert cached[1] == []
+
+
+def test_find_key_problems_resolves_hints_through_the_cache(monkeypatch):
+    """The schema walk reaches its hints through the cache, not around it.
+
+    A cache that the walk never calls leaves every config load paying the full
+    resolution cost while every other test here still passes, so the call is
+    what is asserted rather than the cache in isolation.
+    """
+    from copy import deepcopy
+
+    from proteus.config._config import Config
+
+    asked: list[type] = []
+    resolve = orphans_module._type_hints_for
+
+    def _recording(cls):
+        asked.append(cls)
+        return resolve(cls)
+
+    monkeypatch.setattr(orphans_module, '_type_hints_for', _recording)
+    result = find_key_problems(deepcopy(_MINIMAL_VALID))
+
+    assert asked, 'the walk resolved no hints at all, so it bypasses the cache'
+    assert Config in asked  # the root class is where the walk starts
+    # The walk descends, so it asks about nested classes too, not the root alone.
+    assert len(asked) > 1
+    assert result == ([], [])  # a valid config stays clean through the cache
+
+
+def test_hint_cache_holds_the_whole_schema_without_evicting():
+    """The cache is large enough for every class one config load touches.
+
+    A size below the number of classes the schema declares would evict entries
+    inside a single walk, which restores the per-load resolution cost while
+    leaving every correctness test green.
+    """
+    from proteus.config._config import Config
+
+    reachable: set[type] = set()
+    pending = [Config]
+    while pending:
+        cls = pending.pop()
+        if cls in reachable:
+            continue
+        reachable.add(cls)
+        for hint in typing.get_type_hints(cls).values():
+            nested = _extract_attrs_class(hint)
+            if nested is not None:
+                pending.append(nested)
+
+    # Guard the guard: a walk that found almost nothing would satisfy any
+    # cache size, so the count has to look like a real schema first.
+    assert len(reachable) > 20, f'schema walk reached only {len(reachable)} classes'
+    assert _type_hints_for.cache_info().maxsize >= len(reachable)
+
+
+def test_find_key_problems_keeps_warning_about_a_schema_it_cannot_read(caplog):
+    """An unreadable schema warns on every load and still compares field names.
+
+    Keeping the failure would silence the second warning, leaving an operator
+    with no sign that the schema was never introspected on any later load.
+    """
+    data = {'field': {}, 'not_a_field': 1}
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.config.orphans'):
+        first = find_key_problems(data, _Unresolvable)
+        second = find_key_problems(data, _Unresolvable)
+
+    assert first == second == (['not_a_field'], [])
+    warnings = [r for r in caplog.records if 'type hints' in r.getMessage()]
+    assert len(warnings) == 2  # one per load, not one for the pair
