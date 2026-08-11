@@ -26,6 +26,7 @@ from proteus.utils.constants import (
     secs_per_hour,
     secs_per_minute,
     vol_gas_list,
+    vol_list,
 )
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -1285,14 +1286,159 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     return fpath
 
 
-def ReadHelpfileFromCSV(output_dir: str):
+class HelpfileSchemaDriftError(Exception):
+    """A helpfile on disk lacks columns that the current output schema declares."""
+
+
+def helpfile_path(output_dir: str) -> str:
+    """Path to the helpfile of a run directory."""
+    return os.path.join(output_dir, 'runtime_helpfile.csv')
+
+
+class HelpfileRow(dict):
+    """One helpfile row that reports an absent column instead of a KeyError.
+
+    Postprocessing is held to `GetPostprocessingKeys()`, which is checked
+    before the run's archive is unpacked. That list is written by hand and
+    can fall behind the code, so this carries the same report to any column
+    outside it. Such a report necessarily arrives once a synthesis routine
+    reads the column, which is after the archive has been unpacked; only the
+    listed columns are caught early enough to leave a run untouched.
+
+    Membership tests and `get` with a default are untouched, so code that
+    already handles an absent column keeps working. `dict(row)`, `{**row}`
+    and `row.copy()` build a plain dict and lose the report, which is why
+    postprocessing passes the row itself around; `copy.copy` and pickling
+    keep it.
+    """
+
+    def __init__(self, row: dict, source: str):
+        super().__init__(row)
+        self.source = source
+
+    def __missing__(self, key):
+        raise HelpfileSchemaDriftError(
+            "Helpfile '%s' has no column '%s', which postprocessing this run "
+            'reads. It was written before that column existed. Run this '
+            'configuration again from t=0, or read this run with the PROTEUS '
+            'version that wrote it.' % (self.source, key)
+        )
+
+
+# Ceiling on how many column names a drift message spells out, so a very
+# old helpfile reports a readable summary instead of a wall of text.
+_DRIFT_REPORT_LIMIT = 12
+
+
+def _describe_missing_columns(missing: list[str]) -> str:
+    """Render missing column names for an error message."""
+    shown = ', '.join(missing[:_DRIFT_REPORT_LIMIT])
+    if len(missing) > _DRIFT_REPORT_LIMIT:
+        shown += ' (+%d more)' % (len(missing) - _DRIFT_REPORT_LIMIT)
+    return shown
+
+
+# Columns the observation and offline-chemistry pipelines index without a
+# fallback. Every other quantity they touch is read through `in` or `.get`
+# with a default, so its absence is already handled.
+_POSTPROCESSING_FIXED_KEYS = (
+    'Time',
+    'T_surf',
+    'P_surf',
+    'R_int',
+    'gravity',
+    'atm_kg_per_mol',
+    'R_star',
+    'T_star',
+    'separation',
+)
+
+
+def GetPostprocessingKeys():
+    """
+    Helpfile columns that postprocessing an existing run cannot do without.
+
+    Reading a stored run to synthesise an observation or run offline
+    chemistry touches a small part of the output schema, so those commands
+    are held to this set rather than to the whole of `GetHelpfileKeys()`.
+    An archived run stays readable after a schema addition it never used.
+
+    VULCAN indexes a per-element atmospheric mass and a per-gas volume
+    mixing ratio directly, so those expand from the element and volatile
+    lists. Both are fixed module constants, which keeps this set the same
+    for every run, as the full schema is.
+
+    Returns
+    -------
+    list of str
+        Column names, all of which are also in `GetHelpfileKeys()`.
+    """
+    keys = list(_POSTPROCESSING_FIXED_KEYS)
+    keys += [e + '_kg_atm' for e in element_list]
+    keys += [g + '_vmr' for g in vol_list]
+    return keys
+
+
+def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None = None):
     """
     Read helpfile from disk CSV file to DataFrame
+
+    A helpfile written before the output schema gained a column carries
+    neither that column nor any value for it. The entry points that turn a
+    stored run back into simulation state, resume and the two postprocessing
+    commands, all seed a working row from the last line of this table, so
+    the shortfall is caught here rather than in each of them. How much of
+    the schema a caller needs differs, which is what `required_columns` is
+    for. Readers that pull named columns straight out of the file, such as
+    the plotting and inference code, do not come through this function and
+    are not covered.
+
+    The shortfall is reported rather than filled. Seeding a value would make
+    the key present, and several modules decide what to do by testing whether
+    a key is there at all: CALLIOPE refuses a run whose oxygen budget is
+    absent, the dummy and boundary interiors fall back to a configured core
+    size, and the atmosphere lower boundary moves to the solvus only when a
+    solvus radius exists. A seeded zero turns each of those off and reaches
+    the solvers as a physical value no solver produced.
+
+    Parameters
+    ----------
+    output_dir : str
+        Directory holding ``runtime_helpfile.csv``.
+    required_columns : list of str, optional
+        Columns the caller cannot do without. Defaults to the whole of
+        ``GetHelpfileKeys()``, which is what resuming a run needs, since a
+        resumed row feeds every module. Postprocessing passes the smaller
+        ``GetPostprocessingKeys()`` so an archived run stays readable after
+        a schema addition it never used.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Helpfile contents as stored, carrying at least ``required_columns``.
+
+    Raises
+    ------
+    HelpfileSchemaDriftError
+        The file does not carry every required column.
     """
-    fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
+    if required_columns is None:
+        required_columns = GetHelpfileKeys()
+
+    fpath = helpfile_path(output_dir)
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
-    return pd.read_csv(fpath, sep=r'\s+')
+    hf_all = pd.read_csv(fpath, sep=r'\s+')
+
+    missing = sorted(set(required_columns) - set(hf_all.columns))
+    if missing:
+        raise HelpfileSchemaDriftError(
+            "Helpfile '%s' was written before %d column(s) of the current output "
+            'schema existed: %s. Run this configuration again from t=0, or read '
+            'this run with the PROTEUS version that wrote it.'
+            % (fpath, len(missing), _describe_missing_columns(missing))
+        )
+    return hf_all
 
 
 def _netcdf_readable(path: str) -> bool:

@@ -234,6 +234,195 @@ def test_proteus_resume_mesh_no_prev(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Proteus.start(): refusing a helpfile that predates schema columns.
+# ---------------------------------------------------------------------------
+
+
+class _StopAfterHelpfileLoad(Exception):
+    """Sentinel exception to stop start() once the helpfile has been read."""
+
+
+def _resume_at_helpfile_load(p, *, read_effect=None):
+    """Drive start() as far as the helpfile load and stop there.
+
+    Returns the ReadHelpfileFromCSV and UpdateStatusfile mocks, which keep
+    their call history after the patches are lifted, plus the exception the
+    run ended on.
+    """
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        mock_read = stack.enter_context(patch('proteus.utils.coupler.ReadHelpfileFromCSV'))
+        if read_effect is None:
+            mock_read.return_value = _make_hf_df()
+        else:
+            mock_read.side_effect = read_effect
+        # start() reads the helpfile, then hands it to snapshot selection.
+        # Stopping there keeps the test on the load and off the solver setup.
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                side_effect=_StopAfterHelpfileLoad,
+            )
+        )
+        mock_status = stack.enter_context(patch('proteus.proteus.UpdateStatusfile'))
+
+        with pytest.raises(Exception) as excinfo:
+            p.start(resume=True, offline=True)
+
+    return mock_read, mock_status, excinfo.value
+
+
+@pytest.mark.unit
+def test_resume_records_an_error_status_on_helpfile_schema_drift(tmp_path):
+    """A refused resume writes the error status before it stops.
+
+    A run that died without updating its status file reads as still running
+    to every downstream tool that polls the output directory.
+    """
+    from proteus.utils.coupler import HelpfileSchemaDriftError
+
+    p = _make_proteus_instance(tmp_path)
+    drift = HelpfileSchemaDriftError('predates 2 column(s): M_atm, eccentricity')
+    mock_read, mock_status, ended_on = _resume_at_helpfile_load(p, read_effect=drift)
+
+    # The failure propagates rather than being swallowed into a partial run.
+    assert isinstance(ended_on, HelpfileSchemaDriftError)
+    assert 'M_atm' in str(ended_on)
+
+    statuses = [call.args[1] for call in mock_status.call_args_list]
+    assert 20 in statuses
+    # Discrimination: 0 is the start-of-run status written earlier, so the
+    # error status must be the last word and not merely present.
+    assert statuses[-1] == 20
+
+    # The resume asks for the shortfall to be reported and passes nothing
+    # that could soften it. A keyword here would mean an opt-out had been
+    # reintroduced, which is what makes a fabricated value reachable.
+    assert mock_read.call_args.kwargs == {}
+    assert mock_read.call_args.args == (p.directories['output'],)
+
+
+@pytest.mark.unit
+def test_resume_records_an_error_status_on_any_helpfile_load_failure(tmp_path):
+    """A resume that cannot read its helpfile at all records the same status.
+
+    Schema drift is one of several ways the load fails: the file may be
+    absent because the run died before its first write, or unparseable
+    because it was truncated. Each leaves the run just as dead, so each has
+    to leave the same mark on the status file.
+    """
+    p = _make_proteus_instance(tmp_path)
+
+    for label, effect in (
+        ('missing file', Exception("Cannot find helpfile at '/nowhere/runtime_helpfile.csv'")),
+        ('unparseable file', pd.errors.EmptyDataError('No columns to parse from file')),
+    ):
+        _, mock_status, ended_on = _resume_at_helpfile_load(p, read_effect=effect)
+
+        assert type(ended_on) is type(effect), label
+        statuses = [call.args[1] for call in mock_status.call_args_list]
+        assert statuses[-1] == 20, label
+        # Discrimination: 0 is written at the start of every run, so a status
+        # list of [0] alone is the untreated case this guards against.
+        assert statuses != [0], label
+
+
+@pytest.mark.unit
+def test_postprocessing_hands_the_physics_module_a_reporting_row(tmp_path):
+    """The row reaching the synthesis code reports a column it does not carry.
+
+    The required set is written by hand and can fall behind the code, so the
+    row itself has to say what is wrong for anything the set does not cover.
+    An ordinary dict would reach the same read as a bare KeyError.
+    """
+    from proteus.utils.coupler import (
+        GetPostprocessingKeys,
+        HelpfileRow,
+        HelpfileSchemaDriftError,
+    )
+
+    p = _make_proteus_instance(tmp_path)
+    p.config.atmos_chem.module = 'vulcan'
+
+    for method, wrapper in (
+        ('observe', 'proteus.observe.wrapper.run_observe'),
+        ('offline_chemistry', 'proteus.atmos_chem.wrapper.run_chemistry'),
+    ):
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(type(p), 'extract_archives'))
+            stack.enter_context(
+                patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=_make_hf_df())
+            )
+            mock_wrapper = stack.enter_context(patch(wrapper))
+            getattr(p, method)()
+
+        # The two wrappers take the row in different positions, so select it
+        # by type. An unwrapped row yields no match, which is the regression
+        # this guards: it would reach the synthesis code as a bare dict.
+        handed = [a for a in mock_wrapper.call_args.args if isinstance(a, HelpfileRow)]
+        assert len(handed) == 1, method
+        row = handed[0]
+
+        # A column outside the required set reports itself on being read.
+        absent = 'struct_mass_desync_frac'
+        assert absent not in GetPostprocessingKeys()
+        with pytest.raises(HelpfileSchemaDriftError, match=absent):
+            row[absent]
+
+        # Discrimination: the columns the run does carry still read normally,
+        # so the wrapper reports a shortfall rather than blocking every read.
+        assert row['T_magma'] == pytest.approx(2200.0), method
+
+
+@pytest.mark.unit
+def test_postprocessing_refuses_a_helpfile_that_predates_schema_columns(tmp_path):
+    """observe() and offline_chemistry() stop on the same shortfall.
+
+    Both seed a working row from the last line of the same table and hand it
+    to a physics module, so neither may proceed on columns the run never
+    wrote.
+    """
+    from proteus.utils.coupler import HelpfileSchemaDriftError
+
+    p = _make_proteus_instance(tmp_path)
+    p.config.atmos_chem.module = 'vulcan'
+    drift = HelpfileSchemaDriftError('predates 1 column(s): R_xuv')
+
+    for method, wrapper in (
+        ('observe', 'proteus.observe.wrapper.run_observe'),
+        ('offline_chemistry', 'proteus.atmos_chem.wrapper.run_chemistry'),
+    ):
+        with ExitStack() as stack:
+            mock_extract = stack.enter_context(patch.object(type(p), 'extract_archives'))
+            mock_read = stack.enter_context(
+                patch('proteus.utils.coupler.ReadHelpfileFromCSV', side_effect=drift)
+            )
+            mock_wrapper = stack.enter_context(patch(wrapper))
+            with pytest.raises(HelpfileSchemaDriftError):
+                getattr(p, method)()
+
+        # Postprocessing is held to the columns it actually reads, not to the
+        # whole schema, so a run short of an unrelated diagnostic stays
+        # readable. Passing nothing here would restore the blanket check.
+        from proteus.utils.coupler import GetHelpfileKeys, GetPostprocessingKeys
+
+        required = mock_read.call_args.kwargs['required_columns']
+        assert set(required) == set(GetPostprocessingKeys()), method
+        assert set(required) < set(GetHelpfileKeys()), method
+
+        # Discrimination: the physics module is never reached, so no
+        # incomplete row can be handed to it.
+        assert mock_wrapper.call_count == 0, method
+        # The run is left archived as it was found. Unpacking first would
+        # delete the tar on the way to a refusal that was already certain.
+        assert mock_extract.call_count == 0, method
+
+
+# ---------------------------------------------------------------------------
 # Proteus._check_atmosphere_deadlock: AGNI-vs-interior deadlock detector.
 # Targets the previously-untested block at proteus.py:802-853 (now extracted
 # to a method on Proteus so it can be exercised in isolation).
@@ -725,7 +914,7 @@ def test_observe_raises_on_empty_helpfile(tmp_path):
     p = _make_proteus_instance(tmp_path)
     empty_df = pd.DataFrame()
     with (
-        patch.object(p, 'extract_archives'),
+        patch.object(p, 'extract_archives') as mock_extract,
         patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=empty_df),
         patch('proteus.observe.wrapper.run_observe') as mock_run,
     ):
@@ -735,6 +924,9 @@ def test_observe_raises_on_empty_helpfile(tmp_path):
     # that swallowed the empty case and still dispatched would call
     # run_observe with an out-of-range index.
     assert mock_run.call_count == 0
+    # The run is left archived. Unpacking on the way to a refusal that was
+    # already certain deletes the tar for nothing.
+    assert mock_extract.call_count == 0
 
 
 def test_offline_chemistry_dispatches_to_run_chemistry_and_returns_result(tmp_path):
@@ -803,7 +995,7 @@ def test_offline_chemistry_raises_on_empty_helpfile(tmp_path):
     p = _make_proteus_instance(tmp_path)
     empty_df = pd.DataFrame()
     with (
-        patch.object(p, 'extract_archives'),
+        patch.object(p, 'extract_archives') as mock_extract,
         patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=empty_df),
         patch('proteus.atmos_chem.wrapper.run_chemistry') as mock_chem,
     ):
@@ -811,10 +1003,13 @@ def test_offline_chemistry_raises_on_empty_helpfile(tmp_path):
             p.offline_chemistry()
     assert mock_chem.call_count == 0
 
-
-# ---------------------------------------------------------------------------
-# Checkpoint restoration: spider_eos_dir + solidus/liquidus paths
-# ---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # Checkpoint restoration: spider_eos_dir + solidus/liquidus paths
+    # ---------------------------------------------------------------------------
+    # The run is left archived. offline_chemistry() takes the same order
+    # as observe(), so it needs the same guard against unpacking on the
+    # way to a refusal that was already certain.
+    assert mock_extract.call_count == 0
 
 
 def test_proteus_resume_restores_spider_eos_dir(tmp_path):
