@@ -33,7 +33,7 @@ class UnknownConfigKeyError(ValueError):
 
 
 @functools.lru_cache(maxsize=256)
-def _type_hints_for(cls: type) -> dict[str, typing.Any]:
+def _type_hints_for(cls: type) -> types.MappingProxyType[str, typing.Any]:
     """Resolve the type hints of a schema class, once per class.
 
     The config modules postpone annotation evaluation, so each annotation is
@@ -50,9 +50,10 @@ def _type_hints_for(cls: type) -> dict[str, typing.Any]:
 
     Returns
     -------
-    dict[str, typing.Any]
-        Field name to resolved type hint. Shared between callers, so treat
-        it as read-only.
+    types.MappingProxyType[str, typing.Any]
+        Field name to resolved type hint. Every caller receives the same
+        object, so it is a read-only view: a write raises rather than
+        corrupting the schema view held by every later config load.
 
     Raises
     ------
@@ -65,7 +66,7 @@ def _type_hints_for(cls: type) -> dict[str, typing.Any]:
     A class whose annotations are rewritten after its first resolution keeps
     the first result.
     """
-    return typing.get_type_hints(cls)
+    return types.MappingProxyType(typing.get_type_hints(cls))
 
 
 def _extract_attrs_class(hint: type) -> type | None:
