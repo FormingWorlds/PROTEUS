@@ -9,7 +9,7 @@
 |---|---|---|
 | `test_integration_agni_transparent_limit::test_transparent_greygas_olr_equals_blackbody_emission` | Stefan-Boltzmann law, CODATA 2018 constant 5.670374419e-8 W m-2 K-4 | Transparent grey-gas solve returns `F_olr` = sigma T_surf^4 at 1000, 1500, 2000 and 3000 K (rel=1e-5) |
 | `test_integration_agni_transparent_limit::test_transparent_greygas_olr_scales_with_surface_emissivity` | Kirchhoff's law with the Schwarzschild solution for an isothermal slab | A surface of albedo 0.3 under a slab of optical depth tau emits `sigma T_surf^4 (1 - 0.3 exp(-tau))`; the surface boundary condition itself is 0.7 sigma T_surf^4 (rel=1e-9) |
-| `test_integration_agni_transparent_limit::test_transparent_banded_olr_recovers_blackbody_emission` | Stefan-Boltzmann law, evaluated through the spectral file and the SOCRATES two-stream solver | The banded transparent solve recovers sigma T_surf^4 to better than 1e-4 relative from 1000 K to 3000 K (rel=5e-4) |
+| `test_integration_agni_transparent_limit::test_transparent_banded_olr_recovers_blackbody_emission` | Stefan-Boltzmann law, evaluated through the spectral file and the SOCRATES two-stream solver | The banded transparent solve recovers sigma T_surf^4 from 1000 K to 3000 K. The largest residual measured across that range is 8.1e-5 relative, and the test admits 5e-4 |
 
 ## Coverage
 
