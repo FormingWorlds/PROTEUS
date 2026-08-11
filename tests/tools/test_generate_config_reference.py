@@ -22,6 +22,7 @@ import re
 import sys
 from pathlib import Path
 
+import attrs
 import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -296,3 +297,116 @@ def test_committed_pages_are_current_and_fully_described(schema):
     assert _gcr.check_all_options(schema) == []
     undocumented = [f['path'] for f in schema['fields'] if f['doc_source'] == 'missing']
     assert undocumented == []
+
+
+# ---------------------------------------------------------------------------
+# DOC_GROUPS contract: _group_lookup accounts for every option exactly once
+# ---------------------------------------------------------------------------
+
+
+@attrs.define
+class _GroupedSection:
+    """Synthetic config section for the grouping contract.
+
+    Declared here rather than reusing a real section so the tests below can
+    move the grouping around without depending on how any page is laid out
+    today. Field order differs from the reading order used in the groups,
+    which is the distinction the ordering test relies on.
+    """
+
+    alpha: int = 1
+    beta: int = 2
+    gamma: int = 3
+
+
+_FIELDS = ['alpha', 'beta', 'gamma']
+
+
+def _with_groups(monkeypatch, groups):
+    """Publish *groups* as this module's DOC_GROUPS for the synthetic class.
+
+    ``_doc_groups_for`` reads the dict from the module the class was defined
+    in, so the test module stands in for a config module.
+    """
+    monkeypatch.setattr(
+        sys.modules[__name__], 'DOC_GROUPS', {'_GroupedSection': groups}, raising=False
+    )
+
+
+def test_group_lookup_orders_options_by_reading_order_not_declaration(monkeypatch):
+    """Grouping drives the order, so a page reads as written, not as declared.
+
+    The synthetic section declares alpha, beta, gamma while the groups put
+    gamma first, so a lookup that fell back to declaration order would place
+    them the other way round.
+    """
+    _with_groups(
+        monkeypatch,
+        (
+            (None, None, ('gamma',)),
+            ('Second', 'when enabled', ('beta', 'alpha')),
+        ),
+    )
+    lookup = _cs._group_lookup(_GroupedSection, _FIELDS)
+
+    assert lookup['gamma'] == (0, 0, None, None)
+    assert lookup['beta'] == (1, 0, 'Second', 'when enabled')
+    assert lookup['alpha'] == (1, 1, 'Second', 'when enabled')
+    # Discrimination: declaration order would have put alpha at the front.
+    assert lookup['alpha'][:2] > lookup['gamma'][:2]
+    assert lookup['beta'][1] < lookup['alpha'][1]
+
+
+def test_group_lookup_rejects_an_option_named_twice(monkeypatch):
+    """An option listed in two groups is refused, naming the option.
+
+    Rendering it twice would put the same setting on the page under two
+    headings, so the two copies could drift apart in later edits.
+    """
+    _with_groups(
+        monkeypatch,
+        (
+            ('First', None, ('alpha', 'beta')),
+            ('Second', None, ('beta', 'gamma')),
+        ),
+    )
+    with pytest.raises(_cs.SchemaError, match='"beta" more than once'):
+        _cs._group_lookup(_GroupedSection, _FIELDS)
+
+
+def test_group_lookup_rejects_an_option_left_out_of_every_group(monkeypatch):
+    """An option in no group fails the build rather than vanishing quietly.
+
+    A silent drop is the failure that matters here: the option keeps working
+    while disappearing from the page that is supposed to document it.
+    """
+    _with_groups(monkeypatch, (('Only', None, ('alpha', 'beta')),))
+    with pytest.raises(_cs.SchemaError, match='gamma is in no DOC_GROUPS group'):
+        _cs._group_lookup(_GroupedSection, _FIELDS)
+
+
+def test_group_lookup_rejects_a_group_naming_something_that_is_not_an_option(monkeypatch):
+    """A group naming a field the section does not have is refused.
+
+    This is what a renamed or removed option leaves behind, and the page
+    would otherwise carry a heading for a setting that no longer exists.
+    """
+    _with_groups(monkeypatch, (('Only', None, ('alpha', 'beta', 'gamma', 'delta')),))
+    with pytest.raises(_cs.SchemaError, match='"delta", which is not an option'):
+        _cs._group_lookup(_GroupedSection, _FIELDS)
+
+
+def test_group_lookup_returns_nothing_when_no_grouping_is_declared(monkeypatch):
+    """A section with no grouping renders flat, which is the default.
+
+    The extension proceeds page by page, so an ungrouped section has to stay
+    valid rather than fail the build for a grouping nobody has written yet.
+    """
+    monkeypatch.setattr(sys.modules[__name__], 'DOC_GROUPS', {}, raising=False)
+    assert _cs._group_lookup(_GroupedSection, _FIELDS) == {}
+
+    # Discrimination: the same class does produce a lookup once grouped, so
+    # the empty result above reflects the absent declaration and not a
+    # helper that always returns nothing.
+    _with_groups(monkeypatch, ((None, None, ('alpha', 'beta', 'gamma')),))
+    assert len(_cs._group_lookup(_GroupedSection, _FIELDS)) == 3
