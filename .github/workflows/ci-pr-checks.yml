@@ -655,8 +655,7 @@ jobs:
         run: ruff format --check src/ tests/
 
   # --------------------------------------------------------------------
-  # Documentation links and anchors. Reference-link validation is off, for
-  # the reason stated in mkdocs.yml.
+  # Documentation links and anchors.
   # --------------------------------------------------------------------
   docs-link-targets:
     name: Documentation links and anchors
@@ -675,27 +674,36 @@ jobs:
         with:
           python-version: '3.12'
 
-      # Matches the dependency set the deploy build uses, so a link that
-      # resolves here resolves there. The zensical pin in pyproject.toml
-      # decides which checks the build runs.
+      # The docs extra carries the pinned site generator.
       - name: Install documentation dependencies
-        run: pip install -e '.[develop,docs]'
+        run: pip install -e '.[docs]'
 
-      - name: Confirm a broken link fails the build
+      - name: Confirm broken links and anchors fail the build
         run: |
           # Whether links are checked at all depends on the site generator and
-          # its version. Point a page at a target that does not exist and
-          # require the build to abort, so a build that checks nothing cannot
-          # be read as a site with nothing wrong.
-          printf '# Link check\n\n[target](How-to/no_such_page.md)\n' > docs/_link_check_canary.md
-          if zensical build --clean --strict > canary.log 2>&1; then
+          # its version. Plant each failure the build has to catch and require
+          # it to abort naming that failure, so a build that checks nothing
+          # cannot be read as a site with nothing wrong.
+          status=0
+          check () {
+            printf '# Link check\n\n%s\n' "$2" > docs/_link_check_canary.md
+            if zensical build --clean --strict > canary.log 2>&1; then
+              echo "::error::A $1 did not fail the build."
+              status=1
+            elif ! grep -q "$3" canary.log; then
+              echo "::error::The build failed, but not on the $1."
+              status=1
+            else
+              echo "A $1 fails the build, as expected."
+            fi
             rm -f docs/_link_check_canary.md
-            echo "::error::A link to a missing page did not fail the build. The link check is not running."
+          }
+          check 'link to a missing page' '[target](How-to/no_such_page.md)' 'page does not exist'
+          check 'link to a missing anchor' '[target](getting_started.md#no-such-anchor)' 'anchor does not exist'
+          if [ "$status" -ne 0 ]; then
             cat canary.log
             exit 1
           fi
-          rm -f docs/_link_check_canary.md
-          echo "A link to a missing page fails the build, as expected."
 
       - name: Build the documentation
         run: zensical build --clean --strict
@@ -761,7 +769,7 @@ jobs:
     name: PR Summary
     runs-on: ubuntu-latest
     if: always()
-    needs: [unit-tests, macos-unit-tests, lint, editable-install-check]
+    needs: [unit-tests, macos-unit-tests, lint, editable-install-check, docs-link-targets]
 
     steps:
       - name: Write combined summary
@@ -771,6 +779,7 @@ jobs:
           MACOS_UNIT: ${{ needs.macos-unit-tests.outputs.unit-outcome }}
           MACOS_JOB_RESULT: ${{ needs.macos-unit-tests.result }}
           LINT: ${{ needs.lint.result }}
+          DOCS_LINKS: ${{ needs.docs-link-targets.result }}
           COV_STATUS: ${{ needs.unit-tests.outputs.coverage-status }}
           COV_DROP: ${{ needs.unit-tests.outputs.coverage-drop }}
           EST_TOTAL: ${{ needs.unit-tests.outputs.estimated-total }}
@@ -828,6 +837,7 @@ jobs:
           macos_unit = os.environ.get("MACOS_UNIT", "")
           macos_job_result = os.environ.get("MACOS_JOB_RESULT", "")
           lint = os.environ.get("LINT", "")
+          docs_links = os.environ.get("DOCS_LINKS", "")
 
           nightly_stale = os.environ.get("NIGHTLY_STALE", "false") == "true"
           nightly_missing = os.environ.get("NIGHTLY_MISSING", "false") == "true"
@@ -888,7 +898,8 @@ jobs:
                   f"{_result_cell(macos_passed, macos_failed, macos_skipped, macos_errors, macos_count)} | "
                   f"{macos_wall:.1f} s |\n"
               )
-              f.write(f"| (any) | Lint (ruff) | {icon(lint)} | n/a | n/a |\n\n")
+              f.write(f"| (any) | Lint (ruff) | {icon(lint)} | n/a | n/a |\n")
+              f.write(f"| (any) | Docs links and anchors | {icon(docs_links)} | n/a | n/a |\n\n")
 
               # ---- Marker coverage stats ----
               f.write("## Marker Coverage (whole tests/ tree)\n\n")
@@ -942,13 +953,16 @@ jobs:
               linux_non_test_fail = (linux_job_result == "failure" and linux_unit != "failure")
               macos_non_test_fail = macos_job_result == "failure" and macos_unit != "failure"
               cov_fail = cov_status == "fail"
+              docs_links_fail = docs_links == "failure"
 
-              if any_test_fail or lint == "failure" or linux_non_test_fail or macos_non_test_fail or cov_fail or nightly_stale:
+              if any_test_fail or lint == "failure" or linux_non_test_fail or macos_non_test_fail or cov_fail or nightly_stale or docs_links_fail:
                   f.write("\n---\n## PR did not pass checks\n\n")
                   if any_test_fail:
                       f.write("Unit tests failed. See logs above.\n\n")
                   if lint == "failure":
                       f.write("Lint (ruff) failed. Run `ruff check --fix src/ tests/ && ruff format src/ tests/`.\n\n")
+                  if docs_links_fail:
+                      f.write("A documentation link or anchor points at something that does not exist. Run `zensical build --clean --strict`.\n\n")
                   if linux_non_test_fail:
                       f.write("Linux job failed on non-test step.\n\n")
                   if cov_fail:
@@ -962,7 +976,8 @@ jobs:
           needs.unit-tests.result == 'failure' ||
           needs.macos-unit-tests.result == 'failure' ||
           needs.lint.result == 'failure' ||
-          needs.editable-install-check.result == 'failure'
+          needs.editable-install-check.result == 'failure' ||
+          needs.docs-link-targets.result == 'failure'
         run: |
           echo "One or more required checks failed. See summary above."
           exit 1
