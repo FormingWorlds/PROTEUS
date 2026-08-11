@@ -62,13 +62,23 @@ def _eos_content_key(eos_dir_str: str) -> str:
 
     The PROTEUS test fixture materialises the EOS tables into a fresh
     per-test ``outdir/data/spider_eos`` directory each time, so a path
-    based cache key misses across tests. The content fingerprint is a
-    sorted tuple of ``(filename, file size)`` pairs for every regular
-    file in the directory; it is stable across distinct on-disk copies
-    of the same tables but cheap to compute (one ``os.listdir`` + one
-    ``getsize`` per file).
+    based cache key misses across tests.
+
+    The generator writes the parameters that define the tables into
+    ``.cache_info.txt``: the pressure ceiling, the grid shape, the mushy-zone
+    factor and the EOS identity. That marker is the key when present. Sizes
+    alone are not enough on the accretion path: a giant impact grows the planet
+    and the tables are rewritten to a higher pressure ceiling on the same grid,
+    so every file keeps its length and a size-based key cannot see that the
+    tables now describe a different planet.
     """
     try:
+        marker = os.path.join(eos_dir_str, '.cache_info.txt')
+        if os.path.isfile(marker):
+            with open(marker) as f:
+                key = f.read().strip()
+            if key:
+                return key
         pairs = []
         for name in sorted(os.listdir(eos_dir_str)):
             full = os.path.join(eos_dir_str, name)
@@ -586,6 +596,10 @@ class AragogRunner:
             else:
                 AragogRunner.update_structure(config, hf_row, interior_o)
                 AragogRunner.update_solver(dt, hf_row, interior_o)
+            # Refresh before reset(): the compression-work diagnostic inside
+            # reset() evaluates the new mesh pressures against the installed
+            # table, which clamps at a stale ceiling on impact steps.
+            AragogRunner._refresh_entropy_eos(config, interior_o)
             interior_o.aragog_solver.reset()
             # Restore entropy IC from previous solve
             if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
@@ -1224,6 +1238,34 @@ class AragogRunner:
             )
 
     @staticmethod
+    def _refresh_entropy_eos(config: Config, interior_o: Interior_t) -> None:
+        """Point the solver at the P-S tables as they stand now.
+
+        The solver keeps whatever table object it was built with, and the tables
+        are rewritten whenever the structure solve reruns, with a pressure
+        ceiling that grows with the planet. ``solver.entropy_eos`` is read live
+        throughout the solve (the RHS, the per-call energy integrals, and the
+        compression-work diagnostic inside ``reset()``), so a stale object
+        misreports the energy budget on exactly the runs that outgrow their
+        starting table. The loader is cached on the table parameters, so an
+        unchanged table costs one small read.
+
+        Parameters
+        ----------
+        config : Config
+            PROTEUS configuration; a const-properties run carries no tables.
+        interior_o : Interior_t
+            Interior state holding the live Aragog solver.
+        """
+        if config.interior_energetics.const_properties:
+            return
+        solver = getattr(interior_o, 'aragog_solver', None)
+        eos_dir = getattr(interior_o, '_spider_eos_dir', '')
+        if solver is None or not eos_dir or not os.path.isdir(str(eos_dir)):
+            return
+        solver.entropy_eos = _cached_entropy_eos(str(eos_dir))
+
+    @staticmethod
     def _maybe_install_jax_cvode_factory(config: Config, interior_o: Interior_t) -> None:
         """Install a JAX CVODE callback factory on the solver (option Z).
 
@@ -1280,7 +1322,9 @@ class AragogRunner:
         try:
             eos_dir = interior_o._spider_eos_dir
             _t_pre_jax_eos = time.perf_counter()
-            eos_jax = _cached_entropy_eos_jax(str(eos_dir))
+            # Build once here so an unreadable EOS directory fails the install
+            # rather than the first solve. The factory reloads it per call.
+            _cached_entropy_eos_jax(str(eos_dir))
             _t_post_jax_eos = time.perf_counter()
             if nightly_strict:
                 log.info(
@@ -1313,14 +1357,10 @@ class AragogRunner:
                 phase_smoothing_width=0.01,
             )
 
-            _t_pre_mesh = time.perf_counter()
-            mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
-            _t_post_mesh = time.perf_counter()
-            n_stag = solver._n_stag
             if nightly_strict:
                 log.info(
-                    'aragog diag: jax_cvode_factory phases params_jax+mesh=%.2fs',
-                    _t_post_mesh - _t_post_jax_eos,
+                    'aragog diag: jax_cvode_factory phases params_jax=%.2fs',
+                    time.perf_counter() - _t_post_jax_eos,
                 )
 
             def factory(scales, core_bc_mode):
@@ -1329,6 +1369,16 @@ class AragogRunner:
                 # consumed the analytic Jacobian rather than silently falling
                 # back to the FD path.
                 solver._jax_factory_call_count += 1
+                # Rebuild the mesh from live solver state every solve() call:
+                # impacts and structure re-solves replace it, and a copy taken
+                # at install time would keep integrating the pre-change planet.
+                mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
+                n_stag = solver._n_stag
+                # Same for the EOS tables: regeneration raises their pressure
+                # ceiling with the planet's mass, and an install-time copy would
+                # clamp the deep mantle at the smaller planet's table edge. The
+                # loader is cached, so an unchanged table costs one small read.
+                eos_jax = _cached_entropy_eos_jax(str(interior_o._spider_eos_dir))
                 # ``scales`` is an aragog.jax.nondim.NonDimScales single
                 # source of truth.
                 # Rebuild BoundaryParams from live solver state every
@@ -1400,17 +1450,27 @@ class AragogRunner:
                 )
                 return rhs_fn, jac_fn
 
-            solver.set_jax_cvode_factory(factory)
-            log.info(
+            # Read the diagnostic geometry before installing, so that the
+            # install is the last thing here that can fail. Anything raising
+            # after it would send a working factory into the handler below.
+            r_basic = np.asarray(solver._r_basic_flat).ravel()
+            installed = (
                 'Option Z: JAX CVODE factory installed on aragog solver '
-                '(core_bc=%s, n_stag=%d).',
-                solver._core_bc,
-                n_stag,
+                f'(core_bc={solver._core_bc}, n_stag={int(solver._n_stag)}, '
+                f'r_cmb={float(r_basic[0]):.6e} m, r_surf={float(r_basic[-1]):.6e} m). '
+                'The mesh is read from the solver on every solve, so this is the '
+                'geometry at install time, not for the run.'
             )
+            solver.set_jax_cvode_factory(factory)
+            log.info(installed)
         except Exception as exc:
             msg = f'Option Z factory install failed ({exc}); falling back to FD Jacobian.'
             if nightly_strict:
                 raise RuntimeError(msg) from exc
+            # Leave nothing half-installed: the solve-time check is only that a
+            # factory is present, so a partial install would run this path on
+            # state the failure above left incomplete.
+            solver.set_jax_cvode_factory(None)
             log.warning(msg)
 
     @staticmethod
@@ -2065,6 +2125,15 @@ class AragogRunner:
         sanity_dT_core = max(
             3000.0, 1500.0 * mass_tot
         )  # max plausible T_core change per retry [K]
+        # A giant impact re-melts the mantle between solves, so the T_core jump
+        # it produces is real and is identical at every step size. Retrying
+        # cannot shrink it, so the guard would spend the whole ladder and kill
+        # the run. Skip it on that one step; every other step keeps it.
+        impact_step = bool(getattr(interior_o, 'impact_reset_this_step', False))
+
+        # Immediately before the solve, so the state-heat integral this step
+        # books is taken against the tables the step actually runs on.
+        AragogRunner._refresh_entropy_eos(self._config, interior_o)
 
         # Capture IC for restoration on retry, and pre-call T_core for
         # the sanity check on retry success.
@@ -2153,7 +2222,15 @@ class AragogRunner:
                     # converged core temperature exists to compare against, so
                     # the jump guard is necessarily inactive on that one step.
                     dT = abs(T_core_post - T_core_pre) if T_core_pre > 0 else 0.0
-                    if dT > sanity_dT_core:
+                    if dT > sanity_dT_core and impact_step:
+                        log.info(
+                            'T_core jumped %.1f K (>%.0f K threshold) on the '
+                            'step a giant impact re-melted the mantle. The '
+                            'jump is the impact, so the guard is skipped here.',
+                            dT,
+                            sanity_dT_core,
+                        )
+                    if dT > sanity_dT_core and not impact_step:
                         log.warning(
                             'Aragog attempt %d returned status=0 but T_core '
                             'jumped %.1f K (>%.0f K threshold). Treating as '

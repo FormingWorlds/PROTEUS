@@ -3,7 +3,10 @@ Unit tests for proteus.interior_energetics.aragog module: Zalmoxis integration p
 
 Tests the Zalmoxis-specific branches in AragogRunner.setup_solver() that set
 inner_radius from zalmoxis_solver and configure temperature-dependent initial
-conditions.
+conditions, plus the contracts that keep the solver on the planet as it grows:
+the retry ladder and its giant-impact exemption, per-solve mesh re-reads, the
+EOS-table reload and its content-keyed cache, and the JAX factory install and
+failure paths.
 
 Testing standards and documentation:
 - docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
@@ -11,6 +14,9 @@ Testing standards and documentation:
 
 Functions tested:
 - AragogRunner.setup_solver(): Zalmoxis branches for inner_radius, EOS fallback
+- AragogRunner._solve_with_retry(): ladder policy, guards, table refresh wiring
+- AragogRunner._refresh_entropy_eos() and _eos_content_key(): reload discipline
+- AragogRunner._maybe_install_jax_cvode_factory(): install-last and clear-on-fail
 """
 
 from __future__ import annotations
@@ -980,6 +986,54 @@ def test_a_step_stopped_by_the_terminal_event_is_accepted_as_it_stands():
 
 
 @pytest.mark.unit
+def test_the_ladder_refreshes_the_tables_before_the_first_solve(monkeypatch, tmp_path):
+    """The retry ladder points the solver at the current tables before solving.
+
+    Verifies:
+    - The ladder swaps ``solver.entropy_eos`` to the freshly loaded table
+      object before the first ``solve()`` call, so the step integrates on the
+      tables as regenerated, not on the object the solver was built with.
+    - The loader is handed the interior's table directory, not a cached path.
+    - The const-properties guard holds: a run with no tables refreshes
+      nothing, so the exemption cannot silently load a table set.
+    """
+    runner, interior_o, attempts = _retry_ladder_runner(status=0, dt_actual=100.0)
+    runner._config.interior_energetics.const_properties = False
+    solver = interior_o.aragog_solver = runner.aragog_solver
+    interior_o._spider_eos_dir = str(tmp_path)
+
+    order: list[str] = []
+    sentinel = object()
+    orig_solve = solver.solve
+    solver.solve = lambda: (order.append('solve'), orig_solve())[1]
+
+    def fake_loader(path):
+        order.append('refresh')
+        assert path == str(tmp_path)
+        return sentinel
+
+    monkeypatch.setattr('proteus.interior_energetics.aragog._cached_entropy_eos', fake_loader)
+    runner._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, interior_o)
+
+    assert solver.entropy_eos is sentinel
+    assert order.index('refresh') < order.index('solve'), (
+        'the tables were refreshed after the solve had already run on the stale object'
+    )
+    assert order.count('refresh') == 1
+
+    # Guard: a const-properties run carries no tables, so nothing is loaded
+    # and no entropy_eos is installed on the solver.
+    guarded, guarded_interior, _ = _retry_ladder_runner(status=0, dt_actual=100.0)
+    guarded._config.interior_energetics.const_properties = True
+    guarded_interior.aragog_solver = guarded.aragog_solver
+    guarded_interior._spider_eos_dir = str(tmp_path)
+    order.clear()
+    guarded._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, guarded_interior)
+    assert order == []
+    assert not hasattr(guarded.aragog_solver, 'entropy_eos')
+
+
+@pytest.mark.unit
 def test_a_step_that_never_advanced_is_still_refused():
     """The ladder still refuses results that carry no usable state.
 
@@ -1252,3 +1306,398 @@ def test_progress_is_weighed_against_what_the_coupling_asked_for():
     # under the threshold: against the halved interval it would not be.
     assert advanced / asked < _STEP_PROGRESS_MIN_SHARE
     assert advanced / (0.5 * asked) > _STEP_PROGRESS_MIN_SHARE
+
+
+@pytest.mark.unit
+def test_the_core_temperature_guard_stands_aside_for_a_giant_impact():
+    """A giant impact's core-temperature jump is kept, not retried away.
+
+    Physical scenario: an impactor merges with the planet and re-melts the
+    mantle between two interior solves, so the core temperature moves by
+    thousands of kelvin in one coupling step. That jump is the impact, applied
+    outside the solver, and it is identical at every step size.
+
+    Contract clause: the jump guard exists to reject a solve that returned
+    garbage, which a smaller step can fix. It cannot fix an impact, so on the
+    step a re-melt fires the guard stands aside; on every other step it keeps
+    its full strength.
+
+    Verifies:
+    - The same 8000 K jump is accepted on the first attempt with the impact
+      flag raised and rejected down the whole ladder without it, which is the
+      discriminating pair: only the flag differs.
+    - The exemption is scoped to the jump guard, so a solve that actually
+      failed is still retried even on an impact step.
+    """
+    prior = {'Time': 7.68e5, 'T_cmb': 4000.0}
+
+    # 12000 K against a 4000 K prior state is an 8000 K jump, well past the
+    # 3000 K floor the guard applies at 1 M_earth.
+    impacted, impacted_interior, impacted_attempts = _retry_ladder_runner(
+        status=0, dt_actual=100.0, T_core=12000.0
+    )
+    impacted_interior.impact_reset_this_step = True
+    out = impacted._solve_with_retry(prior, impacted_interior)
+
+    assert len(impacted_attempts) == 1, (
+        'the impact jump cannot shrink with the step, so retrying it burns the '
+        'ladder and kills the run at the impact'
+    )
+    assert out.T_core == pytest.approx(12000.0, rel=1e-12)
+
+    # Same solver result, same prior state, flag down: the guard must reject.
+    ordinary, ordinary_interior, ordinary_attempts = _retry_ladder_runner(
+        status=0, dt_actual=100.0, T_core=12000.0
+    )
+    with pytest.raises(RuntimeError, match='T_core jump'):
+        ordinary._solve_with_retry(prior, ordinary_interior)
+    assert len(ordinary_attempts) == 6, (
+        'without an impact to explain it, a jump of this size is a corrupted '
+        'solve and has to go down the ladder'
+    )
+
+    # The exemption covers the jump guard only. A solver that reports failure
+    # is still retried on an impact step, or a genuinely broken solve would be
+    # waved through whenever it landed on an impact.
+    failed, failed_interior, failed_attempts = _retry_ladder_runner(
+        status=-1, dt_actual=0.0, T_core=12000.0
+    )
+    failed_interior.impact_reset_this_step = True
+    with pytest.raises(RuntimeError):
+        failed._solve_with_retry(prior, failed_interior)
+    assert len(failed_attempts) == 6
+
+
+def _jax_factory_config():
+    """Config carrying the numeric fields the option Z factory install reads."""
+    config = MagicMock()
+    ie = config.interior_energetics
+    ie.rfront_loc = 0.5
+    ie.rfront_wid = 0.2
+    ie.solid_log10visc = 22.0
+    ie.melt_log10visc = 2.0
+    ie.grain_size = 0.1
+    ie.solid_cond = 4.0
+    ie.melt_cond = 4.0
+    ie.spider.matprop_smooth_width = 0.0
+    ie.trans_conduction = True
+    ie.trans_convection = True
+    ie.trans_grav_sep = True
+    ie.trans_mixing = True
+    ie.eddy_diffusivity_thermal = 1.0
+    ie.eddy_diffusivity_chemical = 1.0
+    ie.kappah_floor = 10.0
+    ie.aragog.phase_smoothing = 'tanh'
+    ie.aragog.backend = 'jax'
+    return config
+
+
+@pytest.mark.unit
+def test_the_jax_right_hand_side_reads_the_mesh_on_every_solve(monkeypatch):
+    """The JAX right-hand side follows the structure it is asked to integrate.
+
+    The factory is called once per solve. It reads the mesh from the solver at
+    that moment, for the same reason it rereads the boundary conditions: a
+    giant impact grows the planet, and Zalmoxis re-solves the structure as the
+    mantle freezes. A mesh copied once when the factory was installed would
+    leave the right-hand side integrating the planet from before the change,
+    while every other consumer sees the new one.
+
+    Verifies:
+    - The mesh is read once per factory call, not once per install, so two
+      solves read it twice.
+    - The second read sees the replaced mesh object, not the one present when
+      the factory was installed.
+    """
+    pytest.importorskip('jax')
+    pytest.importorskip('aragog.jax.phase')
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    monkeypatch.delenv('PROTEUS_CI_NIGHTLY', raising=False)
+
+    before_mesh, after_mesh = object(), object()
+    solver = SimpleNamespace(
+        _n_stag=79,
+        _r_basic_flat=np.linspace(2.86e6, 5.84e6, 80),
+        _core_bc='energy_balance',
+        evaluator=SimpleNamespace(mesh=before_mesh),
+        parameters=SimpleNamespace(
+            boundary_conditions=MagicMock(),
+            energy=SimpleNamespace(tidal_array=np.zeros(79)),
+            radionuclides=[],
+            mesh=SimpleNamespace(core_density=10800.0),
+        ),
+    )
+    installed = {}
+    solver.set_jax_cvode_factory = lambda f: installed.update(factory=f)
+    interior_o = SimpleNamespace(aragog_solver=solver, _spider_eos_dir='/nonexistent')
+
+    with (
+        patch('aragog.jax.phase.MeshArrays') as mesh_arrays,
+        patch('aragog.jax.phase.PhaseParams'),
+        patch('aragog.jax.solver.BoundaryParams'),
+        patch(
+            'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
+            return_value=('rhs', 'jac', {}),
+        ),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos_jax'),
+    ):
+        AragogRunner._maybe_install_jax_cvode_factory(_jax_factory_config(), interior_o)
+        factory = installed.get('factory')
+        assert factory is not None, 'the factory was not installed'
+
+        # Installing must not read the mesh: reading it there is what froze the
+        # geometry, and a copy taken at install time is the defect itself.
+        assert mesh_arrays.from_numpy_mesh.call_count == 0
+
+        factory(MagicMock(), 'energy_balance')
+        assert mesh_arrays.from_numpy_mesh.call_count == 1
+
+        # A structure change replaces the mesh between solves.
+        solver.evaluator.mesh = after_mesh
+        factory(MagicMock(), 'energy_balance')
+        assert mesh_arrays.from_numpy_mesh.call_count == 2
+
+    meshes = [c.args[0] for c in mesh_arrays.from_numpy_mesh.call_args_list]
+    assert meshes == [before_mesh, after_mesh]
+
+
+@pytest.mark.unit
+def test_an_interior_that_moves_under_fixed_radii_is_still_followed(monkeypatch):
+    """A structure change that leaves both bounding radii untouched is followed.
+
+    With mass coordinates the mesh pins its first and last node to the core and
+    surface radii and solves every interior node from the density profile, so a
+    Zalmoxis re-solve can redistribute the whole interior, and with it pressure,
+    gravity, area and volume, while both bounding radii and the cell count stay
+    bit-identical. Comparing geometry by those three numbers reports nothing has
+    changed and leaves the right-hand side on the previous structure.
+
+    Verifies:
+    - The second solve is handed the moved mesh even though cell count and both
+      bounding radii are unchanged, which is what a fingerprint on those three
+      would miss.
+    - The interior really does differ, so the case is not vacuous.
+    """
+    pytest.importorskip('jax')
+    pytest.importorskip('aragog.jax.phase')
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    monkeypatch.delenv('PROTEUS_CI_NIGHTLY', raising=False)
+
+    n = 8
+    r_cmb, r_surf = 2.86e6, 5.84e6
+    # Same endpoints and same count; only the interior node placement differs,
+    # as a denser mantle would produce after a re-solve.
+    before = SimpleNamespace(radii=np.linspace(r_cmb, r_surf, n))
+    moved = np.linspace(r_cmb, r_surf, n) ** 1.02
+    moved *= (r_surf - r_cmb) / (moved[-1] - moved[0])
+    moved += r_cmb - moved[0]
+    after = SimpleNamespace(radii=moved)
+
+    assert after.radii[0] == pytest.approx(before.radii[0], rel=1e-15)
+    assert after.radii[-1] == pytest.approx(before.radii[-1], rel=1e-15)
+    assert len(after.radii) == len(before.radii)
+    # The interior genuinely moved, well beyond any tolerance a check could use.
+    assert np.max(np.abs(after.radii[1:-1] - before.radii[1:-1])) > 1.0e3
+
+    solver = SimpleNamespace(
+        _n_stag=n,
+        _r_basic_flat=before.radii,
+        _core_bc='energy_balance',
+        evaluator=SimpleNamespace(mesh=before),
+        parameters=SimpleNamespace(
+            boundary_conditions=MagicMock(),
+            energy=SimpleNamespace(tidal_array=np.zeros(n)),
+            radionuclides=[],
+            mesh=SimpleNamespace(core_density=10800.0),
+        ),
+    )
+    installed = {}
+    solver.set_jax_cvode_factory = lambda f: installed.update(factory=f)
+    interior_o = SimpleNamespace(aragog_solver=solver, _spider_eos_dir='/nonexistent')
+
+    with (
+        patch('aragog.jax.phase.MeshArrays') as mesh_arrays,
+        patch('aragog.jax.phase.PhaseParams'),
+        patch('aragog.jax.solver.BoundaryParams'),
+        patch(
+            'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
+            return_value=('rhs', 'jac', {}),
+        ),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos_jax'),
+    ):
+        AragogRunner._maybe_install_jax_cvode_factory(_jax_factory_config(), interior_o)
+        factory = installed['factory']
+
+        factory(MagicMock(), 'energy_balance')
+        solver.evaluator.mesh = after
+        factory(MagicMock(), 'energy_balance')
+
+    seen = [c.args[0] for c in mesh_arrays.from_numpy_mesh.call_args_list]
+    assert seen == [before, after]
+    np.testing.assert_allclose(seen[1].radii, moved)
+
+
+@pytest.mark.unit
+def test_the_solver_is_pointed_at_the_current_tables_before_each_solve(tmp_path):
+    """The energy diagnostic integrates the tables the step actually runs on.
+
+    The solver keeps the table object it was built with, and `_step_heat_content`
+    integrates that object to produce the state side of the energy budget. The
+    tables are rewritten with a higher pressure ceiling whenever the planet
+    grows, so a solver left on the startup tables misreports the budget on
+    exactly the runs that outgrow them.
+
+    Verifies:
+    - The solver is repointed when the tables have been rewritten.
+    - A const-properties run, which has no tables at all, is left alone rather
+      than being handed one.
+    - A missing table directory is a no-op, not a crash mid-run.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    d = tmp_path / 'spider_eos'
+    d.mkdir()
+    (d / '.cache_info.txt').write_text('P_max=2.750000e+11_nP=1350_nS=280')
+    (d / 'density_melt.dat').write_bytes(b'x' * 512)
+
+    startup = object()
+    solver = SimpleNamespace(entropy_eos=startup)
+    interior_o = SimpleNamespace(aragog_solver=solver, _spider_eos_dir=str(d))
+    config = MagicMock()
+    config.interior_energetics.const_properties = False
+
+    loaded = object()
+    with patch(
+        'proteus.interior_energetics.aragog._cached_entropy_eos', return_value=loaded
+    ) as loader:
+        AragogRunner._refresh_entropy_eos(config, interior_o)
+        assert loader.call_count == 1
+        assert loader.call_args.args[0] == str(d)
+    assert solver.entropy_eos is loaded
+    assert solver.entropy_eos is not startup
+
+    # const_properties carries no tables, so nothing may be attached.
+    const_cfg = MagicMock()
+    const_cfg.interior_energetics.const_properties = True
+    solver.entropy_eos = None
+    with patch('proteus.interior_energetics.aragog._cached_entropy_eos') as loader:
+        AragogRunner._refresh_entropy_eos(const_cfg, interior_o)
+        assert loader.call_count == 0
+    assert solver.entropy_eos is None
+
+    # A directory that is not there is a no-op: the run keeps whatever it had.
+    solver.entropy_eos = startup
+    gone = SimpleNamespace(aragog_solver=solver, _spider_eos_dir=str(tmp_path / 'absent'))
+    with patch('proteus.interior_energetics.aragog._cached_entropy_eos') as loader:
+        AragogRunner._refresh_entropy_eos(config, gone)
+        assert loader.call_count == 0
+    assert solver.entropy_eos is startup
+
+
+@pytest.mark.unit
+def test_regenerated_eos_tables_are_seen_even_at_identical_file_sizes(tmp_path):
+    """Tables rewritten to a higher pressure ceiling are treated as new tables.
+
+    A giant impact grows the planet, and the P-S tables are rewritten with a
+    ceiling scaled to the new mass on the same entropy and pressure grid. Every
+    file therefore keeps its length, so a key made of file sizes reports the
+    tables unchanged and the solver keeps evaluating the deepest cells against a
+    table built for the smaller planet, clamping at its edge.
+
+    Verifies:
+    - The key changes when only the recorded ceiling changes, with byte counts
+      held equal, which is what the size-based key could not see.
+    - It still changes for a genuine size change, so the marker has not simply
+      replaced one blind spot with another.
+    - A directory with no marker still yields a usable key rather than raising.
+    """
+    from proteus.interior_energetics.aragog import _eos_content_key
+
+    def write(ceiling, pad=0):
+        d = tmp_path / f'eos_{ceiling}_{pad}'
+        d.mkdir()
+        (d / '.cache_info.txt').write_text(
+            f'P_max={ceiling:.6e}_nP=1350_nS=280_mzf=0.8_layout=2phase_eos=PALEOS-2phase'
+        )
+        # Same grid shape means the same byte count, which is the whole trap.
+        (d / 'density_melt.dat').write_bytes(b'x' * (4096 + pad))
+        return d
+
+    before = write(2.750e11)  # 0.5 M_earth embryo
+    after = write(8.750e11)  # the same planet after growing to 4.5 M_earth
+
+    sizes = {p.name: p.stat().st_size for p in before.iterdir() if p.name != '.cache_info.txt'}
+    after_sizes = {
+        p.name: p.stat().st_size for p in after.iterdir() if p.name != '.cache_info.txt'
+    }
+    assert sizes == after_sizes, 'the table files must match in size for this to bite'
+
+    k_before = _eos_content_key(str(before))
+    k_after = _eos_content_key(str(after))
+    assert k_before != k_after
+    # The ceiling is what moved, so it must be what the key carries.
+    assert '2.750000e+11' in k_before
+    assert '8.750000e+11' in k_after
+
+    # The marker fully describes the tables, so identical markers are the same
+    # tables however the bytes fall. This is deliberate, not a second blind spot.
+    grown = write(2.750e11, pad=512)
+    assert _eos_content_key(str(grown)) == k_before
+
+    # Without a marker the fallback is the file listing, and it still separates
+    # two directories that differ only in size.
+    bare = tmp_path / 'bare'
+    bare.mkdir()
+    (bare / 'density_melt.dat').write_bytes(b'y' * 2048)
+    bigger = tmp_path / 'bigger'
+    bigger.mkdir()
+    (bigger / 'density_melt.dat').write_bytes(b'y' * 4096)
+    bare_key = _eos_content_key(str(bare))
+    assert 'density_melt.dat' in bare_key
+    assert bare_key != _eos_content_key(str(bigger))
+
+    # A missing directory yields the path itself rather than raising.
+    assert _eos_content_key(str(tmp_path / 'missing')) == str(tmp_path / 'missing')
+
+
+@pytest.mark.unit
+def test_a_failed_factory_install_leaves_no_factory_behind(monkeypatch):
+    """A failed install must not leave a previous factory in charge.
+
+    A first install has nothing to leave behind, so reporting a fallback to the
+    finite-difference Jacobian is accurate. A later one does: the solver still
+    carries the factory from the earlier install, and keeping it would run the
+    option Z path while the log reports a fallback that did not happen.
+
+    Verifies:
+    - The factory is cleared, so the solve-time gate (factory is not None)
+      turns the path off rather than leaving the stale one installed.
+    """
+    pytest.importorskip('jax')
+    pytest.importorskip('aragog.jax.phase')
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    # Nightly escalates every fallback to a hard failure; this test is about the
+    # non-strict path that a production run actually takes.
+    monkeypatch.delenv('PROTEUS_CI_NIGHTLY', raising=False)
+
+    stale_factory = object()
+    solver = SimpleNamespace(
+        _n_stag=79,
+        _r_basic_flat=np.linspace(2.86e6, 5.84e6, 80),
+        _jax_cvode_factory=stale_factory,
+    )
+    solver.set_jax_cvode_factory = lambda f: setattr(solver, '_jax_cvode_factory', f)
+
+    config = MagicMock()
+    config.interior_energetics.aragog.backend = 'jax'
+    # interior_o carries no _spider_eos_dir, so the EOS lookup raises part-way
+    # through the install: the failure a live solver has to survive.
+    interior_o = SimpleNamespace(aragog_solver=solver)
+
+    AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
+
+    assert solver._jax_cvode_factory is not stale_factory
+    assert solver._jax_cvode_factory is None

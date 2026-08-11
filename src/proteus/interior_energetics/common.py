@@ -615,6 +615,12 @@ class Interior_t:
         # solver anomaly. Consumed and cleared on that one step.
         self.impact_reset = False
 
+        # ``impact_reset`` as read at the top of this step, kept readable for
+        # the whole step because the flag itself is cleared before the interior
+        # solver runs. The solvers' jump guards read this to tell an impact's
+        # deliberate temperature step from a corrupted solve.
+        self.impact_reset_this_step = False
+
         # True when the most recent call to next_step() had its step size
         # clamped. For example, by `_estimate_bolscale()`.
         self.timestep_clamped = False
