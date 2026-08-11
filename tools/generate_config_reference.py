@@ -25,6 +25,7 @@ import argparse
 import re
 import sys
 import tomllib
+from itertools import groupby
 
 import _config_schema
 import _docgen
@@ -91,13 +92,35 @@ def _describe(field: dict) -> str:
     return _docgen.escape_link_brackets(' '.join(parts), escape_pipes=True)
 
 
-def _section_table(fields: list[dict]) -> str:
+def _table_rows(fields: list[dict]) -> list[str]:
     rows = ['| Parameter | Type | Default | Description |', '|---|---|---|---|']
     for f in fields:
         name = f['path'].rsplit('.', 1)[-1]
         default = f['default'] if f['default'] == 'required' else f'`{f["default"]}`'
         rows.append(f'| `{name}` | {f["type"]} | {default} | {_describe(f)} |')
-    return GENERATED_NOTE + '\n' + '\n'.join(rows)
+    return rows
+
+
+def _section_table(fields: list[dict]) -> str:
+    """Render a section as one table, or as one table per thematic group.
+
+    Grouping comes from the schema, so the order of the groups and of the
+    options inside them is whatever the config module declares. A section
+    whose class declares no grouping renders exactly as before.
+    """
+    ordered = sorted(
+        fields, key=lambda f: (f.get('group_order', 0), f.get('group_position', 0))
+    )
+    blocks: list[str] = []
+    for _, chunk in groupby(ordered, key=lambda f: f.get('group_order', 0)):
+        chunk = list(chunk)
+        heading = chunk[0].get('group')
+        if heading:
+            qualifier = chunk[0].get('group_qualifier')
+            suffix = f' ({qualifier})' if qualifier else ''
+            blocks.append(f'**{heading}**{suffix}')
+        blocks.append('\n'.join(_table_rows(chunk)))
+    return GENERATED_NOTE + '\n' + '\n\n'.join(blocks)
 
 
 def _constraints_block(constraints: list[dict]) -> str:

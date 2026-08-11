@@ -417,3 +417,99 @@ class AtmosClim:
                 return 2
             case _:
                 raise ValueError(f"Invalid surf_state for AGNI: '{self.surf_state}'")
+
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and it is deliberately independent of the order the fields are
+# declared in above, which follows the code rather than the reader.
+#
+# Every option of a listed class must appear exactly once across its groups.
+# ``tools/_config_schema.py`` fails the build otherwise, so an option added
+# here cannot quietly go missing from the documentation.
+DOC_GROUPS = {
+    'AtmosClim': (
+        (
+            None,
+            None,
+            (
+                'module',
+                'spectral_group',
+                'spectral_bands',
+                'num_levels',
+                'p_top',
+                'p_obs',
+                'overlap_method',
+            ),
+        ),
+        (
+            'Radiative properties',
+            None,
+            (
+                'rayleigh',
+                'cloud_enabled',
+                'cloud_alpha',
+                'aerosols_enabled',
+                'albedo_pl',
+                'surf_greyalbedo',
+            ),
+        ),
+        ('Surface boundary condition', None, ('surf_state', 'surface_d', 'surface_k')),
+        ('Solver limits', None, ('tmp_minimum',)),
+    ),
+    'Agni': (
+        (
+            'Physics',
+            None,
+            (
+                'solve_energy',
+                'convection',
+                'conduction',
+                'sens_heat',
+                'rainout',
+                'oceans',
+                'latent_heat',
+                'real_gas',
+                'thermo_functions',
+                'chemistry',
+                'mlt_criterion',
+            ),
+        ),
+        ('Surface properties', None, ('surf_material', 'surf_roughness', 'surf_windspeed')),
+        ('Condensation', None, ('phs_timescale', 'evap_efficiency')),
+        (
+            'Solver tuning',
+            None,
+            (
+                'solution_atol',
+                'solution_rtol',
+                'psurf_thresh',
+                'dx_max',
+                'dx_max_ini',
+                'max_steps',
+                'perturb_all',
+                'ini_profile',
+                'ls_default',
+                'fdo',
+                'verbosity',
+            ),
+        ),
+        (
+            'Spectral and gas allocation',
+            None,
+            ('spectral_file', 'grey_opacity_lw', 'grey_opacity_sw', 'check_safe_gas'),
+        ),
+        (
+            'FastChem equilibrium chemistry',
+            'used when `chemistry = "eq"`',
+            (
+                'fastchem_floor',
+                'fastchem_maxiter_chem',
+                'fastchem_maxiter_solv',
+                'fastchem_xtol_chem',
+                'fastchem_xtol_elem',
+            ),
+        ),
+    ),
+}

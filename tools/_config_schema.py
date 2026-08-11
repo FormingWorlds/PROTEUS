@@ -326,6 +326,52 @@ def _default_repr(field) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _doc_groups_for(cls) -> tuple | None:
+    """Thematic grouping declared for ``cls``, or None when it has none.
+
+    Read from the ``DOC_GROUPS`` mapping in the class's own module, so the
+    grouping travels with the schema rather than with the rendered page.
+    """
+    import sys
+
+    module = sys.modules.get(cls.__module__)
+    groups = getattr(module, 'DOC_GROUPS', None) if module else None
+    return groups.get(cls.__name__) if groups else None
+
+
+def _group_lookup(
+    cls, field_names: list[str]
+) -> dict[str, tuple[int, int, str | None, str | None]]:
+    """Map each option of ``cls`` to ``(order, position, heading, qualifier)``.
+
+    An empty mapping means the class declares no grouping and renders as one
+    table. Where a grouping IS declared it must account for every option
+    exactly once: a missing or unknown name is a build failure, never a silent
+    drop into an unlabelled bucket. ``position`` carries the order inside the
+    group, which is the reading order and not the order the fields happen to
+    be declared in.
+    """
+    groups = _doc_groups_for(cls)
+    if not groups:
+        return {}
+
+    lookup: dict[str, tuple[int, int, str | None, str | None]] = {}
+    for order, (heading, qualifier, names) in enumerate(groups):
+        for position, name in enumerate(names):
+            if name in lookup:
+                raise SchemaError(f'{cls.__name__}.DOC_GROUPS lists "{name}" more than once')
+            lookup[name] = (order, position, heading, qualifier)
+
+    declared, actual = set(lookup), set(field_names)
+    for name in sorted(actual - declared):
+        raise SchemaError(
+            f'{cls.__name__}.{name} is in no DOC_GROUPS group; add it to one so it is documented'
+        )
+    for name in sorted(declared - actual):
+        raise SchemaError(f'{cls.__name__}.DOC_GROUPS names "{name}", which is not an option')
+    return lookup
+
+
 def build_schema() -> dict:
     """Walk the Config tree and return the full schema record.
 
@@ -350,6 +396,16 @@ def build_schema() -> dict:
             pass
         hints = _type_hints(cls)
         attr_docs = parse_attributes_block(cls.__doc__)
+
+        # Only the options this class renders itself. A field standing for a
+        # nested section becomes its own table and is grouped there, so the
+        # test mirrors the recursion below: recursed means not a leaf here.
+        def _is_leaf(f) -> bool:
+            nested = _nested_class(f, hints.get(f.name))
+            return nested is None or nested in seen
+
+        leaf_names = [f.name for f in attrs.fields(cls) if _is_leaf(f)]
+        groups = _group_lookup(cls, leaf_names)
         for field in attrs.fields(cls):
             path = f'{prefix}.{field.name}' if prefix else field.name
             nested = _nested_class(field, hints.get(field.name))
@@ -375,6 +431,10 @@ def build_schema() -> dict:
                     'bounds': bounds or None,
                     'description': description,
                     'doc_source': source,
+                    'group_order': groups.get(field.name, (0, 0, None, None))[0],
+                    'group_position': groups.get(field.name, (0, 0, None, None))[1],
+                    'group': groups.get(field.name, (0, 0, None, None))[2],
+                    'group_qualifier': groups.get(field.name, (0, 0, None, None))[3],
                 }
             )
 
