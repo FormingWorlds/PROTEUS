@@ -344,7 +344,6 @@ def get_spfile_path(fwl_dir: str, config: Config):
 
 def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:
     """Limit a level radius to the Hill radius, never below the solid body.
-
     Gas beyond the Hill radius is not bound to the planet, so an XUV radius
     outside it sizes the escape cross-section with material the planet does
     not hold, and the energy-limited rate grows as the cube of the excess.
