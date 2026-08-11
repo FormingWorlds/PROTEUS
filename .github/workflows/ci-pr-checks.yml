@@ -655,10 +655,11 @@ jobs:
         run: ruff format --check src/ tests/
 
   # --------------------------------------------------------------------
-  # Documentation link check.
+  # Documentation links and anchors. Reference-link validation is off, for
+  # the reason stated in mkdocs.yml.
   # --------------------------------------------------------------------
-  docs-links:
-    name: Documentation links
+  docs-link-targets:
+    name: Documentation links and anchors
     runs-on: ubuntu-latest
 
     steps:

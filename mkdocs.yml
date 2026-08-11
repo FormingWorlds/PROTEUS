@@ -230,10 +230,10 @@ plugins:
 
 use_directory_urls: false
 
-# The reference-link validator reads the raw source, before code spans, math
-# and mkdocstrings option blocks resolve, so bracketed text inside any of them
-# is mistaken for a reference link with no definition. Links to missing pages
-# and missing anchors stay enforced.
+# Reference-link validation is off. It reads the raw source, before code
+# spans, math and mkdocstrings option blocks resolve, so bracketed text inside
+# any of them is mistaken for a reference link with no definition. Links to
+# missing pages and missing anchors stay enforced.
 validation:
   unresolved_references: false
 
