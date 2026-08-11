@@ -55,7 +55,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 # that way: a second tier marker on any function combines with the module mark
 # above, and the unit and slow filters exclude each other (`unit and not slow`
 # against `slow and not unit`), so a test carrying both runs in neither. The
-# cross-product can exceed the 30 s budget under coverage, so it sets its own.
+# cross-product runs far longer than its neighbours, so it sets its own budget.
 
 # ---------------------------------------------------------------------------
 # Schema enum inventory: kept here so a schema change that adds a backend
@@ -892,10 +892,11 @@ def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
     - We only enumerate combos with backends in the hard-dep set; the
       check_module_dependencies positive/negative logic (atmodeller, boreas
       missing) is covered by the explicit tests above.
-    - Cattrs plus file IO costs roughly 1.6 ms per combo, so the sweep takes
-      around 9 s locally and several times that under coverage on a slow
-      runner. The test therefore carries its own 120 s timeout in place of
-      the file-level 30 s unit ceiling. It stays at unit tier because an
+    - One combo costs about 0.5 ms, so the sweep takes around 2.5 s here and
+      roughly twice that under coverage. The test carries its own 120 s
+      timeout in place of the file-level 30 s unit ceiling, which keeps a
+      runner several times slower than this one from failing it on elapsed
+      time rather than on a schema fault. It stays at unit tier because an
       exhaustive validator sweep is worth those seconds on every pull request.
     """
     import itertools

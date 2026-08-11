@@ -6,11 +6,15 @@ being silently discarded by the cattrs-based config parser.
 
 from __future__ import annotations
 
+import typing
+
 import attrs
 import pytest
 
+import proteus.config.orphans as orphans_module
 from proteus.config.orphans import (
     _extract_attrs_class,
+    _type_hints_for,
     find_key_problems,
     format_orphan_message,
 )
@@ -910,3 +914,69 @@ def test_omitted_phase_boundary_margin_resolves_to_default(tmp_path):
     # Exact 200.0 default, not the 0.0 sentinel the step caps use: an omitted
     # band must not silently disable the near-boundary max_step tightening.
     assert resolved == pytest.approx(200.0)
+
+
+# ---------------------------------------------------------------------------
+# Type-hint resolution
+# ---------------------------------------------------------------------------
+
+
+def test_type_hints_for_returns_one_shared_mapping_per_class():
+    """Repeated hint lookups on one class resolve once and share the result.
+
+    The walk asks for the hints of every nested class on every config load, so
+    a fresh resolution each time is pure repeated work. Equality cannot tell a
+    reused mapping from a rebuilt one, so identity is what is asserted.
+    """
+    first = _type_hints_for(_Leaf)
+    second = _type_hints_for(_Leaf)
+    assert first is second  # a rebuild would give an equal but distinct dict
+    assert first == typing.get_type_hints(_Leaf)  # and it is the true mapping
+    assert first['value'] is int
+
+    # Two classes must not share one entry, so a second class resolves apart.
+    holder = _type_hints_for(_Holder)
+    assert holder is not first
+    assert set(holder) == {'many', 'one'}
+
+
+def test_type_hints_for_does_not_cache_a_failed_resolution():
+    """A class whose annotations cannot be resolved raises on every lookup.
+
+    Storing the failure would let a later lookup return whatever placeholder
+    was kept, and the walk would then stop reporting a schema it cannot read.
+    """
+    before = _type_hints_for.cache_info()
+    with pytest.raises(NameError):
+        _type_hints_for(_Unresolvable)
+    with pytest.raises(NameError):
+        _type_hints_for(_Unresolvable)
+    after = _type_hints_for.cache_info()
+
+    # A stored failure would add an entry and make the second call a hit.
+    assert after.currsize == before.currsize
+    assert after.hits == before.hits
+
+
+def test_find_key_problems_verdicts_survive_the_hint_cache(monkeypatch):
+    """Orphan detection over the real schema does not change when hints cache.
+
+    A mapping that went stale or answered for the wrong class would show up as
+    a key accepted or refused differently, so the cached walk is compared
+    against one driven by uncached resolution over the same data.
+    """
+    from copy import deepcopy
+
+    data = deepcopy(_MINIMAL_VALID)
+    data['planet']['not_a_planet_field'] = 1
+    data['star']['also_wrong'] = 2
+
+    cached = find_key_problems(data)
+    monkeypatch.setattr(orphans_module, '_type_hints_for', typing.get_type_hints)
+    uncached = find_key_problems(data)
+
+    assert cached == uncached
+    # Both paths agreeing on an empty result would pass the line above while
+    # detecting nothing, so the planted keys are named explicitly.
+    assert sorted(cached[0]) == ['planet.not_a_planet_field', 'star.also_wrong']
+    assert cached[1] == []
