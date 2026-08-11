@@ -94,8 +94,10 @@ class Orbit:
 
     satellite: bool
         Model a satellite (moon) orbiting the planet and solve for its orbit?
+    mass_sat: float
+        Satellite mass [kg]; the default is the lunar mass.
     semimajoraxis_sat: float
-        Satellit initial semi-major axis  [m]
+        Satellite initial semi-major axis [m]
 
     module: str | None
         Select orbit module to use. Choices: 'none', 'dummy', 'lovepy'.

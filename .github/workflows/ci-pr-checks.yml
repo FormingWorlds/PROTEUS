@@ -649,10 +649,10 @@ jobs:
         run: pip install ruff
 
       - name: Run ruff check
-        run: ruff check src/ tests/
+        run: ruff check src/ tests/ tools/
 
       - name: Run ruff format check
-        run: ruff format --check src/ tests/
+        run: ruff format --check src/ tests/ tools/
 
   # --------------------------------------------------------------------
   # Editable submodule install verification.
@@ -709,13 +709,54 @@ jobs:
           PY
 
   # --------------------------------------------------------------------
+  # Generated reference docs freshness
+  # --------------------------------------------------------------------
+  docs-freshness:
+    name: Reference docs freshness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install generator dependencies
+        # The generators import proteus.config through a stub parent package,
+        # so only the introspection dependencies are needed, not the full
+        # runtime tree. If proteus.config grows a new import, the check exits
+        # 2 naming the module; add it to this line.
+        run: pip install attrs cattrs tomlkit numpy
+
+      - name: Config reference tables current (incl. all_options.toml key check)
+        run: python tools/generate_config_reference.py --check
+
+      - name: Module map current
+        run: python tools/generate_module_map.py --check
+
+      - name: Helpfile column reference current
+        run: python tools/generate_output_reference.py --check
+
+      - name: Version badge tables current
+        run: python tools/generate_version_badges.py --check
+
+      - name: Nav targets exist and markers balanced
+        run: python tools/_docgen.py --sanity
+
+      - name: Confirm the checks made no writes
+        run: git diff --exit-code
+
+  # --------------------------------------------------------------------
   # PR summary aggregator
   # --------------------------------------------------------------------
   summary:
     name: PR Summary
     runs-on: ubuntu-latest
     if: always()
-    needs: [unit-tests, macos-unit-tests, lint, editable-install-check]
+    needs: [unit-tests, macos-unit-tests, lint, editable-install-check, docs-freshness]
 
     steps:
       - name: Write combined summary
@@ -725,6 +766,7 @@ jobs:
           MACOS_UNIT: ${{ needs.macos-unit-tests.outputs.unit-outcome }}
           MACOS_JOB_RESULT: ${{ needs.macos-unit-tests.result }}
           LINT: ${{ needs.lint.result }}
+          DOCS_FRESH: ${{ needs.docs-freshness.result }}
           COV_STATUS: ${{ needs.unit-tests.outputs.coverage-status }}
           COV_DROP: ${{ needs.unit-tests.outputs.coverage-drop }}
           EST_TOTAL: ${{ needs.unit-tests.outputs.estimated-total }}
@@ -782,6 +824,7 @@ jobs:
           macos_unit = os.environ.get("MACOS_UNIT", "")
           macos_job_result = os.environ.get("MACOS_JOB_RESULT", "")
           lint = os.environ.get("LINT", "")
+          docs_fresh = os.environ.get("DOCS_FRESH", "")
 
           nightly_stale = os.environ.get("NIGHTLY_STALE", "false") == "true"
           nightly_missing = os.environ.get("NIGHTLY_MISSING", "false") == "true"
@@ -842,7 +885,8 @@ jobs:
                   f"{_result_cell(macos_passed, macos_failed, macos_skipped, macos_errors, macos_count)} | "
                   f"{macos_wall:.1f} s |\n"
               )
-              f.write(f"| (any) | Lint (ruff) | {icon(lint)} | n/a | n/a |\n\n")
+              f.write(f"| (any) | Lint (ruff) | {icon(lint)} | n/a | n/a |\n")
+              f.write(f"| (any) | Reference docs | {icon(docs_fresh)} | n/a | n/a |\n\n")
 
               # ---- Marker coverage stats ----
               f.write("## Marker Coverage (whole tests/ tree)\n\n")
@@ -897,12 +941,20 @@ jobs:
               macos_non_test_fail = macos_job_result == "failure" and macos_unit != "failure"
               cov_fail = cov_status == "fail"
 
-              if any_test_fail or lint == "failure" or linux_non_test_fail or macos_non_test_fail or cov_fail or nightly_stale:
+              docs_fail = docs_fresh == "failure"
+
+              if any_test_fail or lint == "failure" or linux_non_test_fail or macos_non_test_fail or cov_fail or nightly_stale or docs_fail:
                   f.write("\n---\n## PR did not pass checks\n\n")
                   if any_test_fail:
                       f.write("Unit tests failed. See logs above.\n\n")
                   if lint == "failure":
-                      f.write("Lint (ruff) failed. Run `ruff check --fix src/ tests/ && ruff format src/ tests/`.\n\n")
+                      f.write("Lint (ruff) failed. Run `ruff check --fix src/ tests/ tools/ && ruff format src/ tests/ tools/`.\n\n")
+                  if docs_fail:
+                      f.write("Generated reference docs are stale. Regenerate with:\n\n")
+                      f.write("```\npython tools/generate_config_reference.py\n")
+                      f.write("python tools/generate_module_map.py\n")
+                      f.write("python tools/generate_output_reference.py\n")
+                      f.write("python tools/generate_version_badges.py\n```\n\n")
                   if linux_non_test_fail:
                       f.write("Linux job failed on non-test step.\n\n")
                   if cov_fail:
@@ -916,7 +968,8 @@ jobs:
           needs.unit-tests.result == 'failure' ||
           needs.macos-unit-tests.result == 'failure' ||
           needs.lint.result == 'failure' ||
-          needs.editable-install-check.result == 'failure'
+          needs.editable-install-check.result == 'failure' ||
+          needs.docs-freshness.result == 'failure'
         run: |
           echo "One or more required checks failed. See summary above."
           exit 1

@@ -475,7 +475,7 @@ def print_citation(config: Config):
             pass
 
     # Escape module
-    match config.outgas.module:
+    match config.escape.module:
         case 'zephyrus':
             # _cite("Postolec et al. (2025)", "in prep")
             pass
@@ -961,11 +961,11 @@ def GetHelpfileKeys():
         'O_res',                 # O mass-balance residual [kg]
         'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
 
-        # Desiccation escape-balance gate for `outgas.wrapper.check_desiccation`.
+        # Desiccation escape balance. Read by `check_desiccation`.
         # M_vol_initial is the summed *_kg_total (oxygen included) captured on
         # the first escape call; esc_kg_cumulative is the mass each step took
         # out of those inventories, never more than it was allowed to remove.
-        # Both persist to the CSV so resume preserves the gate's state.
+        # Both persist to the CSV so a resume keeps the check's state.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
         'esc_kg_cumulative', # cumulative escaped mass [kg]
 

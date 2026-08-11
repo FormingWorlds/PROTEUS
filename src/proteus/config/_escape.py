@@ -7,6 +7,7 @@ from ._converters import none_if_none, zero_if_none
 
 
 def valid_zephyrus(instance, attribute, value):
+    """Validate ZEPHYRUS settings: Pxuv within (0, 10] bar and efficiency within [0, 1]."""
     if instance.module != 'zephyrus':
         return
 
@@ -39,6 +40,7 @@ class Zephyrus:
 
 
 def valid_escapedummy(instance, attribute, value):
+    """Dummy escape requires a non-negative escape rate."""
     if instance.module != 'dummy':
         return
 
@@ -61,6 +63,7 @@ class EscapeDummy:
 
 
 def valid_escapeboreas(instance, attribute, value):
+    """Hook for BOREAS cross-field checks; no active constraints at present."""
     if instance.module != 'boreas':
         return
 
@@ -132,6 +135,7 @@ class EscapeBoreas:
 
 
 def valid_reservoir(instance, attribute, value):
+    """Escape reservoir must be one of 'bulk', 'outgas', or 'pxuv'."""
     ress = ('bulk', 'outgas', 'pxuv')
     if instance.reservoir not in ress:
         raise ValueError(f'Escape reservoir must be one of: {ress}')

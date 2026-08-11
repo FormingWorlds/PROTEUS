@@ -90,9 +90,9 @@ better fits, while smaller values (including negative ones) are worse fits.
 
 The optimization will run until `n_steps` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
 
-### Acqusition functions
+### Acquisition functions
 
-The `acqusition function' is an analytical function that is aware of the current state of the optimisation.
+The acquisition function is an analytical function that is aware of the current state of the optimisation.
 It is used to evaluate the *potential* value of sampling a candidate particular point in the parameter space, to 
 help determine where the optimisation should next run PROTEUS. It helps balance the trade-off between exploring new areas and exploiting known good areas to optimize a black-box function efficiently.
 
