@@ -8,7 +8,7 @@ name = "fwl-proteus"
 dynamic = ["version"]
 description = "Coupled atmosphere-interior framework to simulate the temporal evolution of rocky planets"
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.12,<3.13"
 authors = [
     {name="Tim Lichtenberg",         email="tim.lichtenberg@rug.nl"},
     {name="Harrison Nicholls",       email="contact@h-nicholls.space"},
@@ -38,9 +38,7 @@ classifiers = [
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [

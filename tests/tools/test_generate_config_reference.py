@@ -373,6 +373,14 @@ def test_group_lookup_rejects_an_option_named_twice(monkeypatch):
     with pytest.raises(_cs.SchemaError, match='"beta" more than once'):
         _cs._group_lookup(_GroupedSection, _FIELDS)
 
+    # Discrimination: the same class with beta listed once is accepted, so the
+    # refusal above is about the repeat and not about this grouping shape.
+    _with_groups(
+        monkeypatch,
+        (('First', None, ('alpha',)), ('Second', None, ('beta', 'gamma'))),
+    )
+    assert set(_cs._group_lookup(_GroupedSection, _FIELDS)) == set(_FIELDS)
+
 
 def test_group_lookup_rejects_an_option_left_out_of_every_group(monkeypatch):
     """An option in no group fails the build rather than vanishing quietly.
@@ -384,6 +392,11 @@ def test_group_lookup_rejects_an_option_left_out_of_every_group(monkeypatch):
     with pytest.raises(_cs.SchemaError, match='gamma is in no DOC_GROUPS group'):
         _cs._group_lookup(_GroupedSection, _FIELDS)
 
+    # Discrimination: adding the missing option is enough to make it pass, so
+    # the refusal names the real omission rather than rejecting the shape.
+    _with_groups(monkeypatch, (('Only', None, ('alpha', 'beta', 'gamma')),))
+    assert set(_cs._group_lookup(_GroupedSection, _FIELDS)) == set(_FIELDS)
+
 
 def test_group_lookup_rejects_a_group_naming_something_that_is_not_an_option(monkeypatch):
     """A group naming a field the section does not have is refused.
@@ -394,6 +407,11 @@ def test_group_lookup_rejects_a_group_naming_something_that_is_not_an_option(mon
     _with_groups(monkeypatch, (('Only', None, ('alpha', 'beta', 'gamma', 'delta')),))
     with pytest.raises(_cs.SchemaError, match='"delta", which is not an option'):
         _cs._group_lookup(_GroupedSection, _FIELDS)
+
+    # Discrimination: dropping the name that does not exist is enough, so the
+    # refusal is about delta and not about the group carrying four names.
+    _with_groups(monkeypatch, (('Only', None, ('alpha', 'beta', 'gamma')),))
+    assert set(_cs._group_lookup(_GroupedSection, _FIELDS)) == set(_FIELDS)
 
 
 def test_group_lookup_returns_nothing_when_no_grouping_is_declared(monkeypatch):

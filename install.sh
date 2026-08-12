@@ -435,7 +435,7 @@ fi
 cd "$SCRIPT_DIR"
 
 # Derive the Python target from pyproject.toml's requires-python ceiling
-# (e.g. ">=3.11,<3.13" targets 3.12), so the installer and the package
+# (e.g. ">=3.12,<3.13" targets 3.12), so the installer and the package
 # metadata cannot drift apart. The fallback above applies when the
 # ceiling cannot be parsed.
 python_ceiling=$(grep -m1 'requires-python' pyproject.toml \
