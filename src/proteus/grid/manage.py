@@ -29,14 +29,21 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 # Thread target
-def _thread_target(cfg_path, test, wait):
+def _thread_target(cfg_path, test, wait, retcode_path=None):
     if test:
         command = ['/bin/echo', 'Dummy output. Config file is at "' + cfg_path + '"']
     else:
         command = ['proteus', 'start', '--offline', '--config', cfg_path]
-    subprocess.run(
+    result = subprocess.run(
         command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
     )
+    # Record the subprocess exit code so the grid manager can diagnose failures
+    if retcode_path is not None:
+        try:
+            with open(retcode_path, 'w') as fh:
+                fh.write(str(result.returncode) + '\n')
+        except OSError:
+            pass
     time.sleep(wait)  # wait a bit, in case the process exited immediately
 
 
@@ -373,10 +380,12 @@ class Grid:
             if not cfgexists:
                 raise Exception('Config file could not be found for case %d!' % i)
 
-            # Add process
+            # Add process — pass a sidecar path so the subprocess exit code is preserved
+            retcode_path = os.path.join(self.cfgdir, (self.CONFIG_BASENAME % i) + '.retcode')
             threads.append(
                 multiprocessing.Process(
-                    target=_thread_target, args=(cfg_path, test_run, check_interval * 3)
+                    target=_thread_target,
+                    args=(cfg_path, test_run, check_interval * 3, retcode_path),
                 )
             )
 
@@ -453,13 +462,45 @@ class Grid:
             step += 1
             # / end while loop
 
-        # Check all cases' status files
+        # Check all cases' status files — collect failures rather than stopping at the first one
         if not test_run:
+            failed_cases = []
             for i in range(self.size):
-                # find file
-                status_path = os.path.join(self.outdir, self.CONFIG_BASENAME % i, 'status')
+                case_dir = os.path.join(self.outdir, self.CONFIG_BASENAME % i)
+                status_path = os.path.join(case_dir, 'status')
+
                 if not os.path.exists(status_path):
-                    raise Exception("Cannot find status file at '%s'" % status_path)
+                    # The subprocess did not write a status file — it likely crashed before
+                    # reaching the normal teardown path.  Try to recover the exit code that
+                    # _thread_target wrote to the sidecar .retcode file.
+                    retcode = None
+                    retcode_path = os.path.join(
+                        self.cfgdir, (self.CONFIG_BASENAME % i) + '.retcode'
+                    )
+                    if os.path.exists(retcode_path):
+                        try:
+                            with open(retcode_path, 'r') as fh:
+                                retcode = int(fh.read().strip())
+                        except (OSError, ValueError):
+                            pass
+
+                    if retcode is not None:
+                        log.error(
+                            'Case %06d (%s): no status file written; '
+                            'subprocess exited with code %d',
+                            i,
+                            case_dir,
+                            retcode,
+                        )
+                    else:
+                        log.error(
+                            'Case %06d (%s): no status file written '
+                            '(subprocess exit code unavailable)',
+                            i,
+                            case_dir,
+                        )
+                    failed_cases.append(i)
+                    continue
 
                 # read file
                 with open(status_path, 'r') as hdl:
@@ -475,6 +516,18 @@ class Grid:
                     with open(status_path, 'w') as hdl:
                         hdl.write('25\n')
                         hdl.write('Error (died)\n')
+
+            if failed_cases:
+                log.error(
+                    '%d / %d case(s) did not produce a status file: [%s]',
+                    len(failed_cases),
+                    self.size,
+                    ', '.join('%06d' % i for i in failed_cases),
+                )
+                raise RuntimeError(
+                    '%d case(s) failed without writing a status file; '
+                    'check the log above for per-case exit codes.' % len(failed_cases)
+                )
 
         time_end = datetime.now()
         log.info('All processes finished at: ' + str(time_end.strftime('%Y-%m-%d_%H:%M:%S')))
