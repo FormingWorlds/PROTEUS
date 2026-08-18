@@ -444,6 +444,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
 
     # print total pressure and mmw
     log.info('    total      = %-9.2f bar' % hf_row['P_surf'])
+    log.info('    total Pvol      = %-9.2f bar' % hf_row['P_vol'])
     log.info('    mmw        = %-9.5f g mol-1' % (hf_row['atm_kg_per_mol'] * 1e3))
 
 
@@ -569,7 +570,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
 
     # Do not set these to zero - avoid divide by zero elsewhere in the code
     excepted_keys = ['atm_kg_per_mol']
-    hf_row['M_vaps'] = 0.0 #nned to rezero vapour mass
+    hf_row['M_vaps'] = 0.0 # need to rezero vapour mass
     for g in gas_list:
         excepted_keys.append(f'{g}_vmr')
         if g not in vap_list:
@@ -651,6 +652,9 @@ def run_outgassing_and_vapourisation(
 
     # Volatile outgassing
     run_outgassing(dirs, config, hf_row)
+
+    #log.info('wrapper.py, Psurf:%.6e',hf_row['P_surf'])
+    #log.info('wrapper.py, Pvol:%.6e',hf_row['P_vol'])
 
     # Vapourisation of refractories
     if config.outgas.vapourise:
