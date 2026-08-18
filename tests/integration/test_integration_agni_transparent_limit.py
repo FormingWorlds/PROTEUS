@@ -222,10 +222,41 @@ def _sweep_transparent(runner, t_surf_grid=T_SURF_GRID):
             'flux_u_lw': np.array(atmos.flux_u_lw, copy=True),
             'tau_band': np.array(atmos.tau_band, copy=True),
             'nbands': int(atmos.nbands),
+            'pl': np.array(atmos.pl, copy=True),
+            'g': np.array(atmos.g, copy=True),
         }
         results.append((t_surf, output, state))
 
     return results
+
+
+def _lw_column_tau(state, kappa_lw: float) -> float:
+    """Column longwave optical depth to the surface, grey-gas scheme.
+
+    The grey-gas scheme has no spectral file, so there are no band
+    boundaries to cut at: `tau_band` stores the longwave and shortwave
+    optical depths already summed into one column
+    (`AGNI/src/energy/energy.jl`, `_radtrans_greygas!`). This mirrors that
+    routine's own per-layer accumulation, `d_tau_lw = d_p * kappa_lw / g`,
+    using the same cell-edge pressure and cell-centre gravity arrays, so it
+    isolates the longwave term the scheme actually integrates rather than
+    a value read back from the combined array.
+
+    Parameters
+    ----------
+        state : dict
+            One `_sweep_transparent` state entry; needs `pl` and `g`.
+        kappa_lw : float
+            Grey longwave opacity [m2 kg-1].
+
+    Returns
+    ----------
+        tau_lw : float
+            Column longwave optical depth from the top of the atmosphere
+            to the surface.
+    """
+    d_p = np.diff(state['pl'])
+    return float(np.sum(d_p * kappa_lw / state['g']))
 
 
 def _assert_blackbody_limit(results, *, rtol: float):
@@ -330,19 +361,21 @@ def test_transparent_greygas_olr_scales_with_surface_emissivity():
 
     Analytical limit: the isothermal-slab solution, which reduces to the
     grey-body flux as tau goes to zero and to the black-body flux as tau
-    grows.
+    grows. The slab is longwave, so the pin uses the column's longwave
+    optical depth alone; see `_lw_column_tau` for why `tau_band` cannot be
+    read directly under the grey-gas scheme.
     """
     albedo = 0.3
     with tempfile.TemporaryDirectory() as tmpdir:
         runner = _make_runner(tmpdir, spectral_file='greygas', surf_greyalbedo=albedo)
+        kappa_lw = runner.config.atmos_clim.agni.grey_opacity_lw
         results = _sweep_transparent(runner)
 
         for t_surf, output, state in results:
             blackbody = SIGMA_SB * t_surf**4
             greybody = (1.0 - albedo) * blackbody
 
-            # Column optical depth accumulated down to the surface
-            tau = float(state['tau_band'][-1, 0])
+            tau = _lw_column_tau(state, kappa_lw)
             expected = blackbody * (1.0 - albedo * np.exp(-tau))
 
             assert output['F_olr'] == pytest.approx(expected, rel=1.0e-4), (
@@ -365,6 +398,58 @@ def test_transparent_greygas_olr_scales_with_surface_emissivity():
             # Sign and ordering: emission leaves the planet, and the slab can
             # only add to the attenuated surface beam.
             assert greybody < output['F_olr'] < blackbody
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+@pytest.mark.skipif(
+    not RUN_NIGHTLY_SMOKE,
+    reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
+)
+def test_transparent_greygas_emissivity_pin_needs_longwave_only_tau():
+    """The emissivity pin discriminates a longwave-only tau from the combined column.
+
+    Physical scenario: the same isothermal grey surface as above, but with
+    the shortwave grey opacity raised to match the longwave value. Zero
+    instellation means no shortwave flux ever enters the column, so the
+    correct answer is unchanged from the default-opacity case: `F_olr`
+    still follows the longwave-only slab formula. Reading the combined
+    `tau_band` column instead, which now carries a shortwave term of the
+    same order as the longwave one, puts roughly twice the true optical
+    depth into that formula, which misses the measured flux by far more
+    than the pin's own tolerance even though the column stays optically
+    thin.
+
+    Discrimination: at the default opacities the shortwave term sits five
+    orders of magnitude below the longwave one, so a combined read and a
+    longwave-only read agree by coincidence. Here they diverge by
+    construction, so only the longwave-only read satisfies the pin.
+    """
+    albedo = 0.3
+    with tempfile.TemporaryDirectory() as tmpdir:
+        runner = _make_runner(tmpdir, spectral_file='greygas', surf_greyalbedo=albedo)
+        kappa_lw = runner.config.atmos_clim.agni.grey_opacity_lw
+        runner.config.atmos_clim.agni.grey_opacity_sw = kappa_lw
+        results = _sweep_transparent(runner)
+
+        for t_surf, output, state in results:
+            blackbody = SIGMA_SB * t_surf**4
+
+            tau_lw = _lw_column_tau(state, kappa_lw)
+            expected_lw = blackbody * (1.0 - albedo * np.exp(-tau_lw))
+            assert output['F_olr'] == pytest.approx(expected_lw, rel=RTOL_GREYGAS), (
+                f'grey surface at T_surf={t_surf} K must still follow the '
+                f'longwave-only slab formula once the shortwave opacity no '
+                f'longer sits five orders of magnitude below the longwave one'
+            )
+
+            # The combined column carries the shortwave term too, and here
+            # that puts roughly twice the true longwave depth into the slab
+            # formula, which the pin's own tolerance must reject.
+            tau_combined = float(state['tau_band'][-1, 0])
+            assert tau_combined > 1.5 * tau_lw
+            expected_combined = blackbody * (1.0 - albedo * np.exp(-tau_combined))
+            assert output['F_olr'] != pytest.approx(expected_combined, rel=RTOL_GREYGAS)
 
 
 @pytest.mark.reference_pinned
