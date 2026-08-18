@@ -108,8 +108,40 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        sudo apt-get update -qq
-        sudo apt-get install -y --no-install-recommends \
+        # apt-get talks to the Ubuntu archive mirrors, which occasionally stop
+        # responding mid-transfer instead of failing outright; an unbounded
+        # call once consumed the whole job waiting on a stalled connection.
+        # Bound each call with a timeout and retry with backoff, in the same
+        # spirit as the AGNI spectral data fetch below (a separate step, so
+        # the loop is duplicated here rather than shared). One retry keeps
+        # the worst case for this whole step to a few minutes, which matters
+        # because the surrounding job's own timeout is only 30 minutes.
+        delays=(45)
+        attempts=$(( ${#delays[@]} + 1 ))
+        apt_retry() {
+          local desc="$1"; shift
+          local n=1
+          while true; do
+            # A prior attempt killed by the timeout below can leave dpkg
+            # mid-unpack; repair that before retrying so the next attempt
+            # isn't rejected for an unrelated "packages not configured" error.
+            sudo dpkg --configure -a >/dev/null 2>&1 || true
+            if sudo timeout --kill-after=10 150 apt-get "$@"; then
+              echo "$desc succeeded on attempt $n"
+              return 0
+            fi
+            if [ "$n" -ge "$attempts" ]; then
+              echo "$desc failed after $attempts attempts" >&2
+              return 1
+            fi
+            local delay="${delays[$((n - 1))]}"
+            echo "$desc attempt $n failed or timed out; retrying in ${delay}s" >&2
+            sleep "$delay"
+            n=$((n + 1))
+          done
+        }
+        apt_retry "apt-get update" update -qq
+        apt_retry "apt-get install" install -y --no-install-recommends \
           gfortran \
           libnetcdff-dev \
           netcdf-bin \
