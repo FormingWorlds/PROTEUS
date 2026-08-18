@@ -2081,6 +2081,25 @@ class AragogRunner:
 
         return sim_time, output
 
+    def _active_solver_name(self) -> str:
+        """Name the integrator that is actually running, not the one configured.
+
+        ``solver_method`` can ask for CVODE and still run scipy: the wrapper
+        is compiled against SUNDIALS and falls back silently on a build or
+        ABI mismatch (see ``_cvode_loads``), so trusting the config name
+        mislabels every failure the fallback produces.
+
+        Returns
+        -------
+        str
+            'CVODE' when the configured and available integrator is CVODE,
+            'scipy' otherwise.
+        """
+        method = str(self._config.interior_energetics.aragog.solver_method or '')
+        if method == 'cvode' and _cvode_loads():
+            return 'CVODE'
+        return 'scipy'
+
     def _solve_with_retry(self, hf_row, interior_o) -> SolverOutput:
         """Run aragog_solver.solve() with a dt-halving retry ladder.
 
@@ -2274,9 +2293,10 @@ class AragogRunner:
                         return out
 
                 if attempt >= max_attempts:
-                    # status==0 here means CVODE accepted every step but each
-                    # result was rejected for an over-threshold T_core jump, so
-                    # report that reason rather than the misleading status=0.
+                    # status==0 here means the solver accepted every step but
+                    # each result was rejected for an over-threshold T_core
+                    # jump, so report that reason rather than the misleading
+                    # status=0.
                     if out.status == 0:
                         reason = (
                             'status=0 but the T_core jump exceeded the '
@@ -2300,7 +2320,7 @@ class AragogRunner:
                             'advancing the state on any attempt'
                         )
                     else:
-                        reason = f'CVODE status={out.status}'
+                        reason = f'{self._active_solver_name()} status={out.status}'
                     log.error(
                         'Aragog solver failed after %d attempts (%s). '
                         'Raising RuntimeError so wrapper can apply skip-step fallback.',

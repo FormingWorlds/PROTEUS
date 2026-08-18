@@ -1094,6 +1094,38 @@ def test_a_step_that_never_advanced_is_still_refused():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+def test_ladder_exhaustion_names_the_solver_that_actually_ran(monkeypatch):
+    """An integration-failure abort names the integrator that ran, not CVODE by default.
+
+    Physical scenario: the CVODE wrapper is compiled against SUNDIALS and can
+    fail to import on a version or ABI mismatch, in which case Aragog falls
+    back to the scipy integrator silently. A run configured for CVODE but
+    actually running scipy still needs its retry-ladder failure to say so.
+
+    Verifies:
+    - solver_method='cvode' with a loadable CVODE names 'CVODE' in the abort.
+    - solver_method='cvode' with CVODE unavailable (the silent-fallback case)
+      names 'scipy', not 'CVODE', in the abort.
+    """
+    module_path = 'proteus.interior_energetics.aragog'
+
+    monkeypatch.setattr(f'{module_path}._cvode_loads', lambda: True)
+    cvode_runner, cvode_interior, _ = _retry_ladder_runner(status=-1, dt_actual=8.0)
+    cvode_runner._config.interior_energetics.aragog.solver_method = 'cvode'
+    with pytest.raises(RuntimeError, match='CVODE status=-1') as cvode_info:
+        cvode_runner._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, cvode_interior)
+    assert 'scipy status=' not in str(cvode_info.value)
+
+    monkeypatch.setattr(f'{module_path}._cvode_loads', lambda: False)
+    fallback_runner, fallback_interior, _ = _retry_ladder_runner(status=-1, dt_actual=8.0)
+    fallback_runner._config.interior_energetics.aragog.solver_method = 'cvode'
+    with pytest.raises(RuntimeError, match='scipy status=-1') as fallback_info:
+        fallback_runner._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, fallback_interior)
+    assert 'CVODE status=' not in str(fallback_info.value)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_a_run_that_covers_almost_none_of_its_time_is_stopped():
     """Steps that cover almost nothing, over a run of them, end the run.
 
