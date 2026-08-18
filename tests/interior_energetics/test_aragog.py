@@ -760,3 +760,89 @@ def test_setup_or_update_solver_tracks_stale_structure_steps():
         interior_o.structure_stale = True
         AragogRunner.setup_or_update_solver(config, hf_row, interior_o, 1.0, dirs)
         assert interior_o._stale_struct_steps == 1
+
+
+@pytest.mark.unit
+def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
+    monkeypatch,
+):
+    """A retry-ladder exhaustion names the integrator that actually ran.
+
+    ``solver_method`` can ask for CVODE and still run scipy: the wrapper is
+    compiled against SUNDIALS and falls back silently on a build or ABI
+    mismatch, so trusting the config name mislabels every scipy-fallback
+    failure as a CVODE one. Covers CVODE available, CVODE unavailable
+    (silent fallback to Radau), and an explicitly configured 'bdf', so a
+    mutant that drops the solver_method check or collapses Radau/BDF into
+    one label fails at least one branch.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    module_path = 'aragog.solver.entropy_solver'
+
+    def _build_runner(status, solver_method='cvode'):
+        runner = AragogRunner.__new__(AragogRunner)
+        runner._config = MagicMock()
+        runner._config.interior_energetics.aragog.solver_method = solver_method
+        runner._config.planet.mass_tot = 1.0
+
+        out = MagicMock()
+        out.status = status
+        out.T_core = 0.0
+
+        solver = MagicMock()
+        solver.parameters.solver.start_time = 0.0
+        solver.parameters.solver.end_time = 1.0
+        solver.get_current_dSdr_cmb.return_value = None
+        solver._dSdr_cmb_init = None
+        solver.get_state.return_value = out
+        runner.aragog_solver = solver
+
+        interior_o = MagicMock()
+        interior_o._last_entropy = None
+
+        hf_row = {'Time': 2.15e5, 'T_cmb': 0.0}
+        return runner, interior_o, hf_row
+
+    monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', True)
+    cvode_runner, cvode_interior_o, cvode_hf_row = _build_runner(status=-1)
+    with pytest.raises(RuntimeError, match='CVODE status=-1') as cvode_info:
+        cvode_runner._solve_with_retry(cvode_hf_row, cvode_interior_o)
+    assert 'Radau status=' not in str(cvode_info.value)
+    assert 'BDF status=' not in str(cvode_info.value)
+
+    monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', False)
+    fallback_runner, fallback_interior_o, fallback_hf_row = _build_runner(status=-1)
+    with pytest.raises(RuntimeError, match='Radau status=-1') as fallback_info:
+        fallback_runner._solve_with_retry(fallback_hf_row, fallback_interior_o)
+    assert 'CVODE status=' not in str(fallback_info.value)
+    assert 'BDF status=' not in str(fallback_info.value)
+
+    monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', True)
+    bdf_runner, bdf_interior_o, bdf_hf_row = _build_runner(status=-1, solver_method='bdf')
+    with pytest.raises(RuntimeError, match='BDF status=-1') as bdf_info:
+        bdf_runner._solve_with_retry(bdf_hf_row, bdf_interior_o)
+    assert 'CVODE status=' not in str(bdf_info.value)
+    assert 'Radau status=' not in str(bdf_info.value)
+
+
+@pytest.mark.unit
+def test_active_solver_name_falls_back_when_cvode_flag_is_unimportable(monkeypatch):
+    """A missing/renamed aragog CVODE flag degrades to a label, not a crash.
+
+    ``_active_solver_name()`` reaches into aragog's private
+    ``_CVODE_AVAILABLE`` flag. aragog is a separate, actively developed
+    package that owes that private name no stability guarantee; if it is
+    ever renamed or removed, the retry ladder's exhaustion path must still
+    raise the intended ``RuntimeError`` (which the wrapper catches to apply
+    a skip-step fallback) rather than an uncaught ``ImportError``.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    monkeypatch.delattr('aragog.solver.entropy_solver._CVODE_AVAILABLE')
+
+    runner = AragogRunner.__new__(AragogRunner)
+    runner._config = MagicMock()
+    runner._config.interior_energetics.aragog.solver_method = 'cvode'
+
+    assert runner._active_solver_name() == 'Radau'
