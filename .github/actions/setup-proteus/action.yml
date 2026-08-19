@@ -103,14 +103,10 @@ runs:
     # ------------------------------------------------------------------
     # 1a0. Apt mirror reachability (Linux)
     # ------------------------------------------------------------------
-    # A genuinely down mirror fails every apt-get attempt the same way, so
-    # retrying the full call burns the retry budget below on something that
-    # cannot succeed. Probe the mirror hosts actually configured on this
-    # runner (not a hardcoded default: GH-hosted Ubuntu runners point at a
-    # regional Azure mirror, not archive.ubuntu.com) and fail fast with a
-    # clear message if none answer. This only excludes classic #-commented
-    # lines; a deb822 .sources stanza disabled via "Enabled: no" without a
-    # leading # still counts as configured here.
+    # A down mirror fails every apt-get attempt the same way, so probe the
+    # mirrors actually configured on this runner and fail fast if none
+    # answer, instead of retrying against one that cannot succeed. Doesn't
+    # recognize a deb822 stanza disabled only via "Enabled: no" (no leading #).
     - name: Check apt mirror reachability (Linux)
       if: runner.os == 'Linux'
       shell: bash
@@ -148,12 +144,10 @@ runs:
       run: |
         set -euo pipefail
         source "${{ github.action_path }}/retry-with-timeout.sh"
-        # apt-get can stall mid-transfer against the Ubuntu mirrors; an
-        # unbounded call once consumed the whole job. Bound each call with
-        # the shared retry_with_timeout helper (also used by the macOS step
-        # below). Worst case is both calls timing out on every attempt,
-        # about 17 minutes total; check this step's caller has a job-level
-        # timeout above that.
+        # apt-get can stall mid-transfer against the Ubuntu mirrors, so
+        # bound each call with the shared retry_with_timeout helper.
+        # Worst case is ~17 minutes if both calls time out on every
+        # attempt; the caller's job-level timeout must exceed that.
         dpkg_repair() {
           # A prior attempt killed by the timeout below can leave dpkg
           # mid-unpack; repair that before retrying so the next attempt
@@ -176,23 +170,16 @@ runs:
     # 1b. System packages (macOS)
     # ------------------------------------------------------------------
     # gcc provides the Fortran toolchain; netcdf-fortran provides
-    # nf-config for the SOCRATES build. brew install can stall against a
-    # mirror the same way apt-get can, so it gets the same bounded
-    # timeout-and-retry pattern; recent CI runs finish this in ~20-25s, so
-    # the timeout below leaves large headroom while still capping a stall.
-    # The brew exit code needs special handling on top of that: on the
-    # macos-latest Sequoia images, ``brew install`` can exit 1 with all
-    # packages successfully poured when a post-install step emits the "did
-    # not complete successfully" warning. The packages themselves are
-    # functional, so verify each is on the prefix list before accepting the
-    # failure.
+    # nf-config for the SOCRATES build. brew install can stall like
+    # apt-get, so it gets the same bounded retry pattern.
     #
-    # Calling workflows must leave USER at the runner default and must
-    # not set it in any env block. ``brew install`` runs a preinstall
-    # check that looks the active account up by name in the passwd
-    # database, so a USER naming an account that does not exist aborts
-    # this step with "user <name> doesn't exist" before any package is
-    # installed. ``tests/tools/test_install_scripts.py`` enforces this.
+    # brew install can exit 1 with all packages poured on macos-latest
+    # Sequoia (a post-install warning, not a real failure); verify each
+    # package is present before treating a nonzero exit as real.
+    #
+    # Calling workflows must leave USER at the runner default; brew's
+    # preinstall check looks it up in the passwd database and aborts early
+    # if it names a nonexistent account. test_install_scripts.py enforces this.
     - name: Install system packages (macOS)
       if: runner.os == 'macOS'
       shell: bash
