@@ -111,8 +111,9 @@ runs:
         # apt-get can stall mid-transfer against the Ubuntu mirrors; an
         # unbounded call once consumed the whole job. Bound each call with a
         # timeout and retry with backoff, similar to the AGNI fetch below
-        # (duplicated here since it's a separate step). One retry keeps this
-        # step's worst case to a few minutes, well inside the job's own 30.
+        # (duplicated here since it's a separate step). Worst case is both
+        # calls timing out on every attempt, about 17 minutes total; check
+        # this step's caller has a job-level timeout above that.
         delays=(45)
         attempts=$(( ${#delays[@]} + 1 ))
         apt_retry() {
@@ -122,7 +123,9 @@ runs:
             # A prior attempt killed by the timeout below can leave dpkg
             # mid-unpack; repair that before retrying so the next attempt
             # isn't rejected for an unrelated "packages not configured" error.
-            sudo dpkg --configure -a >/dev/null 2>&1 || true
+            # Bounded for the same reason as the apt-get call itself: a wedged
+            # dpkg lock must not be able to hang the job indefinitely.
+            sudo timeout --kill-after=10 60 dpkg --configure -a >/dev/null 2>&1 || true
             if sudo timeout --kill-after=10 150 apt-get "$@"; then
               echo "$desc succeeded on attempt $n"
               return 0
