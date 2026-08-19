@@ -101,6 +101,45 @@ runs:
       run: rm -f "$HOME/.bash_logout"
 
     # ------------------------------------------------------------------
+    # 1a0. Apt mirror reachability (Linux)
+    # ------------------------------------------------------------------
+    # A genuinely down mirror fails every apt-get attempt the same way, so
+    # retrying the full call burns the retry budget below on something that
+    # cannot succeed. Probe the mirror hosts actually configured on this
+    # runner (not a hardcoded default: GH-hosted Ubuntu runners point at a
+    # regional Azure mirror, not archive.ubuntu.com) and fail fast with a
+    # clear message if none answer. This only excludes classic #-commented
+    # lines; a deb822 .sources stanza disabled via "Enabled: no" without a
+    # leading # still counts as configured here.
+    - name: Check apt mirror reachability (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        mirrors="$(grep -rhvE '^[[:space:]]*#' \
+          /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources \
+          2>/dev/null | grep -oE 'https?://[^ "]+' \
+          | sed -E 's#(https?://[^/]+).*#\1#' | sort -u || true)"
+        if [ -z "$mirrors" ]; then
+          echo "No apt mirror URIs found in the sources config; skipping the reachability check."
+          exit 0
+        fi
+        reachable=""
+        while IFS= read -r mirror; do
+          code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$mirror" 2>/dev/null)" || code="000"
+          if [ "$code" != "000" ]; then
+            echo "Reachable ($code): $mirror"
+            reachable=1
+            break
+          fi
+          echo "Unreachable: $mirror"
+        done <<< "$mirrors"
+        if [ -z "$reachable" ]; then
+          echo "::error::No configured apt mirror answered; failing fast instead of retrying apt-get against a mirror that cannot succeed." >&2
+          exit 1
+        fi
+
+    # ------------------------------------------------------------------
     # 1a. System packages (Linux)
     # ------------------------------------------------------------------
     - name: Install system packages (Linux)
@@ -108,56 +147,44 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        source "${{ github.action_path }}/retry-with-timeout.sh"
         # apt-get can stall mid-transfer against the Ubuntu mirrors; an
-        # unbounded call once consumed the whole job. Bound each call with a
-        # timeout and retry with backoff, similar to the AGNI fetch below
-        # (duplicated here since it's a separate step). Worst case is both
-        # calls timing out on every attempt, about 17 minutes total; check
-        # this step's caller has a job-level timeout above that.
-        delays=(45)
-        attempts=$(( ${#delays[@]} + 1 ))
-        apt_retry() {
-          local desc="$1"; shift
-          local n=1
-          while true; do
-            # A prior attempt killed by the timeout below can leave dpkg
-            # mid-unpack; repair that before retrying so the next attempt
-            # isn't rejected for an unrelated "packages not configured" error.
-            # Bounded for the same reason as the apt-get call itself: a wedged
-            # dpkg lock must not be able to hang the job indefinitely.
-            sudo timeout --kill-after=10 60 dpkg --configure -a >/dev/null 2>&1 || true
-            if sudo timeout --kill-after=10 150 apt-get "$@"; then
-              echo "$desc succeeded on attempt $n"
-              return 0
-            fi
-            if [ "$n" -ge "$attempts" ]; then
-              echo "$desc failed after $attempts attempts" >&2
-              return 1
-            fi
-            local delay="${delays[$((n - 1))]}"
-            echo "$desc attempt $n failed or timed out; retrying in ${delay}s" >&2
-            sleep "$delay"
-            n=$((n + 1))
-          done
+        # unbounded call once consumed the whole job. Bound each call with
+        # the shared retry_with_timeout helper (also used by the macOS step
+        # below). Worst case is both calls timing out on every attempt,
+        # about 17 minutes total; check this step's caller has a job-level
+        # timeout above that.
+        dpkg_repair() {
+          # A prior attempt killed by the timeout below can leave dpkg
+          # mid-unpack; repair that before retrying so the next attempt
+          # isn't rejected for an unrelated "packages not configured" error.
+          # Bounded for the same reason as the apt-get call itself: a wedged
+          # dpkg lock must not be able to hang the job indefinitely.
+          sudo timeout --kill-after=10 60 dpkg --configure -a >/dev/null 2>&1 || true
         }
-        apt_retry "apt-get update" update -qq
-        apt_retry "apt-get install" install -y --no-install-recommends \
-          gfortran \
-          libnetcdff-dev \
-          netcdf-bin \
-          libssl-dev \
-          curl
+        retry_with_timeout "apt-get update" 150 10 dpkg_repair \
+          sudo apt-get update -qq
+        retry_with_timeout "apt-get install" 150 10 dpkg_repair \
+          sudo apt-get install -y --no-install-recommends \
+            gfortran \
+            libnetcdff-dev \
+            netcdf-bin \
+            libssl-dev \
+            curl
 
     # ------------------------------------------------------------------
     # 1b. System packages (macOS)
     # ------------------------------------------------------------------
     # gcc provides the Fortran toolchain; netcdf-fortran provides
-    # nf-config for the SOCRATES build. The brew exit code needs
-    # special handling: on the macos-latest Sequoia images,
-    # ``brew install`` can exit 1 with all packages successfully
-    # poured when a post-install step emits the "did not complete
-    # successfully" warning. The packages themselves are functional,
-    # so verify each is on the prefix list before accepting the
+    # nf-config for the SOCRATES build. brew install can stall against a
+    # mirror the same way apt-get can, so it gets the same bounded
+    # timeout-and-retry pattern; recent CI runs finish this in ~20-25s, so
+    # the timeout below leaves large headroom while still capping a stall.
+    # The brew exit code needs special handling on top of that: on the
+    # macos-latest Sequoia images, ``brew install`` can exit 1 with all
+    # packages successfully poured when a post-install step emits the "did
+    # not complete successfully" warning. The packages themselves are
+    # functional, so verify each is on the prefix list before accepting the
     # failure.
     #
     # Calling workflows must leave USER at the runner default and must
@@ -171,17 +198,17 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        set +e
-        brew install --quiet gcc netcdf netcdf-fortran openssl@3
-        brew_rc=$?
-        set -e
+        source "${{ github.action_path }}/retry-with-timeout.sh"
+        brew_rc=0
+        retry_with_timeout "brew install" 240 10 "" \
+          brew install --quiet gcc netcdf netcdf-fortran openssl@3 || brew_rc=$?
         missing=()
         for pkg in gcc netcdf netcdf-fortran openssl@3; do
           brew list "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
         done
         if [ ${#missing[@]} -gt 0 ]; then
           echo "ERROR: brew install rc=$brew_rc and missing packages: ${missing[*]}" >&2
-          exit "${brew_rc:-1}"
+          exit "$brew_rc"
         fi
         if [ "$brew_rc" -ne 0 ]; then
           echo "brew install exited $brew_rc but all packages present; continuing"
