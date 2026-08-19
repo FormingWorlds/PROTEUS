@@ -169,17 +169,11 @@ runs:
     # ------------------------------------------------------------------
     # 1b. System packages (macOS)
     # ------------------------------------------------------------------
-    # gcc provides the Fortran toolchain; netcdf-fortran provides
-    # nf-config for the SOCRATES build. brew install can stall like
-    # apt-get, so it gets the same bounded retry pattern.
-    #
-    # brew install can exit 1 with all packages poured on macos-latest
-    # Sequoia (a post-install warning, not a real failure); verify each
-    # package is present before treating a nonzero exit as real.
-    #
-    # Calling workflows must leave USER at the runner default; brew's
-    # preinstall check looks it up in the passwd database and aborts early
-    # if it names a nonexistent account. test_install_scripts.py enforces this.
+    # gcc/netcdf-fortran give the Fortran toolchain and nf-config for SOCRATES. brew
+    # install shares apt-get's bounded retry pattern; a nonzero exit can still mean
+    # every package poured (a Sequoia post-install warning), so verify presence before
+    # trusting it. USER must stay at the runner default: brew's preinstall passwd lookup
+    # aborts on a nonexistent account (test_install_scripts.py enforces this).
     - name: Install system packages (macOS)
       if: runner.os == 'macOS'
       shell: bash
