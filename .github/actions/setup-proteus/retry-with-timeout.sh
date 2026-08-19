@@ -37,8 +37,11 @@ else
   ) || true
   if command -v gtimeout >/dev/null 2>&1; then
     _RWT_TIMEOUT_BIN="gtimeout"
-  else
+  elif command -v timeout >/dev/null 2>&1; then
     _RWT_TIMEOUT_BIN="timeout"
+  else
+    echo "retry-with-timeout.sh: neither timeout nor gtimeout is on PATH after installing coreutils; cannot bound package-manager calls, stopping here" >&2
+    exit 1
   fi
 fi
 
