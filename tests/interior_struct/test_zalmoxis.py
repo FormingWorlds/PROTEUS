@@ -495,6 +495,50 @@ def test_validate_zalmoxis_output_schema_corrupt_file(tmp_path):
 
 
 @pytest.mark.unit
+def test_stale_mesh_regression_discriminates_real_drift(tmp_path):
+    """A resumed row's own mesh passes; the run's stale end-of-run mesh fails.
+
+    Pins a real incident: resuming a run at an earlier row while
+    ``data/zalmoxis_output.dat`` on disk still holds a later row's mesh
+    (left over from before the interior structure module regenerates it)
+    crashes Aragog's own EOS-radius-range guard downstream, because the
+    file's top radius no longer matches the resumed row's R_int. The
+    two R_int values here are a real archived run's resumed row and its
+    final row: 5,667 m (~0.097%) apart, an order of magnitude below the
+    physical scale of the planet but four orders above the schema
+    check's 1e-6 relative tolerance, so the check must still catch it.
+    """
+    from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
+
+    resumed_r_int = 5.8518474239e6  # real archived run, row resumed into
+    stale_r_int = 5.8575141291e6  # same run's later, final-row mesh
+    r_core = 2.8670124963e6
+    m_core = 9.8365400909e23
+
+    # A mesh regenerated at the resumed row's own R_int passes.
+    fresh_path = str(tmp_path / 'fresh.dat')
+    r_top, m_mantle = _write_synthetic_zalmoxis_output(
+        fresh_path, r_cmb=r_core, r_surf=resumed_r_int
+    )
+    hf_row = {'R_int': resumed_r_int, 'M_int': m_mantle + m_core, 'M_core': m_core}
+    result = validate_zalmoxis_output_schema(fresh_path, hf_row)
+    assert result is None
+
+    # The same run's stale, later-row mesh -- unregenerated -- fails against
+    # the identical resumed-row hf_row.
+    stale_path = str(tmp_path / 'stale.dat')
+    _write_synthetic_zalmoxis_output(stale_path, r_cmb=r_core, r_surf=stale_r_int)
+    with pytest.raises(RuntimeError, match='top-of-mantle'):
+        validate_zalmoxis_output_schema(stale_path, hf_row)
+
+    # Discrimination guard: the real drift is well above the check's
+    # tolerance, so the raise above is not an artifact of a loose default.
+    real_drift = abs(stale_r_int - resumed_r_int) / resumed_r_int
+    assert real_drift == pytest.approx(9.684e-4, rel=1e-2)
+    assert real_drift > 1e-6
+
+
+@pytest.mark.unit
 def test_validate_zalmoxis_output_schema_skips_when_hf_row_unset(tmp_path):
     """Degenerate hf_row inputs (zero scalars) must skip silently.
 
