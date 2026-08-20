@@ -72,8 +72,7 @@ import pytest
 
 from proteus.config import UnknownConfigKeyError, read_config_object
 from proteus.interior_struct.zalmoxis import (
-    check_zalmoxis_eos_files,
-    load_zalmoxis_material_dictionaries,
+    ZalmoxisMissingEOSFilesError,
     validate_zalmoxis_output_schema,
     zalmoxis_solver,
 )
@@ -125,44 +124,10 @@ def test_regenerated_mesh_matches_resumed_row_and_stale_mesh_does_not(tmp_path):
     assert hf_row['Time'] == pytest.approx(_RESUMED_ROW_TIME_YR)
     r_int_before_solve = hf_row['R_int']
 
-    # The pre-flight check below mirrors zalmoxis_solver's own
-    # layer_eos_config construction only up to the point the solver extends
-    # the mantle entry with volatile components, a step it skips whenever
-    # dry_mantle=True; the assertion keeps that gap loud rather than
-    # letting a future wet-mantle fixture silently under-check.
-    assert config.interior_struct.zalmoxis.dry_mantle, (
-        'pre-flight EOS check assumes a dry mantle; update it to mirror '
-        "zalmoxis_solver's volatile-extension step before using this "
-        'fixture with a wet mantle'
-    )
-    layer_eos_config = {
-        'core': config.interior_struct.zalmoxis.core_eos,
-        'mantle': config.interior_struct.zalmoxis.mantle_eos,
-    }
-    if config.interior_struct.zalmoxis.ice_layer_eos is not None:
-        layer_eos_config['ice_layer'] = config.interior_struct.zalmoxis.ice_layer_eos
-    material_dicts = load_zalmoxis_material_dictionaries()
-    try:
-        check_zalmoxis_eos_files(layer_eos_config, material_dicts)
-    except RuntimeError as exc:
-        pytest.skip(f'required Zalmoxis EOS table(s) not available: {exc}')
-
     os.makedirs(tmp_path / 'data')
-    # zalmoxis_solver reads a table before its own internal check runs, and
-    # the resulting FileNotFoundError carries no usable path. Re-run the
-    # pre-flight check against the live filesystem and skip only if it now
-    # finds a table missing; anything else is a real solver regression.
     try:
         zalmoxis_solver(config, str(tmp_path), hf_row)
-    except FileNotFoundError:
-        try:
-            check_zalmoxis_eos_files(layer_eos_config, material_dicts)
-        except RuntimeError as exc:
-            pytest.skip(f'required Zalmoxis EOS table(s) not available: {exc}')
-        raise
-    except RuntimeError as exc:
-        if not str(exc).startswith('Interior EOS table file(s) not found:'):
-            raise
+    except ZalmoxisMissingEOSFilesError as exc:
         pytest.skip(f'required Zalmoxis EOS table(s) not available: {exc}')
 
     regenerated_path = tmp_path / 'data' / 'zalmoxis_output.dat'

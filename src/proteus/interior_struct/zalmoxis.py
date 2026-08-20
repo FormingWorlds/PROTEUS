@@ -997,6 +997,23 @@ def load_zalmoxis_configuration(
     # of the mode. `core_frac_mode = "radius"` is only honoured by the
     # dummy and spider structure modules; a warning is emitted above when
     # it is combined with zalmoxis.
+
+    # 'liquidus_super' can read the mantle EOS table here before
+    # zalmoxis_solver's own pre-flight check runs, raising a bare
+    # FileNotFoundError. That check never inspects the melting-curve
+    # directory a WolfBower2018/RTPress100TPa mantle also needs, so a
+    # missing one re-raises unconverted here and in zalmoxis_solver itself.
+    try:
+        cmb_temperature = _resolve_zalmoxis_cmb_temperature(
+            config,
+            hf_row,
+            temperature_mode_override or config.planet.temperature_mode,
+            external_temperature_source=external_temperature_source,
+        )
+    except FileNotFoundError:
+        check_zalmoxis_eos_files(layer_eos_config, load_zalmoxis_material_dictionaries())
+        raise
+
     return {
         'planet_mass': planet_mass,
         'core_mass_fraction': config.interior_struct.core_frac,
@@ -1028,12 +1045,7 @@ def load_zalmoxis_configuration(
             temperature_mode_override or config.planet.temperature_mode
         ),
         'surface_temperature': config.planet.tsurf_init,
-        'cmb_temperature': _resolve_zalmoxis_cmb_temperature(
-            config,
-            hf_row,
-            temperature_mode_override or config.planet.temperature_mode,
-            external_temperature_source=external_temperature_source,
-        ),
+        'cmb_temperature': cmb_temperature,
         'center_temperature': config.planet.tcenter_init,
         'temp_profile_file': None,
         'layer_eos_config': layer_eos_config,
@@ -1424,6 +1436,10 @@ def _strip_fraction_tokens(component: str) -> str:
     return ':'.join(tokens)
 
 
+class ZalmoxisMissingEOSFilesError(RuntimeError):
+    """A layer's configured EOS identifier names a table file absent on disk."""
+
+
 def check_zalmoxis_eos_files(layer_eos_config: dict, mat_dicts: dict) -> None:
     """Fail fast when a selected EOS table file is missing on disk.
 
@@ -1444,7 +1460,7 @@ def check_zalmoxis_eos_files(layer_eos_config: dict, mat_dicts: dict) -> None:
 
     Raises
     ------
-    RuntimeError
+    ZalmoxisMissingEOSFilesError
         If any selected EOS table file is missing, naming every missing
         path and the command that downloads them.
     """
@@ -1457,14 +1473,17 @@ def check_zalmoxis_eos_files(layer_eos_config: dict, mat_dicts: dict) -> None:
                 continue
             # Flat entries carry 'eos_file' directly; nested entries map
             # layer roles (core / melted_mantle / ...) to flat entries. A
-            # mantle/ice_layer entry's embedded 'core' sub-entry is unused
-            # there (the core layer's own EOS resolves independently), so
-            # skip it unless this identifier is itself the core role.
+            # nested 'core' sub-entry is skipped only when the entry has
+            # other role-specific sub-entries to use instead; a single-key
+            # 'core' entry is read regardless of which role points at it.
             if 'eos_file' in entry:
                 subentries = [entry]
             else:
+                has_other_roles = any(role != 'core' for role in entry)
                 subentries = [
-                    sub for role, sub in entry.items() if role != 'core' or layer_role == 'core'
+                    sub
+                    for role, sub in entry.items()
+                    if role != 'core' or layer_role == 'core' or not has_other_roles
                 ]
             for sub in subentries:
                 if not isinstance(sub, dict):
@@ -1475,7 +1494,7 @@ def check_zalmoxis_eos_files(layer_eos_config: dict, mat_dicts: dict) -> None:
                         missing.add(path)
     if missing:
         listing = '\n  '.join(sorted(missing))
-        raise RuntimeError(
+        raise ZalmoxisMissingEOSFilesError(
             f'Interior EOS table file(s) not found:\n  {listing}\n'
             'Download them with '
             '`proteus get interiordata --config-path <config.toml>`, '
@@ -1497,9 +1516,13 @@ def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict):
     Returns
     -------
     tuple[str | None, str | None]
-        Absolute filesystem paths if both tables exist, ``(None, None)``
-        otherwise. Caller is responsible for treating ``None`` as "no
-        2-phase tables available, fall back".
+        Absolute filesystem path for each table that exists on disk,
+        ``None`` for the other; both are ``(None, None)`` when the
+        registry has no entry for the resolved key or the PALEOS-API
+        resolver is unavailable. The two entries are resolved and
+        checked independently, so one can be a path while the other is
+        ``None``. Caller is responsible for treating each ``None``
+        individually as "this table is not available".
     """
     use_api = mantle_eos.startswith(('PALEOS-API:', 'PALEOS-API-2phase:'))
     if use_api:
