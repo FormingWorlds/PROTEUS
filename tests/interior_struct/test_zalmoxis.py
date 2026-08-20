@@ -719,6 +719,38 @@ def test_check_eos_files_walks_nested_and_lazy_siblings(tmp_path):
     assert 'seager_iron.txt' not in msg  # present file must not be flagged
 
 
+def test_check_eos_files_nested_core_scoped_to_core_role(tmp_path):
+    """A nested ``'core'`` sub-entry is only checked for a core-role request.
+
+    Uses a registry where the nested ``'core'`` path is missing and distinct
+    from every other path in the same entry, so a call that walks it
+    regardless of role would flag it under both roles below; only the
+    core-role call should.
+    """
+    from proteus.interior_struct.zalmoxis import check_zalmoxis_eos_files
+
+    missing_core = tmp_path / 'iron_core_only.dat'  # never written
+    present_liquid = tmp_path / 'mgsio3_liquid.dat'
+    present_solid = tmp_path / 'mgsio3_solid.dat'
+    for f in (present_liquid, present_solid):
+        f.write_text('stub')
+
+    registry = {
+        'PALEOS-2phase:MgSiO3-with-core': {
+            'core': {'eos_file': str(missing_core)},
+            'melted_mantle': {'eos_file': str(present_liquid)},
+            'solid_mantle': {'eos_file': str(present_solid)},
+        },
+    }
+
+    with pytest.raises(RuntimeError, match='iron_core_only.dat'):
+        check_zalmoxis_eos_files({'core': 'PALEOS-2phase:MgSiO3-with-core'}, registry)
+
+    assert (
+        check_zalmoxis_eos_files({'mantle': 'PALEOS-2phase:MgSiO3-with-core'}, registry) is None
+    )
+
+
 def _volatile_config(dry_mantle: bool):
     """MagicMock config for the dry-mass target tests.
 
