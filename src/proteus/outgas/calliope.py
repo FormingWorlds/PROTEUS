@@ -223,10 +223,10 @@ def calc_target_masses(dirs: dict, config: Config, hf_row: dict):
     for e in solvevol_target.keys():
         hf_row[e + '_kg_total'] = solvevol_target[e]
 
-    log.info('solve evol traget %s',solvevol_target)
+    log.info('solve evol traget %s', solvevol_target)
 
 
-def construct_guess(dirs: dict,hf_row: dict, target: dict, mass_thresh: float) -> dict | None:
+def construct_guess(dirs: dict, hf_row: dict, target: dict, mass_thresh: float) -> dict | None:
     """
     Construct initial guess for CALLIOPE.
 
@@ -271,13 +271,13 @@ def construct_guess(dirs: dict,hf_row: dict, target: dict, mass_thresh: float) -
     p_guess = {}
 
     # Use previous value from pp file saved to proteus output folder
-    #log.debug('    using previous partial pressures from hf_row')
+    # log.debug('    using previous partial pressures from hf_row')
     for s in vol_list:
         p_guess[s] = hf_row[f'{s}_bar']
 
-    ppfile=os.path.join(dirs['output'], 'pps.txt')
+    ppfile = os.path.join(dirs['output'], 'pps.txt')
     if os.path.isfile(ppfile):
-        pps=pd.read_csv(ppfile, sep=' ')
+        pps = pd.read_csv(ppfile, sep=' ')
         log.info('partial pressures are read from ppfile')
         print(pps)
         for s in vol_list:
@@ -286,8 +286,6 @@ def construct_guess(dirs: dict,hf_row: dict, target: dict, mass_thresh: float) -
         for s in vol_list:
             p_guess[s] = hf_row[f'{s}_bar']
         log.info('partial pressures are read form hf_row')
-
-
 
     # Check if elemental inventory is zero => guess zero pressure
     for s in vol_list:
@@ -344,6 +342,7 @@ def flag_included_volatiles(guess: dict, config: Config) -> dict:
 
     return p_included
 
+
 def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     # Inform
     log.debug('Running CALLIOPE...')
@@ -382,11 +381,11 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     # check if gas is included or not
     p_incl = flag_included_volatiles(p_guess, config)
 
-    log.info('p_incl %s',p_incl )
-    log.info('p_guess %s',p_guess )
+    log.info('p_incl %s', p_incl)
+    log.info('p_guess %s', p_guess)
 
-    log.info('opts %s',opts )
-    log.info('target %s',target )
+    log.info('opts %s', opts)
+    log.info('target %s', target)
 
     # Set included
     for s in vol_list:
@@ -402,7 +401,6 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     # masses, elemental totals, atmospheric diagnostics) so downstream
     # consumers are agnostic; the 'from_O_budget' source adds two extra keys
     # (fO2_shift_derived, O_res) that we plumb into hf_row below.
-
 
     try:
         if config.planet.fO2_source == 'from_O_budget':
@@ -446,8 +444,8 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         raise e
 
     # Get result
-    collist=[]
-    vallist=[]
+    collist = []
+    vallist = []
     for k in expected_keys():
         if k in solvevol_result:
             hf_row[k] = solvevol_result[k]
@@ -455,14 +453,13 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
                 collist.append(k)
                 vallist.append(solvevol_result[k])
 
-    ppfile=os.path.join(dirs['output'], 'pps.txt')
+    ppfile = os.path.join(dirs['output'], 'pps.txt')
     line1 = ' '.join(str(x) for x in collist)
     line2 = ' '.join(str(x) for x in vallist)
     f = open(ppfile, 'w')
     f.write(line1 + '\n')
     f.write(line2 + '\n')
     f.close()
-
 
     # Invariant for the 'from_O_budget' source: the user-supplied O budget
     # is the authoritative
@@ -488,4 +485,4 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
         hf_row['O_res'] = 0.0
 
-    #svae vmr output to file such that it can be read by next caliope iteration
+    # svae vmr output to file such that it can be read by next caliope iteration

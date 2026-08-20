@@ -123,9 +123,10 @@ def run_escape(
         min_thresh=config.outgas.mass_thresh,
     )
 
-    # store new elemental inventories
+    # store new elemental inventories except for oxygen which should remain unaffected
     for e, mass in solvevol_target.items():
-        hf_row[f'{e}_kg_total'] = mass
+        if e != 'O':
+            hf_row[f'{e}_kg_total'] = mass
 
 
 def run_dummy(config: Config, hf_row: dict, atmosphere_only: bool = False):

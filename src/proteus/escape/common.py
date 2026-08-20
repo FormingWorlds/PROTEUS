@@ -43,7 +43,7 @@ def calc_unfract_fluxes(hf_row: dict, reservoir: str, min_thresh: float):
     # esc_rate_total to within rounding, instead of equalling
     # esc_rate_total only after excluding O.
     res = {}
-    for e in element_list:
+    for e in element_list:  # here include oxygen to get volatile mass for escape rate estimate
         res[e] = float(hf_row.get(e + key, 0.0))
     M_vols = sum(list(res.values()))
 
@@ -55,6 +55,11 @@ def calc_unfract_fluxes(hf_row: dict, reservoir: str, min_thresh: float):
     # calculate the current mass mixing ratio for each element
     #     if escape is unfractionating, this should be conserved
     for e in res.keys():
-        emr = res[e] / M_vols
-        log.debug('    %2s (%s) mass ratio = %.2e ' % (e, reservoir, emr))
-        hf_row['esc_rate_' + e] = hf_row['esc_rate_total'] * emr
+        if e == 'O':
+            emr = 0.0
+            hf_row['esc_rate_' + e] = 0.0
+            log.debug('    %2s (%s) mass ratio = %.2e ' % (e, reservoir, emr))
+        else:
+            emr = res[e] / M_vols
+            log.debug('    %2s (%s) mass ratio = %.2e ' % (e, reservoir, emr))
+            hf_row['esc_rate_' + e] = hf_row['esc_rate_total'] * emr

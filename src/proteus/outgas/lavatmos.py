@@ -369,11 +369,11 @@ def run_lavatmos(
             'Please check your LAVA_DIR environment variable.'
         ) from e
 
-    log.debug('lavatmos.py, Psurf:%.6e',hf_row['P_surf'])
-    log.debug('lavatmos.py, Pvol:%.6e',hf_row['P_vol'])
+    log.debug('lavatmos.py, Psurf:%.6e', hf_row['P_surf'])
+    log.debug('lavatmos.py, Pvol:%.6e', hf_row['P_vol'])
 
     Magma = set_magmaproperties(config, hf_row, volatile_fracs, dirs)
-    log.debug('pressure saved with set_magma properties %.6e',Magma.P_volatile)
+    log.debug('pressure saved with set_magma properties %.6e', Magma.P_volatile)
 
     # Import melt composition
     melt_comp_fname = os.path.join(paths.lava_comps, Magma.melt_comp_name + '.csv')
@@ -407,6 +407,7 @@ def run_lavatmos(
     # Save results
     output_name = f'{Magma.run_name}.csv'
     lavatmos_output.to_csv(os.path.join(paths.output_dir, output_name))
+
 
 def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     """
@@ -627,7 +628,7 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     iw_buffer = OxygenFugacity(model=config.outgas.lavatmos.fO2_buffer_model)
     hf_row['fO2_vapourise_derived'] = log10_fO2
     hf_row['fO2_vapourise_shift_IW_derived'] = log10_fO2 - iw_buffer(hf_row['T_magma'])
-    hf_row['P_surf'] = new_atmos_abundances['Pbar'][0] #Psurf updated
+    hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]  # Psurf updated
     hf_row['M_atm'] = M_atmo_new
     # Refresh the volatile-only atmospheric mass against the recombined
     # species masses written above. M_atm now includes the rock vapour, so
@@ -651,7 +652,9 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
             log.debug(_s)
 
     # print O2 abundance:
-    log.info('    %-6s     = %-9.2f bar (%.4e VMR)' % ('O2', hf_row['O2_bar'], hf_row['O2_vmr']))
+    log.info(
+        '    %-6s     = %-9.2f bar (%.4e VMR)' % ('O2', hf_row['O2_bar'], hf_row['O2_vmr'])
+    )
     # print total pressure and mmw
     log.info('    total      = %-9.2f bar' % hf_row['P_surf'])
     log.info('    mmw        = %-9.5f g mol-1' % (hf_row['atm_kg_per_mol'] * 1e3))
