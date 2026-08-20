@@ -128,6 +128,16 @@ def test_regenerated_mesh_matches_resumed_row_and_stale_mesh_does_not(tmp_path):
     # zalmoxis_solver() raises outside this try/except, so a missing EOS
     # table must be caught here rather than inside the solver call, where
     # it would surface as an unrelated-looking test error instead of a skip.
+    # This mirrors zalmoxis_solver's own layer_eos_config construction only
+    # up to the point the solver extends the mantle entry with volatile
+    # components, a step it skips whenever dry_mantle=True; the assertion
+    # below keeps that gap loud instead of letting a future wet-mantle
+    # fixture silently under-check.
+    assert config.interior_struct.zalmoxis.dry_mantle, (
+        'pre-flight EOS check assumes a dry mantle; update it to mirror '
+        "zalmoxis_solver's volatile-extension step before using this "
+        'fixture with a wet mantle'
+    )
     layer_eos_config = {
         'core': config.interior_struct.zalmoxis.core_eos,
         'mantle': config.interior_struct.zalmoxis.mantle_eos,
