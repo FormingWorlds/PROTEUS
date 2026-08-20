@@ -1449,15 +1449,23 @@ def check_zalmoxis_eos_files(layer_eos_config: dict, mat_dicts: dict) -> None:
         path and the command that downloads them.
     """
     missing: set[str] = set()
-    for identifier in layer_eos_config.values():
+    for layer_role, identifier in layer_eos_config.items():
         for component in str(identifier).split('+'):
             entry = mat_dicts.get(_strip_fraction_tokens(component))
             if entry is None:
                 # Unknown identifiers fail later with a registry error.
                 continue
             # Flat entries carry 'eos_file' directly; nested entries map
-            # layer roles (core / melted_mantle / ...) to flat entries.
-            subentries = [entry] if 'eos_file' in entry else list(entry.values())
+            # layer roles (core / melted_mantle / ...) to flat entries. A
+            # mantle/ice_layer entry's embedded 'core' sub-entry is unused
+            # there (the core layer's own EOS resolves independently), so
+            # skip it unless this identifier is itself the core role.
+            if 'eos_file' in entry:
+                subentries = [entry]
+            else:
+                subentries = [
+                    sub for role, sub in entry.items() if role != 'core' or layer_role == 'core'
+                ]
             for sub in subentries:
                 if not isinstance(sub, dict):
                     continue
