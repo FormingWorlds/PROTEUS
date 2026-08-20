@@ -96,7 +96,7 @@ def test_regenerated_mesh_matches_resumed_row_and_stale_mesh_does_not(tmp_path):
     try:
         config = read_config_object(_CONFIG_PATH)
     except UnknownConfigKeyError as exc:
-        pytest.skip(f'archived config does not match this checkout\'s schema: {exc}')
+        pytest.skip(f"archived config does not match this checkout's schema: {exc}")
     hf_all = ReadHelpfileFromCSV(_REFERENCE_RUN_DIR)
     hf_row = hf_all.iloc[_RESUMED_ROW_INDEX].to_dict()
     assert hf_row['Time'] == pytest.approx(_RESUMED_ROW_TIME_YR)
