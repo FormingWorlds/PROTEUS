@@ -251,6 +251,96 @@ def test_zalmoxis_config_no_ice_layer():
     assert 'mantle' in result['layer_eos_config']
 
 
+def _liquidus_super_config():
+    """MagicMock config selecting the 'liquidus_super' CMB-anchor path."""
+    config = MagicMock()
+    config.planet.mass_tot = 1.0
+    config.interior_struct.zalmoxis.core_eos = 'Seager2007:iron'
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS-2phase:MgSiO3'
+    config.interior_struct.zalmoxis.ice_layer_eos = None
+    config.interior_struct.core_frac = 0.325
+    config.interior_struct.zalmoxis.mantle_mass_fraction = 0.0
+    config.planet.temperature_mode = 'liquidus_super'
+    config.planet.tsurf_init = 300
+    config.planet.tcenter_init = 5000
+    config.interior_struct.zalmoxis.num_levels = 200
+    return config
+
+
+@pytest.mark.unit
+def test_load_zalmoxis_configuration_converts_missing_table_error(monkeypatch):
+    """A FileNotFoundError from the CMB-anchor resolve becomes the dedicated error.
+
+    Forces the ``except FileNotFoundError`` branch in
+    ``load_zalmoxis_configuration`` directly: the recheck finds a missing
+    table, so its own ``ZalmoxisMissingEOSFilesError`` propagates.
+    """
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+    from proteus.interior_struct.zalmoxis import (
+        ZalmoxisMissingEOSFilesError,
+        load_zalmoxis_configuration,
+    )
+
+    recheck_calls = []
+
+    def _raise_file_not_found(*args, **kwargs):
+        raise FileNotFoundError('missing mantle EOS table')
+
+    def _raise_missing_eos(*args, **kwargs):
+        recheck_calls.append(args)
+        raise ZalmoxisMissingEOSFilesError('missing table')
+
+    monkeypatch.setattr(
+        zalmoxis_wrapper, '_resolve_zalmoxis_cmb_temperature', _raise_file_not_found
+    )
+    monkeypatch.setattr(zalmoxis_wrapper, 'check_zalmoxis_eos_files', _raise_missing_eos)
+    monkeypatch.setattr(
+        zalmoxis_wrapper, 'load_zalmoxis_material_dictionaries', lambda: {'sentinel': True}
+    )
+
+    hf_row = {
+        f'{e}_kg_total': 0 for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'He')
+    }
+
+    with pytest.raises(ZalmoxisMissingEOSFilesError, match='missing table'):
+        load_zalmoxis_configuration(_liquidus_super_config(), hf_row)
+
+    assert len(recheck_calls) == 1
+    layer_eos_config, mat_dicts = recheck_calls[0]
+    assert layer_eos_config['core'] == 'Seager2007:iron'
+    assert layer_eos_config['mantle'] == 'PALEOS-2phase:MgSiO3'
+    assert mat_dicts == {'sentinel': True}
+
+
+@pytest.mark.unit
+def test_load_zalmoxis_configuration_reraises_unconverted_file_error(monkeypatch):
+    """A FileNotFoundError the recheck cannot classify re-raises unchanged.
+
+    ``check_zalmoxis_eos_files`` only inspects registered EOS tables; a
+    ``FileNotFoundError`` from a different data class (e.g. a missing
+    melting-curve directory) finds nothing missing on recheck, so the
+    original bare exception must propagate rather than a false skip.
+    """
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+
+    def _raise_file_not_found(*args, **kwargs):
+        raise FileNotFoundError('melting curves directory not found')
+
+    monkeypatch.setattr(
+        zalmoxis_wrapper, '_resolve_zalmoxis_cmb_temperature', _raise_file_not_found
+    )
+    monkeypatch.setattr(zalmoxis_wrapper, 'check_zalmoxis_eos_files', lambda *a, **k: None)
+    monkeypatch.setattr(zalmoxis_wrapper, 'load_zalmoxis_material_dictionaries', lambda: {})
+
+    hf_row = {
+        f'{e}_kg_total': 0 for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'He')
+    }
+
+    with pytest.raises(FileNotFoundError, match='melting curves directory not found'):
+        load_zalmoxis_configuration(_liquidus_super_config(), hf_row)
+
+
 # ============================================================================
 # test load_zalmoxis_solidus_liquidus_functions
 # ============================================================================
@@ -495,6 +585,51 @@ def test_validate_zalmoxis_output_schema_corrupt_file(tmp_path):
 
 
 @pytest.mark.unit
+def test_stale_mesh_regression_discriminates_real_drift(tmp_path):
+    """A resumed row's own mesh passes; the run's stale end-of-run mesh fails.
+
+    Pins a real incident: resuming a run at an earlier row while
+    ``data/zalmoxis_output.dat`` on disk still holds a later row's mesh
+    (left over from before the interior structure module regenerates it)
+    crashes Aragog's own EOS-radius-range guard downstream, because the
+    file's top radius no longer matches the resumed row's R_int. The
+    two R_int values here are a real archived run's resumed row and its
+    final row: 5,667 m (~0.097%) apart, about three orders of magnitude
+    below the planet's own radius and about three orders of magnitude
+    above the schema check's 1e-6 relative tolerance, so the check must
+    still catch it.
+    """
+    from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
+
+    resumed_r_int = 5.8518474239e6  # real archived run, row resumed into
+    stale_r_int = 5.8575141291e6  # same run's later, final-row mesh
+    r_core = 2.8670124963e6
+    m_core = 9.8365400909e23
+
+    # A mesh regenerated at the resumed row's own R_int passes.
+    fresh_path = str(tmp_path / 'fresh.dat')
+    r_top, m_mantle = _write_synthetic_zalmoxis_output(
+        fresh_path, r_cmb=r_core, r_surf=resumed_r_int
+    )
+    hf_row = {'R_int': resumed_r_int, 'M_int': m_mantle + m_core, 'M_core': m_core}
+    result = validate_zalmoxis_output_schema(fresh_path, hf_row)
+    assert result is None
+
+    # The same run's stale, later-row mesh -- unregenerated -- fails against
+    # the identical resumed-row hf_row.
+    stale_path = str(tmp_path / 'stale.dat')
+    _write_synthetic_zalmoxis_output(stale_path, r_cmb=r_core, r_surf=stale_r_int)
+    with pytest.raises(RuntimeError, match='top-of-mantle'):
+        validate_zalmoxis_output_schema(stale_path, hf_row)
+
+    # Discrimination guard: the real drift is well above the check's
+    # tolerance, so the raise above is not an artifact of a loose default.
+    real_drift = abs(stale_r_int - resumed_r_int) / resumed_r_int
+    assert real_drift == pytest.approx(9.684e-4, rel=1e-2)
+    assert real_drift > 1e-6
+
+
+@pytest.mark.unit
 def test_validate_zalmoxis_output_schema_skips_when_hf_row_unset(tmp_path):
     """Degenerate hf_row inputs (zero scalars) must skip silently.
 
@@ -672,6 +807,60 @@ def test_check_eos_files_walks_nested_and_lazy_siblings(tmp_path):
     msg = str(excinfo.value)
     assert 'mgsio3_solid.dat' in msg
     assert 'seager_iron.txt' not in msg  # present file must not be flagged
+
+
+def test_check_eos_files_nested_core_scoped_to_core_role(tmp_path):
+    """A nested ``'core'`` sub-entry is only checked for a core-role request.
+
+    Uses a registry where the nested ``'core'`` path is missing and distinct
+    from every other path in the same entry, so a call that walks it
+    regardless of role would flag it under both roles below; only the
+    core-role call should.
+    """
+    from proteus.interior_struct.zalmoxis import check_zalmoxis_eos_files
+
+    missing_core = tmp_path / 'iron_core_only.dat'  # never written
+    present_liquid = tmp_path / 'mgsio3_liquid.dat'
+    present_solid = tmp_path / 'mgsio3_solid.dat'
+    for f in (present_liquid, present_solid):
+        f.write_text('stub')
+
+    registry = {
+        'PALEOS-2phase:MgSiO3-with-core': {
+            'core': {'eos_file': str(missing_core)},
+            'melted_mantle': {'eos_file': str(present_liquid)},
+            'solid_mantle': {'eos_file': str(present_solid)},
+        },
+    }
+
+    with pytest.raises(RuntimeError, match='iron_core_only.dat'):
+        check_zalmoxis_eos_files({'core': 'PALEOS-2phase:MgSiO3-with-core'}, registry)
+
+    assert (
+        check_zalmoxis_eos_files({'mantle': 'PALEOS-2phase:MgSiO3-with-core'}, registry) is None
+    )
+
+
+def test_check_eos_files_single_key_core_checked_for_non_core_role(tmp_path):
+    """A single-key nested ``'core'`` entry is checked from any role.
+
+    Unlike ``PALEOS-2phase:MgSiO3-with-core`` above, an entry whose only
+    sub-entry is ``'core'`` (e.g. ``Seager2007:iron``) has no other
+    role-specific data for a non-core requester to use instead; the real
+    dispatch reads that sole sub-entry regardless of which layer role
+    points at the identifier, so the check must not exempt it here.
+    """
+    from proteus.interior_struct.zalmoxis import check_zalmoxis_eos_files
+
+    missing = tmp_path / 'seager_iron.txt'  # never written
+    registry = {
+        'Seager2007:iron': {'core': {'eos_file': str(missing)}},
+    }
+
+    with pytest.raises(RuntimeError, match='seager_iron.txt'):
+        check_zalmoxis_eos_files({'mantle': 'Seager2007:iron'}, registry)
+    with pytest.raises(RuntimeError, match='seager_iron.txt'):
+        check_zalmoxis_eos_files({'ice_layer': 'Seager2007:iron'}, registry)
 
 
 def _volatile_config(dry_mantle: bool):
