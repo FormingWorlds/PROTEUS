@@ -125,14 +125,11 @@ def test_regenerated_mesh_matches_resumed_row_and_stale_mesh_does_not(tmp_path):
     assert hf_row['Time'] == pytest.approx(_RESUMED_ROW_TIME_YR)
     r_int_before_solve = hf_row['R_int']
 
-    # zalmoxis_solver() raises outside this try/except, so a missing EOS
-    # table must be caught here rather than inside the solver call, where
-    # it would surface as an unrelated-looking test error instead of a skip.
-    # This mirrors zalmoxis_solver's own layer_eos_config construction only
-    # up to the point the solver extends the mantle entry with volatile
-    # components, a step it skips whenever dry_mantle=True; the assertion
-    # below keeps that gap loud instead of letting a future wet-mantle
-    # fixture silently under-check.
+    # The pre-flight check below mirrors zalmoxis_solver's own
+    # layer_eos_config construction only up to the point the solver extends
+    # the mantle entry with volatile components, a step it skips whenever
+    # dry_mantle=True; the assertion keeps that gap loud rather than
+    # letting a future wet-mantle fixture silently under-check.
     assert config.interior_struct.zalmoxis.dry_mantle, (
         'pre-flight EOS check assumes a dry mantle; update it to mirror '
         "zalmoxis_solver's volatile-extension step before using this "
@@ -150,7 +147,19 @@ def test_regenerated_mesh_matches_resumed_row_and_stale_mesh_does_not(tmp_path):
         pytest.skip(f'required Zalmoxis EOS table(s) not available: {exc}')
 
     os.makedirs(tmp_path / 'data')
-    zalmoxis_solver(config, str(tmp_path), hf_row)
+    # zalmoxis_solver resolves the CMB temperature before its own internal
+    # EOS-file check runs, so a missing table can still surface here as
+    # FileNotFoundError or the same RuntimeError the pre-flight check
+    # raises, even though that check passed. Skip only on those specific
+    # missing-data exceptions; anything else is a real solver regression.
+    try:
+        zalmoxis_solver(config, str(tmp_path), hf_row)
+    except FileNotFoundError as exc:
+        pytest.skip(f'required Zalmoxis EOS table(s) not available: {exc}')
+    except RuntimeError as exc:
+        if not str(exc).startswith('Interior EOS table file(s) not found:'):
+            raise
+        pytest.skip(f'required Zalmoxis EOS table(s) not available: {exc}')
 
     regenerated_path = tmp_path / 'data' / 'zalmoxis_output.dat'
     data = np.loadtxt(regenerated_path)
