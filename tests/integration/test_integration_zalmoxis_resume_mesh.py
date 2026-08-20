@@ -30,17 +30,23 @@ module the archived run was captured under, is stripped so the fixture
 loads against the current config schema. Its helpfile row also predates
 two escape-tracking columns the current schema adds
 (``esc_clamp_frac``, ``esc_step_kg``), backfilled here with zero since
-neither is read by the interior solve this test exercises. A future
-schema change can still desync the fixture; that is treated as a skip
-rather than a failure, since it reflects which schema the fixture
-predates rather than a defect in mesh regeneration. It exercises
-``zalmoxis_solver`` directly on a
+neither is read by the interior solve this test exercises; that backfilled
+zero is not consistent with the row's own non-zero ``esc_rate_total``, so
+neither column should be read from this row for anything escape-related.
+The row also still carries two columns from an abandoned accretion module,
+``step_dE_impact_J`` and ``M_accreted_rock``, that are no longer part of
+the schema; ``ReadHelpfileFromCSV`` only checks for missing required
+columns, so their presence is harmless. A future schema change, on either
+the config or the helpfile side, can still desync the fixture; that is
+treated as a skip rather than a failure, since it reflects which schema
+the fixture predates rather than a defect in mesh regeneration. It
+exercises ``zalmoxis_solver`` directly on a
 row picked to reproduce a truncated-replay resume scenario, not through a
 full ``Proteus.start(resume=True)`` call, so it covers mesh regeneration in
 isolation. It does not cover the surrounding resume orchestration: real
 single-crash resume runs always restart from the helpfile's last row
 (``self.hf_row = self.hf_all.iloc[-1].to_dict()`` in ``proteus.py``), which
-``test_integration_resume.py`` exercises end to end on the dummy backends,
+``test_integration_resume.py`` exercises in full on the dummy backends,
 but that file's own backends write no Zalmoxis mesh and do not exercise
 this regeneration step either. ``select_resumable_snapshot``'s row-trimming
 behaviour is unit-tested in ``tests/utils/test_coupler.py``; whether a
@@ -62,7 +68,7 @@ import pytest
 
 from proteus.config import UnknownConfigKeyError, read_config_object
 from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema, zalmoxis_solver
-from proteus.utils.coupler import ReadHelpfileFromCSV
+from proteus.utils.coupler import HelpfileSchemaDriftError, ReadHelpfileFromCSV
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
@@ -103,9 +109,9 @@ def test_regenerated_mesh_matches_resumed_row_and_stale_mesh_does_not(tmp_path):
     """
     try:
         config = read_config_object(_CONFIG_PATH)
-    except (UnknownConfigKeyError, ValueError) as exc:
-        pytest.skip(f"archived config does not match this checkout's schema: {exc}")
-    hf_all = ReadHelpfileFromCSV(_REFERENCE_RUN_DIR)
+        hf_all = ReadHelpfileFromCSV(_REFERENCE_RUN_DIR)
+    except (UnknownConfigKeyError, ValueError, HelpfileSchemaDriftError) as exc:
+        pytest.skip(f"archived fixture does not match this checkout's schema: {exc}")
     hf_row = hf_all.iloc[_RESUMED_ROW_INDEX].to_dict()
     assert hf_row['Time'] == pytest.approx(_RESUMED_ROW_TIME_YR)
     r_int_before_solve = hf_row['R_int']
