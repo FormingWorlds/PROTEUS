@@ -39,7 +39,11 @@ the schema; ``ReadHelpfileFromCSV`` only checks for missing required
 columns, so their presence is harmless. A future schema change, on either
 the config or the helpfile side, can still desync the fixture; that is
 treated as a skip rather than a failure, since it reflects which schema
-the fixture predates rather than a defect in mesh regeneration. It
+the fixture predates rather than a defect in mesh regeneration. The
+fixture's mantle EOS, ``PALEOS-2phase:MgSiO3``, is a real Zenodo-hosted
+table that is not part of every checkout's ``FWL_DATA`` cache and is not
+among the tables PROTEUS's standard CI setup provisions; if it is absent
+locally, that is also treated as a skip rather than a failure. It
 exercises ``zalmoxis_solver`` directly on a
 row picked to reproduce a truncated-replay resume scenario, not through a
 full ``Proteus.start(resume=True)`` call, so it covers mesh regeneration in
@@ -67,7 +71,12 @@ import numpy as np
 import pytest
 
 from proteus.config import UnknownConfigKeyError, read_config_object
-from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema, zalmoxis_solver
+from proteus.interior_struct.zalmoxis import (
+    check_zalmoxis_eos_files,
+    load_zalmoxis_material_dictionaries,
+    validate_zalmoxis_output_schema,
+    zalmoxis_solver,
+)
 from proteus.utils.coupler import HelpfileSchemaDriftError, ReadHelpfileFromCSV
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
@@ -115,6 +124,20 @@ def test_regenerated_mesh_matches_resumed_row_and_stale_mesh_does_not(tmp_path):
     hf_row = hf_all.iloc[_RESUMED_ROW_INDEX].to_dict()
     assert hf_row['Time'] == pytest.approx(_RESUMED_ROW_TIME_YR)
     r_int_before_solve = hf_row['R_int']
+
+    # zalmoxis_solver() raises outside this try/except, so a missing EOS
+    # table must be caught here rather than inside the solver call, where
+    # it would surface as an unrelated-looking test error instead of a skip.
+    layer_eos_config = {
+        'core': config.interior_struct.zalmoxis.core_eos,
+        'mantle': config.interior_struct.zalmoxis.mantle_eos,
+    }
+    if config.interior_struct.zalmoxis.ice_layer_eos is not None:
+        layer_eos_config['ice_layer'] = config.interior_struct.zalmoxis.ice_layer_eos
+    try:
+        check_zalmoxis_eos_files(layer_eos_config, load_zalmoxis_material_dictionaries())
+    except RuntimeError as exc:
+        pytest.skip(f'required Zalmoxis EOS table(s) not available: {exc}')
 
     os.makedirs(tmp_path / 'data')
     zalmoxis_solver(config, str(tmp_path), hf_row)
