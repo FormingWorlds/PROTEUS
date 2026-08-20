@@ -504,9 +504,10 @@ def test_stale_mesh_regression_discriminates_real_drift(tmp_path):
     crashes Aragog's own EOS-radius-range guard downstream, because the
     file's top radius no longer matches the resumed row's R_int. The
     two R_int values here are a real archived run's resumed row and its
-    final row: 5,667 m (~0.097%) apart, an order of magnitude below the
-    physical scale of the planet but four orders above the schema
-    check's 1e-6 relative tolerance, so the check must still catch it.
+    final row: 5,667 m (~0.097%) apart, about three orders of magnitude
+    below the planet's own radius and about three orders of magnitude
+    above the schema check's 1e-6 relative tolerance, so the check must
+    still catch it.
     """
     from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
 
