@@ -141,21 +141,25 @@ def test_regenerated_mesh_matches_resumed_row_and_stale_mesh_does_not(tmp_path):
     }
     if config.interior_struct.zalmoxis.ice_layer_eos is not None:
         layer_eos_config['ice_layer'] = config.interior_struct.zalmoxis.ice_layer_eos
+    material_dicts = load_zalmoxis_material_dictionaries()
     try:
-        check_zalmoxis_eos_files(layer_eos_config, load_zalmoxis_material_dictionaries())
+        check_zalmoxis_eos_files(layer_eos_config, material_dicts)
     except RuntimeError as exc:
         pytest.skip(f'required Zalmoxis EOS table(s) not available: {exc}')
 
     os.makedirs(tmp_path / 'data')
-    # zalmoxis_solver resolves the CMB temperature before its own internal
-    # EOS-file check runs, so a missing table can still surface here as
-    # FileNotFoundError or the same RuntimeError the pre-flight check
-    # raises, even though that check passed. Skip only on those specific
-    # missing-data exceptions; anything else is a real solver regression.
+    # zalmoxis_solver reads a table before its own internal check runs, and
+    # the resulting FileNotFoundError carries no usable path. Re-run the
+    # pre-flight check against the live filesystem and skip only if it now
+    # finds a table missing; anything else is a real solver regression.
     try:
         zalmoxis_solver(config, str(tmp_path), hf_row)
-    except FileNotFoundError as exc:
-        pytest.skip(f'required Zalmoxis EOS table(s) not available: {exc}')
+    except FileNotFoundError:
+        try:
+            check_zalmoxis_eos_files(layer_eos_config, material_dicts)
+        except RuntimeError as exc:
+            pytest.skip(f'required Zalmoxis EOS table(s) not available: {exc}')
+        raise
     except RuntimeError as exc:
         if not str(exc).startswith('Interior EOS table file(s) not found:'):
             raise
