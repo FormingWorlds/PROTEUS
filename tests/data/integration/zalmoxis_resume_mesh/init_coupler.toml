@@ -322,7 +322,7 @@ viscosity_activation_temp = 4600.0
 logging = false
 
 [outgas]
-module = "atmodeller"
+module = "calliope"
 fO2_shift_IW = 1.0
 mass_thresh = 1e+16
 h2_binodal = false
