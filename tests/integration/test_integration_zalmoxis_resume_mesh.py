@@ -22,14 +22,19 @@ reusing the solver's in-memory accumulator, which is a separate
 computation from the one the solver ran on itself. It is a real-physics
 run, not a mocked one: no Zalmoxis or EOS call is patched.
 
-Scope. The reference run lives outside this repository and is not part of
-the archived-run fixture set under ``tests/integration/``; where it is
-absent (any machine other than the one it was captured on) this test is
-skipped rather than failed. Its config was captured under a checkout that
-may carry config keys not yet on the branch under test (an in-progress
-module's options, for instance); a config-schema mismatch is also treated
-as a skip, since it reflects which checkout produced the fixture rather
-than the mesh regeneration under test. It exercises ``zalmoxis_solver`` directly on a
+Scope. The fixture under ``tests/data/integration/zalmoxis_resume_mesh/``
+is a single row and mesh file taken from a real archived run, trimmed down
+from the run's full helpfile and reference config; its config's
+``accretion`` table, which belonged only to a checkout of an in-progress
+module the archived run was captured under, is stripped so the fixture
+loads against the current config schema. Its helpfile row also predates
+two escape-tracking columns the current schema adds
+(``esc_clamp_frac``, ``esc_step_kg``), backfilled here with zero since
+neither is read by the interior solve this test exercises. A future
+schema change can still desync the fixture; that is treated as a skip
+rather than a failure, since it reflects which schema the fixture
+predates rather than a defect in mesh regeneration. It exercises
+``zalmoxis_solver`` directly on a
 row picked to reproduce a truncated-replay resume scenario, not through a
 full ``Proteus.start(resume=True)`` call, so it covers mesh regeneration in
 isolation. It does not cover the surrounding resume orchestration: real
@@ -61,16 +66,19 @@ from proteus.utils.coupler import ReadHelpfileFromCSV
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
-_REFERENCE_RUN_DIR = os.path.expanduser('~/git/PROTEUS-dev-3/output/remelt_massA_floor')
+_REFERENCE_RUN_DIR = os.path.join(
+    os.path.dirname(__file__), '..', 'data', 'integration', 'zalmoxis_resume_mesh'
+)
 _CONFIG_PATH = os.path.join(_REFERENCE_RUN_DIR, 'init_coupler.toml')
 _HELPFILE_PATH = os.path.join(_REFERENCE_RUN_DIR, 'runtime_helpfile.csv')
-_STALE_MESH_PATH = os.path.join(_REFERENCE_RUN_DIR, 'data', 'zalmoxis_output.dat')
+_STALE_MESH_PATH = os.path.join(_REFERENCE_RUN_DIR, 'zalmoxis_output.dat')
 
-# A truncation point picked to be well earlier than the reference run's own
-# final row, to reproduce a replay resumed from a stale on-disk mesh; it is
-# not where this run's own resume path would restart from (that is always
-# the helpfile's last row).
-_RESUMED_ROW_INDEX = 200
+# The fixture helpfile carries only the resumed row, at index 0; the run's
+# own row index in the archived helpfile this was trimmed from was 200,
+# well earlier than the run's own final row, to reproduce a replay resumed
+# from a stale on-disk mesh. It is not where this run's own resume path
+# would restart from (that is always the helpfile's last row).
+_RESUMED_ROW_INDEX = 0
 _RESUMED_ROW_TIME_YR = 5.0e5
 
 
@@ -80,7 +88,7 @@ _RESUMED_ROW_TIME_YR = 5.0e5
         and os.path.isfile(_HELPFILE_PATH)
         and os.path.isfile(_STALE_MESH_PATH)
     ),
-    reason='requires an archived reference run outside the repository',
+    reason='fixture missing under tests/data/integration/zalmoxis_resume_mesh/',
 )
 def test_regenerated_mesh_matches_resumed_row_and_stale_mesh_does_not(tmp_path):
     """Zalmoxis regenerates a mesh consistent with the resumed row's own state.
@@ -95,7 +103,7 @@ def test_regenerated_mesh_matches_resumed_row_and_stale_mesh_does_not(tmp_path):
     """
     try:
         config = read_config_object(_CONFIG_PATH)
-    except UnknownConfigKeyError as exc:
+    except (UnknownConfigKeyError, ValueError) as exc:
         pytest.skip(f"archived config does not match this checkout's schema: {exc}")
     hf_all = ReadHelpfileFromCSV(_REFERENCE_RUN_DIR)
     hf_row = hf_all.iloc[_RESUMED_ROW_INDEX].to_dict()
