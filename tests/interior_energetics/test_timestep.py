@@ -39,6 +39,7 @@ def _make_config(
     bol_scale: float = 1.0,
     bol_scale_start: float | None = None,
     bol_scale_duration: float = 0.0,
+    impact_maximum: float = 0.0,
 ):
     """Build a minimal duck-typed config that ``next_step`` reads from.
 
@@ -65,6 +66,7 @@ def _make_config(
         hysteresis_iters=hysteresis_iters,
         hysteresis_sfinc=hysteresis_sfinc,
         max_growth_factor=max_growth_factor,
+        impact_maximum=impact_maximum,
     )
     stop_solid = SimpleNamespace(enabled=True, phi_crit=phi_crit)
     stop_radeqm = SimpleNamespace(enabled=False)
@@ -781,6 +783,98 @@ class TestImpactClamp:
         # Positivity, and the deliberate overshoot that the floor implies.
         assert dt > 0.0
         assert hf_row['Time'] + dt > t_impact
+
+    @pytest.mark.physics_invariant
+    def test_impact_maximum_bounds_the_landing_step_below_the_remaining_time(self):
+        """A positive ceiling cuts the landing step further than the time
+        remaining to the impact would on its own.
+
+        This is the case the ceiling exists for: a coarse phase leaves a
+        lot of time remaining when the impact clamp first engages, and
+        without a ceiling that whole remaining time becomes the landing
+        step.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(impact_maximum=3.0e3)
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        time_now = 1.0e5
+        hf_row = {'Time': time_now, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        t_impact = time_now + 6.0e3
+
+        dt = next_step(
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=t_impact),
+        )
+
+        assert dt == pytest.approx(3.0e3, rel=1e-9), f'Expected the 3e3 ceiling, got {dt}'
+        # Discrimination: the remaining-time clamp alone would land the step
+        # at 6e3 (the impact is nearer than the controller's 8e3 choice), so
+        # only an active ceiling can produce 3e3 here.
+        assert hf_row['Time'] + dt < t_impact
+
+    def test_impact_maximum_does_not_shorten_a_step_already_below_it(self):
+        """The ceiling never lengthens the step and stays inert once the
+        remaining-time clamp has already produced something smaller."""
+        from proteus.interior_energetics.timestep import next_step
+
+        time_now = 1.0e5
+        hf_row = {'Time': time_now, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        t_impact = time_now + 2.0e3
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+
+        dt_with_ceiling = next_step(
+            _make_config(impact_maximum=5.0e3),
+            {},
+            dict(hf_row),
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=t_impact),
+        )
+        dt_without_ceiling = next_step(
+            _make_config(impact_maximum=0.0),
+            {},
+            dict(hf_row),
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=t_impact),
+        )
+
+        assert dt_with_ceiling == pytest.approx(dt_without_ceiling, rel=1e-12)
+        assert dt_with_ceiling == pytest.approx(2.0e3, rel=1e-9)
+
+    @pytest.mark.physics_invariant
+    def test_impact_maximum_never_beats_the_minimum_floor(self):
+        """A ceiling set below the minimum-step floor must not win.
+
+        The floor exists so an imminent impact cannot collapse dt to zero;
+        a misconfigured ceiling smaller than the floor must not reopen
+        that hazard.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(impact_maximum=50.0)
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        time_now = 1.0e5
+        hf_row = {'Time': time_now, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        t_impact = time_now + 10.0
+
+        dt = next_step(
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=t_impact),
+        )
+
+        # The 600 yr floor wins over the 50 yr ceiling.
+        assert dt == pytest.approx(600.0, rel=1e-6), f'Expected the 600 yr floor, got {dt}'
+        assert dt > 0.0
 
 
 class TestImpactAndBolscaleClampsTogether:

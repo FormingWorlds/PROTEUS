@@ -413,15 +413,16 @@ def next_step(
                 )
                 dtswitch = dt_capped
 
-    # Land exactly on the next scheduled giant impact. An impact re-melts
-    # the mantle and grows the planet, so it has to be applied at the
-    # state the timeline says it happens at, not at whatever state a step
-    # that jumped over it produced. The clamp only ever shortens dt, and
-    # it is floored at the minimum step so a nearby impact cannot collapse
-    # dt to zero; the event handler uses a half-open time window, so an
-    # impact inside a floored step is still applied exactly once.
+    # Land exactly on the next scheduled giant impact, since it remelts the
+    # mantle and grows the planet: the state must match the timeline, not
+    # whatever a step that overshot it produced. The clamp only shortens
+    # dt and floors at the minimum step; impact_maximum further bounds the
+    # landing step independent of how coarse dt had grown beforehand.
     if interior_o is not None and np.isfinite(interior_o.t_next_impact):
         dt_to_impact = interior_o.t_next_impact - hf_row['Time']
+        impact_ceiling = float(config.params.dt.impact_maximum)
+        if impact_ceiling > 0.0:
+            dt_to_impact = min(dt_to_impact, impact_ceiling)
         dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
         dt_to_impact = max(dt_to_impact, dtfloor)
         if dtswitch > dt_to_impact:

@@ -141,6 +141,16 @@ class TimeStepParams:
         Replacement speed-up factor applied while the hysteresis
         counter is active. Must be ``>= 1.0`` and ``<= SFINC``
         (1.6). Default 1.1 (gentle ramp-up).
+    impact_maximum: float
+        Maximum time-step size [yr] for the step that lands on a
+        scheduled giant impact. The landing step is otherwise
+        clamped only to however much simulated time remains before
+        the impact, so after a long quiescent phase has let ``dt``
+        coarsen, that remaining time can itself be large and the
+        step absorbing the impact's melt-fraction jump inherits the
+        same coarseness. Set to 0 (default) to disable, in which
+        case the remaining-time clamp applies with no independent
+        ceiling.
     """
 
     starspec: float = field(default=1e8, validator=ge(0))
@@ -170,6 +180,7 @@ class TimeStepParams:
     mushy_upper: float = field(default=0.99, validator=(gt(0), lt(1)))
     hysteresis_iters: int = field(default=0, validator=ge(0))
     hysteresis_sfinc: float = field(default=1.1, validator=ge(1.0))
+    impact_maximum: float = field(default=0.0, validator=ge(0))
 
     # Cap on dt growth ratio between consecutive steps. Bounds
     # dtswitch / dtprev to at most max_growth_factor, preventing
