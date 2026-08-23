@@ -72,20 +72,26 @@ class ObliquaSolid:
         Maximum radial grid spacing [m] (Henyey/relaxation method).
     core: str
         Core solution vector ("liquid", "solid", or "inertial").
+    core_props: str
+        Core properties to use ("core" or "mantle").
+    inertial_terms: bool
+        Whether to include inertial terms in the solid-tide solution.
     bulk_l: float
         Bulk modulus of the liquid phase [Pa].
     porosity_thresh: float
         Porosity threshold, hard cutoff below which melt fraction is set to zero [dimensionless].
-    dbulk_power: int
+    dbulk_power: float
         Drained bulk modulus powerlaw scaling exponent [dimensionless].
     """
     ncalc: int              = field(default=1000, validator=gt(100))
     dr_min: int             = field(default=300, validator=gt(0))
     dr_max: int             = field(default=3000, validator=gt(0))
     core: str               = field(default="liquid", validator=in_(("liquid", "solid", "inertial")))
+    core_props: str         = field(default="none", validator=in_(("core", "mantle")))
+    inertial_terms: bool    = field(default=True)
     bulk_l: float           = field(default=1e9, validator=gt(0))
     porosity_thresh: float  = field(default=3e-2, validator=gt(0))
-    dbulk_power: int        = field(default=1, validator=gt(0))
+    dbulk_power: float      = field(default=0.5, validator=gt(0))
 
 
 @define
@@ -166,7 +172,7 @@ class Obliqua:
     verbosity : int
         Logging verbosity level (0=silent, 1=info, 2=debug).
     module_solid : str
-        Solid-tide module to use ("none", "solid0d", "solid1d", "solid1d-relax", "solid1d-mush", "solid1d-mush-relax").
+        Solid-tide module to use ("none", "solid0d", "solid1d", "solid1d-relax", "solid1d-mush", "solid1d-mush-relax", "solid1d-equil-relax").
     module_mushy : str
         Mushy-tide module to use ("none", "interp").
     module_fluid : str
@@ -213,7 +219,7 @@ class Obliqua:
     # module selection
     module_solid: str = field(
         default="solid0d",
-        validator=in_(("none", "solid0d", "solid1d", "solid1d-relax", "solid1d-mush", "solid1d-mush-relax"))
+        validator=in_(("none", "solid0d", "solid1d", "solid1d-relax", "solid1d-mush", "solid1d-mush-relax", "solid1d-equil-relax"))
     )
     module_mushy: str = field(
         default="none",
@@ -256,8 +262,8 @@ class Satellite:
         Satellite initial semi-major axis [AU].
     eccentricity_sat: float
         Satellite initial orbital eccentricity [dimensionless].
-    aps_prec_angle: float
-        Satellite apsidal precession angle [deg].
+    evection_angle: float
+        Satellite evection angle [deg].
     c_factor_sat: float
         Satellite tidal dissipation factor (<= 0.4) [dimensionless].
     love_number_sat: str | None
@@ -271,7 +277,7 @@ class Satellite:
     axial_period_sat            = field(default=None, validator=ax_valid, converter=none_if_none)
     semimajoraxis_sat: float    = field(default=0.133, validator=gt(0))
     eccentricity_sat: float     = field(default=0.0, validator=ge(0))
-    aps_prec_angle: float       = field(default=0.0, validator=ge(0))
+    evection_angle: float       = field(default=0.0, validator=ge(0))
     c_factor_sat: float         = field(default=0.4, validator=(gt(0), le(0.4),))
     love_number_sat: str | None = field(default=None, converter=none_if_none)
 

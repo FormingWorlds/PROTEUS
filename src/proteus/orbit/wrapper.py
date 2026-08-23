@@ -240,7 +240,7 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
         hf_row['semimajorax_sat'] = config.orbit.satellite.semimajoraxis_sat * AU
         hf_row['eccentricity_sat'] = config.orbit.satellite.eccentricity_sat
 
-        hf_row['aps_prec_angle'] = config.orbit.satellite.aps_prec_angle
+        hf_row['evection_angle'] = config.orbit.satellite.evection_angle
 
         # Update orbital period (dependent)
         update_period(hf_row)
@@ -263,6 +263,19 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
         else:
             # set by user with float, use that
             hf_row['axial_period_sat'] = float(config.orbit.satellite.axial_period_sat) * secs_per_hour
+
+        # initialize the Hansen coefficient table
+        if config.orbit.planet_satellite_model in ["ps1d", "ps1d_evec"]:
+            from proteus.orbit.common import init_hansen_table, init_k_range_table
+
+            init_k_range_table()
+
+            e_grid_wide = np.concatenate([
+                np.arange(0.0, 0.1, 0.002),
+                np.arange(0.1, 0.9, 0.003),
+            ])
+            init_hansen_table(e_grid_wide)
+            # potentially needs to rerun after resuming a simulation
 
     else:
         # Set independent orbital parameters, through the desired method... (Star-Planet)
@@ -288,7 +301,7 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
             # set by orbital evolution, based on tidal love number
             from proteus.orbit.satellite import evolve_orbit_satellite
 
-            evolve_orbit_satellite(hf_row, config, tides_o, interior_o)
+            evolve_orbit_satellite(hf_row, config, dirs, tides_o, interior_o)
 
         # Update orbital period, from independent variables above
         update_period(hf_row)

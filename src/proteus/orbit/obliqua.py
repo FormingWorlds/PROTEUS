@@ -188,6 +188,8 @@ def run_obliqua(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides
                     "dr_min": config.orbit.obliqua.solid.dr_min,
                     "dr_max": config.orbit.obliqua.solid.dr_max,
                     "core": config.orbit.obliqua.solid.core,
+                    "core_props": config.orbit.obliqua.solid.core_props,
+                    "inertial_terms": config.orbit.obliqua.solid.inertial_terms,
                     "bulk_l": config.orbit.obliqua.solid.bulk_l,
                     "porosity_thresh": config.orbit.obliqua.solid.porosity_thresh,
                     "dbulk_power": config.orbit.obliqua.solid.dbulk_power,

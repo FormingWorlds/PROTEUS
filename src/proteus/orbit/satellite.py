@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
-def evolve_orbit_satellite(hf_row: dict, config: Config, tides_o: Tides_t, interior_o: Interior_t):
+def evolve_orbit_satellite(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interior_o: Interior_t):
     """Evolve the planet's orbital parameters.
 
     Parameters
@@ -26,6 +27,8 @@ def evolve_orbit_satellite(hf_row: dict, config: Config, tides_o: Tides_t, inter
             Dictionary of current runtime variables
         config : dict
             Dictionary of configuration options
+        dirs : dict
+            Dictionary of directory paths
         tides_o : Tides_t
             Tides object containing tidal interactions
         interior_o : Interior_t
@@ -51,7 +54,7 @@ def evolve_orbit_satellite(hf_row: dict, config: Config, tides_o: Tides_t, inter
         get_C_planet(hf_row, config, interior_o)
 
         # Call the ps1d_evec function to evolve the satellite's orbital parameters
-        ps1d_evec(hf_row, tides_o, interior_o.dt)
+        ps1d_evec(hf_row, dirs['output/data'], tides_o, interior_o.dt, False, [], 20, None)
 
     pass
 
@@ -254,7 +257,11 @@ def ps1d(hf_row, tides_o, dt):
         axial_p,
         axial_s,
         sma,
-        ecc
+        ecc,
+        0.0,  # cumulative delta-a from planet-raised tide
+        0.0,  # cumulative delta-a from satellite-raised tide
+        0.0,  # cumulative delta-e from planet-raised tide
+        0.0,  # cumulative delta-e from satellite-raised tide
     ]
 
     params = {
@@ -282,22 +289,6 @@ def ps1d(hf_row, tides_o, dt):
         return -(3.0 * I_j / (2.0 * C_j)) * sum_dOmega
 
 
-    def da_dt(a, E_p, E_s, sum_da_p, sum_da_s):
-        """Semimajor axis"""
-        return a * ((E_p / 2.0) * sum_da_p + (E_s / 2.0) * sum_da_s)
-
-
-    def de_dt(e, e_safe, E_p, E_s, sum_de_p, sum_de_s):
-        """Eccentricity"""
-        sqrt_term = np.sqrt(1.0 - e**2)
-
-        # Standard tidal dissipation (always active)
-        de_tide_p = (E_p * sqrt_term / (4.0 * e_safe)) * sum_de_p
-        de_tide_s = (E_s * sqrt_term / (4.0 * e_safe)) * sum_de_s
-
-        return de_tide_p + de_tide_s
-
-
     def smooth_sign(sigma, scale=1e-12):
         """Smooth approximation to sign(sigma) using tanh to avoid solver kinks."""
         return np.tanh(sigma / scale)
@@ -306,7 +297,7 @@ def ps1d(hf_row, tides_o, dt):
     def dE_dt(z, p):
         """Tidal energy dissipation rate"""
 
-        Omega_p, Omega_s, a, e = z
+        Omega_p, Omega_s, a, e, *_ = z
         e_safe = max(e, 1e-12)
 
         # Basic Orbital and Physical Parameters
@@ -363,7 +354,7 @@ def ps1d(hf_row, tides_o, dt):
 
 
     def orbitals(t, z, p):
-        Omega_p, Omega_s, a, e = z
+        Omega_p, Omega_s, a, e, *_ = z
         e_safe = max(e, 1e-12)
 
         # Basic Orbital and Physical Parameters
@@ -429,19 +420,22 @@ def ps1d(hf_row, tides_o, dt):
             sums['de_s'] += K_s0 * X0_sq * s * sqrt_e - 3.0 * K_s2 * X2_sq * (2.0 - s * sqrt_e)
 
 
-        # Compute the eccentricity derivative using the same filter value
-        de_dot = de_dt(
-            e, e_safe,
-            E_p, E_s,
-            sums['de_p'], sums['de_s']
-        )
+        sqrt_term = np.sqrt(1.0 - e**2)
 
-        # Final Evaluation using distinct functions
+        da_dt_p = a * (E_p / 2.0) * sums['da_p']
+        da_dt_s = a * (E_s / 2.0) * sums['da_s']
+        de_dt_p = (E_p * sqrt_term / (4.0 * e_safe)) * sums['de_p']
+        de_dt_s = (E_s * sqrt_term / (4.0 * e_safe)) * sums['de_s']
+
         return [
             domega_dt(I_p, p['C_p'], sums['dOmega_p']),
             domega_dt(I_s, p['C_s'], sums['dOmega_s']),
-            da_dt(a, E_p, E_s, sums['da_p'], sums['da_s']),
-            de_dot
+            da_dt_p + da_dt_s,
+            de_dt_p + de_dt_s,
+            da_dt_p,   # integrator: cumulative delta-a, planet tide
+            da_dt_s,   # integrator: cumulative delta-a, satellite tide
+            de_dt_p,   # integrator: cumulative delta-e, planet tide
+            de_dt_s,   # integrator: cumulative delta-e, satellite tide
         ]
 
 
@@ -458,7 +452,7 @@ def ps1d(hf_row, tides_o, dt):
 
     # Compute total angular momentum at the end of the integration
     L_final = params['C_p'] * sol.y[0][-1] + params['C_s'] * sol.y[1][-1] + \
-              (params['M_s'] * params['M_s']) / (params['M_p'] + params['M_s']) * \
+              (params['M_p'] * params['M_s']) / (params['M_p'] + params['M_s']) * \
               np.sqrt(const_G * (params['M_p'] + params['M_s']) * sol.y[2][-1] * \
               (1 - sol.y[3][-1]**2))
 
@@ -468,6 +462,23 @@ def ps1d(hf_row, tides_o, dt):
     # log energy per surface area for debugging
     energy_per_area = dE_tide_p / (4 * np.pi * params['R_p']**2)
     log.info(f"Total tidal power: {dE_tide_p:.3e} W, Energy per unit area: {energy_per_area:.3e} W/m^2")
+
+    # Exact, solver-consistent split of the changes accumulated over this step
+    da_planet_tide = sol.y[4][-1] - sol.y[4][0]
+    da_sat_tide    = sol.y[5][-1] - sol.y[5][0]
+    de_planet_tide = sol.y[6][-1] - sol.y[6][0]
+    de_sat_tide    = sol.y[7][-1] - sol.y[7][0]
+
+    # Self-consistency check: the two contributions must sum to the total change
+    da_total_check = da_planet_tide + da_sat_tide - (sol.y[2][-1] - sol.y[2][0])
+    de_total_check = de_planet_tide + de_sat_tide - (sol.y[3][-1] - sol.y[3][0])
+    log.debug(f"tidal split residuals: da={da_total_check:.3e} m, de={de_total_check:.3e}")
+
+    # Update semimajor axis and axial period
+    hf_row['sma_dot_planet'] = da_planet_tide / dt   # m/s, planet-raised tide
+    hf_row['sma_dot_sat']    = da_sat_tide    / dt   # m/s, satellite-raised tide
+    hf_row['ecc_dot_planet'] = de_planet_tide / dt   # 1/s
+    hf_row['ecc_dot_sat']    = de_sat_tide    / dt   # 1/s
 
     # Update semimajor axis and axial period
     hf_row['axial_period']     = 2 * np.pi / sol.y[0][-1]
@@ -479,7 +490,7 @@ def ps1d(hf_row, tides_o, dt):
     pass
 
 
-def ps1d_evec(hf_row, tides_o, dt):
+def ps1d_evec(hf_row, data_dir, tides_o, dt, filter_enabled=True, fine_sink=None, fine_stride=1, filter_value=None):
     """Evolve the Satellite's orbital parameters module.
 
     Updates the semi-major axis and primary rotation
@@ -489,10 +500,45 @@ def ps1d_evec(hf_row, tides_o, dt):
     ----------
         hf_row : dict
             Dictionary of current runtime variables
+        data_dir : str
+            Path to the data directory
         tides_o : Tides_t
             Tides object containing tidal interactions
         dt : float
             Time interval over which escape is occuring [yr]
+        filter_enabled : bool
+            When False, the resonance-activation filter (`get_resonance_filter`) is
+            forced to 1.0 everywhere instead of gating the evection terms
+            to a ~1e-8-wide band around exact resonance. Added because far
+            from resonance the filter stands in correctly for orbit-
+            averaging, but the same narrow gate also suppresses the
+            quasi-resonance regime -- the regime where Rufu & Canup get
+            most of their angular-momentum drain -- so it may be
+            preventing capture from ever being seen. Default True preserves
+            your original behavior exactly.
+        fine_sink : list or None
+            When given a list, this call appends `(t_abs_yr_array, phi_array)` -- the
+            solver's own internal accepted-step times and evection-angle
+            values for this macro-step -- so the fine-grained circulation
+            of phi can be inspected directly, instead of only the coarse
+            per-macro-step value stored in hf_row. Default None preserves
+            your original behavior exactly (no extra bookkeeping, no
+            behavior change).
+        fine_stride : int
+            When >1, only every `fine_stride`-th accepted
+            internal solver sample is kept in `fine_sink` for this
+            macro-step. This only thins out what gets *stored/plotted* --
+            `solve_ivp` still takes its own accepted steps at whatever
+            spacing Radau's error control chooses, so integration accuracy
+            is completely unaffected. Useful for long runs deep in
+            circulation, where phi sweeps through many full 0-2pi cycles
+            per macro-step: at that cadence even full-resolution storage
+            renders as a solid filled band (each cycle is much narrower
+            than a pixel), so nothing is visually lost by thinning it, and
+            it substantially cuts memory/plotting cost for a 1e5 yr run.
+            In a captured/librating stretch, keep fine_stride=1 (or a small
+            value) so the libration shape itself stays fully resolved.
+            Default 1 preserves your original behavior exactly.
     """
 
     # Convert time to seconds
@@ -503,7 +549,7 @@ def ps1d_evec(hf_row, tides_o, dt):
     axial_s = 2 * np.pi / float(hf_row['axial_period_sat'])
     sma = float(hf_row['semimajorax_sat'])
     ecc = float(hf_row['eccentricity_sat'])
-    aps_prec_angle = float(hf_row['aps_prec_angle'])
+    evection_angle = float(hf_row['evection_angle'])
 
     # Setup Initial State and Parameters
     y0 = [
@@ -511,7 +557,11 @@ def ps1d_evec(hf_row, tides_o, dt):
         axial_s,
         sma,
         ecc,
-        aps_prec_angle # evec_angle
+        evection_angle,
+        0.0,  # cumulative delta-a from planet-raised tide
+        0.0,  # cumulative delta-a from satellite-raised tide
+        0.0,  # cumulative delta-e from planet-raised tide
+        0.0,  # cumulative delta-e from satellite-raised tide
     ]
 
     # Mean motion of star-planet system
@@ -522,7 +572,7 @@ def ps1d_evec(hf_row, tides_o, dt):
         'R_p': hf_row['R_int'],    'R_s': hf_row['R_sat'],
         'C_p': hf_row['C_planet'], 'C_s': hf_row['C_sat'],
         'n_star': n_star,
-        'J_struc': 0.313          # <-- How is this computed? ~0.3 - 0.5 depending on structure
+        'J_struc': 0.315
     }
 
 
@@ -534,6 +584,12 @@ def ps1d_evec(hf_row, tides_o, dt):
     LNk_s = tides_o.get(primary="satellite", perturber="planet").LNk
 
     # Convert arrays into a dictionary mapping (n, m, k) -> Complex Love Number
+    LNk_p_m0 = LNk_p[0::2]
+    LNk_p_m2 = LNk_p[1::2]
+    LNk_s_m0 = LNk_s[0::2]
+    LNk_s_m2 = LNk_s[1::2]
+
+    # Convert arrays into a dictionary mapping (n, m, k) -> Complex Love Number
     love_dict_p = {tuple(nmk): ln for nmk, ln in zip(nmk_p, LNk_p)}
     love_dict_s = {tuple(nmk): ln for nmk, ln in zip(nmk_s, LNk_s)}
 
@@ -543,11 +599,6 @@ def ps1d_evec(hf_row, tides_o, dt):
     def domega_dt(I_j, C_j, sum_dOmega):
         """Planar secular tidal spin"""
         return -(3.0 * I_j / (2.0 * C_j)) * sum_dOmega
-
-
-    def da_dt(a, E_p, E_s, sum_da_p, sum_da_s):
-        """Semimajor axis"""
-        return a * ((E_p / 2.0) * sum_da_p + (E_s / 2.0) * sum_da_s)
 
 
     def get_resonance_filter(dw_secular_total, n_star, scale_width=1e-8):
@@ -596,8 +647,12 @@ def ps1d_evec(hf_row, tides_o, dt):
         dw_secular_total = dw_J2 + dw_tide_p + dw_tide_s + dw_secular_star
 
         # Update filter strength dynamically
-        # The scale_width of 1e-8 rad/s corresponds to a precession period difference of a few years
-        local_filter = get_resonance_filter(dw_secular_total, n_star, scale_width=scale_width)
+        if filter_value is not None:
+            local_filter = filter_value
+        elif filter_enabled:
+            local_filter = get_resonance_filter(dw_secular_total, n_star, scale_width=scale_width)
+        else:
+            local_filter = 1.0
 
         # The oscillating evection feedback component (modulated by the detection filter)
         dw_evection_oscillating = (15.0 / 4.0) * np.sqrt(1.0 - e**2) * (n_star**2 / n_mm) * np.cos(2.0 * phi)
@@ -626,7 +681,7 @@ def ps1d_evec(hf_row, tides_o, dt):
     def dE_dt(z, p):
         """Tidal energy dissipation rate"""
 
-        Omega_p, Omega_s, a, e, _ = z
+        Omega_p, Omega_s, a, e, *_ = z
         e_safe = max(e, 1e-12)
 
         # Basic Orbital and Physical Parameters
@@ -683,7 +738,7 @@ def ps1d_evec(hf_row, tides_o, dt):
 
 
     def orbitals(t, z, p):
-        Omega_p, Omega_s, a, e, phi = z
+        Omega_p, Omega_s, a, e, phi, *_ = z
         e_safe = max(e, 1e-12)
 
         # Basic Orbital and Physical Parameters
@@ -701,96 +756,73 @@ def ps1d_evec(hf_row, tides_o, dt):
         J2 = p['J_struc'] * (Omega_p / Omega_b)**2
         dw_J2 = 1.5 * J2 * n_mm * (p['R_p'] / a)**2 / (1.0 - e_safe**2)**2
 
-        # Accumulators
-        sums = {
-            'dOmega_p': 0.0, 'dOmega_s': 0.0,
-            'da_p': 0.0, 'da_s': 0.0,
-            'de_p': 0.0, 'de_s': 0.0,
-            'dw_p': 0.0, 'dw_s': 0.0
-        }
-
         k, X_all = get_all_m_hansen(e_safe, 2, kmin, kmax)  # 'n = 2' is fixed for this orbital evolution model
 
-        # Retrieve Hansen/Love properties for this specific (a, e) state
-        # Assuming tides_o and orbit_o handle the known caching efficiently
-        for si, s in enumerate(k):
+        # Vectorized mode sums for efficiency
+        s_arr = k.astype(float)
+        sig_scale = max(1e-12, 1e-4 * n_mm)
+        sigma_0 = -s_arr * n_mm
+        sigma_p2 = 2*Omega_p - s_arr * n_mm
+        sigma_s2 = 2*Omega_s - s_arr * n_mm
 
-            # Fetch Hansen coefficients per mode 'm'
-            X_0  = X_all[0][si]
-            X_2  = X_all[2][si]
-            X_m1 = X_all[-1][si]
-            X_1  = X_all[1][si]
-            X_m2 = X_all[-2][si]
+        A_p0 = smooth_amplitude_near_zero(LNk_p_m0.real, sigma_0, sig_scale)
+        A_p2 = smooth_amplitude_near_zero(LNk_p_m2.real, sigma_p2, sig_scale)
+        A_s0 = smooth_amplitude_near_zero(LNk_s_m0.real, sigma_0, sig_scale)
+        A_s2 = smooth_amplitude_near_zero(LNk_s_m2.real, sigma_s2, sig_scale)
+        K_p0 = np.abs(LNk_p_m0.imag) * smooth_sign(sigma_0, sig_scale)
+        K_p2 = np.abs(LNk_p_m2.imag) * smooth_sign(sigma_p2, sig_scale)
+        K_s0 = np.abs(LNk_s_m0.imag) * smooth_sign(sigma_0, sig_scale)
+        K_s2 = np.abs(LNk_s_m2.imag) * smooth_sign(sigma_s2, sig_scale)
 
-            # A small fraction of mean motion (e.g., 1e-4 * n_mm) or absolute threshold (1e-12) works well.
-            sig_scale = max(1e-12, 1e-4 * n_mm)
+        X_0 = X_all[0]
+        X_2 = X_all[2]
+        X_m1 = X_all[-1]
+        X_1 = X_all[1]
+        X_m2 = X_all[-2]
+        X0_sq = X_0**2
+        X2_sq = X_2**2
+        sqrt_e = np.sqrt(1.0 - e_safe**2)
 
-            # Compute forcing frequencies
-            sigma_0 = - s*n_mm
-            sigma_p2 = 2*Omega_p - s*n_mm
-            sigma_s2 = 2*Omega_s - s*n_mm
+        dOmega_p = np.sum(K_p2 * X2_sq)
+        dOmega_s = np.sum(K_s2 * X2_sq)
+        da_p = np.sum(s_arr * (K_p0 * X0_sq + 3.0 * K_p2 * X2_sq))
+        da_s = np.sum(s_arr * (K_s0 * X0_sq + 3.0 * K_s2 * X2_sq))
+        de_p = np.sum(K_p0 * X0_sq * s_arr * sqrt_e - 3.0 * K_p2 * X2_sq * (2.0 - s_arr * sqrt_e))
+        de_s = np.sum(K_s0 * X0_sq * s_arr * sqrt_e - 3.0 * K_s2 * X2_sq * (2.0 - s_arr * sqrt_e))
+        term0 = 2.0*e_safe**2 * X0_sq + e_safe**2 * X_0 * (X_m2 + X_2) + 2.0*e_safe * X_0 * (X_m1 + X_1)
+        term2 = (12.0*(2.0 - s_arr*sqrt_e**3) - 9.0*e_safe**2) * X2_sq + 3.0*e_safe**2 * X_2 * X_m2 + \
+                (4.0*s_arr*sqrt_e**3 - 6.0*e_safe**2) * X_0 * X_2 + 6.0*e_safe * X_2 * (X_m1 + X_1)
+        dw_p = np.sum((3.0/16.0) * A_p0 * term0 - (1.0/16.0) * A_p2 * term2)
+        dw_s = np.sum((3.0/16.0) * A_s0 * term0 - (1.0/16.0) * A_s2 * term2)
 
-            # Fetch complex Love number components (A = Real, K = -Imaginary)
-            # Look up the complex values, defaulting to 0.0 + 0j if not found
-            val_p0 = love_dict_p.get((2, 0, s), 0.0 + 0.0j)
-            val_p2 = love_dict_p.get((2, 2, s), 0.0 + 0.0j)
-            val_s0 = love_dict_s.get((2, 0, s), 0.0 + 0.0j)
-            val_s2 = love_dict_s.get((2, 2, s), 0.0 + 0.0j)
+        sums = {'dOmega_p': dOmega_p, 'dOmega_s': dOmega_s, 'da_p': da_p, 'da_s': da_s,
+                'de_p': de_p, 'de_s': de_s, 'dw_p': dw_p, 'dw_s': dw_s}
 
-            # Extract real and imaginary parts
-            # Dynamically scale the amplitude of the real part near zero-crossing
-            A_p0 = smooth_amplitude_near_zero(val_p0.real, sigma_0, sig_scale)
-            A_p2 = smooth_amplitude_near_zero(val_p2.real, sigma_p2, sig_scale)
-            A_s0 = smooth_amplitude_near_zero(val_s0.real, sigma_0, sig_scale)
-            A_s2 = smooth_amplitude_near_zero(val_s2.real, sigma_s2, sig_scale)
-
-            # Dynamically scale dissipation continuously through zero-crossing
-            K_p0 = np.abs(val_p0.imag) * smooth_sign(sigma_0, sig_scale)
-            K_p2 = np.abs(val_p2.imag) * smooth_sign(sigma_p2, sig_scale)
-            K_s0 = np.abs(val_s0.imag) * smooth_sign(sigma_0, sig_scale)
-            K_s2 = np.abs(val_s2.imag) * smooth_sign(sigma_s2, sig_scale)
-
-            # Accumulate
-            X0_sq = X_0**2
-            X2_sq = X_2**2
-            sqrt_e = np.sqrt(1.0 - e_safe**2)
-
-            sums['dOmega_p'] += K_p2 * X2_sq
-            sums['dOmega_s'] += K_s2 * X2_sq
-
-            sums['da_p'] += s * (K_p0 * X0_sq + 3.0 * K_p2 * X2_sq)
-            sums['da_s'] += s * (K_s0 * X0_sq + 3.0 * K_s2 * X2_sq)
-
-            sums['de_p'] += K_p0 * X0_sq * s * sqrt_e - 3.0 * K_p2 * X2_sq * (2.0 - s * sqrt_e)
-            sums['de_s'] += K_s0 * X0_sq * s * sqrt_e - 3.0 * K_s2 * X2_sq * (2.0 - s * sqrt_e)
-
-            term0 = 2.0*e_safe**2 * X0_sq + e_safe**2 * X_0 * (X_m2 + X_2) + 2.0*e_safe * X_0 * (X_m1 + X_1)
-            term2 = (12.0*(2.0 - s*sqrt_e**3) - 9.0*e_safe**2) * X2_sq + 3.0*e_safe**2 * X_2 * X_m2 + \
-                    (4.0*s*sqrt_e**3 - 6.0*e_safe**2) * X_0 * X_2 + 6.0*e_safe * X_2 * (X_m1 + X_1)
-
-            sums['dw_p'] += (3.0/16.0) * A_p0 * term0 - (1.0/16.0) * A_p2 * term2
-            sums['dw_s'] += (3.0/16.0) * A_s0 * term0 - (1.0/16.0) * A_s2 * term2
-
-        # Compute the precession derivative and extract the filter value
         dphi_dt, r_filter = dw_dt(
             e, e_safe, n_mm, p['n_star'], phi, dw_J2,
             E_p, E_s, sums['dw_p'], sums['dw_s'], scale_width=1e-8
         )
 
-        # Compute the eccentricity derivative using the same filter value
-        de_dot = de_dt(
-            e, e_safe, n_mm, p['n_star'], phi,
-            E_p, E_s, sums['de_p'], sums['de_s'], r_filter
-        )
+        sqrt_term = np.sqrt(1.0 - e**2)
 
-        # Final Evaluation using distinct functions
+        da_dt_p = a * (E_p / 2.0) * sums['da_p']
+        da_dt_s = a * (E_s / 2.0) * sums['da_s']
+        de_dt_p = (E_p * sqrt_term / (4.0 * e_safe)) * sums['de_p']
+        de_dt_s = (E_s * sqrt_term / (4.0 * e_safe)) * sums['de_s']
+        de_res = (15.0 / 4.0) * e * sqrt_term * (p['n_star']**2 / n_mm) * np.sin(2.0 * phi)
+
         return [
             domega_dt(I_p, p['C_p'], sums['dOmega_p']),
             domega_dt(I_s, p['C_s'], sums['dOmega_s']),
-            da_dt(a, E_p, E_s, sums['da_p'], sums['da_s']),
-            de_dot,
-            dphi_dt
+            da_dt_p + da_dt_s,
+            de_dt_p + de_dt_s + (r_filter * de_res),
+            dphi_dt,
+            da_dt_p,
+            da_dt_s,
+            de_dt_p,
+            de_dt_s,
         ]
+
 
     # Integration
     log.debug("Integrating the ps1d_evec orbital model with solve_ivp")
@@ -805,7 +837,7 @@ def ps1d_evec(hf_row, tides_o, dt):
 
     # Compute total angular momentum at the end of the integration
     L_final = params['C_p'] * sol.y[0][-1] + params['C_s'] * sol.y[1][-1] + \
-              (params['M_s'] * params['M_s']) / (params['M_p'] + params['M_s']) * \
+              (params['M_p'] * params['M_s']) / (params['M_p'] + params['M_s']) * \
               np.sqrt(const_G * (params['M_p'] + params['M_s']) * sol.y[2][-1] * \
               (1 - sol.y[3][-1]**2))
 
@@ -816,12 +848,52 @@ def ps1d_evec(hf_row, tides_o, dt):
     energy_per_area = dE_tide_p / (4 * np.pi * params['R_p']**2)
     log.info(f"Total tidal power: {dE_tide_p:.3e} W, Energy per unit area: {energy_per_area:.3e} W/m^2")
 
+    da_planet_tide = sol.y[5][-1] - sol.y[5][0]
+    da_sat_tide    = sol.y[6][-1] - sol.y[6][0]
+    de_planet_tide = sol.y[7][-1] - sol.y[7][0]
+    de_sat_tide    = sol.y[8][-1] - sol.y[8][0]
+
+    # stash the solver's own internal (finely spaced, adaptively stepped)
+    # time/phi samples for this macro-step, if requested.
+    if fine_sink is not None:
+        t_abs_yr = hf_row['Time'] + sol.t / secs_per_year
+        phi_fine = sol.y[4]
+        if fine_stride is not None and fine_stride > 1:
+            # keep the last sample too, so consecutive macro-steps still
+            # join up without a gap at the stride boundary
+            keep = np.zeros(len(t_abs_yr), dtype=bool)
+            keep[::fine_stride] = True
+            keep[-1] = True
+            t_abs_yr = t_abs_yr[keep]
+            phi_fine = phi_fine[keep]
+        fine_sink.append((t_abs_yr, phi_fine.copy()))
+
+        # Write/append fine data to a single output file
+        fine_file_path = os.path.join(data_dir, "fine_evection_data.csv")
+        file_exists = os.path.exists(fine_file_path)
+
+        fine_data = np.column_stack((t_abs_yr, phi_fine))
+
+        with open(fine_file_path, 'a') as f:
+            if not file_exists:
+                f.write("t_abs_yr,phi\n")  # Write header on first creation
+            np.savetxt(f, fine_data, delimiter=',', fmt='%.8e')
+
+    da_total_check = da_planet_tide + da_sat_tide - (sol.y[2][-1] - sol.y[2][0])
+    de_total_check = de_planet_tide + de_sat_tide - (sol.y[3][-1] - sol.y[3][0])
+    log.debug(f"tidal split residuals: da={da_total_check:.3e} m, de={de_total_check:.3e}")
+
+    hf_row['sma_dot_planet'] = da_planet_tide / dt
+    hf_row['sma_dot_sat']    = da_sat_tide    / dt
+    hf_row['ecc_dot_planet'] = de_planet_tide / dt
+    hf_row['ecc_dot_sat']    = de_sat_tide    / dt
+
     # Update semimajor axis and axial period
     hf_row['axial_period']     = 2 * np.pi / sol.y[0][-1]
     hf_row['axial_period_sat'] = 2 * np.pi / sol.y[1][-1]
     hf_row['semimajorax_sat']  = sol.y[2][-1]
     hf_row['eccentricity_sat'] = sol.y[3][-1]
-    hf_row['aps_prec_angle']   = sol.y[4][-1]
+    hf_row['evection_angle']   = sol.y[4][-1]
     hf_row['plan_sat_am']      = L_final
 
     pass

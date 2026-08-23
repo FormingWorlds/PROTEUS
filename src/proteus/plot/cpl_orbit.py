@@ -9,10 +9,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from cmcrameri import cm
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+from proteus.orbit.common import _solve_e_stationary
 from proteus.orbit.wrapper import read_tides_data
-from proteus.utils.constants import AU, secs_per_day
+from proteus.utils.constants import (
+    AU,
+    M_earth,
+    R_earth,
+    const_G,
+    secs_per_day,
+    secs_per_hour,
+    secs_per_year,
+)
 from proteus.utils.plot import sample_output
 
 if TYPE_CHECKING:
@@ -60,15 +71,27 @@ def plot_orbit(
 
     # Panel 2,0: Planet Rotational & Orbital Periods (Time comparison)
     p_orb_pl = hf_all['orbital_period'] / secs_per_day
-    p_spin_pl = hf_all['axial_period'] / secs_per_day
+    p_spin_pl = hf_all['axial_period'] / secs_per_hour
 
-    axs[2, 0].plot(time, p_orb_pl, lw=lw, label='Orbital Period', color='tab:orange')
-    axs[2, 0].plot(time, p_spin_pl, lw=lw, label='Axial Spin Period', color='tab:red')
-    axs[2, 0].set_ylabel('Periods [days]')
-    axs[2, 0].set_yscale('log') # Log scale handles wide differences in spin/orbit well
-    axs[2, 0].legend(loc='best')
-    axs[2, 0].grid(alpha=0.2, which="both")
+    # Left Y-axis: Orbital Period
+    ax_left = axs[2, 0]
+    l1 = ax_left.plot(time, p_orb_pl, lw=lw, label='Orbital Period', color='tab:orange')
+    ax_left.set_ylabel('Orbital Period [days]', color='tab:orange')
+    ax_left.tick_params(axis='y', labelcolor='tab:orange')
+    ax_left.set_yscale('log')
+    ax_left.grid(alpha=0.2, which="both")
 
+    # Right Y-axis: Spin Period
+    ax_right = ax_left.twinx()
+    l2 = ax_right.plot(time, p_spin_pl, lw=lw, label='Axial Spin Period', color='tab:red')
+    ax_right.set_ylabel('Axial Spin Period [hours]', color='tab:red')
+    ax_right.tick_params(axis='y', labelcolor='tab:red')
+    ax_right.set_yscale('log')
+
+    # Combined Legend
+    lines = l1 + l2
+    labels = [l.get_label() for l in lines]
+    ax_left.legend(lines, labels, loc='best')
 
     # ----------------- COLUMN 1: SATELLITE -----------------
     # Check if satellite columns exist to avoid KeyErrors
@@ -77,9 +100,9 @@ def plot_orbit(
     if has_sat:
         # Panel 0,1: Satellite Semi-major Axis
         # Using AU to keep consistent scale, or feel free to use e.g. 1e6 meters or Earth-Radii
-        y_a_sat = hf_all['semimajorax_sat'] / AU
+        y_a_sat = hf_all['semimajorax_sat'] / R_earth
         axs[0, 1].plot(time, y_a_sat, lw=lw, color='black')
-        axs[0, 1].set_ylabel('Semi-major Axis [AU]')
+        axs[0, 1].set_ylabel('Semi-major Axis [R_earth]')
         axs[0, 1].set_ylim(np.amin(y_a_sat) / yext, np.amax(y_a_sat) * yext)
         axs[0, 1].set_title('Satellite Orbiting Planet')
         axs[0, 1].grid(alpha=0.2)
@@ -94,25 +117,12 @@ def plot_orbit(
         axs[1, 1].grid(alpha=0.2)
 
         # Panel 2,1: Satellite Periods & Optional Precession
-        p_orb_sat = hf_all['orbital_period_sat'] / secs_per_day
-        p_spin_sat = hf_all['axial_period_sat'] / secs_per_day
+        p_orb_sat = hf_all['orbital_period_sat'] / secs_per_hour
+        p_spin_sat = hf_all['axial_period_sat'] / secs_per_hour
 
         axs[2, 1].plot(time, p_orb_sat, lw=lw, label='Orbital Period', color='tab:orange')
         axs[2, 1].plot(time, p_spin_sat, lw=lw, label='Axial Spin Period', color='tab:red')
-
-        # If the apsidal precession angle is present, let's plot its rate/timescale
-        if 'aps_prec_angle' in hf_all.columns:
-            # Approximate precession timescale (2pi / average rate of change)
-            dt = np.diff(time)
-            dtheta = np.diff(np.unwrap(hf_all['aps_prec_angle']))
-            # Avoid divide-by-zero for static steps
-            valid = (dt > 0) & (dtheta != 0)
-            if np.any(valid):
-                # Calculate local precession period in days (assuming time in years, convert to days)
-                prec_period_days = np.abs((2 * np.pi) / (dtheta[valid] / (dt[valid] * 365.25)))
-                axs[2, 1].plot(time[1:][valid], prec_period_days, lw=lw, ls='--', label='Apsidal Prec. Period', color='tab:purple')
-
-        axs[2, 1].set_ylabel('Periods [days]')
+        axs[2, 1].set_ylabel('Periods [hours]')
         axs[2, 1].set_yscale('log')
         axs[2, 1].legend(loc='best')
         axs[2, 1].grid(alpha=0.2, which="both")
@@ -229,6 +239,136 @@ def plot_orbit_system(hf_all: pd.DataFrame, output_dir: str, plot_format: str = 
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 
+def plot_evection(
+    hf_all: pd.DataFrame, output_dir: str, plot_format: str = 'pdf', t0: float = 100.0,
+    xscale: str = 'linear', t_max: float = 1e5,
+    fine_t=None, fine_phi=None, filter_toggle_t=None,
+):
+    """Plot the evection diagnostics."""
+    time = np.array(hf_all['Time'])
+    if np.amax(time) <= t0:
+        log.debug('Insufficient data to make plot_evection')
+        return
+
+    log.info('Plot evection')
+
+    lw = 2.0
+    figscale = 1.2
+    yext = 1.05
+
+    fig, axs = plt.subplots(4, 1, figsize=(11 * figscale, 9 * figscale), sharex=True)
+
+    Omega_earth = np.sqrt(const_G * M_earth / R_earth**3)
+    Omega_sun = 2 * np.pi / secs_per_year
+    J_star = 0.315
+    Lambda = np.sqrt(1.5 * J_star * Omega_earth / Omega_sun)
+    Omega_ratio = Omega_sun / Omega_earth
+
+    a_prime = (hf_all['semimajorax_sat'] / R_earth).to_numpy()
+    e_arr = hf_all['eccentricity_sat'].to_numpy()
+    s_prime = (2 * np.pi / hf_all['axial_period'].to_numpy()) / Omega_earth
+
+    with np.errstate(invalid='ignore'):
+        a_res = (Lambda * s_prime / (1.0 - e_arr**2)) ** (4.0 / 7.0)
+
+    e_s = np.array([
+        _solve_e_stationary(a_prime[i], s_prime[i], Lambda, Omega_ratio)
+        for i in range(len(a_prime))
+    ])
+
+    # Panel (a): a' and a'_res
+    y_a_sat = hf_all['semimajorax_sat'] / R_earth
+    axs[0].plot(time, a_res, lw=lw, ls='--', color='#a8c6e8', label="a'_res (evection)", zorder=2)
+    axs[0].plot(time, y_a_sat, lw=lw, color='black', label="a' (satellite)", zorder=3)
+    axs[0].set_ylabel('Semi-major Axis [R_Earth]')
+    axs[0].set_ylim(np.amin(y_a_sat) / yext, np.amax(y_a_sat) * yext)
+    axs[0].set_title('Satellite Orbiting Planet')
+    axs[0].legend(loc='best', fontsize=9, framealpha=0.9)
+    axs[0].grid(alpha=0.2)
+
+    # Panel (b): e_s and e
+    y_e_sat = hf_all['eccentricity_sat']
+    axs[1].plot(time, y_e_sat, lw=lw, color='tab:blue', label='e', zorder=2)
+    axs[1].plot(time, e_s, lw=lw, ls='--', color='#ff8c00', label='e_s (stable stationary)', zorder=3)
+    axs[1].set_ylabel('Eccentricity')
+    ymin_e_sat = np.amin(y_e_sat) / yext
+    ymax_e_sat = max(np.amax(y_e_sat) * yext, ymin_e_sat + 0.01)
+    axs[1].set_ylim(ymin_e_sat, ymax_e_sat)
+    axs[1].legend(loc='best', fontsize=9, framealpha=0.9)
+    axs[1].grid(alpha=0.2)
+
+    # Panel (c): Resonance/evection angle.
+    if fine_t is not None and fine_phi is not None:
+        y_evec = np.mod(np.asarray(fine_phi), 2 * np.pi)
+        t_evec = np.asarray(fine_t)
+    else:
+        y_evec = hf_all['evection_angle'].to_numpy().copy()
+        if np.ptp(y_evec) < 2 * np.pi - 1e-9:
+            pass  # pure libration: bounded already, no wrap needed
+        else:
+            y_evec = np.mod(y_evec, 2 * np.pi)
+        t_evec = time
+        log.debug('plot_evection: no fine phi trace supplied -- panel (c) uses '
+                   'the coarse, potentially aliased evection_angle column')
+
+    axs[2].plot(t_evec, y_evec, lw=0.8 if fine_t is not None else lw, color='tab:green')
+    axs[2].set_ylabel('Evection Angle [rad]')
+    axs[2].set_yticks([0, np.pi, 2 * np.pi])
+    axs[2].set_yticklabels(['0', r'$\pi$', r'$2\pi$'])
+    axs[2].set_ylim(-0.1, 2 * np.pi + 0.1)
+    axs[2].grid(alpha=0.2)
+    if filter_toggle_t is not None:
+        axs[2].axvline(filter_toggle_t, color='crimson', ls=':', lw=1.2, alpha=0.7,
+                        label=f'filter activates (t~{filter_toggle_t:.0f} yr)')
+        axs[2].legend(loc='upper right', fontsize=9, framealpha=0.9)
+    if fine_t is None:
+        pass
+
+    # Panel (d): total AM and normalized planet spin
+    norm_SR = Omega_earth
+    norm_MoI = 0.335 * M_earth * R_earth**2
+    norm_AM = norm_MoI * norm_SR
+
+    y_AM = hf_all['plan_sat_am'] / norm_AM
+    axs[3].plot(time, y_AM, lw=lw, label='Normalized Angular Momentum', color='tab:orange', zorder=3)
+
+    Omega_p_arr = 2 * np.pi / hf_all['axial_period'].to_numpy()
+    s_p_prime = Omega_p_arr / norm_SR
+    axs[3].plot(time, s_p_prime, lw=lw, ls='-.', label="Planet Spin, s_p' (normalized)", color='tab:red', zorder=2)
+
+    axs[3].set_ylabel('Normalized AM / Spin')
+    axs[3].set_ylim(0.0, 1.0)
+    axs[3].legend(loc='best', fontsize=9, framealpha=0.9)
+    axs[3].grid(alpha=0.2)
+
+    for ax in (axs[0], axs[1], axs[3]):
+        if filter_toggle_t is not None:
+            ax.axvline(filter_toggle_t, color='crimson', ls=':', lw=1.0, alpha=0.5)
+
+    if xscale == 'log':
+        for ax in axs.flat:
+            ax.set_xscale('log')
+            ax.set_xlim(left=t0, right=t_max)
+        axs[3].set_xlabel('Time [log10(yr)]')
+    else:
+        import matplotlib.ticker as mticker
+        for ax in axs.flat:
+            ax.set_xscale('linear')
+            ax.set_xlim(left=0.0, right=t_max)
+            ax.xaxis.set_major_locator(mticker.MultipleLocator(1e4))
+        axs[3].set_xlabel('Time [yr]')
+
+    fig.tight_layout()
+
+    # Save figure
+    os.makedirs(os.path.join(output_dir, 'plots'), exist_ok=True)
+    fpath = os.path.join(output_dir, 'plots', 'plot_evection.%s' % plot_format)
+    fig.savefig(fpath, dpi=200, bbox_inches='tight')
+
+    plt.close(fig)
+    plt.ioff()
+
+
 def plot_Lovenumber(output_dir: str, times: list | np.ndarray, data: list, plot_format: str = 'pdf'):
     if times is None or len(times) == 0:
         log.debug('No times provided for plot_Lovenumber')
@@ -341,6 +481,114 @@ def plot_Lovenumber(output_dir: str, times: list | np.ndarray, data: list, plot_
     plt.ioff()
 
 
+
+def plot_evection_A(
+    hf_all: pd.DataFrame, output_dir: str, plot_format: str = 'pdf', t0: float = 100.0
+):
+    """Plot the relative strength of satellite- vs planet-raised tides.
+
+    Generalizes the CTL/CPL 'A' parameter (e.g. Zahnle et al. 2015, eq. 9,
+    A = k2m*dtm / (k2p*dt) * (Mp/m)^2 * (Rm/Rp)^5) to a dynamical-tide model
+    with a full (n,m,k) Love-number spectrum. Rather than a single frequency-
+    independent k2*dt per body, A_a and A_e are computed directly from the
+    per-body contributions to da/dt and de/dt (see sma_dot_planet/sat and
+    ecc_dot_planet/sat in ps1d): the ratio of the satellite-raised ('lunar')
+    to planet-raised ('Earth') tidal contribution to each quantity.
+
+    A > 1 means the satellite-raised tide dominates that quantity's evolution;
+    A < 1 means the planet-raised tide dominates. Unlike the CTL 'A', these
+    are generally time-dependent and process-dependent -- A_a need not equal
+    A_e, since da/dt and de/dt sample different combinations of tidal modes.
+
+    Parameters
+    ----------
+        hf_all : pd.DataFrame
+            Helpfile history. Must contain 'Time', 'sma_dot_planet',
+            'sma_dot_sat', 'ecc_dot_planet', 'ecc_dot_sat'.
+        output_dir : str
+            Directory in which to save the plot (a 'plots' subfolder is used).
+        plot_format : str
+            Image format for the saved figure.
+        t0 : float
+            Lower time bound [yr] for the plot / minimum data requirement.
+    """
+
+    time = np.array(hf_all['Time'])
+    if np.amax(time) <= t0:
+        log.debug('Insufficient data to make plot_evection_A')
+        return
+
+    required = ('sma_dot_planet', 'sma_dot_sat', 'ecc_dot_planet', 'ecc_dot_sat')
+    missing = [c for c in required if c not in hf_all.columns]
+    if missing:
+        log.warning(f'plot_evection_A: missing columns {missing}, skipping plot')
+        return
+
+    log.info('Plot tidal dominance ratios (A_a, A_e)')
+
+    # Ratio of |satellite-raised| to |planet-raised| tidal contributions.
+    # np.errstate silences the expected divide-by-zero at synchronisation
+    # crossings, where the planet-raised term passes through zero; those
+    # points are masked to NaN below so the line shows a gap rather than a
+    # spurious spike to +/- infinity.
+    with np.errstate(divide='ignore', invalid='ignore'):
+        A_a = np.abs(hf_all['sma_dot_sat'].to_numpy()) / np.abs(hf_all['sma_dot_planet'].to_numpy())
+        A_e = np.abs(hf_all['ecc_dot_sat'].to_numpy()) / np.abs(hf_all['ecc_dot_planet'].to_numpy())
+    A_a = np.where(np.isfinite(A_a) & (A_a > 0), A_a, np.nan)
+    A_e = np.where(np.isfinite(A_e) & (A_e > 0), A_e, np.nan)
+
+    lw = 2.0
+    figscale = 1.2
+
+    col_planet = 'tab:blue'   # validated diverging pair (CVD delta-E ~21-34)
+    col_sat    = 'tab:red'
+    col_mid    = 'dimgray'
+
+    fig, axs = plt.subplots(2, 1, figsize=(11 * figscale, 6.0 * figscale), sharex=True)
+
+    panels = (
+        (axs[0], A_a, r'$A_a = |\dot{a}_{\rm sat}| \, / \, |\dot{a}_{\rm planet}|$'),
+        (axs[1], A_e, r'$A_e = |\dot{e}_{\rm sat}| \, / \, |\dot{e}_{\rm planet}|$'),
+    )
+
+    for ax, A, ylabel in panels:
+        ax.plot(time, A, lw=lw, color='black', zorder=3)
+        ax.axhline(1.0, lw=1.2, ls='--', color=col_mid, zorder=2)
+
+        # Diverging fill against the A=1 crossover
+        ax.fill_between(time, A, 1.0, where=(A >= 1.0), color=col_sat,
+                         alpha=0.15, interpolate=True, zorder=1)
+        ax.fill_between(time, A, 1.0, where=(A < 1.0), color=col_planet,
+                         alpha=0.15, interpolate=True, zorder=1)
+
+        ax.set_yscale('log')
+        ax.set_ylabel(ylabel)
+        ax.grid(alpha=0.2)
+
+    axs[0].set_title('Relative strength of satellite- vs planet-raised tides')
+    axs[1].set_xlabel('Time [log10(yr)]')
+
+    handles = [
+        Line2D([0], [0], color='black', lw=lw, label='A'),
+        Line2D([0], [0], color=col_mid, lw=1.2, ls='--', label='A = 1 (equal strength)'),
+        Patch(color=col_sat, alpha=0.3, label='satellite tide dominates'),
+        Patch(color=col_planet, alpha=0.3, label='planet tide dominates'),
+    ]
+    axs[0].legend(handles=handles, loc='upper right', fontsize=9, framealpha=0.9)
+
+    for ax in axs.flat:
+        ax.set_xscale('log')
+        ax.set_xlim(left=t0, right=1e5)
+
+    fig.tight_layout()
+
+    fpath = os.path.join(output_dir, 'plots', 'plot_evection_A.%s' % plot_format)
+    fig.savefig(fpath, dpi=200, bbox_inches='tight')
+
+    plt.close(fig)
+    plt.ioff()
+
+
 def plot_orbit_entry(handler: Proteus):
     # read helpfile
     hf_all = pd.read_csv(
@@ -359,6 +607,21 @@ def plot_orbit_entry(handler: Proteus):
         handler.directories['output'],
         plot_format=handler.config.params.out.plot_fmt,
     )
+
+    if handler.config.orbit.planet_satellite_model == 'ps1d_evec':
+        # get data from fine output for evection angle
+        fine_t, fine_phi = np.read_csv(os.path.join(handler.directories['output/data'], 'fine_evection_data.csv'), names=['t_abs_yr', 'phi'], skiprows=1, delimiter=',').values.T
+
+        plot_evection(
+            hf_all,
+            handler.directories['output'],
+            plot_format=handler.config.params.out.plot_fmt,
+            t0=1e3,
+            xscale='linear',
+            t_max=1e5,
+            fine_t=fine_t,
+            fine_phi=fine_phi,
+        )
 
     # plots for tides
     # if obliqua plot the Lovenumber spectrum evolution

@@ -216,7 +216,7 @@ config_version = "3.0"
         axial_period_sat      = "none"       # day length [hours]; none = tidally locked
         semimajoraxis_sat     = 1.33e-4      # satellite orbit semi-major axis [AU]
         eccentricity_sat      = 0.0          # satellite initial orbital eccentricity [dimensionless]
-        aps_prec_angle        = 0.0          # apsidal precession angle [degrees]
+        evection_angle        = 0.0          # evectionangle [degrees]
         c_factor_sat          = 0.4          # satellite normalized moment of inertia factor [dimensionless] (Note: 0.4 = uniform density sphere, < 0.4 = differentiated body; see https://en.wikipedia.org/wiki/Moment_of_inertia_factor)
         love_number_sat       = "none"       # satellite love number spectrum, provide absolute path to file. (Can be pre-genrated by Obliqua.)
 
@@ -268,6 +268,9 @@ config_version = "3.0"
         #                           with evolving rheology between solid and liquid behavior.
         # - "solid1d-mush-relax"  : Same as solid1d_relax but includes a partially molten/porous ("mushy") region
         #                           with evolving rheology between solid and liquid behavior.
+        # - "solid1d-equil-relax" : Same as solid1d_relax but limited to the fully fluid interior case, specifically
+        #                           designed for the equilibrium tide. Automatically selected when using the other
+        #                           solid1d* models when the forcing frequency is less than the 1/Hubble time.
         module_solid = "solid1d-relax"
 
         # Mushy layer model
@@ -284,15 +287,16 @@ config_version = "3.0"
         #                           effective layer with averaged mechanical properties. Fast but cannot
         #                           resolve radial structure in deformation or dissipation.
         # - "fluid1d"             : Same as fluid0d but allows for user specified heating distribution.
-        module_fluid = "none"
+        module_fluid = "fluid1d"
 
         [orbit.obliqua.solid]
             ncalc             = 1000         # number of sublayers to use for dim=1 solid tides (for shooting method)
             dr_min            = 300          # minimum spacing between grid points (for relaxation method) [m]
             dr_max            = 3000         # maximum spacing between grid points (for relaxation method) [m]
             core              = "liquid"     # core solution to use as CMB boundary condition, options: "liquid", "solid", "inertial"
+            core_props        = "core"       # Core properties to use for CMB boundary condition, options: "core", "mantle"
+            inertial_terms    = true         # Include inertial terms in the solid tidal response equations
             bulk_l            = 1e9          # liquid bulk modulus [Pa]
-            permea            = 1e-7         # permeability [m^2]
             dbulk_power       = 1            # drained bulk modulus powerlaw scaling exponent
             porosity_thresh   = 3e-2         # percolation threshold, at which there is a first‐order transition from fully connected to fully isolated pore space [dimensionless]
 

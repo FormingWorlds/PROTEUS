@@ -601,10 +601,12 @@ def GetHelpfileKeys():
 
         # Orbital and spin parameters of planet
         'semimajorax',      # semi-major axis [m]
+        'sma_dot_planet',   # semi-major axis derivative [m s-1]
         'separation',       # time-averaged separation [m]
         'perihelion',       # lowest point in orbit [m]
         'orbital_period',   # orbital duration [s]
         'eccentricity',     # orbital eccentricity [1]
+        'ecc_dot_planet',   # eccentricity derivative [1 s-1]
         'Imk2',             # Imaginary part of k2 Love Number [1]
         'axial_period',     # day length of planet around its axis [s]
         'n_star',           # mean motion of star [s-1]
@@ -612,14 +614,16 @@ def GetHelpfileKeys():
         # Satellite system
         'perigee',          # lowest point in orbit [m]
         'semimajorax_sat',  # semi-major axis [m]
+        'sma_dot_sat',      # semi-major axis derivative [m s-1]
         'orbital_period_sat', # orbital duration [s]
         'eccentricity_sat', # orbital eccentricity of satellite [1]
+        'ecc_dot_sat',      # eccentricity derivative [1 s-1]
         'M_sat',            # mass of satellite [kg]
         'R_sat',            # radius of satellite [m]
         'C_sat',            # principal moment of inertia of satellite [kg m2]
         'plan_sat_am',      # angular momentum of sat+pla [kg m2 s-1],
         'axial_period_sat', # day length of satellite around its axis [s]
-        'aps_prec_angle',   # apsidal precession angle [rad]
+        'evection_angle',   # evection angle [rad]
 
         # Planet structure
         'R_int',            # interior radius [m]
