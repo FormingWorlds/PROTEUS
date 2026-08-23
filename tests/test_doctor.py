@@ -30,6 +30,7 @@ from proteus.doctor import (
     _conda_build_lines,
     _dependency_specs,
     _editable_checkout_path,
+    _extras_floor_specs,
     _get_script_for_package,
     _git_dirty,
     _git_head,
@@ -40,6 +41,7 @@ from proteus.doctor import (
     _print_support_prompt,
     _run_fix_command,
     _Tee,
+    _third_party_pin_specs,
     _write_failure_log,
     check_env_var,
     check_fwl_data,
@@ -129,6 +131,148 @@ def test_python_packages_covers_every_pinned_fwl_dependency():
         f'doctor checks these but reads no version bound for them, so they pass at any '
         f'installed version: {sorted(unbounded)}'
     )
+
+
+@pytest.mark.unit
+def test_third_party_pin_specs_reads_real_pyproject():
+    """`_third_party_pin_specs` finds the equinox pin `pip check` catches.
+
+    equinox==0.13.8 in [project.dependencies] pins the Aragog JAX solver
+    stack (see pyproject.toml's own comment on that line); an installed
+    0.13.2 is a real violation `pip check` reports in one line, which is
+    exactly the case this reader exists to surface to `proteus doctor`.
+    Reads the repo's actual pyproject.toml, not a mock, so a rewritten or
+    dropped pin breaks this test rather than passing silently.
+    """
+    specs = _third_party_pin_specs()
+    assert 'equinox' in specs, 'the equinox==0.13.8 pin is no longer readable from pyproject.toml'
+    assert str(specs['equinox'].specifier) == '==0.13.8'
+    # Discrimination: an FWL package with a real bound (fwl-aragog) must be
+    # excluded here, since `_dependency_specs` already covers it; a reader
+    # that forgot the fwl- exclusion would duplicate every fwl-* check.
+    assert 'fwl-aragog' not in specs
+    # An unpinned dependency (no specifier) carries nothing to violate, so a
+    # reader that included it would flag every future version as "fine" by
+    # construction, which is the same silent green this check exists to end.
+    assert 'attrs' not in specs
+
+
+@pytest.mark.unit
+def test_extras_floor_specs_reads_real_pyproject():
+    """`_extras_floor_specs` finds the atmodeller floor `pip check` catches.
+
+    atmodeller>=1.0.2 in [project.optional-dependencies] is the floor an
+    installed atmodeller 1.0.0 sits below (issue evidence for bbd6451f); this
+    reader is what lets `proteus doctor` see it. Reads the real pyproject.toml.
+    """
+    specs = _extras_floor_specs()
+    assert 'atmodeller' in specs
+    assert str(specs['atmodeller'].specifier) == '>=1.0.2'
+    # fwl-vulcan carries a floor too, so a reader that only saw the first
+    # extras group would miss it.
+    assert 'fwl-vulcan' in specs
+
+
+@pytest.mark.unit
+def test_check_python_package_mutation_third_party_pin():
+    """Mutation test for the bbd6451f defect: an installed version below a
+    third-party pin must fail, and the same pin at the declared floor must
+    pass. Drives the real `check_python_package` used by both new checks
+    through the exact equinox 0.13.2-vs-0.13.8 case reported in the brief.
+    """
+    spec = _third_party_pin_specs()['equinox']
+
+    # Red: the violating version installed in the field.
+    with (
+        patch('proteus.doctor.importlib.metadata.version', return_value='0.13.2'),
+        patch('proteus.doctor._editable_checkout_path', return_value=None),
+    ):
+        red = check_python_package('equinox', spec)
+    assert red.status == FAIL
+    assert 'equinox' in red.name
+    assert '0.13.2' in red.message
+    assert '0.13.8' in red.message
+
+    # Green: the same package restored to the declared floor.
+    with (
+        patch('proteus.doctor.importlib.metadata.version', return_value='0.13.8'),
+        patch('proteus.doctor._editable_checkout_path', return_value=None),
+    ):
+        green = check_python_package('equinox', spec)
+    assert green.status == PASS
+    assert green.fix_cmd is None
+
+
+class TestRunAllChecksThirdPartyAndExtras:
+    """Integration: third-party pins and extras floors reach `proteus doctor`."""
+
+    def test_violating_third_party_pin_surfaces_as_fail(self):
+        """A real pin from pyproject.toml (equinox) reaching a below-floor
+        installed version fails through the full `run_all_checks` path, not
+        only through the standalone `check_python_package` call."""
+        with (
+            patch('proteus.doctor._dependency_specs', return_value={}),
+            patch('proteus.doctor._module_pins', return_value={}),
+            patch('proteus.doctor._extras_floor_specs', return_value={}),
+            patch(
+                'proteus.doctor.importlib.metadata.version',
+                return_value='0.13.2',
+            ),
+            patch('proteus.doctor._editable_checkout_path', return_value=None),
+        ):
+            results = run_all_checks()
+        equinox = [r for r in results if r.name == 'equinox']
+        assert equinox, 'equinox pin was not checked by run_all_checks'
+        assert equinox[0].status == FAIL
+
+    def test_uninstalled_extra_is_skipped_not_failed(self):
+        """An optional extra (atmodeller) that is not installed produces no
+        check result at all: it is optional, so its absence is not a failure,
+        unlike a mandatory PYTHON_PACKAGES / third-party entry."""
+        from importlib.metadata import PackageNotFoundError
+
+        from packaging.requirements import Requirement
+
+        with (
+            patch('proteus.doctor._dependency_specs', return_value={}),
+            patch('proteus.doctor._module_pins', return_value={}),
+            patch('proteus.doctor._third_party_pin_specs', return_value={}),
+            patch(
+                'proteus.doctor._extras_floor_specs',
+                return_value={'atmodeller': Requirement('atmodeller>=1.0.2')},
+            ),
+            patch(
+                'proteus.doctor.importlib.metadata.version',
+                side_effect=PackageNotFoundError('atmodeller'),
+            ),
+        ):
+            results = run_all_checks()
+        assert not [r for r in results if r.name == 'atmodeller']
+
+    def test_installed_extra_below_floor_fails(self):
+        """An installed optional extra that sits below its declared floor
+        (the reported atmodeller 1.0.0 vs. >=1.0.2 case) fails."""
+        from packaging.requirements import Requirement
+
+        with (
+            patch('proteus.doctor._dependency_specs', return_value={}),
+            patch('proteus.doctor._module_pins', return_value={}),
+            patch('proteus.doctor._third_party_pin_specs', return_value={}),
+            patch(
+                'proteus.doctor._extras_floor_specs',
+                return_value={'atmodeller': Requirement('atmodeller>=1.0.2')},
+            ),
+            patch(
+                'proteus.doctor.importlib.metadata.version',
+                return_value='1.0.0',
+            ),
+            patch('proteus.doctor._editable_checkout_path', return_value=None),
+        ):
+            results = run_all_checks()
+        atmodeller = [r for r in results if r.name == 'atmodeller']
+        assert atmodeller, 'installed atmodeller was not checked'
+        assert atmodeller[0].status == FAIL
+        assert '1.0.2' in atmodeller[0].message
 
 
 class TestCheckResult:

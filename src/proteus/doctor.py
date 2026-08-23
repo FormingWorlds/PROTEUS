@@ -135,6 +135,53 @@ def _dependency_specs() -> dict[str, Requirement | None]:
     return result
 
 
+def _third_party_pin_specs() -> dict[str, Requirement]:
+    """Return mandatory [project] dependencies as {name: Requirement}, third-party only.
+
+    ``_dependency_specs`` tracks the FWL packages from the same list; a
+    third-party pin such as ``equinox==0.13.8`` (the Aragog JAX solver stack)
+    sits in ``[project.dependencies]`` too but was never read, so a violation
+    ``pip check`` catches in one line passed ``proteus doctor`` as clean.
+    Entries with no version bound (``attrs``, ``matplotlib``, ...) carry
+    nothing to violate and are skipped.
+    """
+    cfg = _read_pyproject()
+    deps = cfg.get('project', {}).get('dependencies', [])
+    result: dict[str, Requirement] = {}
+    for dep_str in deps:
+        try:
+            req = Requirement(dep_str)
+        except Exception:
+            continue
+        if 'fwl-' in req.name or not req.specifier:
+            continue
+        result[req.name] = req
+    return result
+
+
+def _extras_floor_specs() -> dict[str, Requirement]:
+    """Return every [project.optional-dependencies] entry with a version bound.
+
+    These are optional physics backends (atmodeller, fwl-vulcan, ...): a
+    standard install carries none of them, so an absent package here is not a
+    violation. When one IS installed, its floor is exactly what ``pip check``
+    catches and ``proteus doctor`` otherwise misses -- an installed
+    atmodeller 1.0.0 sits below the ``>=1.0.2`` floor PROTEUS declares.
+    """
+    cfg = _read_pyproject()
+    groups = cfg.get('project', {}).get('optional-dependencies', {})
+    result: dict[str, Requirement] = {}
+    for deps in groups.values():
+        for dep_str in deps:
+            try:
+                req = Requirement(dep_str)
+            except Exception:
+                continue
+            if req.specifier:
+                result[req.name] = req
+    return result
+
+
 def _get_script_for_package(dist_name: str) -> str | None:
     """Return the ``tools/get_<name>.sh`` setup script for an FWL package.
 
@@ -664,6 +711,41 @@ def run_all_checks() -> list[CheckResult]:
             results.append(
                 CheckResult(
                     name=pkg,
+                    category='versions',
+                    status=FAIL,
+                    message=f'check error: {exc}',
+                )
+            )
+
+    # Third-party dependency pins (mandatory, [project.dependencies]).
+    # pip check already catches a violation here in one line; doctor must too.
+    for name, spec in _third_party_pin_specs().items():
+        try:
+            results.append(check_python_package(name, spec))
+        except Exception as exc:
+            results.append(
+                CheckResult(
+                    name=name,
+                    category='versions',
+                    status=FAIL,
+                    message=f'check error: {exc}',
+                )
+            )
+
+    # Optional-extras version floors ([project.optional-dependencies]).
+    # The extra itself is optional, so an absent package is not checked; an
+    # installed one is held to the floor PROTEUS declares for it.
+    for name, spec in _extras_floor_specs().items():
+        try:
+            importlib.metadata.version(name)
+        except PackageNotFoundError:
+            continue
+        try:
+            results.append(check_python_package(name, spec))
+        except Exception as exc:
+            results.append(
+                CheckResult(
+                    name=name,
                     category='versions',
                     status=FAIL,
                     message=f'check error: {exc}',
