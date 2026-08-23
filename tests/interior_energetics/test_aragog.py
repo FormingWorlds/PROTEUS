@@ -772,9 +772,11 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
     compiled against SUNDIALS and falls back silently on a build or ABI
     mismatch, so trusting the config name mislabels every scipy-fallback
     failure as a CVODE one. Covers CVODE available, CVODE unavailable
-    (silent fallback to Radau), and an explicitly configured 'bdf', so a
-    mutant that drops the solver_method check or collapses Radau/BDF into
-    one label fails at least one branch.
+    (silent fallback to Radau), an explicit 'radau', and an explicit 'bdf',
+    so a mutant that drops the solver_method check or collapses Radau/BDF
+    into one label fails at least one branch. Each case also asserts
+    ``solve()`` ran once per attempt, so a mutant that breaks the retry loop
+    itself (wrong attempt count, early exit) fails alongside the label.
     """
     from proteus.interior_energetics.aragog import AragogRunner
 
@@ -804,12 +806,15 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
         hf_row = {'Time': 2.15e5, 'T_cmb': 0.0}
         return runner, interior_o, hf_row
 
+    max_attempts = 6
+
     monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', True)
     cvode_runner, cvode_interior_o, cvode_hf_row = _build_runner(status=-1)
     with pytest.raises(RuntimeError, match='CVODE status=-1') as cvode_info:
         cvode_runner._solve_with_retry(cvode_hf_row, cvode_interior_o)
     assert 'Radau status=' not in str(cvode_info.value)
     assert 'BDF status=' not in str(cvode_info.value)
+    assert cvode_runner.aragog_solver.solve.call_count == max_attempts
 
     monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', False)
     fallback_runner, fallback_interior_o, fallback_hf_row = _build_runner(status=-1)
@@ -817,6 +822,17 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
         fallback_runner._solve_with_retry(fallback_hf_row, fallback_interior_o)
     assert 'CVODE status=' not in str(fallback_info.value)
     assert 'BDF status=' not in str(fallback_info.value)
+    assert fallback_runner.aragog_solver.solve.call_count == max_attempts
+
+    monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', True)
+    radau_runner, radau_interior_o, radau_hf_row = _build_runner(
+        status=-1, solver_method='radau'
+    )
+    with pytest.raises(RuntimeError, match='Radau status=-1') as radau_info:
+        radau_runner._solve_with_retry(radau_hf_row, radau_interior_o)
+    assert 'CVODE status=' not in str(radau_info.value)
+    assert 'BDF status=' not in str(radau_info.value)
+    assert radau_runner.aragog_solver.solve.call_count == max_attempts
 
     monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', True)
     bdf_runner, bdf_interior_o, bdf_hf_row = _build_runner(status=-1, solver_method='bdf')
@@ -824,6 +840,7 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
         bdf_runner._solve_with_retry(bdf_hf_row, bdf_interior_o)
     assert 'CVODE status=' not in str(bdf_info.value)
     assert 'Radau status=' not in str(bdf_info.value)
+    assert bdf_runner.aragog_solver.solve.call_count == max_attempts
 
 
 @pytest.mark.unit
@@ -844,5 +861,9 @@ def test_active_solver_name_falls_back_when_cvode_flag_is_unimportable(monkeypat
     runner = AragogRunner.__new__(AragogRunner)
     runner._config = MagicMock()
     runner._config.interior_energetics.aragog.solver_method = 'cvode'
-
     assert runner._active_solver_name() == 'Radau'
+
+    # The missing flag must not leak into or corrupt the 'bdf' branch,
+    # which never consults _CVODE_AVAILABLE in the first place.
+    runner._config.interior_energetics.aragog.solver_method = 'bdf'
+    assert runner._active_solver_name() == 'BDF'
