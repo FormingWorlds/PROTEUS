@@ -495,8 +495,30 @@ class Proteus:
         self.init_stage = True
         self._baseline_structure_done = False
 
-        # Write config to output directory, for future reference
-        self.config.write(os.path.join(self.directories['output'], 'init_coupler.toml'))
+        # Write config to output directory, for future reference. Record the
+        # resolved (not raw) step caps, so a zalmoxis-armed default reads back
+        # as the value Aragog actually used instead of the schema's 0.0.
+        step_cap_overrides = {}
+        if self.config.interior_energetics.module == 'aragog':
+            from proteus.interior_energetics.aragog import (
+                _effective_entropy_step_cap,
+                _effective_phi_step_cap,
+                _effective_temperature_step_cap,
+            )
+
+            step_cap_overrides = {
+                'interior_energetics.aragog.phi_step_cap': _effective_phi_step_cap(self.config),
+                'interior_energetics.aragog.temperature_step_cap': (
+                    _effective_temperature_step_cap(self.config)
+                ),
+                'interior_energetics.aragog.entropy_step_cap': _effective_entropy_step_cap(
+                    self.config
+                ),
+            }
+        self.config.write(
+            os.path.join(self.directories['output'], 'init_coupler.toml'),
+            overrides=step_cap_overrides,
+        )
 
         # Create lockfile for keeping simulation running
         self.lockfile = CreateLockFile(self.directories['output'])

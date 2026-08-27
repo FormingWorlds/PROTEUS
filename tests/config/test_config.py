@@ -298,6 +298,32 @@ def test_factory_defaults_from_minimal_config():
 
 
 @pytest.mark.unit
+def test_write_overrides_a_dotted_key_without_touching_live_config(tmp_path):
+    """Config.write(overrides=...) patches the written file, not self."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.interior_energetics.aragog.phi_step_cap == 0.0
+
+    out = tmp_path / 'resolved.toml'
+    cfg.write(str(out), overrides={'interior_energetics.aragog.phi_step_cap': 0.1})
+
+    assert cfg.interior_energetics.aragog.phi_step_cap == 0.0
+    written = read_config(str(out))
+    assert written['interior_energetics']['aragog']['phi_step_cap'] == 0.1
+
+
+@pytest.mark.unit
+def test_write_without_overrides_matches_the_live_config(tmp_path):
+    """Config.write() with no overrides writes fields verbatim, as before."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+
+    out = tmp_path / 'plain.toml'
+    cfg.write(str(out))
+
+    written = read_config(str(out))
+    assert written['interior_energetics']['aragog']['phi_step_cap'] == 0.0
+
+
+@pytest.mark.unit
 def test_read_config_object_returns_config():
     """
     read_config_object returns a validated Config instance.

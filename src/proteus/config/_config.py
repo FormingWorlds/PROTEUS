@@ -349,9 +349,19 @@ class Config:
         validator=(valid_config_version, check_module_dependencies),
     )
 
-    def write(self, out: str):
+    def write(self, out: str, overrides: dict | None = None):
         """
         Write configuration to a new TOML file.
+
+        Parameters
+        ----------
+        out
+            Output path for the TOML file.
+        overrides
+            Dotted-path values to substitute in the written file, e.g.
+            ``{'interior_energetics.aragog.phi_step_cap': 0.1}``. Lets a
+            caller record a resolved value (one a module derives from a
+            config default at runtime) without mutating this Config object.
         """
 
         # Convert to dictionary
@@ -359,6 +369,14 @@ class Config:
 
         # Replace None with "none"
         cfg = dict_replace_none(cfg)
+
+        # Apply any resolved-value overrides
+        for dotted_key, value in (overrides or {}).items():
+            *parents, leaf = dotted_key.split('.')
+            node = cfg
+            for key in parents:
+                node = node[key]
+            node[leaf] = value
 
         # Write to TOML file
         with open(out, 'w') as hdl:
