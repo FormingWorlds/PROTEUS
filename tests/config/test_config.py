@@ -9,8 +9,10 @@ structure, speed, and physics validity.
 from __future__ import annotations
 
 import os
+from contextlib import ExitStack
 from itertools import chain
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import attrs
 import pytest
@@ -32,6 +34,7 @@ from proteus.config._interior import valid_aragog, valid_interiordummy, valid_sp
 from proteus.config._outgas import Calliope
 from proteus.config._params import max_bigger_than_min, valid_mod, valid_path
 from proteus.config._planet import GasPrs, Planet
+from tests.test_proteus import _START_PATCHES
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -323,18 +326,15 @@ def test_write_without_overrides_matches_the_live_config(tmp_path):
     assert written['interior_energetics']['aragog']['phi_step_cap'] == 0.0
 
 
-def _run_start_and_read_written_config(cfg, tmp_path, monkeypatch):
+def _run_start_and_read_written_config(cfg, tmp_path):
     """Run the real Proteus.start init-time step-cap write against a config, return the result.
 
     Drives the actual production code path (proteus.py's module=='aragog' guard
     and step_cap_overrides construction) rather than a hand-built copy of it, by
     calling the unbound Proteus.start method on a lightweight stand-in for self.
-    Only unrelated print/validation/lockfile side effects are stubbed out.
+    Reuses tests/test_proteus.py's _START_PATCHES for the lazy imports start()
+    needs stubbed, plus PrintHalfSeparator, which that list does not cover.
     """
-    import proteus.proteus as proteus_mod
-    import proteus.utils.coupler as coupler_mod
-    import proteus.utils.terminate as terminate_mod
-
     outdir = tmp_path / 'output'
     for sub in ('', 'data', 'observe', 'offchem', 'plots'):
         (outdir / sub).mkdir(parents=True, exist_ok=True)
@@ -358,18 +358,19 @@ def _run_start_and_read_written_config(cfg, tmp_path, monkeypatch):
     def _stop(*args, **kwargs):
         raise _StoppedAfterWrite
 
-    monkeypatch.setattr(coupler_mod, 'print_header', lambda *a, **k: None)
-    monkeypatch.setattr(coupler_mod, 'print_system_configuration', lambda *a, **k: None)
-    monkeypatch.setattr(coupler_mod, 'print_module_configuration', lambda *a, **k: None)
-    monkeypatch.setattr(coupler_mod, 'validate_module_versions', lambda *a, **k: None)
-    monkeypatch.setattr(terminate_mod, 'print_termination_criteria', lambda *a, **k: None)
-    monkeypatch.setattr(proteus_mod, 'PrintHalfSeparator', lambda *a, **k: None)
-    # CreateLockFile runs immediately after the config write under test, so
-    # stopping there is enough and avoids driving the rest of start().
-    monkeypatch.setattr(coupler_mod, 'CreateLockFile', _stop)
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            # CreateLockFile runs immediately after the config write under
+            # test, so stopping there is enough and avoids driving the rest
+            # of start().
+            if target == 'proteus.utils.coupler.CreateLockFile':
+                stack.enter_context(patch(target, side_effect=_stop))
+            else:
+                stack.enter_context(patch(target))
+        stack.enter_context(patch('proteus.proteus.PrintHalfSeparator'))
 
-    with pytest.raises(_StoppedAfterWrite):
-        Proteus.start(proteus, resume=False, offline=True)
+        with pytest.raises(_StoppedAfterWrite):
+            Proteus.start(proteus, resume=False, offline=True)
 
     written = outdir / 'init_coupler.toml'
     assert written.is_file()
@@ -377,7 +378,7 @@ def _run_start_and_read_written_config(cfg, tmp_path, monkeypatch):
 
 
 @pytest.mark.unit
-def test_start_writes_resolved_zalmoxis_step_caps_for_aragog(tmp_path, monkeypatch):
+def test_start_writes_resolved_zalmoxis_step_caps_for_aragog(tmp_path):
     """Proteus.start's aragog guard writes resolved, not raw, step caps to init_coupler.toml."""
     cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
     assert cfg.interior_energetics.module == 'aragog'
@@ -386,7 +387,7 @@ def test_start_writes_resolved_zalmoxis_step_caps_for_aragog(tmp_path, monkeypat
     assert cfg.interior_energetics.aragog.temperature_step_cap == 0.0
     assert cfg.interior_energetics.aragog.entropy_step_cap == 0.0
 
-    written = _run_start_and_read_written_config(cfg, tmp_path, monkeypatch)
+    written = _run_start_and_read_written_config(cfg, tmp_path)
 
     aragog = written.interior_energetics.aragog
     assert aragog.phi_step_cap == pytest.approx(0.1)
@@ -395,13 +396,30 @@ def test_start_writes_resolved_zalmoxis_step_caps_for_aragog(tmp_path, monkeypat
 
 
 @pytest.mark.unit
-def test_start_leaves_step_caps_raw_when_energetics_module_is_not_aragog(tmp_path, monkeypatch):
+def test_start_writes_verbatim_positive_step_caps_for_aragog(tmp_path):
+    """Distinct positive step caps pass through Proteus.start's aragog guard unswapped."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.interior_energetics.module == 'aragog'
+    cfg.interior_energetics.aragog.phi_step_cap = 2.0
+    cfg.interior_energetics.aragog.temperature_step_cap = 3.0
+    cfg.interior_energetics.aragog.entropy_step_cap = 7.0
+
+    written = _run_start_and_read_written_config(cfg, tmp_path)
+
+    aragog = written.interior_energetics.aragog
+    assert aragog.phi_step_cap == pytest.approx(2.0)
+    assert aragog.temperature_step_cap == pytest.approx(3.0)
+    assert aragog.entropy_step_cap == pytest.approx(7.0)
+
+
+@pytest.mark.unit
+def test_start_leaves_step_caps_raw_when_energetics_module_is_not_aragog(tmp_path):
     """The aragog guard must not fire, and must not promote caps, for a non-aragog module."""
     cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
     cfg.interior_energetics.module = 'dummy'
     assert cfg.interior_struct.module == 'zalmoxis'
 
-    written = _run_start_and_read_written_config(cfg, tmp_path, monkeypatch)
+    written = _run_start_and_read_written_config(cfg, tmp_path)
 
     aragog = written.interior_energetics.aragog
     assert aragog.phi_step_cap == 0.0
