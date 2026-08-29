@@ -396,7 +396,7 @@ class Config:
                 if isinstance(node[leaf], dict):
                     raise UnknownConfigKeyError(
                         f"Override key '{dotted_key}' targets a config section, "
-                        f"not a field; refusing to replace the whole section."
+                        f'not a field; refusing to replace the whole section.'
                     )
                 # Route None through the same None -> "none" handling used above,
                 # so a None override does not reach tomlkit as a bare None.

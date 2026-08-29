@@ -345,7 +345,9 @@ def test_write_rejects_an_unknown_override_key(tmp_path):
     # A missing intermediate section is named too, not a bare KeyError. Anchor
     # the match to the trailing clause so it checks the reported failing segment,
     # not the dotted key echoed earlier in the same message.
-    with pytest.raises(UnknownConfigKeyError, match=r"no config section 'interior_energetics\.nope'"):
+    with pytest.raises(
+        UnknownConfigKeyError, match=r"no config section 'interior_energetics\.nope'"
+    ):
         cfg.write(str(out), overrides={'interior_energetics.nope.phi_step_cap': 0.1})
     # A key that resolves to a whole section, not a leaf field, is rejected too,
     # so an override cannot replace a section with a scalar.
