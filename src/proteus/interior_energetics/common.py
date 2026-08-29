@@ -145,7 +145,7 @@ def _verify_initial_entropy(
     else:
         verdict = 'FAIL'
 
-    log.info(
+    log.debug(
         'Entropy IC round-trip check (%s): tsurf=%.1f K -> S=%.1f J/kg/K -> '
         'T_recovered=%.3f K, residual=%.4f K, verdict=%s',
         source,
@@ -419,7 +419,7 @@ def compute_initial_entropy(
 
             eos = EntropyEOS(spider_eos_dir)
             S_target = eos.invert_temperature(1e5, tsurf)
-            log.info(
+            log.debug(
                 'Initial entropy from P-S inversion: tsurf=%.0f K -> S=%.1f J/kg/K',
                 tsurf,
                 S_target,

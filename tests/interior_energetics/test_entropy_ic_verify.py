@@ -76,7 +76,8 @@ def test_spider_verify_passes_on_consistent_roundtrip(caplog):
     tsurf = 3000.0
     eos = _make_mock_eos(T_recovered=tsurf)  # zero residual
 
-    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.common'):
+    # The per-verdict summary line is logged at debug level.
+    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.common'):
         _verify_initial_entropy(eos, 1e5, S_target=2794.3, tsurf=tsurf, source='unit-test')
 
     joined = '\n'.join(r.message for r in caplog.records)
@@ -97,7 +98,9 @@ def test_spider_verify_warns_on_moderate_residual(caplog):
     tsurf = 3000.0
     eos = _make_mock_eos(T_recovered=tsurf + 3.0)  # residual 3.0 K -> WARN
 
-    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.common'):
+    # The per-verdict summary line is logged at debug level; the WARN tier below
+    # still emits a separate WARNING record independent of it.
+    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.common'):
         # Must not raise
         _verify_initial_entropy(eos, 1e5, S_target=2794.3, tsurf=tsurf, source='unit-test')
 
@@ -106,7 +109,8 @@ def test_spider_verify_warns_on_moderate_residual(caplog):
     # The WARN band must emit a real WARNING record, not only an INFO substring;
     # otherwise the tier is invisible whenever INFO logging is off.
     warn_records = [
-        r for r in caplog.records
+        r
+        for r in caplog.records
         if r.levelno == logging.WARNING and 'round-trip check WARN' in r.message
     ]
     assert len(warn_records) == 1, f'Expected one WARNING record: {joined!r}'
@@ -162,7 +166,9 @@ def test_spider_verify_skipped_on_nonpositive_tsurf(caplog):
     eos = _make_mock_eos(T_recovered=1234.5)
 
     with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.common'):
-        result = _verify_initial_entropy(eos, 1e5, S_target=2794.3, tsurf=0.0, source='unit-test')
+        result = _verify_initial_entropy(
+            eos, 1e5, S_target=2794.3, tsurf=0.0, source='unit-test'
+        )
 
     assert result is None
     # No verdict line was logged and the EOS was never queried on the skip path.
