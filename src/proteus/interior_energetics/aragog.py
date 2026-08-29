@@ -1966,6 +1966,27 @@ class AragogRunner:
 
         return sim_time, output
 
+    @staticmethod
+    def _aragog_cvode_available() -> bool | None:
+        """Report whether aragog has CVODE built, or ``None`` if it cannot tell.
+
+        aragog exposes no public capability check as of fwl-aragog 26.07.04,
+        so this reads the private ``_CVODE_AVAILABLE`` flag. A ``None`` return
+        means that private name is absent, because aragog renamed or removed
+        it. The caller must treat ``None`` as 'cannot determine', never as
+        'unavailable', or a real CVODE run mislabels as Radau.
+
+        Returns
+        -------
+        bool or None
+            The aragog flag, or ``None`` when the probe symbol is missing.
+        """
+        try:
+            from aragog.solver.entropy_solver import _CVODE_AVAILABLE
+        except ImportError:
+            return None
+        return bool(_CVODE_AVAILABLE)
+
     def _active_solver_name(self) -> str:
         """Name the integrator that is actually running, not the one configured.
 
@@ -1980,18 +2001,20 @@ class AragogRunner:
         -------
         str
             'CVODE' when the configured and available integrator is CVODE,
-            'BDF' when ``solver_method='bdf'``, 'Radau' otherwise (including
-            a CVODE fallback, which aragog also resolves to Radau).
+            'BDF' when ``solver_method='bdf'``, 'Radau' for an explicit scipy
+            request or a CVODE fallback. When the aragog capability probe
+            fails (the private flag is gone), returns an explicit
+            'unknown (aragog CVODE probe failed)' rather than a wrong name.
         """
-        try:
-            from aragog.solver.entropy_solver import _CVODE_AVAILABLE
-        except ImportError:
-            _CVODE_AVAILABLE = False
-
         method = str(self._config.interior_energetics.aragog.solver_method or '')
-        if method == 'cvode' and _CVODE_AVAILABLE:
-            return 'CVODE'
-        return 'BDF' if method == 'bdf' else 'Radau'
+        if method == 'bdf':
+            return 'BDF'
+        if method != 'cvode':
+            return 'Radau'
+        available = self._aragog_cvode_available()
+        if available is None:
+            return 'unknown (aragog CVODE probe failed)'
+        return 'CVODE' if available else 'Radau'
 
     def _solve_with_retry(self, hf_row, interior_o) -> SolverOutput:
         """Run aragog_solver.solve() with a dt-halving retry ladder.
