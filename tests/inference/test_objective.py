@@ -201,6 +201,47 @@ def test_run_proteus_raises_when_command_fails(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
+def test_run_proteus_logs_child_output_on_failure(monkeypatch, tmp_path, caplog):
+    """On a non-zero child exit, ``run_proteus`` captures the child's
+    stdout+stderr and surfaces its tail in the error log, so an operator sees
+    the real reason (e.g. an unrecognised reference-config key) rather than
+    only the exit code.
+    """
+    out_abs = tmp_path / 'sim'
+    out_abs.mkdir(parents=True)
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(out_abs)}
+    )
+    monkeypatch.setattr(objective_mod, 'update_toml', lambda *_args, **_kwargs: None)
+
+    marker = 'Unrecognised configuration key: not_a_real_key'
+
+    def _fake_run(*_args, **kwargs):
+        kwargs['stdout'].write(marker + '\n')
+        raise subprocess.CalledProcessError(returncode=1, cmd=['proteus'])
+
+    monkeypatch.setattr(objective_mod.subprocess, 'run', _fake_run)
+
+    with caplog.at_level('ERROR', logger='fwl.proteus.inference.objective'):
+        with pytest.raises(RuntimeError, match='exit code 1'):
+            objective_mod.run_proteus(
+                parameters={},
+                worker=0,
+                iter=0,
+                observables=['P_surf'],
+                ref_config='reference.toml',
+                output='dummy_output',
+            )
+    # The captured child message must reach the error log; the prior
+    # behaviour discarded it to /dev/null, leaving only the exit code.
+    assert any(marker in rec.message for rec in caplog.records)
+    # The child output is also persisted to a per-run log for later
+    # inspection. Discrimination: a regression that logged a constant string
+    # instead of the real tail would not leave the key name on disk.
+    assert 'not_a_real_key' in (out_abs / 'proteus_child.log').read_text()
+
+
+@pytest.mark.unit
 def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
     """Requesting an observable that the simulator did not write to the
     helpfile raises ``KeyError`` with a 'Requested observable' message,

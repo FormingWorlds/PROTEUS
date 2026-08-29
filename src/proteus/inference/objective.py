@@ -58,6 +58,29 @@ def child_timeout_s() -> float | None:
     return val if val > 0 else None
 
 
+def _read_log_tail(path: Path, max_lines: int = 40) -> str:
+    """Return the last ``max_lines`` lines of a text file, bounded in memory.
+
+    Used to surface the tail of a failed child run's captured output in the
+    error log, without loading an arbitrarily large file.
+
+    Parameters
+    ----------
+    - path (Path): File to read.
+    - max_lines (int): Maximum number of trailing lines to return.
+
+    Returns
+    ----------
+    - str: The trailing lines, or a short placeholder if empty or unreadable.
+    """
+    try:
+        with open(path, 'r', errors='replace') as f:
+            lines = f.readlines()
+    except OSError:
+        return '(child output unavailable)'
+    return ''.join(lines[-max_lines:]).strip() or '(child produced no output)'
+
+
 def update_toml(config_file: str, updates: dict, output_file: str) -> None:
     """Update values in a TOML configuration file.
 
@@ -149,31 +172,39 @@ def run_proteus(
     env = dict(**os.environ)
     env['OMP_NUM_THREADS'] = '1'
 
-    # Run PROTEUS
+    # Run PROTEUS. Capture the child stdout+stderr to a per-run log so a
+    # failure keeps its actual message (e.g. a bad reference-config key);
+    # discarding it to /dev/null leaves only the exit code.
     command = ['proteus', 'start', '-c', str(out_cfg), '--offline']
+    child_log = out_abs / 'proteus_child.log'
     try:
-        subprocess.run(
-            command,
-            check=True,
-            text=True,
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.STDOUT,
-            timeout=child_timeout_s(),
-        )
+        with open(child_log, 'w') as log_fh:
+            subprocess.run(
+                command,
+                check=True,
+                text=True,
+                env=env,
+                stdout=log_fh,
+                stderr=subprocess.STDOUT,
+                timeout=child_timeout_s(),
+            )
     except FileNotFoundError as err:
         log.error(f"Cannot execute '{command[0]}': command not found")
         raise RuntimeError("Failed to run PROTEUS: 'proteus' command not found") from err
     except subprocess.TimeoutExpired as err:
         log.error(
             f'PROTEUS run exceeded the {child_timeout_s()} s timeout for '
-            f'worker={worker} iter={iter} outdir={str(out_dir)}'
+            f'worker={worker} iter={iter} outdir={str(out_dir)}\n'
+            f'{_read_log_tail(child_log)}'
         )
         raise RuntimeError(
             f'PROTEUS run timed out after {child_timeout_s()} s for worker={worker} iter={iter}'
         ) from err
     except subprocess.CalledProcessError as err:
-        log.error(f'PROTEUS run failed for worker={worker} iter={iter} outdir={str(out_dir)}')
+        log.error(
+            f'PROTEUS run failed for worker={worker} iter={iter} outdir={str(out_dir)}; '
+            f'exit code {err.returncode}\n{_read_log_tail(child_log)}'
+        )
         raise RuntimeError(
             f'Failed to run PROTEUS for worker={worker} iter={iter}; exit code {err.returncode}'
         ) from err

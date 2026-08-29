@@ -17,13 +17,14 @@ import torch
 
 import proteus.inference.plot as plotBO
 
+# proteus libraries
+from proteus.config import UnknownConfigKeyError, read_config_object
+
 # bayesopt source files
 from proteus.inference.async_BO import checkpoint, parallel_process
 from proteus.inference.gen_D_init import create_init
 from proteus.inference.objective import prot_builder, set_child_timeout
 from proteus.inference.utils import print_results, str_time
-
-# proteus libraries
 from proteus.utils.coupler import get_proteus_directories
 from proteus.utils.helper import safe_rm
 from proteus.utils.logs import setup_logger
@@ -90,6 +91,16 @@ def run_inference(config):
     log.info(f'Reference config: {config["ref_config"]}')
     if not os.path.isfile(config['ref_config']):
         raise FileNotFoundError('Cannot find reference config: ' + config['ref_config'])
+
+    # Validate the reference config against the schema before any worker starts.
+    # os.path.isfile only proves the file exists; an unknown key or a bad value
+    # otherwise fails every worker with a bare exit code and no reason.
+    try:
+        read_config_object(config['ref_config'])
+    except (UnknownConfigKeyError, ValueError) as err:
+        raise RuntimeError(
+            f'Reference config is invalid: {config["ref_config"]}\n{err}'
+        ) from err
 
     # Update ref_config path to point to a copy, in case user removes the original file
     copy_config = os.path.join(os.path.join(dirs['output'], 'ref_config.toml'))

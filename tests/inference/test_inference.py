@@ -115,6 +115,54 @@ def test_run_inference_raises_for_missing_reference_config(monkeypatch, tmp_path
 
 
 @pytest.mark.unit
+def test_run_inference_rejects_invalid_reference_config(monkeypatch, tmp_path):
+    """``run_inference`` schema-validates ``ref_config`` up front and raises a
+    RuntimeError naming the offending key, so a bad reference config fails once
+    at config-load instead of failing every worker with a bare exit code.
+    """
+    ref_path = tmp_path / 'bad_ref.toml'
+    ref_path.write_text('not_a_real_key = 1\n', encoding='utf-8')
+
+    config = {
+        'output': 'unit_inference',
+        'logging': 'INFO',
+        'n_workers': 1,
+        'ref_config': 'bad_ref.toml',
+        'n_steps': 1,
+        'kernel': 'MAT3/2',
+        'acqf': 'LogEI',
+        'seed': 1,
+        'observables': {'P_surf': 1.0},
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
+    }
+    output_root = tmp_path / 'output'
+
+    monkeypatch.setattr(
+        inference_mod,
+        'get_proteus_directories',
+        lambda _output: {'output': str(output_root), 'proteus': str(tmp_path)},
+    )
+    monkeypatch.setattr(inference_mod, 'safe_rm', lambda _path: None)
+    monkeypatch.setattr(inference_mod, 'setup_logger', lambda **_kwargs: None)
+    monkeypatch.setattr(inference_mod, 'str_time', lambda: '2026-04-30 00:00:00 UTC')
+    monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
+
+    create_init_calls: list = []
+    monkeypatch.setattr(
+        inference_mod, 'create_init', lambda *a, **kw: create_init_calls.append((a, kw))
+    )
+    with pytest.raises(RuntimeError, match='Reference config is invalid') as excinfo:
+        inference_mod.run_inference(config)
+    # The offending key must survive into the error message; a generic
+    # 'invalid config' string would give the user nothing to fix.
+    assert 'not_a_real_key' in str(excinfo.value)
+    # Discrimination: the schema guard must fire before initial-design
+    # dispatch. A regression that only validated inside a worker would leave
+    # create_init already called here.
+    assert create_init_calls == []
+
+
+@pytest.mark.unit
 def test_infer_from_config_loads_toml_and_dispatches(monkeypatch, tmp_path):
     """``infer_from_config(path)`` parses the TOML and forwards the
     resulting dict verbatim to ``run_inference``; no field is dropped or
