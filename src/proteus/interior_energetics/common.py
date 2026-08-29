@@ -121,6 +121,11 @@ def _verify_initial_entropy(
         return
 
     P_clamped = max(eos.P_min, min(float(P), eos.P_max))
+    # Non-tautology contract: this must use the vectorised ``temperature``
+    # surface, which is a separate implementation from the ``temperature_scalar``
+    # that ``invert_temperature`` uses internally. If a future refactor makes the
+    # forward and inverse maps share intermediate state, the round trip degrades
+    # to a trivial identity and stops discriminating.
     T_recovered = float(np.ravel(np.asarray(eos.temperature(P_clamped, S_target)))[0])
 
     if not np.isfinite(T_recovered):
@@ -150,6 +155,17 @@ def _verify_initial_entropy(
         residual,
         verdict,
     )
+
+    if verdict == 'WARN':
+        log.warning(
+            'Entropy IC round-trip check WARN (%s): residual=%.4f K exceeds the '
+            'WARN threshold (%.2f K) but stays under the FAIL threshold (%.2f K). '
+            'The inversion is loose; check the EOS table if this persists.',
+            source,
+            residual,
+            warn_k,
+            fail_k,
+        )
 
     if verdict == 'FAIL':
         raise RuntimeError(

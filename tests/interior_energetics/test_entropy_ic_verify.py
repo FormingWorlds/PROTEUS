@@ -103,6 +103,13 @@ def test_spider_verify_warns_on_moderate_residual(caplog):
 
     joined = '\n'.join(r.message for r in caplog.records)
     assert 'verdict=WARN' in joined, f'Expected WARN verdict: {joined!r}'
+    # The WARN band must emit a real WARNING record, not only an INFO substring;
+    # otherwise the tier is invisible whenever INFO logging is off.
+    warn_records = [
+        r for r in caplog.records
+        if r.levelno == logging.WARNING and 'round-trip check WARN' in r.message
+    ]
+    assert len(warn_records) == 1, f'Expected one WARNING record: {joined!r}'
     # Discrimination: a 3 K residual must land in WARN, not PASS or FAIL. A
     # regression that collapsed the three-bucket logic to a binary pass/fail
     # would not produce WARN.
@@ -181,6 +188,26 @@ def test_spider_verify_clamps_pressure_to_table_range():
     # The lookup must receive the clamped pressure (P_max), not the raw 1e14.
     called_P = eos.temperature.call_args.args[0]
     assert called_P == P_max
+
+
+@pytest.mark.unit
+def test_spider_verify_clamps_pressure_to_table_floor():
+    """A pressure below the table minimum is clamped up to P_min.
+
+    Mirrors the P_max case: the clamp is symmetric, so the lower bound must
+    be exercised too. A regression that dropped the ``max(eos.P_min, ...)``
+    term would pass the P_max test but fail here.
+    """
+    from proteus.interior_energetics.common import _verify_initial_entropy
+
+    tsurf = 3000.0
+    P_min = 1.0e8
+    eos = _make_mock_eos(T_recovered=tsurf, P_min=P_min, P_max=1.0e12)
+
+    _verify_initial_entropy(eos, 1.0, S_target=2794.3, tsurf=tsurf, source='unit-test')
+
+    called_P = eos.temperature.call_args.args[0]
+    assert called_P == P_min
 
 
 # ======================================================================
