@@ -219,6 +219,28 @@ def _effective_entropy_step_cap(config: Config) -> float:
     return _resolve_step_cap(cap, _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP, is_zalmoxis)
 
 
+_OPTIONAL_ENERGY_FIELDS = frozenset(
+    {
+        'temperature_step_cap',
+        'entropy_step_cap',
+        'phase_boundary_entropy_margin',
+    }
+)
+
+
+def _unsupported_energy_fields() -> set[str]:
+    """Return the optional energy fields the installed Aragog does not accept.
+
+    The temperature/entropy step caps and the phase-boundary entropy margin need
+    a paired Aragog. An older Aragog omits them from ``_EnergyParameters``, so
+    ``setup_solver`` drops them and the solver degrades to Aragog defaults. The
+    config snapshot calls this too, so it records a not-applied marker rather
+    than a resolved value the run never received.
+    """
+    accepted = set(inspect.signature(_EnergyParameters).parameters)
+    return set(_OPTIONAL_ENERGY_FIELDS) - accepted
+
+
 def _is_plausible_core_density(rho_core: float) -> bool:
     """Return True iff ``rho_core`` falls inside the physical-bounds bracket."""
     return _RHO_CORE_MIN <= float(rho_core) <= _RHO_CORE_MAX
@@ -726,12 +748,7 @@ class AragogRunner:
         # Aragog accepts them, so an older Aragog degrades gracefully (no caps,
         # its built-in 200 J/kg/K margin) with a clear warning instead of
         # crashing on an unexpected keyword.
-        _energy_fields = set(inspect.signature(_EnergyParameters).parameters)
-        _unsupported = {
-            'temperature_step_cap',
-            'entropy_step_cap',
-            'phase_boundary_entropy_margin',
-        } - _energy_fields
+        _unsupported = _unsupported_energy_fields()
         _caps_requested = temperature_step_cap > 0.0 or entropy_step_cap > 0.0
         _nondefault_margin_dropped = (
             'phase_boundary_entropy_margin' in _unsupported

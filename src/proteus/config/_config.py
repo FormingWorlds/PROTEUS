@@ -371,12 +371,36 @@ class Config:
         cfg = dict_replace_none(cfg)
 
         # Apply any resolved-value overrides
-        for dotted_key, value in (overrides or {}).items():
-            *parents, leaf = dotted_key.split('.')
-            node = cfg
-            for key in parents:
-                node = node[key]
-            node[leaf] = value
+        if overrides:
+            # Imported here to avoid a module-level import cycle: orphans
+            # imports Config from this module.
+            from .orphans import UnknownConfigKeyError
+
+            for dotted_key, value in overrides.items():
+                segments = dotted_key.split('.')
+                *parents, leaf = segments
+                node = cfg
+                for depth, key in enumerate(parents):
+                    if not isinstance(node, dict) or key not in node:
+                        failing = '.'.join(segments[: depth + 1])
+                        raise UnknownConfigKeyError(
+                            f"Override key '{dotted_key}' does not match the schema: "
+                            f"no config section '{failing}'."
+                        )
+                    node = node[key]
+                if not isinstance(node, dict) or leaf not in node:
+                    raise UnknownConfigKeyError(
+                        f"Override key '{dotted_key}' does not match the schema: "
+                        f"no config field '{dotted_key}'."
+                    )
+                if isinstance(node[leaf], dict):
+                    raise UnknownConfigKeyError(
+                        f"Override key '{dotted_key}' targets a config section, "
+                        f"not a field; refusing to replace the whole section."
+                    )
+                # Route None through the same None -> "none" handling used above,
+                # so a None override does not reach tomlkit as a bare None.
+                node[leaf] = 'none' if value is None else value
 
         # Write to TOML file
         with open(out, 'w') as hdl:
