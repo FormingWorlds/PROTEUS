@@ -1,32 +1,32 @@
 """
-Unit tests for the entropy-IC cross-check paths.
+Unit tests for the entropy-IC verification paths.
 
 Covers:
 - ``proteus.interior_energetics.common._verify_initial_entropy`` (SPIDER path)
 - ``proteus.interior_energetics.aragog.AragogRunner._verify_entropy_ic``
   (Aragog path)
 
-These are orthogonal guards that compare the result of the primary P-S
-``invert_temperature`` path against an independent PALEOS entropy lookup.
-The SPIDER path uses ``zalmoxis.eos_export.compute_surface_entropy`` for a
-surface-only scalar comparison (safe against PALEOS non-converged cells).
+The SPIDER path runs a single-table round trip on the same EOS the interior
+uses: it maps the inverted entropy back to temperature through
+``EntropyEOS.temperature`` and checks that the recovered temperature matches
+the input. It never compares two tabulations, so it is invariant to the
+entropy reference constant and the table choice.
+
 The Aragog path uses ``zalmoxis.eos_export.compute_entropy_adiabat`` for a
 full T(P) profile comparison (with defensive NaN handling in the bracket
-expansion). The checks exist because past API drift in the Aragog entropy
-rewrite left the Aragog guard as dead code for several weeks, silently
-swallowed by a broad ``except Exception``.
+expansion); its table-drift verdict is advisory, and it raises only on the
+cold-surface inversion signature.
+
 These regression tests ensure that:
 
-1. A consistent inversion passes with a PASS log line.
-2. A moderate mismatch (1-5 %) produces a WARN line without raising.
-3. A large mismatch (> 5 %) raises ``RuntimeError``.
-4. The SPIDER path is a no-op when Zalmoxis/PALEOS are unavailable.
-5. The Aragog path skips silently for non-PALEOS configs.
-6. Stale solver APIs (missing attributes) fail loudly, not silently.
-
-Discriminating values: tsurf = 2873 K and 3517 K (off-grid, asymmetric so
-ordering bugs surface), S values designed so the 1 %, 5 % and 8 % cases are
-clearly in the right bucket.
+1. A consistent round trip passes with a PASS log line.
+2. A moderate residual produces a WARN line without raising.
+3. A large residual raises ``RuntimeError``.
+4. A non-finite table lookup raises ``RuntimeError``.
+5. A non-positive tsurf is a no-op.
+6. The pressure is clamped to the table range before the lookup.
+7. The Aragog path skips silently for non-PALEOS configs.
+8. Stale solver APIs (missing attributes) fail loudly, not silently.
 
 Testing standards and documentation:
 - docs/How-to/testing.md
@@ -49,306 +49,171 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 # ======================================================================
 
 
-def _make_zalmoxis_config(mantle_eos='PALEOS:MgSiO3'):
-    """Mock config with a Zalmoxis + PALEOS interior struct."""
-    config = MagicMock()
-    config.interior_struct.zalmoxis = MagicMock()
-    config.interior_struct.zalmoxis.mantle_eos = mantle_eos
-    config.interior_struct.module = 'zalmoxis'
-    return config
+def _make_mock_eos(T_recovered, P_min=0.0, P_max=1.0e12):
+    """Mock EntropyEOS whose ``temperature`` returns a controlled value.
 
-
-def _patch_zalmoxis_adiabat(S_adiabat_value):
+    Parameters
+    ----------
+    T_recovered : float
+        Value ``eos.temperature(P, S)`` returns, as a length-1 array to mirror
+        the vectorised surface. The round-trip residual is then
+        ``abs(T_recovered - tsurf)``.
+    P_min, P_max : float
+        Table pressure bounds used by the clamp.
     """
-    Build patches that make ``compute_entropy_adiabat`` return a controlled
-    S_target and make the Zalmoxis material dictionary helpers succeed with
-    a mocked PALEOS file.
-    """
-    fake_mat_dicts = {
-        'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
-        'PALEOS-2phase:MgSiO3': {},
-    }
-
-    return [
-        patch(
-            'zalmoxis.eos_export.compute_entropy_adiabat',
-            return_value={
-                'S_target': float(S_adiabat_value),
-                'P': np.array([1e5, 1e11]),
-                'T': np.array([2000.0, 4000.0]),
-            },
-            create=True,
-        ),
-        patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value=fake_mat_dicts,
-        ),
-        patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-            return_value=None,
-        ),
-        patch('os.path.isfile', return_value=True),
-    ]
+    eos = MagicMock()
+    eos.P_min = P_min
+    eos.P_max = P_max
+    eos.temperature = MagicMock(return_value=np.array([float(T_recovered)]))
+    return eos
 
 
 @pytest.mark.unit
-def test_spider_verify_passes_on_consistent_inversion(caplog):
-    """
-    Primary inversion and PALEOS adiabat agree within 1 % -> PASS verdict.
-    """
+def test_spider_verify_passes_on_consistent_roundtrip(caplog):
+    """Recovered temperature equals tsurf -> PASS verdict, no raise."""
     from proteus.interior_energetics.common import _verify_initial_entropy
 
-    config = _make_zalmoxis_config()
+    tsurf = 3000.0
+    eos = _make_mock_eos(T_recovered=tsurf)  # zero residual
 
-    S_target = 6437.4  # from real P-S inversion at tsurf=2500 K
-    # Adiabat 0.3 % off (within PASS window of 1 %)
-    S_adiabat = S_target * 1.003
-
-    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.common'):
-        with (
-            patch(
-                'zalmoxis.eos_export.compute_surface_entropy',
-                return_value={
-                    'S_target': S_adiabat,
-                    'P_surface': 1e5,
-                    'T_surface': 2500.0,
-                },
-                create=True,
-            ),
-            patch(
-                'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-                return_value={
-                    'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
-                    'PALEOS-2phase:MgSiO3': {},
-                },
-            ),
-            patch(
-                'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-                return_value=None,
-            ),
-            patch('os.path.isfile', return_value=True),
-        ):
-            _verify_initial_entropy(config, S_target=S_target, tsurf=2873.0, source='unit-test')
+    # The per-verdict summary line is logged at debug level.
+    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.common'):
+        _verify_initial_entropy(eos, 1e5, S_target=2794.3, tsurf=tsurf, source='unit-test')
 
     joined = '\n'.join(r.message for r in caplog.records)
     assert 'verdict=PASS' in joined, f'Expected PASS verdict in log, got: {joined!r}'
-    # Rel diff 0.3 % must appear in the log
-    assert 'diff=0.299%' in joined or 'diff=0.300%' in joined
+    eos.temperature.assert_called_once()
 
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_spider_verify_warns_on_moderate_mismatch(caplog):
-    """
-    2 % discrepancy triggers WARN verdict and a log.warning, no exception.
+def test_spider_verify_warns_on_moderate_residual(caplog):
+    """A residual between the WARN and FAIL thresholds -> WARN, no raise.
+
+    At tsurf=3000 K: warn=max(1.0, 1.5)=1.5 K, fail=max(5.0, 6.0)=6.0 K. A 3 K
+    residual lands cleanly in the WARN band.
     """
     from proteus.interior_energetics.common import _verify_initial_entropy
 
-    config = _make_zalmoxis_config()
+    tsurf = 3000.0
+    eos = _make_mock_eos(T_recovered=tsurf + 3.0)  # residual 3.0 K -> WARN
 
-    S_target = 9079.8  # tsurf=3500 K value
-    S_adiabat = S_target * 1.02  # 2 % off -> WARN
-
-    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.common'):
-        with (
-            patch(
-                'zalmoxis.eos_export.compute_surface_entropy',
-                return_value={
-                    'S_target': S_adiabat,
-                    'P_surface': 1e5,
-                    'T_surface': 3500.0,
-                },
-                create=True,
-            ),
-            patch(
-                'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-                return_value={
-                    'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
-                    'PALEOS-2phase:MgSiO3': {},
-                },
-            ),
-            patch(
-                'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-                return_value=None,
-            ),
-            patch('os.path.isfile', return_value=True),
-        ):
-            # Must not raise
-            _verify_initial_entropy(config, S_target=S_target, tsurf=3517.0, source='unit-test')
+    # The per-verdict summary line is logged at debug level; the WARN tier below
+    # still emits a separate WARNING record independent of it.
+    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.common'):
+        # Must not raise
+        _verify_initial_entropy(eos, 1e5, S_target=2794.3, tsurf=tsurf, source='unit-test')
 
     joined = '\n'.join(r.message for r in caplog.records)
     assert 'verdict=WARN' in joined, f'Expected WARN verdict: {joined!r}'
-    # Discrimination: the verdict must specifically be WARN, not PASS or
-    # FAIL. The bucket boundaries are 1 % (PASS/WARN) and 5 % (WARN/FAIL);
-    # 2 % must land cleanly in WARN. A regression that collapsed the
-    # three-bucket logic to a binary pass/fail would not produce WARN.
+    # The WARN band must emit a real WARNING record, not only an INFO substring;
+    # otherwise the tier is invisible whenever INFO logging is off.
+    warn_records = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.WARNING and 'round-trip check WARN' in r.message
+    ]
+    assert len(warn_records) == 1, f'Expected one WARNING record: {joined!r}'
+    # Discrimination: a 3 K residual must land in WARN, not PASS or FAIL. A
+    # regression that collapsed the three-bucket logic to a binary pass/fail
+    # would not produce WARN.
     assert 'verdict=PASS' not in joined
     assert 'verdict=FAIL' not in joined
 
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_spider_verify_raises_on_large_mismatch():
-    """
-    8 % discrepancy triggers FAIL verdict and raises RuntimeError.
+def test_spider_verify_raises_on_large_residual():
+    """A residual above the FAIL threshold raises RuntimeError.
+
+    At tsurf=3000 K the FAIL threshold is 6.0 K. A 10 K residual FAILs; a 3 K
+    residual (WARN band) must not raise.
     """
     from proteus.interior_energetics.common import _verify_initial_entropy
 
-    config = _make_zalmoxis_config()
+    tsurf = 3000.0
+    eos_fail = _make_mock_eos(T_recovered=tsurf + 10.0)  # residual 10 K -> FAIL
+    with pytest.raises(RuntimeError, match=r'round-trip check FAIL'):
+        _verify_initial_entropy(eos_fail, 1e5, S_target=2794.3, tsurf=tsurf, source='unit-test')
 
-    S_target = 6437.4
-    S_adiabat = S_target * 1.08  # 8 % off -> FAIL
-
-    with (
-        patch(
-            'zalmoxis.eos_export.compute_surface_entropy',
-            return_value={'S_target': S_adiabat, 'P_surface': 1e5, 'T_surface': 2500.0},
-            create=True,
-        ),
-        patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value={
-                'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
-                'PALEOS-2phase:MgSiO3': {},
-            },
-        ),
-        patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-            return_value=None,
-        ),
-        patch('os.path.isfile', return_value=True),
-    ):
-        with pytest.raises(RuntimeError, match=r'cross-check FAIL'):
-            _verify_initial_entropy(config, S_target=S_target, tsurf=2873.0, source='unit-test')
-    # Boundary discrimination: a 4 % mismatch is below the FAIL
-    # threshold (5 %) and must NOT raise. Same instance, smaller
-    # mismatch, no raise. A regression that hard-raised on any
-    # non-zero mismatch would fail this.
-    S_adiabat_warn = S_target * 1.04
-    with (
-        patch(
-            'zalmoxis.eos_export.compute_surface_entropy',
-            return_value={'S_target': S_adiabat_warn, 'P_surface': 1e5, 'T_surface': 2500.0},
-            create=True,
-        ) as mock_compute,
-        patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value={
-                'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
-                'PALEOS-2phase:MgSiO3': {},
-            },
-        ),
-        patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-            return_value=None,
-        ),
-        patch('os.path.isfile', return_value=True),
-    ):
-        _verify_initial_entropy(config, S_target=S_target, tsurf=2873.0, source='unit-test')
-    # The 4 % path must actually reach the EOS computation (otherwise
-    # the no-raise verdict would be from an unrelated early-skip path).
-    mock_compute.assert_called_once()
+    # Boundary discrimination: a 3 K residual is below the FAIL threshold and
+    # must NOT raise. A regression that hard-raised on any non-zero residual
+    # would fail this.
+    eos_warn = _make_mock_eos(T_recovered=tsurf + 3.0)
+    _verify_initial_entropy(eos_warn, 1e5, S_target=2794.3, tsurf=tsurf, source='unit-test')
+    eos_warn.temperature.assert_called_once()
 
 
 @pytest.mark.unit
-def test_spider_verify_skipped_when_zalmoxis_unavailable(caplog):
-    """
-    No Zalmoxis -> function returns cleanly, does not raise, logs at DEBUG.
-    """
-    from proteus.interior_energetics import common
+def test_spider_verify_raises_on_non_finite_lookup():
+    """A non-finite recovered temperature raises RuntimeError (broken table)."""
     from proteus.interior_energetics.common import _verify_initial_entropy
 
-    config = _make_zalmoxis_config()
-
-    # Force the import inside the function to fail.
-    import builtins
-
-    real_import = builtins.__import__
-
-    def fail_import(name, *args, **kwargs):
-        if 'zalmoxis' in name:
-            raise ImportError(f'mocked: {name} unavailable')
-        return real_import(name, *args, **kwargs)
-
-    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.common'):
-        with patch.object(builtins, '__import__', side_effect=fail_import):
-            # Must not raise, must not print warning at INFO level
-            _verify_initial_entropy(config, S_target=6437.4, tsurf=2873.0, source='unit-test')
-
-    # No INFO-level "verdict=" line (the function returned early)
-    info_records = [
-        r for r in caplog.records if r.levelno >= logging.INFO and 'verdict=' in r.message
-    ]
-    assert info_records == [], f'Unexpected verdict line after skip: {info_records!r}'
-    assert common is not None  # import smoke
+    eos = _make_mock_eos(T_recovered=np.nan)
+    with pytest.raises(RuntimeError, match=r'non-finite'):
+        _verify_initial_entropy(eos, 1e5, S_target=2794.3, tsurf=3000.0, source='unit-test')
 
 
 @pytest.mark.unit
-def test_spider_verify_skipped_when_paleos_file_missing(caplog):
-    """
-    Zalmoxis present but PALEOS file missing -> silent skip (DEBUG log only).
-    """
-    from proteus.interior_energetics.common import _verify_initial_entropy
+def test_spider_verify_skipped_on_nonpositive_tsurf(caplog):
+    """tsurf <= 0 -> function returns cleanly, does not raise, logs a skip.
 
-    config = _make_zalmoxis_config()
-
-    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.common'):
-        with (
-            patch(
-                'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-                return_value={'PALEOS:MgSiO3': {'eos_file': ''}},
-            ),
-            patch('os.path.isfile', return_value=False),
-            patch('zalmoxis.eos_export.compute_surface_entropy', create=True) as mock_compute,
-        ):
-            _verify_initial_entropy(config, S_target=6437.4, tsurf=2873.0, source='unit-test')
-
-    # No PASS/WARN/FAIL verdict was ever logged
-    assert not any('verdict=' in r.message for r in caplog.records)
-    # Discrimination: the silent-skip branch must NOT have invoked the
-    # PALEOS surface-entropy computation. A regression that proceeded
-    # past the missing-file guard and then merely failed to log would
-    # still have called the EOS helper.
-    mock_compute.assert_not_called()
-
-
-@pytest.mark.unit
-def test_spider_verify_zero_s_target_is_handled():
-    """
-    S_target == 0 is guarded against (avoid ZeroDivisionError in rel_diff).
+    A non-positive surface temperature cannot seed a physical IC; the check
+    returns without touching the EOS.
     """
     from proteus.interior_energetics.common import _verify_initial_entropy
 
-    config = _make_zalmoxis_config()
+    eos = _make_mock_eos(T_recovered=1234.5)
 
-    with (
-        patch(
-            'zalmoxis.eos_export.compute_surface_entropy',
-            return_value={'S_target': 1234.5, 'P_surface': 1e5, 'T_surface': 2500.0},
-            create=True,
-        ),
-        patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value={
-                'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
-                'PALEOS-2phase:MgSiO3': {},
-            },
-        ),
-        patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-            return_value=None,
-        ),
-        patch('os.path.isfile', return_value=True),
-    ):
-        # Must not raise ZeroDivisionError
-        result = _verify_initial_entropy(config, S_target=0.0, tsurf=2873.0, source='unit-test')
-    # Contract: verifier returns None on the guarded-zero path; an unguarded
-    # rel_diff = abs(x - 0) / 0 would have raised ZeroDivisionError instead.
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.common'):
+        result = _verify_initial_entropy(
+            eos, 1e5, S_target=2794.3, tsurf=0.0, source='unit-test'
+        )
+
     assert result is None
-    # Discriminating check: tsurf was a positive scalar (so the source-side
-    # surface-entropy computation is exercised) and S_target genuinely zero
-    # (so the guard branch is the only one that can produce a silent pass).
-    assert config.interior_struct.module == 'zalmoxis'
+    # No verdict line was logged and the EOS was never queried on the skip path.
+    assert not any('verdict=' in r.message for r in caplog.records)
+    eos.temperature.assert_not_called()
+
+
+@pytest.mark.unit
+def test_spider_verify_clamps_pressure_to_table_range():
+    """A pressure above the table maximum is clamped before the lookup.
+
+    The interior samples the surface node at 1 bar, but the clamp guards
+    against any caller passing a pressure outside the tabulated range.
+    """
+    from proteus.interior_energetics.common import _verify_initial_entropy
+
+    tsurf = 3000.0
+    P_max = 1.0e12
+    eos = _make_mock_eos(T_recovered=tsurf, P_min=0.0, P_max=P_max)
+
+    _verify_initial_entropy(eos, 1e14, S_target=2794.3, tsurf=tsurf, source='unit-test')
+
+    # The lookup must receive the clamped pressure (P_max), not the raw 1e14.
+    called_P = eos.temperature.call_args.args[0]
+    assert called_P == P_max
+
+
+@pytest.mark.unit
+def test_spider_verify_clamps_pressure_to_table_floor():
+    """A pressure below the table minimum is clamped up to P_min.
+
+    Mirrors the P_max case: the clamp is symmetric, so the lower bound must
+    be exercised too. A regression that dropped the ``max(eos.P_min, ...)``
+    term would pass the P_max test but fail here.
+    """
+    from proteus.interior_energetics.common import _verify_initial_entropy
+
+    tsurf = 3000.0
+    P_min = 1.0e8
+    eos = _make_mock_eos(T_recovered=tsurf, P_min=P_min, P_max=1.0e12)
+
+    _verify_initial_entropy(eos, 1.0, S_target=2794.3, tsurf=tsurf, source='unit-test')
+
+    called_P = eos.temperature.call_args.args[0]
+    assert called_P == P_min
 
 
 # ======================================================================
