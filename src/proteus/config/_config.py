@@ -349,9 +349,19 @@ class Config:
         validator=(valid_config_version, check_module_dependencies),
     )
 
-    def write(self, out: str):
+    def write(self, out: str, overrides: dict | None = None):
         """
         Write configuration to a new TOML file.
+
+        Parameters
+        ----------
+        out
+            Output path for the TOML file.
+        overrides
+            Dotted-path values to substitute in the written file, e.g.
+            ``{'interior_energetics.aragog.phi_step_cap': 0.1}``. Lets a
+            caller record a resolved value (one a module derives from a
+            config default at runtime) without mutating this Config object.
         """
 
         # Convert to dictionary
@@ -359,6 +369,38 @@ class Config:
 
         # Replace None with "none"
         cfg = dict_replace_none(cfg)
+
+        # Apply any resolved-value overrides
+        if overrides:
+            # Imported here to avoid a module-level import cycle: orphans
+            # imports Config from this module.
+            from .orphans import UnknownConfigKeyError
+
+            for dotted_key, value in overrides.items():
+                segments = dotted_key.split('.')
+                *parents, leaf = segments
+                node = cfg
+                for depth, key in enumerate(parents):
+                    if not isinstance(node, dict) or key not in node:
+                        failing = '.'.join(segments[: depth + 1])
+                        raise UnknownConfigKeyError(
+                            f"Override key '{dotted_key}' does not match the schema: "
+                            f"no config section '{failing}'."
+                        )
+                    node = node[key]
+                if not isinstance(node, dict) or leaf not in node:
+                    raise UnknownConfigKeyError(
+                        f"Override key '{dotted_key}' does not match the schema: "
+                        f"no config field '{dotted_key}'."
+                    )
+                if isinstance(node[leaf], dict):
+                    raise UnknownConfigKeyError(
+                        f"Override key '{dotted_key}' targets a config section, "
+                        f'not a field; refusing to replace the whole section.'
+                    )
+                # Route None through the same None -> "none" handling used above,
+                # so a None override does not reach tomlkit as a bare None.
+                node[leaf] = 'none' if value is None else value
 
         # Write to TOML file
         with open(out, 'w') as hdl:

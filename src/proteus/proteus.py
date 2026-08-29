@@ -495,8 +495,40 @@ class Proteus:
         self.init_stage = True
         self._baseline_structure_done = False
 
-        # Write config to output directory, for future reference
-        self.config.write(os.path.join(self.directories['output'], 'init_coupler.toml'))
+        # Write config to output directory, for future reference. Record the
+        # resolved (not raw) step caps, so a zalmoxis-armed default reads back
+        # as the value Aragog actually used instead of the schema's 0.0.
+        step_cap_overrides = {}
+        if self.config.interior_energetics.module == 'aragog':
+            from proteus.config._interior import _STEP_CAP_OFF
+            from proteus.interior_energetics.aragog import (
+                _effective_entropy_step_cap,
+                _effective_phi_step_cap,
+                _effective_temperature_step_cap,
+                _unsupported_energy_fields,
+            )
+
+            # phi_step_cap is always accepted by Aragog, so record its resolved
+            # value. An older Aragog drops the temperature/entropy caps before
+            # they reach the solver; record the disabled sentinel for a dropped
+            # cap so the snapshot does not claim a cap the run never used.
+            unsupported = _unsupported_energy_fields()
+            step_cap_overrides = {
+                'interior_energetics.aragog.phi_step_cap': _effective_phi_step_cap(self.config),
+            }
+            for field, resolve in (
+                ('temperature_step_cap', _effective_temperature_step_cap),
+                ('entropy_step_cap', _effective_entropy_step_cap),
+            ):
+                key = f'interior_energetics.aragog.{field}'
+                if field in unsupported:
+                    step_cap_overrides[key] = _STEP_CAP_OFF
+                else:
+                    step_cap_overrides[key] = resolve(self.config)
+        self.config.write(
+            os.path.join(self.directories['output'], 'init_coupler.toml'),
+            overrides=step_cap_overrides,
+        )
 
         # Create lockfile for keeping simulation running
         self.lockfile = CreateLockFile(self.directories['output'])
