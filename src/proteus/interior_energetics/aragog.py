@@ -234,8 +234,11 @@ def _unsupported_energy_fields() -> set[str]:
     The temperature/entropy step caps and the phase-boundary entropy margin need
     a paired Aragog. An older Aragog omits them from ``_EnergyParameters``, so
     ``setup_solver`` drops them and the solver degrades to Aragog defaults. The
-    config snapshot calls this too, so it records a not-applied marker rather
-    than a resolved value the run never received.
+    config snapshot calls this too, so it records a not-applied marker for a
+    dropped step cap rather than a resolved value the run never received. The
+    margin has no such marker because its positive-only validator forbids the
+    sentinel, so a dropped non-default margin is reported through a solve-time
+    warning instead.
     """
     accepted = set(inspect.signature(_EnergyParameters).parameters)
     return set(_OPTIONAL_ENERGY_FIELDS) - accepted
