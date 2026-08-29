@@ -135,8 +135,7 @@ def test_regenerated_mesh_matches_resumed_row_and_stale_mesh_does_not(tmp_path):
 
     # Consistent with the row's post-solve state, checked against the file's
     # own recomputed mass integral rather than the solver's in-memory one.
-    result = validate_zalmoxis_output_schema(str(regenerated_path), hf_row)
-    assert result is None
+    validate_zalmoxis_output_schema(str(regenerated_path), hf_row)
     assert data[-1, 0] == pytest.approx(hf_row['R_int'], rel=1e-6)
 
     # The solve is real physics, not a passthrough of the archived value.

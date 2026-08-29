@@ -612,8 +612,7 @@ def test_stale_mesh_regression_discriminates_real_drift(tmp_path):
         fresh_path, r_cmb=r_core, r_surf=resumed_r_int
     )
     hf_row = {'R_int': resumed_r_int, 'M_int': m_mantle + m_core, 'M_core': m_core}
-    result = validate_zalmoxis_output_schema(fresh_path, hf_row)
-    assert result is None
+    validate_zalmoxis_output_schema(fresh_path, hf_row)
 
     # The same run's stale, later-row mesh -- unregenerated -- fails against
     # the identical resumed-row hf_row.
