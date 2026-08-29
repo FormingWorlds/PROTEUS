@@ -1966,6 +1966,56 @@ class AragogRunner:
 
         return sim_time, output
 
+    @staticmethod
+    def _aragog_cvode_available() -> bool | None:
+        """Report whether aragog has CVODE built, or ``None`` if it cannot tell.
+
+        aragog exposes no public capability check as of fwl-aragog 26.07.04,
+        so this reads the private ``_CVODE_AVAILABLE`` flag. A ``None`` return
+        means that private name is absent, because aragog renamed or removed
+        it. The caller must treat ``None`` as 'cannot determine', never as
+        'unavailable', or a real CVODE run mislabels as Radau.
+
+        Returns
+        -------
+        bool or None
+            The aragog flag, or ``None`` when the probe symbol is missing.
+        """
+        try:
+            from aragog.solver.entropy_solver import _CVODE_AVAILABLE
+        except ImportError:
+            return None
+        return bool(_CVODE_AVAILABLE)
+
+    def _active_solver_name(self) -> str:
+        """Name the integrator that is actually running, not the one configured.
+
+        ``solver_method`` can ask for CVODE and still run scipy: the wrapper
+        is compiled against SUNDIALS and falls back silently on a build or
+        ABI mismatch, so trusting the config name mislabels every failure
+        the fallback produces. Mirrors aragog's own Radau/BDF choice
+        (entropy_solver.py) so a scipy fallback names the integrator that
+        ran instead of a generic 'scipy'.
+
+        Returns
+        -------
+        str
+            'CVODE' when the configured and available integrator is CVODE,
+            'BDF' when ``solver_method='bdf'``, 'Radau' for an explicit scipy
+            request or a CVODE fallback. When the aragog capability probe
+            fails (the private flag is gone), returns an explicit
+            'unknown (aragog CVODE probe failed)' rather than a wrong name.
+        """
+        method = str(self._config.interior_energetics.aragog.solver_method or '')
+        if method == 'bdf':
+            return 'BDF'
+        if method != 'cvode':
+            return 'Radau'
+        available = self._aragog_cvode_available()
+        if available is None:
+            return 'unknown (aragog CVODE probe failed)'
+        return 'CVODE' if available else 'Radau'
+
     def _solve_with_retry(self, hf_row, interior_o) -> SolverOutput:
         """Run aragog_solver.solve() with a dt-halving retry ladder.
 
@@ -2064,7 +2114,7 @@ class AragogRunner:
                         float(hf_row.get('Time', 0.0)),
                     )
 
-                # Status check: did CVODE accept the step?
+                # Status check: did the solver accept the step?
                 if out.status == 0:
                     # Sanity check: reject suspiciously large T_core jumps
                     # that indicate the solver "succeeded" with garbage.
@@ -2105,16 +2155,17 @@ class AragogRunner:
                         return out
 
                 if attempt >= max_attempts:
-                    # status==0 here means CVODE accepted every step but each
-                    # result was rejected for an over-threshold T_core jump, so
-                    # report that reason rather than the misleading status=0.
+                    # status==0 here means the solver accepted every step but
+                    # each result was rejected for an over-threshold T_core
+                    # jump, so report that reason rather than the misleading
+                    # status=0.
                     if out.status == 0:
                         reason = (
                             'status=0 but the T_core jump exceeded the '
                             f'{sanity_dT_core:.0f} K sanity threshold on every attempt'
                         )
                     else:
-                        reason = f'CVODE status={out.status}'
+                        reason = f'{self._active_solver_name()} status={out.status}'
                     log.error(
                         'Aragog solver failed after %d attempts (%s). '
                         'Raising RuntimeError so wrapper can apply skip-step fallback.',
