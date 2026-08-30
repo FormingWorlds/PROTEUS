@@ -759,11 +759,11 @@ def CreateLockFile(output_dir: str):
     return keepalive_file
 
 
-# Schema columns a resumed run may read as zero when its helpfile predates them.
-# Zero is true either because a column accumulates over a run, so an absent
-# value means nothing accrued, or because it resets to zero every step and
-# only differs on an event step, so a file from before that event existed had
-# no reason to hold anything else. Add a key here only when zero fits one of these.
+# Schema columns a resumed run may read as zero when its helpfile predates them. Zero
+# is true either because a column accumulates over a run, so an absent value means
+# nothing accrued, or because it resets every step and only differs on an event step
+# introduced with its own column, so an older file had no reason to hold anything
+# else. Every other column holds state where zero would be wrong, not missing.
 RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
         'esc_kg_cumulative',
@@ -1497,7 +1497,7 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     -------
     pandas.DataFrame
         Helpfile contents, carrying at least ``required_columns``; any absent
-        cumulative-ledger column is present and zero.
+        ``RESUMABLE_ZERO_FILL_KEYS`` column is present and zero.
 
     Raises
     ------
@@ -1529,9 +1529,9 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
         )
 
     log.warning(
-        'Helpfile predates %d cumulative column(s) in the current schema, and they '
-        'are read as zero for the rest of this run: %s. Any amount they recorded '
-        'before this restart is not in the file and is therefore lost.',
+        'Helpfile predates %d column(s) in the current schema, and they are read '
+        'as zero for the rest of this run: %s. Zero is a correct value for each '
+        'of these, not a gap in what the file recorded.',
         len(fillable),
         ', '.join(sorted(fillable)),
     )
