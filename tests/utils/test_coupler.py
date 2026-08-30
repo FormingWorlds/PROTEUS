@@ -3881,11 +3881,12 @@ def test_a_helpfile_predating_a_schema_column_still_resumes(tmp_path):
 
 @pytest.mark.unit
 def test_a_helpfile_missing_physical_state_is_refused_not_zero_filled():
-    """Only cumulative columns may be read as zero; state columns must fail.
+    """Only declared zero-fill columns may be read as zero; state columns must fail.
 
-    Zero is a true statement about a ledger a file never recorded: nothing was
-    written, so nothing accrued. It is a specific and wrong statement about
-    instantaneous state. A zero-filled surface temperature or planet mass would
+    Zero is correct either way for those columns: one that accumulates over a run
+    had nothing recorded to accrue, and one that resets every step and only differs
+    on an event step had not yet reached one. It is a specific and wrong statement
+    about instantaneous state. A zero-filled surface temperature or planet mass would
     be read as real by everything downstream and would quietly poison a resumed
     run, which is worse than the loud failure this function gave before the
     backfill existed. So the backfill is scoped to a declared set, and anything
