@@ -3846,7 +3846,7 @@ def test_a_helpfile_predating_a_schema_column_still_resumes(tmp_path):
         ZeroHelpfileRow,
     )
 
-    absent = ('M_accreted_rock', 'esc_kg_cumulative')
+    absent = ('M_accreted_rock', 'esc_kg_cumulative', 'step_dE_impact_J')
     row = ZeroHelpfileRow()
     for key in absent:
         assert key in row, f'{key} must be in the current schema for this test to mean anything'
