@@ -760,10 +760,9 @@ def CreateLockFile(output_dir: str):
 
 
 # Schema columns a resumed run may read as zero when its helpfile predates them. Zero
-# is true either because a column accumulates over a run, so an absent value means
-# nothing accrued, or because it resets every step and only differs on an event step
-# introduced with its own column, so an older file had no reason to hold anything
-# else. Every other column holds state where zero would be wrong, not missing.
+# is not equally safe for every column here; see ReadHelpfileFromCSV for the two
+# reasons that make it safe, and for the rule on adding a column to this set. Every
+# other column holds physical state, where zero would be wrong, not missing.
 RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
         'esc_kg_cumulative',
@@ -1472,15 +1471,22 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     function and are not covered.
 
     A missing column is treated by its kind. A column in
-    ``RESUMABLE_ZERO_FILL_KEYS`` either accumulates over a run, so a file that
-    never recorded one accrued nothing, or resets to zero every step and only
-    differs on an event step, so a file predating that event had no reason to
-    hold anything else; either way zero is a true value and the run resumes
-    with it filled in. Every other column carries instantaneous physical
-    state, where zero is not "unknown" but a specific and wrong value that a
-    seeded read would pass to a solver as real, poisoning the resumed run and
-    turning off the module guards that test whether a key is present at all. A
-    file missing one of those is refused.
+    ``RESUMABLE_ZERO_FILL_KEYS`` is safe to zero-fill for one of two reasons.
+    ``step_dE_impact_J`` resets to zero at the start of every step and only
+    differs on a step where a giant impact lands, so a file written before
+    the column existed had no reason to hold anything else; zero-filling it
+    loses nothing. ``esc_kg_cumulative`` and ``M_accreted_rock`` accumulate
+    over a run, so a file predating either column may be missing
+    real prior escape or accretion mass that this read cannot recover;
+    zero-filling it anyway is still the better choice, since refusing would
+    turn a routine schema addition into a run-killing failure on every
+    in-flight run, and the accretion module reports the loss when it detects
+    a zero-filled ledger at resume. Add a column to this set only when it
+    fits one of these two reasons. Every other column carries instantaneous
+    physical state, where zero is not "unknown" but a specific and wrong
+    value that a seeded read would pass to a solver as real, poisoning the
+    resumed run and turning off the module guards that test whether a key is
+    present at all. A file missing one of those is refused.
 
     Parameters
     ----------
@@ -1530,8 +1536,9 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
 
     log.warning(
         'Helpfile predates %d column(s) in the current schema, and they are read '
-        'as zero for the rest of this run: %s. Zero is a correct value for each '
-        'of these, not a gap in what the file recorded.',
+        'as zero for the rest of this run: %s. Zero is exact for a column that '
+        'resets every step; for one that accumulates, any history from before '
+        'this column existed is not recoverable.',
         len(fillable),
         ', '.join(sorted(fillable)),
     )
