@@ -3836,8 +3836,9 @@ def test_a_helpfile_predating_a_schema_column_still_resumes(tmp_path):
     ExtendHelpfile, which rejects a row missing any schema key, so without a
     backfill every in-flight run in the fleet dies on its next restart, whether
     or not it uses the feature the column belongs to. The backfill is zero,
-    which is correct for the cumulative ledgers this affects: nothing was
-    recorded, so nothing accrued.
+    which is correct either way: a column that accumulates over a run had
+    nothing recorded to accrue, and a column that resets every step and only
+    differs on an event step had not yet reached one.
     """
     from proteus.utils.coupler import (
         ExtendHelpfile,
