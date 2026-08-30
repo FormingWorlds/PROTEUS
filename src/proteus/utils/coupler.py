@@ -1480,8 +1480,7 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     real prior escape or accretion mass that this read cannot recover;
     zero-filling it anyway is still the better choice, since refusing would
     turn a routine schema addition into a run-killing failure on every
-    in-flight run, and the accretion module reports the loss when it detects
-    a zero-filled ledger at resume. Add a column to this set only when it
+    in-flight run. Add a column to this set only when it
     fits one of these two reasons. Every other column carries instantaneous
     physical state, where zero is not "unknown" but a specific and wrong
     value that a seeded read would pass to a solver as real, poisoning the
