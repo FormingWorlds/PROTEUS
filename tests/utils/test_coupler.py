@@ -3835,10 +3835,10 @@ def test_a_helpfile_predating_a_schema_column_still_resumes(tmp_path):
     Adding a column and resuming feeds that file's last row straight back into
     ExtendHelpfile, which rejects a row missing any schema key, so without a
     backfill every in-flight run in the fleet dies on its next restart, whether
-    or not it uses the feature the column belongs to. The backfill is zero,
-    which is correct either way: a column that accumulates over a run had
-    nothing recorded to accrue, and a column that resets every step and only
-    differs on an event step had not yet reached one.
+    or not it uses the feature the column belongs to. The backfill is zero:
+    exact for a column that resets every step, and the best available value,
+    though not lossless, for one that accumulates over the whole run. See
+    ReadHelpfileFromCSV for which of the three columns below is which.
     """
     from proteus.utils.coupler import (
         ExtendHelpfile,
@@ -3883,14 +3883,13 @@ def test_a_helpfile_predating_a_schema_column_still_resumes(tmp_path):
 def test_a_helpfile_missing_physical_state_is_refused_not_zero_filled():
     """Only declared zero-fill columns may be read as zero; state columns must fail.
 
-    Zero is correct either way for those columns: one that accumulates over a run
-    had nothing recorded to accrue, and one that resets every step and only differs
-    on an event step had not yet reached one. It is a specific and wrong statement
-    about instantaneous state. A zero-filled surface temperature or planet mass would
-    be read as real by everything downstream and would quietly poison a resumed
-    run, which is worse than the loud failure this function gave before the
-    backfill existed. So the backfill is scoped to a declared set, and anything
-    outside it still stops the run.
+    The declared columns are safe to zero-fill for the two reasons explained in
+    ReadHelpfileFromCSV. Every other column holds instantaneous physical state,
+    where zero is a specific and wrong value, not an unknown one. A zero-filled
+    surface temperature or planet mass would be read as real by everything
+    downstream and would quietly poison a resumed run, which is worse than the
+    loud failure this function gave before the backfill existed. So the backfill
+    is scoped to a declared set, and anything outside it still stops the run.
     """
     from proteus.utils.coupler import (
         RESUMABLE_ZERO_FILL_KEYS,
