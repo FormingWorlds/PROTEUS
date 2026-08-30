@@ -760,13 +760,10 @@ def CreateLockFile(output_dir: str):
 
 
 # Schema columns a resumed run may read as zero when its helpfile predates them.
-# Zero is a true statement about a file that never recorded one of these: either
-# the column accumulates over the run, so nothing written means nothing accrued,
-# or it resets to zero every step and only differs on an event step, so a file
-# from before the event existed never had a reason to hold anything else. Every
-# other column holds instantaneous state, where zero is a specific wrong value
-# rather than a missing one, so a helpfile short of those cannot be resumed at
-# all. Add a column here only when zero is the correct reading of its absence.
+# Zero is true either because a column accumulates over a run, so an absent
+# value means nothing accrued, or because it resets to zero every step and
+# only differs on an event step, so a file from before that event existed had
+# no reason to hold anything else. Add a key here only when zero fits one of these.
 RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
         'esc_kg_cumulative',
@@ -1474,10 +1471,12 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     the file, such as the plotting and inference code, do not come through this
     function and are not covered.
 
-    A missing column is treated by its kind. The columns in
-    ``RESUMABLE_ZERO_FILL_KEYS`` accumulate over a run, so a file that never
-    recorded one accrued nothing and zero is a true value: these are filled with
-    zero and the run resumes. Every other column carries instantaneous physical
+    A missing column is treated by its kind. A column in
+    ``RESUMABLE_ZERO_FILL_KEYS`` either accumulates over a run, so a file that
+    never recorded one accrued nothing, or resets to zero every step and only
+    differs on an event step, so a file predating that event had no reason to
+    hold anything else; either way zero is a true value and the run resumes
+    with it filled in. Every other column carries instantaneous physical
     state, where zero is not "unknown" but a specific and wrong value that a
     seeded read would pass to a solver as real, poisoning the resumed run and
     turning off the module guards that test whether a key is present at all. A
