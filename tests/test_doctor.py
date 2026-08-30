@@ -661,6 +661,12 @@ class TestGetScriptForPackage:
         mixed-case name still resolves (dist names are normally lowercase, but
         the helper must not depend on that)."""
         assert _get_script_for_package('FWL-Zalmoxis') == 'tools/get_zalmoxis.sh'
+        # A fully upper-case spelling of a second package folds too, so the
+        # line above is not one spelling happening to work.
+        assert _get_script_for_package('FWL-ARAGOG') == 'tools/get_aragog.sh'
+        # Folding must not invent a script either: a mixed-case package with
+        # none still takes the git-pull path.
+        assert _get_script_for_package('FWL-Calliope') is None
 
     def test_name_without_fwl_prefix_is_used_verbatim(self):
         """The fwl- strip is conditional: a name lacking the prefix is looked up

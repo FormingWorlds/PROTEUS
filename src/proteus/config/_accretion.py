@@ -9,6 +9,7 @@ SELECTORS = ('match_config', 'mass', 'semimajoraxis', 'id')
 
 
 def valid_morrigan(instance, attribute, value):
+    """The Morrigan module requires as many embryo masses as planets, all positive, and a selector value when the selector is a semi-major axis or planet id."""
     if instance.module != 'morrigan':
         return
 
@@ -132,6 +133,7 @@ def valid_accretiondummy(instance, attribute, value):
 
 
 def valid_accretiontimeline(instance, attribute, value):
+    """The timeline accretion module requires a path to an impact timeline file."""
     if instance.module != 'timeline':
         return
 

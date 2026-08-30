@@ -153,6 +153,7 @@ consecutive iterations (if `params.stop.strict = true`) or one iteration
 | Radiative equilibrium | `params.stop.radeqm` | $\|F_\mathrm{int} - F_\mathrm{atm}\|$ within tolerance |
 | Atmosphere loss | `params.stop.escape` | Surface pressure below `p_stop` |
 | Disintegration | `params.stop.disint` | Planet inside Roche limit or spinning beyond breakup |
+| Unconverged atmosphere | none, always active | 150 consecutive iterations without a converged atmosphere solve |
 
 ## Mass conservation
 
@@ -219,8 +220,13 @@ branches) always report convergence and are unaffected.
 Each warning counts the consecutive iterations whose levels the run did not
 resolve itself, the ones with nothing to fall back on included, and past ten in a
 row the run reports it at error level. A streak that long means the interior is
-evolving while the levels stand still, which the deadlock detector above cannot
-catch: it fires only when the interior has stopped moving too.
+evolving while the levels stand still, which the deadlock detector above does not
+see, since it fires only when the interior has stopped moving too. A separate
+limit covers it: after 150 consecutive iterations without a converged atmosphere
+the run ends, whatever the interior is doing. The two are sized for different
+things, so the frozen-interior detector still fires at three iterations when
+neither side is moving, and the longer count only ends a run whose atmosphere
+never comes back on its own.
 
 Two helpfile columns persist the outcome, so a carried row is identifiable from
 the output alone: `atm_converged` records the solve outcome of each row (+1

@@ -55,6 +55,12 @@ def test_estimate_bolscale_disabled_when_bol_scale_is_one():
     hf_all = _hf_all_with_age(age_star=0.7e9)  # inside the window, if it mattered
     assert _estimate_bolscale(hf_all, config) == np.inf
 
+    # Discrimination: the same window with a scaling that is not unity does
+    # constrain the step, so the sentinel above follows from bol_scale rather
+    # than from a window that reaches nothing at this age.
+    scaling = _config_with_star(bol_scale=2.0, bol_scale_start=0.5, bol_scale_duration=0.5)
+    assert np.isfinite(_estimate_bolscale(hf_all, scaling))
+
 
 @pytest.mark.physics_invariant
 def test_estimate_bolscale_disabled_when_bol_scale_start_is_none():
@@ -63,6 +69,12 @@ def test_estimate_bolscale_disabled_when_bol_scale_start_is_none():
     config = _config_with_star(bol_scale=2.0, bol_scale_start=None, bol_scale_duration=0.0)
     hf_all = _hf_all_with_age(age_star=0.7e9)
     assert _estimate_bolscale(hf_all, config) == np.inf
+
+    # Discrimination: the same scaling with a window does constrain the step,
+    # so the sentinel above follows from the missing start rather than from the
+    # scaling being ignored.
+    windowed = _config_with_star(bol_scale=2.0, bol_scale_start=0.5, bol_scale_duration=0.5)
+    assert np.isfinite(_estimate_bolscale(hf_all, windowed))
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +107,9 @@ def test_estimate_bolscale_inside_window_returns_time_until_end():
     hf_all = _hf_all_with_age(age_star=7.0e8)
     dt_bolscale = _estimate_bolscale(hf_all, config)
     assert dt_bolscale == pytest.approx(3.0e8, rel=1e-9)
+    # Discrimination: the window is 5.0e8 yr wide, so a branch returning the
+    # whole duration rather than what is left of it lands there instead.
+    assert abs(dt_bolscale - 5.0e8) > 1.0e7
 
 
 @pytest.mark.physics_invariant
@@ -105,7 +120,14 @@ def test_estimate_bolscale_after_window_returns_inf():
     hf_all = _hf_all_with_age(age_star=1.1e9)
     assert _estimate_bolscale(hf_all, config) == np.inf
 
+    # Discrimination: an age inside the same window is constrained, so the
+    # sentinel above follows from the window having closed rather than from
+    # this configuration never constraining anything.
+    inside = _hf_all_with_age(age_star=7.0e8)
+    assert np.isfinite(_estimate_bolscale(inside, config))
 
+
+@pytest.mark.physics_invariant
 def test_estimate_bolscale_boundary_at_exact_start_uses_during_branch():
     """age_now exactly equal to age_ini fails the strict `age_now <
     age_ini` "before" check and falls into the `elif age_now < age_end`
@@ -116,8 +138,12 @@ def test_estimate_bolscale_boundary_at_exact_start_uses_during_branch():
     hf_all = _hf_all_with_age(age_star=5.0e8)  # == age_ini exactly
     dt_bolscale = _estimate_bolscale(hf_all, config)
     assert dt_bolscale == pytest.approx(5.0e8, rel=1e-9)  # age_end - age_now = 1e9 - 5e8
+    # Discrimination: the before branch would return age_ini - age_now, which
+    # is zero at this boundary and would stall the step rather than size it.
+    assert dt_bolscale > 1.0e7
 
 
+@pytest.mark.physics_invariant
 def test_estimate_bolscale_defaults_missing_age_star_column_to_zero():
     """hf_all without an 'age_star' column must not raise: the source
     reads it via ``.get('age_star', 0.0)``. This is the error-contract
@@ -128,6 +154,12 @@ def test_estimate_bolscale_defaults_missing_age_star_column_to_zero():
     hf_all = pd.DataFrame({'Time': [0.0, 1.0, 2.0]})  # no age_star column
     dt_bolscale = _estimate_bolscale(hf_all, config)
     assert dt_bolscale == pytest.approx(5.0e8, rel=1e-9)
+    # Discrimination: an age inside the window takes the other branch and
+    # returns the time to its end, so the value above is the default of zero
+    # driving the before-the-window formula rather than a figure this
+    # configuration returns for any frame it is handed.
+    during = _estimate_bolscale(_hf_all_with_age(age_star=7.0e8), config)
+    assert during == pytest.approx(3.0e8, rel=1e-9)
 
 
 # ---------------------------------------------------------------------------
@@ -216,13 +248,23 @@ def test_next_step_does_not_clip_when_window_is_far_away():
 
     dt = next_step(config, {}, hf_row, hf_all, step_sf=1.0)
     assert dt == pytest.approx(1.0e5, rel=1e-9)
+    # Discrimination: the same controller with the window close at hand does
+    # clip, so the value above is the ceiling passing through rather than a
+    # step the clip never reaches on any configuration.
+    near = _next_step_config(
+        dt_maximum=1.0e5, bol_scale=2.0, bol_scale_start=0.5, bol_scale_duration=0.5
+    )
+    # 1.0e3 yr short of the window, well inside the 1.0e5 yr ceiling.
+    close = _next_step_hf_all(age_star=4.99999e8)
+    assert next_step(near, {}, hf_row, close, step_sf=1.0) < 1.0e5
 
 
+@pytest.mark.physics_invariant
 def test_next_step_skips_bolscale_clip_when_hf_all_is_none():
-    """On the very first call (no history yet), hf_all is None; the
-    ``if hf_all is not None`` gate must skip `_estimate_bolscale` entirely
-    rather than crashing on ``None.iloc[-1]``. Force the static branch
-    (Time < 2 yr) so no other part of next_step needs hf_all either.
+    """On the very first call there is no history yet, so hf_all is None and
+    ``if hf_all is not None`` must skip `_estimate_bolscale` rather than
+    crashing on ``None.iloc[-1]``. Force the static branch (Time < 2 yr) so
+    no other part of next_step needs hf_all either.
     """
     config = _next_step_config(
         dt_maximum=1.0e5, bol_scale=2.0, bol_scale_start=0.5, bol_scale_duration=0.5
@@ -232,6 +274,15 @@ def test_next_step_skips_bolscale_clip_when_hf_all_is_none():
     # Static time-step branch returns exactly 1.0 yr
     dt = next_step(config, {}, hf_row, None, step_sf=1.0)
     assert dt == pytest.approx(1.0)
+
+    # Discrimination: the same call given a history whose window opens a
+    # quarter of a year out clips the static step to that remaining time, so
+    # the value above is the clamp being skipped rather than a step no window
+    # could shorten. The window opens at 5.0e8 yr.
+    near_edge = _next_step_hf_all(age_star=5.0e8 - 0.25)
+    assert next_step(config, {}, hf_row, near_edge, step_sf=1.0) == pytest.approx(
+        0.25, rel=1e-9
+    )
 
 
 # ---------------------------------------------------------------------------

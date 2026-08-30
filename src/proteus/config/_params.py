@@ -15,6 +15,7 @@ def valid_path(instance, attribute, value):
 
 
 def max_bigger_than_min(instance, attribute, value):
+    """The maximum must exceed the minimum on the same section."""
     if value <= instance.minimum:
         raise ValueError("'maximum' has to be bigger than 'minimum'.")
 
@@ -107,6 +108,10 @@ class TimeStepParams:
     window: int
         Number of previous steps to consider for adaptive-method comparison
         [dimensionless].
+    max_growth_factor: float
+        Cap on the dt growth ratio between consecutive steps [dimensionless].
+        Bounds dtswitch / dtprev, preventing large jumps that can wedge the
+        interior solver; 0 (default) disables the cap.
     maximum_rel: float
         Time-fraction allowance added to ``dt.maximum`` on every step
         [dimensionless]. The effective per-step cap is the sum
@@ -332,6 +337,27 @@ class StopClock:
 
 
 @define
+class StopStall:
+    """Parameters for the unconverged-atmosphere stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable criteria if True
+    maximum: int
+        Model will terminate after this many consecutive iterations without a
+        converged atmosphere solve, whatever the interior is doing. Sized on 27
+        stalled GJ 9827 d cases as they stood on 2026-08-08: the deepest streak
+        a run recovered from is 126 and the deepest open one, which never
+        converged, is 233. Raising it past the open streak defeats the
+        criterion; lowering it below the recovered one ends runs that come back.
+    """
+
+    enabled: bool = field(default=True)
+    maximum: int = field(default=150, validator=gt(0))
+
+
+@define
 class StopParams:
     """Parameters for termination criteria.
 
@@ -353,6 +379,8 @@ class StopParams:
         Parameters for planet disintegration criteria.
     clock: StopClock
         Parameters for maximum clock runtime criteria.
+    stall: StopStall
+        Parameters for the unconverged-atmosphere criteria.
     """
 
     iters: StopIters = field(factory=StopIters)
@@ -362,6 +390,7 @@ class StopParams:
     escape: StopEscape = field(factory=StopEscape)
     disint: StopDisint = field(factory=StopDisint)
     clock: StopClock = field(factory=StopClock)
+    stall: StopStall = field(factory=StopStall)
 
     strict: bool = field(default=False)
 
@@ -378,6 +407,12 @@ class Params:
         Parameters for time-stepping.
     stop: StopParams
         Parameters for stopping criteria.
+    resume: bool
+        Resume the simulation from the last archived state in the output
+        folder, instead of starting from scratch.
+    offline: bool
+        Run without network access; never download reference data, and fail
+        if a required file is missing locally.
     """
 
     out: OutputParams = field(factory=OutputParams)

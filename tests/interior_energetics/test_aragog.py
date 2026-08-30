@@ -1093,6 +1093,134 @@ def test_a_step_that_never_advanced_is_still_refused():
 
 
 @pytest.mark.unit
+def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
+    monkeypatch,
+):
+    """A retry-ladder exhaustion names the integrator that actually ran.
+
+    ``solver_method`` can ask for CVODE and still run scipy: the wrapper is
+    compiled against SUNDIALS and falls back silently on a build or ABI
+    mismatch, so trusting the config name mislabels every scipy-fallback
+    failure as a CVODE one. Covers CVODE available, CVODE unavailable
+    (silent fallback to Radau), an explicit 'radau', and an explicit 'bdf',
+    so a mutant that drops the solver_method check or collapses Radau/BDF
+    into one label fails at least one branch. Each case also asserts
+    ``solve()`` ran once per attempt, so a mutant that breaks the retry loop
+    itself (wrong attempt count, early exit) fails alongside the label.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    module_path = 'aragog.solver.entropy_solver'
+
+    def _build_runner(status, solver_method='cvode'):
+        runner = AragogRunner.__new__(AragogRunner)
+        runner._config = MagicMock()
+        runner._config.interior_energetics.aragog.solver_method = solver_method
+        runner._config.planet.mass_tot = 1.0
+
+        out = MagicMock()
+        out.status = status
+        out.T_core = 0.0
+
+        solver = MagicMock()
+        solver.parameters.solver.start_time = 0.0
+        solver.parameters.solver.end_time = 1.0
+        solver.get_current_dSdr_cmb.return_value = None
+        solver._dSdr_cmb_init = None
+        solver.get_state.return_value = out
+        runner.aragog_solver = solver
+
+        interior_o = MagicMock()
+        interior_o._last_entropy = None
+
+        hf_row = {'Time': 2.15e5, 'T_cmb': 0.0}
+        return runner, interior_o, hf_row
+
+    max_attempts = 6
+
+    monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', True)
+    cvode_runner, cvode_interior_o, cvode_hf_row = _build_runner(status=-1)
+    with pytest.raises(RuntimeError, match='CVODE status=-1') as cvode_info:
+        cvode_runner._solve_with_retry(cvode_hf_row, cvode_interior_o)
+    assert 'Radau status=' not in str(cvode_info.value)
+    assert 'BDF status=' not in str(cvode_info.value)
+    assert cvode_runner.aragog_solver.solve.call_count == max_attempts
+
+    monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', False)
+    fallback_runner, fallback_interior_o, fallback_hf_row = _build_runner(status=-1)
+    with pytest.raises(RuntimeError, match='Radau status=-1') as fallback_info:
+        fallback_runner._solve_with_retry(fallback_hf_row, fallback_interior_o)
+    assert 'CVODE status=' not in str(fallback_info.value)
+    assert 'BDF status=' not in str(fallback_info.value)
+    assert fallback_runner.aragog_solver.solve.call_count == max_attempts
+
+    monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', True)
+    radau_runner, radau_interior_o, radau_hf_row = _build_runner(
+        status=-1, solver_method='radau'
+    )
+    with pytest.raises(RuntimeError, match='Radau status=-1') as radau_info:
+        radau_runner._solve_with_retry(radau_hf_row, radau_interior_o)
+    assert 'CVODE status=' not in str(radau_info.value)
+    assert 'BDF status=' not in str(radau_info.value)
+    assert radau_runner.aragog_solver.solve.call_count == max_attempts
+
+    monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', True)
+    bdf_runner, bdf_interior_o, bdf_hf_row = _build_runner(status=-1, solver_method='bdf')
+    with pytest.raises(RuntimeError, match='BDF status=-1') as bdf_info:
+        bdf_runner._solve_with_retry(bdf_hf_row, bdf_interior_o)
+    assert 'CVODE status=' not in str(bdf_info.value)
+    assert 'Radau status=' not in str(bdf_info.value)
+    assert bdf_runner.aragog_solver.solve.call_count == max_attempts
+
+
+@pytest.mark.unit
+def test_active_solver_name_reports_unknown_when_cvode_probe_fails(monkeypatch):
+    """A missing/renamed aragog CVODE flag yields an explicit unknown label.
+
+    ``_aragog_cvode_available()`` reads aragog's private ``_CVODE_AVAILABLE``
+    flag. aragog is a separate, actively developed package that owes that
+    private name no stability guarantee. When that name is absent, the cvode
+    branch must report the probe failure, not coerce to Radau, because a real
+    CVODE run would then mislabel as scipy. The probe must never raise: the
+    retry ladder relies on the intended ``RuntimeError``, not an uncaught
+    ``ImportError``.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    monkeypatch.delattr('aragog.solver.entropy_solver._CVODE_AVAILABLE')
+
+    runner = AragogRunner.__new__(AragogRunner)
+    runner._config = MagicMock()
+    runner._config.interior_energetics.aragog.solver_method = 'cvode'
+    name = runner._active_solver_name()
+    assert 'unknown' in name.lower()
+    assert name not in ('CVODE', 'Radau', 'BDF')
+
+    # The missing flag must not leak into or corrupt the 'bdf' branch,
+    # which never consults _CVODE_AVAILABLE in the first place.
+    runner._config.interior_energetics.aragog.solver_method = 'bdf'
+    assert runner._active_solver_name() == 'BDF'
+
+
+@pytest.mark.unit
+def test_aragog_still_exposes_cvode_availability_flag():
+    """``_aragog_cvode_available`` depends on aragog's ``_CVODE_AVAILABLE``.
+
+    aragog owes that private name no stability guarantee. If a later aragog
+    renames or removes it while still satisfying the ``fwl-aragog>=26.07.04``
+    floor, the CVODE label silently reverts to Radau in production. This test
+    fails the moment the depended-on symbol disappears, so the drift is caught
+    here instead of in a mislabelled run.
+    """
+    import aragog.solver.entropy_solver as entropy_solver
+
+    assert hasattr(entropy_solver, '_CVODE_AVAILABLE'), (
+        'aragog.solver.entropy_solver._CVODE_AVAILABLE is gone; '
+        'AragogRunner._aragog_cvode_available can no longer detect CVODE'
+    )
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_a_run_that_covers_almost_none_of_its_time_is_stopped():
     """Steps that cover almost nothing, over a run of them, end the run.
@@ -1701,3 +1829,49 @@ def test_a_failed_factory_install_leaves_no_factory_behind(monkeypatch):
 
     assert solver._jax_cvode_factory is not stale_factory
     assert solver._jax_cvode_factory is None
+
+
+@pytest.mark.unit
+def test_retry_exhaustion_labels_unknown_when_cvode_probe_fails(monkeypatch):
+    """Exhaustion names the probe failure, not a wrong integrator.
+
+    When the aragog CVODE flag is absent, the retry-ladder exhaustion message
+    must name the probe failure rather than a specific integrator, so a real
+    CVODE run does not mislabel as Radau. The path still raises the
+    ``RuntimeError`` the retry ladder depends on, not an ``ImportError``.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    monkeypatch.delattr('aragog.solver.entropy_solver._CVODE_AVAILABLE')
+
+    runner = AragogRunner.__new__(AragogRunner)
+    runner._config = MagicMock()
+    runner._config.interior_energetics.aragog.solver_method = 'cvode'
+    runner._config.planet.mass_tot = 1.0
+
+    out = MagicMock()
+    out.status = -1
+    out.T_core = 0.0
+
+    solver = MagicMock()
+    solver.parameters.solver.start_time = 0.0
+    solver.parameters.solver.end_time = 1.0
+    solver.get_current_dSdr_cmb.return_value = None
+    solver._dSdr_cmb_init = None
+    solver.get_state.return_value = out
+    runner.aragog_solver = solver
+
+    interior_o = MagicMock()
+    interior_o._last_entropy = None
+    hf_row = {'Time': 2.15e5, 'T_cmb': 0.0}
+
+    with pytest.raises(RuntimeError) as info:
+        runner._solve_with_retry(hf_row, interior_o)
+    msg = str(info.value)
+    assert 'unknown' in msg.lower()
+    assert 'Radau status=' not in msg
+    assert 'CVODE status=' not in msg
+
+    # The label is built only on the exhaustion branch, so confirm the ladder
+    # ran the full six attempts rather than raising early.
+    assert runner.aragog_solver.solve.call_count == 6

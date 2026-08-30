@@ -9,11 +9,13 @@ from ._converters import lowercase, none_if_none
 
 
 def warn_if_dummy(instance, attribute, value):
+    """Reject enabling this option when the dummy atmos_clim module is selected."""
     if (instance.module == 'dummy') and value:
         raise ValueError(f'Dummy atmos_clim module is incompatible with {attribute.name}=True')
 
 
 def valid_rayleigh(instance, attribute, value):
+    """Reject Rayleigh scattering with the dummy module or AGNI in grey-gas mode."""
     if not value:
         return
 
@@ -53,6 +55,7 @@ def check_overlap(instance, attribute, value):
 
 
 def valid_agni(instance, attribute, value):
+    """Validate AGNI settings: pressure ordering, surface-state support, rainout, spectral file."""
     if instance.module != 'agni':
         return
 
@@ -150,6 +153,8 @@ class Agni:
         Include sensible heat flux at surface
     real_gas: bool
         Use real gas equations of state in atmosphere, where possible.
+    thermo_functions: bool
+        Use temperature-dependent thermodynamic properties.
     psurf_thresh: float
         Use the transparent-atmosphere solver when P_surf is less than this value [bar].
     dx_max: float
@@ -256,6 +261,7 @@ class Agni:
 
 
 def valid_janus(instance, attribute, value):
+    """Validate JANUS settings: spectral file selection and temperature-bound ordering."""
     if instance.module != 'janus':
         return
 
@@ -361,6 +367,8 @@ class AtmosClim:
         Grey surface albedo.
     albedo_pl: float
         Planetary bond albedo (0 to 1).
+    cloud_alpha: float
+        Condensate retention fraction (0 = full rainout, 1 = fully retained).
     rayleigh: bool
         Include Rayleigh scattering (AGNI, JANUS only).
     tmp_minimum: float
@@ -409,3 +417,99 @@ class AtmosClim:
                 return 2
             case _:
                 raise ValueError(f"Invalid surf_state for AGNI: '{self.surf_state}'")
+
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and it is deliberately independent of the order the fields are
+# declared in above, which follows the code rather than the reader.
+#
+# Every option of a listed class must appear exactly once across its groups.
+# ``tools/_config_schema.py`` fails the build otherwise, so an option added
+# here cannot quietly go missing from the documentation.
+DOC_GROUPS = {
+    'AtmosClim': (
+        (
+            None,
+            None,
+            (
+                'module',
+                'spectral_group',
+                'spectral_bands',
+                'num_levels',
+                'p_top',
+                'p_obs',
+                'overlap_method',
+            ),
+        ),
+        (
+            'Radiative properties',
+            None,
+            (
+                'rayleigh',
+                'cloud_enabled',
+                'cloud_alpha',
+                'aerosols_enabled',
+                'albedo_pl',
+                'surf_greyalbedo',
+            ),
+        ),
+        ('Surface boundary condition', None, ('surf_state', 'surface_d', 'surface_k')),
+        ('Solver limits', None, ('tmp_minimum',)),
+    ),
+    'Agni': (
+        (
+            'Physics',
+            None,
+            (
+                'solve_energy',
+                'convection',
+                'conduction',
+                'sens_heat',
+                'rainout',
+                'oceans',
+                'latent_heat',
+                'real_gas',
+                'thermo_functions',
+                'chemistry',
+                'mlt_criterion',
+            ),
+        ),
+        ('Surface properties', None, ('surf_material', 'surf_roughness', 'surf_windspeed')),
+        ('Condensation', None, ('phs_timescale', 'evap_efficiency')),
+        (
+            'Solver tuning',
+            None,
+            (
+                'solution_atol',
+                'solution_rtol',
+                'psurf_thresh',
+                'dx_max',
+                'dx_max_ini',
+                'max_steps',
+                'perturb_all',
+                'ini_profile',
+                'ls_default',
+                'fdo',
+                'verbosity',
+            ),
+        ),
+        (
+            'Spectral and gas allocation',
+            None,
+            ('spectral_file', 'grey_opacity_lw', 'grey_opacity_sw', 'check_safe_gas'),
+        ),
+        (
+            'FastChem equilibrium chemistry',
+            'used when `chemistry = "eq"`',
+            (
+                'fastchem_floor',
+                'fastchem_maxiter_chem',
+                'fastchem_maxiter_solv',
+                'fastchem_xtol_chem',
+                'fastchem_xtol_elem',
+            ),
+        ),
+    ),
+}

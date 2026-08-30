@@ -677,6 +677,13 @@ class TestBootstrapLogger:
             if type(h) is logging.StreamHandler and getattr(h, 'stream', None) is sys.stdout
         ]
         assert len(stdout_handlers) == 1
+        # Discrimination: exactly one file handler, on the path asked for. The
+        # stdout count above says nothing about file output, so a setup_logger
+        # that dropped, duplicated or misdirected the file handler would leave
+        # it unchanged.
+        file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
+        assert len(file_handlers) == 1
+        assert file_handlers[0].baseFilename == os.path.abspath(logpath)
 
     @pytest.mark.unit
     def test_info_record_reaches_handler(self):
@@ -695,6 +702,14 @@ class TestBootstrapLogger:
         logging.getLogger('fwl.proteus.utils.coupler').info('Temporary-file working dir: /x')
         assert 'Temporary-file working dir: /x' in buf.getvalue()
 
+        # Discrimination: a record below the configured level is not emitted,
+        # so the line above arrived through the level filter rather than
+        # through a handler passing everything it is given.
+        buf.truncate(0)
+        buf.seek(0)
+        logging.getLogger('fwl.proteus.utils.coupler').debug('Not at this level')
+        assert 'Not at this level' not in buf.getvalue()
+
     @pytest.mark.unit
     def test_invalid_level_raises(self):
         """An unrecognised level must raise rather than silently default.
@@ -704,6 +719,12 @@ class TestBootstrapLogger:
         """
         with pytest.raises(ValueError, match='Invalid log level'):
             bootstrap_logger(level='INVALID')
+
+        # Discrimination: a level that is recognised is accepted, so the raise
+        # above comes from the level being unknown rather than from the call
+        # refusing every level it is handed.
+        bootstrap_logger(level='DEBUG')
+        assert logging.getLogger('fwl').level == logging.DEBUG
 
 
 class TestGetCurrentLogfileIndex:

@@ -1,0 +1,283 @@
+{
+  "sites": [
+    {
+      "area": "Accretion",
+      "config_path": "accretion.module",
+      "wrapper": "src/proteus/accretion/wrapper.py",
+      "options": [
+        {
+          "option": "dummy",
+          "entry": "src/proteus/accretion/dummy.py:get_timeline",
+          "role": "Analytical exponential accretion law"
+        },
+        {
+          "option": "morrigan",
+          "entry": "src/proteus/accretion/morrigan.py:get_timeline",
+          "role": "Monte Carlo giant-impact dynamics (Morrigan)"
+        },
+        {
+          "option": "timeline",
+          "entry": "src/proteus/accretion/timeline.py:get_timeline",
+          "role": "Impacts replayed from a timeline file"
+        },
+        {
+          "option": null,
+          "entry": null,
+          "role": "Accretion disabled; no impacts"
+        }
+      ],
+      "sub_dispatches": []
+    },
+    {
+      "area": "Atmosphere climate",
+      "config_path": "atmos_clim.module",
+      "wrapper": "src/proteus/atmos_clim/wrapper.py",
+      "options": [
+        {
+          "option": "agni",
+          "entry": "src/proteus/atmos_clim/agni.py:run_agni",
+          "role": "Radiative-convective solver (Julia)"
+        },
+        {
+          "option": "dummy",
+          "entry": "src/proteus/atmos_clim/dummy.py:RunDummyAtm",
+          "role": "Grey-body placeholder"
+        },
+        {
+          "option": "janus",
+          "entry": "src/proteus/atmos_clim/janus.py:RunJANUS",
+          "role": "Convective adiabat profile"
+        }
+      ],
+      "sub_dispatches": []
+    },
+    {
+      "area": "Atmospheric chemistry",
+      "config_path": "atmos_chem.module",
+      "wrapper": "src/proteus/atmos_chem/wrapper.py",
+      "options": [
+        {
+          "option": "dummy",
+          "entry": "src/proteus/atmos_chem/dummy.py:run_dummy_chem",
+          "role": "Rainout-only placeholder"
+        },
+        {
+          "option": "vulcan",
+          "entry": "src/proteus/atmos_chem/vulcan.py:run_vulcan",
+          "role": "Kinetics network (VULCAN)"
+        },
+        {
+          "option": null,
+          "entry": null,
+          "role": "Chemistry disabled"
+        }
+      ],
+      "sub_dispatches": [
+        {
+          "switch": "`atmos_chem.when`",
+          "entry": "src/proteus/atmos_chem/wrapper.py:run_chemistry",
+          "doc": "runs the network 'online' during the loop, 'offline' afterwards, or 'manually'"
+        }
+      ]
+    },
+    {
+      "area": "Atmospheric escape",
+      "config_path": "escape.module",
+      "wrapper": "src/proteus/escape/wrapper.py",
+      "options": [
+        {
+          "option": "boreas",
+          "entry": "src/proteus/escape/boreas.py:run_boreas",
+          "role": "Hydrodynamic escape (BOREAS)"
+        },
+        {
+          "option": "dummy",
+          "entry": "src/proteus/escape/wrapper.py:run_dummy",
+          "role": "Fixed bulk escape rate"
+        },
+        {
+          "option": "zephyrus",
+          "entry": "src/proteus/escape/wrapper.py:run_zephyrus",
+          "role": "Energy-limited escape (ZEPHYRUS)"
+        },
+        {
+          "option": null,
+          "entry": null,
+          "role": "Escape disabled; rates zeroed"
+        }
+      ],
+      "sub_dispatches": []
+    },
+    {
+      "area": "Interior energetics",
+      "config_path": "interior_energetics.module",
+      "wrapper": "src/proteus/interior_energetics/wrapper.py",
+      "options": [
+        {
+          "option": "aragog",
+          "entry": "src/proteus/interior_energetics/aragog.py:AragogRunner",
+          "role": "T-P formalism (Python)"
+        },
+        {
+          "option": "boundary",
+          "entry": "src/proteus/interior_energetics/boundary.py:BoundaryRunner",
+          "role": "Boundary-layer energy balance"
+        },
+        {
+          "option": "dummy",
+          "entry": "src/proteus/interior_energetics/dummy.py:run_dummy_int",
+          "role": "Prescribed cooling"
+        },
+        {
+          "option": "spider",
+          "entry": "src/proteus/interior_energetics/spider.py:RunSPIDER",
+          "role": "T-S formalism (C, PETSc)"
+        }
+      ],
+      "sub_dispatches": []
+    },
+    {
+      "area": "Interior structure",
+      "config_path": "interior_struct.module",
+      "wrapper": "src/proteus/interior_energetics/wrapper.py",
+      "options": [
+        {
+          "option": "dummy",
+          "entry": "src/proteus/interior_energetics/wrapper.py:determine_interior_radius_with_dummy",
+          "role": "Two-layer analytic structure (interior_struct/dummy.py)"
+        },
+        {
+          "option": "spider",
+          "entry": "src/proteus/interior_energetics/wrapper.py:determine_interior_radius",
+          "role": "Radius root-find against the energetics module"
+        },
+        {
+          "option": "zalmoxis",
+          "entry": "src/proteus/interior_energetics/wrapper.py:determine_interior_radius_with_zalmoxis",
+          "role": "Self-consistent EOS structure (interior_struct/zalmoxis.py)"
+        },
+        {
+          "option": null,
+          "entry": null,
+          "role": "Structure solve disabled"
+        }
+      ],
+      "sub_dispatches": []
+    },
+    {
+      "area": "Orbit and tides",
+      "config_path": "orbit.module",
+      "wrapper": "src/proteus/orbit/wrapper.py",
+      "options": [
+        {
+          "option": "dummy",
+          "entry": "src/proteus/orbit/dummy.py:run_dummy_orbit",
+          "role": "Fixed Im(k2) tides"
+        },
+        {
+          "option": "lovepy",
+          "entry": "src/proteus/orbit/lovepy.py:run_lovepy",
+          "role": "Multi-phase tidal heating (Julia)"
+        },
+        {
+          "option": null,
+          "entry": null,
+          "role": "Tides disabled; Im(k2) set to zero"
+        }
+      ],
+      "sub_dispatches": [
+        {
+          "switch": "`orbit.evolve = true`",
+          "entry": "src/proteus/orbit/orbit.py:evolve_orbital",
+          "doc": "evolves semi-major axis and eccentricity each iteration"
+        },
+        {
+          "switch": "`orbit.satellite = true`",
+          "entry": "src/proteus/orbit/satellite.py:update_satellite",
+          "doc": "evolves the satellite orbit instead of the planetary one"
+        }
+      ]
+    },
+    {
+      "area": "Outgassing",
+      "config_path": "outgas.module",
+      "wrapper": "src/proteus/outgas/wrapper.py",
+      "options": [
+        {
+          "option": "atmodeller",
+          "entry": "src/proteus/outgas/atmodeller.py:calc_surface_pressures_atmodeller",
+          "role": "Equilibrium chemistry (atmodeller)"
+        },
+        {
+          "option": "calliope",
+          "entry": "src/proteus/outgas/calliope.py:calc_surface_pressures",
+          "role": "fO2-buffered equilibrium (CALLIOPE)"
+        },
+        {
+          "option": "dummy",
+          "entry": "src/proteus/outgas/dummy.py:calc_surface_pressures_dummy",
+          "role": "Prescribed pressures"
+        }
+      ],
+      "sub_dispatches": [
+        {
+          "switch": "`outgas.vapourise = true`",
+          "entry": "src/proteus/outgas/lavatmos.py:run_vapourisation",
+          "doc": "adds rock-vapour equilibrium (LavAtmos) after the outgassing solve"
+        },
+        {
+          "switch": "`outgas.h2_binodal = true`",
+          "entry": "src/proteus/outgas/binodal.py:apply_binodal_h2",
+          "doc": "applies the H2-silicate binodal miscibility limit"
+        }
+      ]
+    },
+    {
+      "area": "Star",
+      "config_path": "star.module",
+      "wrapper": "src/proteus/star/wrapper.py",
+      "options": [
+        {
+          "option": "dummy",
+          "entry": "src/proteus/star/dummy.py:generate_spectrum",
+          "role": "Black-body star"
+        },
+        {
+          "option": "mors",
+          "entry": "src/proteus/star/wrapper.py:init_star",
+          "role": "Stellar evolution via the mors package"
+        },
+        {
+          "option": null,
+          "entry": null,
+          "role": "No stellar evolution"
+        }
+      ],
+      "sub_dispatches": [
+        {
+          "switch": "`star.mors.tracks`",
+          "entry": "src/proteus/star/wrapper.py:get_new_spectrum",
+          "doc": "selects the Spada or Baraffe evolution tracks within MORS"
+        }
+      ]
+    },
+    {
+      "area": "Observations",
+      "config_path": "observe.module",
+      "wrapper": "src/proteus/observe/wrapper.py",
+      "options": [
+        {
+          "option": "petitRADTRANS",
+          "entry": "src/proteus/observe/petitRADTRANS.py:transit_depth",
+          "role": "Synthetic transit and eclipse spectra"
+        },
+        {
+          "option": null,
+          "entry": null,
+          "role": "Observational synthesis disabled"
+        }
+      ],
+      "sub_dispatches": []
+    }
+  ]
+}

@@ -37,17 +37,23 @@ import pandas as pd
 import pytest
 
 import proteus.utils.coupler as coupler_mod
-from proteus.utils.constants import element_list
+from proteus.utils.constants import element_list, vol_list
 from proteus.utils.coupler import (
+    _DRIFT_REPORT_LIMIT,
+    _POSTPROCESSING_FIXED_KEYS,
     CreateHelpfileFromDict,
     CreateLockFile,
     ExtendHelpfile,
     GetHelpfileKeys,
+    GetPostprocessingKeys,
+    HelpfileRow,
+    HelpfileSchemaDriftError,
     PrintCurrentState,
     ReadHelpfileFromCSV,
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
     _atm_snapshot_names,
+    _describe_missing_columns,
     _get_current_time,
     _interior_snapshot_names,
     _netcdf_readable,
@@ -529,6 +535,384 @@ def test_write_helpfile_multiple_rows_roundtrip():
         assert len(hf_read) == 5
         assert hf_read['Time'].iloc[-1] == pytest.approx(4.0e7)
         assert hf_read['T_surf'].iloc[-1] == pytest.approx(340.0)
+
+
+# =============================================================================
+# Test: Helpfile Schema Drift
+# =============================================================================
+
+
+def _write_drifted_helpfile(tmpdir: str, dropped: list[str], n_rows: int = 3) -> None:
+    """Write a helpfile carrying every schema column except ``dropped``.
+
+    Stands in for a run whose CSV was written before those columns joined
+    the output schema. Every written column gets a distinct positive value,
+    so an assertion about what survived is not satisfied by zeros.
+    """
+    keys = [k for k in GetHelpfileKeys() if k not in set(dropped)]
+    row = {k: float(i + 1) for i, k in enumerate(keys)}
+    pd.DataFrame([row] * n_rows, columns=keys, dtype=float).to_csv(
+        os.path.join(tmpdir, 'runtime_helpfile.csv'),
+        index=False,
+        sep='\t',
+        float_format='%.10e',
+    )
+
+
+@pytest.mark.unit
+def test_read_helpfile_refuses_a_file_that_predates_schema_columns():
+    """A helpfile short of schema columns is refused, not completed.
+
+    An older run holds no value for a column added since. The refusal names
+    the columns and the file, which is what a user needs in order to decide
+    what to do with the run.
+    """
+    dropped = ['M_atm', 'eccentricity', 'solver_residual_J']
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, dropped)
+
+        with pytest.raises(HelpfileSchemaDriftError) as excinfo:
+            ReadHelpfileFromCSV(tmpdir)
+
+        message = str(excinfo.value)
+        for col in dropped:
+            assert col in message
+        assert 'runtime_helpfile.csv' in message
+        assert 't=0' in message
+
+        # Discrimination: a column the file does carry must not be named, or
+        # the message is reciting the schema instead of the shortfall.
+        assert 'T_surf' not in message
+
+        # The refusal reads only. A regression that rewrote or truncated the
+        # file would cost the user the run it just declined to resume.
+        recovered = pd.read_csv(os.path.join(tmpdir, 'runtime_helpfile.csv'), sep=r'\s+')
+        assert len(recovered) == 3
+        assert not set(dropped) & set(recovered.columns)
+
+
+@pytest.mark.unit
+def test_absent_columns_are_never_seeded_into_the_returned_table():
+    """The loader hands back what the file holds, never a fabricated value.
+
+    Modules decide what to do by testing whether a key is present at all:
+    CALLIOPE refuses a run whose oxygen budget is absent, the dummy and
+    boundary interiors fall back to a configured core size, and the
+    atmosphere lower boundary moves to the solvus only when a solvus radius
+    exists. Seeding an absent column would satisfy every one of those tests
+    and pass a zero to the solver behind it.
+    """
+    guarded = ['O_kg_total', 'M_int', 'M_core', 'R_core', 'R_solvus', 'T_solvus', 'P_solvus']
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, guarded)
+
+        # No table is returned at all, so no consumer can read a seeded key.
+        with pytest.raises(HelpfileSchemaDriftError):
+            ReadHelpfileFromCSV(tmpdir)
+
+        # Discrimination: with the same columns present the load succeeds and
+        # their values are exactly what the file holds, so the refusal above
+        # is caused by absence and not by the column names themselves.
+        _write_drifted_helpfile(tmpdir, [])
+        hf = ReadHelpfileFromCSV(tmpdir)
+        for col in guarded:
+            assert hf[col].iloc[-1] > 0.0
+        assert set(GetHelpfileKeys()) <= set(hf.columns)
+
+
+@pytest.mark.unit
+def test_describe_missing_columns_truncates_beyond_the_limit():
+    """Long column lists are truncated with the full count kept visible.
+
+    A run from many schema additions ago can be short hundreds of columns.
+    The summary stays readable while still reporting how many are absent, so
+    truncation never hides the scale of the drift.
+    """
+    names = ['col_%02d' % i for i in range(_DRIFT_REPORT_LIMIT + 8)]
+    rendered = _describe_missing_columns(names)
+
+    for col in names[:_DRIFT_REPORT_LIMIT]:
+        assert col in rendered
+    assert names[_DRIFT_REPORT_LIMIT] not in rendered
+    assert '(+8 more)' in rendered
+
+    # Edge case: a list exactly at the limit is shown whole, with no
+    # remainder marker claiming columns that are already listed.
+    exact = _describe_missing_columns(names[:_DRIFT_REPORT_LIMIT])
+    assert 'more)' not in exact
+    assert exact.count(', ') == _DRIFT_REPORT_LIMIT - 1
+
+    # Edge case: a single column renders as a bare name.
+    assert _describe_missing_columns(['only_one']) == 'only_one'
+
+
+@pytest.mark.unit
+def test_helpfile_drift_message_states_the_full_column_count():
+    """The refusal reports how many columns are absent, not just the listed ones."""
+    dropped = sorted(GetHelpfileKeys())[: _DRIFT_REPORT_LIMIT + 8]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, dropped)
+
+        with pytest.raises(HelpfileSchemaDriftError) as excinfo:
+            ReadHelpfileFromCSV(tmpdir)
+
+        message = str(excinfo.value)
+        assert 'before %d column(s)' % len(dropped) in message
+        assert '(+8 more)' in message
+        # Discrimination: the count is the true shortfall, so a message that
+        # counted only the listed names would fail here.
+        assert str(_DRIFT_REPORT_LIMIT) + ' column(s)' not in message
+
+
+@pytest.mark.unit
+def test_refusal_precedes_the_key_gap_it_exists_to_prevent():
+    """The load stops before the row gap reaches the first completed iteration.
+
+    Resume seeds its working row from the last line of the table, so a file
+    predating a schema addition hands every later consumer a row short of
+    those keys. Catching it at the load turns a failure one iteration deep
+    into a refusal that names the cause.
+    """
+    dropped = ['M_atm', 'eccentricity', 'runtime']
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, dropped)
+
+        with pytest.raises(HelpfileSchemaDriftError):
+            ReadHelpfileFromCSV(tmpdir)
+
+        # What the run would have hit instead, one iteration later: the same
+        # three columns, reported as a key gap with no cause attached.
+        raw = pd.read_csv(os.path.join(tmpdir, 'runtime_helpfile.csv'), sep=r'\s+')
+        with pytest.raises(Exception, match='missing expected keys') as excinfo:
+            ExtendHelpfile(raw, raw.iloc[-1].to_dict())
+        for col in dropped:
+            assert col in str(excinfo.value)
+
+
+@pytest.mark.unit
+def test_read_helpfile_with_the_current_schema_is_unchanged(caplog):
+    """A current-schema helpfile loads untouched and says nothing.
+
+    The check must be inert when there is nothing to report, so an ordinary
+    resume neither warns nor alters the table it read.
+    """
+    import logging
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        row['Time'] = 3.0e6
+        row['T_surf'] = 1450.0
+        WriteHelpfileToCSV(tmpdir, CreateHelpfileFromDict(row))
+
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
+            hf = ReadHelpfileFromCSV(tmpdir)
+
+        assert list(hf.columns) == list(GetHelpfileKeys())
+        assert hf['T_surf'].iloc[0] == pytest.approx(1450.0)
+        assert len(hf) == 1
+
+        joined = '\n'.join(r.getMessage() for r in caplog.records)
+        assert 'schema' not in joined
+
+
+# =============================================================================
+# Test: Postprocessing Column Requirement
+# =============================================================================
+
+
+@pytest.mark.unit
+def test_helpfile_row_reports_an_absent_column_it_is_asked_for():
+    """A column outside the postprocessing set still reports itself when read.
+
+    The set of columns postprocessing needs is enumerated by hand, so it can
+    fall behind the code it describes. The row itself carries the report, so
+    a read the list did not anticipate says what is wrong instead of raising
+    a bare KeyError from inside a synthesis routine.
+    """
+    source = '/run/output/runtime_helpfile.csv'
+    row = HelpfileRow({'T_surf': 1450.0, 'R_int': 6.371e6}, source)
+
+    assert row['T_surf'] == pytest.approx(1450.0)
+
+    with pytest.raises(HelpfileSchemaDriftError) as excinfo:
+        row['R_xuv']
+    message = str(excinfo.value)
+    assert 'R_xuv' in message
+    assert source in message
+    # Discrimination: the report names the column asked for, not a column
+    # that happens to be present.
+    assert 'T_surf' not in message
+
+
+@pytest.mark.unit
+def test_helpfile_row_leaves_the_tolerant_reads_alone():
+    """Code that already handles an absent column keeps working unchanged.
+
+    Several postprocessing reads test membership or pass a default precisely
+    because a column may be absent. Reporting those as a shortfall would
+    turn a handled case into a refusal.
+    """
+    row = HelpfileRow({'H2O_vmr': 0.4}, '/run/output/runtime_helpfile.csv')
+
+    assert 'CO2_vmr' not in row
+    assert row.get('CO2_vmr', 0.0) == pytest.approx(0.0)
+    assert row.get('H2O_vmr', 0.0) == pytest.approx(0.4)
+    # Discrimination: membership is false rather than raising, which is what
+    # `if key in hf_row` in the synthesis code depends on.
+    assert 'H2O_vmr' in row
+
+
+@pytest.mark.unit
+def test_helpfile_row_survives_copying_but_not_rebuilding():
+    """Pin which ways of duplicating the row keep the report and which lose it.
+
+    The class docstring tells a reader that rebuilding the row as a plain
+    dict drops the report while copying it does not. That distinction is not
+    obvious from the code, so it is pinned here rather than left as a claim.
+    """
+    import copy
+
+    row = HelpfileRow({'T_surf': 1450.0}, '/run/output/runtime_helpfile.csv')
+
+    for label, kept in (
+        ('copy.copy', copy.copy(row)),
+        ('copy.deepcopy', copy.deepcopy(row)),
+    ):
+        assert isinstance(kept, HelpfileRow), label
+        assert kept.source == row.source, label
+        with pytest.raises(HelpfileSchemaDriftError, match='R_xuv'):
+            kept['R_xuv']
+
+    for label, rebuilt in (
+        ('dict()', dict(row)),
+        ('unpacking', {**row}),
+        ('dict.copy', row.copy()),
+    ):
+        assert not isinstance(rebuilt, HelpfileRow), label
+        # Discrimination: the values survive, so what is lost is the report
+        # and not the data. A plain KeyError is what a reader is warned about.
+        assert rebuilt['T_surf'] == pytest.approx(1450.0), label
+        with pytest.raises(KeyError):
+            rebuilt['R_xuv']
+
+
+@pytest.mark.unit
+def test_helpfile_row_reports_through_any_reference_to_it():
+    """The report follows the row, not the name it is read through.
+
+    A read reached after the row is assigned to a local, stored on an
+    object, or put in a container is the same object, so the column is
+    reported wherever the read happens.
+    """
+    source = '/run/output/runtime_helpfile.csv'
+    row = HelpfileRow({'T_surf': 1450.0}, source)
+
+    local = row
+    holder = types.SimpleNamespace(hf_row=row)
+    container = {'row': row}
+
+    for label, reference in (
+        ('local', local),
+        ('attribute', holder.hf_row),
+        ('container', container['row']),
+    ):
+        with pytest.raises(HelpfileSchemaDriftError, match='P_solvus'):
+            reference['P_solvus']
+        assert reference['T_surf'] == pytest.approx(1450.0), label
+
+
+@pytest.mark.unit
+def test_postprocessing_keys_are_a_strict_subset_of_the_schema():
+    """The postprocessing set is drawn from the schema and is smaller than it.
+
+    A key outside the schema could never be satisfied by any helpfile, and a
+    set equal to the schema would be the blanket check it exists to replace.
+    """
+    schema = set(GetHelpfileKeys())
+    keys = GetPostprocessingKeys()
+
+    assert set(keys) < schema
+    assert len(keys) == len(set(keys)), 'duplicate entries would over-report a shortfall'
+    # The set is fixed rather than config-derived, so two calls agree and no
+    # run can be refused for a requirement another run would not have had.
+    assert GetPostprocessingKeys() == keys
+
+
+@pytest.mark.unit
+def test_postprocessing_ignores_a_column_it_never_reads():
+    """A run short of a column postprocessing does not read still loads.
+
+    This is the whole point of the narrower set: a diagnostic added after an
+    archived run finished must not stop that run being postprocessed.
+    """
+    unread = 'struct_mass_desync_frac'
+    assert unread in GetHelpfileKeys()
+    assert unread not in GetPostprocessingKeys()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, [unread])
+
+        hf = ReadHelpfileFromCSV(tmpdir, required_columns=GetPostprocessingKeys())
+        assert len(hf) == 3
+        assert set(GetPostprocessingKeys()) <= set(hf.columns)
+
+        # Discrimination: the same file is refused for a resume, so the two
+        # requirements are genuinely different and not both wide open.
+        with pytest.raises(HelpfileSchemaDriftError, match=unread):
+            ReadHelpfileFromCSV(tmpdir)
+
+
+@pytest.mark.unit
+def test_postprocessing_set_does_not_lose_a_key():
+    """No column drops out of the postprocessing requirement unnoticed.
+
+    The requirement is written by hand from the reads in ``observe/`` and
+    ``atmos_chem/``. Naming the members again here does not prove the list is
+    complete, since both are written by the same reading; it catches a member
+    being dropped, which would move that column's report from the load, which
+    happens before the run archive is unpacked, into a synthesis routine.
+    """
+    required = set(GetPostprocessingKeys())
+    named = {
+        'Time',
+        'T_surf',
+        'P_surf',
+        'R_int',
+        'gravity',
+        'atm_kg_per_mol',
+        'R_star',
+        'T_star',
+        'separation',
+    }
+    assert named <= required, 'dropped from the requirement: %s' % sorted(named - required)
+
+    # The two computed reads expand over fixed lists, so every member counts.
+    assert {e + '_kg_atm' for e in element_list} <= required
+    assert {g + '_vmr' for g in vol_list} <= required
+
+    # Discrimination: the requirement is not simply the whole schema, so the
+    # assertions above are not satisfied by a set that covers everything.
+    assert 'struct_mass_desync_frac' not in required
+
+
+@pytest.mark.unit
+def test_postprocessing_still_refuses_a_column_it_does_read():
+    """A run short of a column postprocessing indexes is refused.
+
+    The narrower requirement is not a way of proceeding regardless: a key
+    the synthesis code reads without a fallback still has to be there.
+    """
+    probes = list(_POSTPROCESSING_FIXED_KEYS) + ['H2O_vmr', 'O_kg_atm']
+    assert len(probes) == 11, 'expected every fixed key plus one of each expansion'
+    for needed in probes:
+        assert needed in GetPostprocessingKeys()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _write_drifted_helpfile(tmpdir, [needed])
+            with pytest.raises(HelpfileSchemaDriftError, match=needed) as excinfo:
+                ReadHelpfileFromCSV(tmpdir, required_columns=GetPostprocessingKeys())
+            # Discrimination: exactly the absent column is reported, not the
+            # whole requirement, so the count reflects the real shortfall.
+            assert 'before 1 column(s)' in str(excinfo.value)
 
 
 # =============================================================================
@@ -2037,7 +2421,7 @@ def test_assert_mass_conservation_accepts_noble_gas_inventory():
     Discriminating: the noble gases hold 5e16 kg against 1.1e19 kg of reactive
     volatiles, a 0.45 percent contribution.
     """
-    from proteus.utils.constants import noble_gases, vol_gas_list, vol_list
+    from proteus.utils.constants import noble_gases, vol_gas_list
     from proteus.utils.coupler import assert_mass_conservation
 
     hf_row = {'M_planet': 5.97e24}
@@ -2621,6 +3005,7 @@ def test_print_citation_covers_module_specific_citations_with_when_set(monkeypat
         atmos_clim=types.SimpleNamespace(module='janus'),
         interior_energetics=types.SimpleNamespace(module='spider'),
         outgas=types.SimpleNamespace(module='calliope'),
+        escape=types.SimpleNamespace(module='zephyrus'),
         star=types.SimpleNamespace(module='mors'),
         orbit=types.SimpleNamespace(module='lovepy'),
         accretion=types.SimpleNamespace(module='dummy'),
@@ -2956,6 +3341,7 @@ def test_print_citation_agni_and_manual_mode_cover_noop_cases():
         atmos_clim=types.SimpleNamespace(module='agni'),
         interior_energetics=types.SimpleNamespace(module='aragog'),
         outgas=types.SimpleNamespace(module='atmodeller'),
+        escape=types.SimpleNamespace(module=None),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='dummy'),
         accretion=types.SimpleNamespace(module='dummy'),
@@ -3900,3 +4286,65 @@ def test_select_profile_plot_times_empty_atmosphere_returns_empty():
     """
     assert select_profile_plot_times([1, 2, 3], [], no_int_snapshots=False) == []
     assert select_profile_plot_times([], [], no_int_snapshots=True) == []
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_mass_conservation_refuses_a_non_finite_mass():
+    """A non-finite mass is refused rather than silently reported as clean.
+
+    Both comparisons the invariant relies on are False for NaN, so without an
+    explicit check a row carrying an atmosphere five times its own interior
+    passes, which is the opposite of what the invariant exists to say.
+    """
+    from proteus.utils.coupler import assert_mass_conservation
+
+    # Textbook violation: 5e23 kg of atmosphere over a 1e23 kg interior.
+    broken = {
+        'M_atm': 5.0e23,
+        'M_int': 1.0e23,
+        'M_ele': float('nan'),
+        'M_planet': float('nan'),
+        'M_vol_atm': 0.0,
+        'M_vaps': 0.0,
+    }
+    with pytest.raises(RuntimeError, match='not finite'):
+        assert_mass_conservation(broken)
+
+    # The mechanism the check replaces: neither comparison fires on NaN.
+    assert not (float('nan') <= 0.0)
+    assert not (float('nan') > float('nan') * 1.000001)
+
+    # Each mass is covered, not just the one that happened to be checked first.
+    for key in ('M_atm', 'M_planet', 'M_vol_atm'):
+        row = {'M_atm': 1.0e20, 'M_planet': 6.0e24, 'M_vol_atm': 1.0e20, 'M_vaps': 0.0}
+        row[key] = float('inf')
+        with pytest.raises(RuntimeError, match=key):
+            assert_mass_conservation(row)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_mass_conservation_still_passes_a_finite_row():
+    """Finite rows are unaffected, including the pre-IC row of zeros.
+
+    A guard that refused ordinary rows would stop every run, so the healthy
+    paths are pinned alongside the rejection above.
+    """
+    from proteus.utils.coupler import assert_mass_conservation
+
+    # Ordinary row: a thin atmosphere on an Earth-mass planet.
+    assert (
+        assert_mass_conservation(
+            {'M_atm': 5.0e18, 'M_planet': 5.97e24, 'M_vol_atm': 0.0, 'M_vaps': 0.0}
+        )
+        is None
+    )
+    # Pre-IC row, before the structure solve has written a planet mass.
+    assert assert_mass_conservation({'M_atm': 0.0, 'M_planet': 0.0, 'M_vol_atm': 0.0}) is None
+    # Discrimination: a genuine breach on finite values must still raise, so
+    # the two passes above reflect healthy rows and not a disabled check.
+    with pytest.raises(RuntimeError, match='exceeds M_planet'):
+        assert_mass_conservation(
+            {'M_atm': 9.0e24, 'M_planet': 5.97e24, 'M_vol_atm': 0.0, 'M_vaps': 0.0}
+        )

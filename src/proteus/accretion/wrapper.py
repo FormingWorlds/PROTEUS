@@ -463,8 +463,7 @@ def _apply_volatile_consequences(
         Collision loss fraction in [0, 1], reported in the strip log line.
     """
     for e, removed in strip.items():
-        key = f'{e}_kg_total'
-        hf_row[key] = max(0.0, float(hf_row.get(key, 0.0)) - removed)
+        hf_row[f'{e}_kg_total'] = max(0.0, float(hf_row.get(f'{e}_kg_total', 0.0)) - removed)
     if strip:
         stripped_total = sum(strip.values())
         hf_row['esc_kg_cumulative'] = (
@@ -476,8 +475,7 @@ def _apply_volatile_consequences(
             stripped_total,
         )
     for e, added in delivered.items():
-        key = f'{e}_kg_total'
-        hf_row[key] = float(hf_row.get(key, 0.0)) + added
+        hf_row[f'{e}_kg_total'] = float(hf_row.get(f'{e}_kg_total', 0.0)) + added
     if delivered:
         log.info(
             '    delivered impactor volatiles [kg]: %s',
@@ -758,11 +756,11 @@ def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
         If the zephyrus module is selected but the installed fwl-zephyrus
         does not provide the collision law.
     """
-    module = config.accretion.atmloss_module
-    if module is None:
+    atmloss_module = config.accretion.atmloss_module
+    if atmloss_module is None:
         return 0.0
 
-    match module:
+    match atmloss_module:
         case 'constant':
             f_loss = float(config.accretion.atmloss_frac)
         case 'zephyrus':
@@ -799,12 +797,12 @@ def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
             )
             log.info('    impact erosion law: loss fraction %.3f', f_loss)
         case _:
-            raise ValueError(f"Invalid accretion.atmloss_module: '{module}'")
+            raise ValueError(f"Invalid accretion.atmloss_module: '{atmloss_module}'")
 
     if not 0.0 <= f_loss <= 1.0:
         raise ValueError(
             f'Impact atmosphere loss fraction must be in [0, 1], got {f_loss!r} '
-            f"from atmloss_module '{module}'"
+            f"from atmloss_module '{atmloss_module}'"
         )
     return f_loss
 

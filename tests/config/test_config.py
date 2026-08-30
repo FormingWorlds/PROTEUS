@@ -9,8 +9,10 @@ structure, speed, and physics validity.
 from __future__ import annotations
 
 import os
+from contextlib import ExitStack
 from itertools import chain
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import attrs
 import pytest
@@ -32,6 +34,7 @@ from proteus.config._interior import valid_aragog, valid_interiordummy, valid_sp
 from proteus.config._outgas import Calliope
 from proteus.config._params import max_bigger_than_min, valid_mod, valid_path
 from proteus.config._planet import GasPrs, Planet
+from tests.test_proteus import _START_PATCHES
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -295,6 +298,206 @@ def test_factory_defaults_from_minimal_config():
     # pyproject.toml; atmodeller is not. The default must be calliope so
     # any environment that has PROTEUS installed can load minimal.toml.
     assert cfg.outgas.module == 'calliope'
+
+
+@pytest.mark.unit
+def test_write_overrides_a_dotted_key_without_touching_live_config(tmp_path):
+    """Config.write(overrides=...) patches the written file, not self."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.interior_energetics.aragog.phi_step_cap == 0.0
+
+    out = tmp_path / 'resolved.toml'
+    cfg.write(str(out), overrides={'interior_energetics.aragog.phi_step_cap': 0.1})
+
+    assert cfg.interior_energetics.aragog.phi_step_cap == 0.0
+    written = read_config(str(out))
+    assert written['interior_energetics']['aragog']['phi_step_cap'] == pytest.approx(0.1)
+
+
+@pytest.mark.unit
+def test_write_without_overrides_matches_the_live_config(tmp_path):
+    """Config.write() with no overrides writes fields verbatim, as before."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+
+    out = tmp_path / 'plain.toml'
+    cfg.write(str(out))
+
+    written = read_config(str(out))
+    assert written['interior_energetics']['aragog']['phi_step_cap'] == 0.0
+    # Discriminating: a non-default field must round-trip verbatim too, so a
+    # plain write is not silently substituting or dropping fields.
+    assert written['interior_struct']['module'] == cfg.interior_struct.module == 'zalmoxis'
+
+
+@pytest.mark.unit
+def test_write_rejects_an_unknown_override_key(tmp_path):
+    """An override key outside the schema raises, so a typo cannot inject a stray key."""
+    from proteus.config.orphans import UnknownConfigKeyError
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    out = tmp_path / 'bad.toml'
+
+    # A typo in the leaf field is named and rejected, not silently inserted.
+    with pytest.raises(UnknownConfigKeyError, match='phi_step_kap'):
+        cfg.write(str(out), overrides={'interior_energetics.aragog.phi_step_kap': 0.1})
+    # The rejection happens before the write, so no partial file is emitted.
+    assert not out.exists()
+    # A missing intermediate section is named too, not a bare KeyError. Anchor
+    # the match to the trailing clause so it checks the reported failing segment,
+    # not the dotted key echoed earlier in the same message.
+    with pytest.raises(
+        UnknownConfigKeyError, match=r"no config section 'interior_energetics\.nope'"
+    ):
+        cfg.write(str(out), overrides={'interior_energetics.nope.phi_step_cap': 0.1})
+    # A key that resolves to a whole section, not a leaf field, is rejected too,
+    # so an override cannot replace a section with a scalar.
+    with pytest.raises(UnknownConfigKeyError, match='targets a config section'):
+        cfg.write(str(out), overrides={'interior_energetics.aragog': 0.1})
+
+
+@pytest.mark.unit
+def test_write_accepts_a_none_override_without_crashing(tmp_path):
+    """A None override writes the 'none' sentinel, not a bare None that crashes tomlkit."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    out = tmp_path / 'noned.toml'
+
+    cfg.write(str(out), overrides={'atmos_chem.module': None})
+
+    written = read_config(str(out))
+    assert written['atmos_chem']['module'] == 'none'
+    # The written file parses back through the schema, so the None handling
+    # produced a valid config rather than a broken one.
+    assert read_config_object(out).atmos_chem.module is None
+
+
+def _run_start_and_read_written_config(cfg, tmp_path):
+    """Run the real Proteus.start init-time step-cap write against a config, return the result.
+
+    Drives the actual production code path (proteus.py's module=='aragog' guard
+    and step_cap_overrides construction) rather than a hand-built copy of it, by
+    calling the unbound Proteus.start method on a lightweight stand-in for self.
+    Reuses tests/test_proteus.py's _START_PATCHES for the lazy imports start()
+    needs stubbed, plus PrintHalfSeparator, which that list does not cover.
+    """
+    outdir = tmp_path / 'output'
+    for sub in ('', 'data', 'observe', 'offchem', 'plots'):
+        (outdir / sub).mkdir(parents=True, exist_ok=True)
+
+    proteus = SimpleNamespace(
+        config=cfg,
+        config_path=str(PROTEUS_ROOT / 'input' / 'minimal.toml'),
+        directories={
+            'output': str(outdir),
+            'output/data': str(outdir / 'data'),
+            'output/observe': str(outdir / 'observe'),
+            'output/offchem': str(outdir / 'offchem'),
+            'output/plots': str(outdir / 'plots'),
+            'fwl': str(tmp_path),
+        },
+    )
+
+    class _StoppedAfterWrite(Exception):
+        pass
+
+    def _stop(*args, **kwargs):
+        raise _StoppedAfterWrite
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            # CreateLockFile runs immediately after the config write under
+            # test, so stopping there is enough and avoids driving the rest
+            # of start().
+            if target == 'proteus.utils.coupler.CreateLockFile':
+                stack.enter_context(patch(target, side_effect=_stop))
+            else:
+                stack.enter_context(patch(target))
+        stack.enter_context(patch('proteus.proteus.PrintHalfSeparator'))
+
+        with pytest.raises(_StoppedAfterWrite):
+            Proteus.start(proteus, resume=False, offline=True)
+
+    written = outdir / 'init_coupler.toml'
+    assert written.is_file()
+    return read_config_object(written)
+
+
+@pytest.mark.unit
+def test_start_writes_resolved_zalmoxis_step_caps_for_aragog(tmp_path):
+    """Proteus.start's aragog guard writes resolved, not raw, step caps to init_coupler.toml."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.interior_energetics.module == 'aragog'
+    assert cfg.interior_struct.module == 'zalmoxis'
+    assert cfg.interior_energetics.aragog.phi_step_cap == 0.0
+    assert cfg.interior_energetics.aragog.temperature_step_cap == 0.0
+    assert cfg.interior_energetics.aragog.entropy_step_cap == 0.0
+
+    written = _run_start_and_read_written_config(cfg, tmp_path)
+
+    aragog = written.interior_energetics.aragog
+    assert aragog.phi_step_cap == pytest.approx(0.1)
+    assert aragog.temperature_step_cap == pytest.approx(100.0)
+    assert aragog.entropy_step_cap == pytest.approx(100.0)
+
+
+@pytest.mark.unit
+def test_start_writes_verbatim_positive_step_caps_for_aragog(tmp_path):
+    """Distinct positive step caps pass through Proteus.start's aragog guard unswapped."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.interior_energetics.module == 'aragog'
+    cfg.interior_energetics.aragog.phi_step_cap = 2.0
+    cfg.interior_energetics.aragog.temperature_step_cap = 3.0
+    cfg.interior_energetics.aragog.entropy_step_cap = 7.0
+
+    written = _run_start_and_read_written_config(cfg, tmp_path)
+
+    aragog = written.interior_energetics.aragog
+    assert aragog.phi_step_cap == pytest.approx(2.0)
+    assert aragog.temperature_step_cap == pytest.approx(3.0)
+    assert aragog.entropy_step_cap == pytest.approx(7.0)
+
+
+@pytest.mark.unit
+def test_start_records_not_applied_marker_when_aragog_lacks_step_caps(tmp_path):
+    """Under Aragog version skew the snapshot records the disabled sentinel, not a resolved cap."""
+    from proteus.config._interior import _STEP_CAP_OFF
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.interior_energetics.module == 'aragog'
+    assert cfg.interior_struct.module == 'zalmoxis'
+
+    # Stand in for an older Aragog whose _EnergyParameters predates the
+    # temperature/entropy step caps, so setup_solver would drop them.
+    def _old_energy_parameters(conduction=None, convection=None, phi_step_cap=None):
+        raise NotImplementedError
+
+    with patch(
+        'proteus.interior_energetics.aragog._EnergyParameters',
+        _old_energy_parameters,
+    ):
+        written = _run_start_and_read_written_config(cfg, tmp_path)
+
+    aragog = written.interior_energetics.aragog
+    # phi is always supported, so it still records the zalmoxis-resolved value.
+    assert aragog.phi_step_cap == pytest.approx(0.1)
+    # The dropped caps record the disabled sentinel, not the resolved 100.0 the
+    # run never received.
+    assert aragog.temperature_step_cap == pytest.approx(_STEP_CAP_OFF)
+    assert aragog.entropy_step_cap == pytest.approx(_STEP_CAP_OFF)
+
+
+@pytest.mark.unit
+def test_start_leaves_step_caps_raw_when_energetics_module_is_not_aragog(tmp_path):
+    """The aragog guard must not fire, and must not promote caps, for a non-aragog module."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    cfg.interior_energetics.module = 'dummy'
+    assert cfg.interior_struct.module == 'zalmoxis'
+
+    written = _run_start_and_read_written_config(cfg, tmp_path)
+
+    aragog = written.interior_energetics.aragog
+    assert aragog.phi_step_cap == 0.0
+    assert aragog.temperature_step_cap == 0.0
+    assert aragog.entropy_step_cap == 0.0
 
 
 @pytest.mark.unit

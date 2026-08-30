@@ -48,6 +48,7 @@ def _step_cap_valid(instance, attribute, value):
 
 
 def valid_spider(instance, attribute, value):
+    """SPIDER requires at least one energy transport term to be enabled."""
     if instance.module != 'spider':
         return
 
@@ -99,6 +100,10 @@ class Spider:
         across the solidus/liquidus. Passed to SPIDER as
         ``-matprop_smooth_width`` and to Aragog via
         ``_PhaseMixedParameters``.
+    tolerance_struct: float
+        Absolute mass tolerance [kg] for the interior-radius secant solver.
+    log_output: bool
+        Write SPIDER solver log output.
     """
 
     solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
@@ -129,6 +134,7 @@ class Spider:
 
 
 def valid_aragog(instance, attribute, value):
+    """Aragog requires at least one energy transport term to be enabled."""
     if instance.module != 'aragog':
         return
 
@@ -271,6 +277,7 @@ class Aragog:
 
 
 def valid_interiordummy(instance, attribute, value):
+    """Dummy interior requires the liquidus to sit above the solidus."""
     if instance.module != 'dummy':
         return
 
@@ -408,6 +415,11 @@ class Interior:
         Concentration (ppmw) of uranium at reference age t=radio_tref.
     radio_Th: float
         Concentration (ppmw) of thorium-232 at reference age t=radio_tref.
+    radio_Al: float
+        Concentration (ppmw) of aluminium-26 at reference age t=radio_tref;
+        1.23 is the canonical early solar system value.
+    radio_Fe: float
+        Concentration (ppmw) of iron-60 at reference age t=radio_tref.
     heat_radiogenic: bool
         Include radiogenic heat production?
     heat_tidal: bool
@@ -416,6 +428,40 @@ class Interior:
         Centre of rheological transition in terms of melt fraction
     rfront_wid: float
         Width of rheological transition in terms of melt fraction
+    num_levels: int
+        Number of radial grid levels for the energetics domain.
+    num_tolerance: float
+        Deprecated alias for rtol; emits a DeprecationWarning when set.
+    trans_conduction: bool
+        Include conductive heat transfer.
+    trans_convection: bool
+        Include convective heat transfer (mixing length theory).
+    trans_grav_sep: bool
+        Include gravitational separation (Stokes settling).
+    trans_mixing: bool
+        Include the chemical mixing flux.
+    mixing_length: str
+        Mixing-length scale: 'nearest' (distance to nearest boundary) or
+        'constant' (a quarter of the mantle depth).
+    kappah_floor: float
+        Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport
+        from freezing out.
+    tmagma_atol: float
+        Maximum absolute change in T_magma per PROTEUS step [K].
+    tmagma_rtol: float
+        Maximum relative change in T_magma per PROTEUS step.
+    param_utbl: bool
+        Enable the ultra-thin boundary layer parameterisation.
+    param_utbl_const: float
+        Ultra-thin boundary layer scaling constant [K-1].
+    surface_bc_mode: str
+        Surface boundary condition for SPIDER/Aragog: 'flux' (prescribed
+        F_atm from the atmosphere module) or 'grey_body' (native grey-body
+        boundary condition computed inside the interior solver).
+    const_properties: bool
+        Enable constant-properties mode: bypass the EOS tables and use the
+        analytical T(S) = T_ref * exp((S - S_ref) / Cp) relationship, for
+        controlled parity tests.
 
     module: str
         Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.
@@ -718,3 +764,124 @@ class Interior:
         # Resolve the sentinel to the real default if nothing set rtol.
         if not rtol_set:
             object.__setattr__(self, 'rtol', _DEFAULT_RTOL)
+
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and is independent of the order the fields are declared in.
+DOC_GROUPS = {
+    'Interior': (
+        (
+            None,
+            None,
+            (
+                'module',
+                'num_levels',
+                'rtol',
+                'num_tolerance',
+                'atol',
+                'flux_guess',
+                'surface_bc_mode',
+            ),
+        ),
+        (
+            'Transport physics',
+            None,
+            (
+                'trans_conduction',
+                'trans_convection',
+                'trans_grav_sep',
+                'trans_mixing',
+            ),
+        ),
+        (
+            'Heating',
+            None,
+            (
+                'heat_tidal',
+                'heat_radiogenic',
+                'radio_tref',
+                'radio_Al',
+                'radio_Fe',
+                'radio_K',
+                'radio_U',
+                'radio_Th',
+            ),
+        ),
+        (
+            'Rheology and convection',
+            None,
+            (
+                'rfront_loc',
+                'rfront_wid',
+                'grain_size',
+                'mixing_length',
+                'kappah_floor',
+            ),
+        ),
+        (
+            'Coupling limits',
+            None,
+            (
+                'tmagma_atol',
+                'tmagma_rtol',
+            ),
+        ),
+        (
+            'Ultra-thin boundary layer',
+            None,
+            (
+                'param_utbl',
+                'param_utbl_const',
+            ),
+        ),
+        (
+            'Hydrostatic EOS (Adams-Williamson)',
+            None,
+            (
+                'adams_williamson_rhos',
+                'adams_williamson_beta',
+                'adiabatic_bulk_modulus',
+            ),
+        ),
+        (
+            'Phase material properties',
+            None,
+            (
+                'melt_log10visc',
+                'solid_log10visc',
+                'melt_cond',
+                'solid_cond',
+                'eddy_diffusivity_thermal',
+                'eddy_diffusivity_chemical',
+                'latent_heat_of_fusion',
+                'phase_transition_width',
+            ),
+        ),
+        (
+            'Core thermal model',
+            None,
+            ('core_tfac_avg',),
+        ),
+        (
+            'Diagnostics',
+            None,
+            ('write_flux_diagnostics',),
+        ),
+        (
+            'Constant-properties mode',
+            None,
+            (
+                'const_properties',
+                'const_rho',
+                'const_Cp',
+                'const_alpha',
+                'const_cond',
+                'const_log10visc',
+                'const_T_ref',
+                'const_S_ref',
+            ),
+        ),
+    ),
+}

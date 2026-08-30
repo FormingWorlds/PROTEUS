@@ -61,3 +61,43 @@ def test_hill_clamp_can_be_disabled_explicitly():
     assert cfg.hill_clamp_frac == pytest.approx(0.5, rel=1e-12)
     with pytest.raises(ValueError):
         Escape(module='zephyrus', hill_clamp=False, hill_clamp_frac=1.5)
+
+
+def test_step_max_frac_rejects_values_outside_unit_interval():
+    """The per-step cap must sit in (0, 1]: zero would forbid escape from
+    removing anything at all, and above one would admit a step that asks for
+    more mass than the reservoir holds, which is the overshoot the cap exists
+    to bound.
+    """
+    for bad in (0.0, -0.25, 1.0001, 2.0):
+        with pytest.raises(ValueError):
+            Escape(module='zephyrus', step_max_frac=bad)
+    # The boundaries of validity are accepted: just inside zero, and exactly one.
+    assert Escape(module='zephyrus', step_max_frac=1e-6).step_max_frac == pytest.approx(
+        1e-6, rel=1e-12
+    )
+    assert Escape(module='zephyrus', step_max_frac=1.0).step_max_frac == pytest.approx(
+        1.0, rel=1e-12
+    )
+    # The default is the measured value, not an end of the valid range.
+    assert Escape(module='zephyrus').step_max_frac == pytest.approx(0.25, rel=1e-12)
+
+
+def test_step_dt_floor_frac_rejects_values_outside_unit_interval():
+    """The floor fraction must sit in (0, 1]: zero would let a capped step
+    shorten without bound, asking for a step no run finishes, and above one
+    would raise the escape floor above ``params.dt.minimum``, tightening the
+    global floor from inside the escape schema.
+    """
+    for bad in (0.0, -1e-3, 1.0001, 10.0):
+        with pytest.raises(ValueError):
+            Escape(module='zephyrus', step_dt_floor_frac=bad)
+    # Exactly one is valid and makes the exemption inert, leaving the ordinary
+    # floor in charge; the small end is where the exemption does its work.
+    assert Escape(
+        module='zephyrus', step_dt_floor_frac=1.0
+    ).step_dt_floor_frac == pytest.approx(1.0, rel=1e-12)
+    assert Escape(
+        module='zephyrus', step_dt_floor_frac=1e-6
+    ).step_dt_floor_frac == pytest.approx(1e-6, rel=1e-12)
+    assert Escape(module='zephyrus').step_dt_floor_frac == pytest.approx(1e-3, rel=1e-12)

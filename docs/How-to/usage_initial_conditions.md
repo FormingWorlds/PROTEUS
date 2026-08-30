@@ -74,7 +74,7 @@ coolest single adiabat that is fully molten everywhere, with at least
 $\Delta T_\mathrm{super}$ (`delta_T_super`, in K) of superheat above the
 silicate liquidus:
 
-$$\min_{P}\,\bigl[\,T_\mathrm{ad}(P) - T_\mathrm{liq}(P)\,\bigr] = \Delta T_\mathrm{super}$$
+$$\min_{P}\,\bigl\lbrack\,T_\mathrm{ad}(P) - T_\mathrm{liq}(P)\,\bigr\rbrack = \Delta T_\mathrm{super}$$
 
 where $T_\mathrm{ad}$ is the (isentropic) initial adiabat and $T_\mathrm{liq}$
 is the configured silicate liquidus. PROTEUS solves for the surface temperature,

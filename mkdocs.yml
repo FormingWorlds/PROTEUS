@@ -67,6 +67,7 @@ nav:
           - Accretion: Reference/config/accretion.md
           - Observations: Reference/config/observe.md
       - Melting curves: Reference/melting_curves.md
+      - Module map: Reference/module_map.md
       - Module versions: Reference/module_versions.md
       - Output format: Reference/output.md
       - Reference data: Reference/data.md
@@ -80,6 +81,8 @@ nav:
           - Accretion:
               - Analytical accretion (dummy.py): Validation/accretion/dummy.md
               - Impact atmosphere-loss dispatch (wrapper.py): Validation/accretion/wrapper.md
+          - Atmosphere climate:
+              - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
           - Interior structure:
               - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
           - Orbit:

@@ -263,7 +263,7 @@ def test_a_run_stopped_on_an_impact_resumes_from_before_it(tmp_path):
     # The first leg stopped on the impact, so the impact row is the last one
     # and the snapshot beside it is the stale one. Without this the checks
     # below would be about an ordinary trailing row.
-    assert float(stored.iloc[-1]['Time']) == pytest.approx(IMPACT_TIME, rel=0, abs=1e-6), (
+    assert float(stored.iloc[-1]['Time']) == pytest.approx(IMPACT_TIME, rel=0, abs=1.0), (
         f'first leg ended at {float(stored.iloc[-1]["Time"]):.6e} yr, not on the '
         f'impact at {IMPACT_TIME:.6e} yr; the resume would not start from an impact step'
     )
@@ -278,9 +278,13 @@ def test_a_run_stopped_on_an_impact_resumes_from_before_it(tmp_path):
         f'first leg produced only {len(stored)} rows, too short to resume from'
     )
 
-    # The impact step left no snapshot, and an older one survived it.
+    # The impact step left no snapshot, and an older one survived it. The 1 yr
+    # timestep floor (issue #676) can land the step past IMPACT_TIME, so the
+    # key a snapshot would be filed under is the step's own rounded time, not
+    # int(IMPACT_TIME).
+    impact_step_key = round(float(stored.iloc[-1]['Time']))
     snapshots = _snapshot_times(outdir)
-    assert int(IMPACT_TIME) not in snapshots, (
+    assert impact_step_key not in snapshots, (
         f'the impact step kept its interior snapshot (times on disk: {snapshots}); '
         'a resume would load a mantle the impact had already melted'
     )
@@ -378,9 +382,13 @@ def test_a_run_stopped_on_an_impact_resumes_from_before_it(tmp_path):
 
     # The resumed leg discarded its own impact-step snapshot in turn, so the
     # discard is a property of any step that lands an impact rather than of
-    # the first run.
+    # the first run. The row the ledger first carries the delivered mass on
+    # is the impact step; its own rounded time is the key a stale snapshot
+    # would be filed under, for the same reason as the first leg above.
+    resumed_impact_row = int(np.argmax(np.diff(ledger) > 0.0)) + 1
+    resumed_impact_key = round(float(times[resumed_impact_row]))
     resumed_snapshots = _snapshot_times(outdir)
-    assert int(IMPACT_TIME) not in resumed_snapshots, (
+    assert resumed_impact_key not in resumed_snapshots, (
         f'the resumed run left a snapshot at the impact time (times on disk: '
         f'{resumed_snapshots}); a second restart would resume from a stale mantle'
     )

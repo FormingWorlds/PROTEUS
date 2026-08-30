@@ -2,24 +2,41 @@
 """Regenerate the version badge tables in docs/Reference/module_versions.md.
 
 Reads version pins from pyproject.toml and replaces the content between
-marker comments in the doc page with fresh shields.io badge markdown.
+marker comments in the doc page with fresh shields.io badge markdown. Every
+fwl-* dependency must be covered by a table (or listed with a reason in
+INTENTIONALLY_ABSENT), so a newly added module cannot silently miss the page.
 
 Usage:
-    python tools/generate_version_badges.py
+    python tools/generate_version_badges.py            # regenerate in place
+    python tools/generate_version_badges.py --check    # verify, write nothing
 
-Run this after bumping any version in pyproject.toml.
+Run the regeneration after bumping any version in pyproject.toml.
+
+Exit codes:
+    0  committed page is current and every fwl-* dependency is covered
+    1  page is stale, or an fwl-* dependency is missing from the tables
+    2  structural error (marker pair missing from the page)
 """
 
 from __future__ import annotations
 
+import argparse
 import re
+import sys
 import tomllib
-from pathlib import Path
 from urllib.parse import quote
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+import _docgen
+
+REPO_ROOT = _docgen.REPO_ROOT
 PYPROJECT = REPO_ROOT / 'pyproject.toml'
 TARGET = REPO_ROOT / 'docs' / 'Reference' / 'module_versions.md'
+REGEN_CMD = 'python tools/generate_version_badges.py'
+
+# fwl-* distributions deliberately absent from every table, with the reason.
+INTENTIONALLY_ABSENT = {
+    'fwl-io': 'infrastructure library for data download, not a physics module',
+}
 
 PYPI_META = {
     'fwl-aragog': (
@@ -206,32 +223,72 @@ def _build_optional_table(extras: dict) -> str:
     return '| Module | Role | Pin | Docs |\n|--------|------|-----|------|\n' + '\n'.join(rows)
 
 
-def _replace_between_markers(content: str, marker: str, replacement: str) -> str:
-    pattern = f'(<!-- BEGIN {marker} -->)(.*?)(<!-- END {marker} -->)'
-    return re.sub(pattern, rf'\1\n{replacement}\n\3', content, flags=re.DOTALL)
+def _dist_name(req: str) -> str:
+    """Normalised distribution name of a requirement string."""
+    return req.split('>')[0].split('@')[0].split('=')[0].split('[')[0].strip().lower()
 
 
-def main():
+def check_fwl_coverage(deps: list[str], extras: dict) -> list[str]:
+    """Every fwl-* requirement must appear in a table or be excused."""
+    optional_dists = {extra[1] for *_rest, extra in OPTIONAL if extra is not None}
+    problems = []
+    for req in deps:
+        name = _dist_name(req).replace('_', '-')
+        if (
+            name.startswith('fwl-')
+            and name not in PYPI_META
+            and name not in INTENTIONALLY_ABSENT
+        ):
+            problems.append(f'dependency "{name}" is missing from PYPI_META')
+    for reqs in extras.values():
+        for req in reqs:
+            name = _dist_name(req).replace('_', '-')
+            if (
+                name.startswith('fwl-')
+                and name not in optional_dists
+                and name not in INTENTIONALLY_ABSENT
+            ):
+                problems.append(f'optional dependency "{name}" is missing from OPTIONAL')
+    for name in INTENTIONALLY_ABSENT:
+        all_reqs = list(deps) + [r for reqs in extras.values() for r in reqs]
+        if not any(_dist_name(r).replace('_', '-') == name for r in all_reqs):
+            problems.append(f'INTENTIONALLY_ABSENT entry "{name}" matches no requirement')
+    return problems
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    _docgen.add_check_write_cli(parser)
+    args = parser.parse_args()
+
     cfg = tomllib.loads(PYPROJECT.read_text())
     deps = cfg['project']['dependencies']
     modules = cfg.get('tool', {}).get('proteus', {}).get('modules', {})
     extras = cfg['project'].get('optional-dependencies', {})
 
-    pypi_table = _build_pypi_table(deps)
-    git_table = _build_git_table(modules)
-    optional_table = _build_optional_table(extras)
+    rc = 0
+    for problem in check_fwl_coverage(deps, extras):
+        print(f'[x] {problem}')
+        rc = 1
 
-    content = TARGET.read_text()
-    content = _replace_between_markers(content, 'PYPI_TABLE', pypi_table)
-    content = _replace_between_markers(content, 'GIT_TABLE', git_table)
-    content = _replace_between_markers(content, 'OPTIONAL_TABLE', optional_table)
-    TARGET.write_text(content)
+    try:
+        content = TARGET.read_text()
+        content = _docgen.replace_between_markers(
+            content, 'PYPI_TABLE', _build_pypi_table(deps)
+        )
+        content = _docgen.replace_between_markers(
+            content, 'GIT_TABLE', _build_git_table(modules)
+        )
+        content = _docgen.replace_between_markers(
+            content, 'OPTIONAL_TABLE', _build_optional_table(extras)
+        )
+    except _docgen.DocgenError as exc:
+        print(f'[x] {exc}', file=sys.stderr)
+        return 2
 
-    print(f'Updated {TARGET.relative_to(REPO_ROOT)}')
-    print(f'  PyPI: {len(PYPI_META)} packages')
-    print(f'  Git: {len(GIT_META)} modules')
-    print(f'  Optional: {len(OPTIONAL)} modules')
+    targets = [(TARGET, _docgen.normalize(content))]
+    return max(rc, _docgen.run_generator(targets, check=args.check, regen_cmd=REGEN_CMD))
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

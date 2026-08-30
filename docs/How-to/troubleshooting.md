@@ -10,6 +10,7 @@ step-by-step guide or the advice below,
 | Error / symptom | Section |
 |---|---|
 | `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
+| `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
 | Simulation fails to converge (general) | [Stabilise a simulation](stabilise_run.md) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
 | `Out-of-date modules detected` | [Module updates](#out-of-date-modules-detected) |
@@ -43,6 +44,25 @@ The flag intercepts itself in `sys.argv` *before* any heavy imports, sets `JAX_E
 Do not enable by default; the flag has a small per-step cost. Use only when a config shows noise-floor divergence between launches.
 
 For broader convergence problems,see [stabilising simulations](stabilise_run.md).
+
+### Resuming a run written by an older PROTEUS {#resuming-a-run-written-by-an-older-proteus}
+
+`proteus start --resume` stops with a message naming columns the run's `runtime_helpfile.csv` does not carry:
+
+```text
+Helpfile 'output/<run>/runtime_helpfile.csv' was written before 3 column(s)
+of the current output schema existed: R_xuv, T_xuv, g_xuv.
+Run this configuration again from t=0, or read this run with the PROTEUS
+version that wrote it.
+```
+
+PROTEUS records one column per output quantity, and a resumed run reads its starting state from the last line of that file. A run paused before a quantity was added holds no value for it, so the run stops.
+
+Either run the configuration again from `t = 0`, or check out the PROTEUS version the run was launched with and read it under that version. There is deliberately no option to continue anyway. The absent columns cannot be filled with a placeholder, because several modules decide what to do by testing whether a quantity is present at all: CALLIOPE refuses a run whose oxygen budget is missing, the dummy and boundary interiors fall back to a configured core size, and the atmosphere lower boundary moves to the solvus only when a solvus radius exists. Supplying a placeholder satisfies each of those tests and passes the placeholder to the solver behind it, which produces a result that looks ordinary and is wrong.
+
+`proteus observe` and `proteus offchem` are held to a smaller set of columns, because reading a stored run to synthesise an observation or run offline chemistry touches only a small part of the schema. An archived run stays postprocessable after a schema addition it never used, and stops only when a column those commands actually read is absent. When that happens, the practical remedy for a run that is expensive or no longer possible to reproduce is the second one: check out the PROTEUS version the run was launched with and postprocess it under that version. Re-running from `t = 0` under current code does not reproduce the archived run, it produces a different one.
+
+To keep a long run resumable across an upgrade, note the PROTEUS version it was launched with and stay on it until the run finishes.
 
 ### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}
 

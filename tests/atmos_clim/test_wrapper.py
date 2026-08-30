@@ -1004,6 +1004,9 @@ def test_run_atmosphere_clips_a_carried_radius_from_an_unclipped_row():
         'atm_kg_per_mol': 0.029,
         'T_surf': 0.0,
         'R_int': 6.371e6,
+        # Surface gravity, which the interior writes before the atmosphere runs
+        # and the atmosphere modules already read to place the XUV level.
+        'gravity': 9.81,
         'R_star': 6.96e8,
         'F_olr': 200.0,
         'F_sct': 100.0,
@@ -1047,3 +1050,282 @@ def test_run_atmosphere_clips_a_carried_radius_from_an_unclipped_row():
     assert hf_row['R_xuv'] != pytest.approx(5.0e8, rel=1e-1)
     # The rest of the level still comes from the committed row.
     assert hf_row['H2O_vmr_xuv'] == pytest.approx(0.4, rel=1e-12)
+
+    # The bound moved the radius, so the gravity is placed at the radius the row
+    # now carries. The two quantities the profile would be needed to recompute
+    # keep the committed reading, which stays finite for the helpfile.
+    assert hf_row['g_xuv'] == pytest.approx(
+        hf_row['gravity'] * (hf_row['R_int'] / 1.0e8) ** 2, rel=1e-12
+    )
+    committed = _levels(4.0e8, 5.0e8, 0.4)
+    assert hf_row['p_xuv'] == pytest.approx(committed['p_xuv'], rel=1e-12)
+    assert hf_row['T_xuv'] == pytest.approx(committed['T_xuv'], rel=1e-12)
+    assert math.isfinite(hf_row['p_xuv'])
+    assert math.isfinite(hf_row['T_xuv'])
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('hill_clamp', [False, True])
+def test_run_atmosphere_does_not_place_gravity_from_a_radius_that_is_not_a_number(
+    hill_clamp,
+):
+    """A radius that is not a number is answered by the bound, and the gravity
+    follows whatever radius the row ends up with.
+
+    The two arms are different states, not one state tested twice. With the
+    bound off the radius stays unmeasured and nothing is placed from it. With
+    the bound on the radius becomes the Hill limit, which is a real height, so
+    the gravity must be placed there: leaving it behind would pair a radius and
+    a gravity describing heights a factor apart.
+
+    This is the first solve of a run and it is rejected, so there is no earlier
+    level to fall back on and the rejected one is kept as it stands. That is the
+    one path on which a radius of NaN survives to the bound, since the fallback
+    otherwise drops a level it cannot read.
+    """
+    atmos_o = Atmos_t()
+    atmos_o._atm = object()
+
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='agni',
+            albedo_pl=0.0,
+            rayleigh=False,
+            cloud_enabled=False,
+            surf_state='fixed',
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+        escape=SimpleNamespace(hill_clamp=hill_clamp, hill_clamp_frac=1.0),
+    )
+    hf_row = {
+        'T_magma': 1800.0,
+        'M_planet': 6.0e24,
+        'F_int': 120.0,
+        'F_atm': 100.0,
+        'axial_period': 86400.0,
+        'atm_kg_per_mol': 0.029,
+        'T_surf': 0.0,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'R_star': 6.96e8,
+        'F_olr': 200.0,
+        'F_sct': 100.0,
+        'F_ins': 1361.0,
+        'separation': 1.5e11,
+        'hill_radius': 1.0e8,
+        **{key: 0.0 for key in _levels(1.0, 1.0)},
+    }
+
+    # No committed row, so a rejected first solve has nothing to fall back on
+    # and its own level is what the bound then meets.
+    hf_all = None
+
+    # The rejected structure reports a radius it could not measure, alongside a
+    # pressure, temperature and gravity it did.
+    rejected = _levels(2.4e7, 2.88e7, 0.9)
+    rejected['R_xuv'] = float('nan')
+    out = dict(rejected)
+    out.update({'albedo': 0.2, 'F_atm': 100.0, 'agni_converged': False})
+    vmr = out.pop('H2O_vmr_xuv')
+
+    def _run_agni(atm, *args, **kwargs):
+        hf_row['H2O_vmr_xuv'] = vmr
+        return atm, out
+
+    with (
+        patch('proteus.atmos_clim.agni.update_agni_atmos', side_effect=lambda a, *_, **__: a),
+        patch('proteus.atmos_clim.agni.run_agni', side_effect=_run_agni),
+    ):
+        atmos_wrapper.run_atmosphere(
+            atmos_o,
+            config,
+            {'output': '/tmp/x'},
+            {'total': 5},
+            [1.0],
+            [1.0],
+            False,
+            hf_all,
+            hf_row,
+        )
+
+    # The pressure and temperature the solve did measure survive in both arms.
+    assert hf_row['p_xuv'] == pytest.approx(rejected['p_xuv'], rel=1e-12)
+    assert hf_row['T_xuv'] == pytest.approx(rejected['T_xuv'], rel=1e-12)
+    assert math.isfinite(hf_row['p_xuv'])
+    assert math.isfinite(hf_row['T_xuv'])
+
+    at_hill = 9.81 * (6.371e6 / 1.0e8) ** 2
+    if hill_clamp:
+        # The bound supplied a real radius, so the gravity is placed on it and
+        # the two describe the same height.
+        assert hf_row['R_xuv'] == pytest.approx(1.0e8, rel=1e-12)
+        assert hf_row['g_xuv'] == pytest.approx(at_hill, rel=1e-12)
+        # Keeping the rejected structure's gravity instead would be wrong by
+        # more than two orders of magnitude, so this pin separates the two.
+        assert hf_row['g_xuv'] != pytest.approx(rejected['g_xuv'], rel=1e-1)
+        assert rejected['g_xuv'] / hf_row['g_xuv'] > 100.0
+    else:
+        # Nothing bounded the radius, so it stays unmeasured and no height
+        # exists to place a gravity on.
+        assert math.isnan(hf_row['R_xuv'])
+        assert hf_row['g_xuv'] == pytest.approx(rejected['g_xuv'], rel=1e-12)
+        assert math.isfinite(hf_row['g_xuv'])
+
+
+def test_run_atmosphere_keeps_a_level_the_bound_does_not_move():
+    """A solved level sitting inside the Hill radius is written as the module
+    measured it. The bound changes nothing there, so nothing is realigned.
+
+    This is the other side of the check above: a realignment that ran on every
+    row rather than only where the radius moved would mark the pressure and
+    temperature of every converged row unmeasured, which is a loss of exactly
+    the data the level exists to record.
+    """
+    atmos_o = Atmos_t()
+    atmos_o._atm = object()
+
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='agni',
+            albedo_pl=0.0,
+            rayleigh=False,
+            cloud_enabled=False,
+            surf_state='fixed',
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+        escape=SimpleNamespace(hill_clamp=True, hill_clamp_frac=1.0),
+    )
+    hf_row = {
+        'T_magma': 1800.0,
+        'M_planet': 6.0e24,
+        'F_int': 120.0,
+        'F_atm': 100.0,
+        'axial_period': 86400.0,
+        'atm_kg_per_mol': 0.029,
+        'T_surf': 0.0,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'R_star': 6.96e8,
+        'F_olr': 200.0,
+        'F_sct': 100.0,
+        'F_ins': 1361.0,
+        'separation': 1.5e11,
+        'hill_radius': 1.0e8,
+        **{key: 0.0 for key in _levels(1.0, 1.0)},
+    }
+
+    # A converged solve whose XUV level sits well inside the Hill radius.
+    solved = _levels(2.0e7, 2.4e7, 0.4)
+    out = dict(solved)
+    out.update({'albedo': 0.2, 'F_atm': 100.0, 'agni_converged': True})
+    vmr = out.pop('H2O_vmr_xuv')
+
+    def _run_agni(atm, *args, **kwargs):
+        hf_row['H2O_vmr_xuv'] = vmr
+        return atm, out
+
+    with (
+        patch('proteus.atmos_clim.agni.update_agni_atmos', side_effect=lambda a, *_, **__: a),
+        patch('proteus.atmos_clim.agni.run_agni', side_effect=_run_agni),
+    ):
+        atmos_wrapper.run_atmosphere(
+            atmos_o,
+            config,
+            {'output': '/tmp/x'},
+            {'total': 5},
+            [1.0],
+            [1.0],
+            False,
+            None,
+            hf_row,
+        )
+
+    # The radius is inside the bound, so it is written unchanged.
+    assert hf_row['R_xuv'] == pytest.approx(2.4e7, rel=1e-12)
+    assert hf_row['R_xuv'] < hf_row['hill_radius']
+    # The level the solve measured survives, rather than being marked unmeasured.
+    assert hf_row['p_xuv'] == pytest.approx(solved['p_xuv'], rel=1e-12)
+    assert hf_row['T_xuv'] == pytest.approx(solved['T_xuv'], rel=1e-12)
+    assert hf_row['g_xuv'] == pytest.approx(solved['g_xuv'], rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_realign_xuv_gravity_puts_gravity_at_the_moved_radius():
+    """A level whose radius has been moved takes the gravity of the height it
+    now sits at, and keeps the pressure and temperature of the one it left.
+
+    Gravity falls as the inverse square of the radius, so the square is what
+    discriminates: at twice the interior radius the surface value is quartered.
+    A placement carrying the ratio rather than its square lands at half the
+    surface value, and one inverting the ratio lands at sixteen times it, both
+    far outside the tolerance on a quarter.
+    """
+    hf_row = {
+        'gravity': 9.8,
+        'R_int': 6.0e6,
+        'g_xuv': 6.8,
+        'p_xuv': 1.0e-6,
+        'T_xuv': 400.0,
+    }
+
+    atmos_wrapper.realign_xuv_gravity(hf_row, 1.2e7)
+
+    assert hf_row['g_xuv'] == pytest.approx(2.45, rel=1e-12)
+    # The three wrong forms this could take, each far enough from the right one
+    # that the pin above separates them rather than merely admitting them.
+    unsquared = 9.8 * (6.0e6 / 1.2e7)
+    inverted = 9.8 * (1.2e7 / 6.0e6) ** 2
+    cubed = 9.8 * (6.0e6 / 1.2e7) ** 3
+    assert abs(hf_row['g_xuv'] - unsquared) > 2.0
+    assert abs(hf_row['g_xuv'] - inverted) > 2.0
+    assert abs(hf_row['g_xuv'] - cubed) > 1.0
+    # Reading these off a nearby height beats having no reading at all, and the
+    # helpfile requires them to stay finite.
+    assert hf_row['p_xuv'] == pytest.approx(1.0e-6, rel=1e-12)
+    assert hf_row['T_xuv'] == pytest.approx(400.0, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_realign_xuv_gravity_leaves_the_level_alone_where_it_cannot_be_placed():
+    """A radius of zero places no gravity, and a row without the interior radius
+    or the surface gravity gives nothing to place one from. A degenerate value
+    that is merely present counts as absent, since a zero interior radius would
+    otherwise yield a gravity of zero that reads as a measurement.
+
+    Nothing is invalidated in these cases. A stale gravity is readable and a
+    missing one is not, and every helpfile column is required to stay finite.
+    """
+    at_zero = {'gravity': 9.8, 'R_int': 6.0e6, 'g_xuv': 6.8, 'p_xuv': 1.0e-6, 'T_xuv': 400.0}
+    atmos_wrapper.realign_xuv_gravity(at_zero, 0.0)
+    assert at_zero['g_xuv'] == pytest.approx(6.8, rel=1e-12)
+    assert at_zero['p_xuv'] == pytest.approx(1.0e-6, rel=1e-12)
+    assert at_zero['T_xuv'] == pytest.approx(400.0, rel=1e-12)
+
+    without_planet = {'g_xuv': 6.8, 'p_xuv': 1.0e-6, 'T_xuv': 400.0}
+    atmos_wrapper.realign_xuv_gravity(without_planet, 1.2e7)
+    assert without_planet['g_xuv'] == pytest.approx(6.8, rel=1e-12)
+    assert without_planet['T_xuv'] == pytest.approx(400.0, rel=1e-12)
+
+    # A present but degenerate planet is not a planet: a zero interior radius
+    # would place the gravity at exactly zero, and a non-finite surface gravity
+    # would carry its own non-finiteness into the level.
+    no_body = {'gravity': 9.8, 'R_int': 0.0, 'g_xuv': 6.8}
+    atmos_wrapper.realign_xuv_gravity(no_body, 1.2e7)
+    assert no_body['g_xuv'] == pytest.approx(6.8, rel=1e-12)
+
+    no_gravity = {'gravity': float('nan'), 'R_int': 6.0e6, 'g_xuv': 6.8}
+    atmos_wrapper.realign_xuv_gravity(no_gravity, 1.2e7)
+    assert no_gravity['g_xuv'] == pytest.approx(6.8, rel=1e-12)
+
+    # An unbounded radius is not a height either, and would place gravity at zero.
+    unbounded = {'gravity': 9.8, 'R_int': 6.0e6, 'g_xuv': 6.8}
+    atmos_wrapper.realign_xuv_gravity(unbounded, float('inf'))
+    assert unbounded['g_xuv'] == pytest.approx(6.8, rel=1e-12)
+
+    # A row carrying no XUV level at all is left as it is rather than given one.
+    empty: dict = {'gravity': 9.8, 'R_int': 6.0e6}
+    atmos_wrapper.realign_xuv_gravity(empty, 1.2e7)
+    assert 'g_xuv' not in empty
+    assert 'p_xuv' not in empty
+    assert 'T_xuv' not in empty

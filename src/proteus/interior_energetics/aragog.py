@@ -268,6 +268,31 @@ def _effective_entropy_step_cap(config: Config) -> float:
     return _resolve_step_cap(cap, _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP, is_zalmoxis)
 
 
+_OPTIONAL_ENERGY_FIELDS = frozenset(
+    {
+        'temperature_step_cap',
+        'entropy_step_cap',
+        'phase_boundary_entropy_margin',
+    }
+)
+
+
+def _unsupported_energy_fields() -> set[str]:
+    """Return the optional energy fields the installed Aragog does not accept.
+
+    The temperature/entropy step caps and the phase-boundary entropy margin need
+    a paired Aragog. An older Aragog omits them from ``_EnergyParameters``, so
+    ``setup_solver`` drops them and the solver degrades to Aragog defaults. The
+    config snapshot calls this too, so it records a not-applied marker for a
+    dropped step cap rather than a resolved value the run never received. The
+    margin has no such marker because its positive-only validator forbids the
+    sentinel, so a dropped non-default margin is reported through a solve-time
+    warning instead.
+    """
+    accepted = set(inspect.signature(_EnergyParameters).parameters)
+    return set(_OPTIONAL_ENERGY_FIELDS) - accepted
+
+
 def _is_plausible_core_density(rho_core: float) -> bool:
     """Return True iff ``rho_core`` falls inside the physical-bounds bracket."""
     return _RHO_CORE_MIN <= float(rho_core) <= _RHO_CORE_MAX
@@ -791,12 +816,7 @@ class AragogRunner:
         # Aragog accepts them, so an older Aragog degrades gracefully (no caps,
         # its built-in 200 J/kg/K margin) with a clear warning instead of
         # crashing on an unexpected keyword.
-        _energy_fields = set(inspect.signature(_EnergyParameters).parameters)
-        _unsupported = {
-            'temperature_step_cap',
-            'entropy_step_cap',
-            'phase_boundary_entropy_margin',
-        } - _energy_fields
+        _unsupported = _unsupported_energy_fields()
         _caps_requested = temperature_step_cap > 0.0 or entropy_step_cap > 0.0
         _nondefault_margin_dropped = (
             'phase_boundary_entropy_margin' in _unsupported
@@ -2081,6 +2101,56 @@ class AragogRunner:
 
         return sim_time, output
 
+    @staticmethod
+    def _aragog_cvode_available() -> bool | None:
+        """Report whether aragog has CVODE built, or ``None`` if it cannot tell.
+
+        aragog exposes no public capability check as of fwl-aragog 26.07.04,
+        so this reads the private ``_CVODE_AVAILABLE`` flag. A ``None`` return
+        means that private name is absent, because aragog renamed or removed
+        it. The caller must treat ``None`` as 'cannot determine', never as
+        'unavailable', or a real CVODE run mislabels as Radau.
+
+        Returns
+        -------
+        bool or None
+            The aragog flag, or ``None`` when the probe symbol is missing.
+        """
+        try:
+            from aragog.solver.entropy_solver import _CVODE_AVAILABLE
+        except ImportError:
+            return None
+        return bool(_CVODE_AVAILABLE)
+
+    def _active_solver_name(self) -> str:
+        """Name the integrator that is actually running, not the one configured.
+
+        ``solver_method`` can ask for CVODE and still run scipy: the wrapper
+        is compiled against SUNDIALS and falls back silently on a build or
+        ABI mismatch, so trusting the config name mislabels every failure
+        the fallback produces. Mirrors aragog's own Radau/BDF choice
+        (entropy_solver.py) so a scipy fallback names the integrator that
+        ran instead of a generic 'scipy'.
+
+        Returns
+        -------
+        str
+            'CVODE' when the configured and available integrator is CVODE,
+            'BDF' when ``solver_method='bdf'``, 'Radau' for an explicit scipy
+            request or a CVODE fallback. When the aragog capability probe
+            fails (the private flag is gone), returns an explicit
+            'unknown (aragog CVODE probe failed)' rather than a wrong name.
+        """
+        method = str(self._config.interior_energetics.aragog.solver_method or '')
+        if method == 'bdf':
+            return 'BDF'
+        if method != 'cvode':
+            return 'Radau'
+        available = self._aragog_cvode_available()
+        if available is None:
+            return 'unknown (aragog CVODE probe failed)'
+        return 'CVODE' if available else 'Radau'
+
     def _solve_with_retry(self, hf_row, interior_o) -> SolverOutput:
         """Run aragog_solver.solve() with a dt-halving retry ladder.
 
@@ -2188,23 +2258,13 @@ class AragogRunner:
                         float(hf_row.get('Time', 0.0)),
                     )
 
-                # Status check: did the solver accept the step?
-                #
-                # Status 0 is a step integrated to its requested end. Status 1
-                # is a terminal event: the melt-fraction cap or the liquidus
-                # crossing at the bottom cell stopped the integration part-way
-                # and the state up to that point is valid, which is why Aragog
-                # reports it rather than raising. CVODE returns the same cap as
-                # a root flag that Aragog maps to status 0, so a shortened step
-                # is already the accepted outcome on the production solver; the
-                # scipy fallback surfaces it as status 1 instead. Retrying it
-                # gains nothing, because the event fires again at the same
-                # place however small the step, and spends the whole ladder on
-                # a step that was never wrong. The coupling advances by the
-                # interval the solver actually integrated, so a short step is
-                # carried correctly. A step that advanced nothing is a
-                # different case and is not accepted: the loop would stall at
-                # that time forever.
+                # Status check: did the solver accept the step? Status 0 is a
+                # full step. Status 1 is a terminal event (melt-fraction cap or
+                # liquidus crossing) with valid partial state; the scipy
+                # fallback reports it while CVODE maps the same cap to status 0.
+                # Accept it when it advanced (dt_actual > 0): retrying refires
+                # the event at the same place, and a zero-advance step would
+                # stall the loop, so only that case is rejected.
                 stopped_on_event = out.status == 1 and float(out.dt_actual) > 0.0
                 if out.status == 0 or stopped_on_event:
                     # Sanity check: reject suspiciously large T_core jumps
@@ -2274,9 +2334,10 @@ class AragogRunner:
                         return out
 
                 if attempt >= max_attempts:
-                    # status==0 here means CVODE accepted every step but each
-                    # result was rejected for an over-threshold T_core jump, so
-                    # report that reason rather than the misleading status=0.
+                    # status==0 here means the solver accepted every step but
+                    # each result was rejected for an over-threshold T_core
+                    # jump, so report that reason rather than the misleading
+                    # status=0.
                     if out.status == 0:
                         reason = (
                             'status=0 but the T_core jump exceeded the '
@@ -2300,7 +2361,7 @@ class AragogRunner:
                             'advancing the state on any attempt'
                         )
                     else:
-                        reason = f'CVODE status={out.status}'
+                        reason = f'{self._active_solver_name()} status={out.status}'
                     log.error(
                         'Aragog solver failed after %d attempts (%s). '
                         'Raising RuntimeError so wrapper can apply skip-step fallback.',

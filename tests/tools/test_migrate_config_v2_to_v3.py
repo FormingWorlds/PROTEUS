@@ -121,6 +121,10 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.janus.cloud_alpha',
         # Inert while escape.hill_clamp is pinned off for migrated configs.
         'escape.hill_clamp_frac',
+        # The per-step escape cap and its step floor apply at their measured
+        # defaults, so a migrated config needs no explicit value for either.
+        'escape.step_dt_floor_frac',
+        'escape.step_max_frac',
         'interior_energetics.adams_williamson_beta',
         'interior_energetics.adams_williamson_rhos',
         'interior_energetics.adiabatic_bulk_modulus',
@@ -243,10 +247,17 @@ _REVIEWED_NEUTRAL = frozenset(
         'outgas.vapourise',
         'params.dt.hysteresis_iters',
         'params.dt.hysteresis_sfinc',
+        # The giant-impact landing-step cap defaults to 0 (disabled), and a
+        # migrated config schedules no impacts, so it never engages.
+        'params.dt.impact_maximum',
         'params.dt.max_growth_factor',
         'params.dt.mushy_maximum',
         'params.dt.mushy_upper',
         'params.dt.scale_decr',
+        # The unconverged-atmosphere criterion applies at its measured
+        # default, so a migrated config needs no explicit value for it.
+        'params.stop.stall.enabled',
+        'params.stop.stall.maximum',
         'params.dt.scale_incr',
         'params.dt.window',
         'params.out.dt_write_rel',

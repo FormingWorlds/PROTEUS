@@ -55,9 +55,15 @@ def test_star_bol_scale_duration_rejects_negative():
 def test_star_bol_scale_duration_accepts_zero_boundary():
     """Exactly zero is the inclusive lower boundary of ``ge(0.0)`` and is
     also the default; it must be accepted, not rejected as a degenerate
-    (zero-width) window."""
+    (zero-width) window. What makes the boundary inclusive rather than the
+    field simply unchecked is that the value just below it is refused."""
     star = Star(bol_scale_duration=0.0)
     assert star.bol_scale_duration == pytest.approx(0.0, abs=1e-15)
+
+    # Discrimination: the bound is ge(0.0), so the first value under it fails.
+    # Without this, a field carrying no bound at all would pass the check above.
+    with pytest.raises(Exception, match='bol_scale_duration'):
+        Star(bol_scale_duration=-1.0e-9)
 
 
 @pytest.mark.unit

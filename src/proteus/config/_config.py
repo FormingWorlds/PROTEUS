@@ -23,8 +23,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def spada_zephyrus(instance, attribute, value):
-    # using zephyrus
-    #     zephyrus requires MORS + Spada
+    """ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks."""
     if (instance.escape.module == 'zephyrus') and not (
         (instance.star.module == 'mors') and (instance.star.mors.tracks == 'spada')
     ):
@@ -32,13 +31,13 @@ def spada_zephyrus(instance, attribute, value):
 
 
 def instmethod_dummy(instance, attribute, value):
-    # Instellation method 'inst' only support for dummy star module
+    """Instellation method 'inst' is only available with the dummy star module."""
     if (instance.orbit.instellation_method == 'inst') and not (instance.star.module == 'dummy'):
         raise ValueError("Instellation method can only be 'inst' when star.module=dummy ")
 
 
 def instmethod_evolve(instance, attribute, value):
-    # Orbital evolution not supported when installation_method is 'inst'
+    """Orbital evolution cannot be combined with instellation method 'inst'."""
     if (instance.orbit.instellation_method == 'inst') and instance.orbit.evolve:
         raise ValueError(
             "Planet orbital evolution not supported for `instellation_method='inst'`"
@@ -46,7 +45,7 @@ def instmethod_evolve(instance, attribute, value):
 
 
 def satellite_evolve(instance, attribute, value):
-    # Planetary orbital evolution not supported when also modelling satellite
+    """Planetary orbital evolution and the satellite model are mutually exclusive."""
     if instance.orbit.satellite and instance.orbit.evolve:
         raise ValueError(
             'Planet orbital evolution cannot be used simultaneously with a satellite'
@@ -54,7 +53,7 @@ def satellite_evolve(instance, attribute, value):
 
 
 def tides_enabled_orbit(instance, attribute, value):
-    # Tides in interior requires orbit module to not be None
+    """Interior tidal heating requires an orbit module to be enabled."""
     if (instance.interior_energetics.heat_tidal) and (instance.orbit.module is None):
         raise ValueError('Interior tidal heating requires an orbit module to be enabled')
 
@@ -203,13 +202,13 @@ def boreas_requires_atmosphere(instance, attribute, value):
 
 
 def observe_resolved_atmosphere(instance, attribute, value):
-    # Synthetic observations require a spatially resolved atmosphere profile
+    """Synthetic observations require a spatially resolved atmosphere (not dummy)."""
     if (instance.observe.module is not None) and (instance.atmos_clim.module == 'dummy'):
         raise ValueError('Observational synthesis requires that atmos_clim != dummy')
 
 
 def janus_escape_atmosphere(instance, attribute, value):
-    # Using escape.zephyrus with JANUS requires params.stop.escape to be True
+    """ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled."""
     if (
         (instance.escape.module == 'zephyrus')
         and (instance.atmos_clim.module == 'janus')
@@ -432,9 +431,19 @@ class Config:
         ),
     )
 
-    def write(self, out: str):
+    def write(self, out: str, overrides: dict | None = None):
         """
         Write configuration to a new TOML file.
+
+        Parameters
+        ----------
+        out
+            Output path for the TOML file.
+        overrides
+            Dotted-path values to substitute in the written file, e.g.
+            ``{'interior_energetics.aragog.phi_step_cap': 0.1}``. Lets a
+            caller record a resolved value (one a module derives from a
+            config default at runtime) without mutating this Config object.
         """
 
         # Convert to dictionary
@@ -442,6 +451,38 @@ class Config:
 
         # Replace None with "none"
         cfg = dict_replace_none(cfg)
+
+        # Apply any resolved-value overrides
+        if overrides:
+            # Imported here to avoid a module-level import cycle: orphans
+            # imports Config from this module.
+            from .orphans import UnknownConfigKeyError
+
+            for dotted_key, value in overrides.items():
+                segments = dotted_key.split('.')
+                *parents, leaf = segments
+                node = cfg
+                for depth, key in enumerate(parents):
+                    if not isinstance(node, dict) or key not in node:
+                        failing = '.'.join(segments[: depth + 1])
+                        raise UnknownConfigKeyError(
+                            f"Override key '{dotted_key}' does not match the schema: "
+                            f"no config section '{failing}'."
+                        )
+                    node = node[key]
+                if not isinstance(node, dict) or leaf not in node:
+                    raise UnknownConfigKeyError(
+                        f"Override key '{dotted_key}' does not match the schema: "
+                        f"no config field '{dotted_key}'."
+                    )
+                if isinstance(node[leaf], dict):
+                    raise UnknownConfigKeyError(
+                        f"Override key '{dotted_key}' targets a config section, "
+                        f'not a field; refusing to replace the whole section.'
+                    )
+                # Route None through the same None -> "none" handling used above,
+                # so a None override does not reach tomlkit as a bare None.
+                node[leaf] = 'none' if value is None else value
 
         # Write to TOML file
         with open(out, 'w') as hdl:

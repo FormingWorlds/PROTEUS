@@ -45,6 +45,18 @@ from proteus.utils.logs import (
 # in the loop body.
 _IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
 
+# Consecutive iterations without a converged atmosphere after which a run ends,
+# whatever the interior is doing, and always above the streak the atmosphere
+# wrapper reports at error level. Sized on 27 stalled GJ 9827 d cases as they
+# stood on 2026-08-08: deepest recovered streak 126, deepest open streak 233,
+# which never converged. This clears the recovery and stays under the open one.
+ATMOS_STALL_MAX = 150
+
+# Consecutive iterations of a failed atmosphere solve on an interior that has
+# not moved, after which a run ends. Much shorter than the cap above, because
+# neither side of the coupling can leave that state on its own.
+AGNI_DEADLOCK_MAX = 3
+
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
@@ -120,6 +132,15 @@ class Proteus:
 
         # Helpfile variables from all previous iterations
         self.hf_all = None
+
+        # Caps on the two abort paths. Fixed for the run rather than reset per
+        # start, unlike the counters they are compared with. The stall cap is a
+        # stop criterion like the seven beside it, so the config carries it and
+        # the constant is only the default that config field already holds.
+        stall_cfg = getattr(self.config.params.stop, 'stall', None)
+        self.atmos_stall_enabled = True if stall_cfg is None else bool(stall_cfg.enabled)
+        self.atmos_stall_max = ATMOS_STALL_MAX if stall_cfg is None else int(stall_cfg.maximum)
+        self.agni_deadlock_max = AGNI_DEADLOCK_MAX
 
         # Loop counters
         self.init_stage = False
@@ -199,6 +220,12 @@ class Proteus:
           deadlock).
         - When the counter reaches ``agni_deadlock_max``, write
           status code 22 and raise ``RuntimeError`` to abort the run.
+        - Independently of the interior, abort once the atmosphere has
+          gone ``atmos_stall_max`` consecutive iterations without a
+          converged solve. An interior that keeps cooling on carried
+          levels holds the deadlock counter at 0 forever, so without
+          this the run spends its whole budget on an atmosphere it
+          never resolved.
 
         On the first iteration ``hf_all`` is None: no previous row
         exists, so the deadlock cannot fire. The counter stays at 0.
@@ -207,6 +234,22 @@ class Proteus:
         if self.atmos_o.converged:
             self.agni_deadlock_count = 0
             return
+
+        stalled = int(self.atmos_o.levels_stale_iters)
+        if self.atmos_stall_enabled and stalled >= self.atmos_stall_max:
+            log.error(
+                'Atmosphere has not converged for %d consecutive iterations, so escape '
+                'and the observables are running on a structure this run never resolved. '
+                'Aborting rather than spending the remaining budget on it. Try (a) a '
+                'shorter interior dt, (b) a more robust AGNI solver mode, or (c) '
+                'checking whether the surface boundary condition has left the regime '
+                'AGNI can represent.',
+                stalled,
+            )
+            UpdateStatusfile(self.directories, 22)
+            raise RuntimeError(
+                f'Atmosphere stalled: {stalled} consecutive solves without convergence.'
+            )
 
         if self.hf_all is not None and len(self.hf_all) >= 1:
             prev = self.hf_all.iloc[-1]
@@ -458,8 +501,40 @@ class Proteus:
         self.init_stage = True
         self._baseline_structure_done = False
 
-        # Write config to output directory, for future reference
-        self.config.write(os.path.join(self.directories['output'], 'init_coupler.toml'))
+        # Write config to output directory, for future reference. Record the
+        # resolved (not raw) step caps, so a zalmoxis-armed default reads back
+        # as the value Aragog actually used instead of the schema's 0.0.
+        step_cap_overrides = {}
+        if self.config.interior_energetics.module == 'aragog':
+            from proteus.config._interior import _STEP_CAP_OFF
+            from proteus.interior_energetics.aragog import (
+                _effective_entropy_step_cap,
+                _effective_phi_step_cap,
+                _effective_temperature_step_cap,
+                _unsupported_energy_fields,
+            )
+
+            # phi_step_cap is always accepted by Aragog, so record its resolved
+            # value. An older Aragog drops the temperature/entropy caps before
+            # they reach the solver; record the disabled sentinel for a dropped
+            # cap so the snapshot does not claim a cap the run never used.
+            unsupported = _unsupported_energy_fields()
+            step_cap_overrides = {
+                'interior_energetics.aragog.phi_step_cap': _effective_phi_step_cap(self.config),
+            }
+            for field, resolve in (
+                ('temperature_step_cap', _effective_temperature_step_cap),
+                ('entropy_step_cap', _effective_entropy_step_cap),
+            ):
+                key = f'interior_energetics.aragog.{field}'
+                if field in unsupported:
+                    step_cap_overrides[key] = _STEP_CAP_OFF
+                else:
+                    step_cap_overrides[key] = resolve(self.config)
+        self.config.write(
+            os.path.join(self.directories['output'], 'init_coupler.toml'),
+            overrides=step_cap_overrides,
+        )
 
         # Create lockfile for keeping simulation running
         self.lockfile = CreateLockFile(self.directories['output'])
@@ -610,8 +685,17 @@ class Proteus:
             # Resuming from disk
             log.info('Resuming the simulation from the disk')
 
-            # Read helpfile from disk
-            self.hf_all = ReadHelpfileFromCSV(self.directories['output'])
+            # Read helpfile from disk. A run written before the output schema
+            # gained columns stops here, rather than continuing from a row that
+            # is missing those keys. A helpfile that cannot be loaded at all
+            # stops the same way: either leaves the run dead, and a run that
+            # dies without recording it reads as still running to anything
+            # polling the output directory.
+            try:
+                self.hf_all = ReadHelpfileFromCSV(self.directories['output'])
+            except Exception:
+                UpdateStatusfile(self.directories, 20)
+                raise
 
             # Check length
             if len(self.hf_all) <= self.loops['init_loops'] + 1:
@@ -709,6 +793,13 @@ class Proteus:
                         'outgassing stays stopped.',
                         self.config.params.stop.solid.phi_crit,
                     )
+
+            # Restore the count of consecutive unresolved atmosphere solves, so
+            # a run that stalls is not handed a fresh allowance by every
+            # resume. Absent in helpfiles written before the column existed,
+            # which read as a run that has not stalled.
+            stale = self.hf_row.get('atm_levels_stale', 0.0)
+            self.atmos_o.levels_stale_iters = int(stale) if np.isfinite(stale) else 0
 
             # Interior initial condition
             self.interior_o.ic = 2
@@ -831,7 +922,6 @@ class Proteus:
         # and PROTEUS would otherwise silently accept a frozen state and
         # advance Time indefinitely.
         self.agni_deadlock_count = 0
-        self.agni_deadlock_max = 3
 
         # Main loop
         # Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
@@ -1086,15 +1176,33 @@ class Proteus:
             if (self.loops['total'] > self.loops['init_loops'] + 2) and (not self.desiccated):
                 PrintHalfSeparator()
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                # The mantle can cross the solidification threshold on this
+                # iteration and the check that records it runs further down the
+                # loop, so read the same condition here: escape must draw on the
+                # atmosphere alone from the step the mantle freezes, not the one
+                # after, or it sizes its loss from a reservoir already frozen.
+                frozen = self.crystallized or (
+                    self.config.params.stop.solid.freeze_volatiles
+                    and float(self.hf_row.get('Phi_global', 1.0))
+                    <= float(self.config.params.stop.solid.phi_crit)
+                )
                 run_escape(
                     self.config,
                     self.hf_row,
                     self.directories,
                     self.interior_o.dt,
-                    atmosphere_only=self.crystallized,
+                    atmosphere_only=frozen,
+                    interior_o=self.interior_o,
                 )
                 if _IT_TIMING_ENABLED:
                     _t_mod['escape'] = time.perf_counter() - _t0
+            else:
+                # No escape step this loop, so nothing justifies holding the
+                # step short on account of one, and last step's request would
+                # otherwise carry forward and read as a still-clamped run.
+                self.interior_o.escape_dt_limit = np.inf
+                self.hf_row['esc_clamp_frac'] = 0.0
+                self.hf_row['esc_step_kg'] = 0.0
 
             ############### / ESCAPE
 
@@ -1474,20 +1582,31 @@ class Proteus:
         archive.create(self.directories['output/data'], remove_files=True)
 
     def observe(self):
-        # Extract archived data
-        self.extract_archives()
+        # Load data from helpfile. Read it before unpacking the archive, so a
+        # run this cannot postprocess is left archived as it was found.
+        from proteus.utils.coupler import (
+            GetPostprocessingKeys,
+            HelpfileRow,
+            ReadHelpfileFromCSV,
+            helpfile_path,
+        )
 
-        # Load data from helpfile
-        from proteus.utils.coupler import ReadHelpfileFromCSV
-
-        hf_all = ReadHelpfileFromCSV(self.directories['output'])
+        hf_all = ReadHelpfileFromCSV(
+            self.directories['output'], required_columns=GetPostprocessingKeys()
+        )
 
         # Check length
         if len(hf_all) < 1:
             raise Exception('Simulation is too short to be postprocessed')
 
-        # Get last row
-        hf_row = hf_all.iloc[-1].to_dict()
+        # Extract archived data
+        self.extract_archives()
+
+        # Get last row. Wrapped so a column outside the postprocessing set,
+        # which the check above does not cover, still reports itself.
+        hf_row = HelpfileRow(
+            hf_all.iloc[-1].to_dict(), helpfile_path(self.directories['output'])
+        )
 
         # Run observations pipeline, typically invoked via CLI
         from proteus.observe.wrapper import run_observe
@@ -1495,20 +1614,31 @@ class Proteus:
         run_observe(hf_row, self.config, self.directories)
 
     def offline_chemistry(self):
-        # Extract archived data
-        self.extract_archives()
+        # Load data from helpfile. Read it before unpacking the archive, so a
+        # run this cannot postprocess is left archived as it was found.
+        from proteus.utils.coupler import (
+            GetPostprocessingKeys,
+            HelpfileRow,
+            ReadHelpfileFromCSV,
+            helpfile_path,
+        )
 
-        # Load data from helpfile
-        from proteus.utils.coupler import ReadHelpfileFromCSV
-
-        hf_all = ReadHelpfileFromCSV(self.directories['output'])
+        hf_all = ReadHelpfileFromCSV(
+            self.directories['output'], required_columns=GetPostprocessingKeys()
+        )
 
         # Check length
         if len(hf_all) < 1:
             raise Exception('Simulation is too short to be postprocessed')
 
-        # Get last row
-        hf_row = hf_all.iloc[-1].to_dict()
+        # Extract archived data
+        self.extract_archives()
+
+        # Get last row. Wrapped so a column outside the postprocessing set,
+        # which the check above does not cover, still reports itself.
+        hf_row = HelpfileRow(
+            hf_all.iloc[-1].to_dict(), helpfile_path(self.directories['output'])
+        )
 
         # Run offline chemistry, typically invoked via CLI
         from proteus.atmos_chem.wrapper import run_chemistry
