@@ -760,15 +760,18 @@ def CreateLockFile(output_dir: str):
 
 
 # Schema columns a resumed run may read as zero when its helpfile predates them.
-# Each accumulates over a run, so zero is a true statement about a file that
-# never recorded it: nothing was written, therefore nothing accrued. Every other
-# column holds instantaneous state, where zero is a specific wrong value rather
-# than a missing one, so a helpfile short of those cannot be resumed at all.
-# Add a column here only when zero is the correct reading of its absence.
+# Zero is a true statement about a file that never recorded one of these: either
+# the column accumulates over the run, so nothing written means nothing accrued,
+# or it resets to zero every step and only differs on an event step, so a file
+# from before the event existed never had a reason to hold anything else. Every
+# other column holds instantaneous state, where zero is a specific wrong value
+# rather than a missing one, so a helpfile short of those cannot be resumed at
+# all. Add a column here only when zero is the correct reading of its absence.
 RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
         'esc_kg_cumulative',
         'M_accreted_rock',
+        'step_dE_impact_J',
     }
 )
 
