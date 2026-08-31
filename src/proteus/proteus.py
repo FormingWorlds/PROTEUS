@@ -401,6 +401,9 @@ class Proteus:
         #    lookup and reference data
         from proteus.utils.data import download_sufficient_data
 
+        # remove temporary files from previous runs
+        from proteus.utils.helper import safe_rm
+
         # termination criteria
         from proteus.utils.terminate import check_termination, print_termination_criteria
 
@@ -1375,6 +1378,7 @@ class Proteus:
 
         # Print citation
         print_citation(self.config)
+        safe_rm(self.directories['temp'])
 
     def extract_archives(self):
         """
