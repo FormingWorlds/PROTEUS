@@ -654,14 +654,14 @@ def run_outgassing_and_vapourisation(
 
     log.info(vol_pps)
     if any(value > 1e-6 for value in vol_pps.values()):
-        log.info('tolerance parameter %s' % config.outgas.solver_atol)
+        log.info('tolerance parameter %s'%config.outgas.solver_atol)
         run_outgassing(dirs, config, hf_row)
-    # if all(value <= config.outgas.solver_atol for value in vol_pps.values()):
-    # log.info('All volatile species are below solver_atol; skipping outgassing')
+    #if all(value <= config.outgas.solver_atol for value in vol_pps.values()):
+        #log.info('All volatile species are below solver_atol; skipping outgassing')
     else:
         # Volatile outgassing
         log.info('All volatile species are below solver_atol; skipping outgassing')
-        # run_outgassing(dirs, config, hf_row)
+        #run_outgassing(dirs, config, hf_row)
 
     # log.info('wrapper.py, Psurf:%.6e',hf_row['P_surf'])
     # log.info('wrapper.py, Pvol:%.6e',hf_row['P_vol'])
