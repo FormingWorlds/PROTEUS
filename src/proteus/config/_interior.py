@@ -20,6 +20,11 @@ _TOL_UNSET = -1.0
 # malformed cap.
 _STEP_CAP_OFF = -1.0
 
+# The three per-call Aragog step-cap field names, named once here so the
+# config-load validator and the config writer stay in step with each other
+# and with the fields defined below.
+_STEP_CAP_FIELDS = ('phi_step_cap', 'temperature_step_cap', 'entropy_step_cap')
+
 
 def _gt0_or_unset(instance, attribute, value):
     """Allow the unset sentinel; otherwise require a positive value."""
@@ -227,9 +232,12 @@ class Aragog:
     mushy window in a single call, which removes the discontinuous
     core-temperature drop at crystallisation onset. Schema default 0.0, which
     the Aragog wrapper promotes to a non-zero default for the coupled zalmoxis
-    interior stack; a positive value here overrides that. -1.0 is the single
-    off sentinel that keeps the cap disabled even on zalmoxis; any other
-    negative, NaN, or infinity is rejected at load."""
+    interior stack; this promotion applies only when the key is left out of
+    the config file. Setting it to 0.0 explicitly is rejected at load, since
+    it cannot be told apart from the unset default. -1.0 is the single off
+    sentinel that keeps the cap disabled even on zalmoxis; a positive value
+    here overrides the default; any other negative, NaN, or infinity is
+    rejected at load."""
 
     temperature_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell temperature step cap [K]. Shares the same root
@@ -238,17 +246,23 @@ class Aragog:
     just below the solidus, where the melt-fraction cap goes blind because a
     fully solid cell's melt fraction can no longer move. Schema default 0.0,
     which the Aragog wrapper promotes to a non-zero default for the coupled
-    zalmoxis stack; a positive value overrides that. -1.0 is the single off
-    sentinel that keeps the cap disabled even on zalmoxis; any other negative,
-    NaN, or infinity is rejected at load."""
+    zalmoxis stack; this promotion applies only when the key is left out of
+    the config file. Setting it to 0.0 explicitly is rejected at load, since
+    it cannot be told apart from the unset default. -1.0 is the single off
+    sentinel that keeps the cap disabled even on zalmoxis; a positive value
+    overrides the default; any other negative, NaN, or infinity is rejected
+    at load."""
 
     entropy_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell entropy step cap [J/kg/K], in the native solver
     variable; same role as temperature_step_cap without an EOS lookup in the
     root function. Schema default 0.0, which the Aragog wrapper promotes to a
-    non-zero default for the coupled zalmoxis stack; a positive value overrides
-    that. -1.0 is the single off sentinel that keeps the cap disabled even on
-    zalmoxis; any other negative, NaN, or infinity is rejected at load."""
+    non-zero default for the coupled zalmoxis stack; this promotion applies
+    only when the key is left out of the config file. Setting it to 0.0
+    explicitly is rejected at load, since it cannot be told apart from the
+    unset default. -1.0 is the single off sentinel that keeps the cap
+    disabled even on zalmoxis; a positive value overrides the default; any
+    other negative, NaN, or infinity is rejected at load."""
 
     phase_boundary_entropy_margin: float = field(default=200.0, validator=gt(0))
     """Phase-boundary proximity band [J/kg/K] within which a staggered cell

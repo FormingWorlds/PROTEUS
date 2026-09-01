@@ -400,9 +400,9 @@ config_version = "3.0"
         core_bc                       = "energy_balance"  # CMB condition: energy_balance | quasi_steady | gradient | bower2018
         tolerance_struct              = 100      # absolute mass tolerance [kg] for the radius secant solver
         scalar_gravity_override       = false    # replace the mesh gravity column with a uniform surface scalar
-        phi_step_cap                  = 0.0      # per-call melt-fraction step cap; 0 = stack default, -1 = off
-        temperature_step_cap          = 0.0      # per-call per-cell temperature step cap [K]; 0 = stack default, -1 = off
-        entropy_step_cap              = 0.0      # per-call per-cell entropy step cap [J/kg/K]; 0 = stack default, -1 = off
+        phi_step_cap                  = -1.0     # per-call melt-fraction step cap; -1 = off; omit key for stack default
+        temperature_step_cap          = -1.0     # per-call per-cell temperature step cap [K]; -1 = off; omit key for stack default
+        entropy_step_cap              = -1.0     # per-call per-cell entropy step cap [J/kg/K]; -1 = off; omit key for stack default
         # Proximity band [J/kg/K] within which a cell counts as near a solidus/liquidus
         # crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase
         # RHS. Solver-accuracy control, not a cosmetic step-size knob: lowering it below the

@@ -10,7 +10,7 @@ from ._atmos_chem import AtmosChem
 from ._atmos_clim import AtmosClim
 from ._converters import dict_replace_none
 from ._escape import Escape
-from ._interior import Interior
+from ._interior import _STEP_CAP_FIELDS, Interior
 from ._observe import Observe
 from ._orbit import Orbit
 from ._outgas import Outgas
@@ -401,6 +401,18 @@ class Config:
                 # Route None through the same None -> "none" handling used above,
                 # so a None override does not reach tomlkit as a bare None.
                 node[leaf] = 'none' if value is None else value
+
+        # An Aragog step cap still at its 0.0 schema default (no override
+        # replaced it above) is ambiguous with an explicit, disabling 0.0
+        # once written to TOML, so omit the key and let a reload fall back
+        # to the same schema default it already carries here.
+        interior_energetics = cfg.get('interior_energetics')
+        if isinstance(interior_energetics, dict) and interior_energetics.get('module') == 'aragog':
+            aragog = interior_energetics.get('aragog')
+            if isinstance(aragog, dict):
+                for field_name in _STEP_CAP_FIELDS:
+                    if aragog.get(field_name) == 0.0:
+                        del aragog[field_name]
 
         # Write to TOML file
         with open(out, 'w') as hdl:
