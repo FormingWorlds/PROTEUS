@@ -1879,6 +1879,9 @@ def test_zalmoxis_solver_init_call_keeps_internal_mode_dispatch(tmp_path, monkey
     # The no-profile downgrade turns the JAX path off for this call.
     assert config_params['use_jax'] is False
     assert config_params['use_anderson'] is False
+    # wall_timeout must follow the final use_jax value, not the viability
+    # gate's pre-downgrade value: this call never gets the 3600s JAX cap.
+    assert config_params.get('wall_timeout') is None
     # No arrays: the post-solve rebuild has nothing to rebuild against.
     assert rho_mock.call_count == 0
     # The internal isothermal dispatch is the active temperature source.

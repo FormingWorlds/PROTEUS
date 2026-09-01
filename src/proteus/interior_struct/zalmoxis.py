@@ -2349,15 +2349,40 @@ def zalmoxis_solver(
     output_zalmoxis = get_zalmoxis_output_filepath(outdir)
     open(output_zalmoxis, 'a').close()
 
-    # JAX-path wall_timeout: Zalmoxis' default is 300 s, which is a
-    # sanity cap. The bench (``bench_performance.py``) and the JAX
-    # parity fixture override it to 3600 s because the first JAX call
-    # on a cold JIT can incur compilation time on top of the solve.
-    # Mirror that here when the caller opted into JAX, so a cold first
-    # call does not fall into the best-solution branch and trip the
-    # downstream array-write path.
-    if config_params.get('use_jax') and 'wall_timeout' not in config_params:
-        config_params['wall_timeout'] = 3600.0
+    # Run structure solve: use miscibility wrapper when enabled
+    mat_dicts = load_zalmoxis_material_dictionaries()
+    check_zalmoxis_eos_files(config_params['layer_eos_config'], mat_dicts)
+    melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
+    input_data_dir = os.path.join(outdir, 'data')
+
+    # JAX structure-path viability. A JAX-capable layout needs a unified
+    # or 2-phase PALEOS mantle plus a unified PALEOS core (see
+    # _zalmoxis_jax_structure_viable) and, on wet solves, a VolatileProfile
+    # inside the Zalmoxis JAX wet envelope (exactly one paleos_unified
+    # volatile blended into the mantle; see _volatile_profile_jax_viable).
+    _use_jax_active = bool(config_params.get('use_jax'))
+    _jax_viable = _zalmoxis_jax_structure_viable(
+        mat_dicts, config.interior_struct.zalmoxis.core_eos, mantle_eos
+    )
+    # Surface a JAX->numpy fallback once from the PROTEUS side (see helper).
+    if _use_jax_active and not _jax_viable:
+        _log_jax_nonviable_once(config.interior_struct.zalmoxis.core_eos, mantle_eos)
+    _wet_jax_viable = volatile_profile is None or _volatile_profile_jax_viable(
+        volatile_profile, mat_dicts, config_params['layer_eos_config']['mantle']
+    )
+    if _use_jax_active and _jax_viable and volatile_profile is not None and not _wet_jax_viable:
+        log.debug(
+            'VolatileProfile falls outside the Zalmoxis JAX wet envelope; '
+            'the structure solve stays on the numpy path with the callable.'
+        )
+
+    # Drop a non-viable JAX request here so Zalmoxis' main() does not
+    # re-attempt and reject JAX on every internal solve_structure call,
+    # which otherwise floods a warning per call and stalls the coupling.
+    # A viable request passes through unchanged onto the JAX-arrays
+    # path below.
+    if _use_jax_active and not (_jax_viable and _wet_jax_viable):
+        config_params['use_jax'] = False
 
     # JAX structure path gate: the JAX wrapper's P-indexed adiabat
     # tabulation collapses for P-ignoring callables (see
@@ -2381,44 +2406,19 @@ def zalmoxis_solver(
             config_params['use_jax'] = False
             config_params['use_anderson'] = False
 
-    # Run structure solve: use miscibility wrapper when enabled
-    mat_dicts = load_zalmoxis_material_dictionaries()
-    check_zalmoxis_eos_files(config_params['layer_eos_config'], mat_dicts)
-    melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
-    input_data_dir = os.path.join(outdir, 'data')
+    # JAX-path wall_timeout: Zalmoxis' default is 300 s, a sanity cap.
+    # The bench and the JAX parity fixture override it to 3600 s
+    # because a cold JIT can add compile time on top of the solve.
+    # Mirror that here once both gates above have confirmed the call
+    # will actually use JAX.
+    if config_params.get('use_jax') and 'wall_timeout' not in config_params:
+        config_params['wall_timeout'] = 3600.0
 
-    # Temperature-source dispatch for this call. temperature_arrays can be
-    # consumed only by the Zalmoxis JAX inner path, which requires a
-    # JAX-capable EOS layout (a unified or 2-phase PALEOS mantle plus a
-    # unified PALEOS core) and, on wet solves, a VolatileProfile inside
-    # the Zalmoxis JAX wet envelope (exactly one paleos_unified volatile
-    # blended into the mantle; see _volatile_profile_jax_viable). Only in
-    # that case is the external callable withheld: the JAX RHS integrates
-    # against the arrays while the numpy Picard helper converges quickly
-    # on Zalmoxis' internal linear-T profile (passing the callable there
-    # lands Picard near PALEOS phase-boundary clamps and costs roughly
-    # two orders of magnitude more wall time at the same JAX arrays). For
-    # every other EOS configuration, and for wet solves whose profile
-    # falls outside the envelope, the JAX dispatch declines and the numpy
-    # ODE runs; that path consumes only the callable, so it must pass
-    # through for the solve to follow the evolved T(r) instead of
-    # rebuilding the internal temperature_mode profile from the hot
-    # initial anchor.
-    _use_jax_active = bool(config_params.get('use_jax'))
-    _jax_viable = _zalmoxis_jax_structure_viable(
-        mat_dicts, config.interior_struct.zalmoxis.core_eos, mantle_eos
-    )
-    # Surface a JAX->numpy fallback once from the PROTEUS side (see helper).
-    if _use_jax_active and not _jax_viable:
-        _log_jax_nonviable_once(config.interior_struct.zalmoxis.core_eos, mantle_eos)
-    _wet_jax_viable = volatile_profile is None or _volatile_profile_jax_viable(
-        volatile_profile, mat_dicts, config_params['layer_eos_config']['mantle']
-    )
-    if _use_jax_active and _jax_viable and volatile_profile is not None and not _wet_jax_viable:
-        log.debug(
-            'VolatileProfile falls outside the Zalmoxis JAX wet envelope; '
-            'the structure solve stays on the numpy path with the callable.'
-        )
+    # Temperature-source dispatch: temperature_arrays only feeds the
+    # JAX inner path (now gated on _jax_viable/_wet_jax_viable above),
+    # which withholds the callable since Picard converges quickly on
+    # Zalmoxis' internal profile there. Every other path needs the
+    # callable to follow the evolved T(r) instead of that profile.
     _drop_callable = (
         _use_jax_active and temperature_arrays is not None and _jax_viable and _wet_jax_viable
     )
