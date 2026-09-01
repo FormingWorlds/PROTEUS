@@ -279,7 +279,6 @@ def construct_guess(dirs: dict, hf_row: dict, target: dict, mass_thresh: float) 
     if os.path.isfile(ppfile):
         pps = pd.read_csv(ppfile, sep=' ')
         log.info('partial pressures are read from ppfile')
-        print(pps)
         for s in vol_list:
             p_guess[s] = pps[f'{s}_bar'][0]
     else:

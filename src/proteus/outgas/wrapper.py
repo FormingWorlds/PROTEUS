@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 
 from proteus.outgas.common import expected_keys
 from proteus.outgas.lavatmos import run_vapourisation
@@ -17,6 +19,7 @@ from proteus.utils.constants import (
     vap_list,
     vol_element_list,
     vol_gas_list,
+    vol_list,
 )
 
 if TYPE_CHECKING:
@@ -631,13 +634,9 @@ def run_outgassing_and_vapourisation(
 
     # reset all rock-vapour masses to zero:
     hf_row['M_vaps'] = 0.0
-    vol_pps = {}
     for s in gas_list:
         if s not in vap_list:
-            if s == 'O2':
-                continue
-            else:
-                vol_pps[s] = hf_row[s + '_bar']
+            continue
         else:
             hf_row[s + '_bar'] = 0.0
             hf_row[s + '_vmr'] = 0.0
@@ -652,19 +651,20 @@ def run_outgassing_and_vapourisation(
         hf_row[e + '_kg_atm'] = 0.0
         hf_row[e + '_kg_total'] = 0.0
 
-    log.info(vol_pps)
-    if any(value > 1e-6 for value in vol_pps.values()):
-        log.info('tolerance parameter %s'%config.outgas.solver_atol)
-        run_outgassing(dirs, config, hf_row)
-    #if all(value <= config.outgas.solver_atol for value in vol_pps.values()):
-        #log.info('All volatile species are below solver_atol; skipping outgassing')
-    else:
-        # Volatile outgassing
-        log.info('All volatile species are below solver_atol; skipping outgassing')
-        #run_outgassing(dirs, config, hf_row)
+    #check here whether partial pressures have been below calliope threshold previously, if so, skip outgassing
+    vol_pps={}
+    ppfile = os.path.join(dirs['output'], 'pps.txt')
+    if os.path.isfile(ppfile):
+        pps = pd.read_csv(ppfile, sep=' ')
+        log.info('partial pressures from last run: %s',pps)
+        for s in vol_list:
+            vol_pps[s] = pps[f'{s}_bar'][0]
 
-    # log.info('wrapper.py, Psurf:%.6e',hf_row['P_surf'])
-    # log.info('wrapper.py, Pvol:%.6e',hf_row['P_vol'])
+    if any(value > 1e-6 for value in vol_pps.values()):
+            log.info('tolerance parameter %s'%config.outgas.solver_atol)
+            run_outgassing(dirs, config, hf_row)
+    else:
+        log.info('All volatile species are below solver_atol; skipping volatile outgassing')
 
     # Vapourisation of refractories
     if config.outgas.vapourise:
