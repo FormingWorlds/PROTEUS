@@ -660,11 +660,13 @@ def run_outgassing_and_vapourisation(
         for s in vol_list:
             vol_pps[s] = pps[f'{s}_bar'][0]
 
-    if any(value > 1e-6 for value in vol_pps.values()):
+        if any(value > 1e-6 for value in vol_pps.values()):
             log.info('tolerance parameter %s'%config.outgas.solver_atol)
             run_outgassing(dirs, config, hf_row)
+        else:
+            log.info('All volatile species are below solver_atol; skipping volatile outgassing')
     else:
-        log.info('All volatile species are below solver_atol; skipping volatile outgassing')
+        run_outgassing(dirs, config, hf_row)
 
     # Vapourisation of refractories
     if config.outgas.vapourise:
