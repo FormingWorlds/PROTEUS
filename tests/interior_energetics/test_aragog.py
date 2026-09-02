@@ -653,6 +653,46 @@ def test_setup_solver_threads_phase_boundary_margin(tmp_path):
 
 
 @pytest.mark.unit
+def test_setup_solver_threads_eddy_diffusivity_chemical(tmp_path):
+    """setup_solver passes eddy_diffusivity_chemical into _EnergyParameters,
+    matching the existing eddy_diffusivity_thermal passthrough.
+
+    The JAX path already threads this value through PhaseParams; without the
+    same line in energy_kwargs, the numpy/scipy path silently kept Aragog's
+    dataclass default of 1.0 regardless of the user's config value. This pins
+    both the schema default and a user override, and checks the two remain
+    distinct so a wrapper that hard-coded or ignored the value cannot pass.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    outdir = str(tmp_path)
+    threaded = {}
+    for requested in (1.0, 0.42):
+        config = _make_aragog_config(struct_module='spider')
+        config.interior_energetics.eddy_diffusivity_chemical = requested
+        hf_row, interior_o = _spider_fallback_scaffold(tmp_path / f'run_{requested}')
+        mock_ep = create_autospec(_paired_energy_stub)
+        with (
+            patch(
+                'proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / f'run_{requested}'
+            ),
+            patch('proteus.interior_energetics.aragog.Parameters'),
+            patch('proteus.interior_energetics.aragog.EntropySolver'),
+            patch('proteus.interior_energetics.aragog.EntropyEOS'),
+            patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
+            patch('proteus.interior_energetics.aragog.log'),
+        ):
+            AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+        assert mock_ep.called
+        threaded[requested] = mock_ep.call_args.kwargs['eddy_diffusivity_chemical']
+
+    assert threaded[1.0] == pytest.approx(1.0)
+    assert threaded[0.42] == pytest.approx(0.42)
+    assert threaded[0.42] != pytest.approx(threaded[1.0])
+
+
+@pytest.mark.unit
 def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
     """The version-skew guard drops phase_boundary_entropy_margin, and only it,
     when the installed Aragog predates the field.
