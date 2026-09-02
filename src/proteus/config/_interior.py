@@ -47,6 +47,21 @@ def _step_cap_valid(instance, attribute, value):
         )
 
 
+def _eddy_diffusivity_valid(instance, attribute, value):
+    """Reject zero and non-finite; allow any other value.
+
+    A positive value scales the internally computed eddy diffusivity; a
+    negative value pins it to the absolute value in m^2/s (SPIDER
+    convention, matched by both the numpy and JAX Aragog solvers). Zero
+    collapses either convention to an all-zero diffusivity and duplicates
+    trans_mixing=False, so it is rejected rather than silently accepted.
+    """
+    if not math.isfinite(value):
+        raise ValueError(f'`{attribute.name}` must be finite, got {value}')
+    if value == 0.0:
+        raise ValueError(f'`{attribute.name}` must be nonzero, got {value}')
+
+
 def valid_spider(instance, attribute, value):
     """SPIDER requires at least one energy transport term to be enabled."""
     if instance.module != 'spider':
@@ -624,14 +639,19 @@ class Interior:
     """Thermal conductivity of solid silicate [W/m/K]. Matches SPIDER
     -solid_cond."""
 
-    # Eddy diffusivity scaling (dimensionless multiplier on MLT-derived kappa).
-    eddy_diffusivity_thermal: float = field(default=1.0, validator=gt(0))
-    """Multiplier on the internally-computed thermal eddy diffusivity.
-    SPIDER: -eddy_diffusivity_thermal (1.0 default)."""
+    # Eddy diffusivity: positive scales MLT-derived kappa, negative pins it
+    # to |value| in m^2/s (SPIDER convention).
+    eddy_diffusivity_thermal: float = field(default=1.0, validator=_eddy_diffusivity_valid)
+    """Thermal eddy diffusivity control. A positive value multiplies the
+    internally-computed eddy diffusivity; a negative value pins it to
+    |value| in m^2/s. Matches SPIDER -eddy_diffusivity_thermal
+    (1.0 default)."""
 
-    eddy_diffusivity_chemical: float = field(default=1.0, validator=gt(0))
-    """Multiplier on the internally-computed chemical eddy diffusivity.
-    SPIDER: -eddy_diffusivity_chemical (1.0 default)."""
+    eddy_diffusivity_chemical: float = field(default=1.0, validator=_eddy_diffusivity_valid)
+    """Chemical eddy diffusivity control. A positive value multiplies the
+    internally-computed eddy diffusivity; a negative value pins it to
+    |value| in m^2/s. Matches SPIDER -eddy_diffusivity_chemical
+    (1.0 default)."""
 
     # Constant-properties mode (SPIDER -use_const_properties parity).
     # When True, both SPIDER and Aragog bypass EOS tables and use

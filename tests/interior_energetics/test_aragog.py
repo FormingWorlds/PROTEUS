@@ -544,14 +544,18 @@ def test_aragog_schema_admits_off_sentinel_rejects_other_negatives():
 
 
 @pytest.mark.unit
-def test_eddy_diffusivity_fields_reject_non_positive():
-    """eddy_diffusivity_thermal and eddy_diffusivity_chemical stay strictly positive.
+def test_eddy_diffusivity_fields_reject_zero_and_nonfinite():
+    """eddy_diffusivity_thermal and eddy_diffusivity_chemical reject 0/inf/nan.
 
-    Both are multipliers on the mixing-length eddy diffusivity, so zero or a
-    negative value would zero out or invert transport rather than scale it.
-    The paired assertions on both fields catch a regression that loosens
-    either validator while leaving the other in place, and the positive
-    override check confirms the validator does not also reject valid input.
+    A positive value scales the mixing-length eddy diffusivity; a negative
+    value pins it to the absolute value in m^2/s (SPIDER convention, matched
+    by both Aragog solver backends), so negative values must round-trip
+    without rejection. Zero collapses either convention to an all-zero
+    diffusivity and duplicates trans_mixing=False, so it is the only sign
+    rejected. The paired assertions on both fields catch a regression that
+    loosens either validator while leaving the other in place, and the
+    positive/negative override checks confirm the validator does not also
+    reject valid input.
     """
     from proteus.config._interior import Interior
 
@@ -561,11 +565,17 @@ def test_eddy_diffusivity_fields_reject_non_positive():
     assert Interior(
         eddy_diffusivity_chemical=0.42
     ).eddy_diffusivity_chemical == pytest.approx(0.42)
+    assert Interior(
+        eddy_diffusivity_thermal=-2.5
+    ).eddy_diffusivity_thermal == pytest.approx(-2.5)
+    assert Interior(
+        eddy_diffusivity_chemical=-0.7
+    ).eddy_diffusivity_chemical == pytest.approx(-0.7)
 
-    for bad in (0.0, -1.0):
-        with pytest.raises(ValueError, match="eddy_diffusivity_thermal.*must be > 0"):
+    for bad in (0.0, float('inf'), float('-inf'), float('nan')):
+        with pytest.raises(ValueError, match="eddy_diffusivity_thermal.*must be"):
             Interior(eddy_diffusivity_thermal=bad)
-        with pytest.raises(ValueError, match="eddy_diffusivity_chemical.*must be > 0"):
+        with pytest.raises(ValueError, match="eddy_diffusivity_chemical.*must be"):
             Interior(eddy_diffusivity_chemical=bad)
 
 
