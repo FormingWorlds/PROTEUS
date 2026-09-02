@@ -50,11 +50,9 @@ def _step_cap_valid(instance, attribute, value):
 def _eddy_diffusivity_valid(instance, attribute, value):
     """Reject zero and non-finite; allow any other value.
 
-    A positive value scales the internally computed eddy diffusivity; a
-    negative value pins it to the absolute value in m^2/s (SPIDER
-    convention, matched by both the numpy and JAX Aragog solvers). Zero
-    collapses either convention to an all-zero diffusivity and duplicates
-    trans_mixing=False, so it is rejected rather than silently accepted.
+    A positive value scales the computed eddy diffusivity; a negative
+    value pins it to the absolute value in m^2/s (SPIDER convention).
+    Zero collapses either sign to an all-zero diffusivity.
     """
     if not math.isfinite(value):
         raise ValueError(f'`{attribute.name}` must be finite, got {value}')

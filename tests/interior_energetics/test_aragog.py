@@ -547,15 +547,8 @@ def test_aragog_schema_admits_off_sentinel_rejects_other_negatives():
 def test_eddy_diffusivity_fields_reject_zero_and_nonfinite():
     """eddy_diffusivity_thermal and eddy_diffusivity_chemical reject 0/inf/nan.
 
-    A positive value scales the mixing-length eddy diffusivity; a negative
-    value pins it to the absolute value in m^2/s (SPIDER convention, matched
-    by both Aragog solver backends), so negative values must round-trip
-    without rejection. Zero collapses either convention to an all-zero
-    diffusivity and duplicates trans_mixing=False, so it is the only sign
-    rejected. The paired assertions on both fields catch a regression that
-    loosens either validator while leaving the other in place, and the
-    positive/negative override checks confirm the validator does not also
-    reject valid input.
+    Both fields accept any positive or negative finite value (SPIDER sign
+    convention) and reject only zero, inf, and nan.
     """
     from proteus.config._interior import Interior
 
@@ -693,11 +686,8 @@ def test_setup_solver_threads_eddy_diffusivity_chemical(tmp_path):
     """setup_solver passes eddy_diffusivity_chemical into _EnergyParameters,
     matching the existing eddy_diffusivity_thermal passthrough.
 
-    The JAX path already threads this value through PhaseParams; without the
-    same line in energy_kwargs, the numpy/scipy path silently kept Aragog's
-    dataclass default of 1.0 regardless of the user's config value. This pins
-    both the schema default and a user override, and checks the two remain
-    distinct so a wrapper that hard-coded or ignored the value cannot pass.
+    Checks the schema default and a user override reach _EnergyParameters
+    as distinct values.
     """
     from proteus.interior_energetics.aragog import AragogRunner
 
