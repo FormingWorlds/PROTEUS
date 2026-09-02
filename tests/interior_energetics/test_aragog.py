@@ -543,6 +543,32 @@ def test_aragog_schema_admits_off_sentinel_rejects_other_negatives():
         Aragog(phase_boundary_entropy_margin=0.0)
 
 
+@pytest.mark.unit
+def test_eddy_diffusivity_fields_reject_non_positive():
+    """eddy_diffusivity_thermal and eddy_diffusivity_chemical stay strictly positive.
+
+    Both are multipliers on the mixing-length eddy diffusivity, so zero or a
+    negative value would zero out or invert transport rather than scale it.
+    The paired assertions on both fields catch a regression that loosens
+    either validator while leaving the other in place, and the positive
+    override check confirms the validator does not also reject valid input.
+    """
+    from proteus.config._interior import Interior
+
+    assert Interior().eddy_diffusivity_thermal == pytest.approx(1.0)
+    assert Interior().eddy_diffusivity_chemical == pytest.approx(1.0)
+    assert Interior(eddy_diffusivity_thermal=2.5).eddy_diffusivity_thermal == pytest.approx(2.5)
+    assert Interior(
+        eddy_diffusivity_chemical=0.42
+    ).eddy_diffusivity_chemical == pytest.approx(0.42)
+
+    for bad in (0.0, -1.0):
+        with pytest.raises(ValueError, match="eddy_diffusivity_thermal.*must be > 0"):
+            Interior(eddy_diffusivity_thermal=bad)
+        with pytest.raises(ValueError, match="eddy_diffusivity_chemical.*must be > 0"):
+            Interior(eddy_diffusivity_chemical=bad)
+
+
 # ---------------------------------------------------------------------------
 # Phase-boundary entropy margin: wrapper threading and version-skew guard.
 #

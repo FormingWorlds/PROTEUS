@@ -625,11 +625,11 @@ class Interior:
     -solid_cond."""
 
     # Eddy diffusivity scaling (dimensionless multiplier on MLT-derived kappa).
-    eddy_diffusivity_thermal: float = field(default=1.0)
+    eddy_diffusivity_thermal: float = field(default=1.0, validator=gt(0))
     """Multiplier on the internally-computed thermal eddy diffusivity.
     SPIDER: -eddy_diffusivity_thermal (1.0 default)."""
 
-    eddy_diffusivity_chemical: float = field(default=1.0)
+    eddy_diffusivity_chemical: float = field(default=1.0, validator=gt(0))
     """Multiplier on the internally-computed chemical eddy diffusivity.
     SPIDER: -eddy_diffusivity_chemical (1.0 default)."""
 
