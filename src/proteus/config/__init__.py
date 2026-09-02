@@ -21,15 +21,10 @@ def _is_explicit_zero(value: object) -> bool:
 def _check_step_cap_zeros(raw: dict, path: Path | str) -> None:
     """Reject an explicit 0.0 for an Aragog step-cap field.
 
-    An absent key still resolves to the schema default and, for a zalmoxis
-    interior structure, on to the Aragog wrapper's built-in cap; only a
-    value the file actually sets is checked here. Checked only when
-    ``interior_energetics.module`` resolves to ``aragog``, an absent key
-    included since that is the schema default, since that promotion is
-    the only place the ambiguity changes what a run does: for any other
-    module the step-cap fields are inert, and a config snapshot written for
-    that module carries its caps at their live, unresolved value, which is
-    0.0 whenever the field was never set.
+    An absent key resolves to the schema default and, on a zalmoxis
+    interior structure, to the Aragog wrapper's built-in cap; only a
+    value the file actually sets is checked here, and only when
+    ``interior_energetics.module`` resolves to ``aragog``.
 
     Parameters
     ----------

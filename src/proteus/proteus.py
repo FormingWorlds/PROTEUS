@@ -496,11 +496,10 @@ class Proteus:
         self._baseline_structure_done = False
 
         # Write config to output directory, for future reference. Record the
-        # resolved (not raw) step caps, so a zalmoxis-armed default reads back
-        # as the value Aragog actually used instead of the schema's 0.0. A
-        # resolved value of 0.0 means the cap is off, not that it is unset,
-        # so it is written back as the -1.0 sentinel: writing 0.0 itself
-        # would be re-read as unset and re-arm the cap on the next resume.
+        # resolved step caps so a zalmoxis-armed default reads back as the
+        # value Aragog used. A resolved 0.0 means the cap is off, so it is
+        # written back as the -1.0 sentinel rather than 0.0, which a reload
+        # treats as unset and re-arms.
         step_cap_overrides = {}
         if self.config.interior_energetics.module == 'aragog':
             from proteus.config._interior import _STEP_CAP_OFF
