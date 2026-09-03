@@ -165,10 +165,6 @@ class Proteus:
         )
         self.lockfile = '/tmp/none'  # Path to keepalive file
 
-        # Resume skin-layer anchor (set during resume setup, cleared when
-        # the AGNI skin layer reconverges). None on non-resume runs.
-        self._resume_T_surf: float | None = None
-
         # Default values for mors.spada cases
         self.star_props = None
         self.star_struct = None
@@ -863,13 +859,6 @@ class Proteus:
 
             self.directories['_resume_struct_settle_loops'] = _RESUME_STRUCT_SETTLE_LOOPS
 
-            # Save the coupled T_surf for the first resumed atmosphere solve.
-            # Aragog's first step outputs an adiabatic T_magma ~30-50 K above
-            # the coupled T_surf because the conductive skin layer is an AGNI
-            # construct that Aragog does not model. Anchoring AGNI's first
-            # solve at the coupled T_surf prevents the skin-layer transient.
-            self._resume_T_surf = self.hf_row.get('T_surf')
-
         log.info(' ')
 
         # Prepare star stuff
@@ -948,48 +937,6 @@ class Proteus:
             )
             if _IT_TIMING_ENABLED:
                 _t_mod['interior'] = time.perf_counter() - _t0
-
-            # After resume, adiabat-based interior solvers (Aragog, SPIDER)
-            # output T_magma ~30-50 K above the coupled T_surf because the
-            # conductive skin layer is an atmosphere-side construct. Override
-            # T_magma for the atmosphere call only (not the helpfile) until
-            # AGNI's skin layer reconverges. The override introduces a
-            # bounded energy inconsistency (~1-4% of F_atm per step) that
-            # decays as the anchor releases.
-            _SKIN_DELTA_THRESHOLD = 5.0  # K; release anchor below this
-            if self._resume_T_surf is not None and self.config.interior_energetics.module in (
-                'aragog',
-                'spider',
-            ):
-                T_adiab = self.hf_row.get('T_magma', 0.0)
-                skin_delta = T_adiab - self._resume_T_surf
-                if abs(skin_delta) > _SKIN_DELTA_THRESHOLD:
-                    if skin_delta < 0:
-                        log.warning(
-                            'Resume: anomalous negative skin delta %.1f K '
-                            '(T_magma=%.1f < anchor=%.1f), releasing anchor',
-                            skin_delta,
-                            T_adiab,
-                            self._resume_T_surf,
-                        )
-                        self._resume_T_surf = None
-                    else:
-                        # Override for atmosphere only; preserve raw value
-                        self.hf_row['_T_magma_raw'] = T_adiab
-                        self.hf_row['T_magma'] = self._resume_T_surf
-                        log.info(
-                            'Resume: anchoring T_magma for atmosphere '
-                            '(%.1f K -> %.1f K, skin delta %.1f K)',
-                            T_adiab,
-                            self._resume_T_surf,
-                            skin_delta,
-                        )
-                else:
-                    log.info(
-                        'Resume: skin layer converged (delta %.1f K), releasing anchor',
-                        skin_delta,
-                    )
-                    self._resume_T_surf = None
 
             # Advance current time in main loop according to interior step
             self.hf_row['Time'] += self.interior_o.dt  # in years
@@ -1268,17 +1215,6 @@ class Proteus:
                 if _saved_atm_bc:
                     for key, val in _saved_atm_bc.items():
                         self.hf_row[key] = val
-
-                # Restore raw T_magma if it was overridden for the atmosphere
-                T_raw = self.hf_row.pop('_T_magma_raw', None)
-                if T_raw is not None:
-                    self.hf_row['T_magma'] = T_raw
-
-            # Update the resume T_surf anchor with the new coupled value,
-            # unless the solvus override was active (in which case T_surf
-            # reflects the pre-solvus value, not what the atmosphere saw).
-            if self._resume_T_surf is not None and not _saved_atm_bc:
-                self._resume_T_surf = self.hf_row.get('T_surf', self._resume_T_surf)
 
             # Atmosphere-interior coupling deadlock detection.
             # If the atmosphere solver failed AND the interior state has

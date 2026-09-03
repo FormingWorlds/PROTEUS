@@ -2108,3 +2108,174 @@ def test_stall_criterion_is_configurable_and_matches_its_constant(tmp_path):
             stuck._check_atmosphere_deadlock()
     args, _ = mock_update.call_args
     assert args[1] == 22
+
+
+# =======================================================================================
+# SECTION: resumed run drives the atmosphere from the interior's own T_magma
+# =======================================================================================
+
+
+def _make_resume_checkpoint_df():
+    """5-row checkpoint helpfile for a resumed run.
+
+    5 rows clears the `len(hf_all) > init_loops+1 == 4` resume-eligibility
+    check and keeps `loops['total']=5` below the `>init_loops+2` threshold
+    that gates the crystallization scan and the escape block's active
+    branch, so both take their inactive branch on the first post-resume
+    iteration. Every row starts from `ZeroHelpfileRow()` so every real
+    helpfile column the main loop reads is present.
+    """
+    from proteus.utils.coupler import ZeroHelpfileRow
+
+    times = [0.0, 100.0, 200.0, 300.0, 400.0]
+    ages = [1.0e6 + t for t in times]
+    magmas = [3000.0, 2900.0, 2800.0, 2700.0, 2600.0]
+    rows = []
+    for time, age, magma in zip(times, ages, magmas):
+        row = ZeroHelpfileRow()
+        row.update(
+            {
+                'Time': time,
+                'age_star': age,
+                'R_int': 6.371e6,
+                'gravity': 9.81,
+                'separation': 1.0,
+                'T_magma': magma,
+                'T_eqm': 255.0,
+                'F_atm': 100.0,
+            }
+        )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _make_resume_main_loop_proteus(tmp_path):
+    """Build a Proteus instance for a resumed run driven into the main loop.
+
+    Mirrors `_make_main_loop_proteus`'s dummy-module, full-loop-capable
+    config, since a resumed run reaches the same main-loop code once
+    resume setup completes.
+    """
+    from proteus.config._params import StopStall
+    from proteus.proteus import Proteus
+
+    config = MagicMock()
+    config.interior_struct.module = 'dummy'
+    config.interior_struct.zalmoxis.update_interval = 0
+    config.interior_struct.zalmoxis.global_miscibility = False
+    config.interior_struct.eos_dir = None
+    config.interior_energetics.module = 'spider'
+    config.interior_energetics.flux_guess = 100.0
+    config.orbit.module = None
+    config.observe.module = None
+    config.atmos_chem.when = 'never'
+    config.outgas.vapourise = True
+    config.planet.temperature_mode = 'isothermal'
+    config.planet.volatile_mode = 'elements'
+    config.planet.gas_prs.get_pressure = lambda _s: 0.0
+    config.outgas.calliope.is_included = lambda _s: False
+    config.params.out.logging = 'WARNING'
+    config.params.out.plot_mod = 100
+    config.params.out.write_mod = 100
+    config.params.out.dt_write_rel = 0.0
+    config.params.out.archive_mod = None
+    config.params.stop.iters.minimum = 10
+    config.params.stop.iters.maximum = 1000
+    config.params.stop.solid.freeze_volatiles = False
+    config.params.stop.solid.phi_crit = 0.01
+    config.params.stop.stall = StopStall(enabled=True, maximum=STALL_MAX_CONFIGURED)
+    config.params.dt.starinst = 1e8
+    config.params.dt.starspec = 1e8
+
+    directories = {
+        'output': str(tmp_path),
+        'output/data': str(tmp_path / 'data'),
+        'output/observe': str(tmp_path / 'observe'),
+        'output/offchem': str(tmp_path / 'offchem'),
+        'output/plots': str(tmp_path / 'plots'),
+        'spider': str(tmp_path / 'spider'),
+        'fwl': str(tmp_path / 'fwl'),
+    }
+    for path in directories.values():
+        Path(path).mkdir(parents=True, exist_ok=True)
+
+    with (
+        patch('proteus.proteus.read_config_object', return_value=config),
+        patch('proteus.utils.coupler.set_directories', return_value=directories),
+    ):
+        p = Proteus(config_path='dummy.toml')
+
+    return p
+
+
+class _StopAfterAtmosphereCall(Exception):
+    """Sentinel exception to stop start() once the atmosphere call captures T_magma."""
+
+
+@pytest.mark.unit
+def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path):
+    """The first post-resume atmosphere call receives the interior's own
+    T_magma output, not the checkpoint's stored value, matching a
+    non-resumed run's per-iteration flow.
+    """
+    from types import SimpleNamespace
+
+    p = _make_resume_main_loop_proteus(tmp_path)
+    hf_df = _make_resume_checkpoint_df()
+    checkpoint_t_magma = hf_df['T_magma'].iloc[-1]
+    interior_t_magma = 3456.0
+    captured = {}
+
+    def _fake_run_interior(*args, **kwargs):
+        args[3]['T_magma'] = interior_t_magma
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        captured['T_magma'] = args[8]['T_magma']
+        raise _StopAfterAtmosphereCall
+
+    with ExitStack() as stack:
+        for target in _MAIN_LOOP_NOOP_PATCHES:
+            stack.enter_context(patch(target))
+
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                return_value=(hf_df, []),
+            )
+        )
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.assert_mass_conservation'))
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.interior_energetics.wrapper.run_interior',
+                side_effect=_fake_run_interior,
+            )
+        )
+        stack.enter_context(
+            patch('proteus.atmos_clim.run_atmosphere', side_effect=_fake_run_atmosphere)
+        )
+
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_interior_t.return_value = MagicMock(dt=100.0, ic=1)
+
+        mock_atmos_t = stack.enter_context(patch('proteus.atmos_clim.common.Atmos_t'))
+        mock_atmos_t.return_value = SimpleNamespace(converged=True)
+
+        mock_spectrum = stack.enter_context(patch('proteus.star.wrapper.get_new_spectrum'))
+        mock_spectrum.return_value = (np.array([1.0]), np.array([1.0]))
+
+        with pytest.raises(_StopAfterAtmosphereCall):
+            p.start(resume=True, offline=True)
+
+    assert captured['T_magma'] == interior_t_magma
+    assert captured['T_magma'] != checkpoint_t_magma
