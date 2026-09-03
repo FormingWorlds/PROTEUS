@@ -308,7 +308,7 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     import logging
 
     row = ZeroHelpfileRow()
-    row['_T_magma_raw'] = 3000.0  # private transient key: must not warn
+    row['_transient_scratch'] = 3000.0  # private transient key: must not warn
     row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
     row['nonsense_future_key'] = 1.0  # genuine drift: must warn
     hf = CreateHelpfileFromDict(ZeroHelpfileRow())
@@ -319,7 +319,7 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
     joined = '\n'.join(r.message for r in warns)
     assert 'nonsense_future_key' in joined, f'Expected unknown-key warning, got: {joined!r}'
-    assert '_T_magma_raw' not in joined, 'Private key leaked into warning'
+    assert '_transient_scratch' not in joined, 'Private key leaked into warning'
     assert 'core_state_initial' not in joined, 'Allowlisted key triggered warning'
 
 
