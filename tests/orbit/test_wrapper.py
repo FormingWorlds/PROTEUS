@@ -11,6 +11,8 @@ correct exponents from plausible bugs.
 
 from __future__ import annotations
 
+import types
+
 import numpy as np
 import pytest
 
@@ -24,6 +26,26 @@ from proteus.orbit.wrapper import (
 from proteus.utils.constants import AU, M_earth, M_sun, R_earth, const_G
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+def _make_satellite_config_stub():
+    """Stand-in for ``config.orbit.satellite`` matching the real
+    ``Satellite`` attrs-class field names and defaults in
+    ``src/proteus/config/_orbit.py``. ``run_orbit``'s init branch
+    unconditionally reads ``config.orbit.satellite.mass_sat`` etc. --
+    it is always the ``Satellite`` object, never a bare bool, even
+    when no satellite is modeled (``include_satellite=False``).
+    """
+    return types.SimpleNamespace(
+        include_satellite=False,
+        mass_sat=0.012,
+        radius_sat=0.273,
+        axial_period_sat=None,
+        semimajoraxis_sat=0.133,
+        eccentricity_sat=0.0,
+        evection_angle=0.0,
+        c_factor_sat=0.4,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +378,7 @@ def test_init_orbit_invokes_lovepy_import_when_module_is_lovepy():
 
 
 def test_run_orbit_dummy_module_sets_imk2_via_dummy_orbit():
-    """The dummy tides path computes Imk2 via run_dummy_orbit and
+    """The dummy tides path computes Imk2 via run_dummy_tides and
     zeroes interior_o.tides at the top of run_orbit.
 
     Discriminating: the lovepy and "no module" branches return
@@ -373,7 +395,7 @@ def test_run_orbit_dummy_module_sets_imk2_via_dummy_orbit():
     config.orbit.evolve = False
     config.orbit.eccentricity = 0.0
     config.orbit.semimajoraxis = 1.0
-    config.orbit.satellite = False
+    config.orbit.satellite = _make_satellite_config_stub()
     config.orbit.semimajoraxis_sat = 1.0e8
     config.orbit.axial_period = None
     config.orbit.instellation_method = 'sep'
@@ -388,15 +410,32 @@ def test_run_orbit_dummy_module_sets_imk2_via_dummy_orbit():
         'R_int': R_earth,
         'R_obs': R_earth,
         'R_xuv': R_earth,
-        # update_separation reads this on the satellite=False path
-        # before run_orbit sets it; seed it upstream.
+        # Superseded by run_orbit's init branch (which always sets
+        # semimajorax_sat from config.orbit.satellite.semimajoraxis_sat);
+        # harmless placeholder, kept for a defensive default.
         'semimajorax_sat': 1.0e8,
+        # Time <= 1 keeps run_orbit on its initial-setup branch, which
+        # none of these tests need to escape: the alternative (evolved)
+        # branch calls evolve_orbit_star/evolve_orbit_satellite, which
+        # are not mocked here.
+        'Time': 0.0,
+        # plan_sat_am is only ever written by evolve_orbit_star /
+        # evolve_orbit_satellite (the evolved-timestep branch this
+        # test never reaches), yet run_orbit's satellite logging block
+        # reads it unconditionally. Pre-seeded so that unrelated
+        # (already-latent) gap doesn't fail these dispatch/Roche tests.
+        'plan_sat_am': 0.0,
+        # plan_star_am is only ever written by sp1d (star_planet_model
+        # == 'sp1d', on an evolved timestep), yet run_orbit logs it
+        # unconditionally for every model. Pre-seeded for the same
+        # reason as plan_sat_am above.
+        'plan_star_am': 0.0,
     }
     interior_o = MagicMock()
     interior_o.dt = 1.0
     interior_o.phi = np.zeros(5)
-    with patch('proteus.orbit.dummy.run_dummy_orbit', return_value=0.0042) as mock_dummy:
-        run_orbit(hf_row, config, dirs={}, interior_o=interior_o)
+    with patch('proteus.orbit.dummy.run_dummy_tides', return_value=0.0042) as mock_dummy:
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
     mock_dummy.assert_called_once()
     assert hf_row['Imk2'] == pytest.approx(0.0042, rel=1e-12)
     # Dispatch guard: the dummy branch must NOT call lovepy.
@@ -420,7 +459,7 @@ def test_run_orbit_no_module_sets_imk2_to_zero():
     config.orbit.evolve = False
     config.orbit.eccentricity = 0.0
     config.orbit.semimajoraxis = 1.0
-    config.orbit.satellite = False
+    config.orbit.satellite = _make_satellite_config_stub()
     config.orbit.semimajoraxis_sat = 1.0e8
     config.orbit.axial_period = 24.0  # hours; exercises the non-None branch
     config.orbit.instellation_method = 'sep'
@@ -434,17 +473,34 @@ def test_run_orbit_no_module_sets_imk2_to_zero():
         'R_int': R_earth,
         'R_obs': R_earth,
         'R_xuv': R_earth,
-        # update_separation reads this on the satellite=False path
-        # before run_orbit sets it; seed it upstream.
+        # Superseded by run_orbit's init branch (which always sets
+        # semimajorax_sat from config.orbit.satellite.semimajoraxis_sat);
+        # harmless placeholder, kept for a defensive default.
         'semimajorax_sat': 1.0e8,
+        # Time <= 1 keeps run_orbit on its initial-setup branch, which
+        # none of these tests need to escape: the alternative (evolved)
+        # branch calls evolve_orbit_star/evolve_orbit_satellite, which
+        # are not mocked here.
+        'Time': 0.0,
+        # plan_sat_am is only ever written by evolve_orbit_star /
+        # evolve_orbit_satellite (the evolved-timestep branch this
+        # test never reaches), yet run_orbit's satellite logging block
+        # reads it unconditionally. Pre-seeded so that unrelated
+        # (already-latent) gap doesn't fail these dispatch/Roche tests.
+        'plan_sat_am': 0.0,
+        # plan_star_am is only ever written by sp1d (star_planet_model
+        # == 'sp1d', on an evolved timestep), yet run_orbit logs it
+        # unconditionally for every model. Pre-seeded for the same
+        # reason as plan_sat_am above.
+        'plan_star_am': 0.0,
     }
     interior_o = MagicMock()
     interior_o.dt = 1.0
     interior_o.phi = np.zeros(3)
-    with patch('proteus.orbit.dummy.run_dummy_orbit') as mock_dummy:
-        run_orbit(hf_row, config, dirs={}, interior_o=interior_o)
+    with patch('proteus.orbit.dummy.run_dummy_tides') as mock_dummy:
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
     # The no-module branch sets Imk2 to exactly 0.0 and does NOT
-    # call run_dummy_orbit.
+    # call run_dummy_tides.
     assert hf_row['Imk2'] == pytest.approx(0.0, abs=1e-12)
     assert mock_dummy.call_count == 0
     # axial_period was specified in hours; confirm conversion to s.
@@ -471,7 +527,7 @@ def test_run_orbit_warns_when_planet_inside_roche_limit():
     config.orbit.evolve = False
     config.orbit.eccentricity = 0.0  # circular -> perihelion == separation
     config.orbit.semimajoraxis = 1.0e-3  # 0.001 AU
-    config.orbit.satellite = False
+    config.orbit.satellite = _make_satellite_config_stub()
     config.orbit.semimajoraxis_sat = 1.0e8
     config.orbit.axial_period = None
     config.orbit.instellation_method = 'sep'
@@ -486,6 +542,19 @@ def test_run_orbit_warns_when_planet_inside_roche_limit():
         'R_obs': 5.0e6,
         'R_xuv': 5.0e6,
         'semimajorax_sat': 1.0e8,
+        # Time <= 1 keeps run_orbit on its initial-setup branch, which
+        # none of these tests need to escape: the alternative (evolved)
+        # branch calls evolve_orbit_star/evolve_orbit_satellite, which
+        # are not mocked here.
+        'Time': 0.0,
+        # plan_sat_am is only ever written by evolve_orbit_star /
+        # evolve_orbit_satellite (the evolved-timestep branch this
+        # test never reaches), yet run_orbit's satellite logging block
+        # reads it unconditionally. Pre-seeded so that unrelated
+        # (already-latent) gap doesn't fail this Roche-limit test.
+        'plan_sat_am': 0.0,
+        # plan_star_am: see the comment in the other two tests above.
+        'plan_star_am': 0.0,
     }
     interior_o = MagicMock()
     interior_o.dt = 1.0
@@ -494,7 +563,7 @@ def test_run_orbit_warns_when_planet_inside_roche_limit():
     target_logger = 'fwl.proteus.orbit.wrapper'
     with patch('logging.Logger.warning') as mock_warn:
         logging.getLogger(target_logger).setLevel(logging.WARNING)
-        run_orbit(hf_row, config, dirs={}, interior_o=interior_o)
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
     # At least one warning fired. Pin separation < roche_limit as the
     # invariant we are exercising; the assertion does not require a
     # specific message string (those are reformatted often), but the
