@@ -608,6 +608,7 @@ def GetHelpfileKeys():
         'eccentricity',     # orbital eccentricity [1]
         'ecc_dot_planet',   # eccentricity derivative [1 s-1]
         'Imk2',             # Imaginary part of k2 Love Number [1]
+        'plan_star_am',     # angular momentum of star+planet [kg m2 s-1],
         'axial_period',     # day length of planet around its axis [s]
         'n_star',           # mean motion of star [s-1]
 
@@ -621,7 +622,7 @@ def GetHelpfileKeys():
         'M_sat',            # mass of satellite [kg]
         'R_sat',            # radius of satellite [m]
         'C_sat',            # principal moment of inertia of satellite [kg m2]
-        'plan_sat_am',      # angular momentum of sat+pla [kg m2 s-1],
+        'plan_sat_am',      # angular momentum of satellite+planet [kg m2 s-1],
         'axial_period_sat', # day length of satellite around its axis [s]
         'evection_angle',   # evection angle [rad]
 

@@ -243,7 +243,7 @@ _DEFAULT_E_GRID = np.concatenate([
     np.arange(0.90, 0.951, 0.005),
 ])
 
-def _select_k_range(e: float, threshold: float = 0.01,
+def _select_k_range(e: float, threshold: float = 0.001,
                      k_search_max: int = 450, pad: int = 2) -> tuple[int, int]:
     """Widest [kmin, kmax] (padded) such that the m=0 and m=2 Hansen
     branches (the dissipative/heating-relevant ones) both have |X_k| below

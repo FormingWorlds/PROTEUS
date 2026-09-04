@@ -240,7 +240,7 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
         hf_row['semimajorax_sat'] = config.orbit.satellite.semimajoraxis_sat * AU
         hf_row['eccentricity_sat'] = config.orbit.satellite.eccentricity_sat
 
-        hf_row['evection_angle'] = config.orbit.satellite.evection_angle
+        hf_row['evection_angle'] = np.deg2rad(config.orbit.satellite.evection_angle)
 
         # Update orbital period (dependent)
         update_period(hf_row)
@@ -315,7 +315,9 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
     log.info('    Orb period = %.5f days  (Planet)' % (hf_row['orbital_period'] / secs_per_day))
     log.info('    Orb spin   = %.5f days  (Planet)' % (hf_row['axial_period'] / secs_per_day))
 
-    if config.orbit.satellite:
+    log.info('    Orb AM     = %.3e kg.m^2/s' % (hf_row['plan_star_am']))
+
+    if config.orbit.satellite.include_satellite:
         log.info('    Orb SMaxis = %.5f AU    (Satellite)' % (hf_row['semimajorax_sat'] / AU))
         log.info('    Orb eccent = %.5f       (Satellite)' % (hf_row['eccentricity_sat']))
         log.info('    Orb period = %.5f days  (Satellite)' % (hf_row['orbital_period_sat'] / secs_per_day))
@@ -403,7 +405,7 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
 
         log.info('    Extracting Love number from satellite lookup table')
 
-        LN_from_lookup(hf_row, tides_o, config)
+        LN_from_lookup(hf_row, dirs, tides_o, config)
 
 
 def read_tides_data(output_dir: str, model: str, times: list):

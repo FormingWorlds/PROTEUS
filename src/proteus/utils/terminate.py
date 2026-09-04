@@ -7,6 +7,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+from proteus.utils.constants import R_earth
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -140,6 +141,21 @@ def _check_spinrate(handler: Proteus) -> bool:
     if axial_period <= breakup_period + offset:
         UpdateStatusfile(handler.directories, 16)
         _msg_termination('Planet has disintegrated')
+        return True
+
+    return False
+
+
+def _check_satellite(handler: Proteus) -> bool:
+    log.debug('Check satellite')
+
+    sma = handler.hf_row['semimajorax_sat']
+    sma_max = handler.config.params.stop.satellite.sma_max * R_earth
+    log.debug('    sma, sma_max = %.3e, %.3e  m' % (sma, sma_max))
+
+    if sma >= sma_max:
+        UpdateStatusfile(handler.directories, 17)
+        _msg_termination('Satellite reached escape semimajor axis')
         return True
 
     return False
@@ -284,6 +300,10 @@ def check_termination(handler: Proteus) -> bool:
         # Spinning faster than breakup rate (centrifugal disruption)
         if handler.config.params.stop.disint.spin_enabled:
             finished = finished or _check_spinrate(handler)
+
+    # Satellite escaped
+    if handler.config.params.stop.satellite.enabled:
+        finished = finished or _check_satellite(handler)
 
     # ------------------------
     # 3) Check resource-based criteria, set by user according to the

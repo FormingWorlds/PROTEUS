@@ -306,6 +306,22 @@ class StopDisint:
 
 
 @define
+class StopSatellite:
+    """Parameters for satellite escape stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable criteria if True
+    sma_max: float
+        Maximum semi-major axis for the satellite [R_Earth].
+    """
+
+    enabled: bool  = field(default=False)
+    sma_max: float = field(default=0)
+
+
+@define
 class StopClock:
     """Parameters for maximum clock runtime stopping criteria.
 
@@ -351,6 +367,7 @@ class StopParams:
     radeqm: StopRadeqm = field(factory=StopRadeqm)
     escape: StopEscape = field(factory=StopEscape)
     disint: StopDisint = field(factory=StopDisint)
+    satellite: StopSatellite = field(factory=StopSatellite)
     clock: StopClock = field(factory=StopClock)
 
     strict: bool = field(default=False)

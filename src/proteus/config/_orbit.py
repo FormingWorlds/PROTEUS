@@ -87,7 +87,7 @@ class ObliquaSolid:
     dr_min: int             = field(default=300, validator=gt(0))
     dr_max: int             = field(default=3000, validator=gt(0))
     core: str               = field(default="liquid", validator=in_(("liquid", "solid", "inertial")))
-    core_props: str         = field(default="none", validator=in_(("core", "mantle")))
+    core_props: str         = field(default="core", validator=in_(("core", "mantle")))
     inertial_terms: bool    = field(default=True)
     bulk_l: float           = field(default=1e9, validator=gt(0))
     porosity_thresh: float  = field(default=3e-2, validator=gt(0))
@@ -127,7 +127,7 @@ class ObliquaFluid:
         Rayleigh drag efficiency at core interface [dimensionless].
     """
     sigma_R: float      = field(default=1e-3, validator=gt(0))
-    sigma_R_inf: float  = field(default=1e-6, validator=gt(0))
+    sigma_R_inf: float  = field(default=0.5, validator=gt(0))
     sigma_R_prf: str    = field(default="exp", validator=in_(("uniform", "exp", "linear", "quadratic", "dynamic", "dynamic_interp")))
     H_R: float          = field(default=1e4, validator=gt(0))
     efficiency: float   = field(default=0.3, validator=gt(0))

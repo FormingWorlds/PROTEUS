@@ -610,13 +610,20 @@ def plot_orbit_entry(handler: Proteus):
 
     if handler.config.orbit.planet_satellite_model == 'ps1d_evec':
         # get data from fine output for evection angle
-        fine_t, fine_phi = np.read_csv(os.path.join(handler.directories['output/data'], 'fine_evection_data.csv'), names=['t_abs_yr', 'phi'], skiprows=1, delimiter=',').values.T
+        fine_t, fine_phi = None, None
+        fine_path = os.path.join(handler.directories['output/data'], 'fine_evection_data.csv')
+
+        if os.path.exists(fine_path):
+            try:
+                fine_t, fine_phi = np.loadtxt(fine_path, skiprows=1, delimiter=',').T
+            except Exception as e:
+                log.warning(f"Failed to load fine evection data: {e}")
 
         plot_evection(
             hf_all,
             handler.directories['output'],
             plot_format=handler.config.params.out.plot_fmt,
-            t0=1e3,
+            t0=1e1,
             xscale='linear',
             t_max=1e5,
             fine_t=fine_t,
