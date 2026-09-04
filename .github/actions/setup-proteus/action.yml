@@ -254,12 +254,51 @@ runs:
     # Install the conda-side dependencies that need native libraries
     # (SUNDIALS for CVODE, scikits.odes for the Python bindings). The
     # rest of PROTEUS installs via pip into the same env in step 8.
-    - name: Install conda dependencies
+    - name: Install conda dependencies (Linux)
+      if: runner.os == 'Linux'
       shell: bash -el {0}
       run: |
         set -euo pipefail
         mamba install -n proteus -c conda-forge -y sundials 'scikits.odes>=3.0.0'
+
+    # Pin BLAS/LAPACK to the Accelerate build variant in the same
+    # solve. The openblas variant drags in llvm-openmp, which loads a
+    # second libomp.dylib into the same process as torch's bundled
+    # copy and aborts the process at import time.
+    - name: Install conda dependencies (macOS)
+      if: runner.os == 'macOS'
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        mamba install -n proteus -c conda-forge -y sundials 'scikits.odes>=3.0.0' \
+          'libblas=*=*accelerate*' 'liblapack=*=*accelerate*'
+
+    - name: Verify conda dependencies
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
         python -c "import scikits.odes; print('scikits.odes OK, version', scikits.odes.__version__)"
+
+    # Verify the install landed on the intended variant so a channel
+    # or solver drift back to openblas fails loudly here instead of
+    # resurfacing as an unrelated-looking pytest collection abort.
+    - name: Verify BLAS/LAPACK build (macOS)
+      if: runner.os == 'macOS'
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        blas_info="$(mamba list -n proteus '^libblas$')"
+        lapack_info="$(mamba list -n proteus '^liblapack$')"
+        echo "$blas_info"
+        echo "$lapack_info"
+        if ! grep -q accelerate <<< "$blas_info"; then
+          echo "::error::libblas did not resolve to an Accelerate build; this reintroduces the duplicate libomp.dylib SIGABRT." >&2
+          exit 1
+        fi
+        if ! grep -q accelerate <<< "$lapack_info"; then
+          echo "::error::liblapack did not resolve to an Accelerate build; this reintroduces the duplicate libomp.dylib SIGABRT." >&2
+          exit 1
+        fi
 
     # ------------------------------------------------------------------
     # 3. Julia
