@@ -38,6 +38,7 @@ pinned commit.
 | AGNI | Radiative-convective atmosphere (Julia) | [![AGNI](https://img.shields.io/badge/AGNI-179472b3-green)](https://github.com/nichollsh/AGNI/commit/179472b36b14e15bb125666cd8c9c6f231a2e907){target="_blank" rel="noopener"} | [Docs](https://www.h-nicholls.space/AGNI/) |
 | SOCRATES | Spectral radiative transfer (Fortran) | [![SOCRATES](https://img.shields.io/badge/SOCRATES-fe0c4a48-green)](https://github.com/FormingWorlds/SOCRATES/commit/fe0c4a486f1dbf9addf6f01a03c644d6bd5e1d1e){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/SOCRATES/) |
 | SPIDER | Interior evolution (C, requires PETSc) | [![SPIDER](https://img.shields.io/badge/SPIDER-c9a3fd43-green)](https://github.com/FormingWorlds/SPIDER/commit/c9a3fd4301c7008291d4f4921506d36b6288f8ca){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/SPIDER/) |
+| Obliqua | Orbital evolution and tides (Julia) | [![Obliqua](https://img.shields.io/badge/Obliqua-89be36ee-green)](https://github.com/FormingWorlds/Obliqua/commit/89be36ee70a4a7c776c4d9b0d461ba1259b6b0c0){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/Obliqua) |
 <!-- END GIT_TABLE -->
 
 ### Optional modules
@@ -48,7 +49,6 @@ pinned commit.
 | LovePy | Multi-phase tidal heating (Julia) | [![LovePy](https://img.shields.io/badge/LovePy-main-lightgrey)](https://github.com/nichollsh/LovePy){target="_blank" rel="noopener"} | [GitHub](https://github.com/nichollsh/LovePy) |
 | atmodeller | Alternative outgassing backend (GPL-3.0) | [![atmodeller](https://img.shields.io/badge/atmodeller-%3E%3D1.0.0-blue)](https://pypi.org/project/atmodeller/1.0.0/){target="_blank" rel="noopener"} | [GitHub](https://github.com/djbower/atmodeller) |
 | VULCAN | Atmospheric chemistry (GPL-3.0) | [![VULCAN](https://img.shields.io/badge/VULCAN-%3E%3D26.04.22-blue)](https://pypi.org/project/fwl-vulcan/26.04.22/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/VULCAN) |
-| Obliqua | Orbital evolution and tides (Julia) | n/a | [GitHub](https://github.com/FormingWorlds/Obliqua) |
 <!-- END OPTIONAL_TABLE -->
 
 ---

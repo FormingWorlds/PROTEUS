@@ -279,10 +279,18 @@ url = "https://github.com/ExoInteriors/BOREAS.git"
 ref = "0174edb04558a92a8f0b47cbd994964787f495aa"
 
 [tool.proteus.modules.lovepy]
-# Multi-phase tidal heating module (Julia). Installed via Julia
+# Solid-phase tidal heating module (Julia). Installed via Julia
 # Pkg.add(url=..., rev=...) by tools/get_lovepy.sh. Optional.
 url = "https://github.com/nichollsh/LovePy"
 ref = "main"
+
+[tool.proteus.modules.obliqua]
+# Multi-phase tides module (Julia, with juliacall bridge).
+# Cloned in-place and instantiated by tools/get_obliqua.sh, mirroring
+# the AGNI pattern. Pinned to a commit on md/phys_tests (pre-main-merge);
+# bump once the branch lands on main.
+url = "https://github.com/FormingWorlds/Obliqua.git"
+ref = "89be36ee70a4a7c776c4d9b0d461ba1259b6b0c0"
 
 [tool.proteus.modules.petsc]
 # Pre-built PETSc archive on OSF. Required by SPIDER. tools/get_petsc.sh

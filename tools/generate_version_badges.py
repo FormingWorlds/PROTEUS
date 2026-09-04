@@ -62,6 +62,13 @@ GIT_META = {
         'https://proteus-framework.org/SPIDER/',
         'Docs',
     ),
+    'obliqua': (
+        'Obliqua',
+        'Orbital evolution and tides (Julia)',
+        'https://github.com/FormingWorlds/Obliqua',
+        'https://proteus-framework.org/Obliqua/',
+        'Docs',
+    ),
 }
 
 # Each entry: (label, role, pin_val, color, pin_link, doc_url, doc_label, extra).
@@ -99,16 +106,6 @@ OPTIONAL = [
         'https://github.com/FormingWorlds/VULCAN',
         'GitHub',
         ('vulcan', 'fwl-vulcan'),
-    ),
-    (
-        'Obliqua',
-        'Orbital evolution and tides (Julia)',
-        None,
-        None,
-        None,
-        'https://github.com/FormingWorlds/Obliqua',
-        'GitHub',
-        None,
     ),
 ]
 
