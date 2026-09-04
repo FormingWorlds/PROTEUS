@@ -6,6 +6,8 @@ behaviour of `proteus.orbit.satellite` against a published source.
 | Test id | Reference | Source page | Scope |
 |---|---|---|---|
 | `tests/orbit/test_satellite.py::test_update_satellite_angular_momentum_matches_korenaga_2023_eq60` | Korenaga (2023) Icarus 400, 115564, Eq. 60 (orbital component cross-checked against Touma and Wisdom 1994) | n/a | Pins the spin-plus-orbital decomposition on the present-day Earth-Moon configuration. Asserts sign and the 1e34-1e35 kg m^2 / s order of magnitude expected from Korenaga's Eq. 60. |
+| `tests/integration/test_slow_orbit_evection_ctl.py::test_resonance_capture_occurs_within_expected_time_window` | Rufu and Canup (2020) Figure 3 evection-resonance capture case, as reproduced in `src/proteus/orbit/evection_notebook.ipynb` / `plot_evection.png` (capture at t~2.4e4 yr) | n/a | Drives the real `evolve_orbit_satellite(model='ps1d_evec')` under a Mignard constant-time-lag tidal spectrum from the paper's Figure-3-calibrated initial conditions; asserts eccentricity crosses 0.1 within t in [2e4, 4e4] yr. Compared against a real run reaching t=2.58e4 yr, e=0.111. |
+| `tests/integration/test_slow_orbit_evection_ctl.py::test_peak_eccentricity_matches_reference_location` | Same source as above (peak e~0.72-0.724 at a'~11.89 R_earth, t~5.2e4 yr) | n/a | Same driver; asserts the eccentricity peak reaches >= 0.6 at a' in [10, 13] R_earth. Compared against a real run's observed peak of e=0.755 at a'=11.88 R_earth, t=5.12e4 yr -- the peak a' matches the reference to <0.1%. The post-peak contraction phase (a' declining to ~10.2 R_earth by t=1e5 yr in the reference) was not reached in that run and is not asserted here. |
 
 ## Re-derivation note
 
