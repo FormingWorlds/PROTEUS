@@ -135,7 +135,7 @@ config_version = "3.0"
 
 # Interior - physics table
 [interior_energetics]
-    grain_size      = 0.1   # crystal settling grain size [m]
+    grain_size      = 1e-3   # crystal settling grain size [m]
     flux_guess       = 1e6   # Initial heat flux guess [W m-2]
     radio_tref = 4.55   # Reference age for concentrations [Gyr]
     radio_K    = 310.0  # ppmw of potassium (all isotopes)

@@ -4555,7 +4555,7 @@
       "class": "Interior",
       "type": "float",
       "accepts_none": false,
-      "default": "0.1",
+      "default": "0.001",
       "choices": null,
       "bounds": [
         {

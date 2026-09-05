@@ -525,7 +525,7 @@ class Interior:
     )
 
     mixing_length: str = field(default='nearest', validator=in_(('nearest', 'constant')))
-    grain_size: float = field(default=0.1, validator=gt(0))
+    grain_size: float = field(default=1e-3, validator=gt(0))
     flux_guess: float = field(default=-1)
     tmagma_atol: float = field(default=20.0, validator=ge(0))
     tmagma_rtol: float = field(default=0.02, validator=ge(0))

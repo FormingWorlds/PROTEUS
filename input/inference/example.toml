@@ -360,7 +360,7 @@ config_version = "3.0"
     # Rheology and convection
     rfront_loc                = 0.30         # rheological front centre [melt fraction]
     rfront_wid                = 0.15         # rheological front width [melt fraction]
-    grain_size                = 0.1          # crystal grain size [m]
+    grain_size                = 1e-3          # crystal grain size [m]
     mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
     kappah_floor              = 10.0         # eddy diffusivity floor [m2/s]; prevents MLT freeze
 
