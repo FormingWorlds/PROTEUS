@@ -13,6 +13,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "atmos_clim",
         "interior_energetics",
@@ -33,6 +34,10 @@
       "origin": "literal",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/orbit/orbit.py",
           "condition": "orbit.evolve = true"
         },
@@ -42,6 +47,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "orbit",
         "plot"
@@ -110,6 +116,10 @@
       "origin": "literal",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/orbit/orbit.py",
           "condition": "orbit.evolve = true"
         },
@@ -119,6 +129,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "orbit",
         "plot"
@@ -308,6 +319,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_clim",
         "escape",
         "interior_energetics",
@@ -1712,6 +1724,31 @@
       ]
     },
     {
+      "name": "step_dE_impact_J",
+      "unit": "J",
+      "description": "giant-impact re-melt heat injection (both residual sides)",
+      "group": "Energy-conservation columns",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "interior_energetics",
+        "utils"
+      ]
+    },
+    {
       "name": "E_state_heat_cons_J",
       "unit": "J",
       "description": "cumulative sum of step_dE_state_heat_J across rows",
@@ -2387,7 +2424,7 @@
       "name": "M_vol_initial",
       "unit": "kg",
       "description": "bulk volatile inventory baseline",
-      "group": "Desiccation escape balance",
+      "group": "Atmospheric composition from outgassing",
       "origin": "literal",
       "producers": [
         {
@@ -2403,16 +2440,21 @@
     {
       "name": "esc_kg_cumulative",
       "unit": "kg",
-      "description": "cumulative escaped mass",
-      "group": "Desiccation escape balance",
+      "description": "cumulative mass lost to space (escape + impact stripping)",
+      "group": "Atmospheric composition from outgassing",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "outgas"
       ]
@@ -2421,7 +2463,7 @@
       "name": "esc_clamp_frac",
       "unit": "1",
       "description": "requested per-step loss / escapable reservoir",
-      "group": "Desiccation escape balance",
+      "group": "Atmospheric composition from outgassing",
       "origin": "literal",
       "producers": [
         {
@@ -2441,7 +2483,7 @@
       "name": "esc_step_kg",
       "unit": "kg",
       "description": "loss applied on this step, after the cap",
-      "group": "Desiccation escape balance",
+      "group": "Atmospheric composition from outgassing",
       "origin": "literal",
       "producers": [
         {
@@ -2455,6 +2497,23 @@
       ],
       "consumers": [
         "outgas"
+      ]
+    },
+    {
+      "name": "M_accreted_rock",
+      "unit": "kg",
+      "description": "cumulative rock mass added by giant impacts",
+      "group": "Giant-impact accretion ledger",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "accretion",
+        "main loop"
       ]
     },
     {
@@ -6169,6 +6228,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -6239,6 +6299,10 @@
       "origin": "<gas>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -6264,6 +6328,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -6500,6 +6565,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -6570,6 +6636,10 @@
       "origin": "<gas>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -6595,6 +6665,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -6831,6 +6902,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -6901,6 +6973,10 @@
       "origin": "<gas>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -6926,6 +7002,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -7162,6 +7239,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -7232,6 +7310,10 @@
       "origin": "<gas>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -7257,6 +7339,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -7493,6 +7576,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -7563,6 +7647,10 @@
       "origin": "<gas>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -7588,6 +7676,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -8466,6 +8555,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -8536,6 +8626,10 @@
       "origin": "<gas>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -8561,6 +8655,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -8797,6 +8892,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -8867,6 +8963,10 @@
       "origin": "<gas>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -8892,6 +8992,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -9128,6 +9229,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -9198,6 +9300,10 @@
       "origin": "<gas>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -9223,6 +9329,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -9459,6 +9566,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -9529,6 +9637,10 @@
       "origin": "<gas>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -9554,6 +9666,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -10432,6 +10545,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -10502,6 +10616,10 @@
       "origin": "<gas>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -10527,6 +10645,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -11084,6 +11203,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -11154,6 +11274,10 @@
       "origin": "<gas>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -11179,6 +11303,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -12378,6 +12503,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -12448,6 +12574,10 @@
       "origin": "<gas>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -12473,6 +12603,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -13993,6 +14124,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -14063,6 +14195,10 @@
       "origin": "<gas>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -14088,6 +14224,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -14544,6 +14681,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -14618,6 +14756,10 @@
       "origin": "<element>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -14639,6 +14781,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -14674,6 +14817,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -14744,6 +14888,10 @@
       "origin": "<element>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -14765,6 +14913,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -14800,6 +14949,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -14870,6 +15020,10 @@
       "origin": "<element>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -14891,6 +15045,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -14926,6 +15081,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -14996,6 +15152,10 @@
       "origin": "<element>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -15017,6 +15177,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
@@ -15052,6 +15213,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
@@ -15122,6 +15284,10 @@
       "origin": "<element>_kg_total",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         },
@@ -15143,6 +15309,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",

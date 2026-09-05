@@ -403,6 +403,50 @@ def check_julia() -> CheckResult:
     )
 
 
+def check_cvode() -> CheckResult:
+    """Check that the SUNDIALS CVODE solver is available to Aragog.
+
+    Aragog integrates the interior with CVODE when
+    ``interior_energetics.aragog.solver_method = "cvode"``, the production
+    setting and the same solver SPIDER uses. Without the wrapper it falls
+    back to scipy Radau, which stops on its own melt-fraction cap at the
+    crystallization front and so takes far shorter steps through it. The
+    fallback is reported here rather than only in the run log, where it is
+    a per-solve warning that is easy to miss until a long coupled run has
+    already spent hours on it.
+    """
+    if importlib.util.find_spec('scikits_odes_sundials') is None:
+        return CheckResult(
+            name='cvode',
+            category='environment',
+            status=WARN,
+            message='not installed; Aragog integrates with scipy Radau instead',
+            fix_cmd='bash tools/get_cvode.sh',
+        )
+    try:
+        importlib.import_module('scikits_odes_sundials.cvode')
+    except Exception as exc:
+        # Installed but not loadable is its own failure: the wrapper is
+        # compiled against the SUNDIALS C library, so a version or ABI
+        # mismatch imports the package and then fails on the extension.
+        return CheckResult(
+            name='cvode',
+            category='environment',
+            status=WARN,
+            message=(
+                f'installed but does not load ({type(exc).__name__}); '
+                'Aragog integrates with scipy Radau instead'
+            ),
+            fix_cmd='bash tools/get_cvode.sh',
+        )
+    return CheckResult(
+        name='cvode',
+        category='environment',
+        status=PASS,
+        message='available for the Aragog interior',
+    )
+
+
 def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     """Check a Python package against the pyproject.toml version spec."""
     try:
@@ -637,6 +681,17 @@ def run_all_checks() -> list[CheckResult]:
         results.append(
             CheckResult(
                 name='julia',
+                category='environment',
+                status=FAIL,
+                message=f'check error: {exc}',
+            )
+        )
+    try:
+        results.append(check_cvode())
+    except Exception as exc:
+        results.append(
+            CheckResult(
+                name='cvode',
                 category='environment',
                 status=FAIL,
                 message=f'check error: {exc}',

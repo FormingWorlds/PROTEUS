@@ -2,6 +2,7 @@
 from __future__ import annotations  # noqa: I001
 
 import glob
+import importlib.util
 import inspect
 import logging
 import os
@@ -61,13 +62,23 @@ def _eos_content_key(eos_dir_str: str) -> str:
 
     The PROTEUS test fixture materialises the EOS tables into a fresh
     per-test ``outdir/data/spider_eos`` directory each time, so a path
-    based cache key misses across tests. The content fingerprint is a
-    sorted tuple of ``(filename, file size)`` pairs for every regular
-    file in the directory; it is stable across distinct on-disk copies
-    of the same tables but cheap to compute (one ``os.listdir`` + one
-    ``getsize`` per file).
+    based cache key misses across tests.
+
+    The generator writes the parameters that define the tables into
+    ``.cache_info.txt``: the pressure ceiling, the grid shape, the mushy-zone
+    factor and the EOS identity. That marker is the key when present. Sizes
+    alone are not enough on the accretion path: a giant impact grows the planet
+    and the tables are rewritten to a higher pressure ceiling on the same grid,
+    so every file keeps its length and a size-based key cannot see that the
+    tables now describe a different planet.
     """
     try:
+        marker = os.path.join(eos_dir_str, '.cache_info.txt')
+        if os.path.isfile(marker):
+            with open(marker) as f:
+                key = f.read().strip()
+            if key:
+                return key
         pairs = []
         for name in sorted(os.listdir(eos_dir_str)):
             full = os.path.join(eos_dir_str, name)
@@ -140,6 +151,44 @@ _RHO_CORE_MAX = 30000.0
 # static and dynamic zalmoxis runs. A user value > 0 in the config always
 # takes precedence. Sensitivity-tested across the m-series grid.
 _ZALMOXIS_DEFAULT_PHI_STEP_CAP = 0.1
+
+# How much of the time the interior is given it has to actually cover, and
+# over how many steps that is judged. A step the phase-change event cuts short
+# is fine on its own; a run that covers under a percent of everything it asks
+# for is not going anywhere, however healthy each individual solve is. The
+# share is read over a window rather than per step, and over a run of steps
+# rather than consecutive ones, because a run can alternate between stopping
+# at the front and stepping normally and still be stalled: what matters is the
+# ground covered, not how the short steps are spaced. Twenty steps is long
+# enough that an ordinary step or two cannot hide a stall and short enough to
+# catch one within seconds rather than after a night of wall time.
+_STEP_PROGRESS_MIN_SHARE = 0.01
+_STEP_PROGRESS_WINDOW = 20
+
+
+def _cvode_loads() -> bool:
+    """Report whether CVODE is importable, extension included.
+
+    Locating the package is not enough to know a run is integrating with it.
+    The wrapper is compiled against the SUNDIALS C library, so a version or
+    ABI mismatch leaves a package that is found and then fails on import, and
+    Aragog quietly falls back to the scipy integrator. Loading the submodule
+    is the same test the solver itself and `proteus doctor` apply, which is
+    what keeps a stall on a broken build from being reported as a healthy one.
+
+    Returns
+    -------
+    bool
+        True when ``scikits_odes_sundials.cvode`` imports.
+    """
+    if importlib.util.find_spec('scikits_odes_sundials') is None:
+        return False
+    try:
+        importlib.import_module('scikits_odes_sundials.cvode')
+    except Exception:
+        return False
+    return True
+
 
 # Default per-cell temperature and entropy step caps auto-enabled for the
 # coupled zalmoxis stack, alongside the melt-fraction cap. The melt-fraction
@@ -404,6 +453,18 @@ def _estimate_T_pot(out) -> float:
     return float(out.T_magma)
 
 
+class InteriorStalledError(RuntimeError):
+    """The interior is no longer carrying the run forward.
+
+    Raised when step after step stops at the same phase change having advanced
+    almost nothing. Distinct from the solver failures the wrapper absorbs by
+    keeping the previous interior state for a step: those are transient, and
+    the run is expected to step past them, while this one repeats for as long
+    as the front is there. The wrapper lets it through so the run ends where
+    an operator sees it, rather than continuing to write rows that go nowhere.
+    """
+
+
 class AragogRunner:
     def __init__(
         self,
@@ -560,6 +621,10 @@ class AragogRunner:
             else:
                 AragogRunner.update_structure(config, hf_row, interior_o)
                 AragogRunner.update_solver(dt, hf_row, interior_o)
+            # Refresh before reset(): the compression-work diagnostic inside
+            # reset() evaluates the new mesh pressures against the installed
+            # table, which clamps at a stale ceiling on impact steps.
+            AragogRunner._refresh_entropy_eos(config, interior_o)
             interior_o.aragog_solver.reset()
             # Restore entropy IC from previous solve
             if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
@@ -1193,6 +1258,34 @@ class AragogRunner:
             )
 
     @staticmethod
+    def _refresh_entropy_eos(config: Config, interior_o: Interior_t) -> None:
+        """Point the solver at the P-S tables as they stand now.
+
+        The solver keeps whatever table object it was built with, and the tables
+        are rewritten whenever the structure solve reruns, with a pressure
+        ceiling that grows with the planet. ``solver.entropy_eos`` is read live
+        throughout the solve (the RHS, the per-call energy integrals, and the
+        compression-work diagnostic inside ``reset()``), so a stale object
+        misreports the energy budget on exactly the runs that outgrow their
+        starting table. The loader is cached on the table parameters, so an
+        unchanged table costs one small read.
+
+        Parameters
+        ----------
+        config : Config
+            PROTEUS configuration; a const-properties run carries no tables.
+        interior_o : Interior_t
+            Interior state holding the live Aragog solver.
+        """
+        if config.interior_energetics.const_properties:
+            return
+        solver = getattr(interior_o, 'aragog_solver', None)
+        eos_dir = getattr(interior_o, '_spider_eos_dir', '')
+        if solver is None or not eos_dir or not os.path.isdir(str(eos_dir)):
+            return
+        solver.entropy_eos = _cached_entropy_eos(str(eos_dir))
+
+    @staticmethod
     def _maybe_install_jax_cvode_factory(config: Config, interior_o: Interior_t) -> None:
         """Install a JAX CVODE callback factory on the solver (option Z).
 
@@ -1249,7 +1342,9 @@ class AragogRunner:
         try:
             eos_dir = interior_o._spider_eos_dir
             _t_pre_jax_eos = time.perf_counter()
-            eos_jax = _cached_entropy_eos_jax(str(eos_dir))
+            # Build once here so an unreadable EOS directory fails the install
+            # rather than the first solve. The factory reloads it per call.
+            _cached_entropy_eos_jax(str(eos_dir))
             _t_post_jax_eos = time.perf_counter()
             if nightly_strict:
                 log.info(
@@ -1282,14 +1377,10 @@ class AragogRunner:
                 phase_smoothing_width=0.01,
             )
 
-            _t_pre_mesh = time.perf_counter()
-            mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
-            _t_post_mesh = time.perf_counter()
-            n_stag = solver._n_stag
             if nightly_strict:
                 log.info(
-                    'aragog diag: jax_cvode_factory phases params_jax+mesh=%.2fs',
-                    _t_post_mesh - _t_post_jax_eos,
+                    'aragog diag: jax_cvode_factory phases params_jax=%.2fs',
+                    time.perf_counter() - _t_post_jax_eos,
                 )
 
             def factory(scales, core_bc_mode):
@@ -1298,6 +1389,16 @@ class AragogRunner:
                 # consumed the analytic Jacobian rather than silently falling
                 # back to the FD path.
                 solver._jax_factory_call_count += 1
+                # Rebuild the mesh from live solver state every solve() call:
+                # impacts and structure re-solves replace it, and a copy taken
+                # at install time would keep integrating the pre-change planet.
+                mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
+                n_stag = solver._n_stag
+                # Same for the EOS tables: regeneration raises their pressure
+                # ceiling with the planet's mass, and an install-time copy would
+                # clamp the deep mantle at the smaller planet's table edge. The
+                # loader is cached, so an unchanged table costs one small read.
+                eos_jax = _cached_entropy_eos_jax(str(interior_o._spider_eos_dir))
                 # ``scales`` is an aragog.jax.nondim.NonDimScales single
                 # source of truth.
                 # Rebuild BoundaryParams from live solver state every
@@ -1369,17 +1470,27 @@ class AragogRunner:
                 )
                 return rhs_fn, jac_fn
 
-            solver.set_jax_cvode_factory(factory)
-            log.info(
+            # Read the diagnostic geometry before installing, so that the
+            # install is the last thing here that can fail. Anything raising
+            # after it would send a working factory into the handler below.
+            r_basic = np.asarray(solver._r_basic_flat).ravel()
+            installed = (
                 'Option Z: JAX CVODE factory installed on aragog solver '
-                '(core_bc=%s, n_stag=%d).',
-                solver._core_bc,
-                n_stag,
+                f'(core_bc={solver._core_bc}, n_stag={int(solver._n_stag)}, '
+                f'r_cmb={float(r_basic[0]):.6e} m, r_surf={float(r_basic[-1]):.6e} m). '
+                'The mesh is read from the solver on every solve, so this is the '
+                'geometry at install time, not for the run.'
             )
+            solver.set_jax_cvode_factory(factory)
+            log.info(installed)
         except Exception as exc:
             msg = f'Option Z factory install failed ({exc}); falling back to FD Jacobian.'
             if nightly_strict:
                 raise RuntimeError(msg) from exc
+            # Leave nothing half-installed: the solve-time check is only that a
+            # factory is present, so a partial install would run this path on
+            # state the failure above left incomplete.
+            solver.set_jax_cvode_factory(None)
             log.warning(msg)
 
     @staticmethod
@@ -1479,6 +1590,10 @@ class AragogRunner:
             float(S_target),
             N,
         )
+        # Return the staggered entropy profile just set, so a caller re-melting
+        # mid-run can carry it forward without re-deriving it from the solver's
+        # solution object (which still holds the pre-reset trajectory).
+        return S_init
 
     @staticmethod
     def _verify_entropy_ic(
@@ -2080,6 +2195,15 @@ class AragogRunner:
         sanity_dT_core = max(
             3000.0, 1500.0 * mass_tot
         )  # max plausible T_core change per retry [K]
+        # A giant impact re-melts the mantle between solves, so the T_core jump
+        # it produces is real and is identical at every step size. Retrying
+        # cannot shrink it, so the guard would spend the whole ladder and kill
+        # the run. Skip it on that one step; every other step keeps it.
+        impact_step = bool(getattr(interior_o, 'impact_reset_this_step', False))
+
+        # Immediately before the solve, so the state-heat integral this step
+        # books is taken against the tables the step actually runs on.
+        AragogRunner._refresh_entropy_eos(self._config, interior_o)
 
         # Capture IC for restoration on retry, and pre-call T_core for
         # the sanity check on retry success.
@@ -2134,8 +2258,15 @@ class AragogRunner:
                         float(hf_row.get('Time', 0.0)),
                     )
 
-                # Status check: did the solver accept the step?
-                if out.status == 0:
+                # Status check: did the solver accept the step? Status 0 is a
+                # full step. Status 1 is a terminal event (melt-fraction cap or
+                # liquidus crossing) with valid partial state; the scipy
+                # fallback reports it while CVODE maps the same cap to status 0.
+                # Accept it when it advanced (dt_actual > 0): retrying refires
+                # the event at the same place, and a zero-advance step would
+                # stall the loop, so only that case is rejected.
+                stopped_on_event = out.status == 1 and float(out.dt_actual) > 0.0
+                if out.status == 0 or stopped_on_event:
                     # Sanity check: reject suspiciously large T_core jumps
                     # that indicate the solver "succeeded" with garbage.
                     # Applies on ALL attempts (not just retries):
@@ -2151,7 +2282,15 @@ class AragogRunner:
                     # converged core temperature exists to compare against, so
                     # the jump guard is necessarily inactive on that one step.
                     dT = abs(T_core_post - T_core_pre) if T_core_pre > 0 else 0.0
-                    if dT > sanity_dT_core:
+                    if dT > sanity_dT_core and impact_step:
+                        log.info(
+                            'T_core jumped %.1f K (>%.0f K threshold) on the '
+                            'step a giant impact re-melted the mantle. The '
+                            'jump is the impact, so the guard is skipped here.',
+                            dT,
+                            sanity_dT_core,
+                        )
+                    if dT > sanity_dT_core and not impact_step:
                         log.warning(
                             'Aragog attempt %d returned status=0 but T_core '
                             'jumped %.1f K (>%.0f K threshold). Treating as '
@@ -2162,6 +2301,26 @@ class AragogRunner:
                         )
                         # Fall through to the retry/exhaustion branch below
                     else:
+                        attempted_dt = float(solver.parameters.solver.end_time) - t_start
+                        if stopped_on_event:
+                            log.info(
+                                'Aragog stopped on its terminal event after '
+                                '%.3e yr of the %.3e yr step: the state is '
+                                'valid up to the event, so the coupling '
+                                'continues from there.',
+                                float(out.dt_actual),
+                                attempted_dt,
+                            )
+                        # Weighed against what the coupling asked for, not
+                        # against this attempt's interval. The ladder halves
+                        # the interval on every rejected attempt, so a step
+                        # accepted on a retry would otherwise be scored
+                        # against an interval already cut down by up to a
+                        # factor of thirty-two, and the steps that needed a
+                        # retry are exactly the ones a stall is made of.
+                        self._track_step_progress(
+                            interior_o, float(out.dt_actual), dt_requested, hf_row
+                        )
                         if attempt > 1:
                             log.info(
                                 'Aragog retry succeeded on attempt %d '
@@ -2183,6 +2342,23 @@ class AragogRunner:
                         reason = (
                             'status=0 but the T_core jump exceeded the '
                             f'{sanity_dT_core:.0f} K sanity threshold on every attempt'
+                        )
+                    elif out.status == 1 and float(out.dt_actual) > 0.0:
+                        # The step advanced, so what rejected it on every
+                        # attempt was the core-temperature guard above, not
+                        # the terminal event itself.
+                        reason = (
+                            'the solver stopped on its terminal event and the '
+                            f'T_core jump exceeded the {sanity_dT_core:.0f} K '
+                            'sanity threshold on every attempt'
+                        )
+                    elif out.status == 1:
+                        # Accepted above whenever it advanced the state, so
+                        # reaching here means the terminal event fired at the
+                        # start of every attempt and the step never moved.
+                        reason = (
+                            'the solver stopped on its terminal event without '
+                            'advancing the state on any attempt'
                         )
                     else:
                         reason = f'{self._active_solver_name()} status={out.status}'
@@ -2243,6 +2419,116 @@ class AragogRunner:
                 solver._dSdr_cmb_init = None
 
         return out
+
+    def _track_step_progress(self, interior_o, dt_actual, dt_attempted, hf_row) -> None:
+        """Refuse to keep taking steps that leave the run where it started.
+
+        A step the terminal event cuts short is a valid solve, and one of them
+        is nothing to worry about: the interior meets the phase change, stops
+        at it, and the next step carries on from there. A run that covers
+        almost none of the time it asks for is a different matter. Every solve
+        still reports success, so nothing marks it as a failure, and the
+        endpoint is a night of wall time spent a few years into the evolution.
+
+        Judged as the ground covered over the last
+        :data:`_STEP_PROGRESS_WINDOW` steps rather than step by step, and over
+        a run of steps rather than consecutive ones. A run can alternate
+        between stopping at the front and stepping normally and still be going
+        nowhere, so counting only unbroken runs of short steps would let
+        exactly that pattern through. Full steps enter the window on the same
+        terms, which is what lets a stiff patch the interior works through
+        leave nothing behind.
+
+        The wrapper absorbs an ordinary solver failure by keeping the previous
+        interior state for that step, on the expectation that the run steps
+        past whatever caused it. A stall is not that: it repeats for as long
+        as the front is there, and each absorbed one resets the failure streak
+        that would otherwise end the run. This is raised as its own type for
+        that reason, and the wrapper lets it through.
+
+        Parameters
+        ----------
+        interior_o : Interior_t
+            Interior state, whose progress window is updated in place.
+        dt_actual : float
+            Interval the step advanced [yr].
+        dt_attempted : float
+            Interval the coupling asked this step to cover [yr], before any
+            shortening the retry ladder applied.
+        hf_row : dict
+            Current helpfile row, read for the time to report.
+
+        Raises
+        ------
+        InteriorStalledError
+            When the window is full and the interior covered less than
+            :data:`_STEP_PROGRESS_MIN_SHARE` of the time it was given.
+        """
+        window = getattr(interior_o, 'aragog_step_progress', None)
+        if window is None:
+            window = []
+            interior_o.aragog_step_progress = window
+        window.append((float(dt_actual), float(dt_attempted)))
+        del window[:-_STEP_PROGRESS_WINDOW]
+
+        share = dt_actual / dt_attempted if dt_attempted > 0.0 else 0.0
+        if share < _STEP_PROGRESS_MIN_SHARE:
+            log.warning(
+                '    that is %.2f%% of the interval this step asked for',
+                100.0 * share,
+            )
+
+        if len(window) < _STEP_PROGRESS_WINDOW:
+            return
+        advanced = sum(step for step, _ in window)
+        requested = sum(asked for _, asked in window)
+        covered = advanced / requested if requested > 0.0 else 0.0
+        if covered >= _STEP_PROGRESS_MIN_SHARE:
+            return
+
+        # Cleared so a resumed run starts its own window rather than
+        # inheriting a verdict it cannot check.
+        interior_o.aragog_step_progress = []
+        raise InteriorStalledError(
+            f'Over its last {_STEP_PROGRESS_WINDOW} steps the interior advanced '
+            f'{advanced:.3e} yr of the {requested:.3e} yr those steps were given '
+            f'({100.0 * covered:.3f}%), reaching t={hf_row.get("Time", 0.0):.3e} yr. '
+            'The run is not crossing the phase change, it is stopping at it. '
+            + self._stall_remedy()
+        )
+
+    def _stall_remedy(self) -> str:
+        """Name the remedy that fits the integrator this run actually used.
+
+        Falling back to scipy and stopping at a sharp front are different
+        problems with the same symptom, and only one of them is fixed by
+        installing a solver. Reporting the install remedy to a run that
+        already integrates with CVODE sends the reader after a package that
+        is present, so the two cases are separated here and the message names
+        the front when the solver is not the cause.
+
+        Returns
+        -------
+        str
+            The remedy sentence for the configured and available integrator.
+        """
+        method = str(self._config.interior_energetics.aragog.solver_method or '')
+
+        if method != 'cvode' or not _cvode_loads():
+            return (
+                'The scipy integrator does this where SUNDIALS CVODE integrates '
+                'through: check `proteus doctor` for the CVODE solver and install '
+                'it with `bash tools/get_cvode.sh` if it is missing.'
+            )
+        return (
+            'CVODE is the integrator here and it loads, so a missing solver is '
+            'not the cause. Every step is being cut short at a phase boundary: '
+            'the melt-fraction, temperature and entropy step caps and the '
+            'liquidus crossing at the bottom cell each stop the integration, and '
+            'the run log records which one fired. Where the melt fraction '
+            'collapses across less than one radial cell at the solidus, adding '
+            'radial levels does not thin the front.'
+        )
 
     @staticmethod
     def _build_helpfile_output(
@@ -2399,6 +2685,12 @@ class AragogRunner:
             # the table-vs-phase density difference); machine-precision
             # conservation is the separate solver-residual column.
             'step_dE_state_heat_J': out.step_dE_state_heat_J,
+            # Giant-impact re-melt heat [J]. Zeroed on every solve call so
+            # ordinary rows carry no impact energy; the accretion handler,
+            # which runs after this call on the iteration an impact lands,
+            # overwrites it with the heat the re-melt injects. The coupler
+            # adds it to both sides of the conservation budget.
+            'step_dE_impact_J': 0.0,
             # Boundary layer thickness, taken straight from the atmosphere
             # config. Surfaced here so the helpfile carries a single
             # backend-agnostic field for downstream tooling that has to
@@ -2479,6 +2771,63 @@ class AragogRunner:
             ds['T_surf_coupled'].units = 'K'
 
         ds.close()
+
+
+def earlier_snapshot_exists(output_dir: str, time: float) -> bool:
+    """Whether an interior snapshot older than a simulation time is on disk.
+
+    Used before discarding a snapshot, to check that the run keeps one to fall
+    back on rather than being left with none.
+
+    Parameters
+    ----------
+    output_dir : str
+        Run output directory (contains ``data/``).
+    time : float
+        Simulation time to compare against [yr].
+
+    Returns
+    -------
+    bool
+        Whether at least one older snapshot exists.
+    """
+    # Compared against the stems on disk, so it has to be derived the way the
+    # writer derives them: rounded, not truncated.
+    cutoff = int(round(float(time)))
+    for fpath in glob.glob(os.path.join(output_dir, 'data', '*_int.nc')):
+        stem = os.path.basename(fpath).split('_int.nc')[0]
+        try:
+            if int(stem) < cutoff:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def discard_snapshot(output_dir: str, time: float) -> bool:
+    """Delete the interior snapshot written for a simulation time.
+
+    Used when a snapshot no longer describes the state the run ended the step
+    in, so that a resume walks back to the last snapshot that does rather than
+    loading one the helpfile has already moved past.
+
+    Parameters
+    ----------
+    output_dir : str
+        Run output directory (contains ``data/``).
+    time : float
+        Simulation time the snapshot is keyed on [yr].
+
+    Returns
+    -------
+    bool
+        Whether a snapshot was found and removed.
+    """
+    fpath = os.path.join(output_dir, 'data', '%.0f_int.nc' % time)
+    if not os.path.exists(fpath):
+        return False
+    os.remove(fpath)
+    return True
 
 
 def read_last_Sfield(output_dir: str, time: float):

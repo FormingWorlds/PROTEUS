@@ -49,6 +49,7 @@ config_version = "3.0"
         maximum               = 1e7          # maximum time step [yr]
         initial               = 3e1          # initial step size [yr]
         maximum_rel           = 1.0          # time-fraction allowance added to the maximum step; 0 disables
+        impact_maximum        = 0.0          # max dt [yr] for the step landing on a scheduled giant impact; 0 = disabled
         starspec              = 1e8          # recalculate stellar spectrum interval [yr]
         starinst              = 1e2          # recalculate instellation interval [yr]
         method                = "adaptive"   # proportional | adaptive | maximum
@@ -641,9 +642,63 @@ config_version = "3.0"
         kappa_SO2             = 1.0          # grey SO2 opacity in IR [cm2 g-1]
         kappa_S2              = 1.0          # grey S2 opacity in IR [cm2 g-1]
 
-# Late accretion
+# Giant-impact accretion and delivery
 [accretion]
-    module                    = "none"       # not yet implemented
+    module                    = "none"       # none | dummy | timeline | morrigan
+    time_offset               = 0.0          # shift of impact times onto the PROTEUS time axis [yr]
+
+    # Impactor volatile content source: dry impactors add silicate and iron
+    # mass only; match_planet impactors carry the planet's own formation
+    # composition scaled to their mass; ppmw impactors carry the per-element
+    # budgets below (read only in ppmw mode).
+    impactor_volatiles        = "dry"        # dry | match_planet | ppmw
+    impactor_H_ppmw           = 0.0          # hydrogen per impactor [ppmw of impactor mass]
+    impactor_C_ppmw           = 0.0          # carbon per impactor [ppmw of impactor mass]
+    impactor_N_ppmw           = 0.0          # nitrogen per impactor [ppmw of impactor mass]
+    impactor_S_ppmw           = 0.0          # sulfur per impactor [ppmw of impactor mass]
+    impactor_O_ppmw           = 0.0          # oxygen per impactor [ppmw of impactor mass]
+
+    # Impact atmosphere loss. One fraction governs both bodies at each impact:
+    # the target loses that fraction of its atmosphere, and a volatile-bearing
+    # impactor loses the same fraction of its atmospheric part and delivers the
+    # remainder. The constant module applies the fixed fraction below; the
+    # zephyrus module evaluates the Kegerreis et al. (2020) erosion law from
+    # each impact's collision parameters.
+    atmloss_module            = "none"       # none | constant | zephyrus
+    atmloss_frac              = 0.0          # atmosphere fraction removed per impact (constant module) [0-1]
+
+    [accretion.morrigan]
+        seed                  = 1            # Monte Carlo seed
+        num_planets           = 10           # number of embryos at disk dispersal
+        masses                = []           # embryo masses [M_earth]; empty = all mass_equal
+        mass_equal            = 0.5          # embryo mass when masses is empty [M_earth]
+        eccentricity_init     = 0.01         # initial eccentricity of every embryo
+        inner_edge            = 0.1          # orbit of the innermost embryo [AU]
+        spacing               = 10.0         # initial embryo separation [mutual Hill radii]; max 50
+        density               = 5500.0       # bulk density for mass to radius [kg m-3]
+        impact_angle          = 45.0         # impact angle [deg]
+        evolution_time        = 1.0          # duration of the dynamical evolution [Gyr]
+        inner_cutoff          = 0.005        # perihelion counting as lost to the star [AU]
+        selector              = "match_config"  # match_config | mass | semimajoraxis | id
+        selector_value        = "none"       # target orbit [AU] or embryo id, per selector
+
+    [accretion.dummy]
+        # Analytical accretion: the planet approaches an asymptotic mass
+        # exponentially, impacts are placed at evenly spaced times, and each
+        # delivers the mass the law accretes over its interval, so the
+        # increments decay and the first impact is the largest. Radii follow
+        # the Noack & Lasbleis (2020) scaling and each merged orbit follows
+        # from conserving momentum through the collision.
+        mass_accreted         = 0.1          # total mass delivered over the timeline [M_earth]
+        num_impacts           = 3            # number of impacts
+        timescale             = 1.0e6        # e-folding time of the accretion law [yr]
+        time_last             = 5.0e6        # time of the final impact [yr]
+        eccentricity          = 0.05         # encounter eccentricity [0-1)
+        impact_parameter      = 0.5          # sine of the impact angle [0-1]
+        timeline_path         = "none"       # not a dummy parameter; setting a file here is rejected, use module = "timeline"
+
+    [accretion.timeline]
+        timeline_path         = "none"       # impact timeline file to replay
 
 # Atmospheric chemistry (post-processing)
 [atmos_chem]

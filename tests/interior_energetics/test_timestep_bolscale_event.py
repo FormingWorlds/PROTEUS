@@ -301,7 +301,10 @@ def test_next_step_flags_interior_o_when_bolscale_clamps_the_step():
     )
     hf_row = {'Time': 100.0}
     hf_all = _next_step_hf_all(age_star=5.0e8 - 5.0e4)
-    interior_o = SimpleNamespace(timestep_clamped=False)
+    # t_next_impact is infinite whenever no giant impact is scheduled, which
+    # is every run without accretion; next_step reads it to decide whether to
+    # cap dt so the loop lands on the impact.
+    interior_o = SimpleNamespace(timestep_clamped=False, t_next_impact=float('inf'))
 
     dt = next_step(config, {}, hf_row, hf_all, step_sf=1.0, interior_o=interior_o)
 
@@ -319,7 +322,10 @@ def test_next_step_does_not_flag_interior_o_when_window_is_far_away():
     )
     hf_row = {'Time': 100.0}
     hf_all = _next_step_hf_all(age_star=1.0e8)  # window opens at 5e10 yr, far away
-    interior_o = SimpleNamespace(timestep_clamped=True)  # start True to prove it flips
+    interior_o = SimpleNamespace(
+        timestep_clamped=True,  # start True to prove it flips
+        t_next_impact=float('inf'),
+    )
 
     dt = next_step(config, {}, hf_row, hf_all, step_sf=1.0, interior_o=interior_o)
 

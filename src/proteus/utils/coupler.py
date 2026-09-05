@@ -496,8 +496,10 @@ def print_citation(config: Config):
         case _:
             pass
 
-    # Delivery module
+    # Accretion module
     match config.accretion.module:
+        case 'morrigan':
+            _cite('Kimura et al. (2025)', 'https://doi.org/10.3847/1538-4357/ade992')
         case _:
             pass
 
@@ -757,6 +759,19 @@ def CreateLockFile(output_dir: str):
     return keepalive_file
 
 
+# Schema columns a resumed run may read as zero when its helpfile predates them. Zero
+# is not equally safe for every column here; see ReadHelpfileFromCSV for the two
+# reasons that make it safe, and for the rule on adding a column to this set. Every
+# other column holds physical state, where zero would be wrong, not missing.
+RESUMABLE_ZERO_FILL_KEYS = frozenset(
+    {
+        'esc_kg_cumulative',
+        'M_accreted_rock',
+        'step_dE_impact_J',
+    }
+)
+
+
 def GetHelpfileKeys():
     """
     Variables to be held in the helpfile.
@@ -854,10 +869,20 @@ def GetHelpfileKeys():
         # cumulative residual. The residual pairs the entropy-transported
         # heat (state side) against the boundary-flux and source prediction
         # (predicted side), both in the live EOS density frame ``ρ(P,S)``:
-        #   E_state_heat_cons_J = Σ step_dE_state_heat_J across rows [J]
+        #   E_state_heat_cons_J = Σ (step_dE_state_heat_J + step_dE_impact_J)
         #   dE_predicted_cons_J = Σ (step_dE_F_int_J + step_dE_F_cmb_J
-        #                            + step_dE_Q_radio_J + step_dE_Q_tidal_J)
+        #                            + step_dE_Q_radio_J + step_dE_Q_tidal_J
+        #                            + step_dE_impact_J)
         #   E_residual_cons_J   = E_state_heat_cons_J - dE_predicted_cons_J
+        # ``step_dE_impact_J`` is the heat a giant-impact mantle re-melt
+        # injects, evaluated in the same ρ(P,S)·T·dS frame over the
+        # entropy jump from the cooled to the molten profile on the
+        # pre-impact solver mesh. It enters BOTH cumulatives: the state
+        # side because the jump falls between solver calls so no per-call
+        # state integral carries it, and the predicted side because the
+        # impact is an energy source. The residual is invariant across an
+        # impact for any booked value; the column is a defined convention,
+        # not a residual-checked quantity.
         #   E_residual_cons_frac = E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J)
         # This closes to about a percent of the cumulative cooling (largest
         # near full melt and at crystallisation-front / structure-remesh
@@ -902,6 +927,7 @@ def GetHelpfileKeys():
         'step_solver_residual_J',  # per-call entropy-ODE LHS-RHS [J]
         'step_dE_compression_J',  # per-call structure-re-solve compression work [J] (diagnostic)
         'step_dE_state_heat_J',  # per-call entropy-transported heat content change [J]
+        'step_dE_impact_J',  # giant-impact re-melt heat injection [J] (both residual sides)
         'E_state_heat_cons_J',  # cumulative sum of step_dE_state_heat_J across rows [J]
         'dE_predicted_cons_J',  # cumulative sum of boundary fluxes + live-density step_dE_Q_*_J [J]
         'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
@@ -961,13 +987,15 @@ def GetHelpfileKeys():
         'O_res',                 # O mass-balance residual [kg]
         'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
 
-        # Desiccation escape balance. Read by `check_desiccation`.
-        # M_vol_initial is the summed *_kg_total (oxygen included) captured on
-        # the first escape call; esc_kg_cumulative is the mass each step took
-        # out of those inventories, never more than it was allowed to remove.
-        # Both persist to the CSV so a resume keeps the check's state.
+        # Desiccation escape-balance gate, read by `check_desiccation`.
+        # M_vol_initial is the sum over all elements (oxygen included) of
+        # *_kg_total captured on the first escape call, the reference point for
+        # the "is the loss accounted for by escape?" check. esc_kg_cumulative is
+        # the whole-run atmospheric-loss ledger: continuous escape plus the mass
+        # each giant impact strips. Both persist to the CSV so a resume keeps the
+        # gate's state.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
-        'esc_kg_cumulative', # cumulative escaped mass [kg]
+        'esc_kg_cumulative', # cumulative mass lost to space [kg] (escape + impact stripping)
 
         # Loss the bulk rate asked for on this step, as a fraction of the
         # reservoir escape draws from. Values above the per-step cap mark a
@@ -975,7 +1003,15 @@ def GetHelpfileKeys():
         # distinguishable from one that ran down on its own.
         'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
         'esc_step_kg',      # loss applied on this step, after the cap [kg]
-        ]
+
+        # Giant-impact accretion ledger. The rock each impact adds to the
+        # interior mass anchor, summed over the run. The anchor itself lives in
+        # the configuration, which is rebuilt from file on every start, so this
+        # column is what lets a resumed run reconstruct how far the planet had
+        # already grown. Rock only: the volatile budgets are tracked separately
+        # in the per-element columns, so this is not the whole-planet mass.
+        'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
+    ]
 
     # gases from outgassing
     for s in gas_list:
@@ -1074,6 +1110,21 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
 
         step_dE_state_heat_J   = ∫ Σ rho T dS over the call [J].
 
+    A giant-impact mantle re-melt contributes ``step_dE_impact_J``, the
+    heat the re-melt injects evaluated in the same ``rho T dS`` frame
+    over the entropy jump from the cooled to the molten profile, on the
+    pre-impact solver mesh (the impactor's own heat content arrives as
+    part of the new initial condition and is not booked). It is added to
+    BOTH cumulatives: to the state side because the jump falls between
+    solver calls, so no per-call state integral carries it, and to the
+    predicted side because the impact is an energy source. The residual
+    is therefore invariant across an impact for any booked value, which
+    means it cannot validate the injection's magnitude; the column
+    quantifies a defined convention rather than a residual-checked
+    quantity. The relative residual can spike on the impact row when the
+    injection nearly cancels the cumulative state heat in its
+    denominator; the absolute residual is the diagnostic there.
+
     The heating sources use the live-density (state-mass) Q variants so
     they share the ``rho(P,S)`` frame the state side integrates; the
     frozen-mass ``step_dE_Q_*_cons_J`` variants are not summed here.
@@ -1138,15 +1189,22 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     # fluxes are area-weighted and frame-independent. The compression term
     # is informational and is deliberately excluded: the state side carries
     # the full thermodynamic content via Σ rho T dS.
+    # Giant-impact re-melt heat [J], zero on rows without an impact. Enters
+    # both increments below so the residual stays closed across an impact
+    # while the injection is booked on both sides of the budget.
+    dE_impact_inc = float(new_row.get('step_dE_impact_J', 0.0))
+
     dE_inc_cons = (
         float(new_row.get('step_dE_F_int_J', 0.0))
         + float(new_row.get('step_dE_F_cmb_J', 0.0))
         + float(new_row.get('step_dE_Q_radio_J', 0.0))
         + float(new_row.get('step_dE_Q_tidal_J', 0.0))
+        + dE_impact_inc
     )
     # State increment [J]: the entropy-transported heat content change over
-    # the call, Σ rho T dS by EOS quadrature (step_dE_state_heat_J).
-    dE_state_heat_inc = float(new_row.get('step_dE_state_heat_J', 0.0))
+    # the call, Σ rho T dS by EOS quadrature (step_dE_state_heat_J), plus
+    # the impact re-melt jump the per-call integral cannot see.
+    dE_state_heat_inc = float(new_row.get('step_dE_state_heat_J', 0.0)) + dE_impact_inc
     solver_inc = float(new_row.get('step_solver_residual_J', 0.0))
 
     n_prior = len(current_hf)
@@ -1403,23 +1461,31 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     """
     Read helpfile from disk CSV file to DataFrame
 
-    A helpfile written before the output schema gained a column carries
-    neither that column nor any value for it. The entry points that turn a
-    stored run back into simulation state, resume and the two postprocessing
-    commands, all seed a working row from the last line of this table, so
-    the shortfall is caught here rather than in each of them. How much of
-    the schema a caller needs differs, which is what `required_columns` is
-    for. Readers that pull named columns straight out of the file, such as
-    the plotting and inference code, do not come through this function and
-    are not covered.
+    A run started under an earlier schema writes a helpfile without the columns
+    added since. Resume and the two postprocessing commands all seed a working
+    row from the last line of this table, and ``ExtendHelpfile`` rejects a row
+    missing any schema key, so the shortfall is handled here rather than in each
+    caller. How much of the schema a caller needs differs, which is what
+    ``required_columns`` sets. Readers that pull named columns straight out of
+    the file, such as the plotting and inference code, do not come through this
+    function and are not covered.
 
-    The shortfall is reported rather than filled. Seeding a value would make
-    the key present, and several modules decide what to do by testing whether
-    a key is there at all: CALLIOPE refuses a run whose oxygen budget is
-    absent, the dummy and boundary interiors fall back to a configured core
-    size, and the atmosphere lower boundary moves to the solvus only when a
-    solvus radius exists. A seeded zero turns each of those off and reaches
-    the solvers as a physical value no solver produced.
+    A missing column is treated by its kind. A column in
+    ``RESUMABLE_ZERO_FILL_KEYS`` is safe to zero-fill for one of two reasons.
+    ``step_dE_impact_J`` resets to zero at the start of every step and only
+    differs on a step where a giant impact lands, so a file written before
+    the column existed had no reason to hold anything else; zero-filling it
+    loses nothing. ``esc_kg_cumulative`` and ``M_accreted_rock`` accumulate
+    over a run, so a file predating either column may be missing
+    real prior escape or accretion mass that this read cannot recover;
+    zero-filling it anyway is still the better choice, since refusing would
+    turn a routine schema addition into a run-killing failure on every
+    in-flight run. Add a column to this set only when it
+    fits one of these two reasons. Every other column carries instantaneous
+    physical state, where zero is not "unknown" but a specific and wrong
+    value that a seeded read would pass to a solver as real, poisoning the
+    resumed run and turning off the module guards that test whether a key is
+    present at all. A file missing one of those is refused.
 
     Parameters
     ----------
@@ -1435,12 +1501,13 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     Returns
     -------
     pandas.DataFrame
-        Helpfile contents as stored, carrying at least ``required_columns``.
+        Helpfile contents, carrying at least ``required_columns``; any absent
+        ``RESUMABLE_ZERO_FILL_KEYS`` column is present and zero.
 
     Raises
     ------
     HelpfileSchemaDriftError
-        The file does not carry every required column.
+        A required column that carries physical state is absent from the file.
     """
     if required_columns is None:
         required_columns = GetHelpfileKeys()
@@ -1451,13 +1518,35 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     hf_all = pd.read_csv(fpath, sep=r'\s+')
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
-    if missing:
+    if not missing:
+        return hf_all
+
+    fillable = [key for key in missing if key in RESUMABLE_ZERO_FILL_KEYS]
+    unfillable = sorted(set(missing) - set(fillable))
+
+    if unfillable:
         raise HelpfileSchemaDriftError(
             "Helpfile '%s' was written before %d column(s) of the current output "
-            'schema existed: %s. Run this configuration again from t=0, or read '
-            'this run with the PROTEUS version that wrote it.'
-            % (fpath, len(missing), _describe_missing_columns(missing))
+            'schema existed that carry physical state and cannot be reconstructed: '
+            '%s. Run this configuration again from t=0, or read this run with the '
+            'PROTEUS version that wrote it.'
+            % (fpath, len(unfillable), _describe_missing_columns(unfillable))
         )
+
+    log.warning(
+        'Helpfile predates %d column(s) in the current schema, and they are read '
+        'as zero for the rest of this run: %s. Zero is exact for a column that '
+        'resets every step; for one that accumulates, any history from before '
+        'this column existed is not recoverable.',
+        len(fillable),
+        ', '.join(sorted(fillable)),
+    )
+    # Added in one concat rather than one insert per column, which would
+    # fragment the frame and warn on a schema several columns behind.
+    hf_all = pd.concat(
+        [hf_all, pd.DataFrame(0.0, index=hf_all.index, columns=fillable)], axis=1
+    )
+
     return hf_all
 
 
@@ -1503,6 +1592,94 @@ def _snapshot_readable(path: str) -> bool:
         except Exception:
             return False
     return _netcdf_readable(path)
+
+
+def _snapshot_time(path: str) -> float | None:
+    """Simulation time a snapshot file records for itself [yr], if it does.
+
+    The writers name their files on the time rounded to a whole year, so the
+    name cannot tell two steps inside one year apart. Both interior writers
+    also record the time they wrote: Aragog's netCDF carries a ``time``
+    variable and SPIDER's JSON a ``time_years`` entry. Reading it back is what
+    lets a resume tell whether a file is the row's own state or one a later
+    step left under the same name.
+
+    Parameters
+    ----------
+    path : str
+        Snapshot file to read.
+
+    Returns
+    -------
+    float or None
+        The recorded time, or None when the file records none, which is what
+        a directory written before the field existed looks like.
+    """
+    # Imported outside the try for the same reason as the readability probe:
+    # a missing netCDF4 must raise rather than read as "no file records a
+    # time", which would quietly restore the name-only behaviour everywhere.
+    from netCDF4 import Dataset
+
+    try:
+        if path.endswith('.json'):
+            with open(path) as fh:
+                recorded = json.load(fh).get('time_years')
+            return None if recorded is None else float(recorded)
+        with Dataset(path) as ds:
+            if 'time' not in ds.variables:
+                return None
+            return float(ds['time'][0])
+    except Exception:
+        # Unreadable is not this function's call to make: the readability
+        # probe reports that, and reporting it here as well would turn a
+        # corrupt file into a silently skipped one.
+        return None
+
+
+def _snapshot_belongs_to(path: str, time: float) -> bool:
+    """Whether a snapshot is the one written for a simulation time.
+
+    True when the file records that time, and also when it records none: a
+    file without the field cannot be told apart from its neighbours, so it is
+    accepted on its name, which is the behaviour every directory written
+    before the field existed relies on. True as well once the simulation time
+    is large enough that the helpfile's own precision cannot separate two rows
+    inside one filename, which is a few Gyr in.
+
+    Parameters
+    ----------
+    path : str
+        Snapshot file to check.
+    time : float
+        Simulation time of the helpfile row [yr].
+
+    Returns
+    -------
+    bool
+        Whether the file can be this row's half.
+    """
+    recorded = _snapshot_time(path)
+    if recorded is None:
+        return True
+
+    # The row's time has been through the helpfile, which serialises at
+    # '%.10e' and so holds eleven significant digits: a round trip moves it by
+    # up to 4.94e-11 of its own magnitude. The margin has to clear that, and a
+    # factor of four does, while staying as tight as the stored data allows.
+    resolution = 5.0e-11 * max(1.0, abs(time))
+    tolerance = 4.0 * resolution
+
+    # What the margin must stay under is the one-year bucket the filenames are
+    # keyed on, since two rows sharing a name are what this tells apart. Past
+    # a few Gyr the helpfile's own resolution is itself a good fraction of a
+    # year, so no margin can both clear the round trip and separate two rows
+    # inside one bucket. There the file is accepted on its name, the behaviour
+    # this check refines rather than replaces, instead of rejecting rows that
+    # are perfectly resumable.
+    if tolerance >= 0.5:
+        return True
+
+    return abs(recorded - time) <= tolerance
 
 
 def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
@@ -1559,6 +1736,23 @@ def select_resumable_snapshot(
     can never back a resume and would otherwise be swept into the final
     data archive.
 
+    Each half is probed with its writer's filename convention. The interior
+    name depends on the module: Aragog writes ``'%.0f_int.nc'``, SPIDER writes
+    ``'%.0f.json'``, and the dummy and boundary interiors write no snapshot at
+    all (no interior constraint). Every atmosphere writer shares one name,
+    ``'%.0f_atm.nc'``. See ``_interior_snapshot_names`` /
+    ``_atm_snapshot_names``.
+
+    Every convention keys the name on a whole year, so rows less than a year
+    apart derive the same filename and one overwrites the other. The name
+    alone therefore cannot say which row a file belongs to. The interior
+    writers record the time they wrote inside the file (a ``time`` variable in
+    the netCDF, ``time_years`` in SPIDER's JSON), so where that is present it
+    is what the row is matched against: a file left by a different step is not
+    accepted as this row's half, and the walk continues past it. A file that
+    carries no recorded time, which is what a directory written before the
+    field existed looks like, is accepted on its name as before.
+
     Parameters
     ----------
     output_dir : str
@@ -1593,6 +1787,7 @@ def select_resumable_snapshot(
     dropped: list[int] = []
     quarantined: list[tuple[str, str]] = []  # (moved_to, original) for rollback
     keep_idx = None
+
     for i in range(len(times) - 1, -1, -1):
         t = times[i]
         int_paths = [
@@ -1603,15 +1798,23 @@ def select_resumable_snapshot(
         )
         # An empty interior candidate list means the interior module writes no
         # snapshot (dummy/boundary): that half imposes no resume constraint.
-        int_ok = (not int_paths) or any(_snapshot_readable(p) for p in int_paths)
-        atm_ok = (not require_atm) or any(_snapshot_readable(p) for p in atm_paths)
+        # A file that records a different time is another step's, so it does
+        # not count as this row's half however well its name fits.
+        int_ok = (not int_paths) or any(
+            _snapshot_readable(p) and _snapshot_belongs_to(p, t) for p in int_paths
+        )
+        atm_ok = (not require_atm) or any(
+            _snapshot_readable(p) and _snapshot_belongs_to(p, t) for p in atm_paths
+        )
         if int_ok and atm_ok:
             keep_idx = i
             break
         # Incomplete pair: move whichever candidate halves exist aside so the
-        # interior / atmosphere latest-file globs cannot pick them up.
+        # interior / atmosphere latest-file globs cannot pick them up. A file
+        # that records a different time is left where it is: it belongs to
+        # another step, and dropping this row must not take it down as well.
         for p in int_paths + atm_paths:
-            if os.path.exists(p):
+            if os.path.exists(p) and _snapshot_belongs_to(p, t):
                 dst = p + '.incomplete'
                 os.replace(p, dst)
                 quarantined.append((dst, p))

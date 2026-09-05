@@ -532,6 +532,27 @@
       "group_qualifier": null
     },
     {
+      "path": "params.dt.impact_maximum",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Maximum time-step size [yr] for the step that lands on a scheduled giant impact. The landing step is otherwise clamped only to however much simulated time remains before the impact, so after a long quiescent phase has let ``dt`` coarsen, that remaining time can itself be large and the step absorbing the impact's melt-fraction jump inherits the same coarseness. Set to 0 (default) to disable, in which case the remaining-time clamp applies with no independent ceiling.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "params.dt.max_growth_factor",
       "toml_section": "params.dt",
       "class": "TimeStepParams",
@@ -8175,10 +8196,632 @@
       "accepts_none": true,
       "default": "none",
       "choices": [
-        null
+        null,
+        "dummy",
+        "timeline",
+        "morrigan"
       ],
       "bounds": null,
-      "description": "Accretion module to use. Currently only None is supported.",
+      "description": "Accretion module to use. Choices: None, \"dummy\", \"timeline\", \"morrigan\".",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.seed",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "int",
+      "accepts_none": false,
+      "default": "1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Random seed for the Monte Carlo. Fixing it makes an impact history reproducible; sweeping it samples the outcome distribution.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.num_planets",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "int",
+      "accepts_none": false,
+      "default": "10",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 2
+        }
+      ],
+      "description": "Number of embryos the system starts with.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.masses",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "list",
+      "accepts_none": false,
+      "default": "[]",
+      "choices": null,
+      "bounds": null,
+      "description": "Initial embryo masses [M_earth], one per embryo. An empty list starts every embryo at ``mass_equal``.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.mass_equal",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Initial mass of every embryo [M_earth], used when ``masses`` is empty.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.eccentricity_init",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Initial eccentricity shared by all embryos.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.inner_edge",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Semi-major axis of the innermost embryo [AU].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.spacing",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "10.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 50.0
+        }
+      ],
+      "description": "Initial separation between adjacent embryos, in mutual Hill radii. Typical values are 5 to 15; beyond roughly 30 the system does not go unstable within any useful evolution time, so the run finishes with no impacts. Capped at 50 purely to catch an order-of-magnitude mistake at configuration load. The cap is not the physical limit and does not track it. The layout condition has a pole where the requested gap approaches the span it is measured across, and its position scales with the embryo masses and with the cube root of the stellar mass: near 74 mutual Hill radii for a pair of ten-Earth-mass embryos around a solar-mass star, but near 34 for the same pair around a 0.1-solar-mass host. A spacing this validator accepts can therefore still be too wide for a compact, low-mass-host system. The dynamical model applies the exact condition and refuses such a layout by name, so that check, not this cap, is what guarantees a valid layout.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.density",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "5500.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Uniform bulk density used to convert embryo mass to radius [kg m-3].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.impact_angle",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "45.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Impact angle [deg]. The impact parameter is its sine.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.evolution_time",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Duration of the dynamical evolution [Gyr].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.inner_cutoff",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.005",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Perihelion inside which an embryo counts as lost to the star [AU].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.selector",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"match_config\"",
+      "choices": [
+        "match_config",
+        "mass",
+        "semimajoraxis",
+        "id"
+      ],
+      "bounds": null,
+      "description": "Which survivor's impact history PROTEUS follows. 'match_config' picks the survivor whose initial mass and orbit are closest to the PROTEUS configuration, 'mass' the most massive survivor, 'semimajoraxis' the survivor whose final orbit is nearest ``selector_value`` [AU], and 'id' the embryo with index ``selector_value``.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.selector_value",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Target value for the 'semimajoraxis' and 'id' selectors. Ignored otherwise.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.timeline_path",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Not a parameter of this module. Present only to reject a configuration that sets it here, which asks to replay a file and would otherwise be served a generated timeline at default settings. Use ``accretion.module = \"timeline\"`` and ``accretion.timeline.timeline_path``.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.mass_accreted",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Total mass delivered over the whole timeline [M_earth]. The growth law sets how this is distributed in time and between impacts; the increments are scaled so they sum to exactly this value.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.num_impacts",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "int",
+      "accepts_none": false,
+      "default": "3",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 1
+        }
+      ],
+      "description": "Number of impacts in the timeline.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.timescale",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "E-folding time of the accretion law [yr]. Short compared with ``time_last`` concentrates the mass in the first impacts; long compared with it spreads the mass evenly.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.time_last",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "float",
+      "accepts_none": false,
+      "default": "5000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Time of the final impact [yr]. Impacts are spaced evenly from ``time_last / num_impacts`` up to this time.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.eccentricity",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.05",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Encounter eccentricity [1], setting both the approach velocity that adds to the mutual escape velocity and the impactor's orbit.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.impact_parameter",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Impact parameter of every collision [1], the sine of the impact angle. Zero is head-on, one is grazing.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.timeline.timeline_path",
+      "toml_section": "accretion.timeline",
+      "class": "AccretionTimeline",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Path to the impact timeline file. Environment variables and ``~`` are expanded.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.time_offset",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Offset applied to every impact time when mapping the timeline onto the PROTEUS time axis [yr]. A dynamical model measures time from disk dispersal, while PROTEUS measures it from the start of its own evolution. Impacts that still land at or before the start of the run are discarded with a warning, and their mass is not applied anywhere: the configured planet mass and orbit define the initial state on their own.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.impactor_volatiles",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"dry\"",
+      "choices": [
+        "dry",
+        "match_planet",
+        "ppmw"
+      ],
+      "bounds": null,
+      "description": "Where each impactor's volatile content comes from. Choices: \"dry\" (impactors carry rock and iron only), \"match_planet\" (every impactor carries the planet's own initial fractional volatile abundances, scaled to the impactor mass, on the assumption that all embryos co-formed from the same disk material), \"ppmw\" (the per-element ``impactor_<e>_ppmw`` budgets below). The content is split into an atmospheric and a dissolved part by mirroring the planet's own partitioning at impact time; the atmospheric part loses the same collision fraction that strips the target's atmosphere and the remainder of the content is delivered.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.impactor_H_ppmw",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Hydrogen carried by each impactor [ppmw of impactor mass].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.impactor_C_ppmw",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Carbon carried by each impactor [ppmw of impactor mass].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.impactor_N_ppmw",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Nitrogen carried by each impactor [ppmw of impactor mass].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.impactor_S_ppmw",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Sulfur carried by each impactor [ppmw of impactor mass].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.impactor_O_ppmw",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Oxygen carried by each impactor [ppmw of impactor mass].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.atmloss_module",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": [
+        null,
+        "constant",
+        "zephyrus"
+      ],
+      "bounds": null,
+      "description": "How impact atmosphere loss is computed. Choices: None (no impact atmosphere loss at all: the target keeps its atmosphere and a volatile-bearing impactor delivers its whole content), \"constant\" (the fixed fraction below), \"zephyrus\" (the giant-impact erosion scaling law of Kegerreis et al. 2020, evaluated by ``zephyrus.collision.mass_loss`` from each impact's collision parameters). One fraction governs both bodies at each impact: the target loses that fraction of its atmosphere, and a volatile-bearing impactor loses the same fraction of its atmospheric part and delivers the remainder. PROTEUS itself ships no impact loss physics.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.atmloss_frac",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Fraction of the atmosphere removed by each impact when ``atmloss_module = \"constant\"`` [0-1]. Applies to the target's atmosphere and to the impactor's atmospheric part alike.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -8393,6 +9036,63 @@
   ],
   "constraints": [
     {
+      "validator": "valid_accretiondummy",
+      "module": "_accretion.py",
+      "attached_to": [
+        "accretion.dummy"
+      ],
+      "touches": [
+        "dummy.timeline_path"
+      ],
+      "doc": "Refuse a timeline path aimed at the module that generates its own."
+    },
+    {
+      "validator": "valid_accretiontimeline",
+      "module": "_accretion.py",
+      "attached_to": [
+        "accretion.timeline"
+      ],
+      "touches": [
+        "module",
+        "timeline.timeline_path"
+      ],
+      "doc": "The timeline accretion module requires a path to an impact timeline file."
+    },
+    {
+      "validator": "valid_impactor_budget_total",
+      "module": "_accretion.py",
+      "attached_to": [
+        "accretion.impactor_O_ppmw"
+      ],
+      "touches": [
+        "impactor_volatiles"
+      ],
+      "doc": "Refuse a volatile budget that exceeds the impactor's own mass."
+    },
+    {
+      "validator": "valid_impactor_volatiles",
+      "module": "_accretion.py",
+      "attached_to": [
+        "accretion.impactor_O_ppmw"
+      ],
+      "touches": [
+        "impactor_volatiles"
+      ],
+      "doc": "Refuse ppmw budgets that the selected content mode would ignore."
+    },
+    {
+      "validator": "valid_morrigan",
+      "module": "_accretion.py",
+      "attached_to": [
+        "accretion.morrigan"
+      ],
+      "touches": [
+        "module",
+        "morrigan"
+      ],
+      "doc": "The Morrigan module requires as many embryo masses as planets, all positive, and a selector value when the selector is a semi-major axis or planet id."
+    },
+    {
       "validator": "valid_aerosols_enabled",
       "module": "_atmos_clim.py",
       "attached_to": [
@@ -8489,12 +9189,37 @@
       "doc": "Boundary backend assumes a fixed surface state coupling."
     },
     {
+      "validator": "check_accretion_interior_compatibility",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "accretion.module",
+        "interior_energetics.module"
+      ],
+      "doc": "Reject accretion runs on an interior that cannot apply an impact."
+    },
+    {
+      "validator": "check_accretion_vapourise_compatibility",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "accretion.module",
+        "outgas.vapourise"
+      ],
+      "doc": "Reject accretion runs that also vapourise rock into the atmosphere."
+    },
+    {
       "validator": "check_module_dependencies",
       "module": "_config.py",
       "attached_to": [
         "config_version"
       ],
       "touches": [
+        "accretion.module",
         "atmos_chem.module",
         "escape.module",
         "outgas.module"
