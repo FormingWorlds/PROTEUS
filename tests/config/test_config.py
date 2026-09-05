@@ -449,30 +449,24 @@ def test_read_config_object_rejects_explicit_zero_step_cap(tmp_path):
 
 
 @pytest.mark.unit
-def test_read_config_object_omitted_step_cap_resolves_to_schema_default(tmp_path):
+def test_read_config_object_omitted_step_cap_resolves_to_schema_default():
     """An absent step-cap key resolves to the schema default, same as an explicit 0.0 rejects.
 
-    The zalmoxis promotion of this 0.0 to a non-zero default happens later, in
-    the Aragog wrapper's own step-cap resolution, not in the Config object
-    itself; this test checks only what read_config_object returns.
+    all_options.toml itself omits phi_step_cap for this reason, so this test
+    reads it directly rather than building a synthetic copy. The zalmoxis
+    promotion of this 0.0 to a non-zero default happens later, in the Aragog
+    wrapper's own step-cap resolution, not in the Config object itself; this
+    test checks only what read_config_object returns.
     """
     import tomllib
-
-    import tomlkit
 
     all_options = PROTEUS_ROOT / 'input' / 'all_options.toml'
     with open(all_options, 'rb') as f:
         raw = tomllib.load(f)
     assert raw['interior_energetics']['module'] == 'aragog'
-
-    del raw['interior_energetics']['aragog']['phi_step_cap']
     assert 'phi_step_cap' not in raw['interior_energetics']['aragog']
 
-    out = tmp_path / 'omitted_cap.toml'
-    with open(out, 'w') as f:
-        tomlkit.dump(raw, f)
-
-    cfg = read_config_object(out)
+    cfg = read_config_object(all_options)
     assert cfg.interior_energetics.aragog.phi_step_cap == pytest.approx(0.0)
 
 
