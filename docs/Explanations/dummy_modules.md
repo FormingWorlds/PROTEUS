@@ -139,7 +139,7 @@ from Kepler's third law. A configurable tidal heating amplitude
 (`H_tide`) is applied to mantle layers where the melt fraction exceeds
 a threshold (`Phi_tide`), providing a simple parameterised heat source
 for testing the interior module's response to tidal power without
-running the full LovePy viscoelastic solver.
+running the full LovePy or Obliqua viscoelastic solvers.
 
 ---
 

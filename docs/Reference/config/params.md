@@ -131,3 +131,10 @@ to be satisfied for two consecutive iterations before terminating.
 | `offset_roche` | float | `0` | Correction to Roche limit \[m] |
 | `spin_enabled` | bool | `true` | Check rotational breakup |
 | `offset_spin` | float | `0` | Correction to breakup period \[s] |
+
+### Satellite escape `[params.stop.satellite]`
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `enabled` | bool | `false` | Terminate when the satellite crosses `sma_max` |
+| `sma_max` | float | `0` | Maximum satellite semi-major axis \[R$_\oplus$] |

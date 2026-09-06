@@ -19,7 +19,7 @@ module is distributed.
 |----------|------------------------------------|-----------|---------|
 | PyPI floor | `[project] dependencies` | Minimum version bound, e.g. `fwl-aragog>=26.05.13` | fwl-janus, fwl-mors, fwl-calliope, fwl-zephyrus, fwl-aragog, fwl-zalmoxis |
 | PyPI floor (optional) | `[project.optional-dependencies]` | Minimum version bound on an optional backend | fwl-vulcan, atmodeller |
-| Git ref | `[tool.proteus.modules.<name>]` | Exact commit SHA, tag, or branch in a `ref` field | AGNI, SOCRATES, SPIDER, BOREAS, LovePy |
+| Git ref | `[tool.proteus.modules.<name>]` | Exact commit SHA, tag, or branch in a `ref` field | AGNI, SOCRATES, SPIDER, BOREAS, LovePy, Obliqua |
 
 A third entry, PETSc, is pinned in `[tool.proteus.modules.petsc]` by the SHA-256
 of a pre-built archive rather than a git ref, because it is downloaded as a
@@ -152,9 +152,9 @@ checks out the pinned SHA, the check reads `ok`.
 The `ref` field accepts a commit SHA, a tag, or a branch name. They trade
 reproducibility against convenience:
 
-- **Commit SHA** (AGNI, SOCRATES, SPIDER): fully reproducible. The same PROTEUS
-  commit always builds the same external source. Use this for any module whose
-  exact state affects simulation results.
+- **Commit SHA** (AGNI, SOCRATES, SPIDER, Obliqua): fully reproducible. The
+  same PROTEUS commit always builds the same external source. Use this for
+  any module whose exact state affects simulation results.
 - **Tag**: reproducible as long as the upstream tag is not moved. Convenient
   when a module publishes named releases.
 - **Branch** (LovePy tracks `main`): always pulls the latest commit on that

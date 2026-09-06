@@ -1006,6 +1006,7 @@ def test_ln_from_lookup_interpolates_exact_value_at_lookup_node():
     assert abs(storage.LNk[0] - (0.03 - 0.05j)) > 1e-4
 
 
+@pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_ln_from_lookup_enforces_love_number_reality_symmetry():
     """Physical invariant: the tidal Love number is the frequency
