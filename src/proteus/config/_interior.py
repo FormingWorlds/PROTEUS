@@ -206,6 +206,21 @@ class Aragog:
         validator=in_(('tanh', 'cubic_hermite')),
     )
     """Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'."""
+    separation_viscosity: str = field(
+        default='mixture',
+        validator=in_(('melt', 'mixture')),
+    )
+    """Drag viscosity for the gravitational-separation velocity
+    v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid
+    viscosity, SPIDER parity) keeps separation active below the
+    rheological transition in coupled caps-off runs, which collapses
+    the CMB temperature; 'mixture' (rheological-transition-blended bulk
+    viscosity) ties the drag viscosity to the same solid-fraction rise
+    that stiffens the bulk rheology, so separation locks up at the same
+    melt fraction instead, which is why the default here is 'mixture'
+    while Aragog's own default stays 'melt' for SPIDER parity. The
+    regime boundaries are the porosities where adjacent permeability
+    laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c)."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),

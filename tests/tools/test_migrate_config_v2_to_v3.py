@@ -101,6 +101,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.phase_smoothing',
         'interior_energetics.aragog.phi_step_cap',
         'interior_energetics.aragog.scalar_gravity_override',
+        'interior_energetics.aragog.separation_viscosity',
         'interior_energetics.aragog.solver_method',
         'interior_energetics.aragog.temperature_step_cap',
         'interior_energetics.aragog.tolerance_struct',
