@@ -342,6 +342,9 @@ runs:
       run: |
         set -euo pipefail
         version="${ImageVersion:-unknown}"
+        if [ "$version" = "unknown" ]; then
+          echo "::warning::ImageVersion is not set on this runner; the SOCRATES and Julia depot cache keys fall back to a constant value and will not bust on an image bump"
+        fi
         echo "Runner ImageVersion: $version"
         echo "version=$version" >> "$GITHUB_OUTPUT"
 
@@ -408,15 +411,20 @@ runs:
     # ------------------------------------------------------------------
     # 7. Julia depot cache (AGNI's Pkg.instantiate output)
     # ------------------------------------------------------------------
+    # The depot holds precompiled Julia packages and downloaded JLL binary
+    # artifacts, some of which dlopen/dlsym against native shared libraries
+    # (including libSOCRATES_C via AGNI's ccall bindings) the same way the
+    # SOCRATES build cache above does, so the key carries the same
+    # ImageVersion component to avoid serving artifacts across an image bump.
     - name: Cache Julia depot
       id: cache-julia
       uses: actions/cache@v5
       with:
         path: ~/.julia
-        key: julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.pins.outputs.agni_ref }}-${{ hashFiles('AGNI/Project.toml','AGNI/Manifest.toml') }}
+        key: julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.runner-image.outputs.version }}-${{ steps.pins.outputs.agni_ref }}-${{ hashFiles('AGNI/Project.toml','AGNI/Manifest.toml') }}
         restore-keys: |
-          julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.pins.outputs.agni_ref }}-
-          julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-
+          julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.runner-image.outputs.version }}-${{ steps.pins.outputs.agni_ref }}-
+          julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.runner-image.outputs.version }}-
 
     - name: Fetch AGNI spectral data (with retry)
       shell: bash
