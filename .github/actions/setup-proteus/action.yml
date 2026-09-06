@@ -329,15 +329,28 @@ runs:
     # generations within the same OS/arch label. One cache per OS/arch is
     # therefore sufficient. The '-portable' key component separates these
     # caches from any tree built with the default performance flags.
+    # The key also carries the hosted runner's ImageVersion: a compiled
+    # shared library that resolves its symbols correctly on one runner
+    # image can fail to resolve them at runtime on a later image of the
+    # same OS/arch label, so the cache must not survive an image bump.
     # No restore-keys: a prefix-restored tree would be deleted and rebuilt
     # from scratch by get_socrates.sh anyway, so a partial restore is pure
     # download cost.
+    - name: Read runner image version
+      id: runner-image
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="${ImageVersion:-unknown}"
+        echo "Runner ImageVersion: $version"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
     - name: Cache SOCRATES build
       id: cache-socrates
       uses: actions/cache@v5
       with:
         path: socrates/
-        key: socrates-${{ runner.os }}-${{ runner.arch }}-portable-${{ steps.pins.outputs.socrates_ref }}-${{ hashFiles('tools/get_socrates.sh') }}
+        key: socrates-${{ runner.os }}-${{ runner.arch }}-portable-${{ steps.runner-image.outputs.version }}-${{ steps.pins.outputs.socrates_ref }}-${{ hashFiles('tools/get_socrates.sh') }}
 
     - name: Build SOCRATES (cache miss)
       if: steps.cache-socrates.outputs.cache-hit != 'true'
