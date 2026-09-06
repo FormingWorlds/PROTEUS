@@ -64,7 +64,7 @@ GIT_META = {
     ),
     'obliqua': (
         'Obliqua',
-        'Orbital evolution and tides (Julia)',
+        'Multi-phase tidal response (Julia)',
         'https://github.com/FormingWorlds/Obliqua',
         'https://proteus-framework.org/Obliqua/',
         'Docs',
@@ -79,7 +79,7 @@ GIT_META = {
 OPTIONAL = [
     (
         'LovePy',
-        'Multi-phase tidal heating (Julia)',
+        'Solid-phase tidal heating (Julia)',
         'main',
         'lightgrey',
         'https://github.com/nichollsh/LovePy',
