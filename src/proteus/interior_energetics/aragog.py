@@ -1104,6 +1104,7 @@ class AragogRunner:
             phase='mixed',
             phase_transition_width=float(config.interior_energetics.phase_transition_width),
             grain_size=config.interior_energetics.grain_size,
+            separation_viscosity=config.interior_energetics.aragog.separation_viscosity,
             matprop_smooth_width=float(config.interior_energetics.spider.matprop_smooth_width),
             const_properties=bool(config.interior_energetics.const_properties),
             const_rho=float(config.interior_energetics.const_rho),
@@ -1276,6 +1277,7 @@ class AragogRunner:
                 kappah_floor=float(ie.kappah_floor),
                 bottom_up_grav_sep=True,
                 phase_smoothing=ie.aragog.phase_smoothing,
+                separation_viscosity=ie.aragog.separation_viscosity,
                 # Width matches hardcoded 1e-2 in numpy entropy_state.py
                 # _spider_get_smoothing call sites (not matprop_smooth_width,
                 # which is a separate SPIDER material-property blend).

@@ -3912,6 +3912,25 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.separation_viscosity",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"melt\"",
+      "choices": [
+        "melt",
+        "mixture"
+      ],
+      "bounds": null,
+      "description": "Drag viscosity for gravitational separation: 'melt' (single-phase liquid viscosity, SPIDER parity) or 'mixture' (rheological-transition- blended bulk viscosity).",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.solver_method",
       "toml_section": "interior_energetics.aragog",
       "class": "Aragog",

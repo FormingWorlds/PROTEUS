@@ -206,6 +206,13 @@ class Aragog:
         validator=in_(('tanh', 'cubic_hermite')),
     )
     """Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'."""
+    separation_viscosity: str = field(
+        default='melt',
+        validator=in_(('melt', 'mixture')),
+    )
+    """Drag viscosity for gravitational separation: 'melt' (single-phase
+    liquid viscosity, SPIDER parity) or 'mixture' (rheological-transition-
+    blended bulk viscosity)."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),

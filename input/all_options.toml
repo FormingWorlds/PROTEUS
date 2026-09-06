@@ -397,6 +397,7 @@ config_version = "3.0"
         solver_method                 = "cvode"  # cvode (SUNDIALS) | radau (scipy) | bdf (scipy)
         atol_temperature_equivalent   = 1.0e-8   # CVODE atol [K]
         phase_smoothing               = "tanh"   # phase-boundary smoothing: tanh | cubic_hermite
+        separation_viscosity          = "melt"   # gravitational-separation drag viscosity: melt (SPIDER parity) | mixture
         core_bc                       = "energy_balance"  # CMB condition: energy_balance | quasi_steady | gradient | bower2018
         tolerance_struct              = 100      # absolute mass tolerance [kg] for the radius secant solver
         scalar_gravity_override       = false    # replace the mesh gravity column with a uniform surface scalar
