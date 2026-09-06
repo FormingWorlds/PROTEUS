@@ -3923,7 +3923,7 @@
         "mixture"
       ],
       "bounds": null,
-      "description": "Drag viscosity for the gravitational-separation velocity v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the melt fractions where adjacent permeability laws agree (Bower et al. 2018, section 2.1, Eqs. 13a to 13c).",
+      "description": "Drag viscosity for the gravitational-separation velocity v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c).",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,

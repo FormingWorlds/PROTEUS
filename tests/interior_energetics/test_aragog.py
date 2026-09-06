@@ -47,6 +47,7 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.aragog.temperature_step_cap = 0.0
     config.interior_energetics.aragog.entropy_step_cap = 0.0
     config.interior_energetics.aragog.phase_boundary_entropy_margin = 200.0
+    config.interior_energetics.aragog.separation_viscosity = 'mixture'
     config.interior_energetics.spider.matprop_smooth_width = 0.0
     config.interior_energetics.const_properties = False
     config.interior_energetics.heat_radiogenic = False

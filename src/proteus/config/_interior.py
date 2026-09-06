@@ -219,8 +219,8 @@ class Aragog:
     that stiffens the bulk rheology, so separation locks up at the same
     melt fraction instead, which is why the default here is 'mixture'
     while Aragog's own default stays 'melt' for SPIDER parity. The
-    regime boundaries are the melt fractions where adjacent permeability
-    laws agree (Bower et al. 2018, section 2.1, Eqs. 13a to 13c)."""
+    regime boundaries are the porosities where adjacent permeability
+    laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c)."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),
