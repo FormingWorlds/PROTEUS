@@ -147,7 +147,7 @@ def test_interior_defaults():
 
     Checks default physics settings for the interior layer:
     - radiogenic/tidal heating: Enabled by default (energy sources)
-    - grain size: 0.1 m (standard crystal size)
+    - grain size: 1e-3 m (standard crystal size)
     - Initial flux: 1000 W/m^2 (hot start)
     """
     # Interior requires module argument
@@ -158,7 +158,7 @@ def test_interior_defaults():
     assert i.spider == spider_cfg
     assert i.heat_radiogenic is True  # Heating terms on
     assert i.heat_tidal is False
-    assert i.grain_size == pytest.approx(0.1, rel=1e-12)  # 10 cm crystals
+    assert i.grain_size == pytest.approx(1e-3, rel=1e-12)  # 1 mm crystals
     assert i.flux_guess == -1  # Auto-detect
 
     # Sub-modules defaults

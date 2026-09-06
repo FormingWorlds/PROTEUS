@@ -202,7 +202,7 @@ controlled parity tests.
 |---|---|---|---|
 | `rfront_loc` | float | `0.5` | Centre of rheological transition in terms of melt fraction. Must be > 0 and < 1. |
 | `rfront_wid` | float | `0.2` | Width of rheological transition in terms of melt fraction. Must be > 0 and < 1. |
-| `grain_size` | float | `0.1` | Crystal settling grain size \[m\]. Must be > 0. |
+| `grain_size` | float | `0.001` | Crystal settling grain size \[m\]. Must be > 0. |
 | `mixing_length` | str | `"nearest"` | Mixing-length scale: 'nearest' (distance to nearest boundary) or 'constant' (a quarter of the mantle depth). Choices: `"nearest"`, `"constant"`. |
 | `kappah_floor` | float | `10.0` | Eddy diffusivity floor \[m2 s-1\]; prevents mixing-length transport from freezing out. Must be >= 0. |
 
