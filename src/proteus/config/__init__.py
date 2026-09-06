@@ -7,9 +7,59 @@ from pathlib import Path
 import cattrs
 
 from ._config import Config
+from ._interior import _STEP_CAP_FIELDS
 from .orphans import UnknownConfigKeyError, find_key_problems, format_orphan_message
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+def _is_explicit_zero(value: object) -> bool:
+    """True for a TOML int or float value of zero, false for a bool or 0.0."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value == 0.0
+
+
+def _check_step_cap_zeros(raw: dict, path: Path | str) -> None:
+    """Reject an explicit 0.0 for an Aragog step-cap field.
+
+    An absent key still resolves to the schema default and, for a zalmoxis
+    interior structure, on to the Aragog wrapper's built-in cap; only a
+    value the file actually sets is checked here. Checked only when
+    ``interior_energetics.module`` resolves to ``aragog``, an absent key
+    included since that is the schema default, since that promotion is
+    the only place the ambiguity changes what a run does: for any other
+    module the step-cap fields are inert, and a config snapshot written for
+    that module carries its caps at their live, unresolved value, which is
+    0.0 whenever the field was never set.
+
+    Parameters
+    ----------
+    raw:
+        Raw TOML dict as returned by `read_config`.
+    path:
+        Config file the dict came from, quoted back in any error.
+
+    Raises
+    ------
+    ValueError
+        If a step-cap field is explicitly set to 0.0.
+    """
+    interior_energetics = raw.get('interior_energetics', {})
+    if not isinstance(interior_energetics, dict):
+        return
+    if interior_energetics.get('module', 'aragog') != 'aragog':
+        return
+    aragog = interior_energetics.get('aragog', {})
+    if not isinstance(aragog, dict):
+        return
+    zeroed = [f for f in _STEP_CAP_FIELDS if _is_explicit_zero(aragog.get(f))]
+    if zeroed:
+        names = ', '.join(f'interior_energetics.aragog.{f}' for f in zeroed)
+        raise ValueError(
+            f'Invalid configuration in {path}:\n'
+            f'  {names} set to 0.0, which is ambiguous with the unset default.\n'
+            f'  Omit the key to use the default, set it to -1.0 to disable the cap, '
+            f'or set a positive value for a custom cap.'
+        )
 
 
 def read_config(path: Path | str) -> dict:
@@ -48,6 +98,8 @@ def structure_config(raw: dict, path: Path | str) -> Config:
     ValueError
         If a value fails validation.
     """
+
+    _check_step_cap_zeros(raw, path)
 
     try:
         obj = cattrs.structure(raw, Config)

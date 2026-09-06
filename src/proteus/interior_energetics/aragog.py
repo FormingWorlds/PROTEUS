@@ -38,6 +38,10 @@ from proteus.utils.constants import radnuc_data
 
 log = logging.getLogger('fwl.' + __name__)
 
+# The effective step caps are fixed by the config, so record them once per
+# process at INFO for provenance rather than on every per-step solve.
+_effective_caps_logged = False
+
 if TYPE_CHECKING:
     from proteus.config import Config
 
@@ -701,6 +705,15 @@ class AragogRunner:
         phi_step_cap = _effective_phi_step_cap(config)
         temperature_step_cap = _effective_temperature_step_cap(config)
         entropy_step_cap = _effective_entropy_step_cap(config)
+        global _effective_caps_logged
+        if not _effective_caps_logged:
+            log.info(
+                'Effective interior step caps: phi=%.3g, T=%.3g K, S=%.3g J/kg/K',
+                phi_step_cap,
+                temperature_step_cap,
+                entropy_step_cap,
+            )
+            _effective_caps_logged = True
         # Only a genuine promotion (schema default 0.0 lifted to a positive
         # zalmoxis default) is an auto-enable. An explicit negative off switch
         # resolves to 0.0 and differs from the configured value too, so the
