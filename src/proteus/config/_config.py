@@ -407,7 +407,10 @@ class Config:
         # once written to TOML, so omit the key and let a reload fall back
         # to the same schema default it already carries here.
         interior_energetics = cfg.get('interior_energetics')
-        if isinstance(interior_energetics, dict) and interior_energetics.get('module') == 'aragog':
+        if (
+            isinstance(interior_energetics, dict)
+            and interior_energetics.get('module') == 'aragog'
+        ):
             aragog = interior_energetics.get('aragog')
             if isinstance(aragog, dict):
                 for field_name in _STEP_CAP_FIELDS:
