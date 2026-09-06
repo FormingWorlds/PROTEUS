@@ -537,18 +537,38 @@ def test_fO2_source_user_constant_accepts_all_O_modes():
 
 
 @pytest.mark.unit
-def test_fO2_source_from_mantle_redox_rejected_as_reserved():
-    """The 'from_mantle_redox' enum is reserved for issue #653 and not yet
-    wired into the runtime; reject at config load with the issue reference.
+def test_fO2_source_from_mantle_redox_accepted_with_aragog():
+    """'from_mantle_redox' (radial Fe3+/Fe2+ tracking, issue #653;
+    interior_energetics/redox.py) is a real runtime path, wired for
+    interior_energetics.module in ('spider', 'aragog'). The default
+    fixture uses 'aragog', so this combination must pass.
     """
     instance = _make_config_instance(**{'planet.fO2_source': 'from_mantle_redox'})
-    with pytest.raises(ValueError, match=r'issue #653') as excinfo:
+    assert instance.interior_energetics.module == 'aragog'
+    assert planet_fO2_source_compat(instance, None, None) is None
+
+
+@pytest.mark.unit
+def test_fO2_source_from_mantle_redox_rejects_incompatible_interior_module():
+    """'from_mantle_redox' needs a per-cell radial melt-fraction profile
+    each step, which only 'spider'/'aragog' interior modules provide;
+    'dummy' populates interior_o.phi/mass/pres with a single lumped-mantle
+    value (and interior_o.pres from the atmospheric surface pressure in
+    bar, not the mantle pressure profile in Pa), so must be rejected.
+
+    Discriminating: error message must name the offending module
+    ('dummy') so a regression that only checked "is it spider" (accepting
+    every non-spider module, not just the two allowed ones) would still
+    raise here but with a message a user couldn't act on.
+    """
+    instance = _make_config_instance(
+        **{
+            'planet.fO2_source': 'from_mantle_redox',
+            'interior_energetics.module': 'dummy',
+        }
+    )
+    with pytest.raises(ValueError, match=r'"dummy"'):
         planet_fO2_source_compat(instance, None, None)
-    # Discrimination: the message must name both wired-in alternatives
-    # ('user_constant' and 'from_O_budget') so the user can pick a working
-    # path. A regression that dropped one alternative would fail this check.
-    msg = str(excinfo.value)
-    assert 'user_constant' in msg and 'from_O_budget' in msg
 
 
 @pytest.mark.unit

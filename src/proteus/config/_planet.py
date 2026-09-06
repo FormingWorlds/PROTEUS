@@ -179,27 +179,6 @@ class GasPrs:
         return getattr(self, s)
 
 
-def _reject_reserved_fO2_source(instance, attribute, value):
-    """Reject the reserved ``from_mantle_redox`` source at construction
-    and on assignment.
-
-    ``from_mantle_redox`` is a recognised enum member reserved for the
-    radial Fe3+/Fe2+ framework (issue #653); it has no runtime path yet.
-    The field-level validator runs on a bare ``Planet(...)`` and on
-    post-construction assignment, where the Config-level cross-field
-    check does not, so this keeps the reserved value from reaching the
-    outgas dispatch with a less informative error.
-    """
-    if value == 'from_mantle_redox':
-        raise ValueError(
-            'planet.fO2_source = "from_mantle_redox" is reserved for the '
-            'radial Fe3+/Fe2+ tracking framework (issue #653) and is not '
-            'yet wired into the runtime. Use "user_constant" (fO2 buffered '
-            'by outgas.fO2_shift_IW) or "from_O_budget" (authoritative O '
-            'budget, fO2 derived) instead.'
-        )
-
-
 @define
 class Planet:
     """Bulk planet properties, initial temperature profile, and volatile inventory.
@@ -296,11 +275,15 @@ class Planet:
             instead of buffering to a fixed dIW. Requires
             ``O_mode != 'ic_chemistry'`` (the chemistry needs an O
             target to invert against).
-        'from_mantle_redox' (reserved): fO2 is derived from a tracked
-            Fe3+/Fe2+ ratio in the silicate melt (Schaefer et al. 2024
-            / issue #653). NOT YET IMPLEMENTED; the config-level
-            validator rejects this value until the radial fO2
-            framework lands.
+        'from_mantle_redox': fO2 is derived from a Fe3+/Fe2+ ratio tracked
+            through fractional crystallization of the melt (Schaefer
+            et al. 2024 / issue #653; see
+            ``interior_energetics/redox.py``), using prescribed
+            melt/solid partition coefficients rather than an equilibrium
+            constant. The tracker needs a per-cell radial melt-fraction
+            profile, so requires ``interior_energetics.module`` to be
+            'spider' or 'aragog' (checked by the config-level
+            validator).
     prevent_warming: bool
         When True, require the planet to monotonically cool over time.
         Enforced in all atmosphere modules and termination checks.
@@ -363,14 +346,17 @@ class Planet:
     # fO2 source. Default 'user_constant': outgas.fO2_shift_IW buffers
     # atmospheric fO2 and the chemistry solver returns the implied O
     # inventory. 'from_O_budget' inverts the roles (O budget drives fO2);
-    # 'from_mantle_redox' is reserved for issue #653 and rejected by the
-    # config-level validator below until that work lands.
+    # 'from_mantle_redox' (issue #653) derives fO2 from a tracked melt
+    # Fe3+/Fe2+ ratio (interior_energetics/redox.py). Compatibility with
+    # interior_energetics.module is checked at the Config level, below.
     fO2_source: str = field(
         default='user_constant',
-        validator=[
-            in_(('user_constant', 'from_O_budget', 'from_mantle_redox')),
-            _reject_reserved_fO2_source,
-        ],
+        # Kept as a single-element list (not a bare validator): the schema
+        # reference generator's extraction of choices/bounds through the
+        # attrs and_() wrapper is exercised against this exact field (see
+        # tests/tools/test_generate_config_reference.py
+        # ::test_enum_and_bound_extraction_pins_real_validator_sets).
+        validator=[in_(('user_constant', 'from_O_budget', 'from_mantle_redox'))],
     )
 
     # Structure override: bypass the root finder and use a fixed R_int.

@@ -2384,6 +2384,36 @@
       "consumers": []
     },
     {
+      "name": "fO2_shift_IW_mantle",
+      "unit": "log10 bar",
+      "description": "tracked-melt-redox surface Delta-IW",
+      "group": "Atmospheric composition from outgassing",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/redox.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ]
+    },
+    {
+      "name": "ferric_frac_mantle",
+      "unit": "1",
+      "description": "global melt Fe3+/FeT from the tracker",
+      "group": "Atmospheric composition from outgassing",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/redox.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": []
+    },
+    {
       "name": "M_vol_initial",
       "unit": "kg",
       "description": "bulk volatile inventory baseline",

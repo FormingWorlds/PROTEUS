@@ -235,6 +235,8 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `fO2_vapourise_shift_IW_derived` | `log10 bar` | rock-vapour IW offset | `outgas/lavatmos.py` | outgas.vapourise = true | outgas |
 | `O_res` | `kg` | O mass-balance residual | `outgas/atmodeller.py`<br>`outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller"; outgas.module = "calliope"; outgas.module = "dummy" |   |
 | `O_vapourised_kg` | `kg` | oxygen released by rock vapourisation (LavAtmos) | `outgas/lavatmos.py` | outgas.vapourise = true |   |
+| `fO2_shift_IW_mantle` | `log10 bar` | tracked-melt-redox surface Delta-IW | `interior_energetics/redox.py` | always | outgas |
+| `ferric_frac_mantle` | `1` | global melt Fe3+/FeT from the tracker | `interior_energetics/redox.py` | always |   |
 
 ### Desiccation escape balance
 

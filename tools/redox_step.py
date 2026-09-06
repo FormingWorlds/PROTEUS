@@ -1,7 +1,16 @@
 """
 Melt redox evolution (Fe3+ / Fe2+) through magma-ocean crystallization, and
-the resulting radially resolved oxygen fugacity, per the accompanying paper
-draft ("Time evolution of radially resolved fO2 mantle of rocky exoplanets").
+the resulting radially resolved oxygen fugacity.
+
+Status: this is the standalone prototype, run offline against a finished
+SPIDER output series to validate the physics and produce the diagnostic
+plots below. The same Steps 0-10 now also run live inside PROTEUS's
+coupling loop, one timestep at a time, as
+src/proteus/interior_energetics/redox.py, wired to
+planet.fO2_source = "from_mantle_redox" (issue #653). This script is not
+imported by PROTEUS itself; keep it for offline validation/re-plotting
+against a completed run, and keep the two implementations' physics in sync
+if either changes.
 
 Implements Steps 0-10 of the redox derivation, stepped through the full
 SPIDER time series in DATA_DIR:
@@ -47,9 +56,9 @@ does not use it for.
 
 The surface point of that same profile (evaluated at the true surface T, P
 from the _b boundary grid, not cell 0 of the _s grid which sits at ~1-2 GPa)
-is additionally converted to Delta-IW using the Hirschmann (2021) GCA 313,
-74-84 iron-wustite buffer (IW_H21.m in the Schaefer+2024 archive), valid
-~100 kPa to 100 GPa.
+is additionally converted to Delta-IW using the O'Neill & Eggins (2002)
+iron-wustite buffer as given in Bower et al. (2022) PSJ 3, 93, Eq 7-8
+(fO2 depends only on T, not P).
 
 Grid convention:
   _s  = staggered nodes (99 cells): pressure, mass, radius, phi_s, temp_s
@@ -72,8 +81,18 @@ import json
 import math
 import os
 
+import h5py
 import matplotlib.pyplot as plt
 import numpy as np
+
+plt.rcParams.update({
+    "font.size":        14,
+    "axes.titlesize":   15,
+    "axes.labelsize":   14,
+    "xtick.labelsize":  12,
+    "ytick.labelsize":  12,
+    "legend.fontsize":  12,
+})
 
 DATA_DIR = "output/data"
 
@@ -195,6 +214,46 @@ def read_spider_step(filepath):
         "pressure_surf": pressure_b[0] * Pb_scale,
         "temp_surf":     temp_b[0] * Tb_scale,
     }
+
+
+def read_atm_gases(filepath):
+    """
+    Read surface (highest-pressure level, index -1) gas mole fractions and
+    total pressure from an AGNI/SOCRATES atmosphere output file (*_atm.nc,
+    written alongside each SPIDER snapshot). Returns (gas_names,
+    partial_pressures_Pa, mole_fractions), all length ngases. mole_fractions
+    is the raw x_gas surface value, normalized to sum to 1 by construction.
+    """
+    with h5py.File(filepath, "r") as f:
+        gas_names = [b"".join(row).decode("ascii").strip() for row in f["gases"][:]]
+        p_surf    = float(f["p"][-1])
+        x_surf    = [float(x) for x in f["x_gas"][-1, :]]
+        partial_pressures_Pa = [x * p_surf for x in x_surf]
+    return gas_names, partial_pressures_Pa, x_surf
+
+
+def read_atmosphere_time_series(files):
+    """
+    Read surface gas partial pressures and mole fractions for every SPIDER
+    snapshot's matching atmosphere file (<step>.json -> <step>_atm.nc, same
+    directory).
+
+    Returns (gas_names, partial_pressure_Pa, mole_fraction), where the two
+    arrays have shape (n_gases, len(files)).
+    """
+    gas_names = None
+    all_partials = []
+    all_mole_fracs = []
+    for filepath in files:
+        atm_path = os.path.splitext(filepath)[0] + "_atm.nc"
+        names, partials, mole_fracs = read_atm_gases(atm_path)
+        if gas_names is None:
+            gas_names = names
+        elif names != gas_names:
+            raise ValueError(f"gas list mismatch in {atm_path}: {names} != {gas_names}")
+        all_partials.append(partials)
+        all_mole_fracs.append(mole_fracs)
+    return gas_names, np.array(all_partials).T, np.array(all_mole_fracs).T
 
 
 def compute_hirschmann_mole_fractions(wt_FeO, wt_FeO15, wt_MgO, wt_SiO2, wt_CaO,
@@ -385,6 +444,23 @@ def compute_redox_ratio(ferric):
 
 
 # ── Step 10 (Hirschmann 2022 Eq 21 = Schaefer 2024 Eq 13): radial fO2 profile ───
+#
+# The pressure/EOS term (integral of Delta V dP) is fixed at zero here, as it
+# is everywhere Schaefer's own code evaluates this equation (fO2lowP_H22.m).
+# A real pressure term was tried (the Deng et al. 2020 EOS, ported from
+# BM4VolumeFunc.m/deltaGFeOFeO15_Deng.m) and works near the surface, but
+# fails to converge for the hot, deep-mantle cells: at T above ~4200 K the
+# thermal-pressure term keeps the model's predicted pressure positive and
+# large for every physically reasonable volume, so there is no root at the
+# integration path's low-pressure starting point -- a genuine limitation of
+# extrapolating this EOS's thermal term outside the temperature range it was
+# calibrated against, not a numerical bug. More fundamentally, our model
+# never solves a chemical equilibrium anywhere else either: Steps 3-9 move
+# Fe3+/Fe2+ between melt and solid using fixed, prescribed partition
+# coefficients, not an equilibrium constant derived from Gibbs energies. A
+# fully rigorous, EOS-derived pressure term on just this one step would be
+# more rigorous than everything feeding into it, not more consistent with
+# it. So this stays at DeltaVdP=0; radial structure comes only from T(r).
 
 def compute_fO2(redox_ratio_val, snapshot, X):
     """
@@ -392,10 +468,9 @@ def compute_fO2(redox_ratio_val, snapshot, X):
     et al. 2024's Eq 13 / Table 4), evaluated at each cell's local T(r) with
     the single, global, time-evolving redox ratio. Ported from fO2lowP_H22.m.
 
-    The pressure/EOS term (integral of Delta V dP) is fixed at zero, as it
-    is everywhere Schaefer's own code evaluates this equation -- see module
-    docstring. So this has no P-dependence; radial structure comes only
-    from T(r).
+    The pressure/EOS term (integral of Delta V dP) is fixed at zero -- see
+    the section note above -- so this has no P-dependence; radial structure
+    comes only from T(r).
     """
     R       = 8.31447
     a       = 0.19317
@@ -431,32 +506,14 @@ def compute_fO2(redox_ratio_val, snapshot, X):
     return {"ln_fO2": ln_fO2_list, "fO2": fO2_list}
 
 
-def iw_buffer_hirschmann2021(T, P_GPa):
+def iw_buffer_bower2022(T):
     """
-    log10(fO2) of the iron-wustite (IW) buffer, Hirschmann (2021) GCA 313,
-    74-84, Table 1, ported from IW_H21.m. Valid ~100 kPa to 100 GPa,
-    1000-3000 K. T in K, P in GPa.
+    log10(fO2) of the iron-wustite (IW) buffer: Fe + 0.5 O2 = FeO, from
+    O'Neill & Eggins (2002) as given in Bower et al. (2022) PSJ 3, 93, Eq 7.
+    T in K. No pressure dependence (unlike Hirschmann 2021).
     """
-    P_transition = -18.640 + 0.04359 * T - 5.069e-6 * T**2
-
-    if P_GPa < P_transition:
-        a_coeff = (6.844864, 1.175691e-1, 1.143873e-3, 0, 0)
-        b_coeff = (5.791364e-4, -2.891434e-4, -2.737171e-7, 0, 0)
-        c_coeff = (-7.971469e-5, 3.198005e-5, 0, 1.059554e-10, 2.014461e-7)
-        d_coeff = (-2.769002e4, 5.285977e2, -2.919275e0, 0, 0)
-    else:
-        a_coeff = (8.463095, -3.000307e-3, 7.213445e-5, 0, 0)
-        b_coeff = (1.148738e-3, -9.352312e-5, 5.161592e-7, 0, 0)
-        c_coeff = (-7.448624e-4, -6.329325e-6, 0, -1.407339e-10, 1.830014e-4)
-        d_coeff = (-2.782082e4, 5.285977e2, -8.473231e-1, 0, 0)
-
-    P_terms = (1, P_GPa, P_GPa**2, P_GPa**3, math.sqrt(P_GPa))
-    a_val = sum(a * p for a, p in zip(a_coeff, P_terms))
-    b_val = sum(b * p for b, p in zip(b_coeff, P_terms))
-    c_val = sum(c * p for c, p in zip(c_coeff, P_terms))
-    d_val = sum(d * p for d, p in zip(d_coeff, P_terms))
-
-    return a_val + b_val * T + c_val * T * math.log(T) + d_val / T
+    R = 8.31447
+    return (-244118 + 115.559 * T - 8.474 * T * math.log(T)) / (0.5 * math.log(10) * R * T)
 
 
 # ── verbose diagnostic printout for the first N steps ─────────────────────────
@@ -579,6 +636,7 @@ def run_redox_evolution(files, verbose_steps=VERBOSE_STEPS, csv_path=CSV_PATH):
         "log10_fO2_cell": [],   # per-cell radial profile (Hirschmann 2022 Eq 21)
         "log10_fO2_surf": [],
         "dIW_surface":    [],
+        "melt_frac_global": [],   # mass-weighted bulk mantle melt fraction
     }
 
     print(f"{'step':>7}  {'time (yr)':>14}  {'ferric_frac':>12}  {'redox_ratio':>12}  "
@@ -624,12 +682,11 @@ def run_redox_evolution(files, verbose_steps=VERBOSE_STEPS, csv_path=CSV_PATH):
 
         # surface point of that same profile, evaluated at the true surface
         # (top _b node, P ~ 0) rather than cell 0 of the _s grid (~1-2 GPa),
-        # then converted to Delta-IW via the Hirschmann (2021) buffer
+        # then converted to Delta-IW via Bower et al. (2022) Eq 7-8
         surf_snapshot  = {"temp": [curr["temp_surf"]], "pressure": [curr["pressure_surf"]]}
         fO2_surf       = compute_fO2(redox_ratio_val, surf_snapshot, X)
         log10_fO2_surf = fO2_surf["ln_fO2"][0] / math.log(10)
-        dIW_surface    = log10_fO2_surf - iw_buffer_hirschmann2021(
-            curr["temp_surf"], curr["pressure_surf"] / 1e9)
+        dIW_surface    = log10_fO2_surf - iw_buffer_bower2022(curr["temp_surf"])
 
         # per-cell, per-timestep dump (Steps 3-10); melt_dist here is the
         # "(t-1)" cell state that fed this iteration's Step 5-6 partitioning
@@ -658,6 +715,9 @@ def run_redox_evolution(files, verbose_steps=VERBOSE_STEPS, csv_path=CSV_PATH):
         results["log10_fO2_cell"].append(log10_fO2_cell)
         results["log10_fO2_surf"].append(log10_fO2_surf)
         results["dIW_surface"].append(dIW_surface)
+        mass_total = sum(curr["mass"][c] for c in range(n_cells))
+        melt_frac_global = sum(curr["phi"][c] * curr["mass"][c] for c in range(n_cells)) / mass_total
+        results["melt_frac_global"].append(melt_frac_global)
 
         if i <= verbose_steps and not melt_exhausted:
             _print_verbose_step(i, iron, fe_split, melt_dist, solid, fe3_part, fe2_part,
@@ -715,7 +775,7 @@ if __name__ == "__main__":
     ax1b.set_xlabel("time (yr)")
     ax1b.set_ylabel(r"$\Delta$IW at surface")
     ax1b.set_title("Surface redox state relative to IW\n"
-                    "(fO2: Hirschmann 2022 Eq 21; IW buffer: Hirschmann 2021)")
+                    "(fO2: Hirschmann 2022 Eq 21; IW buffer: Bower et al. 2022 Eq 7-8)")
     ax1b.grid(True, which="both", linestyle="--", alpha=0.4)
     ax1b.legend()
     plt.tight_layout()
@@ -740,5 +800,91 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.savefig("fO2_radial_profile.png", dpi=150)
 
-    print("Saved ferric_fraction_vs_time.png, dIW_surface_vs_time.png "
-          "and fO2_radial_profile.png")
+    # ── Plot 3: surface atmosphere partial pressures vs time (real AGNI/ ─────
+    # SOCRATES simulated composition, not derived from our own redox model)
+    gas_names, partial_pressure_Pa, mole_fraction = read_atmosphere_time_series(files)
+    # results["time_years"] starts from files[1] (files[0] is only the
+    # initial condition for the crystallization loop), so align the same way
+    partial_pressure_Pa = partial_pressure_Pa[:, 1:]
+    mole_fraction = mole_fraction[:, 1:]
+
+    log10_partial_bar = np.full(partial_pressure_Pa.shape, np.nan)
+    positive = partial_pressure_Pa > 0
+    log10_partial_bar[positive] = np.log10(partial_pressure_Pa[positive] / 1e5)  # Pa -> bar
+
+    fig3, ax3 = plt.subplots(figsize=(9, 5))
+    mesh3 = ax3.pcolormesh(results["time_years"], np.arange(len(gas_names)),
+                            log10_partial_bar, shading="auto", cmap="viridis")
+    ax3.set_xscale("log")
+    ax3.set_yticks(np.arange(len(gas_names)))
+    ax3.set_yticklabels(gas_names)
+    ax3.set_xlabel("time (yr)")
+    ax3.set_title("Surface atmosphere partial pressure vs time\n"
+                   "(AGNI/SOCRATES simulated composition)")
+    cbar3 = fig3.colorbar(mesh3, ax=ax3)
+    cbar3.set_label(r"log$_{10}$(partial pressure / bar)")
+    plt.tight_layout()
+    plt.savefig("atm_partial_pressure_vs_time.png", dpi=150)
+
+    # ── Plot 4: atmosphere composition vs time, stacked by partial-pressure ──
+    # fraction. Each species' partial pressure is normalized by the total
+    # surface pressure at that timestep, so every bin sums to 1 and the
+    # stack shows each species' fractional contribution to the total.
+    partial_pressure_bar = partial_pressure_Pa / 1e5
+    total_pressure_bar = partial_pressure_bar.sum(axis=0)
+    partial_pressure_frac = partial_pressure_bar / total_pressure_bar
+    colors4 = plt.cm.tab20(np.linspace(0, 1, len(gas_names)))
+    fig4, ax4 = plt.subplots(figsize=(9, 5))
+    ax4.stackplot(results["time_years"], partial_pressure_frac, labels=gas_names, colors=colors4)
+    ax4.set_xscale("log")
+    ax4.set_ylim(0, 1)
+    ax4.set_xlabel("time (yr)")
+    ax4.set_ylabel("partial pressure / total pressure\n(stacked, normalized to 1)")
+    ax4.set_title("Surface atmosphere composition vs time\n"
+                   "(AGNI/SOCRATES simulated composition)")
+    ax4.legend(loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize=8)
+    plt.tight_layout()
+    plt.savefig("atm_composition_stacked_vs_time.png", dpi=150)
+
+    # ── Plot 5: combined summary — atm composition / dIW / ferric frac / melt frac ──
+    figc, (axc1, axc2, axc3, axc4) = plt.subplots(4, 1, figsize=(9, 14), sharex=True)
+
+    axc1.stackplot(results["time_years"], partial_pressure_frac, labels=gas_names, colors=colors4)
+    axc1.set_ylim(0, 1)
+    axc1.set_ylabel("partial pressure / total pressure\n(stacked, normalized to 1)")
+    axc1.set_title("Surface atmosphere composition\n(AGNI/SOCRATES simulated composition)")
+    axc1.legend(loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize=8)
+
+    axc2.plot(results["time_years"], results["dIW_surface"], color="darkorange")
+    axc2.axhline(0, color="gray", linestyle=":", linewidth=1, label="IW")
+    axc2.set_ylabel(r"$\Delta$IW at surface")
+    axc2.set_title("Surface redox state relative to IW\n"
+                    "(fO2: Hirschmann 2022 Eq 21; IW buffer: Bower et al. 2022 Eq 7-8)")
+    axc2.grid(True, which="both", linestyle="--", alpha=0.4)
+    axc2.legend()
+
+    axc3.plot(results["time_years"], results["ferric_frac"], color="firebrick",
+              label=r"ferric fraction  Fe$^{3+}$/Fe$_T$")
+    axc3.axhline(f_0, color="gray", linestyle=":", linewidth=1, label=f"initial f$_0$ = {f_0}")
+    axc3.set_xscale("log")
+    axc3.set_xlabel("time (yr)")
+    axc3.set_ylabel(r"Fe$^{3+}$/Fe$_T$ (melt, global)")
+    axc3.set_title("Melt redox evolution during crystallization")
+    axc3.grid(True, which="both", linestyle="--", alpha=0.4)
+    axc3.legend()
+
+    axc4.plot(results["time_years"], results["melt_frac_global"], color="teal",
+              label="melt fraction (mass-weighted, global)")
+    axc4.set_xscale("log")
+    axc4.set_xlabel("time (yr)")
+    axc4.set_ylabel(r"melt fraction $\phi$")
+    axc4.set_title("Bulk mantle melt fraction during crystallization")
+    axc4.grid(True, which="both", linestyle="--", alpha=0.4)
+    axc4.legend()
+
+    plt.tight_layout()
+    plt.savefig("redox_summary_combined.png", dpi=150)
+
+    print("Saved ferric_fraction_vs_time.png, dIW_surface_vs_time.png, "
+          "fO2_radial_profile.png, atm_partial_pressure_vs_time.png, "
+          "atm_composition_stacked_vs_time.png and redox_summary_combined.png")

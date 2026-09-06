@@ -2663,7 +2663,7 @@
         "from_mantle_redox"
       ],
       "bounds": null,
-      "description": "How the chemistry solver treats atmospheric fO2. 'user_constant' (default): fO2 is buffered to the iron-wustite offset set by ``outgas.fO2_shift_IW``; atmospheric and dissolved O are derived from the equilibrium chemistry at that fO2. 'from_O_budget': the user O budget (from ``planet.elements.O_mode``/``O_budget``) is authoritative; fO2 is *derived* by the chemistry solver as the IW-buffer offset that produces the supplied O inventory. Use this when you want whole-planet O accounting to drive the redox state instead of buffering to a fixed dIW. Requires ``O_mode != 'ic_chemistry'`` (the chemistry needs an O target to invert against). 'from_mantle_redox' (reserved): fO2 is derived from a tracked Fe3+/Fe2+ ratio in the silicate melt (Schaefer et al. 2024 / issue #653). NOT YET IMPLEMENTED; the config-level validator rejects this value until the radial fO2 framework lands.",
+      "description": "How the chemistry solver treats atmospheric fO2. 'user_constant' (default): fO2 is buffered to the iron-wustite offset set by ``outgas.fO2_shift_IW``; atmospheric and dissolved O are derived from the equilibrium chemistry at that fO2. 'from_O_budget': the user O budget (from ``planet.elements.O_mode``/``O_budget``) is authoritative; fO2 is *derived* by the chemistry solver as the IW-buffer offset that produces the supplied O inventory. Use this when you want whole-planet O accounting to drive the redox state instead of buffering to a fixed dIW. Requires ``O_mode != 'ic_chemistry'`` (the chemistry needs an O target to invert against). 'from_mantle_redox': fO2 is derived from a Fe3+/Fe2+ ratio tracked through fractional crystallization of the melt (Schaefer et al. 2024 / issue #653; see ``interior_energetics/redox.py``), using prescribed melt/solid partition coefficients rather than an equilibrium constant. The tracker needs a per-cell radial melt-fraction profile, so requires ``interior_energetics.module`` to be 'spider' or 'aragog' (checked by the config-level validator).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -8557,6 +8557,7 @@
         "planet"
       ],
       "touches": [
+        "interior_energetics.module",
         "outgas",
         "planet.elements.O_mode",
         "planet.fO2_source",

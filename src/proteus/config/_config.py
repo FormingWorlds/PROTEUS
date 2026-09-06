@@ -170,10 +170,19 @@ def planet_fO2_source_compat(instance, attribute, value):
 
     Rejection rules:
 
-    1. ``fO2_source = "from_mantle_redox"`` is a reserved enum value for
-       the radial Fe3+/Fe2+ fO2 framework (issue #653, Schaefer et al.
-       2024). The runtime path for it does not exist yet; reject the
-       config so users do not silently fall through to the default behaviour.
+    1. ``fO2_source = "from_mantle_redox"`` (the radial Fe3+/Fe2+ fO2
+       framework, issue #653, Schaefer et al. 2024;
+       ``interior_energetics/redox.py``) requires a per-cell radial
+       melt-fraction profile each step, so requires
+       ``interior_energetics.module`` to be ``"spider"`` or ``"aragog"``.
+       The ``dummy`` and ``boundary`` interior modules populate
+       ``interior_o.phi/mass/pres`` with a single lumped-mantle value
+       (not a radial profile, and not even the same physical quantity for
+       pressure -- ``boundary``/``dummy`` set it from the atmospheric
+       surface pressure, in bar, not the mantle pressure profile in Pa),
+       which would silently pin the tracker to the shallow (Cpx/Opx)
+       partition-coefficient regime and track a fictitious one-cell
+       "profile" instead of real fractional crystallization.
 
     2. ``fO2_source = "from_O_budget"`` requires the O budget to be
        authoritative. ``O_mode = "ic_chemistry"`` defers the O inventory
@@ -196,7 +205,8 @@ def planet_fO2_source_compat(instance, attribute, value):
        and structure setup before hitting the wall.
 
     ``fO2_source = "user_constant"`` (default) accepts every O_mode and
-    every volatile_mode.
+    every volatile_mode. ``fO2_source = "from_mantle_redox"`` is likewise
+    unconstrained by O_mode/volatile_mode; only rule 1 above applies to it.
 
     Warning rule:
 
@@ -211,13 +221,16 @@ def planet_fO2_source_compat(instance, attribute, value):
     volatile_mode = instance.planet.volatile_mode
 
     if fO2_source == 'from_mantle_redox':
-        raise ValueError(
-            'planet.fO2_source = "from_mantle_redox" is reserved for the '
-            'radial Fe3+/Fe2+ tracking framework (issue #653) and is not '
-            'yet wired into the runtime. Use "user_constant" (fO2 '
-            'buffered by outgas.fO2_shift_IW) or "from_O_budget" '
-            '(authoritative O budget, fO2 derived) instead.'
-        )
+        interior_module = instance.interior_energetics.module
+        if interior_module not in ('spider', 'aragog'):
+            raise ValueError(
+                'planet.fO2_source = "from_mantle_redox" requires a '
+                'per-cell radial melt-fraction profile each step, which '
+                'only interior_energetics.module = "spider" or "aragog" '
+                f'provide (got "{interior_module}"). Switch the interior '
+                'module, or set fO2_source back to "user_constant" or '
+                '"from_O_budget".'
+            )
 
     if fO2_source == 'from_O_budget' and O_mode == 'ic_chemistry':
         raise ValueError(

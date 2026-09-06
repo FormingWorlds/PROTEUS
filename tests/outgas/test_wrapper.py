@@ -1434,31 +1434,59 @@ def _write_toml(tmp_path, name: str, text: str):
 
 
 @pytest.mark.unit
-def test_config_rejects_from_mantle_redox_reserved(tmp_path):
-    """planet.fO2_source = 'from_mantle_redox' is a reserved enum value
-    for the radial Fe3+/Fe2+ framework (issue #653). The runtime is not
-    wired so the config-level validator must reject it at load time;
-    otherwise users would silently fall through to legacy behaviour
-    that doesn't match what they asked for.
+def test_config_accepts_from_mantle_redox_with_aragog(tmp_path):
+    """planet.fO2_source = 'from_mantle_redox' (radial Fe3+/Fe2+ tracking,
+    issue #653; interior_energetics/redox.py) is a real runtime path now,
+    wired for interior_energetics.module in ('spider', 'aragog'). The
+    schema default interior module is 'aragog' (not overridden by
+    _minimal_valid_toml), so this config must load cleanly.
 
-    Discriminating: error message must mention issue #653 so users can
-    find the upstream tracking.
+    Discriminating: also asserts the loaded value round-trips exactly,
+    not just that construction didn't raise (a validator regression that
+    silently coerced the value to a different string would still pass a
+    bare "didn't raise" check).
     """
     from proteus.config import read_config_object
 
     cfg_path = _write_toml(
         tmp_path,
-        'reserved.toml',
+        'mantle_redox.toml',
         _minimal_valid_toml(extra_planet='    fO2_source = "from_mantle_redox"\n'),
     )
 
-    with pytest.raises(ValueError, match='issue #653'):
-        read_config_object(str(cfg_path))
-    # The error must name the reserved enum value itself so a user
-    # who hits this without context can find the right line in their
-    # TOML. A regression that pruned the value from the message
-    # would still match 'issue #653' but lose self-correction value.
-    with pytest.raises(ValueError, match='from_mantle_redox'):
+    config = read_config_object(str(cfg_path))
+    assert config.planet.fO2_source == 'from_mantle_redox'
+    assert config.interior_energetics.module == 'aragog'
+
+
+@pytest.mark.unit
+def test_config_rejects_from_mantle_redox_with_dummy_interior(tmp_path):
+    """planet.fO2_source = 'from_mantle_redox' requires a per-cell radial
+    melt-fraction profile each step. interior_energetics.module = 'dummy'
+    only provides a single lumped-mantle value (not a radial profile, and
+    interior_o.pres is populated from the atmospheric surface pressure in
+    bar rather than the mantle pressure profile in Pa), so the
+    combination must be rejected at config-load rather than silently
+    tracking a physically meaningless one-cell "profile".
+
+    Discriminating: error message must name the interior module the
+    config actually requested ('dummy'), not just a generic complaint.
+    """
+    from proteus.config import read_config_object
+
+    cfg_path = _write_toml(
+        tmp_path,
+        'mantle_redox_dummy.toml',
+        _minimal_valid_toml(
+            extra_planet='    fO2_source = "from_mantle_redox"\n',
+            extra_elements=(
+                '\n[interior_energetics]\n'
+                '    module = "dummy"\n'
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match='"dummy"'):
         read_config_object(str(cfg_path))
 
 

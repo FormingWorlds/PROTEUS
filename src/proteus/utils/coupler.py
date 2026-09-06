@@ -961,6 +961,16 @@ def GetHelpfileKeys():
         'O_res',                 # O mass-balance residual [kg]
         'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
 
+        # Melt Fe3+/Fe2+ redox tracking (issue #653,
+        # interior_energetics/redox.py). Populated only under
+        # planet.fO2_source = "from_mantle_redox"; left at 0.0 (from
+        # ZeroHelpfileRow) otherwise. fO2_shift_IW_mantle is what the
+        # outgas dispatch buffers to under that source, echoed here
+        # verbatim for single-source-of-truth analysis (same convention
+        # as fO2_shift_IW_derived above).
+        'fO2_shift_IW_mantle',  # tracked-melt-redox surface Delta-IW [log10 bar]
+        'ferric_frac_mantle',  # global melt Fe3+/FeT from the tracker [1]
+
         # Desiccation escape balance. Read by `check_desiccation`.
         # M_vol_initial is the summed *_kg_total (oxygen included) captured on
         # the first escape call; esc_kg_cumulative is the mass each step took

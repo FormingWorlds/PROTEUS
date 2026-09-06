@@ -601,6 +601,12 @@ class Interior_t:
 
         self.aragog_solver = None
 
+        # Melt Fe3+/Fe2+ redox tracking state (interior_energetics/redox.py),
+        # only used under planet.fO2_source = 'from_mantle_redox' (issue
+        # #653). Lazily created on the first call to update_melt_redox so
+        # that every other run pays zero cost for this feature.
+        self.redox_state = None
+
         # Counter for consecutive Aragog steps integrated on a stale
         # Zalmoxis structure (i.e. with self.structure_stale=True
         # set by a Zalmoxis fall-back). Resets to 0 on every successful
