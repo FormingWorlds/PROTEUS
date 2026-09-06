@@ -411,11 +411,15 @@ runs:
     # ------------------------------------------------------------------
     # 7. Julia depot cache (AGNI's Pkg.instantiate output)
     # ------------------------------------------------------------------
-    # The depot holds precompiled Julia packages and downloaded JLL binary
-    # artifacts, some of which dlopen/dlsym against native shared libraries
-    # (including libSOCRATES_C via AGNI's ccall bindings) the same way the
-    # SOCRATES build cache above does, so the key carries the same
-    # ImageVersion component to avoid serving artifacts across an image bump.
+    # The depot holds Julia's own precompiled package cache and downloaded
+    # JLL binary artifacts, which dlopen/dlsym against native shared
+    # libraries the same way the SOCRATES build cache above does (the
+    # libSOCRATES_C ccall bindings AGNI compiles live in socrates/, under
+    # the separate cache above, not in this depot). The key carries the
+    # same ImageVersion component to avoid serving artifacts across an
+    # image bump. Both restore-key tiers below carry it too, so an image
+    # bump forces a full Pkg.instantiate() on the next run instead of a
+    # partial restore; that cost is accepted to keep the cache correct.
     - name: Cache Julia depot
       id: cache-julia
       uses: actions/cache@v5
