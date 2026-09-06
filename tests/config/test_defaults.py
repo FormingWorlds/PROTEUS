@@ -216,6 +216,7 @@ def test_aragog_defaults():
     a = Aragog()
     assert a.mass_coordinates is True
     assert a.backend == 'jax'
+    assert a.separation_viscosity == 'mixture'
     assert not hasattr(a, 'jax')
     assert not hasattr(a, 'use_jax_jacobian')
     assert not hasattr(a, 'dilatation'), (

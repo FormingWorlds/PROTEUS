@@ -207,12 +207,20 @@ class Aragog:
     )
     """Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'."""
     separation_viscosity: str = field(
-        default='melt',
+        default='mixture',
         validator=in_(('melt', 'mixture')),
     )
-    """Drag viscosity for gravitational separation: 'melt' (single-phase
-    liquid viscosity, SPIDER parity) or 'mixture' (rheological-transition-
-    blended bulk viscosity)."""
+    """Drag viscosity for the gravitational-separation velocity
+    v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid
+    viscosity, SPIDER parity) keeps draining melt toward the core-mantle
+    boundary in coupled caps-off runs, producing a collapse; 'mixture'
+    (rheological-transition-blended bulk viscosity) ties the drag viscosity
+    to the same solid-fraction rise that stiffens the bulk rheology, so
+    separation locks up at the same melt fraction instead, which is why
+    the default here is 'mixture' while Aragog's own default stays 'melt'
+    for SPIDER parity. The permeability regime boundaries follow a
+    critical Reynolds number for percolating flow (Abe 1993), consolidated
+    in Abe (1995) and reviewed in Bower et al. (2018)."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),
