@@ -284,7 +284,7 @@ ref = "c7ffdf000a49439fc597eff3f586c2c54caba647"
 # under socrates/ by tools/get_socrates.sh; the build output is what
 # the AGNI / JANUS atmosphere modules link against at runtime.
 url = "https://github.com/FormingWorlds/SOCRATES.git"
-ref = "f42ddec0356b3811b260cfe21a7f2c06033b39bd"
+ref = "43b86d4d46dcb1fa2e94fb24b9246421a03a9acb"
 
 [tool.proteus.modules.spider]
 # Interior thermal evolution module (C, requires PETSc). Cloned and
