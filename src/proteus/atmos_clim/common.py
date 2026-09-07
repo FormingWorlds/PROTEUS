@@ -78,8 +78,7 @@ class Atmos_t:
         self.solves_seen: int = 0
 
 
-
-def ncdf_flag_to_bool(var) -> bool|None:
+def ncdf_flag_to_bool(var) -> bool | None:
     """Convert NetCDF flag (y/n) to Python bool (true/false)"""
     v = str(var[0].tobytes().decode()).lower()
 

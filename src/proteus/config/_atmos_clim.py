@@ -268,14 +268,14 @@ class Agni:
         },
     )
     spectral_file: str | None = field(default=None, converter=none_if_none)
-    grey_opacity_lw: float    = field(default=1e1, validator=gt(0))
-    grey_opacity_sw: float    = field(default=1e-4, validator=gt(0))
-    hydrograv_steps: int      = field(default=2000, validator=gt(0))
-    hydrograv_maxdr: float    = field(default=1e8, validator=gt(0))
-    hydrograv_mindr: float    = field(default=1e-5, validator=gt(0))
-    hydrograv_ming: float     = field(default=1e-4, validator=gt(0))
-    hydrograv_constg: bool    = field(default=False)
-    hydrograv_selfg: bool     = field(default=True)
+    grey_opacity_lw: float = field(default=1e1, validator=gt(0))
+    grey_opacity_sw: float = field(default=1e-4, validator=gt(0))
+    hydrograv_steps: int = field(default=2000, validator=gt(0))
+    hydrograv_maxdr: float = field(default=1e8, validator=gt(0))
+    hydrograv_mindr: float = field(default=1e-5, validator=gt(0))
+    hydrograv_ming: float = field(default=1e-4, validator=gt(0))
+    hydrograv_constg: bool = field(default=False)
+    hydrograv_selfg: bool = field(default=True)
 
 
 def valid_janus(instance, attribute, value):

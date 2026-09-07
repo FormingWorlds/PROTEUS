@@ -54,9 +54,25 @@ def test_ncdf_flag_to_bool():
     assert ncdf_flag_to_bool(n) is False
     assert ncdf_flag_to_bool(N) is False
 
-    # Ensure it fails safely on invalid input
-    with pytest.raises(ValueError):
-        ncdf_flag_to_bool(np.array([b'x'], dtype='S1'))
+
+@pytest.mark.unit
+def test_ncdf_flag_to_bool_logs_and_returns_none_on_invalid_input(caplog):
+    """An unparseable flag byte must fail safely, not raise.
+
+    Contract clause: a malformed NetCDF flag is reported via the logger and
+    the caller decides the fallback (see `read_ncdf_profile`, which treats a
+    `None` return as `False`), rather than aborting the whole profile read.
+
+    Discrimination guard: a regression that silently swallowed the bad input
+    and returned e.g. `False` (indistinguishable from a legitimate 'n') would
+    still pass a bare `is None` check on its own, but not alongside the error
+    log assertion below, which pins the caller-visible signal too.
+    """
+    with caplog.at_level('ERROR', logger='fwl.proteus.atmos_clim.common'):
+        result = ncdf_flag_to_bool(np.array([b'x'], dtype='S1'))
+
+    assert result is None
+    assert any('Could not parse' in rec.message for rec in caplog.records)
 
 
 @pytest.mark.unit
@@ -435,6 +451,92 @@ def test_read_ncdf_profile_with_clouds(mock_ds, mock_isfile):
     np.testing.assert_allclose(result['cloud_mmr'], np.array([1e-5, 2e-5]))
     np.testing.assert_allclose(result['cloud_area'], np.array([0.5, 0.8]))
     np.testing.assert_allclose(result['cloud_size'], np.array([1e-5, 1.2e-5]))
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_missing_gravity_falls_back_to_zeros(mock_ds, mock_isfile, caplog):
+    """A NetCDF file with no `gravity` variable must not abort the read.
+
+    Contract clause: an older or hand-built NetCDF file may predate the
+    `gravity` output field. Reading it must fail safely (log + zero-filled
+    fallback) rather than raising `KeyError`, so a single malformed archive
+    does not stop a batch read of many profiles.
+
+    Discrimination guard: the zero fallback is checked against every level,
+    not just the first, so a regression that only zeroed `g[0]` would still
+    be caught.
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    ds_instance.variables = {
+        'p': np.array([100.0, 200.0]),
+        'pl': np.array([110.0, 150.0, 190.0]),
+        # 'gravity' deliberately absent.
+        'tmp': np.array([300.0, 280.0]),
+        'tmpl': np.array([310.0, 290.0, 270.0]),
+        'r': np.array([6.4e6, 6.3e6]),
+        'rl': np.array([6.5e6, 6.35e6, 6.2e6]),
+        'planet_radius': [6.0e6],
+    }
+
+    with caplog.at_level('ERROR', logger='fwl.proteus.atmos_clim.common'):
+        result = read_ncdf_profile('dummy.nc', combine_edges=False)
+
+    assert any('gravity' in rec.message for rec in caplog.records)
+    # Every level is zero, not just the first (rules out a partial fallback).
+    np.testing.assert_array_equal(result['g'], np.zeros(2))
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_invalid_flag_falls_back_to_false(mock_ds, mock_isfile, caplog):
+    """An unparseable metadata flag in the file must read back as False.
+
+    Contract clause: `ncdf_flag_to_bool` now returns `None` (logged, not
+    raised) on a byte it cannot parse; `read_ncdf_profile` must catch that
+    `None` and coerce it to `False` rather than propagating a non-boolean
+    value into the profile dict.
+
+    Discrimination guard: the two untouched flags ('solved', 'converged',
+    absent from this file) still take the plain "not found" default of
+    False, so a regression that defaulted every flag to False regardless of
+    the parse result would not be distinguishable without also asserting the
+    error was actually logged for the malformed one.
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    ds_instance.variables = {
+        'p': np.array([100.0]),
+        'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
+        'tmp': np.array([300.0]),
+        'tmpl': np.array([310.0, 290.0]),
+        'r': np.array([6.4e6]),
+        'rl': np.array([6.3e6, 6.5e6]),
+        'planet_radius': [6.0e6],
+        # Malformed byte: neither 'y' nor 'n'.
+        'transparent': np.array([b'x'], dtype='S1'),
+    }
+
+    with caplog.at_level('ERROR', logger='fwl.proteus.atmos_clim.common'):
+        result = read_ncdf_profile('dummy.nc')
+
+    # Every value is coerced to a float array at the end of the read, so the
+    # fallback surfaces as 0.0 rather than the Python singleton `False`.
+    assert float(result['transparent']) == pytest.approx(0.0)
+    assert any('Could not parse' in rec.message for rec in caplog.records)
+    # Untouched flags still take the plain "not found" default.
+    assert float(result['solved']) == pytest.approx(0.0)
+    assert float(result['converged']) == pytest.approx(0.0)
 
 
 @pytest.mark.unit

@@ -96,7 +96,7 @@ def _check_agni_schema(atmos, dirs) -> None:
     missing = [name for name in _REQUIRED_ATMOS_FIELDS if not hasattr(atmos, name)]
     if not missing:
         return
-    
+
     # Report the AGNI version if available, otherwise 'unknown'
     try:
         version = str(jl.AGNI.consts.AGNI_VERSION)
@@ -642,12 +642,12 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         longitude=hf_row['longitude'],
         latitude=hf_row['latitude'],
         # hydrostatic integration parameters
-        hydrograv_steps  = config.atmos_clim.agni.hydrograv_steps,
-        hydrograv_maxdr  = config.atmos_clim.agni.hydrograv_maxdr,
-        hydrograv_mindr  = config.atmos_clim.agni.hydrograv_mindr,
-        hydrograv_ming   = config.atmos_clim.agni.hydrograv_ming,
-        hydrograv_constg = config.atmos_clim.agni.hydrograv_constg,
-        hydrograv_selfg  = config.atmos_clim.agni.hydrograv_selfg
+        hydrograv_steps=config.atmos_clim.agni.hydrograv_steps,
+        hydrograv_maxdr=config.atmos_clim.agni.hydrograv_maxdr,
+        hydrograv_mindr=config.atmos_clim.agni.hydrograv_mindr,
+        hydrograv_ming=config.atmos_clim.agni.hydrograv_ming,
+        hydrograv_constg=config.atmos_clim.agni.hydrograv_constg,
+        hydrograv_selfg=config.atmos_clim.agni.hydrograv_selfg,
     )
     setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
 
@@ -1142,7 +1142,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
                 save_frames=False,
                 modplot=int(modplot),
                 ls_increase=float(ls_increase),
-                ls_min_scale=float(ls_min_scale)
+                ls_min_scale=float(ls_min_scale),
             )
         except Exception as e:
             # Any Julia-side exception (InexactError on NaN, SingularException,
@@ -1240,9 +1240,7 @@ def _solve_once(atmos, config: Config):
     )
 
     # solve fluxes
-    jl.AGNI.energy.calc_fluxes_b(atmos, 
-                                 radiative=True, convective=True,
-                                 calc_cf=True)
+    jl.AGNI.energy.calc_fluxes_b(atmos, radiative=True, convective=True, calc_cf=True)
 
     # fill kzz values
     jl.AGNI.energy.fill_Kzz_b(atmos)

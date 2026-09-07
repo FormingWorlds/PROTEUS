@@ -347,6 +347,12 @@ def _build_greygas_config():
                 grey_opacity_lw=0.1,
                 grey_opacity_sw=0.2,
                 check_safe_gas=False,
+                hydrograv_steps=2000,
+                hydrograv_maxdr=1e8,
+                hydrograv_mindr=1e-5,
+                hydrograv_ming=1e-4,
+                hydrograv_constg=False,
+                hydrograv_selfg=True,
             ),
         ),
         orbit=SimpleNamespace(s0_factor=1.0, zenith_angle=48.0),
@@ -1536,6 +1542,121 @@ def test_solve_once_rainout_skips_noble_gases(monkeypatch):
     # skip of every gas. At least one reactive gas was saturated.
     assert len(saturated) > 0
     assert all(g not in noble_gases for g in saturated)
+
+
+# ---------------------------------------------------------------------------
+# _solve_energy: Newton solver retry ladder
+# ---------------------------------------------------------------------------
+
+
+def _make_solve_energy_config(*, loops_total=5):
+    """Build the config namespace `_solve_energy` reads.
+
+    `loops_total` is threaded through separately as a plain argument (that is
+    how the function itself takes it), so it is not part of this namespace;
+    it is accepted here only to keep `dx_max_ini` reachable for callers that
+    want the `loops_total < 3` branch.
+    """
+    return SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            surf_state_int=1,
+            agni=SimpleNamespace(
+                ls_default=1,
+                dx_max=100.0,
+                dx_max_ini=50.0,
+                perturb_all=False,
+                max_steps=300,
+                chemistry='none',
+                conduction=True,
+                convection=True,
+                sens_heat=True,
+                latent_heat=True,
+                rainout=False,
+                oceans=False,
+                solution_atol=1e-3,
+                solution_rtol=1e-3,
+                fdo=2,
+            ),
+        ),
+        params=SimpleNamespace(out=SimpleNamespace(logging='WARNING')),
+    )
+
+
+def test_solve_energy_succeeds_on_first_attempt(monkeypatch):
+    """`_solve_energy` returns success immediately when AGNI's solver
+    converges on the first attempt, without touching the retry ladder.
+
+    Contract clause: the solver-tuning kwargs that used to be set by
+    mutating AGNI's `solver.solve_energy` module globals (`ls_increase`,
+    `ls_min_scale`) are now passed straight into the `solve_energy_b` call,
+    and the retired `plot_jacobian` kwarg must not reappear -- passing it
+    would raise in real AGNI (the parameter no longer exists there).
+    """
+    captured_kwargs = {}
+
+    def _fake_solve_energy_b(_atmos, **kwargs):
+        captured_kwargs.update(kwargs)
+        return True
+
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(solver=SimpleNamespace(solve_energy_b=_fake_solve_energy_b))
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: [])
+
+    atmos = _make_run_agni_atmos()
+    config = _make_solve_energy_config()
+    dirs = {'output': '/tmp/fake_output'}
+
+    result_atmos, success = agni_mod._solve_energy(atmos, 5, dirs, config)
+
+    assert result_atmos is atmos
+    assert success is True
+    # loops_total=5 (>= 3) takes the non-initial branch: ls_increase=0.7,
+    # ls_min_scale=1e-4, as set on the first attempt.
+    assert captured_kwargs['ls_increase'] == pytest.approx(0.7)
+    assert captured_kwargs['ls_min_scale'] == pytest.approx(1e-4)
+    assert 'plot_jacobian' not in captured_kwargs
+
+
+def test_solve_energy_exhausts_attempts_on_repeated_exception(monkeypatch, caplog):
+    """A Julia-side exception on every attempt is treated as a non-converged
+    attempt, not propagated, and the retry ladder gives up after its fixed
+    number of attempts.
+
+    Contract clause: `_solve_energy` wraps the `solve_energy_b` call in a
+    bare try/except because AGNI's failure-path plotting can throw an
+    uncaught Julia-side exception (e.g. InexactError on a NaN flux); that
+    must not escape and kill the whole coupling loop.
+
+    Discrimination guard: only three attempts (1-3) actually call
+    `solve_energy_b` -- the fourth iteration hits the "maximum attempts"
+    branch and breaks before calling it again, so a regression that kept
+    calling it forever would show up as a fourth captured attempt.
+    """
+    attempts = []
+
+    def _raise_solve_energy_b(_atmos, **kwargs):
+        attempts.append(kwargs)
+        raise RuntimeError('synthetic Julia-side failure')
+
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(solver=SimpleNamespace(solve_energy_b=_raise_solve_energy_b))
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: [])
+
+    atmos = _make_run_agni_atmos()
+    config = _make_solve_energy_config()
+    dirs = {'output': '/tmp/fake_output'}
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.atmos_clim.agni'):
+        result_atmos, success = agni_mod._solve_energy(atmos, 5, dirs, config)
+
+    assert result_atmos is atmos
+    assert success is False
+    assert len(attempts) == 3
+    assert any('Maximum attempts' in rec.message for rec in caplog.records)
 
 
 # ---------------------------------------------------------------------------
