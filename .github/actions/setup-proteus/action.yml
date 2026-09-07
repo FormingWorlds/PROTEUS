@@ -622,6 +622,13 @@ runs:
         grep -n PS_real_kind_bytes "$RAD_DIR/julia/src/Utilities_CF.f90" || echo "(symbol absent from source)"
         echo "-- nm -g $obj | grep -i real_kind --"
         nm_check "-g" "$obj" "obj, global symbols"
+        sym_name=$(nm -g "$obj" 2>&1 | grep -i real_kind | awk '{print $NF}' | head -n 1) || true
+        if [ -z "$sym_name" ]; then
+          sym_name="_PS_real_kind_bytes"
+          echo "(nm -g found no real_kind symbol in $obj; export-list probe falls back to $sym_name)"
+        else
+          echo "exact linker symbol name for the export list: $sym_name"
+        fi
         echo "-- nm -g $shim | grep -i real_kind --"
         nm_check "-g" "$shim" "shim, global symbols"
         echo "-- nm -gU $shim | grep PS_real_kind_bytes --"
@@ -678,6 +685,15 @@ runs:
             relink_probe "exported_symbol" "-Wl,-exported_symbol,_PS_real_kind_bytes"
             echo "-- relink probe: -Wl,-export_dynamic --"
             relink_probe "export_dynamic" "-Wl,-export_dynamic"
+            echo "-- relink probe: -Wl,-exported_symbols_list (list-file form, using $sym_name, verbose) --"
+            list_file="/tmp/relink-exported_symbols_list.txt"
+            printf '%s\n' "$sym_name" > "$list_file"
+            gfortran -shared $base_flags -Wl,-exported_symbols_list,"$list_file" -v -o /tmp/relink-exported_symbols_list.so $objs "$radlib" 2>&1 || echo "(verbose relink with export list failed, see output above)"
+            if [ -f /tmp/relink-exported_symbols_list.so ]; then
+              nm_check "" "/tmp/relink-exported_symbols_list.so" "relink exported_symbols_list"
+            else
+              echo "(relink exported_symbols_list produced no output file)"
+            fi
           fi
         else
           echo "(link-step probes are macOS-only; skipped on $(uname -s))"
