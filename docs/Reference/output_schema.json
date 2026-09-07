@@ -164,6 +164,46 @@
       ]
     },
     {
+      "name": "longitude",
+      "unit": "deg",
+      "description": "column longitude relative to substellar point",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/atmos_clim/agni.py",
+          "condition": "atmos_clim.module = \"agni\""
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "atmos_clim"
+      ]
+    },
+    {
+      "name": "latitude",
+      "unit": "deg",
+      "description": "column latitude relative to substellar point",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/atmos_clim/agni.py",
+          "condition": "atmos_clim.module = \"agni\""
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "atmos_clim"
+      ]
+    },
+    {
       "name": "perigee",
       "unit": "m",
       "description": "lowest point in orbit",

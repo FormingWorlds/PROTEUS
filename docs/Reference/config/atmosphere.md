@@ -132,6 +132,17 @@ interior heat flux. The `fastchem_*` parameters apply when
 | `fastchem_maxiter_solv` | int | `20000` | Maximum FC iterations (internal solver). Must be > 200. |
 | `fastchem_xtol_chem` | float | `0.0001` | FC solver tolerance (chemistry). Must be > 0.0. |
 | `fastchem_xtol_elem` | float | `0.0001` | FC solver tolerance (elemental). Must be > 0.0. |
+
+**Hydrostatic integration**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `hydrograv_steps` | int | `2000` | Number of steps to use when calculating heights and gravity. Must be > 0. |
+| `hydrograv_maxdr` | float | `100000000.0` | Maximum step size to use when calculating heights \[m\]. Must be > 0. |
+| `hydrograv_mindr` | float | `1e-05` | Minimum step size to use when calculating heights \[m\]. Must be > 0. |
+| `hydrograv_ming` | float | `0.0001` | Minimum allowed gravity in the atmosphere \[m/s^2\]. Must be > 0. |
+| `hydrograv_constg` | bool | `false` | Constant gravity with height?. |
+| `hydrograv_selfg` | bool | `true` | Include self-gravity of the atmosphere?. |
 <!-- END GENERATED: config-table [atmos_clim.agni] -->
 
 ### JANUS `[atmos_clim.janus]`

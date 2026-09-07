@@ -595,6 +595,14 @@ config_version = "3.0"
         fastchem_xtol_chem    = 1e-4         # FastChem convergence tolerance (chemistry)
         fastchem_xtol_elem    = 1e-4         # FastChem convergence tolerance (elemental)
 
+        # Hydrostatic integration
+        hydrograv_steps     = 2000          # Number of steps to use when calculating heights and gravity.
+        hydrograv_maxdr     = 1e8           # Maximum step size to use when calculating heights [m]
+        hydrograv_mindr     = 1e-5          # Minimum step size to use when calculating heights [m]
+        hydrograv_ming      = 1e-4          # Minimum allowed gravity in the atmosphere [m/s^2]
+        hydrograv_constg    = false         # Constant gravity with height?
+        hydrograv_selfg     = true          # Include self-gravity of the atmosphere?
+
     [atmos_clim.janus]
         F_atm_bc              = 0            # outgoing flux boundary: 0 (TOA) | 1 (surface)
         tropopause            = "none"       # tropopause scheme: none | skin | dynamic
