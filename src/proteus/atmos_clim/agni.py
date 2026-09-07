@@ -36,7 +36,7 @@ ALWAYS_DRY = ('CO', 'N2', 'H2', *noble_gases)
 # Fields PROTEUS expects to find on the Julia Atmos_t struct after
 # `atmosphere.allocate_b` succeeds. The list mirrors what `agni.py` and
 # `atmos_clim/common.py` actually read at runtime. A missing entry here
-# fires AgniSchemaMismatch at IC rather than surfacing as a silent
+# raises a RuntimeError at IC rather than surfacing as a silent
 # AttributeError once the main coupling loop is running.
 _REQUIRED_ATMOS_FIELDS = (
     # Pressure-temperature state
@@ -83,31 +83,29 @@ _REQUIRED_ATMOS_FIELDS = (
 )
 
 
-class AgniSchemaMismatch(RuntimeError):
-    """AGNI's Atmos_t is missing a field PROTEUS expects.
-
-    Raised once at first allocate_b, so a future AGNI rename or removal
-    surfaces at IC with a clear list of the missing names instead of
-    propagating into the coupling loop as a generic AttributeError.
-    """
-
-
-def _check_agni_schema(atmos) -> None:
-    """Verify the live Atmos_t carries every field PROTEUS reads.
+def _check_agni_schema(atmos, dirs) -> None:
+    """Verify the live Atmos_t contains every field that PROTEUS expects.
 
     Runs after a successful `atmosphere.allocate_b`; both `setup_b` and
     `allocate_b` must have allocated their backing arrays before this
     is called, because several fields (e.g. ``tau_band``,
     ``flux_*``) only exist after the SOCRATES init block runs.
     """
+
+    # Find missing fields
     missing = [name for name in _REQUIRED_ATMOS_FIELDS if not hasattr(atmos, name)]
     if not missing:
         return
+    
+    # Report the AGNI version if available, otherwise 'unknown'
     try:
         version = str(jl.AGNI.consts.AGNI_VERSION)
     except Exception:
         version = 'unknown'
-    raise AgniSchemaMismatch(
+
+    # Raise an error
+    UpdateStatusfile(dirs, 22)
+    raise RuntimeError(
         f'AGNI {version} Atmos_t is missing PROTEUS-required field(s): '
         f'{", ".join(missing)}. The AGNI pin in pyproject.toml may have '
         'moved past a PROTEUS-known schema; update _REQUIRED_ATMOS_FIELDS '
@@ -630,6 +628,9 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         tmp_floor=config.atmos_clim.tmp_minimum,
         κ_grey_lw=config.atmos_clim.agni.grey_opacity_lw,
         κ_grey_sw=config.atmos_clim.agni.grey_opacity_sw,
+        axial_period=hf_row['axial_period'],
+        longitude=hf_row['longitude'],
+        latitude=hf_row['latitude']
     )
     setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
 
@@ -667,8 +668,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         UpdateStatusfile(dirs, 22)
         raise RuntimeError('Could not allocate atmosphere object')
 
-    # Confirm the live Atmos_t carries every field PROTEUS reads
-    _check_agni_schema(atmos)
+    # Confirm the live Atmos_t contains every field that PROTEUS expects
+    _check_agni_schema(atmos, dirs)
 
     # Set temperature profile from old NetCDF if it exists
     nc_files = glob.glob(os.path.join(dirs['output'], 'data', '*_atm.nc'))
@@ -943,6 +944,15 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
         atmos.gas_ovmr[g][:] = vol_dict[g]
 
     # ---------------------
+    # Update interior geometry and spin rate
+    atmos.grav_surf = float(hf_row['gravity'])
+    atmos.rp = float(hf_row['R_int'])
+    atmos.interior_mass = float(hf_row['M_int'])
+    atmos.axial_period = float(hf_row['axial_period'])
+    atmos.col_lon = float(hf_row['longitude'])
+    atmos.col_lat = float(hf_row['latitude'])
+
+    # ---------------------
     # Update surface temperature(s)
     _validate_surface_state(hf_row, dirs)
     atmos.tmp_surf = float(hf_row['T_surf'])
@@ -1025,10 +1035,8 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
 
     # atmosphere solver plotting frequency
     modplot = 0
-    plot_jacobian = False
     if config.params.out.logging == 'DEBUG':
         modplot = 1
-        plot_jacobian = True
 
     # tracking
     agni_success = False  # success?
@@ -1091,23 +1099,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
             % (linesearch, str(easy_start), dx_max, ls_increase)
         )
 
-        # Update solver
-        jl.AGNI.solver.solve_energy.ls_increase = float(ls_increase)
-        jl.AGNI.solver.solve_energy.ls_min_scale = float(ls_min_scale)
-
         # Try solving temperature profile.
-        #
-        # We wrap the call in a try/except because AGNI unconditionally
-        # invokes `plot_step()` (solver.jl lines 969, 973, 978, 983, 986,
-        # 989) whenever its Newton solver fails. When the failure is due to
-        # NaN fluxes (CODE_NAN, CODE_OBJ), plot_fluxes passes the NaN to
-        # Julia's `range()` which rounds NaN to Int64 and throws
-        # InexactError. That exception propagates up the pyjulia boundary
-        # and would kill the whole Python process, bypassing the
-        # atmosphere-interior deadlock detector in proteus.py::start.
-        # Catching it here lets us report the failure cleanly and lets the
-        # main loop either retry with different solver params or abort via
-        # the deadlock counter.
         try:
             agni_success = jl.AGNI.solver.solve_energy_b(
                 atmos,
@@ -1132,7 +1124,8 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
                 perturb_all=perturb_all,
                 save_frames=False,
                 modplot=int(modplot),
-                plot_jacobian=plot_jacobian,
+                ls_increase=float(ls_increase),
+                ls_min_scale=float(ls_min_scale)
             )
         except Exception as e:
             # Any Julia-side exception (InexactError on NaN, SingularException,
@@ -1230,7 +1223,9 @@ def _solve_once(atmos, config: Config):
     )
 
     # solve fluxes
-    jl.AGNI.energy.calc_fluxes_b(atmos, radiative=True, convective=True)
+    jl.AGNI.energy.calc_fluxes_b(atmos, 
+                                 radiative=True, convective=True,
+                                 calc_cf=True)
 
     # fill kzz values
     jl.AGNI.energy.fill_Kzz_b(atmos)
@@ -1462,6 +1457,8 @@ def run_agni(
     output['ocean_areacov'] = float(atmos.ocean_areacov)
     output['ocean_maxdepth'] = float(atmos.ocean_maxdepth)
     output['P_surf_clim'] = float(atmos.p_boa) / 1e5  # Calculated Psurf [bar]
+    output['longitude'] = float(atmos.col_lon)
+    output['latitude'] = float(atmos.col_lat)
 
     for g in gas_list:
         if g in list(atmos.gas_names):

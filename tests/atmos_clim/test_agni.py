@@ -275,6 +275,9 @@ class _FakeAtmosphere:
         self.transspec_grav = 9.8
         # Chemistry workspace
         self.fastchem_work = ''
+        # Column geometry relative to substellar point
+        self.col_lon = 0.0
+        self.col_lat = 0.0
 
 
 class _FakeAGNI:
@@ -376,6 +379,9 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
         'gravity': 9.8,
         'R_int': 6.4e6,
         'P_surf': 1.0,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -436,6 +442,9 @@ def test_init_agni_atmos_passes_unscaled_surface_pressure(monkeypatch, tmp_path)
         'gravity': 9.8,
         'R_int': 6.4e6,
         'P_surf': p_surf_true,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -481,6 +490,9 @@ def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
         'gravity': 9.8,
         'R_int': 6.4e6,
         'P_surf': 1.0,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -529,6 +541,9 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
         'gravity': 9.8,
         'R_int': 6.4e6,
         'P_surf': 1.0,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -555,7 +570,7 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
 
 
 # ---------------------------------------------------------------------------
-# AgniSchemaMismatch: lightweight Atmos_t field-list check at allocate
+# _check_agni_schema: lightweight Atmos_t field-list check at allocate
 # ---------------------------------------------------------------------------
 
 
@@ -599,7 +614,7 @@ def _build_complete_atmos_stub() -> SimpleNamespace:
     )
 
 
-def test_check_agni_schema_accepts_complete_struct():
+def test_check_agni_schema_accepts_complete_struct(tmp_path):
     """A struct carrying every required field must pass without raising.
 
     Edge: this is the positive baseline. Any change to
@@ -608,8 +623,9 @@ def test_check_agni_schema_accepts_complete_struct():
     builder above lists fields explicitly.
     """
     atmos = _build_complete_atmos_stub()
+    dirs = {'output': str(tmp_path)}
     # Returns None (implicit) on success; raising would fail the test.
-    assert agni_mod._check_agni_schema(atmos) is None
+    assert agni_mod._check_agni_schema(atmos, dirs) is None
     # Discrimination guard: confirm the stub actually had every required
     # field, so a passing test cannot mean the checker is a no-op against
     # an under-populated input.
@@ -617,7 +633,7 @@ def test_check_agni_schema_accepts_complete_struct():
         assert hasattr(atmos, name), f'stub is missing {name}'
 
 
-def test_check_agni_schema_rejects_missing_tau_band():
+def test_check_agni_schema_rejects_missing_tau_band(tmp_path):
     """A struct missing `tau_band` (the AGNI 1.10.2 additive field) must raise.
 
     Discriminating: `tau_band` is the field a roll-back to AGNI 1.10.1
@@ -626,17 +642,21 @@ def test_check_agni_schema_rejects_missing_tau_band():
     """
     atmos = _build_complete_atmos_stub()
     del atmos.tau_band
-    with pytest.raises(agni_mod.AgniSchemaMismatch) as excinfo:
-        agni_mod._check_agni_schema(atmos)
+    dirs = {'output': str(tmp_path)}
+    with pytest.raises(RuntimeError) as excinfo:
+        agni_mod._check_agni_schema(atmos, dirs)
     # The error must name the missing field (not a generic message), so
     # the next maintainer can fix the pin or the field list directly.
     assert 'tau_band' in str(excinfo.value)
     # Side-effect guard: the failing path must NOT silently mutate the
     # input struct. The other fields remain intact.
     assert hasattr(atmos, 'flux_tot')
+    # The failure must also record status code 22 (as every other IC-time
+    # failure in this module does), not just raise silently.
+    assert (tmp_path / 'status').read_text().splitlines()[0] == '22'
 
 
-def test_check_agni_schema_rejects_multiple_missing_fields():
+def test_check_agni_schema_rejects_multiple_missing_fields(tmp_path):
     """When several fields are absent the error names every one of them.
 
     Edge: the next AGNI bump could rename a cluster of related fields
@@ -647,8 +667,9 @@ def test_check_agni_schema_rejects_multiple_missing_fields():
     del atmos.tau_band
     del atmos.flux_tot
     del atmos.gas_vmr
-    with pytest.raises(agni_mod.AgniSchemaMismatch) as excinfo:
-        agni_mod._check_agni_schema(atmos)
+    dirs = {'output': str(tmp_path)}
+    with pytest.raises(RuntimeError) as excinfo:
+        agni_mod._check_agni_schema(atmos, dirs)
     message = str(excinfo.value)
     for name in ('tau_band', 'flux_tot', 'gas_vmr'):
         assert name in message, f'{name} must appear in the schema-mismatch message'
@@ -2017,6 +2038,12 @@ def test_update_agni_atmos_interpolates_a_usable_profile(monkeypatch):
         'T_surf': 1900.0,
         'T_magma': 2000.0,
         'P_surf': 200.0,  # bar
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'M_int': 6.0e24,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
     }
 
     out = agni_mod.update_agni_atmos(
@@ -2071,6 +2098,12 @@ def test_update_agni_atmos_rebuilds_profile_left_non_finite(monkeypatch, caplog)
         'T_surf': 2400.0,
         'T_magma': 2400.0,
         'P_surf': 260.0,  # bar
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'M_int': 6.0e24,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
     }
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.agni'):
@@ -2126,6 +2159,12 @@ def test_update_agni_atmos_rebuilds_when_only_temperatures_are_poisoned(monkeypa
         'T_surf': 2000.0,
         'T_magma': 2000.0,
         'P_surf': 50.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'M_int': 6.0e24,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
     }
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.agni'):
@@ -2167,6 +2206,12 @@ def test_update_agni_atmos_honours_the_configured_guess_on_rebuild(monkeypatch):
         'T_surf': 1500.0,
         'T_magma': 1500.0,
         'P_surf': 10.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'M_int': 6.0e24,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
     }
 
     agni_mod.update_agni_atmos(
@@ -2223,6 +2268,12 @@ def test_update_agni_atmos_fails_as_atmosphere_error_without_a_usable_bc(monkeyp
         'T_surf': float('nan'),
         'T_magma': 2000.0,
         'P_surf': 100.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'M_int': 6.0e24,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
     }
     atmos = _ProfileAtmosphere([1.0e2, 1.0e5], [float('nan'), 1200.0])
     with pytest.raises(RuntimeError, match='T_surf'):
@@ -2288,6 +2339,12 @@ def test_update_agni_atmos_rejects_a_bad_surface_state_behind_a_good_profile(mon
         'T_surf': 1800.0,
         'T_magma': 3000.0,
         'P_surf': 260.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'M_int': 6.0e24,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
     }
 
     # The same profile with a usable surface state goes through, so each
@@ -2368,6 +2425,12 @@ def test_a_lost_atmosphere_goes_to_transparent_mode_not_the_pressure_grid(monkey
         'T_surf': 1800.0,
         'T_magma': 3000.0,
         'P_surf': 260.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'M_int': 6.0e24,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
     }
 
     agni_mod.update_agni_atmos(
