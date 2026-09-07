@@ -31,6 +31,13 @@ inputs:
       data is downloaded (spectral file + minimal stellar spectrum).
     required: false
     default: 'false'
+  shim-diagnostics:
+    description: >
+      If 'true', log which libSOCRATES_C.so on disk exports
+      PS_real_kind_bytes, which file Julia's Libdl resolves, and any
+      other libSOCRATES_C* copies found on the Julia depot / load path.
+    required: false
+    default: 'false'
 
 outputs:
   rad-dir:
@@ -564,6 +571,38 @@ runs:
         fi
         julia --project=. -e 'using Pkg; Pkg.instantiate()'
         julia --project=. deps/build.jl nodata
+
+    # ------------------------------------------------------------------
+    # 7b. Shim diagnostics
+    # ------------------------------------------------------------------
+    # Prints which libSOCRATES_C.so on disk exports PS_real_kind_bytes,
+    # which file Julia's Libdl actually resolves and opens, and any other
+    # libSOCRATES_C* copies on the Julia depot or the restored SOCRATES
+    # tree that could shadow the intended one. Opt-in per caller via
+    # shim-diagnostics so it does not run on every setup-proteus job.
+    - name: Log AGNI shim diagnostics
+      if: inputs.shim-diagnostics == 'true'
+      shell: bash
+      run: |
+        export RAD_DIR="$GITHUB_WORKSPACE/socrates"
+        shim="$RAD_DIR/julia/lib/libSOCRATES_C.so"
+        echo "RAD_DIR=$RAD_DIR"
+        echo "-- nm -gU $shim | grep PS_real_kind_bytes --"
+        nm -gU "$shim" 2>&1 | grep PS_real_kind_bytes || echo "(not found / nm failed on $shim)"
+        echo "-- nm -gU $RAD_DIR/bin/radlib.a | grep PS_real_kind_bytes --"
+        nm -gU "$RAD_DIR/bin/radlib.a" 2>&1 | grep PS_real_kind_bytes || echo "(not found / nm failed on $RAD_DIR/bin/radlib.a)"
+        echo "-- Julia-resolved shim path (Libdl.dlopen/dlpath) --"
+        julia -e '
+          using Libdl
+          h = dlopen(joinpath(ENV["RAD_DIR"], "julia/lib/libSOCRATES_C.so"))
+          println(dlpath(h))
+        ' || echo "(Julia dlopen of the shim failed)"
+        echo "-- other libSOCRATES_C* files under the Julia depot (~/.julia) --"
+        find ~/.julia -name 'libSOCRATES_C*' 2>/dev/null || echo "(depot search failed)"
+        echo "-- other libSOCRATES_C* files under RAD_DIR --"
+        find "$RAD_DIR" -name 'libSOCRATES_C*' 2>/dev/null || echo "(RAD_DIR search failed)"
+        echo "-- DYLD_LIBRARY_PATH (macOS only, empty elsewhere) --"
+        echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH:-}"
 
     # ------------------------------------------------------------------
     # 8. PROTEUS pip install (resolves PyPI + git deps in pyproject.toml)

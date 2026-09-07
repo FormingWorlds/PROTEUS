@@ -152,7 +152,10 @@ jobs:
       - uses: ./.github/actions/setup-proteus
         with:
           full-data: 'true'
+          shim-diagnostics: 'true'
       - name: Run integration tier (not slow)
+        env:
+          JULIA_DEBUG: loading
         run: |
           pytest tests/integration \
             -m "integration and not slow" \
