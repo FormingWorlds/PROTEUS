@@ -539,7 +539,7 @@ DOC_GROUPS = {
                 'hydrograv_ming',
                 'hydrograv_constg',
                 'hydrograv_selfg',
-            )
-        )
+            ),
+        ),
     ),
 }
