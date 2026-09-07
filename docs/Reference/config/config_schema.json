@@ -6864,6 +6864,122 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_clim.agni.hydrograv_steps",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "int",
+      "accepts_none": false,
+      "default": "2000",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Number of steps to use when calculating heights and gravity.",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 0,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_maxdr",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "100000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum step size to use when calculating heights [m]",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 1,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_mindr",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-05",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Minimum step size to use when calculating heights [m]",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 2,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_ming",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0001",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Minimum allowed gravity in the atmosphere [m/s^2]",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 3,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_constg",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Constant gravity with height?",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 4,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_selfg",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Include self-gravity of the atmosphere?",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 5,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
       "path": "atmos_clim.janus.F_atm_bc",
       "toml_section": "atmos_clim.janus",
       "class": "Janus",

@@ -529,5 +529,17 @@ DOC_GROUPS = {
                 'fastchem_xtol_elem',
             ),
         ),
+        (
+            'Hydrostatic integration',
+            None,
+            (
+                'hydrograv_steps',
+                'hydrograv_maxdr',
+                'hydrograv_mindr',
+                'hydrograv_ming',
+                'hydrograv_constg',
+                'hydrograv_selfg',
+            )
+        )
     ),
 }
