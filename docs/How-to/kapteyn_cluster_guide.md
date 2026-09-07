@@ -189,7 +189,7 @@ Modify the following variables according to your needs :
 
 - **`output`** : The outfile will contain the outputs/print statements of your job.
 
-- **`error`** : The errfile file will contain the handled exceptions or runtime errors occuring while your job was running.
+- **`error`** : The errfile file will contain the handled exceptions or runtime errors occurring while your job was running.
 
 For further details, refer to the documentation on the Kapteyn intranet: [How to use Condor?](https://www.astro.rug.nl/intranet/computing/index.php) (Go to Computing > Howto's > linux > How to use Condor?)
 This documentation is updated regularly, so be sure to check for the latest information. Also for more details about condor, the HTCondor documentation can be found here [HT Condor manual](https://htcondor.readthedocs.io/en/latest/users-manual/submitting-a-job.html).
