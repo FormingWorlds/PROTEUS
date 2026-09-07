@@ -586,7 +586,26 @@ runs:
       run: |
         export RAD_DIR="$GITHUB_WORKSPACE/socrates"
         shim="$RAD_DIR/julia/lib/libSOCRATES_C.so"
+        obj="$RAD_DIR/julia/lib/Utilities_CF.o"
         echo "RAD_DIR=$RAD_DIR"
+        echo "-- gfortran --version --"
+        gfortran --version | head -n 1 || echo "(gfortran not on PATH)"
+        echo "-- SOCRATES tree revision vs pin --"
+        git -C "$RAD_DIR" rev-parse HEAD 2>&1 || echo "(not a git checkout / rev-parse failed)"
+        cat "$RAD_DIR/version" 2>&1 || echo "(no version file)"
+        echo "-- RAD_DIR/bin/Mk_cmd (compiler flags SOCRATES's own configure wrote) --"
+        if [ -f "$RAD_DIR/bin/Mk_cmd" ]; then
+          echo "present:"
+          cat "$RAD_DIR/bin/Mk_cmd"
+        else
+          echo "(no $RAD_DIR/bin/Mk_cmd; Makefile's -include finds nothing and falls back to bare gfortran)"
+        fi
+        echo "-- grep -n PS_real_kind_bytes socrates/julia/src/Utilities_CF.f90 --"
+        grep -n PS_real_kind_bytes "$RAD_DIR/julia/src/Utilities_CF.f90" || echo "(symbol absent from source)"
+        echo "-- nm -g $obj | grep -i real_kind --"
+        nm -g "$obj" 2>&1 | grep -i real_kind || echo "(not found / nm failed on $obj)"
+        echo "-- nm -g $shim | grep -i real_kind --"
+        nm -g "$shim" 2>&1 | grep -i real_kind || echo "(not found / nm failed on $shim)"
         echo "-- nm -gU $shim | grep PS_real_kind_bytes --"
         nm -gU "$shim" 2>&1 | grep PS_real_kind_bytes || echo "(not found / nm failed on $shim)"
         echo "-- nm -gU $RAD_DIR/bin/radlib.a | grep PS_real_kind_bytes --"
