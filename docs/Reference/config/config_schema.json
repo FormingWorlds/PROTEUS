@@ -4057,6 +4057,27 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.cvode_output_points",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "int",
+      "accepts_none": false,
+      "default": "65",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 2
+        }
+      ],
+      "description": "Number of points on Aragog's CVODE dense-output grid, passed straight through to the solver parameters Aragog constructs for the coupled solve. Default 65, matching Aragog's own default. Raising it sharpens the F_int trapezoidation diagnostic without changing the integration itself; an integer of at least 2 is required.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.dummy.mantle_tliq",
       "toml_section": "interior_energetics.dummy",
       "class": "InteriorDummy",

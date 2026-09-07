@@ -304,6 +304,13 @@ class Aragog:
     matching field so both backends drive the same outer-loop convergence
     criterion."""
 
+    cvode_output_points: int = field(default=65, validator=ge(2))
+    """Number of points on Aragog's CVODE dense-output grid, passed straight
+    through to the solver parameters Aragog constructs for the coupled solve.
+    Default 65, matching Aragog's own default. Raising it sharpens the F_int
+    trapezoidation diagnostic without changing the integration itself; an
+    integer of at least 2 is required."""
+
 
 def valid_interiordummy(instance, attribute, value):
     """Dummy interior requires the liquidus to sit above the solidus."""

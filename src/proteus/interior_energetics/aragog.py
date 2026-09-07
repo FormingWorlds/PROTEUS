@@ -580,6 +580,7 @@ class AragogRunner:
             # typical magma-ocean cooling rates).
             atol=float(config.interior_energetics.aragog.atol_temperature_equivalent),
             rtol=float(config.interior_energetics.rtol),
+            cvode_output_points=config.interior_energetics.aragog.cvode_output_points,
         )
 
         # Surface boundary condition mode (matches SPIDER wrapper):
@@ -708,10 +709,12 @@ class AragogRunner:
         global _effective_caps_logged
         if not _effective_caps_logged:
             log.info(
-                'Effective interior step caps: phi=%.3g, T=%.3g K, S=%.3g J/kg/K',
+                'Effective interior step caps: phi=%.3g, T=%.3g K, S=%.3g J/kg/K, '
+                'cvode_output_points=%d',
                 phi_step_cap,
                 temperature_step_cap,
                 entropy_step_cap,
+                ar.cvode_output_points,
             )
             _effective_caps_logged = True
         # Only a genuine promotion (schema default 0.0 lifted to a positive

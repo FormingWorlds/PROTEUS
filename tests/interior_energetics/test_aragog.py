@@ -48,6 +48,7 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.aragog.entropy_step_cap = 0.0
     config.interior_energetics.aragog.phase_boundary_entropy_margin = 200.0
     config.interior_energetics.aragog.separation_viscosity = 'mixture'
+    config.interior_energetics.aragog.cvode_output_points = 65
     config.interior_energetics.spider.matprop_smooth_width = 0.0
     config.interior_energetics.const_properties = False
     config.interior_energetics.heat_radiogenic = False
@@ -651,6 +652,44 @@ def test_setup_solver_threads_phase_boundary_margin(tmp_path):
     # Discrimination: a wrapper that hard-coded or ignored the knob would send
     # the same number twice; the two requests must remain distinct.
     assert threaded[350.0] != pytest.approx(threaded[200.0])
+
+
+@pytest.mark.unit
+def test_setup_solver_threads_cvode_output_points(tmp_path):
+    """setup_solver passes cvode_output_points into the constructed solver
+    parameters verbatim, at both the default and a user override.
+
+    The default must reach the solver as 65, matching Aragog's own default,
+    and an override must arrive unchanged rather than being clamped or
+    ignored.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    outdir = str(tmp_path)
+    threaded = {}
+    for requested in (65, 513):
+        config = _make_aragog_config(struct_module='spider')
+        config.interior_energetics.aragog.cvode_output_points = requested
+        hf_row, interior_o = _spider_fallback_scaffold(tmp_path / f'grid_{requested}')
+        mock_ep = create_autospec(_paired_energy_stub)
+        with (
+            patch(
+                'proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / f'grid_{requested}'
+            ),
+            patch('proteus.interior_energetics.aragog.Parameters') as mock_parameters,
+            patch('proteus.interior_energetics.aragog.EntropySolver'),
+            patch('proteus.interior_energetics.aragog.EntropyEOS'),
+            patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
+            patch('proteus.interior_energetics.aragog.log'),
+        ):
+            AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+        assert mock_parameters.called
+        solver = mock_parameters.call_args.kwargs['solver']
+        threaded[requested] = solver.cvode_output_points
+
+    assert threaded[65] == 65
+    assert threaded[513] == 513
 
 
 @pytest.mark.unit
