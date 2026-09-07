@@ -601,36 +601,53 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     # the kwarg at module load and only pass it when AGNI accepts it.
     setup_kwargs = dict(
         IO_DIR=io_dir,
+        # radtrans
         flag_rayleigh=config.atmos_clim.rayleigh,
         flag_cloud=config.atmos_clim.cloud_enabled,
         flag_aerosol=config.atmos_clim.aerosols_enabled,
         overlap_method=config.atmos_clim.overlap_method,
+        # surface reflectance
         albedo_s=config.atmos_clim.surf_greyalbedo,
         surface_material=surface_material,
         surf_roughness=config.atmos_clim.agni.surf_roughness,
         surf_windspeed=config.atmos_clim.agni.surf_windspeed,
+        # phase change
         condensates=condensates,
         phs_timescale=config.atmos_clim.agni.phs_timescale,
         evap_efficiency=config.atmos_clim.agni.evap_efficiency,
+        # eqm chemistry
         use_all_gases=include_all,
         fastchem_floor=config.atmos_clim.agni.fastchem_floor,
         fastchem_maxiter_chem=config.atmos_clim.agni.fastchem_maxiter_chem,
         fastchem_maxiter_solv=config.atmos_clim.agni.fastchem_maxiter_solv,
         fastchem_xtol_chem=config.atmos_clim.agni.fastchem_xtol_chem,
         fastchem_xtol_elem=config.atmos_clim.agni.fastchem_xtol_elem,
+        # thermodynamics
         real_gas=config.atmos_clim.agni.real_gas,
         thermo_functions=config.atmos_clim.agni.thermo_functions,
         check_integrity=False,  # don't check thermo files every time
+        # convection
         mlt_criterion=convert(jl.Char, config.atmos_clim.agni.mlt_criterion),
+        # surface CBL
         skin_d=config.atmos_clim.surface_d,
         skin_k=config.atmos_clim.surface_k,
+        # temperatures
         tmp_magma=hf_row['T_surf'],
         tmp_floor=config.atmos_clim.tmp_minimum,
+        # grey gas opacities
         κ_grey_lw=config.atmos_clim.agni.grey_opacity_lw,
         κ_grey_sw=config.atmos_clim.agni.grey_opacity_sw,
+        # spin rate
         axial_period=hf_row['axial_period'],
         longitude=hf_row['longitude'],
-        latitude=hf_row['latitude']
+        latitude=hf_row['latitude'],
+        # hydrostatic integration parameters
+        hydrograv_steps  = config.atmos_clim.agni.hydrograv_steps,
+        hydrograv_maxdr  = config.atmos_clim.agni.hydrograv_maxdr,
+        hydrograv_mindr  = config.atmos_clim.agni.hydrograv_mindr,
+        hydrograv_ming   = config.atmos_clim.agni.hydrograv_ming,
+        hydrograv_constg = config.atmos_clim.agni.hydrograv_constg,
+        hydrograv_selfg  = config.atmos_clim.agni.hydrograv_selfg
     )
     setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
 

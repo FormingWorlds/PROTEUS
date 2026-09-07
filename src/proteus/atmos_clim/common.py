@@ -78,7 +78,8 @@ class Atmos_t:
         self.solves_seen: int = 0
 
 
-def ncdf_flag_to_bool(var) -> bool:
+
+def ncdf_flag_to_bool(var) -> bool|None:
     """Convert NetCDF flag (y/n) to Python bool (true/false)"""
     v = str(var[0].tobytes().decode()).lower()
 
@@ -88,7 +89,8 @@ def ncdf_flag_to_bool(var) -> bool:
     elif v == 'n':
         return False
     else:
-        raise ValueError(f'Could not parse NetCDF atmos flag variable \n {var}')
+        log.error(f'Could not parse NetCDF atmos flag variable: {var}')
+        return None
 
 
 def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool = True) -> dict:
@@ -130,8 +132,10 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     pl = np.array(ds.variables['pl'][:])
 
     if 'gravity' not in ds.variables:
-        raise KeyError(f"NetCDF file '{nc_fpath}' is missing required variable 'gravity'")
-    g = np.array(ds.variables['gravity'][:])
+        log.error(f"NetCDF file '{nc_fpath}' is missing required variable 'gravity'")
+        g = np.zeros_like(p)  # fallback to zeros
+    else:
+        g = np.array(ds.variables['gravity'][:])
 
     t = np.array(ds.variables['tmp'][:])
     tl = np.array(ds.variables['tmpl'][:])
@@ -188,10 +192,11 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
 
     # flags
     for fk in ('transparent', 'solved', 'converged'):
+        out[fk] = False  # default if not found
         if fk in ds.variables.keys():
             out[fk] = ncdf_flag_to_bool(ds.variables[fk])
-        else:
-            out[fk] = False  # if not available
+            if out[fk] is None:
+                out[fk] = False
 
     # Read extra keys
     for key in extra_keys:
