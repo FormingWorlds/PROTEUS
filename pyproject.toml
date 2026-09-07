@@ -277,7 +277,7 @@ directory = "htmlcov"
 # Tracks nichollsh/AGNI main. Bump after every AGNI release that
 # PROTEUS depends on.
 url = "https://github.com/nichollsh/AGNI.git"
-ref = "59ce1d4cda84f2043a8055682fa49c2f9c27c3c4"
+ref = "c7ffdf000a49439fc597eff3f586c2c54caba647"
 
 [tool.proteus.modules.socrates]
 # Spectral radiative transfer library (Fortran). Compiled in-place
