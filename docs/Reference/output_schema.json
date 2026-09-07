@@ -173,6 +173,10 @@
         {
           "file": "src/proteus/atmos_clim/agni.py",
           "condition": "atmos_clim.module = \"agni\""
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
         }
       ],
       "consumers": [
@@ -189,6 +193,10 @@
         {
           "file": "src/proteus/atmos_clim/agni.py",
           "condition": "atmos_clim.module = \"agni\""
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
         }
       ],
       "consumers": [

@@ -87,8 +87,8 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `eccentricity` | `1` | orbital eccentricity | `orbit/orbit.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true | escape, orbit, plot |
 | `Imk2` | `1` | Imaginary part of k2 Love Number | `orbit/wrapper.py` | always | orbit |
 | `axial_period` | `s` | day length of planet around its axis | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | atmos_clim, orbit, plot, utils |
-| `longitude` | `deg` | column longitude relative to substellar point | `atmos_clim/agni.py` | atmos_clim.module = "agni" | atmos_clim |
-| `latitude` | `deg` | column latitude relative to substellar point | `atmos_clim/agni.py` | atmos_clim.module = "agni" | atmos_clim |
+| `longitude` | `deg` | column longitude relative to substellar point | `atmos_clim/agni.py`<br>`orbit/wrapper.py` | always; atmos_clim.module = "agni" | atmos_clim |
+| `latitude` | `deg` | column latitude relative to substellar point | `atmos_clim/agni.py`<br>`orbit/wrapper.py` | always; atmos_clim.module = "agni" | atmos_clim |
 
 ### Satellite system
 
