@@ -222,12 +222,6 @@ def run_orbit(
 
     # Use config parameters as initial guess
     if current_time <= 1:
-        hf_row['M_sat'] = config.orbit.satellite.mass_sat * M_earth  # [kg]
-        hf_row['R_sat'] = config.orbit.satellite.radius_sat * R_earth  # [m]
-        hf_row['C_sat'] = (
-            config.orbit.satellite.c_factor_sat * hf_row['M_sat'] * hf_row['R_sat'] ** 2
-        )
-
         # Set independent orbital parameters from config.
         hf_row['semimajorax'] = config.orbit.semimajoraxis * AU
         hf_row['eccentricity'] = config.orbit.eccentricity
@@ -241,11 +235,6 @@ def run_orbit(
             S_0 = config.orbit.instellationflux * S_earth
 
             hf_row['semimajorax'] = np.sqrt(Lbol / (4 * np.pi * S_0))
-
-        hf_row['semimajorax_sat'] = config.orbit.satellite.semimajoraxis_sat * AU
-        hf_row['eccentricity_sat'] = config.orbit.satellite.eccentricity_sat
-
-        hf_row['evection_angle'] = np.deg2rad(config.orbit.satellite.evection_angle)
 
         # Update orbital period (dependent)
         update_period(hf_row)
@@ -262,18 +251,31 @@ def run_orbit(
         hf_row['longitude'] = 0.0
         hf_row['latitude'] = 0.0
 
-        # Update satellite orbital period (dependent)
-        update_period_sat(hf_row)
-
-        # Axial period [seconds]
-        if config.orbit.satellite.axial_period_sat is None:
-            # set by user to 'none', use 1:1 SOR
-            hf_row['axial_period_sat'] = hf_row['orbital_period_sat']
-        else:
-            # set by user with float, use that
-            hf_row['axial_period_sat'] = (
-                float(config.orbit.satellite.axial_period_sat) * secs_per_hour
+        # Set independent satellite orbital parameters, if included
+        if config.orbit.satellite.include_satellite:
+            hf_row['M_sat'] = config.orbit.satellite.mass_sat * M_earth  # [kg]
+            hf_row['R_sat'] = config.orbit.satellite.radius_sat * R_earth  # [m]
+            hf_row['C_sat'] = (
+                config.orbit.satellite.c_factor_sat * hf_row['M_sat'] * hf_row['R_sat'] ** 2
             )
+
+            hf_row['semimajorax_sat'] = config.orbit.satellite.semimajoraxis_sat * AU
+            hf_row['eccentricity_sat'] = config.orbit.satellite.eccentricity_sat
+
+            hf_row['evection_angle'] = np.deg2rad(config.orbit.satellite.evection_angle)
+
+            # Update satellite orbital period (dependent)
+            update_period_sat(hf_row)
+
+            # Axial period [seconds]
+            if config.orbit.satellite.axial_period_sat is None:
+                # set by user to 'none', use 1:1 SOR
+                hf_row['axial_period_sat'] = hf_row['orbital_period_sat']
+            else:
+                # set by user with float, use that
+                hf_row['axial_period_sat'] = (
+                    float(config.orbit.satellite.axial_period_sat) * secs_per_hour
+                )
 
         # initialize the Hansen coefficient table
         if config.orbit.planet_satellite_model in ['ps1d', 'ps1d_evec']:
