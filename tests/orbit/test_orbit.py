@@ -92,12 +92,17 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
-import proteus.orbit.common as common_mod
+import proteus.orbit.hansen as hansen_mod
+from proteus.config._orbit import OrbitSolver
 from proteus.orbit.common import Tides_t
 from proteus.orbit.orbit import evolve_orbit_star, sp0d, sp1d
 from proteus.utils.constants import const_G, secs_per_year
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+# Minimal config stand-in exposing only config.orbit.solver, for tests that
+# call sp0d/sp1d directly (not through evolve_orbit_star's dispatch).
+_SOLVER_CONFIG = cast(Any, SimpleNamespace(orbit=SimpleNamespace(solver=OrbitSolver())))
 
 # Finite-difference step for probing sp0d's instantaneous ODE right-hand
 # side. Must be small enough that even a ~32x-faster-evolving case (e.g.
@@ -123,7 +128,7 @@ def _sp0d_instantaneous_rates(sma, ecc, Imk2, Mst, Rpl, Mpl, dt_yr=_FD_DT_YR):
         'R_int': Rpl,
         'M_int': Mpl,
     }
-    sp0d(hf_row, dt=dt_yr)
+    sp0d(hf_row, dt=dt_yr, config=_SOLVER_CONFIG)
     dt_s = dt_yr * secs_per_year
     da_dt = (hf_row['semimajorax'] - sma) / dt_s
     de_dt = (hf_row['eccentricity'] - ecc) / dt_s
@@ -327,6 +332,9 @@ def _make_hf_row(
         'M_star': M_star,
         'R_int': R_int,
         'M_int': M_int,
+        # Only read by evolve_orbit_star's adaptive-substep controller
+        # (for log messages), not by sp0d/sp1d directly.
+        'Time': 0.0,
     }
 
 
@@ -337,7 +345,7 @@ def test_sp0d_zero_imk2_preserves_sma_and_eccentricity():
     the step length.
     """
     hf_row = _make_hf_row(sma_m=2.0 * 1.5e11, ecc=0.4, Imk2=0.0)
-    sp0d(hf_row, dt=1e5)
+    sp0d(hf_row, dt=1e5, config=_SOLVER_CONFIG)
     assert hf_row['semimajorax'] == pytest.approx(2.0 * 1.5e11)
     assert hf_row['eccentricity'] == pytest.approx(0.4)
 
@@ -349,7 +357,7 @@ def test_sp0d_zero_eccentricity_is_a_fixed_point():
     unchanged.
     """
     hf_row = _make_hf_row(sma_m=1.5e11, ecc=0.0, Imk2=1e-2)
-    sp0d(hf_row, dt=1e3)
+    sp0d(hf_row, dt=1e3, config=_SOLVER_CONFIG)
     assert hf_row['eccentricity'] == pytest.approx(0.0, abs=1e-30)
     assert hf_row['semimajorax'] == pytest.approx(1.5e11)
 
@@ -360,7 +368,7 @@ def test_sp0d_returns_finite_for_high_eccentricity():
     emit NaN or inf for an aggressive but physically valid input.
     """
     hf_row = _make_hf_row(ecc=0.95, Imk2=1e-6)
-    sp0d(hf_row, dt=1.0)
+    sp0d(hf_row, dt=1.0, config=_SOLVER_CONFIG)
     assert np.isfinite(hf_row['semimajorax'])
     assert np.isfinite(hf_row['eccentricity'])
 
@@ -370,7 +378,7 @@ def test_sp0d_mutates_hf_row_in_place():
     silently return a new dict.
     """
     hf_row = _make_hf_row(sma_m=0.7 * 1.5e11)
-    result = sp0d(hf_row, dt=1.0)
+    result = sp0d(hf_row, dt=1.0, config=_SOLVER_CONFIG)
     assert result is None
     assert hf_row['semimajorax'] == pytest.approx(0.7 * 1.5e11)
 
@@ -381,7 +389,10 @@ def test_sp0d_mutates_hf_row_in_place():
 
 
 def _make_star_planet_config(model) -> Any:
-    return cast(Any, SimpleNamespace(orbit=SimpleNamespace(star_planet_model=model)))
+    return cast(
+        Any,
+        SimpleNamespace(orbit=SimpleNamespace(star_planet_model=model, solver=OrbitSolver())),
+    )
 
 
 def test_evolve_orbit_star_sp0d_model_evolves_hf_row():
@@ -451,8 +462,8 @@ def _fast_hansen_table(monkeypatch):
     test, restoring whatever module-level table (if any) existed
     before, so this cannot bleed into other tests.
     """
-    monkeypatch.setattr(common_mod, '_hansen_table', None)
-    common_mod.init_hansen_table(
+    monkeypatch.setattr(hansen_mod, '_hansen_table', None)
+    hansen_mod.init_hansen_table(
         e_grid=_FAST_E_GRID, kmin=_FAST_KMIN, kmax=_FAST_KMAX, n_deg=2, force=True
     )
 
@@ -483,6 +494,9 @@ def _make_sp1d_hf_row(*, axial_period=86400.0, sma=0.02 * 1.496e11, ecc=0.3):
         'R_int': _SP1D_RPL,
         'R_star': _SP1D_RST,
         'C_planet': _SP1D_CPL,
+        # Only read by evolve_orbit_star's adaptive-substep controller
+        # (for log messages), not by sp1d directly.
+        'Time': 0.0,
     }
 
 
@@ -520,7 +534,7 @@ def test_sp1d_zero_dissipation_is_an_exact_fixed_point(_fast_hansen_table):
     )
     tides_o = _make_planet_star_tides(0.0 + 0.0j)
 
-    sp1d(hf_row, tides_o, dt=1e5)
+    sp1d(hf_row, tides_o, dt=1e5, config=_SOLVER_CONFIG)
 
     assert hf_row['axial_period'] == pytest.approx(axial_before, rel=1e-12)
     assert hf_row['semimajorax'] == pytest.approx(sma_before, rel=1e-12)
@@ -545,7 +559,7 @@ def test_sp1d_conserves_total_angular_momentum(_fast_hansen_table):
     am_before = _sp1d_total_am(hf_row)
     tides_o = _make_planet_star_tides(-0.01 - 0.02j)
 
-    sp1d(hf_row, tides_o, dt=1e5)
+    sp1d(hf_row, tides_o, dt=1e5, config=_SOLVER_CONFIG)
 
     # Discrimination: the step must have actually done something
     # substantial, or a bug that silently no-oped would trivially
@@ -581,7 +595,7 @@ def test_sp1d_spin_am_gain_matches_orbital_am_loss(_fast_hansen_table):
     spin_before, orb_before = _sp1d_spin_and_orbital_am(hf_row)
     tides_o = _make_planet_star_tides(-0.01 - 0.02j)
 
-    sp1d(hf_row, tides_o, dt=1e5)
+    sp1d(hf_row, tides_o, dt=1e5, config=_SOLVER_CONFIG)
 
     spin_after, orb_after = _sp1d_spin_and_orbital_am(hf_row)
     d_spin = spin_after - spin_before
@@ -617,8 +631,8 @@ def test_sp1d_dissipation_circularizes_regardless_of_input_love_number_sign(
     tides_neg = _make_planet_star_tides(-0.01 - 0.02j)
     tides_pos = _make_planet_star_tides(-0.01 + 0.02j)
 
-    sp1d(hf_row_neg, tides_neg, dt=1e5)
-    sp1d(hf_row_pos, tides_pos, dt=1e5)
+    sp1d(hf_row_neg, tides_neg, dt=1e5, config=_SOLVER_CONFIG)
+    sp1d(hf_row_pos, tides_pos, dt=1e5, config=_SOLVER_CONFIG)
 
     assert hf_row_neg['eccentricity'] == pytest.approx(hf_row_pos['eccentricity'], rel=1e-10)
     assert hf_row_neg['semimajorax'] == pytest.approx(hf_row_pos['semimajorax'], rel=1e-10)
@@ -638,7 +652,7 @@ def test_sp1d_eccentricity_clamped_at_zero_not_negative(_fast_hansen_table):
     hf_row = _make_sp1d_hf_row(ecc=0.9)
     tides_o = _make_planet_star_tides(-0.01 - 0.02j)
 
-    sp1d(hf_row, tides_o, dt=1e4)
+    sp1d(hf_row, tides_o, dt=1e4, config=_SOLVER_CONFIG)
 
     assert np.isfinite(hf_row['eccentricity'])
     assert np.isfinite(hf_row['semimajorax'])
@@ -657,7 +671,7 @@ def test_sp1d_sma_dot_matches_bookkeeping_identity(_fast_hansen_table):
     tides_o = _make_planet_star_tides(-0.01 - 0.02j)
     dt_yr = 1e5
 
-    sp1d(hf_row, tides_o, dt=dt_yr)
+    sp1d(hf_row, tides_o, dt=dt_yr, config=_SOLVER_CONFIG)
 
     expected_sma_dot = (hf_row['semimajorax'] - sma_before) / (dt_yr * secs_per_year)
     assert hf_row['sma_dot_planet'] == pytest.approx(expected_sma_dot, rel=1e-9)
@@ -692,7 +706,7 @@ def test_evolve_orbit_star_sp1d_model_calls_get_c_planet_and_evolves_hf_row(
     config = cast(
         Any,
         SimpleNamespace(
-            orbit=SimpleNamespace(star_planet_model='sp1d'),
+            orbit=SimpleNamespace(star_planet_model='sp1d', solver=OrbitSolver()),
             interior_energetics=SimpleNamespace(module='aragog'),
         ),
     )

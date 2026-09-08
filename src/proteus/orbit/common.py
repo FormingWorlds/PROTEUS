@@ -3,13 +3,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 import netCDF4 as nc
 import numpy as np
 from numpy.typing import NDArray
-from scipy.fft import fft, fftshift
-from scipy.optimize import brentq
 
 from proteus.config import Config
 from proteus.interior_energetics.common import Interior_t
@@ -60,346 +58,12 @@ class Tides_t:
         return interaction
 
 
-# ---------------------------------------------------------------------------
-# Hansen coefficients X_k^{n,m}(e), computed via FFT on the mean anomaly and
-# cached so that the (expensive) FFTs only ever run once per PROTEUS
-# process, not once per RHS evaluation.
-#
-# Caching strategy, and why: Hansen coefficients depend only on eccentricity
-# (for a fixed degree n), which changes slowly relative to how many times an
-# implicit orbital-evolution solver evaluates its right-hand side (Newton
-# iterations, stage evaluations, and rejected trial steps all re-ask for the
-# same or very similar e). A per-call memoization cache keyed on rounded e
-# was tried and rejected: even at a 99% hit rate, the solver's own internal
-# evaluations explored enough distinct e values that a 200 yr test still
-# needed ~2500 fresh FFTs (~0.5s each -- five per e, one per m branch) --
-# extrapolated to a full evolutionary run, that is many hours to days.
-#
-# Instead, get_all_m_hansen() below is backed by a table, built once over a
-# grid of eccentricities and linearly interpolated at query time -- zero
-# FFTs during the actual integration, and smooth by construction (Hansen
-# coefficients have no sharp features in e, so linear interpolation is a
-# good approximation and, unlike a memoized/rounded cache, never turns the
-# right-hand side an implicit solver sees into a discontinuous step
-# function of e).
-#
-# The k-range (which modes carry non-negligible weight) grows sharply with
-# e: at e~0.7, the k=2 mode that dominates at e~0 has effectively vanished,
-# while modes out past k~55 still carry >=1% weight. kmin_kmax_for_e()
-# tabulates, once, the eccentricity-appropriate [kmin, kmax] window so
-# callers only sum over the modes that actually matter at the current e
-# (order 10 near e=0, growing to several hundred at e>0.8), instead of a
-# fixed window that both wastes effort at low e and silently drops most of
-# the tidal coupling at high e.
-# ---------------------------------------------------------------------------
-
-
-def nextpow2_int(x):
-    """Return the integer p such that 2^p >= x.
-
-    Attributes
-    ----------
-    x : int
-        Input value.
-
-    Returns
-    -------
-    p : int
-        The smallest integer p such that 2^p >= x.
-    """
-    return int(np.ceil(np.log2(x))) if x > 0 else 0
-
-
-def kepler_newton(M, e):
-    """
-    Solve Kepler's equation E - e*sin(E) = M using Newton iteration.
-
-    Attributes
-    ----------
-    M : array_like
-        Mean anomaly in radians.
-    e : float
-        Orbital eccentricity (0 <= e < 1).
-
-    Returns
-    -------
-    E : ndarray
-        Eccentric anomaly in radians, same shape as M.
-    """
-    M = np.array(M, dtype=float)
-    E = np.copy(M)
-
-    # Danby-style improved initial guess
-    if e > 0:
-        E = M + (e * np.sin(M)) / (1 - np.sin(M + e) + np.sin(M))
-
-    # Newton iterations
-    for _ in range(10):
-        f = E - e * np.sin(E) - M
-        fp = 1 - e * np.cos(E)
-        dE = -f / fp
-        E += dE
-        if np.max(np.abs(dE)) < 1e-13:
-            break
-
-    return np.mod(E, 2 * np.pi)
-
-
-def hansen_fft(n, m, e, kmin, kmax, N=None):
-    """Compute Hansen coefficients X_k^{n,m}(e) using FFT on mean anomaly.
-
-    Attributes
-    ----------
-    n : int
-        Degree of the Hansen coefficient.
-    m : int
-        Order of the Hansen coefficient.
-    e : float
-        Orbital eccentricity (0 <= e < 1).
-    kmin : int
-        Minimum k value for which to compute the coefficient.
-    kmax : int
-        Maximum k value for which to compute the coefficient.
-    N : int, optional
-        Number of points for FFT. If None, it will be chosen adaptively.
-
-    Returns
-    -------
-    k : ndarray
-        Array of k values from kmin to kmax.
-    Xkm : ndarray
-        Corresponding Hansen coefficients X_k^{n,m}(e).
-    """
-    # Choose FFT size adaptively
-    if N is None:
-        width = max(64, 4 * (kmax - kmin + 1))
-        target = width * max(8, int(np.ceil(16 / (1 - e + np.finfo(float).eps))))
-        p = max(12, int(np.ceil(np.log2(target))))
-        N = 2**p
-    else:
-        p = nextpow2_int(N)
-        N = 2**p
-
-    # Mean anomaly grid
-    M = np.arange(N) * (2 * np.pi / N)
-
-    # Solve Kepler
-    E = kepler_newton(M, e)
-
-    ce = np.cos(E)
-    se = np.sin(E)
-    r_over_a = 1 - e * ce
-    v = np.arctan2(np.sqrt(1 - e**2) * se, ce - e)  # true anomaly
-
-    # Hansen integrand
-    f = (r_over_a**n) * np.exp(1j * m * v)
-
-    # FFT, normalized like Python’s fft(f)/N
-    F = fftshift(fft(f.astype(complex))) / N
-
-    k_all = np.arange(-N // 2, N // 2)
-    mask = (k_all >= kmin) & (k_all <= kmax)
-
-    k = k_all[mask]
-    Zk = F[mask]
-    Xkm = np.real(Zk)
-
-    return k, Xkm
-
-
-@dataclass
-class _HansenTable:
-    """Tabulated Hansen coefficients X_k^{n,m}(e), n fixed, over an
-    eccentricity grid and a fixed [kmin, kmax] window, for fast linear
-    interpolation. Built once by init_hansen_table(); never rebuilt except
-    via force=True."""
-
-    e_grid: NDArray[np.floating]
-    kmin: int
-    kmax: int
-    n_deg: int
-    values: Dict[int, NDArray[np.floating]]  # m -> array[len(e_grid), kmax-kmin+1]
-
-
-@dataclass
-class _KRangeTable:
-    """Tabulated eccentricity-appropriate [kmin, kmax] window. Built once by
-    init_k_range_table(); never rebuilt except via force=True."""
-
-    e_grid: NDArray[np.floating]
-    kmin: NDArray[np.integer]
-    kmax: NDArray[np.integer]
-
-
-_hansen_table: Optional[_HansenTable] = None
-_k_range_table: Optional[_KRangeTable] = None
-
-# Default eccentricity grid shared by both tables: fine near e=0 (where
-# Hansen coefficients vary fastest in relative terms) and coarser at high e.
-_DEFAULT_E_GRID = np.concatenate(
-    [
-        np.arange(0.0, 0.05, 0.005),
-        np.arange(0.05, 0.90, 0.01),
-        np.arange(0.90, 0.951, 0.005),
-    ]
-)
-
-
-def _select_k_range(
-    e: float, threshold: float = 0.001, k_search_max: int = 450, pad: int = 2
-) -> tuple[int, int]:
-    """Widest [kmin, kmax] (padded) such that the m=0 and m=2 Hansen
-    branches (the dissipative/heating-relevant ones) both have |X_k| below
-    `threshold` everywhere outside it."""
-    lo_all, hi_all = [], []
-    for m in (0, 2):
-        k, X = hansen_fft(-3, m, e, -k_search_max, k_search_max)
-        above = k[np.abs(X) >= threshold]
-        if len(above) == 0:
-            lo_all.append(-2)
-            hi_all.append(4)
-        else:
-            lo_all.append(above.min())
-            hi_all.append(above.max())
-    kmin = min(min(lo_all), -2) - pad
-    kmax = max(max(hi_all), 4) + pad
-    return int(kmin), int(kmax)
-
-
-def init_k_range_table(
-    e_grid: Optional[NDArray[np.floating]] = None, force: bool = False
-) -> None:
-    """Build the eccentricity -> [kmin, kmax] lookup table once.
-
-    Safe to call more than once: a no-op unless `force=True`, so callers
-    don't need to track whether this has already run.
-    """
-    global _k_range_table
-    if _k_range_table is not None and not force:
-        return
-
-    e_grid = _DEFAULT_E_GRID if e_grid is None else np.asarray(e_grid, dtype=float)
-    kmins = np.empty(len(e_grid), dtype=int)
-    kmaxs = np.empty(len(e_grid), dtype=int)
-    for i, e in enumerate(e_grid):
-        kmins[i], kmaxs[i] = _select_k_range(e)
-    _k_range_table = _KRangeTable(e_grid=e_grid, kmin=kmins, kmax=kmaxs)
-    log.info(
-        f'k-range table built: {len(e_grid)} grid points'
-        f'(e in [{e_grid.min():.3f}, {e_grid.max():.3f}], '
-        f'n_modes in [{(kmaxs - kmins + 1).min()}, {(kmaxs - kmins + 1).max()}])'
-    )
-
-
-def kmin_kmax_for_e(e: float) -> tuple[int, int]:
-    """Eccentricity-appropriate [kmin, kmax] window. Lazily builds the
-    lookup table (with default settings) on first use if it hasn't been
-    built yet, so this is safe to call without any setup step."""
-    if _k_range_table is None:
-        init_k_range_table()
-    table = _k_range_table
-    e = min(max(e, 0.0), table.e_grid[-1])
-    idx = np.searchsorted(table.e_grid, e, side='right') - 1
-    idx = min(max(idx, 0), len(table.e_grid) - 1)
-    return int(table.kmin[idx]), int(table.kmax[idx])
-
-
-def init_hansen_table(
-    e_grid: Optional[NDArray[np.floating]] = None,
-    kmin: Optional[int] = None,
-    kmax: Optional[int] = None,
-    n_deg: int = 2,
-    force: bool = False,
-) -> None:
-    """Build the Hansen-coefficient value table once, over `e_grid` and
-    [kmin, kmax].
-
-    Safe to call more than once: a no-op unless `force=True`. If kmin/kmax
-    are not given, they are derived from the k-range table's own realized
-    bounds (building it first if needed) -- this keeps the two tables
-    consistent by construction rather than by a hand-picked guess. (A fixed
-    guess previously left a gap once e exceeded ~0.76, where the k-range
-    table legitimately asked for a wider window than the value table
-    covered; the resulting out-of-range slice did not raise an error, it
-    silently returned a wrong-shaped empty array, which then broke with an
-    unrelated-looking exception far from the actual cause. get_all_m_hansen
-    below now raises a clear error in that situation instead.)
-    """
-    global _hansen_table
-    if _hansen_table is not None and not force:
-        return
-
-    if kmin is None or kmax is None:
-        init_k_range_table()
-        kmin = int(_k_range_table.kmin.min()) if kmin is None else kmin
-        kmax = int(_k_range_table.kmax.max()) if kmax is None else kmax
-
-    e_grid = _DEFAULT_E_GRID if e_grid is None else np.asarray(e_grid, dtype=float)
-    n_k = kmax - kmin + 1
-    values = {m: np.zeros((len(e_grid), n_k)) for m in range(-n_deg, n_deg + 1)}
-
-    for i, e in enumerate(e_grid):
-        for m in range(-n_deg, n_deg + 1):
-            _, X = hansen_fft(-(n_deg + 1), m, e, kmin, kmax)
-            values[m][i, :] = X
-    _hansen_table = _HansenTable(
-        e_grid=e_grid, kmin=kmin, kmax=kmax, n_deg=n_deg, values=values
-    )
-    log.info(
-        f'Hansen table built: {len(e_grid)} e-points x {n_k} k-modes x '
-        f'{2 * n_deg + 1} m-branches'
-    )
-
-
-def get_all_m_hansen(e: float, n_deg: int, kmin: int, kmax: int):
-    """Hansen coefficients X_k^{n,m}(e) for all m = -n_deg..n_deg, by linear
-    interpolation over the pre-tabulated values, sliced to [kmin, kmax].
-
-    Lazily builds the table (with default settings) on first call if it
-    hasn't been built yet -- this is what guarantees the expensive FFT
-    sweep runs exactly once per process regardless of whether any setup
-    code remembers to call init_hansen_table() explicitly: the first call
-    (from wherever it happens to come) pays the one-time cost, and this
-    function is called often (once per right-hand-side evaluation), so
-    every call after that is a cheap array lookup, not a recomputation.
-
-    Returns
-    -------
-    k_range : ndarray
-        Array of k values from kmin to kmax.
-    results : dict
-        m -> ndarray of Hansen coefficients X_k^{n_deg,m}(e), same shape as k_range.
-    """
-    if _hansen_table is None:
-        init_hansen_table(n_deg=n_deg)
-    table = _hansen_table
-
-    if kmin < table.kmin or kmax > table.kmax:
-        raise ValueError(
-            f'get_all_m_hansen: requested k-range [{kmin},{kmax}] at e={e:.4f} exceeds '
-            f"the Hansen table's window [{table.kmin},{table.kmax}] -- rebuild with "
-            f'init_hansen_table(kmin=..., kmax=..., force=True), or widen kmin/kmax '
-            f'there to cover whatever kmin_kmax_for_e() can return.'
-        )
-
-    e = min(max(e, 0.0), table.e_grid[-1])
-    idx = np.searchsorted(table.e_grid, e, side='right') - 1
-    idx = min(max(idx, 0), len(table.e_grid) - 2)
-    e0, e1 = table.e_grid[idx], table.e_grid[idx + 1]
-    w = 0.0 if e1 == e0 else (e - e0) / (e1 - e0)
-
-    lo = kmin - table.kmin
-    hi = kmax - table.kmin + 1
-    k_range = np.arange(kmin, kmax + 1)
-    results = {
-        m: (1.0 - w) * values[idx, lo:hi] + w * values[idx + 1, lo:hi]
-        for m, values in table.values.items()
-    }
-    return k_range, results
-
-
 def get_C_planet(hf_row: dict, config: Config, interior_o: Interior_t):
     """Compute the planet's principal moment of inertia (C_planet) based on the interior structure.
+
+    Note: This function should live in the interior_energetics module, but is currently here for
+    convenience. It may be moved in the future. When moving this, ensure that the smoothing of the
+    structural C_planet update in run_adaptive_orbit_substeps() is preserved.
 
     Parameters
     ----------
@@ -445,47 +109,378 @@ def get_C_planet(hf_row: dict, config: Config, interior_o: Interior_t):
     )
 
 
-def _solve_e_stationary(a_prime, s_prime, Lambda, Omega_ratio):
-    """Solve Rufu & Canup (2020), Eq. 12, for the stable stationary eccentricity e_s.
+def run_adaptive_orbit_substeps(
+    hf_row: dict,
+    config: Config,
+    interior_o: Interior_t,
+    model: str,
+    step_fn,
+    state_is_valid_fn,
+    rel_change_fn,
+    rel_change_limits: dict,
+    needs_c_planet: bool,
+    on_accept_fn=None,
+    log_label: str = 'run_adaptive_orbit_substeps',
+):
+    """Advance an orbital-evolution model by `interior_o.dt` yr using an
+    adaptive accept/reject substep controller.
 
-    Note:
-    Rufu & Canup (2020) use the following normalization:
-    - a' = a / R_p
-    - s' = Omega / Omega_p
-    - Lambda = sqrt(1.5 * J_star * Omega_p / Omega_star)
-    - Omega_ratio = Omega_star / Omega_p
-
-    where:
-    Omega_p = sqrt(const_G * M_p / R_p**3)
+    Shared between the star-planet models (sp0d, sp1d) and the
+    planet-satellite models (ps0d, ps1d, ps1d_evec): each call site
+    supplies the model-specific pieces (the ODE step itself, state
+    validity, and which quantities to track for the accept/reject
+    gradient check) as callables, and this function owns the substep
+    loop, the angular-momentum-conserving C_planet rescale, and the
+    persistence of the controller's own step-size state across calls.
 
     Parameters
     ----------
-    a_prime : float
-        Scaled semi-major axis (a / R_p).
-    s_prime : float
-        Scaled spin rate (Omega / Omega_p).
-    Lambda : float
-        Scaled angular momentum (L / (M_p * sqrt(G * M_p * R_p))).
-    Omega_ratio : float
-        Ratio of the planet's spin rate to the orbital mean motion (Omega / Omega_p).
+    hf_row : dict
+        Dictionary of current runtime variables. Mutated in place.
+    config : Config
+        Model configuration; reads `config.orbit.solver` for every
+        tolerance and controller knob below.
+    interior_o : Interior_t
+        Interior object; `interior_o.dt` is the total elapsed time this
+        call must advance the system by, in years.
+    model : str
+        Name of the active model, used only for log messages.
+    step_fn : callable(hf_row, dt_yr, t_elapsed_yr) -> Any
+        Advances `hf_row` in place by `dt_yr` (already converted inside
+        the callee as needed). `t_elapsed_yr` is how much of this call's
+        `interior_o.dt` has already been accepted, for callees that need
+        an absolute-time label (e.g. ps1d_evec's fine-grained storage).
+        May return arbitrary "extra" data; that return value is forwarded
+        to `on_accept_fn` only if the substep is subsequently accepted,
+        and discarded otherwise.
+    state_is_valid_fn : callable(hf_row) -> bool
+        Returns whether the state `step_fn` produced is physical. A
+        False return (or an exception from `step_fn`) rejects the
+        substep: `hf_row` is restored to its pre-substep snapshot and
+        `dt_yr` is shrunk before retrying.
+    rel_change_fn : callable(hf_row, snapshot) -> dict[str, float]
+        Returns named relative-change metrics between the post-substep
+        state and the pre-substep snapshot (e.g. `{'da': ..., 'de':
+        ...}`). Keys must match `rel_change_limits`.
+    rel_change_limits : dict[str, float]
+        Maximum tolerated value for each key `rel_change_fn` returns.
+        Exceeding any of them rejects the substep, same as a failed
+        `state_is_valid_fn` check. The substep size is only grown once
+        every value is comfortably inside its limit (below 30% of it).
+    needs_c_planet : bool
+        Whether this model reads `hf_row['C_planet']`. If True, this
+        function refreshes it from the live interior state once before
+        the substep loop starts, then SMOOTHLY ramps `hf_row['C_planet']`
+        from its call-start value to that freshly-computed target across
+        the substep loop (linear in elapsed time), rescaling the planet's
+        spin (`axial_period`) at every accepted substep to conserve
+        `C_planet * Omega_p` across that substep's own small slice of the
+        move (the "figure skater" effect of a mass-conserving structural
+        change) -- see `get_C_planet`'s own docstring for the physical
+        justification and its caveat, and "Smoothing the structural
+        C_planet update" below for why this is spread out rather than
+        applied as one jump.
+    on_accept_fn : callable(hf_row, extra) -> None, optional
+        Called once a substep is confirmed accepted, with the `extra`
+        value `step_fn` returned for that substep. Used for side effects
+        that must not run on a subsequently-rejected trial, such as
+        ps1d_evec's fine-grained solver-clock CSV storage.
+    log_label : str, optional
+        Prefix used in log messages, so ENTER/EXIT/reject lines from the
+        two call sites (star-planet vs planet-satellite) are
+        distinguishable in a shared log stream.
 
-    Returns
-    -------
-    e_s : float
-        The stable stationary eccentricity, or np.nan if no solution exists.
+    Smoothing the structural C_planet update
+    ------------------------------------------
+    A naive implementation would apply the whole C_planet jump (and the
+    resulting Omega_p rescale) once, before the substep loop starts. That
+    is fine as far as angular-momentum bookkeeping goes, but it means
+    every OTHER quantity that depends on Omega_p -- e.g. ps1d_evec's
+    planetary-oblateness (J2) term in the apsidal-precession rate, and
+    hence the evection-resonance location a_res itself (see
+    `satellite.compute_a_res_prime`) -- sees a discontinuous jump at
+    t_elapsed=0 of this call, even though the rest of the orbital state
+    (a, e, ...) evolves smoothly through the same call. That is a
+    numerical artifact of how PROTEUS happens to chunk interior-orbit
+    coupling into calls, not a real physical discontinuity.
+
+    Instead, `C_planet` is ramped linearly in elapsed time from its
+    call-start value to the freshly-computed target across the accepted
+    substeps of this call: at each substep, `hf_row['C_planet']` is moved
+    to the linearly-interpolated value for `t_elapsed + dt_yr`, and
+    `axial_period` is rescaled to conserve `C_planet * Omega_p` across
+    just that slice (not the whole jump). Composing many small exact
+    rescales this way is itself exactly angular-momentum-conserving
+    end to end (the per-substep ratios telescope to the same overall
+    ratio a single jump would have applied), so nothing about system AM
+    bookkeeping is loosened -- the total structural correction is
+    unchanged, only spread out in time so no other quantity sees a step
+    function. If a call cannot complete within `solver.max_substeps` /
+    the step-size floor, the ramp is simply left partway through
+    (`hf_row['C_planet']` still short of the target); the next call
+    recomputes a fresh target from the (by-then-updated) interior state
+    and continues the ramp toward that, so no correction is lost or
+    double-applied, only delayed -- the same partial-completion behaviour
+    the rest of this controller already has (see the "only advanced ..."
+    warning below).
+
+    This structural ramp is entirely orthogonal to whatever a model's own
+    ODE (`step_fn`) does to Omega_p/spin angular momentum within the same
+    substep -- in particular, the evection-resonance torque inside
+    ps1d_evec, which is expected to (and is allowed to) change the
+    planet-satellite subsystem's own total angular momentum via a real
+    three-body exchange with the star (see ps1d_evec's own docstring/
+    tests). The two effects compose without either overriding the other:
+    this ramp only ever conserves `C_planet * Omega_p` across the
+    non-tidal, non-resonance structural change, exactly as the
+    unsmoothed single-jump version did; it does not touch, and does not
+    constrain, whatever AM change `step_fn` itself produces afterward.
     """
-    if not (np.isfinite(a_prime) and np.isfinite(s_prime)):
-        return np.nan
+    solver = config.orbit.solver
 
-    def f(e):
-        return (
-            Lambda**2 * s_prime**2 / (a_prime**3.5 * (1.0 - e**2) ** 2)
-            - 1.0
-            - 3.0 * np.sqrt(1.0 - e**2) * a_prime**1.5 * Omega_ratio
+    # Specify the initial timestep size
+    dt_yr = hf_row.pop('_orbit_dt_yr', solver.dt0_yr)
+
+    # Setup the solver clock timescales
+    t_total_yr = interior_o.dt
+    dt_max = solver.dt_max_yr if solver.dt_max_yr is not None else t_total_yr
+    dt_yr = min(dt_yr, t_total_yr) if t_total_yr > 0 else dt_yr
+
+    # Accumulators
+    t_elapsed = 0.0
+    n_steps = 0
+    n_rejected = 0
+
+    log.info(
+        '%s: ENTER model=%s Time=%.6e yr t_total_yr=%.6e dt_yr_start=%.3e',
+        log_label,
+        model,
+        float(hf_row['Time']),
+        t_total_yr,
+        dt_yr,
+    )
+
+    # Refresh the planet's moment-of-inertia coefficient from the current
+    # interior state. The resulting jump (if any) is smoothed across the
+    # substep loop below rather than applied here -- see "Smoothing the
+    # structural C_planet update" in this function's own docstring.
+    C_p_call_start = None
+    C_p_call_target = None
+    ramp_c_planet = False
+
+    def _rescale_c_planet_to(target_c_p):
+        """Move hf_row['C_planet'] to target_c_p, rescaling axial_period
+        to conserve C_planet*Omega_p across the move (a no-op on the
+        rescale, besides writing target_c_p, if there is no valid prior
+        C_planet/axial_period to conserve against)."""
+        c_p_before = hf_row.get('C_planet')
+        if (
+            c_p_before is not None
+            and np.isfinite(c_p_before)
+            and c_p_before > 0
+            and np.isfinite(target_c_p)
+            and target_c_p != 0
+        ):
+            omega_p_before = 2 * np.pi / float(hf_row['axial_period'])
+            hf_row['axial_period'] = 2 * np.pi / (omega_p_before * c_p_before / target_c_p)
+        hf_row['C_planet'] = target_c_p
+
+    if needs_c_planet:
+        C_p_call_start = hf_row.get('C_planet')
+
+        try:
+            get_C_planet(hf_row, config, interior_o)
+            C_p_call_target = hf_row['C_planet']
+
+            if not np.isfinite(C_p_call_target) or C_p_call_target == 0:
+                log.error(
+                    '%s: get_C_planet produced C_p_new=%r (C_p_old=%r) at '
+                    'Time=%.6e yr -- structural update will be skipped',
+                    log_label,
+                    C_p_call_target,
+                    C_p_call_start,
+                    float(hf_row['Time']),
+                )
+
+            ramp_c_planet = (
+                C_p_call_start is not None
+                and np.isfinite(C_p_call_start)
+                and C_p_call_start > 0
+                and np.isfinite(C_p_call_target)
+                and C_p_call_target != 0
+                and t_total_yr > 0
+            )
+            if not ramp_c_planet:
+                # No prior value to ramp from (bootstrap), a degenerate
+                # get_C_planet result (logged above), or a zero-length
+                # call (no substeps will run to do the ramping): apply
+                # the full jump immediately, same as the un-smoothed
+                # behaviour in all three cases.
+                _rescale_c_planet_to(C_p_call_target)
+            else:
+                # Restore the call-start value so the substep loop below
+                # ramps toward the target instead of landing on it in
+                # one jump.
+                hf_row['C_planet'] = C_p_call_start
+        except Exception:
+            log.error(
+                '%s: C_planet update RAISED at Time=%.6e yr (C_p_old=%r, model=%s); re-raising',
+                log_label,
+                float(hf_row['Time']),
+                C_p_call_start,
+                model,
+                exc_info=True,
+            )
+            raise
+
+    # Loop until the requested total time has been advanced, or until the
+    # maximum number of substeps has been reached.
+    while t_elapsed < t_total_yr and n_steps < solver.max_substeps:
+        dt_yr = min(dt_yr, t_total_yr - t_elapsed)
+        snapshot = dict(hf_row)
+
+        try:
+            with np.errstate(all='ignore'):
+                # If ramping C_planet, compute the linearly-interpolated target for
+                # this substep and rescale the planet's spin to conserve AM.
+                if ramp_c_planet:
+                    frac = min(1.0, (t_elapsed + dt_yr) / t_total_yr)
+                    target_this_substep = (
+                        C_p_call_start + (C_p_call_target - C_p_call_start) * frac
+                    )
+                    _rescale_c_planet_to(target_this_substep)
+
+                # Run the model's ODE step for this substep, and check whether the
+                # resulting state is physically valid. Extra data returned by the step
+                # function is only forwarded to on_accept_fn if the substep is accepted.
+                extra = step_fn(hf_row, dt_yr, t_elapsed)
+
+            # Check whether the resulting state is physically valid. If not, restore the
+            # snapshot and shrink the timestep for the next attempt.
+            ok = state_is_valid_fn(hf_row)
+            if not ok:
+                bad_fields = {
+                    k: v
+                    for k, v in hf_row.items()
+                    if isinstance(v, (int, float)) and not np.isfinite(v)
+                }
+                log.warning(
+                    '%s: state_is_valid_fn rejected the state at '
+                    't_elapsed=%.6e/%.6e yr, dt_yr=%.3e; non-finite fields=%r',
+                    log_label,
+                    t_elapsed,
+                    t_total_yr,
+                    dt_yr,
+                    bad_fields,
+                )
+        except Exception:
+            log.warning(
+                '%s: substep raised (model=%s, dt_yr=%.3e, t_elapsed=%.6e/%.6e yr)',
+                log_label,
+                model,
+                dt_yr,
+                t_elapsed,
+                t_total_yr,
+                exc_info=True,
+            )
+            ok = False
+            extra = None
+
+        # Check the tracked quantities' relative change against their limits.
+        rel_changes = {}
+        if ok:
+            rel_changes = rel_change_fn(hf_row, snapshot)
+            tripped = [
+                f'{key}={value:.4g}>{rel_change_limits[key]:.4g}'
+                for key, value in rel_changes.items()
+                if value > rel_change_limits[key]
+            ]
+            if tripped:
+                ok = False
+                log.debug(
+                    '%s: reject at t_elapsed=%.6e yr, dt_yr=%.3e -- tripped: %s',
+                    log_label,
+                    t_elapsed,
+                    dt_yr,
+                    ', '.join(tripped),
+                )
+
+        # If current step gets rejected, then restore previous step and retry
+        if not ok:
+            hf_row.clear()
+            hf_row.update(snapshot)
+            dt_yr *= solver.shrink
+            n_rejected += 1
+
+            if dt_yr < 1e-10:
+                log.warning(
+                    '%s: internal step size collapsed to zero at t=%.3e yr of a '
+                    '%.3e yr requested call; stopping early (n_steps=%d, '
+                    'n_rejected=%d, last rel_changes=%r)',
+                    log_label,
+                    t_elapsed,
+                    t_total_yr,
+                    n_steps,
+                    n_rejected,
+                    rel_changes,
+                )
+                break
+            continue
+
+        # This substep is now confirmed ACCEPTED. Only now is it safe to run
+        # any side effect gated on genuine acceptance.
+        if on_accept_fn is not None:
+            on_accept_fn(hf_row, extra)
+
+        # Update the elapsed time and step count, and log progress every 5000 accepted steps.
+        t_elapsed += dt_yr
+        n_steps += 1
+
+        if n_steps % 5000 == 0:
+            log.debug(
+                '%s: progress t_elapsed=%.6e/%.6e yr n_steps=%d n_rejected=%d dt_yr=%.3e',
+                log_label,
+                t_elapsed,
+                t_total_yr,
+                n_steps,
+                n_rejected,
+                dt_yr,
+            )
+
+        # Adaptively grow the timestep once every tracked quantity is
+        # comfortably inside its limit.
+        if all(value < 0.3 * rel_change_limits[key] for key, value in rel_changes.items()):
+            dt_yr = min(dt_yr * solver.growth, dt_max)
+
+    # Log a warning if the requested total time was not fully advanced, but do not raise an exception:
+    # the caller may have requested a very large time step that cannot be completed in a single call,
+    # and the controller is designed to handle that gracefully.
+    if t_elapsed < t_total_yr - 1e-9:
+        log.warning(
+            '%s: only advanced %.3e of the requested %.3e yr (%d accepted / '
+            '%d rejected internal steps) before hitting max_substeps=%d',
+            log_label,
+            t_elapsed,
+            t_total_yr,
+            n_steps,
+            n_rejected,
+            solver.max_substeps,
         )
 
-    lo, hi = 1e-8, 1.0 - 1e-8
-    f_lo, f_hi = f(lo), f(hi)
-    if not (np.isfinite(f_lo) and np.isfinite(f_hi)) or f_lo * f_hi > 0:
-        return np.nan
-    return brentq(f, lo, hi)
+    # Log the exit status of this call, including the final elapsed time, number of steps, and whether
+    # the requested total time was fully advanced.
+    log.info(
+        '%s: EXIT model=%s t_elapsed=%.6e/%.6e yr n_steps=%d n_rejected=%d '
+        'dt_yr_final=%.3e complete=%s',
+        log_label,
+        model,
+        t_elapsed,
+        t_total_yr,
+        n_steps,
+        n_rejected,
+        dt_yr,
+        t_elapsed >= t_total_yr - 1e-9,
+    )
+
+    # Persist the controller's own step-size state for the next call.
+    hf_row['_orbit_dt_yr'] = dt_yr

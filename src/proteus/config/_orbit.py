@@ -72,7 +72,7 @@ class ObliquaSolid:
     dr_max: float
         Maximum radial grid spacing [m] (Henyey/relaxation method).
     core: str
-        Core solution vector ("liquid", "solid", or "inertial").
+        Core solution vector ("liquid", "solid", "inertial-liquid", or "inertial").
     core_props: str
         Core properties to use ("core" or "mantle").
     inertial_terms: bool
@@ -88,7 +88,9 @@ class ObliquaSolid:
     ncalc: int = field(default=1000, validator=gt(100))
     dr_min: int = field(default=300, validator=gt(0))
     dr_max: int = field(default=3000, validator=gt(0))
-    core: str = field(default='liquid', validator=in_(('liquid', 'solid', 'inertial')))
+    core: str = field(
+        default='liquid', validator=in_(('liquid', 'solid', 'inertial-liquid', 'inertial'))
+    )
     core_props: str = field(default='core', validator=in_(('core', 'mantle')))
     inertial_terms: bool = field(default=True)
     bulk_l: float = field(default=1e9, validator=gt(0))
@@ -299,6 +301,76 @@ class Satellite:
 
 
 @define
+class OrbitSolver:
+    """Shared numerical-solver settings for the orbital-evolution ODE models.
+
+    Used by both the star-planet models (sp0d, sp1d) and the
+    planet-satellite models (ps0d, ps1d, ps1d_evec): a single set of
+    tolerances and adaptive-substep-controller knobs, since only one of
+    the two model families is ever active in a given run (star-planet
+    evolution and a satellite are mutually exclusive; see
+    `satellite_evolve`).
+
+    Attributes
+    ----------
+    method: str
+        scipy.integrate.solve_ivp integration method.
+    rtol: float
+        Relative tolerance passed to solve_ivp.
+    atol: float
+        Absolute tolerance passed to solve_ivp.
+    dt0_yr: float
+        Initial adaptive-substep size [yr].
+    dt_max_yr: float
+        Maximum adaptive-substep size [yr].
+    growth: float
+        Substep growth factor applied after an accepted step.
+    shrink: float
+        Substep shrink factor applied after a rejected step.
+    max_rel_da: float
+        Maximum tolerated relative change in semi-major axis per substep.
+    max_rel_de: float
+        Maximum tolerated relative change in eccentricity per substep.
+    max_rel_dOmega: float
+        Maximum tolerated relative change in a spin rate per substep.
+    de_floor: float
+        Floor on the eccentricity-change-ratio denominator, so a small
+        starting eccentricity does not make the ratio spuriously huge.
+    max_substeps: int
+        Maximum number of substeps attempted per call.
+    resonance_margin_enter: float
+        Evection-band entry margin (ps1d_evec only).
+    resonance_margin_exit: float
+        Evection-band exit margin (ps1d_evec only).
+    fine_csv_target_rel_dt: float
+        Target storage-clock spacing for out-of-band fine samples, as a
+        fraction of the requested call duration (ps1d_evec only).
+    """
+
+    method: str = field(
+        default='Radau',
+        validator=in_(('RK45', 'RK23', 'DOP853', 'Radau', 'BDF', 'LSODA')),
+    )
+    rtol: float = field(default=1e-6, validator=gt(0))
+    atol: float = field(default=1e-9, validator=gt(0))
+
+    dt0_yr: float = field(default=1e-4, validator=gt(0))
+    dt_max_yr: float = field(default=2000.0, validator=gt(0))
+    growth: float = field(default=1.15, validator=gt(1.0))
+    shrink: float = field(default=0.35, validator=(gt(0), lt(1)))
+
+    max_rel_da: float = field(default=0.01, validator=gt(0))
+    max_rel_de: float = field(default=0.01, validator=gt(0))
+    max_rel_dOmega: float = field(default=0.02, validator=gt(0))
+    de_floor: float = field(default=0.05, validator=gt(0))
+    max_substeps: int = field(default=10_000_000, validator=gt(0))
+
+    resonance_margin_enter: float = field(default=0.10, validator=gt(0))
+    resonance_margin_exit: float = field(default=0.50, validator=gt(0))
+    fine_csv_target_rel_dt: float = field(default=0.01, validator=gt(0))
+
+
+@define
 class Orbit:
     """Planetary and satellite orbital parameters.
 
@@ -330,6 +402,10 @@ class Orbit:
 
     planet_satellite_model: str | None
         Select planet-satellite orbit module to use. Choices: 'none', 'ps0d', 'ps1d', 'ps1d_evec'.
+
+    solver: OrbitSolver
+        Shared ODE-solver and adaptive-substep-controller settings for the
+        star-planet and planet-satellite orbital-evolution models.
 
     perturber: str | None
         Select perturber to induce tides on the planet. Options: 'none', 'star', 'satellite'.
@@ -384,6 +460,9 @@ class Orbit:
         validator=in_((None, 'none', 'ps0d', 'ps1d', 'ps1d_evec')),
         converter=none_if_none,
     )
+
+    # Shared ODE-solver and adaptive-substep-controller settings
+    solver: OrbitSolver = field(factory=OrbitSolver)
 
     # Perturber to induce tides on the planet. Options: 'none', 'star', 'satellite'.
     perturber: str | None = field(

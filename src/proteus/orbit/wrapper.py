@@ -279,7 +279,7 @@ def run_orbit(
 
         # initialize the Hansen coefficient table
         if config.orbit.planet_satellite_model in ['ps1d', 'ps1d_evec']:
-            from proteus.orbit.common import init_hansen_table, init_k_range_table
+            from proteus.orbit.hansen import init_hansen_table, init_k_range_table
 
             init_k_range_table()
 
@@ -290,7 +290,6 @@ def run_orbit(
                 ]
             )
             init_hansen_table(e_grid_wide)
-            # potentially needs to rerun after resuming a simulation
 
     else:
         # Set independent orbital parameters, through the desired method... (Star-Planet)
@@ -298,7 +297,7 @@ def run_orbit(
             # set by orbital evolution, based on tidal love number
             from proteus.orbit.orbit import evolve_orbit_star
 
-            evolve_orbit_star(hf_row, config, tides_o, interior_o.dt)
+            evolve_orbit_star(hf_row, config, tides_o, interior_o)
 
         else:
             # set semi-major axis to obtain a particular bolometric instellation flux

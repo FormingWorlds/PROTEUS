@@ -8,7 +8,8 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 from proteus.interior_energetics.common import Interior_t
-from proteus.orbit.common import Tides_t, get_all_m_hansen
+from proteus.orbit.common import Tides_t, run_adaptive_orbit_substeps
+from proteus.orbit.hansen import get_all_m_hansen
 from proteus.utils.constants import const_G, secs_per_year
 
 if TYPE_CHECKING:
@@ -17,37 +18,111 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
+def _state_is_valid_star(hf_row):
+    """Reject a substep whose resulting state is unphysical or non-finite.
+
+    Mirrors ``satellite._state_is_valid``: checks the planet hasn't
+    spiralled into the star's surface (a <= 1.05 R_star), that
+    eccentricity is in the physically sane, sub-parabolic range
+    [0, 0.999), and that the planet's spin period (only tracked by
+    sp1d, not sp0d) is finite when present. Used by
+    ``evolve_orbit_star``'s accept/reject controller; a False return
+    triggers a state rollback and a smaller retry ``dt_yr``.
+    """
+    a = hf_row.get('semimajorax', np.nan)
+    e = hf_row.get('eccentricity', 0.0)
+    if not np.isfinite(a) or a <= 1.05 * hf_row.get('R_star', 0.0):
+        return False
+    if not np.isfinite(e) or e < 0.0 or e >= 0.999:
+        return False
+    axp = hf_row.get('axial_period')
+    if axp is not None and not np.isfinite(axp):
+        return False
+    return True
+
+
 def evolve_orbit_star(hf_row: dict, config: Config, tides_o: Tides_t, interior_o: Interior_t):
-    """Evolve the planet's orbital parameters.
+    """Evolve the planet's orbital parameters by interior_o.dt of physical time.
+
+    Dispatches to the requested star-planet model (sp0d, sp1d) through
+    the shared adaptive-substep controller in
+    ``proteus.orbit.common.run_adaptive_orbit_substeps`` -- the same
+    controller used by the planet-satellite models in
+    ``proteus.orbit.satellite``, so both model families get the same
+    accept/reject substepping, growth/shrink behaviour, and
+    angular-momentum-conserving C_planet rescale (sp1d only; sp0d does
+    not track spin). All tolerances and controller knobs are read from
+    ``config.orbit.solver``.
 
     Parameters
     ----------
         hf_row : dict
             Dictionary of current runtime variables
-        config : dict
-            Dictionary of configuration options
+        config : Config
+            Configuration options
         tides_o : Tides_t
             Tides object containing tidal interactions
         interior_o : Interior_t
-            Interior object containing interior arrays
+            Interior object; interior_o.dt is the requested total elapsed
+            time in years for this call
     """
     model = config.orbit.star_planet_model
+    solver = config.orbit.solver
 
-    # Update orbit
     if model == 'sp0d':
-        sp0d(hf_row, interior_o.dt)
+
+        def step_fn(hf_row, dt_yr, t_elapsed_yr):
+            sp0d(hf_row, dt_yr, config)
+            return None
+
+        needs_c_planet = False
 
     elif model == 'sp1d':
-        # Compute planet principal moment of inertia (C_planet)
-        from proteus.orbit.common import get_C_planet
 
-        get_C_planet(hf_row, config, interior_o)
+        def step_fn(hf_row, dt_yr, t_elapsed_yr):
+            sp1d(hf_row, tides_o, dt_yr, config)
+            return None
 
-        # Call the sp1d function to evolve the satellite's orbital parameters
-        sp1d(hf_row, tides_o, interior_o.dt)
+        needs_c_planet = True
+
+    else:
+        raise ValueError(f'unrecognised star_planet_model: {model!r}')
+
+    def rel_change_fn(hf_row, snapshot):
+        rel = {}
+        a_prev = snapshot.get('semimajorax')
+        if a_prev:
+            rel['da'] = abs(hf_row['semimajorax'] - a_prev) / a_prev
+        e_prev = snapshot.get('eccentricity', 0.0)
+        e_new = hf_row.get('eccentricity', 0.0)
+        rel['de'] = abs(e_new - e_prev) / max(e_prev, solver.de_floor)
+        axp_prev = snapshot.get('axial_period')
+        axp_new = hf_row.get('axial_period')
+        if axp_prev and axp_new:
+            rel['dOmega_p'] = abs(1.0 / axp_new - 1.0 / axp_prev) / (1.0 / axp_prev)
+        return rel
+
+    rel_change_limits = {
+        'da': solver.max_rel_da,
+        'de': solver.max_rel_de,
+        'dOmega_p': solver.max_rel_dOmega,
+    }
+
+    run_adaptive_orbit_substeps(
+        hf_row,
+        config,
+        interior_o,
+        model,
+        step_fn,
+        _state_is_valid_star,
+        rel_change_fn,
+        rel_change_limits,
+        needs_c_planet=needs_c_planet,
+        log_label='evolve_orbit_star',
+    )
 
 
-def sp0d(hf_row: dict, dt: float):
+def sp0d(hf_row: dict, dt: float, config: Config):
     """Evolve the planet's orbital parameters module.
 
     Updates the semi-major axis and eccentricity.
@@ -77,10 +152,12 @@ def sp0d(hf_row: dict, dt: float):
     ----------
         hf_row : dict
             Dictionary of current runtime variables
-        tides_o : Tides_t
-            Tides object containing tidal interactions
         dt : float
             Time interval over which escape is occuring [yr]
+        config : Config
+            Configuration options; reads config.orbit.solver for the
+            solve_ivp method/rtol/atol, shared with every other
+            orbital-evolution model.
     """
 
     def de_dt(a, e, params):
@@ -131,16 +208,25 @@ def sp0d(hf_row: dict, dt: float):
     # Collect system parameters at previous_time
     params = (Imk2, Mst, const_G, Rpl, Mpl)
 
-    # Find new semimajor axis and eccentricity using RK5(4) integration method
+    # Find new semimajor axis and eccentricity using solve_ivp
+    solver = config.orbit.solver
     log.debug('Integrate sma and ecc with solve_ivp')
-    sol = solve_ivp(orbitals, [0, dt], [sma, ecc], args=(params,))
+    sol = solve_ivp(
+        orbitals,
+        [0, dt],
+        [sma, ecc],
+        args=(params,),
+        method=solver.method,
+        rtol=solver.rtol,
+        atol=solver.atol,
+    )
 
     # Update semimajor axis and eccentricity
     hf_row['semimajorax'] = sol.y[0][-1]
     hf_row['eccentricity'] = sol.y[1][-1]
 
 
-def sp1d(hf_row, tides_o, dt):
+def sp1d(hf_row, tides_o, dt, config: Config):
     """Evolve the Planets's orbital parameters module.
 
     Updates the semi-major axis and primary rotation
@@ -159,6 +245,10 @@ def sp1d(hf_row, tides_o, dt):
             Tides object containing tidal interactions
         dt : float
             Time interval over which escape is occuring [yr]
+        config : Config
+            Configuration options; reads config.orbit.solver for the
+            solve_ivp method/rtol/atol, shared with every other
+            orbital-evolution model.
     """
 
     # Convert time to seconds
@@ -194,16 +284,7 @@ def sp1d(hf_row, tides_o, dt):
     def _dense_love(nmk, LNk, m_target):
         # Sparse-mode-safe (real tidal data need not have a row for every
         # integer s in [kmin, kmax]) AND folds in the m=0/s<0 modes that
-        # Obliqua's own emission only supplies for s>=0. For a real,
-        # causal linear response, k(-sigma) = k(sigma)* -- and for m=0,
-        # sigma_0(-s) = -sigma_0(s) -- so the s<0 half is the complex
-        # conjugate of the s>0 half, and (per Obliqua's own internal
-        # heating-amplitude weighting, which doubles s>0 and keeps s=0
-        # single for exactly this reason) contributes EQUALLY, not
-        # negligibly. That doubling is applied inside Obliqua's own
-        # P_T_blk/P_T_prf calculation but never reaches the exported
-        # knms_total/nmk arrays this function consumes -- mirrored here
-        # instead of at the source.
+        # Obliqua's own emission only supplies for s>=0.
         mask = (nmk[:, 1] == m_target) & (nmk[:, 2] >= kmin) & (nmk[:, 2] <= kmax)
         dense = np.zeros(n_k, dtype=complex)
         dense[(nmk[mask, 2] - kmin).astype(int)] = LNk[mask]
@@ -300,14 +381,15 @@ def sp1d(hf_row, tides_o, dt):
         ]
 
     # Integration
+    solver = config.orbit.solver
     log.debug('Integrating the sp1d orbital model with solve_ivp')
     sol = solve_ivp(
         fun=lambda t, y: orbitals(t, y, params),
         t_span=(0, dt),
         y0=y0,
-        method='Radau',
-        rtol=1e-6,
-        atol=1e-9,
+        method=solver.method,
+        rtol=solver.rtol,
+        atol=solver.atol,
     )
 
     # Compute total angular momentum at the end of the integration
@@ -342,5 +424,3 @@ def sp1d(hf_row, tides_o, dt):
     # value.
     hf_row['eccentricity'] = max(sol.y[2][-1], 0.0)
     hf_row['plan_star_am'] = L_final
-
-    pass

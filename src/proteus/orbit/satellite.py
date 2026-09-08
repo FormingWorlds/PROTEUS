@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.integrate import solve_ivp
+from scipy.optimize import brentq
 
 from proteus.interior_energetics.common import Interior_t
-from proteus.orbit.common import Tides_t, get_all_m_hansen
+from proteus.orbit.common import Tides_t, run_adaptive_orbit_substeps
+from proteus.orbit.hansen import get_all_m_hansen
 from proteus.utils.constants import M_earth, R_earth, const_G, secs_per_year
 
 if TYPE_CHECKING:
@@ -213,23 +215,18 @@ def evolve_orbit_satellite(
     dirs: dict,
     tides_o: Tides_t,
     interior_o: Interior_t,
-    dt0_yr: float = 1e-4,
-    dt_max_yr: float = 2000.0,
-    growth: float = 1.15,
-    shrink: float = 0.35,
-    max_rel_da: float = 0.01,
-    max_rel_de: float = 0.01,
-    max_rel_dOmega: float = 0.02,
-    de_floor: float = 0.05,
-    max_substeps: int = 10_000_000,
-    resonance_margin_enter: float = 0.10,
-    resonance_margin_exit: float = 0.35,
-    fine_csv_target_rel_dt: float = 0.01,
 ):
     """Evolve the planet's orbital parameters by interior_o.dt of physical time.
 
     `interior_o.dt` is treated as the total elapsed time this call must advance
     the orbit by, not a safe step size to hand the solver directly.
+
+    Dispatches to the requested planet-satellite model (ps0d, ps1d,
+    ps1d_evec) through the shared adaptive-substep controller in
+    ``proteus.orbit.common.run_adaptive_orbit_substeps`` -- the same
+    controller used by the star-planet models in ``proteus.orbit.orbit``.
+    All tolerances and controller knobs (previously keyword arguments of
+    this function) are read from ``config.orbit.solver``.
 
     Parameters
     ----------
@@ -244,64 +241,28 @@ def evolve_orbit_satellite(
         interior_o : Interior_t
             Interior object; interior_o.dt is the requested total elapsed
             time in years for this call
-        dt0_yr, dt_max_yr, growth, shrink, max_rel_da, max_substeps :
-            Adaptive-substep controls, same meaning as in run_model's
-            adaptive driver.
-        max_rel_de : float
-            Analogous to max_rel_da but for eccentricity: a substep whose
-            relative change in e exceeds this is rejected and dt is
-            shrunk, and dt is only grown back when a/e/spin all changed
-            comfortably.
-        max_rel_dOmega : float
-            Same idea, for the planet's and satellite's own spin rates.
-            Added because real (Obliqua-magnitude) tidal strength can
-            change axial_period_sat by tens of percent within a single
-            year -- a/e alone are not sufficient accept/reject criteria
-            once tidal strength is realistic rather than e.g. the CPL model.
-        de_floor : float
-            Floor on the denominator of the relative eccentricity-change
-            metric (rel_de = |de| / max(e_prev, de_floor)), so that a
-            small starting e doesn't make rel_de spuriously huge for a
-            tiny absolute change.
-        resonance_margin_enter, resonance_margin_exit : float
-            Schmitt-trigger margins for `_in_evection_band` (relative to
-            a_res). A wider band changes which of the substeps below run
-            with filter_value=1.0, which is physically significant since
-            during the resonance a narrow band might rapidly toggle the
-            `_in_evection_band` due the oscillations from the evection
-            angle. This breaks the overall behavior, so use a wide band.
-        fine_csv_target_rel_dt : float
-            Target storage-clock spacing for OUT-of-band fine samples,
-            as a fraction of the current call's `t_total_yr` (the
-            "PROTEUS main clock" -- see the module docstring's "Three
-            clocks" section). Default 0.01 (1%), this is a conservative
-            default; a coarser value (e.g. 0.05-0.10) would cut out-of-
-            band storage volume further with little visible plotting cost.
-            Has NO effect while a substep is inside the evection band:
-            those samples are always stored at the full solver-clock
-            (fine_stride-thinned) rate regardless of this setting, because
-            that is the regime this data exists to resolve in the first place.
 
     Step-size persistence
     ----------------------
-    dt_yr and the evection-band hysteresis state are cached on hf_row
-    (under private keys) across calls to this function, rather than being
-    reset to dt0_yr / a fresh resonance_state every time. Restarting from
-    dt0_yr on every call wastes many accepted substeps re-growing a step
-    size the previous call had already found safe, and -- more importantly
-    -- measured against real tidal strength, `interior_o.dt` can be many
-    orders of magnitude larger than the step size the physics actually
-    supports; without carrying the controller's state forward, a call can
-    run out of `max_substeps` while still re-establishing a safe step size
-    every single time it's invoked.
+    dt_yr is cached on hf_row (under a private key) across calls to this
+    function by `run_adaptive_orbit_substeps`, rather than being reset to
+    `config.orbit.solver.dt0_yr` every time -- see that function's own
+    docstring. The evection-band hysteresis state (`_orbit_resonance_state`)
+    is satellite-specific (ps1d_evec only) and is persisted here, around
+    the shared controller call, for the same reason: restarting it fresh
+    every call would wastefully re-establish the band-detection history.
 
     Angular-momentum-conserving structural (C_planet) update
     ----------------------------------------------------------
-    `get_C_planet` recomputes hf_row['C_planet'] (the planet's moment-of-
-    inertia coefficient) from the *live* interior state (currently
-    C_p = gyration_const * M_planet * R_int**2) exactly once, here, before
-    the substep loop starts -- because `interior_o` (and hence R_int) is
-    frozen for the whole duration of this call by construction.
+    `run_adaptive_orbit_substeps` recomputes hf_row['C_planet'] (the
+    planet's moment-of-inertia coefficient) from the *live* interior state
+    (currently C_p = gyration_const * M_planet * R_int**2) exactly once,
+    before the substep loop starts -- because `interior_o` (and hence
+    R_int) is frozen for the whole duration of this call by construction.
+    ps0d needs this too: its own AM bootstrap (see ps0d's Ltot call) reads
+    hf_row['C_planet'] directly, so it must stay populated and
+    angular-momentum-consistent across calls exactly like it does for
+    ps1d/ps1d_evec -- hence `needs_c_planet=True` for all three models.
 
     If gyration_const, R_int, or M_planet has changed since the previous
     call to this function -- e.g. from interior cooling/contraction between
@@ -335,24 +296,14 @@ def evolve_orbit_satellite(
     sink instead. This has not been checked against how M_planet is
     actually populated elsewhere in PROTEUS.
     """
-    # Specify the orbit model
     model = config.orbit.planet_satellite_model
+    solver = config.orbit.solver
 
-    # Specify the initial timestep size and resonance state
-    dt_yr = hf_row.pop('_orbit_dt_yr', dt0_yr)
+    # Specify the resonance state (satellite-specific controller state,
+    # not owned by the shared substep controller -- see docstring above).
     resonance_state = hf_row.pop('_orbit_resonance_state', {})
 
-    # Setup the solver clock timescales
     t_total_yr = interior_o.dt
-    dt_max = dt_max_yr if dt_max_yr is not None else t_total_yr
-    dt_yr = min(dt_yr, t_total_yr) if t_total_yr > 0 else dt_yr
-
-    # Accumulators
-    t_elapsed = 0.0
-    n_steps = 0
-    n_rejected = 0
-
-    # Start time
     t_window_start_abs_yr = float(hf_row['Time']) - t_total_yr
 
     # Target spacing [yr] between stored OUT-of-band fine samples for
@@ -360,353 +311,162 @@ def evolve_orbit_satellite(
     # (PROTEUS main, t_total_yr). Recomputed every call since t_total_yr
     # varies call to call; see fine_csv_target_rel_dt's docstring entry
     # and the module docstring's "Three clocks" section.
-    storage_target_interval_yr = fine_csv_target_rel_dt * t_total_yr
+    storage_target_interval_yr = solver.fine_csv_target_rel_dt * t_total_yr
 
-    # Unconditional entry log: with a Time/t_total_yr/dt_yr/resonance_state
-    # snapshot on every single call, a run that stops partway through can
-    # always be matched back to exactly which call it was inside of, even
-    # if the EXIT log for that same call never appears.
-    log.info(
-        'evolve_orbit_satellite: ENTER model=%s Time=%.6e yr t_total_yr=%.6e '
-        'dt_yr_start=%.3e resonance_state_in=%r',
-        model,
-        float(hf_row['Time']),
-        t_total_yr,
-        dt_yr,
-        resonance_state,
-    )
+    last_in_band = [None]  # mutable box: tracks band transitions for logging only
 
-    # Refresh the planet's moment-of-inertia coefficient from the current
-    # interior state, then rescale Omega_p to conserve C_p*Omega_p across
-    # that structural change. ps0d needs this too: its own AM bootstrap
-    # (see ps0d's Ltot call) reads hf_row['C_planet'] directly, so it must
-    # stay populated and angular-momentum-consistent across calls exactly
-    # like it does for ps1d/ps1d_evec.
-    if model in ('ps0d', 'ps1d', 'ps1d_evec'):
-        # Get moment-of-inertia coefficient from previous PROTEUS step
-        C_p_old = hf_row.get('C_planet')
+    if model == 'ps0d':
 
-        try:
-            # Get moment-of-inertia coefficient from current PROTEUS step
-            from proteus.orbit.common import get_C_planet
+        def step_fn(hf_row, dt_yr, t_elapsed_yr):
+            ps0d(hf_row, dt_yr, config)
+            return None
 
-            get_C_planet(hf_row, config, interior_o)
-            C_p_new = hf_row['C_planet']
+        on_accept_fn = None
 
-            if C_p_old is not None and np.isfinite(C_p_old) and C_p_old > 0:
-                if not np.isfinite(C_p_new) or C_p_new == 0:
-                    log.error(
-                        'evolve_orbit_satellite: get_C_planet produced '
-                        'C_p_new=%r (C_p_old=%r) at Time=%.6e yr -- this will '
-                        'raise on the angular-momentum rescale below',
-                        C_p_new,
-                        C_p_old,
-                        float(hf_row['Time']),
-                    )
+    elif model == 'ps1d':
 
-                # Get spin at previous PROTEUS step
-                Omega_p_old = 2 * np.pi / float(hf_row['axial_period'])
+        def step_fn(hf_row, dt_yr, t_elapsed_yr):
+            ps1d(hf_row, tides_o, dt_yr, config)
+            return None
 
-                # Spin up/down planet to conserve angular momentum
-                hf_row['axial_period'] = 2 * np.pi / (Omega_p_old * C_p_old / C_p_new)
-        except Exception:
-            log.error(
-                'evolve_orbit_satellite: C_planet update RAISED at '
-                'Time=%.6e yr (C_p_old=%r, model=%s); re-raising',
-                float(hf_row['Time']),
-                C_p_old,
-                model,
-                exc_info=True,
-            )
-            raise
+        on_accept_fn = None
 
-    last_in_band = None  # tracks evection-band transitions for logging only
+    elif model == 'ps1d_evec':
 
-    # Loop until the requested total time has been advanced, or until the
-    # maximum number of substeps has been reached.
-    while t_elapsed < t_total_yr and n_steps < max_substeps:
-        dt_yr = min(dt_yr, t_total_yr - t_elapsed)
-        snapshot = dict(hf_row)
-
-        # Populated only for model == 'ps1d_evec'; holds the raw solver-clock
-        # samples for THIS attempt (accepted or not). Deliberately NOT
-        # written to disk here -- see _flush_fine_evection_csv, called
-        # further down only once this attempt is confirmed accepted, which
-        # is also where the storage-clock (Clock 3) decimation happens.
-        fine_sink = None
-        in_band = None  # set inside the ps1d_evec branch; read again after
-        # the try block by the flush call below
-
-        try:
-            with np.errstate(all='ignore'):
-                if model == 'ps0d':
-                    # Run the Planet-Satellite-0D model
-                    ps0d(hf_row, dt_yr)
-
-                elif model == 'ps1d':
-                    # Run the Planet-Satellite-1D model
-                    ps1d(hf_row, tides_o, dt_yr)
-
-                elif model == 'ps1d_evec':
-                    # Check if in evection resonance band
-                    in_band = _in_evection_band(
-                        hf_row,
-                        resonance_state,
-                        margin_enter=resonance_margin_enter,
-                        margin_exit=resonance_margin_exit,
-                    )
-
-                    # Log only actual band transitions (not every substep),
-                    # gives a clean timeline of resonance capture/escape.
-                    if last_in_band is not None and in_band != last_in_band:
-                        log.info(
-                            'evolve_orbit_satellite: evection-band TRANSITION '
-                            '%s -> %s at t_elapsed=%.6e/%.6e yr '
-                            '(a=%.6g, e=%.4f, dt_yr=%.3e, n_steps=%d)',
-                            last_in_band,
-                            in_band,
-                            t_elapsed,
-                            t_total_yr,
-                            hf_row.get('semimajorax_sat', float('nan')),
-                            hf_row.get('eccentricity_sat', float('nan')),
-                            dt_yr,
-                            n_steps,
-                        )
-                    last_in_band = in_band
-
-                    # If in resonance band, then include evection resonance terms
-                    filter_value = 1.0 if in_band else 0.0
-
-                    # Define current time in the solver clock
-                    substep_start_abs_yr = t_window_start_abs_yr + t_elapsed
-
-                    # Cheap pre-check to avoid solver-clock array overhead
-                    # (allocation/slicing in ps1d_evec) on substeps that
-                    # cannot possibly contain a storage-clock sample: this
-                    # substep spans exactly [substep_start_abs_yr,
-                    # substep_start_abs_yr + dt_yr] (dt_yr is fixed for the
-                    # whole call regardless of the solver's own internal
-                    # adaptive sub-stepping), so if that whole span is
-                    # still short of the next out-of-band storage target,
-                    # there is nothing to collect. Always collect while
-                    # in-band, where every solver sample is wanted anyway.
-                    next_storage_target_yr = hf_row.get('_fine_csv_next_target_yr', -np.inf)
-                    might_cross_target = (
-                        substep_start_abs_yr + dt_yr
-                    ) >= next_storage_target_yr
-                    fine_sink = [] if (in_band or might_cross_target) else None
-
-                    # Run the Planet-Satellite-1D model with evection resonance
-                    ps1d_evec(
-                        hf_row,
-                        tides_o,
-                        dt_yr,
-                        fine_sink,
-                        20,
-                        filter_value,
-                        t_abs_start_yr=substep_start_abs_yr,
-                    )
-                else:
-                    raise ValueError(f'unrecognised planet_satellite_model: {model!r}')
-
-            # Check if solver output is physical
-            ok = _state_is_valid(hf_row)
-
-            if not ok:
-                # Report exactly which fields are non-finite (if any).
-                bad_fields = {
-                    k: v
-                    for k, v in hf_row.items()
-                    if isinstance(v, (int, float)) and not np.isfinite(v)
-                }
-                log.warning(
-                    'evolve_orbit_satellite: _state_is_valid() rejected the '
-                    'state at t_elapsed=%.6e/%.6e yr, dt_yr=%.3e; '
-                    'non-finite fields=%r',
-                    t_elapsed,
-                    t_total_yr,
-                    dt_yr,
-                    bad_fields,
-                )
-        # If orbit model failed, return a warning
-        except Exception:
-            log.warning(
-                'evolve_orbit_satellite: substep raised (model=%s, '
-                'dt_yr=%.3e, t_elapsed=%.6e/%.6e yr)',
-                model,
-                dt_yr,
-                t_elapsed,
-                t_total_yr,
-                exc_info=True,
-            )
-            ok = False
-
-        # Check if gradient satisfy the convergence criteria
-        rel_da = 0.0
-        rel_de = 0.0
-        rel_dOmega_p = 0.0
-        rel_dOmega_s = 0.0
-        if ok:
-            # Compute semimajor-axis gradient
-            a_prev = snapshot.get('semimajorax_sat')
-            if a_prev:
-                rel_da = abs(hf_row['semimajorax_sat'] - a_prev) / a_prev
-
-            # Compute eccentricity gradient
-            e_prev = snapshot.get('eccentricity_sat', 0.0)
-            e_new = hf_row.get('eccentricity_sat', 0.0)
-            rel_de = abs(e_new - e_prev) / max(e_prev, de_floor)
-
-            # Compute planet spin rate gradient
-            axp_prev = snapshot.get('axial_period')
-            axp_new = hf_row.get('axial_period')
-            if axp_prev and axp_new:
-                rel_dOmega_p = abs(1.0 / axp_new - 1.0 / axp_prev) / (1.0 / axp_prev)
-
-            # Compute satellite spin rate gradient
-            axs_prev = snapshot.get('axial_period_sat')
-            axs_new = hf_row.get('axial_period_sat')
-            if axs_prev and axs_new:
-                rel_dOmega_s = abs(1.0 / axs_new - 1.0 / axs_prev) / (1.0 / axs_prev)
-
-            # Compare gradients against set limits
-            if (
-                rel_da > max_rel_da
-                or rel_de > max_rel_de
-                or rel_dOmega_p > max_rel_dOmega
-                or rel_dOmega_s > max_rel_dOmega
-            ):
-                ok = False
-
-                # Record which criterion (or criteria) actually tripped,
-                # rather than just that the step was rejected.
-                tripped = []
-                if rel_da > max_rel_da:
-                    tripped.append(f'da={rel_da:.4g}>{max_rel_da:.4g}')
-                if rel_de > max_rel_de:
-                    tripped.append(f'de={rel_de:.4g}>{max_rel_de:.4g}')
-                if rel_dOmega_p > max_rel_dOmega:
-                    tripped.append(f'dOmega_p={rel_dOmega_p:.4g}>{max_rel_dOmega:.4g}')
-                if rel_dOmega_s > max_rel_dOmega:
-                    tripped.append(f'dOmega_s={rel_dOmega_s:.4g}>{max_rel_dOmega:.4g}')
-                log.debug(
-                    'evolve_orbit_satellite: reject at t_elapsed=%.6e yr, '
-                    'dt_yr=%.3e -- tripped: %s',
-                    t_elapsed,
-                    dt_yr,
-                    ', '.join(tripped),
-                )
-
-        # If current step gets rejected, then restore previous step and retry
-        if not ok:
-            # Restore previous step helpfile row
-            hf_row.clear()
-            hf_row.update(snapshot)
-
-            # Reduce timestep
-            dt_yr *= shrink
-
-            # Track rejected step count
-            n_rejected += 1
-
-            # If ODE system cannot be solved, prevent endless loop.
-            if dt_yr < 1e-10:
-                log.warning(
-                    'evolve_orbit_satellite: internal step size collapsed to '
-                    'zero at t=%.3e yr of a %.3e yr requested call; stopping '
-                    'early (n_steps=%d, n_rejected=%d, last rel_da=%.3e, '
-                    'rel_de=%.3e, rel_dOmega_p=%.3e, rel_dOmega_s=%.3e)',
-                    t_elapsed,
-                    t_total_yr,
-                    n_steps,
-                    n_rejected,
-                    rel_da,
-                    rel_de,
-                    rel_dOmega_p,
-                    rel_dOmega_s,
-                )
-                break
-            continue
-
-        # This substep is now confirmed ACCEPTED (state valid, all
-        # rel_d* within tolerance). Only now is it safe to persist its
-        # fine-grained samples.
-        if model == 'ps1d_evec' and fine_sink:
-            _flush_fine_evection_csv(
+        def step_fn(hf_row, dt_yr, t_elapsed_yr):
+            # Check if in evection resonance band
+            in_band = _in_evection_band(
                 hf_row,
-                dirs['output/data'],
-                fine_sink[0],
-                in_band=bool(in_band),
-                storage_target_interval_yr=storage_target_interval_yr,
+                resonance_state,
+                margin_enter=solver.resonance_margin_enter,
+                margin_exit=solver.resonance_margin_exit,
             )
 
-        # Update solver clock and step counter
-        t_elapsed += dt_yr
-        n_steps += 1
+            # Log only actual band transitions (not every substep), gives
+            # a clean timeline of resonance capture/escape.
+            if last_in_band[0] is not None and in_band != last_in_band[0]:
+                log.info(
+                    'evolve_orbit_satellite: evection-band TRANSITION '
+                    '%s -> %s at t_elapsed=%.6e/%.6e yr '
+                    '(a=%.6g, e=%.4f, dt_yr=%.3e)',
+                    last_in_band[0],
+                    in_band,
+                    t_elapsed_yr,
+                    t_total_yr,
+                    hf_row.get('semimajorax_sat', float('nan')),
+                    hf_row.get('eccentricity_sat', float('nan')),
+                    dt_yr,
+                )
+            last_in_band[0] = in_band
 
-        # Throttled progress heartbeat: with max_substeps now 1e7, a run
-        # that's merely SLOW (heavy rejection churn well short of the
-        # collapse-to-1e-10 floor) would otherwise produce no log output
-        # at all between ENTER and EXIT, indistinguishable from a true
-        # hang in an external log tail.
-        if n_steps % 5000 == 0:
-            log.debug(
-                'evolve_orbit_satellite: progress t_elapsed=%.6e/%.6e yr '
-                'n_steps=%d n_rejected=%d dt_yr=%.3e',
-                t_elapsed,
-                t_total_yr,
-                n_steps,
-                n_rejected,
+            # If in resonance band, then include evection resonance terms
+            filter_value = 1.0 if in_band else 0.0
+
+            # Define current time in the solver clock
+            substep_start_abs_yr = t_window_start_abs_yr + t_elapsed_yr
+
+            # Cheap pre-check to avoid solver-clock array overhead
+            # (allocation/slicing in ps1d_evec) on substeps that cannot
+            # possibly contain a storage-clock sample: this substep spans
+            # exactly [substep_start_abs_yr, substep_start_abs_yr + dt_yr]
+            # (dt_yr is fixed for the whole substep regardless of the
+            # solver's own internal adaptive sub-stepping), so if that
+            # whole span is still short of the next out-of-band storage
+            # target, there is nothing to collect. Always collect while
+            # in-band, where every solver sample is wanted anyway.
+            next_storage_target_yr = hf_row.get('_fine_csv_next_target_yr', -np.inf)
+            might_cross_target = (substep_start_abs_yr + dt_yr) >= next_storage_target_yr
+            fine_sink = [] if (in_band or might_cross_target) else None
+
+            # Run the Planet-Satellite-1D model with evection resonance
+            ps1d_evec(
+                hf_row,
+                tides_o,
                 dt_yr,
+                config,
+                fine_sink,
+                20,
+                filter_value,
+                t_abs_start_yr=substep_start_abs_yr,
             )
+            return (fine_sink, in_band)
 
-        # Adaptively grow the timestep.
-        if (
-            rel_da < 0.3 * max_rel_da
-            and rel_de < 0.3 * max_rel_de
-            and rel_dOmega_p < 0.3 * max_rel_dOmega
-            and rel_dOmega_s < 0.3 * max_rel_dOmega
-        ):
-            dt_yr = min(dt_yr * growth, dt_max)
+        def on_accept_fn(hf_row, extra):
+            # This substep is now confirmed ACCEPTED (state valid, all
+            # rel_change_* within tolerance). Only now is it safe to
+            # persist its fine-grained samples.
+            fine_sink, in_band = extra
+            if fine_sink:
+                _flush_fine_evection_csv(
+                    hf_row,
+                    dirs['output/data'],
+                    fine_sink[0],
+                    in_band=bool(in_band),
+                    storage_target_interval_yr=storage_target_interval_yr,
+                )
 
-    # Warn user if solver did not complete evolving the system across
-    # the timestep from the PROTEUS clock within the given number of
-    # steps limit.
-    if t_elapsed < t_total_yr - 1e-9:
-        log.warning(
-            'evolve_orbit_satellite: only advanced %.3e of the requested '
-            '%.3e yr (%d accepted / %d rejected internal steps) before '
-            'hitting max_substeps=%d',
-            t_elapsed,
-            t_total_yr,
-            n_steps,
-            n_rejected,
-            max_substeps,
-        )
+    else:
+        raise ValueError(f'unrecognised planet_satellite_model: {model!r}')
 
-    # Unconditional exit log, mirroring ENTER: if this line is missing for
-    # a call whose ENTER line did appear, the process died/hung inside
-    # this function.
-    log.info(
-        'evolve_orbit_satellite: EXIT model=%s t_elapsed=%.6e/%.6e yr '
-        'n_steps=%d n_rejected=%d dt_yr_final=%.3e complete=%s',
+    def rel_change_fn(hf_row, snapshot):
+        rel = {}
+
+        # Compute semimajor-axis gradient
+        a_prev = snapshot.get('semimajorax_sat')
+        if a_prev:
+            rel['da'] = abs(hf_row['semimajorax_sat'] - a_prev) / a_prev
+
+        # Compute eccentricity gradient
+        e_prev = snapshot.get('eccentricity_sat', 0.0)
+        e_new = hf_row.get('eccentricity_sat', 0.0)
+        rel['de'] = abs(e_new - e_prev) / max(e_prev, solver.de_floor)
+
+        # Compute planet spin rate gradient
+        axp_prev = snapshot.get('axial_period')
+        axp_new = hf_row.get('axial_period')
+        if axp_prev and axp_new:
+            rel['dOmega_p'] = abs(1.0 / axp_new - 1.0 / axp_prev) / (1.0 / axp_prev)
+
+        # Compute satellite spin rate gradient
+        axs_prev = snapshot.get('axial_period_sat')
+        axs_new = hf_row.get('axial_period_sat')
+        if axs_prev and axs_new:
+            rel['dOmega_s'] = abs(1.0 / axs_new - 1.0 / axs_prev) / (1.0 / axs_prev)
+
+        return rel
+
+    rel_change_limits = {
+        'da': solver.max_rel_da,
+        'de': solver.max_rel_de,
+        'dOmega_p': solver.max_rel_dOmega,
+        'dOmega_s': solver.max_rel_dOmega,
+    }
+
+    run_adaptive_orbit_substeps(
+        hf_row,
+        config,
+        interior_o,
         model,
-        t_elapsed,
-        t_total_yr,
-        n_steps,
-        n_rejected,
-        dt_yr,
-        t_elapsed >= t_total_yr - 1e-9,
+        step_fn,
+        _state_is_valid,
+        rel_change_fn,
+        rel_change_limits,
+        needs_c_planet=True,
+        on_accept_fn=on_accept_fn,
+        log_label='evolve_orbit_satellite',
     )
 
-    # Persist the controller state for the next call (see docstring above).
-    # '_fine_csv_last_t_yr' (set inside _flush_fine_evection_csv) is
-    # intentionally NOT reset here: unlike '_orbit_dt_yr' and
-    # '_orbit_resonance_state', which are per-call adaptive-controller
-    # state, the CSV dedup cursor must survive for the lifetime of the
-    # whole run, across every future call to this function.
-    hf_row['_orbit_dt_yr'] = dt_yr
+    # Persist the resonance state for the next call (see docstring above).
     hf_row['_orbit_resonance_state'] = resonance_state
+
+    # Diagnostic/coupling column: whether ps1d_evec judged itself inside
+    # the evection band at the end of this call. Stays 0.0 (its
+    # fillna(0.0) default in the helpfile schema) for ps0d/ps1d, whose
+    # resonance_state is never touched by _in_evection_band. Read by
+    # proteus.interior_energetics.timestep.next_step to cap dt while in
+    # the band (params.dt.evection_maximum), one PROTEUS iteration
+    # later -- see that function's docstring entry.
+    hf_row['in_evection_band'] = 1.0 if resonance_state.get('active', False) else 0.0
 
 
 def compute_a_res_prime(hf_row):
@@ -722,7 +482,53 @@ def compute_a_res_prime(hf_row):
         return (Lambda * s_prime / (1.0 - e**2)) ** (4.0 / 7.0)
 
 
-def ps0d(hf_row, dt):
+def _solve_e_stationary(a_prime, s_prime, Lambda, Omega_ratio):
+    """Solve Rufu & Canup (2020), Eq. 12, for the stable stationary eccentricity e_s.
+
+    Note:
+    Rufu & Canup (2020) use the following normalization:
+    - a' = a / R_p
+    - s' = Omega / Omega_p
+    - Lambda = sqrt(1.5 * J_star * Omega_p / Omega_star)
+    - Omega_ratio = Omega_star / Omega_p
+
+    where:
+    Omega_p = sqrt(const_G * M_p / R_p**3)
+
+    Parameters
+    ----------
+    a_prime : float
+        Scaled semi-major axis (a / R_p).
+    s_prime : float
+        Scaled spin rate (Omega / Omega_p).
+    Lambda : float
+        Scaled angular momentum (L / (M_p * sqrt(G * M_p * R_p))).
+    Omega_ratio : float
+        Ratio of the planet's spin rate to the orbital mean motion (Omega / Omega_p).
+
+    Returns
+    -------
+    e_s : float
+        The stable stationary eccentricity, or np.nan if no solution exists.
+    """
+    if not (np.isfinite(a_prime) and np.isfinite(s_prime)):
+        return np.nan
+
+    def f(e):
+        return (
+            Lambda**2 * s_prime**2 / (a_prime**3.5 * (1.0 - e**2) ** 2)
+            - 1.0
+            - 3.0 * np.sqrt(1.0 - e**2) * a_prime**1.5 * Omega_ratio
+        )
+
+    lo, hi = 1e-8, 1.0 - 1e-8
+    f_lo, f_hi = f(lo), f(hi)
+    if not (np.isfinite(f_lo) and np.isfinite(f_hi)) or f_lo * f_hi > 0:
+        return np.nan
+    return brentq(f, lo, hi)
+
+
+def ps0d(hf_row, dt, config: Config):
     """Evolve the Satellite's orbital parameters module.
 
     Updates the semi-major axis and primary rotation
@@ -734,6 +540,10 @@ def ps0d(hf_row, dt):
             Dictionary of current runtime variables
         dt : float
             Time interval over which escape is occuring [yr]
+        config : Config
+            Configuration options; reads config.orbit.solver for the
+            solve_ivp method/rtol/atol, shared with every other
+            orbital-evolution model.
     """
 
     def Ltot(ω, a, params):
@@ -880,15 +690,24 @@ def ps0d(hf_row, dt):
     params = (I, L, const_G, Mpl, Msa, dE_tidal)
 
     # Find new satellite semimajor axis and axial frequency using RK5(4) integration method
+    solver = config.orbit.solver
     log.debug('Integrating the ps0d orbital model with solve_ivp')
-    sol = solve_ivp(orbitals, [0, dt], [sma, omega], args=(params,))
+    sol = solve_ivp(
+        orbitals,
+        [0, dt],
+        [sma, omega],
+        args=(params,),
+        method=solver.method,
+        rtol=solver.rtol,
+        atol=solver.atol,
+    )
 
     # Update semimajor axis and axial period
     hf_row['semimajorax_sat'] = sol.y[0][-1]
     hf_row['axial_period'] = 2 * np.pi / sol.y[1][-1]
 
 
-def ps1d(hf_row, tides_o, dt):
+def ps1d(hf_row, tides_o, dt, config: Config):
     """Evolve the Satellite's orbital parameters module.
 
     Updates the semi-major axis and primary rotation
@@ -902,6 +721,10 @@ def ps1d(hf_row, tides_o, dt):
             Tides object containing tidal interactions
         dt : float
             Time interval over which escape is occuring [yr]
+        config : Config
+            Configuration options; reads config.orbit.solver for the
+            solve_ivp method/rtol/atol, shared with every other
+            orbital-evolution model.
     """
 
     # Convert time to seconds
@@ -947,16 +770,7 @@ def ps1d(hf_row, tides_o, dt):
     def _dense_love(nmk, LNk, m_target):
         # Sparse-mode-safe (real tidal data need not have a row for every
         # integer s in [kmin, kmax]) AND folds in the m=0/s<0 modes that
-        # Obliqua's own emission only supplies for s>=0. For a real,
-        # causal linear response, k(-sigma) = k(sigma)* -- and for m=0,
-        # sigma_0(-s) = -sigma_0(s) -- so the s<0 half is the complex
-        # conjugate of the s>0 half, and (per Obliqua's own internal
-        # heating-amplitude weighting, which doubles s>0 and keeps s=0
-        # single for exactly this reason) contributes EQUALLY, not
-        # negligibly. That doubling is applied inside Obliqua's own
-        # P_T_blk/P_T_prf calculation but never reaches the exported
-        # knms_total/nmk arrays this function consumes -- mirrored here
-        # instead of at the source.
+        # Obliqua's own emission only supplies for s>=0.
         mask = (nmk[:, 1] == m_target) & (nmk[:, 2] >= kmin) & (nmk[:, 2] <= kmax)
         dense = np.zeros(n_k, dtype=complex)
         dense[(nmk[mask, 2] - kmin).astype(int)] = LNk[mask]
@@ -1072,14 +886,15 @@ def ps1d(hf_row, tides_o, dt):
         ]
 
     # Integration
+    solver = config.orbit.solver
     log.debug('Integrating the ps1d orbital model with solve_ivp')
     sol = solve_ivp(
         fun=lambda t, y: orbitals(t, y, params),
         t_span=(0, dt),
         y0=y0,
-        method='Radau',
-        rtol=1e-6,
-        atol=1e-9,
+        method=solver.method,
+        rtol=solver.rtol,
+        atol=solver.atol,
     )
 
     # Compute total angular momentum at the end of the integration
@@ -1133,7 +948,14 @@ def ps1d(hf_row, tides_o, dt):
 
 
 def ps1d_evec(
-    hf_row, tides_o, dt, fine_sink=None, fine_stride=1, filter_value=None, t_abs_start_yr=None
+    hf_row,
+    tides_o,
+    dt,
+    config: Config,
+    fine_sink=None,
+    fine_stride=1,
+    filter_value=None,
+    t_abs_start_yr=None,
 ):
     """Evolve the Satellite's orbital parameters module.
 
@@ -1148,6 +970,10 @@ def ps1d_evec(
             Tides object containing tidal interactions
         dt : float
             Time interval over which escape is occuring [yr]
+        config : Config
+            Configuration options; reads config.orbit.solver for the
+            solve_ivp method/rtol/atol, shared with every other
+            orbital-evolution model.
         fine_sink : list or None
             When given a list, this call appends EXACTLY ONE dict of the
             solver's own internal accepted-step samples for this
@@ -1167,9 +993,18 @@ def ps1d_evec(
             accuracy is unaffected, and this is independent of the
             caller's separate storage-clock throttle).
         filter_value : float or None
-            Fixed resonance-activation filter value used by `dw_dt`. None
-            falls back to filter_enabled's get_resonance_filter gate (or
-            1.0 if that's also disabled).
+            Resonance-activation filter used by `dw_dt` to gate ONLY the
+            oscillating evection-forcing term
+            (`dw_evection_oscillating`); the secular apsidal-precession
+            terms (`dw_J2`, tidal, stellar) are always active regardless
+            of this value, so `evection_angle` keeps evolving smoothly
+            whether the system is judged in or out of the resonance
+            band -- it is never reset or frozen by this parameter.
+            `filter_value=0.0` (out of band) therefore does NOT reduce
+            this model to ps1d's dynamics; it only removes the resonant
+            term from phi's own evolution while a/e/spin still evolve
+            under the exact same physics either way. None defaults to
+            1.0 (term active).
         t_abs_start_yr : float or None
             Absolute start time [yr] used to build the `fine_sink`
             timestamps; falls back to `hf_row['Time']` when None.
@@ -1184,10 +1019,6 @@ def ps1d_evec(
     sma = float(hf_row['semimajorax_sat'])
     ecc = float(hf_row['eccentricity_sat'])
     evection_angle = float(hf_row['evection_angle'])
-
-    filter_is_zero = (filter_value is not None) and (filter_value == 0.0)
-    if filter_is_zero:
-        evection_angle = 0.0
 
     # Setup Initial State and Parameters
     y0 = [
@@ -1230,14 +1061,7 @@ def ps1d_evec(
 
     def _dense_love(nmk, LNk, m_target):
         # Sparse-mode-safe scatter (real tidal-mode data doesn't have a row
-        # for every integer s in [kmin, kmax]) PLUS an m=0/s<0 mirror fix:
-        # Obliqua only emits s >= 0 for the m=0 (radial) branch, but for a
-        # real, causal linear response k(-sigma) = k(sigma)*, and for m=0
-        # sigma_0(-s) = -sigma_0(s) -- so the s<0 half is the exact complex
-        # conjugate of the s>0 half, and contributes equally to da/dt and
-        # de/dt's m=0 term. Not applied for m=2: its mirror is the separate
-        # m=-2 branch (a different symmetry), already folded in
-        # unconditionally by Obliqua for all m != 0 regardless of sign(s).
+        # for every integer s in [kmin, kmax]) PLUS an m=0/s<0 mirror fix.
         mask = (nmk[:, 1] == m_target) & (nmk[:, 2] >= kmin) & (nmk[:, 2] <= kmax)
         dense = np.zeros(n_k, dtype=complex)
         dense[(nmk[mask, 2] - kmin).astype(int)] = LNk[mask]
@@ -1402,9 +1226,6 @@ def ps1d_evec(
             scale_width=1e-8,
         )
 
-        if filter_is_zero:
-            dphi_dt = 0.0
-
         sqrt_term = np.sqrt(1.0 - e_safe**2)
         da_dt_p = a * (E_p / 2.0) * da_p
         da_dt_s = a * (E_s / 2.0) * da_s
@@ -1427,14 +1248,15 @@ def ps1d_evec(
         ]
 
     # Integration
+    solver = config.orbit.solver
     log.debug('Integrating the ps1d_evec orbital model with solve_ivp')
     sol = solve_ivp(
         fun=lambda t, y: orbitals(t, y, params),
         t_span=(0, dt),
         y0=y0,
-        method='Radau',
-        rtol=1e-6,
-        atol=1e-9,
+        method=solver.method,
+        rtol=solver.rtol,
+        atol=solver.atol,
     )
 
     y_end = sol.y[:, -1]

@@ -66,7 +66,8 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
-import proteus.orbit.common as common_mod
+import proteus.orbit.hansen as hansen_mod
+from proteus.config._orbit import OrbitSolver
 from proteus.orbit.common import Tides_t
 from proteus.orbit.satellite import (
     _flush_fine_evection_csv,
@@ -81,6 +82,11 @@ from proteus.orbit.satellite import (
 from proteus.utils.constants import M_earth, R_earth, const_G, secs_per_year
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+# Minimal config stand-in exposing only config.orbit.solver, for tests that
+# call ps0d/ps1d/ps1d_evec directly (not through evolve_orbit_satellite's
+# dispatch).
+_SOLVER_CONFIG = cast(Any, SimpleNamespace(orbit=SimpleNamespace(solver=OrbitSolver())))
 
 
 # ---------------------------------------------------------------------------
@@ -414,7 +420,7 @@ def _ps0d_instantaneous_rates(**hf_row_kwargs):
     sma_before, axial_before = hf_row['semimajorax_sat'], hf_row['axial_period']
     omega_before = 2 * np.pi / axial_before
 
-    ps0d(hf_row, dt=_PS0D_FD_DT_YR)
+    ps0d(hf_row, dt=_PS0D_FD_DT_YR, config=_SOLVER_CONFIG)
 
     dt_s = _PS0D_FD_DT_YR * secs_per_year
     da_dt = (hf_row['semimajorax_sat'] - sma_before) / dt_s
@@ -453,7 +459,7 @@ def test_ps0d_bootstrap_am_uses_satellite_mass_not_planet_mass():
         # this test calls ps0d in isolation.
         'C_planet': _PS0D_I,
     }
-    ps0d(hf_row, dt=1.0)
+    ps0d(hf_row, dt=1.0, config=_SOLVER_CONFIG)
 
     omega = 2 * np.pi / _PS0D_AXIAL_PERIOD
     expected = _ps0d_korenaga_L(omega, _PS0D_SMA)
@@ -484,7 +490,7 @@ def test_ps0d_bootstrap_only_fires_once_am_is_populated():
         'Time': 0.0,
         'C_planet': _PS0D_I,  # see comment in the test above
     }
-    ps0d(hf_row, dt=1.0)
+    ps0d(hf_row, dt=1.0, config=_SOLVER_CONFIG)
     bootstrapped_L = hf_row['plan_sat_am']
 
     # A second call, still at Time <= 10, with zero tidal power (a
@@ -496,7 +502,7 @@ def test_ps0d_bootstrap_only_fires_once_am_is_populated():
     hf_row['Time'] = 5.0
     hf_row['plan_sat_am'] = 999.0
     hf_row['F_tidal'] = 0.0
-    ps0d(hf_row, dt=1.0)
+    ps0d(hf_row, dt=1.0, config=_SOLVER_CONFIG)
     assert hf_row['plan_sat_am'] == pytest.approx(999.0, rel=1e-12)
     assert hf_row['plan_sat_am'] != pytest.approx(bootstrapped_L, rel=1e-3)
 
@@ -546,7 +552,7 @@ def test_ps0d_finite_output_over_a_realistic_step():
     Moon system must yield finite, positive semimajor axis and axial
     period."""
     hf_row = _make_ps0d_hf_row(F_tidal=1e-3)
-    ps0d(hf_row, dt=1e3)
+    ps0d(hf_row, dt=1e3, config=_SOLVER_CONFIG)
     assert np.isfinite(hf_row['semimajorax_sat'])
     assert np.isfinite(hf_row['axial_period'])
     assert hf_row['semimajorax_sat'] > 0.0
@@ -573,8 +579,8 @@ _FAST_KMIN, _FAST_KMAX = -6, 6
 
 @pytest.fixture
 def _fast_hansen_table(monkeypatch):
-    monkeypatch.setattr(common_mod, '_hansen_table', None)
-    common_mod.init_hansen_table(
+    monkeypatch.setattr(hansen_mod, '_hansen_table', None)
+    hansen_mod.init_hansen_table(
         e_grid=_FAST_E_GRID, kmin=_FAST_KMIN, kmax=_FAST_KMAX, n_deg=2, force=True
     )
 
@@ -632,7 +638,7 @@ def test_ps1d_zero_dissipation_is_an_exact_fixed_point(_fast_hansen_table):
     before = dict(hf_row)
     tides_o = _make_ps1d_tides(0.0 + 0.0j)
 
-    ps1d(hf_row, tides_o, dt=1e5)
+    ps1d(hf_row, tides_o, dt=1e5, config=_SOLVER_CONFIG)
 
     assert hf_row['axial_period'] == pytest.approx(before['axial_period'], rel=1e-12)
     assert hf_row['axial_period_sat'] == pytest.approx(before['axial_period_sat'], rel=1e-12)
@@ -654,7 +660,7 @@ def test_ps1d_conserves_total_angular_momentum(_fast_hansen_table):
     am_before = spin_p0 + spin_s0 + orb0
     tides_o = _make_ps1d_tides(-0.01 - 0.02j)
 
-    ps1d(hf_row, tides_o, dt=1e5)
+    ps1d(hf_row, tides_o, dt=1e5, config=_SOLVER_CONFIG)
 
     spin_p1, spin_s1, orb1 = _ps1d_am_components(hf_row)
     am_after = spin_p1 + spin_s1 + orb1
@@ -679,7 +685,7 @@ def test_ps1d_satellite_spin_am_change_matches_the_rest_of_the_system(_fast_hans
     spin_p0, spin_s0, orb0 = _ps1d_am_components(hf_row)
     tides_o = _make_ps1d_tides(-0.01 - 0.02j)
 
-    ps1d(hf_row, tides_o, dt=1e5)
+    ps1d(hf_row, tides_o, dt=1e5, config=_SOLVER_CONFIG)
 
     spin_p1, spin_s1, orb1 = _ps1d_am_components(hf_row)
     d_spin_s = spin_s1 - spin_s0
@@ -702,7 +708,7 @@ def test_ps1d_da_tidal_split_sums_to_total_sma_change(_fast_hansen_table):
     tides_o = _make_ps1d_tides(-0.01 - 0.02j)
     dt_yr = 1e5
 
-    ps1d(hf_row, tides_o, dt=dt_yr)
+    ps1d(hf_row, tides_o, dt=dt_yr, config=_SOLVER_CONFIG)
 
     dt_s = dt_yr * secs_per_year
     total_da_dt = (hf_row['semimajorax_sat'] - sma_before) / dt_s
@@ -723,7 +729,7 @@ def test_ps1d_eccentricity_clamped_at_zero_not_negative(_fast_hansen_table):
     hf_row = _make_ps1d_hf_row(ecc=0.9)
     tides_o = _make_ps1d_tides(-0.005 - 0.01j)
 
-    ps1d(hf_row, tides_o, dt=1e6)
+    ps1d(hf_row, tides_o, dt=1e6, config=_SOLVER_CONFIG)
 
     assert np.isfinite(hf_row['eccentricity_sat'])
     assert np.isfinite(hf_row['semimajorax_sat'])
@@ -750,7 +756,7 @@ def _make_satellite_config(model) -> Any:
     return cast(
         Any,
         SimpleNamespace(
-            orbit=SimpleNamespace(planet_satellite_model=model),
+            orbit=SimpleNamespace(planet_satellite_model=model, solver=OrbitSolver()),
             interior_energetics=SimpleNamespace(module='aragog'),
         ),
     )
@@ -871,23 +877,16 @@ def test_evolve_orbit_satellite_populates_c_planet_for_every_model(model, _fast_
     assert hf_row['C_planet'] > 0.0
 
 
-def test_evolve_orbit_satellite_unrecognized_model_advances_nothing_without_raising():
-    """Pins the OBSERVED (not necessarily intended) contract for an
-    unrecognized ``planet_satellite_model``: the dispatch ``else``
-    branch does ``raise ValueError(...)``, but that raise happens
-    INSIDE the substep's own ``try`` block, which has a broad
-    ``except Exception: ok = False`` around it -- so the ValueError is
-    caught and treated identically to a transient solver failure. The
-    controller then retries with a shrinking ``dt_yr`` (every retry
-    hits the same unconditional ``raise``) until the step size
-    collapses below its ``1e-10`` floor, logs a warning, and
-    ``evolve_orbit_satellite`` RETURNS NORMALLY: no exception ever
-    reaches the caller, and ``t_elapsed`` never advances past 0.
-
-    This means a configuration error (an invalid model name) is
-    currently indistinguishable, from the caller's side, from the
-    solver simply failing to converge -- both silently advance zero
-    time and return. Pinned here as the current behavior; not fixed.
+def test_evolve_orbit_satellite_unrecognized_model_raises_immediately():
+    """An unrecognized ``planet_satellite_model`` is now rejected
+    up-front by the dispatch (before the shared adaptive-substep
+    controller ever starts), not inside the substep's own broad
+    ``except Exception`` -- unlike the pre-homogenization version,
+    where the same ``raise ValueError`` sat inside the substep loop's
+    try/except and was silently swallowed and retried down to the
+    step-size floor before returning normally. Failing loudly on a
+    configuration error is the deliberate improvement from sharing the
+    controller with ``evolve_orbit_star``.
     """
     hf_row = _make_evolve_hf_row()
     hf_row['F_tidal'] = 1e-3
@@ -896,11 +895,13 @@ def test_evolve_orbit_satellite_unrecognized_model_advances_nothing_without_rais
     interior_o = _make_interior_for_c_planet(density=5500.0)
     interior_o.dt = 1.0
 
-    # No exception propagates.
-    evolve_orbit_satellite(hf_row, config, dirs={}, tides_o=Tides_t(), interior_o=interior_o)
+    with pytest.raises(ValueError, match='not-a-real-model'):
+        evolve_orbit_satellite(
+            hf_row, config, dirs={}, tides_o=Tides_t(), interior_o=interior_o
+        )
 
-    # Discrimination: the state is exactly the pre-call snapshot (every
-    # substep was rejected and rolled back), not partially evolved.
+    # Discrimination: the raise happens before any substep runs, so the
+    # state is exactly the pre-call snapshot, not partially evolved.
     assert hf_row['semimajorax_sat'] == pytest.approx(sma_before, rel=1e-12)
 
 
@@ -932,6 +933,8 @@ def test_evolve_orbit_satellite_rejects_substep_exceeding_max_rel_da_and_shrinks
     hf_row['F_tidal'] = 1e-3
     sma_before = hf_row['semimajorax_sat']
     config = _make_satellite_config('ps0d')
+    config.orbit.solver.max_rel_da = 1e-30
+    config.orbit.solver.max_substeps = 20
     interior_o = _make_interior_for_c_planet(density=5500.0)
     interior_o.dt = 1e7
 
@@ -941,8 +944,6 @@ def test_evolve_orbit_satellite_rejects_substep_exceeding_max_rel_da_and_shrinks
         dirs={},
         tides_o=Tides_t(),
         interior_o=interior_o,
-        max_rel_da=1e-30,
-        max_substeps=20,
     )
 
     # Every substep must have been rejected: semimajorax_sat is
@@ -990,10 +991,16 @@ def test_evolve_orbit_satellite_persists_controller_state_across_calls():
 # resonance-physics literature comparison (CPL model vs a published case)
 # is a separate, long-running test.
 #
-# filter_value=0 (out of band) makes ps1d_evec's own orbitals() identical
-# to ps1d's (dphi_dt forced to 0, the evection term's r_filter also 0 by
-# construction -- see dw_dt): confirmed below to conserve the same 3-
-# component total AM to machine precision, same as ps1d.
+# filter_value only gates the OSCILLATING evection-forcing term inside
+# dw_dt (and the matching de_res term in orbitals()); the secular
+# apsidal-precession terms (J2, tidal, stellar) are always active, so
+# evection_angle keeps evolving smoothly regardless of filter_value --
+# it is never reset or frozen. Since every OTHER term that depends on
+# phi (de_res in the eccentricity ODE) is gated by the SAME filter,
+# phi's own secular drift never feeds back into a/e/spin when
+# filter_value=0: confirmed below that the same 3-component total AM
+# is still conserved to machine precision in that case, even though
+# phi itself is not frozen.
 #
 # filter_value=1 (in band) activates the star's secular/evection torque:
 # this is a genuine three-body angular-momentum exchange with the star, so
@@ -1028,24 +1035,28 @@ def _ps1d_evec_am_components(hf_row: dict) -> tuple[float, float, float]:
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_ps1d_evec_filter_zero_freezes_phi_and_conserves_am_like_ps1d(_fast_hansen_table):
-    """``filter_value=0`` must reduce ps1d_evec EXACTLY to ps1d's
-    physics: the evection angle stays frozen at its initial value (no
-    precession tracked while out of band), and the same 3-component
-    total angular momentum (planet spin + satellite spin + orbital)
-    is conserved to machine precision -- not just approximately, since
-    with the evection terms exactly zeroed there is no star-torque
-    contribution left to break the closed two-body-plus-tides
-    conservation law.
+def test_ps1d_evec_filter_zero_still_evolves_phi_but_conserves_am(_fast_hansen_table):
+    """``filter_value=0`` (out of band) does NOT freeze or reset the
+    evection angle: the secular apsidal-precession terms (J2, tidal,
+    stellar) are always active, so phi keeps evolving even out of
+    band. But the same 3-component total angular momentum (planet spin
+    + satellite spin + orbital) is still conserved to machine
+    precision, because the eccentricity ODE's only phi-dependent term
+    (de_res) is gated by the SAME filter -- phi's own secular drift
+    never feeds back into a/e/spin when filter_value=0, so there is no
+    star-torque contribution left to break the closed
+    two-body-plus-tides conservation law even though phi itself moves.
     """
     hf_row = _make_ps1d_evec_hf_row(ecc=0.3, evection_angle=0.0)
     spin_p0, spin_s0, orb0 = _ps1d_evec_am_components(hf_row)
     am_before = spin_p0 + spin_s0 + orb0
     tides_o = _make_ps1d_evec_tides(-0.002 - 0.004j)
 
-    ps1d_evec(hf_row, tides_o, dt=1.0, filter_value=0.0)
+    ps1d_evec(hf_row, tides_o, dt=1.0, config=_SOLVER_CONFIG, filter_value=0.0)
 
-    assert hf_row['evection_angle'] == pytest.approx(0.0, abs=1e-15)
+    # Discrimination: phi must have moved substantially under the
+    # (always-on) secular terms, not stayed at its 0.0 IC.
+    assert abs(hf_row['evection_angle']) > 1.0
     spin_p1, spin_s1, orb1 = _ps1d_evec_am_components(hf_row)
     am_after = spin_p1 + spin_s1 + orb1
     assert am_after == pytest.approx(am_before, rel=1e-9)
@@ -1053,20 +1064,22 @@ def test_ps1d_evec_filter_zero_freezes_phi_and_conserves_am_like_ps1d(_fast_hans
 
 @pytest.mark.physics_invariant
 def test_ps1d_evec_filter_one_evolves_phi_and_am_is_not_conserved(_fast_hansen_table):
-    """``filter_value=1`` activates the star-forced evection term: the
-    evection angle must actually evolve (not stay frozen), and the
+    """``filter_value=1`` additionally activates the star-forced
+    OSCILLATING evection term (on top of the secular precession that
+    is already active at ``filter_value=0``, see the test above): the
     planet-satellite subsystem's own total angular momentum is NOT
-    expected to be conserved -- the star is a third body exchanging
-    angular momentum with the system during resonant forcing. This
-    pins that the drift is real, finite, and of a physically sane
-    (small-fraction) magnitude, not that it vanishes.
+    expected to be conserved in this regime -- the star is a third
+    body exchanging angular momentum with the system during resonant
+    forcing, unlike the secular-only case. This pins that the drift is
+    real, finite, and of a physically sane (small-fraction) magnitude,
+    not that it vanishes.
     """
     hf_row = _make_ps1d_evec_hf_row(ecc=0.3, evection_angle=0.0)
     spin_p0, spin_s0, orb0 = _ps1d_evec_am_components(hf_row)
     am_before = spin_p0 + spin_s0 + orb0
     tides_o = _make_ps1d_evec_tides(-0.002 - 0.004j)
 
-    ps1d_evec(hf_row, tides_o, dt=1.0, filter_value=1.0)
+    ps1d_evec(hf_row, tides_o, dt=1.0, config=_SOLVER_CONFIG, filter_value=1.0)
 
     # Discrimination: phi must have moved substantially, not just by
     # solver-noise scale.
@@ -1094,7 +1107,7 @@ def test_evolve_orbit_satellite_threads_in_band_result_as_filter_value(monkeypat
     captured_filter_values = []
 
     def fake_ps1d_evec(
-        hf_row, tides_o, dt, fine_sink=None, fine_stride=1, filter_value=None, **kw
+        hf_row, tides_o, dt, config, fine_sink=None, fine_stride=1, filter_value=None, **kw
     ):
         # Deliberately NOT the real physics: this test verifies only
         # that evolve_orbit_satellite threads the live _in_evection_band
@@ -1181,6 +1194,7 @@ def test_evolve_orbit_satellite_ps1d_evec_throttles_samples_out_of_band(
     interior_o = _make_interior_for_c_planet(density=5500.0)
     interior_o.dt = 1.0
     config = _make_satellite_config('ps1d_evec')
+    config.orbit.solver.fine_csv_target_rel_dt = 0.1
     tides_o = _make_ps1d_evec_tides(-0.002 - 0.004j)
 
     sat_mod.evolve_orbit_satellite(
@@ -1189,7 +1203,6 @@ def test_evolve_orbit_satellite_ps1d_evec_throttles_samples_out_of_band(
         dirs={'output/data': str(tmp_path)},
         tides_o=tides_o,
         interior_o=interior_o,
-        fine_csv_target_rel_dt=0.1,
     )
 
     csv_path = tmp_path / 'fine_evection_data.csv'
@@ -1210,7 +1223,7 @@ def test_ps1d_evec_finite_output_for_high_eccentricity_in_band(_fast_hansen_tabl
     hf_row = _make_ps1d_evec_hf_row(ecc=0.7)
     tides_o = _make_ps1d_evec_tides(-0.002 - 0.004j)
 
-    ps1d_evec(hf_row, tides_o, dt=0.5, filter_value=1.0)
+    ps1d_evec(hf_row, tides_o, dt=0.5, config=_SOLVER_CONFIG, filter_value=1.0)
 
     assert np.isfinite(hf_row['eccentricity_sat'])
     assert np.isfinite(hf_row['semimajorax_sat'])

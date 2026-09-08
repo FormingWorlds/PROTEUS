@@ -490,6 +490,27 @@
       "group_qualifier": null
     },
     {
+      "path": "params.dt.evection_maximum",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Maximum time-step size [yr] while the planet-satellite system is inside the evection resonance band (``hf_row['in_evection_band']``, written by ``evolve_orbit_satellite``/``_in_evection_band``). Same rationale as ``mushy_maximum``: the coarse PROTEUS clock cannot foresee this regime in advance, so once inside it the step is capped a posteriori (one PROTEUS iteration late, same lag as the mushy cap) to bound how large a single structural (C_planet) jump the orbital-evolution substep controller has to smooth over -- see ``run_adaptive_orbit_substeps``. Set to 0 (default) to disable.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "params.dt.hysteresis_iters",
       "toml_section": "params.dt",
       "class": "TimeStepParams",
@@ -1806,6 +1827,327 @@
       "group_qualifier": null
     },
     {
+      "path": "orbit.solver.method",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"Radau\"",
+      "choices": [
+        "RK45",
+        "RK23",
+        "DOP853",
+        "Radau",
+        "BDF",
+        "LSODA"
+      ],
+      "bounds": null,
+      "description": "scipy.integrate.solve_ivp integration method.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.rtol",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-06",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Relative tolerance passed to solve_ivp.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.atol",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-09",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Absolute tolerance passed to solve_ivp.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.dt0_yr",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0001",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Initial adaptive-substep size [yr].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.dt_max_yr",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "2000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum adaptive-substep size [yr].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.growth",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.15",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 1.0
+        }
+      ],
+      "description": "Substep growth factor applied after an accepted step.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.shrink",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.35",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Substep shrink factor applied after a rejected step.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.max_rel_da",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum tolerated relative change in semi-major axis per substep.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.max_rel_de",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum tolerated relative change in eccentricity per substep.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.max_rel_dOmega",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.02",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum tolerated relative change in a spin rate per substep.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.de_floor",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.05",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Floor on the eccentricity-change-ratio denominator, so a small starting eccentricity does not make the ratio spuriously huge.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.max_substeps",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "int",
+      "accepts_none": false,
+      "default": "10000000",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum number of substeps attempted per call.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.resonance_margin_enter",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Evection-band entry margin (ps1d_evec only).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.resonance_margin_exit",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Evection-band exit margin (ps1d_evec only).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.fine_csv_target_rel_dt",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Target storage-clock spacing for out-of-band fine samples, as a fraction of the requested call duration (ps1d_evec only).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "orbit.perturber",
       "toml_section": "orbit",
       "class": "Orbit",
@@ -2397,10 +2739,11 @@
       "choices": [
         "liquid",
         "solid",
+        "inertial-liquid",
         "inertial"
       ],
       "bounds": null,
-      "description": "Core solution vector (\"liquid\", \"solid\", or \"inertial\").",
+      "description": "Core solution vector (\"liquid\", \"solid\", \"inertial-liquid\", or \"inertial\").",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
