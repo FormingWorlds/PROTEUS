@@ -142,9 +142,9 @@ def _resolve_step_cap(cap: float) -> float:
     Shared resolution for the melt-fraction, temperature, and entropy caps.
     Each cap is a SUNDIALS root function that returns control from the interior
     sub-solve the moment a cell's per-step change reaches the cap. On a benign
-    freezing-front crossing it truncates the step into slivers and breaks
-    energy conservation, so the caps are off by default and act as a debugging
-    control for a pathological config, not a production setting.
+    freezing-front crossing it slices the coupled step into many small ones and
+    drives the reported CMB heat flux briefly negative, so the caps are off by
+    default and act as a debugging control, not a production setting.
 
     - The -1.0 off sentinel, and defensively any other negative, resolves to
       0.0, which Aragog reads as no cap. The config schema admits only -1.0
@@ -665,13 +665,11 @@ class AragogRunner:
                 outdir, 'data', 'zalmoxis_output.dat'
             )  # Zalmoxis output file with mantle parameters
 
-        # Per-cell step caps. Each cap is a SUNDIALS root function that ends the
-        # interior sub-solve when a cell's per-step change reaches the cap, so a
-        # cap truncates steps into slivers on a benign freezing-front crossing
-        # and breaks energy conservation. The caps are off by default and act as
-        # an explicit debugging control, not a production setting. A config value
-        # enables one; the schema default 0.0 and the -1.0 off sentinel both
-        # resolve to no cap.
+        # Per-cell step caps: each is a SUNDIALS root function that ends the
+        # interior sub-solve when a cell's per-step change reaches the cap. On a
+        # benign freezing-front crossing this slices the coupled step and drives
+        # the reported CMB heat flux briefly negative, so the caps are off by
+        # default (schema 0.0 and the -1.0 off sentinel both resolve to no cap).
         ar = config.interior_energetics.aragog
         phi_step_cap = _effective_phi_step_cap(config)
         temperature_step_cap = _effective_temperature_step_cap(config)

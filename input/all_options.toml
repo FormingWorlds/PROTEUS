@@ -404,9 +404,9 @@ config_version = "3.0"
         # phi_step_cap, temperature_step_cap, entropy_step_cap: omitted here so they
         # fall back to the schema default (0.0), which the Aragog wrapper reads as off
         # (no cap). The caps are a debugging control, not a production setting: each
-        # ends the interior sub-solve at a freezing-front crossing and breaks energy
-        # conservation. Set a positive value to enable one for debugging; -1.0 is the
-        # explicit off spelling; an explicit 0.0 is rejected at load.
+        # ends the interior sub-solve at a freezing-front crossing, which slices the
+        # coupled step and drives the reported CMB heat flux briefly negative. Set a
+        # positive value to enable one; -1.0 is the off spelling; explicit 0.0 rejected.
         # Proximity band [J/kg/K] within which a cell counts as near a solidus/liquidus
         # crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase
         # RHS. Solver-accuracy control, not a cosmetic step-size knob: lowering it below the

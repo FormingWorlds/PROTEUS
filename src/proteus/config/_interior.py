@@ -242,9 +242,10 @@ class Aragog:
     the equivalent scipy event) returns control at the exact time the larger
     of the global mass-weighted |ΔΦ| and the maximum single-cell |Δφ| reaches
     this cap. Off by default: the schema default 0.0 resolves to no cap,
-    because the root function truncates a benign freezing-front step into
-    slivers and breaks energy conservation, so the cap is a debugging control
-    for a pathological config, not a production setting. Set a positive value
+    because on a benign freezing-front crossing the root function slices the
+    coupled step into many small ones and drives the reported CMB heat flux
+    briefly negative where the uncapped run stays positive, so the cap is a
+    debugging control, not a production setting. Set a positive value
     to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is
     rejected at load, since it cannot be told apart from the unset default;
     any other negative, NaN, or infinity is rejected too."""
@@ -255,9 +256,11 @@ class Aragog:
     solve() entry. When enabled it bounds the per-cell temperature change on
     the solid adiabat just below the solidus, where the melt-fraction cap
     cannot act because a fully solid cell's melt fraction no longer moves. Off
-    by default (schema default 0.0 resolves to no cap); the caps break energy
-    conservation at the freezing front and are a debugging control, not a
-    production setting. Set a positive value to enable it; -1.0 is the explicit
+    by default (schema default 0.0 resolves to no cap); on a benign
+    freezing-front crossing the caps slice the coupled step into many small
+    ones and drive the reported CMB heat flux briefly negative, so they are a
+    debugging control, not a production setting. Set a positive value to enable
+    it; -1.0 is the explicit
     off spelling. An explicit 0.0 is rejected at load, since it cannot be told
     apart from the unset default; any other negative, NaN, or infinity is
     rejected too."""
@@ -265,10 +268,12 @@ class Aragog:
     entropy_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell entropy step cap [J/kg/K], in the native solver
     variable; same role as temperature_step_cap without an EOS lookup in the
-    root function. Off by default (schema default 0.0 resolves to no cap); the
-    caps break energy conservation at the freezing front and are a debugging
-    control, not a production setting. Set a positive value to enable it; -1.0
-    is the explicit off spelling. An explicit 0.0 is rejected at load, since it
+    root function. Off by default (schema default 0.0 resolves to no cap); on
+    a benign freezing-front crossing the caps slice the coupled step into many
+    small ones and drive the reported CMB heat flux briefly negative, so they
+    are a debugging control, not a production setting. Set a positive value to
+    enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected
+    at load, since it
     cannot be told apart from the unset default; any other negative, NaN, or
     infinity is rejected too."""
 
