@@ -453,10 +453,10 @@ def test_read_config_object_omitted_step_cap_resolves_to_schema_default():
     """An absent step-cap key resolves to the schema default, same as an explicit 0.0 rejects.
 
     all_options.toml itself omits phi_step_cap for this reason, so this test
-    reads it directly rather than building a synthetic copy. The zalmoxis
-    promotion of this 0.0 to a non-zero default happens later, in the Aragog
-    wrapper's own step-cap resolution, not in the Config object itself; this
-    test checks only what read_config_object returns.
+    reads it directly rather than building a synthetic copy. The wrapper reads
+    this 0.0 as off (no cap) later, in the Aragog wrapper's own step-cap
+    resolution, not in the Config object itself; this test checks only what
+    read_config_object returns.
     """
     import tomllib
 
@@ -522,8 +522,15 @@ def _run_start_and_read_written_config(cfg, tmp_path):
 
 
 @pytest.mark.unit
-def test_start_writes_resolved_zalmoxis_step_caps_for_aragog(tmp_path):
-    """Proteus.start's aragog guard writes resolved, not raw, step caps to init_coupler.toml."""
+def test_start_writes_off_sentinel_for_unset_step_caps_for_aragog(tmp_path):
+    """Proteus.start writes the off sentinel for unset caps, since the default is off.
+
+    minimal.toml leaves the three caps at the schema default 0.0. The default
+    resolves to off, so Proteus.start writes back the -1.0 off sentinel, not a
+    literal 0.0 that a resume would reject at load.
+    """
+    from proteus.config._interior import _STEP_CAP_OFF
+
     cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
     assert cfg.interior_energetics.module == 'aragog'
     assert cfg.interior_struct.module == 'zalmoxis'
@@ -534,9 +541,9 @@ def test_start_writes_resolved_zalmoxis_step_caps_for_aragog(tmp_path):
     written = _run_start_and_read_written_config(cfg, tmp_path)
 
     aragog = written.interior_energetics.aragog
-    assert aragog.phi_step_cap == pytest.approx(0.1)
-    assert aragog.temperature_step_cap == pytest.approx(100.0)
-    assert aragog.entropy_step_cap == pytest.approx(100.0)
+    assert aragog.phi_step_cap == pytest.approx(_STEP_CAP_OFF)
+    assert aragog.temperature_step_cap == pytest.approx(_STEP_CAP_OFF)
+    assert aragog.entropy_step_cap == pytest.approx(_STEP_CAP_OFF)
 
 
 @pytest.mark.unit
@@ -575,12 +582,21 @@ def test_start_round_trips_explicit_off_step_caps_for_aragog(tmp_path):
 
 @pytest.mark.unit
 def test_start_records_not_applied_marker_when_aragog_lacks_step_caps(tmp_path):
-    """Under Aragog version skew the snapshot records the disabled sentinel, not a resolved cap."""
+    """Under Aragog version skew the snapshot records the disabled sentinel, not a resolved cap.
+
+    The caps are set to distinct positive values so a supported cap is written
+    verbatim while a dropped cap records the off sentinel. This keeps the
+    version-skew discriminator: with the default off, unset caps would all
+    write the sentinel and could not tell a dropped cap from an unset one.
+    """
     from proteus.config._interior import _STEP_CAP_OFF
 
     cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
     assert cfg.interior_energetics.module == 'aragog'
     assert cfg.interior_struct.module == 'zalmoxis'
+    cfg.interior_energetics.aragog.phi_step_cap = 2.0
+    cfg.interior_energetics.aragog.temperature_step_cap = 3.0
+    cfg.interior_energetics.aragog.entropy_step_cap = 7.0
 
     # Stand in for an older Aragog whose _EnergyParameters predates the
     # temperature/entropy step caps, so setup_solver would drop them.
@@ -594,17 +610,17 @@ def test_start_records_not_applied_marker_when_aragog_lacks_step_caps(tmp_path):
         written = _run_start_and_read_written_config(cfg, tmp_path)
 
     aragog = written.interior_energetics.aragog
-    # phi is always supported, so it still records the zalmoxis-resolved value.
-    assert aragog.phi_step_cap == pytest.approx(0.1)
-    # The dropped caps record the disabled sentinel, not the resolved 100.0 the
-    # run never received.
+    # phi is always supported, so it records the configured positive value.
+    assert aragog.phi_step_cap == pytest.approx(2.0)
+    # The dropped caps record the disabled sentinel, not the configured value
+    # the run never received.
     assert aragog.temperature_step_cap == pytest.approx(_STEP_CAP_OFF)
     assert aragog.entropy_step_cap == pytest.approx(_STEP_CAP_OFF)
 
 
 @pytest.mark.unit
 def test_start_leaves_step_caps_raw_when_energetics_module_is_not_aragog(tmp_path):
-    """The aragog guard must not fire, and must not promote caps, for a non-aragog module."""
+    """The aragog guard must not fire, and must not rewrite caps, for a non-aragog module."""
     cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
     cfg.interior_energetics.module = 'dummy'
     assert cfg.interior_struct.module == 'zalmoxis'

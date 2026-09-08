@@ -135,92 +135,64 @@ _DIFFRAX_RESEARCH_ONLY = False
 _RHO_CORE_MIN = 1000.0
 _RHO_CORE_MAX = 30000.0
 
-# Default per-call melt-fraction step cap auto-enabled for the coupled
-# zalmoxis interior stack. Bounds how far any single cell's melt fraction
-# may move within one solver call, so a deep cell cannot cross the entire
-# two-phase window in one step (the source of the core-temperature
-# discontinuity at crystallisation onset). The cliff occurs whether or not
-# the structure is re-solved during runtime, so the cap is enabled for both
-# static and dynamic zalmoxis runs. A user value > 0 in the config always
-# takes precedence. Sensitivity-tested across the m-series grid.
-_ZALMOXIS_DEFAULT_PHI_STEP_CAP = 0.1
 
-# Default per-cell temperature and entropy step caps auto-enabled for the
-# coupled zalmoxis stack, alongside the melt-fraction cap. The melt-fraction
-# cap goes blind once a cell is fully solid, so it cannot bound the core-
-# temperature drop on the solid adiabat just below the solidus; the
-# temperature cap bounds |ΔT| per cell directly, and the entropy cap bounds
-# |ΔS| in the native solver variable. All three are set aggressively to
-# suppress any single-step core-temperature jump (robustness over runtime;
-# runtime tuning is a follow-up). Sensitivity-tested; a config value > 0
-# overrides each.
-_ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP = 100.0
-_ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP = 100.0
-
-
-def _resolve_step_cap(cap: float, zalmoxis_default: float, is_zalmoxis: bool) -> float:
+def _resolve_step_cap(cap: float) -> float:
     """Map a configured per-call step cap to the value Aragog receives.
 
-    Shared resolution for the melt-fraction, temperature, and entropy caps,
-    which differ only in their zalmoxis default and physical meaning:
+    Shared resolution for the melt-fraction, temperature, and entropy caps.
+    Each cap is a SUNDIALS root function that returns control from the interior
+    sub-solve the moment a cell's per-step change reaches the cap. On a benign
+    freezing-front crossing it truncates the step into slivers and breaks
+    energy conservation, so the caps are off by default and act as a debugging
+    control for a pathological config, not a production setting.
 
-    - The -1.0 off sentinel (and defensively any negative) resolves to 0.0, so
-      the cap is disabled even on the coupled zalmoxis stack. The config schema
-      admits only -1.0 among the negatives; the ``< 0.0`` guard keeps a stray
-      negative from ever reaching the solver as a literal cap.
-    - The schema default 0.0 is promoted to ``zalmoxis_default`` on the zalmoxis
-      interior stack so the crystallisation-onset core-temperature
-      discontinuity is guarded by default, and stays 0.0 (no cap) on any other
-      interior.
+    - The -1.0 off sentinel, and defensively any other negative, resolves to
+      0.0, which Aragog reads as no cap. The config schema admits only -1.0
+      among the negatives; the ``< 0.0`` guard keeps a stray negative from ever
+      reaching the solver as a literal cap.
+    - The schema default 0.0 resolves to 0.0 (no cap) on every interior.
     - A positive value is used verbatim on any interior.
     """
     if cap < 0.0:
         return 0.0
-    if cap == 0.0 and is_zalmoxis:
-        return zalmoxis_default
     return cap
 
 
 def _effective_phi_step_cap(config: Config) -> float:
     """Resolve the melt-fraction step cap passed to Aragog.
 
-    The per-cell melt-fraction cap bounds how far a deep cell may cross the
-    mushy window in one call, removing the crystallisation-onset
-    core-temperature discontinuity. See :func:`_resolve_step_cap` for the
-    off-sentinel / zalmoxis-promotion / verbatim contract shared by the three
-    caps; the zalmoxis default here is :data:`_ZALMOXIS_DEFAULT_PHI_STEP_CAP`.
+    When set to a positive value, the per-cell melt-fraction cap bounds how far
+    a deep cell may cross the mushy window in one call. It is off by default;
+    see :func:`_resolve_step_cap` for the off-sentinel and verbatim contract
+    shared by the three caps.
     """
     cap = float(config.interior_energetics.aragog.phi_step_cap)
-    is_zalmoxis = config.interior_struct.module == 'zalmoxis'
-    return _resolve_step_cap(cap, _ZALMOXIS_DEFAULT_PHI_STEP_CAP, is_zalmoxis)
+    return _resolve_step_cap(cap)
 
 
 def _effective_temperature_step_cap(config: Config) -> float:
     """Resolve the per-cell temperature step cap [K] passed to Aragog.
 
-    The melt-fraction cap cannot bound the core-temperature drop once a cell is
-    fully solid (its melt fraction can no longer move), so the temperature cap
-    bounds the per-cell temperature change on the solid adiabat below the
-    solidus. See :func:`_resolve_step_cap` for the shared off-sentinel /
-    zalmoxis-promotion / verbatim contract; the zalmoxis default here is
-    :data:`_ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP`.
+    When set to a positive value, this cap bounds the per-cell temperature
+    change on the solid adiabat below the solidus, where the melt-fraction cap
+    cannot act because a fully solid cell's melt fraction no longer moves. It is
+    off by default; see :func:`_resolve_step_cap` for the shared off-sentinel
+    and verbatim contract.
     """
     cap = float(config.interior_energetics.aragog.temperature_step_cap)
-    is_zalmoxis = config.interior_struct.module == 'zalmoxis'
-    return _resolve_step_cap(cap, _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP, is_zalmoxis)
+    return _resolve_step_cap(cap)
 
 
 def _effective_entropy_step_cap(config: Config) -> float:
     """Resolve the per-cell entropy step cap [J/kg/K] passed to Aragog.
 
     Same role as the temperature cap in the native solver variable, without an
-    EOS lookup in the root function. See :func:`_resolve_step_cap` for the
-    shared off-sentinel / zalmoxis-promotion / verbatim contract; the zalmoxis
-    default here is :data:`_ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP`.
+    EOS lookup in the root function. It is off by default; see
+    :func:`_resolve_step_cap` for the shared off-sentinel and verbatim
+    contract.
     """
     cap = float(config.interior_energetics.aragog.entropy_step_cap)
-    is_zalmoxis = config.interior_struct.module == 'zalmoxis'
-    return _resolve_step_cap(cap, _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP, is_zalmoxis)
+    return _resolve_step_cap(cap)
 
 
 _OPTIONAL_ENERGY_FIELDS = frozenset(
@@ -693,14 +665,13 @@ class AragogRunner:
                 outdir, 'data', 'zalmoxis_output.dat'
             )  # Zalmoxis output file with mantle parameters
 
-        # Per-cell step caps, all auto-enabled for the coupled zalmoxis
-        # interior stack. The melt-fraction cap subdivides a cell's crossing
-        # of the two-phase window; the temperature and entropy caps bound the
-        # per-cell |ΔT| and |ΔS|, which additionally cover the core-temperature
-        # drop on the solid adiabat below the solidus where the melt-fraction
-        # cap goes blind. Together they remove the discontinuous core-
-        # temperature drop at crystallisation onset. A config value overrides
-        # each.
+        # Per-cell step caps. Each cap is a SUNDIALS root function that ends the
+        # interior sub-solve when a cell's per-step change reaches the cap, so a
+        # cap truncates steps into slivers on a benign freezing-front crossing
+        # and breaks energy conservation. The caps are off by default and act as
+        # an explicit debugging control, not a production setting. A config value
+        # enables one; the schema default 0.0 and the -1.0 off sentinel both
+        # resolve to no cap.
         ar = config.interior_energetics.aragog
         phi_step_cap = _effective_phi_step_cap(config)
         temperature_step_cap = _effective_temperature_step_cap(config)
@@ -714,27 +685,6 @@ class AragogRunner:
                 entropy_step_cap,
             )
             _effective_caps_logged = True
-        # Only a genuine promotion (schema default 0.0 lifted to a positive
-        # zalmoxis default) is an auto-enable. An explicit negative off switch
-        # resolves to 0.0 and differs from the configured value too, so the
-        # notice requires a positive effective cap to avoid mislabelling a
-        # deliberate disable as an auto-enable.
-        _promoted = (
-            (phi_step_cap > 0.0 and phi_step_cap != ar.phi_step_cap)
-            or (temperature_step_cap > 0.0 and temperature_step_cap != ar.temperature_step_cap)
-            or (entropy_step_cap > 0.0 and entropy_step_cap != ar.entropy_step_cap)
-        )
-        if _promoted:
-            # Fires every solve and is fully determined by the config, so it is
-            # provenance rather than per-step signal; keep it at debug so the
-            # per-solve INFO summary stays uncluttered.
-            log.debug(
-                'Auto-enabling step caps for the zalmoxis interior stack: '
-                'phi=%.3g, T=%.3g K, S=%.3g J/kg/K',
-                phi_step_cap,
-                temperature_step_cap,
-                entropy_step_cap,
-            )
 
         energy_kwargs = dict(
             conduction=config.interior_energetics.trans_conduction,

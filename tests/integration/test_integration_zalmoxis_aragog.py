@@ -701,7 +701,7 @@ def test_aragog_tolerance_struct_and_atol_gt0_with_selectivity():
 def test_aragog_phi_step_cap_off_sentinel_with_selectivity():
     """``Aragog.phi_step_cap`` admits the -1.0 off sentinel or any
     finite value >= 0. The documented default 0.0 round-trips (the
-    off-by-default value the wrapper promotes on the zalmoxis stack),
+    off-by-default value the wrapper reads as off on every interior),
     a small positive round-trips, the -1.0 sentinel round-trips as the
     single disabled value, and any other negative rejects so a
     malformed cap cannot silently pass as the disabled sentinel.

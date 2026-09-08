@@ -14,10 +14,9 @@ _DEFAULT_RTOL = 1e-10
 _TOL_UNSET = -1.0
 
 # Single canonical "disabled" value for the three per-call Aragog step caps.
-# 0.0 is the schema default that the wrapper promotes to a built-in on the
-# zalmoxis stack, a positive value is used verbatim, and this sentinel forces
-# the cap off even on zalmoxis. Any other negative, NaN, or infinity is a
-# malformed cap.
+# The schema default 0.0 resolves to off (no cap), a positive value is used
+# verbatim, and this sentinel is the explicit off spelling written back into a
+# config snapshot. Any other negative, NaN, or infinity is a malformed cap.
 _STEP_CAP_OFF = -1.0
 
 # The three per-call Aragog step-cap field names, named once here so the
@@ -37,12 +36,11 @@ def _gt0_or_unset(instance, attribute, value):
 def _step_cap_valid(instance, attribute, value):
     """Accept the -1.0 off sentinel or any finite value >= 0; reject the rest.
 
-    The three per-call step caps use -1.0 as the only "disabled" value so the
-    off switch is a single canonical choice. 0.0 is the schema default (the
-    wrapper promotes it to the zalmoxis built-in) and a positive value is a
-    real cap. Any other negative, along with NaN and the infinities, is a
-    malformed value and raises rather than silently disabling the
-    crystallisation-onset guard.
+    The three per-call step caps use -1.0 as the canonical explicit "disabled"
+    value. The schema default 0.0 also resolves to off (no cap) and a positive
+    value is a real cap. Any other negative, along with NaN and the infinities,
+    is a malformed value and raises rather than silently disabling a cap the
+    user asked for.
     """
     if value == _STEP_CAP_OFF:
         return
@@ -243,41 +241,36 @@ class Aragog:
     or near the two-phase window at solve() entry, a CVODE root function (and
     the equivalent scipy event) returns control at the exact time the larger
     of the global mass-weighted |ΔΦ| and the maximum single-cell |Δφ| reaches
-    this cap. The per-cell term bounds how far one deep cell may cross the
-    mushy window in a single call, which removes the discontinuous
-    core-temperature drop at crystallisation onset. Schema default 0.0, which
-    the Aragog wrapper promotes to a non-zero default for the coupled zalmoxis
-    interior stack; this promotion applies only when the key is left out of
-    the config file. Setting it to 0.0 explicitly is rejected at load, since
-    it cannot be told apart from the unset default. -1.0 is the single off
-    sentinel that keeps the cap disabled even on zalmoxis; a positive value
-    here overrides the default; any other negative, NaN, or infinity is
-    rejected at load."""
+    this cap. Off by default: the schema default 0.0 resolves to no cap,
+    because the root function truncates a benign freezing-front step into
+    slivers and breaks energy conservation, so the cap is a debugging control
+    for a pathological config, not a production setting. Set a positive value
+    to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is
+    rejected at load, since it cannot be told apart from the unset default;
+    any other negative, NaN, or infinity is rejected too."""
 
     temperature_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell temperature step cap [K]. Shares the same root
     function as phi_step_cap and fires on the maximum single-cell |ΔT| since
-    solve() entry. It bounds the core-temperature drop on the solid adiabat
-    just below the solidus, where the melt-fraction cap goes blind because a
-    fully solid cell's melt fraction can no longer move. Schema default 0.0,
-    which the Aragog wrapper promotes to a non-zero default for the coupled
-    zalmoxis stack; this promotion applies only when the key is left out of
-    the config file. Setting it to 0.0 explicitly is rejected at load, since
-    it cannot be told apart from the unset default. -1.0 is the single off
-    sentinel that keeps the cap disabled even on zalmoxis; a positive value
-    overrides the default; any other negative, NaN, or infinity is rejected
-    at load."""
+    solve() entry. When enabled it bounds the per-cell temperature change on
+    the solid adiabat just below the solidus, where the melt-fraction cap
+    cannot act because a fully solid cell's melt fraction no longer moves. Off
+    by default (schema default 0.0 resolves to no cap); the caps break energy
+    conservation at the freezing front and are a debugging control, not a
+    production setting. Set a positive value to enable it; -1.0 is the explicit
+    off spelling. An explicit 0.0 is rejected at load, since it cannot be told
+    apart from the unset default; any other negative, NaN, or infinity is
+    rejected too."""
 
     entropy_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell entropy step cap [J/kg/K], in the native solver
     variable; same role as temperature_step_cap without an EOS lookup in the
-    root function. Schema default 0.0, which the Aragog wrapper promotes to a
-    non-zero default for the coupled zalmoxis stack; this promotion applies
-    only when the key is left out of the config file. Setting it to 0.0
-    explicitly is rejected at load, since it cannot be told apart from the
-    unset default. -1.0 is the single off sentinel that keeps the cap
-    disabled even on zalmoxis; a positive value overrides the default; any
-    other negative, NaN, or infinity is rejected at load."""
+    root function. Off by default (schema default 0.0 resolves to no cap); the
+    caps break energy conservation at the freezing front and are a debugging
+    control, not a production setting. Set a positive value to enable it; -1.0
+    is the explicit off spelling. An explicit 0.0 is rejected at load, since it
+    cannot be told apart from the unset default; any other negative, NaN, or
+    infinity is rejected too."""
 
     phase_boundary_entropy_margin: float = field(default=200.0, validator=gt(0))
     """Phase-boundary proximity band [J/kg/K] within which a staggered cell
