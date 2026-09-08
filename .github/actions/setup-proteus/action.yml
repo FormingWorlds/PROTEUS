@@ -187,9 +187,34 @@ runs:
       run: |
         set -euo pipefail
         source "${{ github.action_path }}/retry-with-timeout.sh"
+        # gcc is pinned to the last release before Homebrew's Darwin driver
+        # stopped exporting SOCRATES's dlsym-visible shim symbols. Formulae
+        # must live in a tap, so the formula is fetched into a throwaway tap;
+        # pinned before netcdf-fortran so its gcc dependency resolves to it.
+        gcc_formula_url="https://raw.githubusercontent.com/Homebrew/homebrew-core/4509561/Formula/g/gcc.rb"
+        brew tap-new local/pinned-toolchain --no-git >/dev/null
+        pinned_tap_formula_dir="$(brew --repository)/Library/Taps/local/homebrew-pinned-toolchain/Formula"
+        retry_with_timeout "fetch pinned gcc formula" 60 10 "" \
+          curl -fsSL -o "$pinned_tap_formula_dir/gcc.rb" "$gcc_formula_url"
+        # Unlink any gcc the runner image already ships (a different tap, same
+        # formula name) so linking the pinned keg below cannot hit a conflict.
+        if brew list --formula gcc >/dev/null 2>&1; then
+          brew unlink gcc >/dev/null 2>&1 || true
+        fi
         brew_rc=0
+        retry_with_timeout "brew install gcc (pinned)" 240 10 "" \
+          brew install --quiet local/pinned-toolchain/gcc || brew_rc=$?
+        gcc_version="$(brew list --versions gcc 2>/dev/null || true)"
+        case "$gcc_version" in
+          "gcc 16.1."*) : ;;
+          *)
+            echo "ERROR: brew install rc=$brew_rc, expected pinned gcc 16.1.x, got: '$gcc_version'" >&2
+            exit 1
+            ;;
+        esac
+        brew pin gcc
         retry_with_timeout "brew install" 240 10 "" \
-          brew install --quiet gcc netcdf netcdf-fortran openssl@3 || brew_rc=$?
+          brew install --quiet netcdf netcdf-fortran openssl@3 || brew_rc=$?
         missing=()
         for pkg in gcc netcdf netcdf-fortran openssl@3; do
           brew list "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
