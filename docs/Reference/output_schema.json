@@ -205,6 +205,10 @@
       "origin": "literal",
       "producers": [
         {
+          "file": "src/proteus/orbit/common.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/orbit/orbit.py",
           "condition": "orbit.evolve = true"
         },
@@ -489,6 +493,22 @@
       "consumers": [
         "orbit",
         "plot"
+      ]
+    },
+    {
+      "name": "in_evection_band",
+      "unit": "bool, 0/1",
+      "description": "whether ps1d_evec judged itself inside the evection resonance band at the end of this call",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
       ]
     },
     {

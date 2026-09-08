@@ -61,6 +61,7 @@ config_version = "3.0"
         max_growth_factor     = 0.0          # cap on dt growth ratio between consecutive steps; 0 = disabled
         mushy_maximum         = 1.0e6        # max dt [yr] while stop.solid.phi_crit < Phi < mushy_upper (0 = disabled); caps steps through the mushy band so the integrator resolves the solidification front rather than overstepping it
         mushy_upper           = 0.99         # mushy regime upper bound (melt fraction)
+        evection_maximum      = 0.0          # max dt [yr] while hf_row['in_evection_band'] (0 = disabled); caps steps while the planet-satellite system is inside the evection resonance
         hysteresis_iters      = 0            # suppress speed-up for N iters after a slow-down; 0 = disabled
         hysteresis_sfinc      = 1.1          # gentler speed-up factor while hysteresis active
 
@@ -247,6 +248,29 @@ config_version = "3.0"
         evection_angle        = 0.0          # evectionangle [degrees]
         c_factor_sat          = 0.4          # satellite normalized moment of inertia factor [dimensionless] (Note: 0.4 = uniform density sphere, < 0.4 = differentiated body; see https://en.wikipedia.org/wiki/Moment_of_inertia_factor)
         love_number_sat       = "none"       # satellite love number spectrum, provide absolute path to file. (Can be pre-genrated by Obliqua.)
+
+    # Shared ODE-solver and adaptive-substep-controller settings, used by
+    # both the star-planet models (sp0d, sp1d) and the planet-satellite
+    # models (ps0d, ps1d, ps1d_evec)
+    [orbit.solver]
+        method                 = "Radau"     # scipy.integrate.solve_ivp integration method
+        rtol                   = 1e-6        # relative tolerance passed to solve_ivp
+        atol                   = 1e-9        # absolute tolerance passed to solve_ivp
+
+        dt0_yr                 = 1e-4        # initial adaptive-substep size [yr]
+        dt_max_yr              = 2000.0      # maximum adaptive-substep size [yr]
+        growth                 = 1.15        # substep growth factor applied after an accepted step
+        shrink                 = 0.35        # substep shrink factor applied after a rejected step
+
+        max_rel_da             = 0.01        # max tolerated relative change in semi-major axis per substep
+        max_rel_de             = 0.01        # max tolerated relative change in eccentricity per substep
+        max_rel_dOmega         = 0.02        # max tolerated relative change in a spin rate per substep
+        de_floor               = 0.05        # floor on the eccentricity-change-ratio denominator
+        max_substeps           = 10_000_000  # maximum number of substeps attempted per call
+
+        resonance_margin_enter = 0.10        # evection-band entry margin (ps1d_evec only)
+        resonance_margin_exit  = 0.50        # evection-band exit margin (ps1d_evec only)
+        fine_csv_target_rel_dt = 0.01        # target storage-clock spacing for out-of-band fine samples (ps1d_evec only)
 
     # Tidal heating
     [orbit.dummy]

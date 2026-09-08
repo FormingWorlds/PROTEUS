@@ -136,6 +136,11 @@ class TimeStepParams:
         ``Phi_global > stop.solid.phi_crit``, ``mushy_maximum``
         takes over from ``maximum``. Default 0.99 so the cap kicks
         in as soon as the first cell crystallises.
+    evection_maximum: float
+        Maximum time-step size [yr] while the planet-satellite system
+        is inside the evection resonance band (``hf_row['in_evection_band']``,
+        written by ``evolve_orbit_satellite``/``_in_evection_band``).
+        See ``run_adaptive_orbit_substeps``. Set to 0 to disable.
     hysteresis_iters: int
         Number of PROTEUS iterations after an adaptive "slow down"
         decision during which the speed-up factor is suppressed.
@@ -173,6 +178,7 @@ class TimeStepParams:
     # positive config values.
     mushy_maximum: float = field(default=0.0, validator=ge(0))
     mushy_upper: float = field(default=0.99, validator=(gt(0), lt(1)))
+    evection_maximum: float = field(default=0.0, validator=ge(0))
     hysteresis_iters: int = field(default=0, validator=ge(0))
     hysteresis_sfinc: float = field(default=1.1, validator=ge(1.0))
 

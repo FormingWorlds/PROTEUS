@@ -801,6 +801,7 @@ def GetHelpfileKeys():
         'plan_sat_am',      # angular momentum of satellite+planet [kg m2 s-1],
         'axial_period_sat', # day length of satellite around its axis [s]
         'evection_angle',   # evection angle [rad]
+        'in_evection_band', # whether inside the evection resonance band [bool, 0/1]
 
         # Planet structure
         'R_int',            # interior radius [m]

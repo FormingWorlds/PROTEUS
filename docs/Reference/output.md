@@ -89,7 +89,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `ecc_dot_planet` | `1 s-1` | eccentricity derivative | `orbit/orbit.py`<br>`orbit/satellite.py` | orbit.evolve = true; orbit.satellite = true | plot |
 | `Imk2` | `1` | Imaginary part of k2 Love Number | `orbit/wrapper.py` | always | orbit |
 | `plan_star_am` | `kg m2 s-1` | angular momentum of star+planet | `orbit/orbit.py` | orbit.evolve = true | orbit |
-| `axial_period` | `s` | day length of planet around its axis | `orbit/orbit.py`<br>`orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true; orbit.satellite = true | atmos_clim, orbit, plot, utils |
+| `axial_period` | `s` | day length of planet around its axis | `orbit/common.py`<br>`orbit/orbit.py`<br>`orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true; orbit.satellite = true | atmos_clim, orbit, plot, utils |
 | `n_star` | `s-1` | mean motion of star | `orbit/wrapper.py` | always |   |
 | `longitude` | `deg` | column longitude relative to substellar point | `atmos_clim/agni.py`<br>`orbit/wrapper.py` | always; atmos_clim.module = "agni" | atmos_clim |
 | `latitude` | `deg` | column latitude relative to substellar point | `atmos_clim/agni.py`<br>`orbit/wrapper.py` | always; atmos_clim.module = "agni" | atmos_clim |
@@ -110,6 +110,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `plan_sat_am` | `kg m2 s-1` | angular momentum of satellite+planet | `orbit/satellite.py` | orbit.satellite = true | orbit, plot |
 | `axial_period_sat` | `s` | day length of satellite around its axis | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | orbit, plot |
 | `evection_angle` | `rad` | evection angle | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | orbit, plot |
+| `in_evection_band` | `bool, 0/1` | whether ps1d_evec judged itself inside the evection resonance band at the end of this call | `orbit/satellite.py` | orbit.satellite = true | interior_energetics |
 
 ### Planet structure
 

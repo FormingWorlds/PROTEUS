@@ -241,6 +241,24 @@ _REVIEWED_NEUTRAL = frozenset(
         'orbit.obliqua.fluid.sigma_R_prf',
         'orbit.obliqua.fluid.H_R',
         'orbit.obliqua.fluid.efficiency',
+        # orbit.solver.* has no 2.0 analogue: the adaptive-substep
+        # controller and its shared solve_ivp tolerances did not exist as
+        # config in 2.0 at all.
+        'orbit.solver.method',
+        'orbit.solver.rtol',
+        'orbit.solver.atol',
+        'orbit.solver.dt0_yr',
+        'orbit.solver.dt_max_yr',
+        'orbit.solver.growth',
+        'orbit.solver.shrink',
+        'orbit.solver.max_rel_da',
+        'orbit.solver.max_rel_de',
+        'orbit.solver.max_rel_dOmega',
+        'orbit.solver.de_floor',
+        'orbit.solver.max_substeps',
+        'orbit.solver.resonance_margin_enter',
+        'orbit.solver.resonance_margin_exit',
+        'orbit.solver.fine_csv_target_rel_dt',
         # params.stop.satellite has no 2.0 analogue; stays at its 3.0
         # default (disabled) for a migrated config.
         'params.stop.satellite.enabled',
@@ -281,6 +299,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'params.dt.max_growth_factor',
         'params.dt.mushy_maximum',
         'params.dt.mushy_upper',
+        'params.dt.evection_maximum',
         'params.dt.scale_decr',
         # The unconverged-atmosphere criterion applies at its measured
         # default, so a migrated config needs no explicit value for it.
