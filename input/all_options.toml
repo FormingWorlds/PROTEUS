@@ -345,7 +345,7 @@ config_version = "3.0"
             ncalc             = 1000         # number of sublayers to use for dim=1 solid tides (for shooting method)
             dr_min            = 300          # minimum spacing between grid points (for relaxation method) [m]
             dr_max            = 3000         # maximum spacing between grid points (for relaxation method) [m]
-            core              = "liquid"     # core solution to use as CMB boundary condition, options: "liquid", "solid", "inertial"
+            core              = "liquid"     # core solution to use as CMB boundary condition, options: "liquid", "solid", "inertial-liquid", "inertial"
             core_props        = "core"       # Core properties to use for CMB boundary condition, options: "core", "mantle"
             inertial_terms    = true         # Include inertial terms in the solid tidal response equations
             bulk_l            = 1e9          # liquid bulk modulus [Pa]
