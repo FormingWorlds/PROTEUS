@@ -31,13 +31,6 @@ inputs:
       data is downloaded (spectral file + minimal stellar spectrum).
     required: false
     default: 'false'
-  shim-diagnostics:
-    description: >
-      If 'true', log which libSOCRATES_C.so on disk exports
-      PS_real_kind_bytes, which file Julia's Libdl resolves, and any
-      other libSOCRATES_C* copies found on the Julia depot / load path.
-    required: false
-    default: 'false'
 
 outputs:
   rad-dir:
@@ -598,131 +591,27 @@ runs:
         julia --project=. deps/build.jl nodata
 
     # ------------------------------------------------------------------
-    # 7b. Shim diagnostics
+    # 7b. Verify the SOCRATES shim's symbol export (macOS only)
     # ------------------------------------------------------------------
-    # Prints which libSOCRATES_C.so on disk exports PS_real_kind_bytes,
-    # which file Julia's Libdl actually resolves and opens, and any other
-    # libSOCRATES_C* copies on the Julia depot or the restored SOCRATES
-    # tree that could shadow the intended one. Opt-in per caller via
-    # shim-diagnostics so it does not run on every setup-proteus job.
-    - name: Log AGNI shim diagnostics
-      if: inputs.shim-diagnostics == 'true' && runner.os == 'macOS'
+    # deps/build.jl above recompiles socrates/julia/lib/libSOCRATES_C.so on
+    # every run, regardless of the SOCRATES-build or Julia-depot cache
+    # state, so this check always sees the shim this job just built and
+    # cannot pass on a stale cached artifact. Guards against Homebrew's gcc
+    # Darwin driver dropping this symbol from the shim's external symbol
+    # table, which breaks Julia's dlsym lookup in AGNI; the gcc pin earlier
+    # in this action keeps it exported.
+    - name: Verify SOCRATES shim exports PS_real_kind_bytes (macOS)
+      if: runner.os == 'macOS'
       shell: bash
       run: |
-        export RAD_DIR="$GITHUB_WORKSPACE/socrates"
-        shim="$RAD_DIR/julia/lib/libSOCRATES_C.so"
-        obj="$RAD_DIR/julia/lib/Utilities_CF.o"
-        # nm's own exit status is checked separately from grep's match
-        # result, so a failed nm (bad file, wrong flag) is distinguishable
-        # from a clean run that simply found no match. The assignment sits
-        # in the if condition: this shell runs with GitHub Actions' default
-        # -eo pipefail, and a bare `out=$(nm ...)` would abort the step.
-        nm_check() {
-          local flags="$1" file="$2" label="$3" out rc
-          if out=$(nm $flags "$file" 2>&1); then
-            rc=0
-          else
-            rc=$?
-          fi
-          if [ "$rc" -ne 0 ]; then
-            echo "nm $flags $file ($label) exited $rc: $out"
-            return
-          fi
-          echo "$out" | grep -i real_kind || echo "(nm $flags $file ($label) ok, no real_kind match)"
-        }
-        echo "RAD_DIR=$RAD_DIR"
-        echo "-- gfortran --version --"
-        gfortran --version | head -n 1 || echo "(gfortran not on PATH)"
-        echo "-- SOCRATES tree revision vs pin --"
-        git -C "$RAD_DIR" rev-parse HEAD 2>&1 || echo "(not a git checkout / rev-parse failed)"
-        cat "$RAD_DIR/version" 2>&1 || echo "(no version file)"
-        echo "-- RAD_DIR/bin/Mk_cmd (compiler flags SOCRATES's own configure wrote) --"
-        if [ -f "$RAD_DIR/bin/Mk_cmd" ]; then
-          echo "present:"
-          cat "$RAD_DIR/bin/Mk_cmd"
-        else
-          echo "(no $RAD_DIR/bin/Mk_cmd; Makefile's -include finds nothing and falls back to bare gfortran)"
+        set -euo pipefail
+        shim="$GITHUB_WORKSPACE/socrates/julia/lib/libSOCRATES_C.so"
+        if ! nm -gU "$shim" 2>&1 | grep -q PS_real_kind_bytes; then
+          echo "PS_real_kind_bytes is not an external symbol in $shim" >&2
+          nm -gU "$shim" 2>&1 | grep -i real_kind >&2 || echo "(no real_kind symbol found at all)" >&2
+          exit 1
         fi
-        echo "-- grep -n PS_real_kind_bytes socrates/julia/src/Utilities_CF.f90 --"
-        grep -n PS_real_kind_bytes "$RAD_DIR/julia/src/Utilities_CF.f90" || echo "(symbol absent from source)"
-        echo "-- nm -g $obj | grep -i real_kind --"
-        nm_check "-g" "$obj" "obj, global symbols"
-        sym_name=$(nm -g "$obj" 2>&1 | grep -i real_kind | awk '{print $NF}' | head -n 1) || true
-        if [ -z "$sym_name" ]; then
-          sym_name="_PS_real_kind_bytes"
-          echo "(nm -g found no real_kind symbol in $obj; export-list probe falls back to $sym_name)"
-        else
-          echo "exact linker symbol name for the export list: $sym_name"
-        fi
-        echo "-- nm -g $shim | grep -i real_kind --"
-        nm_check "-g" "$shim" "shim, global symbols"
-        echo "-- nm -gU $shim | grep PS_real_kind_bytes --"
-        nm_check "-gU" "$shim" "shim, defined global symbols"
-        echo "-- nm -gU $RAD_DIR/bin/radlib.a | grep PS_real_kind_bytes --"
-        nm_check "-gU" "$RAD_DIR/bin/radlib.a" "radlib.a, defined global symbols"
-        echo "-- Julia-resolved shim path and dlsym(PS_real_kind_bytes) (matches AGNI's own load path) --"
-        julia -e '
-          using Libdl
-          h = dlopen(joinpath(ENV["RAD_DIR"], "julia/lib/libSOCRATES_C.so"))
-          println(dlpath(h))
-          sym = dlsym(h, :PS_real_kind_bytes; throw_error=false)
-          println(sym === nothing ? "dlsym(PS_real_kind_bytes) = not found" : "dlsym(PS_real_kind_bytes) = $sym")
-        ' || echo "(Julia dlopen/dlsym of the shim failed)"
-        echo "-- other libSOCRATES_C* files under the Julia depot (~/.julia) --"
-        find ~/.julia -name 'libSOCRATES_C*' 2>/dev/null || echo "(depot search failed)"
-        echo "-- other libSOCRATES_C* files under RAD_DIR --"
-        find "$RAD_DIR" -name 'libSOCRATES_C*' 2>/dev/null || echo "(RAD_DIR search failed)"
-        echo "-- DYLD_LIBRARY_PATH (macOS only, empty elsewhere) --"
-        echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH:-}"
-        if [ "$(uname -s)" = "Darwin" ]; then
-          echo "-- nm (no -g, all symbols) $shim | grep -i real_kind --"
-          nm_check "" "$shim" "shim, all symbols"
-          echo "-- dyld_info -exports $shim | grep -i real_kind --"
-          dyld_info -exports "$shim" 2>&1 | grep -i real_kind || echo "(not found / dyld_info failed on $shim)"
-          echo "-- toolchain identity --"
-          gfortran -print-prog-name=ld || echo "(gfortran -print-prog-name=ld failed)"
-          ld -v 2>&1 || echo "(ld -v failed)"
-          xcrun --show-sdk-version || echo "(xcrun --show-sdk-version failed)"
-          pkgutil --pkg-info=com.apple.pkg.CLTools_Executables || echo "(pkgutil CLTools_Executables lookup failed, CLT may be an Xcode install instead)"
-          echo "-- relink diagnostics (reproduce socrates/julia/lib/Makefile's link recipe) --"
-          objs=$(ls "$RAD_DIR"/julia/lib/*.o 2>/dev/null)
-          radlib="$RAD_DIR/bin/radlib.a"
-          base_flags="-O3 -Wall -fPIC -cpp -L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib/"
-          if [ -z "$objs" ]; then
-            echo "(no .o files under $RAD_DIR/julia/lib; skipping relink probes)"
-          else
-            echo "-- gfortran -shared -v re-link (full driver dump, shows the real ld invocation) --"
-            gfortran -shared $base_flags -v -o /tmp/relink-verbose.so $objs "$radlib" 2>&1 || echo "(verbose relink failed, see output above)"
-            relink_probe() {
-              local label="$1" extra="$2" out="/tmp/relink-${label}.so"
-              gfortran -shared $base_flags $extra -o "$out" $objs "$radlib" 2>&1 | tail -n 20 || true
-              if [ -f "$out" ]; then
-                nm_check "" "$out" "relink $label"
-              else
-                echo "(relink $label produced no output file)"
-              fi
-            }
-            echo "-- relink probe: baseline (no extra flag, control) --"
-            relink_probe "baseline" ""
-            echo "-- relink probe: -Wl,-ld_classic --"
-            relink_probe "ld_classic" "-Wl,-ld_classic"
-            echo "-- relink probe: -Wl,-exported_symbol,_PS_real_kind_bytes --"
-            relink_probe "exported_symbol" "-Wl,-exported_symbol,_PS_real_kind_bytes"
-            echo "-- relink probe: -Wl,-export_dynamic --"
-            relink_probe "export_dynamic" "-Wl,-export_dynamic"
-            echo "-- relink probe: -Wl,-exported_symbols_list (list-file form, using $sym_name, verbose) --"
-            list_file="/tmp/relink-exported_symbols_list.txt"
-            printf '%s\n' "$sym_name" > "$list_file"
-            gfortran -shared $base_flags -Wl,-exported_symbols_list,"$list_file" -v -o /tmp/relink-exported_symbols_list.so $objs "$radlib" 2>&1 || echo "(verbose relink with export list failed, see output above)"
-            if [ -f /tmp/relink-exported_symbols_list.so ]; then
-              nm_check "" "/tmp/relink-exported_symbols_list.so" "relink exported_symbols_list"
-            else
-              echo "(relink exported_symbols_list produced no output file)"
-            fi
-          fi
-        else
-          echo "(link-step probes are macOS-only; skipped on $(uname -s))"
-        fi
+        echo "PS_real_kind_bytes confirmed exported in $shim"
 
     # ------------------------------------------------------------------
     # 8. PROTEUS pip install (resolves PyPI + git deps in pyproject.toml)
