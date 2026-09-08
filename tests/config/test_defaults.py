@@ -223,10 +223,9 @@ def test_aragog_defaults():
         'dilatation slot must be removed; existing TOMLs setting '
         'this field should now fail to load.'
     )
-    # Per-call step caps: schema defaults 0.0 keep existing behaviour and the
-    # non-zalmoxis bit-parity invariant (the wrapper auto-enables non-zero
-    # values only for the zalmoxis stack). -1.0 is the single off sentinel;
-    # any other negative, NaN, or infinity is rejected at load.
+    # Per-call step caps: schema defaults 0.0, which the wrapper reads as off
+    # (no cap) on every interior. -1.0 is the single off sentinel; any other
+    # negative, NaN, or infinity is rejected at load.
     assert a.phi_step_cap == pytest.approx(0.0)
     assert a.temperature_step_cap == pytest.approx(0.0)
     assert a.entropy_step_cap == pytest.approx(0.0)
