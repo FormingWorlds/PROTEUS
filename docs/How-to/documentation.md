@@ -122,6 +122,8 @@ nav:
 
 ## Before opening a pull request
 
+The `Documentation links and anchors` check on every pull request runs `zensical build --clean --strict`, which aborts the build on a link to a page or an anchor that does not exist. Run the same command locally to see the failure and its file and line before you push. Image paths are not checked, so confirm those in the local preview.
+
 Before submitting documentation changes, it is a good idea to check that:
 
 - the site builds locally without errors,

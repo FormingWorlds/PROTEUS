@@ -2,21 +2,24 @@
 
 This file targets config parsing helpers plus validator guardrails across
 _config.py, _interior.py, and _params.py. See testing standards in
-docs/test_infrastructure.md, docs/test_categorization.md, and
-docs/test_building.md for required structure, speed, and physics validity.
+docs/How-to/testing.md and docs/Explanations/test_framework.md for required
+structure, speed, and physics validity.
 """
 
 from __future__ import annotations
 
 import os
+from contextlib import ExitStack
 from itertools import chain
 from types import SimpleNamespace
+from unittest.mock import patch
 
+import attrs
 import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
-from proteus.config import Config, read_config, read_config_object
+from proteus.config import Config, read_config, read_config_object, structure_config
 from proteus.config._config import (
     instmethod_dummy,
     instmethod_evolve,
@@ -31,6 +34,7 @@ from proteus.config._interior import valid_aragog, valid_interiordummy, valid_sp
 from proteus.config._outgas import Calliope
 from proteus.config._params import max_bigger_than_min, valid_mod, valid_path
 from proteus.config._planet import GasPrs, Planet
+from tests.test_proteus import _START_PATCHES
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -63,6 +67,157 @@ def test_read_config_returns_dict():
     raw = read_config(path)
     assert isinstance(raw, dict)
     assert 'params' in raw or 'star' in raw or 'orbit' in raw
+
+
+def _write_variant(tmp_path, name, mutate):
+    """Copy input/dummy.toml, apply *mutate* to the raw dict, write it back.
+
+    Returns the path of the written file. Used by the strict-loading tests
+    below to build near-identical configs that differ only in the key under
+    test.
+    """
+    import tomllib
+
+    import tomlkit
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    mutate(raw)
+    path = tmp_path / name
+    with open(path, 'w') as f:
+        tomlkit.dump(raw, f)
+    return path
+
+
+@pytest.mark.unit
+def test_read_config_object_rejects_a_misspelled_field(tmp_path):
+    """A misspelled field is refused instead of falling back to its default.
+
+    The two files here differ only in the spelling of one key. Spelled wrong,
+    the load is refused and the offending key is named; spelled right, the same
+    number reaches the Config. Without the refusal both files would load and
+    the user would have no way to tell which value took effect.
+    """
+
+    def _typo(raw):
+        del raw['planet']['mass_tot']
+        raw['planet']['mass_total'] = 2.5  # deliberate misspelling
+
+    def _correct(raw):
+        raw['planet']['mass_tot'] = 2.5
+
+    with pytest.raises(ValueError, match='planet.mass_total'):
+        read_config_object(_write_variant(tmp_path, 'typo.toml', _typo))
+
+    # The correctly spelled file carries the value through, so the refusal
+    # above is about the spelling and not about the value 2.5 itself.
+    cfg = read_config_object(_write_variant(tmp_path, 'correct.toml', _correct))
+    assert cfg.planet.mass_tot == pytest.approx(2.5)
+
+    # 2.5 differs from what dummy.toml sets, so a loader that ignored the file
+    # and returned the untouched config would fail the check above.
+    assert read_config(PROTEUS_ROOT / 'input' / 'dummy.toml')['planet'][
+        'mass_tot'
+    ] != pytest.approx(2.5)
+
+
+@pytest.mark.unit
+def test_read_config_object_rejects_a_section_written_as_an_array_of_tables(tmp_path):
+    """``[[planet]]`` is refused instead of dropping the whole section.
+
+    An array of tables carries a name the schema declares, so nothing about the
+    name is wrong and a check that only compares names passes it. Structuring
+    then discards the section entirely and every parameter inside it reverts to
+    its default, which is the silent fallback this loader exists to stop, and a
+    worse case than one misspelled key because it takes the whole section with
+    it.
+    """
+    source = (PROTEUS_ROOT / 'input' / 'dummy.toml').read_text()
+
+    # 3.7 differs from the schema default, so whether the section was read or
+    # dropped is visible in the loaded value rather than having to be inferred.
+    source = source.replace('mass_tot      = 1.0', 'mass_tot      = 3.7')
+    assert 'mass_tot      = 3.7' in source, 'fixture no longer matches dummy.toml'
+    assert attrs.fields(Planet).mass_tot.default == pytest.approx(1.0)
+
+    single = tmp_path / 'single_table.toml'
+    single.write_text(source)
+    # Control: as a plain table the value reaches the Config, so the refusal
+    # below is caused by the brackets and not by the value or this fixture.
+    assert read_config_object(single).planet.mass_tot == pytest.approx(3.7)
+
+    array = tmp_path / 'array_of_tables.toml'
+    array.write_text(source.replace('\n[planet]\n', '\n[[planet]]\n'))
+    with pytest.raises(ValueError, match='planet') as excinfo:
+        read_config_object(array)
+    assert 'Misdeclared' in str(excinfo.value)
+
+    # Structuring without the key check is what the runner does so it can
+    # resolve the output directory before refusing. Left unchecked it would run
+    # on 1.0 while the file asks for 3.7, so this pins what the check prevents.
+    dropped = structure_config(read_config(array), array)
+    assert dropped.planet.mass_tot == pytest.approx(1.0)
+    assert dropped.planet.mass_tot != pytest.approx(3.7)
+
+
+@pytest.mark.unit
+def test_structure_config_drops_an_unknown_key_and_applies_the_default(tmp_path):
+    """Structuring without the key check lets the default take over.
+
+    This is exactly the outcome the checked loader exists to prevent, and it is
+    the path the runner takes so it can resolve the output directory and record
+    the failure before refusing. Pinning it keeps that step honest: it tolerates
+    the key, it does not honour it.
+    """
+
+    # Three distinct masses so the surviving value identifies its own source:
+    # 2.5 would mean the misspelling was honoured, 1.0 (the Planet.mass_tot
+    # schema default) would mean the whole section was dropped, 1.75 means the
+    # correctly spelled sibling key was read and only the typo discarded.
+    def _typo(raw):
+        raw['planet']['mass_tot'] = 1.75
+        raw['planet']['mass_total'] = 2.5
+
+    path = _write_variant(tmp_path, 'typo.toml', _typo)
+
+    cfg = structure_config(read_config(path), path)
+    assert cfg.planet.mass_tot == pytest.approx(1.75)
+    assert cfg.planet.mass_tot != pytest.approx(2.5)
+
+    # Not the schema default either, so a loader that discarded the section
+    # wholesale rather than just the unknown key would fail here.
+    assert attrs.fields(Planet).mass_tot.default == pytest.approx(1.0)
+
+    # Same file, same content: only the entry point decides whether it loads.
+    with pytest.raises(ValueError, match='planet.mass_total'):
+        read_config_object(path)
+
+
+@pytest.mark.unit
+def test_read_config_object_names_the_unknown_key_before_a_bad_value(tmp_path):
+    """An unknown key is reported ahead of a value that fails validation.
+
+    A misspelling is usually what caused the downstream value to be wrong, so
+    reporting the value error first would send the user after a symptom while
+    the cause stays invisible.
+    """
+
+    def _both(raw):
+        raw['planet']['mass_tot'] = -5.0  # invalid: mass must be positive
+        raw['planet']['mass_total'] = 2.5  # unknown key
+
+    def _value_only(raw):
+        raw['planet']['mass_tot'] = -5.0
+
+    with pytest.raises(ValueError, match='planet.mass_total') as excinfo:
+        read_config_object(_write_variant(tmp_path, 'both.toml', _both))
+    # The value complaint is held back until the schema mismatch is resolved.
+    assert 'must be > 0' not in str(excinfo.value)
+
+    # Edge case: with the unknown key removed the negative mass is still caught,
+    # so the ordering above suppresses the message rather than the check.
+    with pytest.raises(ValueError, match='must be > 0'):
+        read_config_object(_write_variant(tmp_path, 'value_only.toml', _value_only))
 
 
 @pytest.mark.unit
@@ -129,7 +284,11 @@ def test_factory_defaults_from_minimal_config():
     # Omitted sections should use factory defaults
     assert cfg.escape.module == 'zephyrus'
     assert cfg.accretion.module is None
-    assert cfg.observe.synthesis is None
+    assert cfg.observe.module is None
+    assert cfg.observe.petitRADTRANS.line_opacity_mode == 'c-k'
+    assert cfg.observe.petitRADTRANS.include_rayleigh is True
+    assert cfg.observe.petitRADTRANS.include_cia is True
+    assert cfg.observe.petitRADTRANS.silent is True
     assert cfg.atmos_chem.module is None
     assert cfg.interior_energetics.module == 'aragog'
     assert cfg.star.module == 'mors'
@@ -139,6 +298,323 @@ def test_factory_defaults_from_minimal_config():
     # pyproject.toml; atmodeller is not. The default must be calliope so
     # any environment that has PROTEUS installed can load minimal.toml.
     assert cfg.outgas.module == 'calliope'
+
+
+@pytest.mark.unit
+def test_write_overrides_a_dotted_key_without_touching_live_config(tmp_path):
+    """Config.write(overrides=...) patches the written file, not self."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.interior_energetics.aragog.phi_step_cap == 0.0
+
+    out = tmp_path / 'resolved.toml'
+    cfg.write(str(out), overrides={'interior_energetics.aragog.phi_step_cap': 0.1})
+
+    assert cfg.interior_energetics.aragog.phi_step_cap == 0.0
+    written = read_config(str(out))
+    assert written['interior_energetics']['aragog']['phi_step_cap'] == pytest.approx(0.1)
+
+
+@pytest.mark.unit
+def test_write_without_overrides_matches_the_live_config(tmp_path):
+    """Config.write() with no overrides writes fields verbatim, except an
+    aragog step cap left at its 0.0 default, which is omitted so a reload
+    resolves it to the same schema default rather than to the -1.0 disabled
+    sentinel, the actual grid-writer scenario.
+    """
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+
+    out = tmp_path / 'plain.toml'
+    cfg.write(str(out))
+
+    written = read_config(str(out))
+    assert 'phi_step_cap' not in written['interior_energetics']['aragog']
+    # Discriminating: a non-default field must round-trip verbatim too, so a
+    # plain write is not silently substituting or dropping fields.
+    assert written['interior_struct']['module'] == cfg.interior_struct.module == 'zalmoxis'
+    # The written file must also reload cleanly, resolving back to the same
+    # value the live config carried, not the disabled sentinel.
+    assert read_config_object(out).interior_energetics.aragog.phi_step_cap == pytest.approx(0.0)
+
+
+@pytest.mark.unit
+def test_write_rejects_an_unknown_override_key(tmp_path):
+    """An override key outside the schema raises, so a typo cannot inject a stray key."""
+    from proteus.config.orphans import UnknownConfigKeyError
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    out = tmp_path / 'bad.toml'
+
+    # A typo in the leaf field is named and rejected, not silently inserted.
+    with pytest.raises(UnknownConfigKeyError, match='phi_step_kap'):
+        cfg.write(str(out), overrides={'interior_energetics.aragog.phi_step_kap': 0.1})
+    # The rejection happens before the write, so no partial file is emitted.
+    assert not out.exists()
+    # A missing intermediate section is named too, not a bare KeyError. Anchor
+    # the match to the trailing clause so it checks the reported failing segment,
+    # not the dotted key echoed earlier in the same message.
+    with pytest.raises(
+        UnknownConfigKeyError, match=r"no config section 'interior_energetics\.nope'"
+    ):
+        cfg.write(str(out), overrides={'interior_energetics.nope.phi_step_cap': 0.1})
+    # A key that resolves to a whole section, not a leaf field, is rejected too,
+    # so an override cannot replace a section with a scalar.
+    with pytest.raises(UnknownConfigKeyError, match='targets a config section'):
+        cfg.write(str(out), overrides={'interior_energetics.aragog': 0.1})
+
+
+@pytest.mark.unit
+def test_write_accepts_a_none_override_without_crashing(tmp_path):
+    """A None override writes the 'none' sentinel, not a bare None that crashes tomlkit."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    out = tmp_path / 'noned.toml'
+
+    # An explicit override for a step cap still wins over the write-time
+    # default handling, alongside the None override under test.
+    cfg.write(
+        str(out),
+        overrides={
+            'atmos_chem.module': None,
+            'interior_energetics.aragog.phi_step_cap': -1.0,
+            'interior_energetics.aragog.temperature_step_cap': -1.0,
+            'interior_energetics.aragog.entropy_step_cap': -1.0,
+        },
+    )
+
+    written = read_config(str(out))
+    assert written['atmos_chem']['module'] == 'none'
+    # The written file parses back through the schema, so the None handling
+    # produced a valid config rather than a broken one.
+    assert read_config_object(out).atmos_chem.module is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'value,expect_off',
+    [
+        (-1.0, True),
+        (0.05, False),
+    ],
+)
+def test_read_config_object_resolves_explicit_step_cap(tmp_path, value, expect_off):
+    """A step cap explicitly set to -1.0 or a positive value loads as written."""
+    import tomllib
+
+    import tomlkit
+
+    all_options = PROTEUS_ROOT / 'input' / 'all_options.toml'
+    with open(all_options, 'rb') as f:
+        raw = tomllib.load(f)
+    assert raw['interior_energetics']['module'] == 'aragog'
+
+    for field in ('phi_step_cap', 'temperature_step_cap', 'entropy_step_cap'):
+        raw['interior_energetics']['aragog'][field] = value
+
+    out = tmp_path / 'explicit_cap.toml'
+    with open(out, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    cfg = read_config_object(out)
+    aragog = cfg.interior_energetics.aragog
+    if expect_off:
+        assert aragog.phi_step_cap == pytest.approx(-1.0)
+        assert aragog.temperature_step_cap == pytest.approx(-1.0)
+        assert aragog.entropy_step_cap == pytest.approx(-1.0)
+    else:
+        assert aragog.phi_step_cap == pytest.approx(value)
+        assert aragog.temperature_step_cap == pytest.approx(value)
+        assert aragog.entropy_step_cap == pytest.approx(value)
+
+
+@pytest.mark.unit
+def test_read_config_object_rejects_explicit_zero_step_cap(tmp_path):
+    """An explicit 0.0 step cap is ambiguous with the omitted default and is rejected."""
+    import tomllib
+
+    import tomlkit
+
+    all_options = PROTEUS_ROOT / 'input' / 'all_options.toml'
+    with open(all_options, 'rb') as f:
+        raw = tomllib.load(f)
+    assert raw['interior_energetics']['module'] == 'aragog'
+
+    raw['interior_energetics']['aragog']['phi_step_cap'] = 0.0
+
+    out = tmp_path / 'zero_cap.toml'
+    with open(out, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    with pytest.raises(ValueError, match='phi_step_cap') as excinfo:
+        read_config_object(out)
+    assert '-1.0' in str(excinfo.value)
+
+
+@pytest.mark.unit
+def test_read_config_object_omitted_step_cap_resolves_to_schema_default():
+    """An absent step-cap key resolves to the schema default, same as an explicit 0.0 rejects.
+
+    all_options.toml itself omits phi_step_cap for this reason, so this test
+    reads it directly rather than building a synthetic copy. The zalmoxis
+    promotion of this 0.0 to a non-zero default happens later, in the Aragog
+    wrapper's own step-cap resolution, not in the Config object itself; this
+    test checks only what read_config_object returns.
+    """
+    import tomllib
+
+    all_options = PROTEUS_ROOT / 'input' / 'all_options.toml'
+    with open(all_options, 'rb') as f:
+        raw = tomllib.load(f)
+    assert raw['interior_energetics']['module'] == 'aragog'
+    assert 'phi_step_cap' not in raw['interior_energetics']['aragog']
+
+    cfg = read_config_object(all_options)
+    assert cfg.interior_energetics.aragog.phi_step_cap == pytest.approx(0.0)
+
+
+def _run_start_and_read_written_config(cfg, tmp_path):
+    """Run the real Proteus.start init-time step-cap write against a config, return the result.
+
+    Drives the actual production code path (proteus.py's module=='aragog' guard
+    and step_cap_overrides construction) rather than a hand-built copy of it, by
+    calling the unbound Proteus.start method on a lightweight stand-in for self.
+    Reuses tests/test_proteus.py's _START_PATCHES for the lazy imports start()
+    needs stubbed, plus PrintHalfSeparator, which that list does not cover.
+    """
+    outdir = tmp_path / 'output'
+    for sub in ('', 'data', 'observe', 'offchem', 'plots'):
+        (outdir / sub).mkdir(parents=True, exist_ok=True)
+
+    proteus = SimpleNamespace(
+        config=cfg,
+        config_path=str(PROTEUS_ROOT / 'input' / 'minimal.toml'),
+        directories={
+            'output': str(outdir),
+            'output/data': str(outdir / 'data'),
+            'output/observe': str(outdir / 'observe'),
+            'output/offchem': str(outdir / 'offchem'),
+            'output/plots': str(outdir / 'plots'),
+            'fwl': str(tmp_path),
+        },
+    )
+
+    class _StoppedAfterWrite(Exception):
+        pass
+
+    def _stop(*args, **kwargs):
+        raise _StoppedAfterWrite
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            # CreateLockFile runs immediately after the config write under
+            # test, so stopping there is enough and avoids driving the rest
+            # of start().
+            if target == 'proteus.utils.coupler.CreateLockFile':
+                stack.enter_context(patch(target, side_effect=_stop))
+            else:
+                stack.enter_context(patch(target))
+        stack.enter_context(patch('proteus.proteus.PrintHalfSeparator'))
+
+        with pytest.raises(_StoppedAfterWrite):
+            Proteus.start(proteus, resume=False, offline=True)
+
+    written = outdir / 'init_coupler.toml'
+    assert written.is_file()
+    return read_config_object(written)
+
+
+@pytest.mark.unit
+def test_start_writes_resolved_zalmoxis_step_caps_for_aragog(tmp_path):
+    """Proteus.start's aragog guard writes resolved, not raw, step caps to init_coupler.toml."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.interior_energetics.module == 'aragog'
+    assert cfg.interior_struct.module == 'zalmoxis'
+    assert cfg.interior_energetics.aragog.phi_step_cap == 0.0
+    assert cfg.interior_energetics.aragog.temperature_step_cap == 0.0
+    assert cfg.interior_energetics.aragog.entropy_step_cap == 0.0
+
+    written = _run_start_and_read_written_config(cfg, tmp_path)
+
+    aragog = written.interior_energetics.aragog
+    assert aragog.phi_step_cap == pytest.approx(0.1)
+    assert aragog.temperature_step_cap == pytest.approx(100.0)
+    assert aragog.entropy_step_cap == pytest.approx(100.0)
+
+
+@pytest.mark.unit
+def test_start_writes_verbatim_positive_step_caps_for_aragog(tmp_path):
+    """Distinct positive step caps pass through Proteus.start's aragog guard unswapped."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.interior_energetics.module == 'aragog'
+    cfg.interior_energetics.aragog.phi_step_cap = 2.0
+    cfg.interior_energetics.aragog.temperature_step_cap = 3.0
+    cfg.interior_energetics.aragog.entropy_step_cap = 7.0
+
+    written = _run_start_and_read_written_config(cfg, tmp_path)
+
+    aragog = written.interior_energetics.aragog
+    assert aragog.phi_step_cap == pytest.approx(2.0)
+    assert aragog.temperature_step_cap == pytest.approx(3.0)
+    assert aragog.entropy_step_cap == pytest.approx(7.0)
+
+
+@pytest.mark.unit
+def test_start_round_trips_explicit_off_step_caps_for_aragog(tmp_path):
+    """A config with all three caps explicitly off stays off after start's write."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.interior_energetics.module == 'aragog'
+    cfg.interior_energetics.aragog.phi_step_cap = -1.0
+    cfg.interior_energetics.aragog.temperature_step_cap = -1.0
+    cfg.interior_energetics.aragog.entropy_step_cap = -1.0
+
+    written = _run_start_and_read_written_config(cfg, tmp_path)
+
+    aragog = written.interior_energetics.aragog
+    assert aragog.phi_step_cap == pytest.approx(-1.0)
+    assert aragog.temperature_step_cap == pytest.approx(-1.0)
+    assert aragog.entropy_step_cap == pytest.approx(-1.0)
+
+
+@pytest.mark.unit
+def test_start_records_not_applied_marker_when_aragog_lacks_step_caps(tmp_path):
+    """Under Aragog version skew the snapshot records the disabled sentinel, not a resolved cap."""
+    from proteus.config._interior import _STEP_CAP_OFF
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.interior_energetics.module == 'aragog'
+    assert cfg.interior_struct.module == 'zalmoxis'
+
+    # Stand in for an older Aragog whose _EnergyParameters predates the
+    # temperature/entropy step caps, so setup_solver would drop them.
+    def _old_energy_parameters(conduction=None, convection=None, phi_step_cap=None):
+        raise NotImplementedError
+
+    with patch(
+        'proteus.interior_energetics.aragog._EnergyParameters',
+        _old_energy_parameters,
+    ):
+        written = _run_start_and_read_written_config(cfg, tmp_path)
+
+    aragog = written.interior_energetics.aragog
+    # phi is always supported, so it still records the zalmoxis-resolved value.
+    assert aragog.phi_step_cap == pytest.approx(0.1)
+    # The dropped caps record the disabled sentinel, not the resolved 100.0 the
+    # run never received.
+    assert aragog.temperature_step_cap == pytest.approx(_STEP_CAP_OFF)
+    assert aragog.entropy_step_cap == pytest.approx(_STEP_CAP_OFF)
+
+
+@pytest.mark.unit
+def test_start_leaves_step_caps_raw_when_energetics_module_is_not_aragog(tmp_path):
+    """The aragog guard must not fire, and must not promote caps, for a non-aragog module."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    cfg.interior_energetics.module = 'dummy'
+    assert cfg.interior_struct.module == 'zalmoxis'
+
+    written = _run_start_and_read_written_config(cfg, tmp_path)
+
+    aragog = written.interior_energetics.aragog
+    assert aragog.phi_step_cap == 0.0
+    assert aragog.temperature_step_cap == 0.0
+    assert aragog.entropy_step_cap == 0.0
 
 
 @pytest.mark.unit
@@ -245,29 +721,35 @@ def test_instmethod_dummy_rejects_non_dummy_star():
 
 @pytest.mark.unit
 def test_instmethod_evolve_rejects_evolving_inst_method():
-    """Instellation method cannot evolve when evolve flag is already active."""
-    inst = SimpleNamespace(orbit=SimpleNamespace(instellation_method='inst', evolve=True))
+    """Instellation method cannot evolve when star-planet evolution is active."""
+    inst = SimpleNamespace(
+        orbit=SimpleNamespace(instellation_method='inst', star_planet_model='sp0d')
+    )
     with pytest.raises(ValueError):
         instmethod_evolve(inst, None, None)
 
-    # Discrimination: dropping evolve to False clears the guard. A regression
-    # that always raised when instellation_method='inst' (ignoring evolve)
-    # would fail this second invocation.
-    inst.orbit.evolve = False
+    # Discrimination: dropping star_planet_model to None clears the guard. A
+    # regression that always raised when instellation_method='inst' (ignoring
+    # star_planet_model) would fail this second invocation.
+    inst.orbit.star_planet_model = None
     assert instmethod_evolve(inst, None, None) is None
 
 
 @pytest.mark.unit
 def test_satellite_evolve_rejects_combination():
-    """Orbit configs cannot enable both satellite and evolve simultaneously."""
-    inst = SimpleNamespace(orbit=SimpleNamespace(satellite=True, evolve=True))
+    """Orbit configs cannot enable both a planet-satellite model and a
+    star-planet evolution model simultaneously."""
+    inst = SimpleNamespace(
+        orbit=SimpleNamespace(planet_satellite_model='ps0d', star_planet_model='sp0d')
+    )
     with pytest.raises(ValueError):
         satellite_evolve(inst, None, None)
 
-    # Discrimination: dropping evolve to False (satellite still True) is the
-    # canonical valid combo and must silent-pass. A regression that raised
-    # whenever satellite=True (ignoring evolve) would fail this second call.
-    inst.orbit.evolve = False
+    # Discrimination: dropping star_planet_model to None (planet_satellite_model
+    # still set) is the canonical valid combo and must silent-pass. A
+    # regression that raised whenever planet_satellite_model was set (ignoring
+    # star_planet_model) would fail this second call.
+    inst.orbit.star_planet_model = None
     assert satellite_evolve(inst, None, None) is None
 
 
@@ -291,7 +773,8 @@ def test_tides_enabled_orbit_requires_orbit_module():
 def test_observe_resolved_atmosphere_requires_non_dummy():
     """Resolved spectra synthesis is invalid when the climate module is dummy."""
     inst = SimpleNamespace(
-        observe=SimpleNamespace(synthesis='platon'), atmos_clim=SimpleNamespace(module='dummy')
+        observe=SimpleNamespace(module='petitRADTRANS'),
+        atmos_clim=SimpleNamespace(module='dummy'),
     )
     with pytest.raises(ValueError):
         observe_resolved_atmosphere(inst, None, None)
@@ -1018,75 +1501,6 @@ def test_atmos_clim_check_overlap_empty_string():
     # mutation. A regression that fell through and silently recorded the
     # rejected value on the instance would fail this post-state check.
     assert vars(instance) == {}
-
-
-@pytest.mark.unit
-def test_atmos_clim_valid_albedo_float_in_range():
-    """Test valid_albedo validator accepts float in [0, 1]."""
-    from proteus.config._atmos_clim import valid_albedo
-
-    instance = SimpleNamespace()
-    # Boundary values and midpoint; each call must return silently on the
-    # accepted-range path.
-    assert valid_albedo(instance, SimpleNamespace(), 0.0) is None
-    assert valid_albedo(instance, SimpleNamespace(), 0.5) is None
-    assert valid_albedo(instance, SimpleNamespace(), 1.0) is None
-    # The validator does not mutate the input instance.
-    assert vars(instance) == {}
-
-
-@pytest.mark.unit
-def test_atmos_clim_valid_albedo_float_below_range():
-    """Test valid_albedo validator rejects float < 0."""
-    from proteus.config._atmos_clim import valid_albedo
-
-    instance = SimpleNamespace()
-    with pytest.raises(ValueError, match='must be between 0 and 1'):
-        valid_albedo(instance, SimpleNamespace(), -0.1)
-
-    # Discrimination: the lower bound is closed at 0. Moving the value to
-    # exactly 0 must cross to the silent-accept branch; a regression that
-    # used a strict `> 0` lower bound would fail this second invocation.
-    assert valid_albedo(instance, SimpleNamespace(), 0.0) is None
-
-
-@pytest.mark.unit
-def test_atmos_clim_valid_albedo_float_above_range():
-    """Test valid_albedo validator rejects float > 1."""
-    from proteus.config._atmos_clim import valid_albedo
-
-    instance = SimpleNamespace()
-    with pytest.raises(ValueError, match='must be between 0 and 1'):
-        valid_albedo(instance, SimpleNamespace(), 1.1)
-
-    # Discrimination: the upper bound is closed at 1. Moving the value to
-    # exactly 1 must cross to the silent-accept branch; a regression that
-    # used a strict `< 1` upper bound would fail this second invocation.
-    assert valid_albedo(instance, SimpleNamespace(), 1.0) is None
-
-
-@pytest.mark.unit
-def test_atmos_clim_valid_albedo_string():
-    """Test valid_albedo validator accepts file path as string."""
-    from proteus.config._atmos_clim import valid_albedo
-
-    instance = SimpleNamespace()
-    result = valid_albedo(instance, SimpleNamespace(), '/path/to/albedo_file.csv')
-    assert result is None  # contract: validator returns None silently on accepted string
-    assert vars(instance) == {}  # validator must not mutate the input instance
-
-
-@pytest.mark.unit
-def test_atmos_clim_valid_albedo_invalid_type():
-    """Test valid_albedo validator rejects invalid types."""
-    from proteus.config._atmos_clim import valid_albedo
-
-    instance = SimpleNamespace()
-    with pytest.raises(ValueError, match='must be a string or a float'):
-        valid_albedo(instance, SimpleNamespace(), 123)  # int, not float/str
-
-    with pytest.raises(ValueError, match='must be a string or a float'):
-        valid_albedo(instance, SimpleNamespace(), None)
 
 
 @pytest.mark.unit
@@ -1887,17 +2301,18 @@ def test_config_instmethod_evolve_rejects_inst_with_orbit_evolution():
     instance = SimpleNamespace(
         orbit=SimpleNamespace(
             instellation_method='inst',
-            evolve=True,  # INVALID
+            star_planet_model='sp0d',  # INVALID
         ),
     )
     with pytest.raises(ValueError, match='not supported for `instellation_method'):
         instmethod_evolve(instance, SimpleNamespace(), None)
 
-    # Discrimination: dropping evolve to False (with instellation_method still
-    # 'inst') must take the validator to the silent-accept branch. A
-    # regression that always raised on instellation_method='inst' (ignoring
-    # evolve) would fail this second invocation.
-    instance.orbit.evolve = False
+    # Discrimination: dropping star_planet_model to None (with
+    # instellation_method still 'inst') must take the validator to the
+    # silent-accept branch. A regression that always raised on
+    # instellation_method='inst' (ignoring star_planet_model) would fail this
+    # second invocation.
+    instance.orbit.star_planet_model = None
     assert instmethod_evolve(instance, SimpleNamespace(), None) is None
 
 
@@ -1929,17 +2344,18 @@ def test_config_satellite_evolve_rejects_both_satellite_and_evolution():
     # Invalid: satellite + orbital evolution
     instance = SimpleNamespace(
         orbit=SimpleNamespace(
-            satellite=True,  # Has satellite
-            evolve=True,  # Also evolving - INVALID
+            planet_satellite_model='ps0d',  # Has satellite
+            star_planet_model='sp0d',  # Also evolving - INVALID
         ),
     )
     with pytest.raises(ValueError, match='cannot be used simultaneously'):
         satellite_evolve(instance, SimpleNamespace(), None)
 
-    # Discrimination: dropping evolve (with satellite still True) must reach
-    # the silent-accept branch. A regression that always raised when
-    # satellite=True (ignoring evolve) would fail this second invocation.
-    instance.orbit.evolve = False
+    # Discrimination: dropping star_planet_model (with planet_satellite_model
+    # still set) must reach the silent-accept branch. A regression that
+    # always raised when planet_satellite_model was set (ignoring
+    # star_planet_model) would fail this second invocation.
+    instance.orbit.star_planet_model = None
     assert satellite_evolve(instance, SimpleNamespace(), None) is None
 
 
@@ -1951,16 +2367,18 @@ def test_config_satellite_evolve_allows_satellite_without_evolution():
     # Valid: satellite without evolution
     instance = SimpleNamespace(
         orbit=SimpleNamespace(
-            satellite=True,
-            evolve=False,
+            planet_satellite_model='ps0d',
+            star_planet_model=None,
         ),
     )
     result = satellite_evolve(instance, SimpleNamespace(), None)
-    assert result is None  # contract: satellite=True with evolve=False is the valid combo
-    # Discriminating check: satellite=True with evolve=True would have raised; only the
-    # evolve=False branch can produce a silent pass with satellite=True.
-    assert instance.orbit.satellite is True
-    assert instance.orbit.evolve is False
+    assert (
+        result is None
+    )  # contract: satellite set with star_planet_model=None is the valid combo
+    # Discriminating check: both set would have raised; only star_planet_model=None
+    # can produce a silent pass with planet_satellite_model set.
+    assert instance.orbit.planet_satellite_model == 'ps0d'
+    assert instance.orbit.star_planet_model is None
 
 
 @pytest.mark.unit
@@ -2008,7 +2426,7 @@ def test_config_observe_resolved_atmosphere_requires_non_dummy_atmos():
 
     # Invalid: synthesis observations with dummy atmosphere
     instance = SimpleNamespace(
-        observe=SimpleNamespace(synthesis='platon'),  # Synthesis enabled
+        observe=SimpleNamespace(module='petitRADTRANS'),  # Synthesis enabled
         atmos_clim=SimpleNamespace(module='dummy'),  # Dummy module - INVALID
     )
     with pytest.raises(ValueError, match='Observational synthesis requires'):
@@ -2029,14 +2447,14 @@ def test_config_observe_resolved_atmosphere_allows_no_synthesis():
 
     # Valid: no synthesis observations
     instance = SimpleNamespace(
-        observe=SimpleNamespace(synthesis=None),
+        observe=SimpleNamespace(module=None),
         atmos_clim=SimpleNamespace(module='dummy'),
     )
     result = observe_resolved_atmosphere(instance, SimpleNamespace(), None)
-    assert result is None  # contract: synthesis=None short-circuits the validator
-    # Discriminating check: atmos_clim.module='dummy' with synthesis='platon' would
+    assert result is None  # contract: module=None short-circuits the validator
+    # Discriminating check: atmos_clim.module='dummy' with module='petitRADTRANS' would
     # have raised; only the synthesis-disabled branch can produce a silent pass.
-    assert instance.observe.synthesis is None
+    assert instance.observe.module is None
 
 
 @pytest.mark.unit

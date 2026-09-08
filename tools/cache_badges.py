@@ -49,6 +49,16 @@ _REPO = 'FormingWorlds/PROTEUS'
 _BRANCH = 'main'
 _USER_AGENT = 'PROTEUS-docs-badge-cache'
 
+# Workflow-status badges as (badge name, workflow file, label). Each workflow
+# runs on main, so the branch=main query in _latest_conclusion resolves a real
+# run: coverage-baseline runs the unit suite on every push to main, ci-nightly
+# runs the integration suite on schedule, and docs runs on every push to main.
+_STATUS_WORKFLOWS: list[tuple[str, str, str]] = [
+    ('unit', 'coverage-baseline.yml', 'Unit Tests'),
+    ('integration', 'ci-nightly.yml', 'Integration Tests'),
+    ('docs', 'docs.yaml', 'Docs'),
+]
+
 # Map a GitHub Actions run conclusion to the badge message and colour. Every
 # failure-class conclusion maps to red so a broken run is never shown as a
 # neutral grey badge. A null conclusion (queued or in progress) shows no status.
@@ -76,7 +86,7 @@ def _latest_conclusion(workflow: str, timeout: float, retries: int) -> str | Non
     Parameters
     ----------
     workflow : str
-        Workflow file name, for example ``ci-pr-checks.yml``.
+        Workflow file name, for example ``coverage-baseline.yml``.
     timeout : float
         Per-request timeout in seconds.
     retries : int
@@ -89,14 +99,16 @@ def _latest_conclusion(workflow: str, timeout: float, retries: int) -> str | Non
         run has no conclusion yet, or the sentinel ``'unknown'`` if the API
         could not be reached or reported no runs.
     """
-    # Query the latest COMPLETED run of the workflow. status=completed excludes
-    # the in-progress docs deploy that is calling this (a null conclusion would
-    # otherwise render the Docs badge as "no status"). No branch filter: the
-    # PR-check workflows run on pull_request, never on main, so a branch=main
-    # filter would match only stale historical runs and freeze the badge.
+    # Query the latest COMPLETED run of the workflow on main. Every badge
+    # reports the state of main, and all three source workflows run there:
+    # coverage-baseline on push, ci-nightly on schedule, docs on push. The
+    # branch=main filter therefore always resolves a real run, and
+    # status=completed excludes the in-progress docs deploy that is calling
+    # this (a null conclusion would otherwise render the Docs badge as
+    # "no status").
     url = (
         f'https://api.github.com/repos/{_REPO}/actions/workflows/'
-        f'{workflow}/runs?status=completed&per_page=1'
+        f'{workflow}/runs?branch={_BRANCH}&status=completed&per_page=1'
     )
     headers = {'User-Agent': _USER_AGENT, 'Accept': 'application/vnd.github+json'}
     token = os.environ.get('GITHUB_TOKEN')
@@ -350,9 +362,9 @@ def main() -> int:
         return (name, [url] if url else [])
 
     status_badges: list[tuple[str, list[str]]] = [
-        status('unit', 'ci-pr-checks.yml', 'Unit Tests'),
-        status('integration', 'ci-nightly.yml', 'Integration Tests'),
-        status('docs', 'docs.yaml', 'Docs'),
+        status(name, workflow, label) for name, workflow, label in _STATUS_WORKFLOWS
+    ]
+    status_badges += [
         ('codecov', [f'https://codecov.io/gh/{_REPO}/branch/{_BRANCH}/graph/badge.svg']),
         ('license', ['https://img.shields.io/badge/License-Apache_2.0-blue.svg']),
         (

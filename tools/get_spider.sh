@@ -70,7 +70,7 @@ on_error() {
             echo "   - Verify mpicc is working: mpicc --version"
             echo "   - Verify PETSc is intact: ls \$PETSC_DIR/\$PETSC_ARCH/lib/libpetsc.*"
             echo "   - On macOS: ensure SDKROOT is set (xcrun --show-sdk-path)"
-            echo "   - See PROTEUS docs/troubleshooting.md for platform-specific fixes"
+            echo "   - See PROTEUS docs/How-to/troubleshooting.md for platform-specific fixes"
             ;;
         *"Verif"*)
             echo "   - The build completed without make errors but no binary was produced"
@@ -78,7 +78,7 @@ on_error() {
             echo "   - Try rebuilding with verbose output: cd $workpath && make V=1"
             ;;
         *)
-            echo "   - See docs/troubleshooting.md for platform-specific advice"
+            echo "   - See docs/How-to/troubleshooting.md for platform-specific advice"
             ;;
     esac
     echo ""

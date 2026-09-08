@@ -107,6 +107,7 @@ class AragogJAXRunner:
             bottom_up_grav_sep=True,
             phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
             phase_smoothing_width=0.01,
+            separation_viscosity=config.interior_energetics.aragog.separation_viscosity,
         )
 
         # Boundary conditions
@@ -361,7 +362,7 @@ class AragogJAXRunner:
         phi = np.asarray(eos.melt_fraction(P, S))
         rho = np.asarray(eos.density(P, S))
 
-        fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
+        fpath = os.path.join(output_dir, 'data', '%.0f_int.nc' % time)
         ds = nc.Dataset(fpath, mode='w')
         ds.description = 'Aragog JAX entropy solver output'
 

@@ -20,6 +20,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from proteus.doctor import (
+    _SUPPORT_EMAIL,
     FAIL,
     PASS,
     PYTHON_PACKAGES,
@@ -27,7 +28,9 @@ from proteus.doctor import (
     CheckResult,
     _collect_environment_info,
     _conda_build_lines,
+    _dependency_specs,
     _editable_checkout_path,
+    _get_script_for_package,
     _git_dirty,
     _git_head,
     _git_short_head,
@@ -74,6 +77,57 @@ def test_python_packages_excludes_optional_backends():
     mandatory = {'fwl-proteus', 'fwl-aragog', 'fwl-calliope', 'fwl-zalmoxis'}
     assert mandatory <= set(PYTHON_PACKAGES), (
         f'doctor lost mandatory package checks: {mandatory - set(PYTHON_PACKAGES)}'
+    )
+
+
+@pytest.mark.unit
+def test_python_packages_covers_every_pinned_fwl_dependency():
+    """Every FWL package pinned in pyproject must be one doctor checks.
+
+    A package carrying a version floor but absent from the list is a silent
+    hole: doctor reports the whole stack green while the installed version sits
+    below the bound the framework relies on. fwl-io is the costliest case to
+    miss, because its floor exists to keep out releases with neither a timeout
+    nor a retry on the data fetch, where an unreachable archive hangs a run
+    rather than failing it.
+
+    Both directions matter, and they fail differently. A pinned package missing
+    from the list is never checked at all. A listed package whose bound the
+    reader does not see is checked but always passes, since the version
+    comparison is skipped when no specifier is found; that is the same silent
+    green, reached from the other side. The spec reader matches dependency
+    names containing ``fwl-``, so a pin written with an underscore, or a
+    dependency dropped from pyproject, produces exactly that.
+
+    Verifies:
+    - Every dependency the spec reader discovers is checked.
+    - Every checked package carries a version bound the reader actually reads,
+      the project's own distribution aside.
+    - The spec reader found something, so neither comparison is vacuously
+      satisfied by an empty set.
+    """
+    specs = _dependency_specs()
+    pinned = set(specs)
+    assert pinned, 'no FWL dependencies were discovered; the comparisons below are vacuous'
+    assert 'fwl-io' in pinned, (
+        'fwl-io is no longer a pinned dependency, so this test is guarding nothing'
+    )
+
+    # `_dependency_specs` reads [project] dependencies only, so the optional
+    # extras are out of scope here by construction rather than by exclusion.
+    checked = set(PYTHON_PACKAGES)
+    missing = pinned - checked
+    assert not missing, (
+        f'pyproject pins these FWL packages but doctor does not check them: {sorted(missing)}'
+    )
+
+    # fwl-proteus is the distribution being diagnosed, not one of its own
+    # dependencies, so it carries no bound to read.
+    enforced = {name for name, spec in specs.items() if spec and spec.specifier}
+    unbounded = checked - enforced - {'fwl-proteus'}
+    assert not unbounded, (
+        f'doctor checks these but reads no version bound for them, so they pass at any '
+        f'installed version: {sorted(unbounded)}'
     )
 
 
@@ -262,6 +316,72 @@ class TestCheckPythonPackage:
         assert r.status == FAIL
         assert 'requires' in r.message
 
+    def test_below_spec_editable_tag_module_fix_reruns_setup_script(self):
+        """A tag-pinned editable checkout (aragog, zalmoxis) sits on a detached
+        HEAD, so the fix must re-run tools/get_<name>.sh, not `git pull`, which
+        cannot advance a detached HEAD. This is the issue #779 regression."""
+        from packaging.requirements import Requirement
+
+        spec = Requirement('fwl-zalmoxis>=26.07.17')
+        with (
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.5.13'),
+            patch(
+                'proteus.doctor._editable_checkout_path',
+                return_value='/home/u/PROTEUS/Zalmoxis',
+            ),
+            patch('proteus.doctor._git_short_head', return_value='c0b8412'),
+            patch('proteus.doctor._git_dirty', return_value=False),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            r = check_python_package('fwl-zalmoxis', spec)
+        assert r.status == FAIL
+        # The setup script re-fetches and re-checks-out the pinned tag.
+        assert r.fix_cmd == 'bash tools/get_zalmoxis.sh'
+        # The broken advice must be gone: `git pull` fails on a detached HEAD.
+        assert 'git pull' not in r.fix_cmd
+
+    def test_below_spec_editable_branch_module_fix_keeps_git_pull(self):
+        """A package without a tools/get_<name>.sh script (calliope) is cloned on
+        a tracking branch, where `git pull && pip install -e .` is the correct
+        update. The detached-HEAD path must not swallow this case."""
+        from packaging.requirements import Requirement
+
+        spec = Requirement('fwl-calliope>=99.0.0')
+        with (
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.6.1'),
+            patch(
+                'proteus.doctor._editable_checkout_path',
+                return_value='/home/u/PROTEUS/CALLIOPE',
+            ),
+            patch('proteus.doctor._git_short_head', return_value='1e3ad73'),
+            patch('proteus.doctor._git_dirty', return_value=False),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            r = check_python_package('fwl-calliope', spec)
+        assert r.status == FAIL
+        assert 'git pull' in r.fix_cmd
+        assert 'pip install -e .' in r.fix_cmd
+        # The checkout path is quoted into the cd target, not replaced by a script.
+        assert 'CALLIOPE' in r.fix_cmd
+        assert not r.fix_cmd.startswith('bash tools/get_')
+
+    def test_below_spec_wheel_install_fix_upgrades_via_pip(self):
+        """With no editable checkout (a wheel install), neither branch applies:
+        the fix upgrades from PyPI against the version bound."""
+        from packaging.requirements import Requirement
+
+        spec = Requirement('fwl-aragog>=26.07.04')
+        with (
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.5.13'),
+            patch('proteus.doctor._editable_checkout_path', return_value=None),
+        ):
+            r = check_python_package('fwl-aragog', spec)
+        assert r.status == FAIL
+        assert r.fix_cmd.startswith('pip install -U')
+        # No git operation is offered when there is no checkout to operate on.
+        assert 'git pull' not in r.fix_cmd
+        assert 'get_aragog.sh' not in r.fix_cmd
+
     def test_pass_when_editable_dev_version_above_bound(self):
         """A setuptools-scm dev version a few commits past the tagged release
         satisfies a >= bound, even though it is a pre-release in PEP 440 terms."""
@@ -383,6 +503,13 @@ def _init_test_repo(path):
     subprocess.run(['git', '-C', p, 'commit', '-m', 'init'], check=True, capture_output=True)
 
 
+def _git_commit_all(path, message):
+    """Stage and commit everything in the repo at the given path."""
+    p = str(path)
+    subprocess.run(['git', '-C', p, 'add', '.'], check=True, capture_output=True)
+    subprocess.run(['git', '-C', p, 'commit', '-m', message], check=True, capture_output=True)
+
+
 class TestGitHelpers:
     """Git helper functions."""
 
@@ -404,9 +531,37 @@ class TestGitHelpers:
         assert head is not None and len(head) == 40
 
     def test_git_dirty_false_for_clean_repo(self, tmp_path):
-        """Clean repo returns False."""
+        """A repo whose tracked content matches HEAD is clean, and an ignored
+        file leaves it clean.
+
+        The dirty state is read from ``git status --porcelain``, which honours
+        .gitignore. That matters here because a PROTEUS checkout carries
+        gitignored run output: if ignored paths counted, every environment
+        report after a simulation would call the tree dirty.
+        """
         _init_test_repo(tmp_path)
         assert _git_dirty(str(tmp_path)) is False
+
+        # Edge: an ignored path holding files does not disturb the clean state.
+        # The .gitignore is committed so it is not itself an untracked file.
+        (tmp_path / '.gitignore').write_text('output/\n')
+        _git_commit_all(tmp_path, 'add gitignore')
+        (tmp_path / 'output').mkdir()
+        (tmp_path / 'output' / 'run.log').write_text('junk')
+        assert _git_dirty(str(tmp_path)) is False
+
+    def test_git_dirty_true_for_untracked_file(self, tmp_path):
+        """A file git has never seen makes the tree dirty.
+
+        ``git status --porcelain`` lists untracked files alongside modified
+        ones, so an untracked file is the case that separates the current
+        behaviour from a tracked-only check such as ``git diff --quiet``, which
+        would keep reporting clean and let a stray file pass unreported.
+        """
+        _init_test_repo(tmp_path)
+        assert _git_dirty(str(tmp_path)) is False
+        (tmp_path / 'untracked.txt').write_text('new')
+        assert _git_dirty(str(tmp_path)) is True
 
     def test_git_dirty_true_for_modified_file(self, tmp_path):
         """Modified tracked file makes repo dirty."""
@@ -480,6 +635,58 @@ class TestEditableCheckoutPath:
         # Discrimination: malformed JSON is swallowed (returns None) only
         # after the helper read and tried to parse direct_url.json.
         assert dist.read_text.call_count == 1
+
+
+class TestGetScriptForPackage:
+    """Mapping from an FWL package to its tools/get_<name>.sh setup script.
+
+    The mapping decides whether `proteus doctor`/`update` offers a `git pull`
+    (tracking-branch checkout) or a re-run of the setup script (tag-pinned,
+    detached-HEAD checkout). See issue #779.
+    """
+
+    def test_returns_script_for_tag_pinned_packages(self):
+        """aragog and zalmoxis are installed by a setup script that pins to a
+        version tag; the helper resolves each to its real script path."""
+        # These scripts exist in the repo, so the helper returns the path.
+        assert _get_script_for_package('fwl-aragog') == 'tools/get_aragog.sh'
+        assert _get_script_for_package('fwl-zalmoxis') == 'tools/get_zalmoxis.sh'
+        # The fwl- prefix is stripped: the script is get_aragog.sh, not
+        # get_fwl-aragog.sh.
+        assert 'fwl-' not in _get_script_for_package('fwl-aragog')
+
+    def test_case_insensitive_prefix_strip(self):
+        """The distribution name is lowercased before the script lookup, so a
+        mixed-case name still resolves (dist names are normally lowercase, but
+        the helper must not depend on that)."""
+        assert _get_script_for_package('FWL-Zalmoxis') == 'tools/get_zalmoxis.sh'
+        # A fully upper-case spelling of a second package folds too, so the
+        # line above is not one spelling happening to work.
+        assert _get_script_for_package('FWL-ARAGOG') == 'tools/get_aragog.sh'
+        # Folding must not invent a script either: a mixed-case package with
+        # none still takes the git-pull path.
+        assert _get_script_for_package('FWL-Calliope') is None
+
+    def test_name_without_fwl_prefix_is_used_verbatim(self):
+        """The fwl- strip is conditional: a name lacking the prefix is looked up
+        as-is, not mangled. 'aragog' resolves to the same script as
+        'fwl-aragog', while a prefixless name with no script is still None."""
+        # Prefix absent, so no strip happens; the bare stem is used directly.
+        assert _get_script_for_package('aragog') == 'tools/get_aragog.sh'
+        # Discrimination: the with- and without-prefix forms agree, confirming
+        # the strip only removes a leading 'fwl-' and never truncates the stem.
+        assert _get_script_for_package('aragog') == _get_script_for_package('fwl-aragog')
+        # A prefixless name with no matching script returns None, not a path.
+        assert _get_script_for_package('calliope') is None
+
+    def test_returns_none_for_branch_tracking_package(self):
+        """calliope has no setup script (it is cloned on a tracking branch), so
+        the helper returns None and the caller falls back to git pull."""
+        # No tools/get_calliope.sh exists, so None signals the git-pull path.
+        assert _get_script_for_package('fwl-calliope') is None
+        # A package name that maps to no script at all is also None, not a
+        # path to a nonexistent file.
+        assert _get_script_for_package('fwl-not-a-real-package') is None
 
 
 class TestRunAllChecks:
@@ -1170,7 +1377,7 @@ class TestRunLogging:
         out = capsys.readouterr().out
         # the user is told the exact file to send and where to send it
         assert str(logs[0]) in out
-        assert 'proteus_dev@formingworlds.space' in out
+        assert 'dev@proteus-framework.org' in out
         assert 'github.com/FormingWorlds/PROTEUS/issues' in out
         assert 'discussions' in out
 
@@ -1183,7 +1390,7 @@ class TestRunLogging:
         assert result is True
         assert list(tmp_path.glob('proteus_*.log')) == []
         out = capsys.readouterr().out
-        assert 'proteus_dev@formingworlds.space' not in out
+        assert 'dev@proteus-framework.org' not in out
 
     def test_doctor_json_mode_is_not_logged(self, tmp_path, monkeypatch, capsys):
         """JSON output is for scripts: no log file and no prompt, just JSON."""
@@ -1221,7 +1428,7 @@ class TestRunLogging:
         assert 'exit 7' in log_text
         out = capsys.readouterr().out
         assert str(logs[0]) in out
-        assert 'proteus_dev@formingworlds.space' in out
+        assert 'dev@proteus-framework.org' in out
 
     def test_doctor_crash_is_logged_with_traceback_and_prompt(
         self, tmp_path, monkeypatch, capsys
@@ -1240,7 +1447,7 @@ class TestRunLogging:
         # The traceback and the exception message are in the log.
         assert 'Traceback' in log_text and 'boom_xyz_123' in log_text
         captured = capsys.readouterr()
-        assert 'proteus_dev@formingworlds.space' in captured.out
+        assert 'dev@proteus-framework.org' in captured.out
         # The crash is surfaced to the user too, not buried only in the log.
         assert 'boom_xyz_123' in (captured.out + captured.err)
 
@@ -1259,7 +1466,7 @@ class TestRunLogging:
         out = capsys.readouterr().out
         # The fallback message and the support channel are both shown.
         assert 'could not be written' in out
-        assert 'proteus_dev@formingworlds.space' in out
+        assert 'dev@proteus-framework.org' in out
 
 
 class TestTee:
@@ -1358,9 +1565,21 @@ class TestSupportPromptAndCliExit:
         _print_support_prompt('doctor', log)
         out = capsys.readouterr().out
         assert str(log) in out
-        assert 'proteus_dev@formingworlds.space' in out
+        assert 'dev@proteus-framework.org' in out
         assert 'github.com/FormingWorlds/PROTEUS/issues' in out
         assert 'discussions' in out
+
+    def test_support_email_constant_is_exact_and_rendered_verbatim(self, tmp_path, capsys):
+        """The support address is pinned to its exact value, and the failure
+        prompt renders that exact constant exactly once. A stray leading or
+        trailing character, whitespace, or a duplicate copy in the constant
+        fails the equality check. The exact count also catches the address
+        being rendered more than once, which the substring checks elsewhere
+        cannot tell apart from a single occurrence."""
+        assert _SUPPORT_EMAIL == 'dev@proteus-framework.org'
+        _print_support_prompt('doctor', tmp_path / 'proteus_doctor.log')
+        out = capsys.readouterr().out
+        assert out.count(_SUPPORT_EMAIL) == 1
 
     def test_prompt_handles_a_missing_log_path(self, capsys):
         """With no log written the prompt says so and tells the user to copy the
@@ -1386,7 +1605,7 @@ class TestSupportPromptAndCliExit:
         # Exit code 1 specifically (a click usage error would be 2), and the
         # failure path actually ran, so the support prompt is in the output.
         assert result.exit_code == 1
-        assert 'proteus_dev@formingworlds.space' in result.output
+        assert 'dev@proteus-framework.org' in result.output
 
     def test_doctor_cli_exits_zero_when_clean(self, tmp_path, monkeypatch):
         """A clean diagnose exits zero, so a passing check does not break a
@@ -1401,4 +1620,4 @@ class TestSupportPromptAndCliExit:
             result = CliRunner().invoke(doctor_cmd, [])
         assert result.exit_code == 0
         # Discrimination: no failure exit means no support prompt was printed.
-        assert 'proteus_dev@formingworlds.space' not in result.output
+        assert 'dev@proteus-framework.org' not in result.output

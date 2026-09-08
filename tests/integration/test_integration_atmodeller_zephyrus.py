@@ -57,9 +57,8 @@ interior) and ``test_integration_mors_zephyrus.py`` (zephyrus
 leg with dummy interior).
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -243,7 +242,7 @@ def test_atmodeller_solver_step_and_multistart_under_zephyrus_pair():
     Edge: pin BOTH boundaries of the documented accepted range.
     ``=0`` rejects (catches a ``ge(0)`` regression); ``=1`` round-
     trips (catches a ``gt(1)`` regression). Documented defaults
-    (256, 10) round-trip.
+    (1024, 10) round-trip.
     """
     from proteus.config._outgas import Atmodeller
 
@@ -257,7 +256,7 @@ def test_atmodeller_solver_step_and_multistart_under_zephyrus_pair():
     assert Atmodeller(solver_max_steps=1).solver_max_steps == 1
     assert Atmodeller(solver_multistart=1).solver_multistart == 1
     default = Atmodeller()
-    assert default.solver_max_steps == 256
+    assert default.solver_max_steps == 1024
     assert default.solver_multistart == 10
 
 

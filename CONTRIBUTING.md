@@ -18,7 +18,7 @@ The principle purpose of PROTEUS is to generate data to make scientific conclusi
 3. the Maintainers are made aware of when PROTEUS results are used in a scientific paper.
 
 A suggested acknowledgement is:
-> We thank the people who have contributed to PROTEUS and its broader ecosystem for their support and enabling the scientific outputs of this paper. PROTEUS (version XX.XX.XX) may be found online at https://github.com/FormingWorlds
+> We thank the people who have contributed to PROTEUS and its broader ecosystem for their support and enabling the scientific outputs of this paper. PROTEUS (version XX.XX.XX) may be found online at https://github.com/FormingWorlds and archived on Zenodo, where each release carries its own DOI (all versions: https://doi.org/10.5281/zenodo.21358380)
 
 <b>
 In summary:
@@ -159,13 +159,6 @@ The documentation is hosted on the [PROTEUS framework website](https://proteus-f
 ### Making a release
 
 The versioning scheme we use is [CalVer](https://calver.org/), in the format `YY.MM.DD`, without a leading 'v'. Versions are derived from git tags by [`setuptools-scm`](https://setuptools-scm.readthedocs.io/); there is no hand-edited version string anywhere in the repository.
-
-0. Update requirements files:
-
-```console
-python tools/generate_requirements_txt.py
-pip-compile -o requirements_full.txt pyproject.toml
-```
 
 1. Tag the release on `main` and push the tag:
 

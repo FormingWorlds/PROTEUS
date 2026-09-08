@@ -254,6 +254,12 @@ OVERRIDES = {
     # 3.0 adds dt.maximum + maximum_rel * Time with a default maximum_rel of 1.0,
     # a time-growing cap 2.0 lacked. Pin 0.0 to recover the strict 2.0 cap.
     'params.dt.maximum_rel': 0.0,
+    # 2.0 had no time-gating on bol_scale
+    'star.bol_scale_start': 0.0,
+    'star.bol_scale_duration': 100.0,
+    # 2.0 sized escape from the unmodified XUV radius; the 3.0 default clips
+    # it to the Hill radius. Pin off so migrated runs reproduce 2.0 rates.
+    'escape.hill_clamp': False,
 }
 
 # Element-budget fields consumed by the element handler (not mapped directly).
@@ -279,6 +285,25 @@ _IC_FIELDS = {
     'interior.aragog.ini_tmagma',
     'interior.dummy.ini_tmagma',
 }
+
+# Orbit-evolution fields consumed by the orbit-dispatch handler: 2.0's bool
+# flags do not reduce to a single rename, since 3.0 replaced each with a
+# string-valued model choice (and split the satellite block out under
+# [orbit.satellite]).
+_ORBIT_FIELDS = {
+    'orbit.evolve',
+    'orbit.satellite',
+    'orbit.mass_sat',
+    'orbit.semimajoraxis_sat',
+}
+
+# Earth mass [kg] / astronomical unit [m]. 2.0 orbit.mass_sat and
+# orbit.semimajoraxis_sat are in kg/m; 3.0's orbit.satellite.mass_sat and
+# .semimajoraxis_sat are in M_earth/AU. Hard-coded to keep the value
+# transform independent of an importable proteus at call time; verified
+# against proteus.utils.constants.M_earth / AU.
+_M_EARTH_KG = 5.972e24
+_AU_M = 1.495978707e11
 
 # Volatiles partial-pressure block: delivery.volatiles.X -> planet.gas_prs.X.
 _VOLATILE_SPECIES = ('H2O', 'CO2', 'N2', 'S2', 'SO2', 'H2S', 'NH3', 'H2', 'CH4', 'CO')
@@ -522,22 +547,33 @@ def _handle_elements(eff_v2, explicit, v3, report):
         ('S', 'SH_ratio', 'S/H'),
     ):
         ratio, ppmw, kg = g(ratio_key), g(f'{el}_ppmw'), g(f'{el}_kg')
-        # 2.0 sums the ppmw (relative) and kg (absolute) terms; 3.0 carries a
-        # single mode, so a config that set both cannot be reproduced exactly.
-        if ppmw and kg:
-            report.warnings.append(
-                f'{el} set by both ppmw and kg in 2.0 (which sums them); 3.0 '
-                f'supports one mode. Using ppmw={ppmw}; fold the kg term in by '
-                f'hand if it matters.'
-            )
-        if ratio:
-            mode, budget = ratio_mode, ratio
-        elif ppmw:
-            mode, budget = 'ppmw', ppmw
-        elif kg:
-            mode, budget = 'kg', kg
+
+        # Candidate terms in precedence order: a ratio outranks ppmw, which
+        # outranks kg. The first one the user set is the one 3.0 carries.
+        candidates = (
+            (ratio_key, ratio, ratio_mode),
+            (f'{el}_ppmw', ppmw, 'ppmw'),
+            (f'{el}_kg', kg, 'kg'),
+        )
+        chosen = [c for c in candidates if c[1]]
+        if chosen:
+            kept_key, budget, mode = chosen[0]
         else:
             mode, budget = ratio_mode, 0.0
+
+        # 2.0 sums the ppmw (relative) and kg (absolute) terms, so a config
+        # setting both carries a budget 3.0's single mode cannot reproduce.
+        # Quote the term that actually reached the migrated config, and list
+        # the ones left out: naming a term the output ignores sends the user to
+        # fold their budget into a field the run never reads.
+        if ppmw and kg:
+            dropped = ', '.join(f'{key}={val}' for key, val, _ in chosen[1:])
+            report.warnings.append(
+                f'{el} set by both ppmw and kg in 2.0 (which sums them); 3.0 '
+                f'supports one mode. Using {kept_key}={budget} as '
+                f'{el}_mode="{mode}"; fold in by hand if it matters: {dropped}.'
+            )
+
         v3[f'planet.elements.{el}_mode'] = mode
         v3[f'planet.elements.{el}_budget'] = budget
 
@@ -601,6 +637,41 @@ def _handle_temperature_mode(eff_v2, explicit, v3, active, report):
             )
 
 
+def _handle_orbit_dispatch(eff_v2, explicit, v3, report):
+    """Map 2.0's boolean orbit.evolve/orbit.satellite flags to 3.0's
+    string-valued star_planet_model/planet_satellite_model dispatch.
+
+    2.0 had exactly one orbital-evolution model and one satellite model;
+    3.0 offers several per family (sp0d/sp1d; ps0d/ps1d/ps1d_evec). The
+    simplest 3.0 model in each family (sp0d, ps0d) is the closest analogue
+    to what 2.0 actually ran, so a set 2.0 flag maps to that rather than a
+    guess at which richer 3.0 model the user would have wanted.
+    """
+    if eff_v2.get('orbit.evolve'):
+        v3['orbit.star_planet_model'] = 'sp0d'
+        if 'orbit.evolve' in explicit:
+            report.warnings.append(
+                'orbit.evolve mapped to orbit.star_planet_model="sp0d" (the '
+                'simplest 3.0 orbital-evolution model); review whether sp1d '
+                'better matches the intended run.'
+            )
+    if eff_v2.get('orbit.satellite'):
+        v3['orbit.planet_satellite_model'] = 'ps0d'
+        v3['orbit.satellite.include_satellite'] = True
+        mass_sat = eff_v2.get('orbit.mass_sat')
+        if mass_sat not in (None, 'none'):
+            v3['orbit.satellite.mass_sat'] = float(mass_sat) / _M_EARTH_KG
+        sma_sat = eff_v2.get('orbit.semimajoraxis_sat')
+        if sma_sat not in (None, 'none'):
+            v3['orbit.satellite.semimajoraxis_sat'] = float(sma_sat) / _AU_M
+        if 'orbit.satellite' in explicit:
+            report.warnings.append(
+                'orbit.satellite mapped to orbit.planet_satellite_model="ps0d" '
+                '(the simplest 3.0 satellite model); review whether ps1d or '
+                'ps1d_evec better matches the intended run.'
+            )
+
+
 def translate(v2_toml: dict):
     """Translate a parsed 2.0 config dict into a validated 3.0 config dict.
 
@@ -655,7 +726,12 @@ def translate(v2_toml: dict):
     atmos_hoist_src = {f'atmos_clim.{active["atmos_clim"]}.{field}' for field in _ATMOS_SHARED}
     for v2_path, val in eff_v2.items():
         # consumed by special handlers
-        if v2_path in _ELEMENT_FIELDS or v2_path in _IC_FIELDS or v2_path in atmos_hoist_src:
+        if (
+            v2_path in _ELEMENT_FIELDS
+            or v2_path in _IC_FIELDS
+            or v2_path in atmos_hoist_src
+            or v2_path in _ORBIT_FIELDS
+        ):
             continue
         if v2_path.startswith('delivery.volatiles.'):
             sp = v2_path.split('.')[-1]
@@ -669,6 +745,19 @@ def translate(v2_toml: dict):
         if v2_path.startswith(inactive) or v2_path in inactive_bare:
             if v2_path in explicit:
                 report.dropped_inactive.append(v2_path)
+            continue
+        if v2_path == 'atmos_clim.albedo_pl' and isinstance(val, str):
+            # 2.0 accepted either a constant or a path to a CSV lookup table;
+            # 3.0 narrowed the field to a float and removed the lookup. Copying
+            # the path through would emit a 3.0 config that fails validation, and
+            # substituting a number would silently change the physics, so leave
+            # the field at its 3.0 default and say so.
+            report.warnings.append(
+                'atmos_clim.albedo_pl was a lookup-table path in 2.0 '
+                f'({val!r}); 3.0 accepts a constant only and the lookup has '
+                'been removed. Left at the 3.0 default. Set a constant bond '
+                'albedo by hand to approximate the 2.0 run.'
+            )
             continue
         # transform value if a transform is registered
         tval = TRANSFORMS[v2_path](val) if v2_path in TRANSFORMS else val
@@ -697,6 +786,7 @@ def translate(v2_toml: dict):
     _handle_elements(eff_v2, explicit, v3, report)
     _handle_atmos_hoist(eff_v2, explicit, v3, active, report)
     _handle_temperature_mode(eff_v2, explicit, v3, active, report)
+    _handle_orbit_dispatch(eff_v2, explicit, v3, report)
 
     # derived fields with no 2.0 source
     if v3.get('interior_struct.module') == 'spider':

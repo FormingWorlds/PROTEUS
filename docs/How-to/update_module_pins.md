@@ -120,8 +120,12 @@ proteus update          # pulls the new release into the active environment
 proteus doctor          # fwl-calliope now reports ok
 ```
 
-For an editable checkout, `proteus update` runs `git pull && pip install -e .`
-in the CALLIOPE checkout instead of fetching a wheel.
+For an editable checkout on a tracking branch (such as CALLIOPE), `proteus
+update` runs `git pull && pip install -e .` in the checkout instead of fetching
+a wheel. Packages installed by a `tools/get_<name>.sh` script (aragog,
+zalmoxis) are pinned to a version tag and so sit on a detached HEAD, where
+`git pull` cannot advance; for those `proteus update` re-runs the setup script,
+which fetches and checks out the tag matching the new floor.
 
 ### Case 2: move a git module to a new commit
 

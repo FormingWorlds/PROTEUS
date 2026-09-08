@@ -73,6 +73,10 @@ OPTIONAL_DEPS = {
     'mors',
     'vulcan',
     'zalmoxis',  # only optional when not installed as editable submodule
+    # The Bayesian-optimisation stack, shipped as the `inference` extra.
+    'torch',
+    'botorch',
+    'gpytorch',
 }
 
 # Test directories that contain at least one physics-required source file.

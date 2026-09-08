@@ -13,7 +13,10 @@
 #
 # Expected: solidification in ~0.5-4 Myr, consistent with CHILI models.
 #
-# Run: proteus start --offline -c input/tutorials/tutorial_earth.toml
+# Run: proteus start -c input/tutorials/tutorial_earth.toml
+# The first run downloads all required reference data (spectral files,
+# stellar tracks and spectra, interior EOS tables). Add --offline on
+# later runs to skip the reference-data check.
 
 config_version = "3.0"
 
@@ -101,7 +104,7 @@ config_version = "3.0"
     radio_K          = 310.0
     radio_U          = 0.031
     radio_Th         = 0.124
-    grain_size       = 0.1
+    grain_size       = 1e-3
     mixing_length    = "constant"
 
     [interior_energetics.aragog]

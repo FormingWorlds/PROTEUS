@@ -168,8 +168,10 @@ class Obliqua:
         Power of the radial factor (r/a)^n.
     m : int
         Tidal harmonic (m=2 semidiurnal, m=1 diurnal).
-    k_min, k_max : int
-        Fourier index range in mean anomaly (adaptive spectrum).
+    k_min : int
+        Minimum Fourier index in mean anomaly (adaptive spectrum).
+    k_max : int
+        Maximum Fourier index in mean anomaly (adaptive spectrum).
     material_mu : str
         Rheology model for complex shear modulus ("andrade" or "maxwell").
     material_k : str

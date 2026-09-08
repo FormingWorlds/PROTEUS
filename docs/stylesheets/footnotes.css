@@ -1,0 +1,21 @@
+/* ---- Footnote/citation markers: render as inline [1] instead of superscript ---- */
+.md-typeset sup[id^="fnref"] {
+  vertical-align: baseline !important;
+  font-size: 1em !important;
+  line-height: inherit !important;
+}
+
+.md-typeset sup[id^="fnref"] > a.footnote-ref {
+  text-decoration: none;
+}
+
+.md-typeset sup[id^="fnref"] > a.footnote-ref::before { content: "["; }
+.md-typeset sup[id^="fnref"] > a.footnote-ref::after  { content: "]"; }
+
+/* fallback (some versions/themes) */
+.md-typeset a.footnote-ref {
+  vertical-align: baseline !important;
+  font-size: 1em !important;
+}
+
+

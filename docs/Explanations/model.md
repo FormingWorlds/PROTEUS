@@ -2,7 +2,7 @@
 
 ## Overview
 
-PROTEUS is a modular framework for simulating the time evolution of small (exo)planets. It is designed to be flexible, reflecting the broad diversity of planetary conditions already discovered, with the view of being updated to incorporate additional physics as the need arises. This approach stands in contrast to common monolithic models in the literature. PROTEUS is free and open-source, which permits external scrutiny of its workings. It is directly based upon the model of Lichtenberg et al. (2021)[^cite-lichtenberg2021] although the code has evolved substantially from that state.
+PROTEUS is a modular framework for simulating the time evolution of small (exo)planets. It is designed to be flexible, reflecting the broad diversity of planetary conditions already discovered, with the view of being updated to incorporate additional physics as the need arises. This approach stands in contrast to common monolithic models in the literature. PROTEUS is free and open-source, which permits external scrutiny of its workings. It is directly based upon the model of Lichtenberg et al. (2021) [^cite-lichtenberg2021] although the code has evolved substantially from that state.
 
 ## Design philosophy
 
@@ -13,8 +13,8 @@ George Box famously put that "all models are wrong, but some are useful". PROTEU
 Although PROTEUS aims to treat the problem of *planetary* evolution, it must necessarily also handle external processes which act upon the planet (e.g. tidal heating). The framework therefore models the combined system of a planet, its orbital mechanics, and the evolution of its host star. The planet itself is conceptually sub-divided into a vaporised *atmosphere* component above an *interior* component containing a silicate mantle and metallic core. PROTEUS facilitates communication between individual software *modules* which each implement a model for a specific part of the overall system. Conceptually, PROTEUS modules (e.g. the interior) are 'slots' which are filled by specific implementations: the 'models' (e.g. Aragog).
 
 <figure markdown="span">
-<object type="image/svg+xml" data="../assets/proteus_modules_schematic.svg" class="arch-diagram arch-diagram--light"></object>
-<object type="image/svg+xml" data="../assets/proteus_modules_schematic_darkmode.svg" class="arch-diagram arch-diagram--dark"></object>
+<object type="image/svg+xml" data="../assets/proteus_modules_schematic.svg" class="mod-diagram mod-diagram--light" aria-label="PROTEUS module schematic (light mode)">PROTEUS module schematic (light mode)</object>
+<object type="image/svg+xml" data="../assets/proteus_modules_schematic_darkmode.svg" class="mod-diagram mod-diagram--dark" aria-label="PROTEUS module schematic (dark mode)">PROTEUS module schematic (dark mode)</object>
 <figcaption><b>Schematic of the PROTEUS modular architecture.</b>
 Radial domains (labelled boxes) are each handled by interchangeable
 modules; the star and orbit provide external forcing; arrows show the
@@ -47,6 +47,7 @@ atmosphere), enabling hierarchical model intercomparison.
 | Outgassing | [CALLIOPE](https://proteus-framework.org/CALLIOPE/), [atmodeller](https://github.com/djbower/atmodeller), dummy | Volatile exchange between interior and atmosphere |
 | Tides | [Obliqua](https://github.com/FormingWorlds/Obliqua), [Lovepy](https://github.com/nichollsh/LovePy), dummy | Tidal response of the planet (Love numbers, heating) |
 | Orbit | PROTEUS (internal) | Orbital evolution (semi-major axis, eccentricity, spin) |
+| Observations | [petitRADTRANS](https://petitradtrans.readthedocs.io/), none | Synthetic transit and eclipse spectra |
 
 Each module is maintained in its own repository and can be used as a standalone package outside of PROTEUS. The following sections describe each module's physical role and how PROTEUS couples to it.
 
@@ -56,7 +57,7 @@ Each module is maintained in its own repository and can be used as a standalone 
 
 [Zalmoxis](https://proteus-framework.org/Zalmoxis/) computes the hydrostatic equilibrium structure of a differentiated planet (metallic core + silicate mantle + volatile envelope). Given a total planet mass, bulk composition, and surface temperature, Zalmoxis integrates the equations of hydrostatic equilibrium inward from the surface using a tabulated equation of state (EOS), returning radial profiles of pressure, density, temperature, and gravitational acceleration. It also computes the core radius, mantle mass, and surface gravity.
 
-Zalmoxis supports several EOS backends, including the PALEOS unified tables and the Wolf & Bower (2018)[^cite-wolf2018] parameterisation. The structure solution is used by PROTEUS to initialise the planet's radius and to dynamically update the structure during the simulation when the interior thermal state changes (see [Structure-interior coupling](#structure-interior-coupling) below).
+Zalmoxis supports several EOS backends, including the PALEOS MgSiO$_3$ tables and the Wolf & Bower (2018) [^cite-wolf2018] parameterisation. The PALEOS mantle EOS comes in two forms: `PALEOS:MgSiO3` solves the structure on the unified table and derives the solidus from the liquidus with a fixed mushy-zone factor (the Stixrude 2014 solidus-to-liquidus ratio), while `PALEOS-2phase:MgSiO3` uses separate solid and liquid tables that set the phase boundaries directly. Both are detailed in the [interior configuration reference](../Reference/config/interior.md). The structure solution is used by PROTEUS to initialise the planet's radius and to dynamically update the structure during the simulation when the interior thermal state changes (see [Structure-interior coupling](#structure-interior-coupling) below).
 
 Config section: `[interior_struct]`. Reference: [Interior configuration](../Reference/config/interior.md).
 
@@ -66,7 +67,7 @@ The interior energetics module evolves the mantle temperature and melt fraction 
 
 **[Aragog](https://proteus-framework.org/aragog/)** (Python/JAX) solves the interior energy equation in the temperature-pressure (T-P) formulation. It discretises the mantle on a radial grid and advances the temperature profile using the SUNDIALS CVODE integrator with an analytic Jacobian computed via JAX automatic differentiation. Aragog handles the full mushy-zone (partial melt) regime, including phase-dependent material properties, radiogenic heating, tidal heating, and core cooling. It is the recommended interior module for most configurations.
 
-**[SPIDER](https://proteus-framework.org/SPIDER/)** (C) uses the temperature-entropy (T-S) formulation[^cite-bower2018]. It discretises the mantle on a staggered radial grid and solves the entropy equation using PETSc's implicit time integrator. SPIDER provides an independent cross-check on Aragog for the same physical problem formulated in a different thermodynamic variable. It requires PETSc and is an optional installation component.
+**[SPIDER](https://proteus-framework.org/SPIDER/)** (C) uses the temperature-entropy (T-S) formulation [^cite-bower2018]. It discretises the mantle on a staggered radial grid and solves the entropy equation using PETSc's implicit time integrator. SPIDER provides an independent cross-check on Aragog for the same physical problem formulated in a different thermodynamic variable. It requires PETSc and is an optional installation component.
 
 **Boundary** solves a simplified single-node energy balance ODE for the mantle surface temperature, treating the mantle as a single thermal reservoir with Arrhenius or aggregate viscosity. It is useful for rapid exploration of parameter space and for configurations where the full radial resolution of Aragog or SPIDER is not needed.
 
@@ -90,7 +91,7 @@ Config section: `[atmos_chem]`. Reference: [Atmosphere configuration](../Referen
 
 ## Stellar evolution: MORS
 
-**[MORS](https://proteus-framework.org/MORS/)** (Python) provides stellar evolutionary tracks and spectral energy distributions. It supports two track families: **Spada**[^cite-spada2013] (rotation-dependent tracks with activity-calibrated XUV luminosities, suitable for solar-type stars) and **Baraffe**[^cite-baraffe2015] (mass-luminosity tracks for low-mass stars). MORS interpolates the stellar mass, radius, effective temperature, bolometric luminosity, and XUV luminosity at any stellar age, and synthesises a wavelength-resolved spectrum by scaling a modern reference spectrum (observed MUSCLES data, solar NREL data, or a synthetic PHOENIX spectrum) to the historical luminosity.
+**[MORS](https://proteus-framework.org/MORS/)** (Python) provides stellar evolutionary tracks and spectral energy distributions. It supports two track families: **Spada** [^cite-spada2013] (rotation-dependent tracks with activity-calibrated XUV luminosities, suitable for solar-type stars) and **Baraffe** [^cite-baraffe2015] (mass-luminosity tracks for low-mass stars). MORS interpolates the stellar mass, radius, effective temperature, bolometric luminosity, and XUV luminosity at any stellar age, and synthesises a wavelength-resolved spectrum by scaling a modern reference spectrum (observed MUSCLES data, solar NREL data, or a synthetic PHOENIX spectrum) to the historical luminosity.
 
 Config section: `[star]`. Reference: [Star and orbit configuration](../Reference/config/star_orbit.md).
 
@@ -106,11 +107,88 @@ Config section: `[escape]`. Reference: [Escape and outgassing configuration](../
 
 The outgassing module computes the thermodynamic equilibrium partitioning of volatiles between the atmosphere, silicate melt, and solid mantle.
 
-**[CALLIOPE](https://proteus-framework.org/CALLIOPE/)** (Python) solves for the equilibrium partial pressures and dissolved volatile concentrations given the mantle temperature, melt fraction, and total element inventories for H, C, N, S, and O[^cite-bower2019]. It uses parameterised solubility laws and an fO2 buffer (configurable as an IW offset) to compute the redox state[^cite-nicholls2024]. CALLIOPE handles the full set of major volcanic gases (H$_2$O, CO$_2$, H$_2$, CO, N$_2$, SO$_2$, S$_2$, CH$_4$).
+**[CALLIOPE](https://proteus-framework.org/CALLIOPE/)** (Python) solves for the equilibrium partial pressures and dissolved volatile concentrations given the mantle temperature, melt fraction, and total element inventories for H, C, N, S, and O [^cite-bower2019]. It uses parameterised solubility laws and an fO2 buffer (configurable as an IW offset) to compute the redox state [^cite-nicholls2024]. CALLIOPE handles the full set of major volcanic gases (H$_2$O, CO$_2$, H$_2$, CO, N$_2$, SO$_2$, S$_2$, CH$_4$).
 
-**[atmodeller](https://github.com/djbower/atmodeller)** (Python/JAX) is an alternative outgassing backend that uses a real-gas equation of state and a more detailed thermochemical treatment[^cite-bower2025]. atmodeller provides an independent cross-check on CALLIOPE for the same volatile partitioning problem.
+**[atmodeller](https://github.com/djbower/atmodeller)** (Python/JAX) is an alternative outgassing backend that uses a real-gas equation of state and a more detailed thermochemical treatment [^cite-bower2025]. atmodeller provides an independent cross-check on CALLIOPE for the same volatile partitioning problem.
+
+**[LavAtmos](https://github.com/FormingWorlds/LavAtmos)** (Python) is an optional addition, enabled with `outgas.vapourise = true`, that computes the thermodynamic vapourisation equilibrium of the surface melt [^cite-vanbuchem2023] and adds the resulting rock-vapour species to the volatile outgassing [^cite-vanbuchem2025]. Vapourisation is a distinct process from outgassing. It uses the FastChem equilibrium chemistry solver and requires [ThermoEngineLite](https://github.com/FormingWorlds/ThermoEngineLite) for melt thermodynamics. 
 
 Config section: `[outgas]`. Reference: [Escape and outgassing configuration](../Reference/config/escape_outgas.md).
+
+### Volatile outgassing and rock vapourisation are combined
+
+With `outgas.vapourise = true` the following steps run sequentially, at each PROTEUS iteration:
+
+- The volatile outgassing backend runs first on its own
+- The vapourisation step then re-equilibrates the volatile atmosphere **together with** the rock vapour
+- Returns one combined composition
+
+```text
+ reset rock-vapour species and rock element reservoirs; M_vaps = 0
+                          |
+                          v
+ [1] run_outgassing  (CALLIOPE / atmodeller / dummy)
+     volatile equilibrium at fO2 = IW + outgas.fO2_shift_IW
+     -> <gas>_bar, <gas>_vmr, <gas>_kg_*, atm_kg_per_mol
+     -> P_surf = volatile total ;  P_vol = P_surf ;  P_vap = 0
+     -> M_atm  = sum over gases of <gas>_kg_atm
+     -> fO2_shift_IW_derived                       (volatile redox column)
+                          |
+          Phi_global < params.stop.solid.phi_crit ? ---- yes ---> stop here
+                          | no                                   (no vapour)
+                          v
+ [2] run_vapourisation  (LavAtmos + FastChem)
+     input  = melt at T = max(T_magma, outgas.lavatmos.T_min),
+              P_volatile = P_vol from [1],
+              element number fractions of: 
+              (H, C, N, S, O + noble gases, from <e>_kg_atm),
+              fO2 initial guess = 10 ** fO2_vapourise_derived (previous step)
+     output = FastChem boa_chem: total pressure Pbar, mean mass mu,
+              mixing ratios of ALL species
+                          |
+                          v
+ [3] combine, in this order:
+     P_vap  = max(Pbar - P_vol_from_[1], 0)        rock-vapour part
+     P_surf = Pbar                                 combined total
+     P_vol  = P_surf - P_vap                       volatile part (identity holds)
+     M_atm  = Pbar * 4*pi*R_int^2 / gravity        hydrostatic column
+     atm_kg_per_mol = mu                           combined MMW
+     per gas:      <gas>_bar    = vmr * Pbar
+                   <gas>_kg_atm = vmr * M_atm * W_gas / mu
+                   <gas>_kg_total = 0 for rock-vapour species (kept in M_vaps),
+                                    else atm + liquid + solid
+     per element:  <e>_kg_atm = frac_e * M_atm * W_e / mmw_elements
+                   O_kg_atm stays at the volatile-step
+                   value and the vapour-derived excess goes to O_vapourised_kg
+                   rock-forming elements accumulate into M_vaps
+     fO2_vapourise_derived          = log10( vmr_O2 * (P_vol + P_vap) )
+                                      absolute, log10 bar
+     fO2_vapourise_shift_IW_derived = fO2_vapourise_derived - IW(T_magma)
+                                      relative to the buffer, dex
+```
+
+Some notable consequences of step 3:
+
+- **Pressures add, compositions do not.** `P_surf = P_vol + P_vap`, with `P_vap` defined as the excess of the combined FastChem total. The per-gas and per-element amounts are taken from the combined equilibrium, not summed across the two steps since adding them would count the volatile inventory twice.
+
+- **The vapourisation step reports its redox state twice**, absolute and buffer-relative. The two must not be used interchangeably:
+
+    | Column | Meaning | Units |
+    |---|---|---|
+    | `fO2_vapourise_derived` | **Absolute** fO2 of the combined atmosphere: the FastChem O2 mixing ratio times the total pressure `P_vol + P_vap`. Zero means 1 bar of O2. | log$_{10}$ bar |
+    | `fO2_vapourise_shift_IW_derived` | **Relative** to the iron-wustite buffer at `T_magma`: `fO2_vapourise_derived - IW(T_magma)`. Zero means "exactly on the buffer", so it moves as `T_magma` evolves, even at fixed absolute fO2. | dex |
+
+    The absolute value is fed back to LavAtmos as the fO2 initial guess for the next iteration's LavAtmos call.
+
+- **The vapourisation fO2 is separate from the volatile-chemistry fO2.**  `fO2_shift_IW_derived` is the redox buffer offset obtained from the volatile step (e.g. CALLIOPE or atmodeller rather than by LavAtmos). It is not expected
+  to equal `fO2_vapourise_shift_IW_derived` since the two come from different solvers.
+
+### Whole-planet mass is not conserved when vapourisation is enabled
+
+- **Rock vapour is added to the atmosphere without being removed from the interior.** The vapourised rock mass is accumulated into `M_vaps` and enters `M_atm`, but no matching mass is subtracted from the interior: `M_int`, `M_mantle`.
+- **Rock-vapour elements dilute the escape outflow but are not depleted by it.**  Rock-forming elements take part in the unfractionated escape partitioning and reduce the escape rate available to H/C/N/O/S. This applies when `escape.reservoir = "outgas"`, where the partitioning weights are atmospheric masses. With `escape.reservoir = "bulk"` the rock-forming whole-planet totals are reset to zero on every outgassing step, so they carry no weight and do not dilute the outflow.
+
+`utils.coupler.assert_mass_conservation` therefore checks two things separately. `M_atm <= M_planet` is enforced under `outgas.vapourise = false`. `M_vol_atm` equals the sum of the per-species atmospheric masses; rock vapour is excluded from `M_vol_atm` by definition.
 
 ## Tidal evolution: Obliqua, Lovepy
 
@@ -124,6 +202,33 @@ Config section: `[outgas]`. Reference: [Escape and outgassing configuration](../
 
 Config section: `[orbit]`. Reference: [Star and orbit configuration](../Reference/config/star_orbit.md).
 
+## Synthetic observations: petitRADTRANS
+
+**[petitRADTRANS](https://petitradtrans.readthedocs.io/)** (Python) is a radiative transfer code for computing exoplanet transmission and emission spectra. PROTEUS uses petitRADTRANS as a forward model to synthesise what an observer would measure given the simulated atmospheric state.
+
+For each active composition source PROTEUS runs two calculations:
+
+- **Transit depth**: wavelength-dependent $(R_\mathrm{transit}/R_\star)^2$ in ppm, computed from the atmospheric scale height via `Radtrans.calculate_transit_radii`.
+- **Eclipse depth**: wavelength-dependent thermal emission contrast $(F_\mathrm{planet}/F_\star)$ in ppm, computed via `Radtrans.calculate_flux`.
+
+After computing the full-atmosphere baseline spectrum, PROTEUS can optionally
+repeat the calculation once per included line species with that species
+removed. This leave-one-out procedure quantifies the spectral contribution of
+each gas and produces additional columns in the output CSV files.
+
+The active source set is configured by `observe.source` (`all`, `outgas`,
+`profile`, `offchem`). Leave-one-out spectra are controlled by
+`observe.remove_one_gas`.
+Whether transit, eclipse, or both products are generated is controlled by
+`observe.spectrum_type`.
+
+The atmosphere profile is interpolated onto a 100-point log-spaced pressure grid before being passed to petitRADTRANS, and temperature is clipped to the valid table range \[100.5 K, 3999.5 K\].
+
+Before constructing the `Radtrans` object, PROTEUS moves the species with the
+broadest opacity wavelength coverage to the front of the line-species list.
+
+Config section: `[observe]`. Reference: [Observations configuration](../Reference/config/observe.md).
+
 ## Dummy modules
 
 Every module slot has a **dummy** implementation for testing, debugging, and
@@ -135,7 +240,7 @@ architecture and for quick parameter exploration.
 
 | Module | Dummy behaviour |
 |--------|----------------|
-| Structure | Noack & Lasbleis (2020)[^cite-noack2020] analytical scaling laws for interior radius, density, and gravity as a function of planet mass and iron content |
+| Structure | Noack & Lasbleis (2020) [^cite-noack2020] analytical scaling laws for interior radius, density, and gravity as a function of planet mass and iron content |
 | Interior energetics | Heat-capacity integrator with prescribed solidus/liquidus; cooling driven by atmospheric flux |
 | Atmosphere climate | Grey-body model: $F_\mathrm{OLR} = \sigma [T_\mathrm{surf}(1-\gamma)]^4$. Optionally a fixed-flux mode |
 | Atmosphere chemistry | Parameterised vertical profiles with cold trap and approximate photolysis products |
@@ -173,23 +278,28 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
 - [Coupling loop](coupling_loop.md): how the modules exchange data at each timestep
 - [Code architecture](code_architecture.md): source code layout and module patterns
 - [Configuration reference](../Reference/config/params.md): all configuration parameters
+- [Observations configuration](../Reference/config/observe.md): synthetic spectrum options
 - [Tutorials](../Tutorials/quick_start_dummy.md): worked examples from dummy to production
 - [Bibliography](../Reference/bibliography.md): published references for PROTEUS and its modules
 
-[^cite-lichtenberg2021]: Lichtenberg, T., Bower, D.J., Hammond, M., et al., *[Vertically resolved magma ocean-protoatmosphere evolution: H2, H2O, CO2, CH4, CO, O2, and N2 as primary absorbers](https://doi.org/10.1029/2020JE006711)*, Journal of Geophysical Research: Planets, 126, e2020JE006711, 2021. [SciX](https://scixplorer.org/abs/2021JGRE..12606711L/abstract).
+ [^cite-lichtenberg2021]: Lichtenberg, T., Bower, D.J., Hammond, M., et al., *[Vertically resolved magma ocean-protoatmosphere evolution: H2, H2O, CO2, CH4, CO, O2, and N2 as primary absorbers](https://doi.org/10.1029/2020JE006711)*, Journal of Geophysical Research: Planets, 126, e2020JE006711, 2021. [SciX](https://scixplorer.org/abs/2021JGRE..12606711L/abstract).
 
-[^cite-wolf2018]: Wolf, A.S. & Bower, D.J., *[An equation of state for high pressure-temperature liquids (RTpress) with application to MgSiO3 melt](https://doi.org/10.1016/j.pepi.2018.02.004)*, Physics of the Earth and Planetary Interiors, 278, 59-74, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..278...59W/abstract).
+ [^cite-wolf2018]: Wolf, A.S. & Bower, D.J., *[An equation of state for high pressure-temperature liquids (RTpress) with application to MgSiO3 melt](https://doi.org/10.1016/j.pepi.2018.02.004)*, Physics of the Earth and Planetary Interiors, 278, 59-74, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..278...59W/abstract).
 
-[^cite-bower2018]: Bower, D.J., Sanan, P. & Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
+ [^cite-bower2018]: Bower, D.J., Sanan, P. & Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
 
-[^cite-bower2019]: Bower, D.J., Kitzmann, D., Wolf, A.S., et al., *[Linking the evolution of terrestrial interiors and an early outgassed atmosphere to astrophysical observations](https://doi.org/10.1051/0004-6361/201935710)*, Astronomy & Astrophysics, 631, A103, 2019. [SciX](https://scixplorer.org/abs/2019A%26A...631A.103B/abstract).
+ [^cite-bower2019]: Bower, D.J., Kitzmann, D., Wolf, A.S., et al., *[Linking the evolution of terrestrial interiors and an early outgassed atmosphere to astrophysical observations](https://doi.org/10.1051/0004-6361/201935710)*, Astronomy & Astrophysics, 631, A103, 2019. [SciX](https://scixplorer.org/abs/2019A%26A...631A.103B/abstract).
 
-[^cite-bower2025]: Bower, D.J., Thompson, M.A., Hakim, K., et al., *[Diversity of low-mass planet atmospheres in the C-H-O-N-S-Cl system](https://doi.org/10.3847/1538-4357/ae1479)*, The Astrophysical Journal, 995, 59, 2025. [SciX](https://scixplorer.org/abs/2025ApJ...995...59B/abstract).
+ [^cite-bower2025]: Bower, D.J., Thompson, M.A., Hakim, K., et al., *[Diversity of low-mass planet atmospheres in the C-H-O-N-S-Cl system](https://doi.org/10.3847/1538-4357/ae1479)*, The Astrophysical Journal, 995, 59, 2025. [SciX](https://scixplorer.org/abs/2025ApJ...995...59B/abstract).
 
-[^cite-nicholls2024]: Nicholls, H., Lichtenberg, T., Bower, D.J. & Pierrehumbert, R., *[Magma ocean evolution at arbitrary redox state](https://doi.org/10.1029/2024JE008576)*, Journal of Geophysical Research: Planets, 129, e2024JE008576, 2024. [SciX](https://scixplorer.org/abs/2024JGRE..12908576N/abstract).
+ [^cite-nicholls2024]: Nicholls, H., Lichtenberg, T., Bower, D.J. & Pierrehumbert, R., *[Magma ocean evolution at arbitrary redox state](https://doi.org/10.1029/2024JE008576)*, Journal of Geophysical Research: Planets, 129, e2024JE008576, 2024. [SciX](https://scixplorer.org/abs/2024JGRE..12908576N/abstract).
 
-[^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).
+ [^cite-vanbuchem2023]: van Buchem, C.P.A., Miguel, Y., Zilinskas, M. & van Westrenen, W., *[LavAtmos: An open-source chemical equilibrium vaporization code for lava worlds](https://doi.org/10.1111/maps.13994)*, Meteoritics & Planetary Science, 58, 1149-1161, 2023.
 
-[^cite-baraffe2015]: Baraffe, I., Homeier, D., Allard, F. & Chabrier, G., *[New evolutionary models for pre-main sequence and main sequence low-mass stars down to the hydrogen-burning limit](https://doi.org/10.1051/0004-6361/201425481)*, Astronomy & Astrophysics, 577, A42, 2015. [SciX](https://scixplorer.org/abs/2015A%26A...577A..42B/abstract).
+ [^cite-vanbuchem2025]: van Buchem, C.P.A., Zilinskas, M., Miguel, Y. & van Westrenen, W., *[LavAtmos 2.0: Incorporating volatile species in vaporisation models](https://doi.org/10.1051/0004-6361/202450992)*, Astronomy & Astrophysics, 695, A154, 2025. 
 
-[^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).
+ [^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).
+
+ [^cite-baraffe2015]: Baraffe, I., Homeier, D., Allard, F. & Chabrier, G., *[New evolutionary models for pre-main sequence and main sequence low-mass stars down to the hydrogen-burning limit](https://doi.org/10.1051/0004-6361/201425481)*, Astronomy & Astrophysics, 577, A42, 2015. [SciX](https://scixplorer.org/abs/2015A%26A...577A..42B/abstract).
+
+ [^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).

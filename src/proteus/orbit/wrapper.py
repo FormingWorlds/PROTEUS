@@ -30,8 +30,8 @@ def init_orbit(handler: Proteus):
     """
     Initialise orbit and tides stuff.
     """
-    module = str(handler.config.orbit.module)
-    if module == 'None':
+    module = handler.config.orbit.module
+    if module is None:
         return
 
     log.info(f"Preparing tides model '{module}'")
@@ -42,8 +42,9 @@ def init_orbit(handler: Proteus):
         from proteus.orbit.lovepy import import_lovepy
 
         import_lovepy()
-    elif module == "obliqua":
+    elif module == 'obliqua':
         from proteus.orbit.obliqua import import_obliqua
+
         import_obliqua()
 
 
@@ -195,7 +196,9 @@ def update_breakup_period(hf_row: dict):
     hf_row['breakup_period'] = 2 * np.pi / np.sqrt(const_G * Mpl / (Rpl**3))
 
 
-def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interior_o: Interior_t):
+def run_orbit(
+    hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interior_o: Interior_t
+):
     """Update parameters relating to orbital evolution and tides.
 
     Parameters
@@ -221,7 +224,9 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
     if current_time <= 1:
         hf_row['M_sat'] = config.orbit.satellite.mass_sat * M_earth  # [kg]
         hf_row['R_sat'] = config.orbit.satellite.radius_sat * R_earth  # [m]
-        hf_row['C_sat'] = config.orbit.satellite.c_factor_sat * hf_row['M_sat'] * hf_row['R_sat']**2
+        hf_row['C_sat'] = (
+            config.orbit.satellite.c_factor_sat * hf_row['M_sat'] * hf_row['R_sat'] ** 2
+        )
 
         # Set independent orbital parameters from config.
         hf_row['semimajorax'] = config.orbit.semimajoraxis * AU
@@ -253,6 +258,10 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
             # set by user with float, use that
             hf_row['axial_period'] = float(config.orbit.axial_period) * secs_per_hour
 
+        # Set longitude and latitude of the column to zero, for now
+        hf_row['longitude'] = 0.0
+        hf_row['latitude'] = 0.0
+
         # Update satellite orbital period (dependent)
         update_period_sat(hf_row)
 
@@ -262,18 +271,22 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
             hf_row['axial_period_sat'] = hf_row['orbital_period_sat']
         else:
             # set by user with float, use that
-            hf_row['axial_period_sat'] = float(config.orbit.satellite.axial_period_sat) * secs_per_hour
+            hf_row['axial_period_sat'] = (
+                float(config.orbit.satellite.axial_period_sat) * secs_per_hour
+            )
 
         # initialize the Hansen coefficient table
-        if config.orbit.planet_satellite_model in ["ps1d", "ps1d_evec"]:
+        if config.orbit.planet_satellite_model in ['ps1d', 'ps1d_evec']:
             from proteus.orbit.common import init_hansen_table, init_k_range_table
 
             init_k_range_table()
 
-            e_grid_wide = np.concatenate([
-                np.arange(0.0, 0.1, 0.002),
-                np.arange(0.1, 0.9, 0.003),
-            ])
+            e_grid_wide = np.concatenate(
+                [
+                    np.arange(0.0, 0.1, 0.002),
+                    np.arange(0.1, 0.9, 0.003),
+                ]
+            )
             init_hansen_table(e_grid_wide)
             # potentially needs to rerun after resuming a simulation
 
@@ -290,7 +303,9 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
             if config.orbit.instellation_method == 'inst' and config.star.module == 'dummy':
                 from proteus.star.dummy import calc_star_luminosity, get_star_radius
 
-                Lbol = calc_star_luminosity(config.star.dummy.Teff, get_star_radius(config) * R_sun)
+                Lbol = calc_star_luminosity(
+                    config.star.dummy.Teff, get_star_radius(config) * R_sun
+                )
                 S_earth = L_sun / (4 * np.pi * AU * AU)
                 S_0 = config.orbit.instellationflux * S_earth
 
@@ -309,6 +324,13 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
         # Update satellite orbital period, from independent variables above
         update_period_sat(hf_row)
 
+    # Mean motion of the star-planet system (used by ps1d_evec's evection
+    # forcing term, and recorded here so it appears in the helpfile output
+    # rather than only living inside that solver's own internal params dict).
+    hf_row['n_star'] = np.sqrt(
+        const_G * (hf_row['M_star'] + hf_row['M_planet']) / hf_row['semimajorax'] ** 3
+    )
+
     # Inform user
     log.info('    Orb SMaxis = %.5f AU    (Planet)' % (hf_row['semimajorax'] / AU))
     log.info('    Orb eccent = %.5f       (Planet)' % (hf_row['eccentricity']))
@@ -320,8 +342,14 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
     if config.orbit.satellite.include_satellite:
         log.info('    Orb SMaxis = %.5f AU    (Satellite)' % (hf_row['semimajorax_sat'] / AU))
         log.info('    Orb eccent = %.5f       (Satellite)' % (hf_row['eccentricity_sat']))
-        log.info('    Orb period = %.5f days  (Satellite)' % (hf_row['orbital_period_sat'] / secs_per_day))
-        log.info('    Orb spin   = %.5f days  (Satellite)' % (hf_row['axial_period_sat'] / secs_per_day))
+        log.info(
+            '    Orb period = %.5f days  (Satellite)'
+            % (hf_row['orbital_period_sat'] / secs_per_day)
+        )
+        log.info(
+            '    Orb spin   = %.5f days  (Satellite)'
+            % (hf_row['axial_period_sat'] / secs_per_day)
+        )
 
         log.info('    Orb AM     = %.3e kg.m^2/s' % (hf_row['plan_sat_am']))
 
@@ -378,7 +406,7 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
         if config.orbit.obliqua.n == [2]:
             hf_row['Imk2'] = Imk
         else:
-            hf_row["Imk2"] = 0.0
+            hf_row['Imk2'] = 0.0
         # Since Obliqua returns the frequency dependent Love number for arbitrary
         # degree (n), we set Imk2 to either the mean value (if n=2) or 0.0 to
         # avoid confusion with other degrees (Imk3, Imk4, etc.). Note, the user
@@ -397,10 +425,9 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interi
         log.info('    Pla H_tide = %.1e W kg-1 (mean) ' % np.mean(interior_o.tides))
         log.info('    Pla Im(k2) = %.1e ' % hf_row['Imk2'])
 
-
     # If satellite orbital evolution is enabled, then extract the satellite love number from
     # the provided lookup file
-    if config.orbit.planet_satellite_model in ["ps1d", "ps1d_evec"]:
+    if config.orbit.planet_satellite_model in ['ps1d', 'ps1d_evec']:
         from proteus.orbit.obliqua import LN_from_lookup
 
         log.info('    Extracting Love number from satellite lookup table')

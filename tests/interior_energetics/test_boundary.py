@@ -17,8 +17,8 @@ magma ocean states to solid interiors.
   - Rayleigh numbers: 10^6-10^10 (sub-critical to hyper-turbulent convection)
 
 **Test Infrastructure**:
-  See `docs/How-to/test_infrastructure.md`, `test_categorization.md`,
-  and `test_building.md` for full testing framework documentation.
+  See `docs/How-to/testing.md` and `docs/Explanations/test_framework.md` for full testing
+  framework documentation.
 
 **Coverage**:
   - Viscosity models: constant, aggregate, Arrhenius
@@ -1777,8 +1777,10 @@ def test_boundary_runner_init_invalid_core_frac_mode_raises_value_error(
     Error contract: the message must name both valid modes and reproduce the
     offending value so users can diagnose config mistakes without reading source.
 
-    Edge: the error branch is only reachable when R_core is absent from hf_row
-    (the happy-path shortcut at line 93 would otherwise bypass the mode check).
+    Edge: the error branch is only reachable when R_core is absent from hf_row.
+    A supplied CMB radius short-circuits the mode check, so the same invalid
+    mode must construct in that case; this pairs the raise with the condition
+    that makes it reachable.
     """
     hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
     mock_config.interior_struct.core_frac_mode = 'volume'  # neither 'radius' nor 'mass'
@@ -1794,6 +1796,23 @@ def test_boundary_runner_init_invalid_core_frac_mode_raises_value_error(
                 mock_atmos,
             )
 
+    # With R_core present the mode is never consulted: the same invalid 'volume'
+    # constructs and the CMB radius is taken from the row. This is what makes
+    # the raise above attributable to the missing R_core rather than to the
+    # config value alone. The row carries a Zalmoxis-style CMB radius at 0.42
+    # R_int, away from the config's core_frac of 0.55, so the radius pins that
+    # the value came from the row and not from the core_frac * R_int formula;
+    # at 0.55 the two paths would agree bit-for-bit and prove nothing. This
+    # path never consults M_core, so the row's core mass and this radius are
+    # not meant to imply a core density.
+    hf_row_zalmoxis_core = {**mock_hf_row, 'R_core': 0.42 * mock_hf_row['R_int']}
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        runner = BoundaryRunner(
+            mock_config, mock_dirs, hf_row_zalmoxis_core, mock_hf_all, mock_interior, mock_atmos
+        )
+    assert runner.core_radius == pytest.approx(0.42 * mock_hf_row['R_int'])
+    assert runner.core_frac == pytest.approx(0.42)
+
 
 def test_boundary_runner_init_invalid_core_frac_mode_message_includes_bad_value(
     mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
@@ -1801,13 +1820,28 @@ def test_boundary_runner_init_invalid_core_frac_mode_message_includes_bad_value(
     """The ValueError raised for an invalid core_frac_mode must include the
     offending value so the user can identify the misconfigured field.
 
-    Edge: tests a different invalid value ('fraction') to confirm the error
-    message is populated from the config value, not hard-coded.
+    The message is built from the config value rather than hard-coded: two
+    different invalid values each quote themselves. A message that quoted one
+    fixed example value would satisfy only one of the two matches, and would
+    send the other user looking for a field they never set.
     """
     hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
     mock_config.interior_struct.core_frac_mode = 'fraction'
 
     with pytest.raises(ValueError, match=r"got 'fraction'"):
+        with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+            BoundaryRunner(
+                mock_config,
+                mock_dirs,
+                hf_row_no_r_core,
+                mock_hf_all,
+                mock_interior,
+                mock_atmos,
+            )
+
+    # A different invalid value quotes itself, so the message tracks the config.
+    mock_config.interior_struct.core_frac_mode = 'volume'
+    with pytest.raises(ValueError, match=r"got 'volume'"):
         with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
             BoundaryRunner(
                 mock_config,

@@ -11,7 +11,6 @@ import multiprocessing
 import os
 import shutil
 import subprocess
-import sys
 import time
 from copy import deepcopy
 from datetime import datetime
@@ -22,63 +21,11 @@ import toml
 
 from proteus.config import Config, read_config_object
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
+from proteus.utils.logs import setup_logger
 
 PROTEUS_DIR = get_proteus_dir()
 
 log = logging.getLogger('fwl.' + __name__)
-
-
-# Custom logger instance
-def setup_logger(logpath: str = 'new.log', level=1, logterm=True):
-    # https://stackoverflow.com/a/61457119
-
-    custom_logger = logging.getLogger()
-    custom_logger.handlers.clear()
-
-    if os.path.exists(logpath):
-        os.remove(logpath)
-
-    fmt = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-
-    level_code = logging.INFO
-    match level:
-        case 0:
-            level_code = logging.DEBUG
-        case 2:
-            level_code = logging.WARNING
-        case 3:
-            level_code = logging.ERROR
-        case 4:
-            level_code = logging.CRITICAL
-
-    # Add terminal output to logger
-    if logterm:
-        sh = logging.StreamHandler(sys.stdout)
-        sh.setFormatter(fmt)
-        sh.setLevel(level_code)
-        custom_logger.addHandler(sh)
-
-    # Add file output to logger
-    fh = logging.FileHandler(logpath)
-    fh.setFormatter(fmt)
-    fh.setLevel(level)
-    custom_logger.addHandler(fh)
-    custom_logger.setLevel(level_code)
-
-    # Capture unhandled exceptions
-    # https://stackoverflow.com/a/16993115
-    def handle_exception(exc_type, exc_value, exc_traceback):
-        if issubclass(exc_type, KeyboardInterrupt):
-            custom_logger.error('KeyboardInterrupt')
-            sys.__excepthook__(exc_type, exc_value, exc_traceback)
-            return
-        custom_logger.critical(
-            'Uncaught exception', exc_info=(exc_type, exc_value, exc_traceback)
-        )
-
-    sys.excepthook = handle_exception
-
-    return
 
 
 # Thread target
@@ -170,8 +117,15 @@ class Grid:
         # Make copy of REFERENCE config file
         shutil.copyfile(self.conf, os.path.join(self.outdir, 'ref_config.toml'))
 
-        # Setup logging
-        setup_logger(logpath=os.path.join(self.outdir, 'manager.log'), logterm=True, level=1)
+        # Setup logging. Keep the plain timestamped layout the grid manager has
+        # always written to manager.log, via the shared setup_logger.
+        setup_logger(
+            logpath=os.path.join(self.outdir, 'manager.log'),
+            logterm=True,
+            level='INFO',
+            fmt='[%(asctime)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+        )
 
         log.info("Grid '%s' initialised empty" % self.name)
 
@@ -529,7 +483,12 @@ class Grid:
         )
 
     def slurm_config(
-        self, max_jobs: int, test_run: bool = False, max_days: int = 1, max_mem: int = 12
+        self,
+        max_jobs: int,
+        test_run: bool = False,
+        max_days: int = 1,
+        max_mem: int = 12,
+        jax_cache: bool = False,
     ):
         """Write slurm config file.
 
@@ -546,6 +505,13 @@ class Grid:
             Maximum number of days to run
         max_mem : int
             Maximum memory per CPU in GB
+        jax_cache : bool
+            If true, the generated script enables a bounded JAX persistent
+            compilation cache shared across the array tasks (stored under the
+            grid output directory) so compiled executables are reused and JIT
+            recompiles are cut. An LRU size bound caps the cache so it cannot
+            fill the filesystem. Default false: no cache environment variables
+            are written and the script behaves exactly as before.
         """
 
         max_days = int(max_days)  # ensure integer
@@ -570,6 +536,22 @@ class Grid:
 
         log_file = os.path.join(self.logdir, 'proteus-%A_%a.log')
 
+        # Optional bounded JAX persistent compilation cache. The size bound uses
+        # JAX's own LRU eviction so the cache plateaus instead of growing without
+        # limit; the min-compile-time and min-entry-size thresholds keep trivial
+        # compilations out of it. Disabled by default so the generated script is
+        # unchanged unless the cache is explicitly requested.
+        if jax_cache:
+            jax_cache_dir = os.path.join(self.outdir, 'jax_cache')
+            jax_env = (
+                f'export JAX_COMPILATION_CACHE_DIR={jax_cache_dir}\n'
+                'export JAX_COMPILATION_CACHE_MAX_SIZE=85899345920\n'
+                'export JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=1\n'
+                'export JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES=4096\n'
+            )
+        else:
+            jax_env = ''
+
         string = f"""#!/bin/sh
 #SBATCH -J proteus.grid.array
 #SBATCH --export=ALL
@@ -579,7 +561,7 @@ class Grid:
 #SBATCH -o {log_file}
 #SBATCH --array=0-{self.size - 1}%{max_jobs}
 
-i=$SLURM_ARRAY_TASK_ID
+{jax_env}i=$SLURM_ARRAY_TASK_ID
 
 while [ $i -lt {self.size} ]; do
     printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}.toml" $((i))
@@ -644,6 +626,10 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     max_days = int(config['max_days'])  # maximum number of days to run (e.g. 1)
     max_mem = int(config['max_mem'])  # maximum memory per CPU in GB (e.g. 3)
 
+    # Optional bounded JAX persistent compilation cache (Slurm runs only).
+    # Absent or false leaves the generated script cache-free.
+    jax_cache = bool(config.get('jax_cache', False))
+
     # Base config file
     cfg_base = os.path.join(PROTEUS_DIR, str(config['ref_config']))
 
@@ -697,7 +683,13 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     # Run the grid
     if use_slurm:
         # Generate Slurm batch file, use `sbatch` to submit
-        pg.slurm_config(max_jobs, test_run=test_run, max_days=max_days, max_mem=max_mem)
+        pg.slurm_config(
+            max_jobs,
+            test_run=test_run,
+            max_days=max_days,
+            max_mem=max_mem,
+            jax_cache=jax_cache,
+        )
     else:
         # Alternatively, let grid_proteus.py manage the jobs
         pg.run(max_jobs, test_run=test_run, check_interval=check_interval)

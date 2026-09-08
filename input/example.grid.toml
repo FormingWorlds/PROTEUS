@@ -31,6 +31,15 @@ max_jobs = 10       # max concurrent tasks (e.g. 500 on Habrok)
 max_days = 1        # max walltime [days]
 max_mem  = 12       # max memory per CPU [GB]
 
+# Shared JAX compilation cache for Slurm array jobs. When true, each job
+# script exports JAX_COMPILATION_CACHE_DIR (a jax_cache/ subdirectory of the
+# grid output), so array tasks reuse each other's compiled kernels instead of
+# recompiling per task. The cache is bounded at 80 GiB
+# (JAX_COMPILATION_CACHE_MAX_SIZE) with a 1 s minimum compile time and a 4 KiB
+# minimum entry size. This only affects Slurm dispatch; a local grid run
+# (use_slurm = false) spawns subprocesses without these exports.
+jax_cache = false
+
 # -------------------------------------------------------
 # Grid axes
 # -------------------------------------------------------

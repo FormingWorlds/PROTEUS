@@ -6,10 +6,10 @@ This module tests the shared utility functions used by all atmosphere-climate mo
 - Robust NetCDF data ingestion (reading profiles, handling flags)
 - Physical state conversions (pressure <-> radius)
 - Configuration helpers (spectral file paths)
-- Interpolation of lookup tables (Albedo)
 
 See also:
-- docs/test_infrastructure.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -20,7 +20,8 @@ import numpy as np
 import pytest
 
 from proteus.atmos_clim.common import (
-    Albedo_t,
+    clip_radius_to_hill,
+    find_latest_atmosphere_time,
     get_oarr_from_parr,
     get_radius_from_pressure,
     get_spfile_name_and_bands,
@@ -53,9 +54,25 @@ def test_ncdf_flag_to_bool():
     assert ncdf_flag_to_bool(n) is False
     assert ncdf_flag_to_bool(N) is False
 
-    # Ensure it fails safely on invalid input
-    with pytest.raises(ValueError):
-        ncdf_flag_to_bool(np.array([b'x'], dtype='S1'))
+
+@pytest.mark.unit
+def test_ncdf_flag_to_bool_logs_and_returns_none_on_invalid_input(caplog):
+    """An unparseable flag byte must fail safely, not raise.
+
+    Contract clause: a malformed NetCDF flag is reported via the logger and
+    the caller decides the fallback (see `read_ncdf_profile`, which treats a
+    `None` return as `False`), rather than aborting the whole profile read.
+
+    Discrimination guard: a regression that silently swallowed the bad input
+    and returned e.g. `False` (indistinguishable from a legitimate 'n') would
+    still pass a bare `is None` check on its own, but not alongside the error
+    log assertion below, which pins the caller-visible signal too.
+    """
+    with caplog.at_level('ERROR', logger='fwl.proteus.atmos_clim.common'):
+        result = ncdf_flag_to_bool(np.array([b'x'], dtype='S1'))
+
+    assert result is None
+    assert any('Could not parse' in rec.message for rec in caplog.records)
 
 
 @pytest.mark.unit
@@ -85,6 +102,7 @@ def test_read_ncdf_profile(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -108,6 +126,7 @@ def test_read_ncdf_profile(mock_ds, mock_isfile):
     assert result['p'][1] == pytest.approx(100.0, rel=1e-12)  # first element of p
     assert result['p'][2] == pytest.approx(90.0, rel=1e-12)  # second element of pl
     assert result['t'][1] == pytest.approx(300.0, rel=1e-12)  # Temperature
+    assert result['g'] == pytest.approx(np.array([9.8, 9.8, 9.8]), rel=1e-12)
 
     # The function converts all outputs to float arrays, even booleans
     assert result['transparent'] == pytest.approx(1.0, rel=1e-12)
@@ -140,6 +159,7 @@ def test_read_ncdf_profile_without_combining_edges(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0, 80.0]),
         'pl': np.array([110.0, 90.0, 70.0]),
+        'gravity': np.array([9.8, 9.6]),
         'tmp': np.array([500.0, 450.0]),
         'tmpl': np.array([520.0, 470.0, 430.0]),
         'z': np.array([1.0e4, 2.0e4]),
@@ -152,6 +172,7 @@ def test_read_ncdf_profile_without_combining_edges(mock_ds, mock_isfile):
 
     np.testing.assert_allclose(result['p'], np.array([100.0, 80.0]))
     np.testing.assert_allclose(result['pl'], np.array([110.0, 90.0, 70.0]))
+    np.testing.assert_allclose(result['g'], np.array([9.8, 9.6]))
     np.testing.assert_allclose(result['t'], np.array([500.0, 450.0]))
     np.testing.assert_allclose(result['tmpl'], np.array([520.0, 470.0, 430.0]))
 
@@ -184,6 +205,7 @@ def test_read_ncdf_profile_with_aerosols(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -274,6 +296,7 @@ def test_read_ncdf_profile_gases_list(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -320,6 +343,7 @@ def test_read_ncdf_profile_aerosols_list_only(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -365,6 +389,7 @@ def test_read_ncdf_profile_no_aerosols_in_file(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -403,6 +428,7 @@ def test_read_ncdf_profile_with_clouds(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0, 200.0]),
         'pl': np.array([110.0, 150.0, 190.0]),
+        'gravity': np.array([9.8, 9.7]),
         'tmp': np.array([300.0, 280.0]),
         'tmpl': np.array([310.0, 290.0, 270.0]),
         'r': np.array([6.4e6, 6.3e6]),
@@ -425,6 +451,92 @@ def test_read_ncdf_profile_with_clouds(mock_ds, mock_isfile):
     np.testing.assert_allclose(result['cloud_mmr'], np.array([1e-5, 2e-5]))
     np.testing.assert_allclose(result['cloud_area'], np.array([0.5, 0.8]))
     np.testing.assert_allclose(result['cloud_size'], np.array([1e-5, 1.2e-5]))
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_missing_gravity_falls_back_to_zeros(mock_ds, mock_isfile, caplog):
+    """A NetCDF file with no `gravity` variable must not abort the read.
+
+    Contract clause: an older or hand-built NetCDF file may predate the
+    `gravity` output field. Reading it must fail safely (log + zero-filled
+    fallback) rather than raising `KeyError`, so a single malformed archive
+    does not stop a batch read of many profiles.
+
+    Discrimination guard: the zero fallback is checked against every level,
+    not just the first, so a regression that only zeroed `g[0]` would still
+    be caught.
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    ds_instance.variables = {
+        'p': np.array([100.0, 200.0]),
+        'pl': np.array([110.0, 150.0, 190.0]),
+        # 'gravity' deliberately absent.
+        'tmp': np.array([300.0, 280.0]),
+        'tmpl': np.array([310.0, 290.0, 270.0]),
+        'r': np.array([6.4e6, 6.3e6]),
+        'rl': np.array([6.5e6, 6.35e6, 6.2e6]),
+        'planet_radius': [6.0e6],
+    }
+
+    with caplog.at_level('ERROR', logger='fwl.proteus.atmos_clim.common'):
+        result = read_ncdf_profile('dummy.nc', combine_edges=False)
+
+    assert any('gravity' in rec.message for rec in caplog.records)
+    # Every level is zero, not just the first (rules out a partial fallback).
+    np.testing.assert_array_equal(result['g'], np.zeros(2))
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_invalid_flag_falls_back_to_false(mock_ds, mock_isfile, caplog):
+    """An unparseable metadata flag in the file must read back as False.
+
+    Contract clause: `ncdf_flag_to_bool` now returns `None` (logged, not
+    raised) on a byte it cannot parse; `read_ncdf_profile` must catch that
+    `None` and coerce it to `False` rather than propagating a non-boolean
+    value into the profile dict.
+
+    Discrimination guard: the two untouched flags ('solved', 'converged',
+    absent from this file) still take the plain "not found" default of
+    False, so a regression that defaulted every flag to False regardless of
+    the parse result would not be distinguishable without also asserting the
+    error was actually logged for the malformed one.
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    ds_instance.variables = {
+        'p': np.array([100.0]),
+        'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
+        'tmp': np.array([300.0]),
+        'tmpl': np.array([310.0, 290.0]),
+        'r': np.array([6.4e6]),
+        'rl': np.array([6.3e6, 6.5e6]),
+        'planet_radius': [6.0e6],
+        # Malformed byte: neither 'y' nor 'n'.
+        'transparent': np.array([b'x'], dtype='S1'),
+    }
+
+    with caplog.at_level('ERROR', logger='fwl.proteus.atmos_clim.common'):
+        result = read_ncdf_profile('dummy.nc')
+
+    # Every value is coerced to a float array at the end of the read, so the
+    # fallback surfaces as 0.0 rather than the Python singleton `False`.
+    assert float(result['transparent']) == pytest.approx(0.0)
+    assert any('Could not parse' in rec.message for rec in caplog.records)
+    # Untouched flags still take the plain "not found" default.
+    assert float(result['solved']) == pytest.approx(0.0)
+    assert float(result['converged']) == pytest.approx(0.0)
 
 
 @pytest.mark.unit
@@ -514,48 +626,9 @@ def test_spfile_helpers():
     assert path == '/fwl/data/spectral_files/Dayspring/16/Dayspring.sf'
 
 
-@pytest.mark.unit
-@patch('proteus.atmos_clim.common.pd.read_csv')
-@patch('proteus.atmos_clim.common.os.path.isfile')
-def test_albedo_t(mock_isfile, mock_read_csv):
-    """
-    Test Albedo_t lookup table class.
-
-    Verifies:
-    1. CSV reading logic (mocked).
-    2. Interpolation of albedo vs temperature.
-    3. Clamping behavior outside the data range.
-    """
-    mock_isfile.return_value = True
-
-    # Mock DataFrame response
-    # mock_df = MagicMock() - Responding to ruff F841
-    # mimic dict access data['tmp']
-    data_dict = {'tmp': np.array([100.0, 300.0, 1000.0]), 'albedo': np.array([0.5, 0.3, 0.1])}
-    mock_read_csv.return_value = data_dict
-
-    # Initialize class
-    alb = Albedo_t('dummy.csv')
-    assert alb.ok
-
-    # Test evaluation (interpolation)
-    # At 100K -> 0.5 (exact)
-    assert alb.evaluate(100.0) == pytest.approx(0.5)
-    # At 1000K -> 0.1 (exact)
-    assert alb.evaluate(1000.0) == pytest.approx(0.1)
-    # At 300K -> 0.3 (exact)
-    assert alb.evaluate(300.0) == pytest.approx(0.3)
-
-    # Test clamping behavior (physics safety check)
-    # Below min temp -> stay at min albedo val (0.5), don't extrapolate
-    assert alb.evaluate(50.0) == pytest.approx(0.5)
-    # Above max temp -> stay at max albedo val (0.1)
-    assert alb.evaluate(2000.0) == pytest.approx(0.1)
-
-
 # ---------------------------------------------------------------------------
 # Coverage for previously-untested error branches: missing NetCDF file,
-# archived-data warning, Albedo_t init failures, evaluate fall-through.
+# archived-data warning.
 # ---------------------------------------------------------------------------
 
 
@@ -609,123 +682,99 @@ def test_read_atmosphere_data_returns_none_when_any_profile_missing(
     assert any('extract archived data' in m for m in messages)
 
 
-def test_albedo_t_logs_error_and_does_not_load_when_file_missing(caplog, tmp_path):
-    """Albedo_t must fail gracefully when the CSV does not exist:
-    log an error and leave self.ok == False so the later evaluate()
-    can report it.
+def test_find_latest_atmosphere_time_returns_max(tmp_path):
+    """The latest snapshot is the maximum parsed time, not the first globbed
+    or the file count.
 
-    Edge: limit-input case for a misconfigured albedo path.
-    Discriminating: pin both the unset state AND the error log.
+    Files are created out of chronological order and with a count (3) that
+    differs from every time key, so a regression returning the glob-order
+    first element, the minimum, or len(files) would all disagree with the
+    correct maximum (5000).
     """
-    import logging
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (999, 5000, 100):
+        (data / f'{t}_atm.nc').write_text('x')
+    # An unrelated file must be ignored by the *_atm.nc glob.
+    (data / '5000.sflux').write_text('x')
 
-    from proteus.atmos_clim.common import Albedo_t
-
-    missing = str(tmp_path / 'no_such_albedo.csv')
-    with caplog.at_level(logging.ERROR, logger='fwl.proteus.atmos_clim.common'):
-        alb = Albedo_t(missing)
-    assert alb.ok is False
-    assert alb._interp is None
-    assert any('Could not find file' in rec.message for rec in caplog.records)
+    latest = find_latest_atmosphere_time(str(tmp_path))
+    assert latest == pytest.approx(5000.0, rel=1e-12)
+    # Discrimination: not the count of files, not the minimum.
+    assert latest != pytest.approx(3.0)
+    assert latest != pytest.approx(100.0)
 
 
-def test_albedo_t_logs_error_when_csv_parse_fails(caplog, tmp_path, monkeypatch):
-    """When pd.read_csv raises (corrupt CSV), Albedo_t logs an error
-    and leaves self.ok == False, _data == None.
+def test_find_latest_atmosphere_time_empty_returns_none(tmp_path):
+    """With no atmosphere NetCDF files the helper returns None rather than
+    raising, so callers can degrade gracefully.
 
-    Discriminating: a regression that flipped only self.ok or only
-    _data would fail one of these two assertions.
+    The data directory contains a non-matching file to confirm the glob is
+    specific to the ``*_atm.nc`` pattern.
     """
-    import logging
+    data = tmp_path / 'data'
+    data.mkdir()
+    (data / '1000.sflux').write_text('x')
 
-    from proteus.atmos_clim import common
-    from proteus.atmos_clim.common import Albedo_t
-
-    csvfile = tmp_path / 'corrupt.csv'
-    csvfile.write_text('garbage,not,csv,data\n!!!\n')
-
-    def _raise(*_a, **_k):
-        raise ValueError('parser exploded')
-
-    monkeypatch.setattr(common.pd, 'read_csv', _raise)
-    with caplog.at_level(logging.ERROR, logger='fwl.proteus.atmos_clim.common'):
-        alb = Albedo_t(str(csvfile))
-    assert alb.ok is False
-    assert alb._data is None
-    assert any('Could not parse lookup data' in rec.message for rec in caplog.records)
+    assert find_latest_atmosphere_time(str(tmp_path)) is None
+    # Also handles a missing data directory without raising.
+    assert find_latest_atmosphere_time(str(tmp_path / 'nonexistent')) is None
 
 
-def test_albedo_t_logs_error_when_required_keys_absent(caplog, tmp_path):
-    """A well-formed CSV that lacks the required columns ('tmp',
-    'albedo') must fail validation and leave the object unloaded.
-
-    Discriminating: pin the specific missing-key name ('tmp', the
-    first required column the source iterates) so a regression that
-    only validated 'albedo' would fail here.
-    """
-    import logging
-
-    from proteus.atmos_clim.common import Albedo_t
-
-    csvfile = tmp_path / 'wrong_keys.csv'
-    csvfile.write_text('foo,bar\n1.0,2.0\n3.0,4.0\n')
-    with caplog.at_level(logging.ERROR, logger='fwl.proteus.atmos_clim.common'):
-        alb = Albedo_t(str(csvfile))
-    assert alb.ok is False
-    assert alb._interp is None
-    messages = [r.message for r in caplog.records]
-    assert any("required key 'tmp'" in m for m in messages)
+# ---------------------------------------------------------------------------
+# clip_radius_to_hill: the XUV level never sizes escape beyond the Hill radius
+# ---------------------------------------------------------------------------
 
 
-def test_albedo_t_evaluate_returns_none_when_data_not_loaded(caplog, tmp_path):
-    """evaluate() short-circuits and returns None when the
-    constructor failed to load data (self.ok == False).
+def _clip_config(enabled: bool = True, frac: float = 1.0):
+    """Escape-config namespace carrying only what the clip reads."""
+    from types import SimpleNamespace
 
-    Discriminating: a regression that proceeded to call self._interp
-    while None would raise AttributeError. Pin the clean-None return.
-    """
-    import logging
-
-    from proteus.atmos_clim.common import Albedo_t
-
-    alb = Albedo_t(str(tmp_path / 'absent.csv'))
-    assert alb.ok is False
-    with caplog.at_level(logging.ERROR, logger='fwl.proteus.atmos_clim.common'):
-        result = alb.evaluate(1500.0)
-    assert result is None
-    assert any('Cannot evaluate bond albedo' in rec.message for rec in caplog.records)
+    return SimpleNamespace(escape=SimpleNamespace(hill_clamp=enabled, hill_clamp_frac=frac))
 
 
 @pytest.mark.physics_invariant
-def test_albedo_t_evaluate_clamps_out_of_range_interpolation_with_warning(caplog, tmp_path):
-    """If the underlying interpolator returns a value outside [0, 1]
-    (which can happen with non-PCHIP extrapolations or buggy custom
-    fits), evaluate must clamp to the physical range AND log a
-    warning so the user knows the lookup table has issues.
+def test_clip_radius_to_hill_bounds_the_radius():
+    """A radius beyond the Hill radius comes back at frac * R_Hill, and one
+    inside comes back untouched, so the escape cross-section is bounded.
 
-    Edge: an out-of-range raw value forced by overriding the
-    interpolator on a loaded instance.
-
-    Discriminating: pin the clamped value AND the warning AND the
-    in-range invariants. A regression that dropped the clamp would
-    let the raw 1.5 flow into F_asf and break the radiative
-    energy balance downstream.
+    The energy-limited rate goes as the radius cubed: the unclipped input at
+    6x the Hill radius would inflate the rate 216-fold, so the discriminating
+    check is that the clipped output removes that factor entirely.
     """
-    import logging
+    hf_row = {'hill_radius': 1.0e8, 'R_int': 6.4e6}
 
-    from proteus.atmos_clim.common import Albedo_t
+    clipped = clip_radius_to_hill(_clip_config(), hf_row, 6.0e8)
+    assert clipped == pytest.approx(1.0e8, rel=1e-12)
+    assert (6.0e8 / clipped) ** 3 == pytest.approx(216.0, rel=1e-9)
 
-    csvfile = tmp_path / 'albedo.csv'
-    csvfile.write_text('tmp,albedo\n100.0,0.1\n2000.0,0.9\n')
-    alb = Albedo_t(str(csvfile))
-    assert alb.ok is True
+    inside = clip_radius_to_hill(_clip_config(), hf_row, 7.0e7)
+    assert inside == pytest.approx(7.0e7, rel=1e-12)
 
-    # Force out-of-range interpolation: a constant 1.5 lands above
-    # the physical ceiling.
-    alb._interp = lambda _t: 1.5
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.common'):
-        clamped = alb.evaluate(1500.0)
-    assert clamped == pytest.approx(1.0, rel=1e-12)
-    # Physics-invariant boundedness: albedo always in [0, 1].
-    assert 0.0 <= clamped <= 1.0
-    assert any('out of range' in rec.message for rec in caplog.records)
+    # The fraction scales the limit, not the radius.
+    half = clip_radius_to_hill(_clip_config(frac=0.5), hf_row, 6.0e8)
+    assert half == pytest.approx(5.0e7, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_clip_radius_to_hill_never_goes_below_the_solid_body():
+    """The limit floors at R_int: the solid body is bound by definition, so a
+    Hill radius inside the planet must not shrink the level below the surface.
+    """
+    hf_row = {'hill_radius': 3.0e6, 'R_int': 6.4e6}  # Hill inside the planet
+    clipped = clip_radius_to_hill(_clip_config(), hf_row, 1.0e7)
+    assert clipped == pytest.approx(6.4e6, rel=1e-12)
+    # Discrimination: the naive frac * R_Hill limit is a factor 2.1 smaller.
+    assert clipped != pytest.approx(3.0e6, rel=1e-1)
+
+
+def test_clip_radius_to_hill_skips_when_disabled_or_unset():
+    """Disabled config or a Hill radius that is zero (before the first orbit
+    update) or non-finite leaves the radius untouched rather than clipping
+    against a value that does not exist.
+    """
+    r = 6.0e8
+    assert clip_radius_to_hill(_clip_config(enabled=False), {'hill_radius': 1.0e8}, r) == r
+    assert clip_radius_to_hill(_clip_config(), {'hill_radius': 0.0}, r) == r
+    assert clip_radius_to_hill(_clip_config(), {'hill_radius': float('nan')}, r) == r
+    assert clip_radius_to_hill(_clip_config(), {}, r) == r

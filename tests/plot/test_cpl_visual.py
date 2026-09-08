@@ -6,9 +6,8 @@ These plots depend on how the planet RT is calculated, and how the atmosphere st
 is represented in the NetCDF files.
 
 Testing standards:
-  - docs/test_infrastructure.md
-  - docs/test_categorization.md
-  - docs/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

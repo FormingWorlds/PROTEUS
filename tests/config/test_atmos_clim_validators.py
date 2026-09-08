@@ -271,7 +271,7 @@ def test_valid_agni_rejects_mixed_layer_surf_state():
 
 
 # ============================================================================
-# AtmosClim properties: surf_state_int and albedo_from_file
+# AtmosClim properties: surf_state_int
 # ============================================================================
 
 
@@ -289,17 +289,3 @@ def test_surf_state_int_maps_skin_and_rejects_unknown():
     # silent default integer.
     with pytest.raises(ValueError, match='surf_state'):
         AtmosClim.surf_state_int.fget(SimpleNamespace(surf_state='mixed_layer'))
-
-
-@pytest.mark.unit
-def test_albedo_from_file_distinguishes_str_and_float():
-    """`albedo_from_file` is True for a lookup-table path (str), False for a
-    fixed float, and raises for anything else."""
-    from proteus.config._atmos_clim import AtmosClim
-
-    assert AtmosClim.albedo_from_file.fget(SimpleNamespace(albedo_pl='table.csv')) is True
-    # Discrimination: a float albedo is a fixed value, not a file.
-    assert AtmosClim.albedo_from_file.fget(SimpleNamespace(albedo_pl=0.3)) is False
-    # Error contract: a type that is neither str nor float is rejected.
-    with pytest.raises(ValueError, match='albedo_pl'):
-        AtmosClim.albedo_from_file.fget(SimpleNamespace(albedo_pl=None))

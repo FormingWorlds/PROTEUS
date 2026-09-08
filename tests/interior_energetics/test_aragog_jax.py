@@ -22,9 +22,8 @@ the dispatch code is exercised without paying the diffrax compile or
 running into the v1-v5 failure modes.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -60,7 +59,8 @@ def _make_config(*, heat_radiogenic: bool = False, heat_tidal: bool = False):
     config.interior_energetics.eddy_diffusivity_chemical = 0.1
     config.interior_energetics.kappah_floor = 1e-6
     config.interior_energetics.spider.matprop_smooth_width = 0.02
-    config.interior_energetics.aragog.phase_smoothing = True
+    config.interior_energetics.aragog.phase_smoothing = 'tanh'
+    config.interior_energetics.aragog.separation_viscosity = 'mixture'
     config.interior_energetics.aragog.atol_temperature_equivalent = 1.0
     config.interior_energetics.rtol = 1e-4
     config.interior_energetics.heat_radiogenic = heat_radiogenic
@@ -134,6 +134,49 @@ def test_build_jax_components_raises_when_spider_eos_dir_missing(tmp_path):
         interior_o = _make_interior_o(spider_eos_dir=bad_eos_dir)
         with pytest.raises(FileNotFoundError, match=r'(?i)PALEOS|tables not found'):
             AragogJAXRunner(config, {'output': str(tmp_path)}, {}, None, interior_o)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('separation_viscosity', 'expected_mixture_flag'),
+    [('mixture', 1.0), ('melt', 0.0)],
+)
+def test_build_jax_components_forwards_separation_viscosity(
+    tmp_path, separation_viscosity, expected_mixture_flag
+):
+    """``_build_jax_components`` forwards ``separation_viscosity`` from the
+    PROTEUS config to the JAX ``PhaseParams``.
+
+    Contract from ``aragog_jax.py`` (``_build_jax_components``): the
+    ``PhaseParams`` construction must pass ``separation_viscosity`` through
+    from ``config.interior_energetics.aragog.separation_viscosity``, so the
+    JAX solver honours the same setting as the numpy solver instead of
+    silently falling back to the aragog library default (``'melt'``, which
+    differs from the PROTEUS schema default ``'mixture'``).
+
+    Discrimination: a regression that drops the kwarg falls back to the
+    library default ``'melt'`` regardless of the config value, so the
+    ``'mixture'`` case (``expected_mixture_flag=1.0``) fails while the
+    ``'melt'`` case passes by coincidence. Parametrizing over both values
+    catches a dropped kwarg either way.
+    """
+    config = _make_config()
+    config.interior_energetics.aragog.separation_viscosity = separation_viscosity
+    interior_o = _make_interior_o(spider_eos_dir=str(tmp_path))
+
+    with (
+        patch('aragog.jax.eos.EntropyEOS_JAX', return_value=MagicMock()),
+        patch.object(AragogJAXRunner, '_build_mesh_arrays', return_value=MagicMock()),
+    ):
+        AragogJAXRunner(config, {'output': str(tmp_path)}, {}, None, interior_o)
+
+    assert interior_o._jax_params.separation_viscosity_mixture == pytest.approx(
+        expected_mixture_flag
+    ), (
+        f'separation_viscosity={separation_viscosity!r} produced '
+        f'separation_viscosity_mixture={interior_o._jax_params.separation_viscosity_mixture}, '
+        f'expected {expected_mixture_flag}'
+    )
 
 
 @pytest.mark.unit

@@ -13,7 +13,7 @@ functions for module version checking and system diagnostics.
 - Version validation and system information
 
 All tests use mocked external dependencies (file I/O, subprocess calls) to ensure
-fast execution (target: <100ms per test). See docs/test_building.md for test
+fast execution (target: <100ms per test). See docs/How-to/testing.md for test
 infrastructure guidelines.
 
 Fixtures from conftest.py:
@@ -23,28 +23,50 @@ Fixtures from conftest.py:
 
 from __future__ import annotations
 
+import json
 import math
 import os
+import sys
 import tempfile
+import types
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
-from proteus.utils.constants import element_list
+import proteus.utils.coupler as coupler_mod
+from proteus.utils.constants import element_list, vol_list
 from proteus.utils.coupler import (
+    _DRIFT_REPORT_LIMIT,
+    _POSTPROCESSING_FIXED_KEYS,
     CreateHelpfileFromDict,
     CreateLockFile,
     ExtendHelpfile,
     GetHelpfileKeys,
+    GetPostprocessingKeys,
+    HelpfileRow,
+    HelpfileSchemaDriftError,
     PrintCurrentState,
     ReadHelpfileFromCSV,
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
+    _atm_snapshot_names,
+    _describe_missing_columns,
     _get_current_time,
+    _interior_snapshot_names,
+    _netcdf_readable,
     _populate_energy_residual,
+    _snapshot_readable,
     get_proteus_directories,
+    print_citation,
+    print_module_configuration,
+    remove_excess_files,
+    select_profile_plot_times,
+    select_resumable_snapshot,
+    set_directories,
+    variable_is_logarithmic,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -85,6 +107,11 @@ def test_get_helpfile_keys_contains_required_keys():
     assert 'F_int' in keys
     assert 'F_atm' in keys
     assert 'F_net' in keys
+
+    # Stellar fluxes
+    assert 'bol_scale' in keys
+    assert 'F_ins' in keys
+    assert 'F_xuv' in keys
 
 
 @pytest.mark.unit
@@ -279,7 +306,7 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     import logging
 
     row = ZeroHelpfileRow()
-    row['_structure_stale'] = True  # private transient key: must not warn
+    row['_T_magma_raw'] = 3000.0  # private transient key: must not warn
     row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
     row['nonsense_future_key'] = 1.0  # genuine drift: must warn
     hf = CreateHelpfileFromDict(ZeroHelpfileRow())
@@ -290,7 +317,7 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
     joined = '\n'.join(r.message for r in warns)
     assert 'nonsense_future_key' in joined, f'Expected unknown-key warning, got: {joined!r}'
-    assert '_structure_stale' not in joined, 'Private key leaked into warning'
+    assert '_T_magma_raw' not in joined, 'Private key leaked into warning'
     assert 'core_state_initial' not in joined, 'Allowlisted key triggered warning'
 
 
@@ -410,6 +437,65 @@ def test_write_and_read_helpfile_roundtrip():
 
 
 @pytest.mark.unit
+def test_write_helpfile_preserves_prior_file_on_failed_write():
+    """A crash or full disk mid-write must not destroy the existing helpfile.
+
+    The atomic write serialises to a temporary file and renames it into
+    place, so a failed serialisation leaves the previous complete file
+    untouched and a later resume can still read a full row history. A
+    direct remove-then-write would have left the helpfile missing, which
+    is the empty-CSV state that blocks resume.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row1 = ZeroHelpfileRow()
+        row1['Time'] = 111.0
+        row1['T_surf'] = 301.0
+        WriteHelpfileToCSV(tmpdir, CreateHelpfileFromDict(row1))
+
+        fpath = os.path.join(tmpdir, 'runtime_helpfile.csv')
+        with open(fpath) as fh:
+            before = fh.read()
+
+        # Simulate a disk-full / killed process during the next write.
+        row2 = ZeroHelpfileRow()
+        row2['Time'] = 222.0
+        hf2 = CreateHelpfileFromDict(row2)
+        with patch.object(
+            pd.DataFrame,
+            'to_csv',
+            side_effect=OSError('[Errno 28] No space left on device'),
+        ):
+            with pytest.raises(OSError):
+                WriteHelpfileToCSV(tmpdir, hf2)
+
+        # The prior complete file survives byte-for-byte, and no temp
+        # artefact is left behind.
+        assert os.path.exists(fpath)
+        with open(fpath) as fh:
+            assert fh.read() == before
+        assert not os.path.exists(fpath + '.tmp')
+
+        # Discrimination guard: the surviving file is the v1 row (Time=111),
+        # not the failed v2 row (Time=222) and not an empty file.
+        df = pd.read_csv(fpath, sep=r'\s+')
+        assert len(df) == 1
+        assert df['Time'].iloc[0] == pytest.approx(111.0)
+
+
+@pytest.mark.unit
+def test_write_helpfile_leaves_no_temp_file_on_success():
+    """A successful atomic write leaves only the final CSV, no .tmp artefact."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        row['Time'] = 5.0
+        WriteHelpfileToCSV(tmpdir, CreateHelpfileFromDict(row))
+
+        entries = os.listdir(tmpdir)
+        assert 'runtime_helpfile.csv' in entries
+        assert not any(e.endswith('.tmp') for e in entries)
+
+
+@pytest.mark.unit
 def test_read_helpfile_from_csv_missing_file():
     """Test that ReadHelpfileFromCSV raises error for missing file."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -447,6 +533,384 @@ def test_write_helpfile_multiple_rows_roundtrip():
         assert len(hf_read) == 5
         assert hf_read['Time'].iloc[-1] == pytest.approx(4.0e7)
         assert hf_read['T_surf'].iloc[-1] == pytest.approx(340.0)
+
+
+# =============================================================================
+# Test: Helpfile Schema Drift
+# =============================================================================
+
+
+def _write_drifted_helpfile(tmpdir: str, dropped: list[str], n_rows: int = 3) -> None:
+    """Write a helpfile carrying every schema column except ``dropped``.
+
+    Stands in for a run whose CSV was written before those columns joined
+    the output schema. Every written column gets a distinct positive value,
+    so an assertion about what survived is not satisfied by zeros.
+    """
+    keys = [k for k in GetHelpfileKeys() if k not in set(dropped)]
+    row = {k: float(i + 1) for i, k in enumerate(keys)}
+    pd.DataFrame([row] * n_rows, columns=keys, dtype=float).to_csv(
+        os.path.join(tmpdir, 'runtime_helpfile.csv'),
+        index=False,
+        sep='\t',
+        float_format='%.10e',
+    )
+
+
+@pytest.mark.unit
+def test_read_helpfile_refuses_a_file_that_predates_schema_columns():
+    """A helpfile short of schema columns is refused, not completed.
+
+    An older run holds no value for a column added since. The refusal names
+    the columns and the file, which is what a user needs in order to decide
+    what to do with the run.
+    """
+    dropped = ['M_atm', 'eccentricity', 'solver_residual_J']
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, dropped)
+
+        with pytest.raises(HelpfileSchemaDriftError) as excinfo:
+            ReadHelpfileFromCSV(tmpdir)
+
+        message = str(excinfo.value)
+        for col in dropped:
+            assert col in message
+        assert 'runtime_helpfile.csv' in message
+        assert 't=0' in message
+
+        # Discrimination: a column the file does carry must not be named, or
+        # the message is reciting the schema instead of the shortfall.
+        assert 'T_surf' not in message
+
+        # The refusal reads only. A regression that rewrote or truncated the
+        # file would cost the user the run it just declined to resume.
+        recovered = pd.read_csv(os.path.join(tmpdir, 'runtime_helpfile.csv'), sep=r'\s+')
+        assert len(recovered) == 3
+        assert not set(dropped) & set(recovered.columns)
+
+
+@pytest.mark.unit
+def test_absent_columns_are_never_seeded_into_the_returned_table():
+    """The loader hands back what the file holds, never a fabricated value.
+
+    Modules decide what to do by testing whether a key is present at all:
+    CALLIOPE refuses a run whose oxygen budget is absent, the dummy and
+    boundary interiors fall back to a configured core size, and the
+    atmosphere lower boundary moves to the solvus only when a solvus radius
+    exists. Seeding an absent column would satisfy every one of those tests
+    and pass a zero to the solver behind it.
+    """
+    guarded = ['O_kg_total', 'M_int', 'M_core', 'R_core', 'R_solvus', 'T_solvus', 'P_solvus']
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, guarded)
+
+        # No table is returned at all, so no consumer can read a seeded key.
+        with pytest.raises(HelpfileSchemaDriftError):
+            ReadHelpfileFromCSV(tmpdir)
+
+        # Discrimination: with the same columns present the load succeeds and
+        # their values are exactly what the file holds, so the refusal above
+        # is caused by absence and not by the column names themselves.
+        _write_drifted_helpfile(tmpdir, [])
+        hf = ReadHelpfileFromCSV(tmpdir)
+        for col in guarded:
+            assert hf[col].iloc[-1] > 0.0
+        assert set(GetHelpfileKeys()) <= set(hf.columns)
+
+
+@pytest.mark.unit
+def test_describe_missing_columns_truncates_beyond_the_limit():
+    """Long column lists are truncated with the full count kept visible.
+
+    A run from many schema additions ago can be short hundreds of columns.
+    The summary stays readable while still reporting how many are absent, so
+    truncation never hides the scale of the drift.
+    """
+    names = ['col_%02d' % i for i in range(_DRIFT_REPORT_LIMIT + 8)]
+    rendered = _describe_missing_columns(names)
+
+    for col in names[:_DRIFT_REPORT_LIMIT]:
+        assert col in rendered
+    assert names[_DRIFT_REPORT_LIMIT] not in rendered
+    assert '(+8 more)' in rendered
+
+    # Edge case: a list exactly at the limit is shown whole, with no
+    # remainder marker claiming columns that are already listed.
+    exact = _describe_missing_columns(names[:_DRIFT_REPORT_LIMIT])
+    assert 'more)' not in exact
+    assert exact.count(', ') == _DRIFT_REPORT_LIMIT - 1
+
+    # Edge case: a single column renders as a bare name.
+    assert _describe_missing_columns(['only_one']) == 'only_one'
+
+
+@pytest.mark.unit
+def test_helpfile_drift_message_states_the_full_column_count():
+    """The refusal reports how many columns are absent, not just the listed ones."""
+    dropped = sorted(GetHelpfileKeys())[: _DRIFT_REPORT_LIMIT + 8]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, dropped)
+
+        with pytest.raises(HelpfileSchemaDriftError) as excinfo:
+            ReadHelpfileFromCSV(tmpdir)
+
+        message = str(excinfo.value)
+        assert 'before %d column(s)' % len(dropped) in message
+        assert '(+8 more)' in message
+        # Discrimination: the count is the true shortfall, so a message that
+        # counted only the listed names would fail here.
+        assert str(_DRIFT_REPORT_LIMIT) + ' column(s)' not in message
+
+
+@pytest.mark.unit
+def test_refusal_precedes_the_key_gap_it_exists_to_prevent():
+    """The load stops before the row gap reaches the first completed iteration.
+
+    Resume seeds its working row from the last line of the table, so a file
+    predating a schema addition hands every later consumer a row short of
+    those keys. Catching it at the load turns a failure one iteration deep
+    into a refusal that names the cause.
+    """
+    dropped = ['M_atm', 'eccentricity', 'runtime']
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, dropped)
+
+        with pytest.raises(HelpfileSchemaDriftError):
+            ReadHelpfileFromCSV(tmpdir)
+
+        # What the run would have hit instead, one iteration later: the same
+        # three columns, reported as a key gap with no cause attached.
+        raw = pd.read_csv(os.path.join(tmpdir, 'runtime_helpfile.csv'), sep=r'\s+')
+        with pytest.raises(Exception, match='missing expected keys') as excinfo:
+            ExtendHelpfile(raw, raw.iloc[-1].to_dict())
+        for col in dropped:
+            assert col in str(excinfo.value)
+
+
+@pytest.mark.unit
+def test_read_helpfile_with_the_current_schema_is_unchanged(caplog):
+    """A current-schema helpfile loads untouched and says nothing.
+
+    The check must be inert when there is nothing to report, so an ordinary
+    resume neither warns nor alters the table it read.
+    """
+    import logging
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        row['Time'] = 3.0e6
+        row['T_surf'] = 1450.0
+        WriteHelpfileToCSV(tmpdir, CreateHelpfileFromDict(row))
+
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
+            hf = ReadHelpfileFromCSV(tmpdir)
+
+        assert list(hf.columns) == list(GetHelpfileKeys())
+        assert hf['T_surf'].iloc[0] == pytest.approx(1450.0)
+        assert len(hf) == 1
+
+        joined = '\n'.join(r.getMessage() for r in caplog.records)
+        assert 'schema' not in joined
+
+
+# =============================================================================
+# Test: Postprocessing Column Requirement
+# =============================================================================
+
+
+@pytest.mark.unit
+def test_helpfile_row_reports_an_absent_column_it_is_asked_for():
+    """A column outside the postprocessing set still reports itself when read.
+
+    The set of columns postprocessing needs is enumerated by hand, so it can
+    fall behind the code it describes. The row itself carries the report, so
+    a read the list did not anticipate says what is wrong instead of raising
+    a bare KeyError from inside a synthesis routine.
+    """
+    source = '/run/output/runtime_helpfile.csv'
+    row = HelpfileRow({'T_surf': 1450.0, 'R_int': 6.371e6}, source)
+
+    assert row['T_surf'] == pytest.approx(1450.0)
+
+    with pytest.raises(HelpfileSchemaDriftError) as excinfo:
+        row['R_xuv']
+    message = str(excinfo.value)
+    assert 'R_xuv' in message
+    assert source in message
+    # Discrimination: the report names the column asked for, not a column
+    # that happens to be present.
+    assert 'T_surf' not in message
+
+
+@pytest.mark.unit
+def test_helpfile_row_leaves_the_tolerant_reads_alone():
+    """Code that already handles an absent column keeps working unchanged.
+
+    Several postprocessing reads test membership or pass a default precisely
+    because a column may be absent. Reporting those as a shortfall would
+    turn a handled case into a refusal.
+    """
+    row = HelpfileRow({'H2O_vmr': 0.4}, '/run/output/runtime_helpfile.csv')
+
+    assert 'CO2_vmr' not in row
+    assert row.get('CO2_vmr', 0.0) == pytest.approx(0.0)
+    assert row.get('H2O_vmr', 0.0) == pytest.approx(0.4)
+    # Discrimination: membership is false rather than raising, which is what
+    # `if key in hf_row` in the synthesis code depends on.
+    assert 'H2O_vmr' in row
+
+
+@pytest.mark.unit
+def test_helpfile_row_survives_copying_but_not_rebuilding():
+    """Pin which ways of duplicating the row keep the report and which lose it.
+
+    The class docstring tells a reader that rebuilding the row as a plain
+    dict drops the report while copying it does not. That distinction is not
+    obvious from the code, so it is pinned here rather than left as a claim.
+    """
+    import copy
+
+    row = HelpfileRow({'T_surf': 1450.0}, '/run/output/runtime_helpfile.csv')
+
+    for label, kept in (
+        ('copy.copy', copy.copy(row)),
+        ('copy.deepcopy', copy.deepcopy(row)),
+    ):
+        assert isinstance(kept, HelpfileRow), label
+        assert kept.source == row.source, label
+        with pytest.raises(HelpfileSchemaDriftError, match='R_xuv'):
+            kept['R_xuv']
+
+    for label, rebuilt in (
+        ('dict()', dict(row)),
+        ('unpacking', {**row}),
+        ('dict.copy', row.copy()),
+    ):
+        assert not isinstance(rebuilt, HelpfileRow), label
+        # Discrimination: the values survive, so what is lost is the report
+        # and not the data. A plain KeyError is what a reader is warned about.
+        assert rebuilt['T_surf'] == pytest.approx(1450.0), label
+        with pytest.raises(KeyError):
+            rebuilt['R_xuv']
+
+
+@pytest.mark.unit
+def test_helpfile_row_reports_through_any_reference_to_it():
+    """The report follows the row, not the name it is read through.
+
+    A read reached after the row is assigned to a local, stored on an
+    object, or put in a container is the same object, so the column is
+    reported wherever the read happens.
+    """
+    source = '/run/output/runtime_helpfile.csv'
+    row = HelpfileRow({'T_surf': 1450.0}, source)
+
+    local = row
+    holder = types.SimpleNamespace(hf_row=row)
+    container = {'row': row}
+
+    for label, reference in (
+        ('local', local),
+        ('attribute', holder.hf_row),
+        ('container', container['row']),
+    ):
+        with pytest.raises(HelpfileSchemaDriftError, match='P_solvus'):
+            reference['P_solvus']
+        assert reference['T_surf'] == pytest.approx(1450.0), label
+
+
+@pytest.mark.unit
+def test_postprocessing_keys_are_a_strict_subset_of_the_schema():
+    """The postprocessing set is drawn from the schema and is smaller than it.
+
+    A key outside the schema could never be satisfied by any helpfile, and a
+    set equal to the schema would be the blanket check it exists to replace.
+    """
+    schema = set(GetHelpfileKeys())
+    keys = GetPostprocessingKeys()
+
+    assert set(keys) < schema
+    assert len(keys) == len(set(keys)), 'duplicate entries would over-report a shortfall'
+    # The set is fixed rather than config-derived, so two calls agree and no
+    # run can be refused for a requirement another run would not have had.
+    assert GetPostprocessingKeys() == keys
+
+
+@pytest.mark.unit
+def test_postprocessing_ignores_a_column_it_never_reads():
+    """A run short of a column postprocessing does not read still loads.
+
+    This is the whole point of the narrower set: a diagnostic added after an
+    archived run finished must not stop that run being postprocessed.
+    """
+    unread = 'struct_mass_desync_frac'
+    assert unread in GetHelpfileKeys()
+    assert unread not in GetPostprocessingKeys()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, [unread])
+
+        hf = ReadHelpfileFromCSV(tmpdir, required_columns=GetPostprocessingKeys())
+        assert len(hf) == 3
+        assert set(GetPostprocessingKeys()) <= set(hf.columns)
+
+        # Discrimination: the same file is refused for a resume, so the two
+        # requirements are genuinely different and not both wide open.
+        with pytest.raises(HelpfileSchemaDriftError, match=unread):
+            ReadHelpfileFromCSV(tmpdir)
+
+
+@pytest.mark.unit
+def test_postprocessing_set_does_not_lose_a_key():
+    """No column drops out of the postprocessing requirement unnoticed.
+
+    The requirement is written by hand from the reads in ``observe/`` and
+    ``atmos_chem/``. Naming the members again here does not prove the list is
+    complete, since both are written by the same reading; it catches a member
+    being dropped, which would move that column's report from the load, which
+    happens before the run archive is unpacked, into a synthesis routine.
+    """
+    required = set(GetPostprocessingKeys())
+    named = {
+        'Time',
+        'T_surf',
+        'P_surf',
+        'R_int',
+        'gravity',
+        'atm_kg_per_mol',
+        'R_star',
+        'T_star',
+        'separation',
+    }
+    assert named <= required, 'dropped from the requirement: %s' % sorted(named - required)
+
+    # The two computed reads expand over fixed lists, so every member counts.
+    assert {e + '_kg_atm' for e in element_list} <= required
+    assert {g + '_vmr' for g in vol_list} <= required
+
+    # Discrimination: the requirement is not simply the whole schema, so the
+    # assertions above are not satisfied by a set that covers everything.
+    assert 'struct_mass_desync_frac' not in required
+
+
+@pytest.mark.unit
+def test_postprocessing_still_refuses_a_column_it_does_read():
+    """A run short of a column postprocessing indexes is refused.
+
+    The narrower requirement is not a way of proceeding regardless: a key
+    the synthesis code reads without a fallback still has to be there.
+    """
+    probes = list(_POSTPROCESSING_FIXED_KEYS) + ['H2O_vmr', 'O_kg_atm']
+    assert len(probes) == 11, 'expected every fixed key plus one of each expansion'
+    for needed in probes:
+        assert needed in GetPostprocessingKeys()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _write_drifted_helpfile(tmpdir, [needed])
+            with pytest.raises(HelpfileSchemaDriftError, match=needed) as excinfo:
+                ReadHelpfileFromCSV(tmpdir, required_columns=GetPostprocessingKeys())
+            # Discrimination: exactly the absent column is reported, not the
+            # whole requirement, so the count reflects the real shortfall.
+            assert 'before 1 column(s)' in str(excinfo.value)
 
 
 # =============================================================================
@@ -578,6 +1042,75 @@ def test_print_current_state_includes_temperatures():
         log_calls = [str(call) for call in mock_log.info.call_args_list]
         assert any('300.500' in str(call) for call in log_calls)
         assert any('2500.300' in str(call) for call in log_calls)
+
+
+@pytest.mark.unit
+def test_print_current_state_reports_the_vapour_budget_when_rock_vapour_is_present():
+    """A row carrying rock vapour reports the pressure split and both masses.
+
+    Whole-planet mass conservation is deliberately relaxed while rock vapour is
+    in the atmosphere, so the quantities that let a reader judge the size of the
+    imbalance have to reach the log on every iteration rather than only at
+    post-processing.
+    """
+    hf_row = ZeroHelpfileRow()
+    hf_row['Time'] = 1.0e8
+    hf_row['T_surf'] = 2500.0
+    hf_row['T_magma'] = 3000.0
+    # P_vol and P_vap are deliberately unequal, and neither equals P_surf, so a
+    # regression that printed the same quantity three times cannot pass.
+    hf_row['P_surf'] = 3.0e2
+    hf_row['P_vol'] = 2.6e2
+    hf_row['P_vap'] = 4.0e1
+    hf_row['M_atm'] = 7.0e20
+    hf_row['M_vaps'] = 1.2e20
+    hf_row['Phi_global'] = 0.9
+    hf_row['F_atm'] = 1.0e4
+    hf_row['F_int'] = 5.0e3
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        PrintCurrentState(hf_row)
+
+    log_calls = [str(call) for call in mock_log.info.call_args_list]
+    for label in ('P_vol', 'P_vap', 'M_atm', 'M_vaps'):
+        assert any(label in call for call in log_calls), f'{label} missing from the state print'
+    # The values, not only the labels: a regression that emitted the labels
+    # against the wrong hf_row keys would keep every assertion above.
+    for value in ('2.60e+02', '4.00e+01', '7.00e+20', '1.20e+20'):
+        assert any(value in call for call in log_calls), f'{value} missing from the state print'
+
+
+@pytest.mark.unit
+def test_print_current_state_omits_the_vapour_budget_without_rock_vapour():
+    """With no vapour column the extra lines stay out of the log.
+
+    Edge case: `M_vaps` exactly zero is the default path, where the strict mass
+    invariant is enforced and the vapour split carries no information. A stale
+    `P_vap` left in the row must not resurrect the block either, since the
+    presence of vapour mass is what the relaxation is keyed to.
+    """
+    hf_row = ZeroHelpfileRow()
+    hf_row['Time'] = 1.0e8
+    hf_row['T_surf'] = 287.0
+    hf_row['T_magma'] = 3000.0
+    hf_row['P_surf'] = 1.0
+    hf_row['P_vol'] = 1.0
+    hf_row['P_vap'] = 5.0  # stale, and must not be enough on its own
+    hf_row['M_vaps'] = 0.0
+    hf_row['Phi_global'] = 0.5
+    hf_row['F_atm'] = 100.0
+    hf_row['F_int'] = 50.0
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        PrintCurrentState(hf_row)
+
+    log_calls = [str(call) for call in mock_log.info.call_args_list]
+    for label in ('P_vap', 'M_vaps'):
+        assert not any(label in call for call in log_calls), f'{label} printed without vapour'
+    # Discrimination: the ordinary lines are still there, so the assertions
+    # above cannot be satisfied by a print that emitted nothing at all.
+    assert any('P_surf' in call for call in log_calls)
+    assert any('Phi_global' in call for call in log_calls)
 
 
 # =============================================================================
@@ -823,6 +1356,36 @@ def test_get_agni_version_with_mock():
         # string. Pin the dotted-version shape explicitly.
         assert version.count('.') == 2
         assert version != 'AGNI'
+
+
+@pytest.mark.unit
+def test_get_lavatmos_version_with_mock():
+    """Test that _get_lavatmos_version reports the LAVA_DIR checkout's git hash."""
+    from proteus.utils.coupler import _get_lavatmos_version
+
+    with (
+        patch.dict(os.environ, {'LAVA_DIR': '/fake/lava'}),
+        patch('proteus.utils.coupler._get_git_revision', return_value='abc123def') as mock_rev,
+    ):
+        version = _get_lavatmos_version()
+
+    assert version == 'abc123def'
+    # Discrimination: the hash must come from the LAVA_DIR checkout, not
+    # some other directory a regression might pass by mistake.
+    mock_rev.assert_called_once_with('/fake/lava')
+
+
+@pytest.mark.unit
+def test_get_lavatmos_version_returns_unknown_without_lava_dir():
+    """Test that _get_lavatmos_version handles missing LAVA_DIR."""
+    from proteus.utils.coupler import _get_lavatmos_version
+
+    with patch.dict(os.environ, {}, clear=True):
+        assert 'LAVA_DIR' not in os.environ
+
+        version = _get_lavatmos_version()
+
+        assert version == 'unknown (LAVA_DIR not set)'
 
 
 @pytest.mark.unit
@@ -1097,17 +1660,22 @@ def _aragog_row(
     step_dE_F_cmb_J: float = 0.0,
     step_dE_Q_radio_cons_J: float = 0.0,
     step_dE_Q_tidal_cons_J: float = 0.0,
+    step_dE_Q_radio_J: float = 0.0,
+    step_dE_Q_tidal_J: float = 0.0,
     step_solver_residual_J: float = 0.0,
+    step_dE_state_heat_J: float = 0.0,
     F_cmb: float = 0.0,
     R_int: float = 6.371e6,
     R_core: float = 3.481e6,
     T_magma: float = 3000.0,
 ) -> dict:
-    """Helper: build a ZeroHelpfileRow populated with the cons (frozen-mass)
-    columns the energy-residual helper reads. Uses Earth-like radii by
-    default. The instantaneous F_cmb keyword argument is supported only so
-    the discrimination test can prove it is IGNORED by the cumulative-sum
-    logic; it has no effect on dE_predicted_cons_J."""
+    """Helper: build a ZeroHelpfileRow populated with the columns the
+    energy-residual helper reads. The predicted side is the boundary-flux
+    and source increments; the state side is ``step_dE_state_heat_J`` (the
+    entropy-transported heat). Uses Earth-like radii by default. The
+    instantaneous F_cmb keyword is supported only so the discrimination
+    test can prove it is IGNORED by the cumulative-sum logic; it has no
+    effect on dE_predicted_cons_J."""
     row = ZeroHelpfileRow()
     row['Time'] = time_yr
     row['E_state_cons_J'] = E_state_cons_J
@@ -1115,7 +1683,10 @@ def _aragog_row(
     row['step_dE_F_cmb_J'] = step_dE_F_cmb_J
     row['step_dE_Q_radio_cons_J'] = step_dE_Q_radio_cons_J
     row['step_dE_Q_tidal_cons_J'] = step_dE_Q_tidal_cons_J
+    row['step_dE_Q_radio_J'] = step_dE_Q_radio_J
+    row['step_dE_Q_tidal_J'] = step_dE_Q_tidal_J
     row['step_solver_residual_J'] = step_solver_residual_J
+    row['step_dE_state_heat_J'] = step_dE_state_heat_J
     row['F_cmb'] = F_cmb
     row['R_int'] = R_int
     row['R_core'] = R_core
@@ -1131,22 +1702,26 @@ def test_helpfile_keys_include_energy_conservation_columns():
     be reconstructed downstream."""
     keys = GetHelpfileKeys()
     expected = {
-        # Frozen-mass conservation primitives (consumed by the residual).
-        'E_state_cons_J',
+        # Predicted-side primitives (boundary + source, frozen-mass).
         'step_dE_F_int_J',
         'step_dE_F_cmb_J',
         'step_dE_Q_radio_cons_J',
         'step_dE_Q_tidal_cons_J',
         'step_solver_residual_J',
+        # State-side primitive: the entropy-transported heat content change.
+        'step_dE_state_heat_J',
         # Cumulative columns derived from the primitives above.
+        'E_state_heat_cons_J',
         'dE_predicted_cons_J',
         'E_residual_cons_J',
         'E_residual_cons_frac',
         'solver_residual_J',
-        # State-mass columns kept as diagnostics (NOT used for residuals).
+        # Enthalpy columns kept as diagnostics (NOT used for residuals).
+        'E_state_cons_J',
         'E_state_J',
         'step_dE_Q_radio_J',
         'step_dE_Q_tidal_J',
+        'step_dE_compression_J',
     }
     missing = expected - set(keys)
     assert not missing, f'Energy-conservation keys missing from schema: {missing}'
@@ -1228,6 +1803,7 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
     used the prior-row value as the starting point would miss the
     fact that step_solver_residual_J is itself the per-call increment.
     """
+
     E0 = 1.0e31
     # Three asymmetric increments, all sources active.
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
@@ -1243,8 +1819,11 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
         time_yr=10.0,
         E_state_cons_J=E1,
         step_dE_F_int_J=delta_1_F_int,
-        step_dE_Q_radio_cons_J=delta_1_Q_radio,
+        step_dE_Q_radio_J=delta_1_Q_radio,
         step_solver_residual_J=solver_inc_1,
+        # Self-consistent run: the entropy-transported heat per step equals
+        # the predicted boundary+source increment, so the residual is zero.
+        step_dE_state_heat_J=delta_1_F_int + delta_1_Q_radio,
     )
     _populate_energy_residual(hf, row1)
     hf = ExtendHelpfile(hf, row1)
@@ -1261,6 +1840,7 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
         step_dE_F_int_J=delta_2_F_int,
         step_dE_F_cmb_J=delta_2_F_cmb,
         step_solver_residual_J=solver_inc_2,
+        step_dE_state_heat_J=delta_2_F_int + delta_2_F_cmb,
     )
     _populate_energy_residual(hf, row2)
     hf = ExtendHelpfile(hf, row2)
@@ -1277,6 +1857,7 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
         step_dE_F_cmb_J=delta_3_F_cmb,
         step_dE_F_int_J=delta_3_F_int,
         step_solver_residual_J=solver_inc_3,
+        step_dE_state_heat_J=delta_3_F_cmb + delta_3_F_int,
     )
     _populate_energy_residual(hf, row3)
 
@@ -1313,12 +1894,13 @@ def test_populate_energy_residual_ignores_instantaneous_F_cmb_spike():
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    # Physical step delta: -1e29 J (mild cooling).
+    # Physical step delta: -1e29 J (mild cooling), matched on both sides.
     physical_delta = -1.0e29
     row1 = _aragog_row(
         time_yr=10.0,
         E_state_cons_J=E0 + physical_delta,
         step_dE_F_int_J=physical_delta,
+        step_dE_state_heat_J=physical_delta,
         # Catastrophic instantaneous spike; must be IGNORED.
         F_cmb=1.0e23,
     )
@@ -1348,8 +1930,9 @@ def test_populate_energy_residual_frac_normalises_safely_when_dE_tiny():
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    # dE_actual_cons = +0.5 J, dE_pred_cons = 0 (no step deltas set).
-    row1 = _aragog_row(time_yr=1.0, E_state_cons_J=E0 + 0.5)
+    # State-heat increment = +0.5 J, predicted = 0 (no step deltas set), so
+    # the residual is +0.5 J against a cumulative state heat of +0.5 J.
+    row1 = _aragog_row(time_yr=1.0, E_state_cons_J=E0, step_dE_state_heat_J=0.5)
     _populate_energy_residual(hf, row1)
 
     # Without flooring this would be 0.5 / 0.5 = 1.0; with floor at 1 J
@@ -1362,32 +1945,108 @@ def test_populate_energy_residual_frac_normalises_safely_when_dE_tiny():
 
 @pytest.mark.unit
 def test_populate_energy_residual_residual_detects_missing_source():
-    """Conservation residual must surface a missing source. We
-    construct a 'real' planet whose E_state_cons actually ROSE by
-    5e29 J because of a fictional unreported source, but Aragog (in
-    this scenario) only reported the cooling step delta (-3e29 J).
-    The residual should be +8e29 J = (E_state_cons-E_state_cons[0])
-    - dE_predicted_cons, sign and magnitude both meaningful. Catches
-    a regression where the helper would silently zero residuals or
-    apply the wrong sign convention."""
+    """Conservation residual must surface a missing source. We construct a
+    'real' planet whose entropy-transported heat content actually ROSE by
+    5e29 J because of a fictional unreported source, but Aragog (in this
+    scenario) only reported the cooling boundary-flux delta (-3e29 J). The
+    residual is the state-heat side minus the predicted side, +8e29 J, sign
+    and magnitude both meaningful. Catches a regression where the helper
+    would silently zero residuals or apply the wrong sign convention."""
     E0 = 1.0e31
     row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    actual_dE = +5.0e29  # planet warmed
-    reported_step_delta = -3.0e29  # Aragog only reported the cooling
+    # Hold the enthalpy snapshot E_state_cons_J fixed at E0 and let the
+    # entropy-transported heat carry the true rise. The reverted enthalpy-
+    # anchor logic would read zero state change and report only +3e29; the
+    # state-heat logic reports +8e29. The two regimes therefore disagree, so
+    # this assertion fails on a revert rather than passing for both.
+    actual_dE = +5.0e29  # true heat content rise (state side)
+    reported_step_delta = -3.0e29  # Aragog only reported the cooling flux
     row1 = _aragog_row(
         time_yr=100.0,
-        E_state_cons_J=E0 + actual_dE,
+        E_state_cons_J=E0,
         step_dE_F_int_J=reported_step_delta,
+        step_dE_state_heat_J=actual_dE,
     )
     _populate_energy_residual(hf, row1)
 
     expected_residual = actual_dE - reported_step_delta  # = +8e29 J
     assert row1['dE_predicted_cons_J'] == pytest.approx(reported_step_delta, rel=1e-12)
+    assert row1['E_state_heat_cons_J'] == pytest.approx(actual_dE, rel=1e-12)
     assert row1['E_residual_cons_J'] == pytest.approx(expected_residual, rel=1e-12)
+    # Reverted enthalpy-anchor logic would give actual_dE=0 -> residual +3e29.
+    enthalpy_anchor_residual = 0.0 - reported_step_delta
+    assert abs(expected_residual - enthalpy_anchor_residual) > 1e29
     # E_residual_cons_frac should be O(1); residual is comparable to actual.
     assert abs(row1['E_residual_cons_frac']) > 0.5
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_excludes_compression_from_predicted():
+    """The compression term must NOT enter the predicted side.
+
+    ``step_dE_compression_J`` is an enthalpy-framed quantity retained only
+    as a diagnostic; the entropy-transported heat already carries the full
+    thermodynamic content. We set a large compression value alongside a
+    physical boundary-flux delta and assert the predicted increment equals
+    the flux delta alone. If compression leaked back into the sum (the
+    behaviour being reverted) the predicted value would shift by the
+    compression magnitude, which the discrimination guard rules out.
+    """
+    E0 = 1.0e31
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    flux_delta = -2.0e29
+    compression = +7.0e29  # large, opposite sign; must be ignored
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_cons_J=E0 + flux_delta,
+        step_dE_F_int_J=flux_delta,
+        step_dE_state_heat_J=flux_delta,
+    )
+    row1['step_dE_compression_J'] = compression
+    _populate_energy_residual(hf, row1)
+
+    assert row1['dE_predicted_cons_J'] == pytest.approx(flux_delta, rel=1e-12)
+    # Compression excluded on both sides => residual stays at zero, not at
+    # the compression magnitude.
+    assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(compression)
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_predicted_uses_live_mass_heating():
+    """The predicted side uses the live-density heating variants, matching the
+    live-density state side.
+
+    The state side integrates rho(P,S) (live EOS density), so the heating
+    sources on the predicted side must use the same mass frame: the live
+    step_dE_Q_radio_J / step_dE_Q_tidal_J, not the frozen-mass *_cons
+    variants. We give the live and frozen radiogenic increments different
+    values and assert the predicted side tracks the live one. If the residual
+    reverted to the frozen-mass variant the predicted increment would differ
+    by the live-minus-frozen gap, which the discrimination guard rejects.
+    """
+    E0 = 1.0e31
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    live_radio = +1.0e29
+    frozen_radio = +4.0e29  # deliberately different; must be IGNORED
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_cons_J=E0 + live_radio,
+        step_dE_Q_radio_J=live_radio,
+        step_dE_Q_radio_cons_J=frozen_radio,
+        step_dE_state_heat_J=live_radio,
+    )
+    _populate_energy_residual(hf, row1)
+
+    assert row1['dE_predicted_cons_J'] == pytest.approx(live_radio, rel=1e-12)
+    # Frozen-mass variant would have given +4e29; guard the gap.
+    assert abs(row1['dE_predicted_cons_J'] - frozen_radio) > 1e29
+    assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(live_radio)
 
 
 @pytest.mark.unit
@@ -1443,38 +2102,181 @@ def test_get_proteus_directories_editable_submodule_paths():
 
 
 # ============================================================================
+# Configurable output root (PROTEUS_OUTPUT_PATH)
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_get_output_root_defaults_to_output_under_root_when_env_unset(monkeypatch):
+    """With PROTEUS_OUTPUT_PATH unset, output stays at <root>/output.
+
+    This is the historical default; nothing may change for users who never
+    set the variable, so the resolved root must be exactly the ``output``
+    subdirectory of the installation root.
+    """
+    monkeypatch.delenv('PROTEUS_OUTPUT_PATH', raising=False)
+    root = '/some/proteus/root'
+    result = coupler_mod.get_output_root(root)
+    assert result == os.path.join(root, 'output')
+    # A regression that dropped the join and returned the bare root, or one
+    # that appended a doubled 'output/output', would both fail this.
+    assert os.path.basename(result) == 'output'
+    assert os.path.dirname(result) == root
+
+
+@pytest.mark.unit
+def test_get_output_root_uses_env_var_verbatim_when_set(monkeypatch):
+    """A set PROTEUS_OUTPUT_PATH overrides the default, ignoring <root>.
+
+    The override must win regardless of the installation root, and the
+    installation root must NOT appear anywhere in the resolved path: the
+    whole point is to relocate output off the code tree.
+    """
+    override = '/scratch/user/proteus_output'
+    monkeypatch.setenv('PROTEUS_OUTPUT_PATH', override)
+    root = '/opt/PROTEUS'
+    result = coupler_mod.get_output_root(root)
+    assert result == override
+    # Precedence guard: the code root must not be spliced in front of or
+    # behind the override (a naive os.path.join(root, env) bug would do this).
+    assert root not in result
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'blank',
+    ['', '   ', '\t', '\n'],
+    ids=['empty', 'spaces', 'tab', 'newline'],
+)
+def test_get_output_root_treats_blank_env_as_unset(monkeypatch, blank):
+    """An empty or whitespace-only value falls back to the default.
+
+    Edge case: shell scripts frequently export ``PROTEUS_OUTPUT_PATH=""``.
+    Honouring that literally would send all output to a path rooted at the
+    empty string (cwd), silently scattering results; it must instead behave
+    as if the variable were never set.
+    """
+    monkeypatch.setenv('PROTEUS_OUTPUT_PATH', blank)
+    root = '/opt/PROTEUS'
+    result = coupler_mod.get_output_root(root)
+    assert result == os.path.join(root, 'output')
+    # Discrimination guard: a literal-empty-string bug would yield 'output'
+    # relative to cwd (dirname == '' or cwd), not anchored at the code root.
+    assert os.path.dirname(result) == root
+
+
+@pytest.mark.unit
+def test_get_output_root_expands_user_and_env_references(monkeypatch):
+    """~ and $VAR references in the override are expanded, not left literal.
+
+    Cluster users set values like ``$TMPDIR/proteus`` or ``~/runs``; passing
+    those through unexpanded would create directories with literal ``~`` or
+    ``$TMPDIR`` names.
+    """
+    monkeypatch.setenv('HOME', '/home/tester')
+    monkeypatch.setenv('MY_SCRATCH', '/scratch/tester')
+    monkeypatch.setenv('PROTEUS_OUTPUT_PATH', '~/runs')
+    assert coupler_mod.get_output_root('/opt/PROTEUS') == '/home/tester/runs'
+    # Environment-variable reference in the value must also expand.
+    monkeypatch.setenv('PROTEUS_OUTPUT_PATH', '$MY_SCRATCH/proteus')
+    result = coupler_mod.get_output_root('/opt/PROTEUS')
+    assert result == '/scratch/tester/proteus'
+    # Guard: the raw sentinel must not survive expansion.
+    assert '$MY_SCRATCH' not in result and '~' not in result
+
+
+@pytest.mark.unit
+def test_get_proteus_directories_routes_all_output_subdirs_through_env(monkeypatch):
+    """Every output* key is rooted at PROTEUS_OUTPUT_PATH, code keys are not.
+
+    Verifies the wiring end to end: when the override is set, the run
+    directory and each of its data/observe/offchem/plots subdirectories must
+    live under the override joined with the run name, while source-tree keys
+    (proteus, input, ...) stay anchored at the installation root.
+    """
+    override = '/scratch/user/out'
+    monkeypatch.setenv('PROTEUS_OUTPUT_PATH', override)
+    dirs = get_proteus_directories(outdir='run-42')
+
+    run_dir = os.path.join(override, 'run-42')
+    assert dirs['output'] == run_dir
+    # Each subdirectory is the run dir plus its fixed leaf name; a swapped or
+    # dropped leaf (e.g. plots written under data) would fail here.
+    assert dirs['output/data'] == os.path.join(run_dir, 'data')
+    assert dirs['output/observe'] == os.path.join(run_dir, 'observe')
+    assert dirs['output/offchem'] == os.path.join(run_dir, 'offchem')
+    assert dirs['output/plots'] == os.path.join(run_dir, 'plots')
+    # Code-tree keys are unaffected by the output override.
+    assert dirs['output'].startswith(override)
+    assert not dirs['proteus'].startswith(override)
+    assert not dirs['input'].startswith(override)
+    assert dirs['input'] == os.path.join(dirs['proteus'], 'input')
+
+
+@pytest.mark.unit
+def test_get_proteus_directories_unset_env_matches_legacy_layout(monkeypatch):
+    """With the override unset, output* keys keep the <root>/output/<run> layout.
+
+    Back-compatibility contract: the presence of the new code path must not
+    perturb the default paths that existing runs and resume logic depend on.
+    """
+    monkeypatch.delenv('PROTEUS_OUTPUT_PATH', raising=False)
+    dirs = get_proteus_directories(outdir='run-legacy')
+
+    expected_root = os.path.join(dirs['proteus'], 'output')
+    assert dirs['output'] == os.path.join(expected_root, 'run-legacy')
+    assert dirs['output/data'] == os.path.join(expected_root, 'run-legacy', 'data')
+    # The run subtree is nested exactly one 'output' level under the code root,
+    # not doubled (a '<root>/output/output/<run>' regression would fail).
+    assert dirs['output'].count(os.sep + 'output' + os.sep) == 1
+
+
+# ============================================================================
 # Issue #677 mass-conservation invariant tests
 # ============================================================================
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_assert_mass_conservation_passes_when_invariants_hold():
-    """assert_mass_conservation accepts M_atm <= M_planet and per-species sum match.
+    """assert_mass_conservation accepts a row where the atmosphere fits inside
+    the planet and M_vol_atm agrees with the species masses it is summed from.
 
-    Physical scenario: post-outgas state with a non-trivial atmosphere.
-    M_atm = 4.6e24 kg (close to Earth's mantle), M_planet = 5.97e24 kg
-    (1 M_earth), per-species sum exactly equals M_atm.
+    Physical scenario: post-outgas state with a non-trivial volatile-only
+    atmosphere. M_atm = 4.6e24 kg (close to Earth's mantle), M_planet = 5.97e24
+    kg (1 M_earth). M_vol_atm is set from the species sum so the bookkeeping
+    half is exercised rather than skipped by its zero guard, and the species are
+    split asymmetrically (one dominant plus traces) so a summation regression
+    moves the total instead of cancelling out.
     """
-    from proteus.utils.constants import gas_list
+    from proteus.utils.constants import vol_gas_list
     from proteus.utils.coupler import assert_mass_conservation
 
-    hf_row = {
-        'M_atm': 4.6e24,
-        'M_planet': 5.97e24,
-    }
-    # Distribute M_atm across gas_list so the per-species sum equals M_atm.
-    # Use asymmetric values so the sum is a meaningful check (not all equal).
-    per_species = 4.6e24 / len(gas_list)
-    for s in gas_list:
-        hf_row[s + '_kg_atm'] = per_species
+    hf_row = {'M_planet': 5.97e24}
+    # Asymmetric split of a 4.6e24 kg atmosphere over the volatile and noble
+    # species. Rock vapours are absent: this is the vapourise = false path.
+    weights = [1.0] + [0.01] * (len(vol_gas_list) - 1)
+    norm = sum(weights)
+    for s, w in zip(vol_gas_list, weights):
+        hf_row[s + '_kg_atm'] = 4.6e24 * w / norm
+    hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    hf_row['M_atm'] = hf_row['M_vol_atm']
 
-    result = assert_mass_conservation(hf_row)
-    assert result is None  # contract: helper returns None silently when M_atm <= M_planet
-    # Discriminating check: M_atm < M_planet strictly (not vacuously zero), and
-    # the per-species sum exactly equals M_atm so the closure path is exercised.
-    assert hf_row['M_atm'] < hf_row['M_planet']
-    species_sum = sum(hf_row[s + '_kg_atm'] for s in gas_list)
-    assert math.isclose(species_sum, hf_row['M_atm'], rel_tol=1e-12)
+    assert assert_mass_conservation(hf_row) is None
+    # The same row is accepted with the planet-mass half switched off, so that
+    # keyword relaxes an invariant rather than changing what a valid row means.
+    assert assert_mass_conservation(hf_row, require_atm_le_planet=False) is None
+    # Discriminating checks: the atmosphere is strictly inside the planet (not
+    # vacuously zero), the bookkeeping half really ran (M_vol_atm > 0 opens its
+    # guard), and the species sum closes exactly.
+    assert 0.0 < hf_row['M_atm'] < hf_row['M_planet']
+    assert hf_row['M_vol_atm'] > 0.0
+    species_sum = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    assert math.isclose(species_sum, hf_row['M_vol_atm'], rel_tol=1e-12)
+    # The split is asymmetric, so the sum is order-sensitive in a way an
+    # all-equal split would hide.
+    masses = [hf_row[s + '_kg_atm'] for s in vol_gas_list]
+    assert max(masses) > 10.0 * min(masses)
 
 
 @pytest.mark.unit
@@ -1491,11 +2293,8 @@ def test_assert_mass_conservation_fails_when_M_atm_exceeds_M_planet():
         'M_atm': 7.2e24,  # Atmosphere exceeds planet (the issue #677 symptom)
         'M_planet': 5.97e24,
     }
-    for s_idx in range(15):
-        # Stub kg_atm columns so the per-species check doesn't fire first
-        # (we want to test the M_atm > M_planet path specifically).
-        pass
-
+    # The row carries no M_vol_atm, so the bookkeeping half is skipped by its
+    # zero guard and the planet-mass half is the only one that can fire.
     with pytest.raises(RuntimeError, match='Mass conservation violation'):
         assert_mass_conservation(hf_row)
     # Discrimination: confirm the excess is well above the 1e-6 tolerance
@@ -1509,32 +2308,71 @@ def test_assert_mass_conservation_fails_when_M_atm_exceeds_M_planet():
 
 @pytest.mark.unit
 def test_assert_mass_conservation_fails_when_species_sum_disagrees():
-    """assert_mass_conservation hard-fails when sum(s_kg_atm) != M_atm.
+    """assert_mass_conservation hard-fails when sum(s_kg_atm) != M_vol_atm.
 
     Edge case: per-species kg_atm values are stale or a species is missing
-    from the M_atm sum loop. Discriminating: sum = 4.0e24 but M_atm = 4.6e24
-    (a 15 percent disagreement).
+    from the M_vol_atm sum loop. Discriminating: the species sum is only
+    87 percent of the declared M_vol_atm, a 13 percent disagreement that is
+    five orders above the 1e-6 tolerance.
     """
-    from proteus.utils.constants import gas_list
+    from proteus.utils.constants import vol_gas_list
     from proteus.utils.coupler import assert_mass_conservation
 
     hf_row = {
         'M_atm': 4.6e24,
+        'M_vol_atm': 4.6e24,
         'M_planet': 5.97e24,
     }
-    # Intentionally under-report: per-species sum is only ~87 percent of M_atm.
-    per_species = (0.87 * 4.6e24) / len(gas_list)
-    for s in gas_list:
+    # Intentionally under-report: per-species sum is only ~87 percent of M_vol_atm.
+    per_species = (0.87 * 4.6e24) / len(vol_gas_list)
+    for s in vol_gas_list:
         hf_row[s + '_kg_atm'] = per_species
-
-    with pytest.raises(RuntimeError, match='M_atm bookkeeping inconsistency'):
+    with pytest.raises(RuntimeError, match='M_vol_atm bookkeeping inconsistency'):
         assert_mass_conservation(hf_row)
     # Discrimination: the M_atm <= M_planet invariant must HOLD here so
     # the failure must come from the per-species bookkeeping path, not
     # from the M_atm > M_planet path. Pin both legs.
     assert hf_row['M_atm'] < hf_row['M_planet']
-    species_sum = sum(hf_row[s + '_kg_atm'] for s in gas_list)
-    assert species_sum < 0.9 * hf_row['M_atm']
+    species_sum = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    assert species_sum < 0.9 * hf_row['M_vol_atm']
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_mass_conservation_accepts_noble_gas_inventory():
+    """A trace noble-gas inventory must not trip M_vol_atm check.
+
+    M_vol_atm is defined as the atmospheric mass of volatiles AND noble gases,
+    with rock vapour excluded. Summing the check over the reactive volatiles
+    alone would omit the noble gases and raise.
+
+    Discriminating: the noble gases hold 5e16 kg against 1.1e19 kg of reactive
+    volatiles, a 0.45 percent contribution.
+    """
+    from proteus.utils.constants import noble_gases, vol_gas_list
+    from proteus.utils.coupler import assert_mass_conservation
+
+    hf_row = {'M_planet': 5.97e24}
+    for s in vol_gas_list:
+        hf_row[s + '_kg_atm'] = 0.0
+    for s in vol_list:
+        hf_row[s + '_kg_atm'] = 1e18
+    for s in noble_gases:
+        hf_row[s + '_kg_atm'] = 1e16
+    hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    hf_row['M_atm'] = hf_row['M_vol_atm']
+
+    # Must not raise: the row is internally consistent by construction.
+    assert assert_mass_conservation(hf_row) is None
+
+    # Discrimination guard: confirm the noble contribution really is large
+    # enough to have tripped a vol_list-only check at the default tolerance.
+    reactive_only = sum(hf_row[s + '_kg_atm'] for s in vol_list)
+    noble_frac = abs(hf_row['M_vol_atm'] - reactive_only) / hf_row['M_vol_atm']
+    assert noble_frac > 1e-6 * 1e3
+
+    # And the healthy row must still satisfy the primary mass invariant.
+    assert hf_row['M_atm'] < hf_row['M_planet']
 
 
 @pytest.mark.unit
@@ -1558,6 +2396,271 @@ def test_assert_mass_conservation_skips_when_M_planet_zero():
     # can produce a silent pass on this row.
     assert hf_row['M_atm'] > 0.0
     assert hf_row['M_planet'] == 0.0
+
+
+def _vapourising_row(m_vaps=4.0e20, perturb_species=None):
+    """Row from a vapourising outgas step: volatiles plus a rock-vapour column.
+
+    ``m_vaps`` is added to M_atm without being taken from M_planet, which is the
+    whole content of the relaxed invariant. ``perturb_species`` scales one
+    species mass to break the M_vol_atm bookkeeping without touching the totals.
+    """
+    from proteus.utils.constants import vol_gas_list
+
+    hf_row = {'M_planet': 5.97e24, 'P_vol': 260.0, 'P_vap': 40.0}
+    weights = [1.0] + [0.01] * (len(vol_gas_list) - 1)
+    norm = sum(weights)
+    for s, w in zip(vol_gas_list, weights):
+        hf_row[s + '_kg_atm'] = 6.0e20 * w / norm
+    hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    hf_row['M_vaps'] = m_vaps
+    hf_row['M_atm'] = hf_row['M_vol_atm'] + m_vaps
+    if perturb_species is not None:
+        hf_row[perturb_species + '_kg_atm'] *= 1.01
+    return hf_row
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_species_sum_stays_enforced_without_the_planet_mass_leg():
+    """Switching off the M_atm <= M_planet half leaves the M_vol_atm bookkeeping
+    half fully enforced at the strict tolerance.
+
+    Rock vapourisation breaks only the relation between the atmosphere and the
+    planet mass. The volatile-only atmospheric mass is still the sum of the
+    species masses it is built from, so a stale species mass must still be
+    reported. Edge case: the row used here has M_atm above M_planet, so the
+    disabled half would have fired first had it still been active.
+    """
+    from proteus.utils.constants import vol_gas_list
+    from proteus.utils.coupler import assert_mass_conservation
+
+    # An extreme vapour column, so M_atm exceeds M_planet outright.
+    hf_row = _vapourising_row(m_vaps=6.0e24)
+    assert assert_mass_conservation(hf_row, require_atm_le_planet=False) is None
+
+    # Perturbing one species by 1 percent still raises, four orders above the
+    # 1e-6 tolerance.
+    stale = _vapourising_row(m_vaps=6.0e24, perturb_species='H2O')
+    with pytest.raises(RuntimeError, match='M_vol_atm bookkeeping inconsistency'):
+        assert_mass_conservation(stale, require_atm_le_planet=False)
+
+    # Discrimination: the very same row aborts when the planet-mass half is left
+    # on, so the raise above cannot have come from that half and the keyword is
+    # really the thing selecting between them.
+    with pytest.raises(RuntimeError, match='Mass conservation violation'):
+        assert_mass_conservation(hf_row)
+    assert hf_row['M_atm'] > hf_row['M_planet'] * (1.0 + 1.0e-6)
+    # The breach is three orders above the tolerance, not a rounding edge.
+    assert hf_row['M_atm'] / hf_row['M_planet'] - 1.0 > 1.0e-3
+    # And the species perturbation is far outside the tolerance it must beat.
+    summed = sum(stale[s + '_kg_atm'] for s in vol_gas_list)
+    rel = abs(summed - stale['M_vol_atm']) / stale['M_vol_atm']
+    assert rel > 1.0e3 * 1.0e-6
+
+
+@pytest.mark.unit
+def test_relaxed_planet_mass_leg_warns_only_on_an_unexplained_excess(caplog):
+    """With the planet-mass half relaxed, an excess the rock vapour accounts for
+    passes quietly and one it cannot is warned about.
+
+    Vapourised rock is the only mass the relaxation exists to excuse, so the
+    warning is what keeps a deliberately disabled invariant safe to run with: it
+    separates "the atmosphere is heavier than the planet because of rock vapour",
+    which is the accepted simplification, from "the atmosphere is heavier than
+    rock vapour explains", which is a bookkeeping fault.
+
+    Edge case: with no vapour column there is nothing for the relaxation to
+    excuse, so the invariant is enforced regardless of the keyword. That covers
+    the crystallised and desiccated states of a vapourising run.
+    """
+    import logging
+
+    from proteus.utils.coupler import assert_mass_conservation
+
+    def _warnings():
+        return [r for r in caplog.records if 'larger than vapourisation' in r.getMessage()]
+
+    caplog.set_level(logging.INFO, logger='fwl.proteus.utils.coupler')
+
+    # Rows whose atmosphere sits far inside the planet mass pass silently, at any
+    # vapour column size.
+    for m_vaps in (1.0e20, 2.0e20, 4.0e20):
+        row = _vapourising_row(m_vaps=m_vaps)
+        assert assert_mass_conservation(row, require_atm_le_planet=False) is None
+    assert _warnings() == []
+
+    # Limit input: vapourisation skipped for a crystallised mantle leaves no
+    # vapour column, so the invariant is enforced rather than relaxed. This row
+    # satisfies it, so it passes silently.
+    caplog.clear()
+    dry = _vapourising_row(m_vaps=0.0)
+    dry['P_vap'] = 0.0
+    assert assert_mass_conservation(dry, require_atm_le_planet=False) is None
+    assert _warnings() == []
+    assert dry['M_atm'] == pytest.approx(dry['M_vol_atm'], rel=1e-12)
+    assert dry['M_atm'] < dry['M_planet']
+
+    # The same empty-vapour row breaching the planet mass must raise, because
+    # with no rock vapour present there is nothing the relaxation can excuse.
+    caplog.clear()
+    dry_breach = _vapourising_row(m_vaps=0.0)
+    dry_breach['M_planet'] = 0.5 * dry_breach['M_atm']
+    with pytest.raises(RuntimeError, match='Mass conservation violation'):
+        assert_mass_conservation(dry_breach, require_atm_le_planet=False)
+    # Discrimination: the breach is a factor of two, far outside the tolerance.
+    assert dry_breach['M_atm'] / dry_breach['M_planet'] == pytest.approx(2.0, rel=1e-12)
+
+    # An excess the vapour column cannot account for warns, naming both the
+    # excess and the vapour mass it was measured against. Values are read from
+    # the log arguments so a wrong value in the right slot cannot pass.
+    caplog.clear()
+    unexplained = _vapourising_row(m_vaps=1.0e20)
+    unexplained['M_atm'] = 7.0e24  # far past M_planet, only 1e20 kg of vapour
+    assert assert_mass_conservation(unexplained, require_atm_le_planet=False) is None
+    warned = _warnings()
+    assert len(warned) == 1
+    assert warned[0].levelno == logging.WARNING
+    assert warned[0].args[0] == pytest.approx(
+        unexplained['M_atm'] - unexplained['M_planet'], rel=1e-12
+    )
+    assert warned[0].args[1] == pytest.approx(unexplained['M_vaps'], rel=1e-12)
+    assert unexplained['M_atm'] - unexplained['M_planet'] > 10.0 * unexplained['M_vaps']
+
+    # A vapour column large enough to explain the same excess does not warn, so
+    # the decision keys on the comparison and not on the breach alone.
+    caplog.clear()
+    explained = _vapourising_row(m_vaps=2.0e24)
+    explained['M_atm'] = explained['M_vol_atm'] + explained['M_vaps']
+    explained['M_planet'] = explained['M_vol_atm']
+    assert assert_mass_conservation(explained, require_atm_le_planet=False) is None
+    assert _warnings() == []
+    assert explained['M_atm'] > explained['M_planet']
+
+
+# ============================================================================
+# P_surf = P_vol + P_vap surface-pressure invariant tests
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_passes_when_vapourise_disabled():
+    """P_surf == P_vol with P_vap == 0 is accepted when rock vapour is off.
+
+    Physical scenario: an ordinary CALLIOPE/atmodeller outgas step with
+    outgas.vapourise = False. P_vol mirrors P_surf exactly (no vapour
+    contribution), which is the state run_outgassing leaves hf_row in.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+
+    hf_row = {'P_surf': 120.0, 'P_vol': 120.0, 'P_vap': 0.0}
+
+    result = assert_surface_pressure_consistency(config, hf_row)
+    assert result is None  # contract: silent pass when the invariant holds
+    # Discriminating check: P_vol is non-trivially large (not a vacuous 0/0
+    # pass) and exactly equals P_surf, isolating the "vapourise off" branch.
+    assert hf_row['P_vol'] == pytest.approx(hf_row['P_surf'])
+    assert hf_row['P_vap'] == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_passes_when_vapourise_enabled():
+    """P_surf == P_vol + P_vap is accepted with a nonzero rock-vapour term.
+
+    Physical scenario: LavAtmos has run (outgas.vapourise = True) and added
+    a rock-vapour partial pressure on top of the volatile total, mirroring
+    run_vapourisation's P_vol/P_vap/P_surf bookkeeping.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = True
+
+    # Asymmetric split (not a 50/50 coincidence) so the sum genuinely
+    # exercises both terms rather than passing via a degenerate value.
+    hf_row = {'P_surf': 137.5, 'P_vol': 90.0, 'P_vap': 47.5}
+
+    result = assert_surface_pressure_consistency(config, hf_row)
+    assert result is None
+    assert hf_row['P_vap'] > 0.0
+    assert hf_row['P_vol'] + hf_row['P_vap'] == pytest.approx(hf_row['P_surf'])
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_rejects_nonzero_P_vap_when_disabled():
+    """P_vap must be exactly zero whenever outgas.vapourise is False.
+
+    Regression scenario this guards against: a stale rock-vapour pressure
+    (e.g. left over from a prior iteration, or written by a code path that
+    forgot to gate on the config flag) surviving into an iteration where
+    vapourise is disabled. Must raise before the P_surf==P_vol+P_vap check
+    even runs, since that check alone (100.0 == 95.0 + 5.0) would otherwise
+    pass and mask the real bug.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+
+    hf_row = {'P_surf': 100.0, 'P_vol': 95.0, 'P_vap': 5.0}
+
+    with pytest.raises(RuntimeError, match='outgas.vapourise=False'):
+        assert_surface_pressure_consistency(config, hf_row)
+    # Discrimination: P_surf == P_vol + P_vap holds exactly here (100 == 95 + 5),
+    # so a weaker implementation that only checked the sum would wrongly pass
+    # this row. Pin that the sum-consistent row is exactly what makes this a
+    # useful regression test, not an artifact of an already-broken sum.
+    assert hf_row['P_vol'] + hf_row['P_vap'] == pytest.approx(hf_row['P_surf'])
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_surface_pressure_consistency_rejects_mismatched_total():
+    """P_surf disagreeing with P_vol + P_vap by more than the tolerance raises.
+
+    Discriminating: P_surf=150.0 but P_vol+P_vap=100.0, a 33 percent
+    disagreement, far above the default 1e-6 relative tolerance. Models a
+    code path (e.g. run_crystallized's escape scaling) that rescaled
+    P_surf without rescaling P_vol/P_vap in step.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = True
+
+    hf_row = {'P_surf': 150.0, 'P_vol': 80.0, 'P_vap': 20.0}
+
+    with pytest.raises(RuntimeError, match='Surface pressure inconsistency'):
+        assert_surface_pressure_consistency(config, hf_row)
+    # Discrimination: the mismatch (50.0) is far above what float rounding
+    # could produce, confirming the raise is the real bookkeeping check and
+    # not a numerical-noise false positive.
+    assert abs(hf_row['P_surf'] - (hf_row['P_vol'] + hf_row['P_vap'])) > 1.0
+
+
+@pytest.mark.unit
+def test_assert_surface_pressure_consistency_skips_pre_ic():
+    """No atmosphere yet (all pressures zero) short-circuits without raising.
+
+    Edge case: at the very first call, before any outgassing has run,
+    P_surf/P_vol/P_vap are all still at their ZeroHelpfileRow default.
+    """
+    from proteus.utils.coupler import assert_surface_pressure_consistency
+
+    config = MagicMock()
+    config.outgas.vapourise = True
+
+    hf_row = {'P_surf': 0.0, 'P_vol': 0.0, 'P_vap': 0.0}
+
+    result = assert_surface_pressure_consistency(config, hf_row)
+    assert result is None
+    assert hf_row['P_surf'] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -1735,3 +2838,1034 @@ def test_validate_module_versions_skips_check_when_no_pinned_minimum(tmp_path):
         result = validate_module_versions({'rad': str(tmp_path)}, config)
     assert result is None
     assert mock_update.call_count == 0
+
+
+@pytest.mark.unit
+def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypatch):
+    """Cover print_module_configuration branches for spider/agni/calliope/boreas/mors/lovepy."""
+    config = types.SimpleNamespace(
+        interior_energetics=types.SimpleNamespace(module='spider'),
+        atmos_clim=types.SimpleNamespace(module='agni'),
+        outgas=types.SimpleNamespace(module='calliope', vapourise=False),
+        escape=types.SimpleNamespace(module='boreas'),
+        star=types.SimpleNamespace(module='mors'),
+        orbit=types.SimpleNamespace(module='lovepy'),
+        accretion=types.SimpleNamespace(module='dummy'),
+        atmos_chem=types.SimpleNamespace(module='vulcan'),
+        observe=types.SimpleNamespace(module='petitRADTRANS'),
+    )
+    dirs = {
+        'proteus': '/tmp/proteus',
+        'output': '/tmp/out',
+        'rad': '/tmp/rad',
+    }
+
+    monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'abc123')
+    monkeypatch.setattr(coupler_mod, '_get_agni_version', lambda _d: '1.8.0')
+    monkeypatch.setattr(coupler_mod, '_get_socrates_version', lambda: '24.1.0')
+    monkeypatch.setattr(coupler_mod, '_get_julia_version', lambda: '1.9.3')
+    monkeypatch.setitem(sys.modules, 'calliope', types.SimpleNamespace(__version__='1.2.3'))
+    monkeypatch.setitem(sys.modules, 'boreas', types.SimpleNamespace(__version__='2.3.4'))
+    monkeypatch.setitem(sys.modules, 'mors', types.SimpleNamespace(__version__='3.4.5'))
+    # VULCAN is an optional module and the atmos_chem branch under test imports
+    # it by name, so the stub belongs here rather than being inherited from
+    # whichever other test file happened to import first.
+    monkeypatch.setitem(sys.modules, 'vulcan', types.SimpleNamespace(__version__='5.6.7'))
+    monkeypatch.setitem(
+        sys.modules, 'petitRADTRANS', types.SimpleNamespace(__version__='4.5.6')
+    )
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        print_module_configuration(dirs, config, '/tmp/cfg.toml')
+        messages = [str(call) for call in mock_log.info.call_args_list]
+        assert any('PROTEUS version' in m for m in messages)
+        assert any('Interior module   spider version' in m for m in messages)
+        assert any('PETSc' in m for m in messages)
+        assert any('Atmos_clim module agni version' in m for m in messages)
+        assert any('Outgas module     calliope version' in m for m in messages)
+        assert any('Escape module     boreas version' in m for m in messages)
+        assert any('Star module       mors version' in m for m in messages)
+        assert any('Atmos_chem module vulcan version 5.6.7' in m for m in messages)
+        assert any('Observe module    petitRADTRANS version' in m for m in messages)
+        # Discrimination: rock vapourisation is disabled here
+        # (vapourise=False), so LavAtmos must not be reported at all.
+        assert not any('LavAtmos' in m for m in messages)
+
+
+@pytest.mark.unit
+def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monkeypatch):
+    """Cover print_module_configuration branches for aragog/janus/zephyrus."""
+    config = types.SimpleNamespace(
+        interior_energetics=types.SimpleNamespace(module='aragog'),
+        atmos_clim=types.SimpleNamespace(module='janus'),
+        outgas=types.SimpleNamespace(module='dummy', vapourise=True),
+        escape=types.SimpleNamespace(module='zephyrus'),
+        star=types.SimpleNamespace(module='dummy'),
+        orbit=types.SimpleNamespace(module='dummy'),
+        accretion=types.SimpleNamespace(module='dummy'),
+        atmos_chem=types.SimpleNamespace(module='dummy'),
+        observe=types.SimpleNamespace(module='dummy'),
+    )
+    dirs = {'proteus': '/tmp/proteus', 'output': '/tmp/out', 'rad': '/tmp/rad'}
+
+    monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'def456')
+    monkeypatch.setattr(coupler_mod, '_get_socrates_version', lambda: '24.1.0')
+    monkeypatch.setattr(coupler_mod, '_get_lavatmos_version', lambda: 'ghi789')
+    monkeypatch.setitem(sys.modules, 'aragog', types.SimpleNamespace(__version__='0.7.0'))
+    monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='0.5.0'))
+    monkeypatch.setitem(sys.modules, 'zephyrus', types.SimpleNamespace(__version__='0.6.0'))
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        print_module_configuration(dirs, config, '/tmp/cfg.toml')
+        messages = [str(call) for call in mock_log.info.call_args_list]
+        assert any('Interior module   aragog version' in m for m in messages)
+        assert any('Atmos_clim module janus version' in m for m in messages)
+        assert any('Escape module     zephyrus version' in m for m in messages)
+        # Rock vapourisation (config.outgas.vapourise=True) must print the
+        # LavAtmos checkout version regardless of the outgas.module setting.
+        assert any('LavAtmos' in m and 'ghi789' in m for m in messages)
+
+
+@pytest.mark.unit
+def test_print_citation_covers_module_specific_citations_with_when_set(monkeypatch):
+    """Cover print_citation branches for module-specific citations and chemistry gate."""
+    config = types.SimpleNamespace(
+        atmos_clim=types.SimpleNamespace(module='janus'),
+        interior_energetics=types.SimpleNamespace(module='spider'),
+        outgas=types.SimpleNamespace(module='calliope'),
+        escape=types.SimpleNamespace(module='zephyrus'),
+        star=types.SimpleNamespace(module='mors'),
+        orbit=types.SimpleNamespace(module='lovepy'),
+        accretion=types.SimpleNamespace(module='dummy'),
+        observe=types.SimpleNamespace(module='petitRADTRANS'),
+        atmos_chem=types.SimpleNamespace(module='vulcan', when='runtime'),
+    )
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        print_citation(config)
+        messages = [str(call) for call in mock_log.info.call_args_list]
+        assert any('Lichtenberg et al. (2021)' in m for m in messages)
+        assert any('Graham et al. (2021)' in m for m in messages)
+        assert any('Bower et al. (2021)' in m for m in messages)
+        assert any('Johnstone et al. (2021)' in m for m in messages)
+        assert any('Hay & Matsuyama (2019)' in m for m in messages)
+        assert any('Mollière et al. (2019)' in m for m in messages)
+        assert any('Tsai et al. (2021)' in m for m in messages)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'name,expected,near_miss',
+    [
+        # Exact membership: the name list is matched whole, so a longer name
+        # built on the same stem falls through to the linear default.
+        ('P_surf', True, 'P_surface'),
+        # Composition suffix: the deciding token is the '_vmr' substring.
+        ('X_vmr', True, 'X_vmol'),
+        # Partial-pressure suffix: the deciding token is the '_bar' substring.
+        ('CO2_bar', True, 'CO2_bat'),
+        # Linear default, taken the other way round: a name that is neither
+        # listed nor suffixed stays linear until it gains the substring.
+        ('T_surf', False, 'T_surf_vmr'),
+    ],
+)
+def test_variable_is_logarithmic_covers_membership_and_suffix_branches(
+    name, expected, near_miss
+):
+    """Log scaling is chosen by exact name membership or a _vmr / _bar substring.
+
+    Each case pairs a name with a near-miss differing only in the deciding
+    token, so the pair separates the branch under test from a classifier that
+    keys off the general shape of the name. Inference reads this convention to
+    decide which parameters it optimises in log10: a misclassified variable
+    silently changes the objective it fits, or trips the transform's
+    non-positive-bound check, well before anyone notices a wrong plot axis.
+    """
+    assert variable_is_logarithmic(name) is expected
+    assert variable_is_logarithmic(near_miss) is not expected
+
+
+@pytest.mark.unit
+def test_extend_helpfile_replaces_nan_values_with_zero(caplog):
+    """Cover NaN sanitization branch in ExtendHelpfile."""
+    import logging
+
+    hf = CreateHelpfileFromDict(ZeroHelpfileRow())
+    row = ZeroHelpfileRow()
+    row['Time'] = np.nan
+    row['T_surf'] = np.nan
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
+        out = ExtendHelpfile(hf, row)
+
+    assert out['Time'].iloc[-1] == pytest.approx(0.0)
+    assert out['T_surf'].iloc[-1] == pytest.approx(0.0)
+    assert any('setting to zero' in rec.message for rec in caplog.records)
+
+
+@pytest.mark.unit
+def test_remove_excess_files_includes_spectral_files_when_requested(monkeypatch):
+    """Cover remove_excess_files branch that optionally removes spectral files."""
+    removed = []
+    monkeypatch.setattr('proteus.utils.coupler.safe_rm', lambda p: removed.append(p))
+
+    remove_excess_files('/tmp/out', rm_spectralfiles=True)
+
+    assert any(p.endswith('/keepalive') for p in removed)
+    assert any(p.endswith('/runtime.sf') for p in removed)
+    assert any(p.endswith('/runtime.sf_k') for p in removed)
+
+
+def _install_updateplots_fakes(monkeypatch, calls):
+    """Install fake modules imported by UpdatePlots and record function calls."""
+
+    def rec(name):
+        return lambda *a, **k: calls.append((name, len(a), tuple(sorted(k.keys()))))
+
+    # Utility modules imported inside UpdatePlots
+    atm_common = types.ModuleType('proteus.atmos_clim.common')
+    atm_common.read_atmosphere_data = lambda *_a, **_k: [{'ok': True}]
+    int_wrap = types.ModuleType('proteus.interior_energetics.wrapper')
+    int_wrap.read_interior_data = lambda *_a, **_k: {'int': True}
+    int_wrap.run_interior = lambda *_a, **_k: None
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_clim.common', atm_common)
+    monkeypatch.setitem(sys.modules, 'proteus.interior_energetics.wrapper', int_wrap)
+
+    # Output-time providers
+    aragog_mod = types.ModuleType('proteus.interior_energetics.aragog')
+    aragog_mod.get_all_output_times = lambda _o: [1000, 2000, 3000]
+    spider_mod = types.ModuleType('proteus.interior_energetics.spider')
+    spider_mod.get_all_output_times = lambda _o: [1000, 2000, 3000]
+    monkeypatch.setitem(sys.modules, 'proteus.interior_energetics.aragog', aragog_mod)
+    monkeypatch.setitem(sys.modules, 'proteus.interior_energetics.spider', spider_mod)
+
+    # Plot modules
+    plot_map = {
+        'proteus.plot.cpl_atmosphere': 'plot_atmosphere',
+        'proteus.plot.cpl_bolometry': 'plot_bolometry',
+        'proteus.plot.cpl_chem_atmosphere': 'plot_chem_atmosphere',
+        'proteus.plot.cpl_emission': 'plot_emission',
+        'proteus.plot.cpl_escape': 'plot_escape',
+        'proteus.plot.cpl_fluxes_atmosphere': 'plot_fluxes_atmosphere',
+        'proteus.plot.cpl_fluxes_global': 'plot_fluxes_global',
+        'proteus.plot.cpl_global': 'plot_global',
+        'proteus.plot.cpl_interior': 'plot_interior',
+        'proteus.plot.cpl_interior_cmesh': 'plot_interior_cmesh',
+        'proteus.plot.cpl_orbit': ('plot_orbit', 'plot_Lovenumber'),
+        'proteus.plot.cpl_sflux': 'plot_sflux',
+        'proteus.plot.cpl_sflux_cross': 'plot_sflux_cross',
+        'proteus.plot.cpl_spectra': 'plot_spectra',
+        'proteus.plot.cpl_structure': 'plot_structure',
+        'proteus.plot.cpl_visual': 'plot_visual',
+    }
+    for mod_name, fn_names in plot_map.items():
+        mod = types.ModuleType(mod_name)
+        for fn_name in (fn_names,) if isinstance(fn_names, str) else fn_names:
+            setattr(mod, fn_name, rec(fn_name))
+        monkeypatch.setitem(sys.modules, mod_name, mod)
+
+    pop_mod = types.ModuleType('proteus.plot.cpl_population')
+    pop_mod.plot_population_mass_radius = rec('plot_population_mass_radius')
+    pop_mod.plot_population_time_density = rec('plot_population_time_density')
+    monkeypatch.setitem(sys.modules, 'proteus.plot.cpl_population', pop_mod)
+
+
+@pytest.mark.unit
+def test_update_plots_covers_runtime_and_end_branches(monkeypatch, tmp_path):
+    """Cover the large UpdatePlots path with mocked plotting backends."""
+    calls = []
+    _install_updateplots_fakes(monkeypatch, calls)
+
+    monkeypatch.setattr(
+        'proteus.utils.coupler.sample_times', lambda *_a, **_k: ([1000, 2000], None)
+    )
+    monkeypatch.setattr(
+        'proteus.utils.coupler.glob.glob',
+        lambda _p: [
+            str(tmp_path / 'data' / '1000_atm.nc'),
+            str(tmp_path / 'data' / '2000_atm.nc'),
+            str(tmp_path / 'data' / '3000_atm.nc'),
+        ],
+    )
+
+    cfg = types.SimpleNamespace(
+        atmos_clim=types.SimpleNamespace(module='agni'),
+        interior_energetics=types.SimpleNamespace(module='aragog'),
+        observe=types.SimpleNamespace(module='petitRADTRANS'),
+        orbit=types.SimpleNamespace(
+            module='dummy', star_planet_model='sp0d', planet_satellite_model=None
+        ),
+        star=types.SimpleNamespace(module='mors', mors=types.SimpleNamespace(age_now=4.5)),
+        atmos_chem=types.SimpleNamespace(module='vulcan'),
+        params=types.SimpleNamespace(out=types.SimpleNamespace(plot_fmt='png')),
+    )
+    hf_all = pd.DataFrame({'Time': [1.0, 2.0, 3.0, 4.0]})
+    dirs = {'output': str(tmp_path), 'fwl': str(tmp_path / 'fwl')}
+
+    from proteus.utils.coupler import UpdatePlots
+
+    UpdatePlots(hf_all, dirs, cfg, end=True, num_snapshots=2)
+
+    called_names = [c[0] for c in calls]
+    assert 'plot_global' in called_names
+    assert 'plot_escape' in called_names
+    assert 'plot_orbit' in called_names
+    assert 'plot_interior' in called_names
+    assert 'plot_atmosphere' in called_names
+    assert 'plot_structure' in called_names
+    assert 'plot_fluxes_global' in called_names
+    assert 'plot_spectra' in called_names
+    assert 'plot_visual' in called_names
+    assert 'plot_emission' in called_names
+
+
+@pytest.mark.unit
+def test_set_directories_errors_without_fwl_data(monkeypatch):
+    """Cover set_directories failure when FWL_DATA is absent."""
+    cfg = types.SimpleNamespace(
+        params=types.SimpleNamespace(out=types.SimpleNamespace(path='run1', logging='INFO')),
+        atmos_clim=types.SimpleNamespace(module='dummy'),
+    )
+    monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
+    monkeypatch.delenv('FWL_DATA', raising=False)
+
+    with patch('proteus.utils.coupler.UpdateStatusfile') as mock_update:
+        with pytest.raises(EnvironmentError, match='FWL_DATA'):
+            set_directories(cfg)
+        mock_update.assert_called_once()
+
+
+@pytest.mark.unit
+def test_set_directories_auto_path_and_debug_temp(monkeypatch):
+    """Cover set_directories auto-output branch and DEBUG temp-dir behavior."""
+    cfg = types.SimpleNamespace(
+        params=types.SimpleNamespace(out=types.SimpleNamespace(path='auto', logging='DEBUG')),
+        atmos_clim=types.SimpleNamespace(module='dummy'),
+    )
+    monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
+    monkeypatch.setenv('FWL_DATA', '/tmp/fwl_data')
+    monkeypatch.setattr('secrets.token_hex', lambda _n: 'beef')
+
+    dirs = set_directories(cfg)
+
+    assert cfg.params.out.path.startswith('run_')
+    assert cfg.params.out.path.endswith('_beef')
+    assert dirs['temp'] == dirs['output']
+    assert dirs['fwl'].endswith('/tmp/fwl_data/')
+
+
+@pytest.mark.unit
+def test_set_directories_requires_rad_dir_for_agni(monkeypatch):
+    """Cover set_directories AGNI/JANUS RAD_DIR required branch."""
+    cfg = types.SimpleNamespace(
+        params=types.SimpleNamespace(out=types.SimpleNamespace(path='run2', logging='INFO')),
+        atmos_clim=types.SimpleNamespace(module='agni'),
+    )
+    monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
+    monkeypatch.setenv('FWL_DATA', '/tmp/fwl_data')
+    monkeypatch.delenv('RAD_DIR', raising=False)
+    monkeypatch.setattr('proteus.utils.coupler.create_tmp_folder', lambda: '/tmp/tmpwork')
+
+    with patch('proteus.utils.coupler.UpdateStatusfile') as mock_update:
+        with pytest.raises(EnvironmentError, match='RAD_DIR'):
+            set_directories(cfg)
+        mock_update.assert_called_once()
+
+
+@pytest.mark.unit
+def test_set_directories_sets_rad_and_temp_for_non_debug(monkeypatch):
+    """Cover set_directories success path with AGNI and non-DEBUG temp folder."""
+    cfg = types.SimpleNamespace(
+        params=types.SimpleNamespace(out=types.SimpleNamespace(path='run3', logging='INFO')),
+        atmos_clim=types.SimpleNamespace(module='agni'),
+    )
+    monkeypatch.setattr('proteus.utils.coupler.get_proteus_dir', lambda: '/tmp/proteus')
+    monkeypatch.setenv('FWL_DATA', '/tmp/fwl_data')
+    monkeypatch.setenv('RAD_DIR', '/tmp/rad_dir')
+    monkeypatch.setattr('proteus.utils.coupler.create_tmp_folder', lambda: '/tmp/tmpwork')
+
+    dirs = set_directories(cfg)
+
+    assert dirs['rad'].endswith('/tmp/rad_dir/')
+    assert dirs['temp'].endswith('/tmp/tmpwork/')
+    assert dirs['output'].endswith('/tmp/proteus/output/run3/')
+
+
+@pytest.mark.unit
+def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypatch, tmp_path):
+    """A spider stack above its pins passes, and the pin itself is inclusive.
+
+    'numpy' carries no version specifier and must be skipped rather than parsed.
+    The second block is the boundary: an installed version exactly equal to the
+    required minimum satisfies a '>=' pin, so a regression to a strict '>'
+    comparison would reject a correctly-pinned environment and abort the run.
+    """
+    from proteus.utils.coupler import validate_module_versions
+
+    config = types.SimpleNamespace(
+        interior_energetics=types.SimpleNamespace(module='spider'),
+        interior_struct=types.SimpleNamespace(module='zalmoxis'),
+        atmos_clim=types.SimpleNamespace(module='janus'),
+        outgas=types.SimpleNamespace(module='calliope'),
+        escape=types.SimpleNamespace(module='zephyrus'),
+        star=types.SimpleNamespace(module='mors'),
+    )
+    requires = [
+        'numpy',
+        'fwl-zalmoxis>=1.0',
+        'fwl-janus>=1.0',
+        'fwl-calliope>=1.0',
+        'fwl-zephyrus>=1.0',
+        'fwl-mors>=1.0',
+    ]
+    installed = ('zalmoxis', 'janus', 'calliope', 'zephyrus', 'mors')
+
+    for name in installed:
+        monkeypatch.setitem(sys.modules, name, types.SimpleNamespace(__version__='1.2'))
+
+    with (
+        patch('importlib.metadata.requires', return_value=requires),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        validate_module_versions({'rad': str(tmp_path)}, config)
+    assert mock_update.call_count == 0
+
+    # Boundary: installed == required minimum. '>=' admits equality.
+    for name in installed:
+        monkeypatch.setitem(sys.modules, name, types.SimpleNamespace(__version__='1.0'))
+
+    with (
+        patch('importlib.metadata.requires', return_value=requires),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update_eq,
+    ):
+        validate_module_versions({'rad': str(tmp_path)}, config)
+    assert mock_update_eq.call_count == 0
+
+
+@pytest.mark.unit
+def test_validate_module_versions_raises_for_old_janus_in_spider_stack(monkeypatch, tmp_path):
+    """Cover out-of-date log/raise path with spider interior and old janus."""
+    from proteus.utils.coupler import validate_module_versions
+
+    config = types.SimpleNamespace(
+        interior_energetics=types.SimpleNamespace(module='spider'),
+        interior_struct=types.SimpleNamespace(module='dummy'),
+        atmos_clim=types.SimpleNamespace(module='janus'),
+        outgas=types.SimpleNamespace(module='dummy'),
+        escape=types.SimpleNamespace(module='dummy'),
+        star=types.SimpleNamespace(module='dummy'),
+    )
+    monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='0.1.0'))
+
+    with (
+        patch('importlib.metadata.requires', return_value=['fwl-janus>=1.0.0']),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        with pytest.raises(EnvironmentError, match='Out-of-date modules'):
+            validate_module_versions({'rad': str(tmp_path)}, config)
+    mock_update.assert_called_once()
+
+
+@pytest.mark.unit
+def test_print_citation_agni_and_manual_mode_cover_noop_cases():
+    """Cover print_citation match-case no-op arms and chemistry manual gate."""
+    config = types.SimpleNamespace(
+        atmos_clim=types.SimpleNamespace(module='agni'),
+        interior_energetics=types.SimpleNamespace(module='aragog'),
+        outgas=types.SimpleNamespace(module='atmodeller'),
+        escape=types.SimpleNamespace(module=None),
+        star=types.SimpleNamespace(module='dummy'),
+        orbit=types.SimpleNamespace(module='dummy'),
+        accretion=types.SimpleNamespace(module='dummy'),
+        observe=types.SimpleNamespace(module='dummy'),
+        atmos_chem=types.SimpleNamespace(module='vulcan', when='manually'),
+    )
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        print_citation(config)
+        messages = [str(call) for call in mock_log.info.call_args_list]
+        assert any('Nicholls et al. (2025)' in m for m in messages)
+        assert not any('Mollière et al. (2019)' in m for m in messages)
+        assert not any('Tsai et al. (2021)' in m for m in messages)
+
+
+@pytest.mark.unit
+def test_update_plots_spider_dummy_atm_covers_skip_branches(monkeypatch, tmp_path):
+    """Cover UpdatePlots branches when atmosphere is dummy and orbit is not evolving."""
+    calls = []
+    _install_updateplots_fakes(monkeypatch, calls)
+    monkeypatch.setattr('proteus.utils.coupler.sample_times', lambda *_a, **_k: ([500], None))
+
+    cfg = types.SimpleNamespace(
+        atmos_clim=types.SimpleNamespace(module='dummy'),
+        interior_energetics=types.SimpleNamespace(module='spider'),
+        observe=types.SimpleNamespace(module=None),
+        orbit=types.SimpleNamespace(
+            module='dummy', star_planet_model=None, planet_satellite_model=None
+        ),
+        star=types.SimpleNamespace(module='dummy', mors=types.SimpleNamespace(age_now=4.5)),
+        atmos_chem=types.SimpleNamespace(module='dummy'),
+        params=types.SimpleNamespace(out=types.SimpleNamespace(plot_fmt='png')),
+    )
+    hf_all = pd.DataFrame({'Time': [1.0, 2.0]})
+    dirs = {'output': str(tmp_path), 'fwl': str(tmp_path / 'fwl')}
+
+    from proteus.utils.coupler import UpdatePlots
+
+    UpdatePlots(hf_all, dirs, cfg, end=True, num_snapshots=1)
+
+    called_names = [c[0] for c in calls]
+    assert 'plot_global' in called_names
+    assert 'plot_escape' in called_names
+    assert 'plot_interior' in called_names
+    assert 'plot_orbit' not in called_names
+    assert 'plot_atmosphere' not in called_names
+    assert 'plot_spectra' not in called_names
+
+
+@pytest.mark.unit
+def test_remove_excess_files_without_spectra(monkeypatch):
+    """With spectra kept, only the three run-scratch files are removed.
+
+    Those are the AGNI log, the SPIDER scratch directory, and the lockfile. The
+    spectral files are the expensive ones to regenerate and are kept unless
+    rm_spectralfiles is set, so the count pins that nothing else was swept in
+    and the suffix check pins which files were spared.
+    """
+    removed = []
+    monkeypatch.setattr('proteus.utils.coupler.safe_rm', lambda p: removed.append(p))
+
+    remove_excess_files('/tmp/out', rm_spectralfiles=False)
+
+    assert len(removed) == 3
+    assert all('runtime.sf' not in p for p in removed)
+
+
+# =============================================================================
+# Test: resume snapshot-pair validation
+# =============================================================================
+
+
+def _write_valid_nc(path: str) -> str:
+    """Create a minimal, valid netCDF file at ``path``."""
+    from netCDF4 import Dataset
+
+    with Dataset(path, 'w') as ds:
+        ds.createDimension('x', 1)
+    return path
+
+
+def _write_corrupt_nc(path: str) -> str:
+    """Create a file that exists but does not open as netCDF (truncated write)."""
+    with open(path, 'wb') as fh:
+        fh.write(b'not a valid netcdf file')
+    return path
+
+
+def _hf_times(times):
+    """Minimal helpfile DataFrame carrying just the columns the selector reads."""
+    return pd.DataFrame({'Time': [float(t) for t in times], 'Phi_global': [0.9] * len(times)})
+
+
+@pytest.mark.unit
+def test_netcdf_readable_distinguishes_valid_corrupt_missing(tmp_path):
+    """_netcdf_readable is True only for a file that opens as netCDF.
+
+    Covers the three states the resume selector must tell apart: a complete
+    file, a file present but truncated mid-write, and an absent file.
+    """
+    valid = _write_valid_nc(str(tmp_path / 'ok.nc'))
+    corrupt = _write_corrupt_nc(str(tmp_path / 'bad.nc'))
+
+    assert _netcdf_readable(valid) is True
+    assert _netcdf_readable(corrupt) is False
+    assert _netcdf_readable(str(tmp_path / 'missing.nc')) is False
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_keeps_complete_latest(tmp_path):
+    """A complete latest pair leaves the helpfile and the data dir untouched."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20, 30):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30]))
+
+    assert dropped == []
+    assert len(out) == 3
+    assert int(out.iloc[-1]['Time']) == 30
+    # Discrimination guard: nothing was quarantined on the all-complete path.
+    assert not list(data.glob('*.incomplete'))
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_falls_back_on_corrupt_atm(tmp_path):
+    """A truncated latest _atm.nc trims to the prior pair and deletes both halves.
+
+    The interior half being intact must not save the step: the atmosphere
+    half is required, so the row is dropped and both 30_*.nc files are
+    deleted so the modules' latest-file globs land on time 20 and the
+    archive sweep cannot pick them up.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+    _write_valid_nc(str(data / '30_int.nc'))
+    _write_corrupt_nc(str(data / '30_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30]))
+
+    assert dropped == [30]
+    assert int(out.iloc[-1]['Time']) == 20
+    assert not (data / '30_atm.nc.incomplete').exists()
+    assert not (data / '30_int.nc.incomplete').exists()
+    assert not (data / '30_atm.nc').exists()
+    assert not (data / '30_int.nc').exists()
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_falls_back_on_corrupt_int(tmp_path):
+    """A truncated latest _int.nc (atmosphere intact) also triggers the fallback."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+    _write_corrupt_nc(str(data / '30_int.nc'))
+    _write_valid_nc(str(data / '30_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30]))
+
+    assert dropped == [30]
+    assert int(out.iloc[-1]['Time']) == 20
+    # Both halves of the incomplete pair are deleted (symmetry with the
+    # corrupt-atm case): a stray valid 30_atm.nc must not be left for the
+    # atmosphere module's latest-file glob to pick up against a missing 30_int.
+    assert not (data / '30_int.nc.incomplete').exists()
+    assert not (data / '30_atm.nc.incomplete').exists()
+    assert not (data / '30_int.nc').exists()
+    assert not (data / '30_atm.nc').exists()
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_matches_writer_filename_conventions(tmp_path):
+    """Interior and atmosphere (rounded %.0f) names match."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+
+    # Time 30.7: interior and atmosphere round to 31.
+    _write_valid_nc(str(data / '31_int.nc'))
+    _write_valid_nc(str(data / '31_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30.7]))
+
+    # The offset pair is recognised as complete: nothing dropped, latest kept.
+    assert dropped == []
+    assert len(out) == 3
+    assert out.iloc[-1]['Time'] == pytest.approx(30.7)
+    assert not list(data.glob('*.incomplete'))
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_dummy_atm_requires_only_interior(tmp_path):
+    """With require_atm=False the selector ignores the (absent) atmosphere half."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20, 30):
+        _write_valid_nc(str(data / f'{t}_int.nc'))  # no _atm.nc written at all
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30]), require_atm=False
+    )
+
+    assert dropped == []
+    assert int(out.iloc[-1]['Time']) == 30
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_raises_when_no_complete_pair(tmp_path):
+    """No resumable row raises, so the caller can restart fresh.
+
+    Two ways to reach it: the scan walks every row and finds none backed by a
+    readable pair, or there is no row to walk at all. The empty helpfile is the
+    boundary case where the loop body never runs, so the raise has to come from
+    the post-loop check rather than from a failed probe inside it.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_corrupt_nc(str(data / f'{t}_int.nc'))
+        _write_corrupt_nc(str(data / f'{t}_atm.nc'))
+
+    with pytest.raises(RuntimeError, match='No complete'):
+        select_resumable_snapshot(str(tmp_path), _hf_times([10, 20]))
+
+    # Boundary: a helpfile with no rows has nothing to resume from either.
+    with pytest.raises(RuntimeError, match='No complete'):
+        select_resumable_snapshot(str(tmp_path), _hf_times([]))
+
+
+@pytest.mark.unit
+def test_failed_selection_restores_quarantined_files(tmp_path):
+    """A failed selection restores every quarantined file and deletes none.
+
+    A successful selection deletes the quarantined trailing files, which are
+    unusable once the helpfile is truncated below them; a FAILED selection
+    must do the opposite and put every file back under its original name, so
+    a failed resume attempt stays lossless and a later retry or manual
+    inspection sees the run directory exactly as it was. Discrimination:
+    each file carries unique bytes and the restored files must match them,
+    so a re-created placeholder or a cross-file swap cannot pass.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    payloads = {}
+    for t in (10, 20):
+        for half in ('int', 'atm'):
+            p = data / f'{t}_{half}.nc'
+            _write_corrupt_nc(str(p))
+            # Make each corrupt file unique so restore is distinguishable
+            # from recreation; appending keeps the file corrupt.
+            p.write_bytes(p.read_bytes() + p.name.encode())
+            payloads[p.name] = p.read_bytes()
+
+    with pytest.raises(RuntimeError, match='No complete'):
+        select_resumable_snapshot(str(tmp_path), _hf_times([10, 20]))
+
+    leftovers = sorted(f.name for f in data.iterdir())
+    assert leftovers == sorted(payloads), (
+        'originals must be back under their exact names with no .incomplete strays'
+    )
+    for name, blob in payloads.items():
+        assert (data / name).read_bytes() == blob
+
+
+def _write_valid_json(path: str) -> str:
+    """Create a minimal, valid SPIDER-style interior JSON snapshot."""
+    with open(path, 'w') as fh:
+        json.dump({'data': {'S': [1.0, 2.0]}}, fh)
+    return path
+
+
+def _write_corrupt_json(path: str) -> str:
+    """Create a truncated JSON file (present but not parseable)."""
+    with open(path, 'w') as fh:
+        fh.write('{"data": {"S": [1.0, 2.')  # cut off mid-write
+    return path
+
+
+@pytest.mark.unit
+def test_interior_snapshot_names_track_each_writer_convention():
+    """Each interior module's probe uses that writer's own filename format.
+
+    Aragog and SPIDER round (``%.0f.json``). The dummy and
+    boundary interiors write no snapshot at all.
+    """
+    # Time 30.7: Aragog and SPIDER rounds to 31.
+    assert _interior_snapshot_names(30.7, 'aragog') == ['31_int.nc']
+    assert _interior_snapshot_names(30.7, 'spider') == ['31.json']
+
+    # Integer time rounds to 30
+    assert _interior_snapshot_names(30.0, 'aragog') == ['30_int.nc']
+
+    # Dummy and boundary write no interior snapshot: empty constraint.
+    assert _interior_snapshot_names(30.7, 'dummy') == []
+    assert _interior_snapshot_names(30.7, 'boundary') == []
+
+    # Unknown module falls back to the Aragog default rather than crashing.
+    assert _interior_snapshot_names(30.7, 'other') == ['31_int.nc']
+
+
+@pytest.mark.unit
+def test_atm_snapshot_names_floating_convention():
+    """The atmosphere probe uses exactly the float rounding convention."""
+    # Time 30.7: round to 31
+    assert _atm_snapshot_names(30.7) == ['31_atm.nc']
+
+    # Integer Time: rounds to 30
+    assert _atm_snapshot_names(30.0) == ['30_atm.nc']
+
+    # Zero Time: should be fine
+    assert _atm_snapshot_names(0.0) == ['0_atm.nc']
+
+    # Negative Time: should raise ValueError
+    with pytest.raises(ValueError, match='Negative time'):
+        _atm_snapshot_names(-1.0)
+
+
+@pytest.mark.unit
+def test_snapshot_readable_dispatches_json_and_netcdf(tmp_path):
+    """_snapshot_readable validates a .json half by parse and an .nc half by open.
+
+    SPIDER's interior half is JSON; a truncated write parses as invalid. The
+    netCDF halves keep the existing open-check. Covers valid, corrupt, and
+    absent for both extensions.
+    """
+    good_json = _write_valid_json(str(tmp_path / 'ok.json'))
+    bad_json = _write_corrupt_json(str(tmp_path / 'bad.json'))
+    good_nc = _write_valid_nc(str(tmp_path / 'ok.nc'))
+
+    assert _snapshot_readable(good_json) is True
+    assert _snapshot_readable(bad_json) is False
+    assert _snapshot_readable(str(tmp_path / 'missing.json')) is False
+    # netCDF dispatch unchanged.
+    assert _snapshot_readable(good_nc) is True
+    assert _snapshot_readable(str(tmp_path / 'missing.nc')) is False
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_resumes_spider_json_history(tmp_path):
+    """A SPIDER interior (JSON snapshots) resumes; the Aragog-only probe would not.
+
+    SPIDER writes ``'%.0f.json'`` interior snapshots and no ``_int.nc``. With
+    ``interior_module='spider'`` the selector must recognise the JSON half and
+    keep the latest row; a probe hard-coded to the Aragog ``_int.nc`` name
+    would find no interior half on any row and raise the no-complete-pair
+    error, a regression against a SPIDER resume that worked before.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20, 30):
+        _write_valid_json(str(data / f'{t:.0f}.json'))
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30]), require_atm=False, interior_module='spider'
+    )
+
+    assert dropped == []
+    assert int(out.iloc[-1]['Time']) == 30
+    # Discrimination guard: the Aragog-name probe sees no interior half here,
+    # so it would raise rather than return the valid latest row.
+    with pytest.raises(RuntimeError, match='No complete'):
+        select_resumable_snapshot(
+            str(tmp_path), _hf_times([10, 20, 30]), require_atm=False, interior_module='aragog'
+        )
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_falls_back_on_corrupt_spider_json(tmp_path):
+    """A truncated latest SPIDER JSON trims to the prior complete snapshot."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_json(str(data / f'{t:.0f}.json'))
+    _write_corrupt_json(str(data / '30.json'))
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30]), require_atm=False, interior_module='spider'
+    )
+
+    assert dropped == [30]
+    assert int(out.iloc[-1]['Time']) == 20
+    # The incomplete latest half is deleted so SPIDER's latest-json glob
+    # lands on time 20, not the truncated 30.json.
+    assert not (data / '30.json.incomplete').exists()
+    assert not (data / '30.json').exists()
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_dummy_interior_trusts_helpfile(tmp_path):
+    """Dummy/boundary interiors write no snapshot, so resume trusts the helpfile.
+
+    With ``interior_module='dummy'`` and no atmosphere half, no snapshot file
+    exists on disk at all; the selector must impose no interior constraint and
+    keep the latest helpfile row rather than raise for a missing ``_int.nc``.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()  # deliberately empty: dummy interior + dummy atm write nothing
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 30]), require_atm=False, interior_module='dummy'
+    )
+
+    assert dropped == []
+    assert int(out.iloc[-1]['Time']) == 30
+    assert not list(data.glob('*.incomplete'))
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_accepts_both_atm(tmp_path):
+    """A fractional-Time atmosphere is recognised, not quarantined.
+
+    JANUS and AGNI use a floating point rounding convention to look for
+    ``31_atm.nc`` given time 30.7  - both modules now round in the same way.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_valid_nc(str(data / f'{t}_int.nc'))
+        _write_valid_nc(str(data / f'{t}_atm.nc'))
+
+    # Time 30.7: interior rounds to 31
+    _write_valid_nc(str(data / '31_int.nc'))
+    _write_valid_nc(str(data / '31_atm.nc'))
+
+    out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30.7]))
+
+    assert dropped == []
+    assert len(out) == 3
+    assert out.iloc[-1]['Time'] == pytest.approx(30.7)
+
+    # Discrimination guard: nothing quarantined
+    assert not list(data.glob('*.incomplete'))
+    assert (data / '31_atm.nc').exists()
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_rejects_cross_row_atm_collision(tmp_path):
+    """A row's missing atmosphere is not satisfied by an adjacent row's file.
+
+    SPIDER writes rounded ``'%.0f.json'`` interiors and AGNI writes rounded
+    ``'%.0f_atm.nc'`` atmospheres. Time 30.2 rounds to 30 for both halves and
+    Time 30.7 rounds to 31. If Time 30.7's own ``31_atm.nc`` never landed while
+    Time 30.2's ``30_atm.nc`` is on disk, a probe that also accepted the
+    truncated ``30_atm.nc`` for Time 30.7 would pair 30.7's interior with
+    30.2's atmosphere and resume from a mismatched state. The single AGNI
+    convention probes only ``31_atm.nc`` for 30.7, so the row is dropped and
+    30.2's valid pair is left in place.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    # Time 30.2: complete SPIDER-JSON + AGNI pair (both round to 30).
+    _write_valid_json(str(data / '30.json'))
+    _write_valid_nc(str(data / '30_atm.nc'))
+    # Time 30.7: interior present (rounds to 31); its own atmosphere is absent.
+    _write_valid_json(str(data / '31.json'))
+    # 31_atm.nc deliberately not written.
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path),
+        _hf_times([30.2, 30.7]),
+        interior_module='spider',
+    )
+
+    # 30.7 is rejected (its own atmosphere is missing); resume falls to 30.2.
+    assert dropped == [30]
+    assert len(out) == 1
+    assert out.iloc[-1]['Time'] == pytest.approx(30.2)
+    # 30.2's valid pair must survive untouched: neither file is a candidate for
+    # 30.7 under the single rounded convention, so the collision cannot consume
+    # them.
+    assert (data / '30_atm.nc').exists()
+    assert (data / '30.json').exists()
+    # 30.7's orphaned interior is deleted so SPIDER's latest-json glob
+    # cannot load it against the 30.2-trimmed helpfile.
+    assert not (data / '31.json.incomplete').exists()
+    assert not (data / '31.json').exists()
+
+
+# =============================================================================
+# Test: select_profile_plot_times() - atmosphere/interior profile-time selection
+# =============================================================================
+
+
+def test_select_profile_plot_times_boundary_uses_atmosphere_times():
+    """When the interior writes no snapshots (dummy/boundary), the atmosphere
+    NetCDF times are used directly rather than intersected away.
+
+    Regression guard: the previous logic special-cased only 'dummy', so a
+    'boundary' interior produced an empty interior time list and the
+    intersection wiped out every atmosphere time (empty plot). Here the
+    interior list is empty but atmosphere times survive.
+    """
+    result = select_profile_plot_times([], [10, 30, 20], no_int_snapshots=True)
+    assert result == [10, 20, 30]
+    # A regression that intersected against the empty interior list would
+    # return [] here; assert non-empty and the full atmosphere set.
+    assert result != []
+    assert set(result) == {10, 20, 30}
+
+
+def test_select_profile_plot_times_intersects_for_snapshot_interiors():
+    """For spider/aragog, profiles are plotted only at times present in BOTH
+    the interior and atmosphere outputs (the intersection).
+
+    Discrimination: an atmosphere-only time (30) must be excluded AND a shared
+    time (10) must be included - a discriminating pair, not a single check. An
+    interior-only time (5) must also be excluded.
+    """
+    result = select_profile_plot_times([5, 10, 20], [10, 20, 30], no_int_snapshots=False)
+    assert result == [10, 20]
+    assert 30 not in result  # atmosphere-only time excluded
+    assert 5 not in result  # interior-only time excluded
+    assert 10 in result  # shared time included
+
+
+def test_select_profile_plot_times_empty_atmosphere_returns_empty():
+    """With no atmosphere NetCDF times, no profiles can be plotted regardless
+    of interior module.
+
+    Edge case: empty atmosphere list under both branches yields an empty
+    result (and never raises).
+    """
+    assert select_profile_plot_times([1, 2, 3], [], no_int_snapshots=False) == []
+    assert select_profile_plot_times([], [], no_int_snapshots=True) == []
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_mass_conservation_refuses_a_non_finite_mass():
+    """A non-finite mass is refused rather than silently reported as clean.
+
+    Both comparisons the invariant relies on are False for NaN, so without an
+    explicit check a row carrying an atmosphere five times its own interior
+    passes, which is the opposite of what the invariant exists to say.
+    """
+    from proteus.utils.coupler import assert_mass_conservation
+
+    # Textbook violation: 5e23 kg of atmosphere over a 1e23 kg interior.
+    broken = {
+        'M_atm': 5.0e23,
+        'M_int': 1.0e23,
+        'M_ele': float('nan'),
+        'M_planet': float('nan'),
+        'M_vol_atm': 0.0,
+        'M_vaps': 0.0,
+    }
+    with pytest.raises(RuntimeError, match='not finite'):
+        assert_mass_conservation(broken)
+
+    # The mechanism the check replaces: neither comparison fires on NaN.
+    assert not (float('nan') <= 0.0)
+    assert not (float('nan') > float('nan') * 1.000001)
+
+    # Each mass is covered, not just the one that happened to be checked first.
+    for key in ('M_atm', 'M_planet', 'M_vol_atm'):
+        row = {'M_atm': 1.0e20, 'M_planet': 6.0e24, 'M_vol_atm': 1.0e20, 'M_vaps': 0.0}
+        row[key] = float('inf')
+        with pytest.raises(RuntimeError, match=key):
+            assert_mass_conservation(row)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_mass_conservation_still_passes_a_finite_row():
+    """Finite rows are unaffected, including the pre-IC row of zeros.
+
+    A guard that refused ordinary rows would stop every run, so the healthy
+    paths are pinned alongside the rejection above.
+    """
+    from proteus.utils.coupler import assert_mass_conservation
+
+    # Ordinary row: a thin atmosphere on an Earth-mass planet.
+    assert (
+        assert_mass_conservation(
+            {'M_atm': 5.0e18, 'M_planet': 5.97e24, 'M_vol_atm': 0.0, 'M_vaps': 0.0}
+        )
+        is None
+    )
+    # Pre-IC row, before the structure solve has written a planet mass.
+    assert assert_mass_conservation({'M_atm': 0.0, 'M_planet': 0.0, 'M_vol_atm': 0.0}) is None
+    # Discrimination: a genuine breach on finite values must still raise, so
+    # the two passes above reflect healthy rows and not a disabled check.
+    with pytest.raises(RuntimeError, match='exceeds M_planet'):
+        assert_mass_conservation(
+            {'M_atm': 9.0e24, 'M_planet': 5.97e24, 'M_vol_atm': 0.0, 'M_vaps': 0.0}
+        )

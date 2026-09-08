@@ -77,7 +77,8 @@ PROTEUS is scientific simulation software where incorrect results are worse
 than crashes. Every code change must satisfy:
 
 - **Conservation**: mass and energy budgets must close. The runtime invariant
-  `assert_mass_conservation` checks this on every iteration.
+  `assert_mass_conservation` checks this on every iteration. Its
+  $M_\mathrm{atm} \leq M_\mathrm{planet}$ half is deliberately not applied when `outgas.vapourise = true`.
 - **Positivity**: temperatures must be positive (Kelvin), pressures must be
   positive, mass fractions must be in \[0, 1].
 - **Unit consistency**: config values use "human" units (M$_\oplus$, bar, Gyr);

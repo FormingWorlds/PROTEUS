@@ -5,9 +5,8 @@ wrapper. Heavy matplotlib operations are mocked at the source-binding
 attribute (``cpl_orbit.plt``) so tests run in milliseconds.
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -36,11 +35,28 @@ def _make_hf_all(n: int = 5, t_start: float = 1e2, t_end: float = 1e8) -> pd.Dat
             'Time': np.logspace(np.log10(t_start), np.log10(t_end), n),
             'semimajorax': np.linspace(1.5e11, 1.6e11, n),
             'eccentricity': np.linspace(0.01, 0.05, n),
-            'semimajorax_sat': np.linspace(3.8e8, 4.0e8, n),
+            'orbital_period': np.linspace(3e7, 3.2e7, n),
             'axial_period': np.linspace(24 * 3600, 30 * 3600, n),
+            'semimajorax_sat': np.linspace(3.8e8, 4.0e8, n),
+            'eccentricity_sat': np.linspace(0.02, 0.06, n),
+            'orbital_period_sat': np.linspace(2.3e6, 2.4e6, n),
+            'axial_period_sat': np.linspace(2.3e6, 2.4e6, n),
             'roche_limit': np.full(n, 1.0e10),
         }
     )
+
+
+def _make_axs_3x2() -> np.ndarray:
+    """Build a (3, 2) object array of MagicMock axes matching plot_orbit's
+    real ``plt.subplots(3, 2, ...)`` grid, with ``twinx()`` wired on every
+    mock so the timescales-panel right axis is reachable."""
+    axs = np.empty((3, 2), dtype=object)
+    for i in range(3):
+        for j in range(2):
+            ax = MagicMock()
+            ax.twinx.return_value = MagicMock()
+            axs[i, j] = ax
+    return axs
 
 
 def _install_mock_plt(monkeypatch):
@@ -84,17 +100,15 @@ def test_plot_orbit_returns_early_when_time_below_t0(tmp_path, monkeypatch):
 
 
 def test_plot_orbit_draws_and_saves_with_sufficient_time(tmp_path, monkeypatch):
-    """When the helpfile contains times above t0, ``plot_orbit`` produces a
-    2-row figure, applies a log x-scale to both axes, and saves the figure.
+    """When the helpfile contains times above t0, ``plot_orbit`` produces
+    the 3-row (semi-major axis, eccentricity, timescales) by 2-column
+    (planet, satellite) grid, applies a log x-scale to every panel via
+    ``axs.flat``, and saves the figure.
     """
     mock_fig = MagicMock()
-    ax_t = MagicMock()
-    ax_b = MagicMock()
-    # twinx returns an independent axis for the right-side series
-    ax_t.twinx.return_value = MagicMock()
-    ax_b.twinx.return_value = MagicMock()
+    axs = _make_axs_3x2()
     mock_plt = _install_mock_plt(monkeypatch)
-    mock_plt.subplots.return_value = (mock_fig, [ax_t, ax_b])
+    mock_plt.subplots.return_value = (mock_fig, axs)
 
     hf_all = _make_hf_all(n=6, t_start=1e2, t_end=1e8)
     orbit_mod.plot_orbit(hf_all, str(tmp_path), plot_format='png', t0=100.0)
@@ -103,10 +117,12 @@ def test_plot_orbit_draws_and_saves_with_sufficient_time(tmp_path, monkeypatch):
     assert mock_fig.savefig.call_count == 1
     saved_path = mock_fig.savefig.call_args[0][0]
     assert saved_path.endswith('plot_orbit.png')
-    # Both x-axes set log scale on the bottom plot (shared x). A regression
-    # that swaps the scale to linear would leave this call missing.
-    ax_b.set_xscale.assert_called_with('log')
-    ax_t.set_xscale.assert_called_with('log')
+    # Every panel in the grid gets a log x-scale (the shared-x loop over
+    # axs.flat). A regression that only touched a subset of panels, or
+    # swapped the scale to linear, would leave one of these missing.
+    for i in range(3):
+        for j in range(2):
+            axs[i, j].set_xscale.assert_called_with('log')
 
 
 def test_plot_orbit_passes_correct_units_to_axes(tmp_path, monkeypatch):
@@ -116,28 +132,26 @@ def test_plot_orbit_passes_correct_units_to_axes(tmp_path, monkeypatch):
     forgotten unit conversion (raw SI would be ~1e11 not ~1).
     """
     mock_fig = MagicMock()
-    ax_t = MagicMock()
-    ax_b = MagicMock()
-    ax_tr = MagicMock()
-    ax_br = MagicMock()
-    ax_t.twinx.return_value = ax_tr
-    ax_b.twinx.return_value = ax_br
+    axs = _make_axs_3x2()
     mock_plt = _install_mock_plt(monkeypatch)
-    mock_plt.subplots.return_value = (mock_fig, [ax_t, ax_b])
+    mock_plt.subplots.return_value = (mock_fig, axs)
 
     hf_all = _make_hf_all(n=4, t_start=1e3, t_end=1e7)
     orbit_mod.plot_orbit(hf_all, str(tmp_path), plot_format='pdf', t0=100.0)
 
-    # ax_t.plot is called with (time, semimajorax/AU); extract the second positional
-    # argument and verify the magnitude lies in plausible AU range, not raw metres.
-    y_planet = ax_t.plot.call_args[0][1]
+    # Panel [0, 0] (planet semi-major axis) is called with (time,
+    # semimajorax/AU); extract the second positional argument and verify
+    # the magnitude lies in plausible AU range, not raw metres.
+    y_planet = axs[0, 0].plot.call_args[0][1]
     assert np.amax(y_planet) == pytest.approx(1.6e11 / AU, rel=1e-9)
     # Scale guard: AU-scaled values are O(1) for an Earth-like orbit. A
     # forgotten /AU would land at O(1e11).
     assert 0.5 < np.amax(y_planet) < 5.0
 
-    # ax_br.plot receives (time, axial_period/secs_per_hour). Verify hour scaling.
-    y_period = ax_br.plot.call_args[0][1]
+    # Panel [2, 0]'s twinx (planet axial-spin-period right axis) receives
+    # (time, axial_period/secs_per_hour). Verify hour scaling.
+    ax_spin = axs[2, 0].twinx.return_value
+    y_period = ax_spin.plot.call_args[0][1]
     assert np.amax(y_period) == pytest.approx((30 * 3600) / secs_per_hour, rel=1e-9)
     # Scale guard: 24-30 h spans an Earth-day. A forgotten /secs_per_hour
     # would land at ~1e5.
@@ -147,19 +161,15 @@ def test_plot_orbit_passes_correct_units_to_axes(tmp_path, monkeypatch):
 def test_plot_orbit_yaxis_lower_bound_above_zero_when_min_eccentricity_positive(
     tmp_path, monkeypatch
 ):
-    """For the right-axis eccentricity panel, ``plot_orbit`` sets
+    """For the planet-eccentricity panel [1, 0], ``plot_orbit`` sets
     ``ymin = amin(e) / yext``. With strictly positive eccentricities the
     lower y-bound must therefore be strictly positive: a regression that
     flipped the divide to a multiply would push ymin above amin(e).
     """
     mock_fig = MagicMock()
-    ax_t = MagicMock()
-    ax_b = MagicMock()
-    ax_tr = MagicMock()
-    ax_t.twinx.return_value = ax_tr
-    ax_b.twinx.return_value = MagicMock()
+    axs = _make_axs_3x2()
     mock_plt = _install_mock_plt(monkeypatch)
-    mock_plt.subplots.return_value = (mock_fig, [ax_t, ax_b])
+    mock_plt.subplots.return_value = (mock_fig, axs)
 
     hf_all = _make_hf_all(n=5, t_start=1e3, t_end=1e6)
     # Force a strictly positive minimum eccentricity.
@@ -167,7 +177,7 @@ def test_plot_orbit_yaxis_lower_bound_above_zero_when_min_eccentricity_positive(
 
     orbit_mod.plot_orbit(hf_all, str(tmp_path), plot_format='png', t0=100.0)
 
-    ymin_called, _ymax_called = ax_tr.set_ylim.call_args[0]
+    ymin_called, _ymax_called = axs[1, 0].set_ylim.call_args[0]
     # ymin = 0.10 / 1.05 ~ 0.0952 with positive sign.
     assert ymin_called == pytest.approx(0.10 / 1.05, rel=1e-9)
     # Sign guard: a sign flip ( - amin / yext ) lands at ~-0.0952; the actual

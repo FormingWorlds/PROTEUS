@@ -2,7 +2,7 @@
 
 This tutorial simulates the thermal and atmospheric evolution of an
 Earth-mass planet at 1 AU from a Sun-like star, reproducing the nominal
-Earth case from the CHILI intercomparison[^cite-lichtenberg2026].
+Earth case from the CHILI intercomparison [^cite-lichtenberg2026].
 
 It uses the production-quality module combination:
 [Aragog](https://proteus-framework.org/aragog/) (interior energetics),
@@ -65,15 +65,19 @@ Monitor progress with `tail -f output/tutorial_earth/proteus_00.log`
 (the log appears once PROTEUS has initialized).
 
 !!! warning "Runtime"
-    This run takes 30 minutes to several hours depending on hardware.
-    The initial Zalmoxis structure solve (~10-20 min) is the slowest
-    phase.
+    This run takes several hours to overnight depending on hardware.
+    The initial Zalmoxis structure solve costs ~10-20 min, but the
+    rate-limiting stretch is the mushy solidification phase, where the
+    coupled solver takes sub-year timesteps to resolve the
+    interior-atmosphere flux balance while the mantle crystallizes through
+    the melt-fraction range $\Phi$ = 0.7 to 0.08. The timestep lengthens
+    again during the final approach to the 5% termination.
 
 ## Configuration
 
 The config at `input/tutorials/tutorial_earth.toml` sets:
 
-- **Star**: Sun on Spada[^cite-spada2013] tracks starting at 50 Myr. The solar
+- **Star**: Sun on Spada [^cite-spada2013] tracks starting at 50 Myr. The solar
   spectrum is used for radiative transfer. Stellar luminosity, radius, and
   XUV flux evolve with age.
 - **Interior**: Aragog solves the mantle energy equation on an 80-node radial
@@ -96,67 +100,93 @@ proteus plot -c input/tutorials/tutorial_earth.toml all
 ```
 
 <figure markdown="span">
-  ![Earth tutorial output](../assets/tutorials/earth_global_log.avif){ width="100%" }
+  ![Earth tutorial output](../assets/tutorials/earth_global_log.avif#only-light){ width="100%" }
+  ![Earth tutorial output](../assets/tutorials/earth_global_log_dark.avif#only-dark){ width="100%" }
   <figcaption><b>Multi-panel overview of the PROTEUS Earth analogue tutorial run.</b>
-  (a) Upward heat flux components: radiogenic heating (purple, ~0.2 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid orange), OLR (dashed green), and absorbed stellar flux (ASF, dashed blue, ~226 W m<sup>-2</sup>). The net fluxes decline from ~10<sup>5</sup> W m<sup>-2</sup> to ~10<sup>2</sup> W m<sup>-2</sup> over 1.3 Myr.
-  (b) Surface partial pressures: CO<sub>2</sub> (orange) dominates early at ~80 bar, peaking near 105 bar; H<sub>2</sub>O (blue) starts at ~4 bar and rises to ~364 bar as it exsolves during solidification. CO (dark yellow) and H<sub>2</sub> (green) remain minor.
-  (c) Surface temperature declining from ~3300 K to ~1870 K at the solidus.
-  (d) Surface gas mole fractions: CO<sub>2</sub> (orange) dominates early; H<sub>2</sub>O (blue) rises from near zero to dominate late, crossing CO<sub>2</sub> around 8 &times; 10<sup>5</sup> yr.
-  (e) Mantle evolution: core-mantle boundary (dashed purple) at ~0.49 planet fraction, rheological front (orange) propagating outward as the mantle solidifies, global melt fraction (dotted black) decreasing from 1.0 to 0.05.
-  (f) Volatile partitioning into the interior: H<sub>2</sub>O (blue) starts almost fully dissolved in the melt (&ge;99%) and drops to near 0% at solidification. CO<sub>2</sub> (orange) is far less soluble (~15% interior initially).</figcaption>
+  (a) Upward heat flux components: radiogenic heating (magenta, ~0.2 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid, grey/white), outgoing longwave radiation (OLR, red), and absorbed stellar flux (ASF, dashed blue, ~226 W m<sup>-2</sup>). Tidal heating (dark yellow) is negligible. The net fluxes decline from a few &times; 10<sup>5</sup> W m<sup>-2</sup> to a few hundred W m<sup>-2</sup> over ~1.5 Myr.
+  (b) Surface partial pressures: the superheated initial state is O<sub>2</sub>-dominated (yellow-green), with total surface pressure (dashed) near 2 &times; 10<sup>4</sup> bar; O<sub>2</sub> collapses within the first ~10<sup>5</sup> yr as the surface cools. CO<sub>2</sub> (orange) holds ~50-100 bar; H<sub>2</sub>O (blue) rises from ~4 bar to ~340 bar as it exsolves during solidification. CO (gold) and H<sub>2</sub> (green) remain minor.
+  (c) Surface temperature (solid) declining from ~3300 K to ~1920 K at the solidus; the magma temperature (dashed orange) starts near 4280 K.
+  (d) Surface gas mole fractions: O<sub>2</sub> (yellow-green) dominates the initial atmosphere (~100%) and collapses; CO<sub>2</sub> (orange) then dominates, peaking near 88%; H<sub>2</sub>O (blue) rises to dominate late, crossing CO<sub>2</sub> around 8.5 &times; 10<sup>5</sup> yr and reaching ~84%.
+  (e) Mantle evolution: the dashed purple line marks the core mass fraction (0.325); the rheological front (orange) starts at the core-mantle boundary in radius (~0.48 of the planet radius, above the mass-fraction reference) and propagates outward as the mantle solidifies; the global melt fraction (dotted) decreases from 1.0 to 0.05.
+  (f) Volatile partitioning into the interior: H<sub>2</sub>O (blue) starts almost fully dissolved in the melt (~99.6%) and falls to ~45% at the &Phi; = 5% termination, the residual melt still retaining much of the water. CO<sub>2</sub> (orange) is far less soluble, starting at ~14% interior and dropping to ~0.5%.</figcaption>
 </figure>
 
 ### Thermal evolution (a, c)
 
-The planet starts fully molten at T$_\mathrm{s}$ $\approx$ 3300 K.
-The magma ocean radiates through a thick CO$_2$/steam atmosphere, with
-the net interior and atmospheric fluxes reaching ~10$^5$ W m$^{-2}$
-initially (a). Radiogenic heating (purple) provides a constant ~0.2
-W m$^{-2}$ baseline, negligible compared to the interior cooling flux.
-The absorbed stellar flux (ASF, dashed blue) is ~226 W m$^{-2}$ at 1 AU
+The planet starts fully molten, with a surface temperature
+T$_\mathrm{s}$ $\approx$ 3300 K and a magma temperature near 4280 K.
+The magma ocean radiates through a thick atmosphere, with the net
+interior and atmospheric fluxes reaching a few $\times$ 10$^5$ W m$^{-2}$ initially
+(a). Radiogenic heating (magenta) provides a constant ~0.2 W m$^{-2}$
+baseline, negligible compared to the interior cooling flux. The absorbed
+stellar flux (ASF, dashed blue) is ~226 W m$^{-2}$ at 1 AU
 (instellation F$_\mathrm{ins}$ $\approx$ 1005 W m$^{-2}$ at 50 Myr,
 reduced by the geometry factor, Bond albedo, and zenith angle).
 
-The surface temperature (c) decreases from ~3300 K to ~1870 K at the
-solidus over ~1.3 Myr. The decline slows around 10$^5$ yr as the mantle
-enters the mushy zone and latent heat release buffers the cooling.
+The surface temperature (c, solid) decreases from ~3300 K to
+~1920 K at the solidus over ~1.5 Myr; the magma temperature (dashed
+orange) tracks above it, starting near 4280 K. The decline slows around
+10$^5$ yr as the mantle enters the mushy zone and latent heat release
+buffers the cooling. At solidification the net interior and atmospheric
+fluxes have fallen to a few hundred W m$^{-2}$ (OLR ~540 W m$^{-2}$),
+approaching balance with the absorbed stellar flux.
 
 ### Atmospheric evolution (b, d)
 
-The atmosphere evolves in composition as the mantle solidifies:
+The atmosphere passes through three compositional stages as the mantle
+solidifies:
 
-1. **Early phase** (t < 10$^5$ yr): CO$_2$ dominates the atmosphere at
-   ~80-105 bar (b), while H$_2$O starts at only ~4 bar because nearly
-   all water is dissolved in the silicate melt (&ge;99% interior, f). In
-   mole fraction (d), CO$_2$ dominates early.
+1. **Superheated initial state** (t $\lesssim$ 10$^4$ yr): at the fully
+   molten, superheated initial condition the IW+4 oxygen fugacity buffer
+   produces an O$_2$-dominated atmosphere (~100 mol%, d) with a total
+   surface pressure of ~2 $\times$ 10$^4$ bar (b). This O$_2$ collapses as
+   the surface cools below ~3000 K, falling from ~2 $\times$ 10$^4$ bar to below
+   10 bar within the first ~3 $\times$ 10$^4$ yr and to a negligible
+   partial pressure by ~10$^5$ yr.
 
-2. **Late phase** (t > 10$^5$ yr): As the melt fraction drops, H$_2$O
-   exsolves from the crystallizing mantle and its partial pressure rises
-   to ~364 bar at solidification. H$_2$O overtakes CO$_2$ in mole
-   fraction around 8 $\times$ 10$^5$ yr (d) and dominates the final
-   atmosphere at ~84 mol%. The total surface pressure reaches ~434 bar.
+2. **CO$_2$-dominated phase** (~10$^4$ to ~8 $\times$ 10$^5$ yr): as O$_2$
+   collapses, CO$_2$ becomes the dominant species. Its mole fraction peaks
+   near 88% around 6 $\times$ 10$^4$ yr, where the partial pressure is
+   ~96 bar; the partial pressure then rises to a broad maximum of ~97 bar
+   near 2 $\times$ 10$^5$ yr (b, d). H$_2$O begins at only ~4 bar, with
+   nearly all water dissolved in the silicate melt (~99.6% interior at the
+   start, f), and rises through this phase as the crystallizing mantle
+   exsolves it.
 
-CO and H$_2$ remain minor species throughout (~1-10 bar), consistent
-with the oxidizing conditions (IW+4). CH$_4$ is negligible.
+3. **H$_2$O-dominated phase** (t > ~8 $\times$ 10$^5$ yr): H$_2$O overtakes
+   CO$_2$ in mole fraction around 8.5 $\times$ 10$^5$ yr (d) and keeps
+   rising as the melt crystallizes. It dominates the final atmosphere at
+   ~84 mol% (~340 bar), with CO$_2$ at
+   ~14 mol% (~57 bar). The total surface pressure at solidification is
+   ~403 bar.
+
+CO stays at a few bar throughout (~3-5 bar), while H$_2$ climbs from below
+0.1 bar to ~3.9 bar only as the last volatiles exsolve near
+solidification; both remain minor, consistent with the oxidizing
+conditions (IW+4). CH$_4$ is negligible.
 
 ### Mantle evolution (e, f)
 
 The Zalmoxis structure solver computes the hydrostatic profile at
-initialization: R$_\mathrm{planet}$ = 6.91 Mm (1.08 R$_\oplus$),
-core radius = 3.38 Mm (0.53 R$_\oplus$), CMB pressure = 114 GPa,
-center pressure = 360 GPa.
+initialization: R$_\mathrm{planet}$ = 7.07 Mm (1.11 R$_\oplus$),
+core radius = 3.41 Mm (0.54 R$_\oplus$, 0.48 of the planet radius),
+surface gravity = 7.77 m s$^{-2}$, CMB pressure = 103 GPa,
+center pressure = 342 GPa.
 
-In (e), the core-mantle boundary (dashed purple) sits at ~0.49 of the
-planet radius. The rheological front (orange), defined as the radius
-where $\Phi$ = 0.4, propagates outward from the CMB as the mantle
-crystallizes from the base up. The global melt fraction (dotted black)
+In (e), the dashed purple line is drawn at the core mass fraction
+(0.325). The rheological front (orange), defined as the radius where
+$\Phi$ = 0.4, starts at the core-mantle boundary in radius (~0.48 of the
+planet radius, above the mass-fraction reference) and propagates outward
+as the mantle crystallizes from the base up. The global melt fraction (dotted)
 decreases from 1.0 to 0.05, at which point the run terminates.
 
 In (f), H$_2$O (blue) starts with nearly all of its mass dissolved in the
-interior melt and drops to near 0% as the melt fraction approaches
-zero, releasing volatiles into the atmosphere. CO$_2$ (orange) follows
-a similar trend but with a smaller interior fraction (~15% initially)
-because of its lower solubility in silicate melt at IW+4.
+interior melt (~99.6%) and falls to ~45% at the $\Phi$ = 5% termination.
+Because water is highly incompatible, the shrinking melt stays water-rich
+even at low melt fraction; the remaining water is released to the
+atmosphere only as crystallization completes. CO$_2$ (orange) is far less
+soluble in silicate melt at IW+4, starting at ~14% interior and dropping
+to ~0.5%.
 
 ## Next steps
 
@@ -177,6 +207,6 @@ because of its lower solubility in silicate melt at IW+4.
 
 **See also:** [Model description](../Explanations/model.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)
 
-[^cite-lichtenberg2026]: Lichtenberg, T., Schaefer, L., Krissansen-Totton, J., et al., *[Coupled atmosHere Interior modeL Intercomparison (CHILI): Protocol Version 1.0](https://doi.org/10.3847/PSJ/ae593b)*, The Planetary Science Journal, 7, 108, 2026. [SciX](https://scixplorer.org/abs/2026PSJ.....7..108L/abstract).
+ [^cite-lichtenberg2026]: Lichtenberg, T., Schaefer, L., Krissansen-Totton, J., et al., *[Coupled atmosHere Interior modeL Intercomparison (CHILI): Protocol Version 1.0](https://doi.org/10.3847/PSJ/ae593b)*, The Planetary Science Journal, 7, 108, 2026. [SciX](https://scixplorer.org/abs/2026PSJ.....7..108L/abstract).
 
-[^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).
+ [^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).

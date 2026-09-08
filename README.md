@@ -1,13 +1,14 @@
-<h1 align="center">
-    <div>
-        <img src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/PROTEUS_white.png#gh-light-mode-only" style="vertical-align: middle;" width="60%"/>
-        <img src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/PROTEUS_black_nobkg.png#gh-dark-mode-only" style="vertical-align: middle;" width="60%"/>
-    </div>
-</h1>
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/proteus-lockup-dark-transparent.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/proteus-lockup-light-transparent.png">
+    <img alt="PROTEUS framework lockup: the wordmark with the phase glyph as the O" src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/proteus-lockup-light.png" width="480">
+  </picture>
+</div>
 
 <p align="center">
-  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-pr-checks.yml?branch=main&label=Unit%20Tests">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/coverage-baseline.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/coverage-baseline.yml?branch=main&label=Unit%20Tests">
   </a>
   <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-nightly.yml?branch=main&label=Integration%20Tests">
@@ -59,4 +60,4 @@ Full documentation: **[proteus-framework.org/PROTEUS](https://proteus-framework.
 
 ## Community and citation
 
-Ask questions on the [discussions page](https://github.com/orgs/FormingWorlds/discussions) or [contact the developers](https://proteus-framework.org/PROTEUS/Community/contact.html). If you use PROTEUS, please cite the papers listed in the [bibliography](https://proteus-framework.org/PROTEUS/Reference/bibliography.html).
+Ask questions on the [discussions page](https://github.com/orgs/FormingWorlds/discussions) or [contact the developers](https://proteus-framework.org/PROTEUS/Community/contact.html). If you use PROTEUS, please cite the papers listed in the [bibliography](https://proteus-framework.org/PROTEUS/Reference/bibliography.html). To cite the software itself, use the Zenodo concept DOI [10.5281/zenodo.21358380](https://doi.org/10.5281/zenodo.21358380), which always resolves to the latest archived release.

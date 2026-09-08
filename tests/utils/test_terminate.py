@@ -2,7 +2,7 @@
 
 Exercises convergence/termination criteria for solidification, energy balance,
 volatile escape, disintegration, time/iteration limits, and keepalive guard.
-Follows PROTEUS testing standards (see docs/test_infrastructure.md).
+Follows PROTEUS testing standards (see docs/How-to/testing.md).
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ def _cfg(**kwargs: Any) -> Any:
             offset_roche=0.0,
             offset_spin=0.0,
         ),
+        satellite=ns(enabled=False, sma_max=0.0),
         time=ns(enabled=True, maximum=100.0, minimum=0.0),
         iters=ns(enabled=True, total_loops=5, total_min=1),
         clock=ns(enabled=True, maximum=600.0),
@@ -59,7 +60,10 @@ def _handler(cfg: Any, *, phi_global: float = 0.4) -> Any:
         'breakup_period': 5.0,
         'runtime': 10.0,
         'Time': 0.0,
+        'M_vaps': 1.0e18,
+        'M_int': 1.0e24,
     }
+
     loops = {
         'total': 0,
         'total_loops': cfg.params.stop.iters.total_loops,

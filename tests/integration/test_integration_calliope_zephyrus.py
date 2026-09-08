@@ -46,9 +46,8 @@ zephyrus) and the AGNI x CALLIOPE leg covers the calliope
 atmosphere boundary.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -214,7 +213,7 @@ def test_calliope_is_included_preserves_documented_ten_gas_set_under_zephyrus_pa
 
     Field-count guard: the number of ``include_*`` fields is pinned
     via ``attrs.fields(Calliope)`` so a regression that silently
-    adds an eleventh species fails the count check even when the
+    adds or removes a reactive species fails the count check even when the
     documented ten still appear.
     """
     import attrs
@@ -237,16 +236,24 @@ def test_calliope_is_included_preserves_documented_ten_gas_set_under_zephyrus_pa
     for gas in documented_species:
         assert c.is_included(gas) is True, f'{gas} missing from Calliope defaults'
 
+    from proteus.utils.constants import noble_gases
+
     include_fields = [f for f in attrs.fields(Calliope) if f.name.startswith('include_')]
-    assert len(include_fields) == len(documented_species), (
-        f'Expected {len(documented_species)} include_* fields on Calliope, '
-        f'got {len(include_fields)}: {[f.name for f in include_fields]}'
+    reactive_fields = [
+        f for f in include_fields if f.name.removeprefix('include_') not in noble_gases
+    ]
+    assert len(reactive_fields) == len(documented_species), (
+        f'Expected {len(documented_species)} reactive include_* fields on Calliope, '
+        f'got {len(reactive_fields)}: {[f.name for f in reactive_fields]}'
     )
+    # The noble gases are opt-in, so each has an include_* flag defaulting off.
+    for _noble in noble_gases:
+        assert c.is_included(_noble) is False, f'{_noble} should default to off'
 
     # Discrimination: helper must raise on an undocumented attribute
     # rather than silently return False.
     with pytest.raises(AttributeError):
-        c.is_included('Ar')
+        c.is_included('Rn')
 
 
 def test_calliope_solver_parameters_remain_positive_under_zephyrus_pair():

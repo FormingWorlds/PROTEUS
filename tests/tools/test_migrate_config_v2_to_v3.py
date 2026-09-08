@@ -81,19 +81,35 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.aerosols_enabled',
         'atmos_clim.agni.grey_opacity_lw',
         'atmos_clim.agni.grey_opacity_sw',
+        'atmos_clim.agni.hydrograv_constg',
+        'atmos_clim.agni.hydrograv_maxdr',
+        'atmos_clim.agni.hydrograv_mindr',
+        'atmos_clim.agni.hydrograv_ming',
+        'atmos_clim.agni.hydrograv_selfg',
+        'atmos_clim.agni.hydrograv_steps',
         'atmos_clim.agni.spectral_file',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
+        # Inert while escape.hill_clamp is pinned off for migrated configs.
+        'escape.hill_clamp_frac',
+        # The per-step escape cap and its step floor apply at their measured
+        # defaults, so a migrated config needs no explicit value for either.
+        'escape.step_dt_floor_frac',
+        'escape.step_max_frac',
         'interior_energetics.adams_williamson_beta',
         'interior_energetics.adams_williamson_rhos',
         'interior_energetics.adiabatic_bulk_modulus',
         'interior_energetics.aragog.atol_temperature_equivalent',
         'interior_energetics.aragog.backend',
         'interior_energetics.aragog.core_bc',
+        'interior_energetics.aragog.entropy_step_cap',
+        'interior_energetics.aragog.phase_boundary_entropy_margin',
         'interior_energetics.aragog.phase_smoothing',
         'interior_energetics.aragog.phi_step_cap',
         'interior_energetics.aragog.scalar_gravity_override',
+        'interior_energetics.aragog.separation_viscosity',
         'interior_energetics.aragog.solver_method',
+        'interior_energetics.aragog.temperature_step_cap',
         'interior_energetics.aragog.tolerance_struct',
         'interior_energetics.boundary.T_liquidus',
         'interior_energetics.boundary.T_solidus',
@@ -106,7 +122,9 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.boundary.logging',
         'interior_energetics.boundary.nusselt_exponent',
         'interior_energetics.boundary.silicate_density',
+        'interior_energetics.boundary.core_bulk',
         'interior_energetics.boundary.core_density',
+        'interior_energetics.boundary.core_shear',
         'interior_energetics.boundary.silicate_heat_capacity',
         'interior_energetics.boundary.thermal_conductivity',
         'interior_energetics.boundary.thermal_diffusivity',
@@ -160,6 +178,73 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_struct.zalmoxis.update_stale_ceiling',
         'interior_struct.zalmoxis.use_anderson',
         'interior_struct.zalmoxis.use_jax',
+        'observe.clip_vmr',
+        'observe.module',
+        'observe.remove_one_gas',
+        'observe.petitRADTRANS.include_cia',
+        'observe.petitRADTRANS.include_rayleigh',
+        'observe.petitRADTRANS.line_opacity_mode',
+        'observe.petitRADTRANS.silent',
+        'observe.reference_pressure',
+        'observe.source',
+        'observe.spectrum_type',
+        # orbit.evolve/orbit.satellite (2.0 bools) are handled dynamically by
+        # _handle_orbit_dispatch, not a static OVERRIDES pin, so their 3.0
+        # destinations land here rather than in mig.OVERRIDES.
+        'orbit.star_planet_model',
+        'orbit.planet_satellite_model',
+        'orbit.perturber',
+        'orbit.satellite.include_satellite',
+        'orbit.satellite.mass_sat',
+        'orbit.satellite.radius_sat',
+        'orbit.satellite.semimajoraxis_sat',
+        'orbit.satellite.eccentricity_sat',
+        'orbit.satellite.evection_angle',
+        'orbit.satellite.c_factor_sat',
+        'orbit.satellite.axial_period_sat',
+        'orbit.satellite.love_number_sat',
+        # Obliqua (orbit.obliqua.*) has no 2.0 analogue at all; every field
+        # is new and stays at its 3.0 default for a migrated config.
+        'orbit.obliqua.store_3D',
+        'orbit.obliqua.enforce_ec',
+        'orbit.obliqua.optimize_scales',
+        'orbit.obliqua.solid_shell',
+        'orbit.obliqua.min_frac',
+        'orbit.obliqua.visc_l',
+        'orbit.obliqua.visc_lus',
+        'orbit.obliqua.visc_s',
+        'orbit.obliqua.visc_sus',
+        'orbit.obliqua.n',
+        'orbit.obliqua.m',
+        'orbit.obliqua.k_min',
+        'orbit.obliqua.k_max',
+        'orbit.obliqua.material_mu',
+        'orbit.obliqua.material_k',
+        'orbit.obliqua.alpha',
+        'orbit.obliqua.verbosity',
+        'orbit.obliqua.module_solid',
+        'orbit.obliqua.module_mushy',
+        'orbit.obliqua.module_fluid',
+        'orbit.obliqua.solid.ncalc',
+        'orbit.obliqua.solid.dr_min',
+        'orbit.obliqua.solid.dr_max',
+        'orbit.obliqua.solid.core',
+        'orbit.obliqua.solid.core_props',
+        'orbit.obliqua.solid.inertial_terms',
+        'orbit.obliqua.solid.bulk_l',
+        'orbit.obliqua.solid.porosity_thresh',
+        'orbit.obliqua.solid.dbulk_power',
+        'orbit.obliqua.mushy.b_width',
+        'orbit.obliqua.mushy.t_width',
+        'orbit.obliqua.fluid.sigma_R',
+        'orbit.obliqua.fluid.sigma_R_inf',
+        'orbit.obliqua.fluid.sigma_R_prf',
+        'orbit.obliqua.fluid.H_R',
+        'orbit.obliqua.fluid.efficiency',
+        # params.stop.satellite has no 2.0 analogue; stays at its 3.0
+        # default (disabled) for a migrated config.
+        'params.stop.satellite.enabled',
+        'params.stop.satellite.sma_max',
         'outgas.atmodeller.eos_CH4',
         'outgas.atmodeller.eos_CO',
         'outgas.atmodeller.eos_CO2',
@@ -176,16 +261,31 @@ _REVIEWED_NEUTRAL = frozenset(
         'outgas.atmodeller.solver_max_steps',
         'outgas.atmodeller.solver_mode',
         'outgas.atmodeller.solver_multistart',
+        'outgas.calliope.include_Ar',
+        'outgas.calliope.include_He',
+        'outgas.calliope.include_Kr',
+        'outgas.calliope.include_Ne',
+        'outgas.calliope.include_Xe',
         'outgas.calliope.nguess',
         'outgas.calliope.nsolve',
         'outgas.calliope.p_guess_max',
         'outgas.h2_binodal',
+        'outgas.lavatmos.P_melt',
+        'outgas.lavatmos.T_min',
+        'outgas.lavatmos.fO2_buffer_model',
+        'outgas.lavatmos.melt_comp_name',
+        'outgas.lavatmos.xatol',
+        'outgas.vapourise',
         'params.dt.hysteresis_iters',
         'params.dt.hysteresis_sfinc',
         'params.dt.max_growth_factor',
         'params.dt.mushy_maximum',
         'params.dt.mushy_upper',
         'params.dt.scale_decr',
+        # The unconverged-atmosphere criterion applies at its measured
+        # default, so a migrated config needs no explicit value for it.
+        'params.stop.stall.enabled',
+        'params.stop.stall.maximum',
         'params.dt.scale_incr',
         'params.dt.window',
         'params.out.dt_write_rel',
@@ -201,10 +301,9 @@ _REVIEWED_NEUTRAL = frozenset(
 )
 
 
-def test_map_completeness():
-    """Every 2.0 field has a destination, a handler, a removal, or a drop rule."""
+def _unhandled_v2_fields(paths):
+    """2.0 field paths with no copy, rename, handler, removal, or drop rule."""
     v3_defaults, _ = _v3()
-    v2 = mig._load_v2_defaults()
     interior_targets = set()
     for d in mig.INTERIOR_RENAMES.values():
         interior_targets |= set(d)
@@ -212,14 +311,14 @@ def test_map_completeness():
         f'atmos_clim.{m}.{f}' for m in ('agni', 'janus') for f in mig._ATMOS_SHARED
     }
     unhandled = []
-    for path in v2:
+    for path in paths:
         if path == 'version':
             continue
         if path in v3_defaults:  # identical path, copied
             continue
         if path in mig.RENAMES or path in interior_targets:
             continue
-        if path in mig._ELEMENT_FIELDS or path in mig._IC_FIELDS:
+        if path in mig._ELEMENT_FIELDS or path in mig._IC_FIELDS or path in mig._ORBIT_FIELDS:
             continue
         if path in atmos_shared_src:
             continue
@@ -227,10 +326,28 @@ def test_map_completeness():
             continue
         if path in mig.REMOVED:
             continue
+        if path == 'observe.synthesis':
+            continue
         if path.startswith(_DROP_PREFIXES) or path == 'struct.zalmoxis':
             continue
         unhandled.append(path)
-    assert not unhandled, f'2.0 fields with no handling rule: {sorted(unhandled)}'
+    return unhandled
+
+
+def test_map_completeness():
+    """Every 2.0 field has a destination, a handler, a removal, or a drop rule."""
+    v2 = mig._load_v2_defaults()
+    # The 2.0 snapshot is the input the scan is meant to cover; an empty or
+    # truncated one would make the check below vacuously true.
+    assert len(v2) > 100, f'2.0 defaults snapshot looks truncated: {len(v2)} fields'
+    assert _unhandled_v2_fields(v2) == []
+
+    # A 2.0 field matching none of the rules is reported, so the empty result
+    # above is the map covering the snapshot rather than a scan that accepts
+    # anything. 'struct.ghost_field' sits under a real 2.0 section but is not a
+    # drop prefix, so only the field itself may be flagged.
+    probe = list(v2) + ['struct.ghost_field']
+    assert _unhandled_v2_fields(probe) == ['struct.ghost_field']
 
 
 def _compute_pm(v3_defaults):
@@ -298,6 +415,42 @@ def test_kappah_floor_and_maximum_rel_overrides():
     """kappah_floor pins 0.0 (no floor) and maximum_rel pins 0.0 (strict dt cap)."""
     assert mig.OVERRIDES['interior_energetics.kappah_floor'] == 0.0
     assert mig.OVERRIDES['params.dt.maximum_rel'] == 0.0
+
+
+def test_hill_clamp_override_reproduces_unclipped_2_0_escape():
+    """2.0 sized escape from the unmodified XUV radius; the 3.0 default clips
+    it to the Hill radius. The override pins the clip off, so a migrated
+    config keeps its 2.0 escape rates rather than silently gaining the bound.
+    """
+    assert mig.OVERRIDES['escape.hill_clamp'] is False
+    # The live 3.0 default is the opposite; that difference is what the pin
+    # exists to bridge, so it is asserted here too.
+    from proteus.config._escape import Escape
+
+    assert Escape(module='zephyrus').hill_clamp is True
+
+
+def test_bol_scale_window_override_reproduces_unwindowed_2_0_scaling():
+    """2.0 had no time-gating on bol_scale: a non-unity factor applied for
+    the whole run. The live 3.0 default (bol_scale_start=None) disables
+    scaling outright regardless of bol_scale, so a naive migration would
+    silently turn off any bol_scale a 2.0 config had set. The override
+    must pin an always-open window: start at t=0 and a duration far
+    longer than any plausible run.
+    """
+    assert mig.OVERRIDES['star.bol_scale_start'] == pytest.approx(0.0)
+    # Discrimination: the duration must be large enough that no
+    # realistic stellar age (even the ~13.8 Gyr age of the universe)
+    # falls outside the window; a duration comparable to a typical run
+    # length (e.g. 1-10 Gyr) would silently reintroduce a cutoff 2.0
+    # never had.
+    assert mig.OVERRIDES['star.bol_scale_duration'] > 20.0
+
+    v3_defaults, _ = _v3()
+    # The pin is doing the work: the live 3.0 schema default disables
+    # scaling entirely, so letting the field default (rather than pinning
+    # it) would silently change a migrated run's stellar flux.
+    assert v3_defaults['star.bol_scale_start'] is None
 
 
 def _translate(v2_dict):
@@ -413,13 +566,27 @@ def test_maximum_rel_pinned_when_unset():
     flat, _ = _translate(_minimal_spider_v2())
     assert flat['params.dt.maximum_rel'] == pytest.approx(0.0)
 
+    # The pin is doing the work: the live 3.0 schema default is 1.0, so a
+    # migration that simply let the field default would produce a time-growing
+    # dt cap the 2.0 run never had.
+    v3_defaults, _ = _v3()
+    assert v3_defaults['params.dt.maximum_rel'] == pytest.approx(1.0)
+
 
 def test_explicit_maximum_rel_is_respected():
     """An explicit 2.0 maximum_rel wins over the backwards-compat override."""
     v2 = _minimal_spider_v2()
-    v2['params'] = {'dt': {'maximum_rel': 1.0}}
-    flat, _ = _translate(v2)
-    assert flat['params.dt.maximum_rel'] == pytest.approx(1.0)
+    # 0.25 is neither the 0.0 override nor the 1.0 schema default, so the value
+    # can only have come from the input; either fallback fires here.
+    v2['params'] = {'dt': {'maximum_rel': 0.25}}
+    flat, report = _translate(v2)
+    assert flat['params.dt.maximum_rel'] == pytest.approx(0.25)
+
+    # The report lists the fields the migration pinned on the user's behalf. An
+    # explicit choice is not a pin, so this field must not appear there: a
+    # report that claims it was overridden sends the user hunting for a change
+    # to their own value that never happened.
+    assert 'params.dt.maximum_rel' not in dict(report.overridden)
 
 
 def test_element_modes_from_ratios():
@@ -434,18 +601,77 @@ def test_element_modes_from_ratios():
     assert flat['planet.elements.O_mode'] == 'ic_chemistry'
 
 
+def _element_warnings(report, el):
+    """Additive-budget warnings the migration raised for one element."""
+    return [w for w in report.warnings if w.startswith(f'{el} set by both')]
+
+
 def test_additive_element_budget_warns():
-    """C set by both ppmw and kg (2.0 sums them) cannot be one mode: warn."""
+    """An element set by both ppmw and kg warns, quoting the budget it kept.
+
+    2.0 sums the ppmw and kg terms, so a config setting both carries a budget
+    3.0's single mode cannot reproduce. The warning is the user's only signal
+    that a term was left out, so it has to quote the term that actually reached
+    the migrated config: someone folding the dropped carbon into the field the
+    warning points at ships a budget the run never reads if that field is not
+    the one that was written.
+    """
+    # ppmw outranks kg, and the warning quotes the ppmw budget that was written.
     v2 = _minimal_spider_v2()
-    v2['delivery']['elements'] = {'H_ppmw': 100.0, 'C_ppmw': 200.0, 'C_kg': 5e19}
-    _, report = _translate(v2)
-    assert any('ppmw and kg' in w for w in report.warnings)
+    v2['delivery']['elements'] = {
+        'H_ppmw': 100.0,
+        'NH_ratio': 0.5,
+        'SH_ratio': 2.0,
+        'C_ppmw': 200.0,
+        'C_kg': 5e19,
+    }
+    flat, report = _translate(v2)
+    assert flat['planet.elements.C_mode'] == 'ppmw'
+    assert flat['planet.elements.C_budget'] == pytest.approx(200.0)
+    assert len(_element_warnings(report, 'C')) == 1
+    assert 'C_ppmw=200.0 as C_mode="ppmw"' in _element_warnings(report, 'C')[0]
+    assert 'C_kg' in _element_warnings(report, 'C')[0]  # the dropped term is named
+
+    # Only the doubly-set element warns. N and S run the same loop and are each
+    # set by exactly one term, so a warning raised per element rather than per
+    # doubly-set element would name them too. The shared predicate keeps this
+    # honest: a reworded message breaks the C assertions above rather than
+    # leaving this one quietly matching nothing.
+    assert _element_warnings(report, 'N') == []
+    assert _element_warnings(report, 'S') == []
+
+    # A ratio outranks both other terms, so the same warning must follow the
+    # output to the ratio budget. Quoting the ppmw term here would send the
+    # user to a field the migrated config does not carry.
+    v2['delivery']['elements']['CH_ratio'] = 1.0
+    flat, report = _translate(v2)
+    assert flat['planet.elements.C_mode'] == 'C/H'
+    assert flat['planet.elements.C_budget'] == pytest.approx(1.0)
+    assert len(_element_warnings(report, 'C')) == 1
+    assert 'CH_ratio=1.0 as C_mode="C/H"' in _element_warnings(report, 'C')[0]
+    assert 'C_ppmw=200.0' in _element_warnings(report, 'C')[0]  # now a dropped term
 
 
 def test_instellation_method_sma_to_distance():
     """The orbit instellation method renames from sma to distance."""
     flat, _ = _translate(_minimal_spider_v2())
     assert flat['orbit.instellation_method'] == 'distance'
+
+    # 'inst' is the other 2.0 value and keeps its name in 3.0, so the rename
+    # rewrites one value rather than the whole field. A blanket rewrite would
+    # land 'distance' here and silently switch a fixed-instellation run to a
+    # distance-derived one. 'inst' is only accepted alongside a dummy star, so
+    # the star block moves with it.
+    v2 = _minimal_spider_v2()
+    v2['orbit']['instellation_method'] = 'inst'
+    v2['star'] = {
+        'module': 'dummy',
+        'mass': 1.0,
+        'age_ini': 0.1,
+        'dummy': {'radius': 1.0, 'Teff': 5772.0},
+    }
+    flat_inst, _ = _translate(v2)
+    assert flat_inst['orbit.instellation_method'] == 'inst'
 
 
 def test_outgas_solver_tolerances_renamed():
@@ -467,6 +693,18 @@ def test_unset_F_initial_pins_main_default():
     flat, _ = _translate(v2)
     assert flat['interior_energetics.flux_guess'] == pytest.approx(1000.0)
 
+    # The pinned value is not the schema default, so letting the field default
+    # would flip the run to the auto sigma*T^4 guess. The negative default is
+    # a sentinel, well separated from any real W/m^2 flux.
+    v3_defaults, _ = _v3()
+    assert v3_defaults['interior_energetics.flux_guess'] == pytest.approx(-1)
+
+    # An explicit 2.0 F_initial still wins over the pin, so the 1000.0 above is
+    # the omitted-field fallback and not a hard-coded output.
+    v2['interior']['F_initial'] = 250.0
+    flat_explicit, _ = _translate(v2)
+    assert flat_explicit['interior_energetics.flux_guess'] == pytest.approx(250.0)
+
 
 def test_radius_int_converts_earth_radii_to_metres():
     """A radius-specified 2.0 config converts radius_int (R_earth) to metres.
@@ -486,10 +724,59 @@ def test_radius_int_converts_earth_radii_to_metres():
     assert any('radius-specified' in w for w in report.warnings)
 
 
-def test_no_warnings_on_clean_spider_config():
-    """A clean SPIDER config translates without warnings."""
+def test_albedo_lookup_table_is_dropped_with_a_warning():
+    """A 2.0 config whose ``albedo_pl`` names a CSV lookup table migrates to a
+    valid 3.0 config, leaving the field at its default and saying so.
+
+    2.0 accepted either a constant or a path; 3.0 narrowed the field to a float
+    and removed the lookup. Copying the path through would emit a 3.0 config
+    that fails validation, and quietly substituting a number would change the
+    physics without telling the user. Edge case: a numeric ``albedo_pl`` is
+    unaffected and must still be copied verbatim.
+    """
+    v2 = _minimal_spider_v2()
+    v2['atmos_clim']['albedo_pl'] = 'surface_albedos/lookup.csv'
+    flat, report = _translate(v2)
+
+    # The emitted config is valid: the field is absent, so 3.0 supplies its own
+    # default rather than inheriting a string.
+    assert 'atmos_clim.albedo_pl' not in flat
+    # The user is told, by name, what was dropped and what to do about it.
+    albedo_warnings = [w for w in report.warnings if 'albedo_pl' in w]
+    assert len(albedo_warnings) == 1
+    assert 'surface_albedos/lookup.csv' in albedo_warnings[0]
+    assert 'constant' in albedo_warnings[0]
+
+    # Discrimination: a numeric albedo is a different case and must survive
+    # unchanged, so the branch keys on the value type and not on the field name.
+    numeric = _minimal_spider_v2()
+    numeric['atmos_clim']['albedo_pl'] = 0.3
+    flat_numeric, report_numeric = _translate(numeric)
+    assert flat_numeric['atmos_clim.albedo_pl'] == pytest.approx(0.3, rel=1e-12)
+    assert [w for w in report_numeric.warnings if 'albedo_pl' in w] == []
+    # Limit input: zero is a legitimate albedo and must not be confused with
+    # "unset" by the keep filter.
+    zero = _minimal_spider_v2()
+    zero['atmos_clim']['albedo_pl'] = 0.0
+    flat_zero, _ = _translate(zero)
+    assert flat_zero['atmos_clim.albedo_pl'] == pytest.approx(0.0, abs=1e-15)
+
+
+def test_clean_spider_config_warns_only_about_legacy_observe_synthesis():
+    """A clean SPIDER config only warns about the legacy observe.synthesis field."""
     _, report = _translate(_minimal_spider_v2())
-    assert report.warnings == [], report.warnings
+    assert report.warnings == ['Unmapped 2.0 field (left out): observe.synthesis'], (
+        report.warnings
+    )
+
+    # The warning is reserved for fields main's 2.0 loader actually read. A key
+    # that was never part of the 2.0 schema had no effect on the 2.0 run, so
+    # dropping it is faithful and silent; warning on it would bury the one
+    # field that does need the user's attention.
+    v2 = _minimal_spider_v2()
+    v2['interior']['ghost_field'] = 1.0
+    _, ghost_report = _translate(v2)
+    assert ghost_report.warnings == report.warnings
 
 
 def test_grid_axis_renames():

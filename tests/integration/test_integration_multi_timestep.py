@@ -15,8 +15,8 @@ for multiple timesteps with dummy modules and checking:
 **Runtime**: ~30-60s (5-10 timesteps, dummy modules)
 
 **Documentation**:
-- docs/test_infrastructure.md
-- docs/test_categorization.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

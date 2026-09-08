@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
 from difflib import get_close_matches
@@ -64,10 +65,10 @@ import click  # noqa: E402
 
 from proteus import Proteus  # noqa: E402
 from proteus import __version__ as proteus_version  # noqa: E402
-from proteus.config import read_config_object  # noqa: E402
+from proteus.config import UnknownConfigKeyError, read_config_object  # noqa: E402
 from proteus.utils.data import download_sufficient_data  # noqa: E402
 from proteus.utils.helper import get_proteus_dir, resolve_fwl_data_dir  # noqa: E402
-from proteus.utils.logs import setup_logger  # noqa: E402
+from proteus.utils.logs import bootstrap_logger, setup_logger  # noqa: E402
 
 config_option = click.option(
     '-c',
@@ -88,10 +89,33 @@ output_option = click.option(
 )
 
 
-@click.group()
+class ConfigAwareGroup(click.Group):
+    """Command group that presents a refused configuration as a CLI error.
+
+    Every command that reads a configuration can refuse it over unrecognised
+    keys. Catching that here rather than in each command keeps the message in
+    the same style as the rest of the CLI, and reaches subcommands too, since
+    they are invoked through this group. Only the configuration-key error is
+    caught, so an unrelated failure still surfaces with its traceback.
+    """
+
+    def invoke(self, ctx):
+        try:
+            return super().invoke(ctx)
+        except UnknownConfigKeyError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+
+@click.group(cls=ConfigAwareGroup)
 @click.version_option(version=proteus_version)
 def cli():
-    pass
+    # Ensure the 'fwl' logger has a handler as early as possible, before any
+    # subcommand constructs Proteus() or calls into modules that log. Without
+    # this, log records emitted before a command's own setup_logger call (e.g.
+    # from Proteus.__init__ -> set_directories, or from commands like
+    # grid-summarise / grid-pack that never call setup_logger) fall through to
+    # logging.lastResort and INFO/DEBUG messages are dropped. See issue #708.
+    bootstrap_logger()
 
 
 # ----------------
@@ -152,7 +176,6 @@ def plot(plots, config_path: Path):
 
 
 cli.add_command(plot)
-
 # ----------------
 # 'start' command
 # ----------------
@@ -686,11 +709,65 @@ def grid(config_path: Path, dry_run: bool):
     grid_from_config(config_path, test_run=dry_run)
 
 
+# Distributions that only the inference scheme needs, shipped as the
+# `inference` extra. `[project.optional-dependencies].inference` in
+# pyproject.toml is the authority; a test pins the two together.
+INFERENCE_DISTRIBUTIONS = ('torch', 'botorch', 'gpytorch')
+
+
+def _absent_inference_distribution(exc: ImportError) -> str | None:
+    """Name the inference distribution whose absence raised ``exc``.
+
+    Parameters
+    ----------
+    exc : ImportError
+        Error raised while importing the inference entry point.
+
+    Returns
+    -------
+    str or None
+        The missing distribution, or None when the error came from anything
+        else: a failure inside a package that is present, an unrelated
+        module, or one of the three sitting installed but failing to import
+        one of its own submodules.
+
+    Notes
+    -----
+    Absence is confirmed against the import system instead of being inferred
+    from the error alone, so the advice to install the extra is never given
+    for a package that is already in the environment.
+    """
+    if not isinstance(exc, ModuleNotFoundError):
+        # The module was found and something inside it failed: a version
+        # mismatch or a broken install, not a missing extra.
+        return None
+    root = (exc.name or '').split('.')[0]
+    if root not in INFERENCE_DISTRIBUTIONS:
+        return None
+    try:
+        if importlib.util.find_spec(root) is not None:
+            return None
+    except (ImportError, ValueError):
+        # Present but unusable: a broken install, not a missing extra.
+        return None
+    return root
+
+
 @click.command()
 @config_option
 def infer(config_path: Path):
     """Use Bayesian optimisation to infer parameters from observables"""
-    from proteus.inference.inference import infer_from_config
+    try:
+        from proteus.inference.inference import infer_from_config
+    except ImportError as exc:
+        missing = _absent_inference_distribution(exc)
+        if missing is None:
+            raise
+        raise click.ClickException(
+            f"Parameter inference needs '{missing}', which is not installed. "
+            'The optimisation stack ships as an optional extra: '
+            'pip install "fwl-proteus[inference]"'
+        ) from exc
 
     infer_from_config(config_path)
 
@@ -1028,6 +1105,18 @@ def update_all(export_env: bool, config_path: Path | None):
 
     # --- Step 1: update all Python packages ---
     subprocess.run([sys.executable, '-m', 'pip', 'install', '-U', '-e', str(root)], check=True)
+
+    # --- Step 1b: ensure the SUNDIALS CVODE solver (Aragog production path) ---
+    # CVODE lives outside the pip dependency tree because it needs the SUNDIALS
+    # C library; without it Aragog falls back to scipy Radau. The helper is
+    # idempotent and returns early when CVODE already imports.
+    try:
+        subprocess.run(['bash', str(root / 'tools' / 'get_cvode.sh')], cwd=root, check=True)
+    except subprocess.CalledProcessError:
+        click.secho(
+            '[!] CVODE install failed; Aragog will fall back to scipy Radau.',
+            fg='yellow',
+        )
 
     # --- Step 2: FWL_DATA check ---
     # resolve_fwl_data_dir always returns a path; an update only makes sense

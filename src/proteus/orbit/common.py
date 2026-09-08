@@ -14,7 +14,7 @@ from scipy.optimize import brentq
 from proteus.config import Config
 from proteus.interior_energetics.common import Interior_t
 
-log = logging.getLogger("fwl."+__name__)
+log = logging.getLogger('fwl.' + __name__)
 
 
 @dataclass
@@ -43,22 +43,19 @@ class Tides_t:
         for interaction in self.interactions:
             if interaction.primary == primary and interaction.perturber == perturber:
                 return interaction
-        raise KeyError(f"No tidal interaction: {primary} <- {perturber}")
+        raise KeyError(f'No tidal interaction: {primary} <- {perturber}')
 
     def add_from_file(self, primary, perturber, file_path: str):
         interaction = self.add(primary, perturber)
 
         with nc.Dataset(file_path, 'r') as ds:
-            n = ds.variables["n"][:]
-            m = ds.variables["m"][:]
-            k = ds.variables["k"][:]
+            n = ds.variables['n'][:]
+            m = ds.variables['m'][:]
+            k = ds.variables['k'][:]
 
             interaction.nmk = np.column_stack([n, m, k]).astype(int)
             interaction.sigma = ds.variables['sigma'][:]
-            interaction.LNk = (
-                ds.variables["LNk_real"][:]
-                + 1j * ds.variables["LNk_imag"][:]
-            )
+            interaction.LNk = ds.variables['LNk_real'][:] + 1j * ds.variables['LNk_imag'][:]
 
         return interaction
 
@@ -192,7 +189,7 @@ def hansen_fft(n, m, e, kmin, kmax, N=None):
     ce = np.cos(E)
     se = np.sin(E)
     r_over_a = 1 - e * ce
-    v = np.arctan2(np.sqrt(1 - e**2) * se, ce - e) # true anomaly
+    v = np.arctan2(np.sqrt(1 - e**2) * se, ce - e)  # true anomaly
 
     # Hansen integrand
     f = (r_over_a**n) * np.exp(1j * m * v)
@@ -216,6 +213,7 @@ class _HansenTable:
     eccentricity grid and a fixed [kmin, kmax] window, for fast linear
     interpolation. Built once by init_hansen_table(); never rebuilt except
     via force=True."""
+
     e_grid: NDArray[np.floating]
     kmin: int
     kmax: int
@@ -227,6 +225,7 @@ class _HansenTable:
 class _KRangeTable:
     """Tabulated eccentricity-appropriate [kmin, kmax] window. Built once by
     init_k_range_table(); never rebuilt except via force=True."""
+
     e_grid: NDArray[np.floating]
     kmin: NDArray[np.integer]
     kmax: NDArray[np.integer]
@@ -237,14 +236,18 @@ _k_range_table: Optional[_KRangeTable] = None
 
 # Default eccentricity grid shared by both tables: fine near e=0 (where
 # Hansen coefficients vary fastest in relative terms) and coarser at high e.
-_DEFAULT_E_GRID = np.concatenate([
-    np.arange(0.0, 0.05, 0.005),
-    np.arange(0.05, 0.90, 0.01),
-    np.arange(0.90, 0.951, 0.005),
-])
+_DEFAULT_E_GRID = np.concatenate(
+    [
+        np.arange(0.0, 0.05, 0.005),
+        np.arange(0.05, 0.90, 0.01),
+        np.arange(0.90, 0.951, 0.005),
+    ]
+)
 
-def _select_k_range(e: float, threshold: float = 0.001,
-                     k_search_max: int = 450, pad: int = 2) -> tuple[int, int]:
+
+def _select_k_range(
+    e: float, threshold: float = 0.001, k_search_max: int = 450, pad: int = 2
+) -> tuple[int, int]:
     """Widest [kmin, kmax] (padded) such that the m=0 and m=2 Hansen
     branches (the dissipative/heating-relevant ones) both have |X_k| below
     `threshold` everywhere outside it."""
@@ -263,8 +266,9 @@ def _select_k_range(e: float, threshold: float = 0.001,
     return int(kmin), int(kmax)
 
 
-def init_k_range_table(e_grid: Optional[NDArray[np.floating]] = None,
-                        force: bool = False) -> None:
+def init_k_range_table(
+    e_grid: Optional[NDArray[np.floating]] = None, force: bool = False
+) -> None:
     """Build the eccentricity -> [kmin, kmax] lookup table once.
 
     Safe to call more than once: a no-op unless `force=True`, so callers
@@ -280,9 +284,11 @@ def init_k_range_table(e_grid: Optional[NDArray[np.floating]] = None,
     for i, e in enumerate(e_grid):
         kmins[i], kmaxs[i] = _select_k_range(e)
     _k_range_table = _KRangeTable(e_grid=e_grid, kmin=kmins, kmax=kmaxs)
-    log.info(f"k-range table built: {len(e_grid)} grid points"
-             f"(e in [{e_grid.min():.3f}, {e_grid.max():.3f}], "
-             f"n_modes in [{(kmaxs-kmins+1).min()}, {(kmaxs-kmins+1).max()}])")
+    log.info(
+        f'k-range table built: {len(e_grid)} grid points'
+        f'(e in [{e_grid.min():.3f}, {e_grid.max():.3f}], '
+        f'n_modes in [{(kmaxs - kmins + 1).min()}, {(kmaxs - kmins + 1).max()}])'
+    )
 
 
 def kmin_kmax_for_e(e: float) -> tuple[int, int]:
@@ -298,9 +304,13 @@ def kmin_kmax_for_e(e: float) -> tuple[int, int]:
     return int(table.kmin[idx]), int(table.kmax[idx])
 
 
-def init_hansen_table(e_grid: Optional[NDArray[np.floating]] = None,
-                       kmin: Optional[int] = None, kmax: Optional[int] = None,
-                       n_deg: int = 2, force: bool = False) -> None:
+def init_hansen_table(
+    e_grid: Optional[NDArray[np.floating]] = None,
+    kmin: Optional[int] = None,
+    kmax: Optional[int] = None,
+    n_deg: int = 2,
+    force: bool = False,
+) -> None:
     """Build the Hansen-coefficient value table once, over `e_grid` and
     [kmin, kmax].
 
@@ -332,9 +342,13 @@ def init_hansen_table(e_grid: Optional[NDArray[np.floating]] = None,
         for m in range(-n_deg, n_deg + 1):
             _, X = hansen_fft(-(n_deg + 1), m, e, kmin, kmax)
             values[m][i, :] = X
-    _hansen_table = _HansenTable(e_grid=e_grid, kmin=kmin, kmax=kmax, n_deg=n_deg, values=values)
-    log.info(f"Hansen table built: {len(e_grid)} e-points x {n_k} k-modes x "
-             f"{2*n_deg+1} m-branches")
+    _hansen_table = _HansenTable(
+        e_grid=e_grid, kmin=kmin, kmax=kmax, n_deg=n_deg, values=values
+    )
+    log.info(
+        f'Hansen table built: {len(e_grid)} e-points x {n_k} k-modes x '
+        f'{2 * n_deg + 1} m-branches'
+    )
 
 
 def get_all_m_hansen(e: float, n_deg: int, kmin: int, kmax: int):
@@ -362,10 +376,10 @@ def get_all_m_hansen(e: float, n_deg: int, kmin: int, kmax: int):
 
     if kmin < table.kmin or kmax > table.kmax:
         raise ValueError(
-            f"get_all_m_hansen: requested k-range [{kmin},{kmax}] at e={e:.4f} exceeds "
+            f'get_all_m_hansen: requested k-range [{kmin},{kmax}] at e={e:.4f} exceeds '
             f"the Hansen table's window [{table.kmin},{table.kmax}] -- rebuild with "
-            f"init_hansen_table(kmin=..., kmax=..., force=True), or widen kmin/kmax "
-            f"there to cover whatever kmin_kmax_for_e() can return."
+            f'init_hansen_table(kmin=..., kmax=..., force=True), or widen kmin/kmax '
+            f'there to cover whatever kmin_kmax_for_e() can return.'
         )
 
     e = min(max(e, 0.0), table.e_grid[-1])
@@ -402,33 +416,33 @@ def get_C_planet(hf_row: dict, config: Config, interior_o: Interior_t):
     # where rho(r) is the density profile and R is the radius of the planet.
 
     # Get the radial grid and density profile from the interior object
-    arr_keys = ("density", "radius")
-    lov = {k:np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}
+    arr_keys = ('density', 'radius')
+    lov = {k: np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}
 
     # Reverse arrays if using SPIDER
     #  Such that i=0 is at the CMB
-    if config.interior_energetics.module == "spider":
+    if config.interior_energetics.module == 'spider':
         for k in arr_keys:
             lov[k] = lov[k][::-1]
 
-    r_edges = lov["radius"]      # length N+1
-    rho = lov["density"]         # length N
+    r_edges = lov['radius']  # length N+1
+    rho = lov['density']  # length N
 
     r0 = r_edges[:-1]
     r1 = r_edges[1:]
 
-    integral = np.sum(
-        rho * (r1**5 - r0**5) / 5.0
-    )
+    integral = np.sum(rho * (r1**5 - r0**5) / 5.0)
 
-    C_planet = (8*np.pi/3.0) * integral
+    C_planet = (8 * np.pi / 3.0) * integral
 
     # Store C_planet in the helpfile row for later use
     hf_row['C_planet'] = C_planet
 
     # Check if C_planet is physically reasonable
-    C_factor_planet = C_planet / (hf_row['M_int'] * hf_row['R_int']**2)
-    log.info(f"Computed C_planet: {C_planet:.3e} kg.m^2, C_factor_planet: {C_factor_planet:.3f}")
+    C_factor_planet = C_planet / (hf_row['M_int'] * hf_row['R_int'] ** 2)
+    log.info(
+        f'Computed C_planet: {C_planet:.3e} kg.m^2, C_factor_planet: {C_factor_planet:.3f}'
+    )
 
 
 def _solve_e_stationary(a_prime, s_prime, Lambda, Omega_ratio):
@@ -465,7 +479,7 @@ def _solve_e_stationary(a_prime, s_prime, Lambda, Omega_ratio):
 
     def f(e):
         return (
-            Lambda**2 * s_prime**2 / (a_prime**3.5 * (1.0 - e**2)**2)
+            Lambda**2 * s_prime**2 / (a_prime**3.5 * (1.0 - e**2) ** 2)
             - 1.0
             - 3.0 * np.sqrt(1.0 - e**2) * a_prime**1.5 * Omega_ratio
         )

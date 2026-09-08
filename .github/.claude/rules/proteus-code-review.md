@@ -50,6 +50,8 @@ Issue #677 surfaced when one site (M_atm via `gas_list` sum) implicitly included
 
 The runtime invariant `assert_mass_conservation(hf_row)` is called at the end of every iteration to hard-fail on a regression. If a review finds someone has weakened or removed that assertion, push back: it's the safety net that catches future O-skip reintroductions.
 
+The one sanctioned relaxation is `require_atm_le_planet=False`, which the main loop passes when `outgas.vapourise = true`. It disables the `M_atm <= M_planet` half only, replaces it with a warning raised when the excess over `M_planet` exceeds `M_vaps`, and leaves the `M_vol_atm` species-sum half and the `atol_frac` tolerance untouched. It applies only while `M_vaps > 0`. Flag any change that widens `atol_frac`, that disables the species-sum half, or that silences the warning.
+
 ## IC consistency checks at unit boundaries
 
 When a user supplies a value via config that gets re-derived by a downstream solver (e.g., O_budget from `planet.elements.O_mode` vs CALLIOPE's IC equilibrium), a one-shot reconciliation check at IC catches mis-specifications loudly rather than letting them silently corrupt the trajectory. Pattern from issue #677:
@@ -94,7 +96,7 @@ attrs validators can silently become dead code if they compare a dataclass insta
 
 ## Test marker discipline
 
-Every test file must begin with a module-level `pytestmark = [pytest.mark.<tier>, pytest.mark.timeout(<budget>)]` (unit/30 s, smoke/60 s, integration/300 s, slow/3600 s). Per-function markers are additive but do not replace the module-level marker; CI runs `pytest -m "unit and not skip"` and any file missing the tier marker ships untested.
+Every test file must begin with a module-level `pytestmark = [pytest.mark.<tier>, pytest.mark.timeout(<budget>)]` (unit/30 s, smoke/60 s, integration/300 s, slow/3600 s). Per-function markers are additive but do not replace the module-level marker; CI runs `pytest -m "unit and not skip and not slow and not integration"` and any file missing the tier marker ships untested.
 
 ## Test quality (cross-reference)
 

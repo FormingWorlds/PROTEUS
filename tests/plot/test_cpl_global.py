@@ -6,9 +6,8 @@ fluxes + temperatures + radii) and is exercised by integration tests
 in nightly tier; this unit test scope is the lightweight branches.
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -37,6 +36,9 @@ def _make_config():
     cfg.orbit.s0_factor = 0.375
     cfg.orbit.zenith_angle = 48.2
     cfg.params.out.plot_fmt = 'pdf'
+    # Must be a real number, not a MagicMock: the x-axis label formats it
+    # with ':g', which raises TypeError on a mock.
+    cfg.star.age_ini = 4.5
     return cfg
 
 
@@ -164,6 +166,7 @@ def test_plot_global_writes_linear_axes_figure(monkeypatch, tmp_path):
     config = _make_config()
     config.interior_struct = MagicMock()
     config.interior_struct.core_frac = 0.325
+    config.star.age_ini = 4.5
     config.params.out.plot_fmt = 'png'
 
     global_mod.plot_global(_full_helpfile(), str(tmp_path), config, logt=False)

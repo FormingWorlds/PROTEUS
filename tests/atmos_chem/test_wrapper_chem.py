@@ -12,9 +12,8 @@ Invariants tested:
   - Dispatch: correct backend is called for vulcan/dummy in offline/online mode
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -42,12 +41,14 @@ def _make_config(module: str | None = 'none', when: str = 'offline') -> MagicMoc
 
 
 def test_run_chemistry_none_module_returns_none():
-    """When atmos_chem.module is 'none', run_chemistry returns None
+    """When atmos_chem.module is None, run_chemistry returns None
     without calling any backend.
 
-    Edge case: chemistry is disabled in the config.
+    Edge case: chemistry is disabled in the config. The config converter
+    maps the TOML string 'none' to Python None before dispatch, so None is
+    the value the wrapper actually receives.
     """
-    config = _make_config(module='none')
+    config = _make_config(module=None)
     hf_row = {'Time': 100}
     result = run_chemistry(dirs={}, config=config, hf_row=hf_row)
     assert result is None

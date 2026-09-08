@@ -8,18 +8,69 @@ from typing import Literal, Union
 import cattrs
 
 from ._config import Config
-from .orphans import check_config_orphan_free
+from ._interior import _STEP_CAP_FIELDS
+from .orphans import UnknownConfigKeyError, find_key_problems, format_orphan_message
 
 log = logging.getLogger('fwl.' + __name__)
 
 
 def structure_k_val(val, cls):
-    if val == "none":
-        return "none"
+    if val == 'none':
+        return 'none'
     return int(val)
 
+
 # Register this for the specific Union type
-cattrs.register_structure_hook(Union[int, Literal["none"]], structure_k_val)
+cattrs.register_structure_hook(Union[int, Literal['none']], structure_k_val)
+
+
+def _is_explicit_zero(value: object) -> bool:
+    """True for a TOML int or float value of zero, false for a bool or 0.0."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value == 0.0
+
+
+def _check_step_cap_zeros(raw: dict, path: Path | str) -> None:
+    """Reject an explicit 0.0 for an Aragog step-cap field.
+
+    An absent key still resolves to the schema default and, for a zalmoxis
+    interior structure, on to the Aragog wrapper's built-in cap; only a
+    value the file actually sets is checked here. Checked only when
+    ``interior_energetics.module`` resolves to ``aragog``, an absent key
+    included since that is the schema default, since that promotion is
+    the only place the ambiguity changes what a run does: for any other
+    module the step-cap fields are inert, and a config snapshot written for
+    that module carries its caps at their live, unresolved value, which is
+    0.0 whenever the field was never set.
+
+    Parameters
+    ----------
+    raw:
+        Raw TOML dict as returned by `read_config`.
+    path:
+        Config file the dict came from, quoted back in any error.
+
+    Raises
+    ------
+    ValueError
+        If a step-cap field is explicitly set to 0.0.
+    """
+    interior_energetics = raw.get('interior_energetics', {})
+    if not isinstance(interior_energetics, dict):
+        return
+    if interior_energetics.get('module', 'aragog') != 'aragog':
+        return
+    aragog = interior_energetics.get('aragog', {})
+    if not isinstance(aragog, dict):
+        return
+    zeroed = [f for f in _STEP_CAP_FIELDS if _is_explicit_zero(aragog.get(f))]
+    if zeroed:
+        names = ', '.join(f'interior_energetics.aragog.{f}' for f in zeroed)
+        raise ValueError(
+            f'Invalid configuration in {path}:\n'
+            f'  {names} set to 0.0, which is ambiguous with the unset default.\n'
+            f'  Omit the key to use the default, set it to -1.0 to disable the cap, '
+            f'or set a positive value for a custom cap.'
+        )
 
 
 def read_config(path: Path | str) -> dict:
@@ -31,16 +82,38 @@ def read_config(path: Path | str) -> dict:
     return config
 
 
-def read_config_object(path: Path | str) -> Config:
-    """Read and validate config into Config object."""
+def structure_config(raw: dict, path: Path | str) -> Config:
+    """Structure a raw config dict into a Config object.
 
-    # Read config from TOML file in path as a raw dict.
-    cfg = read_config(path)
+    This performs no key checking: cattrs discards anything the schema does not
+    map, so a caller that uses this directly is responsible for having checked
+    the keys itself. `read_config_object` is the checked entry point and is
+    what almost every caller wants. The step is separate so the runner can
+    obtain a configuration, resolve the output directory named inside it, and
+    record a refusal there before raising.
 
-    # Attempt to structure config with cattrs.
+    Parameters
+    ----------
+    raw:
+        Raw TOML dict as returned by `read_config`.
+    path:
+        Config file the dict came from, quoted back in any error.
+
+    Returns
+    -------
+    Config
+        The structured configuration.
+
+    Raises
+    ------
+    ValueError
+        If a value fails validation.
+    """
+
+    _check_step_cap_zeros(raw, path)
+
     try:
-        # Structure the config
-        obj = cattrs.structure(cfg, Config)
+        obj = cattrs.structure(raw, Config)
         log.debug(
             'Config structured: star.module=%s, interior_energetics.module=%s, '
             'outgas.module=%s, atmos_clim.module=%s, escape.module=%s',
@@ -50,8 +123,6 @@ def read_config_object(path: Path | str) -> Config:
             obj.atmos_clim.module,
             obj.escape.module,
         )
-
-        # Looks good! Return the structured config object.
         return obj
 
     # Catch validation exceptions
@@ -71,4 +142,46 @@ def read_config_object(path: Path | str) -> Config:
         ) from None
 
 
-__all__ = ['Config', 'read_config_object', 'read_config', 'check_config_orphan_free']
+def read_config_object(path: Path | str) -> Config:
+    """Read and validate config into Config object.
+
+    Parameters
+    ----------
+    path:
+        Path to the TOML config file.
+
+    Returns
+    -------
+    Config
+        The structured configuration.
+
+    Raises
+    ------
+    UnknownConfigKeyError
+        If the file carries keys the schema cannot accept.
+    ValueError
+        If a value fails validation.
+    """
+
+    # Read config from TOML file in path as a raw dict.
+    cfg = read_config(path)
+
+    # Reject unusable keys before structuring, so that a typo is reported as a
+    # typo rather than as whatever the resulting default happens to break
+    # further downstream.
+    orphans, mistyped = find_key_problems(cfg)
+    if orphans or mistyped:
+        raise UnknownConfigKeyError(format_orphan_message(orphans, path, mistyped))
+
+    return structure_config(cfg, path)
+
+
+__all__ = [
+    'Config',
+    'UnknownConfigKeyError',
+    'read_config_object',
+    'read_config',
+    'structure_config',
+    'find_key_problems',
+    'format_orphan_message',
+]

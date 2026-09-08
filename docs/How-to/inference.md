@@ -2,6 +2,16 @@
 
 This project implements parallel-asynchronous Bayesian Optimization (BO) for parameter inference using PROTEUS as the  'simulator'. It uses multiple workers to efficiently explore the parameter space and find optimal matches between simulated and observed planetary characteristics. You can also run this BO inference scheme to refine the results of a grid.
 
+!!! info "Requires the `inference` extra"
+    The scheme is built on PyTorch, BoTorch and GPyTorch, which install
+    separately from the rest of PROTEUS:
+
+    ```console
+    pip install "fwl-proteus[inference]"
+    ```
+
+    See [optional modules](optionalmodules_installation.md#parameter-inference-bayesian-optimisation).
+
 ## Overview
 
 The system performs Bayesian optimization to infer planetary formation parameters by:
@@ -80,9 +90,9 @@ better fits, while smaller values (including negative ones) are worse fits.
 
 The optimization will run until `n_steps` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
 
-### Acqusition functions
+### Acquisition functions
 
-The `acqusition function' is an analytical function that is aware of the current state of the optimisation.
+The acquisition function is an analytical function that is aware of the current state of the optimisation.
 It is used to evaluate the *potential* value of sampling a candidate particular point in the parameter space, to 
 help determine where the optimisation should next run PROTEUS. It helps balance the trade-off between exploring new areas and exploiting known good areas to optimize a black-box function efficiently.
 
@@ -141,11 +151,11 @@ The system prints the final results including:
 ## Customization
 
 ### Adding New Parameters
-1. Update the `[parameters]` section in your inference config file
+1. Update the ``[parameters]`` section in your inference config file
 2. Ensure the parameter names match PROTEUS configuration keys
 
 ### Changing Observables
-1. Update the `[observables]` section with your target values
+1. Update the ``[observables]`` section with your target values
 2. Make sure these observables are output by PROTEUS
 
 

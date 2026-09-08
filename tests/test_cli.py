@@ -1,6 +1,8 @@
 # Test PROTEUS terminal CLI and commands
 from __future__ import annotations
 
+import builtins
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -8,6 +10,7 @@ from click.testing import CliRunner
 
 from proteus import __version__ as proteus_version
 from proteus import cli
+from proteus.config import UnknownConfigKeyError
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -556,6 +559,59 @@ def test_get_interiordata_calls_clean_downloads(monkeypatch, tmp_path):
     # No structure module in the fake config: the Zalmoxis EOS download
     # must not be attempted.
     assert not any(c[0] == 'zalmoxis_eos' for c in calls)
+
+
+@pytest.mark.unit
+def test_get_interiordata_reports_an_unknown_config_key_cleanly(monkeypatch, tmp_path):
+    """A misspelled key stops the download and is reported as a CLI error.
+
+    The download commands act on the configuration, so acting on one whose keys
+    were silently discarded would fetch data for a setup the user did not ask
+    for. The failure has to arrive in the CLI's own error style with the key
+    named, not as a traceback.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    runner = CliRunner()
+    downloads = []
+    monkeypatch.setattr(
+        'proteus.utils.data.download_interior_lookuptables',
+        lambda clean=False: downloads.append('interior'),
+    )
+    monkeypatch.setattr(
+        'proteus.utils.data.download_melting_curves',
+        lambda configuration, clean=False: downloads.append('melt'),
+    )
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    raw['planet']['mass_total'] = 2.5  # deliberate misspelling of mass_tot
+    cfg = tmp_path / 'typo.toml'
+    with open(cfg, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    res = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(cfg)])
+    assert res.exit_code != 0
+    assert 'planet.mass_total' in res.output
+    # A ClickException prints "Error: ..." and does not surface a traceback.
+    assert 'Traceback' not in res.output
+    # The config-dependent download is not reached; the config-independent one
+    # ahead of it may already have run, which is why only the former is pinned.
+    assert 'melt' not in downloads
+
+    # Discrimination: with the key spelled correctly the same command completes
+    # and the melting-curve download does run, so the refusal is caused by the
+    # misspelling rather than by this config being unusable.
+    raw['planet']['mass_tot'] = raw['planet'].pop('mass_total')
+    good = tmp_path / 'good.toml'
+    with open(good, 'w') as f:
+        tomlkit.dump(raw, f)
+    res_ok = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(good)])
+    assert res_ok.exit_code == 0
+    assert 'melt' in downloads
 
 
 @pytest.mark.unit
@@ -1139,6 +1195,144 @@ def test_grid_calls_grid_from_config(monkeypatch, tmp_path):
     assert received[0][1] is False
 
 
+def test_start_reports_an_unknown_config_key_cleanly(tmp_path):
+    """``proteus start`` refuses a misspelled key in the CLI's own error style.
+
+    This is the command most runs go through, so a refusal that arrives as a
+    bare traceback leaves the name of the offending key buried in it.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    raw['params']['out']['path'] = str(tmp_path / 'run_output')
+    raw['planet']['mass_total'] = 2.5  # deliberate misspelling of mass_tot
+    cfg = tmp_path / 'typo.toml'
+    with open(cfg, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    res = runner.invoke(cli.cli, ['start', '-c', str(cfg), '--offline'])
+    assert res.exit_code != 0
+    assert 'planet.mass_total' in res.output
+    assert 'Traceback' not in res.output
+
+
+def test_cli_does_not_convert_unrelated_value_errors(tmp_path, monkeypatch):
+    """A failure that is not about configuration keys keeps its traceback.
+
+    Presenting every ValueError as a tidy CLI message would hide real bugs, so
+    the group converts only the configuration-key error.
+    """
+
+    def boom(*_args, **_kwargs):
+        raise ValueError('something else went wrong entirely')
+
+    monkeypatch.setattr(cli, 'Proteus', boom)
+
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('config_version = "3.0"\n')
+
+    res = runner.invoke(cli.cli, ['start', '-c', str(cfg), '--offline'])
+    assert res.exit_code != 0
+    # Not laundered into "Error: ...": the exception escapes for the traceback.
+    assert isinstance(res.exception, ValueError)
+    assert 'something else went wrong entirely' in str(res.exception)
+
+
+def test_grid_reports_an_unknown_key_in_the_base_config_cleanly(tmp_path, monkeypatch):
+    """``proteus grid`` refuses a base config with a misspelled key, in CLI style.
+
+    Case config files are written out from the parsed base config, so an
+    unrecognised key in the base never reaches them and the grid would
+    otherwise run every case on a default nobody chose. The refusal has to name
+    the key and arrive as a CLI error, since the whole ensemble depends on it.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    import proteus.grid.manage as gmanage
+
+    monkeypatch.setattr(gmanage, 'PROTEUS_DIR', str(tmp_path))
+    monkeypatch.setattr(gmanage.time, 'sleep', lambda *_a, **_k: None)
+
+    with open(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml', 'rb') as f:
+        base = tomllib.load(f)
+    base['params']['dt']['maxium'] = base['params']['dt'].pop('maximum')
+    base_path = tmp_path / 'base.toml'
+    with open(base_path, 'w') as f:
+        tomlkit.dump(base, f)
+
+    grid_toml = tmp_path / 'run.grid.toml'
+    grid_toml.write_text(
+        'config_version = "3.0"\n'
+        'output = "cli_typo_grid"\n'
+        'symlink = ""\n'
+        f'ref_config = "{base_path}"\n'
+        'use_slurm = false\n'
+        'max_jobs = 1\n'
+        'max_days = 1\n'
+        'max_mem = 1\n'
+        '["planet.mass_tot"]\n'
+        '    method = "direct"\n'
+        '    values = [0.7]\n'
+    )
+
+    res = runner.invoke(cli.cli, ['grid', '-c', str(grid_toml), '--dry-run'])
+    assert res.exit_code != 0
+    assert 'params.dt.maxium' in res.output
+    # A ClickException prints "Error: ..."; an unwrapped raise prints a traceback.
+    assert 'Traceback' not in res.output
+
+
+def test_update_input_data_refuses_an_unknown_config_key_before_downloading(
+    tmp_path, monkeypatch
+):
+    """A misspelled key stops the data refresh before anything is fetched.
+
+    This helper runs at the tail of installing and of updating, after every
+    other step has reported success, so refusing here has to happen before the
+    download rather than after it. The helper is called directly because the
+    commands that reach it, ``install-all`` and ``update-all``, perform a full
+    installation; that the error it raises is presented in the CLI's own style
+    rather than as a traceback is pinned by the group-level tests above.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    downloads = []
+    monkeypatch.setattr(
+        cli, 'download_sufficient_data', lambda configuration, clean: downloads.append(clean)
+    )
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    raw['planet']['mass_total'] = 2.5  # deliberate misspelling of mass_tot
+    cfg = tmp_path / 'typo.toml'
+    with open(cfg, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    with pytest.raises(UnknownConfigKeyError) as excinfo:
+        cli._update_input_data(cfg)
+    assert 'planet.mass_total' in str(excinfo.value)
+    assert not downloads
+
+    # Discrimination: spelled correctly the same config completes the refresh,
+    # so the refusal is caused by the misspelling and not by this config.
+    raw['planet']['mass_tot'] = raw['planet'].pop('mass_total')
+    good = tmp_path / 'good.toml'
+    with open(good, 'w') as f:
+        tomlkit.dump(raw, f)
+    assert cli._update_input_data(good) is True
+    assert downloads == [True]
+
+
 def test_grid_dry_run_passes_test_run_flag(monkeypatch, tmp_path):
     """``proteus grid -c cfg --dry-run`` flips test_run to True so the grid is
     generated without launching PROTEUS. Discrimination: the only difference
@@ -1165,6 +1359,9 @@ def test_grid_dry_run_passes_test_run_flag(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_infer_calls_infer_from_config(monkeypatch, tmp_path):
     """``proteus infer -c cfg`` dispatches to infer_from_config with the config path."""
+    # The optimisation stack is the optional `inference` extra.
+    pytest.importorskip('torch')
+
     cfg = tmp_path / 'cfg.toml'
     cfg.write_text('# stub\n')
 
@@ -1181,6 +1378,197 @@ def test_infer_calls_infer_from_config(monkeypatch, tmp_path):
     assert res.exit_code == 0
     assert len(received) == 1
     assert received[0].name == 'cfg.toml'
+
+
+def _patch_infer_import(monkeypatch, error: ImportError):
+    """Make importing the inference entry point raise ``error``.
+
+    The CLI imports ``proteus.inference.inference`` lazily inside the
+    command, so the failure has to be injected at the import call itself
+    rather than by removing an installed package.
+    """
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == 'proteus.inference.inference':
+            raise error
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, '__import__', fake_import)
+
+
+def _pretend_absent(monkeypatch, *names: str):
+    """Make ``importlib.util.find_spec`` report *names* as not installed.
+
+    The CLI confirms absence before advising an install, so a test that
+    injects a missing-package error for a package the test environment
+    actually has must remove it from the import system's view too.
+    """
+    real_find_spec = importlib.util.find_spec
+
+    def fake_find_spec(name, *args, **kwargs):
+        if name in names:
+            return None
+        return real_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib.util, 'find_spec', fake_find_spec)
+
+
+@pytest.mark.unit
+def test_infer_reports_missing_inference_extra(monkeypatch, tmp_path):
+    """With the optimisation stack absent, ``proteus infer`` names the missing
+    package and the extra that provides it instead of surfacing a bare
+    ImportError traceback. The optimisation stack is optional, so this is the
+    first thing a user without it sees.
+    """
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    # The shape the import system produces for a genuinely absent package.
+    _patch_infer_import(
+        monkeypatch, ModuleNotFoundError("No module named 'torch'", name='torch')
+    )
+    _pretend_absent(monkeypatch, 'torch')
+
+    res = runner.invoke(cli.infer, ['-c', str(cfg)])
+
+    assert res.exit_code == 1
+    # Both halves of the message matter: which package is missing, and the
+    # command that installs it.
+    assert 'torch' in res.output
+    assert 'fwl-proteus[inference]' in res.output
+    # A ClickException is reported, not raised through as a traceback.
+    assert res.exception is None or isinstance(res.exception, SystemExit)
+
+
+@pytest.mark.unit
+def test_infer_propagates_unrelated_import_error(monkeypatch, tmp_path):
+    """An import failure inside the inference package that is not one of the
+    optional distributions propagates unchanged. Discrimination: a blanket
+    except would answer a broken PROTEUS import with an install-the-extra
+    message and send the user chasing a dependency that is already present.
+    """
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    broken = ModuleNotFoundError(
+        "No module named 'proteus.inference.missing_helper'",
+        name='proteus.inference.missing_helper',
+    )
+    _patch_infer_import(monkeypatch, broken)
+
+    res = runner.invoke(cli.infer, ['-c', str(cfg)])
+
+    assert res.exit_code == 1
+    assert res.exception is broken
+    assert 'fwl-proteus[inference]' not in res.output
+
+
+@pytest.mark.unit
+def test_infer_propagates_import_error_from_present_distribution(monkeypatch, tmp_path):
+    """A symbol that cannot be imported from an installed distribution raises a
+    plain ImportError, not ModuleNotFoundError. That is the signature of a
+    version mismatch inside the optimisation stack, and it must reach the user
+    as itself: telling them to install a package they already have hides the
+    real cause and the reinstall changes nothing.
+    """
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    skewed = ImportError(
+        "cannot import name 'LogExpectedImprovement' from 'botorch.acquisition.analytic'",
+        name='botorch.acquisition.analytic',
+    )
+    _patch_infer_import(monkeypatch, skewed)
+
+    res = runner.invoke(cli.infer, ['-c', str(cfg)])
+
+    assert res.exit_code == 1
+    assert res.exception is skewed
+    assert 'fwl-proteus[inference]' not in res.output
+
+
+@pytest.mark.unit
+def test_infer_propagates_broken_submodule_of_installed_distribution(monkeypatch, tmp_path):
+    """An installed distribution whose own submodule fails to import raises
+    ModuleNotFoundError naming that submodule, whose root is one of the three
+    optional packages. Discrimination: without the installed check the root
+    alone would be taken as proof of absence, and a corrupted install would be
+    reported as a missing extra.
+    """
+    pytest.importorskip('botorch')
+
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    broken = ModuleNotFoundError("No module named 'botorch.models'", name='botorch.models')
+    _patch_infer_import(monkeypatch, broken)
+
+    res = runner.invoke(cli.infer, ['-c', str(cfg)])
+
+    assert res.exit_code == 1
+    assert res.exception is broken
+    assert 'fwl-proteus[inference]' not in res.output
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('distribution', ['torch', 'botorch', 'gpytorch'])
+def test_absent_inference_distribution_names_only_a_truly_missing_package(
+    monkeypatch, distribution
+):
+    """The classifier behind the CLI message answers with a distribution name
+    only when that distribution is genuinely absent. Each rejection path is
+    exercised separately, because each one alone is enough to turn a real
+    failure into misleading install advice. Every package in the extra is
+    covered: a check written against one name only would leave the other two
+    without the install hint.
+    """
+    absent = ModuleNotFoundError(f"No module named '{distribution}'", name=distribution)
+
+    # Reported only once the import system agrees the package is gone.
+    _pretend_absent(monkeypatch, distribution)
+    assert cli._absent_inference_distribution(absent) == distribution
+
+    # A submodule of a missing distribution resolves to the distribution, so
+    # the message names something a user can actually install.
+    submodule = ModuleNotFoundError(
+        f"No module named '{distribution}.sub'", name=f'{distribution}.sub'
+    )
+    assert cli._absent_inference_distribution(submodule) == distribution
+
+    # A plain ImportError means the package was found and something inside it
+    # failed, so it is never translated, even for a name in the extra.
+    inside = ImportError(f"dlopen failed while loading '{distribution}'", name=distribution)
+    assert cli._absent_inference_distribution(inside) is None
+
+    # A missing package outside the extra is not this command's business, and
+    # its absence must not be answered with the inference install command.
+    unrelated = ModuleNotFoundError(
+        "No module named 'unrelated_absent_package_xyz'",
+        name='unrelated_absent_package_xyz',
+    )
+    assert cli._absent_inference_distribution(unrelated) is None
+
+    # An error carrying no module name cannot identify anything.
+    nameless = ModuleNotFoundError('import failed')
+    assert cli._absent_inference_distribution(nameless) is None
+
+
+@pytest.mark.unit
+def test_absent_inference_distribution_rejects_an_installed_package():
+    """A submodule failure inside an installed distribution names that
+    distribution as the root, and the classifier must still refuse it.
+    Discrimination: this is the one case the exception type alone cannot tell
+    apart from a real absence, so it pins the installed check specifically.
+    """
+    pytest.importorskip('botorch')
+
+    broken = ModuleNotFoundError("No module named 'botorch.models'", name='botorch.models')
+
+    assert cli._absent_inference_distribution(broken) is None
+    # The same error shape, with the import system reporting absence, is the
+    # case that does get reported: the two differ only in installed state.
+    assert broken.name.split('.')[0] in cli.INFERENCE_DISTRIBUTIONS
 
 
 # ---------------------------

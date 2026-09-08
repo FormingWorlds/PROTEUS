@@ -7,9 +7,8 @@ reads and is exercised here against a small synthetic workspace
 written to ``tmp_path``.
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -19,7 +18,12 @@ import logging
 import numpy as np
 import pytest
 
+# The Bayesian-optimisation stack ships as the optional `inference` extra,
+# which installs all three together. Guarding the whole stack keeps a
+# partial environment skipping rather than failing collection.
 torch = pytest.importorskip('torch')
+pytest.importorskip('botorch')
+pytest.importorskip('gpytorch')
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

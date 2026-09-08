@@ -27,9 +27,8 @@ validator) lives in ``test_integration_aragog_calliope.py`` at the
 integration tier since it is a sub-second config-only check.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

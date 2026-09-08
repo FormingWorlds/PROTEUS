@@ -1,21 +1,10 @@
 # The coupling loop
 
-PROTEUS evolves a planet by coupling multiple physics modules in a sequential
-loop. Each iteration advances the simulation by one timestep, with modules
-exchanging boundary conditions through a shared data structure. This page
-explains how that loop works and why it is structured the way it is.
-
-For the high-level module overview, see [Model description](model.md). For the
-code layout, see [Code architecture](code_architecture.md).
-
-## Architecture diagram
-
-The diagram below shows the full PROTEUS coupling architecture. Each box
-represents a physics module; arrows show the data flow between them within
-a single iteration.
-
-<object type="image/svg+xml" data="../assets/proteus_architecture.svg" class="arch-diagram arch-diagram--light"></object>
-<object type="image/svg+xml" data="../assets/proteus_architecture_darkmode.svg" class="arch-diagram arch-diagram--dark"></object>
+The [previous page](code_architecture.md) described the static layout of
+PROTEUS's modules. This page explains how they run: the fixed execution order
+within each timestep, how modules exchange state through `hf_row`, and how the
+simulation advances and terminates. For the broader scientific context of each
+module, see [Model description](model.md).
 
 ## The helpfile row: data bus between modules
 
@@ -153,6 +142,7 @@ consecutive iterations (if `params.stop.strict = true`) or one iteration
 | Radiative equilibrium | `params.stop.radeqm` | $\|F_\mathrm{int} - F_\mathrm{atm}\|$ within tolerance |
 | Atmosphere loss | `params.stop.escape` | Surface pressure below `p_stop` |
 | Disintegration | `params.stop.disint` | Planet inside Roche limit or spinning beyond breakup |
+| Unconverged atmosphere | none, always active | 150 consecutive iterations without a converged atmosphere solve |
 
 ## Mass conservation
 
@@ -161,12 +151,14 @@ each outgassing call, `assert_mass_conservation` verifies:
 
 1. $M_\mathrm{atm} \leq M_\mathrm{planet}$ (atmospheric mass cannot exceed
    total planet mass)
-2. $\sum_s m_{s,\mathrm{atm}} = M_\mathrm{atm}$ within a relative tolerance
-   of $10^{-6}$ (species masses sum to the total atmospheric mass)
+2. $\sum_s m_{s,\mathrm{atm}} = M_\mathrm{vol,atm}$ within a relative tolerance
+   of $10^{-6}$, summed over the volatile and noble species (excludes rock vapours)
 
 A violation raises a `RuntimeError` and halts the simulation. This invariant
 was introduced as part of the whole-planet oxygen accounting framework to
 prevent the mass budget from silently diverging.
+
+With `outgas.vapourise = true`, rock vapour enters the atmosphere without being taken from the interior, so the first mass conservation check is not applied. See [Model description](model.md#whole-planet-mass-is-not-conserved-when-vapourisation-is-enabled).
 
 ## Deadlock detection
 
@@ -181,6 +173,70 @@ by tracking consecutive iterations where:
 
 After three consecutive deadlocked iterations, PROTEUS aborts with a
 diagnostic message identifying the stuck state.
+
+## Levels from a rejected atmosphere solve
+
+A solver that rejects its solution still returns an atmospheric structure, and
+the photospheric and XUV levels read off that structure can sit far outside the
+planet. Escape reads $R_\mathrm{xuv}$ from the previous iteration, and the
+energy-limited rate goes as $R_\mathrm{xuv}^3$, so an unusable structure would
+otherwise become a large mass-loss rate that looks like a physical result.
+
+When the atmosphere solve does not converge, PROTEUS therefore substitutes the
+radius, pressure, temperature and gravity of both levels ($R_\mathrm{obs}$,
+$p_\mathrm{obs}$, $T_\mathrm{obs}$, $g_\mathrm{obs}$, $R_\mathrm{xuv}$,
+$p_\mathrm{xuv}$, $T_\mathrm{xuv}$, $g_\mathrm{xuv}$) together with the volume
+mixing ratios at the XUV level, using the values from the most recent converged
+solve. A warning reports each such iteration, and the substituted values are
+listed at debug level. The levels are carried as a group, so a held radius is
+never combined with the pressure, temperature, gravity or composition of a
+rejected structure; the quantities derived from the radius, such as
+$\rho_\mathrm{obs}$ and the transit depth, are computed from the carried value.
+Fluxes and surface state are never carried: the coupling advances on them, and
+the deadlock detector above needs to see them stop moving.
+
+The record of converged levels is not written to the output files, so a resumed
+run starts without one. If the first solve of such a run is rejected, it falls
+back on the last committed row instead, which was written before the run began
+and is the state escape would have used in any case; the warning names which of
+the two sources it used. Later solves never reach back to the committed rows,
+because once a run has begun writing rows, an empty record means those rows carry
+rejected levels themselves. A run with nothing to fall back on keeps the levels of
+the rejected structure and warns that it is doing so. Modules without a nonlinear
+solve (JANUS, the dummy module, and AGNI's transparent and prescribed-temperature
+branches) always report convergence and are unaffected.
+
+Each warning counts the consecutive iterations whose levels the run did not
+resolve itself, the ones with nothing to fall back on included, and past ten in a
+row the run reports it at error level. A streak that long means the interior is
+evolving while the levels stand still, which the deadlock detector above does not
+see, since it fires only when the interior has stopped moving too. A separate
+limit covers it: after 150 consecutive iterations without a converged atmosphere
+the run ends, whatever the interior is doing. The two are sized for different
+things, so the frozen-interior detector still fires at three iterations when
+neither side is moving, and the longer count only ends a run whose atmosphere
+never comes back on its own.
+
+Two helpfile columns persist the outcome, so a carried row is identifiable from
+the output alone: `atm_converged` records the solve outcome of each row (+1
+converged, -1 rejected, 0 before the first atmosphere call), and
+`atm_levels_stale` records the number of consecutive iterations without a
+converged solve of the run, zero on every converged row.
+
+## The XUV level is limited to the Hill radius
+
+Independently of convergence, the XUV level itself is bounded: gas beyond the
+Hill radius is not bound to the planet, so an XUV radius outside it would size
+the escape cross-section with material the planet does not hold, and the
+energy-limited rate grows as the cube of the excess. With `escape.hill_clamp`
+enabled (the default), each atmosphere module limits $R_\mathrm{xuv}$ to
+`escape.hill_clamp_frac` of the Hill radius, floored at $R_\mathrm{int}$ since
+the solid body is always bound. The level moves as a whole: $p_\mathrm{xuv}$,
+$T_\mathrm{xuv}$, $g_\mathrm{xuv}$ and the XUV-level mixing ratios are read at
+the clipped radius, so escape never sees a radius from one level combined with
+a composition from another. Each engagement is logged as a warning. The
+observed level is not clipped; a transit radius beyond the Hill radius is
+reported as computed and flagged by the orbit module's existing warning.
 
 ## Energy conservation diagnostics
 

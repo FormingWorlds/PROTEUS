@@ -79,7 +79,7 @@ def plot_orbit(
     ax_left.set_ylabel('Orbital Period [days]', color='tab:orange')
     ax_left.tick_params(axis='y', labelcolor='tab:orange')
     ax_left.set_yscale('log')
-    ax_left.grid(alpha=0.2, which="both")
+    ax_left.grid(alpha=0.2, which='both')
 
     # Right Y-axis: Spin Period
     ax_right = ax_left.twinx()
@@ -125,12 +125,19 @@ def plot_orbit(
         axs[2, 1].set_ylabel('Periods [hours]')
         axs[2, 1].set_yscale('log')
         axs[2, 1].legend(loc='best')
-        axs[2, 1].grid(alpha=0.2, which="both")
+        axs[2, 1].grid(alpha=0.2, which='both')
     else:
         # Gracefully leave satellite panels blank/notate if not simulated
         for row in range(3):
-            axs[row, 1].text(0.5, 0.5, 'No Satellite Data', transform=axs[row, 1].transAxes,
-                             ha='center', va='center', color='grey')
+            axs[row, 1].text(
+                0.5,
+                0.5,
+                'No Satellite Data',
+                transform=axs[row, 1].transAxes,
+                ha='center',
+                va='center',
+                color='grey',
+            )
 
     # ----------------- SHARED X-AXIS CONFIG -----------------
     for ax in axs.flat:
@@ -240,9 +247,15 @@ def plot_orbit_system(hf_all: pd.DataFrame, output_dir: str, plot_format: str = 
 
 
 def plot_evection(
-    hf_all: pd.DataFrame, output_dir: str, plot_format: str = 'pdf', t0: float = 100.0,
-    xscale: str = 'linear', t_max: float = 1e5,
-    fine_t=None, fine_phi=None, filter_toggle_t=None,
+    hf_all: pd.DataFrame,
+    output_dir: str,
+    plot_format: str = 'pdf',
+    t0: float = 100.0,
+    xscale: str = 'linear',
+    t_max: float = 1e5,
+    fine_t=None,
+    fine_phi=None,
+    filter_toggle_t=None,
 ):
     """Plot the evection diagnostics."""
     time = np.array(hf_all['Time'])
@@ -271,14 +284,18 @@ def plot_evection(
     with np.errstate(invalid='ignore'):
         a_res = (Lambda * s_prime / (1.0 - e_arr**2)) ** (4.0 / 7.0)
 
-    e_s = np.array([
-        _solve_e_stationary(a_prime[i], s_prime[i], Lambda, Omega_ratio)
-        for i in range(len(a_prime))
-    ])
+    e_s = np.array(
+        [
+            _solve_e_stationary(a_prime[i], s_prime[i], Lambda, Omega_ratio)
+            for i in range(len(a_prime))
+        ]
+    )
 
     # Panel (a): a' and a'_res
     y_a_sat = hf_all['semimajorax_sat'] / R_earth
-    axs[0].plot(time, a_res, lw=lw, ls='--', color='#a8c6e8', label="a'_res (evection)", zorder=2)
+    axs[0].plot(
+        time, a_res, lw=lw, ls='--', color='#a8c6e8', label="a'_res (evection)", zorder=2
+    )
     axs[0].plot(time, y_a_sat, lw=lw, color='black', label="a' (satellite)", zorder=3)
     axs[0].set_ylabel('Semi-major Axis [R_Earth]')
     axs[0].set_ylim(np.amin(y_a_sat) / yext, np.amax(y_a_sat) * yext)
@@ -289,7 +306,9 @@ def plot_evection(
     # Panel (b): e_s and e
     y_e_sat = hf_all['eccentricity_sat']
     axs[1].plot(time, y_e_sat, lw=lw, color='tab:blue', label='e', zorder=2)
-    axs[1].plot(time, e_s, lw=lw, ls='--', color='#ff8c00', label='e_s (stable stationary)', zorder=3)
+    axs[1].plot(
+        time, e_s, lw=lw, ls='--', color='#ff8c00', label='e_s (stable stationary)', zorder=3
+    )
     axs[1].set_ylabel('Eccentricity')
     ymin_e_sat = np.amin(y_e_sat) / yext
     ymax_e_sat = max(np.amax(y_e_sat) * yext, ymin_e_sat + 0.01)
@@ -308,8 +327,10 @@ def plot_evection(
         else:
             y_evec = np.mod(y_evec, 2 * np.pi)
         t_evec = time
-        log.debug('plot_evection: no fine phi trace supplied -- panel (c) uses '
-                   'the coarse, potentially aliased evection_angle column')
+        log.debug(
+            'plot_evection: no fine phi trace supplied -- panel (c) uses '
+            'the coarse, potentially aliased evection_angle column'
+        )
 
     axs[2].plot(t_evec, y_evec, lw=0.8 if fine_t is not None else lw, color='tab:green')
     axs[2].set_ylabel('Evection Angle [rad]')
@@ -318,8 +339,14 @@ def plot_evection(
     axs[2].set_ylim(-0.1, 2 * np.pi + 0.1)
     axs[2].grid(alpha=0.2)
     if filter_toggle_t is not None:
-        axs[2].axvline(filter_toggle_t, color='crimson', ls=':', lw=1.2, alpha=0.7,
-                        label=f'filter activates (t~{filter_toggle_t:.0f} yr)')
+        axs[2].axvline(
+            filter_toggle_t,
+            color='crimson',
+            ls=':',
+            lw=1.2,
+            alpha=0.7,
+            label=f'filter activates (t~{filter_toggle_t:.0f} yr)',
+        )
         axs[2].legend(loc='upper right', fontsize=9, framealpha=0.9)
     if fine_t is None:
         pass
@@ -330,11 +357,21 @@ def plot_evection(
     norm_AM = norm_MoI * norm_SR
 
     y_AM = hf_all['plan_sat_am'] / norm_AM
-    axs[3].plot(time, y_AM, lw=lw, label='Normalized Angular Momentum', color='tab:orange', zorder=3)
+    axs[3].plot(
+        time, y_AM, lw=lw, label='Normalized Angular Momentum', color='tab:orange', zorder=3
+    )
 
     Omega_p_arr = 2 * np.pi / hf_all['axial_period'].to_numpy()
     s_p_prime = Omega_p_arr / norm_SR
-    axs[3].plot(time, s_p_prime, lw=lw, ls='-.', label="Planet Spin, s_p' (normalized)", color='tab:red', zorder=2)
+    axs[3].plot(
+        time,
+        s_p_prime,
+        lw=lw,
+        ls='-.',
+        label="Planet Spin, s_p' (normalized)",
+        color='tab:red',
+        zorder=2,
+    )
 
     axs[3].set_ylabel('Normalized AM / Spin')
     axs[3].set_ylim(0.0, 1.0)
@@ -352,6 +389,7 @@ def plot_evection(
         axs[3].set_xlabel('Time [log10(yr)]')
     else:
         import matplotlib.ticker as mticker
+
         for ax in axs.flat:
             ax.set_xscale('linear')
             ax.set_xlim(left=0.0, right=t_max)
@@ -369,7 +407,9 @@ def plot_evection(
     plt.ioff()
 
 
-def plot_Lovenumber(output_dir: str, times: list | np.ndarray, data: list, plot_format: str = 'pdf'):
+def plot_Lovenumber(
+    output_dir: str, times: list | np.ndarray, data: list, plot_format: str = 'pdf'
+):
     if times is None or len(times) == 0:
         log.debug('No times provided for plot_Lovenumber')
         return
@@ -387,38 +427,41 @@ def plot_Lovenumber(output_dir: str, times: list | np.ndarray, data: list, plot_
     for i, time in enumerate(times):
         ds = data[i]
 
-        n_arr = ds["n"][:]
-        m_arr = ds["m"][:]
-        k_arr = ds["k"][:]
-        sigma_arr = ds["sigma_range"][:]
-        raw_imag = ds["knms_total"]
+        n_arr = ds['n'][:]
+        m_arr = ds['m'][:]
+        k_arr = ds['k'][:]
+        sigma_arr = ds['sigma_range'][:]
+        raw_imag = ds['knms_total']
         knms_total = raw_imag[0, :] + 1j * raw_imag[1, :]
 
         # Group data per mode index
         for j in range(len(n_arr)):
             mode_key = (int(n_arr[j]), int(m_arr[j]), int(k_arr[j]))
             if mode_key not in modes:
-                modes[mode_key] = {
-                    "time": [],
-                    "sigma": [],
-                    "real_log": [],
-                    "imag_log": []
-                }
+                modes[mode_key] = {'time': [], 'sigma': [], 'real_log': [], 'imag_log': []}
 
-            real_val = np.log10(np.abs(knms_total[j].real)) if knms_total[j].real != 0 else -np.inf
-            imag_val = np.log10(np.abs(knms_total[j].imag)) if knms_total[j].imag != 0 else -np.inf
+            real_val = (
+                np.log10(np.abs(knms_total[j].real)) if knms_total[j].real != 0 else -np.inf
+            )
+            imag_val = (
+                np.log10(np.abs(knms_total[j].imag)) if knms_total[j].imag != 0 else -np.inf
+            )
 
-            modes[mode_key]["time"].append(time)
-            modes[mode_key]["sigma"].append(np.abs(sigma_arr[j]))
-            modes[mode_key]["real_log"].append(real_val)
-            modes[mode_key]["imag_log"].append(imag_val)
+            modes[mode_key]['time'].append(time)
+            modes[mode_key]['sigma'].append(np.abs(sigma_arr[j]))
+            modes[mode_key]['real_log'].append(real_val)
+            modes[mode_key]['imag_log'].append(imag_val)
 
     # Determine global colorbar bounds across all mode points
-    all_real_log = [val for mode in modes.values() for val in mode["real_log"] if np.isfinite(val)]
-    all_imag_log = [val for mode in modes.values() for val in mode["imag_log"] if np.isfinite(val)]
+    all_real_log = [
+        val for mode in modes.values() for val in mode['real_log'] if np.isfinite(val)
+    ]
+    all_imag_log = [
+        val for mode in modes.values() for val in mode['imag_log'] if np.isfinite(val)
+    ]
 
     if not all_real_log or not all_imag_log:
-        log.warning("No valid non-zero Love numbers to plot.")
+        log.warning('No valid non-zero Love numbers to plot.')
         return
 
     vmin_real, vmax_real = np.min(all_real_log), np.max(all_real_log)
@@ -434,41 +477,73 @@ def plot_Lovenumber(output_dir: str, times: list | np.ndarray, data: list, plot_
     # Plot connecting lines and mode markers
     for mode_key, mode_data in modes.items():
         # Sort trajectories chronologically by time
-        sort_idx = np.argsort(mode_data["time"])
-        t_sorted = np.array(mode_data["time"])[sort_idx]
+        sort_idx = np.argsort(mode_data['time'])
+        t_sorted = np.array(mode_data['time'])[sort_idx]
         x_vals = np.log10(t_sorted)
-        y_vals = np.array(mode_data["sigma"])[sort_idx]
+        y_vals = np.array(mode_data['sigma'])[sort_idx]
 
-        real_vals = np.array(mode_data["real_log"])[sort_idx]
-        imag_vals = np.array(mode_data["imag_log"])[sort_idx]
+        real_vals = np.array(mode_data['real_log'])[sort_idx]
+        imag_vals = np.array(mode_data['imag_log'])[sort_idx]
 
         # Draw connecting trajectory lines across time
-        axs[0].plot(x_vals, y_vals, color='gray', linestyle='-', linewidth=0.8, alpha=0.4, zorder=1)
-        axs[1].plot(x_vals, y_vals, color='gray', linestyle='-', linewidth=0.8, alpha=0.4, zorder=1)
+        axs[0].plot(
+            x_vals, y_vals, color='gray', linestyle='-', linewidth=0.8, alpha=0.4, zorder=1
+        )
+        axs[1].plot(
+            x_vals, y_vals, color='gray', linestyle='-', linewidth=0.8, alpha=0.4, zorder=1
+        )
 
         # Overlay scatter points colored by magnitude
         sc_real = axs[0].scatter(
-            x_vals, y_vals, c=real_vals, cmap=cmap_real,
-            vmin=vmin_real, vmax=vmax_real, edgecolors='none', s=20, alpha=0.8, zorder=2
+            x_vals,
+            y_vals,
+            c=real_vals,
+            cmap=cmap_real,
+            vmin=vmin_real,
+            vmax=vmax_real,
+            edgecolors='none',
+            s=20,
+            alpha=0.8,
+            zorder=2,
         )
 
         sc_imag = axs[1].scatter(
-            x_vals, y_vals, c=imag_vals, cmap=cmap_imag,
-            vmin=vmin_imag, vmax=vmax_imag, edgecolors='none', s=20, alpha=0.8, zorder=2
+            x_vals,
+            y_vals,
+            c=imag_vals,
+            cmap=cmap_imag,
+            vmin=vmin_imag,
+            vmax=vmax_imag,
+            edgecolors='none',
+            s=20,
+            alpha=0.8,
+            zorder=2,
         )
 
     # Formatting & Colorbars
     for ax in axs:
         ax.set_yscale('log')
         ax.set_xlabel(r'$\log_{10}(\text{Time [yr]})$')
-        ax.grid(True, which="both", ls="--", alpha=0.5)
+        ax.grid(True, which='both', ls='--', alpha=0.5)
 
     axs[0].set_ylabel(r'Forcing Frequency $|\sigma|$ (Log Scale)')
     axs[0].set_title(r'Real Part: $\log_{10}(|\text{Re}(k_{nm})|)$')
     axs[1].set_title(r'Imaginary Part: $\log_{10}(|\text{Im}(k_{nm})|)$')
 
-    fig.colorbar(sc_real, ax=axs[0], orientation='vertical', shrink=0.8, label=r'$\log_{10}(|\text{Re}(k_{nm})|)$')
-    fig.colorbar(sc_imag, ax=axs[1], orientation='vertical', shrink=0.8, label=r'$\log_{10}(|\text{Im}(k_{nm})|)$')
+    fig.colorbar(
+        sc_real,
+        ax=axs[0],
+        orientation='vertical',
+        shrink=0.8,
+        label=r'$\log_{10}(|\text{Re}(k_{nm})|)$',
+    )
+    fig.colorbar(
+        sc_imag,
+        ax=axs[1],
+        orientation='vertical',
+        shrink=0.8,
+        label=r'$\log_{10}(|\text{Im}(k_{nm})|)$',
+    )
 
     fig.tight_layout()
 
@@ -479,7 +554,6 @@ def plot_Lovenumber(output_dir: str, times: list | np.ndarray, data: list, plot_
 
     plt.close(fig)
     plt.ioff()
-
 
 
 def plot_evection_A(
@@ -532,17 +606,21 @@ def plot_evection_A(
     # points are masked to NaN below so the line shows a gap rather than a
     # spurious spike to +/- infinity.
     with np.errstate(divide='ignore', invalid='ignore'):
-        A_a = np.abs(hf_all['sma_dot_sat'].to_numpy()) / np.abs(hf_all['sma_dot_planet'].to_numpy())
-        A_e = np.abs(hf_all['ecc_dot_sat'].to_numpy()) / np.abs(hf_all['ecc_dot_planet'].to_numpy())
+        A_a = np.abs(hf_all['sma_dot_sat'].to_numpy()) / np.abs(
+            hf_all['sma_dot_planet'].to_numpy()
+        )
+        A_e = np.abs(hf_all['ecc_dot_sat'].to_numpy()) / np.abs(
+            hf_all['ecc_dot_planet'].to_numpy()
+        )
     A_a = np.where(np.isfinite(A_a) & (A_a > 0), A_a, np.nan)
     A_e = np.where(np.isfinite(A_e) & (A_e > 0), A_e, np.nan)
 
     lw = 2.0
     figscale = 1.2
 
-    col_planet = 'tab:blue'   # validated diverging pair (CVD delta-E ~21-34)
-    col_sat    = 'tab:red'
-    col_mid    = 'dimgray'
+    col_planet = 'tab:blue'  # validated diverging pair (CVD delta-E ~21-34)
+    col_sat = 'tab:red'
+    col_mid = 'dimgray'
 
     fig, axs = plt.subplots(2, 1, figsize=(11 * figscale, 6.0 * figscale), sharex=True)
 
@@ -556,10 +634,26 @@ def plot_evection_A(
         ax.axhline(1.0, lw=1.2, ls='--', color=col_mid, zorder=2)
 
         # Diverging fill against the A=1 crossover
-        ax.fill_between(time, A, 1.0, where=(A >= 1.0), color=col_sat,
-                         alpha=0.15, interpolate=True, zorder=1)
-        ax.fill_between(time, A, 1.0, where=(A < 1.0), color=col_planet,
-                         alpha=0.15, interpolate=True, zorder=1)
+        ax.fill_between(
+            time,
+            A,
+            1.0,
+            where=(A >= 1.0),
+            color=col_sat,
+            alpha=0.15,
+            interpolate=True,
+            zorder=1,
+        )
+        ax.fill_between(
+            time,
+            A,
+            1.0,
+            where=(A < 1.0),
+            color=col_planet,
+            alpha=0.15,
+            interpolate=True,
+            zorder=1,
+        )
 
         ax.set_yscale('log')
         ax.set_ylabel(ylabel)
@@ -617,7 +711,7 @@ def plot_orbit_entry(handler: Proteus):
             try:
                 fine_t, fine_phi = np.loadtxt(fine_path, skiprows=1, delimiter=',').T
             except Exception as e:
-                log.warning(f"Failed to load fine evection data: {e}")
+                log.warning(f'Failed to load fine evection data: {e}')
 
         plot_evection(
             hf_all,
@@ -644,7 +738,7 @@ def plot_orbit_entry(handler: Proteus):
             output_dir=handler.directories['output'],
             times=plot_times,
             data=data,
-            plot_format=handler.config.params.out.plot_fmt
+            plot_format=handler.config.params.out.plot_fmt,
         )
 
 

@@ -15,6 +15,7 @@ def valid_path(instance, attribute, value):
 
 
 def max_bigger_than_min(instance, attribute, value):
+    """The maximum must exceed the minimum on the same section."""
     if value <= instance.minimum:
         raise ValueError("'maximum' has to be bigger than 'minimum'.")
 
@@ -28,7 +29,11 @@ def valid_mod(instance, attribute, value):
 
 @define
 class OutputParams:
-    """Parameters for output files and logging
+    """Parameters for output files and logging.
+
+    Note that `write_mod` and `dt_write_rel` are independent triggers for
+    writing output files. The model will write output if either trigger
+    is individually satisfied.
 
     Attributes
     ----------
@@ -41,14 +46,9 @@ class OutputParams:
     plot_fmt: str
         Plotting output file format. Choices: "png", "pdf".
     write_mod: int
-        Write CSV frequency. 0: wait until completion. n: every n iterations.
+        Write data iteration-interval trigger. 0: wait until completion. n: every n iterations.
     dt_write_rel: float
-        Minimum elapsed simulation time between data writes, expressed as a
-        fraction of the current simulation time. The effective minimum write
-        interval is ``dt_write_rel * Time``. This gives logarithmic spacing:
-        at Time=1e3 yr with dt_write_rel=1e-3 the guard is 1 yr; at
-        Time=1e9 yr it is 1e6 yr. Set to 0 to write every time write_mod
-        triggers (default, preserving existing behaviour).
+        Write data time-interval trigger. Expressed as a fraction of the current simulation time. Set to 0 to disable.
     plot_mod: int | None
         Plotting frequency. 0: wait until completion. n: every n iterations. None: never plot.
     archive_mod: int | None
@@ -108,6 +108,10 @@ class TimeStepParams:
     window: int
         Number of previous steps to consider for adaptive-method comparison
         [dimensionless].
+    max_growth_factor: float
+        Cap on the dt growth ratio between consecutive steps [dimensionless].
+        Bounds dtswitch / dtprev, preventing large jumps that can wedge the
+        interior solver; 0 (default) disables the cap.
     maximum_rel: float
         Time-fraction allowance added to ``dt.maximum`` on every step
         [dimensionless]. The effective per-step cap is the sum
@@ -235,7 +239,7 @@ class StopSolid:
         but the simulation continues. Dissolved volatiles are trapped in the
         solid mantle and preserved in the helpfile. The atmosphere retains
         its current composition. When False, outgassing continues regardless
-        of melt fraction. Default True.
+        of melt fraction.
     """
 
     phi_crit: float = field(default=0.01, validator=(gt(0), lt(1)))
@@ -317,7 +321,7 @@ class StopSatellite:
         Maximum semi-major axis for the satellite [R_Earth].
     """
 
-    enabled: bool  = field(default=False)
+    enabled: bool = field(default=False)
     sma_max: float = field(default=0)
 
 
@@ -335,6 +339,27 @@ class StopClock:
 
     enabled: bool = field(default=True)
     maximum: float = field(default=60 * 60 * 24 * 7, validator=gt(0))
+
+
+@define
+class StopStall:
+    """Parameters for the unconverged-atmosphere stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable criteria if True
+    maximum: int
+        Model will terminate after this many consecutive iterations without a
+        converged atmosphere solve, whatever the interior is doing. Sized on 27
+        stalled GJ 9827 d cases as they stood on 2026-08-08: the deepest streak
+        a run recovered from is 126 and the deepest open one, which never
+        converged, is 233. Raising it past the open streak defeats the
+        criterion; lowering it below the recovered one ends runs that come back.
+    """
+
+    enabled: bool = field(default=True)
+    maximum: int = field(default=150, validator=gt(0))
 
 
 @define
@@ -359,6 +384,8 @@ class StopParams:
         Parameters for planet disintegration criteria.
     clock: StopClock
         Parameters for maximum clock runtime criteria.
+    stall: StopStall
+        Parameters for the unconverged-atmosphere criteria.
     """
 
     iters: StopIters = field(factory=StopIters)
@@ -369,6 +396,7 @@ class StopParams:
     disint: StopDisint = field(factory=StopDisint)
     satellite: StopSatellite = field(factory=StopSatellite)
     clock: StopClock = field(factory=StopClock)
+    stall: StopStall = field(factory=StopStall)
 
     strict: bool = field(default=False)
 
@@ -385,6 +413,12 @@ class Params:
         Parameters for time-stepping.
     stop: StopParams
         Parameters for stopping criteria.
+    resume: bool
+        Resume the simulation from the last archived state in the output
+        folder, instead of starting from scratch.
+    offline: bool
+        Run without network access; never download reference data, and fail
+        if a required file is missing locally.
     """
 
     out: OutputParams = field(factory=OutputParams)

@@ -5,9 +5,8 @@ profiles. All matplotlib rendering, file I/O, NetCDF reads, and filesystem
 operations are mocked for fast unit testing (<100 ms).
 
 Testing standards:
-  - docs/test_infrastructure.md
-  - docs/test_categorization.md
-  - docs/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations

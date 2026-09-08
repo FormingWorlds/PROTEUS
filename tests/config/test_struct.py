@@ -7,9 +7,8 @@ valid neighbouring configuration is accepted, so the rejection is driven
 by the specific invalid field and not a blanket raise.
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -118,15 +117,17 @@ class TestStructSpiderGuards:
 class TestZalmoxisVolatileGates:
     """Gates on the dissolved-volatile structure path.
 
-    Both flags sit on a path that needs per-shell volatile-profile
-    support in the Zalmoxis density evaluator, which the pinned release
-    does not provide; enabling either must fail loudly at config load
+    Phase-aware volatile mixing (`dry_mantle = false`) is now supported:
+    the pinned Zalmoxis release evaluates a per-shell volatile profile in
+    the mantle density. Binodal-aware miscibility (`global_miscibility`)
+    still requires the H2-silicate binodal handoff on the Zalmoxis side
+    (Zalmoxis tracker #64), so it must still fail loudly at config load
     instead of silently doing nothing at runtime.
     """
 
     def test_global_miscibility_is_rejected(self):
-        """`global_miscibility = true` raises: with the default dry mantle no
-        volatile profile is built, so the flag would be a silent no-op."""
+        """`global_miscibility = true` still raises: the H2-silicate binodal
+        handoff it needs is not yet implemented on the Zalmoxis side."""
         with pytest.raises(ValueError, match='global_miscibility'):
             Struct(module='zalmoxis', zalmoxis=Zalmoxis(global_miscibility=True))
         # Discrimination: the default (miscibility off) constructs, so the
@@ -134,21 +135,28 @@ class TestZalmoxisVolatileGates:
         s = Struct(module='zalmoxis')
         assert s.zalmoxis.global_miscibility is False
 
-    def test_wet_mantle_is_rejected(self):
-        """`dry_mantle = false` raises: the extended mantle EOS would carry
-        placeholder fractions that nothing overrides per radius."""
-        with pytest.raises(ValueError, match='dry_mantle'):
-            Struct(module='zalmoxis', zalmoxis=Zalmoxis(dry_mantle=False))
-        s = Struct(module='zalmoxis')
-        assert s.zalmoxis.dry_mantle is True
+    def test_wet_mantle_is_accepted(self):
+        """`dry_mantle = false` now constructs: the gate was lifted once the
+        pinned Zalmoxis release gained per-shell volatile-profile support."""
+        s = Struct(module='zalmoxis', zalmoxis=Zalmoxis(dry_mantle=False))
+        assert s.zalmoxis.dry_mantle is False
+        # Retro-compat: the default remains dry, byte-identical to baseline.
+        assert Struct(module='zalmoxis').zalmoxis.dry_mantle is True
 
-    def test_spider_module_skips_the_gates(self):
-        """The gates only constrain the zalmoxis structure path: a spider
-        config carrying the same sub-config values is not validated against
-        them (the zalmoxis sub-config is inert under spider)."""
+    def test_spider_module_skips_the_gate(self):
+        """The miscibility gate only constrains the zalmoxis structure path:
+        a spider config carrying the same value is not validated against it
+        (the zalmoxis sub-config is inert under spider)."""
         s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(global_miscibility=True)))
         assert s.zalmoxis.global_miscibility is True
-        # Both gated flags are inert under spider: the wet-mantle setting
-        # also constructs, so the early return covers the whole validator.
-        s2 = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(dry_mantle=False)))
-        assert s2.zalmoxis.dry_mantle is False
+        # The skip covers the whole sub-config, not the miscibility flag alone:
+        # an EOS string that fails the zalmoxis format check is equally inert
+        # under spider. Narrowing the skip to the flag, and validating EOS
+        # strings for every module, would reject this spider config.
+        s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(core_eos='no_colon')))
+        assert s.zalmoxis.core_eos == 'no_colon'
+        # The paired negative: zalmoxis does enforce the format, so acceptance
+        # above is the module skipping the check rather than the check being
+        # absent.
+        with pytest.raises(ValueError, match='core_eos'):
+            Struct(module='zalmoxis', zalmoxis=Zalmoxis(core_eos='no_colon'))

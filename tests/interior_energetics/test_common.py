@@ -6,9 +6,8 @@ Tests the _load_ps_table() method which loads SPIDER's P-S lookup tables
 fallback logic, and verifies the loaders are wired by ``Interior_t.__init__``.
 
 Testing standards and documentation:
-- docs/test_infrastructure.md: Test infrastructure overview
-- docs/test_categorization.md: Test marker definitions
-- docs/test_building.md: Best practices for test construction
+- docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
+- docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 
 Functions tested:
 - Interior_t._load_ps_table(): Load arbitrary P-S table with path fallback
@@ -473,6 +472,152 @@ def test_resume_tides_missing_file_emits_warning_and_does_not_mutate_state(tmp_p
     np.testing.assert_allclose(interior.tides, 0.0, atol=1e-12)
 
 
+def test_get_file_structure_stale_returns_expected_subpath(tmp_path):
+    """get_file_structure_stale composes ``outdir/data/structure_stale.dat``."""
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    out = get_file_structure_stale(str(tmp_path))
+    # Edge case: a trailing separator on the outdir must still join cleanly.
+    out_slash = get_file_structure_stale(str(tmp_path) + os.sep)
+    assert out.endswith(os.path.join('data', 'structure_stale.dat'))
+    assert out_slash.endswith(os.path.join('data', 'structure_stale.dat'))
+    # The composed path stays inside outdir, not an absolute escape, and is
+    # distinct from the tides sidecar so the two records never collide.
+    from proteus.interior_energetics.common import get_file_tides
+
+    assert str(tmp_path) in out
+    assert out != get_file_tides(str(tmp_path))
+
+
+def test_write_structure_stale_survives_resume_roundtrip(tmp_path):
+    """A raised stale flag survives a simulated resume through the sidecar.
+
+    Contract: ``structure_stale`` records that the interior is running on a
+    fall-back (previous-step) mesh. It lives on ``interior_o`` rather than the
+    floats-only helpfile row, so it would be lost on resume (which rebuilds
+    ``hf_row`` from the last CSV row) unless it is persisted separately. The
+    write/resume pair is that persistence path.
+
+    The resume target is a FRESH ``Interior_t``, whose constructor default is
+    ``False``; that is the discrimination. If ``resume_structure_stale`` were a
+    no-op, the fresh object would read ``False`` and the assertion would fail.
+    The recovered ``True`` therefore proves the bit crossed the disk boundary.
+    """
+    (tmp_path / 'data').mkdir()
+
+    # Direction 1 (the critical case): a crash right after a fall-back must resume
+    # knowing the mesh is stale.
+    stale = Interior_t(5)
+    stale.structure_stale = True
+    stale.write_structure_stale(str(tmp_path))
+
+    resumed = Interior_t(5)
+    assert resumed.structure_stale is False, 'fresh interior must default to not-stale'
+    resumed.resume_structure_stale(str(tmp_path))
+    assert resumed.structure_stale is True, 'raised flag must survive the resume'
+
+    # Direction 2: a cleared flag persists too, so a resume after a successful
+    # re-solve does not spuriously read stale. Discrimination: seed the resume
+    # target True at entry so a no-op resume would leave it True; the recovered
+    # False proves the on-disk 0 overrode the pre-resume state.
+    fresh = Interior_t(5)
+    fresh.structure_stale = False
+    fresh.write_structure_stale(str(tmp_path))
+
+    resumed_false = Interior_t(5)
+    resumed_false.structure_stale = True
+    resumed_false.resume_structure_stale(str(tmp_path))
+    assert resumed_false.structure_stale is False, 'cleared flag must survive the resume'
+
+
+def test_resume_structure_stale_missing_or_malformed_file_defaults_fresh(tmp_path, caplog):
+    """resume_structure_stale degrades to not-stale on an absent or corrupt file.
+
+    Edge case (absent file): a run with no sidecar, or one that never fell back,
+    must assume the mesh is fresh rather than abort.
+    Discrimination: the target is seeded ``True`` at entry, so the absent-file
+    branch must actively reset it to ``False``, not merely leave a default.
+
+    Error contract (malformed file): a non-integer payload must be swallowed with
+    a warning and treated as fresh, so an unparseable visibility bit never blocks
+    a resume.
+    """
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    (tmp_path / 'data').mkdir()
+
+    # Absent file: no sidecar written.
+    missing = Interior_t(5)
+    missing.structure_stale = True  # seed non-default so the reset is observable
+    missing.resume_structure_stale(str(tmp_path))
+    assert missing.structure_stale is False, 'absent file must reset to not-stale'
+
+    # Malformed file: unparseable content must warn and fall back to False.
+    with open(get_file_structure_stale(str(tmp_path)), 'w') as hdl:
+        hdl.write('not-an-int\n')
+    corrupt = Interior_t(5)
+    corrupt.structure_stale = True
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        corrupt.resume_structure_stale(str(tmp_path))
+    assert corrupt.structure_stale is False, 'malformed file must fall back to not-stale'
+    assert any('stale-structure flag' in r.message for r in caplog.records), (
+        'the malformed-file branch must emit a warning for provenance'
+    )
+
+
+def test_write_structure_stale_swallows_oserror_without_propagating(
+    tmp_path, caplog, monkeypatch
+):
+    """A failed stale-flag write is logged and swallowed, never propagated.
+
+    Contract: ``write_structure_stale`` is called on the Zalmoxis fall-back path
+    in ``wrapper.py`` immediately before the mesh and ``zalmoxis_output.dat``
+    rollback. The flag is only a resume-visibility bit, so a write failure (an
+    absent ``data/`` directory, a full disk) must not abort the run; propagating
+    the error here would skip the rollback that follows the call and strand the
+    run on a half-committed structure. The guard logs and returns instead.
+
+    Two directions, both of which would raise out of the call if the
+    ``except OSError`` guard were removed:
+    """
+    from proteus.interior_energetics.common import get_file_structure_stale
+
+    # Direction 1 (absent data/ dir): the realistic failure. ``tmp_path`` has no
+    # ``data/`` subdirectory, so the underlying ``open(..., 'w')`` raises
+    # ``FileNotFoundError`` (an ``OSError`` subclass). Discrimination: assert the
+    # directory really is missing, then assert the guarded call still returns.
+    target = get_file_structure_stale(str(tmp_path))
+    assert not os.path.exists(os.path.dirname(target)), 'data/ must be absent for this branch'
+    interior = Interior_t(5)
+    interior.structure_stale = True
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        result = interior.write_structure_stale(str(tmp_path))
+    assert result is None, 'the call must return normally, not propagate the write error'
+    assert not os.path.exists(target), 'a failed write must not leave a partial flag file'
+    assert any('stale-structure flag' in r.message for r in caplog.records), (
+        'a swallowed write failure must still emit a warning for provenance'
+    )
+
+    # Direction 2 (generic OSError): the ``data/`` directory now exists, so the
+    # only failure source is a patched ``open`` that raises a bare ``OSError``
+    # (the disk-full case named in the source comment). This discriminates that
+    # the guard catches ``OSError`` broadly, not merely the missing-dir subclass.
+    (tmp_path / 'data').mkdir()
+
+    def _raise_oserror(*args, **kwargs):
+        raise OSError('simulated disk-full')
+
+    monkeypatch.setattr('builtins.open', _raise_oserror)
+    caplog.clear()
+    disk_full = Interior_t(5)
+    disk_full.structure_stale = False
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        assert disk_full.write_structure_stale(str(tmp_path)) is None
+    assert any('stale-structure flag' in r.message for r in caplog.records), (
+        'a bare OSError must be caught and logged, not only FileNotFoundError'
+    )
+
+
 def test_resume_tides_length_mismatch_logs_error_but_does_not_raise(tmp_path, caplog):
     """Writing nlev_s=3 data then resuming with nlev_s=4 logs an error
     but leaves the call free of exceptions (best-effort resume)."""
@@ -674,59 +819,6 @@ def test_compute_initial_entropy_uses_t_surface_initial_override(monkeypatch, ca
     with caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.common'):
         compute_initial_entropy(config, hf_row=hf_row_zero, fallback=3300.0)
     assert not any('Overriding tsurf_init' in r.message for r in caplog.records)
-
-
-# ============================================================================
-# _verify_initial_entropy: zalmoxis-unavailable skip + no-config skip
-# ============================================================================
-
-
-def test_verify_initial_entropy_skipped_when_zalmoxis_unavailable(monkeypatch, caplog):
-    """The cross-check is a no-op when Zalmoxis is not installed.
-
-    Guard: the helper must not raise; it must log a DEBUG line and return
-    None. A regression that propagated the ImportError would crash any
-    PROTEUS run on a machine without Zalmoxis.
-    """
-    import sys
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    # Force the lazy import to fail.
-    monkeypatch.setitem(sys.modules, 'zalmoxis.eos_export', None)
-    monkeypatch.setitem(sys.modules, 'proteus.interior_struct.zalmoxis', None)
-
-    config = SimpleNamespace(interior_struct=SimpleNamespace(zalmoxis=None))
-
-    with caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.common'):
-        out = _verify_initial_entropy(config, S_target=2800.0, tsurf=2400.0, source='test')
-    # Returns None silently (no exception, no value).
-    assert out is None
-    # The skip is logged so the silent no-op is auditable.
-    debug_msgs = [r.message for r in caplog.records if 'zalmoxis unavailable' in r.message]
-    assert len(debug_msgs) >= 1
-
-
-def test_verify_initial_entropy_skipped_when_no_zalmoxis_cfg(monkeypatch, caplog):
-    """The cross-check is also skipped when zalmoxis is installed but the
-    config does not provide a zalmoxis sub-block (e.g. SPIDER with a dummy
-    structure).
-    """
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    # Sanity: skip if zalmoxis package not installed in this env.
-    pytest.importorskip('zalmoxis')
-
-    config = SimpleNamespace(interior_struct=SimpleNamespace(zalmoxis=None))
-    with caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.common'):
-        out = _verify_initial_entropy(config, S_target=2800.0, tsurf=2400.0, source='dummy')
-    assert out is None
-    # Discrimination: no AttributeError is raised even though
-    # config.interior_struct.zalmoxis is None.
-    assert any('no Zalmoxis config' in r.message for r in caplog.records)
 
 
 def test_compute_initial_entropy_adiabatic_from_cmb_uses_pcmb_fallback(monkeypatch, caplog):
@@ -983,279 +1075,6 @@ def test_compute_initial_entropy_paleos_failure_logs_warning_and_falls_back(
     assert S != pytest.approx(3200.0, rel=1e-4)
     # Warning fired with a PALEOS-failure phrasing.
     assert any('Could not compute entropy from PALEOS' in r.message for r in caplog.records)
-
-
-def test_verify_initial_entropy_zero_s_target_skipped(monkeypatch, caplog):
-    """S_target == 0 short-circuits with a WARNING; verdicts cannot be
-    computed when the denominator is zero.
-
-    The path-through is gated on a previous successful PALEOS lookup, so
-    we patch the dependencies to reach the S_target == 0 check.
-    """
-    pytest.importorskip('zalmoxis')
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    # Build a config with a zalmoxis sub-block.
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
-        )
-    )
-
-    # Stub the upstream PALEOS lookup to return a non-empty path and a
-    # zero S_target.
-    from unittest.mock import patch as _patch
-
-    with (
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value={'WolfBower2018:MgSiO3': {'eos_file': '/tmp/dummy_eos'}},
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.resolve_2phase_mgsio3_paths',
-            return_value=('/tmp/solid_eos', '/tmp/liquid_eos'),
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-            return_value=None,
-        ),
-        _patch('os.path.isfile', return_value=True),
-        _patch(
-            'zalmoxis.eos_export.compute_surface_entropy',
-            return_value={'S_target': 0.0},
-        ),
-        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'),
-    ):
-        out = _verify_initial_entropy(config, S_target=0.0, tsurf=2400.0, source='zero')
-    assert out is None
-    assert any('S_target is zero' in r.message for r in caplog.records)
-
-
-# ============================================================================
-# _verify_initial_entropy: PASS / WARN / FAIL verdict branches
-# ============================================================================
-
-
-def _patch_verify_inputs(s_adiabat: float):
-    """Build the upstream patches needed to reach the verdict block.
-
-    Returns a list of unittest.mock.patch context managers wired to a
-    deterministic compute_surface_entropy return that yields the given
-    adiabat S value.
-    """
-    from unittest.mock import patch as _patch
-
-    return [
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value={'WolfBower2018:MgSiO3': {'eos_file': '/tmp/dummy_eos'}},
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.resolve_2phase_mgsio3_paths',
-            return_value=('/tmp/solid_eos', '/tmp/liquid_eos'),
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-            return_value=None,
-        ),
-        _patch('os.path.isfile', return_value=True),
-        _patch(
-            'zalmoxis.eos_export.compute_surface_entropy',
-            return_value={'S_target': s_adiabat},
-        ),
-    ]
-
-
-@pytest.mark.physics_invariant
-def test_verify_initial_entropy_pass_branch_within_one_percent(caplog):
-    """A 0.5 % discrepancy (under the 1 % PASS threshold) logs the verdict
-    as PASS and returns None.
-
-    Physics invariant: the cross-check must accept agreement at the 1 %
-    level, which is the empirical noise floor between the two algorithms
-    (P-S inversion vs PALEOS adiabat) on the same EOS table.
-    """
-    pytest.importorskip('zalmoxis')
-    from contextlib import ExitStack
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
-        )
-    )
-
-    S_target = 2800.0
-    # 0.5 % offset, comfortably under the 1 % PASS bar.
-    S_adiabat = S_target * 1.005
-    with ExitStack() as stack:
-        for cm in _patch_verify_inputs(S_adiabat):
-            stack.enter_context(cm)
-        with caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.common'):
-            out = _verify_initial_entropy(
-                config, S_target=S_target, tsurf=2400.0, source='pass'
-            )
-    assert out is None
-    # Verdict in the log is PASS, not WARN or FAIL.
-    pass_msgs = [r.message for r in caplog.records if 'verdict=PASS' in r.message]
-    assert len(pass_msgs) == 1, (
-        f'expected exactly one PASS verdict line; got {len(pass_msgs)} ({pass_msgs!r})'
-    )
-    # Anti-happy-path: a regression that flipped the comparison sense
-    # would have logged WARN or FAIL on the same 0.5 % offset.
-    assert not any('verdict=WARN' in r.message for r in caplog.records)
-    assert not any('verdict=FAIL' in r.message for r in caplog.records)
-
-
-def test_verify_initial_entropy_warn_branch_between_one_and_five_percent(caplog):
-    """A 3 % discrepancy (between 1 % and 5 %) logs WARN and returns None.
-
-    The WARN branch is a soft signal, distinct from FAIL which raises.
-    """
-    pytest.importorskip('zalmoxis')
-    from contextlib import ExitStack
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
-        )
-    )
-
-    S_target = 2800.0
-    S_adiabat = S_target * 1.03  # 3 % offset
-    with ExitStack() as stack:
-        for cm in _patch_verify_inputs(S_adiabat):
-            stack.enter_context(cm)
-        with caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.common'):
-            out = _verify_initial_entropy(
-                config, S_target=S_target, tsurf=2400.0, source='warn'
-            )
-    assert out is None
-    warn_msgs = [r.message for r in caplog.records if 'verdict=WARN' in r.message]
-    assert len(warn_msgs) == 1
-    # WARN must NOT raise (only FAIL does).
-    assert not any('verdict=FAIL' in r.message for r in caplog.records)
-
-
-def test_verify_initial_entropy_fail_branch_raises_runtime_error_above_five_percent():
-    """A 7 % discrepancy (above the 5 % FAIL bar) raises RuntimeError.
-
-    Sign + scale discrimination: the assertion message must name BOTH
-    the actual diff and the threshold so a future regression that
-    silently relaxed the threshold is visible.
-    """
-    pytest.importorskip('zalmoxis')
-    from contextlib import ExitStack
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
-        )
-    )
-
-    S_target = 2800.0
-    S_adiabat = S_target * 1.07  # 7 % offset, > 5 % FAIL bar
-    with ExitStack() as stack:
-        for cm in _patch_verify_inputs(S_adiabat):
-            stack.enter_context(cm)
-        with pytest.raises(RuntimeError, match='Entropy IC cross-check FAIL') as exc:
-            _verify_initial_entropy(config, S_target=S_target, tsurf=2400.0, source='fail')
-    # The error message names BOTH the actual percentage and the threshold,
-    # so a relaxation of the 5 % cap would land a different percentage in
-    # the string. The 7 % offset must show up to within ~0.05 absolute.
-    msg = str(exc.value)
-    assert '7.0' in msg or '7.00' in msg, (
-        f'FAIL message must report the actual % discrepancy; got {msg!r}'
-    )
-
-
-def test_verify_initial_entropy_skipped_when_paleos_file_missing(monkeypatch, caplog):
-    """When the zalmoxis material dict has no eos_file AND solid_eos is
-    empty, the cross-check skips with a DEBUG log line.
-    """
-    pytest.importorskip('zalmoxis')
-    from types import SimpleNamespace
-    from unittest.mock import patch as _patch
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
-        )
-    )
-    with (
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value={'WolfBower2018:MgSiO3': {}},  # no eos_file
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.resolve_2phase_mgsio3_paths',
-            return_value=(None, None),  # no solid_eos fallback
-        ),
-        _patch('os.path.isfile', return_value=False),
-        caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.common'),
-    ):
-        out = _verify_initial_entropy(config, S_target=2800.0, tsurf=2400.0, source='nofile')
-    assert out is None
-    # DEBUG message names PALEOS-file-not-found so the skip path is auditable.
-    msgs = [r.message for r in caplog.records if 'PALEOS file not found' in r.message]
-    assert len(msgs) >= 1
-
-
-def test_verify_initial_entropy_expected_error_swallowed(monkeypatch, caplog):
-    """KeyError / ValueError from the PALEOS lookup is swallowed with a
-    WARNING (not raised). Pins the expected-error tuple at the try/except
-    around the compute_surface_entropy call.
-    """
-    pytest.importorskip('zalmoxis')
-    from types import SimpleNamespace
-    from unittest.mock import patch as _patch
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
-        )
-    )
-
-    with (
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value={'WolfBower2018:MgSiO3': {'eos_file': '/tmp/dummy_eos'}},
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.resolve_2phase_mgsio3_paths',
-            return_value=('/tmp/solid_eos', '/tmp/liquid_eos'),
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-            return_value=None,
-        ),
-        _patch('os.path.isfile', return_value=True),
-        _patch(
-            'zalmoxis.eos_export.compute_surface_entropy',
-            side_effect=KeyError('S_target'),
-        ),
-        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'),
-    ):
-        out = _verify_initial_entropy(
-            config, S_target=2800.0, tsurf=2400.0, source='expected_err'
-        )
-    # Expected error path returns None cleanly.
-    assert out is None
-    assert any('cross-check skipped (expected error' in r.message for r in caplog.records)
 
 
 # ============================================================================

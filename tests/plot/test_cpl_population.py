@@ -36,6 +36,21 @@ from proteus.plot.cpl_population import (
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
+def _dataset_dir(key: str, root):
+    """Create and return the version directory a dataset resolves to under root.
+
+    The loaders read the location fwl-io derives from the manifest pin, so the
+    fixtures place their files there rather than repeating the layout. The
+    literal path this resolves to is pinned in tests/data/test_manifest.py, so a
+    resolver that silently changed the layout could not hide behind this helper.
+    """
+    from proteus.data import dataset_dir
+
+    target = dataset_dir(key, data_root=root)
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
 # ---------------------------------------------------------------------------
 # _get_exo_data
 # ---------------------------------------------------------------------------
@@ -56,8 +71,9 @@ def test_get_exo_data_loads_present_csv(tmp_path):
     Anti-happy: the test fixture writes a non-trivial 2-row CSV so the
     return type and shape are both verified, not just "not None".
     """
-    target_dir = tmp_path / 'planet_reference' / 'Exoplanets'
-    target_dir.mkdir(parents=True)
+    from proteus.data import EXOPLANET_REFERENCE
+
+    target_dir = _dataset_dir(EXOPLANET_REFERENCE, tmp_path)
     csv_path = target_dir / 'DACE_PlanetS.csv'
     csv_path.write_text(
         '# DACE-formatted exoplanet catalogue stub\n'
@@ -95,8 +111,9 @@ def test_get_mr_data_returns_none_when_one_file_missing(tmp_path, caplog):
     (without this assertion the test could pass for the wrong reason if
     the loader returned None for an unrelated cause).
     """
-    z19 = tmp_path / 'mass_radius' / 'Zeng2019'
-    z19.mkdir(parents=True)
+    from proteus.data import MASS_RADIUS_ZENG_2019
+
+    z19 = _dataset_dir(MASS_RADIUS_ZENG_2019, tmp_path)
     # Write 4 of the 5 expected files.
     for name in (
         'massradiusEarthlikeRocky.txt',
@@ -121,8 +138,9 @@ def test_get_mr_data_loads_present_curves(tmp_path):
     Anti-happy: each file has 3 rows of (mass, radius) so the array shape
     is verified beyond "not None".
     """
-    z19 = tmp_path / 'mass_radius' / 'Zeng2019'
-    z19.mkdir(parents=True)
+    from proteus.data import MASS_RADIUS_ZENG_2019
+
+    z19 = _dataset_dir(MASS_RADIUS_ZENG_2019, tmp_path)
     for name in (
         'massradiusEarthlikeRocky.txt',
         'massradiusFe.txt',
@@ -202,8 +220,9 @@ def test_plot_population_mass_radius_skips_when_hf_too_short(tmp_path):
     """
     # Stage real-looking reference data so this test exercises the
     # "len(time) < 3" branch, not the missing-data branch.
-    z19 = tmp_path / 'mass_radius' / 'Zeng2019'
-    z19.mkdir(parents=True)
+    from proteus.data import MASS_RADIUS_ZENG_2019
+
+    z19 = _dataset_dir(MASS_RADIUS_ZENG_2019, tmp_path)
     for name in (
         'massradiusEarthlikeRocky.txt',
         'massradiusFe.txt',
@@ -212,11 +231,15 @@ def test_plot_population_mass_radius_skips_when_hf_too_short(tmp_path):
         'massradiushydrogen.txt',
     ):
         (z19 / name).write_text('1.0 1.0\n2.0 1.5\n3.0 1.7\n')
-    target_dir = tmp_path / 'planet_reference' / 'Exoplanets'
-    target_dir.mkdir(parents=True)
+    from proteus.data import EXOPLANET_REFERENCE
+
+    target_dir = _dataset_dir(EXOPLANET_REFERENCE, tmp_path)
     (target_dir / 'DACE_PlanetS.csv').write_text(
         'Planet Mass [Mjup],Planet Radius [Rjup],Stellar Age [Gyr]\n0.003,0.092,4.6\n'
     )
+    # The staged data has to be readable, or this test would exercise the
+    # missing-data branch instead of the short-helpfile branch it names.
+    assert _get_exo_data(str(tmp_path)) is not None
 
     out_dir = tmp_path / 'output'
     (out_dir / 'plots').mkdir(parents=True)
@@ -292,3 +315,67 @@ def test_plot_population_does_not_eagerly_import_dace_at_module_load():
         # on a present-data path). Tested explicitly above by
         # test_get_exo_data_loads_present_csv and
         # test_get_mr_data_loads_present_curves.
+
+
+def test_get_exo_data_skips_when_the_dataset_cannot_be_resolved(tmp_path, caplog, monkeypatch):
+    """An unresolvable dataset warns and skips rather than raising.
+
+    A wheel that shipped without the manifest or a registry makes fwl-io raise
+    while resolving, before any file is looked for. The overlay is decorative,
+    so that has to behave like missing data; the warning names the dataset and
+    the cause so the failure is diagnosable.
+    """
+
+    def _boom(key, data_root=None):
+        raise FileNotFoundError(f'no registry file for dataset {key!r}')
+
+    monkeypatch.setattr('proteus.data.dataset_dir', _boom)
+
+    with caplog.at_level(logging.WARNING):
+        result = _get_exo_data(str(tmp_path))
+
+    assert result is None
+    msgs = ' '.join(rec.getMessage() for rec in caplog.records)
+    assert 'observe.exoplanet_reference' in msgs, f'the dataset is not named: {msgs}'
+    assert 'no registry file' in msgs, f'the cause is not named: {msgs}'
+
+
+def test_get_mr_data_skips_when_the_dataset_cannot_be_resolved(tmp_path, caplog, monkeypatch):
+    """The mass-radius loader skips on an unresolvable dataset, same contract."""
+
+    def _boom(key, data_root=None):
+        raise RuntimeError(f'fwl-io resolved an unversioned directory for {key!r}')
+
+    monkeypatch.setattr('proteus.data.dataset_dir', _boom)
+
+    with caplog.at_level(logging.WARNING):
+        result = _get_mr_data(str(tmp_path))
+
+    assert result is None
+    msgs = ' '.join(rec.getMessage() for rec in caplog.records)
+    assert 'observe.mass_radius.zeng_2019' in msgs, f'the dataset is not named: {msgs}'
+
+
+def test_plot_wrapper_survives_an_unresolvable_dataset(tmp_path, monkeypatch):
+    """The plot wrapper returns None and writes nothing when resolution fails.
+
+    The smoke tests rely on the end-of-run plot suite never raising, so this is
+    the contract that keeps a partial data tree from failing a whole run.
+    """
+
+    def _boom(key, data_root=None):
+        raise FileNotFoundError('no registry file')
+
+    monkeypatch.setattr('proteus.data.dataset_dir', _boom)
+    out_dir = tmp_path / 'output'
+    (out_dir / 'plots').mkdir(parents=True)
+    hf_all = pd.DataFrame(
+        {
+            'Time': [10.0, 1000.0, 2000.0, 3000.0],
+            'M_planet': [5.972e24] * 4,
+            'R_obs': [6.371e6] * 4,
+        }
+    )
+
+    assert plot_population_mass_radius(hf_all, str(out_dir), str(tmp_path), 'png') is None
+    assert not list((out_dir / 'plots').glob('plot_population*'))

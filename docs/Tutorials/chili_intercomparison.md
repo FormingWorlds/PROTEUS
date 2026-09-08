@@ -2,7 +2,7 @@
 
 The CHILI (Coupled atmospHere Interior modeL Intercomparison) project is a
 community benchmark that fixes shared initial and boundary conditions for
-magma ocean evolution codes[^cite-lichtenberg2026]. Its first
+magma ocean evolution codes [^cite-lichtenberg2026]. Its first
 intercomparison applies that protocol to the inner Solar System,
 modelling the primordial magma oceans of Earth and Venus.
 
@@ -13,7 +13,7 @@ below reproduce the intercomparison plots: each one overlays the current
 PROTEUS run on the results submitted by every participating model. Those
 submitted results, and the figure layouts they follow, are drawn from the
 Solar System CHILI intercomparison paper (Nicholls et al. 2026, in
-prep.)[^cite-nicholls2026].
+prep.) [^cite-nicholls2026].
 
 !!! info "CHILI data and code"
     The simulation output of every participating model is openly available
@@ -146,7 +146,7 @@ reproducible without editing the script.
 
 <figure markdown="span">
   ![CHILI Fig 3](../assets/tutorials/chili/fig3_atm_composition.png){ width="100%" }
-  <figcaption><strong>Figure 3.</strong> Atmospheric compositions for the Nominal Earth case at (a) 95% and (b) 5% melt fraction. Stacked bars show gas partial pressures [bar] for each model; grey stars mark surface temperature (right axis). The current PROTEUS run (vermillion label, black-edged bar) is placed next to the original CHILI submission for direct comparison. At 95% melt fraction, atmospheres are CO<sub>2</sub>-dominated; by 5%, H<sub>2</sub>O has exsolved from the crystallizing mantle and dominates at ~364 bar for PROTEUS. Both panels share the same y-axis range to highlight the pressure increase during solidification.</figcaption>
+  <figcaption><strong>Figure 3.</strong> Atmospheric compositions for the Nominal Earth case at (a) 95% and (b) 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93; for each model; grey stars mark surface temperature (right axis). The current PROTEUS run (vermillion label, black-edged bar) is placed next to the original CHILI submission for direct comparison. At 95% melt fraction, atmospheres are CO<sub>2</sub>-dominated; by 5%, H<sub>2</sub>O has exsolved from the crystallizing mantle and dominates at ~364 bar for PROTEUS. Both panels share the same y-axis range to highlight the pressure increase during solidification.</figcaption>
 </figure>
 
 ## H and C mass budgets
@@ -160,7 +160,7 @@ reproducible without editing the script.
 
 <figure markdown="span">
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.png){ width="100%" }
-  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures [bar]; grey stars mark surface temperature (right axis). The current PROTEUS run (vermillion label, black-edged bar) is placed next to the submitted PROTEUS CHILI result. The current run predicts ~397 bar H<sub>2</sub>O and ~62 bar CO<sub>2</sub> near solidification, for a total surface pressure of ~467 bar.</figcaption>
+  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93;; grey stars mark surface temperature (right axis). The current PROTEUS run (vermillion label, black-edged bar) is placed next to the submitted PROTEUS CHILI result. The current run predicts ~397 bar H<sub>2</sub>O and ~62 bar CO<sub>2</sub> near solidification, for a total surface pressure of ~467 bar.</figcaption>
 </figure>
 
 ## Oxygen fugacity
@@ -268,14 +268,14 @@ Every figure shows two PROTEUS curves, and the gap between them is itself
 informative because the two come from different model configurations. The
 protocol fixes the inputs that both share: a bulk-silicate-Earth
 composition, oxygen fugacity at IW+4, a Bond albedo of 0.1, and a 50 Myr
-stellar age[^cite-lichtenberg2026]. What differs is the interior machinery.
+stellar age [^cite-lichtenberg2026]. What differs is the interior machinery.
 
 The PROTEUS results submitted to the intercomparison were computed with an
 earlier version of PROTEUS, not the configuration documented here. That
 version used **SPIDER** for the interior thermal evolution and an
 Adams-Williamson integration for the interior structure. See Lichtenberg
-et al. (2026)[^cite-lichtenberg2026] and Nicholls et al. (2026, in
-prep.)[^cite-nicholls2026] for further details.
+et al. (2026) [^cite-lichtenberg2026] and Nicholls et al. (2026, in
+prep.) [^cite-nicholls2026] for further details.
 
 The configuration documented on this page uses **Aragog** for the
 interior thermal evolution and **Zalmoxis** for the interior structure.
@@ -313,6 +313,6 @@ community codes.
 
 **See also:** [Earth analogue](earth_analogue.md) | [Model description](../Explanations/model.md) | [Output format](../Reference/output.md)
 
-[^cite-lichtenberg2026]: Lichtenberg, T., Schaefer, L., Krissansen-Totton, J., et al., *[Coupled atmospHere Interior modeL Intercomparison (CHILI): Protocol Version 1.0](https://doi.org/10.3847/PSJ/ae593b)*, The Planetary Science Journal, 7, 108, 2026. [SciX](https://scixplorer.org/abs/2026PSJ.....7..108L/abstract).
+ [^cite-lichtenberg2026]: Lichtenberg, T., Schaefer, L., Krissansen-Totton, J., et al., *[Coupled atmospHere Interior modeL Intercomparison (CHILI): Protocol Version 1.0](https://doi.org/10.3847/PSJ/ae593b)*, The Planetary Science Journal, 7, 108, 2026. [SciX](https://scixplorer.org/abs/2026PSJ.....7..108L/abstract).
 
-[^cite-nicholls2026]: Nicholls, H. et al., *Coupled atmospHere Interior modeL Intercomparison (CHILI). I. Evolutionary Modelling: Primordial Magma Oceans of Earth and Venus*, in preparation, 2026.
+ [^cite-nicholls2026]: Nicholls, H. et al., *Coupled atmospHere Interior modeL Intercomparison (CHILI). I. Evolutionary Modelling: Primordial Magma Oceans of Earth and Venus*, in preparation, 2026.

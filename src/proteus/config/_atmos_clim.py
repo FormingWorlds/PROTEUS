@@ -9,11 +9,13 @@ from ._converters import lowercase, none_if_none
 
 
 def warn_if_dummy(instance, attribute, value):
+    """Reject enabling this option when the dummy atmos_clim module is selected."""
     if (instance.module == 'dummy') and value:
         raise ValueError(f'Dummy atmos_clim module is incompatible with {attribute.name}=True')
 
 
 def valid_rayleigh(instance, attribute, value):
+    """Reject Rayleigh scattering with the dummy module or AGNI in grey-gas mode."""
     if not value:
         return
 
@@ -53,6 +55,7 @@ def check_overlap(instance, attribute, value):
 
 
 def valid_agni(instance, attribute, value):
+    """Validate AGNI settings: pressure ordering, surface-state support, rainout, spectral file."""
     if instance.module != 'agni':
         return
 
@@ -150,6 +153,8 @@ class Agni:
         Include sensible heat flux at surface
     real_gas: bool
         Use real gas equations of state in atmosphere, where possible.
+    thermo_functions: bool
+        Use temperature-dependent thermodynamic properties.
     psurf_thresh: float
         Use the transparent-atmosphere solver when P_surf is less than this value [bar].
     dx_max: float
@@ -185,6 +190,18 @@ class Agni:
         Grey longwave opacity [m2 kg-1], used when `spectral_file='greygas'`.
     grey_opacity_sw: float
         Grey shortwave opacity [m2 kg-1], used when `spectral_file='greygas'`.
+    hydrograv_steps: int
+        Number of steps to use when calculating heights and gravity.
+    hydrograv_maxdr: float
+        Maximum step size to use when calculating heights [m]
+    hydrograv_mindr: float
+        Minimum step size to use when calculating heights [m]
+    hydrograv_ming: float
+        Minimum allowed gravity in the atmosphere [m/s^2]
+    hydrograv_constg: bool
+        Constant gravity with height?
+    hydrograv_selfg: bool
+        Include self-gravity of the atmosphere?
     """
 
     verbosity: int = field(
@@ -253,9 +270,16 @@ class Agni:
     spectral_file: str | None = field(default=None, converter=none_if_none)
     grey_opacity_lw: float = field(default=1e1, validator=gt(0))
     grey_opacity_sw: float = field(default=1e-4, validator=gt(0))
+    hydrograv_steps: int = field(default=2000, validator=gt(0))
+    hydrograv_maxdr: float = field(default=1e8, validator=gt(0))
+    hydrograv_mindr: float = field(default=1e-5, validator=gt(0))
+    hydrograv_ming: float = field(default=1e-4, validator=gt(0))
+    hydrograv_constg: bool = field(default=False)
+    hydrograv_selfg: bool = field(default=True)
 
 
 def valid_janus(instance, attribute, value):
+    """Validate JANUS settings: spectral file selection and temperature-bound ordering."""
     if instance.module != 'janus':
         return
 
@@ -327,20 +351,6 @@ class Dummy:
     fixed_flux: float = field(default=-1.0)
 
 
-def valid_albedo(instance, attribute, value):
-    if isinstance(value, str):
-        return
-
-    elif isinstance(value, float):
-        if not (0 <= value <= 1):
-            raise ValueError('The value of `albedo_pl` must be between 0 and 1')
-        else:
-            return
-
-    else:
-        raise ValueError('The value of `albedo_pl` must be a string or a float')
-
-
 @define
 class AtmosClim:
     """Atmosphere parameters, model selection.
@@ -373,8 +383,10 @@ class AtmosClim:
         Surface energy balance scheme. Choices: 'mixed_layer', 'fixed', 'skin'.
     surf_greyalbedo: float
         Grey surface albedo.
-    albedo_pl: float | str
-        Planetary bond albedo. Can be float (0 to 1) or str (path to CSV lookup).
+    albedo_pl: float
+        Planetary bond albedo (0 to 1).
+    cloud_alpha: float
+        Condensate retention fraction (0 = full rainout, 1 = fully retained).
     rayleigh: bool
         Include Rayleigh scattering (AGNI, JANUS only).
     tmp_minimum: float
@@ -409,7 +421,7 @@ class AtmosClim:
     cloud_enabled: bool = field(default=False, validator=warn_if_dummy)
     cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
     surf_greyalbedo: float = field(default=0.1, validator=(ge(0), le(1)))
-    albedo_pl = field(default=0.0, validator=valid_albedo)
+    albedo_pl: float = field(default=0.0, validator=(ge(0), le(1)))
     rayleigh: bool = field(default=True, validator=valid_rayleigh)
     tmp_minimum: float = field(default=0.5, validator=gt(0))
 
@@ -424,12 +436,110 @@ class AtmosClim:
             case _:
                 raise ValueError(f"Invalid surf_state for AGNI: '{self.surf_state}'")
 
-    @property
-    def albedo_from_file(self) -> bool:
-        """Is albedo set by lookup table or not?"""
-        if isinstance(self.albedo_pl, str):
-            return True
-        elif isinstance(self.albedo_pl, float):
-            return False
-        else:
-            raise ValueError('Cannot determine configuration for setting `albedo_pl`')
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and it is deliberately independent of the order the fields are
+# declared in above, which follows the code rather than the reader.
+#
+# Every option of a listed class must appear exactly once across its groups.
+# ``tools/_config_schema.py`` fails the build otherwise, so an option added
+# here cannot quietly go missing from the documentation.
+DOC_GROUPS = {
+    'AtmosClim': (
+        (
+            None,
+            None,
+            (
+                'module',
+                'spectral_group',
+                'spectral_bands',
+                'num_levels',
+                'p_top',
+                'p_obs',
+                'overlap_method',
+            ),
+        ),
+        (
+            'Radiative properties',
+            None,
+            (
+                'rayleigh',
+                'cloud_enabled',
+                'cloud_alpha',
+                'aerosols_enabled',
+                'albedo_pl',
+                'surf_greyalbedo',
+            ),
+        ),
+        ('Surface boundary condition', None, ('surf_state', 'surface_d', 'surface_k')),
+        ('Solver limits', None, ('tmp_minimum',)),
+    ),
+    'Agni': (
+        (
+            'Physics',
+            None,
+            (
+                'solve_energy',
+                'convection',
+                'conduction',
+                'sens_heat',
+                'rainout',
+                'oceans',
+                'latent_heat',
+                'real_gas',
+                'thermo_functions',
+                'chemistry',
+                'mlt_criterion',
+            ),
+        ),
+        ('Surface properties', None, ('surf_material', 'surf_roughness', 'surf_windspeed')),
+        ('Condensation', None, ('phs_timescale', 'evap_efficiency')),
+        (
+            'Solver tuning',
+            None,
+            (
+                'solution_atol',
+                'solution_rtol',
+                'psurf_thresh',
+                'dx_max',
+                'dx_max_ini',
+                'max_steps',
+                'perturb_all',
+                'ini_profile',
+                'ls_default',
+                'fdo',
+                'verbosity',
+            ),
+        ),
+        (
+            'Spectral and gas allocation',
+            None,
+            ('spectral_file', 'grey_opacity_lw', 'grey_opacity_sw', 'check_safe_gas'),
+        ),
+        (
+            'FastChem equilibrium chemistry',
+            'used when `chemistry = "eq"`',
+            (
+                'fastchem_floor',
+                'fastchem_maxiter_chem',
+                'fastchem_maxiter_solv',
+                'fastchem_xtol_chem',
+                'fastchem_xtol_elem',
+            ),
+        ),
+        (
+            'Hydrostatic integration',
+            None,
+            (
+                'hydrograv_steps',
+                'hydrograv_maxdr',
+                'hydrograv_mindr',
+                'hydrograv_ming',
+                'hydrograv_constg',
+                'hydrograv_selfg',
+            ),
+        ),
+    ),
+}

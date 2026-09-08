@@ -8,12 +8,15 @@ external physics data (spectral files, lookup tables). It covers:
 - Configuration mapping for remote resources.
 
 See also:
-- docs/test_infrastructure.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -1060,10 +1063,10 @@ def test_download_folder_mode_fails_if_no_sources_available(mock_check, mock_get
 def test_get_data_source_info():
     """Test unified data source mapping lookup."""
     # Test known mapping
-    info = get_data_source_info('Zeng2019')
+    info = get_data_source_info('Hammond24')
     assert info is not None
-    assert info['zenodo_id'] == '15727899'
-    assert info['osf_project'] == 'xge8t'
+    assert info['zenodo_id'] == '15880455'
+    assert info['osf_project'] == '2gcd9'
 
     # Test unknown mapping
     info = get_data_source_info('UnknownFolder')
@@ -1073,7 +1076,7 @@ def test_get_data_source_info():
 @pytest.mark.unit
 def test_get_osf_project():
     """Test OSF project ID lookup."""
-    assert get_osf_project('Zeng2019') == 'xge8t'
+    assert get_osf_project('Hammond24') == '2gcd9'
     assert get_osf_project('Named') == '8r2sw'
     assert get_osf_project('UnknownFolder') is None
 
@@ -1095,7 +1098,7 @@ def test_get_zenodo_from_osf():
 @pytest.mark.unit
 def test_get_osf_from_zenodo():
     """Test reverse lookup: Zenodo ID -> OSF project."""
-    assert get_osf_from_zenodo('15727899') == 'xge8t'  # Zeng2019
+    assert get_osf_from_zenodo('15880455') == '2gcd9'  # Hammond24
     assert get_osf_from_zenodo('15721440') == '8r2sw'  # Named
     assert get_osf_from_zenodo('99999999') is None  # Unknown
 
@@ -1285,7 +1288,7 @@ def test_download_automatic_mapping(
     mock_download_zenodo.return_value = True
     mock_validate.return_value = True
 
-    folder_dir = tmp_path / 'target' / 'Zeng2019'
+    folder_dir = tmp_path / 'target' / 'Hammond24'
     folder_dir.mkdir(parents=True, exist_ok=True)
     (folder_dir / 'test_file.txt').write_text('test')
 
@@ -1296,7 +1299,7 @@ def test_download_automatic_mapping(
 
         # Call download without explicit IDs - should use mapping
         result = download(
-            folder='Zeng2019',
+            folder='Hammond24',
             target='target',
             desc='test data',
             # No osf_id or zenodo_id provided - should use mapping
@@ -1306,7 +1309,7 @@ def test_download_automatic_mapping(
     mock_download_zenodo.assert_called_once()
     # Should have used mapped Zenodo ID (check kwargs since it's called with keyword args)
     call_kwargs = mock_download_zenodo.call_args.kwargs
-    assert call_kwargs['zenodo_id'] == '15727899'  # Zenodo ID from mapping
+    assert call_kwargs['zenodo_id'] == '15880455'  # Zenodo ID from mapping
     assert result is True
 
 
@@ -1825,33 +1828,134 @@ def test_download_stellar_spectra_custom(mock_download):
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-def test_download_exoplanet_data(mock_download):
-    """Test exoplanet data download."""
+@patch('proteus.data.fetch_dataset')
+def test_optional_dataset_failure_does_not_abort_the_run(mock_fetch, caplog):
+    """A mirror failure on decorative data is reported, not raised.
+
+    fwl-io reports an exhausted mirror with DownloadError, a RuntimeError that
+    the start-of-run guard does not catch, so an escaping error would abort
+    every simulation over an overlay that only decorates a plot.
+    """
+    from fwl_io import DownloadError
+
     from proteus.utils.data import download_exoplanet_data
 
-    download_exoplanet_data()
+    mock_fetch.side_effect = DownloadError('could not obtain from any mirror')
 
-    mock_download.assert_called_once()
-    call_kwargs = mock_download.call_args.kwargs
-    assert call_kwargs['folder'] == 'Exoplanets'
-    assert call_kwargs['target'] == 'planet_reference'
-    assert call_kwargs['desc'] == 'exoplanet data'
+    with caplog.at_level(logging.ERROR):
+        result = download_exoplanet_data()
+
+    assert result is False
+    # Discrimination: the fetch really ran, so the survival is not a
+    # short-circuit that skipped the download altogether.
+    mock_fetch.assert_called_once()
+    assert any('exoplanet data' in rec.getMessage() for rec in caplog.records), (
+        f'expected an error naming the dataset; got {[r.getMessage() for r in caplog.records]}'
+    )
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset')
+def test_optional_dataset_offline_failure_does_not_abort_the_run(mock_fetch):
+    """An offline data tree skips the overlay instead of failing the run.
+
+    OfflineDataError is also a RuntimeError, so it escapes the same guard; a
+    user running without network must still be able to start a simulation.
+    """
+    from fwl_io import OfflineDataError
+
+    from proteus.utils.data import download_massradius_data
+
+    mock_fetch.side_effect = OfflineDataError('offline mode is active')
+
+    assert download_massradius_data() is False
+    mock_fetch.assert_called_once()
+
+
+@pytest.mark.unit
+def test_reference_data_failure_still_reaches_the_interior_data(monkeypatch):
+    """A failed overlay fetch does not block the interior tables fetched after it.
+
+    The reference overlays are downloaded before the interior lookup tables and
+    melting curves a run actually needs, so an abort there would deprive the
+    solver of its data.
+    """
+    from fwl_io import DownloadError
+
+    from proteus.utils import data as data_mod
+
+    def _boom(key, data_root=None):
+        raise DownloadError('could not obtain from any mirror')
+
+    reached = {'interior': False, 'melting': False}
+    monkeypatch.setattr('proteus.data.fetch_dataset', _boom)
+    monkeypatch.setattr(
+        data_mod,
+        'download_interior_lookuptables',
+        lambda **kw: reached.__setitem__('interior', True),
+    )
+    monkeypatch.setattr(
+        data_mod,
+        'download_melting_curves',
+        lambda *a, **kw: reached.__setitem__('melting', True),
+    )
+    for name in (
+        'download_stellar_spectra',
+        'download_stellar_tracks',
+        'download_spectral_file',
+        'download_surface_albedos',
+        'download_scattering',
+        'download_zalmoxis_eos_for_config',
+        'download_eos_dynamic',
+    ):
+        monkeypatch.setattr(data_mod, name, lambda *a, **kw: None)
+
+    cfg = SimpleNamespace(
+        star=SimpleNamespace(module='dummy'),
+        atmos_clim=SimpleNamespace(module='dummy', aerosols_enabled=False),
+        interior_energetics=SimpleNamespace(module='aragog'),
+        interior_struct=SimpleNamespace(module='dummy', eos_dir=None),
+    )
+    data_mod._get_sufficient(cfg)
+
+    assert reached['interior'], 'interior lookup tables must still be fetched'
+    assert reached['melting'], 'melting curves must still be fetched'
 
 
 @pytest.mark.unit
 @patch('proteus.utils.data.download')
-def test_download_massradius_data(mock_download):
-    """Test mass-radius data download."""
+@patch('proteus.data.fetch_dataset')
+def test_download_exoplanet_data(mock_fetch, mock_download):
+    """The exoplanet catalogue is fetched through fwl-io, not the legacy path."""
+    from proteus.data import EXOPLANET_REFERENCE
+    from proteus.utils.data import download_exoplanet_data
+
+    download_exoplanet_data()
+
+    mock_fetch.assert_called_once_with(EXOPLANET_REFERENCE)
+    # Discrimination: the key must be the catalogue, not the mass-radius
+    # dataset declared beside it in the same manifest.
+    assert mock_fetch.call_args.args[0] == 'observe.exoplanet_reference'
+    # The legacy Zenodo/OSF downloader must not run: a regression that fell
+    # back to it would still populate a tree and hide the migration.
+    mock_download.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.data.fetch_dataset')
+def test_download_massradius_data(mock_fetch, mock_download):
+    """The mass-radius relations are fetched through fwl-io, not the legacy path."""
+    from proteus.data import MASS_RADIUS_ZENG_2019
     from proteus.utils.data import download_massradius_data
 
     download_massradius_data()
 
-    mock_download.assert_called_once()
-    call_kwargs = mock_download.call_args.kwargs
-    assert call_kwargs['folder'] == 'Zeng2019'
-    assert call_kwargs['target'] == 'mass_radius'
-    assert call_kwargs['desc'] == 'mass radius data'
+    mock_fetch.assert_called_once_with(MASS_RADIUS_ZENG_2019)
+    # Discrimination: the key must be the mass-radius dataset, not the
+    # catalogue declared beside it in the same manifest.
+    assert mock_fetch.call_args.args[0] == 'observe.mass_radius.zeng_2019'
+    mock_download.assert_not_called()
 
 
 @pytest.mark.unit
@@ -2235,22 +2339,6 @@ def test_download_melting_curves_canonical_skip_existing(
 
 @pytest.mark.unit
 @patch('proteus.utils.data.get_data_source_info')
-def test_download_exoplanet_data_no_mapping(mock_get_info):
-    """Test exoplanet data download raises error when no mapping found."""
-    from proteus.utils.data import download_exoplanet_data
-
-    mock_get_info.return_value = None
-
-    with pytest.raises(ValueError, match='No data source mapping found'):
-        download_exoplanet_data()
-    # Discrimination: confirm the mapping lookup actually ran; a regression
-    # that raised ValueError from an earlier unrelated guard would still
-    # pass the raises-match check.
-    mock_get_info.assert_called_once()
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.get_data_source_info')
 def test_download_surface_albedos_no_mapping(mock_get_info):
     """Test surface albedos download raises error when no mapping found."""
     from proteus.utils.data import download_surface_albedos
@@ -2282,22 +2370,6 @@ def test_download_scattering_no_mapping(mock_get_info):
         download_scattering()
     # Discrimination: confirm the registry lookup happened; the raises
     # check alone could be satisfied by an unrelated earlier guard.
-    mock_get_info.assert_called_once()
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.get_data_source_info')
-def test_download_massradius_data_no_mapping(mock_get_info):
-    """Test mass-radius data download raises error when no mapping found."""
-    from proteus.utils.data import download_massradius_data
-
-    mock_get_info.return_value = None
-
-    with pytest.raises(ValueError, match='No data source mapping found'):
-        download_massradius_data()
-    # Discrimination: confirm the mapping lookup actually ran (a regression
-    # that raised ValueError before consulting the registry would still
-    # pass the raises check).
     mock_get_info.assert_called_once()
 
 
@@ -2742,6 +2814,141 @@ def test_download_zalmoxis_eos_paleos_unified(mock_static, mock_folder, mock_cha
     assert any('PALEOS_iron' in f for f in folders)
     assert any('PALEOS_MgSiO3_unified' in f for f in folders)
     assert any('PALEOS_H2O' in f for f in folders)
+    mock_chabrier.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_paleos_2phase_fetches_seager_fallback(
+    mock_static, mock_folder, mock_chabrier
+):
+    """PALEOS-2phase with a PALEOS core still fetches the Seager static set.
+
+    The registry entry for every multi-layer mantle family references the
+    Seager iron table as its core fallback, and the start-of-run existence
+    check requires every referenced file, so the fetch must cover the
+    fallback even though neither the mantle nor the core names Seager. A
+    fetch that skips it leaves a fresh install failing the existence check
+    on its first run of the Earth tutorial config (PALEOS-2phase:MgSiO3
+    mantle, PALEOS:iron core). The 2-phase sub-tables and the unified iron
+    table must download alongside.
+    """
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='PALEOS:iron')
+
+    mock_static.assert_called_once()
+    folders = [str(c) for c in mock_folder.call_args_list]
+    assert any('paleos_mgsio3_tables_pt_proteus_solid.dat' in f for f in folders)
+    assert any('paleos_mgsio3_tables_pt_proteus_liquid.dat' in f for f in folders)
+    assert any('PALEOS_iron' in f for f in folders)
+    # The standard-resolution selection must not pull the ~1.3 GB highres pair.
+    assert not any('highres' in f for f in folders)
+    mock_chabrier.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'mantle_component',
+    [
+        'WolfBower2018:MgSiO3',
+        'RTPress100TPa:MgSiO3',
+        'PALEOS-2phase:MgSiO3',
+        'PALEOS-API-2phase:MgSiO3',
+    ],
+)
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_seager_fallback_every_family(
+    mock_static, mock_folder, mock_chabrier, mantle_component
+):
+    """Every family with a Seager core fallback fetches the static set.
+
+    Each family in SEAGER_FALLBACK_FAMILIES pairs here with a non-Seager
+    core, so the fetch can only come from the fallback branch: dropping any
+    family from the tuple fails its case. The Seager-core variants of the
+    older tests cannot catch that regression because their explicit
+    Seager2007 component triggers the direct branch instead. The PALEOS
+    iron core must download its own table alongside, and the Chabrier
+    fetch must stay untouched.
+    """
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos(mantle_component, core_eos='PALEOS:iron')
+
+    mock_static.assert_called_once()
+    folders = [str(c) for c in mock_folder.call_args_list]
+    assert any('PALEOS_iron' in f for f in folders)
+    mock_chabrier.assert_not_called()
+
+
+@pytest.mark.unit
+def test_seager_fallback_families_match_registry():
+    """SEAGER_FALLBACK_FAMILIES mirrors the registry's Seager fallbacks.
+
+    The tuple in proteus.utils.data is a hand-maintained mirror of which
+    multi-layer registry entries reference a Seager table; a family added
+    to the registry without a tuple entry fails a fresh install's
+    existence check on its first run, so the two must never drift. Parses
+    the registry source (importing it would start the zalmoxis Julia
+    bridge, far too heavy for a unit test) and collects every registry
+    key whose entry dict maps a layer role to a ``_seager*`` table
+    variable, then requires exact agreement with the tuple. The known
+    2-phase family anchors the walk: if the registry moves away from a
+    dict literal, the anchor fails loudly and this guard needs a rewrite
+    rather than silently passing on an empty set.
+    """
+    import ast
+
+    import proteus.utils.data as data_module
+    from proteus.utils.data import SEAGER_FALLBACK_FAMILIES
+
+    registry_path = Path(data_module.__file__).parents[1] / 'interior_struct' / 'zalmoxis.py'
+    src = registry_path.read_text()
+    expected = set()
+    for node in ast.walk(ast.parse(src)):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values):
+            if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
+                continue
+            if ':' not in key.value or not isinstance(value, ast.Dict):
+                continue
+            refs_seager = any(
+                isinstance(sub, ast.Name) and sub.id.startswith('_seager')
+                for sub in value.values
+            )
+            if refs_seager:
+                expected.add(key.value.split(':')[0] + ':')
+    expected -= {'Seager2007:'}
+
+    assert 'PALEOS-2phase:' in expected
+    assert expected == set(SEAGER_FALLBACK_FAMILIES)
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_api_2phase_fetches_only_seager(
+    mock_static, mock_folder, mock_chabrier
+):
+    """PALEOS-API-2phase tabulates live but still needs the Seager fallback.
+
+    The API-backed 2-phase mantle generates its own tables on demand, so no
+    folder download may fire for it, yet its registry entry carries the
+    Seager iron core fallback whose file the existence check requires. The
+    limit case of the fallback rule: the static set is the only download.
+    """
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS-API-2phase:MgSiO3', core_eos='PALEOS-API:iron')
+
+    mock_static.assert_called_once()
+    mock_folder.assert_not_called()
     mock_chabrier.assert_not_called()
 
 
@@ -4520,6 +4727,107 @@ def test_download_stellar_tracks_mors_success(tmp_path, monkeypatch):
 
 
 @pytest.mark.unit
+def test_download_stellar_tracks_baraffe_verifies_versioned_path(tmp_path, monkeypatch):
+    """Baraffe success is verified at the fwl-io versioned path, not the legacy dir."""
+    import sys
+    import types
+
+    import proteus.utils.data as data_mod
+
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    # The versioned Baraffe directory holds the tracks; the legacy dir is absent.
+    versioned = tmp_path / 'star' / 'tracks' / 'baraffe_2015' / 'r15729114'
+    versioned.mkdir(parents=True)
+    (versioned / 'BHAC15-M1p000.txt').write_text('track')
+
+    checked = []
+    fake_mors_data = types.ModuleType('mors.data')
+    fake_mors_data.DownloadEvolutionTracks = lambda track: None
+    fake_mors_data.baraffe_data_dir = lambda: checked.append(versioned) or versioned
+    fake_mors = types.ModuleType('mors')
+    fake_mors.data = fake_mors_data
+    monkeypatch.setitem(sys.modules, 'mors', fake_mors)
+    monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
+
+    osf_calls = []
+    monkeypatch.setattr(data_mod, 'download_OSF_folder', lambda **k: osf_calls.append(k))
+
+    data_mod.download_stellar_tracks('Baraffe')
+
+    # Discrimination: verification consulted the versioned resolver, not the
+    # legacy path (which never exists here), so the fetch succeeded and no OSF
+    # fallback ran.
+    assert checked == [versioned]
+    assert osf_calls == []
+
+
+@pytest.mark.unit
+def test_download_stellar_tracks_baraffe_legacy_mors_uses_legacy_path(tmp_path, monkeypatch):
+    """A pre-migration MORS (no baraffe_data_dir) verifies Baraffe at the legacy path."""
+    import sys
+    import types
+
+    import proteus.utils.data as data_mod
+
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    # An older MORS writes Baraffe to the legacy path and exposes no resolver.
+    legacy = tmp_path / 'stellar_evolution_tracks' / 'Baraffe'
+    legacy.mkdir(parents=True)
+    (legacy / 'BHAC15-M1p000.txt').write_text('track')
+
+    fake_mors_data = types.ModuleType('mors.data')
+    fake_mors_data.DownloadEvolutionTracks = lambda track: None
+    # Deliberately no baraffe_data_dir attribute (pre-migration MORS).
+    fake_mors = types.ModuleType('mors')
+    fake_mors.data = fake_mors_data
+    monkeypatch.setitem(sys.modules, 'mors', fake_mors)
+    monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
+
+    osf_calls = []
+    monkeypatch.setattr(data_mod, 'download_OSF_folder', lambda **k: osf_calls.append(k))
+
+    data_mod.download_stellar_tracks('Baraffe')
+
+    # Discrimination: provisioning succeeds via the legacy path even though the
+    # versioned directory is never created, so PROTEUS works with both MORS
+    # versions; no OSF fallback runs.
+    assert not (tmp_path / 'star' / 'tracks' / 'baraffe_2015').exists()
+    assert osf_calls == []
+
+
+@pytest.mark.unit
+def test_download_stellar_tracks_baraffe_failure_reraises_without_osf(tmp_path, monkeypatch):
+    """A genuine Baraffe failure re-raises; Baraffe has no OSF fallback mirror."""
+    import sys
+    import types
+
+    import proteus.utils.data as data_mod
+
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    # baraffe_data_dir resolves to an empty directory: the fetch produced nothing.
+    empty = tmp_path / 'star' / 'tracks' / 'baraffe_2015' / 'r15729114'
+    empty.mkdir(parents=True)
+    fake_mors_data = types.ModuleType('mors.data')
+    fake_mors_data.DownloadEvolutionTracks = lambda track: None
+    fake_mors_data.baraffe_data_dir = lambda: empty
+    fake_mors = types.ModuleType('mors')
+    fake_mors.data = fake_mors_data
+    monkeypatch.setitem(sys.modules, 'mors', fake_mors)
+    monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
+
+    osf_calls = []
+    monkeypatch.setattr(data_mod, 'download_OSF_folder', lambda **k: osf_calls.append(k))
+
+    with pytest.raises(FileNotFoundError, match='empty or missing'):
+        data_mod.download_stellar_tracks('Baraffe', use_osf_fallback=True)
+    # Even with use_osf_fallback=True, Baraffe does not attempt the OSF fallback.
+    assert osf_calls == []
+
+
+@pytest.mark.unit
 def test_download_stellar_tracks_mors_completes_but_tracks_missing(tmp_path, monkeypatch):
     """MORS download claims success but tracks dir is empty: triggers OSF fallback."""
     import sys
@@ -4611,20 +4919,20 @@ def test_download_stellar_tracks_osf_fallback_succeeds(tmp_path, monkeypatch):
 
     def fake_osf_folder(*, storage, folders, data_dir):
         # Create the expected tracks directory
-        target = Path(data_dir) / 'Baraffe'
+        target = Path(data_dir) / 'Spada'
         target.mkdir(parents=True, exist_ok=True)
-        (target / 'baraffe_track.dat').write_text('data')
+        (target / 'spada_track.dat').write_text('data')
 
     monkeypatch.setattr(data_mod, 'download_OSF_folder', fake_osf_folder)
     monkeypatch.setattr(data_mod, 'get_osf', lambda osf_id: MagicMock())
 
-    # Should not raise
-    data_mod.download_stellar_tracks('Baraffe', use_osf_fallback=True)
+    # Spada keeps the legacy OSF fallback; the failed MORS fetch is recovered.
+    data_mod.download_stellar_tracks('Spada', use_osf_fallback=True)
     # Discrimination: the OSF fallback produced the expected track file
-    # at the canonical location.
-    tracks_dir = tmp_path / 'stellar_evolution_tracks' / 'Baraffe'
+    # at the canonical legacy location.
+    tracks_dir = tmp_path / 'stellar_evolution_tracks' / 'Spada'
     assert tracks_dir.is_dir()
-    assert (tracks_dir / 'baraffe_track.dat').exists()
+    assert (tracks_dir / 'spada_track.dat').exists()
 
 
 # ============================================================================

@@ -41,8 +41,9 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     module = config.atmos_chem.module
     when = config.atmos_chem.when
 
-    # Guard: no module configured
-    if not module or module == 'none':
+    # Guard: no module configured. The config converter maps the TOML string
+    # 'none' to Python None before this point.
+    if not module:
         log.warning('Cannot run atmospheric chemistry, no module specified')
         return None
 

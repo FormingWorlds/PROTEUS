@@ -1,50 +1,183 @@
-.arch-diagram {
-  width: 100%;
-  height: auto;
-  /* Default reserved box so a diagram whose file name is not matched below
-     still reserves space instead of collapsing while the SVG loads. Add a
-     per-diagram rule below with the exact source-viewBox ratio when adding a
-     new diagram. */
-  aspect-ratio: 3 / 2;
-  display: none;
+/* ============================================================
+   PROTEUS — Thermocline theme for zensical / Material for MkDocs
+   Drop-in: docs/stylesheets/extra.css
+   ------------------------------------------------------------
+   mkdocs.yml:
+     theme:
+       name: zensical            # or material
+       palette:
+         - media: "(prefers-color-scheme: dark)"
+           scheme: slate         # dark-first
+           toggle: { icon: material/brightness-7, name: Light mode }
+         - media: "(prefers-color-scheme: light)"
+           scheme: default
+           toggle: { icon: material/brightness-4, name: Dark mode }
+       font: false               # fonts loaded below
+       logo: assets/glyph_phase_dark.png
+       favicon: assets/favicon.svg
+     extra_css:
+       - stylesheets/extra.css
+   Copy logo/glyph/glyph_phase_dark.png (+ _light) and
+   logo/favicon/favicon.svg into docs/assets/,
+   and from this repo's fonts/ folder copy fonts.css, OFL.txt, and the
+   three family folders into docs/stylesheets/fonts/ (the import below
+   loads them; no third-party font requests). Leave fonts/README.md
+   behind so mkdocs does not render it as a page.
+   ============================================================ */
+
+@import url("fonts/fonts.css");
+
+:root {
+  /* brand */
+  --pt-magma: #E23D28;
+  --pt-mantle: #8E1F12;
+  --pt-crimson: #C2362B;
+  --pt-ocean: #1B6FA8;
+  --pt-abyss: #14406B;
+  --pt-azure: #4FA3D9;
+  --pt-ice: #A8D4E8;
+  --pt-void: #05070B;
+  --pt-basalt: #0E131B;
+  --pt-line-d: #1A2230;
+
+  --md-text-font: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --md-code-font: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
-/* Reserve the correct box size from CSS so the diagram renders at full size
-   immediately, rather than collapsing small until the SVG finishes loading.
-   Each diagram carries its own aspect ratio, taken from the source viewBox,
-   matched on its file name in the object data attribute. */
-.arch-diagram[data*="modules_schematic"] {
-  aspect-ratio: 682 / 497;
+/* ---------- DARK (scheme: slate) — the primary mode ---------- */
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: var(--pt-void);
+  --md-default-fg-color: #E9EEF2;
+  --md-default-fg-color--light: #9FB0BE;
+  --md-default-fg-color--lighter: #5A6B7A;
+  --md-default-fg-color--lightest: #1A2230;
+
+  --md-primary-fg-color: var(--pt-void);
+  --md-primary-bg-color: #E9EEF2;
+  --md-accent-fg-color: var(--pt-ice);
+
+  --md-typeset-color: #C6D0D9;
+  --md-typeset-a-color: var(--pt-azure);
+
+  --md-code-bg-color: #04060A;
+  --md-code-fg-color: #B8C6D2;
+  --md-code-hl-keyword-color: var(--pt-magma);
+  --md-code-hl-string-color: var(--pt-azure);
+  --md-code-hl-number-color: var(--pt-ice);
+  --md-code-hl-comment-color: #5A6B7A;
+  --md-code-hl-function-color: var(--pt-ice);
+  --md-code-hl-name-color: #C6D0D9;
+
+  --md-admonition-bg-color: var(--pt-basalt);
+  --md-footer-bg-color: var(--pt-basalt);
+  --md-footer-bg-color--dark: var(--pt-void);
 }
 
-.arch-diagram[data*="proteus_architecture"] {
-  aspect-ratio: 1412 / 1315;
+/* ---------- LIGHT (scheme: default) — the mirror ---------- */
+[data-md-color-scheme="default"] {
+  --md-default-bg-color: #F2F5F7;
+  --md-default-fg-color: #10151B;
+  --md-default-fg-color--light: #3E4A55;
+  --md-default-fg-color--lighter: #7A8894;
+  --md-default-fg-color--lightest: #D2DAE1;
+
+  --md-primary-fg-color: #10151B;   /* header bar stays ink on light */
+  --md-primary-bg-color: #F2F5F7;
+  --md-accent-fg-color: var(--pt-abyss);
+
+  --md-typeset-color: #2A343D;
+  --md-typeset-a-color: var(--pt-ocean);
+
+  --md-code-bg-color: #E9EEF3;
+  --md-code-fg-color: #22303B;
+  --md-code-hl-keyword-color: var(--pt-crimson);
+  --md-code-hl-string-color: var(--pt-abyss);
+  --md-code-hl-number-color: var(--pt-ocean);
+  --md-code-hl-comment-color: #7A8894;
 }
 
-/* Light mode: show light diagram */
-[data-md-color-scheme="default"] .arch-diagram--light {
+/* ---------- typography ---------- */
+.md-typeset h1, .md-typeset h2, .md-typeset h3 {
+  font-family: "Sora", var(--md-text-font);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.md-typeset h1 { font-weight: 800; }
+.md-header__topic, .md-header__title {
+  font-family: "Sora", var(--md-text-font);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+/* tracked mono labels for nav sections */
+.md-nav__title, .md-nav--secondary .md-nav__title {
+  font-family: var(--md-code-font);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* ---------- structure: hairlines, active ticks ---------- */
+.md-header { border-bottom: 1px solid var(--pt-line-d); }
+[data-md-color-scheme="default"] .md-header { border-bottom-color: #D2DAE1; }
+
+.md-nav__item .md-nav__link--active {
+  color: var(--pt-azure);
+  border-left: 2px solid var(--pt-magma);
+  padding-left: 0.5rem;
+  margin-left: -0.6rem;
+  background: linear-gradient(90deg, rgba(226,61,40,0.06), transparent);
+}
+[data-md-color-scheme="default"] .md-nav__item .md-nav__link--active {
+  color: var(--pt-ocean);
+  border-left-color: var(--pt-crimson);
+}
+
+.md-typeset h2 { border-top: 1px solid var(--pt-line-d); padding-top: 0.8em; }
+[data-md-color-scheme="default"] .md-typeset h2 { border-top-color: #D2DAE1; }
+
+/* code blocks: magma spine */
+.md-typeset pre > code { border-radius: 4px; }
+.md-typeset pre { border-left: 3px solid var(--pt-magma); border-radius: 4px; }
+
+/* tabs: active = magma underline */
+.md-tabs__link--active { border-bottom: 2px solid var(--pt-magma); }
+
+/* admonitions: flat, mono titles */
+.md-typeset .admonition, .md-typeset details {
+  border-width: 1px;
+  border-radius: 4px;
+  box-shadow: none;
+}
+.md-typeset .admonition-title, .md-typeset summary {
+  font-family: var(--md-code-font);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.md-typeset .admonition.note, .md-typeset .admonition.info {
+  border-color: rgba(27,111,168,0.4);
+}
+.md-typeset .admonition.warning, .md-typeset .admonition.danger {
+  border-color: rgba(226,61,40,0.4);
+}
+
+/* tables */
+.md-typeset table:not([class]) th {
+  font-family: var(--md-code-font);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* footer phase band */
+.md-footer-meta { position: relative; }
+.md-footer-meta::before {
+  content: "";
   display: block;
+  height: 5px;
+  background: linear-gradient(90deg, #E23D28, #8E1F12 25%, #05070B 50%, #14406B 75%, #4FA3D9 92%, #A8D4E8);
 }
 
-/* Dark mode: show dark diagram (Material's default dark scheme is "slate") */
-[data-md-color-scheme="slate"] .arch-diagram--dark {
-  display: block;
-}
-
-/* Remove underline from links that contain only an image */
-.md-typeset p a:has(> img) {
-  text-decoration: none;
-}
-
-/* Figure captions: justified, full width, slightly smaller */
-.md-typeset figcaption {
-  text-align: justify;
-  max-width: 100%;
-  font-size: 0.85em;
-  line-height: 1.5;
-}
-
-/* Funding logos dark switch */
-.logo-dark { display: none; }
-[data-md-color-scheme="slate"] .logo-light { display: none; }
-[data-md-color-scheme="slate"] .logo-dark { display: inline; }
+/* focus */
+:focus-visible { outline: 2px solid var(--pt-magma); outline-offset: 2px; }

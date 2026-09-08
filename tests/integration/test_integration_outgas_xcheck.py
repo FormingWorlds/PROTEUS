@@ -33,8 +33,8 @@ Per ``proteus-tests.md`` §1 the file also includes an error-contract test
 exercising the outgas module schema validator.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 - CALLIOPE docs/Explanations/cross_backend_comparison.md
 """
 

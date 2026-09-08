@@ -14,17 +14,22 @@ Invariants exercised:
   botorch's plain normalize/unnormalize.
 
 References:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
 
 import pytest
-import torch
 
-import proteus.inference.transforms as tr_mod
+# The Bayesian-optimisation stack ships as the optional `inference` extra,
+# which installs all three together. Guarding the whole stack keeps a
+# partial environment skipping rather than failing collection.
+torch = pytest.importorskip('torch')
+pytest.importorskip('botorch')
+pytest.importorskip('gpytorch')
+
+import proteus.inference.transforms as tr_mod  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

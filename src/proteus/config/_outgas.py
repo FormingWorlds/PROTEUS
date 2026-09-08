@@ -6,7 +6,18 @@ from ._converters import none_if_none
 
 
 def _reject_enabled_binodal(instance, attribute, value):
-    """Reject `h2_binodal = true` until the feature is production ready."""
+    """Reject `h2_binodal = true` until the feature is production ready.
+
+    This gate is also what keeps the `dry_mantle = false` structure path
+    water-only: `apply_binodal_h2` is the sole producer of a nonzero
+    `H2_kg_liquid`, which `build_volatile_profile` would blend into the
+    mantle EOS as `Chabrier:H`. The wet path's mass-conservation
+    verification covers dissolved H2O only, and the per-shell binodal
+    suppression in the mixed density removes dissolved H2 from the
+    structure without returning it to the atmosphere, so lifting this
+    gate requires extending the wet-path verification to H2 first
+    (Zalmoxis tracker #64).
+    """
     if value:
         raise ValueError(
             '`outgas.h2_binodal = true` is not yet supported: the H2-silicate '
@@ -41,6 +52,16 @@ class Calliope:
         If True, include CH4.
     include_CO: bool
         If True, include CO.
+    include_He: bool
+        If True, include He (noble gas; budget set in planet.elements).
+    include_Ne: bool
+        If True, include Ne (noble gas; budget set in planet.elements).
+    include_Ar: bool
+        If True, include Ar (noble gas; budget set in planet.elements).
+    include_Kr: bool
+        If True, include Kr (noble gas; budget set in planet.elements).
+    include_Xe: bool
+        If True, include Xe (noble gas; budget set in planet.elements).
     solubility: bool
         Enable solubility of volatiles into melt.
     nguess: int
@@ -67,6 +88,14 @@ class Calliope:
     include_H2: bool = field(default=True)
     include_CH4: bool = field(default=True)
     include_CO: bool = field(default=True)
+    # Noble gases are opt-in and default off, so a run with no noble budget is
+    # unchanged. A noble gas contributes to the solve only when its flag is
+    # true and its element budget in planet.elements is positive.
+    include_He: bool = field(default=False)
+    include_Ne: bool = field(default=False)
+    include_Ar: bool = field(default=False)
+    include_Kr: bool = field(default=False)
+    include_Xe: bool = field(default=False)
     solubility: bool = field(default=True)
     nguess: int = field(default=int(1e3), validator=validators.gt(0))
     nsolve: int = field(default=int(3e3), validator=validators.gt(0))
@@ -132,7 +161,7 @@ class Atmodeller:
         default='robust',
         validator=validators.in_(('robust', 'basic')),
     )
-    solver_max_steps: int = field(default=256, validator=validators.gt(0))
+    solver_max_steps: int = field(default=1024, validator=validators.gt(0))
     solver_multistart: int = field(default=10, validator=validators.gt(0))
     include_condensates: bool = field(default=True)
     solubility_H2O: str | None = field(default='H2O_peridotite_sossi23', converter=none_if_none)
@@ -149,6 +178,33 @@ class Atmodeller:
     eos_H2: str | None = field(default=None, converter=none_if_none)
     eos_CH4: str | None = field(default=None, converter=none_if_none)
     eos_CO: str | None = field(default=None, converter=none_if_none)
+
+
+@define
+class Lavatmos:
+    """Module parameters for LavAtmos rock vapourisation.
+
+    Attributes
+    ----------
+    T_min: float
+        Minimum surface temperature [K] used by LavAtmos.
+    melt_comp_name: str
+        Name of the melt composition file (without extension).
+    P_melt: float
+        Pressure used for melt activities [bar].
+    xatol: float
+        Absolute tolerance for LavAtmos fO2 solve.
+    fO2_buffer_model: str
+        IW buffer model used for LavAtmos fO2 solve. One of 'oneill', 'fischer'.
+    """
+
+    T_min: float = field(default=1500.0, validator=validators.gt(0.0))
+    melt_comp_name: str = field(default='BSE_palm')
+    P_melt: float = field(default=0.01, validator=validators.gt(0.0))
+    xatol: float = field(default=1e-5, validator=validators.gt(0.0))
+    fO2_buffer_model: str = field(
+        default='oneill', validator=validators.in_(('oneill', 'fischer'))
+    )
 
 
 @define
@@ -177,6 +233,12 @@ class Outgas:
         Parameters for CALLIOPE module.
     atmodeller: Atmodeller
         Parameters for atmodeller module.
+    vapourise: bool
+        Enable rock vapourisation via LavAtmos/ThermoEngineLite. Requires
+        `LAVA_DIR` and `FC_DIR` to be set; see the optional modules
+        installation guide. LavAtmos parameters are set in `outgas.lavatmos`.
+    lavatmos: Lavatmos
+        Parameters for the LavAtmos rock-vapour module.
     """
 
     module: str = field(
@@ -203,3 +265,70 @@ class Outgas:
 
     calliope: Calliope = field(factory=Calliope)
     atmodeller: Atmodeller = field(factory=Atmodeller)
+    lavatmos: Lavatmos = field(factory=Lavatmos)
+
+    # LavAtmos / silicate coupling is opt-in: default to disabled.
+    vapourise: bool = field(default=False)
+
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and is independent of the order the fields are declared in.
+DOC_GROUPS = {
+    'Calliope': (
+        (
+            'Species switches',
+            'set to `false` to exclude a species from the equilibrium',
+            (
+                'include_H2O',
+                'include_CO2',
+                'include_N2',
+                'include_S2',
+                'include_SO2',
+                'include_H2S',
+                'include_NH3',
+                'include_H2',
+                'include_CH4',
+                'include_CO',
+                'include_He',
+                'include_Ne',
+                'include_Ar',
+                'include_Kr',
+                'include_Xe',
+                'solubility',
+            ),
+        ),
+        ('Solver', None, ('nguess', 'nsolve', 'p_guess_max')),
+    ),
+    'Atmodeller': (
+        (
+            None,
+            None,
+            (
+                'solver_mode',
+                'solver_max_steps',
+                'solver_multistart',
+                'include_condensates',
+            ),
+        ),
+        (
+            'Solubility laws',
+            'set to `"none"` to disable dissolution for a species',
+            (
+                'solubility_H2O',
+                'solubility_CO2',
+                'solubility_H2',
+                'solubility_N2',
+                'solubility_S2',
+                'solubility_CO',
+                'solubility_CH4',
+            ),
+        ),
+        (
+            'Real gas EOS',
+            'set to `"none"` for ideal gas',
+            ('eos_H2O', 'eos_CO2', 'eos_H2', 'eos_CH4', 'eos_CO'),
+        ),
+    ),
+}

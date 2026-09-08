@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import glob
+import json
 import logging
 import os
 import subprocess
@@ -19,7 +20,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
+from proteus.utils.constants import (
+    element_list,
+    gas_list,
+    secs_per_hour,
+    secs_per_minute,
+    vol_gas_list,
+    vol_list,
+)
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
 
@@ -127,7 +135,34 @@ def _get_julia_version():
     """
     Get the installed Julia version
     """
-    return subprocess.check_output(['julia', '--version']).decode('utf-8').split()[-1]
+    try:
+        return subprocess.check_output(['julia', '--version']).decode('utf-8').split()[-1]
+    except FileNotFoundError:
+        return 'unknown (julia not installed)'
+
+
+def _get_lavatmos_version() -> str:
+    """
+    Get the installed LavAtmos version.
+    """
+    LAVA_DIR = os.environ.get('LAVA_DIR')
+    if LAVA_DIR is None:
+        return 'unknown (LAVA_DIR not set)'
+    return _get_git_revision(LAVA_DIR)
+
+
+def _get_thermoengine_version() -> str:
+    """
+    Get the installed ThermoEngine version.
+
+    This is a python module but is optional, so might not be installed.
+    """
+
+    try:
+        import thermoengine
+    except ImportError:
+        return 'unknown (thermoengine not installed)'
+    return thermoengine.__version__
 
 
 def validate_module_versions(dirs: dict, config: Config):
@@ -278,6 +313,7 @@ def print_system_configuration(dirs: dict):
 
     log.info('Current time      ' + _get_current_time())
     log.info('Python version    ' + sys.version.split(' ')[0])
+    log.info('Julia version     ' + _get_julia_version())
     log.info('System hostname   ' + str(os.uname()[1]))
     log.info('System username   ' + str(username))
     log.info('Platform type     ' + str(platform.system()))
@@ -325,16 +361,23 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info(write)
     if config.atmos_clim.module in ['janus', 'agni']:
         log.info('  - SOCRATES      version %s at %s' % (_get_socrates_version(), dirs['rad']))
-        if config.atmos_clim.module == 'agni':
-            log.info('  - Julia         version ' + _get_julia_version())
 
     # Outgassing module
     write = 'Outgas module     %s' % config.outgas.module
-    if config.outgas.module == 'calliope':
-        from calliope import __version__ as calliope_version
+    match config.outgas.module:
+        case 'calliope':
+            from calliope import __version__ as calliope_version
 
-        write += ' version ' + calliope_version
+            write += ' version ' + calliope_version
+        case 'atmodeller':
+            from atmodeller import __version__ as atmodeller_version
+
+            write += ' version ' + atmodeller_version
+
     log.info(write)
+    if config.outgas.vapourise:
+        log.info('  - LavAtmos      version ' + _get_lavatmos_version())
+        log.info('  - ThermoEngine  version ' + _get_thermoengine_version())
 
     # Escape module
     write = 'Escape module     %s' % config.escape.module
@@ -366,14 +409,21 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info('Accretion module  %s' % config.accretion.module)
 
     # Atmospheric chemistry module
-    log.info('Atmos_chem module %s' % config.atmos_chem.module)
+    write = 'Atmos_chem module %s' % config.atmos_chem.module
+    match config.atmos_chem.module:
+        case 'vulcan':
+            from vulcan import __version__ as vulcan_version
+
+            write += ' version ' + vulcan_version
+    log.info(write)
 
     # Observations synthesis module
-    write = 'Observe module    %s' % config.observe.synthesis
-    if config.observe.synthesis == 'platon':
-        from platon import __version__ as platon_version
+    write = 'Observe module    %s' % config.observe.module
+    if config.observe.module == 'petitRADTRANS':
+        from petitRADTRANS import __version__ as obs_version
 
-        write += ' version ' + platon_version
+        write += ' version ' + obs_version
+
     log.info(write)
 
     # End spacer
@@ -425,7 +475,7 @@ def print_citation(config: Config):
             pass
 
     # Escape module
-    match config.outgas.module:
+    match config.escape.module:
         case 'zephyrus':
             # _cite("Postolec et al. (2025)", "in prep")
             pass
@@ -452,9 +502,9 @@ def print_citation(config: Config):
             pass
 
     # Observations synthesis module
-    match config.observe.synthesis:
-        case 'platon':
-            _cite('Zhang et al. (2024)', 'https://doi.org/10.48550/arXiv.2410.22398')
+    match config.observe.module:
+        case 'petitRADTRANS':
+            _cite('Mollière et al. (2019)', 'https://doi.org/10.1051/0004-6361/201935470')
         case _:
             pass
 
@@ -491,9 +541,14 @@ def print_stoptime(start_time):
     log.info(' ')
 
 
-def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
-    """Runtime invariant: M_atm <= M_planet and sum of per-species kg_atm
-    matches M_atm.
+def assert_mass_conservation(
+    hf_row: dict,
+    atol_frac: float = 1e-6,
+    *,
+    require_atm_le_planet: bool = True,
+) -> None:
+    """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, and
+    M_atm <= M_planet unless the caller disables that half.
 
     Issue #677 invariant. M_atm sums atmospheric oxygen (over gas_list of
     *_kg_atm, including the O atoms in H2O / CO2 / SO2), and M_planet =
@@ -502,24 +557,50 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     by construction. This assertion catches any regression that
     re-introduces an asymmetry by dropping O from one side.
 
+    Rock vapourisation (``outgas.vapourise``) moves vapourised rock mass into
+    M_atm without debiting it from the interior, so M_planet does not track it
+    and M_atm <= M_planet no longer holds.
+
     Parameters
     ----------
     hf_row : dict
         Helpfile row at the end of an iteration, after run_outgassing
         and update_planet_mass have written M_atm and M_planet.
     atol_frac : float
-        Relative tolerance for the two invariants. Default 1e-6 admits
+        Relative tolerance for invariants. Default 1e-6 admits
         accumulated float-rounding from the per-species sum but not
         any physically meaningful drift.
+    require_atm_le_planet : bool
+        Whether to enforce M_atm <= M_planet. Ignored when the row carries no
+        vapour column: rock vapour is the only mass the relaxation excuses, so
+        with M_vaps == 0 the invariant is enforced either way.
 
     Raises
     ------
     RuntimeError
-        If M_atm > M_planet (by more than ``atol_frac`` of M_planet) or
-        the per-species sum disagrees with M_atm by more than that.
+        If the per-species kg_atm sum over vol_gas_list disagrees with
+        M_vol_atm by more than ``atol_frac``. When ``require_atm_le_planet``,
+        raises if M_atm relatively exceeds M_planet.
     """
     M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
+    M_vol_atm = float(hf_row.get('M_vol_atm', 0.0))
+
+    # A non-finite mass slips past every comparison below, because both
+    # `nan <= 0.0` and `nan > nan` are False, so neither the short-circuit nor
+    # the breach test fires and the row reports clean. Refuse it here instead of
+    # returning a verdict on a row this cannot actually check.
+    for name, value in (
+        ('M_atm', M_atm),
+        ('M_planet', M_planet),
+        ('M_vol_atm', M_vol_atm),
+    ):
+        if not np.isfinite(value):
+            raise RuntimeError(
+                f'Mass conservation cannot be checked: {name}={value} is not '
+                f'finite. An upstream step wrote a non-finite mass, so the '
+                f'reservoir it came from needs checking before the run goes on.'
+            )
 
     # Pre-IC short-circuit: M_planet == 0 means the structure solve has
     # not yet populated the hf_row. The invariants are not meaningful
@@ -530,30 +611,110 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     if M_planet <= 0.0:
         return
 
-    # Invariant 1: atmosphere mass <= total planet mass.
-    if M_atm > M_planet * (1.0 + atol_frac):
-        raise RuntimeError(
-            f'Mass conservation violation (issue #677 regression?): '
-            f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
-            f'(relative excess {(M_atm / M_planet - 1) * 100:.3f}%). '
-            f'Likely cause: an aggregation site re-introduced the '
-            f'"if e == \'O\': continue" skip. Check update_planet_mass, '
-            f'calc_target_elemental_inventories, and load_zalmoxis_configuration.'
-        )
+    M_vaps = float(hf_row.get('M_vaps', 0.0))
+    breached = M_atm > M_planet * (1.0 + atol_frac)
 
-    # Invariant 2: M_atm stays in sync with the per-species kg_atm fields it
-    # is summed from. This guards against a future reordering that mutates a
-    # species kg_atm after M_atm is computed without refreshing M_atm.
-    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
-    if M_atm > 0.0:
-        rel = abs(summed - M_atm) / M_atm
+    # Invariant 1: atmosphere mass <= total planet mass.
+    if require_atm_le_planet or M_vaps <= 0.0:
+        if breached:
+            raise RuntimeError(
+                f'Mass conservation violation (issue #677 regression?): '
+                f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
+                f'(relative excess {(M_atm / M_planet - 1) * 100:.3f}%). '
+                f'Likely cause: an aggregation site re-introduced the '
+                f'"if e == \'O\': continue" skip. Check update_planet_mass, '
+                f'calc_target_elemental_inventories, and load_zalmoxis_configuration.'
+            )
+    else:
+        # Vapourised rock can cause the atmosphere mass to exceed past
+        # the planet mass, so an excess larger than M_vaps is not explained by
+        # vapourisation and should raise a warning here.
+        if M_atm - M_planet > M_vaps + M_planet * atol_frac:
+            log.warning(
+                'Atmosphere mass exceeds planet mass by %.3e kg, more than the '
+                '%.3e kg of vapourised rock that accounts for the difference. '
+                'The imbalance is larger than vapourisation explains.',
+                M_atm - M_planet,
+                M_vaps,
+            )
+
+    # Invariant 2: M_vol_atm stays in sync with the per-species kg_atm fields
+    # it is summed from. This guards against a future reordering that mutates
+    # a species kg_atm after M_vol_atm is computed without refreshing it.
+    # The sum runs over vol_gas_list (gas_list minus the rock vapours), which
+    # is the documented definition of M_vol_atm: volatiles and noble gases in
+    # the atmosphere, rock vapour excluded. Summing over vol_list alone would
+    # drop the noble gases and fire spuriously on any run that carries a
+    # noble inventory; summing over the full gas_list would pull in the rock
+    # vapour that M_vol_atm deliberately excludes.
+    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
+    scale = max(M_vol_atm, summed)
+    if scale > 0.0:
+        rel = abs(summed - M_vol_atm) / scale
         if rel > atol_frac:
             raise RuntimeError(
-                f'M_atm bookkeeping inconsistency: M_atm={M_atm:.3e} kg but '
-                f'sum_s(s_kg_atm)={summed:.3e} kg (relative difference '
-                f'{rel * 100:.3f}%). One of the gas-species kg_atm fields '
-                f'is stale or the M_atm sum loop is missing a species.'
+                f'M_vol_atm bookkeeping inconsistency: M_vol_atm='
+                f'{M_vol_atm:.3e} kg but sum_s(s_kg_atm)={summed:.3e} kg '
+                f'(relative difference {rel * 100:.3f}%). One of the '
+                f'gas-species kg_atm fields is stale or the M_vol_atm sum '
+                f'loop is missing a species.'
             )
+
+
+def assert_surface_pressure_consistency(
+    config: Config, hf_row: dict, atol_frac: float = 1e-6
+) -> None:
+    """Runtime invariant: P_surf == P_vol + P_vap, and P_vap == 0 when rock
+    vapourisation is disabled.
+
+    P_vol is the volatile-only surface pressure (CALLIOPE/atmodeller/dummy
+    output) and P_vap is the rock-vapour contribution added by LavAtmos
+    (`outgas.vapourise = True`). P_surf is the total the atmosphere modules
+    use as their lower boundary condition, so the two partial pressures must
+    always sum back to it.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row at the end of an outgassing call (run_outgassing,
+        run_vapourisation, run_desiccated, or run_crystallized).
+    atol_frac : float
+        Relative tolerance against max(|P_surf|, |P_vol + P_vap|).
+
+    Raises
+    ------
+    RuntimeError
+        If P_vap is nonzero while `outgas.vapourise` is False, or if
+        P_surf disagrees with P_vol + P_vap by more than `atol_frac`.
+    """
+
+    P_surf = float(hf_row.get('P_surf', 0.0))
+    P_vol = float(hf_row.get('P_vol', 0.0))
+    P_vap = float(hf_row.get('P_vap', 0.0))
+
+    if not config.outgas.vapourise and P_vap != 0.0:
+        raise RuntimeError(
+            f'P_vap={P_vap:.3e} bar is nonzero but outgas.vapourise=False: '
+            'rock-vapour pressure must stay at zero when vapourisation is '
+            'disabled. Check that the code path that set P_vap is gated on '
+            'config.outgas.vapourise.'
+        )
+
+    total = P_vol + P_vap
+    scale = max(abs(P_surf), abs(total))
+    if scale <= 0.0:
+        # Pre-IC / no atmosphere yet: nothing meaningful to compare.
+        return
+
+    rel = abs(P_surf - total) / scale
+    if rel > atol_frac:
+        raise RuntimeError(
+            f'Surface pressure inconsistency: P_surf={P_surf:.6e} bar but '
+            f'P_vol+P_vap={total:.6e} bar (P_vol={P_vol:.6e}, '
+            f'P_vap={P_vap:.6e}, relative difference {rel * 100:.3f}%). '
+            'One of the outgassing code paths updated P_surf without '
+            'keeping P_vol/P_vap in sync.'
+        )
 
 
 def PrintCurrentState(hf_row: dict):
@@ -566,6 +727,18 @@ def PrintCurrentState(hf_row: dict):
     log.info('    T_surf     = %8.3f   K' % float(hf_row['T_surf']))
     log.info('    T_magma    = %8.3f   K' % float(hf_row['T_magma']))
     log.info('    P_surf     = %.2e   bar' % float(hf_row['P_surf']))
+
+    # Rock vapour breaks the whole-planet mass balance by design, so a run
+    # carrying a vapour column reports its budget alongside the totals every
+    # iteration. This makes drift visible while the run is going rather than
+    # at post-processing. Runs without rock vapour keep the shorter output.
+    M_vaps = float(hf_row.get('M_vaps', 0.0))
+    if M_vaps > 0.0:
+        log.info('    P_vol      = %.2e   bar' % float(hf_row.get('P_vol', 0.0)))
+        log.info('    P_vap      = %.2e   bar' % float(hf_row.get('P_vap', 0.0)))
+        log.info('    M_atm      = %.2e   kg' % float(hf_row.get('M_atm', 0.0)))
+        log.info('    M_vaps     = %.2e   kg' % M_vaps)
+
     log.info('    Phi_global = %.2e   ' % float(hf_row['Phi_global']))
     log.info('    F_atm      = %.2e   W m-2' % float(hf_row['F_atm']))
     log.info('    F_int      = %.2e   W m-2' % float(hf_row['F_int']))
@@ -591,6 +764,7 @@ def GetHelpfileKeys():
     All dimensional quantites should be stored in SI units, except those noted below.
     * Pressure is in units of [bar].
     * Time is in units of [years].
+
     """
 
     # fmt: off
@@ -611,6 +785,8 @@ def GetHelpfileKeys():
         'plan_star_am',     # angular momentum of star+planet [kg m2 s-1],
         'axial_period',     # day length of planet around its axis [s]
         'n_star',           # mean motion of star [s-1]
+        'longitude',        # column longitude relative to substellar point [deg]
+        'latitude',         # column latitude relative to substellar point [deg]
 
         # Satellite system
         'perigee',          # lowest point in orbit [m]
@@ -630,6 +806,7 @@ def GetHelpfileKeys():
         'R_int',            # interior radius [m]
         'M_int',            # interior mass [kg]
         'M_planet',         # total planet wet+dry mass [kg]
+        'M_vaps',           # vapourised rock mass, including the vapourised oxygen [kg]
         'R_core',           # core radius [m]
         'C_planet',         # principal moment of inertia of planet [kg m2]
         'R_solvus',         # solvus radius for global_miscibility mode [m]
@@ -640,6 +817,7 @@ def GetHelpfileKeys():
         'core_density',     # core density from structure solver [kg m-3]
         'core_heatcap',     # core heat capacity [J kg-1 K-1]
         'X_H2_int',         # H2 mass fraction in interior (sub-Neptune mode) [1]
+        'struct_mass_desync_frac',  # |trapezoid - ODE accumulator| / accumulator structure mass self-consistency [1]
 
         # Temperatures
         'T_surf',           # global surface temperature [K]
@@ -664,10 +842,13 @@ def GetHelpfileKeys():
         'F_sct',            # outgoing shortwave radiation [W m-2]
         'F_ins',            # incoming instellation flux [W m-2]
         'F_xuv',            # incoming XUV radiation flux [W m-2]
+        'bol_scale',        # bolometric scaling factor [1]
         'tau_atm_TOA',      # optical depth at TOA, at ref wavelength [1]
         'tau_atm_surface',  # optical depth at surface, at ref wavelength [1]
         'atm_Ra_max',      # maximum Rayleigh number across levels [1]
         'atm_t_conv_over_t_rad',  # convective vs radiative timescale ratio [1]
+        'atm_converged',    # atmosphere solve outcome: +1 converged, -1 rejected, 0 no solve [1]
+        'atm_levels_stale',  # consecutive iterations without a converged solve of this run [1]
         'F_tidal',          # tidal heat flux arising at surface [W m-2]
         'F_radio',          # radiogenic heat flux arising at surface [W m-2]
         'F_cmb',             # heat flux at the CMB (signed, +out-of-core) [W m-2]
@@ -684,54 +865,62 @@ def GetHelpfileKeys():
         'T_pot',            # characteristic mantle potential temperature [K]
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
-        # Energy-conservation columns (Aragog A1+A2 + per-call integrals).
-        # ``E_state_cons_J`` is the canonical conservation-grade integrated
-        # mantle enthalpy: ``Σ h(P,S) × ρ_struct × V`` with the FROZEN
-        # structural mass weighting from ``mesh.staggered_effective_density
-        # × volume``. Pairs with ``dE_predicted_cons_J`` (cumulative sum
-        # of ``step_dE_F_int_J + step_dE_F_cmb_J + step_dE_Q_radio_cons_J
-        # + step_dE_Q_tidal_cons_J``) for the running residual:
-        #   E_residual_cons_J  = (E_state_cons - E_state_cons[0]) - dE_predicted_cons_J
-        #   E_residual_cons_frac = E_residual_cons_J / max(|ΔE_state_cons|, 1 J)
-        # Closes to ~5 % of total cooling and ~2 % of initial reservoir
-        # over multi-Myr trajectories. The state-mass enthalpy
-        # ``E_state_J`` is reported as a diagnostic snapshot only; do
-        # NOT use it for residual checks. State-dependent ``ρ(P,S) × V``
-        # mass weighting introduces a non-conservation cross term that
-        # grows with mantle cooling, so a residual built on
-        # ``E_state_J`` would conflate that frame artefact with real
-        # numerical drift.
-        # ``solver_residual_J`` is the cumulative entropy-ODE LHS-RHS
-        # residual over the trajectory and closes to machine precision
-        # (~1e-7 of total cooling); it is the rigorous solver-correctness
-        # check. ``E_th_mantle`` is the legacy ``m × Cp_apparent × T``
-        # proxy with phase-dependent jumps in the mushy zone -- not for
-        # conservation use. ``Q_radio_W`` / ``Q_tidal_W`` are instantaneous
-        # mantle-integrated source powers in watts (do NOT integrate
-        # trapezoidally; spike-prone at CVODE phase-boundary moments).
-        # ``F_cmb`` is the analogous instantaneous CMB heat flux. The
-        # conservation primitive is the per-call integral set computed by
+        # Energy-conservation columns: per-call integrals plus their
+        # cumulative residual. The residual pairs the entropy-transported
+        # heat (state side) against the boundary-flux and source prediction
+        # (predicted side), both in the live EOS density frame ``ρ(P,S)``:
+        #   E_state_heat_cons_J = Σ step_dE_state_heat_J across rows [J]
+        #   dE_predicted_cons_J = Σ (step_dE_F_int_J + step_dE_F_cmb_J
+        #                            + step_dE_Q_radio_J + step_dE_Q_tidal_J)
+        #   E_residual_cons_J   = E_state_heat_cons_J - dE_predicted_cons_J
+        #   E_residual_cons_frac = E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J)
+        # This closes to about a percent of the cumulative cooling (largest
+        # near full melt and at crystallisation-front / structure-remesh
+        # steps), not to machine precision; that floor is the lever-rule
+        # vs tanh-blended phase density difference. The ``_cons`` suffix on
+        # these column names pairs them for readability and does not mean
+        # they use the frozen-mass ``step_dE_Q_*_cons_J`` variants.
+        # ``E_state_cons_J`` (frozen-mass enthalpy) and ``E_state_J``
+        # (state-mass enthalpy) are diagnostic snapshots only; do NOT build a
+        # residual on either. ``E_state_cons_J`` also indicates whether an
+        # EOS-aware interior module ran (non-zero), which populates the
+        # residual columns.
+        # ``solver_residual_J`` is the entropy-equation self-consistency
+        # check: the discrete flux divergence telescopes to the boundary
+        # fluxes, so it is machine-zero by construction and a non-zero
+        # value flags a divergence-assembly bug; it carries the
+        # machine-precision conservation guarantee. ``E_th_mantle`` is the
+        # ``m × Cp_apparent × T`` proxy with phase-dependent jumps in the
+        # mushy zone, not for conservation use. ``Q_radio_W`` / ``Q_tidal_W``
+        # are instantaneous mantle-integrated source powers in watts (do NOT
+        # integrate trapezoidally; spike-prone at CVODE phase-boundary
+        # moments). ``F_cmb`` is the analogous instantaneous CMB heat flux.
+        # The conservation primitive is the per-call integral set computed by
         # Aragog over its CVODE sub-step trajectory:
         #   step_dE_F_int_J        = -∫ F_int * A_int dt   [J]
         #   step_dE_F_cmb_J        = +∫ F_cmb * A_cmb dt   [J]
-        #   step_dE_Q_*_J          = +∫ Q_* dt             [J] (state-mass)
+        #   step_dE_Q_*_J          = +∫ Q_* dt             [J] (live-density)
         #   step_dE_Q_*_cons_J     = +∫ Q_* dt             [J] (frozen-mass)
+        #   step_dE_state_heat_J   = ∫ Σ ρ T dS            [J]
         #   step_solver_residual_J = ∫ (LHS - RHS) dt      [J]
-        'E_th_mantle',      # legacy thermal-energy proxy [J] (do not use for conservation)
+        'E_th_mantle',      # thermal-energy proxy [J] (do not use for conservation)
         'E_state_J',         # state-mass integrated mantle enthalpy [J] (diagnostic only)
-        'E_state_cons_J',    # frozen-mass conservation-grade enthalpy [J]
+        'E_state_cons_J',    # frozen-mass integrated mantle enthalpy [J] (diagnostic only)
         'Q_radio_W',         # instantaneous mantle-integrated radiogenic power [W]
         'Q_tidal_W',         # instantaneous mantle-integrated tidal power [W]
         'step_dE_F_int_J',   # per-call ∫ -F_int*A_int dt [J]
         'step_dE_F_cmb_J',   # per-call ∫ +F_cmb*A_cmb dt [J]
-        'step_dE_Q_radio_J', # per-call ∫ +Q_radio dt [J] (state-mass, instrumentation)
-        'step_dE_Q_tidal_J', # per-call ∫ +Q_tidal dt [J] (state-mass, instrumentation)
-        'step_dE_Q_radio_cons_J',  # per-call ∫ +Q_radio dt [J] (frozen-mass)
-        'step_dE_Q_tidal_cons_J',  # per-call ∫ +Q_tidal dt [J] (frozen-mass)
+        'step_dE_Q_radio_J', # per-call ∫ +Q_radio dt [J] (live-density, predicted side)
+        'step_dE_Q_tidal_J', # per-call ∫ +Q_tidal dt [J] (live-density, predicted side)
+        'step_dE_Q_radio_cons_J',  # per-call ∫ +Q_radio dt [J] (frozen-mass, diagnostic)
+        'step_dE_Q_tidal_cons_J',  # per-call ∫ +Q_tidal dt [J] (frozen-mass, diagnostic)
         'step_solver_residual_J',  # per-call entropy-ODE LHS-RHS [J]
-        'dE_predicted_cons_J',  # cumulative sum of step_dE_*_cons_J across rows [J]
-        'E_residual_cons_J',    # (E_state_cons - E_state_cons[0]) - dE_predicted_cons_J [J]
-        'E_residual_cons_frac', # E_residual_cons_J / max(|ΔE_state_cons|, 1 J) [1]
+        'step_dE_compression_J',  # per-call structure-re-solve compression work [J] (diagnostic)
+        'step_dE_state_heat_J',  # per-call entropy-transported heat content change [J]
+        'E_state_heat_cons_J',  # cumulative sum of step_dE_state_heat_J across rows [J]
+        'dE_predicted_cons_J',  # cumulative sum of boundary fluxes + live-density step_dE_Q_*_J [J]
+        'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
+        'E_residual_cons_frac', # E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J) [1]
         'solver_residual_J',    # cumulative entropy-ODE LHS-RHS residual [J]
         'Cp_eff',           # effective mantle heat capacity [J kg-1 K-1]
 
@@ -745,17 +934,21 @@ def GetHelpfileKeys():
         'p_obs',            # transit pressure level [bar]
         'R_obs',            # transit radius [m]
         'T_obs',            # transit temperature [K]
+        'g_obs',            # transit gravity [m s-2]
         'rho_obs',          # transit bulk density [kg m-3]
         'transit_depth',    # primary transit light curve depth [1]
         'eclipse_depth',    # secondary eclipse light curve depth [1]
-        'albedo_pl',        # INPUT bond albedo from config: constant value or interpolated from table [1]
+        'albedo_pl',        # INPUT bond albedo from config: constant value (0 to 1) [1]
         'bond_albedo',      # OUTPUT calculated bond albedo from radtrans: SW_UP/SW_DN, zero if no scattering [1]
 
         # Atmospheric composition from outgassing
-        'M_ele',            # total mass of tracked elements (utils.constants.element_list)
+        'M_ele',            # total mass of volatile and noble elements; rock vapour excluded [kg]
         'M_atm',            # total mass of atmosphere [kg]
         'P_surf',           # total surface pressure [bar]
+        'P_vap',            # rock vapour surface pressure [bar]
+        'P_vol',            # volatiles surface pressure [bar]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
+        'M_vol_atm',        # atmospheric mass of volatiles and noble gases; rock vapour excluded [kg]
 
         # Iron-wustite buffer offset that the chemistry solver actually
         # equilibrated to, and the O mass-balance residual of that
@@ -772,22 +965,34 @@ def GetHelpfileKeys():
         # cross-backend comparison of this column requires converting
         # one of the conventions; an independent comparison harness will
         # eventually pick a single canonical convention.
-        'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10]
+        # The rock-vapour columns below are the LavAtmos counterparts,
+        # derived from the O2 partial pressure of the vapourisation
+        # solve rather than from the volatile chemistry. They are
+        # independent of `fO2_shift_IW_derived` and are left at zero
+        # when vapourisation is disabled.
+        'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10 bar]
+        'fO2_vapourise_derived',         # rock-vapour fO2 [log10 bar]
+        'fO2_vapourise_shift_IW_derived',  # rock-vapour IW offset [log10 bar]
         'O_res',                 # O mass-balance residual [kg]
+        'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
 
-        # Desiccation escape-balance gate. M_vol_initial is the sum over
-        # all elements (oxygen included) of *_kg_total captured on the
-        # first escape call, used
-        # as the reference point for `outgas.wrapper.check_desiccation`'s
-        # "is the loss accounted for by escape?" sanity check.
-        # esc_kg_cumulative is the running sum of esc_rate_total * dt
-        # over the whole run. Both must be persisted to the CSV so
-        # resume preserves the gate's state.
+        # Desiccation escape balance. Read by `check_desiccation`.
+        # M_vol_initial is the summed *_kg_total (oxygen included) captured on
+        # the first escape call; esc_kg_cumulative is the mass each step took
+        # out of those inventories, never more than it was allowed to remove.
+        # Both persist to the CSV so a resume keeps the check's state.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
         'esc_kg_cumulative', # cumulative escaped mass [kg]
-    ]
 
-    # quantities for each gas, from outgassing
+        # Loss the bulk rate asked for on this step, as a fraction of the
+        # reservoir escape draws from. Values above the per-step cap mark a
+        # step whose loss was limited, so a limited trajectory stays
+        # distinguishable from one that ran down on its own.
+        'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
+        'esc_step_kg',      # loss applied on this step, after the cap [kg]
+        ]
+
+    # gases from outgassing
     for s in gas_list:
         keys.append(s + '_mol_atm')     # number outgassed to atmosphere [mol]
         keys.append(s + '_mol_solid')   # number in solid mantle [mol]
@@ -801,8 +1006,11 @@ def GetHelpfileKeys():
         keys.append(s + '_bar')         # partial surface pressure [bar]
         keys.append(s + '_vmr_xuv')     # volume mixing ratio at XUV level [1]
 
-    # quantities for each element
+    # quantities for each element. Some elements are also gas species in
+    # their own right (all noble gases, plus rock-forming elements)
     for e in element_list:
+        if e in gas_list:
+            continue
         keys.append(e + '_kg_atm')      # mass outgassed to atmosphere [kg]
         keys.append(e + '_kg_solid')    # mass in solid mantle [kg]
         keys.append(e + '_kg_liquid')   # mass in liquid mantle [kg]
@@ -820,6 +1028,8 @@ def GetHelpfileKeys():
     # Atmospheric escape
     keys.append('p_xuv')                # pressure of XUV absorption [bar]
     keys.append('R_xuv')                # radius of XUV absorption [m]
+    keys.append('T_xuv')                # temperature at R_xuv [K]
+    keys.append('g_xuv')                # gravity at R_xuv [m s-2]
     keys.append('cs_xuv')               # sound speed, at R_xuv [m s-1]
     keys.append('esc_rate_total')       # bulk escape rate [kg s-1]
     for e in element_list:
@@ -840,8 +1050,8 @@ def GetHelpfileKeys():
 
     # Simulation's computational variables
     keys.append('runtime')          # Simulation wall-clock runtime [s]
-
     # fmt: on
+
     return keys
 
 
@@ -866,45 +1076,67 @@ def ZeroHelpfileRow():
 def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     """Fill the cumulative energy-conservation columns of ``new_row`` in place.
 
-    The conservation primitive is the per-call energy integral set
-    computed by Aragog over its CVODE sub-step trajectory:
+    The conservation check compares two cumulative integrals built from
+    the per-call quantities Aragog reports over its CVODE sub-step
+    trajectory. The predicted (boundary + source) side is
 
-        step_dE_F_int_J        = -∫ F_int * A_int dt   over the call [J]
-        step_dE_F_cmb_J        = +∫ F_cmb * A_cmb dt   over the call [J]
-        step_dE_Q_*_cons_J     = +∫ Q_* dt             [J] (frozen-mass)
-        step_solver_residual_J = ∫ (LHS - RHS) dt      [J]
+        step_dE_F_int_J        = -∫ F_int * A_int dt   [J]
+        step_dE_F_cmb_J        = +∫ F_cmb * A_cmb dt   [J]
+        step_dE_Q_radio_J      = +∫ Q_radio dt         [J] (live-density)
+        step_dE_Q_tidal_J      = +∫ Q_tidal dt         [J] (live-density)
 
-    The cumulative ``dE_predicted_cons_J`` is the running sum of the
-    flux+source integrals across all helpfile rows. This eliminates the
-    previous helpfile-side trapezoidal interpolation between
-    end-of-step F_cmb snapshots, which was prone to phase-boundary
-    spikes: a single CVODE sub-step transient could blow up the
-    integral by orders of magnitude when used as a trapezoid endpoint
-    over a PROTEUS iteration's worth of time.
+    and the state side is the entropy-transported heat content change
 
-    Row 0 sets all cumulative columns to zero by definition.
-    ``E_residual_cons_frac`` normalises by ``max(|ΔE_state_cons|, 1 J)``
-    so the residual stays bounded when both numerator and denominator
-    are tiny (quiescent steady state). Closes to ~5 % of total cooling
-    over multi-Myr trajectories.
+        step_dE_state_heat_J   = ∫ Σ rho T dS over the call [J].
 
-    ``solver_residual_J`` is the running entropy-ODE LHS-RHS check;
-    closes to machine precision (~1e-7 of total cooling) and flags
-    real CVODE step rejection or atol/rtol issues if it drifts.
+    The heating sources use the live-density (state-mass) Q variants so
+    they share the ``rho(P,S)`` frame the state side integrates; the
+    frozen-mass ``step_dE_Q_*_cons_J`` variants are not summed here.
+    ``dE_predicted_cons_J`` and ``E_state_heat_cons_J`` are the running
+    sums of the predicted and state increments across rows, and
 
-    Active only when ``E_state_cons_J`` is finite and non-zero,
-    signalling that an EOS-aware interior module populated it. Other
-    modules leave the column at 0.0 (from ZeroHelpfileRow) and the
-    residual columns stay at 0.0 too.
+        E_residual_cons_J = E_state_heat_cons_J - dE_predicted_cons_J.
 
-    The frozen-mass framing is required for the residual to close.
-    A state-mass alternative (``ρ(P,S) × V`` re-evaluated each step)
-    would carry a non-conservation cross term that grows with mantle
-    cooling and masks real numerical drift.
+    The ``_cons`` suffix on ``dE_predicted_cons_J`` is a naming convention
+    that pairs it with the residual columns; it does not mean the sum uses
+    the frozen-mass ``_cons`` heating variants.
+
+    ``E_residual_cons_frac`` normalises by ``max(|E_state_heat_cons_J|, 1 J)``
+    so it stays bounded when both numerator and denominator are tiny
+    (quiescent steady state). This is a frame-consistency conservation
+    diagnostic: it closes to roughly a percent of the cumulative cooling for
+    cooling-dominated evolution (largest near full melt, where the lever-rule
+    density has the most curvature), NOT to machine precision. The residual
+    state side weights by the live EOS density rho(P,S) used in the cell
+    capacitance, the heating sources use the matching live-density variants,
+    and the boundary fluxes are area-weighted; the small remaining floor is
+    the difference between that lever-rule density and the tanh-blended phase
+    density the entropy ODE integrates. Machine-precision conservation is
+    carried by ``solver_residual_J``, not by this column.
+
+    The state side uses ``Σ rho T dS`` (the heat the entropy ODE
+    transports, capacitance rho*T), not an enthalpy change. The two-phase
+    EOS specific enthalpy does not satisfy ``dh = T dS`` across the mushy
+    zone, so an enthalpy snapshot difference carries a flow-work term the
+    boundary-flux budget never sees and cannot close against it.
+    ``E_state_J`` and ``E_state_cons_J`` are retained as enthalpy
+    diagnostics only; ``step_dE_compression_J`` is likewise informational
+    and is not added to the predicted side.
+
+    ``solver_residual_J`` is the independent entropy-equation self-
+    consistency check: the discrete flux divergence telescopes to the
+    boundary fluxes, so it is machine-zero by construction and a non-zero
+    value flags a divergence-assembly bug. It and ``E_residual_cons_frac``
+    are complementary conservation gates.
+
+    Active only when ``E_state_cons_J`` is finite and non-zero, signalling
+    that an EOS-aware interior module ran. Other modules leave the columns
+    at 0.0 (from ZeroHelpfileRow) and the residual columns stay at 0.0 too.
     """
     e_state_cons_now = float(new_row.get('E_state_cons_J', 0.0))
     if not np.isfinite(e_state_cons_now) or e_state_cons_now == 0.0:
         for k in (
+            'E_state_heat_cons_J',
             'dE_predicted_cons_J',
             'E_residual_cons_J',
             'E_residual_cons_frac',
@@ -913,20 +1145,29 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
             new_row.setdefault(k, 0.0)
         return
 
-    # Per-call energy increment from Aragog [J]. Sign is already baked
-    # into each step delta (positive = energy added to mantle). Uses
-    # frozen-mass Q_*_cons to pair with the frozen-mass E_state_cons_J.
+    # Predicted (boundary + source) increment from Aragog [J]. Sign is
+    # already baked into each step delta (positive = energy added to the
+    # mantle). The heating sources use the live-density (state-mass) Q
+    # variants so they share the same mass frame as the entropy-transported
+    # heat on the state side, which integrates rho(P,S). Surface and CMB
+    # fluxes are area-weighted and frame-independent. The compression term
+    # is informational and is deliberately excluded: the state side carries
+    # the full thermodynamic content via Σ rho T dS.
     dE_inc_cons = (
         float(new_row.get('step_dE_F_int_J', 0.0))
         + float(new_row.get('step_dE_F_cmb_J', 0.0))
-        + float(new_row.get('step_dE_Q_radio_cons_J', 0.0))
-        + float(new_row.get('step_dE_Q_tidal_cons_J', 0.0))
+        + float(new_row.get('step_dE_Q_radio_J', 0.0))
+        + float(new_row.get('step_dE_Q_tidal_J', 0.0))
     )
+    # State increment [J]: the entropy-transported heat content change over
+    # the call, Σ rho T dS by EOS quadrature (step_dE_state_heat_J).
+    dE_state_heat_inc = float(new_row.get('step_dE_state_heat_J', 0.0))
     solver_inc = float(new_row.get('step_solver_residual_J', 0.0))
 
     n_prior = len(current_hf)
     if n_prior == 0:
         # Anchor row: cumulative integrals start at zero by definition.
+        new_row['E_state_heat_cons_J'] = 0.0
         new_row['dE_predicted_cons_J'] = 0.0
         new_row['E_residual_cons_J'] = 0.0
         new_row['E_residual_cons_frac'] = 0.0
@@ -934,26 +1175,34 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
         return
 
     prev = current_hf.iloc[-1]
-    dE_pred_cons_prev = float(prev.get('dE_predicted_cons_J', 0.0))
-    dE_pred_cons_now = dE_pred_cons_prev + dE_inc_cons
+    dE_pred_prev = float(prev.get('dE_predicted_cons_J', 0.0))
+    e_state_heat_prev = prev.get('E_state_heat_cons_J', float('nan'))
 
-    # Anchor the cumulative actual-energy change on the first populated
-    # E_state_cons_J. A 0.0 entry marks a row written before this column
-    # existed; anchoring on it would fold the entire absolute mantle enthalpy
-    # into the residual.
-    e_state_series = current_hf['E_state_cons_J']
-    valid_anchor = e_state_series[(e_state_series != 0.0) & np.isfinite(e_state_series)]
-    e_state_cons_anchor = float(
-        valid_anchor.iloc[0] if len(valid_anchor) > 0 else e_state_series.iloc[0]
-    )
-    dE_actual_cons_now = e_state_cons_now - e_state_cons_anchor
-    residual_cons_now = dE_actual_cons_now - dE_pred_cons_now
+    # Resume across the introduction of the state-heat column: an older
+    # helpfile carries a populated dE_predicted_cons_J but no
+    # E_state_heat_cons_J. Continuing the predicted side from its full prior
+    # cumulative while the state side restarts from zero would inject a
+    # one-row residual equal to the entire prior predicted energy. Re-anchor
+    # both cumulatives to zero at the first row after such a resume.
+    if not np.isfinite(e_state_heat_prev) and dE_pred_prev != 0.0:
+        dE_pred_prev = 0.0
+        e_state_heat_prev = 0.0
+    else:
+        e_state_heat_prev = float(e_state_heat_prev) if np.isfinite(e_state_heat_prev) else 0.0
 
+    dE_pred_cons_now = dE_pred_prev + dE_inc_cons
+    e_state_heat_now = e_state_heat_prev + dE_state_heat_inc
+
+    # The state side and the predicted side both integrate the entropy-
+    # transported heat, so their difference is the conservation residual.
+    residual_cons_now = e_state_heat_now - dE_pred_cons_now
+
+    new_row['E_state_heat_cons_J'] = e_state_heat_now
     new_row['dE_predicted_cons_J'] = dE_pred_cons_now
     new_row['E_residual_cons_J'] = residual_cons_now
-    new_row['E_residual_cons_frac'] = residual_cons_now / max(abs(dE_actual_cons_now), 1.0)
+    new_row['E_residual_cons_frac'] = residual_cons_now / max(abs(e_state_heat_now), 1.0)
 
-    # Cumulative entropy-ODE solver residual.
+    # Cumulative entropy-ODE solver residual (independent second gate).
     solver_resid_prev = float(prev.get('solver_residual_J', 0.0))
     new_row['solver_residual_J'] = solver_resid_prev + solver_inc
 
@@ -961,6 +1210,7 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
 def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     """
     Extend helpfile with new row of variables
+
     """
     log.debug('Extending helpfile with new row')
 
@@ -981,11 +1231,13 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     # - Unknown keys (new_row has but schema doesn't) are silently dropped
     #   by `columns=GetHelpfileKeys()` in the DataFrame construction, which
     #   means resume would lose those values. We WARN here rather than raise
-    #   so existing hf_row private/transient fields (_structure_stale, etc.)
+    #   so existing hf_row private/transient fields (_T_magma_raw, etc.)
     #   and string-valued fields (core_state_initial) don't break runs.
     # Private (underscore-prefixed) keys are intentionally transient and
     # are excluded from both checks.
+
     schema = set(GetHelpfileKeys())
+
     row_keys = {k for k in new_row.keys() if not k.startswith('_')}
     # Known non-numeric / non-persistent keys that are written into hf_row
     # but deliberately not tracked in the helpfile CSV schema.
@@ -1019,14 +1271,16 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
 
     # Check for NaN values. Print warning if any are found and convert to zero.
-    for col in new_row.columns:
-        if new_row[col].isna().any():
+    time_val = new_row['Time'].iloc[0]
+    for i, col in enumerate(new_row.columns):
+        col_data = new_row.iloc[:, i]
+        if col_data.isna().any():
             log.warning(
                 'hf_row[%s] is NaN at t=%.2e years; setting to zero.',
                 col,
-                new_row['Time'].iloc[0],
+                time_val,
             )
-            new_row[col] = new_row[col].fillna(0.0)
+            new_row.iloc[:, i] = col_data.fillna(0.0)
 
     # concatenate and return
     return pd.concat([current_hf, new_row], ignore_index=True)
@@ -1043,24 +1297,362 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     if len(difference) > 0:
         raise Exception('There are mismatched keys in helpfile: ' + str(difference))
 
-    # remove old file
+    # Write atomically: serialise to a temporary file in the same
+    # directory, then rename it into place. A direct remove-then-write
+    # leaves the helpfile missing or truncated if the process is killed
+    # (or the disk fills) mid-write, and an empty helpfile then blocks
+    # resume because the restored row history is too short. os.replace is
+    # atomic within one filesystem, so a reader, or a later resume, always
+    # sees either the complete previous file or the complete new one. On a
+    # failed write the previous file is left untouched.
     fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
-    if os.path.exists(fpath):
-        os.remove(fpath)
-
-    # write new file
-    current_hf.to_csv(fpath, index=False, sep='\t', float_format='%.10e')
+    tmp_path = fpath + '.tmp'
+    try:
+        current_hf.to_csv(tmp_path, index=False, sep='\t', float_format='%.10e')
+        os.replace(tmp_path, fpath)
+    except BaseException:
+        # Best-effort temp cleanup; never let it mask the original error.
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
     return fpath
 
 
-def ReadHelpfileFromCSV(output_dir: str):
+class HelpfileSchemaDriftError(Exception):
+    """A helpfile on disk lacks columns that the current output schema declares."""
+
+
+def helpfile_path(output_dir: str) -> str:
+    """Path to the helpfile of a run directory."""
+    return os.path.join(output_dir, 'runtime_helpfile.csv')
+
+
+class HelpfileRow(dict):
+    """One helpfile row that reports an absent column instead of a KeyError.
+
+    Postprocessing is held to `GetPostprocessingKeys()`, which is checked
+    before the run's archive is unpacked. That list is written by hand and
+    can fall behind the code, so this carries the same report to any column
+    outside it. Such a report necessarily arrives once a synthesis routine
+    reads the column, which is after the archive has been unpacked; only the
+    listed columns are caught early enough to leave a run untouched.
+
+    Membership tests and `get` with a default are untouched, so code that
+    already handles an absent column keeps working. `dict(row)`, `{**row}`
+    and `row.copy()` build a plain dict and lose the report, which is why
+    postprocessing passes the row itself around; `copy.copy` and pickling
+    keep it.
+    """
+
+    def __init__(self, row: dict, source: str):
+        super().__init__(row)
+        self.source = source
+
+    def __missing__(self, key):
+        raise HelpfileSchemaDriftError(
+            "Helpfile '%s' has no column '%s', which postprocessing this run "
+            'reads. It was written before that column existed. Run this '
+            'configuration again from t=0, or read this run with the PROTEUS '
+            'version that wrote it.' % (self.source, key)
+        )
+
+
+# Ceiling on how many column names a drift message spells out, so a very
+# old helpfile reports a readable summary instead of a wall of text.
+_DRIFT_REPORT_LIMIT = 12
+
+
+def _describe_missing_columns(missing: list[str]) -> str:
+    """Render missing column names for an error message."""
+    shown = ', '.join(missing[:_DRIFT_REPORT_LIMIT])
+    if len(missing) > _DRIFT_REPORT_LIMIT:
+        shown += ' (+%d more)' % (len(missing) - _DRIFT_REPORT_LIMIT)
+    return shown
+
+
+# Columns the observation and offline-chemistry pipelines index without a
+# fallback. Every other quantity they touch is read through `in` or `.get`
+# with a default, so its absence is already handled.
+_POSTPROCESSING_FIXED_KEYS = (
+    'Time',
+    'T_surf',
+    'P_surf',
+    'R_int',
+    'gravity',
+    'atm_kg_per_mol',
+    'R_star',
+    'T_star',
+    'separation',
+)
+
+
+def GetPostprocessingKeys():
+    """
+    Helpfile columns that postprocessing an existing run cannot do without.
+
+    Reading a stored run to synthesise an observation or run offline
+    chemistry touches a small part of the output schema, so those commands
+    are held to this set rather than to the whole of `GetHelpfileKeys()`.
+    An archived run stays readable after a schema addition it never used.
+
+    VULCAN indexes a per-element atmospheric mass and a per-gas volume
+    mixing ratio directly, so those expand from the element and volatile
+    lists. Both are fixed module constants, which keeps this set the same
+    for every run, as the full schema is.
+
+    Returns
+    -------
+    list of str
+        Column names, all of which are also in `GetHelpfileKeys()`.
+    """
+    keys = list(_POSTPROCESSING_FIXED_KEYS)
+    keys += [e + '_kg_atm' for e in element_list]
+    keys += [g + '_vmr' for g in vol_list]
+    return keys
+
+
+def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None = None):
     """
     Read helpfile from disk CSV file to DataFrame
+
+    A helpfile written before the output schema gained a column carries
+    neither that column nor any value for it. The entry points that turn a
+    stored run back into simulation state, resume and the two postprocessing
+    commands, all seed a working row from the last line of this table, so
+    the shortfall is caught here rather than in each of them. How much of
+    the schema a caller needs differs, which is what `required_columns` is
+    for. Readers that pull named columns straight out of the file, such as
+    the plotting and inference code, do not come through this function and
+    are not covered.
+
+    The shortfall is reported rather than filled. Seeding a value would make
+    the key present, and several modules decide what to do by testing whether
+    a key is there at all: CALLIOPE refuses a run whose oxygen budget is
+    absent, the dummy and boundary interiors fall back to a configured core
+    size, and the atmosphere lower boundary moves to the solvus only when a
+    solvus radius exists. A seeded zero turns each of those off and reaches
+    the solvers as a physical value no solver produced.
+
+    Parameters
+    ----------
+    output_dir : str
+        Directory holding ``runtime_helpfile.csv``.
+    required_columns : list of str, optional
+        Columns the caller cannot do without. Defaults to the whole of
+        ``GetHelpfileKeys()``, which is what resuming a run needs, since a
+        resumed row feeds every module. Postprocessing passes the smaller
+        ``GetPostprocessingKeys()`` so an archived run stays readable after
+        a schema addition it never used.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Helpfile contents as stored, carrying at least ``required_columns``.
+
+    Raises
+    ------
+    HelpfileSchemaDriftError
+        The file does not carry every required column.
     """
-    fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
+    if required_columns is None:
+        required_columns = GetHelpfileKeys()
+
+    fpath = helpfile_path(output_dir)
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
-    return pd.read_csv(fpath, sep=r'\s+')
+    hf_all = pd.read_csv(fpath, sep=r'\s+')
+
+    missing = sorted(set(required_columns) - set(hf_all.columns))
+    if missing:
+        raise HelpfileSchemaDriftError(
+            "Helpfile '%s' was written before %d column(s) of the current output "
+            'schema existed: %s. Run this configuration again from t=0, or read '
+            'this run with the PROTEUS version that wrote it.'
+            % (fpath, len(missing), _describe_missing_columns(missing))
+        )
+    return hf_all
+
+
+def _netcdf_readable(path: str) -> bool:
+    """Return True if ``path`` exists and opens as a valid netCDF file.
+
+    A disk-full or killed write can leave a snapshot file truncated: it
+    exists on disk but raises when opened. This check lets the resume path
+    skip an incomplete snapshot and fall back to the last complete one.
+    """
+    if not os.path.isfile(path):
+        return False
+    # Import outside the try so a missing netCDF4 (a core dependency) raises
+    # an honest ImportError instead of being silently reported as "every
+    # snapshot is unreadable", which would mask the real cause behind the
+    # selector's "no complete pair" error.
+    from netCDF4 import Dataset
+
+    try:
+        with Dataset(path):
+            return True
+    except Exception:
+        return False
+
+
+def _snapshot_readable(path: str) -> bool:
+    """Whether a snapshot file exists and opens as a complete file.
+
+    A disk-full or killed write can leave a snapshot truncated: it exists on
+    disk but raises when opened. NetCDF halves (interior ``_int.nc``,
+    atmosphere ``_atm.nc``) are validated with :func:`_netcdf_readable`;
+    SPIDER's interior half (``.json``) is validated by a full ``json.load``,
+    which fails on a partially written file. This lets the resume path skip
+    an incomplete snapshot and fall back to the last complete one.
+    """
+    if path.endswith('.json'):
+        if not os.path.isfile(path):
+            return False
+        try:
+            with open(path) as fh:
+                json.load(fh)
+            return True
+        except Exception:
+            return False
+    return _netcdf_readable(path)
+
+
+def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
+    """Interior snapshot filename candidates for a simulation time, per writer.
+
+    Each interior module names its snapshot with the same str-format convention,
+    so the resume probes match. They differ by suffix.
+    The dummy and boundary interiors write no snapshot, so resume imposes
+    no interior constraint (empty list). Unknown module falls-back to Aragog.
+    """
+
+    if time < 0.0:
+        raise ValueError(f'Negative time {time} cannot be formatted as filename')
+
+    match interior_module.lower().strip():
+        case 'dummy' | 'boundary':
+            return []
+        case 'spider':
+            return ['%.0f.json' % time]
+        case _:
+            return ['%.0f_int.nc' % time]
+
+
+def _atm_snapshot_names(time: float) -> list[str]:
+    """Atmosphere snapshot filename candidate for a simulation time, per writer.
+
+    All writers round the time with a string-floating point formatter
+    (rounds to nearest number with no decimals).
+    """
+    if time < 0.0:
+        raise ValueError(f'Negative time {time} cannot be formatted as filename')
+    return ['%.0f_atm.nc' % time]
+
+
+def select_resumable_snapshot(
+    output_dir: str,
+    hf_all: pd.DataFrame,
+    require_atm: bool = True,
+    interior_module: str = 'aragog',
+) -> tuple[pd.DataFrame, list[int]]:
+    """Trim the helpfile to the latest row backed by a complete snapshot pair.
+
+    On resume the interior loads its snapshot keyed off ``hf_row['Time']``
+    and the atmosphere loads the latest ``*_atm.nc``. A crash mid-write can
+    truncate either half of the most recent pair independently of the
+    (atomic) helpfile, which then aborts the resume when a module opens the
+    corrupt file. Walk the helpfile from its last row backward to the first
+    row whose interior (when the interior module writes one) and atmosphere
+    (when ``require_atm``) snapshots both open cleanly, move any incomplete
+    trailing snapshot files aside (``.incomplete`` suffix) so the modules'
+    latest-file globs land on the complete pair, and return the helpfile
+    truncated to that row. Once a resumable row is found, the quarantined
+    files are deleted: the helpfile is truncated below their rows, so they
+    can never back a resume and would otherwise be swept into the final
+    data archive.
+
+    Parameters
+    ----------
+    output_dir : str
+        Run output directory (contains ``data/``).
+    hf_all : pd.DataFrame
+        Full restored helpfile history.
+    require_atm : bool, optional
+        Whether an ``_atm.nc`` half is expected. False for the dummy
+        atmosphere, which writes no atmosphere snapshot.
+    interior_module : str, optional
+        The active ``interior_energetics.module`` (``'aragog'``, ``'spider'``,
+        ``'dummy'``, ``'boundary'``). Selects the interior filename
+        convention; ``'dummy'`` and ``'boundary'`` write no interior snapshot
+        so the interior half imposes no constraint.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, list[int]]
+        The (possibly trimmed) helpfile and the ascending list of dropped
+        snapshot times. The helpfile is returned unchanged and the list
+        empty when the latest pair is already complete.
+
+    Raises
+    ------
+    RuntimeError
+        If no row in the helpfile has a complete snapshot pair. Any files
+        quarantined during the scan are restored before this is raised, so
+        a later attempt still sees them.
+    """
+    data_dir = os.path.join(output_dir, 'data')
+    times = [float(t) for t in hf_all['Time'].to_numpy()]
+    dropped: list[int] = []
+    quarantined: list[tuple[str, str]] = []  # (moved_to, original) for rollback
+    keep_idx = None
+    for i in range(len(times) - 1, -1, -1):
+        t = times[i]
+        int_paths = [
+            os.path.join(data_dir, n) for n in _interior_snapshot_names(t, interior_module)
+        ]
+        atm_paths = (
+            [os.path.join(data_dir, n) for n in _atm_snapshot_names(t)] if require_atm else []
+        )
+        # An empty interior candidate list means the interior module writes no
+        # snapshot (dummy/boundary): that half imposes no resume constraint.
+        int_ok = (not int_paths) or any(_snapshot_readable(p) for p in int_paths)
+        atm_ok = (not require_atm) or any(_snapshot_readable(p) for p in atm_paths)
+        if int_ok and atm_ok:
+            keep_idx = i
+            break
+        # Incomplete pair: move whichever candidate halves exist aside so the
+        # interior / atmosphere latest-file globs cannot pick them up.
+        for p in int_paths + atm_paths:
+            if os.path.exists(p):
+                dst = p + '.incomplete'
+                os.replace(p, dst)
+                quarantined.append((dst, p))
+        dropped.append(int(t))
+
+    if keep_idx is None:
+        # Nothing resumable: undo the quarantine so a later attempt (or
+        # manual recovery) still has the files, then fail loudly.
+        for dst, original in quarantined:
+            if os.path.exists(dst):
+                os.replace(dst, original)
+        raise RuntimeError(
+            'No complete interior+atmosphere snapshot pair found in the '
+            'helpfile history; cannot resume from disk.'
+        )
+    if quarantined:
+        # The helpfile is truncated below the dropped rows, so these files
+        # can never back a resume; delete them so the final archive sweep
+        # does not pick them up.
+        for dst, _original in quarantined:
+            if os.path.exists(dst):
+                os.remove(dst)
+        log.info('Deleted %d quarantined snapshot file(s)', len(quarantined))
+    if not dropped:
+        return hf_all, []
+    return hf_all.iloc[: keep_idx + 1].reset_index(drop=True), sorted(dropped)
 
 
 def variable_is_logarithmic(varname: str) -> bool:
@@ -1092,9 +1684,6 @@ def variable_is_logarithmic(varname: str) -> bool:
         'eccentricity',
         'params.stop.time.maximum',
         'planet.elements.H_budget',
-        'planet.elements.C_budget',
-        'planet.elements.S_budget',
-        'planet.elements.N_budget',
         'orbit.semimajoraxis',
         'atm_kg_per_mol',
     ):
@@ -1107,6 +1696,30 @@ def variable_is_logarithmic(varname: str) -> bool:
         out = True
 
     return out
+
+
+def select_profile_plot_times(
+    interior_times: list, nc_times: list, no_int_snapshots: bool
+) -> list:
+    """Select the times at which to plot atmosphere/interior profiles.
+
+    Parameters
+    ----------
+    interior_times : list
+        Interior snapshot times (empty for dummy/boundary interiors).
+    nc_times : list
+        Atmosphere ``*_atm.nc`` snapshot times.
+    no_int_snapshots : bool
+        True when the interior module writes no per-time snapshot.
+
+    Returns
+    -------
+    list
+        Sorted list of times at which profiles can be plotted.
+    """
+    if no_int_snapshots:
+        return sorted(nc_times)
+    return sorted(set(interior_times) & set(nc_times))
 
 
 def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num_snapshots=7):
@@ -1165,12 +1778,14 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
-    dummy_int = config.interior_energetics.module == 'dummy'
+    # The dummy and boundary interiors write no per-time interior NetCDF
+    # snapshot, so profile plots cannot intersect against interior times.
+    no_int_snapshots = config.interior_energetics.module in ('dummy', 'boundary')
     agni = config.atmos_clim.module == 'agni'
     spider = config.interior_energetics.module == 'spider'
     aragog = config.interior_energetics.module == 'aragog'
     obliqua = config.orbit.module == 'obliqua'
-    observed = bool(config.observe.synthesis is not None)
+    observed = bool(config.observe.module is not None)
 
     # Get all output times
     output_times = []
@@ -1191,19 +1806,17 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
 
     # Planet and satellite orbit parameters
-    if config.orbit.star_planet_model is not None or config.orbit.planet_satellite_model is not None:
+    if (
+        config.orbit.star_planet_model is not None
+        or config.orbit.planet_satellite_model is not None
+    ):
         plot_orbit(hf_all, output_dir, config.params.out.plot_fmt)
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:
         ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
         nc_times = [int(f.split('/')[-1].split('_atm')[0]) for f in ncs]
-
-        # Check intersection of atmosphere and interior data
-        if dummy_int:
-            output_times = nc_times
-        else:
-            output_times = sorted(list(set(output_times) & set(nc_times)))
+        output_times = select_profile_plot_times(output_times, nc_times, no_int_snapshots)
 
     # Samples for plotting profiles
     if len(output_times) > 0:
@@ -1214,7 +1827,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
         log.debug('Snapshots to plot:' + str(plot_times))
 
         # Interior profiles
-        if not dummy_int:
+        if not no_int_snapshots:
             int_data = read_interior_data(
                 output_dir, config.interior_energetics.module, plot_times
             )
@@ -1242,7 +1855,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
             )
 
             # Atmosphere and interior, stacked radially
-            if not dummy_int:
+            if not no_int_snapshots:
                 plot_structure(
                     hf_all,
                     output_dir,
@@ -1270,7 +1883,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
             output_dir=output_dir,
             times=plot_times_obliqua,
             data=tide_data,
-            plot_format=config.params.out.plot_fmt
+            plot_format=config.params.out.plot_fmt,
         )
 
     # Only at the end of the simulation
@@ -1320,7 +1933,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
                 output_dir, modern_age=modern_age, plot_format=config.params.out.plot_fmt
             )
 
-            if plot_times and not dummy_int:
+            if plot_times and not no_int_snapshots:
                 plot_interior_cmesh(
                     output_dir,
                     plot_times,
@@ -1364,6 +1977,35 @@ def remove_excess_files(outdir: str, rm_spectralfiles: bool = False):
         safe_rm(f)
 
 
+def get_output_root(root_dir: str) -> str:
+    """Resolve the root directory under which per-run output is written.
+
+    Defaults to ``<root_dir>/output``, keeping output alongside the code.
+    If the ``PROTEUS_OUTPUT_PATH`` environment variable is set to a
+    non-empty value, that path is used instead, so simulation output can be
+    relocated off the code tree (for example onto scratch storage on a
+    cluster, or to run several checkouts against a shared output area). A
+    value that is empty or only whitespace is treated as unset. User (``~``)
+    and environment-variable references in the value are expanded; an
+    absolute path is recommended, since a relative value is resolved against
+    the current working directory each time the paths are queried.
+
+    Parameters
+    ----------
+    root_dir : str
+        The PROTEUS installation root directory.
+
+    Returns
+    -------
+    str
+        The output root directory.
+    """
+    env_value = os.environ.get('PROTEUS_OUTPUT_PATH')
+    if env_value is None or not env_value.strip():
+        return os.path.join(root_dir, 'output')
+    return os.path.expanduser(os.path.expandvars(env_value))
+
+
 def get_proteus_directories(outdir='_unset') -> dict[str, str]:
     """Create dict of proteus directories from root dir.
 
@@ -1378,6 +2020,7 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         Proteus directories dict
     """
     root_dir = get_proteus_dir()
+    output_root = get_output_root(root_dir)
 
     return {
         'proteus': root_dir,
@@ -1390,11 +2033,11 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         'vulcan': os.path.join(root_dir, 'VULCAN'),
         'tools': os.path.join(root_dir, 'tools'),
         'utils': os.path.join(root_dir, 'src', 'proteus', 'utils'),
-        'output': os.path.join(root_dir, 'output', outdir),
-        'output/data': os.path.join(root_dir, 'output', outdir, 'data'),
-        'output/observe': os.path.join(root_dir, 'output', outdir, 'observe'),
-        'output/offchem': os.path.join(root_dir, 'output', outdir, 'offchem'),
-        'output/plots': os.path.join(root_dir, 'output', outdir, 'plots'),
+        'output': os.path.join(output_root, outdir),
+        'output/data': os.path.join(output_root, outdir, 'data'),
+        'output/observe': os.path.join(output_root, outdir, 'observe'),
+        'output/offchem': os.path.join(output_root, outdir, 'offchem'),
+        'output/plots': os.path.join(output_root, outdir, 'plots'),
     }
 
 

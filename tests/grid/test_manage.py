@@ -2,22 +2,20 @@
 
 The grid manager is plumbing-heavy: file IO, subprocess dispatch, TOML
 parsing, and a multiprocessing-driven worker loop. The tests below cover
-the public surface (``Grid``, ``setup_logger``, ``_thread_target``,
-``grid_from_config``) with all heavy callouts mocked. Each test pins at
+the public surface (``Grid``, ``_thread_target``, ``grid_from_config``)
+with all heavy callouts mocked. Each test pins at
 least two discriminating post-state facts so that a regression which
 silently no-ops one branch cannot pass.
 
 Links:
-- ``docs/How-to/test_infrastructure.md``
-- ``docs/How-to/test_categorization.md``
-- ``docs/How-to/test_building.md``
+- ``docs/How-to/testing.md``
+- ``docs/Explanations/test_framework.md``
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import sys
 from unittest import mock
 
 import numpy as np
@@ -29,7 +27,6 @@ from proteus.grid.manage import (
     Grid,
     _thread_target,
     grid_from_config,
-    setup_logger,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -74,89 +71,6 @@ def grid_with_mocks(fake_proteus_dir, base_config_path, monkeypatch):
         base_config_path=str(base_config_path),
     )
     return g
-
-
-# ---------------------------------------------------------------------------
-# setup_logger
-# ---------------------------------------------------------------------------
-
-
-class TestSetupLogger:
-    """Verify the custom logger setup: file handler, level mapping,
-    pre-existing log removal, and excepthook installation.
-    """
-
-    def test_creates_log_file_and_attaches_handlers(self, tmp_path):
-        """A fresh logger writes its log to logpath and attaches at least
-        one file handler. Default level=1 maps to INFO.
-        """
-        logpath = tmp_path / 'mgr.log'
-        # Run setup, then write a record and force a flush.
-        setup_logger(logpath=str(logpath), level=1, logterm=False)
-        root = logging.getLogger()
-        root.info('hello unit-test world')
-        for h in root.handlers:
-            h.flush()
-        assert logpath.exists()
-        # File contains the message (discriminates against an empty-flush bug)
-        contents = logpath.read_text()
-        assert 'hello unit-test world' in contents
-        # Level was mapped to INFO (not DEBUG / WARNING). Verify root level.
-        assert root.level == logging.INFO
-
-    def test_pre_existing_log_is_removed(self, tmp_path):
-        """If logpath exists at entry, ``setup_logger`` deletes it before
-        re-creating; old content is gone after the call.
-        """
-        logpath = tmp_path / 'stale.log'
-        logpath.write_text('STALE_CONTENT_DO_NOT_KEEP\n')
-        setup_logger(logpath=str(logpath), level=1, logterm=False)
-        root = logging.getLogger()
-        for h in root.handlers:
-            h.flush()
-        contents = logpath.read_text()
-        # The stale content must be gone (file was deleted and recreated).
-        assert 'STALE_CONTENT_DO_NOT_KEEP' not in contents
-        # And the file must still exist (recreated by FileHandler).
-        assert logpath.exists()
-
-    @pytest.mark.parametrize(
-        'level_arg,expected_level',
-        [
-            (0, logging.DEBUG),
-            (2, logging.WARNING),
-            (3, logging.ERROR),
-            (4, logging.CRITICAL),
-        ],
-        ids=['debug', 'warning', 'error', 'critical'],
-    )
-    def test_level_mapping(self, tmp_path, level_arg, expected_level):
-        """Each numeric level argument maps to the documented logging
-        level constant. The default branch (1 -> INFO) is covered by
-        ``test_creates_log_file_and_attaches_handlers``.
-        """
-        logpath = tmp_path / f'level_{level_arg}.log'
-        setup_logger(logpath=str(logpath), level=level_arg, logterm=False)
-        root = logging.getLogger()
-        # Discriminating across all four levels: each is distinct.
-        assert root.level == expected_level
-        # File handler still present (level argument should not disable IO).
-        assert any(isinstance(h, logging.FileHandler) for h in root.handlers)
-
-    def test_excepthook_installed(self, tmp_path):
-        """``setup_logger`` replaces ``sys.excepthook`` so unhandled
-        exceptions get logged. The hook must be callable and distinct
-        from the pre-call value (default ``sys.__excepthook__``).
-        """
-        logpath = tmp_path / 'hook.log'
-        original = sys.excepthook
-        try:
-            setup_logger(logpath=str(logpath), level=1, logterm=False)
-            new_hook = sys.excepthook
-            assert callable(new_hook)
-            assert new_hook is not original
-        finally:
-            sys.excepthook = original
 
 
 # ---------------------------------------------------------------------------
@@ -663,6 +577,61 @@ class TestWriteConfigFiles:
         values = {v for _attr, v in recursive_calls}
         assert values == {0.5, 1.0, 200.0}
 
+    def test_unknown_key_in_the_base_config_stops_the_grid(
+        self, fake_proteus_dir, tmp_path, monkeypatch
+    ):
+        """A misspelled key in the base config halts the grid before any case is written.
+
+        Per-case configs are serialised out of the structured object, so an
+        unrecognised key in the base file never survives into them. Nothing
+        downstream can notice it: every case config reads as clean while the
+        whole grid runs on a default the user did not choose. Loading the base
+        file is the only place the mistake is still visible.
+        """
+        import tomllib
+
+        import tomlkit
+        from helpers import PROTEUS_ROOT
+
+        with open(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml', 'rb') as f:
+            raw = tomllib.load(f)
+        # Misspell the maximum time-step. Left unchecked this silently reverts
+        # to the schema default for every case in the grid.
+        raw['params']['dt']['maxium'] = raw['params']['dt'].pop('maximum')
+        dirty = tmp_path / 'dirty_base.toml'
+        with open(dirty, 'w') as f:
+            tomlkit.dump(raw, f)
+
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        g = Grid(name='typo_base_grid', base_config_path=str(dirty))
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        with pytest.raises(ValueError, match='params.dt.maxium'):
+            g.write_config_files()
+
+        # No case config was written, so the grid cannot proceed on the
+        # silently defaulted value.
+        assert not [p for p in os.listdir(g.cfgdir) if p.startswith('case_')]
+
+        # Edge case and discriminator: the unmodified base file writes both
+        # cases, so the refusal above is caused by the misspelling and not by
+        # this base config being unloadable in the first place.
+        clean = tmp_path / 'clean_base.toml'
+        with open(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml', 'rb') as f:
+            with open(clean, 'w') as out:
+                tomlkit.dump(tomllib.load(f), out)
+        g2 = Grid(name='clean_base_grid', base_config_path=str(clean))
+        g2.add_dimension('m', 'planet.mass_tot')
+        g2.set_dimension_direct('m', [0.5, 1.0])
+        g2.generate()
+        g2.write_config_files()
+        assert sorted(p for p in os.listdir(g2.cfgdir) if p.startswith('case_')) == [
+            'case_000000.toml',
+            'case_000001.toml',
+        ]
+
 
 # ---------------------------------------------------------------------------
 # Grid.slurm_config
@@ -763,6 +732,74 @@ class TestSlurmConfig:
         # Discriminating: throttle is 2 (the size), not 99.
         assert '%2' in contents
         assert '%99' not in contents
+
+    def test_slurm_script_omits_jax_cache_by_default(self, grid_with_mocks, monkeypatch):
+        """Without the opt-in the script writes no JAX cache environment, so the
+        default behaviour is unchanged and no cache is created on disk.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        g.slurm_config(max_jobs=2, test_run=True, max_days=1, max_mem=4)
+        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        # No cache env vars at all on the default path.
+        assert 'JAX_COMPILATION_CACHE_DIR' not in contents
+        assert 'JAX_COMPILATION_CACHE_MAX_SIZE' not in contents
+        # The dispatch body is still emitted, so this is a real script.
+        assert 'i=$SLURM_ARRAY_TASK_ID' in contents
+
+    def test_slurm_script_includes_bounded_jax_cache_when_enabled(
+        self, grid_with_mocks, monkeypatch
+    ):
+        """With the opt-in enabled the script turns on the persistent cache
+        under the grid output directory AND pins the LRU size bound. A
+        regression that enabled the cache without the bound, the failure mode
+        that filled the filesystem, would fail this test.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        g.slurm_config(max_jobs=2, test_run=True, max_days=1, max_mem=4, jax_cache=True)
+        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        expected_dir = os.path.join(g.outdir, 'jax_cache')
+        # Cache directory lives under the grid outdir (self-contained).
+        assert f'export JAX_COMPILATION_CACHE_DIR={expected_dir}' in contents
+        # The LRU size bound MUST be present: an unbounded cache (no max-size)
+        # is exactly the regression that filled scratch. 80 GiB in bytes.
+        assert 'export JAX_COMPILATION_CACHE_MAX_SIZE=85899345920' in contents
+        # Trivial compiles are kept out so the cache holds only what is costly.
+        assert 'export JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=1' in contents
+        assert 'export JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES=4096' in contents
+        # The work loop still follows the env block.
+        assert 'i=$SLURM_ARRAY_TASK_ID' in contents
 
 
 # ---------------------------------------------------------------------------

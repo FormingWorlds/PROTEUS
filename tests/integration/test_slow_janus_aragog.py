@@ -34,15 +34,15 @@ Invariants asserted:
   Phi_global (|dPhi| < 0.5).
 - Cross-cutting mass + stability helpers.
 
-Runtime budget: ~3-5 min macOS GHA (SOCRATES init + JANUS Python
-per-step solve is light), ~5-10 min Linux GHA (CVode setup tax on
-Aragog dominates JANUS-side cost). The 3600 s timeout sits well
-inside the slow-tier 120 min step cap.
+Runtime budget: this test runs only on Linux (skipped on macOS;
+see the ``skipif`` below), where the coupled two-step JANUS +
+Aragog solve takes ~90-110 min, dominated by the CVode setup tax
+on the Aragog interior. The 9000 s per-test timeout sits inside
+the slow-tier job cap with headroom for runner variance.
 
 See also:
-- docs/How-to/test_infrastructure.md
-- docs/How-to/test_categorization.md
-- docs/How-to/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ from tests.integration.conftest import (
 # but parr is not consistently prepended).
 pytestmark = [
     pytest.mark.slow,
-    pytest.mark.timeout(7200),
+    pytest.mark.timeout(9000),
     pytest.mark.skipif(
         sys.platform == 'darwin',
         reason='cpl_chem_atmosphere plot xarr/parr length mismatch on macOS JANUS; Linux covers JANUS path',

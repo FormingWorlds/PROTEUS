@@ -31,7 +31,10 @@ def resolve_fwl_data_dir() -> Path:
     """
     env = os.environ.get('FWL_DATA')
     if env:
-        return Path(env)
+        # expanduser matches how fwl-io resolves the same variable. Without it
+        # a value carrying a literal '~' becomes a directory of that name below
+        # the working directory, and the two resolvers point at different trees.
+        return Path(env).expanduser()
     return Path(__file__).resolve().parents[2] / 'FWL_DATA'
 
 
@@ -77,6 +80,34 @@ def multiple(a: int, b: int) -> bool:
         return bool(a % b == 0)
 
 
+def is_write_snapshot(
+    loops_total: int,
+    write_mod: int,
+    dt_write_rel: float,
+    cur_time: float,
+    last_write_time: float,
+) -> bool:
+    """
+    Decide whether the current iteration of PROTEUS should write data to disk.
+
+    Two criteria, each individually sufficient:
+      1. Iteration count is a multiple of ``write_mod``.
+      2. Enough simulation time has elapsed since the last write, where the
+         relative interval is ``dt_write_rel * max(cur_time, 1)``.
+    """
+
+    # Iteration criterion
+    iter_ok = multiple(loops_total, write_mod)
+
+    # Time criterion
+    time_ok = False
+    if dt_write_rel > 0:
+        time_ok = bool(cur_time - last_write_time >= dt_write_rel * max(cur_time, 1.0))
+
+    # Logical OR of the two criteria
+    return iter_ok or time_ok
+
+
 def mol_to_ele(mol: str):
     """
     Return the number of atoms of each element in a given molecule, as a dictionary
@@ -96,7 +127,7 @@ def mol_to_ele(mol: str):
             val = 1
         else:
             val = int(ev[1])
-        elems[str(ev[0])] = val
+        elems[str(ev[0])] = elems.get(ev[0], 0) + val
 
     # Check that what we got is reasonable
     if not elems:
@@ -205,6 +236,8 @@ def CommentFromStatus(status: int):
             desc = 'Error (Outgassing model)'
         case 28:
             desc = 'Error (Escape model)'
+        case 29:
+            desc = 'Completed (planet evaporated)'
         # Default case
         case _:
             desc = 'UNHANDLED STATUS (%d)' % status

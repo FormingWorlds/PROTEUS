@@ -69,6 +69,27 @@ class Elements:
         Scale C/N/S from solar metallicity (overrides C/N/S mode+budget).
     metallicity: float
         Metallicity relative to solar, by mass (only if use_metallicity=True).
+    He_mode: str
+        How He_budget is interpreted: 'kg', 'ppmw' (relative to the volatile
+        reservoir), or 'solar' (multiple of the protosolar He/H mass ratio).
+    He_budget: float
+        Helium inventory value (units depend on He_mode).
+    Ne_mode: str
+        As He_mode, for neon.
+    Ne_budget: float
+        Neon inventory value (units depend on Ne_mode).
+    Ar_mode: str
+        As He_mode, for argon.
+    Ar_budget: float
+        Argon inventory value (units depend on Ar_mode).
+    Kr_mode: str
+        As He_mode, for krypton.
+    Kr_budget: float
+        Krypton inventory value (units depend on Kr_mode).
+    Xe_mode: str
+        As He_mode, for xenon.
+    Xe_budget: float
+        Xenon inventory value (units depend on Xe_mode).
     """
 
     H_mode: str = field(default='oceans', validator=in_(('oceans', 'ppmw', 'kg')))
@@ -91,6 +112,27 @@ class Elements:
 
     use_metallicity: bool = field(default=False)
     metallicity: float = field(default=1000.0, validator=ge(0))
+
+    # Noble gases (He, Ne, Ar, Kr, Xe). Opt-in per gas: a gas contributes
+    # only when its inclusion flag is set in outgas.calliope and its budget
+    # is positive. Each mode is one of:
+    #   'kg':    budget in kg (absolute).
+    #   'ppmw':  budget in ppmw relative to volatile_reservoir mass.
+    #   'solar': budget is a multiple of the protosolar X/H mass ratio, so
+    #            the inventory is budget * (X/H)_solar * H_kg. A value of 1.0
+    #            gives a protosolar noble gas complement, which is an
+    #            upper-bound reference rather than a realistic planetary
+    #            budget (planetary bodies are strongly noble-gas depleted).
+    He_mode: str = field(default='kg', validator=in_(('kg', 'ppmw', 'solar')))
+    He_budget: float = field(default=0.0, validator=ge(0))
+    Ne_mode: str = field(default='kg', validator=in_(('kg', 'ppmw', 'solar')))
+    Ne_budget: float = field(default=0.0, validator=ge(0))
+    Ar_mode: str = field(default='kg', validator=in_(('kg', 'ppmw', 'solar')))
+    Ar_budget: float = field(default=0.0, validator=ge(0))
+    Kr_mode: str = field(default='kg', validator=in_(('kg', 'ppmw', 'solar')))
+    Kr_budget: float = field(default=0.0, validator=ge(0))
+    Xe_mode: str = field(default='kg', validator=in_(('kg', 'ppmw', 'solar')))
+    Xe_budget: float = field(default=0.0, validator=ge(0))
 
 
 @define
@@ -185,17 +227,17 @@ class Planet:
             ini_entropy + ini_dsdr (bypasses PALEOS lookup; matches the
             CHILI intercomparison protocol). The interior solver maps the
             entropy IC to T(P) via its own EOS table.
-        'liquidus_super' (default): anchor the adiabat at T = T_liq(P_cmb) +
-            delta_T_super at the core-mantle boundary, where T_liq is
-            the Fei et al. (2021, Nat. Commun. 12, 876) MgSiO3 melting curve
-            (piecewise Simon-Glatzel, with the Belonoshko et al. 2005
-            low-pressure branch below 2.55 GPa, exactly matching the
-            PALEOS internal liquidus). The adiabat is then integrated
-            upward to the surface. Use this for EOS-agnostic IC
-            comparison: the anchor is set by a third-party melting
-            curve so it does not bake in either the WB17 or PALEOS
-            entropy convention. delta_T_super (in K) is the
-            user-controlled superliquidus offset.
+        'liquidus_super' (default): start the mantle on the coolest single
+            adiabat that is fully molten everywhere, with at least
+            delta_T_super Kelvin of superheat above the configured liquidus.
+            The surface temperature (hence the uniform initial entropy) is
+            solved so the minimum superheat over the whole mantle equals
+            delta_T_super, evaluated against the solidus/liquidus actually in
+            use. This guarantees a fully molten initial state with a controlled
+            margin for any planet mass and any melting-curve parameterisation,
+            without the user having to pick a surface temperature or entropy.
+            The solve raises if the requested superheat cannot be reached
+            before the deep adiabat exhausts the EOS table.
     tsurf_init: float
         Initial magma surface temperature [K] (isothermal, linear, adiabatic).
         Ignored when temperature_mode = 'isentropic', 'adiabatic_from_cmb',
@@ -218,16 +260,17 @@ class Planet:
         CHILI Earth-SPIDER reference: -4.698e-6 (small numerical
         perturbation needed for SPIDER's BDF stability on a uniform IC).
     delta_T_super: float
-        Superliquidus offset [K] at the core-mantle boundary
-        (liquidus_super mode only). The CMB anchor temperature is
-        T_cmb = T_liq_Fei2021(P_cmb) + delta_T_super. The default 500 K
-        is a heuristic margin that places the anchor above the liquidus
-        for Earth-mass to few-Earth-mass mantles; it does not guarantee
-        a fully molten column at every mass. The Fei+2021 liquidus is
-        calibrated to ~500 GPa, so for large super-Earths (P_cmb above
-        that) the anchor relies on extrapolation and a warning is
-        emitted. Setting delta_T_super = 0 anchors the IC adiabat
-        exactly at the liquidus.
+        Minimum superheat [K] above the liquidus for the liquidus_super
+        initial condition (liquidus_super mode only). The initial adiabat is
+        solved so that, at its most-constraining depth, the temperature is at
+        least delta_T_super above the configured liquidus; this fixes the whole
+        isentropic profile and guarantees a fully molten mantle with that
+        margin, for any planet mass and any melting curve. The default 500 K
+        gives a comfortably molten start across the Earth-mass to
+        ten-Earth-mass range. delta_T_super = 0 makes the mantle marginally
+        molten (just touching the liquidus at the binding depth). If the
+        requested superheat cannot be reached within the EOS table, the solve
+        raises and reports the largest achievable value.
     volatile_mode: str
         How to set the initial volatile inventory: 'elements' or 'gas_prs'.
     volatile_reservoir: str
@@ -261,17 +304,21 @@ class Planet:
     prevent_warming: bool
         When True, require the planet to monotonically cool over time.
         Enforced in all atmosphere modules and termination checks.
+    R_int_override: float
+        Bypass the radius root finder and force a fixed interior radius [m];
+        'none' (default) uses the root finder. Used for SPIDER/Aragog parity
+        runs where the two energetics modules have different
+        Adams-Williamson density implementations.
     """
 
     mass_tot: float = field(default=1.0, validator=gt(0))
 
-    # Initial temperature profile. Default 'liquidus_super' anchors the
-    # adiabat at the core-mantle boundary at T = T_liq_Fei2021(P_cmb) +
-    # delta_T_super and integrates upward to the surface, giving an
-    # EOS-agnostic, fully molten initial state. The other six modes cover
-    # the fixed-T_cmb adiabat (adiabatic_from_cmb), surface-anchored
-    # adiabatic, isothermal, linear, accretion (White & Li 2025), and
-    # isentropic (CHILI protocol) ICs.
+    # Initial temperature profile. Default 'liquidus_super' solves for the
+    # coolest adiabat that is fully molten everywhere with delta_T_super of
+    # superheat above the configured liquidus, robust to planet mass and to the
+    # melting-curve choice. The other six modes cover the fixed-T_cmb adiabat
+    # (adiabatic_from_cmb), surface-anchored adiabatic, isothermal, linear,
+    # accretion (White & Li 2025), and isentropic (CHILI protocol) ICs.
     temperature_mode: str = field(
         default='liquidus_super',
         validator=in_(
@@ -298,12 +345,13 @@ class Planet:
     ini_entropy: float = field(default=3900.0, validator=gt(0))
     ini_dsdr: float = field(default=-4.698e-6)
 
-    # Superliquidus offset at the CMB for temperature_mode = 'liquidus_super'.
-    # T_cmb anchor is T_liq_Fei2021(P_cmb) + delta_T_super; the adiabat is
-    # then integrated upward to the surface. The default 500 K is a heuristic
-    # margin tuned for Earth-mass to few-Earth-mass mantles; the Fei+2021
-    # liquidus is calibrated to ~500 GPa, so at higher P_cmb the anchor is an
-    # extrapolation. Setting delta_T_super = 0 places the adiabat on the liquidus.
+    # Minimum superheat above the liquidus for temperature_mode =
+    # 'liquidus_super'. The IC adiabat is solved so its temperature exceeds the
+    # configured liquidus by at least delta_T_super at the most-constraining
+    # mantle depth, which fixes a fully molten isentropic profile for any mass
+    # and any melting curve. The default 500 K gives a comfortably molten start
+    # across the Earth-mass to ten-Earth-mass range; delta_T_super = 0 makes the
+    # mantle marginally molten (touching the liquidus at the binding depth).
     delta_T_super: float = field(default=500.0, validator=ge(0))
 
     # Initial volatile inventory

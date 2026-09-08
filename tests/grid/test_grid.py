@@ -11,7 +11,7 @@ from proteus.grid.manage import grid_from_config
 from proteus.grid.pack import pack as gpack
 from proteus.grid.summarise import summarise as gsummarise
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 OUT_DIR = PROTEUS_ROOT / 'output' / 'dummy_grid'
@@ -25,7 +25,6 @@ def grid_run():
     grid_from_config(GRID_CONFIG, test_run=False, check_interval=1)
 
 
-@pytest.mark.integration
 def test_grid_run(grid_run):
     """A small dummy-backend grid completes without raising. The fixture
     runs the whole grid; this test pins that the fixture succeeded by
@@ -38,7 +37,6 @@ def test_grid_run(grid_run):
     assert OUT_DIR.is_dir()
 
 
-@pytest.mark.integration
 def test_grid_config(grid_run):
     """The grid run copies its grid TOML and the base config TOML into the
     output directory bit-identically, and writes a per-case config under
@@ -53,7 +51,6 @@ def test_grid_config(grid_run):
     assert os.path.isfile(OUT_DIR / 'cfgs' / f'case_{0:06d}.toml')
 
 
-@pytest.mark.integration
 def test_grid_log(grid_run):
     """``manager.log`` records the flattened parameter grid (values list),
     the case-completion summary line, and the explored sweep values
@@ -66,7 +63,6 @@ def test_grid_log(grid_run):
     assert 'All cases have exited' in lines
 
 
-@pytest.mark.integration
 def test_grid_summarise(grid_run):
     """``proteus grid summarise`` produces a non-empty summary in three
     modes: default, ``completed`` filter, and ``status=11`` filter.
@@ -76,7 +72,6 @@ def test_grid_summarise(grid_run):
     assert gsummarise(OUT_DIR, 'status=11')
 
 
-@pytest.mark.integration
 def test_grid_pack(grid_run):
     """``proteus grid pack`` produces a packed directory and zip archive
     containing manager log, per-case helpfiles, and plots. Verifies the

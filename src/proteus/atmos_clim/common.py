@@ -1,13 +1,13 @@
 # Common atmosphere climate model functions
 from __future__ import annotations
 
+import glob
 import logging
 import os
+from enum import Enum, auto
 from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
-from scipy.interpolate import PchipInterpolator
 
 from proteus.utils.helper import find_nearest
 
@@ -17,14 +17,34 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
+class LevelsSource(Enum):
+    """Origin of the fallback level properties held on `Atmos_t`.
+
+    CONVERGED_SOLVE: levels recorded from a solve this run accepted.
+    COMMITTED_ROW: levels taken from the last helpfile row written before this
+    run began, which is what a resumed run has until it converges a solve of
+    its own.
+    """
+
+    CONVERGED_SOLVE = auto()
+    COMMITTED_ROW = auto()
+
+
 # Atmosphere structure class
 class Atmos_t:
     def __init__(self):
         # Atmosphere object internal to JANUS or AGNI
         self._atm = None
 
-        # Albedo lookup object
-        self.albedo_o: Albedo_t = None
+        # The column JANUS last solved, and JANUS only: None under every other
+        # atmosphere module. JANUS copies `_atm` before it integrates and
+        # resamples the copy onto the radiative grid, so only the copy carries
+        # a profile at all. `_atm` keeps the surface boundary condition between
+        # iterations and nothing else, its profile arrays sitting at their
+        # allocated length with only the boundary cell written, so anything
+        # that wants the atmosphere itself has to read this instead. AGNI
+        # solves its column in place and needs no second reference.
+        self._atm_janus_last = None
 
         # Whether the most recent atmosphere call converged. For AGNI this
         # is True iff the Newton/LM solver converged on at least one attempt;
@@ -33,8 +53,32 @@ class Atmos_t:
         # failures with no interior state change). Transient, not persisted.
         self.converged: bool = True
 
+        # Photospheric and XUV level properties from the most recent solve
+        # that converged, keyed as in the helpfile row. Empty until this run
+        # converges a solve of its own; a run that has to substitute before
+        # then falls back on the last committed row. Transient, not persisted.
+        self.levels_converged: dict[str, float] = {}
 
-def ncdf_flag_to_bool(var) -> bool:
+        # Where the levels above came from. Tracked here rather than re-derived
+        # per call, since a run that has only ever fallen back on the committed
+        # row must not report those levels as converged. Transient.
+        self.levels_source: LevelsSource = LevelsSource.CONVERGED_SOLVE
+
+        # Number of consecutive iterations whose level properties were not
+        # produced by a converged solve of this run, whether they were
+        # substituted from the record or kept from a rejected structure for
+        # want of anything better. Reset to zero by the next converged solve.
+        # Mirrored to the helpfile column `atm_levels_stale` on every
+        # iteration, so it is readable per row after the run.
+        self.levels_stale_iters: int = 0
+
+        # Atmosphere solves this run has made. Only the first one may fall back
+        # on the rows committed before the run started; after that, an empty
+        # record means this run's own rows carry rejected levels too.
+        self.solves_seen: int = 0
+
+
+def ncdf_flag_to_bool(var) -> bool | None:
     """Convert NetCDF flag (y/n) to Python bool (true/false)"""
     v = str(var[0].tobytes().decode()).lower()
 
@@ -44,7 +88,8 @@ def ncdf_flag_to_bool(var) -> bool:
     elif v == 'n':
         return False
     else:
-        raise ValueError(f'Could not parse NetCDF atmos flag variable \n {var}')
+        log.error(f'Could not parse NetCDF atmos flag variable: {var}')
+        return None
 
 
 def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool = True) -> dict:
@@ -85,6 +130,12 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     p = np.array(ds.variables['p'][:])
     pl = np.array(ds.variables['pl'][:])
 
+    if 'gravity' not in ds.variables:
+        log.error(f"NetCDF file '{nc_fpath}' is missing required variable 'gravity'")
+        g = np.zeros_like(p)  # fallback to zeros
+    else:
+        g = np.array(ds.variables['gravity'][:])
+
     t = np.array(ds.variables['tmp'][:])
     tl = np.array(ds.variables['tmpl'][:])
 
@@ -104,11 +155,12 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
 
     nlev_c = len(p)
 
-    # read pressure, temperature, height data into dictionary values
+    # read pressure, temperature, gravity and height data into dictionary values
     out = {}
     if combine_edges:
         out['p'] = [pl[0]]
         out['t'] = [tl[0]]
+        out['g'] = [g[0]]  # Edge 0: use first cell centre value as fallback
         out['z'] = [zl[0]]
         out['r'] = [rl[0]]
         for i in range(nlev_c):
@@ -118,6 +170,9 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
             out['t'].append(t[i])
             out['t'].append(tl[i + 1])
 
+            out['g'].append(g[i])  # Cell centre i
+            out['g'].append(g[i])  # Edge i+1: use current cell centre value
+
             out['z'].append(z[i])
             out['z'].append(zl[i + 1])
 
@@ -126,6 +181,7 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     else:
         out['p'] = p
         out['t'] = t
+        out['g'] = g
         out['z'] = z
         out['r'] = r
         out['pl'] = pl
@@ -135,10 +191,11 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
 
     # flags
     for fk in ('transparent', 'solved', 'converged'):
+        out[fk] = False  # default if not found
         if fk in ds.variables.keys():
             out[fk] = ncdf_flag_to_bool(ds.variables[fk])
-        else:
-            out[fk] = False  # if not available
+            if out[fk] is None:
+                out[fk] = False
 
     # Read extra keys
     for key in extra_keys:
@@ -203,8 +260,22 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
 
 
 def read_atmosphere_data(output_dir: str, times: list, extra_keys=[]):
-    """
-    Read all p,t,z profiles from NetCDF files in a PROTEUS output folder.
+    """Return atmosphere profiles from NetCDF in PROTEUS output folder, at the given times.
+
+    Arguments
+    ----------
+        output_dir : str
+            Path to PROTEUS output folder.
+        times : list
+            List of times (floats) to read in [yr].
+        extra_keys : list (optional)
+            List of extra keys to read from the NetCDF files.
+
+    Returns
+    ----------
+        list of dicts, or None.
+            Each dict contains atmos data at each time.
+            If any of the requested times cannot be read, None is returned.
     """
     profiles = [
         read_ncdf_profile(
@@ -219,6 +290,37 @@ def read_atmosphere_data(output_dir: str, times: list, extra_keys=[]):
         return
 
     return profiles
+
+
+def find_latest_atmosphere_time(output_dir: str) -> float | None:
+    """Return the largest available ``*_atm.nc`` snapshot time on disk.
+
+    Arguments
+    ----------
+        output_dir : str
+            Path to PROTEUS output folder.
+
+    Returns
+    ----------
+        float or None
+            Largest snapshot time [yr]. None if no snapshots found.
+    """
+
+    # Find netcdf files and get times from their names
+    ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
+    times = []
+    for f in ncs:
+        try:
+            times.append(float(os.path.basename(f).split('_atm')[0]))
+        except ValueError:
+            log.warning(f"Could not parse time from NetCDF file '{f}'")
+
+    # Return None if no files found
+    if not times:
+        return None
+
+    # Return latest (max) time
+    return float(max(times))
 
 
 def get_spfile_name_and_bands(config: Config):
@@ -242,6 +344,52 @@ def get_spfile_path(fwl_dir: str, config: Config):
 
     # Construct file path
     return os.path.join(fwl_dir, 'spectral_files', group, bands, group) + '.sf'
+
+
+def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:
+    """Limit a level radius to the Hill radius, never below the solid body.
+
+    Gas beyond the Hill radius is not bound to the planet, so an XUV radius
+    outside it sizes the escape cross-section with material the planet does
+    not hold, and the energy-limited rate grows as the cube of the excess.
+    The limit is ``escape.hill_clamp_frac`` of the Hill radius, floored at
+    ``R_int`` since the solid body is always bound.
+
+    Parameters
+    ----------
+        config : Config
+            Configuration options for PROTEUS.
+        hf_row : dict
+            Current helpfile row; provides ``hill_radius`` and ``R_int``.
+        radius : float
+            Level radius to limit [m].
+
+    Returns
+    ----------
+        float
+            The radius, limited when the clip is enabled and applicable.
+    """
+    if not getattr(config.escape, 'hill_clamp', False):
+        return radius
+
+    # Zero before the first orbit update; nothing to clip against yet.
+    r_hill = float(hf_row.get('hill_radius', 0.0))
+    if not np.isfinite(r_hill) or r_hill <= 0.0:
+        return radius
+
+    frac = float(getattr(config.escape, 'hill_clamp_frac', 1.0))
+    r_limit = max(frac * r_hill, float(hf_row.get('R_int', 0.0)))
+    if radius <= r_limit:
+        return radius
+
+    log.warning(
+        'Level radius %.4e m exceeds %.3g of the Hill radius (%.4e m); clipping to %.4e m',
+        radius,
+        frac,
+        r_hill,
+        r_limit,
+    )
+    return r_limit
 
 
 def get_oarr_from_parr(p_arr: list, o_arr: list, p_tgt: float) -> tuple:
@@ -276,78 +424,3 @@ def get_radius_from_pressure(p_arr: list, r_arr: list, p_tgt: float) -> tuple[fl
     pressure-to-radius case.
     """
     return get_oarr_from_parr(p_arr, r_arr, p_tgt)
-
-
-class Albedo_t:
-    """
-    Store and evaluate bond albedo as a function of other variables.
-    """
-
-    def __init__(self, csvfile: str):
-        # Data table
-        self._data: pd.DataFrame = None
-        self.ok = False
-
-        # Interpolator
-        self._lims: dict = {}  # axis limits
-        self._interp = None
-
-        # Read data file
-        #   tmp     ->   temperature [K]
-        #   albedo  ->   bond albedo [-]
-        if os.path.isfile(csvfile):
-            try:
-                self._data = pd.read_csv(csvfile, dtype=float)
-            except Exception:
-                log.error(f"Could not parse lookup data from file '{csvfile}'")
-                self._data = None
-                return
-        else:
-            log.error(f"Could not find file '{csvfile}'")
-            return
-
-        # Check that file has required keys
-        for k in ('tmp', 'albedo'):
-            if k not in self._data.keys():
-                log.error(f"Albedo lookup data does not have required key '{k}'")
-                log.error(f'    File: {csvfile}')
-                return
-
-        # Store axis limits
-        for k in self._data.keys():
-            self._lims[k] = (np.amin(self._data[k]), np.amax(self._data[k]))
-
-        # Process data by interpolation
-        self.ok = True
-        self._interp = PchipInterpolator(self._data['tmp'], self._data['albedo'])
-
-    def evaluate(self, tmp: float) -> float:
-        """
-        Evaluate bond albedo at a given temperature [K]
-
-        Parameters
-        -----------
-        - tmp: float
-            Surface temperature [K]
-
-        Returns
-        ------------
-        - albedo_pl: float
-            Planetary bond albedo (from 0 to 1)
-        """
-
-        if (not self._interp) or (not self.ok):
-            log.error('Cannot evaluate bond albedo. Lookup data not loaded!')
-            return None
-
-        else:
-            # Ensure valid range on input parameters
-            tmp = min(max(tmp, self._lims['tmp'][0]), self._lims['tmp'][1])
-
-            # Evaluate albedo
-            alb = float(self._interp(tmp))
-
-            # Ensure valid range on output albedo
-            if not (0 <= alb <= 1):
-                log.warning(f'Interpolated `albedo_pl` is out of range: {alb}')
-            return min(max(alb, 0.0), 1.0)

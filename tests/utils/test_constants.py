@@ -14,9 +14,8 @@ Invariants tested:
     expected species
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -40,8 +39,13 @@ from proteus.utils.constants import (
     element_list,
     element_mmw,
     gas_list,
+    noble_gases,
+    noble_solar_mass_ratio,
     secs_per_year,
+    vap_element_list,
     vap_list,
+    vol_element_list,
+    vol_gas_list,
     vol_list,
 )
 
@@ -255,9 +259,8 @@ def test_vol_list_contains_expected_species():
 
 
 def test_gas_list_extends_vol_list():
-    """gas_list = vol_list + vap_list (volatiles + vapour species).
-
-    gas_list must be a superset of vol_list.
+    """gas_list is built from vol_list, vap_list, and noble_gases, so it must
+    be a superset of vol_list.
     """
 
     # check lengths
@@ -269,9 +272,8 @@ def test_gas_list_extends_vol_list():
 
 
 def test_gas_list_extends_vap_list():
-    """gas_list = vol_list + vap_list (volatiles + vapour species).
-
-    gas_list must be a superset of vol_list.
+    """gas_list is built from vol_list, vap_list, and noble_gases, so it must
+    be a superset of vap_list and of the noble gases.
     """
 
     # check lengths
@@ -280,6 +282,42 @@ def test_gas_list_extends_vap_list():
     # check presence of vapour species
     for species in vap_list:
         assert species in gas_list
+
+    # noble gases are full members of gas_list
+    for species in noble_gases:
+        assert species in gas_list
+
+
+def test_gas_list_is_deduplicated_union_of_sources():
+    """gas_list is the order-preserving, duplicate-free concatenation of
+    vol_list, noble_gases, and vap_list, in that order.
+    """
+    sources = vol_list + noble_gases + vap_list
+
+    # Set-equality: gas_list covers every source species and nothing extra.
+    assert set(gas_list) == set(sources)
+
+    # Deduplicated: no species repeats even though the raw concatenation may.
+    assert len(gas_list) == len(set(gas_list))
+
+    # Order-preserving: first-seen order of the concatenation is retained, so
+    # the volatile block precedes the noble block precedes the vapour block.
+    expected_order = list(dict.fromkeys(sources))
+    assert gas_list == expected_order
+
+    # Discrimination guard against a plain `set(...)` build, which would drop
+    # ordering: the first species must be the first volatile, not whatever a
+    # set happens to hash first, and the rock vapours must close the list.
+    assert gas_list[0] == vol_list[0]
+    assert gas_list[-len(vap_list) :] == vap_list
+    # The noble block sits between the two, which pins all three positions
+    # rather than only the ends.
+    assert gas_list[len(vol_list) : len(vol_list) + len(noble_gases)] == noble_gases
+
+    # Adversarial edge: injecting a cross-list duplicate collapses to one entry
+    # and does not lengthen the result.
+    seeded = [vol_list[0]] + vol_list + noble_gases + vap_list
+    assert list(dict.fromkeys(seeded)) == gas_list
 
 
 def test_vol_list_excludes_vap_list():
@@ -295,14 +333,90 @@ def test_vol_list_excludes_vap_list():
     assert set(vol_list).isdisjoint(set(vap_list)), 'vol_list and vap_list should be disjoint'
 
 
-def test_element_list_contains_expected_elements():
-    """element_list contains the 9 elements tracked by PROTEUS.
+def test_vol_gas_list_is_gas_list_without_rock_vapours():
+    """vol_gas_list carries the volatiles and noble gases but no rock vapour.
 
-    At minimum: H, O, C, N, S.
+    This is the species set summed into the M_vol_atm helpfile column, which is
+    defined as the atmospheric mass of volatiles with vapours excluded. Getting
+    the set wrong makes the M_vol_atm bookkeeping check in
+    utils.coupler.assert_mass_conservation compare mismatched species sets.
     """
-    assert len(element_list) == 9
-    for elem in ('H', 'O', 'C', 'N', 'S'):
+    # Exactly the non-vapour members of gas_list, order preserved.
+    assert vol_gas_list == [s for s in gas_list if s not in vap_list]
+
+    # The rock vapours are excluded and the noble gases are retained. These are
+    # the two ways the set is plausibly built wrong.
+    assert set(vol_gas_list).isdisjoint(set(vap_list))
+    assert set(noble_gases) <= set(vol_gas_list)
+    assert set(vol_list) <= set(vol_gas_list)
+
+    # Boundedness: a strict, non-empty subset of gas_list. The strictness
+    # matters because vol_gas_list == gas_list would silently fold rock vapour
+    # into every M_vol_atm comparison.
+    assert 0 < len(vol_gas_list) < len(gas_list)
+    assert len(vol_gas_list) == len(gas_list) - len(vap_list)
+
+
+def test_element_list_contains_expected_elements():
+    """element_list contains the volatile-forming elements, the refractory
+    elements, and the five noble gases tracked by PROTEUS.
+    """
+    for elem in (
+        'H',
+        'O',
+        'C',
+        'N',
+        'S',
+        'Si',
+        'Mg',
+        'Fe',
+        'Na',
+        'Al',
+        'Ti',
+        'Ca',
+        'K',
+        'He',
+        'Ne',
+        'Ar',
+        'Kr',
+        'Xe',
+    ):
         assert elem in element_list
+    # Noble gases are tracked as elements for the whole-planet mass balance.
+    for gas in ('He', 'Ne', 'Ar', 'Kr', 'Xe'):
+        assert gas in element_list
+
+    # Discrimination guard: no accidental duplicates in the element list.
+    assert len(set(element_list)) == len(element_list)
+
+
+def test_element_list_is_deduplicated_union_of_sources():
+    """element_list is the order-preserving, duplicate-free concatenation of
+    vol_element_list, vap_element_list, and noble_gases.
+    """
+    sources = vol_element_list + vap_element_list + noble_gases
+
+    # Set-equality: element_list covers every source element and nothing extra.
+    assert set(element_list) == set(sources)
+
+    # Deduplicated: no element repeats even though the raw concatenation may.
+    assert len(element_list) == len(set(element_list))
+
+    # Order-preserving: first-seen order of the concatenation is retained, so
+    # the volatile block precedes the refractory block precedes the nobles.
+    expected_order = list(dict.fromkeys(sources))
+    assert element_list == expected_order
+
+    # Discrimination guard against a plain `set(...)` build, which would drop
+    # ordering: the first element must be the first volatile, not whatever a
+    # set happens to hash first.
+    assert element_list[0] == vol_element_list[0]
+    assert element_list[-len(noble_gases) :] == noble_gases
+
+    # Adversarial edge: injecting a cross-list duplicate collapses to one entry
+    # and does not lengthen the result.
+    seeded = ['H'] + vol_element_list + vap_element_list + noble_gases
+    assert list(dict.fromkeys(seeded)) == element_list
 
 
 def test_element_mmw_all_positive():
@@ -314,6 +428,46 @@ def test_element_mmw_all_positive():
     for elem, mmw in element_mmw.items():
         assert mmw > 0, f'Molar mass for {elem} is not positive: {mmw}'
         assert mmw < 1.0, f'Molar mass for {elem} implausibly large: {mmw} kg/mol'
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_noble_solar_mass_ratios_match_protosolar_abundances():
+    """Pin the protosolar noble gas X/H mass ratios against Lodders (2003).
+
+    The ratios are derived from the Lodders (2003) protosolar log abundances
+    (H = 12): He 10.98, Ne 8.05, Ar 6.50, Kr 3.25, Xe 2.25, converted to X/H
+    mass ratios via `10**(log - 12) * M_X / M_H`. Pinning each to a literal
+    locks the constant so a later transcription or units slip fails here.
+
+    Discrimination: the ratios span seven orders of magnitude (He of order
+    0.1 down to Xe of order 1e-8), so a wrong-gas copy or a number-vs-mass
+    ratio confusion (a factor of M_X/M_H, tens to over a hundred) lands far
+    outside the per-gas scale guards below.
+    """
+    expected = {
+        'He': 3.79e-1,
+        'Ne': 2.25e-3,
+        'Ar': 1.25e-4,
+        'Kr': 1.48e-7,
+        'Xe': 2.32e-8,
+    }
+    assert set(noble_solar_mass_ratio) == set(noble_gases)
+    for gas, ref in expected.items():
+        assert noble_solar_mass_ratio[gas] == pytest.approx(ref, rel=1e-2)
+
+    # Independent order-of-magnitude guards per gas (helium is a major solar
+    # constituent; xenon is a trace element ~7 orders below it). A wrong
+    # exponent or a number-vs-mass slip fails these bounds.
+    assert 3.0e-1 < noble_solar_mass_ratio['He'] < 4.5e-1
+    assert 1.5e-3 < noble_solar_mass_ratio['Ne'] < 3.5e-3
+    assert 8.0e-5 < noble_solar_mass_ratio['Ar'] < 2.0e-4
+    assert 1.0e-7 < noble_solar_mass_ratio['Kr'] < 2.5e-7
+    assert 1.0e-8 < noble_solar_mass_ratio['Xe'] < 4.0e-8
+    # Ordering invariant: solar noble abundances fall monotonically from He to
+    # Xe by mass, so a swapped pair would break the descent.
+    ordered = [noble_solar_mass_ratio[g] for g in ('He', 'Ne', 'Ar', 'Kr', 'Xe')]
+    assert ordered[0] > ordered[1] > ordered[2] > ordered[3] > ordered[4]
 
 
 @pytest.mark.reference_pinned

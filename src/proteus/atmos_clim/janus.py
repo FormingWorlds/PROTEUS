@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from proteus.atmos_clim.common import get_oarr_from_parr
-from proteus.utils.constants import gas_list, vap_list, vol_list
+from proteus.atmos_clim.common import clip_radius_to_hill, get_oarr_from_parr
+from proteus.utils.constants import vap_list, vol_list, gas_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder
 
 if TYPE_CHECKING:
@@ -140,6 +140,25 @@ def UpdateStateAtm(atm, config: Config, hf_row: dict, tropopause):
     return
 
 
+def write_atmos_ncdf(atm, dirs: dict, time: float):
+    """Write the JANUS atmosphere object to a timestamped NetCDF file.
+
+    Uses the internal `write_ncdf` function inside JANUS.
+
+    Arguments
+    ----------
+        atm : atmos
+            JANUS atmosphere Python object.
+        dirs : dict
+            Dictionary containing paths to directories.
+        time : float
+            Current simulation time (used for timestamping the output file).
+    """
+    nc_fpath = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % time)
+    log.debug(f'Write JANUS atmosphere to {nc_fpath}')
+    atm.write_ncdf(nc_fpath)
+
+
 def RunJANUS(
     atm,
     dirs: dict,
@@ -149,6 +168,7 @@ def RunJANUS(
     write_in_tmp_dir=True,
     search_method=0,
     rtol=1.0e-4,
+    write_data: bool = True,
 ):
     """Run JANUS.
 
@@ -174,10 +194,17 @@ def RunJANUS(
             Root finding method used by JANUS
         rtol : float
             Relative tolerance on solution for root finding method
+        write_data : bool
+            Whether to write the atmosphere NetCDF file this iteration.
     Returns
     ----------
         atm : atmos
-            Updated atmos object
+            The solved atmosphere. This is not the object passed in: the
+            adiabat solve copies that one before integrating and returns a
+            copy resampled onto the radiative grid, and only the copy carries
+            a profile and fluxes on one common grid. The object passed in is
+            left holding the surface boundary condition alone and remains the
+            seed for the next call.
         output : dict
             Output variables, as a dict
 
@@ -262,9 +289,9 @@ def RunJANUS(
         % (atm.net_flux[-1], atm.net_flux[0], atm.LW_flux_up[0])
     )
 
-    # Save atm data to disk
-    nc_fpath = dirs['output'] + '/data/' + str(int(time)) + '_atm.nc'
-    atm.write_ncdf(nc_fpath)
+    # Save atm data to disk, as NetCDF, if requested
+    if write_data:
+        write_atmos_ncdf(atm, dirs, time)
 
     # Check for NaNs
     if not np.isfinite(atm.net_flux).all():
@@ -303,15 +330,38 @@ def RunJANUS(
         _, r_obs = get_oarr_from_parr(atm.p, r_arr, p_obs)
         _, t_obs = get_oarr_from_parr(atm.p, t_arr, p_obs)  # [Pa], [m]
 
-    # p_xuv from R_xuv
+    # Gravity at the observed level. Derive it from r_obs by the inverse-square
+    # law rather than reading atm.grav_z: write_ncdf() above reintegrates the
+    # heights (atm.z) without writing gravity back, so atm.grav_z is stale.
+    # This neglects self-gravity but is self-consistent with JANUS internals.
+    g_obs = float(hf_row['gravity']) * (float(hf_row['R_int']) / r_obs) ** 2
+
+    # p_xuv from R_xuv, clipping the radius before the pressure lookup
     if config.escape.xuv_defined_by_radius:
-        r_xuv = hf_row['R_xuv']  # m
+        r_xuv = clip_radius_to_hill(config, hf_row, float(hf_row['R_xuv']))  # m
         p_xuv = get_oarr_from_parr(r_arr, atm.p, r_xuv)[1] * 1e-5  # bar
 
-    # R_xuv from p_xuv
+    # R_xuv from p_xuv; a clipped radius moves the level, so the pressure is
+    # re-read at the clipped radius to keep the level self-consistent
     else:
         p_xuv = hf_row['p_xuv']  # bar
         r_xuv = get_oarr_from_parr(atm.p, r_arr, p_xuv * 1e5)[1]  # m
+        r_clip = clip_radius_to_hill(config, hf_row, r_xuv)
+        if r_clip != r_xuv:
+            r_xuv = r_clip
+            p_xuv = get_oarr_from_parr(r_arr, atm.p, r_xuv)[1] * 1e-5  # bar
+
+    # Temperature at the XUV level from the temperature profile; gravity by the
+    # inverse-square law from the surface value, for the same reason as g_obs
+    # above (atm.grav_z is stale after write_ncdf reintegrates the heights).
+    # When the hydrostatic integration failed the heights are unusable, so fall
+    # back to the surface values, matching the r_obs fallback above.
+    if atm.height_error or r_xuv <= 0.0:
+        t_xuv = float(hf_row['T_surf'])
+        g_xuv = float(hf_row['gravity'])
+    else:
+        _, t_xuv = get_oarr_from_parr(atm.p, t_arr, p_xuv * 1e5)  # K
+        g_xuv = float(hf_row['gravity']) * (float(hf_row['R_int']) / r_xuv) ** 2  # m s-2
 
     # final things to store
     output = {}
@@ -323,8 +373,11 @@ def RunJANUS(
     output['p_obs'] = p_obs / 1e5  # observed level [bar]
     output['T_obs'] = t_obs  # observed level [K]
     output['R_obs'] = r_obs  # observed level [m]
+    output['g_obs'] = g_obs  # observed gravity [m/s^2]
     output['p_xuv'] = p_xuv  # Closest pressure to Pxuv [bar]
     output['R_xuv'] = r_xuv  # Radius at Pxuv [m]
+    output['T_xuv'] = float(t_xuv)  # Temperature at Pxuv [K]
+    output['g_xuv'] = g_xuv  # Gravity at Pxuv [m s-2]
     output['P_surf_clim'] = P_surf_clim  # calculated surface pressure [bar]
     output['ocean_areacov'] = 0.0
     output['ocean_maxdepth'] = 0.0
@@ -337,4 +390,4 @@ def RunJANUS(
             x_xuv = 0.0
         hf_row[f'{g}_vmr_xuv'] = x_xuv
 
-    return output
+    return atm, output

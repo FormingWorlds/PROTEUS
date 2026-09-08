@@ -13,9 +13,8 @@ Invariants tested:
   - flag_included_volatiles: O2 is always included
 
 Testing standards:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -30,9 +29,15 @@ pytest.importorskip('calliope')
 from proteus.outgas.calliope import (
     _resolve_element,
     construct_guess,
+    construct_options,
     flag_included_volatiles,
 )
-from proteus.utils.constants import element_list, vol_list
+from proteus.utils.constants import (
+    element_list,
+    noble_gases,
+    noble_solar_mass_ratio,
+    vol_list,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -115,7 +120,7 @@ def test_construct_guess_returns_none_at_time_zero():
     Edge case: the very first outgassing call.
     """
     hf_row = {'Time': 0.0}
-    target = {e: 1e20 for e in element_list}
+    target = {e: (1e20 if e not in noble_gases else 0.0) for e in element_list}
     result = construct_guess(hf_row, target, mass_thresh=1.0)
     assert result is None
     assert hf_row['Time'] == pytest.approx(0.0, abs=1e-12)  # hf_row untouched
@@ -131,7 +136,7 @@ def test_construct_guess_uses_previous_pressures():
     hf_row = {'Time': 100.0}
     for s in vol_list:
         hf_row[f'{s}_bar'] = 10.0
-    target = {e: 1e20 for e in element_list}
+    target = {e: (1e20 if e not in noble_gases else 0.0) for e in element_list}
 
     result = construct_guess(hf_row, target, mass_thresh=1.0)
     assert result is not None
@@ -154,7 +159,7 @@ def test_construct_guess_zeros_depleted_element():
         hf_row[f'{s}_bar'] = 10.0
 
     # H is depleted below threshold
-    target = {e: 1e20 for e in element_list}
+    target = {e: (1e20 if e not in noble_gases else 0.0) for e in element_list}
     target['H'] = 0.1  # below mass_thresh=1.0
 
     result = construct_guess(hf_row, target, mass_thresh=1.0)
@@ -212,3 +217,351 @@ def test_flag_included_volatiles_zero_pressure_excludes():
     assert result['CO2'] is True
     # O2 always included
     assert result['O2'] is True
+
+
+# -----------------------------------------------------------------------
+# _resolve_element (noble gas modes)
+# -----------------------------------------------------------------------
+
+
+@pytest.mark.physics_invariant
+def test_resolve_noble_kg_mode_is_pass_through():
+    """In 'kg' mode the noble gas mass is the budget itself, independent of
+    the hydrogen inventory or the reservoir mass.
+    """
+    result = _resolve_element(
+        mode='kg', budget=3.0e16, H_kg=1.5e20, M_reservoir=4e24, name='He'
+    )
+    assert result == pytest.approx(3.0e16, rel=1e-12)
+    # Pass-through: changing H_kg and M_reservoir must not change the result.
+    result2 = _resolve_element(mode='kg', budget=3.0e16, H_kg=9e99, M_reservoir=9e99, name='He')
+    assert result2 == pytest.approx(3.0e16, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_resolve_noble_ppmw_mode_scales_with_reservoir():
+    """In 'ppmw' mode the mass is budget * 1e-6 * M_reservoir.
+
+    For 5 ppmw and a 4e24 kg reservoir the mass is 2e19 kg. Discrimination:
+    the 'kg' mode with the same budget would give 5 kg, and the 'solar' mode
+    would scale by the protosolar Ar/H ratio instead, both far from 2e19.
+    """
+    result = _resolve_element(mode='ppmw', budget=5.0, H_kg=1.5e20, M_reservoir=4e24, name='Ar')
+    assert result == pytest.approx(5.0 * 1e-6 * 4e24, rel=1e-12)
+    assert 1e19 < result < 1e20
+    # Wrong-mode guard: kg mode would return 5.0, off by ~19 orders.
+    assert abs(result - 5.0) > 1e18
+
+
+@pytest.mark.physics_invariant
+def test_resolve_noble_solar_mode_uses_protosolar_ratio():
+    """In 'solar' mode the mass is budget * (X/H)_solar * H_kg, so a budget
+    of 1.0 gives exactly the protosolar noble gas complement for the given
+    hydrogen inventory.
+    """
+    H_kg = 1.5e20
+    result = _resolve_element(mode='solar', budget=1.0, H_kg=H_kg, M_reservoir=4e24, name='He')
+    expected = noble_solar_mass_ratio['He'] * H_kg
+    assert result == pytest.approx(expected, rel=1e-12)
+    # A budget of 0.5 is half solar, and the mode is linear in the budget.
+    half = _resolve_element(mode='solar', budget=0.5, H_kg=H_kg, M_reservoir=4e24, name='He')
+    assert half == pytest.approx(0.5 * expected, rel=1e-12)
+    # Discrimination: the solar mass ratios are distinct per gas, so Xe must
+    # give a far smaller inventory than He at the same budget and H.
+    xe = _resolve_element(mode='solar', budget=1.0, H_kg=H_kg, M_reservoir=4e24, name='Xe')
+    assert xe < 1e-4 * result
+
+
+def test_resolve_noble_unknown_mode_raises():
+    """An unrecognised noble gas mode raises ValueError naming the gas and
+    the valid modes, so a config typo fails loudly rather than silently.
+    """
+    with pytest.raises(ValueError, match='Unknown He_mode'):
+        _resolve_element(mode='oceans', budget=1.0, H_kg=1e20, M_reservoir=4e24, name='He')
+    # Adjacent-valid: all three real modes return a non-negative mass.
+    for mode, budget in [('kg', 1e16), ('ppmw', 5.0), ('solar', 1.0)]:
+        assert (
+            _resolve_element(mode=mode, budget=budget, H_kg=1e20, M_reservoir=4e24, name='He')
+            >= 0
+        )
+
+
+# -----------------------------------------------------------------------
+# construct_options :: noble gas wiring
+# -----------------------------------------------------------------------
+
+
+def _element_mode_config(noble_included, He_mode='kg', He_budget=0.0, reservoir='mantle'):
+    """Minimal element-mode config for construct_options with noble control.
+
+    `noble_included` maps a noble gas symbol to its include flag. Only the
+    attributes construct_options reads in element mode are populated.
+    """
+    config = MagicMock()
+    config.outgas.fO2_shift_IW = 4.0
+    config.outgas.calliope.solubility = True
+    config.planet.volatile_mode = 'elements'
+    config.planet.volatile_reservoir = reservoir
+    config.planet.gas_prs.get_pressure = lambda s: 0.0
+
+    def _is_included(s):
+        if s in noble_gases:
+            return noble_included.get(s, False)
+        return True
+
+    config.outgas.calliope.is_included = _is_included
+
+    elem = config.planet.elements
+    elem.use_metallicity = False
+    elem.H_mode, elem.H_budget = 'kg', 1.5e20
+    elem.C_mode, elem.C_budget = 'kg', 1.0e20
+    elem.N_mode, elem.N_budget = 'kg', 2.0e18
+    elem.S_mode, elem.S_budget = 'kg', 5.0e19
+    for gas in noble_gases:
+        setattr(elem, f'{gas}_mode', 'kg')
+        setattr(elem, f'{gas}_budget', 0.0)
+    elem.He_mode, elem.He_budget = He_mode, He_budget
+    return config
+
+
+_HF_ROW = {
+    'M_mantle': 4.0e24,
+    'M_int': 4.5e24,
+    'gravity': 9.81,
+    'R_int': 6.37e6,
+    'Phi_global': 1.0,
+    'T_magma': 1800.0,
+}
+
+
+def test_construct_options_includes_noble_gas_with_budget():
+    """A noble gas that is switched on and carries a positive budget reaches
+    the CALLIOPE options as an inclusion flag and a ppmw budget relative to
+    the mantle mass. This is the element-mode path a PROTEUS config uses.
+    """
+    config = _element_mode_config({'He': True}, He_mode='kg', He_budget=3.0e16)
+    opts = construct_options({}, config, dict(_HF_ROW))
+
+    assert opts['He_included'] == 1
+    # He_ppmw is the mantle-relative ppmw of the 3e16 kg budget.
+    expected_ppmw = 1e6 * 3.0e16 / _HF_ROW['M_mantle']
+    assert opts['He_ppmw'] == pytest.approx(expected_ppmw, rel=1e-9)
+    # The other noble gases stay off with a zero budget.
+    for gas in ('Ne', 'Ar', 'Kr', 'Xe'):
+        assert opts[f'{gas}_included'] == 0
+        assert opts[f'{gas}_ppmw'] == 0.0
+    # Discrimination guard: forgetting the 1e6 ppmw factor would make He_ppmw
+    # a mass fraction (~7.5e-9) rather than a ppmw (~7.5e-3).
+    assert opts['He_ppmw'] > 1e-4
+
+
+def test_construct_options_excludes_noble_gas_off_or_zero_budget():
+    """A noble gas that is switched off, or on but with a zero budget, does
+    not enter the solve: its inclusion flag stays zero and its ppmw is zero.
+    """
+    # He switched off entirely.
+    off = construct_options(
+        {}, _element_mode_config({'He': False}, He_budget=3.0e16), dict(_HF_ROW)
+    )
+    assert off['He_included'] == 0
+    assert off['He_ppmw'] == 0.0
+
+    # He switched on but with no budget: still excluded from the solve.
+    zero = construct_options(
+        {}, _element_mode_config({'He': True}, He_budget=0.0), dict(_HF_ROW)
+    )
+    assert zero['He_included'] == 0
+    assert zero['He_ppmw'] == 0.0
+
+
+def test_construct_options_solar_mode_scales_with_hydrogen():
+    """The 'solar' noble gas mode reaches CALLIOPE as a ppmw budget derived
+    from the protosolar He/H ratio and the hydrogen inventory, so it tracks
+    the hydrogen budget rather than being an absolute mass.
+    """
+    config = _element_mode_config({'He': True}, He_mode='solar', He_budget=1.0)
+    opts = construct_options({}, config, dict(_HF_ROW))
+
+    H_kg = 1.5e20  # matches the config H_budget in kg mode
+    He_kg = noble_solar_mass_ratio['He'] * H_kg
+    expected_ppmw = 1e6 * He_kg / _HF_ROW['M_mantle']
+    assert opts['He_included'] == 1
+    assert opts['He_ppmw'] == pytest.approx(expected_ppmw, rel=1e-9)
+
+
+def test_construct_options_ppmw_mode_uses_selected_reservoir():
+    """In 'ppmw' mode with volatile_reservoir='mantle+core', the He budget is
+    ppmw relative to the mantle-plus-core mass, then re-expressed as a
+    mantle-relative ppmw for CALLIOPE. This exercises the reservoir-selection
+    branch that the kg and solar tests bypass.
+    """
+    config = _element_mode_config(
+        {'He': True}, He_mode='ppmw', He_budget=10.0, reservoir='mantle+core'
+    )
+    opts = construct_options({}, config, dict(_HF_ROW))
+
+    # He_kg = 10 ppmw of M_int; the mantle-relative ppmw CALLIOPE receives is
+    # 1e6 * He_kg / M_mantle, which equals the input ppmw scaled by M_int/M_mantle.
+    he_kg = 10.0 * 1e-6 * _HF_ROW['M_int']
+    expected = 1e6 * he_kg / _HF_ROW['M_mantle']
+    assert opts['He_included'] == 1
+    assert opts['He_ppmw'] == pytest.approx(expected, rel=1e-9)
+    assert opts['He_ppmw'] == pytest.approx(
+        10.0 * _HF_ROW['M_int'] / _HF_ROW['M_mantle'], rel=1e-9
+    )
+    # Discrimination: a reservoir swap that used M_mantle instead of M_int
+    # would give exactly the input 10.0 ppmw (the mantle factors cancel), so
+    # the mantle-plus-core result must differ from 10.0 by the M_int/M_mantle
+    # ratio (about 12.5 percent here).
+    assert opts['He_ppmw'] != pytest.approx(10.0, rel=1e-3)
+
+
+def test_construct_guess_defers_to_cold_start_when_noble_active():
+    """When a noble gas has a positive target, construct_guess returns None
+    so CALLIOPE runs its own cold start, because the helpfile does not carry
+    a noble partial pressure to warm-start from.
+    """
+    hf_row = {'Time': 100.0}
+    for s in vol_list:
+        hf_row[f'{s}_bar'] = 10.0
+    target = {e: (1e20 if e not in noble_gases else 0.0) for e in element_list}
+    target['He'] = 3.0e16  # He is active
+
+    assert construct_guess(hf_row, target, mass_thresh=1.0) is None
+
+    # A trace noble inventory, far below the major-volatile mass threshold,
+    # still defers to the cold start. This is the realistic regime (Earth-like
+    # helium is orders of magnitude below the 1e16 kg threshold); a condition
+    # that keyed on mass_thresh would miss it and hand CALLIOPE a warm guess
+    # with no helium pressure.
+    target['He'] = 3.0e12
+    assert construct_guess(hf_row, target, mass_thresh=1.0e16) is None
+
+    # Discrimination: with no active noble gas the same call returns a dict.
+    target['He'] = 0.0
+    result = construct_guess(hf_row, target, mass_thresh=1.0)
+    assert isinstance(result, dict)
+    assert result['CO2'] == pytest.approx(10.0, rel=1e-12)
+
+
+# -----------------------------------------------------------------------
+# calc_surface_pressures :: element target passed to CALLIOPE
+# -----------------------------------------------------------------------
+
+
+def _surface_pressure_hf_row():
+    """Helpfile row with a whole-planet inventory for every tracked element.
+
+    Each element carries a distinct mass so a target built from the wrong
+    element set is visible in the values, not only in the key set. The noble
+    inventories are trace relative to the volatiles, which is the realistic
+    regime.
+
+    Every total is deliberately DIFFERENT from the matching config budget in
+    `_element_mode_config`, so a target populated from the static config instead
+    of the running whole-planet totals is visible in the values. Reading the
+    config would silently discard every escape debit accumulated so far.
+    """
+    hf_row = dict(_HF_ROW)
+    hf_row['Time'] = 0.0
+    for e in element_list:
+        hf_row[f'{e}_kg_total'] = 1.0e16 if e in noble_gases else 1.0e20
+    # H budget in the config is 1.5e20; He budget is 3.0e16.
+    hf_row['H_kg_total'] = 1.2e20
+    hf_row['He_kg_total'] = 2.0e16
+    return hf_row
+
+
+def _captured_target(config, hf_row):
+    """Run calc_surface_pressures with CALLIOPE mocked and return the target."""
+    from unittest.mock import patch
+
+    from proteus.outgas.calliope import calc_surface_pressures
+
+    # A minimal output dict: the wrapper only copies keys it recognises, so an
+    # empty result leaves hf_row untouched and keeps the test on the target.
+    with patch('proteus.outgas.calliope.equilibrium_atmosphere', return_value={}) as mock_solve:
+        calc_surface_pressures({'output': '/tmp/test'}, config, hf_row)
+    return mock_solve.call_args.args[0]
+
+
+@pytest.mark.physics_invariant
+def test_calliope_target_carries_every_element_calliope_can_solve():
+    """The target handed to CALLIOPE holds the volatile elements and the noble
+    gases, and excludes the rock-forming elements.
+
+    CALLIOPE decides which noble gases are active from the inclusion flags
+    construct_options sets, then indexes the target by name, so a noble gas
+    that is switched on but absent from the target raises KeyError inside the
+    solver. The rock-forming elements of vap_element_list have no CALLIOPE
+    analogue and must stay out.
+    """
+    config = _element_mode_config({'He': True}, He_mode='kg', He_budget=3.0e16)
+    config.outgas.T_floor = 1200.0
+    config.outgas.mass_thresh = 1.0e16
+    config.outgas.solver_atol = 1e-8
+    config.outgas.solver_rtol = 1e-5
+    config.outgas.calliope.nguess = 100
+    config.outgas.calliope.nsolve = 500
+    config.outgas.calliope.p_guess_max = 5.0e6
+    config.planet.fO2_source = 'user_constant'
+    hf_row = _surface_pressure_hf_row()
+
+    target = _captured_target(config, hf_row)
+
+    # Every element CALLIOPE can partition is present, keyed by symbol.
+    for e in ('H', 'O', 'C', 'N', 'S', 'He', 'Ne', 'Ar', 'Kr', 'Xe'):
+        assert e in target, f'target missing {e!r}, which CALLIOPE indexes by name'
+    # The rock-forming elements are outgassed by LavAtmos, not CALLIOPE.
+    for e in ('Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K'):
+        assert e not in target, f'rock-forming {e!r} has no CALLIOPE analogue'
+    # Values come from the running whole-planet totals, not from the config
+    # budgets. The fixture sets both a volatile and a noble total away from their
+    # configured budget, so a target populated from the config, which would
+    # discard every escape debit, fails here.
+    assert target['H'] == pytest.approx(1.2e20, rel=1e-12)
+    assert target['He'] == pytest.approx(2.0e16, rel=1e-12)
+    assert target['H'] != pytest.approx(config.planet.elements.H_budget, rel=1e-3)
+    assert target['He'] != pytest.approx(config.planet.elements.He_budget, rel=1e-3)
+    # Scale guard: the noble entry is trace against hydrogen by four orders of
+    # magnitude, so a target that had swapped the two would fail here.
+    assert target['He'] < 1e-3 * target['H']
+
+
+@pytest.mark.physics_invariant
+def test_calliope_target_reaches_the_solver_for_an_active_noble_gas():
+    """With helium switched on, the inclusion flag and the target agree, so the
+    solver is handed a self-consistent problem.
+
+    The failure this guards against is asymmetric rather than absent data: the
+    options say helium is a primary unknown while the target does not name it.
+    Also covers the limit case of a noble gas that is configured off, where the
+    target still carries a zero entry rather than dropping the key.
+    """
+    config = _element_mode_config({'He': True}, He_mode='kg', He_budget=3.0e16)
+    config.outgas.T_floor = 1200.0
+    config.outgas.mass_thresh = 1.0e16
+    config.outgas.solver_atol = 1e-8
+    config.outgas.solver_rtol = 1e-5
+    config.outgas.calliope.nguess = 100
+    config.outgas.calliope.nsolve = 500
+    config.outgas.calliope.p_guess_max = 5.0e6
+    config.planet.fO2_source = 'user_constant'
+    hf_row = _surface_pressure_hf_row()
+
+    opts = construct_options({}, config, dict(hf_row))
+    target = _captured_target(config, hf_row)
+
+    # Every noble gas the options mark active must be a target key.
+    active = [g for g in noble_gases if opts[f'{g}_included'] == 1]
+    assert active == ['He']
+    for gas in active:
+        assert gas in target
+        assert target[gas] > 0.0
+
+    # Limit input: the nobles that are switched off still hold a target entry,
+    # so a later config change that switches one on cannot desynchronise the
+    # two. Their inventories are the trace values from the helpfile row.
+    for gas in ('Ne', 'Ar', 'Kr', 'Xe'):
+        assert opts[f'{gas}_included'] == 0
+        assert target[gas] == pytest.approx(1.0e16, rel=1e-12)

@@ -1,7 +1,6 @@
 # Physical, numerical, etc constants
 from __future__ import annotations
 
-# Astronomical constants
 L_sun = 3.828e26  # W, IAU definition
 R_sun = 6.957e8  # m
 R_sun_cm = 100 * R_sun  # cm
@@ -12,6 +11,11 @@ M_earth = 5.972e24  # kg
 R_earth = 6.335439e6  # m
 R_core_earth = 3485000.0  # m
 M_core_earth = 1.94e24  # kg
+
+# Fei et al. (2021, Nat. Commun. 12, 876) MgSiO3 melting curve is calibrated to
+# ~500 GPa. Above this pressure the high-pressure power-law liquidus branch is
+# an extrapolation, so a superheat margin evaluated there is uncertain.
+FEI2021_LIQUIDUS_P_CALIB_PA = 500e9  # Pa
 mol = 6.02214076e23  # mol definition
 
 # Earth heat flux, globally averaged [W m-2]
@@ -40,17 +44,96 @@ const_k = 1.38065812e-23  # Boltzman thermodynamic constant
 const_sigma = 5.67051196e-8  # Stefan-Boltzman constant
 const_G = 6.67428e-11  # Gravitational constant (2006 measurements)
 const_Nav = 6.02214076e23  # Avogadro's constant [mol-1]
+const_mp = 1.6726231e-27  # Proton mass [kg]
 B_ein = 2.5
 
-# Supported gases
+# CODATA electron rest mass, expressed as a molar mass [g mol-1]; not an
+# element, so it doesn't belong in element_mmw.
+electron_molar_mass = 5.4858e-4
+
+# Supported volatiles
 vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
-vap_list = ['SiO']  # just one for now
-gas_list = vol_list + vap_list
 
-# Supported elements
-element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na']
+# Supported vapours
+vap_list = [
+    'SiO',
+    'SiO2',
+    'Si',
+    'Na',
+    'K',
+    'Ti',
+    'TiO',
+    'TiO2',
+    'Mg',
+    'MgO',
+    'Al',
+    'HAlO2',
+    'SiH',
+    'SiH4',
+    'Fe',
+    'FeO',
+    'FeO2H2',
+    'CaO',
+    'NaOH',
+    'Ca',
+    'KOH',
+]
 
-# Masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/
+prt_gases = [
+    'C2H2',
+    'C2H4',
+    'CH4',
+    'CO',
+    'CO2',
+    'H2',
+    'H2O',
+    'H2S',
+    'HCN',
+    'NH3',
+    'O',
+    'O2',
+    'O3',
+    'OH',
+    'SH',
+    'Si',
+    'Si_+',
+    'SiO',
+    'SiO2',
+    'SO2',
+]
+prt_rayleigh_species = ['H2', 'He', 'H']
+prt_cia_species = [
+    'CO2--CO2',
+    'H2--H2',
+    'H2--He',
+    'H2O--H2O',
+    'H2O--N2',
+    'N2--H2',
+    'N2--He',
+    'N2--N2',
+    'N2--O2',
+    'O2--O2',
+]
+prt_ignored_gases = {'e-', 'MMW', 'nabla_ad'}
+
+# Noble gases. They are full members of both gas_list and element_list.
+# They are tracked in the helpfile and the whole-planet mass balance.
+noble_gases = ['He', 'Ne', 'Ar', 'Kr', 'Xe']
+
+# Construct gas list from all three sources (with duplicates removed)
+gas_list = list(dict.fromkeys(vol_list + noble_gases + vap_list))
+
+# Gases except rock vapours - tracked separately in M_vaps.
+vol_gas_list = [s for s in gas_list if s not in vap_list]
+
+# Supported elements: volatiles, rock-forming elements, noble gases (above)
+vol_element_list = ['H', 'O', 'C', 'N', 'S']
+vap_element_list = ['Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K']
+
+# Construct element list from all three sources (with duplicates removed)
+element_list = list(dict.fromkeys(vol_element_list + vap_element_list + noble_gases))
+
+# Molar masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/
 element_mmw = {
     'H': 1.008000000e-03,
     'He': 4.002000000e-03,
@@ -137,7 +220,6 @@ element_mmw = {
     'Pa': 2.310350000e-01,
     'U': 2.380280000e-01,
 }  # noqa
-
 ## Constant from Zephyrus
 ergcm2stoWm2 = 1e-3  # convert [erg s-1 cm-2] to [W m-2]
 # Sun parameters
@@ -147,6 +229,21 @@ Teff_sun = 5780.0  # Effective temperature of the sun [K]
 C_solar = 2.884e-4  # Solar C/H ratio
 N_solar = 6.761e-5  # Solar N/H ratio
 S_solar = 1.318e-5  # Solar S/H ratio
+
+# Protosolar noble gas abundances, expressed as X/H mass ratios, derived from
+# the Lodders (2003) protosolar abundances (ApJ 591:1220). These drive the
+# noble gas 'solar' budget mode. They are approximate reference values (the
+# neon and argon solar abundances in particular carry real uncertainty), and
+# planetary bodies are depleted in noble gases by orders of magnitude relative
+# to solar, so the solar mode is an upper-bound scaling rather than a
+# realistic default budget.
+noble_solar_mass_ratio = {
+    'He': 3.79e-1,
+    'Ne': 2.25e-3,
+    'Ar': 1.25e-4,
+    'Kr': 1.48e-7,
+    'Xe': 2.32e-8,
+}
 
 # Radionuclide values below are from Ruedas (2017), via SPIDER
 # Natural concentrations (provided in config file) can

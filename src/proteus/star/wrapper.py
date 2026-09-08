@@ -378,13 +378,40 @@ def scale_spectrum_to_toa(fl_arr, sep: float):
         fl_arr : iterable
             Stellar fluxes at 1 AU
         sep : float
-            Planet-star distance, in units of AU
+            Planet-star distance [m]
     Returns
     ----------
         fl_arr : np.ndarray
             Incoming stellar radiation scaled to the correct distance.
     """
     return np.array(fl_arr) * ((AU / sep) ** 2)
+
+
+def scale_spectrum_to_stellar_surface(fl_arr, sep: float, r_star: float):
+    """
+    Scale stellar fluxes from the top of the planet's atmosphere to the stellar surface.
+
+    This inverts the separation-dependent part of scale_spectrum_to_toa. The spectrum
+    written to the .sflux file is the flux at the planet, reduced from the stellar
+    surface by (r_star / sep) ** 2, so recovering the surface value multiplies by
+    (sep / r_star) ** 2. A consumer that compares against the stellar surface, such as
+    the eclipse-depth denominator or the VULCAN stellar input, needs this; the climate
+    and photochemistry modules that want the flux at the planet use the file as written.
+
+    Parameters
+    ----------
+        fl_arr : iterable
+            Stellar fluxes at the top of the planet's atmosphere.
+        sep : float
+            Planet-star distance [m].
+        r_star : float
+            Stellar radius [m].
+    Returns
+    ----------
+        fl_arr : np.ndarray
+            Stellar fluxes at the stellar surface.
+    """
+    return np.array(fl_arr) * ((sep / r_star) ** 2)
 
 
 def write_spectrum(wl_arr, fl_arr, hf_row: dict, output_dir: str):
@@ -396,7 +423,8 @@ def write_spectrum(wl_arr, fl_arr, hf_row: dict, output_dir: str):
         wl_arr : np.ndarray
             Wavelength array [nm]
         fl_arr : np.ndarray
-            Stellar fluxes at 1 AU [erg s-1 cm-2 nm-1]
+            Stellar fluxes at the top of the planet's atmosphere
+            [erg s-1 cm-2 nm-1]
         hf_row : dict
             Current helpfile row
         output_dir : str
@@ -405,10 +433,14 @@ def write_spectrum(wl_arr, fl_arr, hf_row: dict, output_dir: str):
 
     log.debug('Writing stellar spectrum to file')
 
-    # Header information
+    # Header information. Name where the spectrum corresponds to so the file is
+    # self-describing: these are the fluxes at the top of the planet's atmosphere,
+    # carried in from 1 AU by the orbital separation, not the fluxes at the stellar
+    # surface. A consumer that wants the stellar surface must undo that scaling.
     header = (
-        '# WL(nm)\t Flux(ergs/cm**2/s/nm)   Stellar flux at t_star = %.2e yr'
-        % hf_row['age_star']
+        '# WL(nm)\t Flux(ergs/cm**2/s/nm)   '
+        'Stellar flux at the top of the planet atmosphere '
+        '(scaled from 1 AU by the orbital separation), t_star = %.2e yr' % hf_row['age_star']
     )
 
     # Write to TSV file
@@ -450,6 +482,12 @@ def update_stellar_quantities(hf_row: dict, config: Config, stellar_track=None):
     log.info('    F_ins      = %.3e   W m-2' % hf_row['F_ins'])
     log.info('    F_xuv      = %.3e   W m-2' % hf_row['F_xuv'])
     log.info('    T_star     = %.3f    K' % hf_row['T_star'])
+
+    # Inform if applying bolometric scaling
+    if hf_row['bol_scale'] != 1.0:
+        log.info(
+            f'    Scaling factor is currently active on stellar fluxes: {hf_row["bol_scale"]}'
+        )
 
     # Calculate new eqm temperature
     log.debug('Update equilibrium temperature')
@@ -553,9 +591,21 @@ def update_instellation(hf_row: dict, config: Config, stellar_track=None):
                 # XUV flux not provided by Baraffe tracks
                 Fxuv_SI = 0.0
 
+    # Determine if bolometric scaling is enabled
+    bol_scale_apply = 1.0
+    if config.star.bol_scale != 1.0 and config.star.bol_scale_start is not None:
+        # Determine when bolometric is currently active
+        bol_scale_ini = config.star.bol_scale_start * 1e9
+        bol_scale_end = bol_scale_ini + config.star.bol_scale_duration * 1e9
+
+        # Apply it if age is within the range
+        if bol_scale_ini <= hf_row['age_star'] < bol_scale_end:
+            bol_scale_apply = config.star.bol_scale
+
     # Update hf_row dictionary
-    hf_row['F_ins'] = S_0 * config.star.bol_scale
-    hf_row['F_xuv'] = Fxuv_SI * config.star.bol_scale
+    hf_row['F_ins'] = S_0 * bol_scale_apply
+    hf_row['F_xuv'] = Fxuv_SI * bol_scale_apply
+    hf_row['bol_scale'] = bol_scale_apply
 
 
 def update_equilibrium_temperature(hf_row: dict, config: Config):

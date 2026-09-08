@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from proteus.config import read_config_object
-from proteus.escape.boreas import BOREAS_GASES, _set_boreas_params
+from proteus.escape.boreas import BOREAS_GASES, _set_boreas_params, bound_escape_level
 from proteus.utils.constants import AU, M_earth, R_earth, element_list
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -15,8 +15,10 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 log = logging.getLogger(__name__)
 
 
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope='session')
 def _skip_if_no_boreas():
+    # Explicit rather than autouse: bound_escape_level below is pure Python
+    # and its tests run without the optional package installed.
     pytest.importorskip('boreas')
 
 
@@ -77,6 +79,7 @@ def boreas_config() -> object:
     return cfg
 
 
+@pytest.mark.usefixtures('_skip_if_no_boreas')
 def test_boreas_params(boreas_config):
     """``_set_boreas_params`` populates the BOREAS parameter object from
     ``hf_row``, with FXUV converted from W/m^2 to mW/m^2 (factor 1e3) and
@@ -99,6 +102,7 @@ def test_boreas_params(boreas_config):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+@pytest.mark.usefixtures('_skip_if_no_boreas')
 def test_run_boreas_unit_conversions_and_fractionation(boreas_config, monkeypatch):
     """RunBOREAS converts BOREAS CGS outputs to SI and stores them in
     hf_row. The conversion factors are the physics contract:
@@ -170,6 +174,7 @@ def test_run_boreas_unit_conversions_and_fractionation(boreas_config, monkeypatc
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures('_skip_if_no_boreas')
 def test_run_boreas_raises_on_solver_failure(boreas_config, monkeypatch):
     """When the BOREAS mass-loss solver raises internally, RunBOREAS
     must catch the exception, update the statusfile to code 28, and
@@ -201,6 +206,7 @@ def test_run_boreas_raises_on_solver_failure(boreas_config, monkeypatch):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+@pytest.mark.usefixtures('_skip_if_no_boreas')
 def test_run_boreas_zero_xuv_flux(boreas_config, monkeypatch):
     """F_xuv = 0.0 represents the pre-XUV era (young star before
     chromospheric activity ramps up, or a planet far enough from
@@ -259,3 +265,38 @@ def test_run_boreas_zero_xuv_flux(boreas_config, monkeypatch):
     # The FXUV parameter passed to BOREAS is in mW/m^2 (factor 1e3);
     # verify the conversion did not produce a non-zero artifact
     assert hf_row['F_xuv'] == pytest.approx(0.0, abs=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_bound_escape_level_scales_the_rate_with_the_clipped_area():
+    """A solved XUV radius beyond the Hill radius is clipped, and the bulk rate
+    already stored in the row scales with the area ratio, so the rate and the
+    recorded radius describe the same cross-section.
+
+    The solved radius is 5 Hill radii, so the area ratio is 1/25: a bound that
+    clipped the radius but left the rate would be off by that factor, far
+    outside tolerance, and the reverse error (cubing instead of squaring)
+    lands at 1/125 and also fails.
+    """
+    from types import SimpleNamespace
+
+    config = SimpleNamespace(escape=SimpleNamespace(hill_clamp=True, hill_clamp_frac=1.0))
+    hf_row = {'hill_radius': 1.0e8, 'R_int': 6.4e6, 'esc_rate_total': 2.5e10}
+
+    r = bound_escape_level(config, hf_row, 5.0e8)
+
+    assert r == pytest.approx(1.0e8, rel=1e-12)
+    assert hf_row['esc_rate_total'] == pytest.approx(2.5e10 / 25.0, rel=1e-12)
+    assert hf_row['esc_rate_total'] != pytest.approx(2.5e10 / 125.0, rel=1e-2)
+
+    # Inside the Hill radius nothing changes, neither radius nor rate.
+    hf_row['esc_rate_total'] = 2.5e10
+    r_in = bound_escape_level(config, hf_row, 7.0e7)
+    assert r_in == pytest.approx(7.0e7, rel=1e-12)
+    assert hf_row['esc_rate_total'] == pytest.approx(2.5e10, rel=1e-12)
+
+    # Disabled, the solved radius passes through even beyond the Hill radius.
+    config.escape.hill_clamp = False
+    r_off = bound_escape_level(config, hf_row, 5.0e8)
+    assert r_off == pytest.approx(5.0e8, rel=1e-12)
+    assert hf_row['esc_rate_total'] == pytest.approx(2.5e10, rel=1e-12)

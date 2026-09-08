@@ -34,7 +34,9 @@ def _jlsca(sca: float):
     return juliacall.convert(jl.LovePy.prec, sca)
 
 
-def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides_t, config: Config) -> float:
+def run_lovepy(
+    hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides_t, config: Config
+) -> float:
     """Run the lovepy tidal heating module.
 
     Sets the interior tidal heating and returns Im(k2) love number.
@@ -142,15 +144,21 @@ def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides_
         log.debug('    power from bulk calc: %.3e W kg-1' % power_blk)
 
     # Collect tidal mode information
-    nmk = np.array(([2, 0, 1],[2, 2, 1],[2, 2, 3]), dtype=int) # Note that these modes are hardcoded into Lovepy.
-    LNk = np.array(([0.0 + Imk2*1j],[0.0 + Imk2*1j],[0.0 + Imk2*1j]), dtype=complex) # Note we only have acces to the imaginary part of k2, so we set the real part to 0.0.
-    sigma = np.array(([omega],[omega],[omega]), dtype=float) # Note we consistently drop the minus sign on the East/West ward component of the forcing frequency and the imaginary part of the k2 love number.
+    nmk = np.array(
+        ([2, 0, 1], [2, 2, 1], [2, 2, 3]), dtype=int
+    )  # Note that these modes are hardcoded into Lovepy.
+    LNk = np.array(
+        ([0.0 + Imk2 * 1j], [0.0 + Imk2 * 1j], [0.0 + Imk2 * 1j]), dtype=complex
+    )  # Note we only have acces to the imaginary part of k2, so we set the real part to 0.0.
+    sigma = np.array(
+        ([omega], [omega], [omega]), dtype=float
+    )  # Note we consistently drop the minus sign on the East/West ward component of the forcing frequency and the imaginary part of the k2 love number.
 
     # Store tidal mode information in tides_o object
-    storage = tides_o.add(primary="planet", perturber="star")
-    storage.nmk    = nmk
-    storage.sigma  = sigma
-    storage.LNk    = LNk
+    storage = tides_o.add(primary='planet', perturber='star')
+    storage.nmk = nmk
+    storage.sigma = sigma
+    storage.LNk = LNk
 
     # Return imaginary part of k2 love number
     return float(Imk2)

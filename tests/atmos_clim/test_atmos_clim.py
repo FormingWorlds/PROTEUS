@@ -17,12 +17,10 @@ Physics tested:
 - Net flux constraint (prevent warming: F_atm >= 0)
 
 All tests use mocked config objects to isolate physics calculations (<100ms runtime).
-See docs/test_infrastructure.md, docs/test_building.md for testing standards.
 
 Related documentation:
-- docs/test_infrastructure.md: Test framework and CI integration
-- docs/test_categorization.md: Test markers and categories
-- docs/test_building.md: Best practices for writing robust tests
+- docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
+- docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 """
 
 from __future__ import annotations
@@ -397,6 +395,47 @@ def test_rundummyatm_scale_height():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+def test_rundummyatm_gobs_inverse_square_of_robs():
+    """Observed gravity obeys the inverse-square law against R_obs.
+
+    Physical scenario: the dummy atmosphere reports its constraining
+    observable at the level R_obs, which sits height_factor scale heights
+    above the surface R_int. Gravity is (R_int/R_obs)**2
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.4
+    config.atmos_clim.dummy.height_factor = 3.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.surf_state = 'fixed'
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 1200.0,  # K
+        'albedo_pl': 0.3,
+        'F_ins': 1000.0,  # W/m^2
+        'atm_kg_per_mol': 0.029,  # kg/mol; N2
+        'gravity': 10.0,  # m/s^2 surface gravity
+        'R_int': 6.0e6,  # m
+        'P_surf': 1e5,  # Pa
+    }
+
+    output = RunDummyAtm({}, config, hf_row)
+
+    # Scaled gravity from surface
+    g_expected = hf_row['gravity'] * (hf_row['R_int'] / output['R_obs']) ** 2
+    assert output['g_obs'] == pytest.approx(g_expected, rel=1e-10)
+
+    # g_obs must be strictly weaker than the surface gravity
+    assert output['R_obs'] > hf_row['R_int']
+    assert output['g_obs'] < hf_row['gravity']
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_zenith_angle_effect():
     """Test that zenith angle reduces scattered solar flux via cosine factor.
 
@@ -532,6 +571,82 @@ def test_rundummyatm_albedo_calculation():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+def test_rundummyatm_albedo_zero_when_no_downwelling_flux():
+    """Regression: zero instellation (F_ins=0, e.g. night side / a star
+    that has switched off) drives the downwelling shortwave flux to zero.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.3
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.5
+    config.atmos_clim.surf_state = 'fixed'
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 1400.0,
+        'albedo_pl': 0.2,
+        'F_ins': 0.0,  # no instellation -> fl_D_SW == 0.0
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+
+    # Zero instellation gives zero albedo
+    output = RunDummyAtm({}, config, hf_row)
+    assert output['albedo'] == pytest.approx(0.0, abs=1e-15)
+
+    # Discrimination: the rest of the flux chain (surface emission) is
+    # unaffected by the F_ins=0 change, so F_olr must stay positive
+    assert output['F_olr'] > 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_albedo_formula_flux_positive():
+    """The zero-flux guard must only fire on the degenerate F_ins=0 case;
+    with positive instellation, albedo is still the closed-form
+    ``surf_greyalbedo / (1 - surf_greyalbedo)`` (the F_ins-dependent
+    prefactor cancels between numerator and denominator).
+
+    surf_greyalbedo=0.25 -> expected = 0.25 / 0.75 = 1/3.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.3
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.25
+    config.atmos_clim.surf_state = 'fixed'
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 1400.0,
+        'albedo_pl': 0.2,
+        'F_ins': 1361.0,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+
+    # albedo derived correctly from F_ins and surf_greyalbedo
+    output = RunDummyAtm({}, config, hf_row)
+    assert output['albedo'] == pytest.approx(1.0 / 3.0, rel=1e-12)
+
+    # Discrimination: the zero-flux guard's hardcoded 0.0 must NOT have
+    # leaked into this positive-flux case
+    assert output['albedo'] != pytest.approx(0.0, abs=1e-6)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_output_keys():
     """Test that all expected output keys are present in returned dictionary.
 
@@ -575,11 +690,19 @@ def test_rundummyatm_output_keys():
         'albedo',
         'p_xuv',
         'R_xuv',
+        'T_xuv',
+        'g_xuv',
         'p_obs',
         'P_surf_clim',
     ]
     for key in required_keys:
         assert key in output
+    # The dummy XUV level coincides with the observed one, so its temperature
+    # is the surface temperature and its gravity matches g_obs; hardcoded
+    # zeros would fail both pins.
+    assert output['T_xuv'] == pytest.approx(output['T_surf'], rel=1e-12)
+    assert output['g_xuv'] == pytest.approx(output['g_obs'], rel=1e-12)
+    assert output['g_xuv'] > 0.0
     # Positivity guard on the physical quantities: temperature, radii,
     # and pressures must all be strictly positive. A regression that
     # populated these keys with default zeros or NaN would still pass
@@ -587,6 +710,56 @@ def test_rundummyatm_output_keys():
     assert output['T_surf'] > 0.0
     assert output['R_obs'] > 0.0
     assert output['P_surf_clim'] > 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_clips_the_xuv_radius_to_the_hill_radius():
+    """With the clip enabled and a Hill radius below the observed radius, the
+    dummy XUV level moves to the Hill radius while the observed level stays,
+    and g_xuv strengthens by the inverse square of the ratio.
+
+    Discrimination: without the clip the XUV level coincides with the observed
+    one and g_xuv equals g_obs; with it, g_xuv exceeds g_obs by the squared
+    radius ratio, which the final pin resolves far outside tolerance.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.5
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.atmos_clim.dummy.fixed_flux = -1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.surf_state = 'fixed'
+    config.planet.prevent_warming = False
+    config.escape.hill_clamp = True
+    config.escape.hill_clamp_frac = 1.0
+
+    hf_row = {
+        'T_magma': 2500.0,
+        'albedo_pl': 0.1,
+        'F_ins': 1000.0,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+    output = RunDummyAtm({}, config, dict(hf_row))
+    r_obs = output['R_obs']
+    assert r_obs > 6.371e6  # the scale height lifted the observed level
+
+    # Hill radius between R_int and R_obs, so the clip engages.
+    hf_row['hill_radius'] = 6.371e6 + 0.4 * (r_obs - 6.371e6)
+    clipped = RunDummyAtm({}, config, dict(hf_row))
+
+    assert clipped['R_xuv'] == pytest.approx(hf_row['hill_radius'], rel=1e-12)
+    assert clipped['R_obs'] == pytest.approx(r_obs, rel=1e-12)  # untouched
+    expected_g = 9.8 * (6.371e6 / hf_row['hill_radius']) ** 2
+    assert clipped['g_xuv'] == pytest.approx(expected_g, rel=1e-10)
+    assert clipped['g_xuv'] > clipped['g_obs']  # deeper level, stronger gravity
+    assert clipped['g_xuv'] != pytest.approx(clipped['g_obs'], rel=1e-3)
 
 
 # =======================================================================================
