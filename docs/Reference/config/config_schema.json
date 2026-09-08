@@ -503,7 +503,7 @@
           "value": 0
         }
       ],
-      "description": "Maximum time-step size [yr] while the planet-satellite system is inside the evection resonance band (``hf_row['in_evection_band']``, written by ``evolve_orbit_satellite``/``_in_evection_band``). Same rationale as ``mushy_maximum``: the coarse PROTEUS clock cannot foresee this regime in advance, so once inside it the step is capped a posteriori (one PROTEUS iteration late, same lag as the mushy cap) to bound how large a single structural (C_planet) jump the orbital-evolution substep controller has to smooth over -- see ``run_adaptive_orbit_substeps``. Set to 0 (default) to disable.",
+      "description": "Maximum time-step size [yr] while the planet-satellite system is inside the evection resonance band (``hf_row['in_evection_band']``, written by ``evolve_orbit_satellite``/``_in_evection_band``). See ``run_adaptive_orbit_substeps``. Set to 0 to disable.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

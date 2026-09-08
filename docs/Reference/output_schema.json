@@ -498,7 +498,7 @@
     {
       "name": "in_evection_band",
       "unit": "bool, 0/1",
-      "description": "whether ps1d_evec judged itself inside the evection resonance band at the end of this call",
+      "description": "whether inside the evection resonance band",
       "group": "Satellite system",
       "origin": "literal",
       "producers": [

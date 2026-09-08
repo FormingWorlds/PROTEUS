@@ -418,19 +418,20 @@ def test_evolve_orbit_star_sp0d_model_evolves_hf_row():
     assert abs(hf_row['semimajorax'] - sma_before) > 1e-3
 
 
-def test_evolve_orbit_star_unrecognized_model_is_a_no_op():
-    """An unrecognized (or ``None``) ``star_planet_model`` falls
-    through both branches: the current source has no ``else``, so
-    ``hf_row`` must be left completely untouched and no exception
-    raised.
+def test_evolve_orbit_star_unrecognized_model_raises_immediately():
+    """An unrecognized (or ``None``) ``star_planet_model`` is rejected
+    up-front by the dispatch, before the shared adaptive-substep
+    controller ever starts.
     """
     hf_row = _make_hf_row(ecc=0.2, Imk2=1e-2)
     hf_row_before = dict(hf_row)
     config = _make_star_planet_config(None)
     interior_o = SimpleNamespace(dt=1e4)
 
-    evolve_orbit_star(hf_row, config, tides_o=object(), interior_o=interior_o)
+    with pytest.raises(ValueError, match='None'):
+        evolve_orbit_star(hf_row, config, tides_o=object(), interior_o=interior_o)
 
+    # No side effect: the raise happens before any substep runs.
     assert hf_row == hf_row_before
 
 
