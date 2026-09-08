@@ -212,7 +212,7 @@ runs:
             exit 1
             ;;
         esac
-        brew pin gcc
+        brew pin local/pinned-toolchain/gcc
         retry_with_timeout "brew install" 240 10 "" \
           brew install --quiet netcdf netcdf-fortran openssl@3 || brew_rc=$?
         missing=()
