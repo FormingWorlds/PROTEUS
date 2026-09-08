@@ -371,13 +371,17 @@ class TestUpdateStructureZalmoxisRefresh:
 def test_effective_step_caps_default_off_on_every_interior():
     """An unset step cap resolves to off (0.0) on every interior, zalmoxis included.
 
-    Each cap terminates the interior sub-solve at a freezing-front crossing and
-    breaks energy conservation, so the coupled default is off and no interior
-    arms a cap without the user opting in. This pins all three caps to 0.0 for
-    the unset schema default across the zalmoxis, spider, and dummy interiors,
-    so a regression that re-arms a positive default for any interior is caught.
-    A distinct positive value resolves verbatim in the same call, so a resolver
-    that masked the check by clamping every cap to 0.0 is caught too.
+    Each cap is a SUNDIALS root function that returns control from the interior
+    sub-solve when a cell's per-step change reaches the cap. On a benign
+    freezing-front crossing it slices the coupled step into many small ones and
+    drives the reported CMB heat flux briefly negative (a controlled comparison
+    gives +48% outer coupled steps for the same interior work), so the coupled
+    default is off and no interior arms a cap without the user opting in. This
+    pins all three caps to 0.0 for the unset schema default across the zalmoxis,
+    spider, and dummy interiors, so a regression that re-arms a positive default
+    for any interior is caught. A distinct positive value resolves verbatim in
+    the same call, so a resolver that masked the check by clamping every cap to
+    0.0 is caught too.
     """
     from proteus.interior_energetics.aragog import (
         _effective_entropy_step_cap,
@@ -490,6 +494,8 @@ def test_aragog_schema_admits_off_sentinel_rejects_other_negatives():
     for bad in (float('nan'), float('inf'), float('-inf')):
         with pytest.raises(ValueError):
             Aragog(phi_step_cap=bad)
+        with pytest.raises(ValueError):
+            Aragog(temperature_step_cap=bad)
         with pytest.raises(ValueError):
             Aragog(entropy_step_cap=bad)
     # the proximity band keeps its positive-only contract
@@ -606,6 +612,53 @@ def test_setup_solver_threads_phase_boundary_margin(tmp_path):
     # Discrimination: a wrapper that hard-coded or ignored the knob would send
     # the same number twice; the two requests must remain distinct.
     assert threaded[350.0] != pytest.approx(threaded[200.0])
+
+
+@pytest.mark.unit
+def test_setup_solver_threads_resolved_step_caps(tmp_path):
+    """setup_solver threads the RESOLVED step caps into _EnergyParameters, not
+    the raw config values.
+
+    Each cap reaches Aragog as a SUNDIALS root function, so the off sentinel
+    must be resolved before it is passed: a -1.0 in the config must arrive as
+    0.0 (no cap), never as a literal -1.0 that would arm the root function at a
+    negative threshold. A positive value must arrive verbatim. This pins the
+    resolver on the wrapper path (phi is always threaded; the T and S caps are
+    threaded when the installed Aragog accepts them), so a regression that
+    forwarded config.*_step_cap directly is caught.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    outdir = str(tmp_path)
+    # config caps -> expected resolved caps at the _EnergyParameters call.
+    # -1.0 is the off sentinel and must resolve to 0.0; a positive value passes
+    # through unchanged.
+    cases = {
+        'sentinel': ((-1.0, -1.0, -1.0), (0.0, 0.0, 0.0)),
+        'positive': ((0.2, 150.0, 175.0), (0.2, 150.0, 175.0)),
+    }
+    for name, (raw, expected) in cases.items():
+        config = _make_aragog_config(struct_module='spider')
+        config.interior_energetics.aragog.phi_step_cap = raw[0]
+        config.interior_energetics.aragog.temperature_step_cap = raw[1]
+        config.interior_energetics.aragog.entropy_step_cap = raw[2]
+        hf_row, interior_o = _spider_fallback_scaffold(tmp_path / name)
+        mock_ep = create_autospec(_paired_energy_stub)
+        with (
+            patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / name),
+            patch('proteus.interior_energetics.aragog.Parameters'),
+            patch('proteus.interior_energetics.aragog.EntropySolver'),
+            patch('proteus.interior_energetics.aragog.EntropyEOS'),
+            patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
+            patch('proteus.interior_energetics.aragog.log'),
+        ):
+            AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+        assert mock_ep.called
+        kwargs = mock_ep.call_args.kwargs
+        assert kwargs['phi_step_cap'] == pytest.approx(expected[0])
+        assert kwargs['temperature_step_cap'] == pytest.approx(expected[1])
+        assert kwargs['entropy_step_cap'] == pytest.approx(expected[2])
 
 
 @pytest.mark.unit
