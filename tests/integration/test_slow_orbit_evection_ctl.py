@@ -84,8 +84,9 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-import proteus.orbit.common as common_mod
-from proteus.orbit.common import Tides_t, get_C_planet, init_hansen_table
+import proteus.orbit.hansen as hansen_mod
+from proteus.orbit.common import Tides_t, get_C_planet
+from proteus.orbit.hansen import init_hansen_table
 from proteus.orbit.satellite import evolve_orbit_satellite
 
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
@@ -253,7 +254,7 @@ def _ctl_reference_trajectory(tmp_path_factory):
     e_grid = np.concatenate([np.arange(0.0, 0.1, 0.005), np.arange(0.1, 0.86, 0.01)])
     data_dir = str(tmp_path_factory.mktemp('evection_ctl'))
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(common_mod, '_hansen_table', None)
+        mp.setattr(hansen_mod, '_hansen_table', None)
         init_hansen_table(e_grid=e_grid, kmin=_KMIN, kmax=_KMAX, n_deg=2, force=True)
         yield _run_ctl_reference(_T_TARGET_YR, _MAX_WALL_SECONDS, data_dir)
 

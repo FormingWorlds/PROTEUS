@@ -13,7 +13,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from proteus.orbit.common import _solve_e_stationary
+from proteus.orbit.satellite import _solve_e_stationary
 from proteus.orbit.wrapper import read_tides_data
 from proteus.utils.constants import (
     AU,

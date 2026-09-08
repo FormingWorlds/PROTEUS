@@ -94,9 +94,9 @@ SUPPRESSED_DYNAMIC_WRITES = {
     ('interior_energetics/wrapper.py', '_solve_structure_with_adiabat_or_rollback'),
     ('interior_energetics/wrapper.py', 'update_structure_from_interior'),
     # hf_row.clear(); hf_row.update(snapshot) restores the pre-substep state
-    # on a rejected adaptive step; introduces no key snapshot didn't already
-    # have.
-    ('orbit/satellite.py', 'evolve_orbit_satellite'),
+    # on a rejected adaptive step; shared by evolve_orbit_star (orbit.py) and
+    # evolve_orbit_satellite (satellite.py).
+    ('orbit/common.py', 'run_adaptive_orbit_substeps'),
 }
 
 # Producers that assemble their key through a local variable the visitor
