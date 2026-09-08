@@ -606,9 +606,10 @@ runs:
       run: |
         set -euo pipefail
         shim="$GITHUB_WORKSPACE/socrates/julia/lib/libSOCRATES_C.so"
-        if ! nm -gU "$shim" 2>&1 | grep -q PS_real_kind_bytes; then
+        symbols="$(nm -gU "$shim" 2>&1)"
+        if ! grep -q PS_real_kind_bytes <<<"$symbols"; then
           echo "PS_real_kind_bytes is not an external symbol in $shim" >&2
-          nm -gU "$shim" 2>&1 | grep -i real_kind >&2 || echo "(no real_kind symbol found at all)" >&2
+          grep -i real_kind <<<"$symbols" >&2 || echo "(no real_kind symbol found at all)" >&2
           exit 1
         fi
         echo "PS_real_kind_bytes confirmed exported in $shim"
