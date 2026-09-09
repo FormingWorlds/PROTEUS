@@ -449,6 +449,26 @@ def test_get_parse_args_splits_force_from_the_install_path(argv, expected, stric
 
 
 @pytest.mark.unit
+def test_get_parse_args_leaves_the_callers_variables_alone():
+    """Parsing the arguments does not clobber a caller's own variables.
+
+    The scripts share a namespace with every helper they source, and
+    ``arg`` is an ordinary name for a script to use. A helper that leaked
+    its loop variable would overwrite the caller's value with the last
+    argument, silently and only when arguments are passed.
+    """
+    body = (
+        'arg=keepme\n'
+        'get_parse_args --force some/path\n'
+        'printf \'%s|%s|%s\\n\' "$arg" "$get_force" "$get_install_path"\n'
+    )
+    res = _run_bash(_with_common(body, strict=True))
+
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == 'keepme|true|some/path'
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ('probe_rc', 'expected'),
     [(1, 'true'), (255, 'false'), (0, 'false')],
