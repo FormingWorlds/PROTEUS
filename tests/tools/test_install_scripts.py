@@ -1037,6 +1037,29 @@ def test_optional_backends_vulcan_atmodeller_are_extras_not_mandatory():
 
 
 @pytest.mark.unit
+def test_socrates_cache_key_covers_every_file_the_build_reads():
+    """The SOCRATES cache key hashes the install script and its library.
+
+    The key busts on a change to the build so a reworded install does not
+    restore a tree the old one produced. get_socrates.sh sources the
+    shared helpers, so a key naming only the script would restore a stale
+    tree after a change to the SSH probe, the guard, or the pin lookup,
+    and the staleness would be invisible: the restored build simply wins
+    and no step reports a mismatch.
+    """
+    action = (TOOLS_DIR.parent / '.github/actions/setup-proteus/action.yml').read_text(
+        encoding='utf-8'
+    )
+    key_lines = [ln for ln in action.splitlines() if 'key: socrates-' in ln]
+    assert len(key_lines) == 1, key_lines
+
+    hashed = re.search(r'hashFiles\(([^)]*)\)', key_lines[0])
+    assert hashed, key_lines[0]
+    assert 'tools/get_socrates.sh' in hashed.group(1)
+    assert 'tools/_get_common.sh' in hashed.group(1)
+
+
+@pytest.mark.unit
 def test_ci_setup_installs_every_declared_extra():
     """The CI setup action must install extras whose keys exist in pyproject.
 
