@@ -36,11 +36,17 @@ import numpy as np
 import pytest
 from scipy import integrate
 
+import proteus.orbit.hansen as hansen_mod
 from proteus.orbit.hansen import (
+    _HansenTable,
+    _KRangeTable,
+    _select_k_range,
     get_all_m_hansen,
     hansen_fft,
     init_hansen_table,
+    init_k_range_table,
     kepler_newton,
+    kmin_kmax_for_e,
     nextpow2_int,
 )
 
@@ -181,6 +187,196 @@ def test_hansen_fft_dc_term_matches_kepler_orbit_time_average(e):
     # close enough to require the tighter e=0.8 point to discriminate,
     # where (1-e^2)^-0.5 = 1.667 vs the correct (1-e^2)^-1.5 = 4.630.
     assert dc > 1.0
+
+
+def test_hansen_fft_explicit_n_calls_nextpow2_int_to_round_up(monkeypatch):
+    """When ``N`` is given explicitly, ``hansen_fft`` must round it up to
+    the next power of two via ``nextpow2_int`` before running the FFT.
+    Spies on ``nextpow2_int`` directly (rather than comparing FFT outputs,
+    which converge to the same value regardless of N at these low k's,
+    so would not actually discriminate a broken/bypassed rounding step)
+    to pin the exact code path: called once with the raw N on the
+    explicit-N branch, and never on the adaptive (N=None) branch.
+    """
+    calls = []
+    original = hansen_mod.nextpow2_int
+
+    def spy(x):
+        calls.append(x)
+        return original(x)
+
+    monkeypatch.setattr(hansen_mod, 'nextpow2_int', spy)
+
+    hansen_fft(n=-3, m=0, e=0.3, kmin=-3, kmax=3, N=100)
+    assert calls == [100]
+
+    calls.clear()
+    hansen_fft(n=-3, m=0, e=0.3, kmin=-3, kmax=3)  # N=None: adaptive branch
+    assert calls == []
+
+
+# ---------------------------------------------------------------------------
+# _select_k_range / init_k_range_table / kmin_kmax_for_e: the eccentricity ->
+# [kmin, kmax] window logic, independent of the Hansen-value table above.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.physics_invariant
+def test_select_k_range_widens_with_eccentricity():
+    """The mode window must always cover at least the [-2, 4] floor (padded),
+    and must widen at higher eccentricity -- pins the module docstring's
+    claim that the number of non-negligible modes 'grows sharply with e'.
+    """
+    kmin_lo, kmax_lo = _select_k_range(0.05, k_search_max=80)
+    kmin_hi, kmax_hi = _select_k_range(0.6, k_search_max=80)
+    assert kmin_lo <= -2 and kmax_lo >= 4
+    assert kmin_hi <= -2 and kmax_hi >= 4
+    # Discriminating: the e=0.6 window must be strictly wider than e=0.05's,
+    # not merely equal to the floor at both.
+    assert (kmax_hi - kmin_hi) > (kmax_lo - kmin_lo)
+
+
+def test_select_k_range_falls_back_to_padded_default_when_threshold_unreachable():
+    """An unreachably high threshold means no k in the search window has
+    |X_k| >= threshold for either the m=0 or m=2 branch -- the function
+    must fall back to its documented default window ([-2, 4]) plus pad,
+    not an empty or undefined range.
+    """
+    kmin, kmax = _select_k_range(0.3, threshold=2.0, k_search_max=50, pad=2)
+    assert kmin == -2 - 2
+    assert kmax == 4 + 2
+
+
+def test_init_k_range_table_builds_once_and_is_a_noop_on_repeat_call(monkeypatch):
+    """Mirrors ``init_hansen_table``'s own force/no-op contract: a repeat
+    call without ``force=True`` must leave the existing table (same
+    object) untouched, even if given different arguments.
+    """
+    monkeypatch.setattr(hansen_mod, '_k_range_table', None)
+    e_grid = np.array([0.0, 0.3])
+    init_k_range_table(e_grid=e_grid, force=True)
+    table_after_first = hansen_mod._k_range_table
+    assert table_after_first is not None
+    np.testing.assert_allclose(table_after_first.e_grid, e_grid)
+    assert table_after_first.kmin.shape == (2,)
+    assert table_after_first.kmax.shape == (2,)
+    # Every entry must cover the [-2, 4] floor (see _select_k_range).
+    assert np.all(table_after_first.kmin <= -2)
+    assert np.all(table_after_first.kmax >= 4)
+
+    # Repeat call without force=True, with different arguments: no-op.
+    init_k_range_table(e_grid=np.array([0.5, 0.9]))
+    assert hansen_mod._k_range_table is table_after_first
+
+
+def test_kmin_kmax_for_e_lazily_builds_table_and_clamps_out_of_range_e(monkeypatch):
+    """``kmin_kmax_for_e`` must build the table on first use if absent
+    (patched here to a small fake table, since the real default sweep
+    takes on the order of a minute), and must clamp an eccentricity
+    above the grid's maximum to the last grid point rather than
+    extrapolating or raising.
+    """
+    monkeypatch.setattr(hansen_mod, '_k_range_table', None)
+    built = {'n_calls': 0}
+
+    def fake_init(e_grid=None, force=False):
+        built['n_calls'] += 1
+        hansen_mod._k_range_table = _KRangeTable(
+            e_grid=np.array([0.0, 0.5]), kmin=np.array([-6, -10]), kmax=np.array([6, 12])
+        )
+
+    monkeypatch.setattr(hansen_mod, 'init_k_range_table', fake_init)
+
+    kmin, kmax = kmin_kmax_for_e(0.05)
+    assert built['n_calls'] == 1
+    assert (kmin, kmax) == (-6, 6)
+
+    # Table now exists: a second call must NOT rebuild it.
+    kmin_hi, kmax_hi = kmin_kmax_for_e(10.0)  # far above the grid's max (0.5)
+    assert built['n_calls'] == 1
+    # Clamped to the last grid point's window, not extrapolated.
+    assert (kmin_hi, kmax_hi) == (-10, 12)
+
+
+def test_init_hansen_table_is_a_noop_on_repeat_call_without_force(monkeypatch):
+    """A second call without ``force=True`` must leave the existing table
+    (same object, same window) untouched, even when given a completely
+    different e_grid/kmin/kmax -- discriminates a regression that
+    rebuilt on every call regardless of the guard.
+    """
+    monkeypatch.setattr(hansen_mod, '_hansen_table', None)
+    init_hansen_table(e_grid=np.array([0.0, 0.1]), kmin=-3, kmax=3, n_deg=1, force=True)
+    table_after_first = hansen_mod._hansen_table
+    assert table_after_first.kmin == -3
+    assert table_after_first.kmax == 3
+
+    init_hansen_table(e_grid=np.array([0.5]), kmin=-1, kmax=1, n_deg=1)  # no force
+    assert hansen_mod._hansen_table is table_after_first
+    # Discrimination: a broken no-op guard would have rebuilt with the
+    # second call's kmin=-1/kmax=1 window instead of keeping the first.
+    assert hansen_mod._hansen_table.kmin == -3
+    assert hansen_mod._hansen_table.kmax == 3
+
+
+def test_init_hansen_table_derives_kmin_kmax_from_k_range_table_when_omitted(monkeypatch):
+    """When ``kmin``/``kmax`` are not given, ``init_hansen_table`` must
+    derive them from the (existing) k-range table's own realized bounds
+    -- the overall min of its kmin column and max of its kmax column --
+    rather than requiring the caller to hand-pick a window.
+    """
+    monkeypatch.setattr(hansen_mod, '_hansen_table', None)
+    monkeypatch.setattr(
+        hansen_mod,
+        '_k_range_table',
+        _KRangeTable(
+            e_grid=np.array([0.0, 0.5]), kmin=np.array([-6, -10]), kmax=np.array([6, 12])
+        ),
+    )
+    init_hansen_table(e_grid=np.array([0.0, 0.2]), n_deg=1, force=True)
+    table = hansen_mod._hansen_table
+    assert table.kmin == -10
+    assert table.kmax == 12
+
+
+def test_get_all_m_hansen_lazily_builds_table_when_absent(monkeypatch):
+    """The hot-path entry point must build the table itself on first use
+    if no setup call happened first (patched to a fast fake here; the
+    real default sweep is a one-time ~minute cost, out of the unit
+    tier's budget).
+    """
+    monkeypatch.setattr(hansen_mod, '_hansen_table', None)
+
+    def fake_init(n_deg=2, **_kw):
+        hansen_mod._hansen_table = _HansenTable(
+            e_grid=np.array([0.0, 0.5]),
+            kmin=-3,
+            kmax=3,
+            n_deg=n_deg,
+            values={m: np.zeros((2, 7)) for m in range(-n_deg, n_deg + 1)},
+        )
+
+    monkeypatch.setattr(hansen_mod, 'init_hansen_table', fake_init)
+
+    k_range, results = get_all_m_hansen(e=0.1, n_deg=2, kmin=-3, kmax=3)
+    assert hansen_mod._hansen_table is not None
+    assert set(results.keys()) == {-2, -1, 0, 1, 2}
+    np.testing.assert_array_equal(k_range, np.arange(-3, 4))
+
+
+def test_get_all_m_hansen_raises_when_requested_k_range_exceeds_table_window(monkeypatch):
+    """Requesting a wider [kmin, kmax] than the table was built with must
+    fail loudly (a silent truncation would corrupt any caller summing
+    over modes near the requested edge), not clip or return zeros.
+    """
+    monkeypatch.setattr(hansen_mod, '_hansen_table', None)
+    init_hansen_table(e_grid=np.array([0.0, 0.1]), kmin=-4, kmax=4, n_deg=2, force=True)
+    with pytest.raises(ValueError, match='exceeds'):
+        get_all_m_hansen(e=0.05, n_deg=2, kmin=-10, kmax=10)
+    # Discrimination: a request WITHIN the table's window must NOT raise --
+    # confirms this is specifically an out-of-window guard, not a blanket
+    # failure that would make the whole function unusable.
+    k_range, _ = get_all_m_hansen(e=0.05, n_deg=2, kmin=-4, kmax=4)
+    assert len(k_range) == 9
 
 
 def test_get_all_m_hansen_all_m_are_delta_functions_at_zero_eccentricity(monkeypatch):

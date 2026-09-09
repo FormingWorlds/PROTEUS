@@ -12,6 +12,7 @@ correct exponents from plausible bugs.
 from __future__ import annotations
 
 import types
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -320,6 +321,24 @@ def test_update_period_logs_error_on_unphysical_low_total_mass(caplog):
     assert hf_row['orbital_period'] > 1.0e20
 
 
+def test_update_period_sat_logs_error_on_unphysical_low_total_mass(caplog):
+    """Counterpart to ``update_period``'s sanity check, for the
+    planet+satellite total mass."""
+    import logging
+
+    from proteus.orbit.wrapper import update_period_sat
+
+    hf_row = {
+        'M_planet': 1.0e2,
+        'M_sat': 1.0e2,
+        'semimajorax_sat': 1.0 * AU,
+    }
+    with caplog.at_level(logging.ERROR, logger='fwl.proteus.orbit.wrapper'):
+        update_period_sat(hf_row)
+    assert any('Unreasonable planet+satellite mass' in rec.message for rec in caplog.records)
+    assert hf_row['orbital_period_sat'] > 1.0e20
+
+
 # ---------------------------------------------------------------------------
 # run_orbit dispatch branches: init_orbit, satellite, lovepy, dummy, Hill
 # limit and Roche limit warnings. The full dispatch pulls in interior_o
@@ -335,7 +354,7 @@ def test_init_orbit_short_circuits_when_module_is_none_string():
     Python literal) would fall through to the lovepy import. Patch
     lovepy.import_lovepy to MagicMock and confirm it stays uncalled.
     """
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
 
     from proteus.orbit.wrapper import init_orbit
 
@@ -356,7 +375,7 @@ def test_init_orbit_invokes_lovepy_import_when_module_is_lovepy():
     the lovepy-import branch at lines 31-34.
     """
     import logging
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
 
     from proteus.orbit.wrapper import init_orbit
 
@@ -386,7 +405,7 @@ def test_run_orbit_dummy_module_sets_imk2_via_dummy_orbit():
     dummy branch's Imk2 to the mocked return so a dispatch-swap is
     caught.
     """
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
 
     from proteus.orbit.wrapper import run_orbit
 
@@ -444,13 +463,52 @@ def test_run_orbit_dummy_module_sets_imk2_via_dummy_orbit():
     assert hf_row['axial_period'] == pytest.approx(hf_row['orbital_period'], rel=1e-12)
 
 
+def test_run_orbit_lovepy_module_sets_imk2_via_run_lovepy():
+    """The lovepy tides path computes Imk2 via run_lovepy -- the
+    counterpart to the already-tested dummy-module dispatch."""
+    from proteus.orbit.wrapper import run_orbit
+
+    config = MagicMock()
+    config.orbit.module = 'lovepy'
+    config.orbit.evolve = False
+    config.orbit.eccentricity = 0.0
+    config.orbit.semimajoraxis = 1.0
+    config.orbit.satellite = _make_satellite_config_stub()
+    config.orbit.semimajoraxis_sat = 1.0e8
+    config.orbit.axial_period = None
+    config.orbit.instellation_method = 'sep'
+    config.star.module = 'mors'
+    config.params.stop.disint.offset_spin = 0.0
+    config.params.stop.disint.offset_roche = 0.0
+
+    hf_row = {
+        'M_star': M_sun,
+        'M_planet': M_earth,
+        'M_int': M_earth,
+        'R_int': R_earth,
+        'R_obs': R_earth,
+        'R_xuv': R_earth,
+        'semimajorax_sat': 1.0e8,
+        'Time': 0.0,
+        'plan_sat_am': 0.0,
+        'plan_star_am': 0.0,
+    }
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(4)
+    with patch('proteus.orbit.lovepy.run_lovepy', return_value=0.0033) as mock_lovepy:
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+    mock_lovepy.assert_called_once()
+    assert hf_row['Imk2'] == pytest.approx(0.0033, rel=1e-12)
+
+
 def test_run_orbit_no_module_sets_imk2_to_zero():
     """When config.orbit.module is None (not 'dummy', not 'lovepy'),
     Imk2 is set to 0.0; no tide submodule is invoked.
 
     Edge: limit-input case for "tides disabled".
     """
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
 
     from proteus.orbit.wrapper import run_orbit
 
@@ -509,6 +567,68 @@ def test_run_orbit_no_module_sets_imk2_to_zero():
     assert hf_row['axial_period'] == pytest.approx(24.0 * secs_per_hour, rel=1e-12)
 
 
+def test_init_orbit_invokes_obliqua_import_when_module_is_obliqua():
+    """A non-None module that names obliqua must call ``import_obliqua``
+    exactly once -- the counterpart to the existing lovepy dispatch test.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.orbit.wrapper import init_orbit
+
+    handler = MagicMock()
+    handler.config.orbit.module = 'obliqua'
+    handler.config.interior_energetics.heat_tidal = True
+    with (
+        patch('proteus.orbit.obliqua.import_obliqua') as mock_import,
+        # Discrimination: dispatch must not ALSO import lovepy for this module.
+        patch('proteus.orbit.lovepy.import_lovepy') as mock_lovepy_import,
+    ):
+        init_orbit(handler)
+    assert mock_import.call_count == 1
+    assert mock_lovepy_import.call_count == 0
+
+
+# ---------------------------------------------------------------------------
+# read_tides_data
+# ---------------------------------------------------------------------------
+
+
+def test_read_tides_data_returns_empty_list_for_no_times():
+    """Limit-input edge case: an empty ``times`` list must short-circuit
+    to an empty result without dispatching on ``model`` at all."""
+    from proteus.orbit.wrapper import read_tides_data
+
+    with patch('proteus.orbit.obliqua.read_ncdfs') as mock_read:
+        result = read_tides_data('/tmp/out', 'obliqua', [])
+    assert result == []
+    # Discrimination: the empty-times guard must fire BEFORE any
+    # model-specific dispatch, even for model='obliqua'.
+    assert mock_read.call_count == 0
+
+
+def test_read_tides_data_dispatches_to_read_ncdfs_for_obliqua():
+    """model='obliqua' with non-empty times must call
+    ``obliqua.read_ncdfs`` and return its result unmodified."""
+
+    from proteus.orbit.wrapper import read_tides_data
+
+    with patch('proteus.orbit.obliqua.read_ncdfs', return_value=['ds1', 'ds2']) as mock_read:
+        result = read_tides_data('/tmp/out', 'obliqua', [1000, 2000])
+    mock_read.assert_called_once_with('/tmp/out', [1000, 2000])
+    assert result == ['ds1', 'ds2']
+
+
+def test_read_tides_data_returns_empty_list_for_non_obliqua_model():
+    """A non-'obliqua' model (e.g. no tidal-response module producing
+    per-time snapshots) returns an empty list rather than raising."""
+    from proteus.orbit.wrapper import read_tides_data
+
+    assert read_tides_data('/tmp/out', 'dummy', [1000, 2000]) == []
+    # A different non-obliqua model name must fall into the same branch,
+    # not just the specific 'dummy' string.
+    assert read_tides_data('/tmp/out', 'lovepy', [1000, 2000]) == []
+
+
 def test_run_orbit_warns_when_planet_inside_roche_limit():
     """When separation < roche_limit, run_orbit must log a warning.
 
@@ -518,7 +638,7 @@ def test_run_orbit_warns_when_planet_inside_roche_limit():
     the inside-Roche warning fires but NOT the partial-perihelion one.
     """
     import logging
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
 
     from proteus.orbit.wrapper import run_orbit
 
@@ -570,3 +690,326 @@ def test_run_orbit_warns_when_planet_inside_roche_limit():
     # geometry must support the warning's truth.
     assert hf_row['separation'] < hf_row['roche_limit']
     assert mock_warn.call_count >= 1
+
+
+# ---------------------------------------------------------------------------
+# run_orbit: init branch (Time<=1), satellite bootstrap + Hansen-table setup
+# ---------------------------------------------------------------------------
+
+
+def _make_init_branch_config(*, planet_satellite_model, satellite):
+    config = MagicMock()
+    config.orbit.module = None
+    config.orbit.evolve = False
+    config.orbit.eccentricity = 0.0
+    config.orbit.semimajoraxis = 1.0
+    config.orbit.instellation_method = 'sep'
+    config.orbit.axial_period = None
+    config.orbit.planet_satellite_model = planet_satellite_model
+    config.orbit.satellite = satellite
+    config.star.module = 'mors'
+    config.params.stop.disint.offset_spin = 0.0
+    config.params.stop.disint.offset_roche = 0.0
+    return config
+
+
+def _make_init_branch_hf_row():
+    return {
+        'M_star': M_sun,
+        'M_planet': M_earth,
+        'M_int': M_earth,
+        'R_int': R_earth,
+        'R_obs': R_earth,
+        'R_xuv': R_earth,
+        'Time': 0.0,
+        'plan_sat_am': 0.0,
+        'plan_star_am': 0.0,
+    }
+
+
+def test_run_orbit_bootstraps_satellite_params_and_hansen_table_for_ps1d():
+    """Time<=1 init branch, with a satellite configured and
+    ``planet_satellite_model='ps1d'``: run_orbit must (a) set every
+    independent satellite orbital parameter from config in SI units,
+    (b) put the satellite spin into 1:1 spin-orbit resonance when
+    ``axial_period_sat`` is unset, and (c) trigger the one-time
+    Hansen-coefficient table setup (patched here -- the real sweep is
+    a ~minute one-time cost, out of the unit tier's budget) and the
+    Love-number lookup extraction (patched -- reads an external file).
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.orbit.wrapper import run_orbit
+
+    satellite = types.SimpleNamespace(
+        include_satellite=True,
+        mass_sat=0.0123,
+        radius_sat=0.273,
+        c_factor_sat=0.4,
+        semimajoraxis_sat=0.00257,
+        eccentricity_sat=0.05,
+        evection_angle=10.0,
+        axial_period_sat=None,
+    )
+    config = _make_init_branch_config(planet_satellite_model='ps1d', satellite=satellite)
+    hf_row = _make_init_branch_hf_row()
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(3)
+
+    with (
+        patch('proteus.orbit.hansen.init_hansen_table') as mock_init_hansen,
+        patch('proteus.orbit.hansen.init_k_range_table') as mock_init_krange,
+        patch('proteus.orbit.obliqua.LN_from_lookup') as mock_ln_lookup,
+    ):
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    assert mock_init_krange.call_count == 1
+    assert mock_init_hansen.call_count == 1
+    assert mock_ln_lookup.call_count == 1
+
+    assert hf_row['M_sat'] == pytest.approx(0.0123 * M_earth, rel=1e-12)
+    assert hf_row['R_sat'] == pytest.approx(0.273 * R_earth, rel=1e-12)
+    assert hf_row['C_sat'] == pytest.approx(
+        0.4 * hf_row['M_sat'] * hf_row['R_sat'] ** 2, rel=1e-12
+    )
+    assert hf_row['semimajorax_sat'] == pytest.approx(0.00257 * AU, rel=1e-12)
+    assert hf_row['eccentricity_sat'] == pytest.approx(0.05, rel=1e-12)
+    assert hf_row['evection_angle'] == pytest.approx(np.deg2rad(10.0), rel=1e-12)
+    # 1:1 spin-orbit resonance: axial_period_sat == orbital_period_sat.
+    assert hf_row['axial_period_sat'] == pytest.approx(hf_row['orbital_period_sat'], rel=1e-12)
+
+
+def test_run_orbit_converts_numeric_satellite_axial_period_from_hours():
+    """When ``axial_period_sat`` is set to a float (not None), it is
+    interpreted as hours and converted to seconds -- the counterpart to
+    the None (1:1 resonance) branch covered above."""
+    from unittest.mock import MagicMock
+
+    from proteus.orbit.wrapper import run_orbit
+    from proteus.utils.constants import secs_per_hour
+
+    satellite = types.SimpleNamespace(
+        include_satellite=True,
+        mass_sat=0.0123,
+        radius_sat=0.273,
+        c_factor_sat=0.4,
+        semimajoraxis_sat=0.00257,
+        eccentricity_sat=0.05,
+        evection_angle=0.0,
+        axial_period_sat=48.0,  # hours
+    )
+    config = _make_init_branch_config(planet_satellite_model=None, satellite=satellite)
+    hf_row = _make_init_branch_hf_row()
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(3)
+
+    run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    assert hf_row['axial_period_sat'] == pytest.approx(48.0 * secs_per_hour, rel=1e-12)
+    # Discrimination: must NOT equal the 1:1 spin-orbit-resonance value
+    # (the other branch's result, covered by the sibling test above) --
+    # confirms the numeric-hours branch actually ran, not the None branch.
+    assert hf_row['axial_period_sat'] != pytest.approx(hf_row['orbital_period_sat'], rel=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# run_orbit: evolved branch (Time>1) -- model dispatch and instellation
+# ---------------------------------------------------------------------------
+
+
+def test_run_orbit_evolved_branch_dispatches_to_star_and_satellite_models():
+    """Time>1: with both star_planet_model and planet_satellite_model
+    set, run_orbit must dispatch to evolve_orbit_star and
+    evolve_orbit_satellite exactly once each, instead of the init
+    branch's config-driven bootstrap.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.orbit.wrapper import run_orbit
+
+    config = MagicMock()
+    config.orbit.module = None
+    config.orbit.evolve = False
+    config.orbit.instellation_method = 'sep'
+    config.orbit.star_planet_model = 'sp0d'
+    config.orbit.planet_satellite_model = 'ps0d'
+    config.orbit.satellite.include_satellite = False
+    config.star.module = 'mors'
+    config.params.stop.disint.offset_spin = 0.0
+    config.params.stop.disint.offset_roche = 0.0
+
+    hf_row = {
+        'M_star': M_sun,
+        'M_planet': M_earth,
+        'M_int': M_earth,
+        'R_int': R_earth,
+        'R_obs': R_earth,
+        'R_xuv': R_earth,
+        'semimajorax': AU,
+        'eccentricity': 0.05,
+        'axial_period': 86400.0,
+        'semimajorax_sat': 3.8e8,
+        'M_sat': 7.342e22,
+        'Time': 100.0,  # > 1: evolved branch
+        'plan_sat_am': 0.0,
+        'plan_star_am': 0.0,
+    }
+    interior_o = MagicMock()
+    interior_o.dt = 1e6
+    interior_o.phi = np.zeros(3)
+
+    with (
+        patch('proteus.orbit.orbit.evolve_orbit_star') as mock_star,
+        patch('proteus.orbit.satellite.evolve_orbit_satellite') as mock_sat,
+    ):
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    mock_star.assert_called_once()
+    mock_sat.assert_called_once()
+
+
+def test_run_orbit_evolved_branch_inst_method_sets_sma_from_dummy_star_luminosity():
+    """Time>1, no star_planet_model configured: falls back to setting
+    ``semimajorax`` from the instellation-flux target using the dummy
+    star's blackbody luminosity, mirroring the init branch's identical
+    (already-tested) block.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.orbit.wrapper import run_orbit
+
+    config = MagicMock()
+    config.orbit.module = None
+    config.orbit.evolve = False
+    config.orbit.star_planet_model = None
+    config.orbit.planet_satellite_model = None
+    config.orbit.satellite.include_satellite = False
+    config.orbit.instellation_method = 'inst'
+    config.orbit.instellationflux = 1.0
+    config.star.module = 'dummy'
+    config.star.dummy.Teff = 5772.0
+    config.params.stop.disint.offset_spin = 0.0
+    config.params.stop.disint.offset_roche = 0.0
+
+    hf_row = {
+        'M_star': M_sun,
+        'M_planet': M_earth,
+        'M_int': M_earth,
+        'R_int': R_earth,
+        'R_obs': R_earth,
+        'R_xuv': R_earth,
+        'semimajorax': AU,
+        'eccentricity': 0.0,
+        'axial_period': 86400.0,
+        'semimajorax_sat': 3.8e8,
+        'M_sat': 7.342e22,
+        'Time': 100.0,
+        'plan_sat_am': 0.0,
+        'plan_star_am': 0.0,
+    }
+    interior_o = MagicMock()
+    interior_o.dt = 1e6
+    interior_o.phi = np.zeros(3)
+
+    with patch('proteus.star.dummy.get_star_radius', return_value=1.0) as mock_radius:
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    mock_radius.assert_called_once()
+    # Solar-like Teff and R_star=1 R_sun at S_0=1 S_earth must recover
+    # ~1 AU, not some arbitrary/unconverted value.
+    assert hf_row['semimajorax'] == pytest.approx(AU, rel=0.1)
+
+
+# ---------------------------------------------------------------------------
+# run_orbit: obliqua tidal-response module dispatch
+# ---------------------------------------------------------------------------
+
+
+def _make_obliqua_config(*, n):
+    config = MagicMock()
+    config.orbit.module = 'obliqua'
+    config.orbit.evolve = False
+    config.orbit.instellation_method = 'sep'
+    config.orbit.star_planet_model = None
+    config.orbit.planet_satellite_model = None
+    config.orbit.satellite.include_satellite = False
+    config.orbit.obliqua.verbosity = 'info'
+    config.orbit.obliqua.n = n
+    config.star.module = 'mors'
+    config.params.stop.disint.offset_spin = 0.0
+    config.params.stop.disint.offset_roche = 0.0
+    return config
+
+
+def _make_obliqua_hf_row():
+    return {
+        'M_star': M_sun,
+        'M_planet': M_earth,
+        'M_int': M_earth,
+        'R_int': R_earth,
+        'R_obs': R_earth,
+        'R_xuv': R_earth,
+        'semimajorax': AU,
+        'eccentricity': 0.0,
+        'axial_period': 86400.0,
+        'semimajorax_sat': 3.8e8,
+        'M_sat': 7.342e22,
+        'Time': 100.0,
+        'plan_sat_am': 0.0,
+        'plan_star_am': 0.0,
+    }
+
+
+def test_run_orbit_obliqua_module_uses_degree_2_love_number_when_n_is_only_2():
+    """model='obliqua' with n=[2] (degree-2 only) must populate Imk2
+    from run_obliqua's returned value directly."""
+    from unittest.mock import MagicMock
+
+    from proteus.orbit.wrapper import run_orbit
+
+    config = _make_obliqua_config(n=[2])
+    hf_row = _make_obliqua_hf_row()
+    interior_o = MagicMock()
+    interior_o.dt = 1e6
+    interior_o.phi = np.zeros(3)
+    interior_o.tides = np.zeros(3)
+
+    with (
+        patch('proteus.orbit.obliqua.setup_logging') as mock_setup_logging,
+        patch('proteus.orbit.obliqua.run_obliqua', return_value=0.0071) as mock_run_obliqua,
+    ):
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    mock_setup_logging.assert_called_once()
+    mock_run_obliqua.assert_called_once()
+    assert hf_row['Imk2'] == pytest.approx(0.0071, rel=1e-12)
+
+
+def test_run_orbit_obliqua_module_zeroes_imk2_for_other_degrees():
+    """model='obliqua' with n != [2] (e.g. degree-3 only) must set
+    Imk2 to exactly 0.0 -- the returned Love number belongs to a
+    different degree and must not be confused with Imk2."""
+    from unittest.mock import MagicMock
+
+    from proteus.orbit.wrapper import run_orbit
+
+    config = _make_obliqua_config(n=[3])
+    hf_row = _make_obliqua_hf_row()
+    interior_o = MagicMock()
+    interior_o.dt = 1e6
+    interior_o.phi = np.zeros(3)
+    interior_o.tides = np.zeros(3)
+
+    with (
+        patch('proteus.orbit.obliqua.setup_logging'),
+        patch('proteus.orbit.obliqua.run_obliqua', return_value=0.0071) as mock_run_obliqua,
+    ):
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    assert hf_row['Imk2'] == pytest.approx(0.0, abs=1e-12)
+    # Discrimination: run_obliqua still runs (its degree-3 result is just
+    # not the one written to Imk2) -- this isn't a "module skipped"
+    # no-op, but a deliberate discard of the wrong-degree value.
+    mock_run_obliqua.assert_called_once()

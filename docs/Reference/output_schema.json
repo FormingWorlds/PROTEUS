@@ -63,9 +63,7 @@
           "condition": "orbit.satellite = true"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "separation",
@@ -161,9 +159,7 @@
           "condition": "orbit.satellite = true"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Imk2",
@@ -330,9 +326,7 @@
           "condition": "orbit.satellite = true"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "orbital_period_sat",
@@ -384,9 +378,7 @@
           "condition": "orbit.satellite = true"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "M_sat",

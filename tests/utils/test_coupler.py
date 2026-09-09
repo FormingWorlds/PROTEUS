@@ -3120,6 +3120,57 @@ def test_update_plots_covers_runtime_and_end_branches(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
+def test_update_plots_obliqua_module_calls_lovenumber_plot(monkeypatch, tmp_path):
+    """When the tidal-response module is Obliqua, UpdatePlots must glob the
+    per-time ``*_obliqua.nc`` snapshots, load their tidal data, and dispatch
+    to ``plot_Lovenumber`` -- the branch this PR's Obliqua integration added,
+    previously untested (dummy_atm/orbit.module='dummy' in the other
+    UpdatePlots tests never reaches it).
+    """
+    calls = []
+    _install_updateplots_fakes(monkeypatch, calls)
+
+    wrapper_mod = types.ModuleType('proteus.orbit.wrapper')
+    wrapper_mod.read_tides_data = lambda *_a, **_k: [{'ok': True}, {'ok': True}]
+    monkeypatch.setitem(sys.modules, 'proteus.orbit.wrapper', wrapper_mod)
+
+    monkeypatch.setattr(
+        'proteus.utils.coupler.glob.glob',
+        lambda _p: [
+            str(tmp_path / 'data' / '1000_obliqua.nc'),
+            str(tmp_path / 'data' / '2000_obliqua.nc'),
+        ],
+    )
+
+    cfg = types.SimpleNamespace(
+        atmos_clim=types.SimpleNamespace(module='dummy'),
+        interior_energetics=types.SimpleNamespace(module='dummy'),
+        observe=types.SimpleNamespace(module=None),
+        orbit=types.SimpleNamespace(
+            module='obliqua', star_planet_model=None, planet_satellite_model=None
+        ),
+        star=types.SimpleNamespace(module='dummy', mors=types.SimpleNamespace(age_now=4.5)),
+        atmos_chem=types.SimpleNamespace(module='dummy'),
+        params=types.SimpleNamespace(out=types.SimpleNamespace(plot_fmt='png')),
+    )
+    hf_all = pd.DataFrame({'Time': [1.0, 2.0]})
+    dirs = {'output': str(tmp_path), 'fwl': str(tmp_path / 'fwl')}
+
+    from proteus.utils.coupler import UpdatePlots
+
+    UpdatePlots(hf_all, dirs, cfg, end=True, num_snapshots=1)
+
+    called_names = [c[0] for c in calls]
+    assert 'plot_Lovenumber' in called_names
+    # Discrimination: a regression that skipped the glob/parse step (e.g.
+    # passed the raw '*_obliqua.nc' pattern through unparsed) would still
+    # call plot_Lovenumber, but with zero times -- pin that real nc_times
+    # were parsed and threaded through.
+    lovenumber_call = next(c for c in calls if c[0] == 'plot_Lovenumber')
+    assert lovenumber_call[2] == ('data', 'output_dir', 'plot_format', 'times')
+
+
+@pytest.mark.unit
 def test_set_directories_errors_without_fwl_data(monkeypatch):
     """Cover set_directories failure when FWL_DATA is absent."""
     cfg = types.SimpleNamespace(
