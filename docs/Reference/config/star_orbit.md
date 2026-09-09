@@ -236,6 +236,7 @@ Cross-field constraints enforced when the config file loads:
 
 - Instellation method 'inst' is only available with the dummy star module.
 - Orbital evolution cannot be combined with instellation method 'inst'.
+- The Obliqua tidal-response module requires an explicit perturber.
 - Star-planet orbital evolution and the planet-satellite model are mutually exclusive.
 - A bolometric scaling other than 1 requires bol_scale_start and a positive duration.
 - Validate MORS settings: positive age, spectrum-source requirements, and rotation set by exactly one of percentile or period.

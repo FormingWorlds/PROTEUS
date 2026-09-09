@@ -63,6 +63,15 @@ def tides_enabled_orbit(instance, attribute, value):
         raise ValueError('Interior tidal heating requires an tides module to be enabled')
 
 
+def obliqua_requires_perturber(instance, attribute, value):
+    """The Obliqua tidal-response module requires an explicit perturber."""
+    if instance.orbit.module == 'obliqua' and instance.orbit.perturber is None:
+        raise ValueError(
+            "orbit.module = 'obliqua' requires orbit.perturber to be explicitly set to "
+            "'star' or 'satellite' (it has no default tidal-forcing body to fall back on)"
+        )
+
+
 CURRENT_CONFIG_VERSION = '3.0'
 
 
@@ -321,7 +330,13 @@ class Config:
     params: Params = field(factory=Params)
     star: Star = field(factory=Star)
     orbit: Orbit = field(
-        factory=Orbit, validator=(instmethod_dummy, instmethod_evolve, satellite_evolve)
+        factory=Orbit,
+        validator=(
+            instmethod_dummy,
+            instmethod_evolve,
+            satellite_evolve,
+            obliqua_requires_perturber,
+        ),
     )
     planet: Planet = field(
         factory=Planet,

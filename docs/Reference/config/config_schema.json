@@ -9957,6 +9957,18 @@
       "doc": "ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled."
     },
     {
+      "validator": "obliqua_requires_perturber",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.module",
+        "orbit.perturber"
+      ],
+      "doc": "The Obliqua tidal-response module requires an explicit perturber."
+    },
+    {
       "validator": "observe_resolved_atmosphere",
       "module": "_config.py",
       "attached_to": [

@@ -24,6 +24,7 @@ from proteus.config._config import (
     instmethod_dummy,
     instmethod_evolve,
     janus_escape_atmosphere,
+    obliqua_requires_perturber,
     observe_resolved_atmosphere,
     satellite_evolve,
     spada_zephyrus,
@@ -787,6 +788,33 @@ def test_tides_enabled_orbit_requires_orbit_module():
     # raised on heat_tidal=True (ignoring orbit.module) would fail here.
     inst.orbit.module = 'lovepy'
     assert tides_enabled_orbit(inst, None, None) is None
+
+
+@pytest.mark.unit
+def test_obliqua_requires_perturber_rejects_unset_perturber():
+    """``orbit.module = 'obliqua'`` with ``orbit.perturber`` left unset
+    (``None``, the schema default -- 'none' in TOML converts to this)
+    must be rejected here at config-load time, not left to fail later
+    with an unrelated-looking crash inside ``run_obliqua`` (which has
+    no branch for an unset perturber)."""
+    inst = SimpleNamespace(orbit=SimpleNamespace(module='obliqua', perturber=None))
+    with pytest.raises(ValueError, match='perturber'):
+        obliqua_requires_perturber(inst, None, None)
+
+    # Discrimination: setting perturber to either valid value clears the
+    # guard. A regression that always raised whenever module=='obliqua'
+    # (ignoring perturber) would fail both of these.
+    inst.orbit.perturber = 'star'
+    assert obliqua_requires_perturber(inst, None, None) is None
+    inst.orbit.perturber = 'satellite'
+    assert obliqua_requires_perturber(inst, None, None) is None
+
+    # Edge case: an unset perturber with a DIFFERENT (or no) tidal module
+    # must not be flagged -- this check is specific to obliqua, not a
+    # blanket "perturber must always be set" rule.
+    inst.orbit.module = 'lovepy'
+    inst.orbit.perturber = None
+    assert obliqua_requires_perturber(inst, None, None) is None
 
 
 @pytest.mark.unit
