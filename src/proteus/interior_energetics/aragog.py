@@ -735,7 +735,9 @@ class AragogRunner:
             # Matches the eddy diffusivity values passed to PhaseParams
             # for the JAX RHS path, so both backends see the same values.
             eddy_diffusivity_thermal=float(config.interior_energetics.eddy_diffusivity_thermal),
-            eddy_diffusivity_chemical=float(config.interior_energetics.eddy_diffusivity_chemical),
+            eddy_diffusivity_chemical=float(
+                config.interior_energetics.eddy_diffusivity_chemical
+            ),
             phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
             solver_method=config.interior_energetics.aragog.solver_method,
             use_jax_jacobian=(config.interior_energetics.aragog.backend == 'jax'),

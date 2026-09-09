@@ -642,13 +642,18 @@ class Interior:
     eddy_diffusivity_thermal: float = field(default=1.0, validator=_eddy_diffusivity_valid)
     """Thermal eddy diffusivity control. A positive value multiplies the
     internally-computed eddy diffusivity; a negative value pins it to
-    |value| in m^2/s. Matches SPIDER -eddy_diffusivity_thermal
-    (1.0 default)."""
+    |value| in m^2/s before ``kappah_floor`` is applied, so in a
+    convectively unstable cell the pinned value can still be lifted to
+    the floor. A value of -1.0 is not a sentinel here; it pins the
+    diffusivity to 1 m^2/s like any other negative value. Matches
+    SPIDER -eddy_diffusivity_thermal (1.0 default)."""
 
     eddy_diffusivity_chemical: float = field(default=1.0, validator=_eddy_diffusivity_valid)
     """Chemical eddy diffusivity control. A positive value multiplies the
     internally-computed eddy diffusivity; a negative value pins it to
-    |value| in m^2/s. Matches SPIDER -eddy_diffusivity_chemical
+    |value| in m^2/s; this field has no floor. A value of -1.0 is not a
+    sentinel here; it pins the diffusivity to 1 m^2/s like any other
+    negative value. Matches SPIDER -eddy_diffusivity_chemical
     (1.0 default)."""
 
     # Constant-properties mode (SPIDER -use_const_properties parity).

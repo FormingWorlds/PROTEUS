@@ -548,27 +548,34 @@ def test_eddy_diffusivity_fields_reject_zero_and_nonfinite():
     """eddy_diffusivity_thermal and eddy_diffusivity_chemical reject 0/inf/nan.
 
     Both fields accept any positive or negative finite value (SPIDER sign
-    convention) and reject only zero, inf, and nan.
+    convention) and reject only zero (either sign) and non-finite values,
+    with a message that names which of the two failures occurred.
     """
     from proteus.config._interior import Interior
 
     assert Interior().eddy_diffusivity_thermal == pytest.approx(1.0)
     assert Interior().eddy_diffusivity_chemical == pytest.approx(1.0)
     assert Interior(eddy_diffusivity_thermal=2.5).eddy_diffusivity_thermal == pytest.approx(2.5)
-    assert Interior(
-        eddy_diffusivity_chemical=0.42
-    ).eddy_diffusivity_chemical == pytest.approx(0.42)
-    assert Interior(
-        eddy_diffusivity_thermal=-2.5
-    ).eddy_diffusivity_thermal == pytest.approx(-2.5)
-    assert Interior(
-        eddy_diffusivity_chemical=-0.7
-    ).eddy_diffusivity_chemical == pytest.approx(-0.7)
+    assert Interior(eddy_diffusivity_chemical=0.42).eddy_diffusivity_chemical == pytest.approx(
+        0.42
+    )
+    assert Interior(eddy_diffusivity_thermal=-2.5).eddy_diffusivity_thermal == pytest.approx(
+        -2.5
+    )
+    assert Interior(eddy_diffusivity_chemical=-0.7).eddy_diffusivity_chemical == pytest.approx(
+        -0.7
+    )
 
-    for bad in (0.0, float('inf'), float('-inf'), float('nan')):
-        with pytest.raises(ValueError, match="eddy_diffusivity_thermal.*must be"):
+    for bad in (0.0, -0.0):
+        with pytest.raises(ValueError, match='eddy_diffusivity_thermal.*must be nonzero'):
             Interior(eddy_diffusivity_thermal=bad)
-        with pytest.raises(ValueError, match="eddy_diffusivity_chemical.*must be"):
+        with pytest.raises(ValueError, match='eddy_diffusivity_chemical.*must be nonzero'):
+            Interior(eddy_diffusivity_chemical=bad)
+
+    for bad in (float('inf'), float('-inf'), float('nan')):
+        with pytest.raises(ValueError, match='eddy_diffusivity_thermal.*must be finite'):
+            Interior(eddy_diffusivity_thermal=bad)
+        with pytest.raises(ValueError, match='eddy_diffusivity_chemical.*must be finite'):
             Interior(eddy_diffusivity_chemical=bad)
 
 
@@ -684,16 +691,18 @@ def test_setup_solver_threads_phase_boundary_margin(tmp_path):
 @pytest.mark.unit
 def test_setup_solver_threads_eddy_diffusivity_chemical(tmp_path):
     """setup_solver passes eddy_diffusivity_chemical into _EnergyParameters,
-    matching the existing eddy_diffusivity_thermal passthrough.
+    matching the eddy_diffusivity_thermal passthrough checked in
+    test_setup_solver_threads_eddy_diffusivity_thermal.
 
-    Checks the schema default and a user override reach _EnergyParameters
-    as distinct values.
+    Checks the schema default, a positive override, and a negative
+    (pin-to-constant) override reach _EnergyParameters as distinct values
+    with sign intact.
     """
     from proteus.interior_energetics.aragog import AragogRunner
 
     outdir = str(tmp_path)
     threaded = {}
-    for requested in (1.0, 0.42):
+    for requested in (1.0, 0.42, -2.5):
         config = _make_aragog_config(struct_module='spider')
         config.interior_energetics.eddy_diffusivity_chemical = requested
         hf_row, interior_o = _spider_fallback_scaffold(tmp_path / f'run_{requested}')
@@ -715,6 +724,46 @@ def test_setup_solver_threads_eddy_diffusivity_chemical(tmp_path):
 
     assert threaded[1.0] == pytest.approx(1.0)
     assert threaded[0.42] == pytest.approx(0.42)
+    assert threaded[-2.5] == pytest.approx(-2.5)
+    assert threaded[0.42] != pytest.approx(threaded[1.0])
+
+
+@pytest.mark.unit
+def test_setup_solver_threads_eddy_diffusivity_thermal(tmp_path):
+    """setup_solver passes eddy_diffusivity_thermal into _EnergyParameters.
+
+    Checks the schema default, a positive override, and a negative
+    (pin-to-constant) override reach _EnergyParameters as distinct values
+    with sign intact, matching the eddy_diffusivity_chemical check above.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    outdir = str(tmp_path)
+    threaded = {}
+    for requested in (1.0, 0.42, -2.5):
+        config = _make_aragog_config(struct_module='spider')
+        config.interior_energetics.eddy_diffusivity_thermal = requested
+        hf_row, interior_o = _spider_fallback_scaffold(tmp_path / f'run_thermal_{requested}')
+        mock_ep = create_autospec(_paired_energy_stub)
+        with (
+            patch(
+                'proteus.interior_energetics.aragog.FWL_DATA_DIR',
+                tmp_path / f'run_thermal_{requested}',
+            ),
+            patch('proteus.interior_energetics.aragog.Parameters'),
+            patch('proteus.interior_energetics.aragog.EntropySolver'),
+            patch('proteus.interior_energetics.aragog.EntropyEOS'),
+            patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
+            patch('proteus.interior_energetics.aragog.log'),
+        ):
+            AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+        assert mock_ep.called
+        threaded[requested] = mock_ep.call_args.kwargs['eddy_diffusivity_thermal']
+
+    assert threaded[1.0] == pytest.approx(1.0)
+    assert threaded[0.42] == pytest.approx(0.42)
+    assert threaded[-2.5] == pytest.approx(-2.5)
     assert threaded[0.42] != pytest.approx(threaded[1.0])
 
 
