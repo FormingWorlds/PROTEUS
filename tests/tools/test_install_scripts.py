@@ -65,7 +65,15 @@ def _extract_shell_function(script: str, name: str) -> str:
 
 
 def _portable_realpath_fn() -> str:
-    """Return the bash source for the shipped ``portable_realpath()``."""
+    """Return the bash source for the shipped ``portable_realpath()``.
+
+    Nine ``get_*.sh`` scripts carry the helper, so which one is read is
+    arbitrary; ``get_socrates.sh`` is the one whose install-path handling is
+    exercised further down this file. Reading a single copy is sound only
+    because ``test_portable_realpath_identical_across_get_scripts`` pins the
+    copies as the same text: drop that test and these cases stop covering
+    the other eight.
+    """
     return _extract_shell_function('get_socrates.sh', 'portable_realpath')
 
 
