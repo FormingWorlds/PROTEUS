@@ -35,9 +35,13 @@ import pytest
 
 pytest.importorskip('aragog.jax')
 
+from aragog.jax.phase import PhaseParams  # noqa: E402
+
 from proteus.interior_energetics.aragog import AragogRunner  # noqa: E402
 from proteus.interior_energetics.aragog_jax import AragogJAXRunner  # noqa: E402
 from proteus.interior_energetics.aragog_phase import (  # noqa: E402
+    _JAX_BOTTOM_UP_GRAV_SEP,
+    _JAX_PHASE_SMOOTHING_WIDTH,
     _phase_params_from_config,
     build_jax_phase_params,
     build_mixed_phase_params,
@@ -48,30 +52,6 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 # Runtime solidus / liquidus paths the numpy builder stores verbatim.
 _SOLIDUS = '/data/lookup/solidus.dat'
 _LIQUIDUS = '/data/lookup/liquidus.dat'
-
-# The 19 stored attributes of the JAX PhaseParams, used to assert the runner
-# site and the builder agree field by field.
-_JAX_STORED_ATTRS = (
-    'phi_rheo',
-    'phi_width',
-    'log10_visc_solid',
-    'log10_visc_liquid',
-    'grain_size',
-    'k_solid',
-    'k_liquid',
-    'matprop_smooth_width',
-    'conduction',
-    'convection',
-    'grav_sep',
-    'mixing',
-    'eddy_diff_thermal',
-    'eddy_diff_chemical',
-    'kappah_floor',
-    'bottom_up_grav_sep',
-    'phase_smoothing_tanh',
-    'phase_smoothing_width',
-    'separation_viscosity_mixture',
-)
 
 
 def _make_full_config(*, separation_viscosity: str = 'mixture'):
@@ -229,12 +209,25 @@ def test_jax_only_fields_carry_configured_values():
     assertion. The transport switches are configured False, False, True, so
     the stored flags read 0.0, 0.0, 1.0; the smoothing is 'cubic_hermite', so
     ``phase_smoothing_tanh`` reads 0.0. ``bottom_up_grav_sep`` and
-    ``phase_smoothing_width`` are hardcoded builder constants, asserted
-    against their literal expected values so a flipped constant fails here.
+    ``phase_smoothing_width`` are hardcoded builder constants that happen to
+    equal the aragog library defaults, so a value check on the returned
+    object would pass even with the keyword dropped from the constructor
+    call. A spy on ``PhaseParams`` itself captures the exact keyword
+    arguments the builder passes in, so a dropped keyword surfaces as a
+    missing dict key rather than a coincidentally matching default.
     """
     config = _make_full_config()
     ie = config.interior_energetics
-    jax_params = build_jax_phase_params(config)
+
+    real_phase_params = PhaseParams
+    captured_kwargs = []
+
+    def _spy(**kwargs):
+        captured_kwargs.append(kwargs)
+        return real_phase_params(**kwargs)
+
+    with patch('aragog.jax.phase.PhaseParams', side_effect=_spy):
+        jax_params = build_jax_phase_params(config)
 
     assert jax_params.log10_visc_solid == pytest.approx(ie.solid_log10visc)
     assert jax_params.log10_visc_liquid == pytest.approx(ie.melt_log10visc)
@@ -248,8 +241,11 @@ def test_jax_only_fields_carry_configured_values():
     assert float(jax_params.convection) == pytest.approx(0.0)
     assert float(jax_params.grav_sep) == pytest.approx(1.0)
     assert float(jax_params.mixing) == pytest.approx(1.0)
-    assert float(jax_params.bottom_up_grav_sep) == pytest.approx(1.0)
-    assert jax_params.phase_smoothing_width == pytest.approx(0.01)
+
+    assert captured_kwargs, 'PhaseParams was not constructed by the builder'
+    call_kwargs = captured_kwargs[0]
+    assert call_kwargs['bottom_up_grav_sep'] == _JAX_BOTTOM_UP_GRAV_SEP
+    assert call_kwargs['phase_smoothing_width'] == pytest.approx(_JAX_PHASE_SMOOTHING_WIDTH)
 
 
 def test_numpy_only_fields_carry_configured_values():
