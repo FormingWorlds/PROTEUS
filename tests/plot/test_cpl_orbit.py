@@ -69,6 +69,35 @@ def _install_mock_plt(monkeypatch):
     return mock_plt
 
 
+def _make_axs_4x1() -> np.ndarray:
+    """Build a (4,) object array of MagicMock axes matching plot_evection's
+    real ``plt.subplots(4, 1, ...)`` grid."""
+    axs = np.empty(4, dtype=object)
+    for i in range(4):
+        axs[i] = MagicMock()
+    return axs
+
+
+def _make_evection_hf_all(n: int = 6, t_start: float = 1e2, t_end: float = 6e4) -> pd.DataFrame:
+    """Build a minimal runtime helpfile DataFrame for ``plot_evection``.
+
+    Semimajor axis, eccentricity and spin values are picked so
+    ``_solve_e_stationary`` (the real, un-mocked root-finder) has a
+    genuine solution for at least some rows -- this exercises the real
+    numerics rather than a stub, matching how the driver is actually used.
+    """
+    return pd.DataFrame(
+        {
+            'Time': np.logspace(np.log10(t_start), np.log10(t_end), n),
+            'semimajorax_sat': np.linspace(7.0, 12.0, n) * 6.371e6,
+            'eccentricity_sat': np.linspace(0.05, 0.4, n),
+            'axial_period': np.linspace(2 * 3600, 5 * 3600, n),
+            'evection_angle': np.linspace(0.0, 3.0, n),
+            'plan_sat_am': np.linspace(3.5e34, 3.6e34, n),
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # plot_orbit
 # ---------------------------------------------------------------------------
@@ -278,6 +307,219 @@ def test_plot_orbit_system_roche_radius_scaled_to_AU(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# plot_evection
+# ---------------------------------------------------------------------------
+
+
+def test_plot_evection_returns_early_when_time_below_t0(monkeypatch):
+    """Must skip without raising, and without touching matplotlib, when
+    the simulation has not yet advanced past ``t0`` years -- mirrors
+    ``plot_orbit``'s equivalent guard."""
+    mock_plt = _install_mock_plt(monkeypatch)
+    hf_all = pd.DataFrame(
+        {
+            'Time': np.array([1.0, 5.0, 20.0]),
+            'semimajorax_sat': np.full(3, 8.0 * 6.371e6),
+            'eccentricity_sat': np.full(3, 0.1),
+            'axial_period': np.full(3, 3 * 3600.0),
+            'evection_angle': np.full(3, 0.5),
+            'plan_sat_am': np.full(3, 3.5e34),
+        }
+    )
+
+    result = orbit_mod.plot_evection(hf_all, '/tmp/out', plot_format='png', t0=100.0)
+
+    assert result is None
+    assert not mock_plt.subplots.called
+
+
+def test_plot_evection_draws_a_four_panel_figure_and_saves(monkeypatch):
+    """With sufficient time coverage, must build a 4-row shared-x figure
+    and save it under the expected filename."""
+    mock_fig = MagicMock()
+    axs = _make_axs_4x1()
+    mock_plt = _install_mock_plt(monkeypatch)
+    mock_plt.subplots.return_value = (mock_fig, axs)
+
+    hf_all = _make_evection_hf_all()
+    orbit_mod.plot_evection(hf_all, '/tmp/out', plot_format='png', t0=100.0)
+
+    mock_plt.subplots.assert_called_once()
+    args, kwargs = mock_plt.subplots.call_args
+    assert args[:2] == (4, 1)
+    assert mock_fig.savefig.call_count == 1
+    saved_path = mock_fig.savefig.call_args[0][0]
+    assert saved_path.endswith('plot_evection.png')
+
+
+def test_plot_evection_uses_fine_phi_trace_when_provided(monkeypatch):
+    """Panel (c) must plot the supplied fine (t, phi) trace, mod 2*pi,
+    in preference to the coarse ``evection_angle`` helpfile column --
+    the fine trace is the real per-substep resonance-angle data, the
+    coarse column is a potentially-aliased fallback (see the module's
+    own log message for the un-mocked branch).
+    """
+    mock_fig = MagicMock()
+    axs = _make_axs_4x1()
+    mock_plt = _install_mock_plt(monkeypatch)
+    mock_plt.subplots.return_value = (mock_fig, axs)
+
+    hf_all = _make_evection_hf_all()
+    fine_t = np.array([1e2, 2e2, 3e2])
+    fine_phi = np.array([0.1, 7.0, -1.0])  # includes values outside [0, 2*pi)
+
+    orbit_mod.plot_evection(
+        hf_all, '/tmp/out', plot_format='png', t0=100.0, fine_phi=fine_phi, fine_t=fine_t
+    )
+
+    panel_c_call = axs[2].plot.call_args
+    plotted_t, plotted_y = panel_c_call[0]
+    np.testing.assert_allclose(plotted_t, fine_t)
+    np.testing.assert_allclose(plotted_y, np.mod(fine_phi, 2 * np.pi))
+    # Discrimination: must NOT match the coarse evection_angle column
+    # (the fallback this branch is supposed to override).
+    coarse = np.mod(hf_all['evection_angle'].to_numpy(), 2 * np.pi)
+    assert not np.allclose(plotted_y, coarse[: len(plotted_y)])
+
+
+def test_plot_evection_falls_back_to_coarse_evection_angle_without_fine_trace(monkeypatch):
+    """Without a fine trace, panel (c) must fall back to the coarse
+    ``evection_angle`` helpfile column, plotted against the full
+    ``Time`` array (not some other subset)."""
+    mock_fig = MagicMock()
+    axs = _make_axs_4x1()
+    mock_plt = _install_mock_plt(monkeypatch)
+    mock_plt.subplots.return_value = (mock_fig, axs)
+
+    hf_all = _make_evection_hf_all()
+    orbit_mod.plot_evection(hf_all, '/tmp/out', plot_format='png', t0=100.0)
+
+    plotted_t, plotted_y = axs[2].plot.call_args[0]
+    np.testing.assert_allclose(plotted_t, hf_all['Time'].to_numpy())
+    assert len(plotted_y) == len(hf_all)
+
+
+@pytest.mark.parametrize('xscale', ['log', 'linear'])
+def test_plot_evection_xscale_applies_to_every_panel(monkeypatch, xscale):
+    """Both the log and linear x-scale branches must apply their scale
+    (and their own distinct axis-limit convention) to every panel via
+    ``axs.flat``, not just a subset."""
+    mock_fig = MagicMock()
+    axs = _make_axs_4x1()
+    mock_plt = _install_mock_plt(monkeypatch)
+    mock_plt.subplots.return_value = (mock_fig, axs)
+
+    hf_all = _make_evection_hf_all()
+    orbit_mod.plot_evection(hf_all, '/tmp/out', plot_format='png', t0=100.0, xscale=xscale)
+
+    for ax in axs:
+        ax.set_xscale.assert_called_with(xscale)
+    # Discrimination: the two branches use distinct xlim conventions
+    # (log: [t0, t_max]; linear: [0.0, t_max]) -- confirms the right
+    # branch actually ran, not just that SOME xscale string was passed.
+    _, xlim_kwargs = axs[0].set_xlim.call_args
+    assert xlim_kwargs['left'] == (100.0 if xscale == 'log' else 0.0)
+
+
+def test_plot_evection_filter_toggle_t_draws_vlines_on_all_time_panels(monkeypatch):
+    """When ``filter_toggle_t`` is given, a vertical marker line must be
+    drawn on panels (a), (b), (c) and (d) -- confirms the toggle
+    annotation is wired to every time-series panel, not just the one
+    it was first added to."""
+    mock_fig = MagicMock()
+    axs = _make_axs_4x1()
+    mock_plt = _install_mock_plt(monkeypatch)
+    mock_plt.subplots.return_value = (mock_fig, axs)
+
+    hf_all = _make_evection_hf_all()
+    orbit_mod.plot_evection(
+        hf_all, '/tmp/out', plot_format='png', t0=100.0, filter_toggle_t=2.5e4
+    )
+
+    for ax in axs:
+        assert ax.axvline.called
+    # Discrimination: panel (c) additionally gets a labeled legend entry
+    # for the toggle marker (the other three panels get the bare vline
+    # only) -- confirms the annotation isn't a blanket, undifferentiated
+    # call across all four axes.
+    axs[2].legend.assert_called_with(loc='upper right', fontsize=9, framealpha=0.9)
+
+
+# ---------------------------------------------------------------------------
+# plot_Lovenumber
+# ---------------------------------------------------------------------------
+
+
+def _make_lovenumber_ds(real_vals, imag_vals, *, n=2, m=0, k=1, sigma=0.5):
+    """A single-mode (n, m, k) tidal-response snapshot, matching the
+    dict-of-arrays interface ``plot_Lovenumber`` reads (``ds['n'][:]``,
+    ``ds['knms_total']`` as a (2, n_modes) real/imag pair)."""
+    return {
+        'n': np.array([n]),
+        'm': np.array([m]),
+        'k': np.array([k]),
+        'sigma_range': np.array([sigma]),
+        'knms_total': np.array([[real_vals], [imag_vals]]),
+    }
+
+
+def test_plot_lovenumber_returns_early_for_no_times(monkeypatch):
+    """Empty or ``None`` times must short-circuit without touching
+    matplotlib."""
+    mock_plt = _install_mock_plt(monkeypatch)
+    assert orbit_mod.plot_Lovenumber('/tmp/out', [], []) is None
+    assert orbit_mod.plot_Lovenumber('/tmp/out', None, []) is None
+    assert not mock_plt.subplots.called
+
+
+def test_plot_lovenumber_returns_early_when_max_time_below_threshold(monkeypatch):
+    """Times all below the 2 yr minimum-data threshold must also
+    short-circuit without touching matplotlib."""
+    mock_plt = _install_mock_plt(monkeypatch)
+    data = [_make_lovenumber_ds(1e-2, 2e-3)]
+    result = orbit_mod.plot_Lovenumber('/tmp/out', [1.0], data)
+    assert result is None
+    assert not mock_plt.subplots.called
+
+
+def test_plot_lovenumber_returns_early_when_no_nonzero_love_numbers(monkeypatch, caplog):
+    """If every recorded Love number is exactly zero (real and imaginary),
+    there is nothing to plot -- must warn and return rather than
+    building a figure with degenerate (all -inf) colour bounds."""
+    import logging
+
+    mock_plt = _install_mock_plt(monkeypatch)
+    data = [_make_lovenumber_ds(0.0, 0.0), _make_lovenumber_ds(0.0, 0.0)]
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.plot.cpl_orbit'):
+        result = orbit_mod.plot_Lovenumber('/tmp/out', [1000, 2000], data)
+    assert result is None
+    assert not mock_plt.subplots.called
+    assert any('No valid non-zero Love numbers' in rec.message for rec in caplog.records)
+
+
+def test_plot_lovenumber_draws_and_saves_with_valid_data(monkeypatch):
+    """With genuine non-zero Love-number data across two snapshots,
+    must build the 2-panel (real, imaginary) scatter figure and save
+    it under the expected filename."""
+    mock_fig = MagicMock()
+    axs = np.empty(2, dtype=object)
+    axs[0] = MagicMock()
+    axs[1] = MagicMock()
+    mock_plt = _install_mock_plt(monkeypatch)
+    mock_plt.subplots.return_value = (mock_fig, axs)
+    mock_plt.get_cmap.return_value = MagicMock()
+
+    data = [_make_lovenumber_ds(1e-2, 2e-3), _make_lovenumber_ds(1.5e-2, 3e-3)]
+    orbit_mod.plot_Lovenumber('/tmp/out', [1000, 2000], data, plot_format='png')
+
+    assert axs[0].scatter.call_count == 1
+    assert axs[1].scatter.call_count == 1
+    assert mock_fig.savefig.call_count == 1
+    saved_path = mock_fig.savefig.call_args[0][0]
+    assert saved_path.endswith('plot_Lovenumber.png')
+
+
+# ---------------------------------------------------------------------------
 # plot_orbit_entry
 # ---------------------------------------------------------------------------
 
@@ -313,3 +555,71 @@ def test_plot_orbit_entry_reads_helpfile_and_calls_both_plots(monkeypatch, tmp_p
     # Both received the configured format. A regression hardcoding 'pdf'
     # would fail this check.
     assert all(c[3] == 'png' for c in captured_calls)
+
+
+def test_plot_orbit_entry_dispatches_to_plot_evection_for_ps1d_evec(monkeypatch, tmp_path):
+    """When ``planet_satellite_model == 'ps1d_evec'``, the entry wrapper
+    must also call ``plot_evection`` -- with ``fine_t``/``fine_phi`` left
+    ``None`` when no fine-evection CSV exists yet for this run (an early
+    call, before the resonance band has produced any fine samples)."""
+    fake_hf = _make_hf_all(n=4, t_start=1e3, t_end=1e6)
+    captured = {}
+
+    monkeypatch.setattr(orbit_mod.pd, 'read_csv', lambda *a, **kw: fake_hf)
+    monkeypatch.setattr(orbit_mod, 'plot_orbit', lambda *a, **kw: None)
+    monkeypatch.setattr(orbit_mod, 'plot_orbit_system', lambda *a, **kw: None)
+    monkeypatch.setattr(
+        orbit_mod,
+        'plot_evection',
+        lambda *a, **kw: captured.update(kw),
+    )
+
+    handler = MagicMock()
+    handler.directories = {'output': str(tmp_path), 'output/data': str(tmp_path / 'data')}
+    handler.config.params.out.plot_fmt = 'png'
+    handler.config.orbit.planet_satellite_model = 'ps1d_evec'
+    handler.config.orbit.module = 'dummy'
+
+    orbit_mod.plot_orbit_entry(handler)
+
+    assert captured['fine_t'] is None
+    assert captured['fine_phi'] is None
+    assert captured['t0'] == pytest.approx(1e1)
+    assert captured['xscale'] == 'linear'
+
+
+def test_plot_orbit_entry_dispatches_to_plot_lovenumber_for_obliqua(monkeypatch, tmp_path):
+    """When ``config.orbit.module == 'obliqua'``, the entry wrapper must
+    sample the available snapshot times, load their tidal data via
+    ``read_tides_data``, and dispatch to ``plot_Lovenumber`` with that
+    data threaded through."""
+    fake_hf = _make_hf_all(n=4, t_start=1e3, t_end=1e6)
+    captured = {}
+
+    monkeypatch.setattr(orbit_mod.pd, 'read_csv', lambda *a, **kw: fake_hf)
+    monkeypatch.setattr(orbit_mod, 'plot_orbit', lambda *a, **kw: None)
+    monkeypatch.setattr(orbit_mod, 'plot_orbit_system', lambda *a, **kw: None)
+    monkeypatch.setattr(orbit_mod, 'sample_output', lambda *a, **kw: ([1000, 2000], None))
+    monkeypatch.setattr(
+        orbit_mod, 'read_tides_data', lambda *a, **kw: captured.setdefault('data', a) or []
+    )
+    monkeypatch.setattr(
+        orbit_mod,
+        'plot_Lovenumber',
+        lambda *a, **kw: captured.update(kw),
+    )
+
+    handler = MagicMock()
+    handler.directories = {'output': str(tmp_path), 'output/data': str(tmp_path / 'data')}
+    handler.config.params.out.plot_fmt = 'png'
+    handler.config.orbit.planet_satellite_model = None
+    handler.config.orbit.module = 'obliqua'
+
+    orbit_mod.plot_orbit_entry(handler)
+
+    assert captured['times'] == [1000, 2000]
+    assert captured['plot_format'] == 'png'
+    # read_tides_data was called with ('obliqua', [1000, 2000]) as the
+    # model/times pair (output_dir is the first positional argument).
+    assert captured['data'][1] == 'obliqua'
+    assert captured['data'][2] == [1000, 2000]
