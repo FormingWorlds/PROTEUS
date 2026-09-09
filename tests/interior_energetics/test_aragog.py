@@ -15,6 +15,8 @@ Functions tested:
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from unittest.mock import MagicMock, create_autospec, patch
 
 import numpy as np
@@ -1049,3 +1051,234 @@ def test_retry_exhaustion_labels_unknown_when_cvode_probe_fails(monkeypatch):
     # The label is built only on the exhaustion branch, so confirm the ladder
     # ran the full six attempts rather than raising early.
     assert runner.aragog_solver.solve.call_count == 6
+
+
+# ---------------------------------------------------------------------------
+# numpy/jax parity for a negative eddy-diffusivity pin (thermal and chemical).
+# ---------------------------------------------------------------------------
+
+_PROTEUS_ROOT = Path(__file__).resolve().parents[2]
+_FWL_DATA = os.environ.get('FWL_DATA')
+_EOS_CANDIDATES = [
+    os.environ.get('ARAGOG_TEST_EOS_DIR'),
+    f'{_FWL_DATA}/aragog/spider_eos' if _FWL_DATA else None,
+    str(_PROTEUS_ROOT / 'output' / 'coupled_parity' / 'spider' / 'data' / 'spider_eos'),
+]
+_EOS_DIR = next(
+    (Path(p) for p in _EOS_CANDIDATES if p and Path(p).exists()),
+    Path(_EOS_CANDIDATES[-1]),
+)
+_needs_eos = pytest.mark.skipif(
+    not _EOS_DIR.exists(),
+    reason=f'SPIDER P-S tables not found at {_EOS_DIR}.',
+)
+
+
+def _build_eddy_pin_state(eos, *, eddy_diffusivity_thermal, eddy_diffusivity_chemical):
+    """Build a real ``EntropyState`` on a synthetic mesh, mirroring
+    ``test_entropy_state_kappah_floor_mask._build_state`` but threading both
+    eddy-diffusivity pins. ``kappah_floor`` stays at its default (0.0), so the
+    floor block never runs and cannot mask the pin branch under test.
+    """
+    from aragog.eos.entropy_phase import EntropyPhaseEvaluator
+    from aragog.solver.entropy_state import EntropyState
+
+    N = 30
+    R_cmb, R_surf = 3480e3, 6371e3
+    P_cmb, P_surf = 135e9, 1e5
+
+    r_stag = np.linspace(R_cmb, R_surf, N)
+    dr = np.diff(r_stag)
+    r_basic = np.zeros(N + 1)
+    r_basic[0] = R_cmb
+    r_basic[-1] = R_surf
+    r_basic[1:-1] = 0.5 * (r_stag[:-1] + r_stag[1:])
+    P_stag = np.linspace(P_cmb, P_surf, N)
+    P_basic = np.interp(r_basic, r_stag, P_stag)
+
+    class _Mesh:
+        pass
+
+    class _Sub:
+        pass
+
+    mesh = _Mesh()
+    mesh.basic = _Sub()
+    mesh.staggered = _Sub()
+    mesh.basic.radii = r_basic
+    mesh.staggered.radii = r_stag
+    mesh.basic.area = 4.0 * np.pi * r_basic**2
+    mesh.basic.volume = (4.0 / 3.0) * np.pi * np.diff(r_basic**3)
+    ml = np.minimum(r_basic - R_cmb, R_surf - r_basic)
+    mesh.basic.mixing_length = np.maximum(ml, 1.0)
+    mesh.basic.mixing_length_squared = mesh.basic.mixing_length**2
+    mesh.basic.mixing_length_cubed = mesh.basic.mixing_length**3
+    mesh.basic.pressure = P_basic
+    mesh.staggered.pressure = P_stag
+    mesh.basic.mass_radii = r_basic
+    mesh.staggered.mass_radii = r_stag
+    mesh.dxidr = np.ones_like(r_basic)
+
+    def quantity_at_basic_nodes(q):
+        q = np.asarray(q).flatten()
+        out = np.zeros(N + 1)
+        out[0], out[-1] = q[0], q[-1]
+        out[1:-1] = 0.5 * (q[:-1] + q[1:])
+        return out
+
+    def d_dr_at_basic_nodes(q):
+        q = np.asarray(q).flatten()
+        out = np.zeros(N + 1)
+        out[1:-1] = np.diff(q) / dr
+        out[0], out[-1] = out[1], out[-2]
+        return out
+
+    mesh.quantity_at_basic_nodes = quantity_at_basic_nodes
+    mesh.d_dr_at_basic_nodes = d_dr_at_basic_nodes
+    mesh.dr = dr
+    mesh.N = N
+
+    phase_stag = EntropyPhaseEvaluator(entropy_eos=eos, gravitational_acceleration=10.0)
+    phase_stag.set_pressure(mesh.staggered.pressure)
+    phase_basic = EntropyPhaseEvaluator(entropy_eos=eos, gravitational_acceleration=10.0)
+    phase_basic.set_pressure(mesh.basic.pressure)
+
+    class _Eval:
+        pass
+
+    evaluator = _Eval()
+    evaluator.mesh = mesh
+
+    state = EntropyState(
+        evaluator=evaluator,
+        phase_staggered=phase_stag,
+        phase_basic=phase_basic,
+        conduction=True,
+        convection=True,
+        eddy_diffusivity_thermal=eddy_diffusivity_thermal,
+        eddy_diffusivity_chemical=eddy_diffusivity_chemical,
+    )
+    return state, mesh
+
+
+def _synthetic_jax_mesh(n_basic: int):
+    """Bare-minimum synthetic ``MeshArrays`` for a ``compute_mlt`` call; only
+    the pin branch is under test, so the raw MLT inputs need not be physical.
+    """
+    import jax.numpy as jnp
+    from aragog.jax.phase import MeshArrays
+
+    n = n_basic - 1
+    r_basic = jnp.linspace(3.5e6, 6.371e6, n_basic)
+    r_stag = 0.5 * (r_basic[1:] + r_basic[:-1])
+    P_basic = jnp.linspace(120e9, 1e9, n_basic)
+    P_stag = 0.5 * (P_basic[1:] + P_basic[:-1])
+    return MeshArrays(
+        d_dr_matrix=jnp.zeros((n_basic, n)),
+        quantity_matrix=jnp.zeros((n_basic, n)),
+        area=jnp.ones(n_basic),
+        volume=jnp.ones(n_basic),
+        radii_basic=r_basic,
+        radii_stag=r_stag,
+        mixing_length=jnp.ones(n_basic) * 1.0e2,
+        mixing_length_sq=jnp.ones(n_basic) * 1.0e4,
+        mixing_length_cu=jnp.ones(n_basic) * 1.0e6,
+        P_stag=P_stag,
+        P_basic=P_basic,
+        dP_dr_basic=jnp.gradient(P_basic, r_basic),
+        gravity=jnp.full(n_basic, 9.81),
+    )
+
+
+def _synthetic_jax_phase(n_basic: int):
+    """Bare-minimum synthetic ``PhaseProperties`` for a ``compute_mlt`` call."""
+    import jax.numpy as jnp
+    from aragog.jax.phase import PhaseProperties
+
+    ones = jnp.ones(n_basic)
+    return PhaseProperties(
+        temperature=ones * 4000.0,
+        density=ones * 4500.0,
+        heat_capacity=ones * 1000.0,
+        thermal_expansivity=ones * 3.0e-5,
+        dTdPs=ones * 1.0e-8,
+        melt_fraction=ones * 0.6,
+        viscosity=ones * 1.0e3,
+        kinematic_viscosity=ones * 1.0,
+        thermal_conductivity=ones * 4.0,
+        latent_heat=ones * 4.0e5,
+        capacitance=ones * 4500.0 * 4000.0,
+    )
+
+
+def test_jax_compute_mlt_negative_pin_is_uniform_thermal_and_chemical():
+    """A negative ``eddy_diff_thermal``/``eddy_diff_chemical`` overrides the
+    raw MLT physics with a spatially uniform ``abs(value)`` profile on both
+    channels, regardless of the (fabricated) mesh and phase inputs.
+
+    No EOS data is needed: the pin branch short-circuits the physics before
+    any EOS-derived quantity is used, so this check runs unconditionally.
+    """
+    from aragog.jax.phase import PhaseParams, compute_mlt
+
+    n_basic = 6
+    thermal_pin = -3.7
+    chemical_pin = -2.1
+    mesh = _synthetic_jax_mesh(n_basic)
+    phase = _synthetic_jax_phase(n_basic)
+    params = PhaseParams(eddy_diff_thermal=thermal_pin, eddy_diff_chemical=chemical_pin)
+
+    dSdr = np.full(n_basic, -1.0e-6)
+    kappa_h, kappa_c = compute_mlt(dSdr, phase, mesh, params)
+
+    np.testing.assert_allclose(np.asarray(kappa_h), abs(thermal_pin), rtol=0.0, atol=1e-12)
+    np.testing.assert_allclose(np.asarray(kappa_c), abs(chemical_pin), rtol=0.0, atol=1e-12)
+
+
+@_needs_eos
+def test_numpy_entropy_state_negative_pin_matches_jax_thermal_and_chemical():
+    """The numpy ``EntropyState.update`` and the jax ``compute_mlt`` must
+    agree on a negative eddy-diffusivity pin: both produce a spatially
+    uniform ``abs(value)`` profile on the thermal and chemical channels,
+    even though the numpy side runs the real EOS-backed physics and the jax
+    side runs a purely synthetic fixture.
+
+    ``kappah_floor`` stays at its default (0.0) so the floor block, which is
+    gated behind ``if self._kappah_floor > 0.0``, never executes and cannot
+    interfere with the pin-branch assertions below.
+    """
+    from aragog.eos.entropy import EntropyEOS
+    from aragog.jax.phase import PhaseParams, compute_mlt
+
+    thermal_pin = -3.7
+    chemical_pin = -2.1
+
+    eos = EntropyEOS(_EOS_DIR)
+    state, mesh = _build_eddy_pin_state(
+        eos,
+        eddy_diffusivity_thermal=thermal_pin,
+        eddy_diffusivity_chemical=chemical_pin,
+    )
+
+    S_sol = np.asarray(eos.solidus_entropy(mesh.staggered.pressure)).ravel()
+    S_liq = np.asarray(eos.liquidus_entropy(mesh.staggered.pressure)).ravel()
+    S0 = S_sol + 0.6 * (S_liq - S_sol)
+
+    n_basic = mesh.N + 1
+    state.update(S0, time=0.0, dSdr=np.full(n_basic, -1.0e-6))
+
+    kh_numpy = np.asarray(state.eddy_diffusivity).ravel()
+    # No public accessor exists for the chemical channel; ``_kappac`` is the
+    # private attribute EntropyState.update stores it in.
+    kc_numpy = np.asarray(state._kappac).ravel()
+
+    np.testing.assert_allclose(kh_numpy, abs(thermal_pin), rtol=0.0, atol=1e-9)
+    np.testing.assert_allclose(kc_numpy, abs(chemical_pin), rtol=0.0, atol=1e-9)
+
+    mesh_jax = _synthetic_jax_mesh(n_basic)
+    phase_jax = _synthetic_jax_phase(n_basic)
+    params = PhaseParams(eddy_diff_thermal=thermal_pin, eddy_diff_chemical=chemical_pin)
+    kappa_h_jax, kappa_c_jax = compute_mlt(np.full(n_basic, -1.0e-6), phase_jax, mesh_jax, params)
+
+    np.testing.assert_allclose(kh_numpy, np.asarray(kappa_h_jax), rtol=0.0, atol=1e-9)
+    np.testing.assert_allclose(kc_numpy, np.asarray(kappa_c_jax), rtol=0.0, atol=1e-9)
