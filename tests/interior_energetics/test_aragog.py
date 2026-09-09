@@ -1075,8 +1075,7 @@ _needs_eos = pytest.mark.skipif(
 
 
 def _build_eddy_pin_state(eos, *, eddy_diffusivity_thermal, eddy_diffusivity_chemical):
-    """Build a real ``EntropyState`` on a synthetic mesh, mirroring
-    ``test_entropy_state_kappah_floor_mask._build_state`` but threading both
+    """Build a real ``EntropyState`` on a synthetic mesh, threading both
     eddy-diffusivity pins. ``kappah_floor`` stays at its default (0.0), so the
     floor block never runs and cannot mask the pin branch under test.
     """
@@ -1236,6 +1235,7 @@ def test_jax_compute_mlt_negative_pin_is_uniform_thermal_and_chemical():
 
 
 @_needs_eos
+@pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
 def test_numpy_entropy_state_negative_pin_matches_jax_thermal_and_chemical():
     """The numpy ``EntropyState.update`` and the jax ``compute_mlt`` must
