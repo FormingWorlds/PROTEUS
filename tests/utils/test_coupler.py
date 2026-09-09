@@ -2061,6 +2061,7 @@ def test_get_proteus_directories_has_required_keys():
         'aragog',
         'zalmoxis',
         'vulcan',
+        'obliqua',
         'tools',
         'utils',
         'input',
@@ -2082,23 +2083,26 @@ def test_get_proteus_directories_has_required_keys():
 def test_get_proteus_directories_editable_submodule_paths():
     """Each editable FWL submodule maps to its on-disk sibling directory.
 
-    Aragog / Zalmoxis / VULCAN are installed via the ``tools/get_*.sh``
-    scripts as editable sibling checkouts inside the PROTEUS root. The
-    paths are case-sensitive on Linux: Aragog clones to ``aragog/``,
-    Zalmoxis to ``Zalmoxis/``, VULCAN to ``VULCAN/``. Pin the case here
-    so a doctor command or runtime path-resolver does not silently look
-    in the wrong directory.
+    Aragog / Zalmoxis / VULCAN / Obliqua are installed via the
+    ``tools/get_*.sh`` scripts as editable sibling checkouts inside the
+    PROTEUS root. The paths are case-sensitive on Linux: Aragog clones to
+    ``aragog/``, Zalmoxis to ``Zalmoxis/``, VULCAN to ``VULCAN/``, Obliqua
+    to ``Obliqua/`` (per ``tools/get_obliqua.sh``'s own default ``dest``).
+    Pin the case here so a doctor command or runtime path-resolver does
+    not silently look in the wrong directory.
     """
     dirs = get_proteus_directories(outdir='unit-test')
     # Path basename must match the on-disk casing the get_*.sh scripts use.
     assert os.path.basename(dirs['aragog']) == 'aragog'
     assert os.path.basename(dirs['zalmoxis']) == 'Zalmoxis'
     assert os.path.basename(dirs['vulcan']) == 'VULCAN'
+    assert os.path.basename(dirs['obliqua']) == 'Obliqua'
     # Each path is anchored at the PROTEUS root (the parent of the
     # editable checkout), not somewhere else like /tmp or site-packages.
     assert os.path.dirname(dirs['aragog']) == dirs['proteus']
     assert os.path.dirname(dirs['zalmoxis']) == dirs['proteus']
     assert os.path.dirname(dirs['vulcan']) == dirs['proteus']
+    assert os.path.dirname(dirs['obliqua']) == dirs['proteus']
 
 
 # ============================================================================

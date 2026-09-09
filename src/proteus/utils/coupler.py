@@ -2027,6 +2027,7 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         'proteus': root_dir,
         'agni': os.path.join(root_dir, 'AGNI'),
         'lovepy': os.path.join(root_dir, 'lovepy'),
+        'obliqua': os.path.join(root_dir, 'Obliqua'),
         'input': os.path.join(root_dir, 'input'),
         'spider': os.path.join(root_dir, 'SPIDER'),
         'aragog': os.path.join(root_dir, 'aragog'),

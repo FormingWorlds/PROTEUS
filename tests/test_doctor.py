@@ -22,6 +22,8 @@ import pytest
 from proteus.doctor import (
     _SUPPORT_EMAIL,
     FAIL,
+    GIT_MODULES,
+    OPTIONAL_GIT_MODULES,
     PASS,
     PYTHON_PACKAGES,
     WARN,
@@ -78,6 +80,24 @@ def test_python_packages_excludes_optional_backends():
     assert mandatory <= set(PYTHON_PACKAGES), (
         f'doctor lost mandatory package checks: {mandatory - set(PYTHON_PACKAGES)}'
     )
+
+
+@pytest.mark.unit
+def test_git_modules_excludes_optional_obliqua():
+    """`proteus doctor` must not check Obliqua as a mandatory git module.
+
+    Obliqua is an optional tidal-heating backend (orbit.module defaults to
+    'none'); listing it in GIT_MODULES would make doctor report a missing
+    checkout for every user who has never touched tidal heating. It belongs
+    in OPTIONAL_GIT_MODULES instead, which check_git_module skips entirely
+    when the checkout is absent (see check_git_module's `required` param).
+    """
+    assert 'Obliqua' not in GIT_MODULES
+    assert 'Obliqua' in OPTIONAL_GIT_MODULES
+    # Discrimination: AGNI/SOCRATES must remain mandatory, not accidentally
+    # migrated to the optional list alongside Obliqua.
+    assert {'AGNI', 'SOCRATES'} <= set(GIT_MODULES)
+    assert {'AGNI', 'SOCRATES'}.isdisjoint(OPTIONAL_GIT_MODULES)
 
 
 @pytest.mark.unit
@@ -891,6 +911,91 @@ class TestCheckGitModuleInstallState:
         # the actionable fix, instead of crashing or dropping the suggestion.
         assert r.fix_cmd is not None
         assert 'get_socrates.sh' in r.fix_cmd
+
+
+class TestCheckGitModuleOptional:
+    """check_git_module(required=False): Obliqua's not-required contract."""
+
+    def test_missing_optional_module_is_silently_skipped(self):
+        """``required=False`` with no checkout on disk returns None, not a
+        FAIL CheckResult -- the whole point of the flag, so doctor does not
+        report Obliqua as broken for a user who has never installed it.
+
+        Discrimination: the SAME missing checkout, with ``required=True``,
+        must still return a real FAIL result -- proving the None above
+        comes from the flag, not from some other reason the function
+        happens to return nothing (a bug that broke the check entirely
+        would make both calls return None).
+        """
+        with patch('proteus.doctor._module_pins', return_value={}):
+            optional_result = check_git_module('Obliqua', {}, required=False)
+            required_result = check_git_module('Obliqua', {}, required=True)
+        assert optional_result is None
+        assert required_result is not None
+        assert required_result.status == FAIL
+
+    def test_missing_required_module_still_fails(self):
+        """Default (``required=True``) behaviour is unchanged: a missing
+        checkout is still a FAIL, not silently skipped -- the new
+        parameter must not weaken AGNI/SOCRATES's existing contract.
+        """
+        with patch('proteus.doctor._module_pins', return_value={}):
+            r = check_git_module('AGNI', {}, required=True)
+        assert r is not None
+        assert r.status == FAIL
+        assert r.message == 'not installed'
+
+    def test_present_optional_module_on_pin_still_reports_pass(self, tmp_path):
+        """Once actually installed, an optional module IS checked and
+        pin-compared normally (PASS on a matching HEAD) -- ``required``
+        only controls the missing-checkout case, not whether an existing
+        checkout gets verified.
+        """
+        pins = {'obliqua': {'ref': 'a' * 40}}
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._git_head', return_value='a' * 40),
+        ):
+            r = check_git_module('Obliqua', {'obliqua': str(tmp_path)}, required=False)
+        assert r is not None
+        assert r.status == PASS
+        assert r.fix_cmd is None
+
+    def test_present_optional_module_off_pin_still_warns(self, tmp_path):
+        """An installed-but-off-pin optional module still gets the normal
+        WARN + refresh suggestion, not a silent pass."""
+        pins = {'obliqua': {'ref': 'a' * 40}}
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._git_head', return_value='b' * 40),
+        ):
+            r = check_git_module('Obliqua', {'obliqua': str(tmp_path)}, required=False)
+        assert r is not None
+        assert r.status == WARN
+        assert 'get_obliqua.sh' in r.fix_cmd
+
+    def test_run_all_checks_omits_obliqua_when_not_installed(self, tmp_path):
+        """End to end: with no Obliqua checkout, run_all_checks's result
+        list must contain no 'Obliqua' entry at all (not a FAIL/WARN one
+        either) -- confirms the skip actually reaches the top-level report,
+        not just the unit-level check_git_module call.
+        """
+        with (
+            patch('proteus.doctor._dependency_specs', return_value={}),
+            patch('proteus.doctor._module_pins', return_value={}),
+            patch(
+                'proteus.doctor.get_proteus_directories',
+                return_value={'proteus': str(tmp_path)},
+            ),
+        ):
+            results = run_all_checks()
+        assert not any(r.name == 'Obliqua' for r in results)
+        # Discrimination: AGNI (mandatory, also missing here) must still be
+        # reported as a real FAIL -- proving the loop that skips Obliqua
+        # did not also silently swallow the mandatory git-module checks.
+        agni_results = [r for r in results if r.name == 'AGNI']
+        assert len(agni_results) == 1
+        assert agni_results[0].status == FAIL
 
 
 def _mixed_results() -> list[CheckResult]:
