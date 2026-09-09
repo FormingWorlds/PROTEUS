@@ -81,6 +81,8 @@ nav:
               - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
           - Interior structure:
               - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
+          - Interior energetics:
+              - Numpy/jax eddy-diffusivity parity (aragog.py): Validation/interior_energetics/aragog.md
           - Orbit:
               - Orbital evolution (orbit.py): Validation/orbit/orbit.md
               - Satellite angular momentum (satellite.py): Validation/orbit/satellite.md

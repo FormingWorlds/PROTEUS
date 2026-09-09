@@ -14,6 +14,7 @@ test inventoried here.
 |---|---|---|
 | Atmosphere climate | `atmos_clim/agni.py` | [Transparent black-body limit](atmos_clim/agni.md) |
 | Interior structure | `interior_struct/zalmoxis.py` | [Liquidus-super IC anchor](interior_struct/zalmoxis.md) |
+| Interior energetics | `interior_energetics/aragog.py` | [Numpy/jax eddy-diffusivity parity](interior_energetics/aragog.md) |
 | Orbit | `orbit/orbit.py` | [Orbital evolution](orbit/orbit.md) |
 | Orbit | `orbit/satellite.py` | [Satellite angular momentum](orbit/satellite.md) |
 | Orbit | `orbit/wrapper.py` | [Orbit module wrapper](orbit/wrapper.md) |

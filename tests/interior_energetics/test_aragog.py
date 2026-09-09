@@ -1236,6 +1236,7 @@ def test_jax_compute_mlt_negative_pin_is_uniform_thermal_and_chemical():
 
 
 @_needs_eos
+@pytest.mark.reference_pinned
 def test_numpy_entropy_state_negative_pin_matches_jax_thermal_and_chemical():
     """The numpy ``EntropyState.update`` and the jax ``compute_mlt`` must
     agree on a negative eddy-diffusivity pin: both produce a spatially
@@ -1278,7 +1279,9 @@ def test_numpy_entropy_state_negative_pin_matches_jax_thermal_and_chemical():
     mesh_jax = _synthetic_jax_mesh(n_basic)
     phase_jax = _synthetic_jax_phase(n_basic)
     params = PhaseParams(eddy_diff_thermal=thermal_pin, eddy_diff_chemical=chemical_pin)
-    kappa_h_jax, kappa_c_jax = compute_mlt(np.full(n_basic, -1.0e-6), phase_jax, mesh_jax, params)
+    kappa_h_jax, kappa_c_jax = compute_mlt(
+        np.full(n_basic, -1.0e-6), phase_jax, mesh_jax, params
+    )
 
     np.testing.assert_allclose(kh_numpy, np.asarray(kappa_h_jax), rtol=0.0, atol=1e-9)
     np.testing.assert_allclose(kc_numpy, np.asarray(kappa_c_jax), rtol=0.0, atol=1e-9)
