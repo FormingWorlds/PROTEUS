@@ -36,7 +36,13 @@ import numpy as np
 import pytest
 from scipy import integrate
 
-from proteus.orbit.hansen import get_all_m_hansen, hansen_fft, kepler_newton, nextpow2_int
+from proteus.orbit.hansen import (
+    get_all_m_hansen,
+    hansen_fft,
+    init_hansen_table,
+    kepler_newton,
+    nextpow2_int,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -195,13 +201,10 @@ def test_get_all_m_hansen_all_m_are_delta_functions_at_zero_eccentricity(monkeyp
     global via ``monkeypatch`` (auto-restored after this test) keeps
     the fast, minimal table scoped to this test only.
     """
-    import proteus.orbit.hansen as hansen_mod
 
     n = 2
-    monkeypatch.setattr(hansen_mod, '_hansen_table', None)
-    hansen_mod.init_hansen_table(
-        e_grid=np.array([0.0, 0.1]), kmin=-4, kmax=4, n_deg=n, force=True
-    )
+    monkeypatch.setattr('proteus.orbit.hansen._hansen_table', None)
+    init_hansen_table(e_grid=np.array([0.0, 0.1]), kmin=-4, kmax=4, n_deg=n, force=True)
 
     k_range, results = get_all_m_hansen(e=0.0, n_deg=n, kmin=-4, kmax=4)
     assert set(results.keys()) == {-2, -1, 0, 1, 2}

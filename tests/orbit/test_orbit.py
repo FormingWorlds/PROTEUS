@@ -378,8 +378,7 @@ def test_sp0d_mutates_hf_row_in_place():
     silently return a new dict.
     """
     hf_row = _make_hf_row(sma_m=0.7 * 1.5e11)
-    result = sp0d(hf_row, dt=1.0, config=_SOLVER_CONFIG)
-    assert result is None
+    assert sp0d(hf_row, dt=1.0, config=_SOLVER_CONFIG) is None
     assert hf_row['semimajorax'] == pytest.approx(0.7 * 1.5e11)
 
 

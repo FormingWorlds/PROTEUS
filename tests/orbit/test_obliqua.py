@@ -252,7 +252,7 @@ def _patch_identity_conversions(monkeypatch, obliqua_mod):
     isolate the orchestration logic from the dedicated conversion
     tests below.
     """
-    monkeypatch.setattr(obliqua_mod, '_jlarr', lambda a: np.asarray(a))
+    monkeypatch.setattr(obliqua_mod, '_jlarr', np.asarray)
     monkeypatch.setattr(obliqua_mod, '_jlsca_float', lambda s: s)
     monkeypatch.setattr(obliqua_mod, '_jlsca_prec', lambda s: s)
     monkeypatch.setattr(obliqua_mod, 'to_julia_dict', lambda cfg: cfg)

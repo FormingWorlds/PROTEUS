@@ -44,15 +44,13 @@ def _state_is_valid_star(hf_row):
 def evolve_orbit_star(hf_row: dict, config: Config, tides_o: Tides_t, interior_o: Interior_t):
     """Evolve the planet's orbital parameters by interior_o.dt of physical time.
 
-    Dispatches to the requested star-planet model (sp0d, sp1d) through
-    the shared adaptive-substep controller in
+    Dispatches to the requested star-planet model (sp0d, sp1d).
+    ``sp1d`` goes through the shared adaptive-substep controller in
     ``proteus.orbit.common.run_adaptive_orbit_substeps`` -- the same
     controller used by the planet-satellite models in
-    ``proteus.orbit.satellite``, so both model families get the same
-    accept/reject substepping, growth/shrink behaviour, and
-    angular-momentum-conserving C_planet rescale (sp1d only; sp0d does
-    not track spin). All tolerances and controller knobs are read from
-    ``config.orbit.solver``.
+    ``proteus.orbit.satellite`` -- getting accept/reject substepping,
+    growth/shrink behaviour, and the angular-momentum-conserving
+    C_planet rescale.
 
     Parameters
     ----------
@@ -70,12 +68,8 @@ def evolve_orbit_star(hf_row: dict, config: Config, tides_o: Tides_t, interior_o
     solver = config.orbit.solver
 
     if model == 'sp0d':
-
-        def step_fn(hf_row, dt_yr, t_elapsed_yr):
-            sp0d(hf_row, dt_yr, config)
-            return None
-
-        needs_c_planet = False
+        sp0d(hf_row, interior_o.dt, config)
+        return
 
     elif model == 'sp1d':
 

@@ -509,7 +509,6 @@ def LN_from_lookup(hf_row: dict, dirs: dict, tides_o: Tides_t, config: Config):
             lookup_from_interior(dirs, config)
             # Update the file path to point to the generated netcdf file
             file_path = os.path.join(dirs['output/data'], 'moon_tides.nc')
-            pass
 
         tides_o.add_from_file(primary='satellite_dict', perturber='planet', file_path=file_path)
 

@@ -9,7 +9,7 @@ from scipy.integrate import solve_ivp
 from scipy.optimize import brentq
 
 from proteus.interior_energetics.common import Interior_t
-from proteus.orbit.common import Tides_t, run_adaptive_orbit_substeps
+from proteus.orbit.common import Tides_t, get_C_planet, run_adaptive_orbit_substeps
 from proteus.orbit.hansen import get_all_m_hansen
 from proteus.utils.constants import M_earth, R_earth, const_G, secs_per_year
 
@@ -261,8 +261,11 @@ def evolve_orbit_satellite(
     R_int) is frozen for the whole duration of this call by construction.
     ps0d needs this too: its own AM bootstrap (see ps0d's Ltot call) reads
     hf_row['C_planet'] directly, so it must stay populated and
-    angular-momentum-consistent across calls exactly like it does for
-    ps1d/ps1d_evec -- hence `needs_c_planet=True` for all three models.
+    angular-momentum-consistent -- but ps0d does NOT go through this
+    shared controller at all (see the dispatch below); it gets the same
+    one-time get_C_planet refresh and single-jump AM-conserving rescale
+    applied directly, unsmoothed, before being called once for the
+    whole `interior_o.dt`.
 
     If gyration_const, R_int, or M_planet has changed since the previous
     call to this function -- e.g. from interior cooling/contraction between
@@ -299,6 +302,25 @@ def evolve_orbit_satellite(
     model = config.orbit.planet_satellite_model
     solver = config.orbit.solver
 
+    if model == 'ps0d':
+        # Bypasses run_adaptive_orbit_substeps entirely: ps0d has no
+        # spin-orbit-tidal stiffness. Preserves the AM-conserving
+        # structural rescale, applied as a single unsmoothed jump.
+        C_p_old = hf_row.get('C_planet')
+        get_C_planet(hf_row, config, interior_o)
+        C_p_new = hf_row['C_planet']
+        if (
+            C_p_old is not None
+            and np.isfinite(C_p_old)
+            and C_p_old > 0
+            and np.isfinite(C_p_new)
+            and C_p_new != 0
+        ):
+            Omega_p_old = 2 * np.pi / float(hf_row['axial_period'])
+            hf_row['axial_period'] = 2 * np.pi / (Omega_p_old * C_p_old / C_p_new)
+        ps0d(hf_row, interior_o.dt, config)
+        return
+
     # Specify the resonance state (satellite-specific controller state,
     # not owned by the shared substep controller -- see docstring above).
     resonance_state = hf_row.pop('_orbit_resonance_state', {})
@@ -315,15 +337,7 @@ def evolve_orbit_satellite(
 
     last_in_band = [None]  # mutable box: tracks band transitions for logging only
 
-    if model == 'ps0d':
-
-        def step_fn(hf_row, dt_yr, t_elapsed_yr):
-            ps0d(hf_row, dt_yr, config)
-            return None
-
-        on_accept_fn = None
-
-    elif model == 'ps1d':
+    if model == 'ps1d':
 
         def step_fn(hf_row, dt_yr, t_elapsed_yr):
             ps1d(hf_row, tides_o, dt_yr, config)

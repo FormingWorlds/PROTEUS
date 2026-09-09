@@ -921,7 +921,21 @@ def test_evolve_orbit_satellite_ps0d_dispatch_evolves_hf_row():
     assert abs(hf_row['semimajorax_sat'] - sma_before) > 1.0
 
 
-def test_evolve_orbit_satellite_rejects_substep_exceeding_max_rel_da_and_shrinks_dt():
+def _make_ps1d_evolve_hf_row():
+    # ps0d bypasses the shared adaptive-substep controller entirely (see
+    # evolve_orbit_satellite's dispatch), so controller-mechanics tests
+    # exercise ps1d instead -- the simplest model that still goes through
+    # run_adaptive_orbit_substeps.
+    hf_row = _make_evolve_hf_row()
+    hf_row['axial_period_sat'] = 2.36e6
+    hf_row['C_sat'] = _PS1D_CSA
+    hf_row['R_sat'] = _PS1D_RSA
+    return hf_row
+
+
+def test_evolve_orbit_satellite_rejects_substep_exceeding_max_rel_da_and_shrinks_dt(
+    _fast_hansen_table,
+):
     """Forcing ``max_rel_da`` far below any physically achievable step
     must cause EVERY substep to be rejected (state rolled back to the
     pre-substep snapshot each time) until either the step size
@@ -929,20 +943,20 @@ def test_evolve_orbit_satellite_rejects_substep_exceeding_max_rel_da_and_shrinks
     reject/rollback/shrink branch of the adaptive controller, not just
     the accept path every other test here takes.
     """
-    hf_row = _make_evolve_hf_row()
-    hf_row['F_tidal'] = 1e-3
+    hf_row = _make_ps1d_evolve_hf_row()
     sma_before = hf_row['semimajorax_sat']
-    config = _make_satellite_config('ps0d')
+    config = _make_satellite_config('ps1d')
     config.orbit.solver.max_rel_da = 1e-30
     config.orbit.solver.max_substeps = 20
     interior_o = _make_interior_for_c_planet(density=5500.0)
     interior_o.dt = 1e7
+    tides_o = _make_ps1d_tides(-0.01 - 0.02j)
 
     evolve_orbit_satellite(
         hf_row,
         config,
         dirs={},
-        tides_o=Tides_t(),
+        tides_o=tides_o,
         interior_o=interior_o,
     )
 
@@ -953,21 +967,21 @@ def test_evolve_orbit_satellite_rejects_substep_exceeding_max_rel_da_and_shrinks
     assert hf_row['semimajorax_sat'] == pytest.approx(sma_before, rel=1e-12)
 
 
-def test_evolve_orbit_satellite_persists_controller_state_across_calls():
+def test_evolve_orbit_satellite_persists_controller_state_across_calls(_fast_hansen_table):
     """``_orbit_dt_yr`` and ``_orbit_resonance_state`` are written back
     to ``hf_row`` at the end of the call (private, dt_yr not reset to
     ``dt0_yr`` on the next call) -- the persistence the function's own
     docstring says is load-bearing for not wasting substeps re-growing
     a step size a previous call had already found safe.
     """
-    hf_row = _make_evolve_hf_row()
-    hf_row['F_tidal'] = 1e-3
-    config = _make_satellite_config('ps0d')
+    hf_row = _make_ps1d_evolve_hf_row()
+    config = _make_satellite_config('ps1d')
     interior_o = _make_interior_for_c_planet(density=5500.0)
     interior_o.dt = 10.0
+    tides_o = _make_ps1d_tides(-0.01 - 0.02j)
 
     assert '_orbit_dt_yr' not in hf_row
-    evolve_orbit_satellite(hf_row, config, dirs={}, tides_o=Tides_t(), interior_o=interior_o)
+    evolve_orbit_satellite(hf_row, config, dirs={}, tides_o=tides_o, interior_o=interior_o)
     assert '_orbit_dt_yr' in hf_row
     assert '_orbit_resonance_state' in hf_row
     # Discrimination: the persisted value is a real float step size,

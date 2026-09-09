@@ -85,8 +85,8 @@ import numpy as np
 import pytest
 
 import proteus.orbit.hansen as hansen_mod
+from proteus.config._orbit import OrbitSolver
 from proteus.orbit.common import Tides_t, get_C_planet
-from proteus.orbit.hansen import init_hansen_table
 from proteus.orbit.satellite import evolve_orbit_satellite
 
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
@@ -98,7 +98,6 @@ pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 # consistency with PROTEUS's own body-parameter defaults.
 # ---------------------------------------------------------------------------
 _CONST_G = 6.67430e-11
-_SECS_PER_YEAR = 365.25 * 24 * 3600.0
 _M_EARTH, _R_EARTH = 5.972e24, 6.371e6
 _M_MOON, _R_MOON = 7.342e22, 1.737e6
 _M_SUN, _AU = 1.989e30, 1.496e11
@@ -192,7 +191,10 @@ def _run_ctl_reference(
     """
     hf_row = _make_initial_hf_row()
     config = SimpleNamespace(
-        orbit=SimpleNamespace(planet_satellite_model='ps1d_evec'),
+        orbit=SimpleNamespace(
+            planet_satellite_model='ps1d_evec',
+            solver=OrbitSolver(dt0_yr=0.2, dt_max_yr=2.0),
+        ),
         interior_energetics=SimpleNamespace(module='aragog'),
     )
     n_shells = 50
@@ -217,8 +219,6 @@ def _run_ctl_reference(
             dirs,
             tides_o,
             interior_o,
-            dt0_yr=0.2,
-            dt_max_yr=2.0,
         )
         hf_row['Time'] = (i + 1) * _DT_OUTER_YR
         trajectory.append(
@@ -255,7 +255,7 @@ def _ctl_reference_trajectory(tmp_path_factory):
     data_dir = str(tmp_path_factory.mktemp('evection_ctl'))
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(hansen_mod, '_hansen_table', None)
-        init_hansen_table(e_grid=e_grid, kmin=_KMIN, kmax=_KMAX, n_deg=2, force=True)
+        hansen_mod.init_hansen_table(e_grid=e_grid, kmin=_KMIN, kmax=_KMAX, n_deg=2, force=True)
         yield _run_ctl_reference(_T_TARGET_YR, _MAX_WALL_SECONDS, data_dir)
 
 
