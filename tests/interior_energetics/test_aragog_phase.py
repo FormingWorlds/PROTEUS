@@ -24,6 +24,9 @@ See also:
 
 from __future__ import annotations
 
+import ast
+import inspect
+import textwrap
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -32,6 +35,7 @@ import pytest
 
 pytest.importorskip('aragog.jax')
 
+from proteus.interior_energetics.aragog import AragogRunner  # noqa: E402
 from proteus.interior_energetics.aragog_jax import AragogJAXRunner  # noqa: E402
 from proteus.interior_energetics.aragog_phase import (  # noqa: E402
     _phase_params_from_config,
@@ -110,14 +114,18 @@ def _make_full_config(*, separation_viscosity: str = 'mixture'):
     ie.melt_log10visc = 1.7
     ie.solid_cond = 4.3
     ie.melt_cond = 2.9
-    ie.trans_conduction = True
-    ie.trans_convection = True
-    ie.trans_grav_sep = False
+    # The transport switches and the smoothing selection differ from the
+    # aragog PhaseParams defaults (conduction/convection True, grav_sep
+    # False, smoothing 'tanh'), so a dropped kwarg falls back to a value
+    # that mismatches the assertion.
+    ie.trans_conduction = False
+    ie.trans_convection = False
+    ie.trans_grav_sep = True
     ie.trans_mixing = True
     ie.eddy_diffusivity_thermal = 0.13
     ie.eddy_diffusivity_chemical = 0.07
     ie.kappah_floor = 1.0e-6
-    ie.aragog.phase_smoothing = 'tanh'
+    ie.aragog.phase_smoothing = 'cubic_hermite'
     return config
 
 
@@ -215,11 +223,14 @@ def test_jax_only_fields_carry_configured_values():
     mixing-length floor, and the phase-smoothing selection. A field dropped
     at the JAX builder falls back to the library default.
 
-    Discrimination: the config values differ from any plausible library
-    default, so a dropped field surfaces as a value mismatch. ``kappah_floor``
-    is asserted through the single float cast, and ``phase_smoothing='tanh'``
-    is asserted through its 1.0 flag, so a dropped smoothing kwarg (default
-    'cubic_hermite', flag 0.0) fails here.
+    Discrimination: the config values differ from the aragog library
+    defaults (conduction and convection True, grav_sep False, smoothing
+    'tanh'), so a dropped field falls back to a value that mismatches the
+    assertion. The transport switches are configured False, False, True, so
+    the stored flags read 0.0, 0.0, 1.0; the smoothing is 'cubic_hermite', so
+    ``phase_smoothing_tanh`` reads 0.0. ``bottom_up_grav_sep`` and
+    ``phase_smoothing_width`` are hardcoded builder constants, asserted
+    against their literal expected values so a flipped constant fails here.
     """
     config = _make_full_config()
     ie = config.interior_energetics
@@ -232,11 +243,13 @@ def test_jax_only_fields_carry_configured_values():
     assert jax_params.eddy_diff_thermal == pytest.approx(ie.eddy_diffusivity_thermal)
     assert jax_params.eddy_diff_chemical == pytest.approx(ie.eddy_diffusivity_chemical)
     assert jax_params.kappah_floor == pytest.approx(ie.kappah_floor)
-    assert jax_params.phase_smoothing_tanh == pytest.approx(1.0)
-    assert float(jax_params.conduction) == pytest.approx(1.0)
-    assert float(jax_params.convection) == pytest.approx(1.0)
-    assert float(jax_params.grav_sep) == pytest.approx(0.0)
+    assert jax_params.phase_smoothing_tanh == pytest.approx(0.0)
+    assert float(jax_params.conduction) == pytest.approx(0.0)
+    assert float(jax_params.convection) == pytest.approx(0.0)
+    assert float(jax_params.grav_sep) == pytest.approx(1.0)
     assert float(jax_params.mixing) == pytest.approx(1.0)
+    assert float(jax_params.bottom_up_grav_sep) == pytest.approx(1.0)
+    assert jax_params.phase_smoothing_width == pytest.approx(0.01)
 
 
 def test_numpy_only_fields_carry_configured_values():
@@ -283,51 +296,129 @@ def test_kappah_floor_cast_once_is_float():
     builder, the factory cast the floor and the runner did not, so an int
     or numpy-scalar config value could store two different Python types.
 
-    Discrimination: the resolved input is asserted to be exactly a Python
-    float, and to equal the configured value. A resolver that forwarded the
-    raw config attribute would carry the mock's type instead.
+    Discrimination: the config value is a ``numpy.float64``, which is a
+    subclass of ``float``, so an ``isinstance`` check cannot tell a resolver
+    that forwards the raw scalar from one that casts it. The test asserts the
+    resolved input is exactly a Python ``float`` with ``type(...) is float``,
+    so a dropped ``float`` cast, which leaves a ``numpy.float64``, fails here.
     """
     config = _make_full_config()
+    config.interior_energetics.kappah_floor = np.float64(1.0e-6)
     inputs = _phase_params_from_config(config)
 
-    assert isinstance(inputs.kappah_floor, float)
+    assert type(inputs.kappah_floor) is float
     assert inputs.kappah_floor == pytest.approx(config.interior_energetics.kappah_floor)
 
 
-def test_runner_site_uses_the_shared_jax_builder(tmp_path):
-    """The JAX research runner's ``PhaseParams`` equals the builder output
-    field by field, so the runner site cannot drift from the factory site.
+def test_runner_site_delegates_to_the_shared_jax_builder(tmp_path):
+    """The JAX research runner delegates to ``build_jax_phase_params`` and
+    stores the builder's own return object.
 
     Contract: ``AragogJAXRunner._build_jax_components`` sets
     ``interior_o._jax_params = build_jax_phase_params(config)``. This test
     drives the real constructor (with the heavy EOS and mesh construction
-    mocked) and compares the runner-built params against an independent
-    ``build_jax_phase_params(config)`` over all 19 stored attributes.
+    mocked) and spies on the builder at the runner's import site.
 
-    Discrimination: comparing every stored attribute, not just one, means a
-    regression that reintroduced an inline ``PhaseParams(...)`` at the
-    runner and dropped or re-cast any single field fails here. The
-    separation-viscosity flag and the ``kappah_floor`` float are included,
-    the two fields most exposed to a re-cast divergence.
+    Discrimination: a spy wraps the real builder, so the runner still gets a
+    valid ``PhaseParams`` while the test records the call. It asserts the
+    builder is called once with the config object, and that the stored
+    ``interior_o._jax_params`` IS the object the builder returned. A
+    regression that re-inlined ``PhaseParams(...)`` at the runner never calls
+    the patched builder, so the spy stays uncalled and the test fails; value
+    parity alone could not tell an inline constructor from a delegation.
     """
     config = _make_full_config()
     interior_o = _make_runner_interior_o(spider_eos_dir=str(tmp_path))
-    expected = build_jax_phase_params(config)
+
+    # Wrap the real builder so the runner still receives a valid PhaseParams
+    # while the spy records the exact object returned.
+    real_builder = build_jax_phase_params
+    captured = []
+
+    def _spy(cfg):
+        result = real_builder(cfg)
+        captured.append(result)
+        return result
 
     with (
+        patch(
+            'proteus.interior_energetics.aragog_jax.build_jax_phase_params',
+            side_effect=_spy,
+        ) as mock_builder,
         patch('aragog.jax.eos.EntropyEOS_JAX', return_value=MagicMock()),
         patch.object(AragogJAXRunner, '_build_mesh_arrays', return_value=MagicMock()),
     ):
         AragogJAXRunner(config, {'output': str(tmp_path)}, {}, None, interior_o)
 
-    built = interior_o._jax_params
-    # The two fields most exposed to a re-cast divergence, asserted by name.
-    assert built.separation_viscosity_mixture == pytest.approx(
-        expected.separation_viscosity_mixture
-    )
-    assert built.kappah_floor == pytest.approx(expected.kappah_floor)
-    for attr in _JAX_STORED_ATTRS:
-        assert float(getattr(built, attr)) == pytest.approx(float(getattr(expected, attr))), (
-            f'runner-site PhaseParams.{attr}={getattr(built, attr)!r} '
-            f'differs from build_jax_phase_params.{attr}={getattr(expected, attr)!r}'
-        )
+    mock_builder.assert_called_once_with(config)
+    assert captured, 'the shared JAX builder was not called at the runner site'
+    assert interior_o._jax_params is captured[0]
+
+
+def test_cvode_factory_site_delegates_to_the_shared_jax_builder(tmp_path):
+    """The JAX CVODE factory installer resolves its phase parameters through
+    ``build_jax_phase_params``, not an inline ``PhaseParams``.
+
+    Contract: ``AragogRunner._maybe_install_jax_cvode_factory``, active only
+    for backend='jax', calls ``build_jax_phase_params(config)`` to build the
+    factory's phase pytree. This test spies on that builder while the
+    installer runs against a mock solver, with the heavy entropy-EOS load and
+    the mesh conversion patched out.
+
+    Discrimination: the spy asserts the builder is called once with the
+    config object. A regression that re-inlined ``PhaseParams(...)`` at this
+    site never calls the patched builder, so the spy stays uncalled and the
+    test fails; the builder call happens before the mesh conversion, so the
+    patched mesh keeps the installer on its success path.
+    """
+    config = _make_full_config()
+    config.interior_energetics.aragog.backend = 'jax'
+    interior_o = _make_runner_interior_o(spider_eos_dir=str(tmp_path))
+
+    with (
+        patch(
+            'proteus.interior_energetics.aragog._cached_entropy_eos_jax',
+            return_value=MagicMock(),
+        ),
+        patch('aragog.jax.phase.MeshArrays.from_numpy_mesh', return_value=MagicMock()),
+        patch(
+            'proteus.interior_energetics.aragog.build_jax_phase_params',
+            return_value=MagicMock(),
+        ) as mock_builder,
+    ):
+        AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
+
+    mock_builder.assert_called_once_with(config)
+
+
+def test_numpy_setup_solver_site_delegates_to_the_shared_builder():
+    """The numpy entropy solver builds the mixed-phase parameters through
+    ``build_mixed_phase_params``, never by constructing ``_PhaseMixedParameters``
+    inline.
+
+    Contract: ``AragogRunner.setup_solver`` sets
+    ``phase_mixed = build_mixed_phase_params(config, solidus, liquidus)``.
+    This site loads real EOS tables and a real mesh before that call, so a
+    runtime spy would need a near-complete real config and real data files;
+    the delegation is asserted structurally on the function's own AST instead.
+
+    Discrimination: the test parses ``setup_solver`` and collects every call
+    target. It requires ``build_mixed_phase_params`` among them and forbids
+    ``_PhaseMixedParameters``, so a regression that re-inlined the mixed-phase
+    constructor at this site fails here. The solid and liquid ``_PhaseParameters``
+    constructors are a different type and stay legitimately inline.
+    """
+    source = textwrap.dedent(inspect.getsource(AragogRunner.setup_solver))
+    tree = ast.parse(source)
+
+    call_targets = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name):
+                call_targets.add(func.id)
+            elif isinstance(func, ast.Attribute):
+                call_targets.add(func.attr)
+
+    assert 'build_mixed_phase_params' in call_targets
+    assert '_PhaseMixedParameters' not in call_targets
