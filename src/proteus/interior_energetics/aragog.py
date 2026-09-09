@@ -25,10 +25,13 @@ from aragog.parser import (
     _EnergyParameters,
     _InitialConditionParameters,
     _MeshParameters,
-    _PhaseMixedParameters,
     _PhaseParameters,
     _Radionuclide,
     _SolverParameters,
+)
+from proteus.interior_energetics.aragog_phase import (
+    build_jax_phase_params,
+    build_mixed_phase_params,
 )
 from proteus.interior_energetics.common import Interior_t
 from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
@@ -1056,26 +1059,7 @@ class AragogRunner:
             entropy=entropy_solid_arg,
         )
 
-        phase_mixed = _PhaseMixedParameters(
-            latent_heat_of_fusion=float(config.interior_energetics.latent_heat_of_fusion),
-            rheological_transition_melt_fraction=config.interior_energetics.rfront_loc,
-            rheological_transition_width=config.interior_energetics.rfront_wid,
-            solidus=solidus_path,
-            liquidus=liquidus_path,
-            phase='mixed',
-            phase_transition_width=float(config.interior_energetics.phase_transition_width),
-            grain_size=config.interior_energetics.grain_size,
-            separation_viscosity=config.interior_energetics.aragog.separation_viscosity,
-            matprop_smooth_width=float(config.interior_energetics.spider.matprop_smooth_width),
-            const_properties=bool(config.interior_energetics.const_properties),
-            const_rho=float(config.interior_energetics.const_rho),
-            const_Cp=float(config.interior_energetics.const_Cp),
-            const_alpha=float(config.interior_energetics.const_alpha),
-            const_cond=float(config.interior_energetics.const_cond),
-            const_log10visc=float(config.interior_energetics.const_log10visc),
-            const_T_ref=float(config.interior_energetics.const_T_ref),
-            const_S_ref=float(config.interior_energetics.const_S_ref),
-        )
+        phase_mixed = build_mixed_phase_params(config, solidus_path, liquidus_path)
 
         radionuclides = []
         if config.interior_energetics.heat_radiogenic:
@@ -1194,7 +1178,7 @@ class AragogRunner:
 
         try:
             import jax.numpy as jnp
-            from aragog.jax.phase import MeshArrays, PhaseParams
+            from aragog.jax.phase import MeshArrays
             from aragog.jax.solver import BoundaryParams
             from aragog.solver.cvode_jax import build_jax_rhs_and_jacobian
             # EntropyEOS_JAX is imported lazily by _cached_entropy_eos_jax.
@@ -1219,31 +1203,7 @@ class AragogRunner:
                     _t_post_jax_eos - _t_pre_jax_eos,
                 )
 
-            ie = config.interior_energetics
-            params_jax = PhaseParams(
-                phi_rheo=ie.rfront_loc,
-                phi_width=ie.rfront_wid,
-                viscosity_solid=10.0 ** float(ie.solid_log10visc),
-                viscosity_liquid=10.0 ** float(ie.melt_log10visc),
-                grain_size=ie.grain_size,
-                k_solid=float(ie.solid_cond),
-                k_liquid=float(ie.melt_cond),
-                matprop_smooth_width=float(ie.spider.matprop_smooth_width),
-                conduction=ie.trans_conduction,
-                convection=ie.trans_convection,
-                grav_sep=ie.trans_grav_sep,
-                mixing=ie.trans_mixing,
-                eddy_diff_thermal=float(ie.eddy_diffusivity_thermal),
-                eddy_diff_chemical=float(ie.eddy_diffusivity_chemical),
-                kappah_floor=float(ie.kappah_floor),
-                bottom_up_grav_sep=True,
-                phase_smoothing=ie.aragog.phase_smoothing,
-                separation_viscosity=ie.aragog.separation_viscosity,
-                # Width matches hardcoded 1e-2 in numpy entropy_state.py
-                # _spider_get_smoothing call sites (not matprop_smooth_width,
-                # which is a separate SPIDER material-property blend).
-                phase_smoothing_width=0.01,
-            )
+            params_jax = build_jax_phase_params(config)
 
             _t_pre_mesh = time.perf_counter()
             mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)

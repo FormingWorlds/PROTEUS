@@ -19,6 +19,7 @@ import jax.numpy as jnp
 import netCDF4 as nc
 import numpy as np
 
+from proteus.interior_energetics.aragog_phase import build_jax_phase_params
 from proteus.interior_energetics.common import Interior_t
 
 jax.config.update('jax_enable_x64', True)
@@ -67,7 +68,6 @@ class AragogJAXRunner:
     def _build_jax_components(self, config: Config, interior_o: Interior_t):
         """Build JAX EOS, params, and BCs from the numpy solver."""
         from aragog.jax.eos import EntropyEOS_JAX
-        from aragog.jax.phase import PhaseParams
         from aragog.jax.solver import BoundaryParams
 
         # EOS: load from the same directory as numpy solver
@@ -81,34 +81,7 @@ class AragogJAXRunner:
         interior_o._jax_eos = eos_jax
 
         # Phase parameters from config.
-        # `bottom_up_grav_sep=True` enables the SPIDER-analogue cubic
-        # Hermite Jgrav smoothing (see aragog/jax/phase.py::compute_fluxes
-        # and aragog/solver/entropy_state.py for the scipy path
-        # equivalent). With it off, the JAX path shows a spurious CMB
-        # drain at first crystallisation. There is no PROTEUS config knob
-        # to disable it in production; the flag exists only so regression
-        # tests can exercise the uncorrected behaviour.
-        interior_o._jax_params = PhaseParams(
-            phi_rheo=config.interior_energetics.rfront_loc,
-            phi_width=config.interior_energetics.rfront_wid,
-            viscosity_solid=10.0 ** float(config.interior_energetics.solid_log10visc),
-            viscosity_liquid=10.0 ** float(config.interior_energetics.melt_log10visc),
-            grain_size=config.interior_energetics.grain_size,
-            k_solid=float(config.interior_energetics.solid_cond),
-            k_liquid=float(config.interior_energetics.melt_cond),
-            conduction=config.interior_energetics.trans_conduction,
-            convection=config.interior_energetics.trans_convection,
-            grav_sep=config.interior_energetics.trans_grav_sep,
-            mixing=config.interior_energetics.trans_mixing,
-            eddy_diff_thermal=float(config.interior_energetics.eddy_diffusivity_thermal),
-            eddy_diff_chemical=float(config.interior_energetics.eddy_diffusivity_chemical),
-            kappah_floor=config.interior_energetics.kappah_floor,
-            matprop_smooth_width=float(config.interior_energetics.spider.matprop_smooth_width),
-            bottom_up_grav_sep=True,
-            phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
-            phase_smoothing_width=0.01,
-            separation_viscosity=config.interior_energetics.aragog.separation_viscosity,
-        )
+        interior_o._jax_params = build_jax_phase_params(config)
 
         # Boundary conditions
         bc_cfg = self.aragog_solver.parameters.boundary_conditions
