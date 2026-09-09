@@ -39,11 +39,11 @@ if [ -z "$proteus_branch" ]; then
 fi
 
 get_parse_args "$@"
-workpath=$root/aragog/
+workpath="$root/aragog/"
 guard_dirty_checkout "$workpath" get_aragog.sh
 
 # Make room
-rm -rf $workpath
+rm -rf "$workpath"
 
 # Check SSH access to GitHub
 use_ssh=$(github_use_ssh)
@@ -93,7 +93,7 @@ fi
 pip install -U -e . || { echo "ERROR: editable install failed" >&2; exit 1; }
 
 # Back to old folder
-cd $root
+cd "$root"
 
 # Done
 echo "Done!"
