@@ -10,15 +10,29 @@ Reusable shell logic replicated inline from ``tools/get_petsc.sh`` and
 - Workpath argument handling: ``$1`` override vs default
 - PETSc library detection: versioned ``.so``, ``.dylib``, missing
 
+``tools/_get_common.sh``, the helper library every ``get_*.sh`` sources, is
+sourced by the cases below rather than copied into them, so they run against
+the shipped text:
+- ``portable_realpath()``: cross-platform path resolution, including a
+  destination that does not exist yet
+- the checkout root and tools directory the library derives from its own
+  location
+- ``get_parse_args``: the ``--force`` switch and the optional install path
+- ``guard_dirty_checkout``: the refusal to delete local work, and the
+  pathspec exclusion ``get_socrates.sh`` passes it
+- ``github_use_ssh`` and ``github_ssh_url``: the SSH probe and URL rewrite
+- ``resolve_module_pin``: a missing pin stops the install
+- the bootstrap in each script, which stops when the library is absent, and
+  the invariant that no script carries a private copy of a helper
+
 Blocks lifted out of the shipped scripts at run time, so that rewording a
 script re-runs its cases against the new text:
-- ``portable_realpath()``: cross-platform path resolution, including a
-  destination that does not exist yet, plus the invariant that every
-  ``get_*.sh`` copy of the helper carries the same text
-- ``tools/get_aragog.sh``: the dirty-checkout guard shared across ``get_*.sh``
-- ``tools/get_socrates.sh``: the portable-flag rewrite, its post-build flag
-  check, the install-path resolution, and the conditional AGNI-wrapper
+- ``tools/get_socrates.sh``: the install-path resolution, the portable-flag
+  rewrite, its post-build flag check, and the conditional AGNI-wrapper
   rebuild note
+
+Whole scripts run against stubbed ``git`` and ``ssh``, to pin the clone
+destination and transport each one resolves.
 
 Also pins invariants that live in checked-in configuration and documentation
 rather than in shell, each of which fails silently when its counterpart moves:
@@ -42,39 +56,61 @@ See also:
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+TOOLS_DIR = Path(__file__).resolve().parents[2] / 'tools'
+COMMON_LIB = TOOLS_DIR / '_get_common.sh'
+
 
 # ---------------------------------------------------------------------------
-# Helper: extract portable_realpath function from a script
+# Helpers: run bash against the shipped helper library
 # ---------------------------------------------------------------------------
-def _extract_shell_function(script: str, name: str) -> str:
-    """Return the shipped bash source of ``name`` in ``tools/<script>``.
+def _with_common(body: str, strict: bool = False) -> str:
+    """Return a bash snippet that sources the shipped helper library.
 
-    Lifting the definition out of the script under test, rather than copying
-    it here, keeps the cases below running against the shipped text.
+    The library is sourced, not copied, so a change to it re-runs through
+    every case below. ``strict`` mirrors the ``get_*`` scripts that enable
+    ``set -euo pipefail``: the helpers must behave the same either way.
     """
-    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
-    lines = (tools_dir / script).read_text().splitlines()
-    start = next(i for i, ln in enumerate(lines) if ln.startswith(f'{name}() {{'))
-    end = next(i for i, ln in enumerate(lines) if ln == '}' and i > start)
-    return '\n'.join(lines[start : end + 1]) + '\n'
+    prelude = 'set -euo pipefail\n' if strict else ''
+    return f'{prelude}source "{COMMON_LIB}"\n{body}'
 
 
-def _portable_realpath_fn() -> str:
-    """Return the bash source for the shipped ``portable_realpath()``.
+def _run_bash(snippet: str, *argv: str, **kwargs) -> subprocess.CompletedProcess:
+    """Run ``snippet`` with ``argv`` as its positional parameters."""
+    return subprocess.run(
+        ['bash', '-c', snippet, 'get_test.sh', *argv],
+        capture_output=True,
+        text=True,
+        **kwargs,
+    )
 
-    Nine ``get_*.sh`` scripts carry the helper, so which one is read is
-    arbitrary; ``get_socrates.sh`` is the one whose install-path handling is
-    exercised further down this file. Reading a single copy is sound only
-    because ``test_portable_realpath_identical_across_get_scripts`` pins the
-    copies as the same text: drop that test and these cases stop covering
-    the other eight.
+
+def _extract_script_block(script: str, start_marker: str, end_marker: str) -> str:
+    """Return the shipped lines of ``tools/<script>`` between two markers.
+
+    Reading the block from the script under test, rather than copying it
+    here, keeps the cases below running against the text that ships.
     """
-    return _extract_shell_function('get_socrates.sh', 'portable_realpath')
+    lines = (TOOLS_DIR / script).read_text().splitlines()
+    start = next(i for i, ln in enumerate(lines) if start_marker in ln)
+    end = next(i for i, ln in enumerate(lines) if end_marker in ln and i > start)
+    return '\n'.join(lines[start:end])
+
+
+def _write_stub(directory: Path, name: str, body: str) -> Path:
+    """Write an executable stub command into ``directory``."""
+    stub = directory / name
+    stub.write_text(body)
+    stub.chmod(0o755)
+    return stub
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +124,7 @@ def test_portable_realpath_resolves_relative(tmp_path):
     subdir = tmp_path / 'subdir'
     subdir.mkdir()
 
-    snippet = _portable_realpath_fn() + f'\ncd "{tmp_path}"\nportable_realpath ./subdir'
+    snippet = _with_common(f'cd "{tmp_path}"\nportable_realpath ./subdir')
     result = subprocess.run(
         ['bash', '-c', snippet],
         capture_output=True,
@@ -101,13 +137,37 @@ def test_portable_realpath_resolves_relative(tmp_path):
 
 
 @pytest.mark.unit
+def test_portable_realpath_resolves_missing_path(tmp_path):
+    """Resolves a destination that does not exist yet, as an install path.
+
+    BSD realpath (macOS) rejects a missing leaf and GNU realpath a missing
+    parent, so both a missing leaf and a missing nested path are covered.
+    An empty result here is the regression: the caller feeds the value
+    straight to ``git clone``, which then fails on an empty work-tree name.
+    """
+    leaf = tmp_path / 'not-created-yet'
+    nested = tmp_path / 'no' / 'such' / 'tree'
+    snippet = _with_common(f'portable_realpath "{leaf}"\nportable_realpath "{nested}"')
+    result = subprocess.run(['bash', '-c', snippet], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    resolved = result.stdout.split()
+    assert len(resolved) == 2, result.stdout
+    # tmp_path is under a symlinked /var on macOS, so compare against the
+    # resolved parent rather than against the literal input path.
+    real_root = os.path.realpath(tmp_path)
+    assert resolved[0] == os.path.join(real_root, 'not-created-yet')
+    assert resolved[1] == os.path.join(real_root, 'no', 'such', 'tree')
+
+
+@pytest.mark.unit
 def test_portable_realpath_resolves_parent_refs(tmp_path):
     """Resolves ``../`` components to a canonical absolute path."""
     child = tmp_path / 'a' / 'b'
     child.mkdir(parents=True)
 
     # a/b/../ should resolve to a/
-    snippet = _portable_realpath_fn() + f'\nportable_realpath "{child}/.."'
+    snippet = _with_common(f'portable_realpath "{child}/.."')
     result = subprocess.run(
         ['bash', '-c', snippet],
         capture_output=True,
@@ -125,7 +185,7 @@ def test_portable_realpath_resolves_symlink(tmp_path):
     link = tmp_path / 'link_dir'
     link.symlink_to(real)
 
-    snippet = _portable_realpath_fn() + f'\nportable_realpath "{link}"'
+    snippet = _with_common(f'portable_realpath "{link}"')
     result = subprocess.run(
         ['bash', '-c', snippet],
         capture_output=True,
@@ -159,7 +219,7 @@ def test_portable_realpath_python_fallback(tmp_path):
     # even with the restricted PATH (which excludes /bin and /usr/bin).
     bash_abs = subprocess.run(['which', 'bash'], capture_output=True, text=True).stdout.strip()
 
-    snippet = _portable_realpath_fn() + f'\nportable_realpath "{target}"'
+    snippet = _with_common(f'portable_realpath "{target}"')
     env = {**os.environ, 'PATH': str(safe_bin)}
 
     result = subprocess.run(
@@ -174,51 +234,327 @@ def test_portable_realpath_python_fallback(tmp_path):
     assert resolved == str(target)
 
 
-@pytest.mark.unit
-def test_portable_realpath_resolves_missing_path(tmp_path):
-    """Resolves a destination that does not exist yet, as an install path.
+# ---------------------------------------------------------------------------
+# One shipped copy of the shared helpers (tools/_get_common.sh)
+# ---------------------------------------------------------------------------
 
-    BSD realpath (macOS) rejects a missing leaf and GNU realpath a missing
-    parent, so both a missing leaf and a missing nested path are covered.
-    An empty result here is the regression: the caller feeds the value
-    straight to ``git clone``, which then fails on an empty work-tree name.
+# A private copy of a shared helper is recognised by the text that used to
+# be duplicated: the function header, the dirty test, and the SSH probe.
+PRIVATE_HELPER_SIGNATURES = (
+    ('portable_realpath() {', 'portable_realpath'),
+    ('status --porcelain --untracked-files=no', 'the dirty-checkout guard'),
+    ('-T git@github.com', 'the GitHub SSH probe'),
+)
+
+# Names a script can only use because the library defines or sets them.
+LIBRARY_NAMES = (
+    'portable_realpath',
+    'get_parse_args',
+    'guard_dirty_checkout',
+    'github_use_ssh',
+    'github_ssh_url',
+    'resolve_module_pin',
+    'proteus_root',
+    'proteus_tools_dir',
+)
+
+
+def _get_scripts() -> list[Path]:
+    """Return the shipped ``tools/get_*.sh`` scripts."""
+    return sorted(TOOLS_DIR.glob('get_*.sh'))
+
+
+@pytest.mark.unit
+def test_no_get_script_carries_a_private_helper_copy():
+    """Each shared helper is defined once, in the library.
+
+    Nine scripts once carried their own ``portable_realpath``, and a fix to
+    one copy left the other eight broken. A script that grows a private
+    copy again is also outside the reach of the cases in this file, which
+    read the library rather than the scripts.
     """
-    leaf = tmp_path / 'not-created-yet'
-    nested = tmp_path / 'no' / 'such' / 'tree'
-    snippet = (
-        _portable_realpath_fn() + f'\nportable_realpath "{leaf}"\nportable_realpath "{nested}"'
+    scripts = _get_scripts()
+    # Guard the guard: a mis-rooted glob would make the scan vacuous.
+    assert len(scripts) >= 10, [s.name for s in scripts]
+
+    offenders: dict[str, list[str]] = {}
+    for script in scripts:
+        for line in script.read_text().splitlines():
+            stripped = line.strip()
+            # Prose and user-facing messages may still name the commands.
+            if stripped.startswith('#') or 'echo ' in stripped:
+                continue
+            for needle, label in PRIVATE_HELPER_SIGNATURES:
+                if needle in stripped:
+                    offenders.setdefault(script.name, []).append(label)
+    assert offenders == {}, offenders
+
+
+@pytest.mark.unit
+def test_every_helper_user_sources_the_library():
+    """A script calling a shared helper also sources the file defining it.
+
+    Without the source line the helper name is unset, and under a shell
+    without ``set -u`` the call is a silent no-op rather than an error.
+    """
+    users, missing = [], []
+    for script in _get_scripts():
+        text = script.read_text()
+        if not any(name in text for name in LIBRARY_NAMES):
+            continue
+        users.append(script.name)
+        if 'source "$_get_common"' not in text:
+            missing.append(script.name)
+
+    assert missing == [], missing
+    # Guard the guard: a renamed helper would leave nothing to check.
+    assert len(users) >= 10, users
+
+
+@pytest.mark.unit
+def test_a_missing_helper_library_stops_the_script(tmp_path):
+    """A script whose library is absent stops before touching a checkout.
+
+    Continuing would leave every helper call undefined and reach git with
+    an empty destination, so the bootstrap names the missing file, exits
+    non-zero, and runs no git command.
+    """
+    lone_tools = tmp_path / 'tools'
+    lone_tools.mkdir()
+    shutil.copy2(TOOLS_DIR / 'get_aragog.sh', lone_tools / 'get_aragog.sh')
+    log = tmp_path / 'calls.log'
+    log.write_text('')
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    _write_stub(stubs, 'git', '#!/bin/bash\necho "git $*" >> "$STUB_LOG"\nexit 0\n')
+
+    res = subprocess.run(
+        ['bash', str(lone_tools / 'get_aragog.sh')],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            'PATH': f'{stubs}:{os.environ["PATH"]}',
+            'STUB_LOG': str(log),
+        },
     )
-    result = subprocess.run(['bash', '-c', snippet], capture_output=True, text=True)
 
-    assert result.returncode == 0, result.stderr
-    resolved = result.stdout.split()
-    assert len(resolved) == 2, result.stdout
-    # tmp_path is under a symlinked /var on macOS, so compare against the
-    # resolved parent rather than against the literal input path.
-    real_root = os.path.realpath(tmp_path)
-    assert resolved[0] == os.path.join(real_root, 'not-created-yet')
-    assert resolved[1] == os.path.join(real_root, 'no', 'such', 'tree')
+    assert res.returncode == 1, res.stdout
+    assert '_get_common.sh' in res.stderr
+    assert log.read_text() == ''
 
 
 @pytest.mark.unit
-def test_portable_realpath_identical_across_get_scripts():
-    """Every ``tools/get_*.sh`` copy of the helper is the same text.
+def test_library_derives_the_root_from_its_own_location(tmp_path):
+    """The checkout root follows the library, not the caller's directory.
 
-    The helper is duplicated because the scripts are standalone; a fix
-    applied to one copy and not the others reintroduces the missing-path
-    failure in whichever script was missed.
+    ``proteus install-all`` runs the scripts through data.py without
+    setting a working directory, so a root taken from the CWD would
+    install into whichever tree the caller happened to be sitting in.
     """
-    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
-    copies = {
-        script.name: _extract_shell_function(script.name, 'portable_realpath')
-        for script in sorted(tools_dir.glob('get_*.sh'))
-        if 'portable_realpath() {' in script.read_text()
-    }
+    fake_tools = tmp_path / 'FakeProteus' / 'tools'
+    fake_tools.mkdir(parents=True)
+    shutil.copy2(COMMON_LIB, fake_tools / '_get_common.sh')
+    elsewhere = tmp_path / 'elsewhere'
+    elsewhere.mkdir()
 
-    # Guard the guard: a mis-rooted glob would make the comparison vacuous.
-    assert len(copies) >= 5, sorted(copies)
-    assert 'get_socrates.sh' in copies
-    assert len(set(copies.values())) == 1, sorted(copies)
+    snippet = (
+        f'source "{fake_tools}/_get_common.sh"\necho "$proteus_root"\necho "$proteus_tools_dir"'
+    )
+    res = subprocess.run(['bash', '-c', snippet], cwd=elsewhere, capture_output=True, text=True)
+
+    assert res.returncode == 0, res.stderr
+    root, tools = res.stdout.split()
+    assert root == os.path.realpath(tmp_path / 'FakeProteus')
+    assert tools == os.path.realpath(fake_tools)
+    # The caller's directory must not leak into either value.
+    assert os.path.realpath(elsewhere) not in (root, tools)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('strict', [False, True], ids=['plain shell', 'errexit shell'])
+@pytest.mark.parametrize(
+    ('argv', 'expected'),
+    [
+        ([], 'false|'),
+        (['--force'], 'true|'),
+        (['some/path'], 'false|some/path'),
+        (['--force', 'some/path'], 'true|some/path'),
+        (['some/path', '--force'], 'true|some/path'),
+        (['first/path', 'second/path'], 'false|first/path'),
+    ],
+    ids=[
+        'no arguments',
+        'force only',
+        'path only',
+        'force before path',
+        'force after path',
+        'second path ignored',
+    ],
+)
+def test_get_parse_args_splits_force_from_the_install_path(argv, expected, strict):
+    """The switch and the optional path are read in either order.
+
+    Six scripts pass only ``--force`` and two also accept a destination, so
+    a path must not be mistaken for the switch or the other way round. The
+    empty argument list is the edge case: under ``set -u`` an unguarded
+    ``"$@"`` would abort the script before the first helper ran.
+    """
+    body = 'get_parse_args "$@"\nprintf \'%s|%s\\n\' "$get_force" "$get_install_path"\n'
+    res = _run_bash(_with_common(body, strict=strict), *argv)
+
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('probe_rc', 'expected'),
+    [(1, 'true'), (255, 'false'), (0, 'false')],
+    ids=['key accepted', 'key refused', 'shell opened'],
+)
+@pytest.mark.parametrize('strict', [False, True], ids=['plain shell', 'errexit shell'])
+def test_github_use_ssh_reads_the_probe_exit_code(tmp_path, probe_rc, expected, strict):
+    """Only exit code 1 means GitHub accepted the key.
+
+    GitHub refuses the interactive shell that ``ssh -T`` asks for, so a
+    working key exits 1 and a rejected one exits 255. Exit code 0 means
+    something other than GitHub answered, which must not select SSH. The
+    stub also prints a banner on stdout, as the real probe may: that text
+    must not reach the answer, which the caller reads by command
+    substitution.
+    """
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    _write_stub(
+        stubs,
+        'ssh',
+        f'#!/bin/bash\necho "Hi there! You have successfully authenticated."\nexit {probe_rc}\n',
+    )
+
+    body = 'answer=$(github_use_ssh)\necho "[$answer]"\n'
+    env = {**os.environ, 'PATH': f'{stubs}:{os.environ["PATH"]}'}
+    env.pop('GIT_SSH_COMMAND', None)
+    res = _run_bash(_with_common(body, strict=strict), env=env)
+
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == f'[{expected}]'
+    # The banner is still shown to the user, on stderr.
+    assert 'successfully authenticated' in res.stderr
+
+
+@pytest.mark.unit
+def test_github_use_ssh_honours_git_ssh_command(tmp_path):
+    """GIT_SSH_COMMAND replaces the probe command, options included.
+
+    CI sets it to a non-interactive, fast-failing ssh invocation; a probe
+    that ignored it would hang on a host-key prompt instead.
+    """
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    log = tmp_path / 'calls.log'
+    _write_stub(
+        stubs,
+        'stub-ssh',
+        '#!/bin/bash\necho "stub-ssh $*" > "$STUB_LOG"\nexit 1\n',
+    )
+
+    body = 'answer=$(github_use_ssh)\necho "[$answer]"\n'
+    res = _run_bash(
+        _with_common(body),
+        env={
+            **os.environ,
+            'PATH': f'{stubs}:{os.environ["PATH"]}',
+            'STUB_LOG': str(log),
+            'GIT_SSH_COMMAND': 'stub-ssh -o BatchMode=yes',
+        },
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == '[true]'
+    assert log.read_text().strip() == 'stub-ssh -o BatchMode=yes -T git@github.com'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('url', 'expected'),
+    [
+        (
+            'https://github.com/FormingWorlds/PROTEUS.git',
+            'git@github.com:FormingWorlds/PROTEUS.git',
+        ),
+        (
+            'git@github.com:FormingWorlds/PROTEUS.git',
+            'git@github.com:FormingWorlds/PROTEUS.git',
+        ),
+        ('https://gitlab.com/group/repo.git', 'https://gitlab.com/group/repo.git'),
+    ],
+    ids=['https github', 'already ssh', 'other host'],
+)
+def test_github_ssh_url_rewrites_only_github_https(url, expected):
+    """Only an https github.com URL is rewritten for SSH transport.
+
+    A pin that already names SSH, or a repository hosted elsewhere, must
+    pass through unchanged; rewriting either one produces a URL git cannot
+    resolve.
+    """
+    res = _run_bash(_with_common(f'github_ssh_url "{url}"'))
+
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == expected
+
+
+@pytest.mark.unit
+def test_resolve_module_pin_reads_the_pin_and_stops_when_it_is_missing(tmp_path):
+    """A pinned module resolves; an unpinned one stops the install.
+
+    The url and ref go straight into ``git clone`` and ``git checkout``, so
+    an empty pin would otherwise clone the default branch of nothing.
+    """
+    fake_tools = tmp_path / 'tools'
+    fake_tools.mkdir()
+    shutil.copy2(COMMON_LIB, fake_tools / '_get_common.sh')
+    (fake_tools / '_module_pins.py').write_text('')
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    _write_stub(
+        stubs,
+        'python',
+        '#!/bin/bash\n'
+        'if [ "$2" = "pinned" ]; then\n'
+        '    if [ "$3" = "url" ]; then\n'
+        '        echo "https://github.com/FormingWorlds/Thing.git"\n'
+        '    else\n'
+        '        echo "v1.2.3"\n'
+        '    fi\n'
+        'fi\n'
+        'exit 0\n',
+    )
+    env = {**os.environ, 'PATH': f'{stubs}:{os.environ["PATH"]}'}
+    prelude = f'source "{fake_tools}/_get_common.sh"\n'
+
+    good = subprocess.run(
+        [
+            'bash',
+            '-c',
+            prelude + 'resolve_module_pin pinned\necho "$module_url @ $module_ref"\n',
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert good.returncode == 0, good.stderr
+    assert good.stdout.strip() == 'https://github.com/FormingWorlds/Thing.git @ v1.2.3'
+
+    missing = subprocess.run(
+        ['bash', '-c', prelude + 'resolve_module_pin absent\necho REACHED_CLONE\n'],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert missing.returncode == 1, missing.stdout
+    assert 'could not resolve absent url/ref' in missing.stderr
+    assert 'REACHED_CLONE' not in missing.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -407,59 +743,44 @@ echo "$brew_prefix"
 # ---------------------------------------------------------------------------
 
 
+def _petsc_workpath_block() -> str:
+    """Return the shipped install-path resolution of tools/get_petsc.sh."""
+    block = _extract_script_block(
+        'get_petsc.sh', '# Default: ./petsc/ relative', 'export PETSC_DIR'
+    )
+    return _with_common(block + '\necho "$workpath"\n')
+
+
 @pytest.mark.unit
 def test_petsc_workpath_uses_first_argument(tmp_path):
-    """When ``$1`` is set, ``workpath`` is derived from ``$1``."""
+    """A destination passed as ``$1`` becomes the resolved install path.
+
+    data.py:get_petsc() passes the full path, so the argument must win over
+    the ``./petsc/`` default and must come back absolute: PETSC_DIR is
+    exported from it and read by SPIDER's Makefile from another directory.
+    """
     custom = tmp_path / 'custom_petsc'
 
-    snippet = (
-        _portable_realpath_fn()
-        + """\
-if [[ -n "$1" ]]; then
-    mkdir -p "$1"
-    workpath=$(portable_realpath "$1")
-else
-    mkdir -p petsc
-    workpath=$(portable_realpath petsc)
-fi
-echo "$workpath"
-"""
-    )
-    result = subprocess.run(
-        ['bash', '-c', snippet, '--', str(custom)],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0
+    result = _run_bash(_petsc_workpath_block(), str(custom))
+
+    assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == str(custom)
     assert custom.is_dir()
 
 
 @pytest.mark.unit
 def test_petsc_workpath_defaults_to_petsc(tmp_path):
-    """When ``$1`` is empty, ``workpath`` defaults to ``./petsc/``."""
-    snippet = (
-        _portable_realpath_fn()
-        + """\
-if [[ -n "$1" ]]; then
-    mkdir -p "$1"
-    workpath=$(portable_realpath "$1")
-else
-    mkdir -p petsc
-    workpath=$(portable_realpath petsc)
-fi
-echo "$workpath"
-"""
-    )
-    result = subprocess.run(
-        ['bash', '-c', snippet],
-        capture_output=True,
-        text=True,
-        cwd=str(tmp_path),
-    )
-    assert result.returncode == 0
+    """With no argument the install path is ``./petsc/`` under the CWD.
+
+    This is the documented no-argument install, and the empty argument list
+    is the edge case the ``$1`` test must not mistake for a path.
+    """
+    result = _run_bash(_petsc_workpath_block(), cwd=str(tmp_path))
+
+    assert result.returncode == 0, result.stderr
     resolved = result.stdout.strip()
     assert resolved.endswith('/petsc')
+    assert resolved == os.path.join(os.path.realpath(tmp_path), 'petsc')
     assert (tmp_path / 'petsc').is_dir()
 
 
@@ -756,31 +1077,23 @@ def test_ci_setup_installs_every_declared_extra():
 
 
 # ---------------------------------------------------------------------------
-# Dirty-checkout guard (shared shape across tools/get_*.sh)
+# Dirty-checkout guard (tools/_get_common.sh, called by every get_*.sh)
 # ---------------------------------------------------------------------------
 
 
-def _extract_guard_block() -> str:
-    """Extract the shipped dirty-checkout guard from tools/get_aragog.sh.
+def _run_guard(tmp_path, *args: str, pathspec: str = '') -> subprocess.CompletedProcess:
+    """Run the shipped guard against the ``aragog`` checkout in ``tmp_path``.
 
-    Reading the block from the script under test (rather than copying it
-    into the test) pins the exact shipped lines: any rewording or logic
-    change in the guard re-runs through these cases.
+    ``pathspec`` appends a git pathspec, as ``get_socrates.sh`` does for its
+    regenerable build config.
     """
-    from pathlib import Path
-
-    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
-    script = (tools_dir / 'get_aragog.sh').read_text().splitlines()
-    start = next(i for i, ln in enumerate(script) if 'Refuse to delete a checkout' in ln)
-    end = next(i for i, ln in enumerate(script) if ln.startswith('rm -rf'))
-    return '\n'.join(script[start:end])
-
-
-def _run_guard(tmp_path, *args: str) -> subprocess.CompletedProcess:
-    """Run the extracted guard with ``root`` pointing at ``tmp_path``."""
-    snippet = 'root="$GUARD_ROOT"\n' + _extract_guard_block() + '\necho GUARD_PASSED\n'
+    body = (
+        'get_parse_args "$@"\n'
+        f'guard_dirty_checkout "$GUARD_ROOT/aragog" get_aragog.sh {pathspec}\n'
+        'echo GUARD_PASSED\n'
+    )
     return subprocess.run(
-        ['bash', '-c', snippet, 'guard', *args],
+        ['bash', '-c', _with_common(body), 'guard', *args],
         capture_output=True,
         text=True,
         env={**os.environ, 'GUARD_ROOT': str(tmp_path)},
@@ -863,6 +1176,45 @@ def test_guard_passes_clean_remote_backed_checkout(tmp_path):
     res = _run_guard(tmp_path, '--force')
     assert res.returncode == 0
     assert 'GUARD_PASSED' in res.stdout
+
+
+def test_guard_excludes_only_the_pathspec_the_caller_names(tmp_path):
+    """An excluded path does not block the refresh, but its neighbours do.
+
+    get_socrates.sh excludes make/Mk_cmd because configure rewrites it on
+    every build, so treating it as user work would block every refresh.
+    Without the exclusion the same modification must still block, which is
+    what makes the exclusion the reason the refresh proceeds rather than a
+    guard that stopped looking.
+    """
+    upstream = tmp_path / 'upstream'
+    (upstream / 'make').mkdir(parents=True)
+    _git(upstream, 'init', '-q')
+    (upstream / 'make' / 'Mk_cmd').write_text('FORTCOMP = gfortran\n')
+    (upstream / 'src.f90').write_text('end\n')
+    _git(upstream, 'add', '.')
+    _git(upstream, 'commit', '-q', '-m', 'c1')
+
+    workdir = tmp_path / 'aragog'
+    _git(tmp_path, 'clone', '-q', str(upstream), str(workdir))
+    exclude = "-- ':(exclude)make/Mk_cmd'"
+
+    # Regenerated build config only: the exclusion lets the refresh run.
+    (workdir / 'make' / 'Mk_cmd').write_text('FORTCOMP = gfortran -Ofast\n')
+    res = _run_guard(tmp_path, pathspec=exclude)
+    assert res.returncode == 0, res.stderr
+    assert 'GUARD_PASSED' in res.stdout
+
+    # The same state without the exclusion blocks: the guard still looks.
+    res = _run_guard(tmp_path)
+    assert res.returncode == 1
+    assert 'uncommitted changes' in res.stderr
+
+    # A modification outside the excluded path blocks either way.
+    (workdir / 'src.f90').write_text('stop\n')
+    res = _run_guard(tmp_path, pathspec=exclude)
+    assert res.returncode == 1
+    assert 'GUARD_PASSED' not in res.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -1090,19 +1442,15 @@ def test_post_build_guard_rejects_cpu_specific_template_flags(tmp_path):
 def _run_install_path_block(root, argv, stub_resolver: str = '') -> subprocess.CompletedProcess:
     """Run the shipped argument split and install-path resolution.
 
-    ``stub_resolver`` replaces ``portable_realpath`` with a fixture, so the
-    empty-resolution branch can be reached without an unusable host.
+    ``stub_resolver`` redefines ``portable_realpath`` after the library is
+    sourced, so the empty-resolution branch can be reached without an
+    unusable host.
     """
-    block = _extract_socrates_block(
-        '# Separate the --force flag', '# Refuse to delete a checkout'
+    block = _extract_script_block(
+        'get_socrates.sh', '# Separate the --force flag', '# make/Mk_cmd is excluded'
     )
-    resolver = stub_resolver or _portable_realpath_fn()
-    snippet = f'set -u\nroot="{root}"\n' + resolver + block + '\necho "SOCPATH=$socpath"\n'
-    return subprocess.run(
-        ['bash', '-c', snippet, 'get_socrates.sh', *argv],
-        capture_output=True,
-        text=True,
-    )
+    body = f'set -u\nroot="{root}"\n' + stub_resolver + block + '\necho "SOCPATH=$socpath"\n'
+    return _run_bash(_with_common(body), *argv)
 
 
 @pytest.mark.unit
@@ -1155,6 +1503,163 @@ def test_install_path_rejects_unresolvable_path(tmp_path):
     assert 'could not resolve install path' in res.stderr
     assert 'some/path' in res.stderr
     assert 'SOCPATH=' not in res.stdout
+
+
+# ---------------------------------------------------------------------------
+# Clone destination and transport, whole scripts against stubbed git and ssh
+# ---------------------------------------------------------------------------
+
+# The commands the scripts probe for before they clone. Stubbing them keeps
+# the run independent of what the host has installed.
+_INSTALL_STUB_COMMANDS = (
+    'pip',
+    'make',
+    'julia',
+    'clang',
+    'gfortran',
+    'nc-config',
+    'nf-config',
+    'mpicc',
+)
+
+# script, arguments, expected destination, expected clone URL, ssh probe exit.
+# The pinned URLs are the ones tools/_module_pins.py resolves today for the
+# scripts that read a pin; moving a pin updates this table with it.
+CLONE_CASES = (
+    ('get_aragog.sh', (), '{root}/aragog/', 'git@github.com:FormingWorlds/aragog.git', 1),
+    ('get_zalmoxis.sh', (), '{root}/Zalmoxis/', 'git@github.com:FormingWorlds/Zalmoxis.git', 1),
+    ('get_boreas.sh', (), '{root}/BOREAS/', 'git@github.com:ExoInteriors/BOREAS.git', 1),
+    ('get_lavatmos.sh', (), '{root}/LavAtmos/', 'git@github.com:FormingWorlds/LavAtmos', 1),
+    (
+        'get_thermoenginelite.sh',
+        (),
+        '{root}/ThermoEngineLite/',
+        'git@github.com:FormingWorlds/ThermoEngineLite',
+        1,
+    ),
+    ('get_vulcan.sh', (), '{root}/VULCAN/', 'git@github.com:FormingWorlds/VULCAN.git', 1),
+    ('get_socrates.sh', (), '{root}/socrates', 'git@github.com:FormingWorlds/SOCRATES.git', 1),
+    (
+        'get_socrates.sh',
+        ('{root}/custom/socrates',),
+        '{root}/custom/socrates',
+        'git@github.com:FormingWorlds/SOCRATES.git',
+        1,
+    ),
+    ('get_agni.sh', (), '{root}/AGNI', 'https://github.com/nichollsh/AGNI.git', 1),
+    (
+        'get_spider.sh',
+        ('{root}/custom/SPIDER',),
+        '{root}/custom/SPIDER',
+        'https://github.com/FormingWorlds/SPIDER.git',
+        1,
+    ),
+    # SSH refused: the same destination, over https.
+    ('get_aragog.sh', (), '{root}/aragog/', 'https://github.com/FormingWorlds/aragog.git', 255),
+    ('get_boreas.sh', (), '{root}/BOREAS/', 'https://github.com/ExoInteriors/BOREAS.git', 255),
+)
+
+CLONE_IDS = (
+    'aragog over ssh',
+    'zalmoxis over ssh',
+    'boreas over ssh',
+    'lavatmos over ssh',
+    'thermoenginelite over ssh',
+    'vulcan over ssh',
+    'socrates default path',
+    'socrates custom path',
+    'agni pinned url',
+    'spider custom path',
+    'aragog without ssh',
+    'boreas without ssh',
+)
+
+
+def _fake_checkout(tmp_path) -> Path:
+    """Build a throwaway PROTEUS root holding the shipped install scripts.
+
+    Only the scripts, the helper library, the pin reader and pyproject.toml
+    are copied, so a run cannot reach into the real checkout.
+    """
+    root = tmp_path / 'PROTEUS'
+    tools = root / 'tools'
+    tools.mkdir(parents=True)
+    for src in [*TOOLS_DIR.glob('get_*.sh'), COMMON_LIB, TOOLS_DIR / '_module_pins.py']:
+        shutil.copy2(src, tools / src.name)
+    shutil.copy2(TOOLS_DIR.parent / 'pyproject.toml', root / 'pyproject.toml')
+
+    # SPIDER validates a built PETSc before it clones.
+    conf = root / 'petsc' / 'lib' / 'petsc' / 'conf'
+    conf.mkdir(parents=True)
+    (conf / 'variables').write_text('')
+    (conf / 'rules').write_text('')
+    for arch in ('arch-linux-c-opt', 'arch-darwin-c-opt'):
+        lib = root / 'petsc' / arch / 'lib'
+        lib.mkdir(parents=True)
+        (lib / 'libpetsc.dylib').write_text('')
+        (lib / 'libpetsc.so').write_text('')
+    return root
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('script', 'argv', 'dest', 'url', 'probe_rc'), CLONE_CASES, ids=CLONE_IDS
+)
+def test_script_clones_the_expected_destination(tmp_path, script, argv, dest, url, probe_rc):
+    """Each script resolves its destination and clones the pinned URL.
+
+    Run whole against a stubbed git and ssh, in a throwaway checkout: the
+    destination the script computes and the transport it selects are the
+    two values a refactor of the shared helpers can silently change, and an
+    empty or CWD-relative destination is what a broken path resolution
+    produces. The steps after the clone need real trees, so the exit status
+    is not the contract here; the recorded git call is.
+    """
+    root = _fake_checkout(tmp_path)
+    real_root = os.path.realpath(root)
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    log = tmp_path / 'calls.log'
+    log.write_text('')
+
+    _write_stub(
+        stubs,
+        'git',
+        '#!/bin/bash\n'
+        'echo "git $*" >> "$STUB_LOG"\n'
+        'if [ "$1" = "clone" ]; then\n'
+        '    mkdir -p "${@: -1}/.git"\n'
+        'fi\n'
+        'exit 0\n',
+    )
+    _write_stub(stubs, 'ssh', f'#!/bin/bash\nexit {probe_rc}\n')
+    for command in _INSTALL_STUB_COMMANDS:
+        _write_stub(stubs, command, '#!/bin/bash\nexit 0\n')
+
+    env = {
+        **os.environ,
+        'PATH': f'{stubs}:{os.environ["PATH"]}',
+        'STUB_LOG': str(log),
+        # Both are read before the scripts would sleep on a warning.
+        'RAD_DIR': '',
+        'LAVA_DIR': '',
+    }
+    env.pop('GIT_SSH_COMMAND', None)
+
+    subprocess.run(
+        ['bash', str(root / 'tools' / script), *(a.format(root=root) for a in argv)],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    clones = [ln for ln in log.read_text().splitlines() if ln.startswith('git clone ')]
+    assert len(clones) == 1, log.read_text()
+    assert clones[0] == f'git clone {url} {dest.format(root=real_root)}'
+    # Nothing may resolve outside the throwaway checkout.
+    assert clones[0].split()[-1].startswith(real_root)
 
 
 # ---------------------------------------------------------------------------
@@ -1288,158 +1793,3 @@ def test_ci_config_never_pins_user():
         'several jobs, and pinning a real account name breaks on the next '
         f'runner rename. Remove these: {offenders}'
     )
-
-
-# CVODE install: tools/get_cvode.sh run against stub python, pip and conda, and
-# the two install.sh blocks that turn a CVODE failure into an abort.
-_CVODE_INSTALL = 'pip install scikits-odes-sundials>=3.0,<4'
-_CVODE_REBUILD = (
-    'pip install --force-reinstall --no-deps --no-cache-dir --no-binary '
-    'scikits-odes-sundials scikits-odes-sundials>=3.0,<4'
-)
-
-
-def _run_get_cvode(tmp_path, *, importable: str, present: bool, after: str):
-    """Run the shipped ``tools/get_cvode.sh`` with stubs; return (result, pip/conda log).
-
-    ``importable`` is whether the CVODE import works before the script runs,
-    ``present`` whether pip lists the package, ``after`` whether the import
-    works once a ``pip install`` has run. No network and no build happen.
-    """
-    stubs = tmp_path / 'bin'
-    state = tmp_path / 'state'
-    stubs.mkdir()
-    state.mkdir()
-    (state / 'importable').write_text(importable)
-    if present:
-        (state / 'pkg').write_text('')
-    scripts = {
-        'python': '[ "$(cat "$STATE/importable")" = yes ]\n',
-        'pip': (
-            'echo "pip $*" >> "$STATE/log"\n'
-            'case "$1" in\n'
-            '  show) [ -e "$STATE/pkg" ] ;;\n'
-            '  install) : > "$STATE/pkg"; echo "$AFTER" > "$STATE/importable" ;;\n'
-            'esac\n'
-        ),
-        'conda': 'echo "conda $*" >> "$STATE/log"\n',
-    }
-    for name, body in scripts.items():
-        path = stubs / name
-        path.write_text('#!/usr/bin/env bash\n' + body)
-        path.chmod(0o755)
-    script = Path(__file__).resolve().parents[2] / 'tools' / 'get_cvode.sh'
-    env = {
-        **os.environ,
-        'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}',
-        'CONDA_PREFIX': str(tmp_path / 'env'),
-        'CONDA_EXE': str(stubs / 'conda'),
-        'STATE': str(state),
-        'AFTER': after,
-    }
-    res = subprocess.run(['bash', str(script)], capture_output=True, text=True, env=env)
-    log = (state / 'log').read_text() if (state / 'log').exists() else ''
-    return res, log
-
-
-@pytest.mark.unit
-def test_get_cvode_does_nothing_when_the_three_names_import(tmp_path):
-    """A working CVODE is left alone: no conda call, no pip call."""
-    res, log = _run_get_cvode(tmp_path, importable='yes', present=True, after='yes')
-
-    assert res.returncode == 0, res.stderr
-    assert 'nothing to do' in res.stdout
-    assert log == ''
-
-
-@pytest.mark.unit
-def test_get_cvode_installs_a_missing_package_without_forcing(tmp_path):
-    """No wrapper installed: a plain pip install, not a forced rebuild."""
-    res, log = _run_get_cvode(tmp_path, importable='no', present=False, after='yes')
-
-    assert res.returncode == 0, res.stderr
-    assert _CVODE_INSTALL in log
-    assert '--force-reinstall' not in log
-
-
-@pytest.mark.unit
-def test_get_cvode_rebuilds_an_installed_wrapper_that_does_not_import(tmp_path):
-    """pip calls an installed wrapper satisfied, so a broken one needs a forced source rebuild."""
-    res, log = _run_get_cvode(tmp_path, importable='no', present=True, after='yes')
-
-    assert res.returncode == 0, res.stderr
-    assert _CVODE_REBUILD in log
-    assert 'rebuilding' in res.stdout
-
-
-@pytest.mark.unit
-def test_get_cvode_fails_when_the_wrapper_still_does_not_import(tmp_path):
-    """The hard gate after the install exits 1 instead of reporting success."""
-    res, _ = _run_get_cvode(tmp_path, importable='no', present=True, after='no')
-
-    assert res.returncode == 1
-    assert 'does not import' in res.stderr
-    assert 'importable' not in res.stdout
-
-
-def _install_sh_block(marker: str) -> str:
-    """The shipped lines of ``install.sh`` from the one holding ``marker`` to the next blank line."""
-    lines = (Path(__file__).resolve().parents[2] / 'install.sh').read_text().splitlines()
-    start = next(i for i, ln in enumerate(lines) if marker in ln)
-    end = next(i for i, ln in enumerate(lines) if not ln.strip() and i > start)
-    return '\n'.join(lines[start:end]) + '\n'
-
-
-def _run_install_block(tmp_path, marker: str, *, exit_code: int):
-    """Run one ``install.sh`` block with ``warn`` and ``die`` printing WARN and DIE, and stubs."""
-    (tmp_path / 'tools').mkdir()
-    (tmp_path / 'tools' / 'get_cvode.sh').write_text(f'exit {exit_code}\n')
-    stubs = tmp_path / 'bin'
-    stubs.mkdir()
-    (stubs / 'python').write_text(f'#!/usr/bin/env bash\nexit {exit_code}\n')
-    (stubs / 'python').chmod(0o755)
-    snippet = (
-        'info() { :; }\nwarn() { echo "WARN: $1" >&2; }\ndie() { echo "DIE: $1" >&2; exit 1; }\n'
-        + _install_sh_block(marker)
-        + 'echo REACHED\n'
-    )
-    env = {**os.environ, 'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}'}
-    return subprocess.run(
-        ['bash', '-c', snippet], capture_output=True, text=True, cwd=tmp_path, env=env
-    )
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    'marker',
-    ['Setting up the SUNDIALS CVODE solver', 'python -c "from scikits_odes_sundials.cvode'],
-    ids=['install-step', 'after-proteus-install'],
-)
-def test_install_sh_warns_and_goes_on_when_cvode_fails(tmp_path, marker):
-    """A failed CVODE install, or a CVODE that stops importing, warns and the installer goes on.
-
-    Only Aragog on ``solver_method = "cvode"`` needs it, and that run stops at
-    setup, so SPIDER, radau and bdf users can finish the installation.
-    """
-    res = _run_install_block(tmp_path, marker, exit_code=1)
-
-    assert res.returncode == 0, res.stderr
-    assert 'WARN: CVODE' in res.stderr
-    assert 'DIE' not in res.stderr
-    assert 'bash tools/get_cvode.sh' in res.stderr
-    assert 'REACHED' in res.stdout
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    'marker',
-    ['Setting up the SUNDIALS CVODE solver', 'python -c "from scikits_odes_sundials.cvode'],
-    ids=['install-step', 'after-proteus-install'],
-)
-def test_install_sh_goes_on_when_cvode_works(tmp_path, marker):
-    """The same blocks stay silent when CVODE installs and imports."""
-    res = _run_install_block(tmp_path, marker, exit_code=0)
-
-    assert res.returncode == 0, res.stderr
-    assert 'WARN' not in res.stderr
-    assert 'REACHED' in res.stdout
