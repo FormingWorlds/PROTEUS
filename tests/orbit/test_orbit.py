@@ -95,7 +95,7 @@ import pytest
 import proteus.orbit.hansen as hansen_mod
 from proteus.config._orbit import OrbitSolver
 from proteus.orbit.common import Tides_t
-from proteus.orbit.orbit import evolve_orbit_star, sp0d, sp1d
+from proteus.orbit.orbit import _state_is_valid_star, evolve_orbit_star, sp0d, sp1d
 from proteus.utils.constants import const_G, secs_per_year
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -380,6 +380,59 @@ def test_sp0d_mutates_hf_row_in_place():
     hf_row = _make_hf_row(sma_m=0.7 * 1.5e11)
     assert sp0d(hf_row, dt=1.0, config=_SOLVER_CONFIG) is None
     assert hf_row['semimajorax'] == pytest.approx(0.7 * 1.5e11)
+
+
+# ---------------------------------------------------------------------------
+# _state_is_valid_star
+# ---------------------------------------------------------------------------
+
+
+def test_state_is_valid_star_accepts_a_physically_sane_state():
+    """A normal, finite state well clear of every rejection boundary
+    must be accepted -- the baseline every rejection test below is
+    contrasted against."""
+    hf_row = {
+        'semimajorax': 1.496e11,
+        'eccentricity': 0.05,
+        'R_star': 6.96e8,
+        'axial_period': 86400.0,
+    }
+    assert _state_is_valid_star(hf_row) is True
+    # Discrimination: a state failing only one of the three checks
+    # (eccentricity here) must be rejected -- confirms this isn't a
+    # function that always returns True regardless of input.
+    assert _state_is_valid_star({**hf_row, 'eccentricity': 1.5}) is False
+
+
+def test_state_is_valid_star_rejects_semimajorax_inside_stellar_surface():
+    """``a <= 1.05 R_star`` (spiralled into the star) must reject,
+    including the non-finite-``a`` edge case that trips the same
+    branch via the ``np.nan`` default."""
+    hf_row = {'semimajorax': 1.0e8, 'eccentricity': 0.05, 'R_star': 6.96e8}
+    assert _state_is_valid_star(hf_row) is False
+    # Edge case: semimajorax entirely absent defaults to np.nan, which
+    # must also reject (not raise or silently pass).
+    hf_row_missing = {'eccentricity': 0.05, 'R_star': 6.96e8}
+    assert _state_is_valid_star(hf_row_missing) is False
+
+
+def test_state_is_valid_star_rejects_unphysical_eccentricity():
+    """Eccentricity outside ``[0, 0.999)`` must reject -- both a
+    negative value and one at/above the near-parabolic ceiling."""
+    base = {'semimajorax': 1.496e11, 'R_star': 6.96e8}
+    assert _state_is_valid_star({**base, 'eccentricity': -0.01}) is False
+    assert _state_is_valid_star({**base, 'eccentricity': 0.999}) is False
+    assert _state_is_valid_star({**base, 'eccentricity': float('nan')}) is False
+
+
+def test_state_is_valid_star_rejects_nonfinite_axial_period_when_present():
+    """``axial_period`` (only tracked by sp1d, absent for sp0d) must
+    reject when present but non-finite; absent entirely is fine (sp0d
+    has no spin state to check)."""
+    base = {'semimajorax': 1.496e11, 'eccentricity': 0.05, 'R_star': 6.96e8}
+    assert _state_is_valid_star({**base, 'axial_period': float('inf')}) is False
+    # Absent axial_period (sp0d) must NOT be treated as invalid.
+    assert _state_is_valid_star(base) is True
 
 
 # ---------------------------------------------------------------------------

@@ -305,6 +305,30 @@ class TestEvectionCap:
         )
         assert dt_absent == pytest.approx(8.0e3, rel=1e-6)
 
+    @pytest.mark.physics_invariant
+    def test_cap_not_needed_when_already_below_evection_maximum(self):
+        """In band with a positive ``evection_maximum``, but the
+        controller's own choice is already comfortably below it: the
+        cap's inner comparison must not fire (dt passes through
+        unmodified), the counterpart to ``test_cap_active_while_in_band``
+        where it does."""
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(evection_maximum=1.0e6)
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        hf_row = {
+            'Time': 1e5,
+            'F_atm': 1.0e4,
+            'Phi_global': 1.0,
+            'in_evection_band': 1.0,
+        }
+        dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o())
+        # 1.6 * 5e3 = 8e3, well below the 1e6 cap: passes through uncapped.
+        assert dt == pytest.approx(8.0e3, rel=1e-6), f'Expected 8e3 (cap not needed), got {dt}'
+        # Discrimination: strictly below the 1e6 cap value itself, i.e.
+        # genuinely uncapped rather than coincidentally clamped to it.
+        assert dt < 1.0e6
+
 
 # ---------------------------------------------------------------------------
 # Hysteresis counter

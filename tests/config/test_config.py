@@ -449,6 +449,26 @@ def test_read_config_object_rejects_explicit_zero_step_cap(tmp_path):
 
 
 @pytest.mark.unit
+def test_structure_k_val_converts_a_numeric_override_to_int(tmp_path):
+    """``orbit.obliqua.k_min``/``k_max`` are ``Union[int, Literal['none']]``:
+    the 'none' sentinel structures through unchanged (the schema default,
+    exercised implicitly by every other config-loading test), while a
+    numeric override must structure to a real ``int``, not stay a raw
+    TOML value or string.
+    """
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.orbit.obliqua.k_min == 'none'
+
+    out = tmp_path / 'k_range.toml'
+    cfg.write(str(out), overrides={'orbit.obliqua.k_min': 5, 'orbit.obliqua.k_max': 20})
+
+    reloaded = read_config_object(out)
+    assert reloaded.orbit.obliqua.k_min == 5
+    assert isinstance(reloaded.orbit.obliqua.k_min, int)
+    assert reloaded.orbit.obliqua.k_max == 20
+
+
+@pytest.mark.unit
 def test_read_config_object_omitted_step_cap_resolves_to_schema_default():
     """An absent step-cap key resolves to the schema default, same as an explicit 0.0 rejects.
 

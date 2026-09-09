@@ -214,6 +214,38 @@ def test_plot_orbit_yaxis_lower_bound_above_zero_when_min_eccentricity_positive(
     assert ymin_called > 0
 
 
+def test_plot_orbit_notates_blank_satellite_panels_when_no_satellite_data(
+    tmp_path, monkeypatch
+):
+    """When the helpfile has no ``semimajorax_sat`` column (no satellite
+    simulated), the right-hand column's 3 panels must be notated
+    ('No Satellite Data') rather than raising a KeyError trying to plot
+    columns that don't exist."""
+    mock_fig = MagicMock()
+    axs = _make_axs_3x2()
+    mock_plt = _install_mock_plt(monkeypatch)
+    mock_plt.subplots.return_value = (mock_fig, axs)
+
+    hf_all = pd.DataFrame(
+        {
+            'Time': np.logspace(2, 8, 5),
+            'semimajorax': np.linspace(1.5e11, 1.6e11, 5),
+            'eccentricity': np.linspace(0.01, 0.05, 5),
+            'orbital_period': np.linspace(3e7, 3.2e7, 5),
+            'axial_period': np.linspace(24 * 3600, 30 * 3600, 5),
+        }
+    )
+    orbit_mod.plot_orbit(hf_all, str(tmp_path), plot_format='png', t0=100.0)
+
+    for row in range(3):
+        axs[row, 1].text.assert_called_once()
+        args, kwargs = axs[row, 1].text.call_args
+        assert args[2] == 'No Satellite Data'
+    # Discrimination: the left (planet) column must still be drawn
+    # normally, not also skipped.
+    assert axs[0, 0].plot.call_count == 1
+
+
 # ---------------------------------------------------------------------------
 # plot_orbit_system
 # ---------------------------------------------------------------------------
@@ -397,6 +429,29 @@ def test_plot_evection_falls_back_to_coarse_evection_angle_without_fine_trace(mo
     plotted_t, plotted_y = axs[2].plot.call_args[0]
     np.testing.assert_allclose(plotted_t, hf_all['Time'].to_numpy())
     assert len(plotted_y) == len(hf_all)
+
+
+def test_plot_evection_wraps_coarse_angle_when_it_has_circulated(monkeypatch):
+    """When the coarse ``evection_angle`` column spans more than a full
+    turn (genuine circulation, not bounded libration), panel (c) must
+    wrap it into ``[0, 2*pi)`` -- otherwise the raw, unwrapped angle
+    would blow past the panel's fixed ``[-0.1, 2*pi+0.1]`` y-limits."""
+    mock_fig = MagicMock()
+    axs = _make_axs_4x1()
+    mock_plt = _install_mock_plt(monkeypatch)
+    mock_plt.subplots.return_value = (mock_fig, axs)
+
+    hf_all = _make_evection_hf_all()
+    # ptp = 20.0 > 2*pi: genuine circulation, not pure libration.
+    hf_all['evection_angle'] = np.linspace(0.0, 20.0, len(hf_all))
+    orbit_mod.plot_evection(hf_all, '/tmp/out', plot_format='png', t0=100.0)
+
+    _plotted_t, plotted_y = axs[2].plot.call_args[0]
+    assert np.all(plotted_y >= 0.0) and np.all(plotted_y < 2 * np.pi)
+    # Discrimination: the raw (unwrapped) column reaches 20.0, well
+    # outside [0, 2*pi) -- confirms wrapping actually happened, not
+    # that the input already happened to be in range.
+    assert np.amax(hf_all['evection_angle'].to_numpy()) > 2 * np.pi
 
 
 @pytest.mark.parametrize('xscale', ['log', 'linear'])
@@ -586,6 +641,77 @@ def test_plot_orbit_entry_dispatches_to_plot_evection_for_ps1d_evec(monkeypatch,
     assert captured['fine_phi'] is None
     assert captured['t0'] == pytest.approx(1e1)
     assert captured['xscale'] == 'linear'
+
+
+def test_plot_orbit_entry_loads_fine_evection_data_when_present(monkeypatch, tmp_path):
+    """When ``fine_evection_data.csv`` already exists for this run, the
+    entry wrapper must load it and pass the real (t, phi) trace through
+    to ``plot_evection`` as ``fine_t``/``fine_phi``, not leave them
+    ``None``."""
+    fake_hf = _make_hf_all(n=4, t_start=1e3, t_end=1e6)
+    captured = {}
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True, exist_ok=True)
+    fine_path = data_dir / 'fine_evection_data.csv'
+    t_vals = np.array([1.0e2, 2.0e2, 3.0e2])
+    phi_vals = np.array([0.1, 0.5, 1.0])
+    with open(fine_path, 'w') as f:
+        f.write('t_abs_yr,phi\n')
+        for t, phi in zip(t_vals, phi_vals):
+            f.write(f'{t},{phi}\n')
+
+    monkeypatch.setattr(orbit_mod.pd, 'read_csv', lambda *a, **kw: fake_hf)
+    monkeypatch.setattr(orbit_mod, 'plot_orbit', lambda *a, **kw: None)
+    monkeypatch.setattr(orbit_mod, 'plot_orbit_system', lambda *a, **kw: None)
+    monkeypatch.setattr(orbit_mod, 'plot_evection', lambda *a, **kw: captured.update(kw))
+
+    handler = MagicMock()
+    handler.directories = {'output': str(tmp_path), 'output/data': str(data_dir)}
+    handler.config.params.out.plot_fmt = 'png'
+    handler.config.orbit.planet_satellite_model = 'ps1d_evec'
+    handler.config.orbit.module = 'dummy'
+
+    orbit_mod.plot_orbit_entry(handler)
+
+    np.testing.assert_allclose(captured['fine_t'], t_vals)
+    np.testing.assert_allclose(captured['fine_phi'], phi_vals)
+
+
+def test_plot_orbit_entry_warns_and_continues_when_fine_evection_data_is_malformed(
+    monkeypatch, tmp_path, caplog
+):
+    """A present but unparseable ``fine_evection_data.csv`` must log a
+    warning and fall back to ``fine_t=fine_phi=None``, not crash the
+    whole plotting entry point over one malformed diagnostic file."""
+    import logging
+
+    fake_hf = _make_hf_all(n=4, t_start=1e3, t_end=1e6)
+    captured = {}
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True, exist_ok=True)
+    fine_path = data_dir / 'fine_evection_data.csv'
+    with open(fine_path, 'w') as f:
+        f.write('not,valid,columns\nfor,this,loader\nextra\n')
+
+    monkeypatch.setattr(orbit_mod.pd, 'read_csv', lambda *a, **kw: fake_hf)
+    monkeypatch.setattr(orbit_mod, 'plot_orbit', lambda *a, **kw: None)
+    monkeypatch.setattr(orbit_mod, 'plot_orbit_system', lambda *a, **kw: None)
+    monkeypatch.setattr(orbit_mod, 'plot_evection', lambda *a, **kw: captured.update(kw))
+
+    handler = MagicMock()
+    handler.directories = {'output': str(tmp_path), 'output/data': str(data_dir)}
+    handler.config.params.out.plot_fmt = 'png'
+    handler.config.orbit.planet_satellite_model = 'ps1d_evec'
+    handler.config.orbit.module = 'dummy'
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.plot.cpl_orbit'):
+        orbit_mod.plot_orbit_entry(handler)
+
+    assert captured['fine_t'] is None
+    assert captured['fine_phi'] is None
+    assert any('Failed to load fine evection data' in rec.message for rec in caplog.records)
 
 
 def test_plot_orbit_entry_dispatches_to_plot_lovenumber_for_obliqua(monkeypatch, tmp_path):

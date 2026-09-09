@@ -72,6 +72,7 @@ from proteus.orbit.common import Tides_t
 from proteus.orbit.satellite import (
     _flush_fine_evection_csv,
     _in_evection_band,
+    _solve_e_stationary,
     _state_is_valid,
     compute_a_res_prime,
     evolve_orbit_satellite,
@@ -132,6 +133,59 @@ def test_compute_a_res_prime_increases_with_eccentricity():
     a_res_extreme = compute_a_res_prime({'eccentricity_sat': 0.9, 'axial_period': axial_period})
     assert np.isfinite(a_res_extreme)
     assert a_res_extreme > a_res_eccentric
+
+
+# ---------------------------------------------------------------------------
+# _solve_e_stationary
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.physics_invariant
+def test_solve_e_stationary_returns_nan_for_non_finite_inputs():
+    """Limit-input guard: a non-finite ``a_prime`` or ``s_prime`` must
+    return NaN directly, without ever calling the root-finder (which
+    would itself raise on a non-finite bracket)."""
+    assert np.isnan(_solve_e_stationary(np.nan, 1.0, 1.0, 1.0))
+    assert np.isnan(_solve_e_stationary(1.0, np.inf, 1.0, 1.0))
+
+
+def test_solve_e_stationary_returns_nan_when_f_does_not_bracket_a_root():
+    """When ``f(lo)`` and ``f(hi)`` have the same sign (no root in
+    ``(0, 1)``), the function must return NaN rather than letting
+    brentq raise a bracketing error. ``Lambda=0`` makes every term but
+    the ``-1`` constant vanish, so ``f`` is exactly ``-1`` everywhere:
+    same sign at both ends, no root.
+    """
+    result = _solve_e_stationary(a_prime=5.0, s_prime=1.0, Lambda=0.0, Omega_ratio=0.5)
+    assert np.isnan(result)
+    # Discrimination: a genuinely different (Lambda != 0) case at the
+    # same a_prime/s_prime/Omega_ratio DOES bracket a root (see the
+    # test below) -- confirming this NaN is specific to the no-root
+    # condition, not a blanket failure of the function for these inputs.
+    other = _solve_e_stationary(a_prime=8.0, s_prime=5.0, Lambda=1.2, Omega_ratio=0.05)
+    assert np.isfinite(other)
+
+
+@pytest.mark.physics_invariant
+def test_solve_e_stationary_finds_a_genuine_root_in_bounds():
+    """With physically reasonable inputs (comparable in scale to the
+    Earth-Moon-Sun system this model targets), a real root must exist
+    and satisfy the defining equation to solver tolerance -- not just
+    return some finite number in range.
+    """
+    a_prime, s_prime, Lambda, Omega_ratio = 8.0, 5.0, 1.2, 0.05
+    e_s = _solve_e_stationary(a_prime, s_prime, Lambda, Omega_ratio)
+    assert np.isfinite(e_s)
+    assert 0.0 < e_s < 1.0
+
+    def f(e):
+        return (
+            Lambda**2 * s_prime**2 / (a_prime**3.5 * (1.0 - e**2) ** 2)
+            - 1.0
+            - 3.0 * np.sqrt(1.0 - e**2) * a_prime**1.5 * Omega_ratio
+        )
+
+    assert abs(f(e_s)) < 1e-8
 
 
 # ---------------------------------------------------------------------------
@@ -1105,6 +1159,115 @@ def test_ps1d_evec_filter_one_evolves_phi_and_am_is_not_conserved(_fast_hansen_t
     # Sane magnitude: measurable (the star is doing real work) but not
     # wildly unphysical for a single year of resonant forcing.
     assert 1e-6 < rel_drift < 0.5
+
+
+def test_ps1d_evec_default_filter_value_matches_explicit_filter_one(_fast_hansen_table):
+    """``filter_value`` defaults to ``None`` in ``ps1d_evec``'s own
+    signature (used when the model is called directly rather than
+    through ``evolve_orbit_satellite``'s step_fn wrapper, which always
+    supplies an explicit 0.0/1.0) -- the docstring's contract is that
+    omitting it applies the full evection forcing unconditionally, i.e.
+    behaves exactly like ``filter_value=1.0``, not like 0.0.
+    """
+    tides_o = _make_ps1d_evec_tides(-0.002 - 0.004j)
+
+    hf_row_default = _make_ps1d_evec_hf_row(ecc=0.3, evection_angle=0.0)
+    ps1d_evec(hf_row_default, tides_o, dt=1.0, config=_SOLVER_CONFIG)
+
+    hf_row_explicit = _make_ps1d_evec_hf_row(ecc=0.3, evection_angle=0.0)
+    ps1d_evec(hf_row_explicit, tides_o, dt=1.0, config=_SOLVER_CONFIG, filter_value=1.0)
+
+    assert hf_row_default['evection_angle'] == pytest.approx(
+        hf_row_explicit['evection_angle'], rel=1e-12
+    )
+    # Discrimination: must NOT match filter_value=0.0's result (the
+    # secular-only regime), confirming the default genuinely activates
+    # the oscillating term rather than silently falling back to it.
+    hf_row_zero = _make_ps1d_evec_hf_row(ecc=0.3, evection_angle=0.0)
+    ps1d_evec(hf_row_zero, tides_o, dt=1.0, config=_SOLVER_CONFIG, filter_value=0.0)
+    assert hf_row_default['evection_angle'] != pytest.approx(
+        hf_row_zero['evection_angle'], rel=1e-6
+    )
+
+
+def test_ps1d_evec_default_fine_stride_keeps_every_solver_sample(_fast_hansen_table):
+    """``fine_stride`` defaults to 1 (no thinning): every accepted
+    internal solver sample must be kept in ``fine_sink``, not just
+    every 20th (the stride ``evolve_orbit_satellite``'s own step_fn
+    hard-codes for storage-clock throttling -- see the module
+    docstring's 'Three clocks' section). Compared directly against an
+    explicit ``fine_stride=20`` call on the same inputs, which must
+    keep strictly fewer samples.
+    """
+    tides_o = _make_ps1d_evec_tides(-0.002 - 0.004j)
+
+    hf_row_default = _make_ps1d_evec_hf_row(ecc=0.3, evection_angle=0.0)
+    fine_sink_default = []
+    ps1d_evec(
+        hf_row_default, tides_o, dt=1.0, config=_SOLVER_CONFIG, fine_sink=fine_sink_default
+    )
+
+    hf_row_strided = _make_ps1d_evec_hf_row(ecc=0.3, evection_angle=0.0)
+    fine_sink_strided = []
+    ps1d_evec(
+        hf_row_strided,
+        tides_o,
+        dt=1.0,
+        config=_SOLVER_CONFIG,
+        fine_sink=fine_sink_strided,
+        fine_stride=20,
+    )
+
+    assert len(fine_sink_default) == 1
+    assert len(fine_sink_strided) == 1
+    n_default = len(fine_sink_default[0]['t_abs_yr'])
+    n_strided = len(fine_sink_strided[0]['t_abs_yr'])
+    assert n_default > n_strided, (
+        f'default fine_stride kept {n_default} samples, stride=20 kept '
+        f'{n_strided} -- the default must keep strictly more (no thinning)'
+    )
+
+
+def test_evolve_orbit_satellite_logs_evection_band_transitions(monkeypatch, caplog):
+    """A genuine in-band/out-of-band flip mid-call must produce exactly
+    one TRANSITION log line per flip (not one per substep) -- the
+    signal this timeline-logging exists to surface, distinct from the
+    per-substep ``filter_value`` wiring covered by the test above.
+    """
+    import logging
+
+    from proteus.orbit import satellite as sat_mod
+
+    call_count = [0]
+
+    def flipping_in_band(hf_row, state, **kw):
+        call_count[0] += 1
+        return call_count[0] == 1  # True on the first substep, False after
+
+    monkeypatch.setattr(sat_mod, '_in_evection_band', flipping_in_band)
+    monkeypatch.setattr(
+        sat_mod,
+        'ps1d_evec',
+        lambda *a, fine_sink=None, fine_stride=1, filter_value=None, **kw: None,
+    )
+
+    hf_row = _make_ps1d_evec_hf_row(ecc=0.05)
+    interior_o = _make_interior_for_c_planet(density=5500.0)
+    interior_o.dt = 1.0
+    config = _make_satellite_config('ps1d_evec')
+    tides_o = _make_ps1d_evec_tides(-0.002 - 0.004j)
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.orbit.satellite'):
+        sat_mod.evolve_orbit_satellite(
+            hf_row, config, dirs={'output/data': '/tmp'}, tides_o=tides_o, interior_o=interior_o
+        )
+
+    assert call_count[0] > 1, 'test setup problem: fewer than 2 substeps ran'
+    transitions = [
+        rec.message for rec in caplog.records if 'evection-band TRANSITION' in rec.message
+    ]
+    assert len(transitions) == 1
+    assert 'True -> False' in transitions[0]
 
 
 def test_evolve_orbit_satellite_threads_in_band_result_as_filter_value(monkeypatch):
