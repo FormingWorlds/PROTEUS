@@ -7,7 +7,6 @@ Reusable shell logic replicated inline from ``tools/get_petsc.sh`` and
 - ERR trap: exit-code and step-name capture
 - Platform detection: PETSC_ARCH assignment
 - Homebrew prefix fallback: architecture-aware default
-- Workpath argument handling: ``$1`` override vs default
 - PETSc library detection: versioned ``.so``, ``.dylib``, missing
 
 ``tools/_get_common.sh``, the helper library every ``get_*.sh`` sources, is
@@ -27,6 +26,8 @@ the shipped text:
 
 Blocks lifted out of the shipped scripts at run time, so that rewording a
 script re-runs its cases against the new text:
+- ``tools/get_petsc.sh``: the install-path resolution, ``$1`` against the
+  ``./petsc/`` default
 - ``tools/get_socrates.sh``: the install-path resolution, the portable-flag
   rewrite, its post-build flag check, and the conditional AGNI-wrapper
   rebuild note
@@ -40,6 +41,7 @@ rather than in shell, each of which fails silently when its counterpart moves:
   scripts resolve through ``tools/_module_pins.py``
 - the extras the ``setup-proteus`` composite action installs, against the
   extra keys pyproject declares
+- the SOCRATES cache key, against every file its build step reads
 - the installation docs' guidance on editable installs, against those pins
 - CI config leaving USER at the runner default, which the action's macOS
   ``brew install`` step requires
@@ -238,24 +240,30 @@ def test_portable_realpath_python_fallback(tmp_path):
 # One shipped copy of the shared helpers (tools/_get_common.sh)
 # ---------------------------------------------------------------------------
 
-# A private copy of a shared helper is recognised by the text that used to
-# be duplicated: the function header, the dirty test, and the SSH probe.
-PRIVATE_HELPER_SIGNATURES = (
-    ('portable_realpath() {', 'portable_realpath'),
-    ('status --porcelain --untracked-files=no', 'the dirty-checkout guard'),
-    ('-T git@github.com', 'the GitHub SSH probe'),
-)
+# The shell the library exports, read from the library rather than listed
+# here: a helper renamed in one place and not the other would otherwise
+# drop out of both scans below without either failing.
+LIBRARY_VARIABLES = ('proteus_root', 'proteus_tools_dir')
 
-# Names a script can only use because the library defines or sets them.
-LIBRARY_NAMES = (
-    'portable_realpath',
-    'get_parse_args',
-    'guard_dirty_checkout',
-    'github_use_ssh',
-    'github_ssh_url',
-    'resolve_module_pin',
-    'proteus_root',
-    'proteus_tools_dir',
+
+def _library_function_names() -> list[str]:
+    """Return the function names ``tools/_get_common.sh`` defines."""
+    names = re.findall(
+        r'^(?:function\s+)?([a-z_][a-z0-9_]*)\s*\(\s*\)\s*\{',
+        COMMON_LIB.read_text(),
+        re.MULTILINE,
+    )
+    return [name for name in names if not name.startswith('_')]
+
+
+# A private copy is a function definition of a library name, or the shell
+# the library replaced: the dirty test and the SSH probe as commands.
+# Matching the command form, not the text, keeps a mention inside a
+# user-facing message (get_spider.sh names the probe in its
+# troubleshooting output) from reading as a copy.
+COPIED_SHELL_PATTERNS = (
+    (r'git\s+(?:-C\s+\S+\s+)?status\s+--porcelain', 'the dirty-checkout guard'),
+    (r'^(?:if\s+)?(?:\$\{GIT_SSH_COMMAND[^}]*\}|ssh)\s+-T\s+git@github\.com', 'the SSH probe'),
 )
 
 
@@ -264,49 +272,82 @@ def _get_scripts() -> list[Path]:
     return sorted(TOOLS_DIR.glob('get_*.sh'))
 
 
+def _code_lines(script: Path) -> list[tuple[int, str]]:
+    """Return ``(index, code)`` for each line, with comments stripped.
+
+    Comments are dropped because a script's own prose names the helpers it
+    calls, and a quoted ``#`` is not a comment.
+    """
+    stripped = []
+    for index, line in enumerate(script.read_text().splitlines()):
+        code = re.sub(r'(^|\s)#.*$', '', line) if line.count('"') % 2 == 0 else line
+        stripped.append((index, code.strip()))
+    return stripped
+
+
 @pytest.mark.unit
 def test_no_get_script_carries_a_private_helper_copy():
     """Each shared helper is defined once, in the library.
 
     Nine scripts once carried their own ``portable_realpath``, and a fix to
-    one copy left the other eight broken. A script that grows a private
-    copy again is also outside the reach of the cases in this file, which
-    read the library rather than the scripts.
+    one copy left the other eight broken. A private copy also shadows the
+    library even in a script that sources it, so the definition, not the
+    absence of the source line, is what has to be caught: the shadowed
+    script would silently keep the old behaviour while every case in this
+    file kept passing against the library.
     """
     scripts = _get_scripts()
-    # Guard the guard: a mis-rooted glob would make the scan vacuous.
+    functions = _library_function_names()
+    # Guard the guard: a mis-rooted glob or a failed name extraction would
+    # make the scan vacuous.
     assert len(scripts) >= 10, [s.name for s in scripts]
+    assert 'portable_realpath' in functions, functions
+    assert len(functions) >= 6, functions
+
+    # Accept the spellings bash accepts: `name() {`, `name ()  {`, and
+    # `function name {`.
+    definitions = [
+        (
+            rf'^(?:function\s+)?{re.escape(name)}\s*\(\s*\)\s*\{{|^function\s+{re.escape(name)}\s*\{{',
+            f'a private {name}',
+        )
+        for name in functions
+    ]
 
     offenders: dict[str, list[str]] = {}
     for script in scripts:
-        for line in script.read_text().splitlines():
-            stripped = line.strip()
-            # Prose and user-facing messages may still name the commands.
-            if stripped.startswith('#') or 'echo ' in stripped:
-                continue
-            for needle, label in PRIVATE_HELPER_SIGNATURES:
-                if needle in stripped:
+        for _, code in _code_lines(script):
+            for pattern, label in (*definitions, *COPIED_SHELL_PATTERNS):
+                if re.search(pattern, code):
                     offenders.setdefault(script.name, []).append(label)
     assert offenders == {}, offenders
 
 
 @pytest.mark.unit
-def test_every_helper_user_sources_the_library():
-    """A script calling a shared helper also sources the file defining it.
+def test_every_helper_user_sources_the_library_before_calling_it():
+    """A script calls a shared helper only after sourcing its definition.
 
-    Without the source line the helper name is unset, and under a shell
-    without ``set -u`` the call is a silent no-op rather than an error.
+    An unsourced or late-sourced call is worse than a missing one: without
+    ``set -u`` the name is empty, so the call is a silent no-op. For
+    ``guard_dirty_checkout`` that means the refusal to delete a checkout
+    holding local work is simply absent, and the script deletes it.
     """
-    users, missing = [], []
+    names = (*_library_function_names(), *LIBRARY_VARIABLES)
+    users, unsourced, late = [], [], []
     for script in _get_scripts():
-        text = script.read_text()
-        if not any(name in text for name in LIBRARY_NAMES):
+        lines = _code_lines(script)
+        uses = [i for i, code in lines if any(name in code for name in names)]
+        if not uses:
             continue
         users.append(script.name)
-        if 'source "$_get_common"' not in text:
-            missing.append(script.name)
+        sourced = [i for i, code in lines if 'source "$_get_common"' in code]
+        if not sourced:
+            unsourced.append(script.name)
+        elif min(uses) < sourced[0]:
+            late.append(script.name)
 
-    assert missing == [], missing
+    assert unsourced == [], unsourced
+    assert late == [], late
     # Guard the guard: a renamed helper would leave nothing to check.
     assert len(users) >= 10, users
 
@@ -1104,11 +1145,15 @@ def test_ci_setup_installs_every_declared_extra():
 # ---------------------------------------------------------------------------
 
 
-def _run_guard(tmp_path, *args: str, pathspec: str = '') -> subprocess.CompletedProcess:
+def _run_guard(
+    tmp_path, *args: str, pathspec: str = '', strict: bool = False
+) -> subprocess.CompletedProcess:
     """Run the shipped guard against the ``aragog`` checkout in ``tmp_path``.
 
     ``pathspec`` appends a git pathspec, as ``get_socrates.sh`` does for its
-    regenerable build config.
+    regenerable build config. ``strict`` selects the shell the callers
+    split over: get_boreas.sh and get_vulcan.sh enable
+    ``set -euo pipefail``, the other six do not.
     """
     body = (
         'get_parse_args "$@"\n'
@@ -1116,7 +1161,7 @@ def _run_guard(tmp_path, *args: str, pathspec: str = '') -> subprocess.Completed
         'echo GUARD_PASSED\n'
     )
     return subprocess.run(
-        ['bash', '-c', _with_common(body), 'guard', *args],
+        ['bash', '-c', _with_common(body, strict=strict), 'guard', *args],
         capture_output=True,
         text=True,
         env={**os.environ, 'GUARD_ROOT': str(tmp_path)},
@@ -1132,14 +1177,17 @@ def _git(cwd, *args: str) -> None:
     )
 
 
-def test_guard_blocks_dirty_and_unpushed_checkouts(tmp_path):
+@pytest.mark.parametrize('strict', [False, True], ids=['plain shell', 'errexit shell'])
+def test_guard_blocks_dirty_and_unpushed_checkouts(tmp_path, strict):
     """Tracked modifications and local-only commits block the refresh.
 
     A modified tracked file must exit 1 with the recovery command in the
     message; a repo whose commits exist on no remote (covers both the
     remote-less and the never-pushed case) must also block. Untracked
     files alone must NOT block: build artifacts and egg-info dirs are
-    routine in refreshed checkouts.
+    routine in refreshed checkouts. Both shells are exercised: the guard
+    is shared by scripts that enable ``set -euo pipefail`` and scripts
+    that do not.
     """
     workdir = tmp_path / 'aragog'
     workdir.mkdir()
@@ -1149,19 +1197,20 @@ def test_guard_blocks_dirty_and_unpushed_checkouts(tmp_path):
     _git(workdir, 'commit', '-q', '-m', 'c1')
 
     # Local-only commit (no remotes at all): blocked.
-    res = _run_guard(tmp_path)
+    res = _run_guard(tmp_path, strict=strict)
     assert res.returncode == 1
     assert '--force' in res.stderr  # recovery command is named
     assert 'GUARD_PASSED' not in res.stdout
 
     # Same state plus a dirty tracked file: still blocked.
     (workdir / 'tracked.py').write_text('x = 2\n')
-    res = _run_guard(tmp_path)
+    res = _run_guard(tmp_path, strict=strict)
     assert res.returncode == 1
     assert 'uncommitted changes' in res.stderr
 
 
-def test_guard_passes_clean_remote_backed_checkout(tmp_path):
+@pytest.mark.parametrize('strict', [False, True], ids=['plain shell', 'errexit shell'])
+def test_guard_passes_clean_remote_backed_checkout(tmp_path, strict):
     """A clean checkout whose commits are on a remote is refreshed.
 
     Mimics the normal installed state: a clone (origin exists), detached
@@ -1181,7 +1230,7 @@ def test_guard_passes_clean_remote_backed_checkout(tmp_path):
     _git(workdir, 'checkout', '-q', '--detach', 'HEAD')
     (workdir / 'build_artifact.o').write_text('')  # untracked: must not block
 
-    res = _run_guard(tmp_path)
+    res = _run_guard(tmp_path, strict=strict)
     assert res.returncode == 0
     assert 'GUARD_PASSED' in res.stdout
 
@@ -1191,17 +1240,50 @@ def test_guard_passes_clean_remote_backed_checkout(tmp_path):
     (workdir / 'f.py').write_text('a = 2\n')
     _git(workdir, 'add', 'f.py')
     _git(workdir, 'commit', '-q', '-m', 'local work')
-    res = _run_guard(tmp_path)
+    res = _run_guard(tmp_path, strict=strict)
     assert res.returncode == 1
     assert 'not on a remote' in res.stderr
 
     # --force bypasses deliberately.
-    res = _run_guard(tmp_path, '--force')
+    res = _run_guard(tmp_path, '--force', strict=strict)
     assert res.returncode == 0
     assert 'GUARD_PASSED' in res.stdout
 
 
-def test_guard_excludes_only_the_pathspec_the_caller_names(tmp_path):
+@pytest.mark.parametrize('strict', [False, True], ids=['plain shell', 'errexit shell'])
+def test_guard_keeps_a_checkout_git_cannot_report_on(tmp_path, strict):
+    """A checkout whose state git cannot report is kept, in either shell.
+
+    An unborn HEAD, from a ``git init`` with nothing committed or an
+    interrupted clone, makes ``git log HEAD`` exit 128. Reading that
+    through a pipe made the outcome depend on the shell: under
+    ``set -o pipefail`` the script stopped with no message at all, and
+    without it the guard read an empty result and the checkout was
+    deleted, staged work included. Whether such a checkout holds local
+    work is unknown, so it is kept and the reason named, identically in
+    both shells.
+    """
+    workdir = tmp_path / 'aragog'
+    workdir.mkdir()
+    _git(workdir, 'init', '-q')
+    # Staged and never committed: work a refresh would destroy.
+    (workdir / 'work.py').write_text('x = 1\n')
+    _git(workdir, 'add', 'work.py')
+
+    res = _run_guard(tmp_path, strict=strict)
+    assert res.returncode == 1, res.stdout
+    assert 'could not report the state' in res.stderr
+    assert '--force' in res.stderr  # the recovery command is named
+    assert 'GUARD_PASSED' not in res.stdout
+
+    # --force still discards deliberately, in either shell.
+    forced = _run_guard(tmp_path, '--force', strict=strict)
+    assert forced.returncode == 0, forced.stderr
+    assert 'GUARD_PASSED' in forced.stdout
+
+
+@pytest.mark.parametrize('strict', [False, True], ids=['plain shell', 'errexit shell'])
+def test_guard_excludes_only_the_pathspec_the_caller_names(tmp_path, strict):
     """An excluded path does not block the refresh, but its neighbours do.
 
     get_socrates.sh excludes make/Mk_cmd because configure rewrites it on
@@ -1224,18 +1306,18 @@ def test_guard_excludes_only_the_pathspec_the_caller_names(tmp_path):
 
     # Regenerated build config only: the exclusion lets the refresh run.
     (workdir / 'make' / 'Mk_cmd').write_text('FORTCOMP = gfortran -Ofast\n')
-    res = _run_guard(tmp_path, pathspec=exclude)
+    res = _run_guard(tmp_path, pathspec=exclude, strict=strict)
     assert res.returncode == 0, res.stderr
     assert 'GUARD_PASSED' in res.stdout
 
     # The same state without the exclusion blocks: the guard still looks.
-    res = _run_guard(tmp_path)
+    res = _run_guard(tmp_path, strict=strict)
     assert res.returncode == 1
     assert 'uncommitted changes' in res.stderr
 
     # A modification outside the excluded path blocks either way.
     (workdir / 'src.f90').write_text('stop\n')
-    res = _run_guard(tmp_path, pathspec=exclude)
+    res = _run_guard(tmp_path, pathspec=exclude, strict=strict)
     assert res.returncode == 1
     assert 'GUARD_PASSED' not in res.stdout
 
@@ -1671,7 +1753,12 @@ def test_script_clones_the_expected_destination(tmp_path, script, argv, dest, ur
 
     subprocess.run(
         ['bash', str(root / 'tools' / script), *(a.format(root=root) for a in argv)],
-        cwd=root,
+        # Deliberately not the checkout: a destination taken from the
+        # working directory would otherwise land on the expected path by
+        # coincidence, and the CWD-relative regression would be invisible.
+        # get_spider.sh is the one script whose default destination is
+        # CWD-relative by design, so its case passes a path.
+        cwd=tmp_path,
         env=env,
         capture_output=True,
         text=True,
@@ -1681,8 +1768,10 @@ def test_script_clones_the_expected_destination(tmp_path, script, argv, dest, ur
     clones = [ln for ln in log.read_text().splitlines() if ln.startswith('git clone ')]
     assert len(clones) == 1, log.read_text()
     assert clones[0] == f'git clone {url} {dest.format(root=real_root)}'
-    # Nothing may resolve outside the throwaway checkout.
+    # Nothing may resolve outside the throwaway checkout, and in particular
+    # not into the directory the script was run from.
     assert clones[0].split()[-1].startswith(real_root)
+    assert not (tmp_path / dest.format(root='').lstrip('/')).exists()
 
 
 # ---------------------------------------------------------------------------
