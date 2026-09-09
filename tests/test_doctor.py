@@ -997,6 +997,47 @@ class TestCheckGitModuleOptional:
         assert len(agni_results) == 1
         assert agni_results[0].status == FAIL
 
+    def test_run_all_checks_includes_obliqua_when_installed(self, tmp_path):
+        """End to end: with a real Obliqua checkout present, run_all_checks
+        must include its CheckResult in the top-level report -- the
+        counterpart to the omitted-when-absent case above, confirming
+        ``required=False`` only changes the missing-checkout behaviour,
+        not whether an installed optional module is reported at all.
+        """
+        pins = {'obliqua': {'ref': 'a' * 40}}
+        with (
+            patch('proteus.doctor._dependency_specs', return_value={}),
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._git_head', return_value='a' * 40),
+            patch(
+                'proteus.doctor.get_proteus_directories',
+                return_value={'proteus': str(tmp_path), 'obliqua': str(tmp_path)},
+            ),
+        ):
+            results = run_all_checks()
+        obliqua_results = [r for r in results if r.name == 'Obliqua']
+        assert len(obliqua_results) == 1
+        assert obliqua_results[0].status == PASS
+
+    def test_run_all_checks_reports_check_error_for_optional_module_that_raises(self):
+        """A crash inside the optional-module loop must degrade to a FAIL
+        CheckResult (the same recovery pattern the mandatory-module loop
+        already has), not propagate and abort every other check.
+        """
+        with (
+            patch('proteus.doctor._dependency_specs', return_value={}),
+            patch('proteus.doctor._module_pins', return_value={}),
+            patch(
+                'proteus.doctor.check_git_module',
+                side_effect=RuntimeError('boom_optional_xyz'),
+            ),
+        ):
+            results = run_all_checks()
+        obliqua_results = [r for r in results if r.name == 'Obliqua']
+        assert len(obliqua_results) == 1
+        assert obliqua_results[0].status == FAIL
+        assert 'boom_optional_xyz' in obliqua_results[0].message
+
 
 def _mixed_results() -> list[CheckResult]:
     """A pass + a fixable fail + a fixable warn, mirroring a real diagnose run."""
