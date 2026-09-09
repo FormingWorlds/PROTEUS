@@ -35,7 +35,7 @@ pinned commit.
 <!-- BEGIN GIT_TABLE -->
 | Module | Role | Pin | Docs |
 |--------|------|-----|------|
-| AGNI | Radiative-convective atmosphere (Julia) | [![AGNI](https://img.shields.io/badge/AGNI-c7ffdf00-green)](https://github.com/nichollsh/AGNI/commit/c7ffdf000a49439fc597eff3f586c2c54caba647){target="_blank" rel="noopener"} | [Docs](https://www.h-nicholls.space/AGNI/) |
+| AGNI | Radiative-convective atmosphere (Julia) | [![AGNI](https://img.shields.io/badge/AGNI-f94940b6-green)](https://github.com/nichollsh/AGNI/commit/f94940b69c740a62aee186e35590f0a5c4f7e605){target="_blank" rel="noopener"} | [Docs](https://www.h-nicholls.space/AGNI/) |
 | SOCRATES | Spectral radiative transfer (Fortran) | [![SOCRATES](https://img.shields.io/badge/SOCRATES-c3296586-green)](https://github.com/FormingWorlds/SOCRATES/commit/c32965865c2c6bb1ba27b94e958a36982d74b0bf){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/SOCRATES/) |
 | SPIDER | Interior evolution (C, requires PETSc) | [![SPIDER](https://img.shields.io/badge/SPIDER-c9a3fd43-green)](https://github.com/FormingWorlds/SPIDER/commit/c9a3fd4301c7008291d4f4921506d36b6288f8ca){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/SPIDER/) |
 <!-- END GIT_TABLE -->
