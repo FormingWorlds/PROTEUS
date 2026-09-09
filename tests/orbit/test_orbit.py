@@ -487,6 +487,44 @@ def test_evolve_orbit_star_unrecognized_model_raises_immediately():
     assert hf_row == hf_row_before
 
 
+def test_evolve_orbit_star_skips_domega_p_when_axial_period_hits_zero(monkeypatch):
+    """``rel_change_fn``'s ``dOmega_p`` gradient check must be skipped
+    (not raise a ZeroDivisionError) when the planet's spin period comes
+    back exactly zero -- a degenerate but ``np.isfinite`` value that
+    ``_state_is_valid_star`` does not itself reject (unlike
+    ``semimajorax``, spin period has no explicit positivity/range
+    check, only a finiteness one).
+
+    ``sp1d`` is replaced with a controlled stand-in here because no
+    real tidal model actually drives spin to exactly zero -- this
+    isolates the shared controller's own gradient-check robustness
+    from whether real physics would ever produce this input.
+    """
+    from proteus.orbit import orbit as orbit_mod
+
+    def fake_sp1d(hf_row, tides_o, dt_yr, config):
+        hf_row['axial_period'] = 0.0
+
+    monkeypatch.setattr(orbit_mod, 'sp1d', fake_sp1d)
+
+    hf_row = _make_sp1d_hf_row()
+    interior_o = SimpleNamespace(
+        dt=0.5, radius=np.array([0.0, 3.0e6, 6.371e6]), density=np.array([5500.0, 5000.0])
+    )
+    config = _make_star_planet_config('sp1d')
+    config.interior_energetics = SimpleNamespace(module='aragog')
+    config.orbit.solver.dt0_yr = 0.5  # completes in exactly one substep
+
+    orbit_mod.evolve_orbit_star(hf_row, config, tides_o=object(), interior_o=interior_o)
+
+    assert hf_row['axial_period'] == 0.0
+    # Discrimination: the substep was actually ACCEPTED, not stuck
+    # retrying/rejecting forever -- a broken guard that raised
+    # ZeroDivisionError inside rel_change_fn would be caught by the
+    # substep's own try/except and masquerade as an ordinary rejection.
+    assert '_orbit_dt_yr' in hf_row
+
+
 # ---------------------------------------------------------------------------
 # sp1d: planet spin + orbit (Hansen-coefficient-based), black-box tested
 # through the public sp1d(hf_row, tides_o, dt) entry point.

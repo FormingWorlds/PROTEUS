@@ -423,31 +423,45 @@ def evolve_orbit_satellite(
         raise ValueError(f'unrecognised planet_satellite_model: {model!r}')
 
     def rel_change_fn(hf_row, snapshot):
-        rel = {}
+        # A relative-change ratio is only meaningful against a genuine
+        # (finite, nonzero) prior value; a degenerate prior (missing,
+        # zero, or otherwise non-finite none of which occur in practice.
+        with np.errstate(divide='ignore', invalid='ignore'):
+            # Compute semimajor-axis gradient
+            a_prev = snapshot.get('semimajorax_sat', np.nan)
+            da = np.divide(abs(hf_row['semimajorax_sat'] - a_prev), a_prev)
 
-        # Compute semimajor-axis gradient
-        a_prev = snapshot.get('semimajorax_sat')
-        if a_prev:
-            rel['da'] = abs(hf_row['semimajorax_sat'] - a_prev) / a_prev
+            # Compute eccentricity gradient
+            e_prev = snapshot.get('eccentricity_sat', 0.0)
+            e_new = hf_row.get('eccentricity_sat', 0.0)
+            de = abs(e_new - e_prev) / max(e_prev, solver.de_floor)
 
-        # Compute eccentricity gradient
-        e_prev = snapshot.get('eccentricity_sat', 0.0)
-        e_new = hf_row.get('eccentricity_sat', 0.0)
-        rel['de'] = abs(e_new - e_prev) / max(e_prev, solver.de_floor)
+            # Compute planet spin rate gradient
+            axp_prev = snapshot.get('axial_period', np.nan)
+            axp_new = hf_row.get('axial_period', np.nan)
+            dOmega_p = np.divide(
+                abs(np.divide(1.0, axp_new) - np.divide(1.0, axp_prev)),
+                np.divide(1.0, axp_prev),
+            )
 
-        # Compute planet spin rate gradient
-        axp_prev = snapshot.get('axial_period')
-        axp_new = hf_row.get('axial_period')
-        if axp_prev and axp_new:
-            rel['dOmega_p'] = abs(1.0 / axp_new - 1.0 / axp_prev) / (1.0 / axp_prev)
+            # Compute satellite spin rate gradient
+            axs_prev = snapshot.get('axial_period_sat', np.nan)
+            axs_new = hf_row.get('axial_period_sat', np.nan)
+            dOmega_s = np.divide(
+                abs(np.divide(1.0, axs_new) - np.divide(1.0, axs_prev)),
+                np.divide(1.0, axs_prev),
+            )
 
-        # Compute satellite spin rate gradient
-        axs_prev = snapshot.get('axial_period_sat')
-        axs_new = hf_row.get('axial_period_sat')
-        if axs_prev and axs_new:
-            rel['dOmega_s'] = abs(1.0 / axs_new - 1.0 / axs_prev) / (1.0 / axs_prev)
-
-        return rel
+        return {
+            key: value
+            for key, value in (
+                ('da', da),
+                ('de', de),
+                ('dOmega_p', dOmega_p),
+                ('dOmega_s', dOmega_s),
+            )
+            if np.isfinite(value)
+        }
 
     rel_change_limits = {
         'da': solver.max_rel_da,

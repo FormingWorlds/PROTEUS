@@ -120,6 +120,29 @@ def test_kepler_newton_satisfies_equation_residual(M, e):
     assert abs(np.mod(residual + np.pi, 2 * np.pi) - np.pi) < 1e-9
 
 
+def test_kepler_newton_returns_finite_result_when_iteration_cap_is_hit():
+    """At extreme eccentricity near periapsis (e=0.999, small M), the
+    fixed 10-iteration cap is exhausted without reaching the 1e-13
+    convergence threshold -- this is well beyond the e<=0.95 range the
+    module's own docstring says the application targets, but the
+    solver must still return a finite value (its best estimate after
+    10 iterations) rather than exiting the loop with a stale/undefined
+    E, silently truncating, or raising.
+    """
+    M = np.array([0.001])
+    e = 0.999
+    E = kepler_newton(M, e)
+    assert np.all(np.isfinite(E))
+    # The residual is not machine-precision here (that's the point --
+    # the cap was hit before full convergence), but it must still be
+    # much smaller than a non-iterating guess (E=M) would leave: a
+    # regression that broke the Newton step entirely (e.g. returned M
+    # unchanged) would leave a residual of order e ~ 1, not the ~1e-2
+    # this partially-converged case actually achieves.
+    residual = abs(E[0] - e * np.sin(E[0]) - M[0])
+    assert residual < 1e-1
+
+
 # ---------------------------------------------------------------------------
 # hansen_fft / get_all_m_hansen
 # ---------------------------------------------------------------------------

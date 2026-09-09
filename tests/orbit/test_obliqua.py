@@ -1189,6 +1189,46 @@ def test_ln_from_lookup_loads_nc_path_directly_without_regenerating(monkeypatch,
     assert storage.LNk[0] == pytest.approx(0.02 - 0.03j, rel=1e-9)
 
 
+def test_ln_from_lookup_loads_an_unrecognized_extension_path_unchanged(monkeypatch, tmp_path):
+    """When ``love_number_sat`` ends in neither ``.nc`` nor ``.json``,
+    ``LN_from_lookup`` must fall through both branches unchanged and
+    still pass the ORIGINAL path straight to ``add_from_file`` (not
+    regenerate via ``lookup_from_interior``, and not raise) -- the same
+    contract as the ``.nc`` case above, just reached via neither
+    explicit branch.
+    """
+    from proteus.orbit import obliqua as obliqua_mod
+
+    def fail_if_called(dirs, config):
+        raise AssertionError('lookup_from_interior must not be called for this path')
+
+    monkeypatch.setattr(obliqua_mod, 'lookup_from_interior', fail_if_called)
+
+    # Real netCDF content behind an unrecognized extension: the fallthrough
+    # must pass this exact path through to add_from_file unmodified.
+    odd_path = tmp_path / 'provided_lookup.dat'
+    nmk_lookup, sigma_lookup, lnk_lookup = _default_lookup_table()
+    _write_lookup_netcdf(odd_path, nmk_lookup, sigma_lookup, lnk_lookup)
+
+    tides_o = Tides_t()
+    _seed_planet_modes(tides_o, [(2, 2, 0)])
+    cfg = _make_satellite_config(love_number_sat=str(odd_path))
+    hf_row = {'axial_period_sat': 2 * np.pi / 1e-6, 'orbital_period_sat': 86400.0 * 27.3}
+
+    obliqua_mod.LN_from_lookup(hf_row, dirs={}, tides_o=tides_o, config=cfg)
+
+    # Discrimination: the lookup entry must have actually been registered
+    # (add_from_file really ran on the unchanged path) -- a broken
+    # fallthrough that silently skipped loading entirely would still
+    # leave this test looking like it "did nothing wrong" without this
+    # check, since no exception would fire either way.
+    lookup = tides_o.get(primary='satellite_dict', perturber='planet')
+    assert lookup.nmk.shape[0] == len(sigma_lookup)
+
+    storage = tides_o.get(primary='satellite', perturber='planet')
+    assert storage.LNk[0] == pytest.approx(0.02 - 0.03j, rel=1e-9)
+
+
 def test_ln_from_lookup_raises_when_path_unset_and_no_cache():
     """With no cached lookup table and no ``love_number_sat`` path,
     ``LN_from_lookup`` raises ``ValueError`` rather than silently

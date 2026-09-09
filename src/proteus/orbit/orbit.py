@@ -83,18 +83,29 @@ def evolve_orbit_star(hf_row: dict, config: Config, tides_o: Tides_t, interior_o
         raise ValueError(f'unrecognised star_planet_model: {model!r}')
 
     def rel_change_fn(hf_row, snapshot):
-        rel = {}
-        a_prev = snapshot.get('semimajorax')
-        if a_prev:
-            rel['da'] = abs(hf_row['semimajorax'] - a_prev) / a_prev
-        e_prev = snapshot.get('eccentricity', 0.0)
-        e_new = hf_row.get('eccentricity', 0.0)
-        rel['de'] = abs(e_new - e_prev) / max(e_prev, solver.de_floor)
-        axp_prev = snapshot.get('axial_period')
-        axp_new = hf_row.get('axial_period')
-        if axp_prev and axp_new:
-            rel['dOmega_p'] = abs(1.0 / axp_new - 1.0 / axp_prev) / (1.0 / axp_prev)
-        return rel
+        # A relative-change ratio is only meaningful against a genuine
+        # (finite, nonzero) prior value; a degenerate prior (missing,
+        # zero, or otherwise non-finite none of which occur in practice.
+        with np.errstate(divide='ignore', invalid='ignore'):
+            a_prev = snapshot.get('semimajorax', np.nan)
+            da = np.divide(abs(hf_row['semimajorax'] - a_prev), a_prev)
+
+            e_prev = snapshot.get('eccentricity', 0.0)
+            e_new = hf_row.get('eccentricity', 0.0)
+            de = abs(e_new - e_prev) / max(e_prev, solver.de_floor)
+
+            axp_prev = snapshot.get('axial_period', np.nan)
+            axp_new = hf_row.get('axial_period', np.nan)
+            dOmega_p = np.divide(
+                abs(np.divide(1.0, axp_new) - np.divide(1.0, axp_prev)),
+                np.divide(1.0, axp_prev),
+            )
+
+        return {
+            key: value
+            for key, value in (('da', da), ('de', de), ('dOmega_p', dOmega_p))
+            if np.isfinite(value)
+        }
 
     rel_change_limits = {
         'da': solver.max_rel_da,

@@ -1270,6 +1270,74 @@ def test_evolve_orbit_satellite_logs_evection_band_transitions(monkeypatch, capl
     assert 'True -> False' in transitions[0]
 
 
+def test_evolve_orbit_satellite_skips_domega_p_when_axial_period_hits_zero(monkeypatch):
+    """``rel_change_fn``'s ``dOmega_p`` gradient check must be skipped
+    (not raise a ZeroDivisionError) when the planet's spin period comes
+    back exactly zero from the model -- a degenerate but technically
+    ``np.isfinite`` value that ``_state_is_valid`` does not itself
+    reject (unlike ``semimajorax_sat``, spin period has no explicit
+    positivity/range check, only a finiteness one).
+
+    ``ps1d`` is replaced with a controlled stand-in here because no
+    real tidal model actually drives spin to exactly zero -- this
+    isolates the shared controller's own gradient-check robustness
+    from whether real physics would ever produce this input, mirroring
+    the existing ``filter_value``-wiring test's use of a fake model.
+    """
+    from proteus.orbit import satellite as sat_mod
+
+    def fake_ps1d(hf_row, tides_o, dt_yr, config):
+        hf_row['axial_period'] = 0.0
+
+    monkeypatch.setattr(sat_mod, 'ps1d', fake_ps1d)
+
+    hf_row = _make_ps1d_hf_row()
+    hf_row['Time'] = 100.0
+    interior_o = _make_interior_for_c_planet(density=5500.0)
+    interior_o.dt = 0.5
+    config = _make_satellite_config('ps1d')
+    config.orbit.solver.dt0_yr = 0.5  # completes in exactly one substep
+    tides_o = _make_ps1d_tides(-0.01 - 0.02j)
+
+    sat_mod.evolve_orbit_satellite(
+        hf_row, config, dirs={}, tides_o=tides_o, interior_o=interior_o
+    )
+
+    assert hf_row['axial_period'] == 0.0
+    # Discrimination: the substep was actually ACCEPTED (not stuck
+    # retrying/rejecting forever) -- a broken guard that raised
+    # ZeroDivisionError inside rel_change_fn would be caught by the
+    # substep's own try/except and masquerade as an ordinary rejection,
+    # never completing the call and never persisting controller state.
+    assert '_orbit_dt_yr' in hf_row
+
+
+def test_evolve_orbit_satellite_skips_domega_s_when_axial_period_sat_hits_zero(monkeypatch):
+    """Counterpart to the planet-spin case above, for the satellite's
+    own spin period (``dOmega_s``)."""
+    from proteus.orbit import satellite as sat_mod
+
+    def fake_ps1d(hf_row, tides_o, dt_yr, config):
+        hf_row['axial_period_sat'] = 0.0
+
+    monkeypatch.setattr(sat_mod, 'ps1d', fake_ps1d)
+
+    hf_row = _make_ps1d_hf_row()
+    hf_row['Time'] = 100.0
+    interior_o = _make_interior_for_c_planet(density=5500.0)
+    interior_o.dt = 0.5
+    config = _make_satellite_config('ps1d')
+    config.orbit.solver.dt0_yr = 0.5
+    tides_o = _make_ps1d_tides(-0.01 - 0.02j)
+
+    sat_mod.evolve_orbit_satellite(
+        hf_row, config, dirs={}, tides_o=tides_o, interior_o=interior_o
+    )
+
+    assert hf_row['axial_period_sat'] == 0.0
+    assert '_orbit_dt_yr' in hf_row
+
+
 def test_evolve_orbit_satellite_threads_in_band_result_as_filter_value(monkeypatch):
     """Wiring check: ``evolve_orbit_satellite`` must pass
     ``_in_evection_band``'s live result through to ``ps1d_evec`` as
