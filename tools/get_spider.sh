@@ -32,17 +32,14 @@
 set -e
 
 # -----------------------------------------------------------------------------
-# Portable realpath: macOS <13 (Catalina through Monterey) does not ship
-# GNU coreutils realpath. Fall back to python3, which is always available
-# in PROTEUS's conda environment.
+# Shared helpers, portable_realpath among them: see tools/_get_common.sh.
 # -----------------------------------------------------------------------------
-portable_realpath() {
-    if command -v realpath >/dev/null 2>&1; then
-        realpath "$1"
-    else
-        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
-    fi
-}
+_get_common="$(dirname "${BASH_SOURCE[0]}")/_get_common.sh"
+if [ ! -f "$_get_common" ]; then
+    echo "ERROR: $_get_common is missing; use a complete PROTEUS checkout." >&2
+    exit 1
+fi
+source "$_get_common"
 
 # -----------------------------------------------------------------------------
 # Error handling: report which step failed on any non-zero exit
@@ -108,14 +105,12 @@ fi
 # -----------------------------------------------------------------------------
 current_step="Validating PETSc installation"
 
-# Derive the repo root from this script's location (tools/get_spider.sh).
-# This avoids dependence on the caller's CWD — important when invoked by
-# data.py:get_spider() which does not set cwd.
-script_dir="$(cd "$(dirname "$0")" && pwd)"
-repo_root="$(dirname "$script_dir")"
-
-# PETSc is expected at <repo_root>/petsc/.
-petsc_path="$repo_root/petsc"
+# The repo root comes from this script's location, through the shared
+# helpers, rather than from the caller's CWD: data.py:get_spider() invokes
+# the script without setting cwd.
+#
+# PETSc is expected at <repo root>/petsc/.
+petsc_path="$proteus_root/petsc"
 if [[ ! -d "$petsc_path" ]]; then
     echo "ERROR: petsc/ directory not found at $petsc_path."
     echo "Run ./tools/get_petsc.sh first to install PETSc."
@@ -202,34 +197,13 @@ current_step="Cloning SPIDER from GitHub"
 
 # Default install directory: ./SPIDER/ ; override via first argument.
 # The --force flag is separated from the optional path argument.
-force=false
-install_path=""
-for arg in "$@"; do
-    if [ "$arg" = "--force" ]; then
-        force=true
-    elif [ -z "$install_path" ]; then
-        install_path="$arg"
-    fi
-done
+get_parse_args "$@"
 workpath="SPIDER"
-if [[ -n "$install_path" ]]; then
-    workpath="$install_path"
+if [[ -n "$get_install_path" ]]; then
+    workpath="$get_install_path"
 fi
 
-# Refuse to delete a checkout holding local work unless --force is given.
-# Keep this guard in sync across the get_* scripts that refresh checkouts.
-# Guarded states: modified tracked files, and commits not on any remote.
-# Untracked files (build artifacts) do not block the refresh.
-if [ -d "$workpath/.git" ] && [ "$force" != true ]; then
-    dirty=$(git -C "$workpath" status --porcelain --untracked-files=no 2>/dev/null | head -1)
-    unpushed=$(git -C "$workpath" log HEAD --not --remotes --oneline 2>/dev/null | head -1)
-    if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
-        echo "ERROR: $workpath has uncommitted changes or commits not on a remote." >&2
-        echo "       Refusing to delete it. Commit and push your work, or run" >&2
-        echo "       bash tools/get_spider.sh --force  to discard the checkout." >&2
-        exit 1
-    fi
-fi
+guard_dirty_checkout "$workpath" get_spider.sh
 
 # Remove any previous installation
 if [[ -d "$workpath" ]]; then
@@ -242,9 +216,8 @@ echo "Cloning SPIDER from GitHub..."
 
 # Resolve the pinned URL + ref from pyproject.toml. Allow override via
 # the SPIDER_GIT_URL / SPIDER_GIT_REF env vars for local dev.
-script_root="$(cd "$(dirname "$0")/.." && pwd)"
-sp_url="${SPIDER_GIT_URL:-$(python "$script_root/tools/_module_pins.py" spider url)}"
-sp_ref="${SPIDER_GIT_REF:-$(python "$script_root/tools/_module_pins.py" spider ref)}"
+sp_url="${SPIDER_GIT_URL:-$(python "$proteus_tools_dir/_module_pins.py" spider url)}"
+sp_ref="${SPIDER_GIT_REF:-$(python "$proteus_tools_dir/_module_pins.py" spider ref)}"
 
 git clone "$sp_url" "$workpath"
 git -C "$workpath" checkout --quiet "$sp_ref"

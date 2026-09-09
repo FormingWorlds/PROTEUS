@@ -1,5 +1,10 @@
 #!/bin/bash
 # Download and compile socrates
+#
+# Usage:
+#   tools/get_socrates.sh            # install into ./socrates/
+#   tools/get_socrates.sh some/path  # custom destination, created if missing
+#   tools/get_socrates.sh --force    # discard an existing checkout
 
 # Do we have NetCDF?
 if ! [ -x "$(command -v nc-config)" ]; then
@@ -26,66 +31,43 @@ if [ -n "$RAD_DIR" ]; then
     sleep 5
 fi
 
-portable_realpath() {
-    if command -v realpath >/dev/null 2>&1; then
-        realpath "$1"
-    else
-        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
-    fi
-}
-
-
-# Check SSH access to GitHub. The probe honours GIT_SSH_COMMAND so
-# callers (e.g. CI) can make it non-interactive and fast-failing.
-${GIT_SSH_COMMAND:-ssh} -T git@github.com
-if [ $? -eq 1 ]; then
-    use_ssh=true
-else
-    use_ssh=false
+# Shared helpers: see tools/_get_common.sh.
+_get_common="$(dirname "${BASH_SOURCE[0]}")/_get_common.sh"
+if [ ! -f "$_get_common" ]; then
+    echo "ERROR: $_get_common is missing; use a complete PROTEUS checkout." >&2
+    exit 1
 fi
+source "$_get_common"
+
+# Check SSH access to GitHub.
+use_ssh=$(github_use_ssh)
 
 # Disable SSH (uncomment to allow SSH clone of SOCRATES)
 # use_ssh=false
 
 # Download
-root=$(dirname $(portable_realpath $0))
-root=$(portable_realpath "$root/..")
+root="$proteus_root"
 
 # Separate the --force flag from the optional install-path argument.
-force=false
-install_path=""
-for arg in "$@"; do
-    if [ "$arg" = "--force" ]; then
-        force=true
-    elif [ -z "$install_path" ]; then
-        install_path="$arg"
-    fi
-done
+get_parse_args "$@"
 
-if [ -n "$install_path" ]; then
-    socpath="$(portable_realpath "$install_path")"
+if [ -n "$get_install_path" ]; then
+    socpath="$(portable_realpath "$get_install_path")"
+    # set -euo pipefail is not active yet, so an unresolvable path would
+    # otherwise reach git clone as an empty string.
+    if [ -z "$socpath" ]; then
+        echo "ERROR: could not resolve install path '$get_install_path'." >&2
+        exit 1
+    fi
 else
     socpath="$root/socrates"
 fi
 
-# Refuse to delete a checkout holding local work unless --force is given.
-# Keep this guard in sync across the get_* scripts that refresh checkouts.
-# Guarded states: modified tracked files, and commits not on any remote.
-# Untracked files (the compiled build tree) do not block the refresh.
-# make/Mk_cmd is excluded: configure regenerates it on every build (compiler
-# detection, host paths, and optimisation flags), so it is regenerable build
-# config rather than user work and would otherwise block every refresh.
-if [ -d "$socpath/.git" ] && [ "$force" != true ]; then
-    dirty=$(git -C "$socpath" status --porcelain --untracked-files=no \
-        -- ':(exclude)make/Mk_cmd' 2>/dev/null | head -1)
-    unpushed=$(git -C "$socpath" log HEAD --not --remotes --oneline 2>/dev/null | head -1)
-    if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
-        echo "ERROR: $socpath has uncommitted changes or commits not on a remote." >&2
-        echo "       Refusing to delete it. Commit and push your work, or run" >&2
-        echo "       bash tools/get_socrates.sh --force  to discard the checkout." >&2
-        exit 1
-    fi
-fi
+# make/Mk_cmd is excluded from the dirty test: configure regenerates it on
+# every build (compiler detection, host paths, and optimisation flags), so
+# it is regenerable build config rather than user work and would otherwise
+# block every refresh.
+guard_dirty_checkout "$socpath" get_socrates.sh -- ':(exclude)make/Mk_cmd'
 rm -rf "$socpath"
 
 set -euo pipefail
@@ -93,13 +75,12 @@ set -euo pipefail
 
 # Resolve the pinned URL + ref from pyproject.toml. The HTTPS URL is the
 # default; SSH is used only when ssh -T against github succeeded above.
-soc_url=$(python "$root/tools/_module_pins.py" socrates url)
-soc_ref=$(python "$root/tools/_module_pins.py" socrates ref)
+resolve_module_pin socrates
+soc_url="$module_url"
+soc_ref="$module_ref"
 
 if [ "$use_ssh" = true ]; then
-    # Rewrite https://github.com/ -> git@github.com: for SSH transport.
-    soc_ssh_url=${soc_url/https:\/\/github.com\//git@github.com:}
-    git clone "$soc_ssh_url" "$socpath"
+    git clone "$(github_ssh_url "$soc_url")" "$socpath"
 else
     git clone "$soc_url" "$socpath"
 fi
