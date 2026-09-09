@@ -110,6 +110,12 @@ def run_obliqua(
         sma = _jlsca_float(hf_row['semimajorax_sat'])
         M_pert = _jlsca_float(hf_row['M_sat'])
 
+    else:
+        raise ValueError(
+            f"run_obliqua requires config.orbit.perturber to be 'star' or 'satellite', "
+            f'got {config.orbit.perturber!r}'
+        )
+
     # Copy arrays
     arr_keys = ('density', 'visc', 'shear', 'bulk', 'phi', 'mass', 'radius')
     lov = {k: np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}

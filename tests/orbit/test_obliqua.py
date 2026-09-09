@@ -507,6 +507,44 @@ def test_run_obliqua_satellite_perturber_reads_satellite_orbital_state(monkeypat
     assert m_pert == pytest.approx(7.3e22, rel=1e-12)
 
 
+def test_run_obliqua_rejects_an_unrecognized_perturber(monkeypatch, tmp_path):
+    """Neither 'star' nor 'satellite': must raise a clear ``ValueError``
+    up front, not silently fall through and fail later with an
+    ``UnboundLocalError`` on ``omega``/``ecc``/``sma``/``M_pert``
+    (which are only ever assigned inside the 'star'/'satellite'
+    branches).
+
+    ``config._config.obliqua_requires_perturber`` already rejects
+    ``orbit.module = 'obliqua'`` with an unset ``orbit.perturber`` at
+    config-load time for any real, attrs-validated ``Config`` -- this
+    covers a direct/programmatic call that bypasses that validator
+    (the fake config here is a bare ``SimpleNamespace``, exactly such
+    a bypass).
+    """
+    from proteus.orbit import obliqua as obliqua_mod
+
+    _patch_identity_conversions(monkeypatch, obliqua_mod)
+
+    interior_o = _make_interior_t(3)
+    cfg = _make_config(module='dummy', perturber=None)
+    hf_row = {'Time': 100.0, 'axial_period': 86400.0}
+    tides_o = Tides_t()
+
+    with pytest.raises(ValueError, match='perturber') as excinfo:
+        obliqua_mod.run_obliqua(
+            hf_row,
+            dirs={'output/data': str(tmp_path), 'output': str(tmp_path)},
+            interior_o=interior_o,
+            tides_o=tides_o,
+            config=cfg,
+        )
+    # Discrimination: the message names the actual bad value received
+    # (None here), not a generic "invalid config" -- and the raise
+    # happens up front, before any tides_o.add(...) call downstream.
+    assert 'None' in str(excinfo.value)
+    assert tides_o.interactions == []
+
+
 # ---------------------------------------------------------------------------
 # run_obliqua: interior-module branching (dummy / spider / aragog-like).
 # ---------------------------------------------------------------------------
