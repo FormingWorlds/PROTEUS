@@ -210,7 +210,7 @@ class TimeStepParams:
     # positive config values.
     mushy_maximum: float = field(default=0.0, validator=ge(0))
     mushy_upper: float = field(default=0.99, validator=(gt(0), lt(1)))
-    evection_maximum: float = field(default=0.0, validator=ge(0))
+    evection_maximum: float = field(default=1e2, validator=ge(0))
     evection_target_rel_de: float = field(default=0.05, validator=gt(0))
     evection_de_floor: float = field(default=0.02, validator=gt(0))
     evection_rate_window: int = field(default=2, validator=ge(2))
@@ -466,7 +466,7 @@ class StopParams:
     radeqm: StopRadeqm = field(factory=StopRadeqm)
     escape: StopEscape = field(factory=StopEscape)
     disint: StopDisint = field(factory=StopDisint)
-    disint_sat: StopDisintSat = field(factory=StopDisintSat)
+    disintsat: StopDisintSat = field(factory=StopDisintSat)
     satellite: StopSatellite = field(factory=StopSatellite)
     clock: StopClock = field(factory=StopClock)
     stall: StopStall = field(factory=StopStall)
