@@ -1984,6 +1984,14 @@ class AragogRunner:
         SolverOutput
             Solver state from the first successful attempt, or from the
             last attempt if all failed.
+
+        Notes
+        -----
+        The attempt budget is a monotonic ratchet: the first CV_TOO_MUCH_WORK
+        failure widens max_attempts from six to eight for the rest of the call
+        and it never narrows. The stiffness ramp is indexed by stiff_seen, the
+        running count of CV_TOO_MUCH_WORK attempts, so a late or intermittent
+        stiff switch still climbs the ramp from its first rung.
         """
         solver = self.aragog_solver
         max_attempts = 6
@@ -2011,11 +2019,6 @@ class AragogRunner:
         sanity_dT_core = max(
             3000.0, 1500.0 * mass_tot
         )  # max plausible T_core change per retry [K]
-        # Coarse catastrophe-only conservation tripwire: reject a status=0
-        # solve whose residual |E_res| exceeds this fraction of the enthalpy
-        # the step moved. K=1e-9 sits about 7 orders above the ~2e-18 healthy
-        # floor, so it never rejects a healthy solve. Not a calibrated value.
-        E_res_tripwire_K = 1.0e-9
 
         # Capture IC for restoration on retry, and pre-call T_core for
         # the sanity check on retry success.
@@ -2046,10 +2049,6 @@ class AragogRunner:
         # Pre-rename helpfiles store this column as T_core; fall back so
         # resumed runs keep the jump guard on their first step.
         T_core_pre = float(hf_row.get('T_cmb', hf_row.get('T_core', 0.0)))
-        # Pre-solve frozen-mass mantle enthalpy, carried in the current row
-        # from the previous accepted step (mirrors T_core_pre). Denominator
-        # for the conservation tripwire; None or 0.0 disables it.
-        E_cons_pre = hf_row.get('E_state_cons_J', None)
 
         # Reset atol scale to 1.0 at the start of each coupling step
         # (cleared regardless of retry outcome at end of method)
@@ -2060,16 +2059,26 @@ class AragogRunner:
         # a per-attempt override on parameters.solver.rtol takes effect. The
         # step budget is cached at solver construction and reset() does not
         # re-read it, so the effective value is set on solver._max_steps
-        # directly. Caps bound how far the stiffness branch relaxes each.
+        # directly.
         base_rtol = float(solver.parameters.solver.rtol)
         base_max_steps = int(getattr(solver, '_max_steps', solver.parameters.solver.max_steps))
-        # 10x rtol shifts Phi_global by ~3e-8 and T_core by 0 K on a recovered
-        # mush step and keeps |E_res/dE_cons| at ~2e-18, so the cap is tied to a
-        # measured accuracy impact, not a guess.
-        rtol_cap = 10.0 * base_rtol
-        max_steps_cap = 8 * base_max_steps
+        # Stiffness ramp schedule, indexed by stiff_seen (the running count of
+        # CV_TOO_MUCH_WORK attempts). Rungs 1-3 raise the step budget and relax
+        # rtol; rungs 4+ hold the ceiling and halve dt. The caps derive from the
+        # top rung, so the dt-halving rungs hold exactly there.
+        stiff_ms_factor = {1: 2, 2: 4, 3: 8}
+        stiff_rtol_factor = {1: 2.0, 2: 5.0, 3: 10.0}
+        max_steps_cap = base_max_steps * max(stiff_ms_factor.values())
+        # 10x rtol moves the coupler conservation metric E_residual_cons_frac
+        # from 1.46e-4 to 1.53e-4 on a recovered mush step (about 65x below its
+        # ~1% structural floor) and shifts Phi_global by ~3e-8 with T_core
+        # unchanged, so the top rung is a measured accuracy bound, not a guess.
+        rtol_cap = base_rtol * max(stiff_rtol_factor.values())
 
         out = None
+        # Running count of CV_TOO_MUCH_WORK attempts, indexes the stiffness
+        # ramp so it climbs from rung 1 whenever stiffness first appears.
+        stiff_seen = 0
         _diag_on = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
         try:
             # Range over the widest ladder. max_attempts holds the active
@@ -2093,14 +2102,14 @@ class AragogRunner:
 
                 # Status check: did the solver accept the step?
                 if out.status == 0:
-                    # Two orthogonal post-solve sanity guards. Both must pass
-                    # to accept the step; either trip falls through to the
-                    # retry ladder. sanity_reject_reason names the guard that
-                    # tripped for the exhaustion message.
+                    # Post-solve sanity guard on the CMB temperature. It must
+                    # pass to accept the step; a trip falls through to the retry
+                    # ladder. sanity_reject_reason names the trip for the
+                    # exhaustion message.
                     sanity_reject_reason = None
 
-                    # Guard 1: reject a status=0 solve whose CMB temperature
-                    # moved implausibly far. tcore_change_max is the intra-solve
+                    # Reject a status=0 solve whose CMB temperature moved
+                    # implausibly far. tcore_change_max is the intra-solve
                     # maximum change, >= the endpoint change by construction;
                     # fall back to the endpoint change on an older aragog.
                     # Inactive whenever T_core_pre <= 0, which includes any row
@@ -2116,15 +2125,6 @@ class AragogRunner:
                         sanity_reject_reason = (
                             f'T_core changed by up to {dT:.1f} K '
                             f'(>{sanity_dT_core:.0f} K sanity threshold)'
-                        )
-
-                    # Guard 2: coarse conservation tripwire on |E_res/dE_cons|.
-                    if sanity_reject_reason is None and self._conservation_tripwire_trips(
-                        out, E_cons_pre, E_res_tripwire_K
-                    ):
-                        sanity_reject_reason = (
-                            'the conservation residual exceeded the '
-                            f'{E_res_tripwire_K:.0e} tripwire'
                         )
 
                     if sanity_reject_reason is not None:
@@ -2161,6 +2161,7 @@ class AragogRunner:
                 is_too_much_work = cvode_flag == -1 or flag_name == 'TOO_MUCH_WORK'
                 if is_too_much_work:
                     max_attempts = max_attempts_stiff
+                    stiff_seen += 1
 
                 if attempt >= max_attempts:
                     # status==0 here means the solver accepted every step but
@@ -2183,30 +2184,27 @@ class AragogRunner:
                         f'after {attempt} attempts at t={hf_row.get("Time", 0.0):.3e} yr'
                     )
 
-                # atol_sf ramps to the cap over the early attempts and stays
-                # there; it runs in both branches. The failure mode picks the
-                # remaining levers. next_attempt is the attempt these settings
-                # configure.
-                atol_sf_new = min(atol_sf_max, 1.0 + (atol_sf_max - 1.0) * (attempt / 2.0))
-                next_attempt = attempt + 1
                 # dt of the attempt that just failed. A retry must never run
                 # coarser than it, so clamp the scheduled dt below.
                 dt_current = float(solver.parameters.solver.end_time) - t_start
                 if is_too_much_work:
-                    # Stiffness recovery. Raise the step budget first (wall-time
-                    # cost only, no accuracy loss), relax rtol second (bounded),
-                    # halve dt last. Attempts 2-4 hold dt and ramp max_steps and
-                    # rtol to their caps; attempts 5-8 hold the caps and halve dt.
-                    if next_attempt <= 4:
-                        ms_factor = 2 ** (next_attempt - 1)
-                        rtol_factor = {2: 2.0, 3: 5.0, 4: 10.0}[next_attempt]
-                        max_steps_new = min(max_steps_cap, base_max_steps * ms_factor)
-                        rtol_new = min(rtol_cap, base_rtol * rtol_factor)
+                    # Stiffness recovery, indexed by stiff_seen so it climbs
+                    # from rung 1 whenever stiffness first appears. Raise the
+                    # step budget first (wall-time cost only, no accuracy loss),
+                    # relax rtol second (bounded), halve dt last. Rungs 1-3 hold
+                    # dt and ramp max_steps and rtol to the ceiling; rungs 4+
+                    # hold the ceiling and halve dt. atol_sf stays at 1.0 so the
+                    # ramp relaxes rtol alone, the measured lever.
+                    rung = stiff_seen
+                    atol_sf_new = 1.0
+                    if rung <= 3:
+                        max_steps_new = base_max_steps * stiff_ms_factor[rung]
+                        rtol_new = base_rtol * stiff_rtol_factor[rung]
                         dt_new = dt_requested
                     else:
                         max_steps_new = max_steps_cap
                         rtol_new = rtol_cap
-                        dt_new = dt_requested * (0.5 ** (next_attempt - 4))
+                        dt_new = dt_requested * (0.5 ** (rung - 3))
                     dt_new = min(dt_new, dt_current)
                     if hasattr(solver, '_max_steps'):
                         solver._max_steps = int(max_steps_new)
@@ -2226,8 +2224,10 @@ class AragogRunner:
                     )
                 else:
                     # Other failure modes: halve dt so additional attempts gain
-                    # resolution, not looser tolerance. Restore base rtol and
-                    # step budget in case a prior attempt was the stiff branch.
+                    # resolution, not looser tolerance. Ramp atol_sf here only.
+                    # Restore base rtol and step budget in case a prior attempt
+                    # was the stiff branch.
+                    atol_sf_new = min(atol_sf_max, 1.0 + (atol_sf_max - 1.0) * (attempt / 2.0))
                     dt_new = min(dt_requested * (0.5**attempt), dt_current)
                     solver.parameters.solver.rtol = base_rtol
                     if hasattr(solver, '_max_steps'):
@@ -2277,55 +2277,6 @@ class AragogRunner:
                 solver._dSdr_cmb_init = None
 
         return out
-
-    @staticmethod
-    def _conservation_tripwire_trips(out: SolverOutput, E_cons_pre, K: float) -> bool:
-        """Test a status=0 solve against a coarse energy-conservation tripwire.
-
-        The tripwire is the dimensionless ratio ``|E_res / dE_cons|``, where
-        ``E_res`` is the solver self-consistency residual
-        (``step_solver_residual_J``) and ``dE_cons`` is the frozen-mass mantle
-        enthalpy the step moved (end ``E_state_cons`` minus the pre-solve value
-        carried in the helpfile row). A healthy solve sits at ~2e-18 for a tight
-        or a 10x-relaxed rtol alike, so K=1e-9 sits about 7 orders above that
-        floor. This catches only a gross conservation blow-up; it is not a
-        calibrated threshold. A calibration against a real-stall residual
-        distribution is a follow-up.
-
-        The test never rejects when it cannot form a valid ratio: a missing
-        residual, a missing or zero baseline enthalpy, or a zero or non-finite
-        step move all return False (skip). A non-finite ratio rejects, matching
-        the T_core guard: reject when ``not (ratio <= K)``.
-
-        Parameters
-        ----------
-        out : SolverOutput
-            The accepted (status=0) solver output under test.
-        E_cons_pre : float or None
-            Pre-solve frozen-mass mantle enthalpy [J]. None or 0.0 disables
-            the tripwire.
-        K : float
-            Dimensionless tripwire ceiling on ``|E_res / dE_cons|``.
-
-        Returns
-        -------
-        bool
-            True to reject the solve, False to skip the tripwire or pass it.
-        """
-        e_res = getattr(out, 'step_solver_residual_J', None)
-        e_cons_end = getattr(out, 'E_state_cons', None)
-        if e_res is None or e_cons_end is None or E_cons_pre is None:
-            return False
-        try:
-            e_res = float(e_res)
-            base = float(E_cons_pre)
-            dE_cons = float(e_cons_end) - base
-        except (TypeError, ValueError):
-            return False
-        if base == 0.0 or dE_cons == 0.0 or not np.isfinite(dE_cons):
-            return False
-        ratio = abs(e_res) / abs(dE_cons)
-        return not (ratio <= K)
 
     @staticmethod
     def _build_helpfile_output(

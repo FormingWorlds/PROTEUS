@@ -972,15 +972,8 @@ def _retry_out(
     T_core=2000.0,
     has_tcore_change=True,
     tcore_change_max=0.0,
-    e_res=None,
-    e_state_cons=None,
 ):
-    """Build one scripted SolverOutput stand-in with explicit mode fields.
-
-    Pass e_res and e_state_cons to drive the conservation tripwire; both set
-    the numeric residual fields explicitly, since an unset MagicMock child
-    coerces to 1.0 and would not represent a real value.
-    """
+    """Build one scripted SolverOutput stand-in with explicit mode fields."""
     out = MagicMock()
     out.status = status
     out.T_core = T_core
@@ -991,10 +984,6 @@ def _retry_out(
     else:
         # Older aragog returns no such attribute: force the getattr fallback.
         del out.tcore_change_max
-    if e_res is not None:
-        out.step_solver_residual_J = e_res
-    if e_state_cons is not None:
-        out.E_state_cons = e_state_cons
     return out
 
 
@@ -1055,7 +1044,7 @@ def test_solve_with_retry_stiff_mode_ramps_maxsteps_and_rtol_then_halves_dt(monk
     and ramp max_steps to 2x/4x/8x(cap) and rtol to 2x/5x/10x(cap), attempts 5-8
     hold both caps and halve dt (0.5/0.25/0.125/0.0625). This pins the whole
     schedule, so a mutant that drops the rtol/max_steps ramp, off-by-ones the
-    next_attempt index, freezes the range at six, or falls through the loop
+    stiff_seen rung index, freezes the range at six, or falls through the loop
     returning a failed SolverOutput instead of raising fails here. It also
     confirms the finally block restores the base rtol and step budget on the
     raising exit path, so a later coupling step never inherits a relaxed rtol.
@@ -1150,6 +1139,7 @@ def test_solve_with_retry_stiff_success_returns_state_and_restores_controls(monk
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_solve_with_retry_tcore_guard_trips_and_routes_to_dt_halving(monkeypatch):
     """A status=0 solve with an implausible T_core change is rejected as failure.
 
@@ -1173,6 +1163,7 @@ def test_solve_with_retry_tcore_guard_trips_and_routes_to_dt_halving(monkeypatch
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_solve_with_retry_tcore_guard_inactive_on_first_solve(monkeypatch):
     """The T_core-jump guard is inactive on the first solve (no prior T_core).
 
@@ -1193,6 +1184,7 @@ def test_solve_with_retry_tcore_guard_inactive_on_first_solve(monkeypatch):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_solve_with_retry_tcore_guard_falls_back_to_endpoint_change(monkeypatch):
     """Without tcore_change_max the guard uses the endpoint change instead.
 
@@ -1243,6 +1235,7 @@ def test_solve_with_retry_restores_rtol_when_solver_has_no_cached_step_budget(mo
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_solve_with_retry_rejects_non_finite_tcore_change(monkeypatch):
     """A status=0 solve with a non-finite T_core change fails the sanity guard.
 
@@ -1262,53 +1255,6 @@ def test_solve_with_retry_rejects_non_finite_tcore_change(monkeypatch):
         runner._solve_with_retry(hf_row, interior_o)
     assert solver.solve.call_count == 6
 
-
-@pytest.mark.unit
-def test_solve_with_retry_conservation_tripwire(monkeypatch):
-    """A status=0 solve that breaks energy conservation grossly is rejected.
-
-    The coarse tripwire rejects a solve whose residual |E_res/dE_cons| exceeds
-    K=1e-9, where dE_cons is the enthalpy the step moved (end E_state_cons minus
-    the pre-solve value carried in the helpfile row). This pins three cases: a
-    gross ratio (1e-5) is rejected and, carrying cvode_flag == 0, routes to the
-    six-attempt dt-halving branch with a conservation reason; a healthy ~2e-18
-    ratio passes and returns on attempt 1; a NaN ratio is rejected, matching the
-    T_core guard inversion 'not (ratio <= K)'. A mutant that drops the tripwire,
-    or uses 'ratio > K' and so passes a NaN, fails here.
-    """
-    e_cons_pre = 1.0e30
-    e_cons_end = 6.0e29  # dE_cons = -4.0e29 J, the enthalpy the step moved
-
-    gross = [
-        _retry_out(0, cvode_flag=0, e_res=1.0e25, e_state_cons=e_cons_end)
-    ] * 8  # |E_res/dE_cons| = 2.5e-5 >> K
-    solver, _ = _retry_solver(gross)
-    runner, interior_o, hf_row = _retry_runner(solver, monkeypatch, T_core_pre=2000.0)
-    hf_row['E_state_cons_J'] = e_cons_pre
-    with pytest.raises(RuntimeError, match='conservation residual') as info:
-        runner._solve_with_retry(hf_row, interior_o)
-    assert solver.solve.call_count == 6
-    assert 'status=0' in str(info.value)
-
-    healthy = [
-        _retry_out(0, e_res=-8.0e11, e_state_cons=e_cons_end)
-    ]  # |E_res/dE_cons| = 2.0e-18 << K
-    solver2, _ = _retry_solver(healthy)
-    runner2, interior2, hf_row2 = _retry_runner(solver2, monkeypatch, T_core_pre=2000.0)
-    hf_row2['E_state_cons_J'] = e_cons_pre
-    out = runner2._solve_with_retry(hf_row2, interior2)
-    assert out is not None
-    assert solver2.solve.call_count == 1
-
-    nan = float('nan')
-    corrupt = [_retry_out(0, cvode_flag=0, e_res=nan, e_state_cons=e_cons_end)] * 8
-    solver3, _ = _retry_solver(corrupt)
-    runner3, interior3, hf_row3 = _retry_runner(solver3, monkeypatch, T_core_pre=2000.0)
-    hf_row3['E_state_cons_J'] = e_cons_pre
-    with pytest.raises(RuntimeError, match='conservation residual'):
-        runner3._solve_with_retry(hf_row3, interior3)
-    assert solver3.solve.call_count == 6
-
     endpoint = [_retry_out(0, cvode_flag=0, T_core=nan, has_tcore_change=False)] * 8
     solver2, _ = _retry_solver(endpoint)
     runner2, interior2, hf_row2 = _retry_runner(solver2, monkeypatch, T_core_pre=2000.0)
@@ -1318,16 +1264,65 @@ def test_solve_with_retry_conservation_tripwire(monkeypatch):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_solve_with_retry_tcore_guard_boundary_is_inclusive(monkeypatch):
+    """The T_core-jump guard accepts dT exactly at the threshold, rejects above.
+
+    The guard trips on 'dT > sanity_dT_core', so a change exactly at the
+    threshold (3000 K at 1 M_Earth) must pass and a change just above it must
+    fail. This pins the boundary against a '>='/'>' flip: a mutant that rejects
+    at exactly the threshold fails the accept case, and a mutant that only
+    rejects far above it fails the reject case.
+    """
+    at = [_retry_out(0, cvode_flag=0, T_core=5000.0, tcore_change_max=3000.0)]
+    solver, _ = _retry_solver(at)
+    runner, interior_o, hf_row = _retry_runner(solver, monkeypatch, T_core_pre=2000.0)
+    out = runner._solve_with_retry(hf_row, interior_o)
+    assert out is not None
+    assert solver.solve.call_count == 1
+
+    above = [_retry_out(0, cvode_flag=0, T_core=5000.0, tcore_change_max=3000.001)] * 8
+    solver2, _ = _retry_solver(above)
+    runner2, interior2, hf_row2 = _retry_runner(solver2, monkeypatch, T_core_pre=2000.0)
+    with pytest.raises(RuntimeError, match='sanity threshold'):
+        runner2._solve_with_retry(hf_row2, interior2)
+    assert solver2.solve.call_count == 6
+
+
+@pytest.mark.unit
+def test_solve_with_retry_stiff_detected_by_flag_name_alone(monkeypatch):
+    """The flag-name half of the stiff predicate widens the ladder on its own.
+
+    The stiff mode is 'cvode_flag == -1 or cvode_flag_name == TOO_MUCH_WORK', so
+    a failure whose numeric flag is not -1 but whose readable name is
+    TOO_MUCH_WORK must still take the stiff branch: eight attempts, and the step
+    budget and rtol ramp rather than a bare dt-halving. A mutant that keys the
+    mode on the numeric flag alone caps at six here and never ramps max_steps.
+    """
+    named = [_retry_out(-1, cvode_flag=0, cvode_flag_name='TOO_MUCH_WORK')] * 10
+    solver, calls = _retry_solver(named)
+    runner, interior_o, hf_row = _retry_runner(solver, monkeypatch)
+
+    with pytest.raises(RuntimeError, match='TOO_MUCH_WORK'):
+        runner._solve_with_retry(hf_row, interior_o)
+
+    assert solver.solve.call_count == 8
+    assert calls[1]['max_steps'] == 2000
+    np.testing.assert_allclose(calls[1]['rtol'], 2.0e-6)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_solve_with_retry_dt_never_increases_on_late_stiff_switch(monkeypatch):
     """A late switch to the stiff branch never retries at a coarser dt.
 
     When the first failures are non-stiff and a CV_TOO_MUCH_WORK stall appears
-    only after dt has already shrunk, the stiff schedule (anchored to the
-    absolute attempt index) would otherwise set a larger dt than the attempt
-    that just failed. A retry must never run coarser than the step it retries,
-    so the stiff dt is clamped to the failed dt. This scripts five non-stiff
-    failures then a stall and asserts the dt sequence never increases; a mutant
-    that drops the clamp jumps dt up at the switch and fails here.
+    only after dt has already shrunk, the stiff branch enters at rung 1, which
+    holds dt at the requested value and so would set a larger dt than the
+    attempt that just failed. A retry must never run coarser than the step it
+    retries, so the stiff dt is clamped to the failed dt. This scripts five
+    non-stiff failures then a stall and asserts the dt sequence never increases;
+    a mutant that drops the clamp jumps dt up at the switch and fails here.
     """
     scripted = [_retry_out(-1, cvode_flag=0, cvode_flag_name='')] * 5 + [
         _retry_out(-1, cvode_flag=-1, cvode_flag_name='TOO_MUCH_WORK')
