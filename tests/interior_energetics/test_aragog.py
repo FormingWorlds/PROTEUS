@@ -1508,6 +1508,33 @@ def test_the_core_temperature_guard_stands_aside_for_a_giant_impact():
     assert len(failed_attempts) == 6
 
 
+@pytest.mark.unit
+def test_the_giant_impact_exemption_does_not_cover_a_non_finite_tcore():
+    """A giant impact excuses a large T_core jump, not a non-finite one.
+
+    Physical scenario: a relaxed rtol can let CVODE return a NaN core
+    temperature on any step, impact or not. The impact exemption exists to
+    keep a real, large jump from being mistaken for a corrupted solve; a NaN
+    is corrupted regardless of the flag.
+
+    Contract clause: the finiteness check runs before, and independently of,
+    the impact-step exemption, so a non-finite T_core is rejected down the
+    full retry ladder even on the step a giant impact fires.
+    """
+    prior = {'Time': 7.68e5, 'T_cmb': 4000.0}
+
+    nan_on_impact, nan_interior, nan_attempts = _retry_ladder_runner(
+        status=0, dt_actual=100.0, T_core=float('nan')
+    )
+    nan_interior.impact_reset_this_step = True
+    with pytest.raises(RuntimeError, match='non-finite'):
+        nan_on_impact._solve_with_retry(prior, nan_interior)
+    assert len(nan_attempts) == 6, (
+        'a non-finite solve is corrupted regardless of the impact flag, so it '
+        'burns the retry ladder the same as any other non-finite result'
+    )
+
+
 def _jax_factory_config():
     """Config carrying the numeric fields the option Z factory install reads."""
     config = MagicMock()
