@@ -758,20 +758,6 @@
       "consumers": []
     },
     {
-      "name": "T_cmb_initial",
-      "unit": "K",
-      "description": "initial CMB temperature from White+Li thermal state",
-      "group": "Temperatures",
-      "origin": "literal",
-      "producers": [
-        {
-          "file": "src/proteus/interior_struct/zalmoxis.py",
-          "condition": "interior_struct.module = \"zalmoxis\""
-        }
-      ],
-      "consumers": []
-    },
-    {
       "name": "DeltaT_accretion",
       "unit": "K",
       "description": "accretion-energy DeltaT contribution",

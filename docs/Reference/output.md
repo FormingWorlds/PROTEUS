@@ -129,7 +129,6 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `T_skin` | `K` | grey radiative skin temperature | `star/wrapper.py` | always | atmos_clim |
 | `T_surface_initial` | `K` | self-consistent T_surf from accretion mode | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics |
 | `T_surf_accr` | `K` | surface temperature from accretion energy balance | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" |   |
-| `T_cmb_initial` | `K` | initial CMB temperature from White+Li thermal state | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" |   |
 | `DeltaT_accretion` | `K` | accretion-energy DeltaT contribution | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" |   |
 | `DeltaT_adiabat` | `K` | adiabatic DeltaT contribution | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" |   |
 | `DeltaT_differentiation` | `K` | core-mantle differentiation DeltaT contribution | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" |   |

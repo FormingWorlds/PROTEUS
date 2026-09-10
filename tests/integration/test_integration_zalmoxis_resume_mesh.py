@@ -33,10 +33,11 @@ two escape-tracking columns the current schema adds
 neither is read by the interior solve this test exercises; that backfilled
 zero is not consistent with the row's own non-zero ``esc_rate_total``, so
 neither column should be read from this row for anything escape-related.
-The row also still carries two columns from an abandoned accretion module,
-``step_dE_impact_J`` and ``M_accreted_rock``, that are no longer part of
-the schema; ``ReadHelpfileFromCSV`` only checks for missing required
-columns, so their presence is harmless. A future schema change, on either
+The row also still carries columns no longer part of the schema --
+``step_dE_impact_J`` and ``M_accreted_rock`` from an abandoned accretion
+module, and ``T_cmb_initial`` from a retired interior_struct field --
+``ReadHelpfileFromCSV`` only checks for missing required columns, so
+their presence is harmless. A future schema change, on either
 the config or the helpfile side, can still desync the fixture; that is
 treated as a skip rather than a failure, since it reflects which schema
 the fixture predates rather than a defect in mesh regeneration. The

@@ -814,7 +814,6 @@ def GetHelpfileKeys():
         'T_skin',           # grey radiative skin temperature [K]
         'T_surface_initial',  # self-consistent T_surf from accretion mode [K]
         'T_surf_accr',      # surface temperature from accretion energy balance [K]
-        'T_cmb_initial',    # initial CMB temperature from White+Li thermal state [K]
         'DeltaT_accretion',  # accretion-energy DeltaT contribution [K]
         'DeltaT_adiabat',   # adiabatic DeltaT contribution [K]
         'DeltaT_differentiation',  # core-mantle differentiation DeltaT contribution [K]

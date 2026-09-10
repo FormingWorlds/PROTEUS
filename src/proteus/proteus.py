@@ -424,6 +424,7 @@ class Proteus:
             CreateHelpfileFromDict,
             CreateLockFile,
             ExtendHelpfile,
+            GetHelpfileKeys,
             PrintCurrentState,
             ReadHelpfileFromCSV,
             UpdatePlots,
@@ -689,6 +690,16 @@ class Proteus:
             except Exception:
                 UpdateStatusfile(self.directories, 20)
                 raise
+
+            # Drop any column the stored helpfile carries that the current
+            # schema no longer defines. Without this, a row from a retired
+            # column rides along in self.hf_all and every row appended after
+            # resume gets NaN there instead, since ExtendHelpfile only ever
+            # builds new rows from GetHelpfileKeys().
+            retired = set(self.hf_all.columns) - set(GetHelpfileKeys())
+            if retired:
+                log.info('Resume: dropping retired helpfile column(s) %s', sorted(retired))
+                self.hf_all = self.hf_all.drop(columns=sorted(retired))
 
             # Check length
             if len(self.hf_all) <= self.loops['init_loops'] + 1:
