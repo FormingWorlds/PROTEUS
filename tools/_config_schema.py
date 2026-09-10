@@ -36,6 +36,7 @@ CONFIG_DIR = REPO_ROOT / 'src' / 'proteus' / 'config'
 ANNOTATION_OVERRIDES = {
     'planet.R_int_override': 'float',
     'orbit.axial_period': 'float',
+    'orbit.satellite.axial_period_sat': 'float',
     'interior_struct.zalmoxis.ice_layer_eos': 'str',
     'interior_struct.core_density': 'float | str',
     'interior_struct.core_heatcap': 'float | str',

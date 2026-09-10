@@ -250,6 +250,13 @@ jobs:
             os: ubuntu-latest
             files: >-
               tests/integration/test_slow_agni_aragog.py
+          # ---- shard: orbit-evection (pure orbit.satellite physics,
+          # no real submodule needed; Linux-only, ~25-40 min) ----
+          - shard: orbit-evection
+            tier: extended
+            os: ubuntu-latest
+            files: >-
+              tests/integration/test_slow_orbit_evection_ctl.py
           # ---- shard: grid (dummy-backend parameter grid; a single
           # module-scoped fixture runs the whole grid, ~27 min. Linux-only
           # extended because it needs no macOS parity) ----

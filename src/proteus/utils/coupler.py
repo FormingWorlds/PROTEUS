@@ -775,20 +775,33 @@ def GetHelpfileKeys():
 
         # Orbital and spin parameters of planet
         'semimajorax',      # semi-major axis [m]
+        'sma_dot_planet',   # semi-major axis derivative [m s-1]
         'separation',       # time-averaged separation [m]
         'perihelion',       # lowest point in orbit [m]
         'orbital_period',   # orbital duration [s]
         'eccentricity',     # orbital eccentricity [1]
+        'ecc_dot_planet',   # eccentricity derivative [1 s-1]
         'Imk2',             # Imaginary part of k2 Love Number [1]
+        'plan_star_am',     # angular momentum of star+planet [kg m2 s-1],
         'axial_period',     # day length of planet around its axis [s]
+        'n_star',           # mean motion of star [s-1]
         'longitude',        # column longitude relative to substellar point [deg]
         'latitude',         # column latitude relative to substellar point [deg]
 
         # Satellite system
         'perigee',          # lowest point in orbit [m]
         'semimajorax_sat',  # semi-major axis [m]
+        'sma_dot_sat',      # semi-major axis derivative [m s-1]
+        'orbital_period_sat', # orbital duration [s]
+        'eccentricity_sat', # orbital eccentricity of satellite [1]
+        'ecc_dot_sat',      # eccentricity derivative [1 s-1]
         'M_sat',            # mass of satellite [kg]
-        'plan_sat_am',      # angular momentum of sat+pla [kg m2 s-1],
+        'R_sat',            # radius of satellite [m]
+        'C_sat',            # principal moment of inertia of satellite [kg m2]
+        'plan_sat_am',      # angular momentum of satellite+planet [kg m2 s-1],
+        'axial_period_sat', # day length of satellite around its axis [s]
+        'evection_angle',   # evection angle [rad]
+        'in_evection_band', # whether inside the evection resonance band [bool, 0/1]
 
         # Planet structure
         'R_int',            # interior radius [m]
@@ -796,6 +809,7 @@ def GetHelpfileKeys():
         'M_planet',         # total planet wet+dry mass [kg]
         'M_vaps',           # vapourised rock mass, including the vapourised oxygen [kg]
         'R_core',           # core radius [m]
+        'C_planet',         # principal moment of inertia of planet [kg m2]
         'R_solvus',         # solvus radius for global_miscibility mode [m]
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]
         'T_solvus',         # solvus temperature for global_miscibility mode [K]
@@ -1732,6 +1746,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     # Import utilities
     from proteus.atmos_clim.common import read_atmosphere_data
     from proteus.interior_energetics.wrapper import read_interior_data
+    from proteus.orbit.wrapper import read_tides_data
 
     # Import plotting functions
     from proteus.plot.cpl_atmosphere import plot_atmosphere
@@ -1744,7 +1759,10 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     from proteus.plot.cpl_global import plot_global
     from proteus.plot.cpl_interior import plot_interior
     from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
-    from proteus.plot.cpl_orbit import plot_orbit
+    from proteus.plot.cpl_orbit import (
+        plot_Lovenumber,
+        plot_orbit,
+    )
     from proteus.plot.cpl_population import (
         plot_population_mass_radius,
         plot_population_time_density,
@@ -1767,6 +1785,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     agni = config.atmos_clim.module == 'agni'
     spider = config.interior_energetics.module == 'spider'
     aragog = config.interior_energetics.module == 'aragog'
+    obliqua = config.orbit.module == 'obliqua'
     observed = bool(config.observe.module is not None)
 
     # Get all output times
@@ -1788,7 +1807,10 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
 
     # Planet and satellite orbit parameters
-    if config.orbit.evolve or config.orbit.satellite:
+    if (
+        config.orbit.star_planet_model is not None
+        or config.orbit.planet_satellite_model is not None
+    ):
         plot_orbit(hf_all, output_dir, config.params.out.plot_fmt)
 
     # Which times do we have atmosphere data for?
@@ -1847,6 +1869,23 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
             # Energy flux profiles
             plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
+
+    # Lovenumber spectra for tidal dissipation
+    if obliqua:
+        # Which times do we have tides data for?
+        ncs = glob.glob(os.path.join(output_dir, 'data', '*_obliqua.nc'))
+        nc_times = [int(f.split('/')[-1].split('_obliqua')[0]) for f in ncs]
+
+        plot_times_obliqua = nc_times
+
+        tide_data = read_tides_data(output_dir, 'obliqua', plot_times_obliqua)
+
+        plot_Lovenumber(
+            output_dir=output_dir,
+            times=plot_times_obliqua,
+            data=tide_data,
+            plot_format=config.params.out.plot_fmt,
+        )
 
     # Only at the end of the simulation
     if end:
@@ -1988,6 +2027,7 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         'proteus': root_dir,
         'agni': os.path.join(root_dir, 'AGNI'),
         'lovepy': os.path.join(root_dir, 'lovepy'),
+        'obliqua': os.path.join(root_dir, 'Obliqua'),
         'input': os.path.join(root_dir, 'input'),
         'spider': os.path.join(root_dir, 'SPIDER'),
         'aragog': os.path.join(root_dir, 'aragog'),

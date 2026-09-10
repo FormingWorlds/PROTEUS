@@ -63,6 +63,7 @@ def _build_config(method='adaptive', dt_initial=10.0, dt_max=1.0e7, propconst=50
         initial=dt_initial,
         mushy_maximum=0.0,
         mushy_upper=0.99,
+        evection_maximum=0.0,
         hysteresis_iters=0,
         hysteresis_sfinc=1.1,
         max_growth_factor=0.0,

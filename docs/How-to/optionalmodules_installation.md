@@ -34,13 +34,22 @@ bash tools/get_spider.sh
     encounter issues, see
     [Troubleshooting: PETSc on Apple Silicon](troubleshooting.md#petsc-compilation-fails-on-apple-silicon).
 
-## Multi-phase tidal heating (LovePy)
+## Solid-phase tidal heating (LovePy)
 
-LovePy computes tidal dissipation for multi-phase planetary interiors. It is
+LovePy computes tidal dissipation for solid-phase planetary interiors. It is
 written in Julia.
 
 ```console
 bash tools/get_lovepy.sh
+```
+
+## Multi-phase tidal response (Obliqua)
+
+Obliqua computes the multi-phase tidal response of the planet from its
+interior structure and rheology. It is written in Julia.
+
+```console
+bash tools/get_obliqua.sh
 ```
 
 ## Synthetic observations (PetitRADTRANS)

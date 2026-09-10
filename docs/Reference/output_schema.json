@@ -48,6 +48,24 @@
       ]
     },
     {
+      "name": "sma_dot_planet",
+      "unit": "m s-1",
+      "description": "semi-major axis derivative",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/orbit.py",
+          "condition": "orbit.evolve = true"
+        },
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": []
+    },
+    {
       "name": "separation",
       "unit": "m",
       "description": "time-averaged separation",
@@ -99,7 +117,8 @@
         }
       ],
       "consumers": [
-        "orbit"
+        "orbit",
+        "plot"
       ]
     },
     {
@@ -125,6 +144,24 @@
       ]
     },
     {
+      "name": "ecc_dot_planet",
+      "unit": "1 s-1",
+      "description": "eccentricity derivative",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/orbit.py",
+          "condition": "orbit.evolve = true"
+        },
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": []
+    },
+    {
       "name": "Imk2",
       "unit": "1",
       "description": "Imaginary part of k2 Love Number",
@@ -141,12 +178,36 @@
       ]
     },
     {
+      "name": "plan_star_am",
+      "unit": "kg m2 s-1",
+      "description": "angular momentum of star+planet",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/orbit.py",
+          "condition": "orbit.evolve = true"
+        }
+      ],
+      "consumers": [
+        "orbit"
+      ]
+    },
+    {
       "name": "axial_period",
       "unit": "s",
       "description": "day length of planet around its axis",
       "group": "Orbital and spin parameters of planet",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/orbit/common.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/orbit/orbit.py",
+          "condition": "orbit.evolve = true"
+        },
         {
           "file": "src/proteus/orbit/satellite.py",
           "condition": "orbit.satellite = true"
@@ -162,6 +223,20 @@
         "plot",
         "utils"
       ]
+    },
+    {
+      "name": "n_star",
+      "unit": "s-1",
+      "description": "mean motion of star",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": []
     },
     {
       "name": "longitude",
@@ -235,8 +310,75 @@
       ],
       "consumers": [
         "orbit",
+        "plot",
+        "utils"
+      ]
+    },
+    {
+      "name": "sma_dot_sat",
+      "unit": "m s-1",
+      "description": "semi-major axis derivative",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "orbital_period_sat",
+      "unit": "s",
+      "description": "orbital duration",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
         "plot"
       ]
+    },
+    {
+      "name": "eccentricity_sat",
+      "unit": "1",
+      "description": "orbital eccentricity of satellite",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "plot"
+      ]
+    },
+    {
+      "name": "ecc_dot_sat",
+      "unit": "1 s-1",
+      "description": "eccentricity derivative",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": []
     },
     {
       "name": "M_sat",
@@ -246,8 +388,40 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/orbit/satellite.py",
-          "condition": "orbit.satellite = true"
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
+      ]
+    },
+    {
+      "name": "R_sat",
+      "unit": "m",
+      "description": "radius of satellite",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
+      ]
+    },
+    {
+      "name": "C_sat",
+      "unit": "kg m2",
+      "description": "principal moment of inertia of satellite",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
         }
       ],
       "consumers": [
@@ -257,7 +431,7 @@
     {
       "name": "plan_sat_am",
       "unit": "kg m2 s-1",
-      "description": "angular momentum of sat+pla",
+      "description": "angular momentum of satellite+planet",
       "group": "Satellite system",
       "origin": "literal",
       "producers": [
@@ -267,7 +441,66 @@
         }
       ],
       "consumers": [
-        "orbit"
+        "orbit",
+        "plot"
+      ]
+    },
+    {
+      "name": "axial_period_sat",
+      "unit": "s",
+      "description": "day length of satellite around its axis",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "plot"
+      ]
+    },
+    {
+      "name": "evection_angle",
+      "unit": "rad",
+      "description": "evection angle",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "plot"
+      ]
+    },
+    {
+      "name": "in_evection_band",
+      "unit": "bool, 0/1",
+      "description": "whether inside the evection resonance band",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
       ]
     },
     {
@@ -404,6 +637,22 @@
       ],
       "consumers": [
         "interior_energetics"
+      ]
+    },
+    {
+      "name": "C_planet",
+      "unit": "kg m2",
+      "description": "principal moment of inertia of planet",
+      "group": "Planet structure",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/common.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
       ]
     },
     {
@@ -1875,6 +2124,7 @@
         "atmos_chem",
         "atmos_clim",
         "observe",
+        "orbit",
         "plot",
         "star"
       ]

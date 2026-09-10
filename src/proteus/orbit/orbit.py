@@ -4,9 +4,13 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import numpy as np
 from scipy.integrate import solve_ivp
 
-from proteus.utils.constants import AU, const_G
+from proteus.interior_energetics.common import Interior_t
+from proteus.orbit.common import Tides_t, run_adaptive_orbit_substeps
+from proteus.orbit.hansen import get_all_m_hansen
+from proteus.utils.constants import const_G, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -14,56 +18,186 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
-def de_dt(a, e, params):
+def _state_is_valid_star(hf_row):
+    """Reject a substep whose resulting state is unphysical or non-finite.
+
+    Mirrors ``satellite._state_is_valid``: checks the planet hasn't
+    spiralled into the star's surface (a <= 1.05 R_star), that
+    eccentricity is in the physically sane, sub-parabolic range
+    [0, 0.999), and that the planet's spin period (only tracked by
+    sp1d, not sp0d) is finite when present. Used by
+    ``evolve_orbit_star``'s accept/reject controller; a False return
+    triggers a state rollback and a smaller retry ``dt_yr``.
     """
-    ODE describing evolution of orbital eccentricity based on Eq. 16 of
-    Driscoll and Barnes (2015), Astrobiology 15, 739 (DOI 10.1089/ast.2015.1325).
-
-    Sign convention note: in the paper, Im(k2) is negative for tidal
-    dissipation (Eq. 4 expresses -Im(k2) as the positive dissipation
-    efficiency). The current PROTEUS callers (dummy and lovepy backends)
-    feed a positive Imk2, which under the formula below produces a
-    positive de/dt and so EXPANDS the orbit rather than circularizing it.
-    The paper convention would require Imk2 < 0 to obtain the physical
-    circularization direction. Treat the sign as a known science item;
-    do not invert it without first checking every Imk2 producer
-    (proteus.orbit.dummy, proteus.orbit.lovepy, and any Imk2-dependent
-    test) so the change propagates consistently.
-    """
-    Imk2, Mst, G, Rpl, Mpl = params
-    return (21 / 2) * Imk2 * Mst**1.5 * G**0.5 * Rpl**5 / (Mpl * a**6.5) * e
+    a = hf_row.get('semimajorax', np.nan)
+    e = hf_row.get('eccentricity', 0.0)
+    if not np.isfinite(a) or a <= 1.05 * hf_row.get('R_star', 0.0):
+        return False
+    if not np.isfinite(e) or e < 0.0 or e >= 0.999:
+        return False
+    axp = hf_row.get('axial_period')
+    if axp is not None and not np.isfinite(axp):
+        return False
+    return True
 
 
-def da_dt(a, e, params):
-    """
-    ODE describing evolution of semimajor axis based on Eq. 15 of
-    Driscoll and Barnes (2015), Astrobiology 15, 739.
-    """
-    return 2 * a * e * de_dt(a, e, params)
+def evolve_orbit_star(hf_row: dict, config: Config, tides_o: Tides_t, interior_o: Interior_t):
+    """Evolve the planet's orbital parameters by interior_o.dt of physical time.
 
-
-def orbitals(t, z, params):
-    """
-    Helper function for solving coupled ODEs.
-    """
-    a, e = z
-    return [da_dt(a, e, params), de_dt(a, e, params)]
-
-
-def evolve_orbital(hf_row: dict, config: Config, dt: float):
-    """Evolve the planet's orbital parameters module.
-
-    Updates the semi-major axis and eccentricity.
+    Dispatches to the requested star-planet model (sp0d, sp1d).
+    ``sp1d`` goes through the shared adaptive-substep controller in
+    ``proteus.orbit.common.run_adaptive_orbit_substeps`` -- the same
+    controller used by the planet-satellite models in
+    ``proteus.orbit.satellite`` -- getting accept/reject substepping,
+    growth/shrink behaviour, and the angular-momentum-conserving
+    C_planet rescale.
 
     Parameters
     ----------
         hf_row : dict
             Dictionary of current runtime variables
-        config : dict
-            Dictionary of configuration options
+        config : Config
+            Configuration options
+        tides_o : Tides_t
+            Tides object containing tidal interactions
+        interior_o : Interior_t
+            Interior object; interior_o.dt is the requested total elapsed
+            time in years for this call
+    """
+    model = config.orbit.star_planet_model
+    solver = config.orbit.solver
+
+    if model == 'sp0d':
+        sp0d(hf_row, interior_o.dt, config)
+        return
+
+    elif model == 'sp1d':
+
+        def step_fn(hf_row, dt_yr, t_elapsed_yr):
+            sp1d(hf_row, tides_o, dt_yr, config)
+            return None
+
+        needs_c_planet = True
+
+    else:
+        raise ValueError(f'unrecognised star_planet_model: {model!r}')
+
+    def rel_change_fn(hf_row, snapshot):
+        # A relative-change ratio is only meaningful against a genuine
+        # (finite, nonzero) prior value; a degenerate prior (missing,
+        # zero, or otherwise non-finite none of which occur in practice.
+        with np.errstate(divide='ignore', invalid='ignore'):
+            a_prev = snapshot.get('semimajorax', np.nan)
+            da = np.divide(abs(hf_row['semimajorax'] - a_prev), a_prev)
+
+            e_prev = snapshot.get('eccentricity', 0.0)
+            e_new = hf_row.get('eccentricity', 0.0)
+            de = abs(e_new - e_prev) / max(e_prev, solver.de_floor)
+
+            axp_prev = snapshot.get('axial_period', np.nan)
+            axp_new = hf_row.get('axial_period', np.nan)
+            dOmega_p = np.divide(
+                abs(np.divide(1.0, axp_new) - np.divide(1.0, axp_prev)),
+                np.divide(1.0, axp_prev),
+            )
+
+        return {
+            key: value
+            for key, value in (('da', da), ('de', de), ('dOmega_p', dOmega_p))
+            if np.isfinite(value)
+        }
+
+    rel_change_limits = {
+        'da': solver.max_rel_da,
+        'de': solver.max_rel_de,
+        'dOmega_p': solver.max_rel_dOmega,
+    }
+
+    run_adaptive_orbit_substeps(
+        hf_row,
+        config,
+        interior_o,
+        model,
+        step_fn,
+        _state_is_valid_star,
+        rel_change_fn,
+        rel_change_limits,
+        needs_c_planet=needs_c_planet,
+        log_label='evolve_orbit_star',
+    )
+
+
+def sp0d(hf_row: dict, dt: float, config: Config):
+    """Evolve the planet's orbital parameters module.
+
+    Updates the semi-major axis and eccentricity.
+
+    Angular momentum is deliberately NOT tracked or logged by this
+    model: Driscoll and Barnes (2015), Astrobiology 15, 739, Eq. 14-16
+    (the equations implemented below) evolve only (a, e), assuming no
+    dissipation in the star and no rotation dynamics for the planet
+    (the paper lists "variable rotation rates" as a future extension,
+    not part of this model; "angular momentum" is not mentioned
+    anywhere in the paper). There is consequently no citable
+    conserved angular-momentum quantity for this model: orbital
+    angular momentum alone (~sqrt(a(1-e^2))) is not conserved by the
+    da/dt = 2*a*e*de/dt relation below (it decreases monotonically
+    under the sign convention documented in de_dt's docstring), and
+    constructing a "total" angular momentum under an assumed
+    synchronous-rotation closure (orbital + I_planet*n(a)) does not
+    fix this either: since a planet's spin angular momentum is orders
+    of magnitude smaller than its orbital angular momentum, that total
+    still drifts at essentially the same rate as the orbital term
+    alone. Reaching a genuine angular-momentum-conserving model
+    requires an explicit spin state and torque balance, which this
+    model does not have (contrast sp1d, which does track planetary
+    spin).
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
         dt : float
             Time interval over which escape is occuring [yr]
+        config : Config
+            Configuration options; reads config.orbit.solver for the
+            solve_ivp method/rtol/atol, shared with every other
+            orbital-evolution model.
     """
+
+    def de_dt(a, e, params):
+        """
+        ODE describing evolution of orbital eccentricity based on Eq. 16 of
+        Driscoll and Barnes (2015), Astrobiology 15, 739 (DOI 10.1089/ast.2015.1325).
+
+        Sign convention note: in the paper, Im(k2) is negative for tidal
+        dissipation (Eq. 4 expresses -Im(k2) as the positive dissipation
+        efficiency). The current PROTEUS callers (dummy and lovepy backends)
+        feed a positive Imk2, which under the formula below produces a
+        positive de/dt and so EXPANDS the orbit rather than circularizing it.
+        The paper convention would require Imk2 < 0 to obtain the physical
+        circularization direction. Treat the sign as a known science item;
+        do not invert it without first checking every Imk2 producer
+        (proteus.orbit.dummy, proteus.orbit.lovepy, and any Imk2-dependent
+        test) so the change propagates consistently.
+        """
+        Imk2, Mst, G, Rpl, Mpl = params
+        return (21 / 2) * Imk2 * Mst**1.5 * G**0.5 * Rpl**5 / (Mpl * a**6.5) * e
+
+    def da_dt(a, e, params):
+        """
+        ODE describing evolution of semimajor axis based on Eq. 15 of
+        Driscoll and Barnes (2015), Astrobiology 15, 739.
+        """
+        return 2 * a * e * de_dt(a, e, params)
+
+    def orbitals(t, z, params):
+        """
+        Helper function for solving coupled ODEs.
+        """
+        a, e = z
+        return [da_dt(a, e, params), de_dt(a, e, params)]
+
     Imk2 = hf_row['Imk2']
 
     Rpl = hf_row['R_int']
@@ -73,26 +207,225 @@ def evolve_orbital(hf_row: dict, config: Config, dt: float):
     sma = float(hf_row['semimajorax'])
     ecc = float(hf_row['eccentricity'])
 
-    # Time step
-    current_time = float(hf_row['Time'])
-
-    # Use config parameters as initial guess
-    if current_time <= 1:
-        # Set semimajor axis and eccentricity from config.
-        hf_row['semimajorax'] = config.orbit.semimajoraxis * AU
-        hf_row['eccentricity'] = config.orbit.eccentricity
-        return
-    else:
-        # Find previous_time from which to evolve orbit to current_time
-        previous_time = current_time - dt
+    # Convert time to seconds
+    dt = float(dt) * secs_per_year
 
     # Collect system parameters at previous_time
     params = (Imk2, Mst, const_G, Rpl, Mpl)
 
-    # Find new semimajor axis and eccentricity using RK5(4) integration method
+    # Find new semimajor axis and eccentricity using solve_ivp
+    solver = config.orbit.solver
     log.debug('Integrate sma and ecc with solve_ivp')
-    sol = solve_ivp(orbitals, [previous_time, current_time], [sma, ecc], args=(params,))
+    sol = solve_ivp(
+        orbitals,
+        [0, dt],
+        [sma, ecc],
+        args=(params,),
+        method=solver.method,
+        rtol=solver.rtol,
+        atol=solver.atol,
+    )
 
     # Update semimajor axis and eccentricity
     hf_row['semimajorax'] = sol.y[0][-1]
     hf_row['eccentricity'] = sol.y[1][-1]
+
+
+def sp1d(hf_row, tides_o, dt, config: Config):
+    """Evolve the Planets's orbital parameters module.
+
+    Updates the semi-major axis and primary rotation
+    frequency based on angular momentum conservation.
+
+    This model is identical to ps1d, however here we
+    assume no stellar tides, hence the governing
+    equations are simplified to only include the
+    planetary tides.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        tides_o : Tides_t
+            Tides object containing tidal interactions
+        dt : float
+            Time interval over which escape is occuring [yr]
+        config : Config
+            Configuration options; reads config.orbit.solver for the
+            solve_ivp method/rtol/atol, shared with every other
+            orbital-evolution model.
+    """
+
+    # Convert time to seconds
+    dt = float(dt) * secs_per_year
+
+    # Orbital parameters from helpfile
+    axial_p = 2 * np.pi / float(hf_row['axial_period'])
+    sma = float(hf_row['semimajorax'])
+    ecc = float(hf_row['eccentricity'])
+
+    # Setup Initial State and Parameters
+    y0 = [
+        axial_p,
+        sma,
+        ecc,
+    ]
+
+    params = {
+        'M_p': hf_row['M_int'],
+        'M_s': hf_row['M_star'],
+        'R_p': hf_row['R_int'],
+        'R_s': hf_row['R_star'],
+        'C_p': hf_row['C_planet'],
+    }
+
+    # Retrieve tidal mode information from tides_o object
+    nmk_p = tides_o.get(primary='planet', perturber='star').nmk
+    LNk_p = tides_o.get(primary='planet', perturber='star').LNk
+
+    kmin, kmax = int(np.min(nmk_p[:, 2])), int(np.max(nmk_p[:, 2]))
+    n_k = kmax - kmin + 1
+
+    def _dense_love(nmk, LNk, m_target):
+        # Sparse-mode-safe (real tidal data need not have a row for every
+        # integer s in [kmin, kmax]) AND folds in the m=0/s<0 modes that
+        # Obliqua's own emission only supplies for s>=0.
+        mask = (nmk[:, 1] == m_target) & (nmk[:, 2] >= kmin) & (nmk[:, 2] <= kmax)
+        dense = np.zeros(n_k, dtype=complex)
+        dense[(nmk[mask, 2] - kmin).astype(int)] = LNk[mask]
+        if m_target == 0:
+            pos_mask = mask & (nmk[:, 2] > 0)
+            s_pos = nmk[pos_mask, 2].astype(int)
+            neg_idx = -s_pos - kmin
+            valid = (neg_idx >= 0) & (neg_idx < n_k)
+            dense[neg_idx[valid]] = np.conj(LNk[pos_mask][valid])
+        return dense
+
+    LNk_p_m0 = _dense_love(nmk_p, LNk_p, 0)
+    LNk_p_m2 = _dense_love(nmk_p, LNk_p, 2)
+
+    def domega_dt(I_j, C_j, sum_dOmega):
+        """Planar secular tidal spin"""
+        return -(3.0 * I_j / (2.0 * C_j)) * sum_dOmega
+
+    def smooth_sign(sigma, scale=1e-12):
+        """Smooth approximation to sign(sigma) using tanh to avoid solver kinks."""
+        return np.tanh(sigma / scale)
+
+    def dE_dt(z, p):
+        """Tidal energy dissipation rate"""
+
+        Omega_p, a, e = z
+        e_safe = min(
+            max(e, 1e-12), 1.0 - 1e-9
+        )  # symmetric: also guards e briefly exceeding 1 during a solver trial
+
+        # Basic Orbital and Physical Parameters
+        n_mm = np.sqrt(const_G * (p['M_p'] + p['M_s']) / a**3)
+        I_p = (const_G * p['M_s'] ** 2 * p['R_p'] ** 5) / a**6
+
+        k, X_all = get_all_m_hansen(e_safe, 2, kmin, kmax)
+        s_arr = k.astype(float)
+
+        X_0 = X_all[0]
+        X_2 = X_all[2]
+        X0_sq = X_0**2
+        X2_sq = X_2**2
+
+        K_p0 = -LNk_p_m0.imag
+        K_p2 = -LNk_p_m2.imag
+
+        dE_orb_p = I_p * n_mm * np.sum(s_arr * (K_p0 * X0_sq + 3.0 * K_p2 * X2_sq)) / 4
+
+        dE_rot_p = -I_p * 3 * Omega_p * np.sum(K_p2 * X2_sq) / 2
+
+        return -(dE_orb_p + dE_rot_p)
+
+    def orbitals(t, z, p):
+        Omega_p, a, e = z
+        e_safe = min(
+            max(e, 1e-12), 1.0 - 1e-9
+        )  # symmetric: also guards e briefly exceeding 1 during a solver trial
+
+        # Basic Orbital and Physical Parameters
+        n_mm = np.sqrt(const_G * (p['M_p'] + p['M_s']) / a**3)
+
+        # Tidal scaling factors
+        E_p = n_mm * (p['M_s'] / p['M_p']) * (p['R_p'] / a) ** 5
+        I_p = (const_G * p['M_s'] ** 2 * p['R_p'] ** 5) / a**6
+
+        k, X_all = get_all_m_hansen(e_safe, 2, kmin, kmax)
+        s_arr = k.astype(float)
+        sig_scale = max(1e-12, 1e-4 * n_mm)
+        sigma_0 = -s_arr * n_mm
+        sigma_p2 = 2 * Omega_p - s_arr * n_mm
+
+        K_p0 = np.abs(LNk_p_m0.imag) * smooth_sign(sigma_0, sig_scale)
+        K_p2 = np.abs(LNk_p_m2.imag) * smooth_sign(sigma_p2, sig_scale)
+
+        X_0 = X_all[0]
+        X_2 = X_all[2]
+        X0_sq = X_0**2
+        X2_sq = X_2**2
+        sqrt_e = np.sqrt(1.0 - e_safe**2)
+
+        dOmega_p = np.sum(K_p2 * X2_sq)
+        da_p = np.sum(s_arr * (K_p0 * X0_sq + 3.0 * K_p2 * X2_sq))
+        de_p = np.sum(
+            K_p0 * X0_sq * s_arr * sqrt_e - 3.0 * K_p2 * X2_sq * (2.0 - s_arr * sqrt_e)
+        )
+
+        sqrt_term = np.sqrt(1.0 - e_safe**2)
+        da_dt_p = a * (E_p / 2.0) * da_p
+        de_dt_p = (E_p * sqrt_term / (4.0 * e_safe)) * de_p
+
+        return [
+            domega_dt(I_p, p['C_p'], dOmega_p),
+            da_dt_p,
+            de_dt_p,
+        ]
+
+    # Integration
+    solver = config.orbit.solver
+    log.debug('Integrating the sp1d orbital model with solve_ivp')
+    sol = solve_ivp(
+        fun=lambda t, y: orbitals(t, y, params),
+        t_span=(0, dt),
+        y0=y0,
+        method=solver.method,
+        rtol=solver.rtol,
+        atol=solver.atol,
+    )
+
+    # Compute total angular momentum at the end of the integration
+    L_final = params['C_p'] * sol.y[0][-1] + (params['M_s'] * params['M_s']) / (
+        params['M_p'] + params['M_s']
+    ) * np.sqrt(
+        const_G * (params['M_p'] + params['M_s']) * sol.y[1][-1] * (1 - sol.y[2][-1] ** 2)
+    )
+
+    # Compute total energy dissipated by tides over the time step
+    dE_tide_p = dE_dt(y0, params)
+
+    # log energy per surface area for debugging
+    energy_per_area = dE_tide_p / (4 * np.pi * params['R_p'] ** 2)
+    log.debug(
+        f'Total tidal power: {dE_tide_p:.3e} W, Energy per unit area: {energy_per_area:.3e} W/m^2'
+    )
+
+    # Exact, solver-consistent split of the changes accumulated over this step
+    da_planet_tide = sol.y[1][-1] - sol.y[1][0]
+    de_planet_tide = sol.y[2][-1] - sol.y[2][0]
+
+    # Update semimajor axis and axial period
+    hf_row['sma_dot_planet'] = da_planet_tide / dt  # m/s, planet-raised tide
+    hf_row['ecc_dot_planet'] = de_planet_tide / dt  # 1/s
+
+    # Update semimajor axis and axial period
+    hf_row['axial_period'] = 2 * np.pi / sol.y[0][-1]
+    hf_row['semimajorax'] = sol.y[1][-1]
+    # Circularization (e -> 0) is a valid terminal state, but the ODE can
+    # cross exactly zero and land on a floating-point-noise-scale negative
+    # value.
+    hf_row['eccentricity'] = max(sol.y[2][-1], 0.0)
+    hf_row['plan_star_am'] = L_final

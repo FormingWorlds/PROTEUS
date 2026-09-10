@@ -122,7 +122,9 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.boundary.logging',
         'interior_energetics.boundary.nusselt_exponent',
         'interior_energetics.boundary.silicate_density',
+        'interior_energetics.boundary.core_bulk',
         'interior_energetics.boundary.core_density',
+        'interior_energetics.boundary.core_shear',
         'interior_energetics.boundary.silicate_heat_capacity',
         'interior_energetics.boundary.thermal_conductivity',
         'interior_energetics.boundary.thermal_diffusivity',
@@ -186,6 +188,81 @@ _REVIEWED_NEUTRAL = frozenset(
         'observe.reference_pressure',
         'observe.source',
         'observe.spectrum_type',
+        # orbit.evolve/orbit.satellite (2.0 bools) are handled dynamically by
+        # _handle_orbit_dispatch, not a static OVERRIDES pin, so their 3.0
+        # destinations land here rather than in mig.OVERRIDES.
+        'orbit.star_planet_model',
+        'orbit.planet_satellite_model',
+        'orbit.perturber',
+        'orbit.satellite.include_satellite',
+        'orbit.satellite.mass_sat',
+        'orbit.satellite.radius_sat',
+        'orbit.satellite.semimajoraxis_sat',
+        'orbit.satellite.eccentricity_sat',
+        'orbit.satellite.evection_angle',
+        'orbit.satellite.c_factor_sat',
+        'orbit.satellite.axial_period_sat',
+        'orbit.satellite.love_number_sat',
+        # Obliqua (orbit.obliqua.*) has no 2.0 analogue at all; every field
+        # is new and stays at its 3.0 default for a migrated config.
+        'orbit.obliqua.store_3D',
+        'orbit.obliqua.enforce_ec',
+        'orbit.obliqua.optimize_scales',
+        'orbit.obliqua.solid_shell',
+        'orbit.obliqua.min_frac',
+        'orbit.obliqua.visc_l',
+        'orbit.obliqua.visc_lus',
+        'orbit.obliqua.visc_s',
+        'orbit.obliqua.visc_sus',
+        'orbit.obliqua.n',
+        'orbit.obliqua.m',
+        'orbit.obliqua.k_min',
+        'orbit.obliqua.k_max',
+        'orbit.obliqua.material_mu',
+        'orbit.obliqua.material_k',
+        'orbit.obliqua.alpha',
+        'orbit.obliqua.verbosity',
+        'orbit.obliqua.module_solid',
+        'orbit.obliqua.module_mushy',
+        'orbit.obliqua.module_fluid',
+        'orbit.obliqua.solid.ncalc',
+        'orbit.obliqua.solid.dr_min',
+        'orbit.obliqua.solid.dr_max',
+        'orbit.obliqua.solid.core',
+        'orbit.obliqua.solid.core_props',
+        'orbit.obliqua.solid.inertial_terms',
+        'orbit.obliqua.solid.bulk_l',
+        'orbit.obliqua.solid.porosity_thresh',
+        'orbit.obliqua.solid.dbulk_power',
+        'orbit.obliqua.mushy.b_width',
+        'orbit.obliqua.mushy.t_width',
+        'orbit.obliqua.fluid.sigma_R',
+        'orbit.obliqua.fluid.sigma_R_inf',
+        'orbit.obliqua.fluid.sigma_R_prf',
+        'orbit.obliqua.fluid.H_R',
+        'orbit.obliqua.fluid.efficiency',
+        # orbit.solver.* has no 2.0 analogue: the adaptive-substep
+        # controller and its shared solve_ivp tolerances did not exist as
+        # config in 2.0 at all.
+        'orbit.solver.method',
+        'orbit.solver.rtol',
+        'orbit.solver.atol',
+        'orbit.solver.dt0_yr',
+        'orbit.solver.dt_max_yr',
+        'orbit.solver.growth',
+        'orbit.solver.shrink',
+        'orbit.solver.max_rel_da',
+        'orbit.solver.max_rel_de',
+        'orbit.solver.max_rel_dOmega',
+        'orbit.solver.de_floor',
+        'orbit.solver.max_substeps',
+        'orbit.solver.resonance_margin_enter',
+        'orbit.solver.resonance_margin_exit',
+        'orbit.solver.fine_csv_target_rel_dt',
+        # params.stop.satellite has no 2.0 analogue; stays at its 3.0
+        # default (disabled) for a migrated config.
+        'params.stop.satellite.enabled',
+        'params.stop.satellite.sma_max',
         'outgas.atmodeller.eos_CH4',
         'outgas.atmodeller.eos_CO',
         'outgas.atmodeller.eos_CO2',
@@ -222,6 +299,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'params.dt.max_growth_factor',
         'params.dt.mushy_maximum',
         'params.dt.mushy_upper',
+        'params.dt.evection_maximum',
         'params.dt.scale_decr',
         # The unconverged-atmosphere criterion applies at its measured
         # default, so a migrated config needs no explicit value for it.
@@ -259,7 +337,7 @@ def _unhandled_v2_fields(paths):
             continue
         if path in mig.RENAMES or path in interior_targets:
             continue
-        if path in mig._ELEMENT_FIELDS or path in mig._IC_FIELDS:
+        if path in mig._ELEMENT_FIELDS or path in mig._IC_FIELDS or path in mig._ORBIT_FIELDS:
             continue
         if path in atmos_shared_src:
             continue

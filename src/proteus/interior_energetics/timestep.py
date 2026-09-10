@@ -418,6 +418,25 @@ def next_step(
                 )
                 dtswitch = mushy_max
 
+    # Evection-resonance dt cap: mirrors the mushy-regime cap above, for a
+    # different stiffness source. While the planet-satellite system is
+    # inside the evection resonance band, the orbital-evolution substep
+    # controller has to smooth a structural (C_planet) update across the
+    # whole PROTEUS-clock step; a large step here means a large jump for
+    # it to smooth over even with that smoothing in place, and (for the
+    # apsidal-precession dynamics that define the band itself) a coarser
+    # sampling of a genuinely fast-oscillating angle.
+    evection_max = float(config.params.dt.evection_maximum)
+    if evection_max > 0.0 and bool(hf_row.get('in_evection_band', 0.0)):
+        if dtswitch > evection_max:
+            log.info(
+                'Time-stepping: evection-resonance cap active, '
+                'capping dt at %.2e yr (was %.2e yr)',
+                evection_max,
+                dtswitch,
+            )
+            dtswitch = evection_max
+
     # On retries (step_sf < 1) in the static/initial branches we
     # deliberately allow dt to fall below dt.minimum; the whole point of
     # a retry is to shrink the step below what would otherwise be allowed.

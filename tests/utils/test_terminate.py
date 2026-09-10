@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 import proteus.utils.terminate as terminate
+from proteus.utils.constants import R_earth
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -35,6 +36,7 @@ def _cfg(**kwargs: Any) -> Any:
             offset_roche=0.0,
             offset_spin=0.0,
         ),
+        satellite=ns(enabled=False, sma_max=0.0),
         time=ns(enabled=True, maximum=100.0, minimum=0.0),
         iters=ns(enabled=True, total_loops=5, total_min=1),
         clock=ns(enabled=True, maximum=600.0),
@@ -196,6 +198,49 @@ def test_check_spinrate_triggers_breakup(patch_statusfile):
     h.hf_row['breakup_period'] = 5.0
     assert terminate._check_spinrate(h) is True
     assert patch_statusfile[-1][1] == 16
+
+
+@pytest.mark.unit
+def test_check_satellite_triggers_escape_sma(patch_statusfile):
+    """Satellite escape: semimajor axis at/above sma_max exits with status 17."""
+    cfg = _cfg()
+    cfg.params.stop.satellite.enabled = True
+    cfg.params.stop.satellite.sma_max = 10.0
+    h = _handler(cfg)
+    h.hf_row['semimajorax_sat'] = 10.0 * R_earth
+    assert terminate._check_satellite(h) is True
+    assert patch_statusfile[-1][1] == 17
+
+
+@pytest.mark.unit
+def test_check_satellite_not_triggered_below_escape_sma(patch_statusfile):
+    """Satellite escape: semimajor axis comfortably below sma_max keeps the
+    simulation running -- edge case for the >= boundary above."""
+    cfg = _cfg()
+    cfg.params.stop.satellite.enabled = True
+    cfg.params.stop.satellite.sma_max = 10.0
+    h = _handler(cfg)
+    h.hf_row['semimajorax_sat'] = 5.0 * R_earth
+    assert terminate._check_satellite(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_termination_wires_up_satellite_escape_check(monkeypatch, patch_statusfile):
+    """The satellite-escape criterion must actually be reachable through
+    the top-level ``check_termination`` orchestrator when enabled, not
+    just callable in isolation (see ``test_check_satellite_triggers_escape_sma``
+    above)."""
+    cfg = _cfg()
+    cfg.params.stop.satellite.enabled = True
+    cfg.params.stop.satellite.sma_max = 10.0
+    h = _handler(cfg)
+    h.hf_row['semimajorax_sat'] = 10.0 * R_earth
+    h.loops['total'] = 5  # satisfy min_iter so exit is allowed
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    assert patch_statusfile[-1][1] == 17
 
 
 @pytest.mark.unit

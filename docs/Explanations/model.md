@@ -45,7 +45,8 @@ atmosphere), enabling hierarchical model intercomparison.
 | Star | [MORS](https://proteus-framework.org/MORS/), dummy | Stellar evolution and spectrum |
 | Escape | [ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS), dummy | Atmospheric escape |
 | Outgassing | [CALLIOPE](https://proteus-framework.org/CALLIOPE/), [atmodeller](https://github.com/djbower/atmodeller), dummy | Volatile exchange between interior and atmosphere |
-| Orbit | [Obliqua](https://github.com/FormingWorlds/Obliqua), dummy | Orbital evolution and tidal heating |
+| Tides | [Obliqua](https://github.com/FormingWorlds/Obliqua), [Lovepy](https://github.com/nichollsh/LovePy), dummy | Tidal response of the planet (Love numbers, heating) |
+| Orbit | PROTEUS (internal) | Orbital evolution (semi-major axis, eccentricity, spin) |
 | Observations | [petitRADTRANS](https://petitradtrans.readthedocs.io/), none | Synthetic transit and eclipse spectra |
 
 Each module is maintained in its own repository and can be used as a standalone package outside of PROTEUS. The following sections describe each module's physical role and how PROTEUS couples to it.
@@ -189,9 +190,15 @@ Some notable consequences of step 3:
 
 `utils.coupler.assert_mass_conservation` therefore checks two things separately. `M_atm <= M_planet` is enforced under `outgas.vapourise = false`. `M_vol_atm` equals the sum of the per-species atmospheric masses; rock vapour is excluded from `M_vol_atm` by definition.
 
-## Orbital evolution: Obliqua
+## Tidal evolution: Obliqua, Lovepy
 
-**[Obliqua](https://github.com/FormingWorlds/Obliqua)** (Julia) evolves the orbital semi-major axis and eccentricity under the influence of tidal dissipation. The tidal response of the planet is computed from its interior structure and rheology using a viscoelastic love-number solver (LovePy). Tidal heating power is distributed radially across the mantle and fed back into the interior energy equation. Obliqua also computes the spin-orbit evolution and checks for dynamical stability (Roche limit, Hill sphere).
+**[Obliqua](https://github.com/FormingWorlds/Obliqua)** (Julia) computes the multi-phase tidal response of the planet. The tidal love-numbers of the planet is computed from its interior structure and rheology using various viscoelastic rheological models. Tidal heating power is distributed radially across the mantle and fed back into the interior energy equation. The model is valid for arbitrary eccentricity and spin-orbit misalignment, as it models arbitrary tidal degrees and modes.
+
+**[Lovepy](https://github.com/nichollsh/LovePy)** (Julia) computes the solid-only tidal response of the planet using a Maxwell rheology. Tidal heating power is distributed radially across the mantle and fed back into the interior energy equation. It assumes spin-orbit synchronisation and a small eccentricity, as only the dominant degree-2 tidal modes are considered.
+
+## Orbital evolution: PROTEUS (internal)
+
+**[Orbital evolution](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/orbit)** (Python) computes the time evolution of the independent orbital parameters (semi-major axis, eccentricity, spin, apsidal precession) under the influence of tidal dissipation in both the primary and the perturbing body. The model combines spin-orbit dynamics with eccentricity evolution, based on a vectorial approach expressed in Hansen coefficients. The model allows for angular momentum draining through the evection resonance, but conserves it in all other cases.
 
 Config section: `[orbit]`. Reference: [Star and orbit configuration](../Reference/config/star_orbit.md).
 
@@ -240,7 +247,7 @@ architecture and for quick parameter exploration.
 | Star | Fixed effective temperature and luminosity; Planck-function spectrum at a user-specified $T_\mathrm{eff}$ |
 | Escape | Constant bulk mass loss rate (user-specified kg/s), distributed proportionally across elements |
 | Outgassing | Melt-fraction-dependent volatile partitioning with fixed stoichiometry, no equilibrium chemistry |
-| Orbit | Fixed semi-major axis and eccentricity; configurable parameterised tidal heating |
+| Orbit & Tides | Fixed semi-major axis and eccentricity; configurable parameterised tidal heating |
 
 The [Quick start tutorial](../Tutorials/quick_start_dummy.md) runs PROTEUS
 with all modules set to dummy.

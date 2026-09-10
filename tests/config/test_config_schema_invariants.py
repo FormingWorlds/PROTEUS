@@ -68,7 +68,7 @@ ATMOS_CLIM_BACKENDS = ('dummy', 'agni', 'janus')
 ATMOS_CHEM_BACKENDS = (None, 'vulcan', 'dummy')
 ESCAPE_BACKENDS = (None, 'dummy', 'zephyrus', 'boreas')
 STAR_BACKENDS = (None, 'mors', 'dummy')
-ORBIT_BACKENDS = (None, 'dummy', 'lovepy')
+ORBIT_BACKENDS = (None, 'dummy', 'lovepy', 'obliqua')
 INTERIOR_STRUCT_BACKENDS = (None, 'dummy', 'spider', 'zalmoxis')
 
 # Backends whose Python package is in the PROTEUS hard dependency set
@@ -228,8 +228,8 @@ def _make_config_instance(**overrides):
         orbit=SimpleNamespace(
             module='dummy',
             instellation_method='separation',
-            evolve=False,
-            satellite=False,
+            star_planet_model=None,
+            planet_satellite_model=None,
         ),
         params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=True))),
         planet=SimpleNamespace(
@@ -706,11 +706,12 @@ def test_boundary_requires_fixed_surface_state_passes_with_fixed():
 # ---------------------------------------------------------------------------
 @pytest.mark.unit
 def test_instmethod_evolve_rejects_inst_with_orbit_evolve():
-    """instellation_method='inst' is incompatible with orbit.evolve=True."""
+    """instellation_method='inst' is incompatible with a star-planet
+    evolution model being enabled."""
     instance = _make_config_instance(
         **{
             'orbit.instellation_method': 'inst',
-            'orbit.evolve': True,
+            'orbit.star_planet_model': 'sp0d',
         }
     )
     with pytest.raises(ValueError, match=r"instellation_method='inst'") as excinfo:
@@ -718,96 +719,101 @@ def test_instmethod_evolve_rejects_inst_with_orbit_evolve():
     # Discrimination: the message must mention orbital evolution as the
     # incompatible-with feature, so the user knows which of the two settings
     # to change. A regression with just "instellation_method='inst' is bad"
-    # that did not name the conflicting evolve flag would fail.
+    # that did not name the conflicting evolution model would fail.
     msg = str(excinfo.value).lower()
     assert 'evolution' in msg or 'evolve' in msg
 
 
 @pytest.mark.unit
 def test_instmethod_evolve_passes_with_inst_and_no_evolve():
-    """instellation_method='inst' is OK when orbit.evolve is False."""
+    """instellation_method='inst' is OK when star_planet_model is None."""
     instance = _make_config_instance(
         **{
             'orbit.instellation_method': 'inst',
-            'orbit.evolve': False,
+            'orbit.star_planet_model': None,
         }
     )
     result = instmethod_evolve(instance, None, None)
-    assert result is None  # contract: inst + evolve=False is the canonical compatible combo
-    # Discriminating check: evolve=True with inst would have raised; only the
-    # evolve=False branch can produce a silent pass under inst.
+    assert (
+        result is None
+    )  # contract: inst + star_planet_model=None is the canonical compatible combo
+    # Discriminating check: star_planet_model='sp0d' with inst would have
+    # raised; only the None branch can produce a silent pass under inst.
     assert instance.orbit.instellation_method == 'inst'
-    assert instance.orbit.evolve is False
+    assert instance.orbit.star_planet_model is None
 
 
 @pytest.mark.unit
 def test_instmethod_evolve_passes_with_separation_and_evolve():
-    """orbit.evolve is fine when instellation_method != 'inst'."""
+    """A star-planet evolution model is fine when instellation_method != 'inst'."""
     instance = _make_config_instance(
         **{
             'orbit.instellation_method': 'separation',
-            'orbit.evolve': True,
+            'orbit.star_planet_model': 'sp0d',
         }
     )
     result = instmethod_evolve(instance, None, None)
     assert result is None  # contract: non-inst method permits orbital evolution
-    # Discriminating check: evolve=True with inst would have raised; only the
-    # non-inst branch can produce a silent pass with evolve=True.
+    # Discriminating check: star_planet_model set with inst would have
+    # raised; only the non-inst branch can produce a silent pass with it set.
     assert instance.orbit.instellation_method != 'inst'
-    assert instance.orbit.evolve is True
+    assert instance.orbit.star_planet_model == 'sp0d'
 
 
 @pytest.mark.unit
 def test_satellite_evolve_rejects_satellite_with_evolve():
-    """orbit.satellite=True with orbit.evolve=True must raise."""
+    """A planet-satellite model with a star-planet evolution model
+    simultaneously enabled must raise."""
     instance = _make_config_instance(
         **{
-            'orbit.satellite': True,
-            'orbit.evolve': True,
+            'orbit.planet_satellite_model': 'ps0d',
+            'orbit.star_planet_model': 'sp0d',
         }
     )
     with pytest.raises(ValueError, match=r'satellite') as excinfo:
         satellite_evolve(instance, None, None)
     # Discrimination: the message must also mention orbital evolution; the
-    # incompatibility is between satellite=True AND evolve=True. A regression
-    # that only named 'satellite' without naming the conflicting evolve flag
-    # would leave users guessing which side to flip.
+    # incompatibility is between planet_satellite_model AND star_planet_model
+    # both being set. A regression that only named 'satellite' without naming
+    # the conflicting evolution model would leave users guessing which side
+    # to flip.
     msg = str(excinfo.value).lower()
     assert 'evolution' in msg or 'evolve' in msg
 
 
 @pytest.mark.unit
 def test_satellite_evolve_passes_with_satellite_and_no_evolve():
-    """A satellite with a fixed orbit is allowed."""
+    """A satellite with a fixed star-planet orbit is allowed."""
     instance = _make_config_instance(
         **{
-            'orbit.satellite': True,
-            'orbit.evolve': False,
+            'orbit.planet_satellite_model': 'ps0d',
+            'orbit.star_planet_model': None,
         }
     )
     result = satellite_evolve(instance, None, None)
-    assert result is None  # contract: satellite=True + evolve=False is the accepted combo
-    # Discriminating check: satellite=True + evolve=True would have raised; only
-    # the evolve=False branch can produce a silent pass under satellite=True.
-    assert instance.orbit.satellite is True
-    assert instance.orbit.evolve is False
+    assert result is None  # contract: satellite set + star_planet_model=None is accepted
+    # Discriminating check: both set would have raised; only star_planet_model=None
+    # can produce a silent pass with planet_satellite_model set.
+    assert instance.orbit.planet_satellite_model == 'ps0d'
+    assert instance.orbit.star_planet_model is None
 
 
 @pytest.mark.unit
 def test_satellite_evolve_passes_without_satellite():
-    """orbit.evolve alone (no satellite) is allowed."""
+    """A star-planet evolution model alone (no satellite) is allowed."""
     instance = _make_config_instance(
         **{
-            'orbit.satellite': False,
-            'orbit.evolve': True,
+            'orbit.planet_satellite_model': None,
+            'orbit.star_planet_model': 'sp0d',
         }
     )
     result = satellite_evolve(instance, None, None)
     assert result is None  # contract: no-satellite path accepts orbital evolution
-    # Discriminating check: satellite=False is the path that allows evolve=True;
-    # the validator's other branch (satellite=True + evolve=True) would have raised.
-    assert instance.orbit.satellite is False
-    assert instance.orbit.evolve is True
+    # Discriminating check: planet_satellite_model=None is the path that
+    # allows star_planet_model to be set; the validator's other branch (both
+    # set) would have raised.
+    assert instance.orbit.planet_satellite_model is None
+    assert instance.orbit.star_planet_model == 'sp0d'
 
 
 # ---------------------------------------------------------------------------
@@ -823,7 +829,7 @@ HYPOTHESIS_ATMOS_CLIM = ('agni', 'janus', 'dummy')
 HYPOTHESIS_ATMOS_CHEM = (None, 'dummy')  # vulcan excluded (optional)
 HYPOTHESIS_ESCAPE = (None, 'dummy', 'zephyrus')  # boreas excluded (optional)
 HYPOTHESIS_STAR = (None, 'mors', 'dummy')
-HYPOTHESIS_ORBIT = (None, 'dummy', 'lovepy')
+HYPOTHESIS_ORBIT = (None, 'dummy', 'lovepy', 'obliqua')
 HYPOTHESIS_INTERIOR_STRUCT = (None, 'dummy', 'spider', 'zalmoxis')
 
 

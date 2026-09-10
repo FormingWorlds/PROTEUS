@@ -60,12 +60,13 @@ listed below its table.
 
 | Option | Entry point | Role |
 |---|---|---|
-| `"dummy"` | `orbit/dummy.py:run_dummy_orbit` | Fixed Im(k2) tides |
-| `"lovepy"` | `orbit/lovepy.py:run_lovepy` | Multi-phase tidal heating (Julia) |
+| `"dummy"` | `orbit/dummy.py:run_dummy_tides` | Fixed Im(k2) tides |
+| `"lovepy"` | `orbit/lovepy.py:run_lovepy` | Solid-phase tidal heating (Julia) |
+| `"obliqua"` | `orbit/obliqua.py:run_obliqua` | Multi-phase tidal response (Julia) |
 | `none` | not applicable | Tides disabled; Im(k2) set to zero |
 
-- `orbit.evolve = true`: evolves semi-major axis and eccentricity each iteration (`orbit/orbit.py:evolve_orbital`).
-- `orbit.satellite = true`: evolves the satellite orbit instead of the planetary one (`orbit/satellite.py:update_satellite`).
+- `orbit.star_planet_model != none`: evolves the star-planet orbit (sp0d/sp1d) each iteration (`orbit/orbit.py:evolve_orbit_star`).
+- `orbit.planet_satellite_model != none`: evolves the planet-satellite orbit (ps0d/ps1d/ps1d_evec) each iteration (`orbit/satellite.py:evolve_orbit_satellite`).
 
 ## Outgassing (`outgas.module`)
 

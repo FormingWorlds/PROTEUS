@@ -81,12 +81,16 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
 | `semimajorax` | `m` | semi-major axis | `orbit/orbit.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true | escape, orbit, plot |
+| `sma_dot_planet` | `m s-1` | semi-major axis derivative | `orbit/orbit.py`<br>`orbit/satellite.py` | orbit.evolve = true; orbit.satellite = true |   |
 | `separation` | `m` | time-averaged separation | `orbit/wrapper.py` | always | atmos_chem, atmos_clim, main loop, observe, orbit, plot, star, utils |
 | `perihelion` | `m` | lowest point in orbit | `orbit/wrapper.py` | always | orbit |
-| `orbital_period` | `s` | orbital duration | `orbit/wrapper.py` | always | orbit |
+| `orbital_period` | `s` | orbital duration | `orbit/wrapper.py` | always | orbit, plot |
 | `eccentricity` | `1` | orbital eccentricity | `orbit/orbit.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true | escape, orbit, plot |
+| `ecc_dot_planet` | `1 s-1` | eccentricity derivative | `orbit/orbit.py`<br>`orbit/satellite.py` | orbit.evolve = true; orbit.satellite = true |   |
 | `Imk2` | `1` | Imaginary part of k2 Love Number | `orbit/wrapper.py` | always | orbit |
-| `axial_period` | `s` | day length of planet around its axis | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | atmos_clim, orbit, plot, utils |
+| `plan_star_am` | `kg m2 s-1` | angular momentum of star+planet | `orbit/orbit.py` | orbit.evolve = true | orbit |
+| `axial_period` | `s` | day length of planet around its axis | `orbit/common.py`<br>`orbit/orbit.py`<br>`orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true; orbit.satellite = true | atmos_clim, orbit, plot, utils |
+| `n_star` | `s-1` | mean motion of star | `orbit/wrapper.py` | always |   |
 | `longitude` | `deg` | column longitude relative to substellar point | `atmos_clim/agni.py`<br>`orbit/wrapper.py` | always; atmos_clim.module = "agni" | atmos_clim |
 | `latitude` | `deg` | column latitude relative to substellar point | `atmos_clim/agni.py`<br>`orbit/wrapper.py` | always; atmos_clim.module = "agni" | atmos_clim |
 
@@ -95,9 +99,18 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
 | `perigee` | `m` | lowest point in orbit | `orbit/wrapper.py` | always |   |
-| `semimajorax_sat` | `m` | semi-major axis | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | orbit, plot |
-| `M_sat` | `kg` | mass of satellite | `orbit/satellite.py` | orbit.satellite = true | orbit |
-| `plan_sat_am` | `kg m2 s-1` | angular momentum of sat+pla | `orbit/satellite.py` | orbit.satellite = true | orbit |
+| `semimajorax_sat` | `m` | semi-major axis | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | orbit, plot, utils |
+| `sma_dot_sat` | `m s-1` | semi-major axis derivative | `orbit/satellite.py` | orbit.satellite = true |   |
+| `orbital_period_sat` | `s` | orbital duration | `orbit/wrapper.py` | always | orbit, plot |
+| `eccentricity_sat` | `1` | orbital eccentricity of satellite | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | orbit, plot |
+| `ecc_dot_sat` | `1 s-1` | eccentricity derivative | `orbit/satellite.py` | orbit.satellite = true |   |
+| `M_sat` | `kg` | mass of satellite | `orbit/wrapper.py` | always | orbit |
+| `R_sat` | `m` | radius of satellite | `orbit/wrapper.py` | always | orbit |
+| `C_sat` | `kg m2` | principal moment of inertia of satellite | `orbit/wrapper.py` | always | orbit |
+| `plan_sat_am` | `kg m2 s-1` | angular momentum of satellite+planet | `orbit/satellite.py` | orbit.satellite = true | orbit, plot |
+| `axial_period_sat` | `s` | day length of satellite around its axis | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | orbit, plot |
+| `evection_angle` | `rad` | evection angle | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | orbit, plot |
+| `in_evection_band` | `bool, 0/1` | whether inside the evection resonance band | `orbit/satellite.py` | orbit.satellite = true | interior_energetics |
 
 ### Planet structure
 
@@ -108,6 +121,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `M_planet` | `kg` | total planet wet+dry mass | `interior_energetics/wrapper.py` | always | atmos_clim, escape, interior_energetics, orbit, outgas, plot, utils |
 | `M_vaps` | `kg` | vapourised rock mass, including the vapourised oxygen | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/lavatmos.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy"; outgas.vapourise = true | outgas, utils |
 | `R_core` | `m` | core radius | `interior_struct/dummy.py`<br>`interior_struct/zalmoxis.py` | interior_struct.module = "dummy"; interior_struct.module = "zalmoxis" | interior_energetics |
+| `C_planet` | `kg m2` | principal moment of inertia of planet | `orbit/common.py` | always | orbit |
 | `R_solvus` | `m` | solvus radius for global_miscibility mode | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics, interior_struct, main loop |
 | `P_solvus` | `Pa` | solvus pressure for global_miscibility mode | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct, main loop |
 | `T_solvus` | `K` | solvus temperature for global_miscibility mode | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct, main loop |
@@ -203,7 +217,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
 | `M_star` | `kg` | mass of star | `star/wrapper.py` | always | orbit |
-| `R_star` | `m` | photospheric radius | `star/wrapper.py` | always | atmos_chem, atmos_clim, observe, plot, star |
+| `R_star` | `m` | photospheric radius | `star/wrapper.py` | always | atmos_chem, atmos_clim, observe, orbit, plot, star |
 | `age_star` | `yr` | age relative to deuterium fusion 'stellar birthline' | `proteus.py` | always | main loop, star |
 | `T_star` | `K` | photospheric temperature | `star/wrapper.py` | always | observe, star |
 

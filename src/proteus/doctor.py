@@ -483,8 +483,21 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     )
 
 
-def check_git_module(name: str, dirs: dict) -> CheckResult:
-    """Check a git-pinned module (AGNI, SOCRATES) against pyproject.toml ref."""
+def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResult | None:
+    """Check a git-pinned module (AGNI, SOCRATES, Obliqua) against pyproject.toml ref.
+
+    Parameters
+    ----------
+    name : str
+        Module name, matching a `[tool.proteus.modules.<name.lower()>]`
+        pyproject.toml table and a `dirs[name.lower()]` entry.
+    dirs : dict
+        Directory mapping from `get_proteus_directories()`.
+    required : bool
+        AGNI/SOCRATES are mandatory for a standard install, so a missing
+        checkout is a FAIL. Optional tidal-heating backends (Obliqua) are
+        not needed unless the user opts into them.
+    """
     pins = _module_pins()
     pin = pins.get(name.lower(), {})
     pinned_ref = pin.get('ref')
@@ -497,6 +510,8 @@ def check_git_module(name: str, dirs: dict) -> CheckResult:
         path = dirs.get(dir_key, '')
 
     if not path or not os.path.isdir(path):
+        if not required:
+            return None
         # Unlike the off-pin case below, this fix is not chained to an AGNI
         # rebuild: a not-installed SOCRATES means RAD_DIR is unset, so the AGNI
         # step would have nowhere to find SOCRATES. The install script prints
@@ -591,6 +606,7 @@ PYTHON_PACKAGES = [
 ]
 
 GIT_MODULES = ['AGNI', 'SOCRATES']
+OPTIONAL_GIT_MODULES = ['Obliqua']
 
 
 def run_all_checks() -> list[CheckResult]:
@@ -674,6 +690,22 @@ def run_all_checks() -> list[CheckResult]:
     for mod in GIT_MODULES:
         try:
             results.append(check_git_module(mod, dirs))
+        except Exception as exc:
+            results.append(
+                CheckResult(
+                    name=mod,
+                    category='versions',
+                    status=FAIL,
+                    message=f'check error: {exc}',
+                )
+            )
+
+    # Optional git-pinned modules: only reported when actually installed.
+    for mod in OPTIONAL_GIT_MODULES:
+        try:
+            result = check_git_module(mod, dirs, required=False)
+            if result is not None:
+                results.append(result)
         except Exception as exc:
             results.append(
                 CheckResult(

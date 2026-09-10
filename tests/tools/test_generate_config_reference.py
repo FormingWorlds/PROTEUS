@@ -83,7 +83,7 @@ def test_unannotated_fields_survive_with_declared_types(schema):
     assert by_path['planet.R_int_override']['type'] == 'float or none'
     assert by_path['planet.R_int_override']['bounds'] == [{'op': '>', 'value': 0}]
     # The override list must not rot: every entry still lacks an annotation.
-    assert len(_cs.ANNOTATION_OVERRIDES) == 7
+    assert len(_cs.ANNOTATION_OVERRIDES) == 8
 
 
 def test_enum_and_bound_extraction_pins_real_validator_sets(schema):

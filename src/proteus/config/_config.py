@@ -38,15 +38,20 @@ def instmethod_dummy(instance, attribute, value):
 
 def instmethod_evolve(instance, attribute, value):
     """Orbital evolution cannot be combined with instellation method 'inst'."""
-    if (instance.orbit.instellation_method == 'inst') and instance.orbit.evolve:
+    if (instance.orbit.instellation_method == 'inst') and (
+        instance.orbit.star_planet_model is not None
+    ):
         raise ValueError(
             "Planet orbital evolution not supported for `instellation_method='inst'`"
         )
 
 
 def satellite_evolve(instance, attribute, value):
-    """Planetary orbital evolution and the satellite model are mutually exclusive."""
-    if instance.orbit.satellite and instance.orbit.evolve:
+    """Star-planet orbital evolution and the planet-satellite model are mutually exclusive."""
+    if (
+        instance.orbit.star_planet_model is not None
+        and instance.orbit.planet_satellite_model is not None
+    ):
         raise ValueError(
             'Planet orbital evolution cannot be used simultaneously with a satellite'
         )
@@ -55,7 +60,16 @@ def satellite_evolve(instance, attribute, value):
 def tides_enabled_orbit(instance, attribute, value):
     """Interior tidal heating requires an orbit module to be enabled."""
     if (instance.interior_energetics.heat_tidal) and (instance.orbit.module is None):
-        raise ValueError('Interior tidal heating requires an orbit module to be enabled')
+        raise ValueError('Interior tidal heating requires an tides module to be enabled')
+
+
+def obliqua_requires_perturber(instance, attribute, value):
+    """The Obliqua tidal-response module requires an explicit perturber."""
+    if instance.orbit.module == 'obliqua' and instance.orbit.perturber is None:
+        raise ValueError(
+            "orbit.module = 'obliqua' requires orbit.perturber to be explicitly set to "
+            "'star' or 'satellite' (it has no default tidal-forcing body to fall back on)"
+        )
 
 
 CURRENT_CONFIG_VERSION = '3.0'
@@ -316,7 +330,13 @@ class Config:
     params: Params = field(factory=Params)
     star: Star = field(factory=Star)
     orbit: Orbit = field(
-        factory=Orbit, validator=(instmethod_dummy, instmethod_evolve, satellite_evolve)
+        factory=Orbit,
+        validator=(
+            instmethod_dummy,
+            instmethod_evolve,
+            satellite_evolve,
+            obliqua_requires_perturber,
+        ),
     )
     planet: Planet = field(
         factory=Planet,

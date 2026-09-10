@@ -38,6 +38,7 @@ pinned commit.
 | AGNI | Radiative-convective atmosphere (Julia) | [![AGNI](https://img.shields.io/badge/AGNI-8a494d7c-green)](https://github.com/nichollsh/AGNI/commit/8a494d7c74db78163eba7354d78d1389e6f63072){target="_blank" rel="noopener"} | [Docs](https://www.h-nicholls.space/AGNI/) |
 | SOCRATES | Spectral radiative transfer (Fortran) | [![SOCRATES](https://img.shields.io/badge/SOCRATES-43b86d4d-green)](https://github.com/FormingWorlds/SOCRATES/commit/43b86d4d46dcb1fa2e94fb24b9246421a03a9acb){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/SOCRATES/) |
 | SPIDER | Interior evolution (C, requires PETSc) | [![SPIDER](https://img.shields.io/badge/SPIDER-c9a3fd43-green)](https://github.com/FormingWorlds/SPIDER/commit/c9a3fd4301c7008291d4f4921506d36b6288f8ca){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/SPIDER/) |
+| Obliqua | Multi-phase tidal response (Julia) | [![Obliqua](https://img.shields.io/badge/Obliqua-89be36ee-green)](https://github.com/FormingWorlds/Obliqua/commit/89be36ee70a4a7c776c4d9b0d461ba1259b6b0c0){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/Obliqua/) |
 <!-- END GIT_TABLE -->
 
 ### Optional modules
@@ -45,10 +46,9 @@ pinned commit.
 <!-- BEGIN OPTIONAL_TABLE -->
 | Module | Role | Pin | Docs |
 |--------|------|-----|------|
-| LovePy | Multi-phase tidal heating (Julia) | [![LovePy](https://img.shields.io/badge/LovePy-main-lightgrey)](https://github.com/nichollsh/LovePy){target="_blank" rel="noopener"} | [GitHub](https://github.com/nichollsh/LovePy) |
+| LovePy | Solid-phase tidal heating (Julia) | [![LovePy](https://img.shields.io/badge/LovePy-main-lightgrey)](https://github.com/nichollsh/LovePy){target="_blank" rel="noopener"} | [GitHub](https://github.com/nichollsh/LovePy) |
 | atmodeller | Alternative outgassing backend (GPL-3.0) | [![atmodeller](https://img.shields.io/badge/atmodeller-%3E%3D1.0.2-blue)](https://pypi.org/project/atmodeller/1.0.2/){target="_blank" rel="noopener"} | [GitHub](https://github.com/djbower/atmodeller) |
 | VULCAN | Atmospheric chemistry (GPL-3.0) | [![VULCAN](https://img.shields.io/badge/VULCAN-%3E%3D26.04.22-blue)](https://pypi.org/project/fwl-vulcan/26.04.22/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/VULCAN) |
-| Obliqua | Orbital evolution and tides (Julia) | n/a | [GitHub](https://github.com/FormingWorlds/Obliqua) |
 <!-- END OPTIONAL_TABLE -->
 
 ---

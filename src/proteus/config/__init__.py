@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import tomllib
 from pathlib import Path
+from typing import Literal, Union
 
 import cattrs
 
@@ -11,6 +12,16 @@ from ._interior import _STEP_CAP_FIELDS
 from .orphans import UnknownConfigKeyError, find_key_problems, format_orphan_message
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+def structure_k_val(val, cls):
+    if val == 'none':
+        return 'none'
+    return int(val)
+
+
+# Register this for the specific Union type
+cattrs.register_structure_hook(Union[int, Literal['none']], structure_k_val)
 
 
 def _is_explicit_zero(value: object) -> bool:

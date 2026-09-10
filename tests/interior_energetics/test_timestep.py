@@ -31,6 +31,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 def _make_config(
     mushy_maximum: float = 0.0,
     mushy_upper: float = 0.99,
+    evection_maximum: float = 0.0,
     hysteresis_iters: int = 0,
     hysteresis_sfinc: float = 1.1,
     dt_max: float = 1.0e7,
@@ -60,6 +61,7 @@ def _make_config(
         initial=10.0,
         mushy_maximum=mushy_maximum,
         mushy_upper=mushy_upper,
+        evection_maximum=evection_maximum,
         hysteresis_iters=hysteresis_iters,
         hysteresis_sfinc=hysteresis_sfinc,
         max_growth_factor=max_growth_factor,
@@ -232,6 +234,100 @@ class TestMushyCap:
         # Section 3 positivity: dt must remain strictly positive in the
         # solidified branch (Phi < phi_crit).
         assert dt > 0.0
+
+
+# ---------------------------------------------------------------------------
+# Evection-resonance automatic dt cap
+# ---------------------------------------------------------------------------
+
+
+class TestEvectionCap:
+    """Verify the in_evection_band-aware dt cap activates only while the
+    planet-satellite system is inside the evection resonance band."""
+
+    @pytest.mark.physics_invariant
+    def test_disabled_when_evection_maximum_is_zero(self):
+        """``evection_maximum = 0`` must preserve legacy behaviour, no
+        cap, even while ``in_evection_band`` is set."""
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(evection_maximum=0.0)
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        hf_row = {
+            'Time': 1e5,
+            'F_atm': 1.0e4,
+            'Phi_global': 1.0,
+            'in_evection_band': 1.0,
+        }
+        dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o())
+        # SFINC * dt_prev = 1.6 * 5e3 = 8e3; the feature is disabled.
+        assert dt == pytest.approx(8.0e3, rel=1e-6), f'Expected 8e3, got {dt}'
+        assert dt > 0.0
+
+    @pytest.mark.physics_invariant
+    def test_cap_active_while_in_band(self):
+        """Cap kicks in when ``in_evection_band`` is truthy."""
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(evection_maximum=50.0)
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        hf_row = {
+            'Time': 1e5,
+            'F_atm': 1.0e4,
+            'Phi_global': 1.0,
+            'in_evection_band': 1.0,
+        }
+        dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o())
+        # 1.6 * 5e3 = 8e3 would be chosen; cap to 50.
+        assert dt == pytest.approx(50.0, rel=1e-6), f'Expected 50 (evection cap), got {dt}'
+        # Discrimination: with the cap active, dt must be strictly below
+        # the uncapped 8e3 controller choice.
+        assert dt < 8.0e3
+
+    @pytest.mark.physics_invariant
+    def test_cap_inactive_when_not_in_band(self):
+        """``in_evection_band = 0`` (or absent) must NOT trigger the cap,
+        even with a positive ``evection_maximum`` configured."""
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(evection_maximum=50.0)
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        hf_row = {'Time': 1e5, 'F_atm': 1.0e4, 'Phi_global': 1.0, 'in_evection_band': 0.0}
+        dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o())
+        assert dt == pytest.approx(8.0e3, rel=1e-6), f'Expected 8e3 (cap inactive), got {dt}'
+
+        # Edge case: the key can be entirely absent (star-planet-only
+        # runs, or a satellite model other than ps1d_evec never write
+        # it) -> must default to "not in band", not raise a KeyError.
+        hf_row_absent = {'Time': 1e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        dt_absent = next_step(
+            config, {}, hf_row_absent, hf_all, 1.0, interior_o=_make_interior_o()
+        )
+        assert dt_absent == pytest.approx(8.0e3, rel=1e-6)
+
+    @pytest.mark.physics_invariant
+    def test_cap_not_needed_when_already_below_evection_maximum(self):
+        """In band with a positive ``evection_maximum``, but the
+        controller's own choice is already comfortably below it: the
+        cap's inner comparison must not fire (dt passes through
+        unmodified), the counterpart to ``test_cap_active_while_in_band``
+        where it does."""
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(evection_maximum=1.0e6)
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        hf_row = {
+            'Time': 1e5,
+            'F_atm': 1.0e4,
+            'Phi_global': 1.0,
+            'in_evection_band': 1.0,
+        }
+        dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o())
+        # 1.6 * 5e3 = 8e3, well below the 1e6 cap: passes through uncapped.
+        assert dt == pytest.approx(8.0e3, rel=1e-6), f'Expected 8e3 (cap not needed), got {dt}'
+        # Discrimination: strictly below the 1e6 cap value itself, i.e.
+        # genuinely uncapped rather than coincidentally clamped to it.
+        assert dt < 1.0e6
 
 
 # ---------------------------------------------------------------------------
@@ -430,6 +526,7 @@ def _make_overshoot_config(*, dt_maximum, stop_time_enabled, stop_time_maximum):
         initial=1.0,
         mushy_maximum=0.0,
         mushy_upper=0.99,
+        evection_maximum=0.0,
         hysteresis_iters=0,
         hysteresis_sfinc=1.1,
         max_growth_factor=0.0,

@@ -24,6 +24,7 @@ from proteus.config._config import (
     instmethod_dummy,
     instmethod_evolve,
     janus_escape_atmosphere,
+    obliqua_requires_perturber,
     observe_resolved_atmosphere,
     satellite_evolve,
     spada_zephyrus,
@@ -449,6 +450,26 @@ def test_read_config_object_rejects_explicit_zero_step_cap(tmp_path):
 
 
 @pytest.mark.unit
+def test_structure_k_val_converts_a_numeric_override_to_int(tmp_path):
+    """``orbit.obliqua.k_min``/``k_max`` are ``Union[int, Literal['none']]``:
+    the 'none' sentinel structures through unchanged (the schema default,
+    exercised implicitly by every other config-loading test), while a
+    numeric override must structure to a real ``int``, not stay a raw
+    TOML value or string.
+    """
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.orbit.obliqua.k_min == 'none'
+
+    out = tmp_path / 'k_range.toml'
+    cfg.write(str(out), overrides={'orbit.obliqua.k_min': 5, 'orbit.obliqua.k_max': 20})
+
+    reloaded = read_config_object(out)
+    assert reloaded.orbit.obliqua.k_min == 5
+    assert isinstance(reloaded.orbit.obliqua.k_min, int)
+    assert reloaded.orbit.obliqua.k_max == 20
+
+
+@pytest.mark.unit
 def test_read_config_object_omitted_step_cap_resolves_to_schema_default():
     """An absent step-cap key resolves to the schema default, same as an explicit 0.0 rejects.
 
@@ -737,29 +758,35 @@ def test_instmethod_dummy_rejects_non_dummy_star():
 
 @pytest.mark.unit
 def test_instmethod_evolve_rejects_evolving_inst_method():
-    """Instellation method cannot evolve when evolve flag is already active."""
-    inst = SimpleNamespace(orbit=SimpleNamespace(instellation_method='inst', evolve=True))
+    """Instellation method cannot evolve when star-planet evolution is active."""
+    inst = SimpleNamespace(
+        orbit=SimpleNamespace(instellation_method='inst', star_planet_model='sp0d')
+    )
     with pytest.raises(ValueError):
         instmethod_evolve(inst, None, None)
 
-    # Discrimination: dropping evolve to False clears the guard. A regression
-    # that always raised when instellation_method='inst' (ignoring evolve)
-    # would fail this second invocation.
-    inst.orbit.evolve = False
+    # Discrimination: dropping star_planet_model to None clears the guard. A
+    # regression that always raised when instellation_method='inst' (ignoring
+    # star_planet_model) would fail this second invocation.
+    inst.orbit.star_planet_model = None
     assert instmethod_evolve(inst, None, None) is None
 
 
 @pytest.mark.unit
 def test_satellite_evolve_rejects_combination():
-    """Orbit configs cannot enable both satellite and evolve simultaneously."""
-    inst = SimpleNamespace(orbit=SimpleNamespace(satellite=True, evolve=True))
+    """Orbit configs cannot enable both a planet-satellite model and a
+    star-planet evolution model simultaneously."""
+    inst = SimpleNamespace(
+        orbit=SimpleNamespace(planet_satellite_model='ps0d', star_planet_model='sp0d')
+    )
     with pytest.raises(ValueError):
         satellite_evolve(inst, None, None)
 
-    # Discrimination: dropping evolve to False (satellite still True) is the
-    # canonical valid combo and must silent-pass. A regression that raised
-    # whenever satellite=True (ignoring evolve) would fail this second call.
-    inst.orbit.evolve = False
+    # Discrimination: dropping star_planet_model to None (planet_satellite_model
+    # still set) is the canonical valid combo and must silent-pass. A
+    # regression that raised whenever planet_satellite_model was set (ignoring
+    # star_planet_model) would fail this second call.
+    inst.orbit.star_planet_model = None
     assert satellite_evolve(inst, None, None) is None
 
 
@@ -777,6 +804,33 @@ def test_tides_enabled_orbit_requires_orbit_module():
     # raised on heat_tidal=True (ignoring orbit.module) would fail here.
     inst.orbit.module = 'lovepy'
     assert tides_enabled_orbit(inst, None, None) is None
+
+
+@pytest.mark.unit
+def test_obliqua_requires_perturber_rejects_unset_perturber():
+    """``orbit.module = 'obliqua'`` with ``orbit.perturber`` left unset
+    (``None``, the schema default -- 'none' in TOML converts to this)
+    must be rejected here at config-load time, not left to fail later
+    with an unrelated-looking crash inside ``run_obliqua`` (which has
+    no branch for an unset perturber)."""
+    inst = SimpleNamespace(orbit=SimpleNamespace(module='obliqua', perturber=None))
+    with pytest.raises(ValueError, match='perturber'):
+        obliqua_requires_perturber(inst, None, None)
+
+    # Discrimination: setting perturber to either valid value clears the
+    # guard. A regression that always raised whenever module=='obliqua'
+    # (ignoring perturber) would fail both of these.
+    inst.orbit.perturber = 'star'
+    assert obliqua_requires_perturber(inst, None, None) is None
+    inst.orbit.perturber = 'satellite'
+    assert obliqua_requires_perturber(inst, None, None) is None
+
+    # Edge case: an unset perturber with a DIFFERENT (or no) tidal module
+    # must not be flagged -- this check is specific to obliqua, not a
+    # blanket "perturber must always be set" rule.
+    inst.orbit.module = 'lovepy'
+    inst.orbit.perturber = None
+    assert obliqua_requires_perturber(inst, None, None) is None
 
 
 @pytest.mark.unit
@@ -2311,17 +2365,18 @@ def test_config_instmethod_evolve_rejects_inst_with_orbit_evolution():
     instance = SimpleNamespace(
         orbit=SimpleNamespace(
             instellation_method='inst',
-            evolve=True,  # INVALID
+            star_planet_model='sp0d',  # INVALID
         ),
     )
     with pytest.raises(ValueError, match='not supported for `instellation_method'):
         instmethod_evolve(instance, SimpleNamespace(), None)
 
-    # Discrimination: dropping evolve to False (with instellation_method still
-    # 'inst') must take the validator to the silent-accept branch. A
-    # regression that always raised on instellation_method='inst' (ignoring
-    # evolve) would fail this second invocation.
-    instance.orbit.evolve = False
+    # Discrimination: dropping star_planet_model to None (with
+    # instellation_method still 'inst') must take the validator to the
+    # silent-accept branch. A regression that always raised on
+    # instellation_method='inst' (ignoring star_planet_model) would fail this
+    # second invocation.
+    instance.orbit.star_planet_model = None
     assert instmethod_evolve(instance, SimpleNamespace(), None) is None
 
 
@@ -2353,17 +2408,18 @@ def test_config_satellite_evolve_rejects_both_satellite_and_evolution():
     # Invalid: satellite + orbital evolution
     instance = SimpleNamespace(
         orbit=SimpleNamespace(
-            satellite=True,  # Has satellite
-            evolve=True,  # Also evolving - INVALID
+            planet_satellite_model='ps0d',  # Has satellite
+            star_planet_model='sp0d',  # Also evolving - INVALID
         ),
     )
     with pytest.raises(ValueError, match='cannot be used simultaneously'):
         satellite_evolve(instance, SimpleNamespace(), None)
 
-    # Discrimination: dropping evolve (with satellite still True) must reach
-    # the silent-accept branch. A regression that always raised when
-    # satellite=True (ignoring evolve) would fail this second invocation.
-    instance.orbit.evolve = False
+    # Discrimination: dropping star_planet_model (with planet_satellite_model
+    # still set) must reach the silent-accept branch. A regression that
+    # always raised when planet_satellite_model was set (ignoring
+    # star_planet_model) would fail this second invocation.
+    instance.orbit.star_planet_model = None
     assert satellite_evolve(instance, SimpleNamespace(), None) is None
 
 
@@ -2375,16 +2431,18 @@ def test_config_satellite_evolve_allows_satellite_without_evolution():
     # Valid: satellite without evolution
     instance = SimpleNamespace(
         orbit=SimpleNamespace(
-            satellite=True,
-            evolve=False,
+            planet_satellite_model='ps0d',
+            star_planet_model=None,
         ),
     )
     result = satellite_evolve(instance, SimpleNamespace(), None)
-    assert result is None  # contract: satellite=True with evolve=False is the valid combo
-    # Discriminating check: satellite=True with evolve=True would have raised; only the
-    # evolve=False branch can produce a silent pass with satellite=True.
-    assert instance.orbit.satellite is True
-    assert instance.orbit.evolve is False
+    assert (
+        result is None
+    )  # contract: satellite set with star_planet_model=None is the valid combo
+    # Discriminating check: both set would have raised; only star_planet_model=None
+    # can produce a silent pass with planet_satellite_model set.
+    assert instance.orbit.planet_satellite_model == 'ps0d'
+    assert instance.orbit.star_planet_model is None
 
 
 @pytest.mark.unit

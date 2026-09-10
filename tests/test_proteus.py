@@ -1779,6 +1779,27 @@ def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
     )
 
 
+def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog):
+    """With the opt-in ``PROTEUS_TIMING`` instrumentation enabled (here
+    patched directly on the frozen module constant, since it is normally
+    read from the environment once at import time), the main loop must
+    record the orbit stage's wall-time in ``_t_mod`` and surface it in
+    the per-iteration ``[IT_TIMING]`` log line -- not just the other
+    instrumented stages.
+    """
+    import logging
+
+    monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'):
+        _run_main_loop_capturing_plots(p, stop_at_loop=4)
+
+    timing_records = [rec.message for rec in caplog.records if '[IT_TIMING]' in rec.message]
+    assert len(timing_records) > 0, 'no [IT_TIMING] log line was emitted'
+    assert any('orbit=' in msg for msg in timing_records)
+
+
 # =======================================================================================
 # SECTION: mass conservation across a multi-iteration run
 # =======================================================================================

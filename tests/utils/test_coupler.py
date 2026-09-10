@@ -2061,6 +2061,7 @@ def test_get_proteus_directories_has_required_keys():
         'aragog',
         'zalmoxis',
         'vulcan',
+        'obliqua',
         'tools',
         'utils',
         'input',
@@ -2082,23 +2083,26 @@ def test_get_proteus_directories_has_required_keys():
 def test_get_proteus_directories_editable_submodule_paths():
     """Each editable FWL submodule maps to its on-disk sibling directory.
 
-    Aragog / Zalmoxis / VULCAN are installed via the ``tools/get_*.sh``
-    scripts as editable sibling checkouts inside the PROTEUS root. The
-    paths are case-sensitive on Linux: Aragog clones to ``aragog/``,
-    Zalmoxis to ``Zalmoxis/``, VULCAN to ``VULCAN/``. Pin the case here
-    so a doctor command or runtime path-resolver does not silently look
-    in the wrong directory.
+    Aragog / Zalmoxis / VULCAN / Obliqua are installed via the
+    ``tools/get_*.sh`` scripts as editable sibling checkouts inside the
+    PROTEUS root. The paths are case-sensitive on Linux: Aragog clones to
+    ``aragog/``, Zalmoxis to ``Zalmoxis/``, VULCAN to ``VULCAN/``, Obliqua
+    to ``Obliqua/`` (per ``tools/get_obliqua.sh``'s own default ``dest``).
+    Pin the case here so a doctor command or runtime path-resolver does
+    not silently look in the wrong directory.
     """
     dirs = get_proteus_directories(outdir='unit-test')
     # Path basename must match the on-disk casing the get_*.sh scripts use.
     assert os.path.basename(dirs['aragog']) == 'aragog'
     assert os.path.basename(dirs['zalmoxis']) == 'Zalmoxis'
     assert os.path.basename(dirs['vulcan']) == 'VULCAN'
+    assert os.path.basename(dirs['obliqua']) == 'Obliqua'
     # Each path is anchored at the PROTEUS root (the parent of the
     # editable checkout), not somewhere else like /tmp or site-packages.
     assert os.path.dirname(dirs['aragog']) == dirs['proteus']
     assert os.path.dirname(dirs['zalmoxis']) == dirs['proteus']
     assert os.path.dirname(dirs['vulcan']) == dirs['proteus']
+    assert os.path.dirname(dirs['obliqua']) == dirs['proteus']
 
 
 # ============================================================================
@@ -3027,6 +3031,7 @@ def _install_updateplots_fakes(monkeypatch, calls):
     atm_common.read_atmosphere_data = lambda *_a, **_k: [{'ok': True}]
     int_wrap = types.ModuleType('proteus.interior_energetics.wrapper')
     int_wrap.read_interior_data = lambda *_a, **_k: {'int': True}
+    int_wrap.run_interior = lambda *_a, **_k: None
     monkeypatch.setitem(sys.modules, 'proteus.atmos_clim.common', atm_common)
     monkeypatch.setitem(sys.modules, 'proteus.interior_energetics.wrapper', int_wrap)
 
@@ -3050,16 +3055,17 @@ def _install_updateplots_fakes(monkeypatch, calls):
         'proteus.plot.cpl_global': 'plot_global',
         'proteus.plot.cpl_interior': 'plot_interior',
         'proteus.plot.cpl_interior_cmesh': 'plot_interior_cmesh',
-        'proteus.plot.cpl_orbit': 'plot_orbit',
+        'proteus.plot.cpl_orbit': ('plot_orbit', 'plot_Lovenumber'),
         'proteus.plot.cpl_sflux': 'plot_sflux',
         'proteus.plot.cpl_sflux_cross': 'plot_sflux_cross',
         'proteus.plot.cpl_spectra': 'plot_spectra',
         'proteus.plot.cpl_structure': 'plot_structure',
         'proteus.plot.cpl_visual': 'plot_visual',
     }
-    for mod_name, fn_name in plot_map.items():
+    for mod_name, fn_names in plot_map.items():
         mod = types.ModuleType(mod_name)
-        setattr(mod, fn_name, rec(fn_name))
+        for fn_name in (fn_names,) if isinstance(fn_names, str) else fn_names:
+            setattr(mod, fn_name, rec(fn_name))
         monkeypatch.setitem(sys.modules, mod_name, mod)
 
     pop_mod = types.ModuleType('proteus.plot.cpl_population')
@@ -3090,7 +3096,9 @@ def test_update_plots_covers_runtime_and_end_branches(monkeypatch, tmp_path):
         atmos_clim=types.SimpleNamespace(module='agni'),
         interior_energetics=types.SimpleNamespace(module='aragog'),
         observe=types.SimpleNamespace(module='petitRADTRANS'),
-        orbit=types.SimpleNamespace(evolve=True, satellite=False),
+        orbit=types.SimpleNamespace(
+            module='dummy', star_planet_model='sp0d', planet_satellite_model=None
+        ),
         star=types.SimpleNamespace(module='mors', mors=types.SimpleNamespace(age_now=4.5)),
         atmos_chem=types.SimpleNamespace(module='vulcan'),
         params=types.SimpleNamespace(out=types.SimpleNamespace(plot_fmt='png')),
@@ -3113,6 +3121,57 @@ def test_update_plots_covers_runtime_and_end_branches(monkeypatch, tmp_path):
     assert 'plot_spectra' in called_names
     assert 'plot_visual' in called_names
     assert 'plot_emission' in called_names
+
+
+@pytest.mark.unit
+def test_update_plots_obliqua_module_calls_lovenumber_plot(monkeypatch, tmp_path):
+    """When the tidal-response module is Obliqua, UpdatePlots must glob the
+    per-time ``*_obliqua.nc`` snapshots, load their tidal data, and dispatch
+    to ``plot_Lovenumber`` -- the branch this PR's Obliqua integration added,
+    previously untested (dummy_atm/orbit.module='dummy' in the other
+    UpdatePlots tests never reaches it).
+    """
+    calls = []
+    _install_updateplots_fakes(monkeypatch, calls)
+
+    wrapper_mod = types.ModuleType('proteus.orbit.wrapper')
+    wrapper_mod.read_tides_data = lambda *_a, **_k: [{'ok': True}, {'ok': True}]
+    monkeypatch.setitem(sys.modules, 'proteus.orbit.wrapper', wrapper_mod)
+
+    monkeypatch.setattr(
+        'proteus.utils.coupler.glob.glob',
+        lambda _p: [
+            str(tmp_path / 'data' / '1000_obliqua.nc'),
+            str(tmp_path / 'data' / '2000_obliqua.nc'),
+        ],
+    )
+
+    cfg = types.SimpleNamespace(
+        atmos_clim=types.SimpleNamespace(module='dummy'),
+        interior_energetics=types.SimpleNamespace(module='dummy'),
+        observe=types.SimpleNamespace(module=None),
+        orbit=types.SimpleNamespace(
+            module='obliqua', star_planet_model=None, planet_satellite_model=None
+        ),
+        star=types.SimpleNamespace(module='dummy', mors=types.SimpleNamespace(age_now=4.5)),
+        atmos_chem=types.SimpleNamespace(module='dummy'),
+        params=types.SimpleNamespace(out=types.SimpleNamespace(plot_fmt='png')),
+    )
+    hf_all = pd.DataFrame({'Time': [1.0, 2.0]})
+    dirs = {'output': str(tmp_path), 'fwl': str(tmp_path / 'fwl')}
+
+    from proteus.utils.coupler import UpdatePlots
+
+    UpdatePlots(hf_all, dirs, cfg, end=True, num_snapshots=1)
+
+    called_names = [c[0] for c in calls]
+    assert 'plot_Lovenumber' in called_names
+    # Discrimination: a regression that skipped the glob/parse step (e.g.
+    # passed the raw '*_obliqua.nc' pattern through unparsed) would still
+    # call plot_Lovenumber, but with zero times -- pin that real nc_times
+    # were parsed and threaded through.
+    lovenumber_call = next(c for c in calls if c[0] == 'plot_Lovenumber')
+    assert lovenumber_call[2] == ('data', 'output_dir', 'plot_format', 'times')
 
 
 @pytest.mark.unit
@@ -3296,7 +3355,9 @@ def test_update_plots_spider_dummy_atm_covers_skip_branches(monkeypatch, tmp_pat
         atmos_clim=types.SimpleNamespace(module='dummy'),
         interior_energetics=types.SimpleNamespace(module='spider'),
         observe=types.SimpleNamespace(module=None),
-        orbit=types.SimpleNamespace(evolve=False, satellite=False),
+        orbit=types.SimpleNamespace(
+            module='dummy', star_planet_model=None, planet_satellite_model=None
+        ),
         star=types.SimpleNamespace(module='dummy', mors=types.SimpleNamespace(age_now=4.5)),
         atmos_chem=types.SimpleNamespace(module='dummy'),
         params=types.SimpleNamespace(out=types.SimpleNamespace(plot_fmt='png')),
