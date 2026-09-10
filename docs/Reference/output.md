@@ -111,6 +111,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `axial_period_sat` | `s` | day length of satellite around its axis | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | orbit, plot |
 | `evection_angle` | `rad` | evection angle | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | orbit, plot |
 | `in_evection_band` | `bool, 0/1` | whether inside the evection resonance band | `orbit/satellite.py` | orbit.satellite = true | interior_energetics |
+| `near_evection_band` | `bool, 0/1` | wider pre-emptive dt-throttle diagnostic (no physics effect); True before `in_evection_band` | `orbit/satellite.py` | orbit.satellite = true | interior_energetics |
 
 ### Planet structure
 

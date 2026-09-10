@@ -802,6 +802,7 @@ def GetHelpfileKeys():
         'axial_period_sat', # day length of satellite around its axis [s]
         'evection_angle',   # evection angle [rad]
         'in_evection_band', # whether inside the evection resonance band [bool, 0/1]
+        'near_evection_band', # wider pre-emptive dt-throttle diagnostic, no physics effect [bool, 0/1]
 
         # Planet structure
         'R_int',            # interior radius [m]

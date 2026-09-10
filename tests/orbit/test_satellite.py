@@ -316,6 +316,35 @@ def test_in_evection_band_handles_non_finite_a_res_gracefully():
     assert result is False
     assert state['active'] is False
     assert state['hist_d_a_rel'] == []
+    # A non-finite a_res must not leave a stale finite distance behind --
+    # the pre-emptive near_evection_band consumer needs +inf here, not
+    # the last successfully computed value, so it correctly reads "not
+    # near" rather than latching onto history.
+    assert state['d_a_rel_now'] == np.inf
+
+
+def test_in_evection_band_stashes_raw_distance_for_the_approach_margin(monkeypatch):
+    """``_in_evection_band`` must record the raw (undebounced, unsmoothed)
+    relative distance under ``resonance_state['d_a_rel_now']`` on every
+    call -- the primitive that ``evolve_orbit_satellite`` derives
+    ``near_evection_band`` from, using a wider margin than the
+    hysteretic ``active`` flag this function itself returns.
+    """
+    from proteus.orbit import satellite as sat_mod
+
+    monkeypatch.setattr(sat_mod, 'compute_a_res_prime', lambda hf_row: 60.0)
+
+    state = {}
+    # a' = 72 R_earth vs a_res = 60: d_a_rel = 0.20 exactly.
+    hf_row = {'semimajorax_sat': 72.0 * R_earth}
+    active = _in_evection_band(hf_row, state, margin_enter=0.10, margin_exit=0.35)
+
+    assert state['d_a_rel_now'] == pytest.approx(0.20, rel=1e-12)
+    # Discrimination: 0.20 is outside the (narrower) entry margin the
+    # hysteretic flag uses, so the flag itself must stay inactive even
+    # though a wider approach margin (e.g. 0.30) would already call this
+    # "near" from the stashed raw value alone.
+    assert active is False
 
 
 # ---------------------------------------------------------------------------
@@ -1382,6 +1411,57 @@ def test_evolve_orbit_satellite_threads_in_band_result_as_filter_value(monkeypat
 
         assert len(captured_filter_values) > 0
         assert all(fv == expected_filter for fv in captured_filter_values)
+
+
+def test_evolve_orbit_satellite_sets_near_band_ahead_of_in_band(monkeypatch):
+    """``near_evection_band`` must be derived from the wider
+    ``resonance_margin_approach`` margin, independently of (and firing
+    before) the tighter/hysteretic ``in_evection_band`` flag -- a state
+    whose raw, undebounced distance sits inside the approach margin but
+    outside the entry margin must read near=True, in_band=False, and
+    moving far outside even the approach margin must clear near as well.
+    """
+    from proteus.orbit import satellite as sat_mod
+
+    monkeypatch.setattr(sat_mod, 'ps1d_evec', lambda *a, **kw: None)
+
+    def _fake_in_band(d_a_rel_now):
+        def _inner(hf_row, resonance_state, **kw):
+            resonance_state['d_a_rel_now'] = d_a_rel_now
+            resonance_state['active'] = False
+            return False
+
+        return _inner
+
+    config = _make_satellite_config('ps1d_evec')
+    config.orbit.solver.resonance_margin_approach = 0.30
+    interior_o = _make_interior_for_c_planet(density=5500.0)
+    interior_o.dt = 1.0
+    tides_o = _make_ps1d_evec_tides(-0.002 - 0.004j)
+
+    # Inside the 0.30 approach margin but outside a (typical, tighter)
+    # entry margin: near must activate even though in_band never does.
+    monkeypatch.setattr(sat_mod, '_in_evection_band', _fake_in_band(0.20))
+    hf_row_near = _make_ps1d_evec_hf_row(ecc=0.05)
+    sat_mod.evolve_orbit_satellite(
+        hf_row_near,
+        config,
+        dirs={'output/data': '/tmp'},
+        tides_o=tides_o,
+        interior_o=interior_o,
+    )
+    assert hf_row_near['in_evection_band'] == pytest.approx(0.0)
+    assert hf_row_near['near_evection_band'] == pytest.approx(1.0)
+
+    # Discrimination: pushing the raw distance outside even the wider
+    # approach margin must clear near_evection_band too, not just leave
+    # it stuck on from the previous call.
+    monkeypatch.setattr(sat_mod, '_in_evection_band', _fake_in_band(0.50))
+    hf_row_far = _make_ps1d_evec_hf_row(ecc=0.05)
+    sat_mod.evolve_orbit_satellite(
+        hf_row_far, config, dirs={'output/data': '/tmp'}, tides_o=tides_o, interior_o=interior_o
+    )
+    assert hf_row_far['near_evection_band'] == pytest.approx(0.0)
 
 
 def test_evolve_orbit_satellite_ps1d_evec_stores_dense_samples_in_band(

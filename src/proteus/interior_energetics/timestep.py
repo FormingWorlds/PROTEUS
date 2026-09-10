@@ -174,6 +174,67 @@ def _estimate_bolscale(hf_all: pd.DataFrame, config: Config) -> float:
     return dt_bolscale
 
 
+def _evection_zone_active(hf_row: dict) -> bool:
+    """True while the planet-satellite system is judged to be inside, or
+    closing in on, the evection resonance band.
+    """
+    return bool(hf_row.get('in_evection_band', 0.0)) or bool(
+        hf_row.get('near_evection_band', 0.0)
+    )
+
+
+def _estimate_evection_dt_cap(hf_row: dict, hf_all: pd.DataFrame, config: Config) -> float:
+    """
+    Bound the next macro-step by the SECULAR rate of change of the
+    satellite eccentricity, while the system is inside or approaching the
+    evection resonance band.
+
+    Returns ``np.inf`` when the cap does not apply (disabled, not in/near
+    the band, or no rate history yet distinguishable from the ceiling), so
+    callers can fold it into a ``min()`` unconditionally.
+    """
+    evection_max = float(config.params.dt.evection_maximum)
+    if evection_max <= 0.0 or not _evection_zone_active(hf_row):
+        return np.inf
+
+    if hf_all is None or len(hf_all['Time']) < 2 or 'eccentricity_sat' not in hf_all:
+        # No history to derive a rate from yet (e.g. the very first step
+        # after the zone flag flips), fall back to the ceiling rather
+        # than either ignoring the cap or raising on missing history.
+        return evection_max
+
+    window = max(2, int(getattr(config.params.dt, 'evection_rate_window', 2)))
+    n_use = min(window, len(hf_all['Time']))
+
+    t_window = hf_all['Time'].iloc[-n_use:].to_numpy(dtype=float)
+    e_window = hf_all['eccentricity_sat'].iloc[-n_use:].to_numpy(dtype=float)
+
+    dt_span = t_window[-1] - t_window[0]
+    if dt_span <= 0.0:
+        return evection_max
+
+    if n_use == 2:
+        de_dt = abs(e_window[-1] - e_window[0]) / dt_span
+    else:
+        # Least-squares secular slope: uses every sample in the window
+        slope, _ = np.polyfit(t_window, e_window, 1)
+        de_dt = abs(float(slope))
+
+    if de_dt <= 0.0:
+        # No net secular trend over the window; fall back to the
+        # ceiling rather than letting a naive e/de_dt blow up.
+        return evection_max
+
+    # Compute the cap on the next step size from the observed |de/dt|
+    e_now = float(e_window[-1])
+    target_rel_de = float(getattr(config.params.dt, 'evection_target_rel_de', 0.05))
+    de_floor = float(getattr(config.params.dt, 'evection_de_floor', 0.02))
+    e_ref = max(e_now, de_floor)
+
+    dt_rate_cap = target_rel_de * e_ref / de_dt
+    return min(evection_max, dt_rate_cap)
+
+
 def next_step(
     config: Config,
     dirs: dict,
@@ -199,9 +260,10 @@ def next_step(
             Scale factor to apply to step size
         interior_o : Interior_t, optional
             Interior object used to persist stiffness-aware adaptive
-            state (hysteresis counter) across calls. When ``None``,
-            the hysteresis and stiffness logging features are
-            disabled and the controller runs without hysteresis. Pass
+            state (hysteresis counter, evection growth-limiter cooldown
+            counter) across calls. When ``None``, the hysteresis,
+            stiffness logging, and evection growth-limiter features are
+            disabled and the controller runs without them. Pass
             ``interior_o`` when available.
 
     Returns
@@ -419,23 +481,64 @@ def next_step(
                 dtswitch = mushy_max
 
     # Evection-resonance dt cap: mirrors the mushy-regime cap above, for a
-    # different stiffness source. While the planet-satellite system is
-    # inside the evection resonance band, the orbital-evolution substep
-    # controller has to smooth a structural (C_planet) update across the
-    # whole PROTEUS-clock step; a large step here means a large jump for
-    # it to smooth over even with that smoothing in place, and (for the
-    # apsidal-precession dynamics that define the band itself) a coarser
-    # sampling of a genuinely fast-oscillating angle.
-    evection_max = float(config.params.dt.evection_maximum)
-    if evection_max > 0.0 and bool(hf_row.get('in_evection_band', 0.0)):
-        if dtswitch > evection_max:
-            log.info(
-                'Time-stepping: evection-resonance cap active, '
-                'capping dt at %.2e yr (was %.2e yr)',
-                evection_max,
-                dtswitch,
+    # different stiffness source. See _estimate_evection_dt_cap's own
+    # docstring for the physical reasoning (tidal-mode-window coverage,
+    # not just orbital-state smoothness). evection_maximum is the ceiling/
+    # initial guess; once rate history exists the cap tightens or relaxes
+    # continuously with the observed |de/dt|, so a step near capture is
+    # small and a step deep in a slowly-decaying quasi-resonant tail is
+    # not needlessly held down at the ceiling.
+    evection_cap = _estimate_evection_dt_cap(hf_row, hf_all, config)
+    if np.isfinite(evection_cap) and dtswitch > evection_cap:
+        log.info(
+            'Time-stepping: evection-resonance cap active, capping dt at %.2e yr (was %.2e yr)',
+            evection_cap,
+            dtswitch,
+        )
+        dtswitch = evection_cap
+
+    # Evection-scoped growth limiter. Only ever applies while in/near the
+    # band, or for evection_cooldown_iters steps after leaving it. Two
+    # jobs: (1) because near_evection_band fires with a lead margin ahead
+    # of real capture (see _evection_zone_active), dt is already being
+    # held down by the time capture happens, rather than jumping into the
+    # band at a stale, large dt; (2) it keeps dt from snapping straight
+    # back to whatever the ordinary controller wants the instant the band
+    # is exited, spreading the recovery out instead.
+    evection_growth = float(getattr(config.params.dt, 'evection_growth_factor', 0.0))
+    zone_active = _evection_zone_active(hf_row)
+    cooldown_remaining = (
+        int(getattr(interior_o, 'evection_cooldown_remaining', 0))
+        if interior_o is not None
+        else 0
+    )
+
+    if evection_growth > 0.0 and (zone_active or cooldown_remaining > 0):
+        if hf_all is not None and len(hf_all['Time']) >= 2:
+            dt_prev_actual = float(hf_all['Time'].iloc[-1] - hf_all['Time'].iloc[-2])
+            if dt_prev_actual > 0.0:
+                dt_growth_capped = dt_prev_actual * evection_growth
+                if dtswitch > dt_growth_capped:
+                    log.info(
+                        'Time-stepping: evection growth-limit active '
+                        '(evection_growth_factor=%.2f, dt_prev=%.2e yr), '
+                        'capping dt at %.2e yr (was %.2e yr)',
+                        evection_growth,
+                        dt_prev_actual,
+                        dt_growth_capped,
+                        dtswitch,
+                    )
+                    dtswitch = dt_growth_capped
+
+    # Refresh/decrement the cooldown counter for the NEXT call, using the
+    # zone state observed THIS call.
+    if interior_o is not None:
+        if zone_active:
+            interior_o.evection_cooldown_remaining = int(
+                getattr(config.params.dt, 'evection_cooldown_iters', 0)
             )
-            dtswitch = evection_max
+        elif cooldown_remaining > 0:
+            interior_o.evection_cooldown_remaining = cooldown_remaining - 1
 
     # On retries (step_sf < 1) in the static/initial branches we
     # deliberately allow dt to fall below dt.minimum; the whole point of

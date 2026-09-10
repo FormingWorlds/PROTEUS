@@ -291,6 +291,25 @@ def kmin_kmax_for_e(e: float) -> tuple[int, int]:
     return int(table.kmin[idx]), int(table.kmax[idx])
 
 
+def padded_k_range_for_evection(
+    e_now: float,
+    de_dt_yr: float,
+    dt_next_yr: float,
+    padding_factor: float = 1.0,
+    e_cap: float | None = None,
+) -> tuple[int, int]:
+    """[kmin, kmax] appropriate for where eccentricity is headed over the
+    NEXT macro-step, not just where it is right now."""
+    if e_cap is None:
+        e_cap = float(_DEFAULT_E_GRID[-1])
+
+    e_pad = min(
+        e_cap,
+        max(0.0, e_now) + abs(padding_factor) * abs(de_dt_yr) * max(dt_next_yr, 0.0),
+    )
+    return kmin_kmax_for_e(e_pad)
+
+
 def init_hansen_table(
     e_grid: Optional[NDArray[np.floating]] = None,
     kmin: Optional[int] = None,

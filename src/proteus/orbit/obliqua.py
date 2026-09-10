@@ -14,6 +14,7 @@ from scipy.interpolate import interp1d
 
 from proteus.interior_energetics.common import Interior_t
 from proteus.orbit.common import Tides_t
+from proteus.orbit.hansen import padded_k_range_for_evection
 from proteus.utils.helper import UpdateStatusfile
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
@@ -59,6 +60,59 @@ def _jlsca_prec(sca: float):
     return juliacall.convert(jl.Obliqua.prec, sca)
 
 
+def _padded_obliqua_k_range(hf_row: dict, interior_o: Interior_t, config: Config) -> tuple:
+    """(s_min, s_max) to pass to Obliqua's 'adaptive' spectrum for the
+    satellite-perturber (evection) case.
+
+    An explicit user-supplied ``k_min``/``k_max`` (an int, not ``'none'``)
+    is only ever WIDENED by the padding, never narrowed past what the user
+    configured.
+    """
+    k_min_cfg = config.orbit.obliqua.k_min
+    k_max_cfg = config.orbit.obliqua.k_max
+
+    # Check if in/near evection band
+    zone_active = bool(hf_row.get('in_evection_band', 0.0)) or bool(
+        hf_row.get('near_evection_band', 0.0)
+    )
+    if not zone_active:
+        return k_min_cfg, k_max_cfg
+
+    # Padding factor for the look-ahead window
+    padding_factor = float(config.orbit.obliqua.evection_padding_factor)
+    if padding_factor <= 0.0:
+        return k_min_cfg, k_max_cfg
+
+    # Compute the rate of change of eccentricity (de/dt) over the last macro-step
+    e_now = float(hf_row['eccentricity_sat'])
+    t_now = float(hf_row['Time'])
+    e_prev = hf_row.get('_obliqua_prev_ecc')
+    t_prev = hf_row.get('_obliqua_prev_time')
+
+    de_dt_yr = 0.0
+    if e_prev is not None and t_prev is not None and t_now > t_prev:
+        de_dt_yr = (e_now - float(e_prev)) / (t_now - float(t_prev))
+
+    # Persist the cursor for the next call
+    hf_row['_obliqua_prev_ecc'] = e_now
+    hf_row['_obliqua_prev_time'] = t_now
+
+    dt_next_yr = float(getattr(interior_o, 'dt', 0.0))
+
+    # Compute the padded k-range for the next macro-step
+    k_min_pad, k_max_pad = padded_k_range_for_evection(
+        e_now, de_dt_yr, dt_next_yr, padding_factor=padding_factor
+    )
+
+    # Enforce user-supplied k_min/k_max
+    if isinstance(k_min_cfg, int):
+        k_min_pad = min(k_min_pad, k_min_cfg)
+    if isinstance(k_max_cfg, int):
+        k_max_pad = max(k_max_pad, k_max_cfg)
+
+    return int(k_min_pad), int(k_max_pad)
+
+
 def run_obliqua(
     hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides_t, config: Config
 ) -> float:
@@ -66,6 +120,11 @@ def run_obliqua(
 
     Sets the interior tidal heating and returns k-love number. All tidal love-numbers
     are stored in the tides_o object for the specific perturber.
+
+    For the satellite perturber, the adaptive k-range window handed to
+    Obliqua is padded ahead of where eccentricity is headed over the next
+    macro-step while ``hf_row['in_evection_band']``/``['near_evection_band']``
+    is set -- see ``_padded_obliqua_k_range``.
 
     Parameters
     ----------
@@ -88,6 +147,10 @@ def run_obliqua(
     # Calculate axial frequency of rotation
     axial = _jlsca_prec(2 * np.pi / hf_row['axial_period'])
 
+    # Adaptive k-range window passed to Obliqua below
+    s_min_eff = config.orbit.obliqua.k_min
+    s_max_eff = config.orbit.obliqua.k_max
+
     if config.orbit.perturber == 'star':
         log.debug('Running Obliqua for star-planet tides...')
 
@@ -109,6 +172,9 @@ def run_obliqua(
         ecc = _jlsca_float(hf_row['eccentricity_sat'])
         sma = _jlsca_float(hf_row['semimajorax_sat'])
         M_pert = _jlsca_float(hf_row['M_sat'])
+
+        # Compute the padded k-range for the next macro-step if in/near evection band
+        s_min_eff, s_max_eff = _padded_obliqua_k_range(hf_row, interior_o, config)
 
     else:
         raise ValueError(
@@ -174,8 +240,8 @@ def run_obliqua(
                 'n': config.orbit.obliqua.n,
                 'm': config.orbit.obliqua.m,
                 'spectrum': 'adaptive',  # Note that this is fixed, since spectrum = full is not useful for the current implementation of Obliqua in PROTEUS.
-                's_min': config.orbit.obliqua.k_min,
-                's_max': config.orbit.obliqua.k_max,
+                's_min': s_min_eff,
+                's_max': s_max_eff,
                 'material_mu': config.orbit.obliqua.material_mu,
                 'material_k': config.orbit.obliqua.material_k,
                 'alpha': config.orbit.obliqua.alpha,

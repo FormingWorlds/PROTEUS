@@ -174,6 +174,9 @@ class Obliqua:
         Minimum Fourier index in mean anomaly (adaptive spectrum).
     k_max : int
         Maximum Fourier index in mean anomaly (adaptive spectrum).
+    evection_padding_factor : float
+        Safety multiplier on the linear look-ahead eccentricity padding
+        applied to Obliqua's own adaptive k-range selection.
     material_mu : str
         Rheology model for complex shear modulus ("andrade" or "maxwell").
     material_k : str
@@ -214,6 +217,7 @@ class Obliqua:
 
     k_min: Union[int, Literal['none']] = field(default='none')
     k_max: Union[int, Literal['none']] = field(default='none')
+    evection_padding_factor: float = field(default=2.0, validator=ge(0))
 
     material_mu: str = field(
         default='andrade', validator=in_(('andrade', 'maxwell', 'elastic'))
@@ -342,6 +346,10 @@ class OrbitSolver:
         Evection-band entry margin (ps1d_evec only).
     resonance_margin_exit: float
         Evection-band exit margin (ps1d_evec only).
+    resonance_margin_approach: float
+        Wider, purely-diagnostic margin used to set a pre-emptive signal
+        that the system is closing in on the band before the tighter
+        ``resonance_margin_enter`` would declare capture.
     fine_csv_target_rel_dt: float
         Target storage-clock spacing for out-of-band fine samples, as a
         fraction of the requested call duration (ps1d_evec only).
@@ -367,6 +375,7 @@ class OrbitSolver:
 
     resonance_margin_enter: float = field(default=0.10, validator=gt(0))
     resonance_margin_exit: float = field(default=0.50, validator=gt(0))
+    resonance_margin_approach: float = field(default=0.30, validator=gt(0))
     fine_csv_target_rel_dt: float = field(default=0.01, validator=gt(0))
 
 

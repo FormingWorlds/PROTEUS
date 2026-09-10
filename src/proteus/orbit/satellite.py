@@ -46,7 +46,12 @@ def _in_evection_band(hf_row, resonance_state, margin_enter=0.10, margin_exit=0.
 
     resonance_state is a small dict the CALLER owns and must pass back in
     unchanged on every call -- it carries the 2-step history and the
-    current on/off state. Mutated in place.
+    current on/off state. Mutated in place. As a side effect, this also
+    stashes the latest raw (unsmoothed, undebounced) relative distance
+    under ``resonance_state['d_a_rel_now']`` -- used by the caller to
+    derive the wider, purely-diagnostic ``near_evection_band`` signal (see
+    ``evolve_orbit_satellite``), without recomputing ``compute_a_res_prime``
+    a second time.
 
     Returns True if the satellite is judged to currently be "in" the
     evection resonance band (i.e. the oscillating-filter term should be
@@ -60,10 +65,12 @@ def _in_evection_band(hf_row, resonance_state, margin_enter=0.10, margin_exit=0.
 
     if not np.isfinite(a_res_now) or a_res_now == 0:
         resonance_state['active'] = False
+        resonance_state['d_a_rel_now'] = np.inf
         hist.clear()
         return False
 
     d_a_rel = (a_prime_now - a_res_now) / a_res_now
+    resonance_state['d_a_rel_now'] = d_a_rel
     hist.append(d_a_rel)
     if len(hist) > 2:
         hist.pop(0)
@@ -495,6 +502,21 @@ def evolve_orbit_satellite(
     # the band (params.dt.evection_maximum), one PROTEUS iteration
     # later -- see that function's docstring entry.
     hf_row['in_evection_band'] = 1.0 if resonance_state.get('active', False) else 0.0
+
+    # Wider, purely-diagnostic pre-trigger: True once the raw (undebounced)
+    # relative distance to a_res is within solver.resonance_margin_approach
+    # -- deliberately wider than resonance_margin_enter, so that
+    # next_step's evection dt cap (and growth limiter) engage BEFORE
+    # in_evection_band itself would, absorbing the one-PROTEUS-iteration
+    # lag between this write and the timestep controller's next read of it
+    # (see timestep._evection_zone_active's docstring). Has no effect on
+    # the resonant-forcing physics, which is gated by in_evection_band
+    # alone. Stays 0.0 for ps0d/ps1d for the same reason in_evection_band
+    # does: resonance_state is never touched by _in_evection_band there.
+    d_a_rel_now = resonance_state.get('d_a_rel_now', np.inf)
+    hf_row['near_evection_band'] = (
+        1.0 if abs(d_a_rel_now) <= solver.resonance_margin_approach else 0.0
+    )
 
 
 def compute_a_res_prime(hf_row):

@@ -49,6 +49,11 @@ Exercises:
 - ``read_ncdf``/``read_ncdfs``: netCDF variable round trip, and that
   ``read_ncdfs`` orders its output by the caller's ``times`` list, not
   filesystem order.
+- ``_padded_obliqua_k_range``: the look-ahead k-range padding applied to
+  the satellite-perturber adaptive spectrum while
+  ``hf_row['in_evection_band']``/``['near_evection_band']`` is set --
+  a pure-Python helper with no Julia boundary, tested directly (no
+  ``jl`` mocking needed for these cases).
 - ``setup_logging``: ``jl.Obliqua.setup_logging`` call-argument
   contract (log path, verbosity passthrough).
 - ``sync_log_files``: copy-and-clear contract, the missing-file
@@ -139,6 +144,7 @@ def _make_config(module: str, perturber: str):
     ob.m = [0, 2]
     ob.k_min = 'none'
     ob.k_max = 'none'
+    ob.evection_padding_factor = 2.0
     ob.material_mu = 'andrade'
     ob.material_k = 'andrade'
     ob.alpha = 0.3
@@ -505,6 +511,136 @@ def test_run_obliqua_satellite_perturber_reads_satellite_orbital_state(monkeypat
     assert omega == pytest.approx(2 * np.pi / hf_row['orbital_period_sat'], rel=1e-12)
     assert sma == pytest.approx(3.84e8, rel=1e-12)
     assert m_pert == pytest.approx(7.3e22, rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# _padded_obliqua_k_range: pure-Python, no Julia boundary
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def _fast_k_range_table(monkeypatch):
+    """Narrow, fast eccentricity grid for the module-global [kmin, kmax]
+    table (mirrors the fixture of the same name in
+    tests/orbit/test_hansen.py): the default build costs on the order of
+    a minute of wall time, far outside the unit tier's budget.
+    """
+    from proteus.orbit import hansen as hansen_mod
+
+    monkeypatch.setattr(hansen_mod, '_k_range_table', None)
+    hansen_mod.init_k_range_table(e_grid=np.array([0.0, 0.2, 0.4, 0.6, 0.8]), force=True)
+
+
+def test_padded_obliqua_k_range_passes_through_unpadded_outside_the_zone(_fast_k_range_table):
+    """Outside the evection zone (both flags false/absent), the function
+    must return ``config.orbit.obliqua.k_min``/``k_max`` VERBATIM --
+    typically ``'none'`` -- at zero cost, not silently apply padding.
+    """
+    from proteus.orbit.obliqua import _padded_obliqua_k_range
+
+    config = _make_config(module='aragog', perturber='satellite')
+    interior_o = types.SimpleNamespace(dt=100.0)
+    hf_row = {
+        'Time': 500.0,
+        'eccentricity_sat': 0.30,
+        'in_evection_band': 0.0,
+        'near_evection_band': 0.0,
+    }
+    assert _padded_obliqua_k_range(hf_row, interior_o, config) == ('none', 'none')
+    # No cursor should be written when the padding path never runs.
+    assert '_obliqua_prev_ecc' not in hf_row
+
+
+def test_padded_obliqua_k_range_widens_when_zone_active_and_rate_observed(_fast_k_range_table):
+    """Inside the zone, with a prior eccentricity cursor already recorded
+    (simulating the second-and-later real call), the resulting window
+    must be at least as wide as the unpadded ``kmin_kmax_for_e(e_now)``
+    window, and here strictly wider given the chosen rate/step-size
+    combination. Also checks the cursor is advanced for the next call.
+    """
+    from proteus.orbit.hansen import kmin_kmax_for_e
+    from proteus.orbit.obliqua import _padded_obliqua_k_range
+
+    config = _make_config(module='aragog', perturber='satellite')
+    interior_o = types.SimpleNamespace(dt=20.0)
+    hf_row = {
+        'Time': 520.0,
+        'eccentricity_sat': 0.20,
+        'in_evection_band': 1.0,
+        '_obliqua_prev_ecc': 0.10,
+        '_obliqua_prev_time': 500.0,
+    }
+    # de/dt = (0.20 - 0.10) / (520 - 500) = 5.0e-3 /yr
+
+    unpadded = kmin_kmax_for_e(0.20)
+    k_min, k_max = _padded_obliqua_k_range(hf_row, interior_o, config)
+
+    assert k_max >= unpadded[1]
+    assert k_min <= unpadded[0]
+    # Discrimination: the padded window must be a genuinely different
+    # (strictly wider) bucket here, not merely the unpadded one again.
+    assert (k_min, k_max) != unpadded
+
+    # Cursor advanced to THIS call's (e, Time) for the next call.
+    assert hf_row['_obliqua_prev_ecc'] == pytest.approx(0.20)
+    assert hf_row['_obliqua_prev_time'] == pytest.approx(520.0)
+
+
+def test_padded_obliqua_k_range_never_narrows_past_an_explicit_user_override(
+    _fast_k_range_table,
+):
+    """An explicit user-supplied ``k_min``/``k_max`` (an int, not
+    ``'none'``) must only ever be WIDENED by the padding, never narrowed
+    past what the user configured -- someone who deliberately asked for
+    extra headroom must not have it silently clawed back.
+    """
+    from proteus.orbit.obliqua import _padded_obliqua_k_range
+
+    config = _make_config(module='aragog', perturber='satellite')
+    config.orbit.obliqua.k_min = -500
+    config.orbit.obliqua.k_max = 500
+    interior_o = types.SimpleNamespace(dt=20.0)
+    hf_row = {
+        'Time': 520.0,
+        'eccentricity_sat': 0.20,
+        'in_evection_band': 1.0,
+        '_obliqua_prev_ecc': 0.10,
+        '_obliqua_prev_time': 500.0,
+    }
+
+    k_min, k_max = _padded_obliqua_k_range(hf_row, interior_o, config)
+    assert k_min == -500
+    assert k_max == 500
+
+
+def test_padded_obliqua_k_range_disabled_by_zero_padding_factor(_fast_k_range_table):
+    """``evection_padding_factor=0`` must reduce to the unpadded
+    ``config.orbit.obliqua.k_min``/``k_max`` passthrough even while the
+    zone is active -- the opt-out switch documented on the field.
+    """
+    from proteus.orbit.obliqua import _padded_obliqua_k_range
+
+    config = _make_config(module='aragog', perturber='satellite')
+    config.orbit.obliqua.evection_padding_factor = 0.0
+    interior_o = types.SimpleNamespace(dt=20.0)
+    hf_row = {
+        'Time': 520.0,
+        'eccentricity_sat': 0.20,
+        'in_evection_band': 1.0,
+        '_obliqua_prev_ecc': 0.10,
+        '_obliqua_prev_time': 500.0,
+    }
+
+    assert _padded_obliqua_k_range(hf_row, interior_o, config) == ('none', 'none')
+
+    # Discrimination: the identical zone-active state with a positive
+    # padding factor DOES widen (config.orbit.obliqua.k_min/k_max is
+    # 'none' there too), so the passthrough above follows from
+    # padding_factor=0, not from this hf_row/config combination never
+    # triggering padding at all.
+    config.orbit.obliqua.evection_padding_factor = 2.0
+    padded = _padded_obliqua_k_range(dict(hf_row), interior_o, config)
+    assert padded != ('none', 'none')
 
 
 def test_run_obliqua_rejects_an_unrecognized_perturber(monkeypatch, tmp_path):

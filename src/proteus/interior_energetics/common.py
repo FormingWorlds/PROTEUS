@@ -570,6 +570,15 @@ class Interior_t:
         # escaped from.
         self.dt_hysteresis_remaining = 0
 
+        # Evection-scoped growth-limiter cooldown counter. Refreshed to
+        # config.params.dt.evection_cooldown_iters on every next_step()
+        # call where the system is judged in/near theevection resonance band,
+        # and counted down by one on every call where it is not; while > 0,
+        # config.params.dt.evection_growth_factor bounds how fast dt may grow,
+        # so exiting the band does not snap dt straight back to whatever the
+        # ordinary controller wants.
+        self.evection_cooldown_remaining = 0
+
         # True when the most recent call to next_step() had its step size
         # clamped. For example, by `_estimate_bolscale()`.
         self.timestep_clamped = False

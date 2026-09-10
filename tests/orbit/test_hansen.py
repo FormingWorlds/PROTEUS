@@ -17,6 +17,10 @@ Exercises:
   numerical quadrature (not the analytic formula alone).
 - ``nextpow2_int``: the FFT-size rounding helper used internally by
   ``hansen_fft``.
+- ``padded_k_range_for_evection``: the look-ahead eccentricity padding
+  used by ``orbit/obliqua.py`` while the evection resonance band is
+  active, including its reduction to the unpadded ``kmin_kmax_for_e``
+  result at zero rate and its clip to the table's own domain.
 
 Anti-happy-path coverage:
 
@@ -48,6 +52,7 @@ from proteus.orbit.hansen import (
     kepler_newton,
     kmin_kmax_for_e,
     nextpow2_int,
+    padded_k_range_for_evection,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -451,3 +456,105 @@ def test_nextpow2_int_matches_smallest_covering_power(x, expected):
     if x > 0:
         assert 2**p >= x
         assert 2 ** (p - 1) < x or p == 0
+
+
+# ---------------------------------------------------------------------------
+# padded_k_range_for_evection
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def _fast_k_range_table(monkeypatch):
+    """A narrow, fast eccentricity grid for the [kmin, kmax] table, reset
+    after the test via monkeypatch. Building the default table
+    (``init_k_range_table()`` with no arguments) costs on the order of a
+    minute of wall time -- a real FFT-based search at every one of ~100+
+    grid points -- far outside the unit tier's budget. Mirrors the
+    ``_hansen_table`` reset pattern used above for
+    ``test_get_all_m_hansen_matches_hand_built_delta_at_e_zero``.
+    """
+    monkeypatch.setattr('proteus.orbit.hansen._k_range_table', None)
+    init_k_range_table(e_grid=np.array([0.0, 0.2, 0.4, 0.6, 0.8]), force=True)
+
+
+@pytest.mark.physics_invariant
+def test_padded_k_range_for_evection_reduces_to_unpadded_at_zero_rate(_fast_k_range_table):
+    """At de_dt_yr=0 (or padding_factor=0), the padded lookup must be
+    IDENTICAL to calling ``kmin_kmax_for_e(e_now)`` directly: the padding
+    is meant to vanish once outside the regime it exists for (rate small
+    relative to eccentricity), and this is the exact-zero limit of that.
+    """
+    e_now = 0.4
+    unpadded = kmin_kmax_for_e(e_now)
+
+    assert (
+        padded_k_range_for_evection(e_now, de_dt_yr=0.0, dt_next_yr=100.0, padding_factor=2.0)
+        == unpadded
+    )
+    assert (
+        padded_k_range_for_evection(e_now, de_dt_yr=0.05, dt_next_yr=100.0, padding_factor=0.0)
+        == unpadded
+    )
+
+
+@pytest.mark.physics_invariant
+def test_padded_k_range_for_evection_widens_with_faster_expected_growth(_fast_k_range_table):
+    """A nonzero de/dt over a real look-ahead window must widen the window
+    relative to the unpadded (current-e) one -- the entire point of the
+    padding: cover where e is headed over the upcoming step, not just
+    where it is now.
+    """
+    e_now = 0.2
+    unpadded_kmin, unpadded_kmax = kmin_kmax_for_e(e_now)
+
+    # de/dt=0.01/yr over a 20 yr look-ahead pads e by 2*0.01*20=0.4,
+    # landing near e=0.6 -- comfortably into a wider table bucket.
+    kmin_pad, kmax_pad = padded_k_range_for_evection(
+        e_now, de_dt_yr=0.01, dt_next_yr=20.0, padding_factor=2.0
+    )
+    assert kmax_pad >= unpadded_kmax
+    assert kmin_pad <= unpadded_kmin
+    # Discrimination: the padded window must be a genuinely DIFFERENT
+    # (strictly wider) bucket, not merely the same one by coincidence --
+    # otherwise this test would pass even if the padding were a no-op.
+    assert (kmin_pad, kmax_pad) != (unpadded_kmin, unpadded_kmax)
+
+
+@pytest.mark.physics_invariant
+def test_padded_k_range_for_evection_ignores_the_sign_of_de_dt(_fast_k_range_table):
+    """A DECREASING eccentricity (post-peak decay, de_dt_yr < 0) must pad
+    outward exactly as a growing one would: the failure mode this padding
+    guards against is only ever "needed modes excluded", so erring wide is
+    the deliberately safe direction regardless of which way e is moving.
+    """
+    e_now = 0.2
+    growing = padded_k_range_for_evection(
+        e_now, de_dt_yr=0.01, dt_next_yr=20.0, padding_factor=2.0
+    )
+    decaying = padded_k_range_for_evection(
+        e_now, de_dt_yr=-0.01, dt_next_yr=20.0, padding_factor=2.0
+    )
+    assert growing == decaying
+    # Discrimination: this is not simply because both are no-ops -- the
+    # padded window is still strictly wider than the unpadded one.
+    assert growing != kmin_kmax_for_e(e_now)
+
+
+@pytest.mark.physics_invariant
+def test_padded_k_range_for_evection_clips_to_e_cap(_fast_k_range_table):
+    """An extreme rate/look-ahead combination must clip the padded
+    eccentricity to the explicit ``e_cap`` argument rather than
+    extrapolating past it. ``e_cap=0.5`` is deliberately set BELOW the
+    fixture table's own top grid point (0.8), so a pass here cannot be
+    explained by ``kmin_kmax_for_e``'s own internal saturation at the
+    table's edge -- it must come from this function's own clip.
+    """
+    e_now = 0.2
+    huge_pad = padded_k_range_for_evection(
+        e_now, de_dt_yr=10.0, dt_next_yr=1000.0, padding_factor=1.0, e_cap=0.5
+    )
+    assert huge_pad == kmin_kmax_for_e(0.5)
+    # Discrimination: if the clip were silently absorbed by the table's
+    # own top-of-domain saturation instead of this function's e_cap, the
+    # result would equal kmin_kmax_for_e(0.8), not kmin_kmax_for_e(0.5).
+    assert huge_pad != kmin_kmax_for_e(0.8)
