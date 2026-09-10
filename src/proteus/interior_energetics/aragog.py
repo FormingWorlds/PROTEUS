@@ -1960,13 +1960,17 @@ class AragogRunner:
         return 'CVODE' if available else 'Radau'
 
     def _solve_with_retry(self, hf_row, interior_o) -> SolverOutput:
-        """Run aragog_solver.solve() with a dt-halving retry ladder.
+        """Run aragog_solver.solve() with a failure-mode-branched retry ladder.
 
-        On CVODE failure (status != 0), restore the entropy IC and
-        dSdr_cmb_init from before the attempt, halve the integration
-        interval, and retry. Up to ``max_attempts`` attempts; on final
-        failure, returns the SolverOutput from the last attempt
-        (caller propagates status to the helpfile via dt_actual).
+        On CVODE failure the recovery lever depends on the failure mode.
+        A CV_TOO_MUCH_WORK stall (cvode_flag == -1) is a stiffness /
+        step-budget problem, so recovery first raises the CVODE step
+        budget (max_steps), then relaxes rtol (bounded), and only then
+        halves the integration interval, over up to eight attempts. Every
+        other failure keeps the dt-halving plus atol-scaling ladder over
+        six attempts. Each retry restores the entropy IC and dSdr_cmb_init
+        from before the attempt. On final failure this raises RuntimeError
+        so the caller can apply its skip-step fallback.
 
         Parameters
         ----------
@@ -1983,6 +1987,10 @@ class AragogRunner:
         """
         solver = self.aragog_solver
         max_attempts = 6
+        # A CV_TOO_MUCH_WORK stall front-loads three non-dt attempts (raise
+        # max_steps, then relax rtol) before dt-halving starts, so its ladder
+        # runs longer than the other-mode ladder.
+        max_attempts_stiff = 8
         atol_sf_max = 5.0  # cap on atol scaling; tested 125x corrupted T_core
         # Scale the T_core-jump sanity threshold with planet mass, with a floor.
         # The early-evolution transient in T_core grows with planet mass because
@@ -2003,6 +2011,11 @@ class AragogRunner:
         sanity_dT_core = max(
             3000.0, 1500.0 * mass_tot
         )  # max plausible T_core change per retry [K]
+        # Coarse catastrophe-only conservation tripwire: reject a status=0
+        # solve whose residual |E_res| exceeds this fraction of the enthalpy
+        # the step moved. K=1e-9 sits about 7 orders above the ~2e-18 healthy
+        # floor, so it never rejects a healthy solve. Not a calibrated value.
+        E_res_tripwire_K = 1.0e-9
 
         # Capture IC for restoration on retry, and pre-call T_core for
         # the sanity check on retry success.
@@ -2033,15 +2046,36 @@ class AragogRunner:
         # Pre-rename helpfiles store this column as T_core; fall back so
         # resumed runs keep the jump guard on their first step.
         T_core_pre = float(hf_row.get('T_cmb', hf_row.get('T_core', 0.0)))
+        # Pre-solve frozen-mass mantle enthalpy, carried in the current row
+        # from the previous accepted step (mirrors T_core_pre). Denominator
+        # for the conservation tripwire; None or 0.0 disables it.
+        E_cons_pre = hf_row.get('E_state_cons_J', None)
 
         # Reset atol scale to 1.0 at the start of each coupling step
         # (cleared regardless of retry outcome at end of method)
         solver._atol_sf = 1.0
 
+        # Base CVODE controls captured before the first attempt and restored
+        # in the finally block. rtol is re-read inside solve() every call, so
+        # a per-attempt override on parameters.solver.rtol takes effect. The
+        # step budget is cached at solver construction and reset() does not
+        # re-read it, so the effective value is set on solver._max_steps
+        # directly. Caps bound how far the stiffness branch relaxes each.
+        base_rtol = float(solver.parameters.solver.rtol)
+        base_max_steps = int(getattr(solver, '_max_steps', solver.parameters.solver.max_steps))
+        # 10x rtol shifts Phi_global by ~3e-8 and T_core by 0 K on a recovered
+        # mush step and keeps |E_res/dE_cons| at ~2e-18, so the cap is tied to a
+        # measured accuracy impact, not a guess.
+        rtol_cap = 10.0 * base_rtol
+        max_steps_cap = 8 * base_max_steps
+
         out = None
         _diag_on = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
         try:
-            for attempt in range(1, max_attempts + 1):
+            # Range over the widest ladder. max_attempts holds the active
+            # budget (6, widened to max_attempts_stiff on a stiff failure)
+            # and drives the exhaustion check below.
+            for attempt in range(1, max_attempts_stiff + 1):
                 _t0 = time.perf_counter()
                 solver.solve()
                 _solve_wall = time.perf_counter() - _t0
@@ -2059,29 +2093,46 @@ class AragogRunner:
 
                 # Status check: did the solver accept the step?
                 if out.status == 0:
-                    # Sanity check: reject suspiciously large T_core jumps
-                    # that indicate the solver "succeeded" with garbage.
-                    # Applies on ALL attempts (not just retries):
-                    #   - chili_atolrelax showed atol_sf=125x corruption on
-                    #     a retry attempt
-                    #   - chili_n_maxsteps500k showed corruption on attempt 1
-                    #     when more step budget allowed CVODE to traverse a
-                    #     phase boundary in one shot
-                    # Either way, we want to reject the result and retry
-                    # with a smaller dt.
-                    T_core_post = float(out.T_core)
-                    # T_core_pre is 0 only on the very first solve, before any
-                    # converged core temperature exists to compare against, so
-                    # the jump guard is necessarily inactive on that one step.
-                    dT = abs(T_core_post - T_core_pre) if T_core_pre > 0 else 0.0
-                    if dT > sanity_dT_core:
+                    # Two orthogonal post-solve sanity guards. Both must pass
+                    # to accept the step; either trip falls through to the
+                    # retry ladder. sanity_reject_reason names the guard that
+                    # tripped for the exhaustion message.
+                    sanity_reject_reason = None
+
+                    # Guard 1: reject a status=0 solve whose CMB temperature
+                    # moved implausibly far. tcore_change_max is the intra-solve
+                    # maximum change, >= the endpoint change by construction;
+                    # fall back to the endpoint change on an older aragog.
+                    # Inactive whenever T_core_pre <= 0, which includes any row
+                    # missing both T_cmb and T_core, not only the first solve.
+                    tcore_change = getattr(out, 'tcore_change_max', None)
+                    if tcore_change is None:
+                        tcore_change = abs(float(out.T_core) - T_core_pre)
+                    tcore_change = float(tcore_change)
+                    dT = tcore_change if T_core_pre > 0 else 0.0
+                    # A relaxed rtol can return a non-finite T_core change, so
+                    # a non-finite dT fails the guard instead of passing.
+                    if not np.isfinite(dT) or dT > sanity_dT_core:
+                        sanity_reject_reason = (
+                            f'T_core changed by up to {dT:.1f} K '
+                            f'(>{sanity_dT_core:.0f} K sanity threshold)'
+                        )
+
+                    # Guard 2: coarse conservation tripwire on |E_res/dE_cons|.
+                    if sanity_reject_reason is None and self._conservation_tripwire_trips(
+                        out, E_cons_pre, E_res_tripwire_K
+                    ):
+                        sanity_reject_reason = (
+                            'the conservation residual exceeded the '
+                            f'{E_res_tripwire_K:.0e} tripwire'
+                        )
+
+                    if sanity_reject_reason is not None:
                         log.warning(
-                            'Aragog attempt %d returned status=0 but T_core '
-                            'jumped %.1f K (>%.0f K threshold). Treating as '
-                            'failure and continuing retry ladder.',
+                            'Aragog attempt %d returned status=0 but %s. '
+                            'Treating as failure and continuing retry ladder.',
                             attempt,
-                            dT,
-                            sanity_dT_core,
+                            sanity_reject_reason,
                         )
                         # Fall through to the retry/exhaustion branch below
                     else:
@@ -2097,18 +2148,30 @@ class AragogRunner:
                             )
                         return out
 
+                # Determine the failure mode from the raw CVODE flag. status
+                # stays scipy-compatible -1 for every CVODE failure, so it
+                # cannot separate a step-budget exhaustion (recover by more
+                # steps / looser rtol) from other failures (recover by a
+                # smaller dt). cvode_flag == -1 is the authoritative predicate;
+                # the name is the readable label. A status=0 result maps from
+                # cvode_flag in {0, 2} (ROOT_RETURN), so a guard trip routes to
+                # the dt-halving branch.
+                cvode_flag = int(getattr(out, 'cvode_flag', 0) or 0)
+                flag_name = str(getattr(out, 'cvode_flag_name', '') or '')
+                is_too_much_work = cvode_flag == -1 or flag_name == 'TOO_MUCH_WORK'
+                if is_too_much_work:
+                    max_attempts = max_attempts_stiff
+
                 if attempt >= max_attempts:
                     # status==0 here means the solver accepted every step but
-                    # each result was rejected for an over-threshold T_core
-                    # jump, so report that reason rather than the misleading
-                    # status=0.
+                    # a post-solve sanity guard rejected each result, so report
+                    # the guard that tripped rather than the misleading status=0.
                     if out.status == 0:
-                        reason = (
-                            'status=0 but the T_core jump exceeded the '
-                            f'{sanity_dT_core:.0f} K sanity threshold on every attempt'
-                        )
+                        reason = f'status=0 but {sanity_reject_reason} on every attempt'
                     else:
                         reason = f'{self._active_solver_name()} status={out.status}'
+                        if flag_name:
+                            reason += f' (cvode_flag={cvode_flag}, {flag_name})'
                     log.error(
                         'Aragog solver failed after %d attempts (%s). '
                         'Raising RuntimeError so wrapper can apply skip-step fallback.',
@@ -2120,24 +2183,66 @@ class AragogRunner:
                         f'after {attempt} attempts at t={hf_row.get("Time", 0.0):.3e} yr'
                     )
 
-                # Failure: halve dt AND relax atol (capped), restore state, retry.
-                # atol_sf increases linearly to atol_sf_max over attempts 2-3,
-                # then stays at the cap for further attempts. dt continues
-                # halving so additional attempts gain resolution, not looser
-                # tolerance.
-                dt_new = dt_requested * (0.5**attempt)
+                # atol_sf ramps to the cap over the early attempts and stays
+                # there; it runs in both branches. The failure mode picks the
+                # remaining levers. next_attempt is the attempt these settings
+                # configure.
                 atol_sf_new = min(atol_sf_max, 1.0 + (atol_sf_max - 1.0) * (attempt / 2.0))
-                log.warning(
-                    'Aragog solver failed at t=%.3e yr (status=%d, attempt %d/%d). '
-                    'Retrying with dt=%.3e yr, atol_sf=%.1fx (was dt=%.3e yr).',
-                    hf_row.get('Time', 0.0),
-                    out.status,
-                    attempt,
-                    max_attempts,
-                    dt_new,
-                    atol_sf_new,
-                    dt_requested,
-                )
+                next_attempt = attempt + 1
+                # dt of the attempt that just failed. A retry must never run
+                # coarser than it, so clamp the scheduled dt below.
+                dt_current = float(solver.parameters.solver.end_time) - t_start
+                if is_too_much_work:
+                    # Stiffness recovery. Raise the step budget first (wall-time
+                    # cost only, no accuracy loss), relax rtol second (bounded),
+                    # halve dt last. Attempts 2-4 hold dt and ramp max_steps and
+                    # rtol to their caps; attempts 5-8 hold the caps and halve dt.
+                    if next_attempt <= 4:
+                        ms_factor = 2 ** (next_attempt - 1)
+                        rtol_factor = {2: 2.0, 3: 5.0, 4: 10.0}[next_attempt]
+                        max_steps_new = min(max_steps_cap, base_max_steps * ms_factor)
+                        rtol_new = min(rtol_cap, base_rtol * rtol_factor)
+                        dt_new = dt_requested
+                    else:
+                        max_steps_new = max_steps_cap
+                        rtol_new = rtol_cap
+                        dt_new = dt_requested * (0.5 ** (next_attempt - 4))
+                    dt_new = min(dt_new, dt_current)
+                    if hasattr(solver, '_max_steps'):
+                        solver._max_steps = int(max_steps_new)
+                    solver.parameters.solver.rtol = rtol_new
+                    log.warning(
+                        'Aragog CV_TOO_MUCH_WORK at t=%.3e yr (attempt %d/%d). '
+                        'Retrying with max_steps=%d, rtol=%.2e, dt=%.3e yr, '
+                        'atol_sf=%.1fx (was dt=%.3e yr).',
+                        hf_row.get('Time', 0.0),
+                        attempt,
+                        max_attempts,
+                        int(max_steps_new),
+                        rtol_new,
+                        dt_new,
+                        atol_sf_new,
+                        dt_requested,
+                    )
+                else:
+                    # Other failure modes: halve dt so additional attempts gain
+                    # resolution, not looser tolerance. Restore base rtol and
+                    # step budget in case a prior attempt was the stiff branch.
+                    dt_new = min(dt_requested * (0.5**attempt), dt_current)
+                    solver.parameters.solver.rtol = base_rtol
+                    if hasattr(solver, '_max_steps'):
+                        solver._max_steps = base_max_steps
+                    log.warning(
+                        'Aragog solver failed at t=%.3e yr (status=%d, attempt %d/%d). '
+                        'Retrying with dt=%.3e yr, atol_sf=%.1fx (was dt=%.3e yr).',
+                        hf_row.get('Time', 0.0),
+                        out.status,
+                        attempt,
+                        max_attempts,
+                        dt_new,
+                        atol_sf_new,
+                        dt_requested,
+                    )
                 solver.parameters.solver.start_time = t_start
                 solver.parameters.solver.end_time = t_start + dt_new
                 solver._atol_sf = atol_sf_new
@@ -2154,6 +2259,12 @@ class AragogRunner:
         finally:
             # Always reset atol_sf so subsequent coupling steps start at 1.0x
             solver._atol_sf = 1.0
+            # Restore the base CVODE controls the stiffness branch may have
+            # raised, so the next coupling step starts from the configured
+            # rtol and step budget.
+            solver.parameters.solver.rtol = base_rtol
+            if hasattr(solver, '_max_steps'):
+                solver._max_steps = base_max_steps
             # Release the dSdr_cmb override so the NEXT coupling step's
             # set_initial_entropy can hot-start from its own _solution
             # (which, after a successful retry, holds the accepted
@@ -2166,6 +2277,55 @@ class AragogRunner:
                 solver._dSdr_cmb_init = None
 
         return out
+
+    @staticmethod
+    def _conservation_tripwire_trips(out: SolverOutput, E_cons_pre, K: float) -> bool:
+        """Test a status=0 solve against a coarse energy-conservation tripwire.
+
+        The tripwire is the dimensionless ratio ``|E_res / dE_cons|``, where
+        ``E_res`` is the solver self-consistency residual
+        (``step_solver_residual_J``) and ``dE_cons`` is the frozen-mass mantle
+        enthalpy the step moved (end ``E_state_cons`` minus the pre-solve value
+        carried in the helpfile row). A healthy solve sits at ~2e-18 for a tight
+        or a 10x-relaxed rtol alike, so K=1e-9 sits about 7 orders above that
+        floor. This catches only a gross conservation blow-up; it is not a
+        calibrated threshold. A calibration against a real-stall residual
+        distribution is a follow-up.
+
+        The test never rejects when it cannot form a valid ratio: a missing
+        residual, a missing or zero baseline enthalpy, or a zero or non-finite
+        step move all return False (skip). A non-finite ratio rejects, matching
+        the T_core guard: reject when ``not (ratio <= K)``.
+
+        Parameters
+        ----------
+        out : SolverOutput
+            The accepted (status=0) solver output under test.
+        E_cons_pre : float or None
+            Pre-solve frozen-mass mantle enthalpy [J]. None or 0.0 disables
+            the tripwire.
+        K : float
+            Dimensionless tripwire ceiling on ``|E_res / dE_cons|``.
+
+        Returns
+        -------
+        bool
+            True to reject the solve, False to skip the tripwire or pass it.
+        """
+        e_res = getattr(out, 'step_solver_residual_J', None)
+        e_cons_end = getattr(out, 'E_state_cons', None)
+        if e_res is None or e_cons_end is None or E_cons_pre is None:
+            return False
+        try:
+            e_res = float(e_res)
+            base = float(E_cons_pre)
+            dE_cons = float(e_cons_end) - base
+        except (TypeError, ValueError):
+            return False
+        if base == 0.0 or dE_cons == 0.0 or not np.isfinite(dE_cons):
+            return False
+        ratio = abs(e_res) / abs(dE_cons)
+        return not (ratio <= K)
 
     @staticmethod
     def _build_helpfile_output(
