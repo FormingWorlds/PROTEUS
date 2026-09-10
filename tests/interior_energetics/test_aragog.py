@@ -1372,6 +1372,12 @@ def test_solve_with_retry_restores_base_tolerance_on_reverse_switch(monkeypatch)
         )
         assert calls[k]['max_steps'] == _RETRY_BASE_MAX_STEPS, f'attempt {k + 1} max_steps'
 
+    # The non-stiff branch indexes atol/dt on other_seen, not the global
+    # attempt, so the first non-stiff retry after three stalls enters at
+    # other_seen=1 (dt halved once, atol 3x). Indexing on attempt fails here.
+    np.testing.assert_allclose(calls[4]['dt'], 50.0, err_msg='reverse-switch dt')
+    np.testing.assert_allclose(calls[4]['atol_sf'], 3.0, err_msg='reverse-switch atol_sf')
+
 
 @pytest.mark.unit
 def test_solve_with_retry_late_stiff_switch_enters_ramp_at_first_rung(monkeypatch):
