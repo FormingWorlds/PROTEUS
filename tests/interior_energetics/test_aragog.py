@@ -1074,6 +1074,9 @@ def test_solve_with_retry_stiff_mode_ramps_maxsteps_and_rtol_then_halves_dt(monk
         np.testing.assert_allclose(calls[k]['dt'], dt, err_msg=f'attempt {k + 1} dt')
         assert calls[k]['max_steps'] == ms, f'attempt {k + 1} max_steps'
         np.testing.assert_allclose(calls[k]['rtol'], rtol, err_msg=f'attempt {k + 1} rtol')
+        # The stiff branch relaxes rtol alone; atol stays at base across every
+        # attempt. A mutant that ramps atol_sf in the stiff branch fails here.
+        np.testing.assert_allclose(calls[k]['atol_sf'], 1.0, err_msg=f'attempt {k + 1} atol_sf')
 
     # finally restores the base controls on the raising path.
     np.testing.assert_allclose(solver.parameters.solver.rtol, _RETRY_BASE_RTOL)
@@ -1251,14 +1254,14 @@ def test_solve_with_retry_rejects_non_finite_tcore_change(monkeypatch):
     intra = [_retry_out(0, cvode_flag=0, T_core=2000.0, tcore_change_max=nan)] * 8
     solver, _ = _retry_solver(intra)
     runner, interior_o, hf_row = _retry_runner(solver, monkeypatch, T_core_pre=2000.0)
-    with pytest.raises(RuntimeError, match='sanity threshold'):
+    with pytest.raises(RuntimeError, match='non-finite'):
         runner._solve_with_retry(hf_row, interior_o)
     assert solver.solve.call_count == 6
 
     endpoint = [_retry_out(0, cvode_flag=0, T_core=nan, has_tcore_change=False)] * 8
     solver2, _ = _retry_solver(endpoint)
     runner2, interior2, hf_row2 = _retry_runner(solver2, monkeypatch, T_core_pre=2000.0)
-    with pytest.raises(RuntimeError, match='sanity threshold'):
+    with pytest.raises(RuntimeError, match='non-finite'):
         runner2._solve_with_retry(hf_row2, interior2)
     assert solver2.solve.call_count == 6
 
@@ -1368,3 +1371,51 @@ def test_solve_with_retry_restores_base_tolerance_on_reverse_switch(monkeypatch)
             calls[k]['rtol'], _RETRY_BASE_RTOL, err_msg=f'attempt {k + 1} rtol'
         )
         assert calls[k]['max_steps'] == _RETRY_BASE_MAX_STEPS, f'attempt {k + 1} max_steps'
+
+
+@pytest.mark.unit
+def test_solve_with_retry_late_stiff_switch_enters_ramp_at_first_rung(monkeypatch):
+    """A stall that appears after non-stiff failures enters the ramp at rung 1.
+
+    The stiffness ramp is indexed by stiff_seen, the running count of
+    CV_TOO_MUCH_WORK attempts, not the global attempt number. So the first stall
+    after several non-stiff failures must start the ramp at its first rung
+    (max_steps 2x, rtol 2x), not jump deep into the ramp or to the cap. This
+    scripts three non-stiff failures then stalls: the first stiff retry is
+    attempt five, and it must run at max_steps=2000, rtol=2e-6. A mutant that
+    indexes the ramp on the global attempt puts attempt four's rung at four,
+    past the ramp, so the first stiff retry lands on the cap and fails here.
+    """
+    scripted = [_retry_out(-1, cvode_flag=0, cvode_flag_name='')] * 3 + [
+        _retry_out(-1, cvode_flag=-1, cvode_flag_name='TOO_MUCH_WORK')
+    ] * 5
+    solver, calls = _retry_solver(scripted)
+    runner, interior_o, hf_row = _retry_runner(solver, monkeypatch)
+    with pytest.raises(RuntimeError, match='TOO_MUCH_WORK'):
+        runner._solve_with_retry(hf_row, interior_o)
+
+    assert solver.solve.call_count == 8
+    # attempt 5 (index 4) is the first stiff retry: rung 1, not the cap.
+    assert calls[4]['max_steps'] == 2000, f'first stiff retry max_steps: {calls[4]}'
+    np.testing.assert_allclose(calls[4]['rtol'], 2.0e-6, err_msg='first stiff retry rtol')
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_solve_with_retry_first_solve_rejects_non_finite_tcore(monkeypatch):
+    """A non-finite T_core on the first solve is rejected, not accepted.
+
+    On the first solve no pre-solve reference is available (T_core_pre <= 0), so
+    the jump-magnitude check is inactive. The finiteness check must still run: a
+    NaN core temperature must be rejected rather than accepted because no
+    reference exists. This is the relaxed-rtol recovery path where a corrupted
+    solve is most likely. A mutant that skips the finiteness check when
+    T_core_pre <= 0 accepts the NaN solve on attempt one and fails here.
+    """
+    nan = float('nan')
+    scripted = [_retry_out(0, cvode_flag=0, T_core=nan, has_tcore_change=False)] * 8
+    solver, _ = _retry_solver(scripted)
+    runner, interior_o, hf_row = _retry_runner(solver, monkeypatch, T_core_pre=0.0)
+    with pytest.raises(RuntimeError, match='non-finite'):
+        runner._solve_with_retry(hf_row, interior_o)
+    assert solver.solve.call_count == 6

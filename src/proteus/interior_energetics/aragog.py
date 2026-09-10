@@ -1989,9 +1989,22 @@ class AragogRunner:
         -----
         The attempt budget is a monotonic ratchet: the first CV_TOO_MUCH_WORK
         failure widens max_attempts from six to eight for the rest of the call
-        and it never narrows. The stiffness ramp is indexed by stiff_seen, the
+        and it never narrows. A later non-stiff failure in the same call is
+        still part of the stiff recovery, so it keeps the wider budget rather
+        than reverting to six. The stiffness ramp is indexed by stiff_seen, the
         running count of CV_TOO_MUCH_WORK attempts, so a late or intermittent
-        stiff switch still climbs the ramp from its first rung.
+        stiff switch still climbs the ramp from its first rung; the non-stiff
+        ramp is indexed by the symmetric other_seen count.
+
+        Per attempt the guard checks only that T_core is finite and that its
+        jump is plausible. Energy conservation is recorded in the coupler-level
+        ``E_residual_cons_frac`` diagnostic column, which is not asserted per
+        run; the rtol relaxation was spot-checked once to move it from 1.46e-4
+        to 1.53e-4 at 10x rtol (about 65x below its ~1% scale), not verified
+        automatically every run. A field-level bounds check on the mush entropy
+        and melt fraction (melt fraction in [0, 1], T > 0) is a possible
+        follow-up; the relaxation is measured-safe on this recovery path and the
+        guard only fires on a stall.
         """
         solver = self.aragog_solver
         max_attempts = 6
@@ -2062,23 +2075,28 @@ class AragogRunner:
         # directly.
         base_rtol = float(solver.parameters.solver.rtol)
         base_max_steps = int(getattr(solver, '_max_steps', solver.parameters.solver.max_steps))
-        # Stiffness ramp schedule, indexed by stiff_seen (the running count of
-        # CV_TOO_MUCH_WORK attempts). Rungs 1-3 raise the step budget and relax
-        # rtol; rungs 4+ hold the ceiling and halve dt. The caps derive from the
-        # top rung, so the dt-halving rungs hold exactly there.
-        stiff_ms_factor = {1: 2, 2: 4, 3: 8}
-        stiff_rtol_factor = {1: 2.0, 2: 5.0, 3: 10.0}
-        max_steps_cap = base_max_steps * max(stiff_ms_factor.values())
-        # 10x rtol moves the coupler conservation metric E_residual_cons_frac
-        # from 1.46e-4 to 1.53e-4 on a recovered mush step (about 65x below its
-        # ~1% structural floor) and shifts Phi_global by ~3e-8 with T_core
-        # unchanged, so the top rung is a measured accuracy bound, not a guess.
-        rtol_cap = base_rtol * max(stiff_rtol_factor.values())
+        # Stiffness ramp rungs as (max_steps factor, rtol factor), ordered from
+        # rung 1. Rungs on the ramp raise the step budget and relax rtol; rungs
+        # past the last one hold the ceiling and halve dt. The caps and the rung
+        # count both derive from this tuple, so an added rung is picked up in
+        # every place and the schedule stays a single source of truth.
+        stiff_ramp = ((2, 2.0), (4, 5.0), (8, 10.0))
+        n_ramp_rungs = len(stiff_ramp)
+        max_steps_cap = base_max_steps * stiff_ramp[-1][0]
+        # A one-off spot-check: 10x rtol moves the coupler conservation metric
+        # E_residual_cons_frac from 1.46e-4 to 1.53e-4 on a recovered mush step
+        # (about 65x below its ~1% structural floor) and shifts Phi_global by
+        # ~3e-8 with T_core unchanged. It is not asserted per run; a
+        # docs/Validation/interior_energetics/aragog.md harness is a follow-up.
+        rtol_cap = base_rtol * stiff_ramp[-1][1]
 
         out = None
-        # Running count of CV_TOO_MUCH_WORK attempts, indexes the stiffness
-        # ramp so it climbs from rung 1 whenever stiffness first appears.
+        # Running counts of CV_TOO_MUCH_WORK and other-mode attempts. stiff_seen
+        # indexes the stiffness ramp so it climbs from rung 1 whenever stiffness
+        # first appears; other_seen indexes the non-stiff atol/dt ramp so a
+        # switch back to non-stiff does not jump straight to the atol cap.
         stiff_seen = 0
+        other_seen = 0
         _diag_on = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
         try:
             # Range over the widest ladder. max_attempts holds the active
@@ -2108,24 +2126,32 @@ class AragogRunner:
                     # exhaustion message.
                     sanity_reject_reason = None
 
-                    # Reject a status=0 solve whose CMB temperature moved
-                    # implausibly far. tcore_change_max is the intra-solve
-                    # maximum change, >= the endpoint change by construction;
-                    # fall back to the endpoint change on an older aragog.
-                    # Inactive whenever T_core_pre <= 0, which includes any row
-                    # missing both T_cmb and T_core, not only the first solve.
-                    tcore_change = getattr(out, 'tcore_change_max', None)
-                    if tcore_change is None:
-                        tcore_change = abs(float(out.T_core) - T_core_pre)
-                    tcore_change = float(tcore_change)
-                    dT = tcore_change if T_core_pre > 0 else 0.0
-                    # A relaxed rtol can return a non-finite T_core change, so
-                    # a non-finite dT fails the guard instead of passing.
-                    if not np.isfinite(dT) or dT > sanity_dT_core:
-                        sanity_reject_reason = (
-                            f'T_core changed by up to {dT:.1f} K '
-                            f'(>{sanity_dT_core:.0f} K sanity threshold)'
-                        )
+                    # Reject a status=0 solve with a non-finite or implausibly
+                    # large CMB temperature. The finiteness check always runs,
+                    # so a corrupted relaxed-rtol solve never passes even on the
+                    # first solve. The jump-magnitude check needs a pre-solve
+                    # reference, so it is inactive when T_core_pre <= 0 (a row
+                    # missing both T_cmb and T_core, which includes solve one).
+                    tcore_endpoint = float(out.T_core)
+                    # tcore_change_max is the intra-solve maximum change,
+                    # >= the endpoint change by construction; on an older
+                    # aragog it is absent and the endpoint change is used.
+                    tcore_change_max = getattr(out, 'tcore_change_max', None)
+                    finite_ok = np.isfinite(tcore_endpoint)
+                    if tcore_change_max is not None:
+                        finite_ok = finite_ok and np.isfinite(float(tcore_change_max))
+                    if not finite_ok:
+                        sanity_reject_reason = 'T_core is non-finite'
+                    elif T_core_pre > 0:
+                        if tcore_change_max is not None:
+                            dT = float(tcore_change_max)
+                        else:
+                            dT = abs(tcore_endpoint - T_core_pre)
+                        if dT > sanity_dT_core:
+                            sanity_reject_reason = (
+                                f'T_core changed by up to {dT:.1f} K '
+                                f'(>{sanity_dT_core:.0f} K sanity threshold)'
+                            )
 
                     if sanity_reject_reason is not None:
                         log.warning(
@@ -2162,6 +2188,8 @@ class AragogRunner:
                 if is_too_much_work:
                     max_attempts = max_attempts_stiff
                     stiff_seen += 1
+                else:
+                    other_seen += 1
 
                 if attempt >= max_attempts:
                     # status==0 here means the solver accepted every step but
@@ -2191,21 +2219,25 @@ class AragogRunner:
                     # Stiffness recovery, indexed by stiff_seen so it climbs
                     # from rung 1 whenever stiffness first appears. Raise the
                     # step budget first (wall-time cost only, no accuracy loss),
-                    # relax rtol second (bounded), halve dt last. Rungs 1-3 hold
-                    # dt and ramp max_steps and rtol to the ceiling; rungs 4+
-                    # hold the ceiling and halve dt. atol_sf stays at 1.0 so the
-                    # ramp relaxes rtol alone, the measured lever.
+                    # relax rtol second (bounded), halve dt last. Ramp rungs hold
+                    # dt and raise max_steps and rtol to the ceiling; rungs past
+                    # the ramp hold the ceiling and halve the just-failed dt.
+                    # atol_sf stays at 1.0 so the ramp relaxes rtol alone.
                     rung = stiff_seen
                     atol_sf_new = 1.0
-                    if rung <= 3:
-                        max_steps_new = base_max_steps * stiff_ms_factor[rung]
-                        rtol_new = base_rtol * stiff_rtol_factor[rung]
-                        dt_new = dt_requested
+                    if rung <= n_ramp_rungs:
+                        ms_factor, rtol_factor = stiff_ramp[rung - 1]
+                        max_steps_new = base_max_steps * ms_factor
+                        rtol_new = base_rtol * rtol_factor
+                        # Hold dt, but never run coarser than the failed attempt.
+                        dt_new = min(dt_requested, dt_current)
                     else:
                         max_steps_new = max_steps_cap
                         rtol_new = rtol_cap
-                        dt_new = dt_requested * (0.5 ** (rung - 3))
-                    dt_new = min(dt_new, dt_current)
+                        # Halve the just-failed dt so a stiff dt attempt is
+                        # always strictly smaller than the attempt it retries,
+                        # even after prior non-stiff dt shrinking.
+                        dt_new = dt_current * 0.5
                     if hasattr(solver, '_max_steps'):
                         solver._max_steps = int(max_steps_new)
                     solver.parameters.solver.rtol = rtol_new
@@ -2224,11 +2256,14 @@ class AragogRunner:
                     )
                 else:
                     # Other failure modes: halve dt so additional attempts gain
-                    # resolution, not looser tolerance. Ramp atol_sf here only.
-                    # Restore base rtol and step budget in case a prior attempt
-                    # was the stiff branch.
-                    atol_sf_new = min(atol_sf_max, 1.0 + (atol_sf_max - 1.0) * (attempt / 2.0))
-                    dt_new = min(dt_requested * (0.5**attempt), dt_current)
+                    # resolution, not looser tolerance. Ramp atol_sf here only,
+                    # indexed by other_seen so a switch back from the stiff
+                    # branch does not jump straight to the atol cap. Restore base
+                    # rtol and step budget in case a prior attempt was stiff.
+                    atol_sf_new = min(
+                        atol_sf_max, 1.0 + (atol_sf_max - 1.0) * (other_seen / 2.0)
+                    )
+                    dt_new = min(dt_requested * (0.5**other_seen), dt_current)
                     solver.parameters.solver.rtol = base_rtol
                     if hasattr(solver, '_max_steps'):
                         solver._max_steps = base_max_steps
@@ -2409,7 +2444,7 @@ class AragogRunner:
             # into the conservation residual (which uses the live-density
             # variants above); ``E_state_cons_J`` is likewise an enthalpy
             # diagnostic, not the conservation-grade quantity. Machine-precision
-            # conservation is carried by the solver-residual column below.
+            # conservation is tracked by the solver-residual column below.
             'step_dE_Q_radio_cons_J': out.step_dE_Q_radio_cons_J,
             'step_dE_Q_tidal_cons_J': out.step_dE_Q_tidal_cons_J,
             # Per-call entropy-equation self-consistency residual [J].
@@ -2417,7 +2452,8 @@ class AragogRunner:
             # The discrete flux divergence telescopes to the boundary
             # fluxes, so it is machine-zero by construction; a non-zero
             # value flags a divergence-assembly bug, not time-integration
-            # quality (that is carried by ``E_residual_cons_frac``).
+            # quality (that is recorded in ``E_residual_cons_frac``, a
+            # write-only diagnostic column that is not asserted per run).
             'step_solver_residual_J': out.step_solver_residual_J,
             # Per-call adiabatic compression work [J] from the structure
             # re-solve that preceded this step. Informational only: the
