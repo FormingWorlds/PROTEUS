@@ -752,3 +752,55 @@ def test_mol_columns_written_across_solve_noble_and_excluded_species():
     assert hf_row['NH3_mol_atm'] == pytest.approx(nh3_kg_atm / nh3_mmw, rel=1e-9)
     assert hf_row['NH3_mol_total'] == pytest.approx(nh3_kg_atm / nh3_mmw, rel=1e-9)
     assert hf_row['NH3_mol_solid'] == 0.0
+
+
+@pytest.mark.physics_invariant
+def test_mol_columns_derived_from_kg_when_solve_omits_mole_count():
+    """An in-solve species with a mass output but no mole count falls back to kg.
+
+    ``PROTEUS/#842`` follow-up: the in-solve branch reads mole counts directly
+    from atmodeller's own ``gas_number`` / ``dissolved_number`` / ``total_number``
+    output. If a future atmodeller version reports ``total_mass`` for a species
+    without also reporting ``total_number``, the mole columns must still be
+    populated, matching the fallback convention already used by the noble-gas
+    and excluded-species branches: divide the kg values just written by the
+    species' own molar mass.
+    """
+    pytest.importorskip('atmodeller')
+    config = _make_user_constant_config(0.0)
+    hf_row = _hf_row_with_HS_budget()
+
+    co2_total_mass, co2_dissolved_mass, co2_gas_mass = 6.0e20, 2.0e20, 4.0e20
+
+    out = MagicMock()
+    out.quick_look.return_value = {
+        'H2O_g': np.array(40.0),
+        'O2_g': np.array(1.0e-6),
+    }
+    out.total_pressure.return_value = np.array(40.0)
+    out.asdict.return_value = {
+        'CO2_g': {
+            'gas_mass': np.array(co2_gas_mass),
+            'dissolved_mass': np.array(co2_dissolved_mass),
+            'total_mass': np.array(co2_total_mass),
+        },
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    co2_mmw = eval_gas_mmw('CO2')
+    assert hf_row['CO2_kg_liquid'] == pytest.approx(co2_dissolved_mass, rel=1e-9)
+    assert hf_row['CO2_kg_atm'] == pytest.approx(co2_gas_mass, rel=1e-9)
+    assert hf_row['CO2_kg_total'] == pytest.approx(co2_total_mass, rel=1e-9)
+    assert hf_row['CO2_mol_liquid'] == pytest.approx(co2_dissolved_mass / co2_mmw, rel=1e-9)
+    assert hf_row['CO2_mol_atm'] == pytest.approx(co2_gas_mass / co2_mmw, rel=1e-9)
+    assert hf_row['CO2_mol_total'] == pytest.approx(co2_total_mass / co2_mmw, rel=1e-9)
+    assert hf_row['CO2_mol_solid'] == 0.0

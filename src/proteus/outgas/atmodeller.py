@@ -723,6 +723,20 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                     if is_noble
                     else total_mol
                 )
+            else:
+                # atmodeller reported a mass but no mole count for this species;
+                # derive moles from the kg values just written above, matching
+                # the sibling branches' fallback convention.
+                species_mmw = eval_gas_mmw(proteus_name)
+                hf_row[f'{proteus_name}_mol_liquid'] = (
+                    hf_row[f'{proteus_name}_kg_liquid'] / species_mmw
+                )
+                hf_row[f'{proteus_name}_mol_atm'] = (
+                    hf_row[f'{proteus_name}_kg_atm'] / species_mmw
+                )
+                hf_row[f'{proteus_name}_mol_total'] = (
+                    hf_row[f'{proteus_name}_kg_total'] / species_mmw
+                )
         elif is_noble:
             # An inactive noble gas is not in the solve; clear its stale
             # atmospheric reservoir so it does not leak into P_surf, the mean
