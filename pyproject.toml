@@ -48,7 +48,7 @@ dependencies = [
     "fwl-mors>=26.01.02",
     "fwl-calliope>=26.06.01",
     "fwl-zephyrus>=26.7.24",
-    "fwl-aragog>=26.09.06",
+    "fwl-aragog>=26.09.09",
     # 26.07.17 reads the liquid EOS table for fully molten entropy
     # lookups, which the super-liquidus interior initial condition
     # requires (Zalmoxis #79), on top of the JAX structure path for
