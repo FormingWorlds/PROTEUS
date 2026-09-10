@@ -47,6 +47,7 @@ from proteus.config._config import (
     planet_mass_valid,
     planet_oxygen_mode_explicit,
     satellite_evolve,
+    sp0d_obliqua_degree_mismatch,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -814,6 +815,88 @@ def test_satellite_evolve_passes_without_satellite():
     # set) would have raised.
     assert instance.orbit.planet_satellite_model is None
     assert instance.orbit.star_planet_model == 'sp0d'
+
+
+# ---------------------------------------------------------------------------
+# sp0d_obliqua_degree_mismatch: sp0d's scalar Imk2 is only ever meaningful
+# for Obliqua's degree-2 output; run_orbit zeroes it for any other degree.
+# ---------------------------------------------------------------------------
+@pytest.mark.unit
+def test_sp0d_obliqua_degree_mismatch_rejects_higher_degree():
+    """sp0d + Obliqua configured for a non-degree-2 spectrum must raise:
+    run_orbit would silently zero hf_row['Imk2'] every iteration, freezing
+    sp0d's eccentricity evolution rather than reflecting the requested
+    degree(s)."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'obliqua',
+            'orbit.star_planet_model': 'sp0d',
+        }
+    )
+    instance.orbit.obliqua = SimpleNamespace(n=[2, 3])
+    with pytest.raises(ValueError, match=r'sp0d') as excinfo:
+        sp0d_obliqua_degree_mismatch(instance, None, None)
+    # Discrimination: the message must name Imk2/degree-2 as the reason, not
+    # just "sp0d is bad", so the user knows what to change (n, or the model).
+    msg = str(excinfo.value).lower()
+    assert 'imk2' in msg
+    assert 'sp1d' in msg  # names the model to switch to
+
+
+@pytest.mark.unit
+def test_sp0d_obliqua_degree_mismatch_warns_but_passes_for_degree_two(caplog):
+    """sp0d + Obliqua configured for exactly n=[2] is accepted (Imk2 is a
+    real, non-zeroed value in this case), but still logs a warning: even at
+    n=[2], sp0d collapses Obliqua's per-mode spectrum to a single mean
+    scalar, an approximation sp1d avoids by consuming the per-mode data
+    directly."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'obliqua',
+            'orbit.star_planet_model': 'sp0d',
+        }
+    )
+    instance.orbit.obliqua = SimpleNamespace(n=[2])
+    with caplog.at_level('WARNING'):
+        result = sp0d_obliqua_degree_mismatch(instance, None, None)
+    assert result is None  # contract: n=[2] does not raise
+    assert any('sp1d' in rec.message.lower() for rec in caplog.records)
+
+
+@pytest.mark.unit
+def test_sp0d_obliqua_degree_mismatch_passes_for_sp1d_regardless_of_degree():
+    """The restriction is sp0d-specific: sp1d consumes Obliqua's per-mode
+    Love-number spectrum directly (not a collapsed scalar Imk2), so a
+    non-degree-2 configuration is fine there. Discriminates that the
+    validator keys on star_planet_model=='sp0d', not merely on
+    module=='obliqua'."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'obliqua',
+            'orbit.star_planet_model': 'sp1d',
+        }
+    )
+    instance.orbit.obliqua = SimpleNamespace(n=[2, 3])
+    result = sp0d_obliqua_degree_mismatch(instance, None, None)
+    assert result is None
+    assert instance.orbit.star_planet_model == 'sp1d'
+
+
+@pytest.mark.unit
+def test_sp0d_obliqua_degree_mismatch_passes_when_module_is_not_obliqua():
+    """sp0d with a non-Obliqua tides module (e.g. lovepy) never reads
+    orbit.obliqua.n at all -- must not raise regardless of its value,
+    confirming the check is gated on module=='obliqua' first."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'lovepy',
+            'orbit.star_planet_model': 'sp0d',
+        }
+    )
+    instance.orbit.obliqua = SimpleNamespace(n=[2, 3])  # would fail if module were obliqua
+    result = sp0d_obliqua_degree_mismatch(instance, None, None)
+    assert result is None
+    assert instance.orbit.module == 'lovepy'
 
 
 # ---------------------------------------------------------------------------

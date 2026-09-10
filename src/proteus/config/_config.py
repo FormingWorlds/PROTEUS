@@ -72,6 +72,27 @@ def obliqua_requires_perturber(instance, attribute, value):
         )
 
 
+def sp0d_obliqua_degree_mismatch(instance, attribute, value):
+    """sp0d's closed-form is by definition the n=2 Love number. Obliqua can compute
+    arbitrary tidal degree(s), block the mismatch.
+    """
+    if instance.orbit.module == 'obliqua' and instance.orbit.star_planet_model == 'sp0d':
+        if instance.orbit.obliqua.n != [2]:
+            raise ValueError(
+                "orbit.star_planet_model = 'sp0d' requires orbit.obliqua.n == [2]: "
+                'set orbit.obliqua.n = [2] to use sp0d with Obliqua, or use'
+                "orbit.star_planet_model = 'sp1d' instead."
+            )
+        log.warning(
+            "orbit.star_planet_model = 'sp0d' with orbit.module = 'obliqua': Imk2 is "
+            "the mean of Obliqua's per-mode Im(k2) spectrum collapsed to a single "
+            'scalar, which discards the eccentricity-dependent mode weighting sp1d '
+            'uses directly. This is an approximation, least accurate at high or '
+            "rapidly-changing eccentricity. Prefer orbit.star_planet_model = 'sp1d'"
+            " when using Obliqua."
+        )
+
+
 CURRENT_CONFIG_VERSION = '3.0'
 
 
@@ -336,6 +357,7 @@ class Config:
             instmethod_evolve,
             satellite_evolve,
             obliqua_requires_perturber,
+            sp0d_obliqua_degree_mismatch,
         ),
     )
     planet: Planet = field(
