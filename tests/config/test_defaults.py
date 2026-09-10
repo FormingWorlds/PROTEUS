@@ -147,7 +147,7 @@ def test_interior_defaults():
 
     Checks default physics settings for the interior layer:
     - radiogenic/tidal heating: Enabled by default (energy sources)
-    - grain size: 0.1 m (standard crystal size)
+    - grain size: 1e-3 m (standard crystal size)
     - Initial flux: 1000 W/m^2 (hot start)
     """
     # Interior requires module argument
@@ -158,7 +158,7 @@ def test_interior_defaults():
     assert i.spider == spider_cfg
     assert i.heat_radiogenic is True  # Heating terms on
     assert i.heat_tidal is False
-    assert i.grain_size == pytest.approx(0.1, rel=1e-12)  # 10 cm crystals
+    assert i.grain_size == pytest.approx(1e-3, rel=1e-12)  # 1 mm crystals
     assert i.flux_guess == -1  # Auto-detect
 
     # Sub-modules defaults
@@ -216,16 +216,16 @@ def test_aragog_defaults():
     a = Aragog()
     assert a.mass_coordinates is True
     assert a.backend == 'jax'
+    assert a.separation_viscosity == 'mixture'
     assert not hasattr(a, 'jax')
     assert not hasattr(a, 'use_jax_jacobian')
     assert not hasattr(a, 'dilatation'), (
         'dilatation slot must be removed; existing TOMLs setting '
         'this field should now fail to load.'
     )
-    # Per-call step caps: schema defaults 0.0 keep existing behaviour and the
-    # non-zalmoxis bit-parity invariant (the wrapper auto-enables non-zero
-    # values only for the zalmoxis stack). -1.0 is the single off sentinel;
-    # any other negative, NaN, or infinity is rejected at load.
+    # Per-call step caps: schema defaults 0.0, which the wrapper reads as off
+    # (no cap) on every interior. -1.0 is the single off sentinel; any other
+    # negative, NaN, or infinity is rejected at load.
     assert a.phi_step_cap == pytest.approx(0.0)
     assert a.temperature_step_cap == pytest.approx(0.0)
     assert a.entropy_step_cap == pytest.approx(0.0)

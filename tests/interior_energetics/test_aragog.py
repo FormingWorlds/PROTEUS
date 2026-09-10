@@ -56,6 +56,7 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.aragog.temperature_step_cap = 0.0
     config.interior_energetics.aragog.entropy_step_cap = 0.0
     config.interior_energetics.aragog.phase_boundary_entropy_margin = 200.0
+    config.interior_energetics.aragog.separation_viscosity = 'mixture'
     config.interior_energetics.spider.matprop_smooth_width = 0.0
     config.interior_energetics.const_properties = False
     config.interior_energetics.heat_radiogenic = False
@@ -376,103 +377,22 @@ class TestUpdateStructureZalmoxisRefresh:
 
 
 @pytest.mark.unit
-def test_effective_phi_step_cap_auto_enables_for_zalmoxis():
-    """The melt-fraction cap defaults ON for the zalmoxis interior stack.
+def test_effective_step_caps_default_off_on_every_interior():
+    """An unset step cap resolves to off (0.0) on every interior, zalmoxis included.
 
-    A zalmoxis run that leaves phi_step_cap at the disabled schema default
-    (0.0) must be promoted to the non-zero coupled-stack default so the
-    crystallisation-onset core-temperature discontinuity is guarded without
-    the user having to opt in. A non-zalmoxis interior is left untouched, and
-    an explicit positive value always wins. The discrimination guard pins all
-    three branches so a regression that drops the auto-enable, fires it for
-    the wrong module, or overrides the user value is caught.
+    Each cap is a SUNDIALS root function that returns control from the interior
+    sub-solve when a cell's per-step change reaches the cap. On a benign
+    freezing-front crossing it slices the coupled step into many small ones and
+    drives the reported CMB heat flux briefly negative (a controlled comparison
+    gives +48% outer coupled steps for the same interior work), so the coupled
+    default is off and no interior arms a cap without the user opting in. This
+    pins all three caps to 0.0 for the unset schema default across the zalmoxis,
+    spider, and dummy interiors, so a regression that re-arms a positive default
+    for any interior is caught. A distinct positive value resolves verbatim in
+    the same call, so a resolver that masked the check by clamping every cap to
+    0.0 is caught too.
     """
     from proteus.interior_energetics.aragog import (
-        _ZALMOXIS_DEFAULT_PHI_STEP_CAP,
-        _effective_phi_step_cap,
-    )
-
-    def cfg(module, cap):
-        c = MagicMock()
-        c.interior_struct.module = module
-        c.interior_energetics.aragog.phi_step_cap = cap
-        return c
-
-    # zalmoxis + disabled default -> promoted to the non-zero default
-    promoted = _effective_phi_step_cap(cfg('zalmoxis', 0.0))
-    assert promoted == pytest.approx(_ZALMOXIS_DEFAULT_PHI_STEP_CAP)
-    assert promoted > 0.0
-    # non-zalmoxis interior keeps the disabled value (no auto-enable)
-    assert _effective_phi_step_cap(cfg('spider', 0.0)) == 0.0
-    assert _effective_phi_step_cap(cfg('dummy', 0.0)) == 0.0
-    # explicit user value wins on every interior, even zalmoxis
-    assert _effective_phi_step_cap(cfg('zalmoxis', 0.05)) == pytest.approx(0.05)
-    assert _effective_phi_step_cap(cfg('spider', 0.2)) == pytest.approx(0.2)
-    # the auto-enabled default must differ from the disabled value, else the
-    # promotion would be a no-op
-    assert _ZALMOXIS_DEFAULT_PHI_STEP_CAP != 0.0
-
-
-@pytest.mark.unit
-def test_effective_temperature_and_entropy_step_caps_auto_enable_for_zalmoxis():
-    """The temperature and entropy step caps also default ON for zalmoxis.
-
-    The melt-fraction cap cannot bound the core-temperature drop once a cell
-    is fully solid, so the temperature and entropy caps must be auto-enabled
-    alongside it for the zalmoxis stack. Same promotion contract as the
-    melt-fraction cap: disabled schema default promoted for zalmoxis, left
-    alone for other interiors, explicit positive value wins. Discrimination
-    guards pin each branch and assert the auto-enabled defaults are non-zero.
-    """
-    from proteus.interior_energetics.aragog import (
-        _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP,
-        _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP,
-        _effective_entropy_step_cap,
-        _effective_temperature_step_cap,
-    )
-
-    def cfg(module, t_cap, s_cap):
-        c = MagicMock()
-        c.interior_struct.module = module
-        c.interior_energetics.aragog.temperature_step_cap = t_cap
-        c.interior_energetics.aragog.entropy_step_cap = s_cap
-        return c
-
-    # zalmoxis + disabled defaults -> promoted to the non-zero defaults
-    assert _effective_temperature_step_cap(cfg('zalmoxis', 0.0, 0.0)) == pytest.approx(
-        _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP
-    )
-    assert _effective_entropy_step_cap(cfg('zalmoxis', 0.0, 0.0)) == pytest.approx(
-        _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP
-    )
-    # non-zalmoxis keeps disabled
-    assert _effective_temperature_step_cap(cfg('spider', 0.0, 0.0)) == 0.0
-    assert _effective_entropy_step_cap(cfg('dummy', 0.0, 0.0)) == 0.0
-    # explicit values win, even on zalmoxis
-    assert _effective_temperature_step_cap(cfg('zalmoxis', 250.0, 0.0)) == pytest.approx(250.0)
-    assert _effective_entropy_step_cap(cfg('zalmoxis', 0.0, 75.0)) == pytest.approx(75.0)
-    # auto-enabled defaults must aggressively suppress jumps (non-zero, finite)
-    assert _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP > 0.0
-    assert _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP > 0.0
-
-
-@pytest.mark.unit
-def test_negative_step_cap_disables_even_on_zalmoxis():
-    """The -1.0 off sentinel beats the zalmoxis auto-enable and never leaks through.
-
-    The zalmoxis auto-enable promotes the 0.0 schema default so a user who never
-    touches the field is protected. A user who sets the -1.0 sentinel is opting
-    out, and the resolver must honour that by returning 0.0 (no cap) even on
-    zalmoxis, where the plain 0.0 default would instead be promoted. The sentinel
-    must never reach Aragog as a literal negative cap, so every branch resolves
-    to exactly 0.0. Discrimination guards contrast the disabled result against
-    the auto-enabled default and against a positive override so a regression that
-    lets the sentinel promote, leak through, or clamp to the default is caught.
-    """
-    from proteus.interior_energetics.aragog import (
-        _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP,
-        _ZALMOXIS_DEFAULT_PHI_STEP_CAP,
-        _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP,
         _effective_entropy_step_cap,
         _effective_phi_step_cap,
         _effective_temperature_step_cap,
@@ -486,26 +406,66 @@ def test_negative_step_cap_disables_even_on_zalmoxis():
         c.interior_energetics.aragog.entropy_step_cap = s_cap
         return c
 
-    # -1.0 sentinel on zalmoxis -> disabled (0.0), overriding the auto-enable
-    off = cfg('zalmoxis', -1.0, -1.0, -1.0)
-    assert _effective_phi_step_cap(off) == 0.0
-    assert _effective_temperature_step_cap(off) == 0.0
-    assert _effective_entropy_step_cap(off) == 0.0
-    # the sentinel on a non-zalmoxis interior is also disabled, never negative
-    off_spider = cfg('spider', -1.0, -1.0, -1.0)
-    assert _effective_phi_step_cap(off_spider) == 0.0
-    assert _effective_temperature_step_cap(off_spider) == 0.0
-    assert _effective_entropy_step_cap(off_spider) == 0.0
-    # discrimination: the disabled result differs from the value the same 0.0
-    # default would have promoted to, so the off switch is not a silent no-op
-    assert _ZALMOXIS_DEFAULT_PHI_STEP_CAP > 0.0
-    assert _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP > 0.0
-    assert _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP > 0.0
-    # a positive override still wins over the auto-enable default
+    # Unset schema default (0.0) resolves to off (0.0) on every interior.
+    for module in ('zalmoxis', 'spider', 'dummy'):
+        unset = cfg(module, 0.0, 0.0, 0.0)
+        assert _effective_phi_step_cap(unset) == 0.0
+        assert _effective_temperature_step_cap(unset) == 0.0
+        assert _effective_entropy_step_cap(unset) == 0.0
+
+    # Discrimination: a distinct positive value resolves verbatim on zalmoxis,
+    # so the off result above is a real resolution, not a constant-0.0 stub.
     on = cfg('zalmoxis', 0.05, 250.0, 75.0)
     assert _effective_phi_step_cap(on) == pytest.approx(0.05)
     assert _effective_temperature_step_cap(on) == pytest.approx(250.0)
     assert _effective_entropy_step_cap(on) == pytest.approx(75.0)
+
+
+@pytest.mark.unit
+def test_effective_step_caps_pass_positive_verbatim_and_off_sentinel_disables():
+    """A positive cap passes through verbatim; the -1.0 sentinel resolves to off.
+
+    The cap mechanism stays available as an explicit opt-in for debugging a
+    pathological config, so a positive value reaches Aragog unchanged on any
+    interior. The -1.0 off sentinel, and defensively any negative, resolves to
+    exactly 0.0 so no literal negative cap ever reaches the solver.
+    Discrimination: the positive values are distinct per cap, so a resolver
+    that swapped or dropped a field is caught, and the sentinel result is
+    contrasted against the positive one so an off switch that leaked the
+    negative through is caught.
+    """
+    from proteus.interior_energetics.aragog import (
+        _effective_entropy_step_cap,
+        _effective_phi_step_cap,
+        _effective_temperature_step_cap,
+    )
+
+    def cfg(module, phi, t_cap, s_cap):
+        c = MagicMock()
+        c.interior_struct.module = module
+        c.interior_energetics.aragog.phi_step_cap = phi
+        c.interior_energetics.aragog.temperature_step_cap = t_cap
+        c.interior_energetics.aragog.entropy_step_cap = s_cap
+        return c
+
+    # Positive values pass through verbatim on zalmoxis and on a non-zalmoxis
+    # interior alike; distinct values pin each cap to its own field.
+    on_z = cfg('zalmoxis', 0.05, 250.0, 75.0)
+    assert _effective_phi_step_cap(on_z) == pytest.approx(0.05)
+    assert _effective_temperature_step_cap(on_z) == pytest.approx(250.0)
+    assert _effective_entropy_step_cap(on_z) == pytest.approx(75.0)
+    on_s = cfg('spider', 0.2, 300.0, 90.0)
+    assert _effective_phi_step_cap(on_s) == pytest.approx(0.2)
+    assert _effective_temperature_step_cap(on_s) == pytest.approx(300.0)
+    assert _effective_entropy_step_cap(on_s) == pytest.approx(90.0)
+
+    # The -1.0 sentinel, and any negative, resolves to exactly 0.0, never a
+    # literal negative reaching the solver.
+    for module in ('zalmoxis', 'spider'):
+        off = cfg(module, -1.0, -1.0, -1.0)
+        assert _effective_phi_step_cap(off) == 0.0
+        assert _effective_temperature_step_cap(off) == 0.0
+        assert _effective_entropy_step_cap(off) == 0.0
 
 
 @pytest.mark.unit
@@ -527,7 +487,7 @@ def test_aragog_schema_admits_off_sentinel_rejects_other_negatives():
     assert caps.phi_step_cap == pytest.approx(-1.0)
     assert caps.temperature_step_cap == pytest.approx(-1.0)
     assert caps.entropy_step_cap == pytest.approx(-1.0)
-    # zero remains valid (the auto-enable default) and positive is verbatim.
+    # zero remains valid (resolves to off) and positive is verbatim.
     assert Aragog(phi_step_cap=0.0).phi_step_cap == 0.0
     assert Aragog(temperature_step_cap=150.0).temperature_step_cap == pytest.approx(150.0)
     # The sentinel is an exact match, so even a near-miss like -1.0001 raises;
@@ -543,6 +503,8 @@ def test_aragog_schema_admits_off_sentinel_rejects_other_negatives():
     for bad in (float('nan'), float('inf'), float('-inf')):
         with pytest.raises(ValueError):
             Aragog(phi_step_cap=bad)
+        with pytest.raises(ValueError):
+            Aragog(temperature_step_cap=bad)
         with pytest.raises(ValueError):
             Aragog(entropy_step_cap=bad)
     # the proximity band keeps its positive-only contract
@@ -659,6 +621,53 @@ def test_setup_solver_threads_phase_boundary_margin(tmp_path):
     # Discrimination: a wrapper that hard-coded or ignored the knob would send
     # the same number twice; the two requests must remain distinct.
     assert threaded[350.0] != pytest.approx(threaded[200.0])
+
+
+@pytest.mark.unit
+def test_setup_solver_threads_resolved_step_caps(tmp_path):
+    """setup_solver threads the RESOLVED step caps into _EnergyParameters, not
+    the raw config values.
+
+    Each cap reaches Aragog as a SUNDIALS root function, so the off sentinel
+    must be resolved before it is passed: a -1.0 in the config must arrive as
+    0.0 (no cap), never as a literal -1.0 that would arm the root function at a
+    negative threshold. A positive value must arrive verbatim. This pins the
+    resolver on the wrapper path (phi is always threaded; the T and S caps are
+    threaded when the installed Aragog accepts them), so a regression that
+    forwarded config.*_step_cap directly is caught.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    outdir = str(tmp_path)
+    # config caps -> expected resolved caps at the _EnergyParameters call.
+    # -1.0 is the off sentinel and must resolve to 0.0; a positive value passes
+    # through unchanged.
+    cases = {
+        'sentinel': ((-1.0, -1.0, -1.0), (0.0, 0.0, 0.0)),
+        'positive': ((0.2, 150.0, 175.0), (0.2, 150.0, 175.0)),
+    }
+    for name, (raw, expected) in cases.items():
+        config = _make_aragog_config(struct_module='spider')
+        config.interior_energetics.aragog.phi_step_cap = raw[0]
+        config.interior_energetics.aragog.temperature_step_cap = raw[1]
+        config.interior_energetics.aragog.entropy_step_cap = raw[2]
+        hf_row, interior_o = _spider_fallback_scaffold(tmp_path / name)
+        mock_ep = create_autospec(_paired_energy_stub)
+        with (
+            patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / name),
+            patch('proteus.interior_energetics.aragog.Parameters'),
+            patch('proteus.interior_energetics.aragog.EntropySolver'),
+            patch('proteus.interior_energetics.aragog.EntropyEOS'),
+            patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
+            patch('proteus.interior_energetics.aragog.log'),
+        ):
+            AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+        assert mock_ep.called
+        kwargs = mock_ep.call_args.kwargs
+        assert kwargs['phi_step_cap'] == pytest.approx(expected[0])
+        assert kwargs['temperature_step_cap'] == pytest.approx(expected[1])
+        assert kwargs['entropy_step_cap'] == pytest.approx(expected[2])
 
 
 @pytest.mark.unit

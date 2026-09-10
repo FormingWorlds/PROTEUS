@@ -101,7 +101,8 @@ config_version = "3.0"
 # Interior energetics: real Aragog (entropy ODE, JAX-derived RHS with
 # analytic Jacobian).
 [interior_energetics]
-    module = "aragog"
+    module     = "aragog"
+    grain_size = 1e-3           # crystal settling grain size [m]
 
 # Outgassing: real CALLIOPE volatile partitioning.
 [outgas]

@@ -502,8 +502,9 @@ class Proteus:
         self._baseline_structure_done = False
 
         # Write config to output directory, for future reference. Record the
-        # resolved (not raw) step caps, so a zalmoxis-armed default reads back
-        # as the value Aragog actually used instead of the schema's 0.0.
+        # resolved (not raw) step caps. A resolved 0.0 means the cap is off,
+        # but a literal 0.0 in a config is rejected at load, so an off cap is
+        # written back as the -1.0 sentinel; a positive cap is written as is.
         step_cap_overrides = {}
         if self.config.interior_energetics.module == 'aragog':
             from proteus.config._interior import _STEP_CAP_OFF
@@ -514,23 +515,21 @@ class Proteus:
                 _unsupported_energy_fields,
             )
 
-            # phi_step_cap is always accepted by Aragog, so record its resolved
-            # value. An older Aragog drops the temperature/entropy caps before
-            # they reach the solver; record the disabled sentinel for a dropped
+            # An older Aragog drops the temperature/entropy caps before they
+            # reach the solver; record the disabled sentinel for a dropped
             # cap so the snapshot does not claim a cap the run never used.
             unsupported = _unsupported_energy_fields()
-            step_cap_overrides = {
-                'interior_energetics.aragog.phi_step_cap': _effective_phi_step_cap(self.config),
-            }
             for field, resolve in (
+                ('phi_step_cap', _effective_phi_step_cap),
                 ('temperature_step_cap', _effective_temperature_step_cap),
                 ('entropy_step_cap', _effective_entropy_step_cap),
             ):
                 key = f'interior_energetics.aragog.{field}'
-                if field in unsupported:
+                resolved = resolve(self.config)
+                if field in unsupported or resolved == 0.0:
                     step_cap_overrides[key] = _STEP_CAP_OFF
                 else:
-                    step_cap_overrides[key] = resolve(self.config)
+                    step_cap_overrides[key] = resolved
         self.config.write(
             os.path.join(self.directories['output'], 'init_coupler.toml'),
             overrides=step_cap_overrides,

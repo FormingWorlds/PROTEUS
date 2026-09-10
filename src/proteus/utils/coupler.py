@@ -796,6 +796,8 @@ def GetHelpfileKeys():
         'eccentricity',     # orbital eccentricity [1]
         'Imk2',             # Imaginary part of k2 Love Number [1]
         'axial_period',     # day length of planet around its axis [s]
+        'longitude',        # column longitude relative to substellar point [deg]
+        'latitude',         # column latitude relative to substellar point [deg]
 
         # Satellite system
         'perigee',          # lowest point in orbit [m]

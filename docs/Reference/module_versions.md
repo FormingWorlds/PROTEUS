@@ -22,7 +22,7 @@ in `[project] dependencies`. Click a badge to view the pinned release.
 | fwl-mors | Stellar evolution | [![fwl-mors](https://img.shields.io/badge/fwl--mors-%3E%3D26.01.02-blue)](https://pypi.org/project/fwl-mors/26.01.02/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/MORS/) |
 | fwl-calliope | Volatile outgassing | [![fwl-calliope](https://img.shields.io/badge/fwl--calliope-%3E%3D26.06.01-blue)](https://pypi.org/project/fwl-calliope/26.06.01/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/CALLIOPE/) |
 | fwl-zephyrus | Atmospheric escape | [![fwl-zephyrus](https://img.shields.io/badge/fwl--zephyrus-%3E%3D26.7.24-blue)](https://pypi.org/project/fwl-zephyrus/26.7.24/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/ZEPHYRUS) |
-| fwl-aragog | Interior thermal evolution | [![fwl-aragog](https://img.shields.io/badge/fwl--aragog-%3E%3D26.07.04-blue)](https://pypi.org/project/fwl-aragog/26.07.04/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/aragog/) |
+| fwl-aragog | Interior thermal evolution | [![fwl-aragog](https://img.shields.io/badge/fwl--aragog-%3E%3D26.09.06-blue)](https://pypi.org/project/fwl-aragog/26.09.06/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/aragog/) |
 | fwl-zalmoxis | Interior structure | [![fwl-zalmoxis](https://img.shields.io/badge/fwl--zalmoxis-%3E%3D26.07.17-blue)](https://pypi.org/project/fwl-zalmoxis/26.07.17/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/Zalmoxis/) |
 <!-- END PYPI_TABLE -->
 
@@ -35,8 +35,8 @@ pinned commit.
 <!-- BEGIN GIT_TABLE -->
 | Module | Role | Pin | Docs |
 |--------|------|-----|------|
-| AGNI | Radiative-convective atmosphere (Julia) | [![AGNI](https://img.shields.io/badge/AGNI-59ce1d4c-green)](https://github.com/nichollsh/AGNI/commit/59ce1d4cda84f2043a8055682fa49c2f9c27c3c4){target="_blank" rel="noopener"} | [Docs](https://www.h-nicholls.space/AGNI/) |
-| SOCRATES | Spectral radiative transfer (Fortran) | [![SOCRATES](https://img.shields.io/badge/SOCRATES-f42ddec0-green)](https://github.com/FormingWorlds/SOCRATES/commit/f42ddec0356b3811b260cfe21a7f2c06033b39bd){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/SOCRATES/) |
+| AGNI | Radiative-convective atmosphere (Julia) | [![AGNI](https://img.shields.io/badge/AGNI-8a494d7c-green)](https://github.com/nichollsh/AGNI/commit/8a494d7c74db78163eba7354d78d1389e6f63072){target="_blank" rel="noopener"} | [Docs](https://www.h-nicholls.space/AGNI/) |
+| SOCRATES | Spectral radiative transfer (Fortran) | [![SOCRATES](https://img.shields.io/badge/SOCRATES-43b86d4d-green)](https://github.com/FormingWorlds/SOCRATES/commit/43b86d4d46dcb1fa2e94fb24b9246421a03a9acb){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/SOCRATES/) |
 | SPIDER | Interior evolution (C, requires PETSc) | [![SPIDER](https://img.shields.io/badge/SPIDER-c9a3fd43-green)](https://github.com/FormingWorlds/SPIDER/commit/c9a3fd4301c7008291d4f4921506d36b6288f8ca){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/SPIDER/) |
 <!-- END GIT_TABLE -->
 

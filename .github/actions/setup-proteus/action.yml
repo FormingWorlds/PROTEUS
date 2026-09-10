@@ -180,9 +180,48 @@ runs:
       run: |
         set -euo pipefail
         source "${{ github.action_path }}/retry-with-timeout.sh"
+        # This gcc revision's Darwin driver exports SOCRATES's dlsym-visible
+        # shim symbols; a newer gcc drops them, so gcc stays pinned here.
+        # Formulae must live in a tap, so the formula is fetched into a
+        # throwaway tap; pinned before netcdf-fortran so its gcc dependency
+        # resolves to it. Commit 4509561fedf07807c6b806f82551e5f8dac5e678
+        # provides gcc 16.1.0.
+        gcc_formula_url="https://raw.githubusercontent.com/Homebrew/homebrew-core/4509561fedf07807c6b806f82551e5f8dac5e678/Formula/g/gcc.rb"
+        brew tap-new local/pinned-toolchain --no-git >/dev/null
+        pinned_tap_formula_dir="$(brew --repository)/Library/Taps/local/homebrew-pinned-toolchain/Formula"
+        retry_with_timeout "fetch pinned gcc formula" 60 10 "" \
+          curl -fsSL -o "$pinned_tap_formula_dir/gcc.rb" "$gcc_formula_url"
+        # Unlink any gcc the runner image already ships (a different tap, same
+        # formula name) so linking the pinned keg below cannot hit a conflict.
+        if brew list --formula gcc >/dev/null 2>&1; then
+          brew unlink gcc >/dev/null 2>&1 || true
+        fi
         brew_rc=0
+        retry_with_timeout "brew install gcc (pinned)" 240 10 "" \
+          brew install --quiet local/pinned-toolchain/gcc || brew_rc=$?
+        # A prefix match on `brew list --versions gcc` false-fails once a
+        # second gcc keg coexists (unlink above does not remove the runner
+        # image's pre-existing keg), since the versions then print on one
+        # line in Cellar order, e.g. "gcc 15.2.0 16.1.0". Check the pinned
+        # version is present as its own token, and that it is the one
+        # actually linked.
+        gcc_versions="$(brew list --versions gcc 2>/dev/null || true)"
+        gcc_linked_keg="$(readlink "$(brew --prefix)/opt/gcc" 2>/dev/null || true)"
+        version_present=0
+        if tr ' ' '\n' <<<"$gcc_versions" | grep -qx '16\.1\..*'; then
+          version_present=1
+        fi
+        version_linked=0
+        case "$gcc_linked_keg" in
+          */gcc/16.1.*) version_linked=1 ;;
+        esac
+        if [ "$version_present" -ne 1 ] || [ "$version_linked" -ne 1 ]; then
+          echo "ERROR: brew install rc=$brew_rc, expected pinned gcc 16.1.x installed and linked, got versions: '$gcc_versions', linked keg: '$gcc_linked_keg'" >&2
+          exit 1
+        fi
+        brew pin local/pinned-toolchain/gcc
         retry_with_timeout "brew install" 240 10 "" \
-          brew install --quiet gcc netcdf netcdf-fortran openssl@3 || brew_rc=$?
+          brew install --quiet netcdf netcdf-fortran openssl@3 || brew_rc=$?
         missing=()
         for pkg in gcc netcdf netcdf-fortran openssl@3; do
           brew list "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
@@ -254,12 +293,51 @@ runs:
     # Install the conda-side dependencies that need native libraries
     # (SUNDIALS for CVODE, scikits.odes for the Python bindings). The
     # rest of PROTEUS installs via pip into the same env in step 8.
-    - name: Install conda dependencies
+    - name: Install conda dependencies (Linux)
+      if: runner.os == 'Linux'
       shell: bash -el {0}
       run: |
         set -euo pipefail
         mamba install -n proteus -c conda-forge -y sundials 'scikits.odes>=3.0.0'
+
+    # Pin BLAS/LAPACK to the Accelerate build variant in the same
+    # solve. The openblas variant drags in llvm-openmp, which loads a
+    # second libomp.dylib into the same process as torch's bundled
+    # copy and aborts the process at import time.
+    - name: Install conda dependencies (macOS)
+      if: runner.os == 'macOS'
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        mamba install -n proteus -c conda-forge -y sundials 'scikits.odes>=3.0.0' \
+          'libblas=*=*accelerate*' 'liblapack=*=*accelerate*'
+
+    - name: Verify conda dependencies
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
         python -c "import scikits.odes; print('scikits.odes OK, version', scikits.odes.__version__)"
+
+    # Verify the install landed on the intended variant so a channel
+    # or solver drift back to openblas fails loudly here instead of
+    # resurfacing as an unrelated-looking pytest collection abort.
+    - name: Verify BLAS/LAPACK build (macOS)
+      if: runner.os == 'macOS'
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        blas_info="$(mamba list -n proteus '^libblas$')"
+        lapack_info="$(mamba list -n proteus '^liblapack$')"
+        echo "$blas_info"
+        echo "$lapack_info"
+        if ! grep -q accelerate <<< "$blas_info"; then
+          echo "::error::libblas did not resolve to an Accelerate build; this reintroduces the duplicate libomp.dylib SIGABRT." >&2
+          exit 1
+        fi
+        if ! grep -q accelerate <<< "$lapack_info"; then
+          echo "::error::liblapack did not resolve to an Accelerate build; this reintroduces the duplicate libomp.dylib SIGABRT." >&2
+          exit 1
+        fi
 
     # ------------------------------------------------------------------
     # 3. Julia
@@ -290,15 +368,31 @@ runs:
     # generations within the same OS/arch label. One cache per OS/arch is
     # therefore sufficient. The '-portable' key component separates these
     # caches from any tree built with the default performance flags.
+    # The key also carries the hosted runner's ImageVersion: a compiled
+    # shared library that resolves its symbols correctly on one runner
+    # image can fail to resolve them at runtime on a later image of the
+    # same OS/arch label, so the cache must not survive an image bump.
     # No restore-keys: a prefix-restored tree would be deleted and rebuilt
     # from scratch by get_socrates.sh anyway, so a partial restore is pure
     # download cost.
+    - name: Read runner image version
+      id: runner-image
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="${ImageVersion:-unknown}"
+        if [ "$version" = "unknown" ]; then
+          echo "::warning::ImageVersion is not set on this runner; the SOCRATES and Julia depot cache keys fall back to a constant value and will not bust on an image bump"
+        fi
+        echo "Runner ImageVersion: $version"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
     - name: Cache SOCRATES build
       id: cache-socrates
       uses: actions/cache@v5
       with:
         path: socrates/
-        key: socrates-${{ runner.os }}-${{ runner.arch }}-portable-${{ steps.pins.outputs.socrates_ref }}-${{ hashFiles('tools/get_socrates.sh') }}
+        key: socrates-${{ runner.os }}-${{ runner.arch }}-portable-${{ steps.runner-image.outputs.version }}-${{ steps.pins.outputs.socrates_ref }}-${{ hashFiles('tools/get_socrates.sh') }}
 
     - name: Build SOCRATES (cache miss)
       if: steps.cache-socrates.outputs.cache-hit != 'true'
@@ -356,15 +450,24 @@ runs:
     # ------------------------------------------------------------------
     # 7. Julia depot cache (AGNI's Pkg.instantiate output)
     # ------------------------------------------------------------------
+    # The depot holds Julia's own precompiled package cache and downloaded
+    # JLL binary artifacts, which dlopen/dlsym against native shared
+    # libraries the same way the SOCRATES build cache above does (the
+    # libSOCRATES_C ccall bindings AGNI compiles live in socrates/, under
+    # the separate cache above, not in this depot). The key carries the
+    # same ImageVersion component to avoid serving artifacts across an
+    # image bump. Both restore-key tiers below carry it too, so an image
+    # bump forces a full Pkg.instantiate() on the next run instead of a
+    # partial restore; that cost is accepted to keep the cache correct.
     - name: Cache Julia depot
       id: cache-julia
       uses: actions/cache@v5
       with:
         path: ~/.julia
-        key: julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.pins.outputs.agni_ref }}-${{ hashFiles('AGNI/Project.toml','AGNI/Manifest.toml') }}
+        key: julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.runner-image.outputs.version }}-${{ steps.pins.outputs.agni_ref }}-${{ hashFiles('AGNI/Project.toml','AGNI/Manifest.toml') }}
         restore-keys: |
-          julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.pins.outputs.agni_ref }}-
-          julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-
+          julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.runner-image.outputs.version }}-${{ steps.pins.outputs.agni_ref }}-
+          julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.runner-image.outputs.version }}-
 
     - name: Fetch AGNI spectral data (with retry)
       shell: bash
@@ -500,6 +603,34 @@ runs:
         fi
         julia --project=. -e 'using Pkg; Pkg.instantiate()'
         julia --project=. deps/build.jl nodata
+
+    # ------------------------------------------------------------------
+    # 7b. Verify the SOCRATES shim's symbol export (macOS only)
+    # ------------------------------------------------------------------
+    # deps/build.jl above recompiles socrates/julia/lib/libSOCRATES_C.so on
+    # every run, regardless of the SOCRATES-build or Julia-depot cache
+    # state, so this check always sees the shim this job just built and
+    # cannot pass on a stale cached artifact. Guards against Homebrew's gcc
+    # Darwin driver dropping this symbol from the shim's external symbol
+    # table, which breaks Julia's dlsym lookup in AGNI; the gcc pin earlier
+    # in this action keeps it exported.
+    - name: Verify SOCRATES shim exports PS_real_kind_bytes (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        shim="$GITHUB_WORKSPACE/socrates/julia/lib/libSOCRATES_C.so"
+        if ! symbols="$(nm -gU "$shim" 2>&1)"; then
+          echo "nm failed on $shim:" >&2
+          echo "$symbols" >&2
+          exit 1
+        fi
+        if ! grep -q PS_real_kind_bytes <<<"$symbols"; then
+          echo "PS_real_kind_bytes is not an external symbol in $shim" >&2
+          grep -i real_kind <<<"$symbols" >&2 || echo "(no real_kind symbol found at all)" >&2
+          exit 1
+        fi
+        echo "PS_real_kind_bytes confirmed exported in $shim"
 
     # ------------------------------------------------------------------
     # 8. PROTEUS pip install (resolves PyPI + git deps in pyproject.toml)
