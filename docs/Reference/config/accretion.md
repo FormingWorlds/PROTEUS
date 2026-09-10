@@ -30,7 +30,8 @@ and the [coupling loop](../../Explanations/coupling_loop.md#execution-order-per-
 One loss fraction governs both bodies at each impact: the target loses that
 fraction of its atmosphere, and a volatile-bearing impactor loses the same
 fraction of its atmospheric part and delivers the remainder. PROTEUS ships no
-impact-loss physics of its own.
+impact-loss physics of its own; the `"zephyrus"` module evaluates the
+giant-impact erosion scaling law of Kegerreis et al. (2020) [^cite-kegerreis2020].
 
 The mantle re-melt after an impact is a thermodynamic reset rather than an
 energy deposition: it re-applies the run's `planet.temperature_mode` initial
