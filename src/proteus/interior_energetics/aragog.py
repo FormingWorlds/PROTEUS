@@ -2294,7 +2294,7 @@ class AragogRunner:
                             )
                         elif dT > sanity_dT_core:
                             sanity_reject_reason = (
-                                f'T_core changed by up to {dT:.1f} K '
+                                f'T_core jumped by up to {dT:.1f} K '
                                 f'(>{sanity_dT_core:.0f} K sanity threshold)'
                             )
 

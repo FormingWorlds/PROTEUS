@@ -926,9 +926,12 @@ def _retry_ladder_runner(
         )
     solver = SimpleNamespace(
         parameters=SimpleNamespace(
-            solver=SimpleNamespace(start_time=0.0, end_time=dt_requested)
+            solver=SimpleNamespace(
+                start_time=0.0, end_time=dt_requested, rtol=1.0e-6, max_steps=1000
+            )
         ),
         _atol_sf=1.0,
+        _max_steps=1000,
         get_state=lambda: states[min(len(attempts), len(states)) - 1],
         get_current_dSdr_cmb=lambda: -1.0e-6,
         set_initial_dSdr_cmb=lambda value: None,
@@ -1972,6 +1975,9 @@ def _retry_runner(solver, monkeypatch, *, T_core_pre=2000.0, mass_tot=1.0):
     runner.aragog_solver = solver
     interior_o = MagicMock()
     interior_o._last_entropy = None
+    # A bare MagicMock auto-vivifies any attribute as a truthy Mock, which
+    # would make the giant-impact exemption fire on every guard check below.
+    interior_o.impact_reset_this_step = False
     hf_row = {'Time': 1.0e6, 'T_cmb': T_core_pre}
     return runner, interior_o, hf_row
 
