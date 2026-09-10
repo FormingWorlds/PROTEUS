@@ -45,7 +45,7 @@ atmosphere), enabling hierarchical model intercomparison.
 | Star | [MORS](https://proteus-framework.org/MORS/), dummy | Stellar evolution and spectrum |
 | Escape | [ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS), dummy | Atmospheric escape |
 | Outgassing | [CALLIOPE](https://proteus-framework.org/CALLIOPE/), [atmodeller](https://github.com/djbower/atmodeller), dummy | Volatile exchange between interior and atmosphere |
-| Tides | [Obliqua](https://github.com/FormingWorlds/Obliqua), [Lovepy](https://github.com/nichollsh/LovePy), dummy | Tidal response of the planet (Love numbers, heating) |
+| Tides | [Obliqua](https://proteus-framework.org/Obliqua), [Lovepy](https://github.com/nichollsh/LovePy), dummy | Tidal response of the planet (Love numbers, heating) |
 | Orbit | PROTEUS (internal) | Orbital evolution (semi-major axis, eccentricity, spin) |
 | Observations | [petitRADTRANS](https://petitradtrans.readthedocs.io/), none | Synthetic transit and eclipse spectra |
 
@@ -192,7 +192,7 @@ Some notable consequences of step 3:
 
 ## Tidal evolution: Obliqua, Lovepy
 
-**[Obliqua](https://github.com/FormingWorlds/Obliqua)** (Julia) computes the multi-phase tidal response of the planet. The tidal love-numbers of the planet is computed from its interior structure and rheology using various viscoelastic rheological models. Tidal heating power is distributed radially across the mantle and fed back into the interior energy equation. The model is valid for arbitrary eccentricity and spin-orbit misalignment, as it models arbitrary tidal degrees and modes.
+**[Obliqua](https://proteus-framework.org/Obliqua)** (Julia) computes the multi-phase tidal response of the planet. The tidal love-numbers of the planet is computed from its interior structure and rheology using various viscoelastic rheological models. Tidal heating power is distributed radially across the mantle and fed back into the interior energy equation. The model is valid for arbitrary eccentricity and spin-orbit misalignment, as it models arbitrary tidal degrees and modes.
 
 **[Lovepy](https://github.com/nichollsh/LovePy)** (Julia) computes the solid-only tidal response of the planet using a Maxwell rheology. Tidal heating power is distributed radially across the mantle and fed back into the interior energy equation. It assumes spin-orbit synchronisation and a small eccentricity, as only the dominant degree-2 tidal modes are considered.
 
