@@ -44,6 +44,7 @@ from proteus.outgas.atmodeller import (
     calc_surface_pressures_atmodeller,
 )
 from proteus.utils.constants import element_mmw, gas_list, secs_per_year, vol_list
+from proteus.utils.helper import eval_gas_mmw
 
 # NOTE: do NOT importorskip('atmodeller') at module scope. The helper tests below
 # exercise only pure-Python reconstruction (`_populate_volatile_element_reservoirs`,
@@ -663,3 +664,86 @@ def test_condensed_mass_enters_solid_reservoir_and_closes_carbon():
     c_gas_liquid = float(hf_row['C_kg_atm']) + float(hf_row['C_kg_liquid'])
     assert c_gas_liquid == pytest.approx(0.3 * C_BUDGET, rel=1e-6)
     assert abs(c_gas_liquid - C_BUDGET) > 0.5 * C_BUDGET
+
+
+@pytest.mark.physics_invariant
+def test_mol_columns_written_across_solve_noble_and_excluded_species():
+    """The ``{sp}_mol_*`` columns are populated in each of the three species branches.
+
+    ``PROTEUS/#842``: the helpfile schema declares ``{sp}_mol_atm`` /
+    ``_mol_liquid`` / ``_mol_total`` / ``_mol_solid`` for every gas species, but
+    the atmodeller wrapper only ever wrote the ``_kg_*`` columns, leaving the
+    mole-count columns at their zeroed default regardless of the solve. Pins
+    the mole-count write in each of the three branches the species loop takes:
+
+    * H2O is in the solve output: its mole counts are read directly from
+      atmodeller's own ``gas_number`` / ``dissolved_number`` / ``total_number``,
+      pinned independently of the mass values so a mass-derived mole count
+      (dividing by a molar mass) would not accidentally satisfy this test.
+    * He is an inactive noble gas absent from the solve output: its
+      atmospheric and dissolved moles are zero, and its total moles are
+      recovered from the escape-owned ``He_kg_total`` budget via the element
+      molar mass (the species and the element are the same monatomic entity).
+    * NH3 is a reactive species excluded from the solve entirely: its moles
+      are derived from its kg values via its own molar mass, matching the
+      convention used when no native mole count is available.
+    """
+    pytest.importorskip('atmodeller')
+    config = _make_user_constant_config(0.0)
+    hf_row = _hf_row_with_HS_budget()
+
+    he_kg_total = 1.0e19
+    nh3_kg_atm = 3.0e18
+    hf_row['He_kg_total'] = he_kg_total
+    hf_row['NH3_kg_atm'] = nh3_kg_atm
+
+    h2o_total_mass, h2o_dissolved_mass, h2o_gas_mass = 5.0e20, 1.0e20, 4.0e20
+    h2o_total_mol, h2o_dissolved_mol, h2o_gas_mol = 2.7e22, 5.0e21, 2.0e22
+
+    out = MagicMock()
+    out.quick_look.return_value = {
+        'H2O_g': np.array(40.0),
+        'O2_g': np.array(1.0e-6),
+    }
+    out.total_pressure.return_value = np.array(40.0)
+    out.asdict.return_value = {
+        'H2O_g': {
+            'gas_mass': np.array(h2o_gas_mass),
+            'dissolved_mass': np.array(h2o_dissolved_mass),
+            'total_mass': np.array(h2o_total_mass),
+            'gas_number': np.array(h2o_gas_mol),
+            'dissolved_number': np.array(h2o_dissolved_mol),
+            'total_number': np.array(h2o_total_mol),
+        },
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    # H2O: in-solve species, mole counts read directly from atmodeller's own
+    # gas_number / dissolved_number / total_number, independent of the kg split.
+    assert hf_row['H2O_mol_liquid'] == pytest.approx(h2o_dissolved_mol, rel=1e-9)
+    assert hf_row['H2O_mol_atm'] == pytest.approx(h2o_gas_mol, rel=1e-9)
+    assert hf_row['H2O_mol_total'] == pytest.approx(h2o_total_mol, rel=1e-9)
+
+    # He: inactive noble gas absent from the solve output. Atmospheric and
+    # dissolved moles are zero; total moles come from the escape-owned kg
+    # budget via the element molar mass.
+    assert hf_row['He_mol_liquid'] == 0.0
+    assert hf_row['He_mol_atm'] == 0.0
+    assert hf_row['He_mol_total'] == pytest.approx(he_kg_total / eval_gas_mmw('He'), rel=1e-9)
+
+    # NH3: reactive species excluded from the solve. Moles are derived from
+    # its kg values via its own molar mass; it has no dissolved kg here, so
+    # only the atmospheric and total moles are non-zero.
+    nh3_mmw = eval_gas_mmw('NH3')
+    assert hf_row['NH3_mol_liquid'] == 0.0
+    assert hf_row['NH3_mol_atm'] == pytest.approx(nh3_kg_atm / nh3_mmw, rel=1e-9)
+    assert hf_row['NH3_mol_total'] == pytest.approx(nh3_kg_atm / nh3_mmw, rel=1e-9)

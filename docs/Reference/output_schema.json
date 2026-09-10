@@ -19990,5 +19990,56 @@
       ]
     }
   ],
-  "unresolved_events": []
+  "unresolved_events": [
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "line": 666,
+      "reason": "template <proteus_name>_mol_solid"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "line": 717,
+      "reason": "template <proteus_name>_mol_liquid"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "line": 718,
+      "reason": "template <proteus_name>_mol_atm"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "line": 721,
+      "reason": "template <proteus_name>_mol_total"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "line": 738,
+      "reason": "template <proteus_name>_mol_liquid"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "line": 739,
+      "reason": "template <proteus_name>_mol_atm"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "line": 740,
+      "reason": "template <proteus_name>_mol_total"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "line": 759,
+      "reason": "template <proteus_name>_mol_liquid"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "line": 760,
+      "reason": "template <proteus_name>_mol_atm"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "line": 763,
+      "reason": "template <proteus_name>_mol_total"
+    }
+  ]
 }
