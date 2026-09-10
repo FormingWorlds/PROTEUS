@@ -2583,6 +2583,7 @@ def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_calculate_core_mass_writes_radius_density_and_heatcap():
     """calculate_core_mass also writes R_core, core_density, and core_heatcap
     to hf_row, not just M_core.

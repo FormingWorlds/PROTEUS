@@ -674,7 +674,9 @@ def test_mol_columns_written_across_solve_noble_and_excluded_species():
     ``_mol_liquid`` / ``_mol_total`` / ``_mol_solid`` for every gas species, but
     the atmodeller wrapper only ever wrote the ``_kg_*`` columns, leaving the
     mole-count columns at their zeroed default regardless of the solve. Pins
-    the mole-count write in each of the three branches the species loop takes:
+    the mole-count write in each of the three branches the species loop takes.
+    ``_mol_solid`` is set to 0.0 for every species in every branch, matching
+    ``_kg_solid``; this test pins that value rather than leaving it unchecked.
 
     * H2O is in the solve output: its mole counts are read directly from
       atmodeller's own ``gas_number`` / ``dissolved_number`` / ``total_number``,
@@ -732,6 +734,7 @@ def test_mol_columns_written_across_solve_noble_and_excluded_species():
     assert hf_row['H2O_mol_liquid'] == pytest.approx(h2o_dissolved_mol, rel=1e-9)
     assert hf_row['H2O_mol_atm'] == pytest.approx(h2o_gas_mol, rel=1e-9)
     assert hf_row['H2O_mol_total'] == pytest.approx(h2o_total_mol, rel=1e-9)
+    assert hf_row['H2O_mol_solid'] == 0.0
 
     # He: inactive noble gas absent from the solve output. Atmospheric and
     # dissolved moles are zero; total moles come from the escape-owned kg
@@ -739,6 +742,7 @@ def test_mol_columns_written_across_solve_noble_and_excluded_species():
     assert hf_row['He_mol_liquid'] == 0.0
     assert hf_row['He_mol_atm'] == 0.0
     assert hf_row['He_mol_total'] == pytest.approx(he_kg_total / eval_gas_mmw('He'), rel=1e-9)
+    assert hf_row['He_mol_solid'] == 0.0
 
     # NH3: reactive species excluded from the solve. Moles are derived from
     # its kg values via its own molar mass; it has no dissolved kg here, so
@@ -747,3 +751,4 @@ def test_mol_columns_written_across_solve_noble_and_excluded_species():
     assert hf_row['NH3_mol_liquid'] == 0.0
     assert hf_row['NH3_mol_atm'] == pytest.approx(nh3_kg_atm / nh3_mmw, rel=1e-9)
     assert hf_row['NH3_mol_total'] == pytest.approx(nh3_kg_atm / nh3_mmw, rel=1e-9)
+    assert hf_row['NH3_mol_solid'] == 0.0
