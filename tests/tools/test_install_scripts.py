@@ -4,7 +4,6 @@ configuration invariants they depend on.
 
 Reusable shell logic replicated inline from ``tools/get_petsc.sh`` and
 ``tools/get_spider.sh``:
-- ``portable_realpath()``: cross-platform path resolution
 - ERR trap: exit-code and step-name capture
 - Platform detection: PETSC_ARCH assignment
 - Homebrew prefix fallback: architecture-aware default
@@ -13,9 +12,13 @@ Reusable shell logic replicated inline from ``tools/get_petsc.sh`` and
 
 Blocks lifted out of the shipped scripts at run time, so that rewording a
 script re-runs its cases against the new text:
+- ``portable_realpath()``: cross-platform path resolution, including a
+  destination that does not exist yet, plus the invariant that every
+  ``get_*.sh`` copy of the helper carries the same text
 - ``tools/get_aragog.sh``: the dirty-checkout guard shared across ``get_*.sh``
 - ``tools/get_socrates.sh``: the portable-flag rewrite, its post-build flag
-  check, and the conditional AGNI-wrapper rebuild note
+  check, the install-path resolution, and the conditional AGNI-wrapper
+  rebuild note
 
 Also pins invariants that live in checked-in configuration and documentation
 rather than in shell, each of which fails silently when its counterpart moves:
@@ -48,17 +51,30 @@ import pytest
 # ---------------------------------------------------------------------------
 # Helper: extract portable_realpath function from a script
 # ---------------------------------------------------------------------------
+def _extract_shell_function(script: str, name: str) -> str:
+    """Return the shipped bash source of ``name`` in ``tools/<script>``.
+
+    Lifting the definition out of the script under test, rather than copying
+    it here, keeps the cases below running against the shipped text.
+    """
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    lines = (tools_dir / script).read_text().splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.startswith(f'{name}() {{'))
+    end = next(i for i, ln in enumerate(lines) if ln == '}' and i > start)
+    return '\n'.join(lines[start : end + 1]) + '\n'
+
+
 def _portable_realpath_fn() -> str:
-    """Return the bash source for ``portable_realpath()``."""
-    return """\
-portable_realpath() {
-    if command -v realpath >/dev/null 2>&1; then
-        realpath "$1"
-    else
-        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
-    fi
-}
-"""
+    """Return the bash source for the shipped ``portable_realpath()``.
+
+    Nine ``get_*.sh`` scripts carry the helper, so which one is read is
+    arbitrary; ``get_socrates.sh`` is the one whose install-path handling is
+    exercised further down this file. Reading a single copy is sound only
+    because ``test_portable_realpath_identical_across_get_scripts`` pins the
+    copies as the same text: drop that test and these cases stop covering
+    the other eight.
+    """
+    return _extract_shell_function('get_socrates.sh', 'portable_realpath')
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +172,53 @@ def test_portable_realpath_python_fallback(tmp_path):
     resolved = result.stdout.strip()
     assert os.path.isabs(resolved)
     assert resolved == str(target)
+
+
+@pytest.mark.unit
+def test_portable_realpath_resolves_missing_path(tmp_path):
+    """Resolves a destination that does not exist yet, as an install path.
+
+    BSD realpath (macOS) rejects a missing leaf and GNU realpath a missing
+    parent, so both a missing leaf and a missing nested path are covered.
+    An empty result here is the regression: the caller feeds the value
+    straight to ``git clone``, which then fails on an empty work-tree name.
+    """
+    leaf = tmp_path / 'not-created-yet'
+    nested = tmp_path / 'no' / 'such' / 'tree'
+    snippet = (
+        _portable_realpath_fn() + f'\nportable_realpath "{leaf}"\nportable_realpath "{nested}"'
+    )
+    result = subprocess.run(['bash', '-c', snippet], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    resolved = result.stdout.split()
+    assert len(resolved) == 2, result.stdout
+    # tmp_path is under a symlinked /var on macOS, so compare against the
+    # resolved parent rather than against the literal input path.
+    real_root = os.path.realpath(tmp_path)
+    assert resolved[0] == os.path.join(real_root, 'not-created-yet')
+    assert resolved[1] == os.path.join(real_root, 'no', 'such', 'tree')
+
+
+@pytest.mark.unit
+def test_portable_realpath_identical_across_get_scripts():
+    """Every ``tools/get_*.sh`` copy of the helper is the same text.
+
+    The helper is duplicated because the scripts are standalone; a fix
+    applied to one copy and not the others reintroduces the missing-path
+    failure in whichever script was missed.
+    """
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    copies = {
+        script.name: _extract_shell_function(script.name, 'portable_realpath')
+        for script in sorted(tools_dir.glob('get_*.sh'))
+        if 'portable_realpath() {' in script.read_text()
+    }
+
+    # Guard the guard: a mis-rooted glob would make the comparison vacuous.
+    assert len(copies) >= 5, sorted(copies)
+    assert 'get_socrates.sh' in copies
+    assert len(set(copies.values())) == 1, sorted(copies)
 
 
 # ---------------------------------------------------------------------------
@@ -1017,6 +1080,81 @@ def test_post_build_guard_rejects_cpu_specific_template_flags(tmp_path):
         assert res.returncode == 1, f'{flags} not rejected'
         assert 'non-portable' in res.stderr
         assert 'GUARD_OK' not in res.stdout
+
+
+# ---------------------------------------------------------------------------
+# Install-path resolution (tools/get_socrates.sh)
+# ---------------------------------------------------------------------------
+
+
+def _run_install_path_block(root, argv, stub_resolver: str = '') -> subprocess.CompletedProcess:
+    """Run the shipped argument split and install-path resolution.
+
+    ``stub_resolver`` replaces ``portable_realpath`` with a fixture, so the
+    empty-resolution branch can be reached without an unusable host.
+    """
+    block = _extract_socrates_block(
+        '# Separate the --force flag', '# Refuse to delete a checkout'
+    )
+    resolver = stub_resolver or _portable_realpath_fn()
+    snippet = f'set -u\nroot="{root}"\n' + resolver + block + '\necho "SOCPATH=$socpath"\n'
+    return subprocess.run(
+        ['bash', '-c', snippet, 'get_socrates.sh', *argv],
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.mark.unit
+def test_install_path_resolves_before_the_checkout_exists(tmp_path):
+    """A custom destination that does not exist yet resolves to a real path.
+
+    git clone creates the destination, including its parents, so the script
+    must not require the directory up front. An empty resolution is the
+    failure this pins: git clone then reports an empty work-tree name.
+    """
+    dest = tmp_path / 'no' / 'socrates-here'
+    res = _run_install_path_block(tmp_path / 'root', [str(dest)])
+
+    assert res.returncode == 0, res.stderr
+    socpath = res.stdout.strip().removeprefix('SOCPATH=')
+    assert socpath, res.stderr
+    assert socpath == os.path.join(os.path.realpath(tmp_path), 'no', 'socrates-here')
+
+
+@pytest.mark.unit
+def test_install_path_default_and_force_flag(tmp_path):
+    """--force alone keeps the default destination; a path with it is honoured.
+
+    The flag and the optional positional share one argument list, so the
+    ordering of the two must not shift which value lands in socpath.
+    """
+    root = tmp_path / 'root'
+    dest = tmp_path / 'elsewhere'
+
+    default = _run_install_path_block(root, ['--force'])
+    assert default.returncode == 0, default.stderr
+    assert default.stdout.strip() == f'SOCPATH={root}/socrates'
+
+    override = _run_install_path_block(root, ['--force', str(dest)])
+    assert override.returncode == 0, override.stderr
+    assert override.stdout.strip() == f'SOCPATH={os.path.realpath(tmp_path)}/elsewhere'
+
+
+@pytest.mark.unit
+def test_install_path_rejects_unresolvable_path(tmp_path):
+    """An empty resolution stops the script instead of reaching git clone.
+
+    set -euo pipefail is enabled further down the script, so a resolver that
+    fails here would otherwise leave socpath empty and continue.
+    """
+    stub = 'portable_realpath() {\n    return 1\n}\n'
+    res = _run_install_path_block(tmp_path / 'root', ['some/path'], stub_resolver=stub)
+
+    assert res.returncode == 1, res.stdout
+    assert 'could not resolve install path' in res.stderr
+    assert 'some/path' in res.stderr
+    assert 'SOCPATH=' not in res.stdout
 
 
 # ---------------------------------------------------------------------------
