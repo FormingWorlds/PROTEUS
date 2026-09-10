@@ -487,10 +487,12 @@ def _make_ps0d_hf_row(
         'plan_sat_am': L,
         'F_tidal': F_tidal,
         'Time': time,
+        # get_C_planet's fallback for a missing hf_row entry.
+        'core_density': 5500.0,
         # ps0d's ODE now reads its moment-of-inertia coefficient from
         # here directly (matching ps1d/ps1d_evec), not a fixed
         # uniform-sphere approximation computed internally.
-        'C_planet': _PS0D_I,
+        'C_int': _PS0D_I,
     }
 
 
@@ -540,7 +542,7 @@ def test_ps0d_bootstrap_am_uses_satellite_mass_not_planet_mass():
         # In production, evolve_orbit_satellite populates this via
         # get_C_planet before calling ps0d; seeded directly here since
         # this test calls ps0d in isolation.
-        'C_planet': _PS0D_I,
+        'C_int': _PS0D_I,
     }
     ps0d(hf_row, dt=1.0, config=_SOLVER_CONFIG)
 
@@ -571,7 +573,7 @@ def test_ps0d_bootstrap_only_fires_once_am_is_populated():
         'plan_sat_am': 0,
         'F_tidal': 0.0,
         'Time': 0.0,
-        'C_planet': _PS0D_I,  # see comment in the test above
+        'C_int': _PS0D_I,  # see comment in the test above
     }
     ps0d(hf_row, dt=1.0, config=_SOLVER_CONFIG)
     bootstrapped_L = hf_row['plan_sat_am']
@@ -696,8 +698,9 @@ def _make_ps1d_hf_row(*, axial_period=86400.0, axial_period_sat=2.36e6, sma=3.84
         'M_sat': _PS1D_MSA,
         'R_int': _PS1D_RPL,
         'R_sat': _PS1D_RSA,
-        'C_planet': _PS1D_CPL,
+        'C_int': _PS1D_CPL,
         'C_sat': _PS1D_CSA,
+        'core_density': 5500.0,
     }
 
 
@@ -710,7 +713,7 @@ def _ps1d_am_components(hf_row: dict) -> tuple[float, float, float]:
     omega_s = 2 * np.pi / hf_row['axial_period_sat']
     mu = _PS1D_MPL * _PS1D_MSA / (_PS1D_MPL + _PS1D_MSA)
     l_orb = mu * np.sqrt(const_G * (_PS1D_MPL + _PS1D_MSA) * a * (1 - e**2))
-    return hf_row['C_planet'] * omega_p, hf_row['C_sat'] * omega_s, l_orb
+    return hf_row['C_int'] * omega_p, hf_row['C_sat'] * omega_s, l_orb
 
 
 @pytest.mark.physics_invariant
@@ -859,6 +862,8 @@ def _make_evolve_hf_row(*, time=100.0, axial_period=_PS0D_AXIAL_PERIOD, plan_sat
         # Nonzero so ps0d's own AM bootstrap (a separate mechanism,
         # tested above) does not also fire and confound this check.
         'plan_sat_am': plan_sat_am,
+        # get_C_planet's fallback for a missing hf_row entry.
+        'core_density': 5500.0,
     }
 
 
@@ -874,7 +879,7 @@ def test_evolve_orbit_satellite_conserves_spin_am_across_c_planet_change_for_ps0
 
     This must hold for ``model = 'ps0d'`` specifically: unlike
     ps1d/ps1d_evec, ps0d has no satellite spin state of its own, but
-    its own AM bootstrap reads ``hf_row['C_planet']`` directly, so it
+    its own AM bootstrap reads ``hf_row['C_int']`` directly, so it
     needs this refreshed and angular-momentum-consistent exactly like
     the other two models.
     """
@@ -883,7 +888,7 @@ def test_evolve_orbit_satellite_conserves_spin_am_across_c_planet_change_for_ps0
     interior_1 = _make_interior_for_c_planet(density=5500.0)
     interior_1.dt = 1.0
     evolve_orbit_satellite(hf_row, config, dirs={}, tides_o=Tides_t(), interior_o=interior_1)
-    c_planet_1 = hf_row['C_planet']
+    c_planet_1 = hf_row['C_int']
     spin_am_1 = c_planet_1 * (2 * np.pi / hf_row['axial_period'])
 
     # Simulate interior solidification: a different density profile
@@ -891,7 +896,7 @@ def test_evolve_orbit_satellite_conserves_spin_am_across_c_planet_change_for_ps0
     interior_2 = _make_interior_for_c_planet(density=6000.0)
     interior_2.dt = 1.0
     evolve_orbit_satellite(hf_row, config, dirs={}, tides_o=Tides_t(), interior_o=interior_2)
-    c_planet_2 = hf_row['C_planet']
+    c_planet_2 = hf_row['C_int']
     spin_am_2 = c_planet_2 * (2 * np.pi / hf_row['axial_period'])
 
     # Discrimination: C_planet must have actually changed, or the
@@ -906,7 +911,7 @@ def test_evolve_orbit_satellite_c_planet_rescale_holds_with_real_ps0d_dynamics()
     real (nonzero ``F_tidal``) dynamics actually running through
     ``ps0d`` on both calls -- important because ``ps0d``'s own ODE
     now reads its moment-of-inertia coefficient from
-    ``hf_row['C_planet']`` directly (matching ps1d/ps1d_evec), rather
+    ``hf_row['C_int']`` directly (matching ps1d/ps1d_evec), rather
     than a fixed uniform-sphere value independent of the interior
     state.
 
@@ -924,13 +929,13 @@ def test_evolve_orbit_satellite_c_planet_rescale_holds_with_real_ps0d_dynamics()
     interior_1 = _make_interior_for_c_planet(density=5500.0)
     interior_1.dt = 1e5
     evolve_orbit_satellite(hf_row, config, dirs={}, tides_o=Tides_t(), interior_o=interior_1)
-    c_planet_1 = hf_row['C_planet']
+    c_planet_1 = hf_row['C_int']
     spin_am_1 = c_planet_1 * (2 * np.pi / hf_row['axial_period'])
 
     interior_2 = _make_interior_for_c_planet(density=6000.0)
     interior_2.dt = 1e-6
     evolve_orbit_satellite(hf_row, config, dirs={}, tides_o=Tides_t(), interior_o=interior_2)
-    c_planet_2 = hf_row['C_planet']
+    c_planet_2 = hf_row['C_int']
     spin_am_2 = c_planet_2 * (2 * np.pi / hf_row['axial_period'])
 
     assert c_planet_2 != pytest.approx(c_planet_1, rel=1e-6)
@@ -939,7 +944,7 @@ def test_evolve_orbit_satellite_c_planet_rescale_holds_with_real_ps0d_dynamics()
 
 @pytest.mark.parametrize('model', ['ps0d', 'ps1d', 'ps1d_evec'])
 def test_evolve_orbit_satellite_populates_c_planet_for_every_model(model, _fast_hansen_table):
-    """All three dispatchable models need ``hf_row['C_planet']``
+    """All three dispatchable models need ``hf_row['C_int']``
     populated on entry (ps0d for its own AM bootstrap; ps1d/ps1d_evec
     for their spin-coupling ODEs) -- confirms the refresh gate covers
     all of them, not just the two it originally covered.
@@ -956,8 +961,8 @@ def test_evolve_orbit_satellite_populates_c_planet_for_every_model(model, _fast_
 
     evolve_orbit_satellite(hf_row, config, dirs={}, tides_o=tides_o, interior_o=interior_o)
 
-    assert 'C_planet' in hf_row
-    assert hf_row['C_planet'] > 0.0
+    assert 'C_int' in hf_row
+    assert hf_row['C_int'] > 0.0
 
 
 def test_evolve_orbit_satellite_unrecognized_model_raises_immediately():

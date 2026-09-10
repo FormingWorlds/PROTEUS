@@ -96,7 +96,7 @@ parameter studies where stellar evolution is not relevant.
 | `mass_sat` | float | `0.012` | Satellite mass \[M_earth\]. Must be > 0. |
 | `radius_sat` | float | `0.273` | Satellite radius \[R_earth\]. Must be > 0. |
 | `axial_period_sat` | float or none | `none` | Satellite initial day length \[hours\], will use orbital period if value is None. |
-| `semimajoraxis_sat` | float | `0.133` | Satellite initial semi-major axis \[AU\]. Must be > 0. |
+| `semimajoraxis_sat` | float | `3.5` | Satellite initial semi-major axis \[R_earth\]. Must be > 0. |
 | `eccentricity_sat` | float | `0.0` | Satellite initial orbital eccentricity \[dimensionless\]. Must be >= 0. |
 | `evection_angle` | float | `0.0` | Satellite evection angle \[deg\]. Must be >= 0. |
 | `c_factor_sat` | float | `0.4` | Satellite tidal dissipation factor (<= 0.4) \[dimensionless\]. Must be > 0 and <= 0.4. |
@@ -127,6 +127,7 @@ satellite models (ps0d, ps1d, ps1d_evec).
 | `max_substeps` | int | `10000000` | Maximum number of substeps attempted per call. Must be > 0. |
 | `resonance_margin_enter` | float | `0.1` | Evection-band entry margin (ps1d_evec only). Must be > 0. |
 | `resonance_margin_exit` | float | `0.5` | Evection-band exit margin (ps1d_evec only). Must be > 0. |
+| `resonance_margin_approach` | float | `0.3` | Wider, purely-diagnostic margin used to set a pre-emptive signal that the system is closing in on the band before the tighter ``resonance_margin_enter`` would declare capture. Must be > 0. |
 | `fine_csv_target_rel_dt` | float | `0.01` | Target storage-clock spacing for out-of-band fine samples, as a fraction of the requested call duration (ps1d_evec only). Must be > 0. |
 <!-- END GENERATED: config-table [orbit.solver] -->
 
@@ -179,6 +180,7 @@ for arbitrary eccentricity and tidal mode.
 | `m` | list | `[0, 2]` | Tidal harmonic (m=2 semidiurnal, m=1 diurnal). |
 | `k_min` | int | Literal | `"none"` | Minimum Fourier index in mean anomaly (adaptive spectrum). |
 | `k_max` | int | Literal | `"none"` | Maximum Fourier index in mean anomaly (adaptive spectrum). |
+| `evection_padding_factor` | float | `2.0` | Safety multiplier on the linear look-ahead eccentricity padding applied to Obliqua's own adaptive k-range selection. Must be >= 0. |
 | `material_mu` | str | `"andrade"` | Rheology model for complex shear modulus ("andrade" or "maxwell"). Choices: `"andrade"`, `"maxwell"`, `"elastic"`. |
 | `material_k` | str | `"andrade"` | Rheology model for complex bulk modulus ("andrade" or "maxwell"). Choices: `"andrade"`, `"maxwell"`, `"elastic"`. |
 | `alpha` | float | `0.3` | Andrade power-law exponent. Must be > 0. |
@@ -222,7 +224,7 @@ for arbitrary eccentricity and tidal mode.
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `sigma_R` | float | `0.001` | Rayleigh drag in the fluid-mush/solid boundary layers \[1/s\]. Must be > 0. |
-| `sigma_R_inf` | float | `0.5` | Rayleigh drag in the pure fluid \[1/s\]. Must be > 0. |
+| `sigma_R_factor` | float | `0.5` | Rayleigh drag in the pure fluid as a fraction of the interface \[dimensionless\]. Must be > 0. |
 | `sigma_R_prf` | str | `"exp"` | Radial heating distribution profile \[dimensionless\]. Choices: `"uniform"`, `"exp"`, `"linear"`, `"quadratic"`, `"dynamic"`, `"dynamic_interp"`. |
 | `H_R` | float | `10000.0` | Scale height to be used by heating profile \[m\]. Must be > 0. |
 | `efficiency` | float | `0.3` | Rayleigh drag efficiency at core interface \[dimensionless\]. Must be > 0. |

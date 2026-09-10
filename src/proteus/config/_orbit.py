@@ -122,8 +122,8 @@ class ObliquaFluid:
     ----------
     sigma_R: float
         Rayleigh drag in the fluid-mush/solid boundary layers [1/s].
-    sigma_R_inf: float
-        Rayleigh drag in the pure fluid [1/s].
+    sigma_R_factor: float
+        Rayleigh drag in the pure fluid as a fraction of the interface [dimensionless].
     sigma_R_prf: str
         Radial heating distribution profile [dimensionless].
     H_R: float
@@ -133,7 +133,7 @@ class ObliquaFluid:
     """
 
     sigma_R: float = field(default=1e-3, validator=gt(0))
-    sigma_R_inf: float = field(default=0.5, validator=gt(0))
+    sigma_R_factor: float = field(default=0.5, validator=gt(0))
     sigma_R_prf: str = field(
         default='exp',
         validator=in_(('uniform', 'exp', 'linear', 'quadratic', 'dynamic', 'dynamic_interp')),
@@ -274,7 +274,7 @@ class Satellite:
     axial_period_sat: float | None
         Satellite initial day length [hours], will use orbital period if value is None.
     semimajoraxis_sat: float
-        Satellite initial semi-major axis [AU].
+        Satellite initial semi-major axis [R_earth].
     eccentricity_sat: float
         Satellite initial orbital eccentricity [dimensionless].
     evection_angle: float
@@ -291,7 +291,7 @@ class Satellite:
     mass_sat: float = field(default=0.012, validator=gt(0))
     radius_sat: float = field(default=0.273, validator=gt(0))
     axial_period_sat = field(default=None, validator=ax_valid, converter=none_if_none)
-    semimajoraxis_sat: float = field(default=0.133, validator=gt(0))
+    semimajoraxis_sat: float = field(default=3.5, validator=gt(0))
     eccentricity_sat: float = field(default=0.0, validator=ge(0))
     evection_angle: float = field(default=0.0, validator=ge(0))
     c_factor_sat: float = field(

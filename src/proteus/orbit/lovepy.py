@@ -34,6 +34,44 @@ def _jlsca(sca: float):
     return juliacall.convert(jl.LovePy.prec, sca)
 
 
+def store_lovepy_tides(omega: float, imk2: float, tides_o: Tides_t):
+    """Store tidal mode information in tides_o object.
+
+    This function merely applies to lovepy, as it hardcodes the tidal
+    modes and their associated forcing frequencies and imaginary k2
+    love numbers. The storage makes the legacy LovePy module compatible
+    with the `sp1d` star planet orbit module. Note, however, that the
+    assumptions backed into LovePy assume e<<1 and spinorbit synchronization,
+    while the `sp1d` module does not make these assumptions.
+
+    Parameters
+    ----------
+        omega: float
+            Angular frequency of rotation
+        imk2: float
+            Imaginary part of k2 love number
+        tides_o: Tides_t
+            Struct containing tidal arrays at current time.
+    """
+
+    # Collect tidal mode information
+    # Note that these modes are hardcoded into Lovepy.
+    nmk = np.array(
+        ([2, 0, 1], [2, 2, 1], [2, 2, 3]), dtype=int
+    )
+    # Note we only have acces to the imaginary part of k2, so we set the real part to 0.0.
+    LNk = np.full(3, 1j * imk2, dtype=complex)
+    # Note we consistently drop the minus sign on the East/West ward component of the
+    # forcing frequency and the imaginary part of the k2 love number.
+    sigma = np.full(3, omega, dtype=float)
+
+    # Store tidal mode information in tides_o object
+    storage = tides_o.add(primary='planet', perturber='star')
+    storage.nmk = nmk
+    storage.sigma = sigma
+    storage.LNk = LNk
+
+
 def run_lovepy(
     hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides_t, config: Config
 ) -> float:
@@ -76,6 +114,8 @@ def run_lovepy(
     i_top = 0  # index of topmost cell which has visc>visc_thresh
     if config.interior_energetics.module in ('dummy', 'boundary'):
         if lov['visc'][0] < config.orbit.lovepy.visc_thresh:
+            # Store empty tidal mode information
+            store_lovepy_tides(omega, 0.0, tides_o)
             return 0.0
 
         # Construct arrays for lovepy (we need two cells, three edges here)
@@ -96,6 +136,8 @@ def run_lovepy(
 
         # fully liquid
         if i_top <= 1:
+            # Store empty tidal mode information
+            store_lovepy_tides(omega, 0.0, tides_o)
             return 0.0
 
         # Construct arrays for lovepy
@@ -143,22 +185,8 @@ def run_lovepy(
         power_blk /= np.sum(lov['mass'])
         log.debug('    power from bulk calc: %.3e W kg-1' % power_blk)
 
-    # Collect tidal mode information
-    nmk = np.array(
-        ([2, 0, 1], [2, 2, 1], [2, 2, 3]), dtype=int
-    )  # Note that these modes are hardcoded into Lovepy.
-    LNk = np.array(
-        ([0.0 + Imk2 * 1j], [0.0 + Imk2 * 1j], [0.0 + Imk2 * 1j]), dtype=complex
-    )  # Note we only have acces to the imaginary part of k2, so we set the real part to 0.0.
-    sigma = np.array(
-        ([omega], [omega], [omega]), dtype=float
-    )  # Note we consistently drop the minus sign on the East/West ward component of the forcing frequency and the imaginary part of the k2 love number.
-
-    # Store tidal mode information in tides_o object
-    storage = tides_o.add(primary='planet', perturber='star')
-    storage.nmk = nmk
-    storage.sigma = sigma
-    storage.LNk = LNk
+    # Store tidal mode information
+    store_lovepy_tides(omega, float(Imk2), tides_o)
 
     # Return imaginary part of k2 love number
     return float(Imk2)

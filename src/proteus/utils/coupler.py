@@ -781,25 +781,29 @@ def GetHelpfileKeys():
         'orbital_period',   # orbital duration [s]
         'eccentricity',     # orbital eccentricity [1]
         'ecc_dot_planet',   # eccentricity derivative [1 s-1]
-        'Imk2',             # Imaginary part of k2 Love Number [1]
-        'plan_star_am',     # angular momentum of star+planet [kg m2 s-1],
+        'plan_star_am',     # angular momentum of star+planet [kg m2 s-1]
         'axial_period',     # day length of planet around its axis [s]
-        'n_star',           # mean motion of star [s-1]
+
+        'Imk2',             # Imaginary part of k2 Love Number [1]
+
         'longitude',        # column longitude relative to substellar point [deg]
         'latitude',         # column latitude relative to substellar point [deg]
 
         # Satellite system
-        'perigee',          # lowest point in orbit [m]
         'semimajorax_sat',  # semi-major axis [m]
         'sma_dot_sat',      # semi-major axis derivative [m s-1]
+        'separation_sat',   # time-averaged separation [m]
+        'perigee',          # lowest point in orbit [m]
         'orbital_period_sat', # orbital duration [s]
         'eccentricity_sat', # orbital eccentricity of satellite [1]
         'ecc_dot_sat',      # eccentricity derivative [1 s-1]
-        'M_sat',            # mass of satellite [kg]
-        'R_sat',            # radius of satellite [m]
-        'C_sat',            # principal moment of inertia of satellite [kg m2]
-        'plan_sat_am',      # angular momentum of satellite+planet [kg m2 s-1],
+        'plan_sat_am',      # angular momentum of satellite+planet [kg m2 s-1]
         'axial_period_sat', # day length of satellite around its axis [s]
+
+        'R_sat',            # radius of satellite [m]
+        'M_sat',            # mass of satellite [kg]
+        'C_sat',            # principal moment of inertia of satellite [kg m2]
+
         'evection_angle',   # evection angle [rad]
         'in_evection_band', # whether inside the evection resonance band [bool, 0/1]
         'near_evection_band', # wider pre-emptive dt-throttle diagnostic, no physics effect [bool, 0/1]
@@ -810,7 +814,7 @@ def GetHelpfileKeys():
         'M_planet',         # total planet wet+dry mass [kg]
         'M_vaps',           # vapourised rock mass, including the vapourised oxygen [kg]
         'R_core',           # core radius [m]
-        'C_planet',         # principal moment of inertia of planet [kg m2]
+        'C_int',            # principal moment of inertia of planet [kg m2]
         'R_solvus',         # solvus radius for global_miscibility mode [m]
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]
         'T_solvus',         # solvus temperature for global_miscibility mode [K]
@@ -1045,13 +1049,15 @@ def GetHelpfileKeys():
         keys.append(s + '_ocean')       # ocean surface density [kg m-2]
 
     # Diagnostic variables
-    keys.append('wtg_surf')         # Weak temperature gradient parameter at the surface [1]
-    keys.append('roche_limit')      # Roche limit, orbital distance  [m]
-    keys.append('breakup_period')   # Critical day length [s]
-    keys.append('hill_radius')      # Hill radius, radial distance [m]
+    keys.append('wtg_surf')             # Weak temperature gradient parameter at the surface [1]
+    keys.append('roche_limit')          # Roche limit, orbital distance  [m]
+    keys.append('breakup_period')       # Critical day length [s]
+    keys.append('hill_radius')          # Hill radius, radial distance [m]
+    keys.append('roche_limit_sat')      # Roche limit, orbital distance for the satellite [m]
+    keys.append('breakup_period_sat')   # Critical day length for satellite [s]
 
     # Simulation's computational variables
-    keys.append('runtime')          # Simulation wall-clock runtime [s]
+    keys.append('runtime')              # Simulation wall-clock runtime [s]
     # fmt: on
 
     return keys

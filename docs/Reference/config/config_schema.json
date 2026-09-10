@@ -503,7 +503,112 @@
           "value": 0
         }
       ],
-      "description": "Maximum time-step size [yr] while the planet-satellite system is inside the evection resonance band (``hf_row['in_evection_band']``, written by ``evolve_orbit_satellite``/``_in_evection_band``). See ``run_adaptive_orbit_substeps``. Set to 0 to disable.",
+      "description": "Ceiling on the time-step size [yr] while the planet-satellite system is inside, or approaching, the evection resonance band. Set to 0 to disable the whole mechanism.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.dt.evection_target_rel_de",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.05",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Target maximum fractional change in ``eccentricity_sat`` per macro-step while inside/approaching the evection band. Obliqua's own adaptive mode-window selection is keyed on the eccentricity it is given at call time, and that window is then held fixed for the whole of the following macro-step, so a large fractional swing in ``e`` within one step risks needing modes outside that window. Default 0.05 (5%).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.dt.evection_de_floor",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.02",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Floor on the eccentricity value used in the ``evection_target_rel_de`` ratio's denominator, so a tiny eccentricity right at capture onset does not make the allowed step blow up. Default 0.02.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.dt.evection_rate_window",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "int",
+      "accepts_none": false,
+      "default": "2",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 2
+        }
+      ],
+      "description": "Number of trailing accepted macro-steps used to estimate the SECULAR ``|de/dt|`` this cap bounds against (a least-squares linear fit for windows > 2, the plain two-point difference at the default of 2). Default 2, preserves the two-point behaviour.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.dt.evection_growth_factor",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Cap on the dt growth ratio between consecutive steps while the system is inside/approaching the evection band, or within ``evection_cooldown_iters`` steps of having left it. Separate from the global ``max_growth_factor`` (which most evection runs leave disabled, since it would also throttle ordinary bulk evolution for the rest of the run).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.dt.evection_cooldown_iters",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "int",
+      "accepts_none": false,
+      "default": "0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Number of PROTEUS iterations, after ``in_evection_band``/ ``near_evection_band`` both go False, during which ``evection_growth_factor`` remains active. Refreshed to this value on every iteration the zone is active, so a long stay in the band does not exhaust it before exit. Default 0 (no cooldown tail; growth limiting turns off the instant the zone flags clear).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -916,6 +1021,86 @@
       "group_qualifier": null
     },
     {
+      "path": "params.stop.disint_sat.enabled",
+      "toml_section": "params.stop.disint_sat",
+      "class": "StopDisintSat",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Enable all planet disintegration criteria if True",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.stop.disint_sat.roche_enabled",
+      "toml_section": "params.stop.disint_sat",
+      "class": "StopDisintSat",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Disable Roche limit criterion",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.stop.disint_sat.offset_roche",
+      "toml_section": "params.stop.disint_sat",
+      "class": "StopDisintSat",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0",
+      "choices": null,
+      "bounds": null,
+      "description": "Absolute correction (+/-) to (increase/decrease) calculated Roche limit [m].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.stop.disint_sat.spin_enabled",
+      "toml_section": "params.stop.disint_sat",
+      "class": "StopDisintSat",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Disable Breakup period criterion",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.stop.disint_sat.offset_spin",
+      "toml_section": "params.stop.disint_sat",
+      "class": "StopDisintSat",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0",
+      "choices": null,
+      "bounds": null,
+      "description": "Absolute correction (+/-) to (increase/decrease) calculated Breakup period [s].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "params.stop.satellite.enabled",
       "toml_section": "params.stop.satellite",
       "class": "StopSatellite",
@@ -937,7 +1122,7 @@
       "class": "StopSatellite",
       "type": "float",
       "accepts_none": false,
-      "default": "0",
+      "default": "60",
       "choices": null,
       "bounds": null,
       "description": "Maximum semi-major axis for the satellite [R_Earth].",
@@ -1706,7 +1891,7 @@
       "class": "Satellite",
       "type": "float",
       "accepts_none": false,
-      "default": "0.133",
+      "default": "3.5",
       "choices": null,
       "bounds": [
         {
@@ -1714,7 +1899,7 @@
           "value": 0
         }
       ],
-      "description": "Satellite initial semi-major axis [AU].",
+      "description": "Satellite initial semi-major axis [R_earth].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -2127,6 +2312,27 @@
       "group_qualifier": null
     },
     {
+      "path": "orbit.solver.resonance_margin_approach",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.3",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Wider, purely-diagnostic margin used to set a pre-emptive signal that the system is closing in on the band before the tighter ``resonance_margin_enter`` would declare capture.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "orbit.solver.fine_csv_target_rel_dt",
       "toml_section": "orbit.solver",
       "class": "OrbitSolver",
@@ -2523,6 +2729,27 @@
       "group_qualifier": null
     },
     {
+      "path": "orbit.obliqua.evection_padding_factor",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "float",
+      "accepts_none": false,
+      "default": "2.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Safety multiplier on the linear look-ahead eccentricity padding applied to Obliqua's own adaptive k-range selection.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "orbit.obliqua.material_mu",
       "toml_section": "orbit.obliqua",
       "class": "Obliqua",
@@ -2902,7 +3129,7 @@
       "group_qualifier": null
     },
     {
-      "path": "orbit.obliqua.fluid.sigma_R_inf",
+      "path": "orbit.obliqua.fluid.sigma_R_factor",
       "toml_section": "orbit.obliqua.fluid",
       "class": "ObliquaFluid",
       "type": "float",
@@ -2915,7 +3142,7 @@
           "value": 0
         }
       ],
-      "description": "Rayleigh drag in the pure fluid [1/s].",
+      "description": "Rayleigh drag in the pure fluid as a fraction of the interface [dimensionless].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

@@ -59,7 +59,7 @@ class Tides_t:
 
 
 def get_C_planet(hf_row: dict, config: Config, interior_o: Interior_t):
-    """Compute the planet's principal moment of inertia (C_planet) based on the interior structure.
+    """Compute the planet's principal moment of inertia (C_int) based on the interior structure.
 
     Note: This function should live in the interior_energetics module, but is currently here for
     convenience. It may be moved in the future. When moving this, ensure that the smoothing of the
@@ -82,6 +82,14 @@ def get_C_planet(hf_row: dict, config: Config, interior_o: Interior_t):
     # Get the radial grid and density profile from the interior object
     arr_keys = ('density', 'radius')
     lov = {k: np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}
+    core_density = hf_row.get('core_density', None)
+    if core_density is None:
+        core_density = config.interior_struct.core_density
+        # Warn user
+        log.warning(
+            'core_density not found in hf_row; using config value: %.3e kg/m^3',
+            core_density,
+        )
 
     # Reverse arrays if using SPIDER
     #  Such that i=0 is at the CMB
@@ -89,8 +97,9 @@ def get_C_planet(hf_row: dict, config: Config, interior_o: Interior_t):
         for k in arr_keys:
             lov[k] = lov[k][::-1]
 
-    r_edges = lov['radius']  # length N+1
-    rho = lov['density']  # length N
+    # Include the core density as the innermost layer
+    r_edges = np.concatenate(([0.0], lov['radius']))
+    rho = np.concatenate(([core_density], lov['density']))
 
     r0 = r_edges[:-1]
     r1 = r_edges[1:]
@@ -100,7 +109,7 @@ def get_C_planet(hf_row: dict, config: Config, interior_o: Interior_t):
     C_planet = (8 * np.pi / 3.0) * integral
 
     # Store C_planet in the helpfile row for later use
-    hf_row['C_planet'] = C_planet
+    hf_row['C_int'] = C_planet
 
     # Check if C_planet is physically reasonable
     C_factor_planet = C_planet / (hf_row['M_int'] * hf_row['R_int'] ** 2)
@@ -168,9 +177,9 @@ def run_adaptive_orbit_substeps(
         `state_is_valid_fn` check. The substep size is only grown once
         every value is comfortably inside its limit (below 30% of it).
     needs_c_planet : bool
-        Whether this model reads `hf_row['C_planet']`. If True, this
+        Whether this model reads `hf_row['C_int']`. If True, this
         function refreshes it from the live interior state once before
-        the substep loop starts, then SMOOTHLY ramps `hf_row['C_planet']`
+        the substep loop starts, then SMOOTHLY ramps `hf_row['C_int']`
         from its call-start value to that freshly-computed target across
         the substep loop (linear in elapsed time), rescaling the planet's
         spin (`axial_period`) at every accepted substep to conserve
@@ -206,7 +215,7 @@ def run_adaptive_orbit_substeps(
 
     Instead, `C_planet` is ramped linearly in elapsed time from its
     call-start value to the freshly-computed target across the accepted
-    substeps of this call: at each substep, `hf_row['C_planet']` is moved
+    substeps of this call: at each substep, `hf_row['C_int']` is moved
     to the linearly-interpolated value for `t_elapsed + dt_yr`, and
     `axial_period` is rescaled to conserve `C_planet * Omega_p` across
     just that slice (not the whole jump). Composing many small exact
@@ -217,7 +226,7 @@ def run_adaptive_orbit_substeps(
     unchanged, only spread out in time so no other quantity sees a step
     function. If a call cannot complete within `solver.max_substeps` /
     the step-size floor, the ramp is simply left partway through
-    (`hf_row['C_planet']` still short of the target); the next call
+    (`hf_row['C_int']` still short of the target); the next call
     recomputes a fresh target from the (by-then-updated) interior state
     and continues the ramp toward that, so no correction is lost or
     double-applied, only delayed -- the same partial-completion behaviour
@@ -269,11 +278,11 @@ def run_adaptive_orbit_substeps(
     ramp_c_planet = False
 
     def _rescale_c_planet_to(target_c_p):
-        """Move hf_row['C_planet'] to target_c_p, rescaling axial_period
-        to conserve C_planet*Omega_p across the move (a no-op on the
+        """Move hf_row['C_int'] to target_c_p, rescaling axial_period
+        to conserve C_int*Omega_p across the move (a no-op on the
         rescale, besides writing target_c_p, if there is no valid prior
-        C_planet/axial_period to conserve against)."""
-        c_p_before = hf_row.get('C_planet')
+        C_int/axial_period to conserve against)."""
+        c_p_before = hf_row.get('C_int')
         if (
             c_p_before is not None
             and np.isfinite(c_p_before)
@@ -283,14 +292,14 @@ def run_adaptive_orbit_substeps(
         ):
             omega_p_before = 2 * np.pi / float(hf_row['axial_period'])
             hf_row['axial_period'] = 2 * np.pi / (omega_p_before * c_p_before / target_c_p)
-        hf_row['C_planet'] = target_c_p
+        hf_row['C_int'] = target_c_p
 
     if needs_c_planet:
-        C_p_call_start = hf_row.get('C_planet')
+        C_p_call_start = hf_row.get('C_int')
 
         try:
             get_C_planet(hf_row, config, interior_o)
-            C_p_call_target = hf_row['C_planet']
+            C_p_call_target = hf_row['C_int']
 
             if not np.isfinite(C_p_call_target) or C_p_call_target == 0:
                 log.error(
@@ -321,7 +330,7 @@ def run_adaptive_orbit_substeps(
                 # Restore the call-start value so the substep loop below
                 # ramps toward the target instead of landing on it in
                 # one jump.
-                hf_row['C_planet'] = C_p_call_start
+                hf_row['C_int'] = C_p_call_start
         except Exception:
             log.error(
                 '%s: C_planet update RAISED at Time=%.6e yr (C_p_old=%r, model=%s); re-raising',

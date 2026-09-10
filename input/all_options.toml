@@ -61,7 +61,12 @@ config_version = "3.0"
         max_growth_factor     = 0.0          # cap on dt growth ratio between consecutive steps; 0 = disabled
         mushy_maximum         = 1.0e6        # max dt [yr] while stop.solid.phi_crit < Phi < mushy_upper (0 = disabled); caps steps through the mushy band so the integrator resolves the solidification front rather than overstepping it
         mushy_upper           = 0.99         # mushy regime upper bound (melt fraction)
-        evection_maximum      = 0.0          # max dt [yr] while hf_row['in_evection_band'] (0 = disabled); caps steps while the planet-satellite system is inside the evection resonance
+        evection_maximum      = 0.0          # ceiling dt [yr] while hf_row['in_evection_band']/['near_evection_band'] (0 = disabled); used directly until rate history exists, then only as an upper bound on the rate-based cap below
+        evection_target_rel_de = 0.05        # target max fractional change in eccentricity_sat per step while in/near the evection band
+        evection_de_floor     = 0.02         # floor on eccentricity_sat in the evection_target_rel_de ratio's denominator
+        evection_rate_window  = 2            # trailing macro-steps used to fit the secular |de/dt| (least-squares for >2, two-point diff at the default of 2); widen (e.g. 10-20) if eccentricity_sat's own evection-angle-driven oscillation aliases into a stuck-small dt
+        evection_growth_factor = 0.0         # cap on dt growth ratio while in/near the evection band or within evection_cooldown_iters of leaving it; 0 = disabled
+        evection_cooldown_iters = 0          # iterations after leaving the evection band during which evection_growth_factor stays active; 0 = disabled
         hysteresis_iters      = 0            # suppress speed-up for N iters after a slow-down; 0 = disabled
         hysteresis_sfinc      = 1.1          # gentler speed-up factor while hysteresis active
 
@@ -100,9 +105,16 @@ config_version = "3.0"
             spin_enabled      = true         # check rotational breakup
             offset_spin       = 0            # correction to breakup period [s]
 
+        [params.stop.disint_sat]              # satellite disintegration criterion
+            enabled           = false
+            roche_enabled     = true         # check Roche limit (around the planet)
+            offset_roche      = 0            # correction to the satellite's Roche limit [m]
+            spin_enabled      = true         # check rotational breakup
+            offset_spin       = 0            # correction to the satellite's breakup period [s]
+
         [params.stop.satellite]              # satellite escape criterion
             enabled           = false
-            sma_max           = 0            # terminate when the satellite's semi-major axis exceeds this value [R_earth]
+            sma_max           = 60           # terminate when the satellite's semi-major axis exceeds this value [R_earth]
 
         [params.stop.clock]                  # wall-clock runtime criterion
             enabled           = false
@@ -243,7 +255,7 @@ config_version = "3.0"
         mass_sat              = 0.012        # satellite mass [M_earth]
         radius_sat            = 0.273        # satellite radius [R_earth]
         axial_period_sat      = "none"       # day length [hours]; none = tidally locked
-        semimajoraxis_sat     = 1.33e-4      # satellite orbit semi-major axis [AU]
+        semimajoraxis_sat     = 3.5           # satellite orbit semi-major axis [R_earth]
         eccentricity_sat      = 0.0          # satellite initial orbital eccentricity [dimensionless]
         evection_angle        = 0.0          # evectionangle [degrees]
         c_factor_sat          = 0.4          # satellite normalized moment of inertia factor [dimensionless] (Note: 0.4 = uniform density sphere, < 0.4 = differentiated body; see https://en.wikipedia.org/wiki/Moment_of_inertia_factor)
@@ -270,6 +282,7 @@ config_version = "3.0"
 
         resonance_margin_enter = 0.10        # evection-band entry margin (ps1d_evec only)
         resonance_margin_exit  = 0.50        # evection-band exit margin (ps1d_evec only)
+        resonance_margin_approach = 0.30     # wider pre-emptive margin for hf_row['near_evection_band'] (ps1d_evec only); must be > resonance_margin_enter
         fine_csv_target_rel_dt = 0.01        # target storage-clock spacing for out-of-band fine samples (ps1d_evec only)
 
     # Tidal heating
@@ -297,6 +310,7 @@ config_version = "3.0"
         m                     = [0, 2]       # harmonic of the true anomaly. m=2 corresponds to the semidiurnal tide, m=1 diurnal tide
         k_min                 = "none"       # minimum tidal mode range (k is the Fourier index in mean anomaly), set <nothing> to obtain tidal mode range from eccentricity relation
         k_max                 = "none"       # maximum tidal mode range (k is the Fourier index in mean anomaly), set <nothing> to obtain tidal mode range from eccentricity relation
+        evection_padding_factor = 2.0        # safety multiplier on the look-ahead eccentricity padding applied to the adaptive k-range while in/near the evection band; 0 = no padding
 
         material_mu           = "andrade"    # material type for complex shear modulus ("andrade", "maxwell", "elastic")
         material_k            = "andrade"    # material type for complex bulk modulus ("andrade", "maxwell", "elastic")
@@ -358,10 +372,10 @@ config_version = "3.0"
 
         [orbit.obliqua.fluid]
             sigma_R           = 1e-4         # rayleigh drag coefficient at interface [dimensionless]
-            sigma_R_inf       = 1e-7         # rayleigh drag coefficient in pure fluid [dimensionless]
+            sigma_R_factor    = 0.5          # rayleigh drag coefficient in pure fluid as fraction of the interface [dimensionless]
             sigma_R_prf       = "dynamic"    # heating profile distribution ("uniform", "exp", "linear", "quadratic", "dynamic")
             H_R               = 1e5          # heating profile scale height [m]
-            efficiency        = 1e0         # rayleigh drag efficiency at core interface [dimensionless]
+            efficiency        = 1e0          # rayleigh drag efficiency at core interface [dimensionless]
 
 # ----------------------------------------------------
 

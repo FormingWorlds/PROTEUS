@@ -23,6 +23,7 @@ from proteus.orbit.wrapper import (
     update_period,
     update_rochelimit,
     update_separation,
+    update_separation_sat,
 )
 from proteus.utils.constants import AU, M_earth, M_sun, R_earth, const_G
 
@@ -99,13 +100,22 @@ def test_perihelion_is_sma_times_one_minus_eccentricity():
 
 
 @pytest.mark.physics_invariant
-def test_perigee_passes_through_satellite_sma():
-    """Periapsis around the planet is currently the satellite SMA
-    (circular-orbit approximation). The value must pass through
-    unmodified for a downstream consumer."""
-    hf_row = {'semimajorax': AU, 'eccentricity': 0.1, 'semimajorax_sat': 3.5e8}
-    update_separation(hf_row)
-    assert hf_row['perigee'] == pytest.approx(3.5e8, rel=1e-12)
+def test_update_separation_sat_perigee_uses_eccentric_periapsis_formula():
+    """Periapsis around the planet (``perigee``) is now computed with
+    the same periapsis formula as the planet-star ``perihelion``
+    (``sma * (1 - ecc)``), not a circular-orbit sma passthrough --
+    ``update_separation_sat`` is the satellite analogue of
+    ``update_separation``, now split into its own function since the
+    two use independent (semimajorax_sat, eccentricity_sat) inputs.
+    """
+    hf_row = {'semimajorax_sat': 3.5e8, 'eccentricity_sat': 0.1}
+    update_separation_sat(hf_row)
+    expected_perigee = 3.5e8 * (1 - 0.1)
+    assert hf_row['perigee'] == pytest.approx(expected_perigee, rel=1e-12)
+    # Discrimination: the old circular-orbit passthrough (perigee == sma
+    # exactly) would miss the eccentricity correction entirely.
+    assert hf_row['perigee'] != pytest.approx(3.5e8, rel=1e-6)
+    assert hf_row['separation_sat'] == pytest.approx(3.5e8 * (1 + 0.5 * 0.1**2), rel=1e-12)
     # Positivity guard: perigee is a distance, must be > 0.
     assert hf_row['perigee'] > 0.0
 
@@ -773,7 +783,9 @@ def test_run_orbit_bootstraps_satellite_params_and_hansen_table_for_ps1d():
     assert hf_row['C_sat'] == pytest.approx(
         0.4 * hf_row['M_sat'] * hf_row['R_sat'] ** 2, rel=1e-12
     )
-    assert hf_row['semimajorax_sat'] == pytest.approx(0.00257 * AU, rel=1e-12)
+    # semimajoraxis_sat is interpreted in R_earth, not AU (matching
+    # radius_sat/R_sat's own convention on the same config section).
+    assert hf_row['semimajorax_sat'] == pytest.approx(0.00257 * R_earth, rel=1e-12)
     assert hf_row['eccentricity_sat'] == pytest.approx(0.05, rel=1e-12)
     assert hf_row['evection_angle'] == pytest.approx(np.deg2rad(10.0), rel=1e-12)
     # 1:1 spin-orbit resonance: axial_period_sat == orbital_period_sat.

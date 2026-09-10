@@ -171,6 +171,12 @@ def test_run_lovepy_dummy_returns_zero_when_top_cell_below_visc_thresh(monkeypat
 
     Discrimination: the Julia ``calc_lovepy_tides`` is not called
     on the early-return path; pin the call count at 0.
+
+    The early-return path still populates a zero-heating tides_o
+    entry (``store_lovepy_tides(omega, 0.0, tides_o)``) so a later
+    ``tides_o.get('planet', 'star')`` in the sp1d path does not raise
+    ``KeyError`` for a fully-liquid mantle -- confirmed here rather
+    than assuming the entry stays absent.
     """
     from proteus.orbit import lovepy as lovepy_mod
 
@@ -194,8 +200,10 @@ def test_run_lovepy_dummy_returns_zero_when_top_cell_below_visc_thresh(monkeypat
 
     assert out == pytest.approx(0.0, abs=1e-12)
     fake_jl.calc_lovepy_tides.assert_not_called()
-    # The early-return path exits before the tides_o storage block.
-    assert tides_o.interactions == []
+    # A zero-heating entry must still be registered on this early-return
+    # path, so a downstream tides_o.get('planet', 'star') never raises.
+    storage = tides_o.get(primary='planet', perturber='star')
+    assert np.all(storage.LNk == 0.0 + 0.0j)
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +217,11 @@ def test_run_lovepy_aragog_returns_zero_when_full_mantle_below_visc_thresh(monke
     region of high-viscosity cells from the bottom up).
 
     Discrimination: the Julia tides call does not fire.
+
+    A zero-heating tides_o entry must still be registered on this
+    fully-liquid early-return path (matching the dummy/boundary case
+    above), so a downstream ``tides_o.get('planet', 'star')`` never
+    raises ``KeyError`` during the early magma-ocean phase.
     """
     from proteus.orbit import lovepy as lovepy_mod
 
@@ -229,7 +242,8 @@ def test_run_lovepy_aragog_returns_zero_when_full_mantle_below_visc_thresh(monke
     )
     assert out == pytest.approx(0.0, abs=1e-12)
     fake_jl.calc_lovepy_tides.assert_not_called()
-    assert tides_o.interactions == []
+    storage = tides_o.get(primary='planet', perturber='star')
+    assert np.all(storage.LNk == 0.0 + 0.0j)
 
 
 # ---------------------------------------------------------------------------
@@ -276,8 +290,14 @@ def test_run_lovepy_dummy_heated_branch_writes_tides_and_returns_imk2(monkeypatc
     storage = tides_o.get(primary='planet', perturber='star')
     np.testing.assert_array_equal(storage.nmk, [[2, 0, 1], [2, 2, 1], [2, 2, 3]])
     expected_omega = 2 * np.pi / hf_row['orbital_period']
-    np.testing.assert_allclose(storage.sigma, np.full((3, 1), expected_omega), rtol=1e-12)
-    np.testing.assert_allclose(storage.LNk, np.full((3, 1), 0.0 - 0.0125j), rtol=1e-12)
+    # Flat (3,) shape, not (3, 1): nested-bracket construction previously
+    # left this array 2-D, which breaks _dense_love's boolean-mask
+    # assignment (dense[indices] = LNk[mask]) for more than one masked
+    # mode.
+    assert storage.sigma.shape == (3,)
+    assert storage.LNk.shape == (3,)
+    np.testing.assert_allclose(storage.sigma, np.full(3, expected_omega), rtol=1e-12)
+    np.testing.assert_allclose(storage.LNk, np.full(3, 0.0 - 0.0125j), rtol=1e-12)
     # Discrimination: the real part must stay exactly zero (only
     # Imk2 is known; a regression that leaked omega or Imk2 into the
     # real part would fail this).
@@ -332,8 +352,10 @@ def test_run_lovepy_aragog_heated_branch_writes_per_cell_tides(monkeypatch):
 
     storage = tides_o.get(primary='planet', perturber='star')
     expected_omega = 2 * np.pi / hf_row['orbital_period']
-    np.testing.assert_allclose(storage.sigma, np.full((3, 1), expected_omega), rtol=1e-12)
-    np.testing.assert_allclose(storage.LNk, np.full((3, 1), 0.0 - 0.025j), rtol=1e-12)
+    assert storage.sigma.shape == (3,)
+    assert storage.LNk.shape == (3,)
+    np.testing.assert_allclose(storage.sigma, np.full(3, expected_omega), rtol=1e-12)
+    np.testing.assert_allclose(storage.LNk, np.full(3, 0.0 - 0.025j), rtol=1e-12)
 
 
 def test_run_lovepy_spider_heated_branch_reverses_order(monkeypatch):
@@ -377,7 +399,8 @@ def test_run_lovepy_spider_heated_branch_reverses_order(monkeypatch):
     assert out == pytest.approx(-0.030, rel=1e-12)
 
     storage = tides_o.get(primary='planet', perturber='star')
-    np.testing.assert_allclose(storage.LNk, np.full((3, 1), 0.0 - 0.030j), rtol=1e-12)
+    assert storage.LNk.shape == (3,)
+    np.testing.assert_allclose(storage.LNk, np.full(3, 0.0 - 0.030j), rtol=1e-12)
 
 
 # ---------------------------------------------------------------------------

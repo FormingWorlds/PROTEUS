@@ -36,6 +36,13 @@ def _cfg(**kwargs: Any) -> Any:
             offset_roche=0.0,
             offset_spin=0.0,
         ),
+        disint_sat=ns(
+            enabled=False,
+            roche_enabled=True,
+            spin_enabled=True,
+            offset_roche=0.0,
+            offset_spin=0.0,
+        ),
         satellite=ns(enabled=False, sma_max=0.0),
         time=ns(enabled=True, maximum=100.0, minimum=0.0),
         iters=ns(enabled=True, total_loops=5, total_min=1),
@@ -223,6 +230,80 @@ def test_check_satellite_not_triggered_below_escape_sma(patch_statusfile):
     h.hf_row['semimajorax_sat'] = 5.0 * R_earth
     assert terminate._check_satellite(h) is False
     assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_satellite_separation_triggers_roche_limit(patch_statusfile):
+    """Satellite disintegration: periapsis around the PLANET (perigee)
+    below the satellite's own Roche limit exits with status 18.
+    """
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['perigee'] = 0.9
+    h.hf_row['roche_limit_sat'] = 1.0
+    assert terminate._check_satellite_separation(h) is True
+    assert patch_statusfile[-1][1] == 18
+
+
+@pytest.mark.unit
+def test_check_satellite_separation_not_triggered_outside_roche_limit(patch_statusfile):
+    """Edge case for the boundary above: perigee comfortably outside the
+    satellite's Roche limit keeps the simulation running."""
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['perigee'] = 5.0
+    h.hf_row['roche_limit_sat'] = 1.0
+    h.hf_row['separation'] = 1.5e11  # ~1 AU; must not leak into this check
+    assert terminate._check_satellite_separation(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_satellite_spinrate_triggers_breakup(patch_statusfile):
+    """Satellite disintegration: spinning faster than its own breakup
+    rate exits with status 18."""
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['axial_period_sat'] = 4.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    assert terminate._check_satellite_spinrate(h) is True
+    assert patch_statusfile[-1][1] == 18
+
+
+@pytest.mark.unit
+def test_check_satellite_spinrate_not_triggered_above_breakup_period(patch_statusfile):
+    """Edge case for the boundary above: satellite spin period
+    comfortably longer than its breakup period keeps the simulation
+    running."""
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['axial_period_sat'] = 20.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    assert terminate._check_satellite_spinrate(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_termination_dispatches_satellite_disintegration_checks(
+    monkeypatch, patch_statusfile
+):
+    """``check_termination`` must actually reach the satellite
+    disintegration checks when ``stop.disint_sat.enabled`` is True.
+    """
+    cfg = _cfg()
+    cfg.params.stop.disint_sat.enabled = True
+    h = _handler(cfg)
+    # Roche check runs first (roche_enabled defaults True); keep it safely
+    # unmet so the spin-rate trigger below is what's actually observed.
+    h.hf_row['perigee'] = 5.0
+    h.hf_row['roche_limit_sat'] = 1.0
+    h.hf_row['axial_period_sat'] = 4.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    h.loops['total'] = 5  # satisfy min_iter so exit is allowed
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    assert patch_statusfile[-1][1] == 18
 
 
 @pytest.mark.unit

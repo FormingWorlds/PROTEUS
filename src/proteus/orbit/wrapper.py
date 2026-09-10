@@ -62,10 +62,8 @@ def update_separation(hf_row: dict):
             Current helpfile row
     """
 
-    sma = hf_row['semimajorax']  # already in SI units
+    sma = hf_row['semimajorax']
     ecc = hf_row['eccentricity']
-
-    sma_sat = hf_row['semimajorax_sat']  # already in SI units
 
     # Time-averaged separation
     hf_row['separation'] = sma * (1 + 0.5 * ecc * ecc)
@@ -73,8 +71,29 @@ def update_separation(hf_row: dict):
     # Periapsis distance around star
     hf_row['perihelion'] = sma * (1 - ecc)
 
-    # Periapsis distance around planet (assuming circular orbiting satellite)
-    hf_row['perigee'] = sma_sat
+
+def update_separation_sat(hf_row: dict):
+    """
+    Calculate time-averaged orbital separation on an elliptical path.
+    https://physics.stackexchange.com/a/715749
+
+    Calculate periapsis distance on an elliptical path.
+    https://mathworld.wolfram.com/Periapsis.html
+
+    Parameters
+    -------------
+        hf_row: dict
+            Current helpfile row
+    """
+
+    sma = hf_row['semimajorax_sat']
+    ecc = hf_row['eccentricity_sat']
+
+    # Time-averaged separation
+    hf_row['separation_sat'] = sma * (1 + 0.5 * ecc * ecc)
+
+    # Periapsis distance around star
+    hf_row['perigee'] = sma * (1 - ecc)
 
 
 def update_period(hf_row: dict):
@@ -176,6 +195,25 @@ def update_rochelimit(hf_row: dict):
     hf_row['roche_limit'] = Rpl * (2 * Mst / Mpl) ** (1.0 / 3)
 
 
+def update_rochelimit_sat(hf_row: dict):
+    """
+    Calculate Roche limit for the satellite.
+
+    Using equation from: http://astro.vaporia.com/start/rochelimit.html
+
+    Parameters
+    -------------
+        hf_row: dict
+            Current helpfile row
+    """
+
+    Rsa = hf_row['R_sat']
+    Msa = hf_row['M_sat']
+    Mpl = hf_row['M_star']
+
+    hf_row['roche_limit_sat'] = Rsa * (2 * Mpl / Msa) ** (1.0 / 3)
+
+
 def update_breakup_period(hf_row: dict):
     """
     Calculate Breakup period.
@@ -194,6 +232,26 @@ def update_breakup_period(hf_row: dict):
     Mpl = hf_row['M_int']
 
     hf_row['breakup_period'] = 2 * np.pi / np.sqrt(const_G * Mpl / (Rpl**3))
+
+
+def update_breakup_period_sat(hf_row: dict):
+    """
+    Calculate Breakup period for the satellite.
+
+    Using equation from: https://arxiv.org/abs/2508.09273
+    (Note, the equation contains a typo, it should
+    read: 2pi/T = Ω = sqrt( G Mp / Rp^3 ). )
+
+    Parameters
+    -------------
+        hf_row: dict
+            Current helpfile row
+    """
+
+    Rsa = hf_row['R_sat']
+    Msa = hf_row['M_sat']
+
+    hf_row['breakup_period_sat'] = 2 * np.pi / np.sqrt(const_G * Msa / (Rsa**3))
 
 
 def run_orbit(
@@ -259,7 +317,7 @@ def run_orbit(
                 config.orbit.satellite.c_factor_sat * hf_row['M_sat'] * hf_row['R_sat'] ** 2
             )
 
-            hf_row['semimajorax_sat'] = config.orbit.satellite.semimajoraxis_sat * AU
+            hf_row['semimajorax_sat'] = config.orbit.satellite.semimajoraxis_sat * R_earth # [m]
             hf_row['eccentricity_sat'] = config.orbit.satellite.eccentricity_sat
 
             hf_row['evection_angle'] = np.deg2rad(config.orbit.satellite.evection_angle)
@@ -325,13 +383,6 @@ def run_orbit(
         # Update satellite orbital period, from independent variables above
         update_period_sat(hf_row)
 
-    # Mean motion of the star-planet system (used by ps1d_evec's evection
-    # forcing term, and recorded here so it appears in the helpfile output
-    # rather than only living inside that solver's own internal params dict).
-    hf_row['n_star'] = np.sqrt(
-        const_G * (hf_row['M_star'] + hf_row['M_planet']) / hf_row['semimajorax'] ** 3
-    )
-
     # Inform user
     log.info('    Orb SMaxis = %.5f AU    (Planet)' % (hf_row['semimajorax'] / AU))
     log.info('    Orb eccent = %.5f       (Planet)' % (hf_row['eccentricity']))
@@ -380,6 +431,27 @@ def run_orbit(
     update_hillradius(hf_row)
     if max(hf_row['R_obs'], hf_row['R_xuv']) > hf_row['hill_radius']:
         log.warning('Atmosphere extends beyond the Hill radius')
+
+    # Update Breakup period and Roche limit for satellite
+    if config.orbit.satellite.include_satellite:
+        # Update separation
+        update_separation_sat(hf_row)
+
+        update_breakup_period_sat(hf_row)
+        if hf_row['axial_period_sat'] <= hf_row['breakup_period_sat'] + float(
+            config.params.stop.disint.offset_spin
+        ):
+            log.warning('Satellite is spinning faster than the Breakup rate')
+
+        update_rochelimit_sat(hf_row)
+        if hf_row['perigee'] <= hf_row['roche_limit_sat'] + float(
+            config.params.stop.disint.offset_roche
+        ):
+            log.warning('Satellite is orbiting within the Roche limit of its planet')
+
+        # If satellite orbit extends beyond the Hill radius, then warn user
+        if hf_row['semimajorax_sat'] > hf_row['hill_radius']:
+            log.warning('Satellite orbit extends beyond the Hill radius of its planet')
 
     # Call tidal heating module, if enabled
     # Initialise, set tidal heating to zero

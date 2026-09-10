@@ -276,7 +276,7 @@ def sp1d(hf_row, tides_o, dt, config: Config):
         'M_s': hf_row['M_star'],
         'R_p': hf_row['R_int'],
         'R_s': hf_row['R_star'],
-        'C_p': hf_row['C_planet'],
+        'C_p': hf_row['C_int'],
     }
 
     # Retrieve tidal mode information from tides_o object

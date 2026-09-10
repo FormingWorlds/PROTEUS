@@ -335,6 +335,10 @@ def _make_hf_row(
         # Only read by evolve_orbit_star's adaptive-substep controller
         # (for log messages), not by sp0d/sp1d directly.
         'Time': 0.0,
+        # get_C_planet's fallback for a missing hf_row entry reads
+        # config.interior_struct.core_density; set directly here so
+        # these tests don't need a full config.interior_struct stand-in.
+        'core_density': 5500.0,
     }
 
 
@@ -584,10 +588,12 @@ def _make_sp1d_hf_row(*, axial_period=86400.0, sma=0.02 * 1.496e11, ecc=0.3):
         'M_star': _SP1D_MST,
         'R_int': _SP1D_RPL,
         'R_star': _SP1D_RST,
-        'C_planet': _SP1D_CPL,
+        'C_int': _SP1D_CPL,
         # Only read by evolve_orbit_star's adaptive-substep controller
         # (for log messages), not by sp1d directly.
         'Time': 0.0,
+        # get_C_planet's fallback for a missing hf_row entry
+        'core_density': 5500.0,
     }
 
 
@@ -601,7 +607,7 @@ def _sp1d_spin_and_orbital_am(hf_row: dict) -> tuple[float, float]:
     omega_p = 2 * np.pi / axial_period
     mu = _SP1D_MST * _SP1D_MPL / (_SP1D_MST + _SP1D_MPL)
     l_orb = mu * np.sqrt(const_G * (_SP1D_MST + _SP1D_MPL) * a * (1 - e**2))
-    return hf_row['C_planet'] * omega_p, l_orb
+    return hf_row['C_int'] * omega_p, l_orb
 
 
 def _sp1d_total_am(hf_row: dict) -> float:
@@ -783,12 +789,12 @@ def test_evolve_orbit_star_sp1d_model_calls_get_c_planet_and_evolves_hf_row(
     _fast_hansen_table,
 ):
     """``config.orbit.star_planet_model == 'sp1d'`` dispatches through
-    ``get_C_planet`` (populating ``hf_row['C_planet']`` from the
+    ``get_C_planet`` (populating ``hf_row['C_int']`` from the
     interior profile) and then ``sp1d``, via the public
     ``evolve_orbit_star`` entry point.
     """
     hf_row = _make_sp1d_hf_row(ecc=0.3)
-    del hf_row['C_planet']  # get_C_planet must populate this itself
+    del hf_row['C_int']  # get_C_planet must populate this itself
     hf_row['M_int'] = _SP1D_MPL
     hf_row['R_int'] = _SP1D_RPL
     tides_o = _make_planet_star_tides(-0.01 - 0.02j)
@@ -804,8 +810,8 @@ def test_evolve_orbit_star_sp1d_model_calls_get_c_planet_and_evolves_hf_row(
 
     evolve_orbit_star(hf_row, config, tides_o=tides_o, interior_o=interior_o)
 
-    assert 'C_planet' in hf_row
-    assert hf_row['C_planet'] > 0.0
+    assert 'C_int' in hf_row
+    assert hf_row['C_int'] > 0.0
     # Discrimination: the orbit actually evolved under sp1d, not a
     # silent no-op.
     assert hf_row['eccentricity'] < 0.3

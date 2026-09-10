@@ -64,23 +64,29 @@ def test_get_c_planet_matches_uniform_density_sphere_analytic_value():
     """
     R, rho0 = 6.371e6, 5500.0
     interior, M = _uniform_sphere_interior(R, rho0, nlev_b=8)
-    hf_row: dict = {'M_int': M, 'R_int': R}
+    # interior.radius already starts at r=0 (a whole uniform sphere, no
+    # separate core), so the [0.0, radius[0]=0.0] segment get_C_planet
+    # injects for the core is zero-width and core_density's value is
+    # inert here -- set regardless so the core_density fallback path
+    # (which needs config.interior_struct, absent from this minimal cfg)
+    # is never reached.
+    hf_row: dict = {'M_int': M, 'R_int': R, 'core_density': 0.0}
     cfg = cast(Any, SimpleNamespace(interior_energetics=SimpleNamespace(module='aragog')))
 
     get_C_planet(hf_row, cfg, interior)
 
     expected = (2.0 / 5.0) * M * R**2
-    assert hf_row['C_planet'] == pytest.approx(expected, rel=1e-12)
+    assert hf_row['C_int'] == pytest.approx(expected, rel=1e-12)
     # Discrimination guard: the classic wrong-prefactor bugs for a solid
     # sphere are 1/3 (thin shell) and 1/2 (disk); both are far outside a
     # 1e-6 relative window around 2/5.
-    assert abs(hf_row['C_planet'] / (M * R**2) - 1.0 / 3.0) > 0.05
-    assert abs(hf_row['C_planet'] / (M * R**2) - 1.0 / 2.0) > 0.1
+    assert abs(hf_row['C_int'] / (M * R**2) - 1.0 / 3.0) > 0.05
+    assert abs(hf_row['C_int'] / (M * R**2) - 1.0 / 2.0) > 0.1
     # Sanity/scale guard: C_factor for a uniform sphere is exactly 0.4,
     # comfortably inside the physically reasonable [0.2, 0.4] range for
     # real (centrally condensed) planets quoted in the source's own log
     # message.
-    assert 0.2 < hf_row['C_planet'] / (M * R**2) <= 0.4
+    assert 0.2 < hf_row['C_int'] / (M * R**2) <= 0.4
 
 
 @pytest.mark.reference_pinned
@@ -107,10 +113,14 @@ def test_get_c_planet_spider_reversal_recovers_cmb_first_ordering():
         interior = Interior_t(nlev_b=4)
         interior.radius = radius.copy()
         interior.density = density.copy()
-        hf_row: dict = {'M_int': M, 'R_int': R}
+        # r_edges_cmb_first starts at r=0, so the core segment
+        # get_C_planet injects is zero-width; core_density's value is
+        # inert here, just needs to be set to avoid the config.interior_struct
+        # fallback (absent from this minimal cfg).
+        hf_row: dict = {'M_int': M, 'R_int': R, 'core_density': 0.0}
         cfg = cast(Any, SimpleNamespace(interior_energetics=SimpleNamespace(module=module)))
         get_C_planet(hf_row, cfg, interior)
-        return hf_row['C_planet']
+        return hf_row['C_int']
 
     # Non-SPIDER caller supplying already CMB-first arrays: no reversal
     # needed, must match the independently hand-summed expected value.
@@ -150,13 +160,15 @@ def test_get_c_planet_without_reversal_flag_flips_sign_on_surface_first_input():
     interior = Interior_t(nlev_b=4)
     interior.radius = r_edges_cmb_first[::-1].copy()
     interior.density = rho_cmb_first[::-1].copy()
-    hf_row: dict = {'M_int': M, 'R_int': R}
+    # Zero-width injected core segment (see the two tests above); set so
+    # the config.interior_struct fallback is never reached.
+    hf_row: dict = {'M_int': M, 'R_int': R, 'core_density': 0.0}
     cfg = cast(Any, SimpleNamespace(interior_energetics=SimpleNamespace(module='dummy')))
 
     get_C_planet(hf_row, cfg, interior)
 
-    assert hf_row['C_planet'] == pytest.approx(-expected_C, rel=1e-12)
-    assert hf_row['C_planet'] < 0.0
+    assert hf_row['C_int'] == pytest.approx(-expected_C, rel=1e-12)
+    assert hf_row['C_int'] < 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +273,7 @@ def _make_interior_o(dt: float) -> Any:
 
 def test_run_adaptive_orbit_substeps_skips_c_planet_refresh_when_not_needed():
     """``needs_c_planet=False`` must never call ``get_C_planet`` nor
-    write ``hf_row['C_planet']`` -- the branch every current production
+    write ``hf_row['C_int']`` -- the branch every current production
     caller (sp1d/ps1d/ps1d_evec) skips by always passing True."""
     config = _make_solver_config(dt0_yr=1.0, dt_max_yr=10.0, max_rel_da=1.0)
     interior_o = _make_interior_o(dt=5.0)
@@ -284,20 +296,20 @@ def test_run_adaptive_orbit_substeps_skips_c_planet_refresh_when_not_needed():
             needs_c_planet=False,
         )
     mock_get_c.assert_not_called()
-    assert 'C_planet' not in hf_row
+    assert 'C_int' not in hf_row
 
 
 def test_run_adaptive_orbit_substeps_logs_error_on_degenerate_c_planet_result(caplog):
     """A ``get_C_planet`` result that is zero or non-finite must be
     logged as an error and the structural update skipped, rather than
-    propagating a degenerate value into ``hf_row['C_planet']`` silently
+    propagating a degenerate value into ``hf_row['C_int']`` silently
     (which would divide-by-zero the very next AM-conserving rescale)."""
     config = _make_solver_config(dt0_yr=1.0, dt_max_yr=10.0)
     interior_o = _make_interior_o(dt=5.0)
-    hf_row: dict = {'Time': 0.0, 'C_planet': 1.0e37, 'axial_period': 86400.0}
+    hf_row: dict = {'Time': 0.0, 'C_int': 1.0e37, 'axial_period': 86400.0}
 
     def fake_get_c_planet(hf_row, config, interior_o):
-        hf_row['C_planet'] = 0.0  # degenerate
+        hf_row['C_int'] = 0.0  # degenerate
 
     with (
         patch('proteus.orbit.common.get_C_planet', side_effect=fake_get_c_planet),
@@ -328,7 +340,7 @@ def test_run_adaptive_orbit_substeps_reraises_when_c_planet_refresh_raises(caplo
     stop the run, not silently continue with a stale C_planet."""
     config = _make_solver_config(dt0_yr=1.0, dt_max_yr=10.0)
     interior_o = _make_interior_o(dt=5.0)
-    hf_row: dict = {'Time': 0.0, 'C_planet': 1.0e37, 'axial_period': 86400.0}
+    hf_row: dict = {'Time': 0.0, 'C_int': 1.0e37, 'axial_period': 86400.0}
 
     with (
         patch('proteus.orbit.common.get_C_planet', side_effect=RuntimeError('boom')),

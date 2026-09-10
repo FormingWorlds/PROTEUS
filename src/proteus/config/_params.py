@@ -353,6 +353,33 @@ class StopDisint:
 
 
 @define
+class StopDisintSat:
+    """Parameters for satellite disintegration stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable all planet disintegration criteria if True
+    roche_enabled: bool
+        Disable Roche limit criterion
+    offset_roche: float
+        Absolute correction (+/-) to (increase/decrease) calculated Roche limit [m].
+    spin_enabled: bool
+        Disable Breakup period criterion
+    offset_spin: float
+        Absolute correction (+/-) to (increase/decrease) calculated Breakup period [s].
+    """
+
+    enabled: bool = field(default=False)
+
+    roche_enabled: bool = field(default=True)
+    offset_roche: float = field(default=0)
+
+    spin_enabled: bool = field(default=True)
+    offset_spin: float = field(default=0)
+
+
+@define
 class StopSatellite:
     """Parameters for satellite escape stopping criteria.
 
@@ -365,7 +392,7 @@ class StopSatellite:
     """
 
     enabled: bool = field(default=False)
-    sma_max: float = field(default=0)
+    sma_max: float = field(default=60)
 
 
 @define
@@ -425,6 +452,8 @@ class StopParams:
         Parameters for escape criteria.
     disint: StopDisint
         Parameters for planet disintegration criteria.
+    disint_sat: StopDisintSat
+        Parameters for satellite disintegration criteria.
     clock: StopClock
         Parameters for maximum clock runtime criteria.
     stall: StopStall
@@ -437,6 +466,7 @@ class StopParams:
     radeqm: StopRadeqm = field(factory=StopRadeqm)
     escape: StopEscape = field(factory=StopEscape)
     disint: StopDisint = field(factory=StopDisint)
+    disint_sat: StopDisintSat = field(factory=StopDisintSat)
     satellite: StopSatellite = field(factory=StopSatellite)
     clock: StopClock = field(factory=StopClock)
     stall: StopStall = field(factory=StopStall)

@@ -261,13 +261,13 @@ def evolve_orbit_satellite(
 
     Angular-momentum-conserving structural (C_planet) update
     ----------------------------------------------------------
-    `run_adaptive_orbit_substeps` recomputes hf_row['C_planet'] (the
+    `run_adaptive_orbit_substeps` recomputes hf_row['C_int'] (the
     planet's moment-of-inertia coefficient) from the *live* interior state
     (currently C_p = gyration_const * M_planet * R_int**2) exactly once,
     before the substep loop starts -- because `interior_o` (and hence
     R_int) is frozen for the whole duration of this call by construction.
     ps0d needs this too: its own AM bootstrap (see ps0d's Ltot call) reads
-    hf_row['C_planet'] directly, so it must stay populated and
+    hf_row['C_int'] directly, so it must stay populated and
     angular-momentum-consistent -- but ps0d does NOT go through this
     shared controller at all (see the dispatch below); it gets the same
     one-time get_C_planet refresh and single-jump AM-conserving rescale
@@ -313,9 +313,9 @@ def evolve_orbit_satellite(
         # Bypasses run_adaptive_orbit_substeps entirely: ps0d has no
         # spin-orbit-tidal stiffness. Preserves the AM-conserving
         # structural rescale, applied as a single unsmoothed jump.
-        C_p_old = hf_row.get('C_planet')
+        C_p_old = hf_row.get('C_int')
         get_C_planet(hf_row, config, interior_o)
-        C_p_new = hf_row['C_planet']
+        C_p_new = hf_row['C_int']
         if (
             C_p_old is not None
             and np.isfinite(C_p_old)
@@ -717,7 +717,7 @@ def ps0d(hf_row, dt, config: Config):
     # block keeps this angular-momentum-consistent across structural
     # changes -- see that function's docstring), not a fixed
     # uniform-sphere approximation.
-    I = hf_row['C_planet']  # kg m^2
+    I = hf_row['C_int']  # kg m^2
 
     # Convert time to seconds
     dt = float(dt) * secs_per_year
@@ -803,7 +803,7 @@ def ps1d(hf_row, tides_o, dt, config: Config):
         'M_s': hf_row['M_sat'],
         'R_p': hf_row['R_int'],
         'R_s': hf_row['R_sat'],
-        'C_p': hf_row['C_planet'],
+        'C_p': hf_row['C_int'],
         'C_s': hf_row['C_sat'],
     }
 
@@ -1085,7 +1085,7 @@ def ps1d_evec(
 
     # Mean motion of star-planet system
     n_star = np.sqrt(
-        const_G * (hf_row['M_star'] + hf_row['M_planet']) / hf_row['semimajorax'] ** 3
+        const_G * (hf_row['M_star'] + hf_row['M_int']) / hf_row['semimajorax'] ** 3
     )
 
     params = {
@@ -1093,7 +1093,7 @@ def ps1d_evec(
         'M_s': hf_row['M_sat'],
         'R_p': hf_row['R_int'],
         'R_s': hf_row['R_sat'],
-        'C_p': hf_row['C_planet'],
+        'C_p': hf_row['C_int'],
         'C_s': hf_row['C_sat'],
         'n_star': n_star,
         'J_struc': 0.315,

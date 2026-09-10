@@ -159,6 +159,42 @@ def _check_satellite(handler: Proteus) -> bool:
     return False
 
 
+def _check_satellite_separation(handler: Proteus) -> bool:
+    log.debug('Check satellite separation')
+
+    # Satellite's own periapsis distance from the planet (NOT hf_row['separation'],
+    # which is the PLANET's time-averaged separation from the star -- comparing that
+    # to the satellite's own Roche limit would compare unrelated distances and this
+    # check would then never fire).
+    perigee = handler.hf_row['perigee']
+    roche_limit_sat = handler.hf_row['roche_limit_sat']
+    offset = handler.config.params.stop.disint_sat.offset_roche
+    log.debug('    per, roc = %.3e, %.3e  m' % (perigee, roche_limit_sat - offset))
+
+    if perigee <= roche_limit_sat + offset:
+        UpdateStatusfile(handler.directories, 18)
+        _msg_termination('Satellite has disintegrated')
+        return True
+
+    return False
+
+
+def _check_satellite_spinrate(handler: Proteus) -> bool:
+    log.debug('Check satellite spin rate')
+
+    axial_period_sat = handler.hf_row['axial_period_sat']
+    breakup_period_sat = handler.hf_row['breakup_period_sat']
+    offset = handler.config.params.stop.disint_sat.offset_spin
+    log.debug('    axr, bur = %.3e, %.3e  s' % (axial_period_sat, breakup_period_sat))
+
+    if axial_period_sat <= breakup_period_sat + offset:
+        UpdateStatusfile(handler.directories, 18)
+        _msg_termination('Satellite has disintegrated')
+        return True
+
+    return False
+
+
 # Maximum time
 def _check_maxtime(handler: Proteus) -> bool:
     log.debug('Check maximum time')
@@ -298,6 +334,16 @@ def check_termination(handler: Proteus) -> bool:
         # Spinning faster than breakup rate (centrifugal disruption)
         if handler.config.params.stop.disint.spin_enabled:
             finished = finished or _check_spinrate(handler)
+
+    # Two criteria for satellite disintegration
+    if handler.config.params.stop.disint_sat.enabled:
+        # Orbiting within Roche limit (tidal disruption when close to planet)
+        if handler.config.params.stop.disint_sat.roche_enabled:
+            finished = finished or _check_satellite_separation(handler)
+
+        # Spinning faster than breakup rate (centrifugal disruption)
+        if handler.config.params.stop.disint_sat.spin_enabled:
+            finished = finished or _check_satellite_spinrate(handler)
 
     # Satellite escaped
     if handler.config.params.stop.satellite.enabled:

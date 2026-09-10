@@ -217,6 +217,10 @@ def CommentFromStatus(status: int):
             desc = 'Completed (volatiles escaped)'
         case 16:
             desc = 'Completed (planet disintegrated)'
+        case 17:
+            desc = 'Completed (satellite escaped)'
+        case 18:
+            desc = 'Completed (satellite disintegrated)'
         # Error cases
         case 20:
             desc = 'Error (generic case, or configuration issue)'
