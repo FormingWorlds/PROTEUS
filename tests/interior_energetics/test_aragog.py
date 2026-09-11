@@ -844,6 +844,65 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
 
 
 @pytest.mark.unit
+def test_solve_with_retry_accepts_step_cap_truncation(monkeypatch):
+    """A terminal step-cap event (status=1) is a shortened step, not a failure.
+
+    The per-cell phi/T/S step caps are registered as a terminal
+    ``solve_ivp`` event on the scipy path, so a cap fire returns
+    ``status=1`` with a valid trajectory up to the event time. aragog's own
+    ``solve()`` treats that as success. The CVODE path already maps the
+    equivalent root-found return to ``status=0``, so a ladder that accepts
+    only 0 aborts the run on the scipy fallback alone -- and no amount of
+    dt halving helps, because the cap is anchored at solve entry.
+
+    Two branches:
+
+    * ``dt_actual > 0``: accept on the first attempt, so ``solve()`` runs
+      once and the caller advances by the truncated dt.
+    * ``dt_actual == 0``: no progress, so the ladder must still run and
+      exhaust rather than stall the coupler at zero advance.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    module_path = 'aragog.solver.entropy_solver'
+    monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', False)
+
+    def _build_runner(dt_actual):
+        runner = AragogRunner.__new__(AragogRunner)
+        runner._config = MagicMock()
+        runner._config.interior_energetics.aragog.solver_method = 'cvode'
+        runner._config.planet.mass_tot = 1.0
+
+        out = MagicMock()
+        out.status = 1
+        # Keep T_core inside the jump guard so the status branch, not the
+        # sanity check, decides the outcome.
+        out.T_core = 3000.0
+        out.dt_actual = dt_actual
+
+        solver = MagicMock()
+        solver.parameters.solver.start_time = 0.0
+        solver.parameters.solver.end_time = 3.157e3
+        solver.get_current_dSdr_cmb.return_value = None
+        solver._dSdr_cmb_init = None
+        solver.get_state.return_value = out
+        runner.aragog_solver = solver
+
+        interior_o = MagicMock()
+        interior_o._last_entropy = None
+        return runner, interior_o, {'Time': 4.539e5, 'T_cmb': 3000.0}, out
+
+    runner, interior_o, hf_row, out = _build_runner(42.35)
+    assert runner._solve_with_retry(hf_row, interior_o) is out
+    assert runner.aragog_solver.solve.call_count == 1
+
+    stalled, stalled_interior_o, stalled_hf_row, _ = _build_runner(0.0)
+    with pytest.raises(RuntimeError, match='Radau status=1'):
+        stalled._solve_with_retry(stalled_hf_row, stalled_interior_o)
+    assert stalled.aragog_solver.solve.call_count == 6
+
+
+@pytest.mark.unit
 def test_active_solver_name_reports_unknown_when_cvode_probe_fails(monkeypatch):
     """A missing/renamed aragog CVODE flag yields an explicit unknown label.
 

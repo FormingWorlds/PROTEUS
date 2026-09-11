@@ -2135,7 +2135,25 @@ class AragogRunner:
                     )
 
                 # Status check: did the solver accept the step?
-                if out.status == 0:
+                #
+                # status==1 is a scipy terminal-event exit, NOT a failure.
+                # The only event aragog registers is the per-cell step cap
+                # (phi / T / S, entropy_solver.py:_phi_cap_event_factory),
+                # and the trajectory is valid up to the event time; aragog's
+                # own solve() logs it as a success and leaves stop_early
+                # False. The CVODE path already normalises the equivalent
+                # root-found return (flag==2) to status=0, so only the scipy
+                # fallback ever surfaces 1 -- and there the ladder cannot
+                # help, because the cap is anchored at solve entry and
+                # re-fires at the same physical time however small dt gets.
+                # Halving dt six times therefore exhausted the ladder on a
+                # step the solver had integrated correctly. run_solver
+                # advances the coupler by out.dt_actual, so a truncated step
+                # is carried through with the right end time. Require
+                # dt_actual > 0 so an event firing at t_start still retries
+                # rather than stalling the coupler at zero progress.
+                cap_truncated = out.status == 1 and float(out.dt_actual) > 0.0
+                if out.status == 0 or cap_truncated:
                     # Sanity check: reject suspiciously large T_core jumps
                     # that indicate the solver "succeeded" with garbage.
                     # Applies on ALL attempts (not just retries):
@@ -2153,10 +2171,11 @@ class AragogRunner:
                     dT = abs(T_core_post - T_core_pre) if T_core_pre > 0 else 0.0
                     if dT > sanity_dT_core:
                         log.warning(
-                            'Aragog attempt %d returned status=0 but T_core '
+                            'Aragog attempt %d returned status=%d but T_core '
                             'jumped %.1f K (>%.0f K threshold). Treating as '
                             'failure and continuing retry ladder.',
                             attempt,
+                            int(out.status),
                             dT,
                             sanity_dT_core,
                         )
@@ -2172,16 +2191,25 @@ class AragogRunner:
                                 float(solver._atol_sf),
                                 dt_requested,
                             )
+                        if cap_truncated:
+                            log.info(
+                                'Aragog step-cap event truncated the interior '
+                                'step: dt_actual=%.3e yr of %.3e yr requested '
+                                '(%s status=1). Accepting the shortened step.',
+                                float(out.dt_actual),
+                                float(solver.parameters.solver.end_time) - t_start,
+                                self._active_solver_name(),
+                            )
                         return out
 
                 if attempt >= max_attempts:
-                    # status==0 here means the solver accepted every step but
-                    # each result was rejected for an over-threshold T_core
-                    # jump, so report that reason rather than the misleading
-                    # status=0.
-                    if out.status == 0:
+                    # An accepted status here means the solver integrated
+                    # every attempt but each result was rejected for an
+                    # over-threshold T_core jump, so report that reason
+                    # rather than the misleading status code.
+                    if out.status == 0 or cap_truncated:
                         reason = (
-                            'status=0 but the T_core jump exceeded the '
+                            f'status={out.status} but the T_core jump exceeded the '
                             f'{sanity_dT_core:.0f} K sanity threshold on every attempt'
                         )
                     else:

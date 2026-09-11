@@ -126,7 +126,7 @@ config_version = "3.0"
     f_differentiation         = 0.50         # differentiation heat retention [0-1] (accretion only)
 
     # Redox and oxygen budget
-    fO2_source                = "user_constant"  # user_constant | from_O_budget (authoritative O accounting)
+    fO2_source                = "user_constant"  # user_constant | from_O_budget (authoritative O accounting) | from_mantle_redox (tracked Fe3+/Fe2+, requires interior_energetics.module = spider | aragog)
 
     # Initial volatile inventory
     volatile_mode             = 'elements'   # set volatile inventory by: 'elements' | 'gas_prs'
