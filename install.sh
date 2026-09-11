@@ -504,9 +504,12 @@ if ! command_exists unzip; then
     missing_deps+=("unzip")
 fi
 
-# NetCDF (needed for SOCRATES)
-if ! command_exists nc-config && ! command_exists nf-config; then
+# NetCDF (needed for SOCRATES, which uses the C and the Fortran interface)
+if ! command_exists nc-config; then
     missing_deps+=("netcdf-dev")
+fi
+if ! command_exists nf-config; then
+    missing_deps+=("netcdf-fortran-dev")
 fi
 
 if [ ${#missing_deps[@]} -gt 0 ]; then
