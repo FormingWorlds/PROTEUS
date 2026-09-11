@@ -3975,7 +3975,7 @@
       "default": "0.0",
       "choices": null,
       "bounds": null,
-      "description": "Per-call melt-fraction step cap. When > 0 and any staggered cell is in or near the two-phase window at solve() entry, a CVODE root function (and the equivalent scipy event) returns control at the exact time the larger of the global mass-weighted |ΔΦ| and the maximum single-cell |Δφ| reaches this cap. The per-cell term bounds how far one deep cell may cross the mushy window in a single call, which removes the discontinuous core-temperature drop at crystallisation onset. Schema default 0.0, which the Aragog wrapper promotes to a non-zero default for the coupled zalmoxis interior stack; this promotion applies only when the key is left out of the config file. Setting it to 0.0 explicitly is rejected at load, since it cannot be told apart from the unset default. -1.0 is the single off sentinel that keeps the cap disabled even on zalmoxis; a positive value here overrides the default; any other negative, NaN, or infinity is rejected at load.",
+      "description": "Per-call melt-fraction step cap. When > 0 and any staggered cell is in or near the two-phase window at solve() entry, a CVODE root function (and the equivalent scipy event) returns control at the exact time the larger of the global mass-weighted |ΔΦ| and the maximum single-cell |Δφ| reaches this cap. Off by default: the schema default 0.0 resolves to no cap, because on a benign freezing-front crossing the root function slices the coupled step into many small ones and drives the reported CMB heat flux briefly negative where the uncapped run stays positive, so the cap is a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -3991,7 +3991,7 @@
       "default": "0.0",
       "choices": null,
       "bounds": null,
-      "description": "Per-call per-cell temperature step cap [K]. Shares the same root function as phi_step_cap and fires on the maximum single-cell |ΔT| since solve() entry. It bounds the core-temperature drop on the solid adiabat just below the solidus, where the melt-fraction cap goes blind because a fully solid cell's melt fraction can no longer move. Schema default 0.0, which the Aragog wrapper promotes to a non-zero default for the coupled zalmoxis stack; this promotion applies only when the key is left out of the config file. Setting it to 0.0 explicitly is rejected at load, since it cannot be told apart from the unset default. -1.0 is the single off sentinel that keeps the cap disabled even on zalmoxis; a positive value overrides the default; any other negative, NaN, or infinity is rejected at load.",
+      "description": "Per-call per-cell temperature step cap [K]. Shares the same root function as phi_step_cap and fires on the maximum single-cell |ΔT| since solve() entry. When enabled it bounds the per-cell temperature change on the solid adiabat just below the solidus, where the melt-fraction cap cannot act because a fully solid cell's melt fraction no longer moves. Off by default (schema default 0.0 resolves to no cap); on a benign freezing-front crossing the caps slice the coupled step into many small ones and drive the reported CMB heat flux briefly negative, so they are a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -4007,7 +4007,7 @@
       "default": "0.0",
       "choices": null,
       "bounds": null,
-      "description": "Per-call per-cell entropy step cap [J/kg/K], in the native solver variable; same role as temperature_step_cap without an EOS lookup in the root function. Schema default 0.0, which the Aragog wrapper promotes to a non-zero default for the coupled zalmoxis stack; this promotion applies only when the key is left out of the config file. Setting it to 0.0 explicitly is rejected at load, since it cannot be told apart from the unset default. -1.0 is the single off sentinel that keeps the cap disabled even on zalmoxis; a positive value overrides the default; any other negative, NaN, or infinity is rejected at load.",
+      "description": "Per-call per-cell entropy step cap [J/kg/K], in the native solver variable; same role as temperature_step_cap without an EOS lookup in the root function. Off by default (schema default 0.0 resolves to no cap); on a benign freezing-front crossing the caps slice the coupled step into many small ones and drive the reported CMB heat flux briefly negative, so they are a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -6861,6 +6861,122 @@
       "group_order": 4,
       "group_position": 2,
       "group": "Spectral and gas allocation",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_steps",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "int",
+      "accepts_none": false,
+      "default": "2000",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Number of steps to use when calculating heights and gravity.",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 0,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_maxdr",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "100000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum step size to use when calculating heights [m]",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 1,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_mindr",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-05",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Minimum step size to use when calculating heights [m]",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 2,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_ming",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0001",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Minimum allowed gravity in the atmosphere [m/s^2]",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 3,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_constg",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Constant gravity with height?",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 4,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_selfg",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Include self-gravity of the atmosphere?",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 5,
+      "group": "Hydrostatic integration",
       "group_qualifier": null
     },
     {

@@ -25,10 +25,13 @@ from aragog.parser import (
     _EnergyParameters,
     _InitialConditionParameters,
     _MeshParameters,
-    _PhaseMixedParameters,
     _PhaseParameters,
     _Radionuclide,
     _SolverParameters,
+)
+from proteus.interior_energetics.aragog_phase import (
+    build_jax_phase_params,
+    build_mixed_phase_params,
 )
 from proteus.interior_energetics.common import Interior_t
 from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
@@ -136,92 +139,64 @@ _DIFFRAX_RESEARCH_ONLY = False
 _RHO_CORE_MIN = 1000.0
 _RHO_CORE_MAX = 30000.0
 
-# Default per-call melt-fraction step cap auto-enabled for the coupled
-# zalmoxis interior stack. Bounds how far any single cell's melt fraction
-# may move within one solver call, so a deep cell cannot cross the entire
-# two-phase window in one step (the source of the core-temperature
-# discontinuity at crystallisation onset). The cliff occurs whether or not
-# the structure is re-solved during runtime, so the cap is enabled for both
-# static and dynamic zalmoxis runs. A user value > 0 in the config always
-# takes precedence. Sensitivity-tested across the m-series grid.
-_ZALMOXIS_DEFAULT_PHI_STEP_CAP = 0.1
 
-# Default per-cell temperature and entropy step caps auto-enabled for the
-# coupled zalmoxis stack, alongside the melt-fraction cap. The melt-fraction
-# cap goes blind once a cell is fully solid, so it cannot bound the core-
-# temperature drop on the solid adiabat just below the solidus; the
-# temperature cap bounds |ΔT| per cell directly, and the entropy cap bounds
-# |ΔS| in the native solver variable. All three are set aggressively to
-# suppress any single-step core-temperature jump (robustness over runtime;
-# runtime tuning is a follow-up). Sensitivity-tested; a config value > 0
-# overrides each.
-_ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP = 100.0
-_ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP = 100.0
-
-
-def _resolve_step_cap(cap: float, zalmoxis_default: float, is_zalmoxis: bool) -> float:
+def _resolve_step_cap(cap: float) -> float:
     """Map a configured per-call step cap to the value Aragog receives.
 
-    Shared resolution for the melt-fraction, temperature, and entropy caps,
-    which differ only in their zalmoxis default and physical meaning:
+    Shared resolution for the melt-fraction, temperature, and entropy caps.
+    Each cap is a SUNDIALS root function that returns control from the interior
+    sub-solve the moment a cell's per-step change reaches the cap. On a benign
+    freezing-front crossing it slices the coupled step into many small ones and
+    drives the reported CMB heat flux briefly negative, so the caps are off by
+    default and act as a debugging control, not a production setting.
 
-    - The -1.0 off sentinel (and defensively any negative) resolves to 0.0, so
-      the cap is disabled even on the coupled zalmoxis stack. The config schema
-      admits only -1.0 among the negatives; the ``< 0.0`` guard keeps a stray
-      negative from ever reaching the solver as a literal cap.
-    - The schema default 0.0 is promoted to ``zalmoxis_default`` on the zalmoxis
-      interior stack so the crystallisation-onset core-temperature
-      discontinuity is guarded by default, and stays 0.0 (no cap) on any other
-      interior.
+    - The -1.0 off sentinel, and defensively any other negative, resolves to
+      0.0, which Aragog reads as no cap. The config schema admits only -1.0
+      among the negatives; the ``< 0.0`` guard keeps a stray negative from ever
+      reaching the solver as a literal cap.
+    - The schema default 0.0 resolves to 0.0 (no cap) on every interior.
     - A positive value is used verbatim on any interior.
     """
     if cap < 0.0:
         return 0.0
-    if cap == 0.0 and is_zalmoxis:
-        return zalmoxis_default
     return cap
 
 
 def _effective_phi_step_cap(config: Config) -> float:
     """Resolve the melt-fraction step cap passed to Aragog.
 
-    The per-cell melt-fraction cap bounds how far a deep cell may cross the
-    mushy window in one call, removing the crystallisation-onset
-    core-temperature discontinuity. See :func:`_resolve_step_cap` for the
-    off-sentinel / zalmoxis-promotion / verbatim contract shared by the three
-    caps; the zalmoxis default here is :data:`_ZALMOXIS_DEFAULT_PHI_STEP_CAP`.
+    When set to a positive value, the per-cell melt-fraction cap bounds how far
+    a deep cell may cross the mushy window in one call. It is off by default;
+    see :func:`_resolve_step_cap` for the off-sentinel and verbatim contract
+    shared by the three caps.
     """
     cap = float(config.interior_energetics.aragog.phi_step_cap)
-    is_zalmoxis = config.interior_struct.module == 'zalmoxis'
-    return _resolve_step_cap(cap, _ZALMOXIS_DEFAULT_PHI_STEP_CAP, is_zalmoxis)
+    return _resolve_step_cap(cap)
 
 
 def _effective_temperature_step_cap(config: Config) -> float:
     """Resolve the per-cell temperature step cap [K] passed to Aragog.
 
-    The melt-fraction cap cannot bound the core-temperature drop once a cell is
-    fully solid (its melt fraction can no longer move), so the temperature cap
-    bounds the per-cell temperature change on the solid adiabat below the
-    solidus. See :func:`_resolve_step_cap` for the shared off-sentinel /
-    zalmoxis-promotion / verbatim contract; the zalmoxis default here is
-    :data:`_ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP`.
+    When set to a positive value, this cap bounds the per-cell temperature
+    change on the solid adiabat below the solidus, where the melt-fraction cap
+    cannot act because a fully solid cell's melt fraction no longer moves. It is
+    off by default; see :func:`_resolve_step_cap` for the shared off-sentinel
+    and verbatim contract.
     """
     cap = float(config.interior_energetics.aragog.temperature_step_cap)
-    is_zalmoxis = config.interior_struct.module == 'zalmoxis'
-    return _resolve_step_cap(cap, _ZALMOXIS_DEFAULT_TEMPERATURE_STEP_CAP, is_zalmoxis)
+    return _resolve_step_cap(cap)
 
 
 def _effective_entropy_step_cap(config: Config) -> float:
     """Resolve the per-cell entropy step cap [J/kg/K] passed to Aragog.
 
     Same role as the temperature cap in the native solver variable, without an
-    EOS lookup in the root function. See :func:`_resolve_step_cap` for the
-    shared off-sentinel / zalmoxis-promotion / verbatim contract; the zalmoxis
-    default here is :data:`_ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP`.
+    EOS lookup in the root function. It is off by default; see
+    :func:`_resolve_step_cap` for the shared off-sentinel and verbatim
+    contract.
     """
     cap = float(config.interior_energetics.aragog.entropy_step_cap)
-    is_zalmoxis = config.interior_struct.module == 'zalmoxis'
-    return _resolve_step_cap(cap, _ZALMOXIS_DEFAULT_ENTROPY_STEP_CAP, is_zalmoxis)
+    return _resolve_step_cap(cap)
 
 
 _OPTIONAL_ENERGY_FIELDS = frozenset(
@@ -694,14 +669,11 @@ class AragogRunner:
                 outdir, 'data', 'zalmoxis_output.dat'
             )  # Zalmoxis output file with mantle parameters
 
-        # Per-cell step caps, all auto-enabled for the coupled zalmoxis
-        # interior stack. The melt-fraction cap subdivides a cell's crossing
-        # of the two-phase window; the temperature and entropy caps bound the
-        # per-cell |ΔT| and |ΔS|, which additionally cover the core-temperature
-        # drop on the solid adiabat below the solidus where the melt-fraction
-        # cap goes blind. Together they remove the discontinuous core-
-        # temperature drop at crystallisation onset. A config value overrides
-        # each.
+        # Per-cell step caps: each is a SUNDIALS root function that ends the
+        # interior sub-solve when a cell's per-step change reaches the cap. On a
+        # benign freezing-front crossing this slices the coupled step and drives
+        # the reported CMB heat flux briefly negative, so the caps are off by
+        # default (schema 0.0 and the -1.0 off sentinel both resolve to no cap).
         ar = config.interior_energetics.aragog
         phi_step_cap = _effective_phi_step_cap(config)
         temperature_step_cap = _effective_temperature_step_cap(config)
@@ -715,27 +687,6 @@ class AragogRunner:
                 entropy_step_cap,
             )
             _effective_caps_logged = True
-        # Only a genuine promotion (schema default 0.0 lifted to a positive
-        # zalmoxis default) is an auto-enable. An explicit negative off switch
-        # resolves to 0.0 and differs from the configured value too, so the
-        # notice requires a positive effective cap to avoid mislabelling a
-        # deliberate disable as an auto-enable.
-        _promoted = (
-            (phi_step_cap > 0.0 and phi_step_cap != ar.phi_step_cap)
-            or (temperature_step_cap > 0.0 and temperature_step_cap != ar.temperature_step_cap)
-            or (entropy_step_cap > 0.0 and entropy_step_cap != ar.entropy_step_cap)
-        )
-        if _promoted:
-            # Fires every solve and is fully determined by the config, so it is
-            # provenance rather than per-step signal; keep it at debug so the
-            # per-solve INFO summary stays uncluttered.
-            log.debug(
-                'Auto-enabling step caps for the zalmoxis interior stack: '
-                'phi=%.3g, T=%.3g K, S=%.3g J/kg/K',
-                phi_step_cap,
-                temperature_step_cap,
-                entropy_step_cap,
-            )
 
         energy_kwargs = dict(
             conduction=config.interior_energetics.trans_conduction,
@@ -1109,26 +1060,7 @@ class AragogRunner:
             entropy=entropy_solid_arg,
         )
 
-        phase_mixed = _PhaseMixedParameters(
-            latent_heat_of_fusion=float(config.interior_energetics.latent_heat_of_fusion),
-            rheological_transition_melt_fraction=config.interior_energetics.rfront_loc,
-            rheological_transition_width=config.interior_energetics.rfront_wid,
-            solidus=solidus_path,
-            liquidus=liquidus_path,
-            phase='mixed',
-            phase_transition_width=float(config.interior_energetics.phase_transition_width),
-            grain_size=config.interior_energetics.grain_size,
-            separation_viscosity=config.interior_energetics.aragog.separation_viscosity,
-            matprop_smooth_width=float(config.interior_energetics.spider.matprop_smooth_width),
-            const_properties=bool(config.interior_energetics.const_properties),
-            const_rho=float(config.interior_energetics.const_rho),
-            const_Cp=float(config.interior_energetics.const_Cp),
-            const_alpha=float(config.interior_energetics.const_alpha),
-            const_cond=float(config.interior_energetics.const_cond),
-            const_log10visc=float(config.interior_energetics.const_log10visc),
-            const_T_ref=float(config.interior_energetics.const_T_ref),
-            const_S_ref=float(config.interior_energetics.const_S_ref),
-        )
+        phase_mixed = build_mixed_phase_params(config, solidus_path, liquidus_path)
 
         radionuclides = []
         if config.interior_energetics.heat_radiogenic:
@@ -1247,7 +1179,7 @@ class AragogRunner:
 
         try:
             import jax.numpy as jnp
-            from aragog.jax.phase import MeshArrays, PhaseParams
+            from aragog.jax.phase import MeshArrays
             from aragog.jax.solver import BoundaryParams
             from aragog.solver.cvode_jax import build_jax_rhs_and_jacobian
             # EntropyEOS_JAX is imported lazily by _cached_entropy_eos_jax.
@@ -1272,31 +1204,7 @@ class AragogRunner:
                     _t_post_jax_eos - _t_pre_jax_eos,
                 )
 
-            ie = config.interior_energetics
-            params_jax = PhaseParams(
-                phi_rheo=ie.rfront_loc,
-                phi_width=ie.rfront_wid,
-                viscosity_solid=10.0 ** float(ie.solid_log10visc),
-                viscosity_liquid=10.0 ** float(ie.melt_log10visc),
-                grain_size=ie.grain_size,
-                k_solid=float(ie.solid_cond),
-                k_liquid=float(ie.melt_cond),
-                matprop_smooth_width=float(ie.spider.matprop_smooth_width),
-                conduction=ie.trans_conduction,
-                convection=ie.trans_convection,
-                grav_sep=ie.trans_grav_sep,
-                mixing=ie.trans_mixing,
-                eddy_diff_thermal=float(ie.eddy_diffusivity_thermal),
-                eddy_diff_chemical=float(ie.eddy_diffusivity_chemical),
-                kappah_floor=float(ie.kappah_floor),
-                bottom_up_grav_sep=True,
-                phase_smoothing=ie.aragog.phase_smoothing,
-                separation_viscosity=ie.aragog.separation_viscosity,
-                # Width matches hardcoded 1e-2 in numpy entropy_state.py
-                # _spider_get_smoothing call sites (not matprop_smooth_width,
-                # which is a separate SPIDER material-property blend).
-                phase_smoothing_width=0.01,
-            )
+            params_jax = build_jax_phase_params(config)
 
             _t_pre_mesh = time.perf_counter()
             mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
@@ -2053,13 +1961,17 @@ class AragogRunner:
         return 'CVODE' if available else 'Radau'
 
     def _solve_with_retry(self, hf_row, interior_o) -> SolverOutput:
-        """Run aragog_solver.solve() with a dt-halving retry ladder.
+        """Run aragog_solver.solve() with a failure-mode-branched retry ladder.
 
-        On CVODE failure (status != 0), restore the entropy IC and
-        dSdr_cmb_init from before the attempt, halve the integration
-        interval, and retry. Up to ``max_attempts`` attempts; on final
-        failure, returns the SolverOutput from the last attempt
-        (caller propagates status to the helpfile via dt_actual).
+        On CVODE failure the recovery lever depends on the failure mode.
+        A CV_TOO_MUCH_WORK stall (cvode_flag == -1) is a stiffness /
+        step-budget problem, so recovery first raises the CVODE step
+        budget (max_steps), then relaxes rtol (bounded), and only then
+        halves the integration interval, over up to eight attempts. Every
+        other failure keeps the dt-halving plus atol-scaling ladder over
+        six attempts. Each retry restores the entropy IC and dSdr_cmb_init
+        from before the attempt. On final failure this raises RuntimeError
+        so the caller can apply its skip-step fallback.
 
         Parameters
         ----------
@@ -2073,9 +1985,34 @@ class AragogRunner:
         SolverOutput
             Solver state from the first successful attempt, or from the
             last attempt if all failed.
+
+        Notes
+        -----
+        The attempt budget is a monotonic ratchet: the first CV_TOO_MUCH_WORK
+        failure widens max_attempts from six to eight for the rest of the call
+        and it never narrows. A later non-stiff failure in the same call is
+        still part of the stiff recovery, so it keeps the wider budget rather
+        than reverting to six. The stiffness ramp is indexed by stiff_seen, the
+        running count of CV_TOO_MUCH_WORK attempts, so a late or intermittent
+        stiff switch still climbs the ramp from its first rung; the non-stiff
+        ramp is indexed by the symmetric other_seen count.
+
+        Per attempt the guard checks only that T_core is finite and that its
+        jump is plausible. Energy conservation is recorded in the coupler-level
+        ``E_residual_cons_frac`` diagnostic column, which is not asserted per
+        run; the rtol relaxation was spot-checked once to move it from 1.46e-4
+        to 1.53e-4 at 10x rtol (about 65x below its ~1% scale), not verified
+        automatically every run. A field-level bounds check on the mush entropy
+        and melt fraction (melt fraction in [0, 1], T > 0) is a possible
+        follow-up; the relaxation is measured-safe on this recovery path and the
+        guard only fires on a stall.
         """
         solver = self.aragog_solver
         max_attempts = 6
+        # A CV_TOO_MUCH_WORK stall front-loads three non-dt attempts (raise
+        # max_steps, then relax rtol) before dt-halving starts, so its ladder
+        # runs longer than the other-mode ladder.
+        max_attempts_stiff = 8
         atol_sf_max = 5.0  # cap on atol scaling; tested 125x corrupted T_core
         # Scale the T_core-jump sanity threshold with planet mass, with a floor.
         # The early-evolution transient in T_core grows with planet mass because
@@ -2131,10 +2068,42 @@ class AragogRunner:
         # (cleared regardless of retry outcome at end of method)
         solver._atol_sf = 1.0
 
+        # Base CVODE controls captured before the first attempt and restored
+        # in the finally block. rtol is re-read inside solve() every call, so
+        # a per-attempt override on parameters.solver.rtol takes effect. The
+        # step budget is cached at solver construction and reset() does not
+        # re-read it, so the effective value is set on solver._max_steps
+        # directly.
+        base_rtol = float(solver.parameters.solver.rtol)
+        base_max_steps = int(getattr(solver, '_max_steps', solver.parameters.solver.max_steps))
+        # Stiffness ramp rungs as (max_steps factor, rtol factor), ordered from
+        # rung 1. Rungs on the ramp raise the step budget and relax rtol; rungs
+        # past the last one hold the ceiling and halve dt. The caps and the rung
+        # count both derive from this tuple, so an added rung is picked up in
+        # every place and the schedule stays a single source of truth.
+        stiff_ramp = ((2, 2.0), (4, 5.0), (8, 10.0))
+        n_ramp_rungs = len(stiff_ramp)
+        max_steps_cap = base_max_steps * stiff_ramp[-1][0]
+        # A one-off spot-check: 10x rtol moves the coupler conservation metric
+        # E_residual_cons_frac from 1.46e-4 to 1.53e-4 on a recovered mush step
+        # (about 65x below its ~1% structural floor) and shifts Phi_global by
+        # ~3e-8 with T_core unchanged. It is not asserted per run; a
+        # docs/Validation/interior_energetics/aragog.md harness is a follow-up.
+        rtol_cap = base_rtol * stiff_ramp[-1][1]
+
         out = None
+        # Running counts of CV_TOO_MUCH_WORK and other-mode attempts. stiff_seen
+        # indexes the stiffness ramp so it climbs from rung 1 whenever stiffness
+        # first appears; other_seen indexes the non-stiff atol/dt ramp so a
+        # switch back to non-stiff does not jump straight to the atol cap.
+        stiff_seen = 0
+        other_seen = 0
         _diag_on = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
         try:
-            for attempt in range(1, max_attempts + 1):
+            # Range over the widest ladder. max_attempts holds the active
+            # budget (6, widened to max_attempts_stiff on a stiff failure)
+            # and drives the exhaustion check below.
+            for attempt in range(1, max_attempts_stiff + 1):
                 _t0 = time.perf_counter()
                 solver.solve()
                 _solve_wall = time.perf_counter() - _t0
@@ -2152,29 +2121,45 @@ class AragogRunner:
 
                 # Status check: did the solver accept the step?
                 if out.status == 0:
-                    # Sanity check: reject suspiciously large T_core jumps
-                    # that indicate the solver "succeeded" with garbage.
-                    # Applies on ALL attempts (not just retries):
-                    #   - chili_atolrelax showed atol_sf=125x corruption on
-                    #     a retry attempt
-                    #   - chili_n_maxsteps500k showed corruption on attempt 1
-                    #     when more step budget allowed CVODE to traverse a
-                    #     phase boundary in one shot
-                    # Either way, we want to reject the result and retry
-                    # with a smaller dt.
-                    T_core_post = float(out.T_core)
-                    # T_core_pre is 0 only on the very first solve, before any
-                    # converged core temperature exists to compare against, so
-                    # the jump guard is necessarily inactive on that one step.
-                    dT = abs(T_core_post - T_core_pre) if T_core_pre > 0 else 0.0
-                    if dT > sanity_dT_core:
+                    # Post-solve sanity guard on the CMB temperature. It must
+                    # pass to accept the step; a trip falls through to the retry
+                    # ladder. sanity_reject_reason names the trip for the
+                    # exhaustion message.
+                    sanity_reject_reason = None
+
+                    # Reject a status=0 solve with a non-finite or implausibly
+                    # large CMB temperature. The finiteness check always runs,
+                    # so a corrupted relaxed-rtol solve never passes even on the
+                    # first solve. The jump-magnitude check needs a pre-solve
+                    # reference, so it is inactive when T_core_pre <= 0 (a row
+                    # missing both T_cmb and T_core, which includes solve one).
+                    tcore_endpoint = float(out.T_core)
+                    # tcore_change_max is the intra-solve maximum change,
+                    # >= the endpoint change by construction; on an older
+                    # aragog it is absent and the endpoint change is used.
+                    tcore_change_max = getattr(out, 'tcore_change_max', None)
+                    finite_ok = np.isfinite(tcore_endpoint)
+                    if tcore_change_max is not None:
+                        finite_ok = finite_ok and np.isfinite(float(tcore_change_max))
+                    if not finite_ok:
+                        sanity_reject_reason = 'T_core is non-finite'
+                    elif T_core_pre > 0:
+                        if tcore_change_max is not None:
+                            dT = float(tcore_change_max)
+                        else:
+                            dT = abs(tcore_endpoint - T_core_pre)
+                        if dT > sanity_dT_core:
+                            sanity_reject_reason = (
+                                f'T_core changed by up to {dT:.1f} K '
+                                f'(>{sanity_dT_core:.0f} K sanity threshold)'
+                            )
+
+                    if sanity_reject_reason is not None:
                         log.warning(
-                            'Aragog attempt %d returned status=0 but T_core '
-                            'jumped %.1f K (>%.0f K threshold). Treating as '
-                            'failure and continuing retry ladder.',
+                            'Aragog attempt %d returned status=0 but %s. '
+                            'Treating as failure and continuing retry ladder.',
                             attempt,
-                            dT,
-                            sanity_dT_core,
+                            sanity_reject_reason,
                         )
                         # Fall through to the retry/exhaustion branch below
                     else:
@@ -2190,18 +2175,33 @@ class AragogRunner:
                             )
                         return out
 
+                # Determine the failure mode from the raw CVODE flag. status
+                # stays scipy-compatible -1 for every CVODE failure, so it
+                # cannot separate a step-budget exhaustion (recover by more
+                # steps / looser rtol) from other failures (recover by a
+                # smaller dt). cvode_flag == -1 is the authoritative predicate;
+                # the name is the readable label. A status=0 result maps from
+                # cvode_flag in {0, 2} (ROOT_RETURN), so a guard trip routes to
+                # the dt-halving branch.
+                cvode_flag = int(getattr(out, 'cvode_flag', 0) or 0)
+                flag_name = str(getattr(out, 'cvode_flag_name', '') or '')
+                is_too_much_work = cvode_flag == -1 or flag_name == 'TOO_MUCH_WORK'
+                if is_too_much_work:
+                    max_attempts = max_attempts_stiff
+                    stiff_seen += 1
+                else:
+                    other_seen += 1
+
                 if attempt >= max_attempts:
                     # status==0 here means the solver accepted every step but
-                    # each result was rejected for an over-threshold T_core
-                    # jump, so report that reason rather than the misleading
-                    # status=0.
+                    # a post-solve sanity guard rejected each result, so report
+                    # the guard that tripped rather than the misleading status=0.
                     if out.status == 0:
-                        reason = (
-                            'status=0 but the T_core jump exceeded the '
-                            f'{sanity_dT_core:.0f} K sanity threshold on every attempt'
-                        )
+                        reason = f'status=0 but {sanity_reject_reason} on every attempt'
                     else:
                         reason = f'{self._active_solver_name()} status={out.status}'
+                        if flag_name:
+                            reason += f' (cvode_flag={cvode_flag}, {flag_name})'
                     log.error(
                         'Aragog solver failed after %d attempts (%s). '
                         'Raising RuntimeError so wrapper can apply skip-step fallback.',
@@ -2213,24 +2213,72 @@ class AragogRunner:
                         f'after {attempt} attempts at t={hf_row.get("Time", 0.0):.3e} yr'
                     )
 
-                # Failure: halve dt AND relax atol (capped), restore state, retry.
-                # atol_sf increases linearly to atol_sf_max over attempts 2-3,
-                # then stays at the cap for further attempts. dt continues
-                # halving so additional attempts gain resolution, not looser
-                # tolerance.
-                dt_new = dt_requested * (0.5**attempt)
-                atol_sf_new = min(atol_sf_max, 1.0 + (atol_sf_max - 1.0) * (attempt / 2.0))
-                log.warning(
-                    'Aragog solver failed at t=%.3e yr (status=%d, attempt %d/%d). '
-                    'Retrying with dt=%.3e yr, atol_sf=%.1fx (was dt=%.3e yr).',
-                    hf_row.get('Time', 0.0),
-                    out.status,
-                    attempt,
-                    max_attempts,
-                    dt_new,
-                    atol_sf_new,
-                    dt_requested,
-                )
+                # dt of the attempt that just failed. A retry must never run
+                # coarser than it, so clamp the scheduled dt below.
+                dt_current = float(solver.parameters.solver.end_time) - t_start
+                if is_too_much_work:
+                    # Stiffness recovery, indexed by stiff_seen so it climbs
+                    # from rung 1 whenever stiffness first appears. Raise the
+                    # step budget first (wall-time cost only, no accuracy loss),
+                    # relax rtol second (bounded), halve dt last. Ramp rungs hold
+                    # dt and raise max_steps and rtol to the ceiling; rungs past
+                    # the ramp hold the ceiling and halve the just-failed dt.
+                    # atol_sf stays at 1.0 so the ramp relaxes rtol alone.
+                    rung = stiff_seen
+                    atol_sf_new = 1.0
+                    if rung <= n_ramp_rungs:
+                        ms_factor, rtol_factor = stiff_ramp[rung - 1]
+                        max_steps_new = base_max_steps * ms_factor
+                        rtol_new = base_rtol * rtol_factor
+                        # Hold dt, but never run coarser than the failed attempt.
+                        dt_new = min(dt_requested, dt_current)
+                    else:
+                        max_steps_new = max_steps_cap
+                        rtol_new = rtol_cap
+                        # Halve the just-failed dt so a stiff dt attempt is
+                        # always strictly smaller than the attempt it retries,
+                        # even after prior non-stiff dt shrinking.
+                        dt_new = dt_current * 0.5
+                    if hasattr(solver, '_max_steps'):
+                        solver._max_steps = int(max_steps_new)
+                    solver.parameters.solver.rtol = rtol_new
+                    log.warning(
+                        'Aragog CV_TOO_MUCH_WORK at t=%.3e yr (attempt %d/%d). '
+                        'Retrying with max_steps=%d, rtol=%.2e, dt=%.3e yr, '
+                        'atol_sf=%.1fx (was dt=%.3e yr).',
+                        hf_row.get('Time', 0.0),
+                        attempt,
+                        max_attempts,
+                        int(max_steps_new),
+                        rtol_new,
+                        dt_new,
+                        atol_sf_new,
+                        dt_requested,
+                    )
+                else:
+                    # Other failure modes: halve dt so additional attempts gain
+                    # resolution, not looser tolerance. Ramp atol_sf here only,
+                    # indexed by other_seen so a switch back from the stiff
+                    # branch does not jump straight to the atol cap. Restore base
+                    # rtol and step budget in case a prior attempt was stiff.
+                    atol_sf_new = min(
+                        atol_sf_max, 1.0 + (atol_sf_max - 1.0) * (other_seen / 2.0)
+                    )
+                    dt_new = min(dt_requested * (0.5**other_seen), dt_current)
+                    solver.parameters.solver.rtol = base_rtol
+                    if hasattr(solver, '_max_steps'):
+                        solver._max_steps = base_max_steps
+                    log.warning(
+                        'Aragog solver failed at t=%.3e yr (status=%d, attempt %d/%d). '
+                        'Retrying with dt=%.3e yr, atol_sf=%.1fx (was dt=%.3e yr).',
+                        hf_row.get('Time', 0.0),
+                        out.status,
+                        attempt,
+                        max_attempts,
+                        dt_new,
+                        atol_sf_new,
+                        dt_requested,
+                    )
                 solver.parameters.solver.start_time = t_start
                 solver.parameters.solver.end_time = t_start + dt_new
                 solver._atol_sf = atol_sf_new
@@ -2247,6 +2295,12 @@ class AragogRunner:
         finally:
             # Always reset atol_sf so subsequent coupling steps start at 1.0x
             solver._atol_sf = 1.0
+            # Restore the base CVODE controls the stiffness branch may have
+            # raised, so the next coupling step starts from the configured
+            # rtol and step budget.
+            solver.parameters.solver.rtol = base_rtol
+            if hasattr(solver, '_max_steps'):
+                solver._max_steps = base_max_steps
             # Release the dSdr_cmb override so the NEXT coupling step's
             # set_initial_entropy can hot-start from its own _solution
             # (which, after a successful retry, holds the accepted
@@ -2391,7 +2445,7 @@ class AragogRunner:
             # into the conservation residual (which uses the live-density
             # variants above); ``E_state_cons_J`` is likewise an enthalpy
             # diagnostic, not the conservation-grade quantity. Machine-precision
-            # conservation is carried by the solver-residual column below.
+            # conservation is tracked by the solver-residual column below.
             'step_dE_Q_radio_cons_J': out.step_dE_Q_radio_cons_J,
             'step_dE_Q_tidal_cons_J': out.step_dE_Q_tidal_cons_J,
             # Per-call entropy-equation self-consistency residual [J].
@@ -2399,7 +2453,8 @@ class AragogRunner:
             # The discrete flux divergence telescopes to the boundary
             # fluxes, so it is machine-zero by construction; a non-zero
             # value flags a divergence-assembly bug, not time-integration
-            # quality (that is carried by ``E_residual_cons_frac``).
+            # quality (that is recorded in ``E_residual_cons_frac``, a
+            # write-only diagnostic column that is not asserted per run).
             'step_solver_residual_J': out.step_solver_residual_J,
             # Per-call adiabatic compression work [J] from the structure
             # re-solve that preceded this step. Informational only: the

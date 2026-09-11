@@ -424,6 +424,7 @@ class Proteus:
             CreateHelpfileFromDict,
             CreateLockFile,
             ExtendHelpfile,
+            GetHelpfileKeys,
             PrintCurrentState,
             ReadHelpfileFromCSV,
             UpdatePlots,
@@ -496,11 +497,9 @@ class Proteus:
         self._baseline_structure_done = False
 
         # Write config to output directory, for future reference. Record the
-        # resolved (not raw) step caps, so a zalmoxis-armed default reads back
-        # as the value Aragog actually used instead of the schema's 0.0. A
-        # resolved value of 0.0 means the cap is off, not that it is unset,
-        # so it is written back as the -1.0 sentinel: writing 0.0 itself
-        # would be re-read as unset and re-arm the cap on the next resume.
+        # resolved (not raw) step caps. A resolved 0.0 means the cap is off,
+        # but a literal 0.0 in a config is rejected at load, so an off cap is
+        # written back as the -1.0 sentinel; a positive cap is written as is.
         step_cap_overrides = {}
         if self.config.interior_energetics.module == 'aragog':
             from proteus.config._interior import _STEP_CAP_OFF
@@ -691,6 +690,16 @@ class Proteus:
             except Exception:
                 UpdateStatusfile(self.directories, 20)
                 raise
+
+            # Drop any column the stored helpfile carries that the current
+            # schema no longer defines. Without this, a row from a retired
+            # column rides along in self.hf_all and every row appended after
+            # resume gets NaN there instead, since ExtendHelpfile only ever
+            # builds new rows from GetHelpfileKeys().
+            retired = set(self.hf_all.columns) - set(GetHelpfileKeys())
+            if retired:
+                log.info('Resume: dropping retired helpfile column(s) %s', sorted(retired))
+                self.hf_all = self.hf_all.drop(columns=sorted(retired))
 
             # Check length
             if len(self.hf_all) <= self.loops['init_loops'] + 1:

@@ -51,15 +51,7 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     cd /dataserver/users/formingworlds/<username>
     ```
 
-4. Configure the system environment. The Kapteyn cluster provides NetCDF
-   and other libraries via the module system. Add the following to your
-   `~/.bashrc` so the correct modules are loaded on every login:
-    ```console
-    echo "module purge" >> "$HOME/.bashrc"
-    echo "module load netcdf-fortran" >> "$HOME/.bashrc"
-    ```
-
-5. To avoid the cluster terminating PROTEUS jobs, increase the temporary file limit:
+4. To avoid the cluster terminating PROTEUS jobs, increase the temporary file limit:
     ```console
     echo "ulimit -Sn 4000000" >> "$HOME/.bashrc"
     echo "ulimit -Hn 5000000" >> "$HOME/.bashrc"
@@ -69,8 +61,30 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     source "$HOME/.bashrc"
     ```
 
-6. You can now follow the usual installation steps [here](installation.md), but, since your home folder is capped
-   at 9GB, you need to install Julia and miniconda or conda-forge in "/dataserver/users/formingworlds/<username>".
+5. Install conda and create the PROTEUS environment, by following the
+   [installation steps](installation.md) up to and including
+   `conda activate proteus`. Since your home folder is capped at 9GB, install
+   Julia and miniconda or conda-forge in "/dataserver/users/formingworlds/<username>"
+   rather than in the default location. See [Julia considerations](#julia-considerations)
+   and [Miniconda and conda-forge considerations](#miniconda-and-conda-forge-considerations)
+   below.
+
+6. Install NetCDF-Fortran into that environment. The Kapteyn module system
+   does not provide it, and SOCRATES needs it both to build and to run:
+    ```console
+    conda install -c conda-forge netcdf-fortran
+    conda env config vars set LD_LIBRARY_PATH="$CONDA_PREFIX/lib"
+    conda activate proteus
+    ```
+    The last command reactivates the environment so that the variable takes
+    effect. Setting `LD_LIBRARY_PATH` is necessary because SOCRATES links
+    against the absolute path that `nf-config` reports but records no run path
+    of its own. Without the variable SOCRATES still compiles, and the binaries
+    it produces then fail with `libnetcdff.so.7: cannot open shared object
+    file`.
+
+7. You can now run the installer and complete the remaining
+   [installation steps](installation.md).
 
 ### Julia considerations
 If you have already installed Julia in your home folder, you could remove that through `rm -rf ~/.julia`.
@@ -226,16 +240,33 @@ This displays the jobs currently running on Condormaster, including both your jo
 
 ### NetCDF Error
 
-SOCRATES is using the NetCDF version installed by Python in your PROTEUS environment instead of the NetCDF version installed on the Kapteyn cluster system.
+Either the SOCRATES build stops with `ERROR: NetCDF-Fortran library is not
+installed`, or a run fails with `libnetcdff.so.7: cannot open shared object
+file`.
 
-To resolve this issue:
+The cluster provides no NetCDF-Fortran of its own, so both the library and the
+path to it come from your conda environment. Check that the environment is
+active and that it supplies them:
 
-1. Deactivate all conda environments.
-2. Go to the PROTEUS folder : `cd PROTEUS/`
-3. Delete the `socrates/` directory using `rm -r socrates/`
-4. Run the `./tools/get_socrates.sh` command to download SOCRATES again, ensuring this is done OUTSIDE of any conda environment.
-5. Execute the `cat socrates/set_rad_env` command to verify that SOCRATES is pointing to the correct NetCDF version (i.e. the NetCDF version installed on the Kapteyn cluster system).
-6. Finally, run a PROTEUS simulation using the `dummy.toml` configuration file to confirm it is working correctly.
+```console
+conda activate proteus
+nf-config --flibs
+echo $LD_LIBRARY_PATH
+```
+
+`nf-config` should report a `-L` path inside your conda environment, and
+`LD_LIBRARY_PATH` should contain that same environment's `lib` directory. If
+either is missing, apply the NetCDF-Fortran installation step from the
+[installation section](#installation) above and reactivate the environment.
+
+To check that an existing SOCRATES build can find the library at run time:
+
+```console
+ldd $RAD_DIR/bin/l_run_cdf | grep netcdff
+```
+
+A working installation prints a path to `libnetcdff.so`; a broken one prints
+`not found`.
 
 ### Error reporting
 

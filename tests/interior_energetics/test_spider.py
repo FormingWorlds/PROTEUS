@@ -1418,6 +1418,16 @@ def _make_spider_json(filepath, step=0, sim_time=0.0, num_stag=10, num_basic=11)
             'S_s': {'scaling': 1, 'units': 'J/(kg.K)', 'values': [2800.0] * n_s},
             'Jconv_b': {'scaling': 1, 'units': 'W/m2', 'values': [1e4] * n_b},
             'Jcond_b': {'scaling': 1, 'units': 'W/m2', 'values': [1e2] * n_b},
+            'pressure_b': {
+                'scaling': 1,
+                'units': 'Pa',
+                'values': list(np.linspace(1e5, 150e9, n_b)),
+            },
+            'Jtot_b': {
+                'scaling': 1,
+                'units': 'W/m2',
+                'values': list(np.linspace(2e5, 3.0, n_b)),
+            },
         },
     }
 
@@ -1746,6 +1756,47 @@ def test_read_spider_basic(tmp_path):
     assert 0 <= output['Phi_global_vol'] <= 1.0
     assert len(interior_o.phi) == 10
     assert len(interior_o.radius) == 11
+
+
+@pytest.mark.unit
+def test_read_spider_cmb_pressure_and_flux(tmp_path):
+    """ReadSPIDER reads P_cmb and F_cmb from the last basic node.
+
+    SPIDER's basic-node arrays run surface-to-CMB, so the core-mantle
+    boundary value is the last entry of ``pressure_b`` and ``Jtot_b``, the
+    same node ``T_cmb`` already reads from ``temp_s``. The fixture uses
+    monotonic, non-degenerate values so a wrong index (e.g. the surface
+    node at index 0) is caught rather than accidentally matching.
+    """
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.spider import ReadSPIDER
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    _make_spider_json(str(data_dir / '0.json'), step=0, num_stag=10, num_basic=11)
+
+    nP, nS = 3, 4
+    P_vals = np.linspace(0, 135e9, nP)
+    S_vals = np.linspace(2000, 3200, nS)
+    lookup = np.zeros((nS, nP, 3))
+    for j in range(nS):
+        for i in range(nP):
+            lookup[j, i, 0] = P_vals[i]
+            lookup[j, i, 1] = S_vals[j]
+            lookup[j, i, 2] = 4000.0
+
+    interior_o = Interior_t(11)
+    interior_o.lookup_rho_melt = lookup
+
+    config = MagicMock()
+    config.planet.prevent_warming = False
+
+    dirs = {'output': str(tmp_path), 'output/data': str(data_dir)}
+
+    sim_time, output = ReadSPIDER(dirs, config, R_int=6.371e6, interior_o=interior_o)
+
+    assert output['P_cmb'] == pytest.approx(150e9)
+    assert output['F_cmb'] == pytest.approx(3.0)
 
 
 @pytest.mark.unit

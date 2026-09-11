@@ -57,10 +57,12 @@ from __future__ import annotations
 import shutil
 
 import numpy as np
+import pandas as pd
 import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
+from proteus.utils.coupler import GetHelpfileKeys
 
 # Integration tier. Each test runs two or three real dummy-module
 # simulations, so the file costs roughly 80 to 105 s locally and its slowest
@@ -757,4 +759,57 @@ def test_resume_reproduces_uninterrupted_run(tmp_path):
     assert compared >= MIN_COLUMNS_COMPARED, (
         f'only {compared} of the {len(reference.columns)} columns written were '
         'compared; the parity check is not covering the helpfile'
+    )
+
+
+@pytest.mark.integration
+def test_resume_drops_retired_helpfile_column(tmp_path):
+    """A resume tolerates a stored helpfile column the current schema retired.
+
+    Contract clause: a helpfile written under an older schema can carry a
+    column no longer part of ``GetHelpfileKeys()`` (for example, a field an
+    interior module used to write). ``ReadHelpfileFromCSV`` only checks for
+    missing required columns, so it loads such a row without complaint, but
+    ``ExtendHelpfile`` builds every appended row strictly from the current
+    schema; carrying the retired column into ``self.hf_all`` unchanged would
+    leave every row appended after resume with a NaN there instead. The
+    resume path drops any such column before appending starts.
+
+    Verifies:
+    - Resuming past a stored helpfile with an extra, schema-unknown column
+      does not raise.
+    - The retired column is gone from the resumed dataframe.
+    - No schema column holds a NaN in any row appended after the resume.
+    """
+    outdir = tmp_path / 'retired_column'
+    leg1 = _make_runner(outdir, LEG1_STOP_TIME)
+    leg1.start(resume=False, offline=True)
+    n_leg1 = len(leg1.hf_all)
+
+    helpfile = outdir / 'runtime_helpfile.csv'
+    assert helpfile.is_file(), 'first leg left no helpfile on disk'
+
+    retired_column = '_test_retired_schema_column'
+    assert retired_column not in GetHelpfileKeys(), (
+        f'{retired_column!r} collides with the live schema; pick a name the schema '
+        'does not define'
+    )
+    stored = pd.read_csv(helpfile, sep=r'\s+')
+    stored[retired_column] = 1.0
+    stored.to_csv(helpfile, index=False, sep='\t', float_format='%.10e')
+
+    leg2 = _make_runner(outdir, LEG2_STOP_TIME)
+    leg2.start(resume=True, offline=True)
+
+    assert retired_column not in leg2.hf_all.columns, (
+        'resume left the retired column in hf_all instead of dropping it'
+    )
+    assert len(leg2.hf_all) > n_leg1, 'resume with a retired column present did not advance'
+
+    appended = leg2.hf_all.iloc[n_leg1:]
+    schema_columns = [c for c in GetHelpfileKeys() if c in appended.columns]
+    nan_columns = [c for c in schema_columns if appended[c].isna().any()]
+    assert not nan_columns, (
+        f'rows appended after resume hold NaN in {nan_columns}; the retired column '
+        'rode along into the concat instead of being dropped first'
     )
