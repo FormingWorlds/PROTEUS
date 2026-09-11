@@ -948,8 +948,7 @@ def test_resume_restores_crystallization_across_remelting(tmp_path):
     )
 
     assert (appended['esc_step_kg'] > 0).any(), (
-        'escape never ran over the resumed leg, so the frozen escape path was '
-        'not exercised'
+        'escape never ran over the resumed leg, so the frozen escape path was not exercised'
     )
 
     # The frozen mantle no longer degasses, so the atmospheric hydrogen
