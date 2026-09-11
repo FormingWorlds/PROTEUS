@@ -716,7 +716,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                 )
                 hf_row[f'{proteus_name}_mol_liquid'] = liquid_mol
                 hf_row[f'{proteus_name}_mol_atm'] = (
-                    max(0.0, gas_mol) if gas_mol is not None else max(0.0, total_mol - liquid_mol)
+                    max(0.0, gas_mol)
+                    if gas_mol is not None
+                    else max(0.0, total_mol - liquid_mol)
                 )
                 hf_row[f'{proteus_name}_mol_total'] = (
                     hf_row[f'{proteus_name}_kg_total'] / eval_gas_mmw(proteus_name)
@@ -751,9 +753,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             hf_row[f'{proteus_name}_vmr'] = 0.0
             hf_row[f'{proteus_name}_mol_liquid'] = 0.0
             hf_row[f'{proteus_name}_mol_atm'] = 0.0
-            hf_row[f'{proteus_name}_mol_total'] = (
-                float(hf_row.get(f'{proteus_name}_kg_total', 0.0)) / eval_gas_mmw(proteus_name)
-            )
+            hf_row[f'{proteus_name}_mol_total'] = float(
+                hf_row.get(f'{proteus_name}_kg_total', 0.0)
+            ) / eval_gas_mmw(proteus_name)
         else:
             # Reactive species not present in the atmodeller output (e.g.
             # excluded from the solve): keep the pressure-derived atmospheric
@@ -770,11 +772,15 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             # species' own molar mass, matching dummy.py's convention for
             # the same columns.
             species_mmw = eval_gas_mmw(proteus_name)
-            hf_row[f'{proteus_name}_mol_liquid'] = hf_row[f'{proteus_name}_kg_liquid'] / species_mmw
+            hf_row[f'{proteus_name}_mol_liquid'] = (
+                hf_row[f'{proteus_name}_kg_liquid'] / species_mmw
+            )
             hf_row[f'{proteus_name}_mol_atm'] = (
                 float(hf_row.get(f'{proteus_name}_kg_atm', 0.0)) / species_mmw
             )
-            hf_row[f'{proteus_name}_mol_total'] = hf_row[f'{proteus_name}_kg_total'] / species_mmw
+            hf_row[f'{proteus_name}_mol_total'] = (
+                hf_row[f'{proteus_name}_kg_total'] / species_mmw
+            )
 
     # Mean molecular weight (approximate from VMRs). The noble gases are
     # gas_list members with their own VMRs, so they enter this sum directly;
