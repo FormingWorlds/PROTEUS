@@ -1509,10 +1509,11 @@ def _snapshot_readable(path: str) -> bool:
 def _snapshot_time(path: str) -> float | None:
     """Simulation time a snapshot file records for itself [yr], if it does.
 
-    The writers name their files on the time rounded to a whole year, so the
-    name cannot tell two steps inside one year apart. Both interior writers
-    also record the time they wrote: Aragog's netCDF carries a ``time``
-    variable and SPIDER's JSON a ``time_years`` entry. Reading it back is what
+    A snapshot name can be ambiguous: SPIDER's JSON files are named on the time
+    rounded to a whole year, so two steps inside one year share a name, and a
+    directory from an older run can hold whole-year names for any writer. The
+    interior writers also record the time they wrote: Aragog's netCDF carries a
+    ``time`` variable and SPIDER's JSON a ``time_years`` entry. Reading it back
     lets a resume tell whether a file is the row's own state or one a later
     step left under the same name.
 

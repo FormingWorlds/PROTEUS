@@ -466,6 +466,57 @@ def test_init_agni_atmos_loads_the_row_matched_profile(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
+def test_init_agni_atmos_falls_back_to_latest_profile_mid_run(monkeypatch, tmp_path):
+    """init_agni_atmos seeds AGNI from the latest profile when this row has none.
+
+    On a mid-run warm-start the current row has not written its '_atm.nc' yet, so
+    the row-matched path does not exist. The loader must fall back to the highest
+    simulation-time file on disk, chosen by parsing the time from each name.
+
+    Discrimination: the two files are '9.000_atm.nc' and '40.000_atm.nc'. String
+    order puts '9.000' last, float order puts '40.000' last, so a regression to
+    name-based selection would load the earlier profile and fail this test.
+    """
+    fake_agni = _FakeAGNI()
+    loaded_paths = []
+    fake_agni.setpt.fromncdf_b = lambda _atmos, path, *_a, **_k: loaded_paths.append(path)
+    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
+    # No file matches hf_row['Time']; the latest by time is 40.000.
+    (data_dir / '9.000_atm.nc').write_text('early', encoding='utf-8')
+    (data_dir / '40.000_atm.nc').write_text('latest', encoding='utf-8')
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    config = _build_greygas_config()
+    hf_row = {
+        'Time': 50.000,
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1.0,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
+    }
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+
+    init_agni_atmos(dirs, config, hf_row)
+
+    assert len(loaded_paths) == 1
+    assert loaded_paths[0].endswith('40.000_atm.nc')
+
+
+@pytest.mark.unit
 def test_init_agni_atmos_passes_unscaled_surface_pressure(monkeypatch, tmp_path):
     """init_agni_atmos hands AGNI the true surface pressure from hf_row, with
     no rescaling by the composition's mixing-ratio sum.
