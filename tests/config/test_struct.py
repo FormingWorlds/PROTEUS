@@ -13,6 +13,8 @@ Testing standards:
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from proteus.config._struct import Struct, Zalmoxis
@@ -160,3 +162,52 @@ class TestZalmoxisVolatileGates:
         # absent.
         with pytest.raises(ValueError, match='core_eos'):
             Struct(module='zalmoxis', zalmoxis=Zalmoxis(core_eos='no_colon'))
+
+
+class TestZalmoxisMushyZoneWarning:
+    """The mushy_zone_factor no-effect warning must fire only for the EOS
+    families that actually ignore the factor.
+
+    mushy_zone_factor scales the derived solidus ``T_sol = T_liq * mzf`` for
+    the PALEOS family (unified, 2-phase, and the API variants) through
+    ``load_zalmoxis_solidus_liquidus_functions``. For WolfBower2018 and
+    RTPress100TPa the melting curves come from file and the factor is inert,
+    so there the warning is correct and must still fire.
+    """
+
+    @staticmethod
+    def _warns(caplog, mantle_eos, mzf=0.8):
+        """Construct a zalmoxis Struct and report whether the no-effect
+        warning fired for ``mantle_eos`` at the given factor."""
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.config._struct'):
+            Struct(
+                module='zalmoxis',
+                zalmoxis=Zalmoxis(mantle_eos=mantle_eos, mushy_zone_factor=mzf),
+            )
+        return any('has no effect' in r.getMessage() for r in caplog.records)
+
+    def test_warning_silent_for_the_paleos_family(self, caplog):
+        """Each PALEOS-family EOS feeds the factor into the derived solidus, so
+        the no-effect warning must stay silent for all four."""
+        for eos in (
+            'PALEOS:MgSiO3',
+            'PALEOS-2phase:MgSiO3',
+            'PALEOS-API:MgSiO3',
+            'PALEOS-API-2phase:MgSiO3',
+        ):
+            assert not self._warns(caplog, eos), eos
+
+    def test_warning_fires_for_file_curve_eos(self, caplog):
+        """WolfBower2018 and RTPress100TPa read melting curves from file, so the
+        factor has no effect and the warning must fire."""
+        for eos in ('WolfBower2018:MgSiO3', 'RTPress100TPa:MgSiO3'):
+            assert self._warns(caplog, eos), eos
+
+    def test_warning_tracks_the_factor_not_only_the_eos(self, caplog):
+        """The warning depends on mushy_zone_factor < 1: at the sharp-boundary
+        value 1.0 an ignored setting is not misreported."""
+        assert not self._warns(caplog, 'WolfBower2018:MgSiO3', mzf=1.0)
+        # Paired positive: the same EOS at 0.8 fires, so silence at 1.0 is the
+        # factor guard rather than the EOS being exempt.
+        assert self._warns(caplog, 'WolfBower2018:MgSiO3', mzf=0.8)
