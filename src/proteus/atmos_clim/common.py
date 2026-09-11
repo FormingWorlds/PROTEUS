@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.helper import find_nearest
+from proteus.utils.helper import find_nearest, snapshot_path_for_time
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -275,7 +275,8 @@ def read_atmosphere_data(output_dir: str, times: list, extra_keys=[]):
     """
     profiles = [
         read_ncdf_profile(
-            os.path.join(output_dir, 'data', '%.0f_atm.nc' % t), extra_keys=extra_keys
+            snapshot_path_for_time(os.path.join(output_dir, 'data'), t, '_atm.nc'),
+            extra_keys=extra_keys,
         )
         for t in times
     ]

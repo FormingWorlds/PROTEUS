@@ -301,19 +301,19 @@ def sample_times(times: list, nsamp: int, tmin: float = 1.0):
     tmax = max(tmin + 1, np.amax(times))
 
     # do not allow times outside range
-    allowed_times = [int(x) for x in times if tmin <= x <= tmax]
+    allowed_times = [float(x) for x in times if tmin <= x <= tmax]
 
     # get samples on log-time scale
     sample_t = []
     sample_i = []
     for s in np.logspace(np.log10(tmin), np.log10(tmax), nsamp):  # Sample on log-scale
-        remaining = [int(v) for v in set(allowed_times) - set(sample_t)]
+        remaining = [float(v) for v in set(allowed_times) - set(sample_t)]
         if len(remaining) == 0:
             break
 
         # Get next nearest time
         val, _ = find_nearest(remaining, s)
-        sample_t.append(int(val))
+        sample_t.append(float(val))
 
         # Get the index of this time in the original array
         _, idx = find_nearest(times, val)
@@ -346,7 +346,7 @@ def sample_output(
         return [], []
 
     # get times
-    times = [int(f.split('/')[-1].split(extension)[0]) for f in files]
+    times = [float(f.split('/')[-1].split(extension)[0]) for f in files]
 
     out_t, out_i = sample_times(times, nsamp, tmin=tmin)
     out_f = [files[i] for i in out_i]

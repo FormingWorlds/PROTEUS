@@ -3557,39 +3557,46 @@ def _write_corrupt_json(path: str) -> str:
     return path
 
 
+def _write_timed_json(path: str, time: float) -> str:
+    """Create a valid SPIDER-style JSON snapshot recording ``time_years``."""
+    with open(path, 'w') as fh:
+        json.dump({'time_years': float(time), 'data': {'S': [1.0, 2.0]}}, fh)
+    return path
+
+
 @pytest.mark.unit
 def test_interior_snapshot_names_track_each_writer_convention():
     """Each interior module's probe uses that writer's own filename format.
 
-    Aragog and SPIDER round (``%.0f.json``). The dummy and
+    Aragog names its snapshot with the sub-year form ``'%.3f_int.nc'`` and
+    also answers to the whole-year form ``'%.0f_int.nc'``, so a directory
+    carrying either resumes. SPIDER writes ``'%.0f.json'``. The dummy and
     boundary interiors write no snapshot at all.
     """
-    # Time 30.7: Aragog and SPIDER rounds to 31.
-    assert _interior_snapshot_names(30.7, 'aragog') == ['31_int.nc']
-    assert _interior_snapshot_names(30.7, 'spider') == ['31.json']
+    # Aragog: sub-year name first, whole-year name as a fallback for old runs.
+    assert _interior_snapshot_names(30.7, 'aragog') == ['30.700_int.nc', '31_int.nc']
+    assert _interior_snapshot_names(30.0, 'aragog') == ['30.000_int.nc', '30_int.nc']
 
-    # Integer time rounds to 30
-    assert _interior_snapshot_names(30.0, 'aragog') == ['30_int.nc']
+    # SPIDER keeps the whole-year JSON name (the SPIDER binary owns the file).
+    assert _interior_snapshot_names(30.7, 'spider') == ['31.json']
 
     # Dummy and boundary write no interior snapshot: empty constraint.
     assert _interior_snapshot_names(30.7, 'dummy') == []
     assert _interior_snapshot_names(30.7, 'boundary') == []
 
     # Unknown module falls back to the Aragog default rather than crashing.
-    assert _interior_snapshot_names(30.7, 'other') == ['31_int.nc']
+    assert _interior_snapshot_names(30.7, 'other') == ['30.700_int.nc', '31_int.nc']
 
 
 @pytest.mark.unit
 def test_atm_snapshot_names_floating_convention():
-    """The atmosphere probe uses exactly the float rounding convention."""
-    # Time 30.7: round to 31
-    assert _atm_snapshot_names(30.7) == ['31_atm.nc']
-
-    # Integer Time: rounds to 30
-    assert _atm_snapshot_names(30.0) == ['30_atm.nc']
+    """The atmosphere probe names the sub-year form and answers the whole-year one."""
+    # Sub-year name first, whole-year name as a fallback for old runs.
+    assert _atm_snapshot_names(30.7) == ['30.700_atm.nc', '31_atm.nc']
+    assert _atm_snapshot_names(30.0) == ['30.000_atm.nc', '30_atm.nc']
 
     # Zero Time: should be fine
-    assert _atm_snapshot_names(0.0) == ['0_atm.nc']
+    assert _atm_snapshot_names(0.0) == ['0.000_atm.nc', '0_atm.nc']
 
     # Negative Time: should raise ValueError
     with pytest.raises(ValueError, match='Negative time'):
@@ -4050,3 +4057,136 @@ def test_select_resumable_snapshot_leaves_another_steps_file_in_place(tmp_path):
         'which is state no other file carries'
     )
     assert _snapshot_time(str(data / '70_int.nc')) == pytest.approx(70.8, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_rejects_a_mismatched_spider_json(tmp_path):
+    """A SPIDER row whose JSON records another step's time is not resumed from.
+
+    SPIDER keeps the whole-year ``'%.0f.json'`` name because the SPIDER binary
+    writes it, so two steps inside one year name the same file and the later
+    one overwrites the earlier. The recorded ``time_years`` is the only thing
+    that tells the two apart, so it is SPIDER's sole guard against resuming a
+    row from a colliding run's state. A ``70.json`` that records 70.4 must not
+    satisfy the 70.2 row.
+
+    Verifies:
+    - The 70.2 row is rejected and resume falls back to an earlier complete
+      row, driven by the recorded time rather than the filename.
+    - The same directory with the JSON recording 70.2 resumes at that row, so
+      the rejection is the recorded time doing its work.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (10, 20):
+        _write_timed_json(str(data / f'{t:.0f}.json'), float(t))
+    # Named for the 70.2 row, holding the state a colliding step wrote at 70.4.
+    _write_timed_json(str(data / '70.json'), 70.4)
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(20.0), (
+        f'resumed at {out.iloc[-1]["Time"]} from a JSON recording 70.4, so SPIDER '
+        'would continue from a colliding step the helpfile has no row for'
+    )
+
+    # Discrimination: the same row with its own recorded time is resumable.
+    _write_timed_json(str(data / '70.json'), 70.2)
+    kept, none_dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert none_dropped == []
+    assert kept.iloc[-1]['Time'] == pytest.approx(70.2)
+
+
+@pytest.mark.unit
+def test_snapshot_path_for_time_prefers_subyear_then_wholeyear(tmp_path):
+    """The resolver probes the sub-year name first, then the whole-year name.
+
+    Writers name a snapshot with the sub-year form ``'%.3f' + suffix`` so two
+    steps inside one year keep distinct files. A directory written before the
+    sub-year name existed carries only the whole-year form ``'%.0f' + suffix``.
+    The resolver has to answer to both, sub-year first, and report a consistent
+    name when neither is present.
+
+    Verifies:
+    - A present sub-year file is returned even when the whole-year file for the
+      same time also exists, so the distinct-file resolution is not lost.
+    - With only the whole-year file present, that path is returned.
+    - With neither present, the sub-year path is returned as the reported name.
+    """
+    from proteus.utils.helper import snapshot_path_for_time
+
+    data = str(tmp_path)
+    subyear = os.path.join(data, '30.200_atm.nc')
+    wholeyear = os.path.join(data, '30_atm.nc')
+
+    open(subyear, 'w').close()
+    open(wholeyear, 'w').close()
+    assert snapshot_path_for_time(data, 30.2, '_atm.nc') == subyear
+
+    os.remove(subyear)
+    assert snapshot_path_for_time(data, 30.2, '_atm.nc') == wholeyear
+
+    os.remove(wholeyear)
+    assert snapshot_path_for_time(data, 30.2, '_atm.nc') == subyear
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_resolves_sub_year_rows_to_distinct_files(tmp_path):
+    """Two steps inside one year keep separate snapshot files, and old names still resume.
+
+    Physical scenario: a run takes more than one step inside a single year, so
+    two helpfile rows sit less than a year apart. The whole-year filename keys
+    both on the same year, so under it the second step overwrites the first and
+    a resume that has to drop the second finds the first step's file already
+    replaced. The sub-year name gives each row its own file, so the earlier row
+    stays intact and resumable when the later one is dropped.
+
+    Verifies:
+    - The two sub-year rows resolve to distinct files, so dropping the later
+      row (its atmosphere half truncated) resumes the earlier row from its own
+      interior half, which still records the earlier row's own time.
+    - A directory written under the whole-year name alone, before the sub-year
+      name existed, still resumes: the probe answers to that name and the time
+      recorded inside the file confirms the row.
+    """
+    # Two rows 0.2 yr apart: '30.200' and '30.400', not the shared '30'.
+    data = tmp_path / 'data'
+    data.mkdir()
+    _write_timed_nc(str(data / '30.200_int.nc'), 30.2)
+    _write_timed_nc(str(data / '30.200_atm.nc'), 30.2)
+    _write_timed_nc(str(data / '30.400_int.nc'), 30.4)
+    _write_corrupt_nc(str(data / '30.400_atm.nc'))  # later row's atmosphere truncated
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path),
+        _hf_times([30.2, 30.4]),
+        require_atm=True,
+        interior_module='aragog',
+    )
+
+    assert dropped == [30]
+    assert out.iloc[-1]['Time'] == pytest.approx(30.2)
+    # The earlier row's own interior half is intact and still its own: the
+    # later step never wrote over it because the names are distinct.
+    assert (data / '30.200_int.nc').is_file()
+    assert _snapshot_time(str(data / '30.200_int.nc')) == pytest.approx(30.2, rel=1e-12)
+
+    # Discrimination: a directory carrying only the whole-year name still
+    # resumes, so runs written before the sub-year name are not stranded.
+    legacy = tmp_path / 'legacy'
+    (legacy / 'data').mkdir(parents=True)
+    _write_timed_nc(str(legacy / 'data' / '30_int.nc'), 30.2)
+    _write_timed_nc(str(legacy / 'data' / '30_atm.nc'), 30.2)
+
+    kept, none_dropped = select_resumable_snapshot(
+        str(legacy),
+        _hf_times([30.2]),
+        require_atm=True,
+        interior_module='aragog',
+    )
+    assert none_dropped == []
+    assert kept.iloc[-1]['Time'] == pytest.approx(30.2)

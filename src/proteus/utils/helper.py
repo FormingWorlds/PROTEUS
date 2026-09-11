@@ -58,6 +58,39 @@ def get_proteus_dir():
     return root
 
 
+def snapshot_path_for_time(data_dir: str, time: float, suffix: str) -> str:
+    """Return the snapshot path for a time, preferring the sub-year name.
+
+    A snapshot filename can take two forms: the sub-year form
+    ``'%.3f' + suffix`` (distinct for rows less than a year apart) or the
+    whole-year form ``'%.0f' + suffix``. Probe the sub-year name first, then
+    the whole-year name, so a directory that carries either form resolves.
+
+    Parameters
+    ----------
+    data_dir : str
+        Directory holding the snapshot files (a run's ``data/``).
+    time : float
+        Simulation time [yr] to build the filename from.
+    suffix : str
+        Filename suffix after the formatted time, e.g. ``'_int.nc'`` or
+        ``'_atm.nc'``.
+
+    Returns
+    -------
+    str
+        Path to the existing snapshot. When neither form exists, the
+        sub-year path is returned so the caller reports a consistent name.
+    """
+    subyear = os.path.join(data_dir, '%.3f%s' % (time, suffix))
+    if os.path.exists(subyear):
+        return subyear
+    wholeyear = os.path.join(data_dir, '%.0f%s' % (time, suffix))
+    if os.path.exists(wholeyear):
+        return wholeyear
+    return subyear
+
+
 def PrintSeparator():
     log.info('===================================================')
     pass

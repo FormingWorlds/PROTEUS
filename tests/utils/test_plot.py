@@ -137,5 +137,28 @@ def test_sample_output_files(mock_glob):
 
     assert len(t) <= 3
     assert len(f) == len(t)
-    assert all(isinstance(time, int) for time in t)
+    assert all(isinstance(time, float) for time in t)
     assert all(path.endswith('.nc') for path in f)
+
+
+@pytest.mark.unit
+@patch('proteus.utils.plot.glob.glob')
+def test_sample_output_parses_subyear_times(mock_glob):
+    """Sub-year snapshot names (``%.3f_atm.nc``) parse without a crash.
+
+    A whole-year name lets the time parse with ``int()``. A sub-year name
+    such as ``30.200_atm.nc`` makes that raise ValueError, so the parser
+    reads the time as a float and keeps two rows inside one year distinct.
+    """
+    files = ['/tmp/30.200_atm.nc', '/tmp/30.800_atm.nc', '/tmp/40.000_atm.nc']
+    mock_glob.return_value = files
+
+    handler = MagicMock()
+    handler.directories = {'output/data': '/tmp'}
+
+    t, f = sample_output(handler, nsamp=8)
+
+    assert 30.2 in t
+    assert 30.8 in t
+    assert all(isinstance(time, float) for time in t)
+    assert all(path.endswith('_atm.nc') for path in f)

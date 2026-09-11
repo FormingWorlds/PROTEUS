@@ -1580,13 +1580,8 @@ def _snapshot_belongs_to(path: str, time: float) -> bool:
     resolution = 5.0e-11 * max(1.0, abs(time))
     tolerance = 4.0 * resolution
 
-    # What the margin must stay under is the one-year bucket the filenames are
-    # keyed on, since two rows sharing a name are what this tells apart. Past
-    # a few Gyr the helpfile's own resolution is itself a good fraction of a
-    # year, so no margin can both clear the round trip and separate two rows
-    # inside one bucket. There the file is accepted on its name, the behaviour
-    # this check refines rather than replaces, instead of rejecting rows that
-    # are perfectly resumable.
+    # Past a few Gyr the helpfile precision itself exceeds the one-year name
+    # bucket, so no margin separates two rows in it: accept on name instead.
     if tolerance >= 0.5:
         return True
 
@@ -1596,10 +1591,13 @@ def _snapshot_belongs_to(path: str, time: float) -> bool:
 def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
     """Interior snapshot filename candidates for a simulation time, per writer.
 
-    Each interior module names its snapshot with the same str-format convention,
-    so the resume probes match. They differ by suffix.
-    The dummy and boundary interiors write no snapshot, so resume imposes
-    no interior constraint (empty list). Unknown module falls-back to Aragog.
+    Aragog names its snapshot with the sub-year form ``'%.3f_int.nc'`` and also
+    answers to the whole-year form ``'%.0f_int.nc'``, so a directory that
+    carries either form resumes. SPIDER names its JSON with the whole-year form
+    ``'%.0f.json'``; the SPIDER binary writes that name, so PROTEUS matches it
+    rather than choosing it. The dummy and boundary interiors write no snapshot, so
+    resume imposes no interior constraint (empty list). Unknown module
+    falls-back to Aragog.
     """
 
     if time < 0.0:
@@ -1611,18 +1609,19 @@ def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
         case 'spider':
             return ['%.0f.json' % time]
         case _:
-            return ['%.0f_int.nc' % time]
+            return ['%.3f_int.nc' % time, '%.0f_int.nc' % time]
 
 
 def _atm_snapshot_names(time: float) -> list[str]:
-    """Atmosphere snapshot filename candidate for a simulation time, per writer.
+    """Atmosphere snapshot filename candidates for a simulation time.
 
-    All writers round the time with a string-floating point formatter
-    (rounds to nearest number with no decimals).
+    The atmosphere writers name the snapshot with the sub-year form
+    ``'%.3f_atm.nc'`` and also answer to the whole-year form ``'%.0f_atm.nc'``,
+    so a directory that carries either form resumes.
     """
     if time < 0.0:
         raise ValueError(f'Negative time {time} cannot be formatted as filename')
-    return ['%.0f_atm.nc' % time]
+    return ['%.3f_atm.nc' % time, '%.0f_atm.nc' % time]
 
 
 def select_resumable_snapshot(
@@ -1647,25 +1646,24 @@ def select_resumable_snapshot(
     can never back a resume and would otherwise be swept into the final
     data archive.
 
-    Each half is probed with its own writer's filename convention. The
-    interior name depends on the module: Aragog writes ``'%d_int.nc'``
-    (truncated), SPIDER writes ``'%.0f.json'`` (rounded), and the dummy and
-    boundary interiors write no snapshot at all (no interior constraint). The
-    atmosphere half is probed with the active writer's single convention: AGNI
-    rounds (``'%.0f_atm.nc'``), JANUS truncates (``str(int(Time)) + '_atm.nc'``).
-    Probing only the active convention keeps a fractional-Time row from matching
-    an adjacent row's atmosphere file. See ``_interior_snapshot_names`` /
+    Each half is probed with the candidate names for its writer. The interior
+    name depends on the module: Aragog uses the sub-year form ``'%.3f_int.nc'``
+    and answers to the whole-year form ``'%.0f_int.nc'``, SPIDER uses the
+    whole-year form ``'%.0f.json'``, and the dummy and boundary interiors write
+    no snapshot at all (no interior constraint). The atmosphere half uses the
+    sub-year form ``'%.3f_atm.nc'`` and answers to the whole-year form
+    ``'%.0f_atm.nc'``. See ``_interior_snapshot_names`` /
     ``_atm_snapshot_names``.
 
-    Every convention keys the name on a whole year, so rows less than a year
-    apart derive the same filename and one overwrites the other. The name
-    alone therefore cannot say which row a file belongs to. The interior
-    writers record the time they wrote inside the file (a ``time`` variable in
-    the netCDF, ``time_years`` in SPIDER's JSON), so where that is present it
-    is what the row is matched against: a file left by a different step is not
-    accepted as this row's half, and the walk continues past it. A file that
-    carries no recorded time, which is what a directory written before the
-    field existed looks like, is accepted on its name as before.
+    The whole-year form keys the name on a whole year, so two rows less than a
+    year apart that both use it derive the same filename and one overwrites the
+    other; the sub-year form gives each such row a distinct file. Where the
+    name alone cannot say which row a file belongs to, the recorded time inside
+    the file decides. The interior writers store the time they wrote (a
+    ``time`` variable in the netCDF, ``time_years`` in SPIDER's JSON), so where
+    that is present it is what the row is matched against: a file left by a
+    different step is not accepted as this row's half, and the walk continues
+    past it. A file that carries no recorded time is accepted on its name.
 
     Parameters
     ----------
@@ -1909,7 +1907,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     # Which times do we have atmosphere data for?
     if not dummy_atm:
         ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
-        nc_times = [int(f.split('/')[-1].split('_atm')[0]) for f in ncs]
+        nc_times = [float(f.split('/')[-1].split('_atm')[0]) for f in ncs]
         output_times = select_profile_plot_times(output_times, nc_times, no_int_snapshots)
 
     # Samples for plotting profiles

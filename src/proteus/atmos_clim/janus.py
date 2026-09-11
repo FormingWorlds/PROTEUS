@@ -154,7 +154,7 @@ def write_atmos_ncdf(atm, dirs: dict, time: float):
         time : float
             Current simulation time (used for timestamping the output file).
     """
-    nc_fpath = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % time)
+    nc_fpath = os.path.join(dirs['output'], 'data', '%.3f_atm.nc' % time)
     log.debug(f'Write JANUS atmosphere to {nc_fpath}')
     atm.write_ncdf(nc_fpath)
 
