@@ -799,8 +799,8 @@ def GetHelpfileKeys():
         'R_solvus',         # solvus radius for global_miscibility mode [m]
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]
         'T_solvus',         # solvus temperature for global_miscibility mode [K]
-        'P_center',         # central pressure from Zalmoxis structure [Pa]
-        'P_cmb',            # core-mantle boundary pressure from Zalmoxis structure [Pa]
+        'P_center',         # central pressure from Zalmoxis structure [Pa]; 0 for SPIDER, which models the mantle only
+        'P_cmb',            # core-mantle boundary pressure, from Zalmoxis structure or SPIDER's basic-node pressure profile [Pa]
         'core_density',     # core density from structure solver [kg m-3]
         'core_heatcap',     # core heat capacity [J kg-1 K-1]
         'X_H2_int',         # H2 mass fraction in interior (sub-Neptune mode) [1]
@@ -814,7 +814,6 @@ def GetHelpfileKeys():
         'T_skin',           # grey radiative skin temperature [K]
         'T_surface_initial',  # self-consistent T_surf from accretion mode [K]
         'T_surf_accr',      # surface temperature from accretion energy balance [K]
-        'T_cmb_initial',    # initial CMB temperature from White+Li thermal state [K]
         'DeltaT_accretion',  # accretion-energy DeltaT contribution [K]
         'DeltaT_adiabat',   # adiabatic DeltaT contribution [K]
         'DeltaT_differentiation',  # core-mantle differentiation DeltaT contribution [K]

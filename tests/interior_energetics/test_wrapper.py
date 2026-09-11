@@ -2565,6 +2565,7 @@ def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
     config = SimpleNamespace(
         interior_struct=SimpleNamespace(
             core_density=rho_core,
+            core_heatcap=700.0,
             core_frac=core_frac,
             core_frac_mode='radius',
         )
@@ -2579,6 +2580,44 @@ def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
     # instead of R**3 would give a number ~6 orders of magnitude smaller.
     wrong_square = rho_core * (4.0 / 3.0) * np.pi * (R_int * core_frac) ** 2
     assert abs(hf_row['M_core'] - wrong_square) > 1e15
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_calculate_core_mass_writes_radius_density_and_heatcap():
+    """calculate_core_mass also writes R_core, core_density, and core_heatcap
+    to hf_row, not just M_core.
+
+    These three feed the helpfile columns directly; a regression that
+    reverted to computing M_core without storing the intermediates would
+    leave them missing from hf_row entirely, caught here by a direct key
+    check rather than only checking M_core's value.
+    """
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.wrapper import calculate_core_mass
+
+    rho_core = 10738.0
+    heatcap = 700.0
+    R_int = 6.371e6
+    core_frac = 0.3
+    config = SimpleNamespace(
+        interior_struct=SimpleNamespace(
+            core_density=rho_core,
+            core_heatcap=heatcap,
+            core_frac=core_frac,
+            core_frac_mode='radius',
+        )
+    )
+    hf_row = {'R_int': R_int}
+    calculate_core_mass(hf_row, config)
+
+    assert hf_row['R_core'] == pytest.approx(R_int * core_frac, rel=1e-12)
+    assert hf_row['core_density'] == pytest.approx(rho_core, rel=1e-12)
+    assert hf_row['core_heatcap'] == pytest.approx(heatcap, rel=1e-12)
+    # Discrimination: R_core must not equal R_int itself (a regression that
+    # wrote the uncombined radius instead of the core radius).
+    assert hf_row['R_core'] != pytest.approx(R_int, rel=1e-3)
 
 
 @pytest.mark.unit

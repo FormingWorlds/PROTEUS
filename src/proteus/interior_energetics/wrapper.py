@@ -196,13 +196,10 @@ def calculate_core_mass(hf_row: dict, config: Config):
             % config.interior_struct.core_frac_mode
         )
     rho_core = get_core_density(config, hf_row)
-    hf_row['M_core'] = (
-        rho_core
-        * 4.0
-        / 3.0
-        * np.pi
-        * (hf_row['R_int'] * config.interior_struct.core_frac) ** 3.0
-    )
+    hf_row['R_core'] = hf_row['R_int'] * config.interior_struct.core_frac
+    hf_row['core_density'] = rho_core
+    hf_row['core_heatcap'] = get_core_heatcap(config, hf_row)
+    hf_row['M_core'] = rho_core * 4.0 / 3.0 * np.pi * hf_row['R_core'] ** 3.0
 
 
 def update_planet_mass(hf_row: dict):
