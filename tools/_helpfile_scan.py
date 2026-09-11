@@ -59,6 +59,7 @@ MERGE_SITES = [
 # domain lists the template spans; unions over-approximate and are trimmed
 # against the schema downstream.
 TEMPLATE_OVERRIDES: dict[tuple[str, str], tuple[str, ...]] = {
+    ('accretion/wrapper.py', '<?>_kg_total'): ('element_list',),
     ('escape/wrapper.py', '<?>_kg_total'): ('element_list',),
     ('escape/common.py', 'esc_rate_<?>'): ('element_list',),
     ('outgas/calliope.py', '<?>_kg_total'): ('element_list',),
@@ -93,6 +94,8 @@ SUPPRESSED_DYNAMIC_WRITES = {
     # hf_row.update(saved) restores of pre-call snapshots.
     ('interior_energetics/wrapper.py', '_solve_structure_with_adiabat_or_rollback'),
     ('interior_energetics/wrapper.py', 'update_structure_from_interior'),
+    # Impact re-melt rewrites melt-state columns run_dummy_int already produces.
+    ('interior_energetics/wrapper.py', '_remelt_scalar_backend'),
 }
 
 # Producers that assemble their key through a local variable the visitor

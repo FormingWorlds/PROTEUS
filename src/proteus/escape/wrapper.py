@@ -543,6 +543,7 @@ def calc_new_elements(
         res[e] = float(hf_row.get(f'{e}{key}', 0.0))
 
     M_vols = float(sum(res.values()))
+
     # Nothing to share out, either because the reservoir is spent or because an
     # upstream failure left it unreadable. Return the totals unchanged: `res`
     # holds the reservoir the loss is sized from, which is `*_kg_atm` for

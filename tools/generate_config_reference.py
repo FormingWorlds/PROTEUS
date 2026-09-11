@@ -52,7 +52,7 @@ PAGE_MAP = {
     'escape': 'escape_outgas.md',
     'outgas': 'escape_outgas.md',
     'observe': 'observe.md',
-    'accretion': 'observe.md',
+    'accretion': 'accretion.md',
 }
 
 # Dotted paths deliberately absent from input/all_options.toml, each with a

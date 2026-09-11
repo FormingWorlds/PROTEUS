@@ -445,5 +445,26 @@ def next_step(
                 )
                 dtswitch = dt_capped
 
+    # Land exactly on the next scheduled giant impact, since it remelts the
+    # mantle and grows the planet: the state must match the timeline, not
+    # whatever a step that overshot it produced. The clamp only shortens
+    # dt and floors at the minimum step; impact_maximum further bounds the
+    # landing step independent of how coarse dt had grown beforehand.
+    if interior_o is not None and np.isfinite(interior_o.t_next_impact):
+        dt_to_impact = interior_o.t_next_impact - hf_row['Time']
+        impact_ceiling = float(config.params.dt.impact_maximum)
+        if impact_ceiling > 0.0:
+            dt_to_impact = min(dt_to_impact, impact_ceiling)
+        dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
+        dt_to_impact = max(dt_to_impact, dtfloor)
+        if dtswitch > dt_to_impact:
+            log.info(
+                'Time-stepping: impact at %.4e yr, capping dt at %.2e yr (was %.2e yr)',
+                interior_o.t_next_impact,
+                dt_to_impact,
+                dtswitch,
+            )
+            dtswitch = dt_to_impact
+
     log.info('New time-step target is %.2e years' % dtswitch)
     return dtswitch

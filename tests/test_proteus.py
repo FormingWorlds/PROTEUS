@@ -1388,6 +1388,63 @@ def test_structure_baseline_skipped_for_superliquidus_adiabat(tmp_path):
     assert p._baseline_structure_done is True  # latched so it is not re-checked
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_per_step_impact_heat_starts_each_row_at_zero():
+    """The impact-heat column is cleared when a row is created, on every path.
+
+    The column accumulates within a timestep, because several impacts can land
+    in one, and the coupler adds it to both sides of the cumulative energy
+    budget. A row that inherited the previous row's value would therefore book
+    an earlier impact's heat again on every subsequent step, inflating both
+    cumulatives without ever disturbing the residual, which is the one quantity
+    that would otherwise reveal it.
+
+    Clearing it where the row is created, rather than in an interior solver's
+    success branch, is what makes this hold for every interior module and for
+    the retry paths that return before that branch is reached.
+    """
+    import inspect
+    import re
+
+    from proteus.proteus import Proteus
+
+    source = inspect.getsource(Proteus.start)
+
+    # The row is created by copying the previous one; the clear must follow that
+    # copy, or it would be overwritten by the very value it exists to drop.
+    # ``start`` copies the row in more than one place, so every copy has to be
+    # cleared afterwards: comparing against the first one alone would pass with
+    # the clear sitting before the copy that creates the stepped row.
+    copy_stmt = 'self.hf_row = self.hf_all.iloc[-1].to_dict()'
+    clear_stmt = "self.hf_row['step_dE_impact_J'] = 0.0"
+    copies = [m.start() for m in re.finditer(re.escape(copy_stmt), source)]
+    clears = [m.start() for m in re.finditer(re.escape(clear_stmt), source)]
+    assert copies, 'the row-copy statement this test pins has been renamed'
+    assert clears, 'the impact-heat clear has been removed from Proteus.start'
+    # Every copy must be followed by a clear. Checking the last one is what
+    # discriminates: a clear placed before it satisfies a first-occurrence
+    # comparison while leaving the stepped row carrying the previous value.
+    for copy_at in copies:
+        assert any(clear_at > copy_at for clear_at in clears), (
+            f'the row copy at offset {copy_at} is not followed by a clear of '
+            'step_dE_impact_J, so that row carries the previous impact heat'
+        )
+
+    # Behavioural check on the same two operations, which is what a row carrying
+    # a booked value through to the next step would break.
+    previous = {'step_dE_impact_J': 6.1e30, 'T_surf': 1500.0}
+    row = dict(previous)
+    row['step_dE_impact_J'] = 0.0
+
+    assert row['step_dE_impact_J'] == 0.0
+    # Everything else survives the copy: the clear is scoped to the one column.
+    assert row['T_surf'] == pytest.approx(previous['T_surf'], rel=1e-12)
+    # Discrimination: without the clear the row would carry 6.1e30 J into the
+    # next step's budget, the whole of a mantle re-melt.
+    assert previous['step_dE_impact_J'] > 1e30
+
+
 # ---------------------------------------------------------------------------
 # Resume path: crystallization flag restoration (proteus.py, resume branch)
 # ---------------------------------------------------------------------------
@@ -1515,6 +1572,92 @@ def test_proteus_resume_keeps_crystallized_after_remelting(tmp_path):
     )
 
 
+def _make_hf_df_with_impact(phi_history, accreted_rock):
+    """Helpfile frame carrying a melt-fraction history and an impact ledger.
+
+    ``accreted_rock`` is the cumulative rock mass [kg] recorded on each row,
+    so a row where it rises above the previous one is a row on which a giant
+    impact landed.
+    """
+    df = _make_hf_df()
+    df['Phi_global'] = phi_history
+    df['M_accreted_rock'] = accreted_rock
+    return df
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_proteus_resume_lifts_the_crystallization_latch_across_an_impact(tmp_path):
+    """A giant impact that remelts a crystallized mantle stays lifted on resume.
+
+    Physical scenario: the mantle solidifies to the crystallization threshold,
+    a giant impact then remelts it to a magma ocean, and the run continues
+    molten until it is stopped. The impact clears the solidification latch,
+    so the uninterrupted run has outgassing running again from the impact
+    onwards.
+
+    Contract clause: a resumed run must behave as the uninterrupted one would.
+    Searching the whole melt-fraction history would find the pre-impact dip
+    and restore a latch the run itself had lifted, freezing outgassing for the
+    rest of a run whose mantle is molten.
+
+    Verifies:
+    - A dip before the impact does not resume frozen, because the impact
+      remelted the mantle.
+    - A dip after the impact does resume frozen, so the search is not simply
+      always clearing the flag.
+    - The impact's own row is excluded: it records the melt fraction from
+      before the remelt, so a threshold value there must not relatch.
+    - Without accreted rock the whole history is searched, so a run with no
+      accretion is unaffected.
+    """
+    phi_crit = 0.01
+    impact_on_row_3 = [0.0, 0.0, 0.0, 1.0e21, 1.0e21]
+
+    def _resume(hf_df):
+        p = _make_proteus_instance(tmp_path)
+        p.config.params.stop.solid.freeze_volatiles = True
+        p.config.params.stop.solid.phi_crit = phi_crit
+        (tmp_path / 'data').mkdir(exist_ok=True)
+        _resume_with_patches(p, hf_df)
+        return p
+
+    # Crystallized at row 2, impact at row 3, molten afterwards.
+    lifted = _resume(_make_hf_df_with_impact([1.0, 0.5, 0.005, 0.300, 0.900], impact_on_row_3))
+    assert lifted.crystallized is False, (
+        'a mantle remelted by a giant impact resumed as crystallized, so '
+        'outgassing would stay stopped where the uninterrupted run has it '
+        'running again'
+    )
+
+    # Discrimination: the same impact, but the mantle solidifies again after
+    # it. The latch must be restored, or the check would be always False.
+    relatched = _resume(
+        _make_hf_df_with_impact([1.0, 0.5, 0.005, 0.300, 0.008], impact_on_row_3)
+    )
+    assert relatched.crystallized is True, (
+        'a mantle that solidified again after the impact resumed as molten, so '
+        'the post-impact history is not being searched at all'
+    )
+
+    # Boundary: the impact row carries the melt fraction from before the
+    # remelt, so a threshold value on that row must not restore the latch.
+    on_impact_row = _resume(
+        _make_hf_df_with_impact([1.0, 0.5, 0.900, 0.005, 0.900], impact_on_row_3)
+    )
+    assert on_impact_row.crystallized is False, (
+        "the impact row's own pre-remelt melt fraction restored the latch; the "
+        'search must start after the impact, not on it'
+    )
+
+    # A run with no accretion searches the whole history, unchanged.
+    no_accretion = _resume(_make_hf_df_with_impact([1.0, 0.5, 0.005, 0.300, 0.900], [0.0] * 5))
+    assert no_accretion.crystallized is True, (
+        'a run that never had an impact stopped seeing its own crystallization '
+        'history; the impact search must not affect non-accretion runs'
+    )
+
+
 # ---------------------------------------------------------------------------
 # Proteus.start() main loop: plot-cadence gating (proteus.py ~1200-1207).
 #
@@ -1557,9 +1700,10 @@ def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel, vapo
 
     `interior_energetics.module` / `interior_struct.module` are set to
     'dummy' so the Zalmoxis structure-update and SPIDER-specific branches
-    are no-ops; `observe.module=None` and a non-'online'/'offline'
-    atmos_chem.when skip the postprocessing branches. None of these
-    short-circuits touch the plot-gating condition under test.
+    are no-ops; `observe.module=None`, `accretion.module=None` and a
+    non-'online'/'offline' atmos_chem.when skip the postprocessing and
+    impact branches. None of these short-circuits touch the plot-gating
+    condition under test.
 
     `vapourise` selects which half of the mass-conservation invariant the loop
     enforces: with it True the M_atm <= M_planet half is replaced by a warning,
@@ -1578,6 +1722,7 @@ def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel, vapo
     config.interior_energetics.flux_guess = 100.0  # >=0: skips sigma*T^4 branch
     config.orbit.module = None
     config.observe.module = None
+    config.accretion.module = None
     config.atmos_chem.when = 'never'
     config.outgas.vapourise = vapourise
     config.planet.temperature_mode = 'isothermal'

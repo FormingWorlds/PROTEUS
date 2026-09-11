@@ -161,9 +161,9 @@ def test_page_map_covers_every_section(schema):
     sections = {f['toml_section'] for f in schema['fields']}
     for section in sections:
         assert section.split('.')[0] in _gcr.PAGE_MAP, f'[{section}] unmapped'
-    # The map points only at the seven real pages.
+    # The map points only at the eight real pages.
     pages = set(_gcr.PAGE_MAP.values())
-    assert len(pages) == 7
+    assert len(pages) == 8
     for page in pages:
         assert (_REPO_ROOT / 'docs' / 'Reference' / 'config' / page).is_file()
 
@@ -291,7 +291,7 @@ def test_committed_pages_are_current_and_fully_described(schema):
     carries a description, and all_options.toml agrees with the schema; any
     of these failing means a source edit landed without regeneration."""
     targets = _gcr.build_targets(schema)
-    assert len(targets) == 8  # seven pages plus the JSON sidecar
+    assert len(targets) == 9  # eight pages plus the JSON sidecar
     for path, content in targets:
         assert path.read_text() == content, f'{path.name} is stale'
     assert _gcr.check_all_options(schema) == []

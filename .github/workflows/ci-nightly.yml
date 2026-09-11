@@ -217,12 +217,14 @@ jobs:
             files: >-
               tests/integration/test_slow_aragog_calliope.py
               tests/integration/test_slow_aragog_atmodeller.py
+              tests/integration/test_slow_accretion_resume.py
           - shard: aragog
             tier: critical
             os: macos-latest
             files: >-
               tests/integration/test_slow_aragog_calliope.py
               tests/integration/test_slow_aragog_atmodeller.py
+              tests/integration/test_slow_accretion_resume.py
           # ---- shard: zalmoxis-dummy (real Zalmoxis + dummy
           # everything else; Linux-only because the test is
           # skipif(darwin) on macOS) ----

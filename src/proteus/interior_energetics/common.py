@@ -543,6 +543,15 @@ class Interior_t:
         self.spider_fail_count = 0
         self.aragog_fail_count = 0
 
+        # Rolling record of what the interior's recent steps covered, as
+        # (advanced, requested) pairs in years. Kept separately from the
+        # failure counters above because these are all valid solves; what a
+        # run of them need not be is progress, and a run that covers almost
+        # none of the time it asks for is stalled at a phase change rather
+        # than crossing it. Read as a total over the window, so a normal step
+        # between short ones cannot disguise a stall.
+        self.aragog_step_progress: list[tuple[float, float]] = []
+
         # True when the interior is running on a fallback (previous-step)
         # structure because the last Zalmoxis re-solve did not converge; set on
         # that fall-back and cleared on the next successful re-solve. Downstream
@@ -569,6 +578,25 @@ class Interior_t:
         # cannot ramp dt straight back into the stiff cliff it just
         # escaped from.
         self.dt_hysteresis_remaining = 0
+
+        # Time of the next scheduled giant impact [yr], refreshed by the
+        # main loop from the accretion timeline. The time-stepper clamps
+        # dt so the loop lands on it, because an impact resets the mantle
+        # and changes the planet's mass: stepping over one would apply it
+        # at the wrong state. Infinite when no impact is pending, which
+        # is every run with accretion switched off.
+        self.t_next_impact = float('inf')
+
+        # Raised by a giant-impact re-melt so the next interior solve does
+        # not clip the deliberate temperature jump back out as if it were a
+        # solver anomaly. Consumed and cleared on that one step.
+        self.impact_reset = False
+
+        # ``impact_reset`` as read at the top of this step, kept readable for
+        # the whole step because the flag itself is cleared before the interior
+        # solver runs. The solvers' jump guards read this to tell an impact's
+        # deliberate temperature step from a corrupted solve.
+        self.impact_reset_this_step = False
 
         # True when the most recent call to next_step() had its step size
         # clamped. For example, by `_estimate_bolscale()`.

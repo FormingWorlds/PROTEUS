@@ -11,6 +11,15 @@ Module selection happens in each area's wrapper; invalid option values are
 rejected when the config file loads. Secondary switches within an area are
 listed below its table.
 
+## Accretion (`accretion.module`)
+
+| Option | Entry point | Role |
+|---|---|---|
+| `"dummy"` | `accretion/dummy.py:get_timeline` | Analytical exponential accretion law |
+| `"morrigan"` | `accretion/morrigan.py:get_timeline` | Monte Carlo giant-impact dynamics (Morrigan) |
+| `"timeline"` | `accretion/timeline.py:get_timeline` | Impacts replayed from a timeline file |
+| `none` | not applicable | Accretion disabled; no impacts |
+
 ## Atmosphere climate (`atmos_clim.module`)
 
 | Option | Entry point | Role |

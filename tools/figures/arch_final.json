@@ -1,0 +1,5217 @@
+{
+ "meta": {
+  "width": 1412.0,
+  "height": 1415.0,
+  "viewBox": "0 0 1412 1415",
+  "color_scheme": "light"
+ },
+ "items": [
+  {
+   "kind": "rect",
+   "x": 0.0,
+   "y": 0.0,
+   "w": 1.0,
+   "h": 1.0,
+   "rx": 0.061224489795918366,
+   "fill": null,
+   "fill_opacity": 1.0,
+   "stroke": null,
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 1.5,
+   "y": 35.5,
+   "w": 645.0,
+   "h": 300.0,
+   "rx": 12.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(226, 61, 40)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-1",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 16.5,
+   "y": 169.5,
+   "w": 372.36,
+   "h": 141.0,
+   "rx": 12.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(226, 61, 40)",
+   "stroke_width": 1.5,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-3",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 162.5,
+   "y": 283.5,
+   "w": 83.0,
+   "h": 26.0,
+   "rx": 6.0,
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-45",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Energet",
+      "size": 15.0,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     },
+     {
+      "text": "ics",
+      "size": 15.0,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-45",
+   "href": "",
+   "bbox": [
+    164.0,
+    288.0,
+    79.0,
+    20.25
+   ],
+   "flex": {
+    "ml": 164.0,
+    "pt": 296.0,
+    "w": 79.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 286.125,
+     "bottom": 303.125,
+     "left": 165,
+     "right": 235.890625,
+     "text": "Energetics",
+     "size": 15,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 406.5,
+   "y": 169.5,
+   "w": 225.0,
+   "h": 142.0,
+   "rx": 12.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(226, 61, 40)",
+   "stroke_width": 1.5,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-2",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 376.57 230 Q 396.57 210 418.21 225.22",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "VwB6l1LpBQuK5qf91lYw-16",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 423.77 229.14 L 416.25 228.01 L 420.16 222.44 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "VwB6l1LpBQuK5qf91lYw-16",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 382.73 244.7 Q 404.5 260.5 424.5 240.5",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "VwB6l1LpBQuK5qf91lYw-18",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 377.22 240.71 L 384.72 241.95 L 380.73 247.45 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "VwB6l1LpBQuK5qf91lYw-18",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 996.5,
+   "y": 190.5,
+   "w": 400.0,
+   "h": 180.0,
+   "rx": 12.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(89, 62, 116)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-4",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 1156.5,
+   "y": 216.0,
+   "w": 79.0,
+   "h": 48.0,
+   "rx": 6.0,
+   "fill": "rgb(89, 62, 116)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-48",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/orbit/wrapper.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "orbit (wrapper)",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-48",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/orbit/wrapper.py",
+   "bbox": [
+    1164.0,
+    124.0,
+    63.0,
+    34.25
+   ],
+   "flex": {
+    "ml": 1164.0,
+    "pt": 139.0,
+    "w": 63.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 224.5,
+     "bottom": 239.5,
+     "left": 1182.84375,
+     "right": 1208.140625,
+     "text": "orbit",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    },
+    {
+     "top": 240.09375,
+     "bottom": 255.09375,
+     "left": 1167.6875,
+     "right": 1223.3125,
+     "text": "(wrapper)",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 1196 264 L 1196 274.5 Q 1196 285 1184 285 L 1080.5 285 Q 1068.5 285 1068.5 291.65 L 1068.5 298.31",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-51",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1068.5 305.11 L 1065.1 298.31 L 1071.9 298.31 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-51",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1037 315.75 L 1043.1 310.08 Q 1047.5 306 1053.5 306 L 1083.5 306 Q 1089.5 306 1093.9 310.08 L 1106.1 321.42 Q 1110.5 325.5 1106.1 329.58 L 1093.9 340.92 Q 1089.5 345 1083.5 345 L 1053.5 345 Q 1047.5 345 1043.1 340.92 L 1030.9 329.58 Q 1026.5 325.5 1030.9 321.42 Z",
+   "fill": "rgb(89, 62, 116)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-49",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/orbit/lovepy.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "LovePy",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-49",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/orbit/lovepy.py",
+   "bbox": [
+    1028.0,
+    217.5,
+    80.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 1028.0,
+    "pt": 225.0,
+    "w": 80.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 317.703125,
+     "bottom": 332.703125,
+     "left": 1046.3125,
+     "right": 1089.6875,
+     "text": "LovePy",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 1165 315.75 L 1171.1 310.08 Q 1175.5 306 1181.5 306 L 1211.5 306 Q 1217.5 306 1221.9 310.08 L 1234.1 321.42 Q 1238.5 325.5 1234.1 329.58 L 1221.9 340.92 Q 1217.5 345 1211.5 345 L 1181.5 345 Q 1175.5 345 1171.1 340.92 L 1158.9 329.58 Q 1154.5 325.5 1158.9 321.42 Z",
+   "fill": "rgb(89, 62, 116)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-108",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Obliqua",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-108",
+   "href": "",
+   "bbox": [
+    1156.0,
+    217.5,
+    80.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 1156.0,
+    "pt": 225.0,
+    "w": 80.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 317.703125,
+     "bottom": 332.703125,
+     "left": 1173.59375,
+     "right": 1218.40625,
+     "text": "Obliqua",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 1196 264 L 1196 274.5 Q 1196 285 1208 285 L 1312.5 285 Q 1324.5 285 1324.5 291.65 L 1324.5 298.31",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-52",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1324.5 305.11 L 1321.1 298.31 L 1327.9 298.31 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-52",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1196 264 L 1196 274.5 Q 1196 285 1196.16 291.65 L 1196.32 298.31",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-109",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1196.48 305.11 L 1192.92 298.39 L 1199.72 298.23 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-109",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1293 315.75 L 1299.1 310.08 Q 1303.5 306 1309.5 306 L 1339.5 306 Q 1345.5 306 1349.9 310.08 L 1362.1 321.42 Q 1366.5 325.5 1362.1 329.58 L 1349.9 340.92 Q 1345.5 345 1339.5 345 L 1309.5 345 Q 1303.5 345 1299.1 340.92 L 1286.9 329.58 Q 1282.5 325.5 1286.9 321.42 Z",
+   "fill": "rgb(89, 62, 116)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-50",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/orbit/dummy.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Dummy",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-50",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/orbit/dummy.py",
+   "bbox": [
+    1284.0,
+    217.5,
+    80.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 1284.0,
+    "pt": 225.0,
+    "w": 80.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 317.703125,
+     "bottom": 332.703125,
+     "left": 1301.609375,
+     "right": 1346.390625,
+     "text": "Dummy",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 319.5,
+   "y": 569.5,
+   "w": 260.0,
+   "h": 150.0,
+   "rx": 12.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(224, 163, 46)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-5",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 406.5,
+   "y": 583.5,
+   "w": 90.0,
+   "h": 48.0,
+   "rx": 6.0,
+   "fill": "rgb(224, 163, 46)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-54",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/star/wrapper.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "star (wrapper)",
+      "size": 13.0,
+      "color": "#10151B",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-54",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/star/wrapper.py",
+   "bbox": [
+    414.0,
+    427.0,
+    74.0,
+    34.25
+   ],
+   "flex": {
+    "ml": 414.0,
+    "pt": 442.0,
+    "w": 74.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 592.5,
+     "bottom": 607.5,
+     "left": 440.15625,
+     "right": 461.828125,
+     "text": "star",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    },
+    {
+     "top": 608.09375,
+     "bottom": 623.09375,
+     "left": 423.1875,
+     "right": 478.8125,
+     "text": "(wrapper)",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 348.25 674 L 355.53 667.5 Q 360 663.5 366 663.5 L 401 663.5 Q 407 663.5 411.47 667.5 L 426.03 680.5 Q 430.5 684.5 426.03 688.5 L 411.47 701.5 Q 407 705.5 401 705.5 L 366 705.5 Q 360 705.5 355.53 701.5 L 340.97 688.5 Q 336.5 684.5 340.97 680.5 Z",
+   "fill": "rgb(224, 163, 46)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-55",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/star/wrapper.py#L46"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "MORS",
+      "size": 13.0,
+      "color": "#10151B",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-55",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/star/wrapper.py#L46",
+   "bbox": [
+    338.0,
+    511.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 338.0,
+    "pt": 519.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 676.703125,
+     "bottom": 691.703125,
+     "left": 363.5,
+     "right": 402.5,
+     "text": "MORS",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 480.25 674 L 487.53 667.5 Q 492 663.5 498 663.5 L 533 663.5 Q 539 663.5 543.47 667.5 L 558.03 680.5 Q 562.5 684.5 558.03 688.5 L 543.47 701.5 Q 539 705.5 533 705.5 L 498 705.5 Q 492 705.5 487.53 701.5 L 472.97 688.5 Q 468.5 684.5 472.97 680.5 Z",
+   "fill": "rgb(224, 163, 46)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-56",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/star/dummy.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Dummy",
+      "size": 13.0,
+      "color": "#10151B",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-56",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/star/dummy.py",
+   "bbox": [
+    470.0,
+    511.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 470.0,
+    "pt": 519.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 676.703125,
+     "bottom": 691.703125,
+     "left": 492.609375,
+     "right": 537.390625,
+     "text": "Dummy",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 451.5 631.5 L 451.5 638.5 Q 451.5 645.5 463.5 645.5 L 503.5 645.5 Q 515.5 645.5 515.5 650.65 L 515.5 655.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-57",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 515.5 662.61 L 512.1 655.81 L 518.9 655.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-57",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 451.5 631.5 L 451.5 638.5 Q 451.5 645.5 439.5 645.5 L 395.5 645.5 Q 383.5 645.5 383.5 650.65 L 383.5 655.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-58",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 383.5 662.61 L 380.1 655.81 L 386.9 655.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-58",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 1051.5,
+   "y": 409.5,
+   "w": 285.0,
+   "h": 161.0,
+   "rx": 12.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(27, 111, 168)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-6",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 996.5,
+   "y": 600.5,
+   "w": 400.0,
+   "h": 170.0,
+   "rx": 12.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(160, 49, 35)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-7",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 1138.25,
+   "y": 625.5,
+   "w": 113.0,
+   "h": 42.0,
+   "rx": 6.0,
+   "fill": "rgb(160, 49, 35)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-26",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/outgas/wrapper.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "outgas",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ],
+    [
+     {
+      "text": "(wrapper)",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-26",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/outgas/wrapper.py",
+   "bbox": [
+    1140.0,
+    531.0,
+    109.0,
+    34.25
+   ],
+   "flex": {
+    "ml": 1140.0,
+    "pt": 546.0,
+    "w": 109.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 630.90625,
+     "bottom": 645.90625,
+     "left": 1174.96875,
+     "right": 1214.015625,
+     "text": "outgas",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    },
+    {
+     "top": 646.5,
+     "bottom": 661.5,
+     "left": 1166.6875,
+     "right": 1222.3125,
+     "text": "(wrapper)",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 1046 714 L 1053.28 707.5 Q 1057.75 703.5 1063.75 703.5 L 1098.75 703.5 Q 1104.75 703.5 1109.22 707.5 L 1123.78 720.5 Q 1128.25 724.5 1123.78 728.5 L 1109.22 741.5 Q 1104.75 745.5 1098.75 745.5 L 1063.75 745.5 Q 1057.75 745.5 1053.28 741.5 L 1038.72 728.5 Q 1034.25 724.5 1038.72 720.5 Z",
+   "fill": "rgb(160, 49, 35)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-65",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/outgas/calliope.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "CALLIOPE",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-65",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/outgas/calliope.py",
+   "bbox": [
+    1036.0,
+    616.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 1036.0,
+    "pt": 624.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 716.703125,
+     "bottom": 731.703125,
+     "left": 1049.203125,
+     "right": 1112.796875,
+     "text": "CALLIOPE",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 1194.75 667.5 L 1194.75 676.5 Q 1194.75 685.5 1182.75 685.5 L 1093.25 685.5 Q 1081.25 685.5 1081.25 690.65 L 1081.25 695.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-66",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1081.25 702.61 L 1077.85 695.81 L 1084.65 695.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-66",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1276.5 714 L 1283.78 707.5 Q 1288.25 703.5 1294.25 703.5 L 1329.25 703.5 Q 1335.25 703.5 1339.72 707.5 L 1354.28 720.5 Q 1358.75 724.5 1354.28 728.5 L 1339.72 741.5 Q 1335.25 745.5 1329.25 745.5 L 1294.25 745.5 Q 1288.25 745.5 1283.78 741.5 L 1269.22 728.5 Q 1264.75 724.5 1269.22 720.5 Z",
+   "fill": "rgb(160, 49, 35)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-112",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/outgas/dummy.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Dummy",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-112",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/outgas/dummy.py",
+   "bbox": [
+    1266.0,
+    616.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 1266.0,
+    "pt": 624.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 716.703125,
+     "bottom": 731.703125,
+     "left": 1288.609375,
+     "right": 1333.390625,
+     "text": "Dummy",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 1194.75 667.5 L 1194.75 676.5 Q 1194.75 685.5 1206.75 685.5 L 1299.75 685.5 Q 1311.75 685.5 1311.75 690.65 L 1311.75 695.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-113",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1311.75 702.61 L 1308.35 695.81 L 1315.15 695.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-113",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1159.5 714 L 1166.78 707.5 Q 1171.25 703.5 1177.25 703.5 L 1212.25 703.5 Q 1218.25 703.5 1222.72 707.5 L 1237.28 720.5 Q 1241.75 724.5 1237.28 728.5 L 1222.72 741.5 Q 1218.25 745.5 1212.25 745.5 L 1177.25 745.5 Q 1171.25 745.5 1166.78 741.5 L 1152.22 728.5 Q 1147.75 724.5 1152.22 720.5 Z",
+   "fill": "rgb(160, 49, 35)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "4jAmt3hcvajnFoaJbqe--1",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/outgas/atmodeller.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Atmodeller",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "4jAmt3hcvajnFoaJbqe--1",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/outgas/atmodeller.py",
+   "bbox": [
+    1149.0,
+    616.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 1149.0,
+    "pt": 624.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 716.703125,
+     "bottom": 731.703125,
+     "left": 1162.921875,
+     "right": 1225.0625,
+     "text": "Atmodeller",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 1194.75 681.5 L 1194.75 695.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "2.4 2.4",
+   "linejoin": null,
+   "title": null,
+   "cell": "4jAmt3hcvajnFoaJbqe--3",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1194.75 702.61 L 1191.35 695.81 L 1198.15 695.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "4jAmt3hcvajnFoaJbqe--3",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 691.5,
+   "y": 35.5,
+   "w": 240.0,
+   "h": 1031.0,
+   "rx": 12.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(90, 107, 122)",
+   "stroke_width": 3.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-8",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L262"
+  },
+  {
+   "kind": "rect",
+   "x": 754.5,
+   "y": 525.5,
+   "w": 115.0,
+   "h": 20.0,
+   "rx": 6.0,
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-95",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "F_xuv, F_bol, spectrum",
+      "size": 10.0,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "left",
+   "cell": "ixJzbOgBluzLFn6TTAe7-95",
+   "href": "",
+   "bbox": [
+    757.0,
+    429.5,
+    111.0,
+    14.5
+   ],
+   "flex": {
+    "ml": 757.0,
+    "pt": 435.0,
+    "w": 111.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 529.5,
+     "bottom": 541.5,
+     "left": 757,
+     "right": 860.75,
+     "text": "F_xuv, F_bol, spectrum",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 819.5,
+   "y": 605.5,
+   "w": 89.0,
+   "h": 51.0,
+   "rx": 6.0,
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-102",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Mass loss, species fluxes",
+      "size": 10.0,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "left",
+   "cell": "ixJzbOgBluzLFn6TTAe7-102",
+   "href": "",
+   "bbox": [
+    822.0,
+    519.5,
+    85.0,
+    26.5
+   ],
+   "flex": {
+    "ml": 822.0,
+    "pt": 531.0,
+    "w": 85.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 619.5,
+     "bottom": 631.5,
+     "left": 822,
+     "right": 869.234375,
+     "text": "Mass loss,",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    },
+    {
+     "top": 631.5,
+     "bottom": 643.5,
+     "left": 822,
+     "right": 884.8125,
+     "text": "species fluxes",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 771.5,
+   "y": 65.5,
+   "w": 80.0,
+   "h": 40.0,
+   "rx": 6.0,
+   "fill": "rgb(253, 253, 254)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 1.5,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-14",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L39"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Init",
+      "size": 13.0,
+      "color": "#10151B",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-14",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L39",
+   "bbox": [
+    773.0,
+    77.5,
+    76.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 773.0,
+    "pt": 85.0,
+    "w": 76.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 77.703125,
+     "bottom": 92.703125,
+     "left": 802.328125,
+     "right": 819.671875,
+     "text": "Init",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 727.5,
+   "y": 830.5,
+   "w": 169.0,
+   "h": 20.0,
+   "rx": 6.0,
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-105",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "T_surf, F_atm, R_planet",
+      "size": 10.0,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-105",
+   "href": "",
+   "bbox": [
+    729.0,
+    734.5,
+    165.0,
+    14.5
+   ],
+   "flex": {
+    "ml": 729.0,
+    "pt": 740.0,
+    "w": 165.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 834.5,
+     "bottom": 846.5,
+     "left": 757.578125,
+     "right": 865.40625,
+     "text": "T_surf, F_atm, R_planet",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 726.5,
+   "y": 720.5,
+   "w": 169.0,
+   "h": 20.0,
+   "rx": 6.0,
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-103",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Outgas fluxes, redox, pressure",
+      "size": 10.0,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "right",
+   "cell": "ixJzbOgBluzLFn6TTAe7-103",
+   "href": "",
+   "bbox": [
+    727.0,
+    624.5,
+    165.0,
+    14.5
+   ],
+   "flex": {
+    "ml": 727.0,
+    "pt": 630.0,
+    "w": 165.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 724.5,
+     "bottom": 736.5,
+     "left": 755.8125,
+     "right": 892,
+     "text": "Outgas fluxes, redox, pressure",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 716.5,
+   "y": 125.5,
+   "w": 99.0,
+   "h": 20.0,
+   "rx": 6.0,
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-94",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Initial state, params",
+      "size": 10.0,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "left",
+   "cell": "ixJzbOgBluzLFn6TTAe7-94",
+   "href": "",
+   "bbox": [
+    719.0,
+    129.5,
+    95.0,
+    14.5
+   ],
+   "flex": {
+    "ml": 719.0,
+    "pt": 135.0,
+    "w": 95.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 129.5,
+     "bottom": 141.5,
+     "left": 719,
+     "right": 805.71875,
+     "text": "Initial state, params",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 263.5,
+   "y": 773.5,
+   "w": 372.0,
+   "h": 155.0,
+   "rx": 12.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(79, 163, 217)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-9",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 1051.5,
+   "y": 930.5,
+   "w": 285.0,
+   "h": 150.0,
+   "rx": 12.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(27, 111, 168)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-10",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 691.5,
+   "y": 1155.5,
+   "w": 235.0,
+   "h": 85.0,
+   "rx": 12.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(90, 107, 122)",
+   "stroke_width": 3.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-12",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 739.5,
+   "y": 1178.0,
+   "w": 143.0,
+   "h": 40.0,
+   "rx": 6.0,
+   "fill": "rgb(27, 111, 168)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-23",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L1297"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Offline Chemistry",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-23",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L1297",
+   "bbox": [
+    741.0,
+    1090.5,
+    139.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 741.0,
+    "pt": 1098.0,
+    "w": 139.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 1190.703125,
+     "bottom": 1205.703125,
+     "left": 760.640625,
+     "right": 860.34375,
+     "text": "Offline Chemistry",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 1.5,
+   "y": 1313.5,
+   "w": 465.0,
+   "h": 101.0,
+   "rx": 12.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-13",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 772.5,
+   "y": 164.5,
+   "w": 79.0,
+   "h": 41.0,
+   "rx": 6.0,
+   "fill": "rgb(226, 61, 40)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-15",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L799"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Interior",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-15",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L799",
+   "bbox": [
+    780.0,
+    177.5,
+    63.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 780.0,
+    "pt": 185.0,
+    "w": 63.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 177.703125,
+     "bottom": 192.703125,
+     "left": 791.265625,
+     "right": 831.734375,
+     "text": "Interior",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 772.5,
+   "y": 364.5,
+   "w": 79.0,
+   "h": 45.0,
+   "rx": 6.0,
+   "fill": "rgb(89, 62, 116)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-16",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L916"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Orbit",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     },
+     {
+      "text": " & Tides",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-16",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L916",
+   "bbox": [
+    780.0,
+    272.0,
+    63.0,
+    34.25
+   ],
+   "flex": {
+    "ml": 780.0,
+    "pt": 287.0,
+    "w": 63.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 372.0,
+     "bottom": 387.0,
+     "left": 791.265625,
+     "right": 831.734375,
+     "text": "Orbit &",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    },
+    {
+     "top": 388.25,
+     "bottom": 403.25,
+     "left": 795.828125,
+     "right": 827.15625,
+     "text": "Tides",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 766.5,
+   "y": 468.5,
+   "w": 90.0,
+   "h": 39.0,
+   "rx": 6.0,
+   "fill": "rgb(224, 163, 46)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-17",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L934"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Stellar Flux",
+      "size": 13.0,
+      "color": "#10151B",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-17",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L934",
+   "bbox": [
+    774.0,
+    379.5,
+    74.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 774.0,
+    "pt": 387.0,
+    "w": 74.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 479.703125,
+     "bottom": 494.703125,
+     "left": 778.484375,
+     "right": 843.515625,
+     "text": "Stellar Flux",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 767.5,
+   "y": 566.5,
+   "w": 89.0,
+   "h": 39.0,
+   "rx": 6.0,
+   "fill": "rgb(27, 111, 168)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-18",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L980"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Escape",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-18",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L980",
+   "bbox": [
+    775.0,
+    477.5,
+    73.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 775.0,
+    "pt": 485.0,
+    "w": 73.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 577.703125,
+     "bottom": 592.703125,
+     "left": 789.8125,
+     "right": 833.1875,
+     "text": "Escape",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 760.5,
+   "y": 663.5,
+   "w": 101.0,
+   "h": 39.0,
+   "rx": 6.0,
+   "fill": "rgb(160, 49, 35)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-19",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L1040"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Outgassing",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-19",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L1040",
+   "bbox": [
+    768.0,
+    574.5,
+    85.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 768.0,
+    "pt": 582.0,
+    "w": 85.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 674.703125,
+     "bottom": 689.703125,
+     "left": 777.609375,
+     "right": 843.375,
+     "text": "Outgassing",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 755.5,
+   "y": 761.5,
+   "w": 113.0,
+   "h": 48.0,
+   "rx": 6.0,
+   "fill": "rgb(79, 163, 217)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-20",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L1097"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Atmosphere Climate",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-20",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L1097",
+   "bbox": [
+    763.0,
+    670.0,
+    97.0,
+    34.25
+   ],
+   "flex": {
+    "ml": 763.0,
+    "pt": 685.0,
+    "w": 97.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 770.5,
+     "bottom": 785.5,
+     "left": 776.453125,
+     "right": 846.546875,
+     "text": "Atmosphere",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    },
+    {
+     "top": 786.09375,
+     "bottom": 801.09375,
+     "left": 789.453125,
+     "right": 833.53125,
+     "text": "Climate",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 725.5,
+   "y": 869.5,
+   "w": 171.0,
+   "h": 48.0,
+   "rx": 6.0,
+   "fill": "rgb(227, 233, 238)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-21",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L1213"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Housekeeping & Convergence",
+      "size": 13.0,
+      "color": "#10151B",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-21",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L1213",
+   "bbox": [
+    733.0,
+    778.0,
+    155.0,
+    34.25
+   ],
+   "flex": {
+    "ml": 733.0,
+    "pt": 793.0,
+    "w": 155.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 878.5,
+     "bottom": 893.5,
+     "left": 762.796875,
+     "right": 858.203125,
+     "text": "Housekeeping &",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    },
+    {
+     "top": 894.09375,
+     "bottom": 909.09375,
+     "left": 771.828125,
+     "right": 849.15625,
+     "text": "Convergence",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 777 990.25 L 806.1 976.12 Q 811.5 973.5 816.9 976.12 L 875.1 1004.38 Q 880.5 1007 875.1 1009.62 L 816.9 1037.88 Q 811.5 1040.5 806.1 1037.88 L 747.9 1009.62 Q 742.5 1007 747.9 1004.38 Z",
+   "fill": "rgb(253, 253, 254)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 1.5,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-22",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Finished?",
+      "size": 13.0,
+      "color": "#10151B",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-22",
+   "href": "",
+   "bbox": [
+    744.0,
+    899.5,
+    134.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 744.0,
+    "pt": 907.0,
+    "w": 134.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 999.703125,
+     "bottom": 1014.703125,
+     "left": 782.8125,
+     "right": 839.1875,
+     "text": "Finished?",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 788.35 1414.5 L 722.25 1414.5 Q 716.25 1414.5 719.85 1409.7 L 748.7 1371.3 Q 752.3 1366.5 758.3 1366.5 L 890.5 1366.5 Q 896.5 1366.5 892.9 1371.3 L 864.05 1409.7 Q 860.45 1414.5 854.45 1414.5 Z",
+   "fill": "rgba(198, 225, 238, 0.5)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 1.5,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-24",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Final Plots & Archive",
+      "size": 13.0,
+      "color": "#10151B",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-24",
+   "href": "",
+   "bbox": [
+    718.0,
+    1282.5,
+    176.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 718.0,
+    "pt": 1290.0,
+    "w": 176.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 1382.703125,
+     "bottom": 1397.703125,
+     "left": 746.375,
+     "right": 865.609375,
+     "text": "Final Plots & Archive",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 1151.5,
+   "y": 426.5,
+   "w": 89.0,
+   "h": 48.0,
+   "rx": 6.0,
+   "fill": "rgb(27, 111, 168)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-25",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/escape/wrapper.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "escape",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ],
+    [
+     {
+      "text": "(wrapper)",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-25",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/escape/wrapper.py",
+   "bbox": [
+    1159.0,
+    335.0,
+    73.0,
+    34.25
+   ],
+   "flex": {
+    "ml": 1159.0,
+    "pt": 350.0,
+    "w": 73.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 435.5,
+     "bottom": 450.5,
+     "left": 1174.53125,
+     "right": 1216.453125,
+     "text": "escape",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    },
+    {
+     "top": 451.09375,
+     "bottom": 466.09375,
+     "left": 1167.6875,
+     "right": 1223.3125,
+     "text": "(wrapper)",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 811.5 105.5 L 811.5 135 L 811.83 154.27",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-27",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 811.96 162.26 L 807.83 154.33 L 815.83 154.2 Z",
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-27",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 811.5 450.5 L 811.5 458.26",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-28",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 811.5 466.26 L 807.5 458.26 L 815.5 458.26 Z",
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-28",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 812.13 507.38 L 812 525.5",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-29",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 811 740.5 L 810.93 751.17",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-31",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 810.88 759.17 L 806.93 751.14 L 814.93 751.19 Z",
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-31",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 812 850.5 L 812.01 858.54",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-32",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 812.02 866.54 L 808.01 858.55 L 816.01 858.54 Z",
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-32",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 811 917.5 L 811 945.5 L 811.32 963.27",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-33",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 811.46 971.26 L 807.32 963.34 L 815.32 963.19 Z",
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-33",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 310.87 226.25 L 316.09 220.82 Q 320.25 216.5 326.25 216.5 L 351.75 216.5 Q 357.75 216.5 361.91 220.82 L 372.34 231.68 Q 376.5 236 372.34 240.32 L 361.91 251.18 Q 357.75 255.5 351.75 255.5 L 326.25 255.5 Q 320.25 255.5 316.09 251.18 L 305.66 240.32 Q 301.5 236 305.66 231.68 Z",
+   "fill": "rgb(226, 61, 40)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-34",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_energetics/spider.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "SPIDER",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-34",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_energetics/spider.py",
+   "bbox": [
+    303.0,
+    227.5,
+    71.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 303.0,
+    "pt": 235.0,
+    "w": 71.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 227.703125,
+     "bottom": 242.703125,
+     "left": 314.296875,
+     "right": 362.703125,
+     "text": "SPIDER",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 220.87 226.25 L 226.09 220.82 Q 230.25 216.5 236.25 216.5 L 261.75 216.5 Q 267.75 216.5 271.91 220.82 L 282.34 231.68 Q 286.5 236 282.34 240.32 L 271.91 251.18 Q 267.75 255.5 261.75 255.5 L 236.25 255.5 Q 230.25 255.5 226.09 251.18 L 215.66 240.32 Q 211.5 236 215.66 231.68 Z",
+   "fill": "rgb(226, 61, 40)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-35",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_energetics/aragog.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Aragog",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-35",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_energetics/aragog.py",
+   "bbox": [
+    213.0,
+    227.5,
+    71.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 213.0,
+    "pt": 235.0,
+    "w": 71.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 227.703125,
+     "bottom": 242.703125,
+     "left": 227.53125,
+     "right": 269.453125,
+     "text": "Aragog",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 435 226.25 L 441.1 220.58 Q 445.5 216.5 451.5 216.5 L 481.5 216.5 Q 487.5 216.5 491.9 220.58 L 504.1 231.92 Q 508.5 236 504.1 240.08 L 491.9 251.42 Q 487.5 255.5 481.5 255.5 L 451.5 255.5 Q 445.5 255.5 441.1 251.42 L 428.9 240.08 Q 424.5 236 428.9 231.92 Z",
+   "fill": "rgb(226, 61, 40)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-36",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_struct/zalmoxis.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Zalmoxis",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-36",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_struct/zalmoxis.py",
+   "bbox": [
+    426.0,
+    227.5,
+    80.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 426.0,
+    "pt": 235.0,
+    "w": 80.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 227.703125,
+     "bottom": 242.703125,
+     "left": 439.984375,
+     "right": 492,
+     "text": "Zalmoxis",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 40.88 226.25 L 46.09 220.82 Q 50.25 216.5 56.25 216.5 L 81.75 216.5 Q 87.75 216.5 91.91 220.82 L 102.34 231.68 Q 106.5 236 102.34 240.32 L 91.91 251.18 Q 87.75 255.5 81.75 255.5 L 56.25 255.5 Q 50.25 255.5 46.09 251.18 L 35.66 240.32 Q 31.5 236 35.66 231.68 Z",
+   "fill": "rgb(226, 61, 40)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-37",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_energetics/dummy.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Dummy",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-37",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_energetics/dummy.py",
+   "bbox": [
+    33.0,
+    227.5,
+    71.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 33.0,
+    "pt": 235.0,
+    "w": 71.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 227.703125,
+     "bottom": 242.703125,
+     "left": 46.109375,
+     "right": 90.890625,
+     "text": "Dummy",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 229.5 184.5 L 327 184.5 Q 339 184.5 339 196.46 L 339 208.42",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-39",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 339 215.22 L 335.6 208.42 L 342.4 208.42 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-39",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 249.5 184.5 L 249.12 208.42",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-40",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 249.01 215.22 L 245.72 208.36 L 252.52 208.47 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-40",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 229.5 184.5 L 81 184.5 Q 69 184.5 69 196.46 L 69 208.42",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-41",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 69 215.22 L 65.6 208.42 L 72.4 208.42 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-41",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 259.5,
+   "y": 50.5,
+   "w": 129.0,
+   "h": 47.0,
+   "rx": 6.0,
+   "fill": "rgb(226, 61, 40)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-42",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_energetics/wrapper.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "interior (wrapper)",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-42",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_energetics/wrapper.py",
+   "bbox": [
+    261.0,
+    66.5,
+    125.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 261.0,
+    "pt": 74.0,
+    "w": 125.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 66.703125,
+     "bottom": 81.703125,
+     "left": 274,
+     "right": 372.984375,
+     "text": "interior (wrapper)",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 324 97.5 L 324 121.5 Q 324 133.5 312 133.5 L 214.75 133.5 Q 202.75 133.5 202.73 145.5 L 202.69 161.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-43",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 202.68 168.61 L 199.29 161.8 L 206.09 161.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-43",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 324 97.5 L 324 121.5 Q 324 133.5 336 133.5 L 507 133.5 Q 519 133.5 519 145.5 L 519 161.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-44",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 519 168.61 L 515.6 161.81 L 522.4 161.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-44",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 481.5,
+   "y": 285.5,
+   "w": 73.0,
+   "h": 26.0,
+   "rx": 6.0,
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-46",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Structure",
+      "size": 15.0,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "left",
+   "cell": "ixJzbOgBluzLFn6TTAe7-46",
+   "href": "",
+   "bbox": [
+    484.0,
+    289.5,
+    69.0,
+    21.75
+   ],
+   "flex": {
+    "ml": 484.0,
+    "pt": 298.0,
+    "w": 69.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 289.5,
+     "bottom": 306.5,
+     "left": 484,
+     "right": 544.859375,
+     "text": "Structure",
+     "size": 15,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 772.5 185 L 722 185 Q 710 185 698 185.09 L 646.5 185.5",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-47",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 851.5 387 L 912 387 Q 924 387 924 375 L 924 292.5 Q 924 280.5 936 280.5 L 996.5 280.5",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-53",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 766.5 488 L 685 488 Q 673 488 673 500 L 673 632.5 Q 673 644.5 661 644.5 L 579.5 644.5",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-59",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1101.25 525 L 1108.53 518.5 Q 1113 514.5 1119 514.5 L 1154 514.5 Q 1160 514.5 1164.47 518.5 L 1179.03 531.5 Q 1183.5 535.5 1179.03 539.5 L 1164.47 552.5 Q 1160 556.5 1154 556.5 L 1119 556.5 Q 1113 556.5 1108.53 552.5 L 1093.97 539.5 Q 1089.5 535.5 1093.97 531.5 Z",
+   "fill": "rgb(27, 111, 168)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-60",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/escape/wrapper.py#L190"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "ZEPHYRUS",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-60",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/escape/wrapper.py#L190",
+   "bbox": [
+    1091.0,
+    427.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 1091.0,
+    "pt": 435.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 527.703125,
+     "bottom": 542.703125,
+     "left": 1100.59375,
+     "right": 1171.390625,
+     "text": "ZEPHYRUS",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 1213.25 525 L 1220.53 518.5 Q 1225 514.5 1231 514.5 L 1266 514.5 Q 1272 514.5 1276.47 518.5 L 1291.03 531.5 Q 1295.5 535.5 1291.03 539.5 L 1276.47 552.5 Q 1272 556.5 1266 556.5 L 1231 556.5 Q 1225 556.5 1220.53 552.5 L 1205.97 539.5 Q 1201.5 535.5 1205.97 531.5 Z",
+   "fill": "rgb(27, 111, 168)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-61",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/escape/wrapper.py#L133"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Dummy",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-61",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/escape/wrapper.py#L133",
+   "bbox": [
+    1203.0,
+    427.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 1203.0,
+    "pt": 435.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 527.703125,
+     "bottom": 542.703125,
+     "left": 1225.609375,
+     "right": 1270.390625,
+     "text": "Dummy",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 856.5 586 L 942 586 Q 954 586 954 574 L 954 502 Q 954 490 966 490 L 1051.5 490",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-62",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1196 474.5 L 1196 484.5 Q 1196 494.5 1184 494.5 L 1148.5 494.5 Q 1136.5 494.5 1136.5 500.65 L 1136.5 506.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-63",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1136.5 513.61 L 1133.1 506.81 L 1139.9 506.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-63",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1196 474.5 L 1196 484.5 Q 1196 494.5 1208 494.5 L 1236.5 494.5 Q 1248.5 494.5 1248.5 500.65 L 1248.5 506.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-64",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1248.5 513.61 L 1245.1 506.81 L 1251.9 506.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-64",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 861.5 683 L 917 683 Q 929 683 941 683.05 L 996.5 683.29",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-67",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 393.5,
+   "y": 789.5,
+   "w": 113.0,
+   "h": 48.0,
+   "rx": 6.0,
+   "fill": "rgb(79, 163, 217)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-68",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_clim/wrapper.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "atmos_clim (wrapper)",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-68",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_clim/wrapper.py",
+   "bbox": [
+    401.0,
+    633.0,
+    97.0,
+    34.25
+   ],
+   "flex": {
+    "ml": 401.0,
+    "pt": 648.0,
+    "w": 97.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 798.5,
+     "bottom": 813.5,
+     "left": 416.625,
+     "right": 482.375,
+     "text": "atmos_clim",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    },
+    {
+     "top": 814.09375,
+     "bottom": 829.09375,
+     "left": 421.6875,
+     "right": 477.3125,
+     "text": "(wrapper)",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 290.25 879 L 297.53 872.5 Q 302 868.5 308 868.5 L 343 868.5 Q 349 868.5 353.47 872.5 L 368.03 885.5 Q 372.5 889.5 368.03 893.5 L 353.47 906.5 Q 349 910.5 343 910.5 L 308 910.5 Q 302 910.5 297.53 906.5 L 282.97 893.5 Q 278.5 889.5 282.97 885.5 Z",
+   "fill": "rgb(79, 163, 217)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-69",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_clim/agni.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "AGNI",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-69",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_clim/agni.py",
+   "bbox": [
+    280.0,
+    716.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 280.0,
+    "pt": 724.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 881.703125,
+     "bottom": 896.703125,
+     "left": 309.09375,
+     "right": 340.890625,
+     "text": "AGNI",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 414.25 879 L 421.53 872.5 Q 426 868.5 432 868.5 L 467 868.5 Q 473 868.5 477.47 872.5 L 492.03 885.5 Q 496.5 889.5 492.03 893.5 L 477.47 906.5 Q 473 910.5 467 910.5 L 432 910.5 Q 426 910.5 421.53 906.5 L 406.97 893.5 Q 402.5 889.5 406.97 885.5 Z",
+   "fill": "rgb(79, 163, 217)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-70",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_clim/janus.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "JANUS",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-70",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_clim/janus.py",
+   "bbox": [
+    404.0,
+    716.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 404.0,
+    "pt": 724.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 881.703125,
+     "bottom": 896.703125,
+     "left": 427.6875,
+     "right": 470.3125,
+     "text": "JANUS",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 530.25 879 L 537.53 872.5 Q 542 868.5 548 868.5 L 583 868.5 Q 589 868.5 593.47 872.5 L 608.03 885.5 Q 612.5 889.5 608.03 893.5 L 593.47 906.5 Q 589 910.5 583 910.5 L 548 910.5 Q 542 910.5 537.53 906.5 L 522.97 893.5 Q 518.5 889.5 522.97 885.5 Z",
+   "fill": "rgb(79, 163, 217)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-71",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_clim/dummy.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Dummy",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-71",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_clim/dummy.py",
+   "bbox": [
+    520.0,
+    716.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 520.0,
+    "pt": 724.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 881.703125,
+     "bottom": 896.703125,
+     "left": 542.609375,
+     "right": 587.390625,
+     "text": "Dummy",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 450 837.5 L 450 846.5 Q 450 855.5 438 855.5 L 337.5 855.5 Q 325.5 855.5 325.5 858.15 L 325.5 860.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-72",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 325.5 867.61 L 322.1 860.81 L 328.9 860.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-72",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 450 837.5 L 449.62 860.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-73",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 449.51 867.61 L 446.22 860.75 L 453.02 860.86 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-73",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 450 837.5 L 450 846.5 Q 450 855.5 462 855.5 L 553.5 855.5 Q 565.5 855.5 565.5 858.15 L 565.5 860.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-74",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 565.5 867.61 L 562.1 860.81 L 568.9 860.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-74",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 755.5 785.5 L 685 785.5 Q 673 785.5 673 797.5 L 673 839 Q 673 851 661 851 L 635.5 851",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-75",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 811.5 1040.5 L 811.5 1097.25 Q 811.5 1109.25 811.41 1121.25 L 811.07 1167.76",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(46, 139, 87)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-76",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 811.02 1175.76 L 807.07 1167.74 L 815.07 1167.79 Z",
+   "fill": "rgb(46, 139, 87)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(46, 139, 87)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-76",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Yes",
+      "size": 13.3,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-77",
+   "href": "",
+   "bbox": [
+    801.0,
+    1013.5,
+    22.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 812.0,
+    "pt": 1021.0,
+    "w": 1.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 1113.53125,
+     "bottom": 1128.53125,
+     "left": 816.45625,
+     "right": 838.159375,
+     "text": "Yes",
+     "size": 13.3,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 811.5 1040.5 L 811.5 1049.5 Q 811.5 1058.5 799.5 1058.5 L 728.5 1058.5 Q 716.5 1058.5 716.5 1046.5 L 716.5 222.5 Q 716.5 210.5 728.5 210.5 L 737.5 210.5 Q 746.5 210.5 746.5 198.5 L 746.5 191.75 Q 746.5 185 754.38 185 L 762.26 185",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(194, 54, 43)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-78",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 770.26 185 L 762.26 189 L 762.26 181 Z",
+   "fill": "rgb(194, 54, 43)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(194, 54, 43)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-78",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "No",
+      "size": 13.3,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-79",
+   "href": "",
+   "bbox": [
+    708.5,
+    874.5,
+    17.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 717.0,
+    "pt": 882.0,
+    "w": 1.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 974.53125,
+     "bottom": 989.53125,
+     "left": 721.5,
+     "right": 738.515625,
+     "text": "No",
+     "size": 13.3,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 1122.5,
+   "y": 948.5,
+   "w": 143.0,
+   "h": 40.0,
+   "rx": 6.0,
+   "fill": "rgb(27, 111, 168)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-80",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_chem/wrapper.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "atmos_chem (wrapper)",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-80",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_chem/wrapper.py",
+   "bbox": [
+    1124.0,
+    860.5,
+    139.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 1124.0,
+    "pt": 868.0,
+    "w": 139.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 960.703125,
+     "bottom": 975.703125,
+     "left": 1126.671875,
+     "right": 1260.328125,
+     "text": "atmos_chem (wrapper)",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 1103.25 1034 L 1110.53 1027.5 Q 1115 1023.5 1121 1023.5 L 1156 1023.5 Q 1162 1023.5 1166.47 1027.5 L 1181.03 1040.5 Q 1185.5 1044.5 1181.03 1048.5 L 1166.47 1061.5 Q 1162 1065.5 1156 1065.5 L 1121 1065.5 Q 1115 1065.5 1110.53 1061.5 L 1095.97 1048.5 Q 1091.5 1044.5 1095.97 1040.5 Z",
+   "fill": "rgb(27, 111, 168)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-81",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_chem/vulcan.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "VULCAN",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-81",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_chem/vulcan.py",
+   "bbox": [
+    1093.0,
+    936.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 1093.0,
+    "pt": 944.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 1036.703125,
+     "bottom": 1051.703125,
+     "left": 1111.625,
+     "right": 1164.375,
+     "text": "VULCAN",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 1194 988.5 L 1194 997.5 Q 1194 1006.5 1182 1006.5 L 1150.5 1006.5 Q 1138.5 1006.5 1138.5 1011.15 L 1138.5 1015.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-82",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1138.5 1022.61 L 1135.1 1015.81 L 1141.9 1015.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-82",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 882.5 1198 L 955 1198 Q 967 1198 967 1186 L 967 1017.5 Q 967 1005.5 979 1005.5 L 1051.5 1005.5",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-83",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1374 827.5 L 1374 867 Q 1374 879 1362 879 L 1206 879 Q 1194 879 1194 891 L 1194 922.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-84",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1194 929.61 L 1190.6 922.81 L 1197.4 922.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-84",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 1336.5,
+   "y": 803.5,
+   "w": 75.0,
+   "h": 24.0,
+   "rx": 6.0,
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-85",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Source fluxes",
+      "size": 10.0,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "left",
+   "cell": "ixJzbOgBluzLFn6TTAe7-85",
+   "href": "",
+   "bbox": [
+    1339.0,
+    709.5,
+    71.0,
+    14.5
+   ],
+   "flex": {
+    "ml": 1339.0,
+    "pt": 715.0,
+    "w": 71.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 809.5,
+     "bottom": 821.5,
+     "left": 1339,
+     "right": 1399.59375,
+     "text": "Source fluxes",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 1251.25 646.5 L 1362 646.5 Q 1374 646.5 1374 658.5 L 1374 803.5",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-86",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 811.01 1300.5 L 811 1240.5 L 811.06 1356.6",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "VwB6l1LpBQuK5qf91lYw-7",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 811.06 1364.6 L 807.06 1356.6 L 815.06 1356.6 Z",
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "VwB6l1LpBQuK5qf91lYw-7",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 812 545.5 L 812 556.26",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-96",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 812 564.26 L 808 556.26 L 816 556.26 Z",
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-96",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 819.5,
+   "y": 1280.5,
+   "w": 137.0,
+   "h": 60.0,
+   "rx": 6.0,
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-97",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "State variables, plots, spectra, chemistry",
+      "size": 10.0,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "left",
+   "cell": "ixJzbOgBluzLFn6TTAe7-97",
+   "href": "",
+   "bbox": [
+    822.0,
+    1198.5,
+    133.0,
+    26.5
+   ],
+   "flex": {
+    "ml": 822.0,
+    "pt": 1210.0,
+    "w": 133.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 1298.5,
+     "bottom": 1310.5,
+     "left": 822,
+     "right": 917.609375,
+     "text": "State variables, plots,",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    },
+    {
+     "top": 1310.5,
+     "bottom": 1322.5,
+     "left": 822,
+     "right": 903.140625,
+     "text": "spectra, chemistry",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 811.5,
+   "y": 200.5,
+   "w": 95.0,
+   "h": 60.0,
+   "rx": 6.0,
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-98",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "T, masses, radii, fluxes, \u03a6, rheological front",
+      "size": 10.0,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "right",
+   "cell": "ixJzbOgBluzLFn6TTAe7-98",
+   "href": "",
+   "bbox": [
+    812.0,
+    212.5,
+    91.0,
+    38.5
+   ],
+   "flex": {
+    "ml": 812.0,
+    "pt": 230.0,
+    "w": 91.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 212.5,
+     "bottom": 224.5,
+     "left": 830.75,
+     "right": 903,
+     "text": "T, masses, radii,",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    },
+    {
+     "top": 224.5,
+     "bottom": 236.5,
+     "left": 861.3125,
+     "right": 903,
+     "text": "fluxes, \u03a6,",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    },
+    {
+     "top": 236.5,
+     "bottom": 248.5,
+     "left": 831.84375,
+     "right": 903,
+     "text": "rheological front",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 812 205.5 L 812 254.26",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-99",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 812 262.26 L 808 254.26 L 816 254.26 Z",
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-99",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 721.5,
+   "y": 427.5,
+   "w": 148.0,
+   "h": 23.0,
+   "rx": 6.0,
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-100",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "e, a, obliquity, F_tide",
+      "size": 10.0,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "right",
+   "cell": "ixJzbOgBluzLFn6TTAe7-100",
+   "href": "",
+   "bbox": [
+    722.0,
+    333.5,
+    144.0,
+    14.5
+   ],
+   "flex": {
+    "ml": 722.0,
+    "pt": 339.0,
+    "w": 144.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 433.5,
+     "bottom": 445.5,
+     "left": 774.453125,
+     "right": 866,
+     "text": "e, a, obliquity, F_tide",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 811.68 409.77 L 811.78 428.33",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-101",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 811 702.5 L 811 720.5",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-104",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 812 809.5 L 812 830.5",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-106",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 819.5,
+   "y": 928.5,
+   "w": 112.0,
+   "h": 34.0,
+   "rx": 6.0,
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-107",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Runtime, iterations, checks",
+      "size": 10.0,
+      "color": "#3E4A55",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "left",
+   "cell": "ixJzbOgBluzLFn6TTAe7-107",
+   "href": "",
+   "bbox": [
+    822.0,
+    833.5,
+    108.0,
+    26.5
+   ],
+   "flex": {
+    "ml": 822.0,
+    "pt": 845.0,
+    "w": 108.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 933.5,
+     "bottom": 945.5,
+     "left": 822,
+     "right": 908.15625,
+     "text": "Runtime, iterations,",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    },
+    {
+     "top": 945.5,
+     "bottom": 957.5,
+     "left": 822,
+     "right": 853.125,
+     "text": "checks",
+     "size": 10,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(62, 74, 85)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 1213.25 1034 L 1220.53 1027.5 Q 1225 1023.5 1231 1023.5 L 1266 1023.5 Q 1272 1023.5 1276.47 1027.5 L 1291.03 1040.5 Q 1295.5 1044.5 1291.03 1048.5 L 1276.47 1061.5 Q 1272 1065.5 1266 1065.5 L 1231 1065.5 Q 1225 1065.5 1220.53 1061.5 L 1205.97 1048.5 Q 1201.5 1044.5 1205.97 1040.5 Z",
+   "fill": "rgb(27, 111, 168)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-110",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_chem/dummy.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Dummy",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-110",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/atmos_chem/dummy.py",
+   "bbox": [
+    1203.0,
+    936.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 1203.0,
+    "pt": 944.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 1036.703125,
+     "bottom": 1051.703125,
+     "left": 1225.609375,
+     "right": 1270.390625,
+     "text": "Dummy",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 1194 988.5 L 1194 997.5 Q 1194 1006.5 1206 1006.5 L 1236.5 1006.5 Q 1248.5 1006.5 1248.5 1011.15 L 1248.5 1015.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-111",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 1248.5 1022.61 L 1245.1 1015.81 L 1251.9 1015.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-111",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 540 226.25 L 546.1 220.58 Q 550.5 216.5 556.5 216.5 L 586.5 216.5 Q 592.5 216.5 596.9 220.58 L 609.1 231.92 Q 613.5 236 609.1 240.08 L 596.9 251.42 Q 592.5 255.5 586.5 255.5 L 556.5 255.5 Q 550.5 255.5 546.1 251.42 L 533.9 240.08 Q 529.5 236 533.9 231.92 Z",
+   "fill": "rgb(226, 61, 40)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-114",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_struct/dummy.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Dummy",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-114",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_struct/dummy.py",
+   "bbox": [
+    531.0,
+    227.5,
+    80.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 531.0,
+    "pt": 235.0,
+    "w": 80.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 227.703125,
+     "bottom": 242.703125,
+     "left": 548.609375,
+     "right": 593.390625,
+     "text": "Dummy",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 571.5 208.81 L 571.5 203.65 Q 571.5 198.5 559.5 198.5 L 478.5 198.5 Q 466.5 198.5 466.5 203.65 L 466.5 208.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-115",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 571.5 215.61 L 568.1 208.81 L 574.9 208.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-115",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 466.5 215.61 L 463.1 208.81 L 469.9 208.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-115",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 31.5,
+   "y": 1346.5,
+   "w": 90.0,
+   "h": 42.0,
+   "rx": 6.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-116",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Process",
+      "size": 13.0,
+      "color": "#10151B",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-116",
+   "href": "",
+   "bbox": [
+    39.0,
+    1259.5,
+    74.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 39.0,
+    "pt": 1267.0,
+    "w": 74.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 1359.703125,
+     "bottom": 1374.703125,
+     "left": 52.515625,
+     "right": 99.484375,
+     "text": "Process",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 148.25 1357 L 155.53 1350.5 Q 160 1346.5 166 1346.5 L 201 1346.5 Q 207 1346.5 211.47 1350.5 L 226.03 1363.5 Q 230.5 1367.5 226.03 1371.5 L 211.47 1384.5 Q 207 1388.5 201 1388.5 L 166 1388.5 Q 160 1388.5 155.53 1384.5 L 140.97 1371.5 Q 136.5 1367.5 140.97 1363.5 Z",
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-117",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Module",
+      "size": 13.0,
+      "color": "#10151B",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-117",
+   "href": "",
+   "bbox": [
+    138.0,
+    1259.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 138.0,
+    "pt": 1267.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 1359.703125,
+     "bottom": 1374.703125,
+     "left": 161.671875,
+     "right": 204.3125,
+     "text": "Module",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 269 1357.75 L 287.09 1349.09 Q 292.5 1346.5 297.91 1349.09 L 334.09 1366.41 Q 339.5 1369 334.09 1371.59 L 297.91 1388.91 Q 292.5 1391.5 287.09 1388.91 L 250.91 1371.59 Q 245.5 1369 250.91 1366.41 Z",
+   "fill": "rgb(253, 253, 254)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-118",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Decision",
+      "size": 13.0,
+      "color": "#10151B",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-118",
+   "href": "",
+   "bbox": [
+    247.0,
+    1261.5,
+    90.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 247.0,
+    "pt": 1269.0,
+    "w": 90.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 1361.703125,
+     "bottom": 1376.703125,
+     "left": 267.0625,
+     "right": 316.921875,
+     "text": "Decision",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 384.5 1388.5 L 360.5 1388.5 Q 354.5 1388.5 356.52 1382.85 L 367.48 1352.15 Q 369.5 1346.5 375.5 1346.5 L 423.5 1346.5 Q 429.5 1346.5 427.48 1352.15 L 416.52 1382.85 Q 414.5 1388.5 408.5 1388.5 Z",
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-119",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "I/O",
+      "size": 13.0,
+      "color": "#10151B",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-119",
+   "href": "",
+   "bbox": [
+    356.0,
+    1259.5,
+    71.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 356.0,
+    "pt": 1267.0,
+    "w": 71.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 1359.703125,
+     "bottom": 1374.703125,
+     "left": 382.828125,
+     "right": 400.171875,
+     "text": "I/O",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(16, 21, 27)"
+    }
+   ]
+  },
+  {
+   "kind": "image",
+   "x": 61.0,
+   "y": 1177.0,
+   "w": 343.99999999999994,
+   "h": 98.0,
+   "cell": "ixJzbOgBluzLFn6TTAe7-120",
+   "href": "",
+   "file": "img/arch_light_img00.png"
+  },
+  {
+   "kind": "path",
+   "d": "M 130.88 226.25 L 136.09 220.82 Q 140.25 216.5 146.25 216.5 L 171.75 216.5 Q 177.75 216.5 181.91 220.82 L 192.34 231.68 Q 196.5 236 192.34 240.32 L 181.91 251.18 Q 177.75 255.5 171.75 255.5 L 146.25 255.5 Q 140.25 255.5 136.09 251.18 L 125.66 240.32 Q 121.5 236 125.66 231.68 Z",
+   "fill": "rgb(226, 61, 40)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-121",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_energetics/boundary.py"
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "Boundary ",
+      "size": 13.0,
+      "color": "light-dark(rgb(253, 253, 254),rgb(14, 19, 27))",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "ixJzbOgBluzLFn6TTAe7-121",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/interior_energetics/boundary.py",
+   "bbox": [
+    123.0,
+    227.5,
+    71.0,
+    19.25
+   ],
+   "flex": {
+    "ml": 123.0,
+    "pt": 235.0,
+    "w": 71.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 227.703125,
+     "bottom": 242.703125,
+     "left": 130.671875,
+     "right": 186.328125,
+     "text": "Boundary",
+     "size": 13,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 159.12 208.42 L 159.5 184.5",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-122",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 159.01 215.22 L 155.72 208.36 L 162.52 208.47 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "ixJzbOgBluzLFn6TTAe7-122",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 812 605.5 L 812 634.5 L 812.07 653.34",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "VwB6l1LpBQuK5qf91lYw-8",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 812.1 661.34 L 808.07 653.36 L 816.07 653.33 Z",
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "VwB6l1LpBQuK5qf91lYw-8",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 691.5,
+   "y": 0.5,
+   "w": 89.5,
+   "h": 30.0,
+   "rx": 4.5,
+   "fill": "rgb(90, 107, 122)",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "VwB6l1LpBQuK5qf91lYw-11",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "proteus.start",
+      "size": 14.0,
+      "color": "#FDFDFE",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "VwB6l1LpBQuK5qf91lYw-11",
+   "href": "",
+   "bbox": [
+    692.0,
+    7.0,
+    88.0,
+    20.0
+   ],
+   "flex": {
+    "ml": 692.0,
+    "pt": 15.0,
+    "w": 88.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 7.109375,
+     "bottom": 23.109375,
+     "left": 697.078125,
+     "right": 774.90625,
+     "text": "proteus.start",
+     "size": 14,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 691.5,
+   "y": 1120.5,
+   "w": 65.0,
+   "h": 30.0,
+   "rx": 4.5,
+   "fill": "rgb(90, 107, 122)",
+   "fill_opacity": 1.0,
+   "stroke": "none",
+   "stroke_width": 1.0,
+   "dash": null,
+   "cell": "VwB6l1LpBQuK5qf91lYw-12",
+   "href": ""
+  },
+  {
+   "kind": "text",
+   "lines": [
+    [
+     {
+      "text": "post-loop",
+      "size": 14.0,
+      "color": "#FDFDFE",
+      "weight": "normal",
+      "style": "normal",
+      "family": "Helvetica"
+     }
+    ]
+   ],
+   "align": "center",
+   "cell": "VwB6l1LpBQuK5qf91lYw-12",
+   "href": "",
+   "bbox": [
+    692.0,
+    1027.0,
+    63.0,
+    20.0
+   ],
+   "flex": {
+    "ml": 692.0,
+    "pt": 1035.0,
+    "w": 63.0,
+    "h": 1.0
+   },
+   "mlines": [
+    {
+     "top": 1127.109375,
+     "bottom": 1143.109375,
+     "left": 694.703125,
+     "right": 752.296875,
+     "text": "post-loop",
+     "size": 14,
+     "weight": "400",
+     "style": "normal",
+     "color": "rgb(253, 253, 254)"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "cell": "acc-stage",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L870",
+   "x": 767.5,
+   "y": 264.5,
+   "w": 89.0,
+   "h": 39.0,
+   "rx": 6.0,
+   "fill": "#A38F7A",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null
+  },
+  {
+   "kind": "text",
+   "cell": "acc-stage",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#L870",
+   "align": "center",
+   "lines": [
+    [
+     {
+      "text": "Accretion",
+      "size": 13.0,
+      "color": "#FDFDFE"
+     }
+    ]
+   ],
+   "mlines": [
+    {
+     "top": 275.7,
+     "bottom": 291.3,
+     "left": 784.3,
+     "right": 838.7,
+     "text": "Accretion",
+     "size": 13.0,
+     "color": "#FDFDFE"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "cell": "acc-chain",
+   "href": "",
+   "d": "M 812 303.77 L 812 322.5",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null
+  },
+  {
+   "kind": "path",
+   "cell": "acc-chain",
+   "href": "",
+   "d": "M 812 346.5 L 812 354.3",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null
+  },
+  {
+   "kind": "path",
+   "cell": "acc-chain",
+   "href": "",
+   "d": "M 812 362.3 L 808 354.3 L 816 354.3 Z",
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 2.0,
+   "dash": null
+  },
+  {
+   "kind": "text",
+   "cell": "acc-chain-label",
+   "href": "",
+   "align": "center",
+   "lines": [
+    [
+     {
+      "text": "M_planet, R_int, a, e",
+      "size": 10.0,
+      "color": "#3E4A55"
+     }
+    ]
+   ],
+   "mlines": [
+    {
+     "top": 329.0,
+     "bottom": 341.0,
+     "left": 775.3,
+     "right": 847.7,
+     "text": "M_planet, R_int, a, e",
+     "size": 10.0,
+     "color": "#3E4A55"
+    }
+   ]
+  },
+  {
+   "kind": "rect",
+   "x": 263.5,
+   "y": 375.5,
+   "w": 372.0,
+   "h": 155.0,
+   "rx": 12.0,
+   "fill": "rgb(16, 21, 27)",
+   "fill_opacity": 0.0,
+   "stroke": "#A38F7A",
+   "stroke_width": 2.0,
+   "dash": null,
+   "cell": "acc-9",
+   "href": ""
+  },
+  {
+   "kind": "rect",
+   "x": 393.5,
+   "y": 391.5,
+   "w": 113.0,
+   "h": 48.0,
+   "rx": 6.0,
+   "fill": "#A38F7A",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "cell": "acc-68",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/accretion/wrapper.py"
+  },
+  {
+   "kind": "text",
+   "cell": "acc-68",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/accretion/wrapper.py",
+   "align": "center",
+   "lines": [
+    [
+     {
+      "text": "accretion",
+      "size": 13.0,
+      "color": "#FDFDFE"
+     }
+    ],
+    [
+     {
+      "text": "(wrapper)",
+      "size": 13.0,
+      "color": "#FDFDFE"
+     }
+    ]
+   ],
+   "mlines": [
+    {
+     "top": 400.5,
+     "bottom": 416.1,
+     "left": 423.05,
+     "right": 475.95,
+     "text": "accretion",
+     "size": 13.0,
+     "color": "#FDFDFE"
+    },
+    {
+     "top": 416.09,
+     "bottom": 431.69,
+     "left": 421.65,
+     "right": 477.35,
+     "text": "(wrapper)",
+     "size": 13.0,
+     "color": "#FDFDFE"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 290.25 481 L 297.53 474.5 Q 302 470.5 308 470.5 L 343 470.5 Q 349 470.5 353.47 474.5 L 368.03 487.5 Q 372.5 491.5 368.03 495.5 L 353.47 508.5 Q 349 512.5 343 512.5 L 308 512.5 Q 302 512.5 297.53 508.5 L 282.97 495.5 Q 278.5 491.5 282.97 487.5 Z",
+   "fill": "#A38F7A",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "acc-69",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/accretion/morrigan.py"
+  },
+  {
+   "kind": "text",
+   "cell": "acc-69",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/accretion/morrigan.py",
+   "align": "center",
+   "lines": [
+    [
+     {
+      "text": "Morrigan",
+      "size": 13.0,
+      "color": "#FDFDFE"
+     }
+    ]
+   ],
+   "mlines": [
+    {
+     "top": 483.703125,
+     "bottom": 499.303125,
+     "left": 299.1421875,
+     "right": 350.8421875,
+     "text": "Morrigan",
+     "size": 13.0,
+     "color": "#FDFDFE"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 414.25 481 L 421.53 474.5 Q 426 470.5 432 470.5 L 467 470.5 Q 473 470.5 477.47 474.5 L 492.03 487.5 Q 496.5 491.5 492.03 495.5 L 477.47 508.5 Q 473 512.5 467 512.5 L 432 512.5 Q 426 512.5 421.53 508.5 L 406.97 495.5 Q 402.5 491.5 406.97 487.5 Z",
+   "fill": "#A38F7A",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "acc-70",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/accretion/timeline.py"
+  },
+  {
+   "kind": "text",
+   "cell": "acc-70",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/accretion/timeline.py",
+   "align": "center",
+   "lines": [
+    [
+     {
+      "text": "Timeline",
+      "size": 13.0,
+      "color": "#FDFDFE"
+     }
+    ]
+   ],
+   "mlines": [
+    {
+     "top": 483.703125,
+     "bottom": 499.303125,
+     "left": 424.35,
+     "right": 473.65,
+     "text": "Timeline",
+     "size": 13.0,
+     "color": "#FDFDFE"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 530.25 481 L 537.53 474.5 Q 542 470.5 548 470.5 L 583 470.5 Q 589 470.5 593.47 474.5 L 608.03 487.5 Q 612.5 491.5 608.03 495.5 L 593.47 508.5 Q 589 512.5 583 512.5 L 548 512.5 Q 542 512.5 537.53 508.5 L 522.97 495.5 Q 518.5 491.5 522.97 487.5 Z",
+   "fill": "#A38F7A",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(16, 21, 27)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "acc-71",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/accretion/dummy.py"
+  },
+  {
+   "kind": "text",
+   "cell": "acc-71",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/accretion/dummy.py",
+   "align": "center",
+   "lines": [
+    [
+     {
+      "text": "Dummy",
+      "size": 13.0,
+      "color": "#FDFDFE"
+     }
+    ]
+   ],
+   "mlines": [
+    {
+     "top": 483.703125,
+     "bottom": 499.303125,
+     "left": 542.65,
+     "right": 587.35,
+     "text": "Dummy",
+     "size": 13.0,
+     "color": "#FDFDFE"
+    }
+   ]
+  },
+  {
+   "kind": "path",
+   "d": "M 450 439.5 L 450 448.5 Q 450 457.5 438 457.5 L 337.5 457.5 Q 325.5 457.5 325.5 460.15 L 325.5 462.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "acc-72",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 325.5 469.61 L 322.1 462.81 L 328.9 462.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "acc-72",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 450 439.5 L 449.62 462.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "acc-73",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 449.51 469.61 L 446.22 462.75 L 453.02 462.86 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "acc-73",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 450 439.5 L 450 448.5 Q 450 457.5 462 457.5 L 553.5 457.5 Q 565.5 457.5 565.5 460.15 L 565.5 462.81",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": "3 3",
+   "linejoin": null,
+   "title": null,
+   "cell": "acc-74",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "d": "M 565.5 469.61 L 562.1 462.81 L 568.9 462.81 Z",
+   "fill": "rgb(42, 52, 61)",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null,
+   "linejoin": null,
+   "title": null,
+   "cell": "acc-74",
+   "href": ""
+  },
+  {
+   "kind": "path",
+   "cell": "acc-link",
+   "href": "",
+   "d": "M 767.5 284 L 685 284 Q 673 284 673 296 L 673 441 Q 673 453 661 453 L 635.5 453",
+   "fill": "none",
+   "fill_opacity": 1.0,
+   "stroke": "rgb(42, 52, 61)",
+   "stroke_width": 0.8,
+   "dash": null
+  }
+ ]
+}

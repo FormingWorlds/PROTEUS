@@ -18,7 +18,7 @@ module is distributed.
 | Pin type | Where it lives in `pyproject.toml` | Pin value | Modules |
 |----------|------------------------------------|-----------|---------|
 | PyPI floor | `[project] dependencies` | Minimum version bound, e.g. `fwl-aragog>=26.05.13` | fwl-janus, fwl-mors, fwl-calliope, fwl-zephyrus, fwl-aragog, fwl-zalmoxis |
-| PyPI floor (optional) | `[project.optional-dependencies]` | Minimum version bound on an optional backend | fwl-vulcan, atmodeller |
+| PyPI floor (optional) | `[project.optional-dependencies]` | Minimum version bound on an optional backend | fwl-vulcan, atmodeller, fwl-morrigan |
 | Git ref | `[tool.proteus.modules.<name>]` | Exact commit SHA, tag, or branch in a `ref` field | AGNI, SOCRATES, SPIDER, BOREAS, LovePy |
 
 A third entry, PETSc, is pinned in `[tool.proteus.modules.petsc]` by the SHA-256
@@ -169,11 +169,12 @@ When in doubt, pin to a commit SHA. A branch pin is a deliberate choice to
 follow upstream, not a default.
 
 !!! info "Some modules deliberately have no git entry"
-    VULCAN, like fwl-aragog and fwl-zalmoxis, is a single-source PyPI package, so
-    it is pinned only by its floor in `[project.optional-dependencies]`. Its
-    setup script checks out the git tag matching that floor, so the editable
-    checkout and the published release cannot diverge. Do not add a second pin
-    for these in `[tool.proteus.modules]`.
+    VULCAN and Morrigan, like fwl-aragog and fwl-zalmoxis, are single-source
+    PyPI packages, so they are pinned only by their floor in
+    `[project.optional-dependencies]`. Their setup scripts check out the git tag
+    matching that floor, so the editable checkout and the published release
+    cannot diverge. Do not add a second pin for these in
+    `[tool.proteus.modules]`.
 
 ## Propagating the change to other developers
 

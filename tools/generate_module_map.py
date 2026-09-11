@@ -46,6 +46,29 @@ GENERATED_NOTE = (
 # verified against the source on every run; see the module docstring.
 DISPATCH_SITES = [
     {
+        'area': 'Accretion',
+        'config_path': 'accretion.module',
+        'wrapper': 'accretion/wrapper.py',
+        'entries': {
+            'dummy': (
+                'accretion/dummy.py',
+                'get_timeline',
+                'Analytical exponential accretion law',
+            ),
+            'timeline': (
+                'accretion/timeline.py',
+                'get_timeline',
+                'Impacts replayed from a timeline file',
+            ),
+            'morrigan': (
+                'accretion/morrigan.py',
+                'get_timeline',
+                'Monte Carlo giant-impact dynamics (Morrigan)',
+            ),
+            None: (None, None, 'Accretion disabled; no impacts'),
+        },
+    },
+    {
         'area': 'Atmosphere climate',
         'config_path': 'atmos_clim.module',
         'wrapper': 'atmos_clim/wrapper.py',
@@ -324,8 +347,7 @@ def verify(schema: dict) -> list[str]:
     choices_by_path = {f['path']: f['choices'] for f in schema['fields']}
 
     # Completeness: every module-selection field with at least one non-None
-    # option must have a dispatch site here. accretion.module accepts only
-    # None today, so it is exempt until an implementation lands.
+    # option must have a dispatch site here.
     mapped = {site['config_path'] for site in DISPATCH_SITES}
     for field in schema['fields']:
         if not field['path'].endswith('.module') or field['path'].count('.') != 1:

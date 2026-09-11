@@ -1,6 +1,34 @@
 {
   "sites": [
     {
+      "area": "Accretion",
+      "config_path": "accretion.module",
+      "wrapper": "src/proteus/accretion/wrapper.py",
+      "options": [
+        {
+          "option": "dummy",
+          "entry": "src/proteus/accretion/dummy.py:get_timeline",
+          "role": "Analytical exponential accretion law"
+        },
+        {
+          "option": "morrigan",
+          "entry": "src/proteus/accretion/morrigan.py:get_timeline",
+          "role": "Monte Carlo giant-impact dynamics (Morrigan)"
+        },
+        {
+          "option": "timeline",
+          "entry": "src/proteus/accretion/timeline.py:get_timeline",
+          "role": "Impacts replayed from a timeline file"
+        },
+        {
+          "option": null,
+          "entry": null,
+          "role": "Accretion disabled; no impacts"
+        }
+      ],
+      "sub_dispatches": []
+    },
+    {
       "area": "Atmosphere climate",
       "config_path": "atmos_clim.module",
       "wrapper": "src/proteus/atmos_clim/wrapper.py",
