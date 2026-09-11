@@ -2252,6 +2252,44 @@ def test_run_interior_non_boundary_module_shares_dT_delta_between_caps():
     assert hf_row['T_surf'] == pytest.approx(2820.0)
 
 
+@pytest.mark.unit
+def test_run_interior_evolve_message_is_debug_not_info(caplog):
+    """The per-step 'Evolve interior...' announcement stays off the default
+    INFO output: it fires on every timestep, so it belongs at debug (#839)."""
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='dummy')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    hf_row['RF_depth'] = 0.5
+    out = {
+        'T_magma': 3005.0,
+        'T_surf': 2805.0,
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 2
+    atmos_o = MagicMock()
+
+    with (
+        patch(
+            'proteus.interior_energetics.dummy.run_dummy_int',
+            return_value=(110.0, out),
+        ),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+        caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, atmos_o, verbose=True)
+
+    evolve_records = [r for r in caplog.records if 'Evolve interior' in r.getMessage()]
+    assert len(evolve_records) == 1
+    assert evolve_records[0].levelname == 'DEBUG'
+
+
 # ============================================================================
 # determine_interior_radius: tolerance_struct + maxiter + initial bracket
 # ============================================================================

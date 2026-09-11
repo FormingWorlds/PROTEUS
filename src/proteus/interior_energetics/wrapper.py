@@ -1883,7 +1883,7 @@ def run_interior(
 
     # Use the appropriate interior model
     if verbose:
-        log.info('Evolve interior...')
+        log.debug('Evolve interior...')
     log.debug('Using %s module to evolve interior' % config.interior_energetics.module)
 
     # Write tidal heating file
