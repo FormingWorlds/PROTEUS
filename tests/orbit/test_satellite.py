@@ -49,8 +49,14 @@ Exercises:
   documented C_planet angular-momentum-conserving spin rescale on a
   structural (interior) change between calls -- including with real
   (non-quiescent) ps0d dynamics running across the change -- and
-  controller-state persistence (``_orbit_dt_yr``/
-  ``_orbit_resonance_state``) across calls.
+  controller-state persistence (``tides_o.dt_yr``/
+  ``tides_o.resonance_state``) across calls, and that ``hf_row`` carries
+  exactly one evection column (``evection_dt_cap_yr``), not the
+  ``in_evection_band``/``near_evection_band`` flags of an earlier design.
+
+The evection dt-cap computation itself (``proteus.orbit.timestep``'s
+``_evection_rate_cap_yr``/``_estimate_evection_dt_cap_yr``) has its own
+test file, ``tests/orbit/test_timestep.py``, mirroring the source split.
 
 See also:
 - docs/How-to/test_infrastructure.md
@@ -373,16 +379,16 @@ def _make_fine_entry(t_abs_yr, n=None):
 def test_flush_fine_evection_csv_in_band_keeps_every_sample(tmp_path):
     """When ``in_band`` is True, every sample surviving the dedup
     filter is written -- no storage-clock throttling."""
-    hf_row = {}
+    tides_o = Tides_t()
     entry = _make_fine_entry([1.0, 2.0, 3.0])
     _flush_fine_evection_csv(
-        hf_row, str(tmp_path), entry, in_band=True, storage_target_interval_yr=100.0
+        tides_o, str(tmp_path), entry, in_band=True, storage_target_interval_yr=100.0
     )
 
     csv_path = tmp_path / 'fine_evection_data.csv'
     lines = csv_path.read_text().splitlines()
     assert len(lines) == 1 + 3  # header + 3 rows, none throttled
-    assert hf_row['_fine_csv_last_t_yr'] == pytest.approx(3.0)
+    assert tides_o.fine_csv_last_t_yr == pytest.approx(3.0)
 
 
 def test_flush_fine_evection_csv_out_of_band_throttles_to_target_spacing(tmp_path):
@@ -390,10 +396,10 @@ def test_flush_fine_evection_csv_out_of_band_throttles_to_target_spacing(tmp_pat
     are kept; the target then advances from the KEPT sample's time,
     not blindly by a fixed increment.
     """
-    hf_row = {}
+    tides_o = Tides_t()
     entry = _make_fine_entry([1.0, 2.0, 3.0, 20.0, 21.0, 50.0])
     _flush_fine_evection_csv(
-        hf_row, str(tmp_path), entry, in_band=False, storage_target_interval_yr=10.0
+        tides_o, str(tmp_path), entry, in_band=False, storage_target_interval_yr=10.0
     )
     csv_path = tmp_path / 'fine_evection_data.csv'
     lines = csv_path.read_text().splitlines()
@@ -407,15 +413,15 @@ def test_flush_fine_evection_csv_out_of_band_throttles_to_target_spacing(tmp_pat
 
 
 def test_flush_fine_evection_csv_dedup_drops_samples_at_or_before_last_write(tmp_path):
-    """A sample at or before the persisted ``_fine_csv_last_t_yr``
+    """A sample at or before the persisted ``tides_o.fine_csv_last_t_yr``
     cursor (e.g. a duplicate boundary sample from the previous
     accepted call) is dropped regardless of the in-band/out-of-band
     policy.
     """
-    hf_row = {'_fine_csv_last_t_yr': 5.0}
+    tides_o = Tides_t(fine_csv_last_t_yr=5.0)
     entry = _make_fine_entry([4.0, 5.0, 6.0, 7.0])
     _flush_fine_evection_csv(
-        hf_row, str(tmp_path), entry, in_band=True, storage_target_interval_yr=100.0
+        tides_o, str(tmp_path), entry, in_band=True, storage_target_interval_yr=100.0
     )
 
     csv_path = tmp_path / 'fine_evection_data.csv'
@@ -423,16 +429,16 @@ def test_flush_fine_evection_csv_dedup_drops_samples_at_or_before_last_write(tmp
     kept_times = [float(line.split(',')[0]) for line in lines[1:]]
     # 4.0 and 5.0 (<= last_t) dropped; 6.0 and 7.0 kept.
     assert kept_times == pytest.approx([6.0, 7.0])
-    assert hf_row['_fine_csv_last_t_yr'] == pytest.approx(7.0)
+    assert tides_o.fine_csv_last_t_yr == pytest.approx(7.0)
 
 
 def test_flush_fine_evection_csv_no_kept_samples_writes_no_file(tmp_path):
     """If every sample is deduped away, no file is created at all (not
     an empty/header-only file)."""
-    hf_row = {'_fine_csv_last_t_yr': 100.0}
+    tides_o = Tides_t(fine_csv_last_t_yr=100.0)
     entry = _make_fine_entry([1.0, 2.0, 3.0])
     _flush_fine_evection_csv(
-        hf_row, str(tmp_path), entry, in_band=True, storage_target_interval_yr=100.0
+        tides_o, str(tmp_path), entry, in_band=True, storage_target_interval_yr=100.0
     )
     assert not (tmp_path / 'fine_evection_data.csv').exists()
 
@@ -440,13 +446,13 @@ def test_flush_fine_evection_csv_no_kept_samples_writes_no_file(tmp_path):
 def test_flush_fine_evection_csv_empty_entry_is_a_no_op(tmp_path):
     """An entry with zero samples returns immediately without writing
     a file or touching the cursors."""
-    hf_row = {}
+    tides_o = Tides_t()
     entry = _make_fine_entry([])
     _flush_fine_evection_csv(
-        hf_row, str(tmp_path), entry, in_band=True, storage_target_interval_yr=100.0
+        tides_o, str(tmp_path), entry, in_band=True, storage_target_interval_yr=100.0
     )
     assert not (tmp_path / 'fine_evection_data.csv').exists()
-    assert '_fine_csv_last_t_yr' not in hf_row
+    assert tides_o.fine_csv_last_t_yr is None
 
 
 # ---------------------------------------------------------------------------
@@ -844,6 +850,11 @@ def _make_satellite_config(model) -> Any:
         SimpleNamespace(
             orbit=SimpleNamespace(planet_satellite_model=model, solver=OrbitSolver()),
             interior_energetics=SimpleNamespace(module='aragog'),
+            # evection_maximum=0.0 (disabled) by default so evolve_orbit_satellite's
+            # unconditional _estimate_evection_dt_cap_yr call is a no-op (np.inf) for
+            # every test that doesn't care about the cap -- config.params.dt is read
+            # directly (no getattr fallback) for evection_maximum, so it must exist.
+            params=SimpleNamespace(dt=SimpleNamespace(evection_maximum=0.0)),
         ),
     )
 
@@ -965,7 +976,7 @@ def test_evolve_orbit_satellite_populates_c_planet_for_every_model(model, _fast_
     assert hf_row['C_int'] > 0.0
 
 
-def test_evolve_orbit_satellite_unrecognized_model_raises_immediately():
+def test_evolve_orbit_satellite_unrecognized_model_raises_immediately(tmp_path):
     """An unrecognized ``planet_satellite_model`` is now rejected
     up-front by the dispatch (before the shared adaptive-substep
     controller ever starts), not inside the substep's own broad
@@ -975,6 +986,10 @@ def test_evolve_orbit_satellite_unrecognized_model_raises_immediately():
     step-size floor before returning normally. Failing loudly on a
     configuration error is the deliberate improvement from sharing the
     controller with ``evolve_orbit_star``.
+
+    Also pins that the status file is updated (to the Tides/orbit-model
+    error code) before the raise -- ``dirs`` must be a real directory
+    here (not ``{}``) since ``UpdateStatusfile`` writes to it.
     """
     hf_row = _make_evolve_hf_row()
     hf_row['F_tidal'] = 1e-3
@@ -982,11 +997,16 @@ def test_evolve_orbit_satellite_unrecognized_model_raises_immediately():
     config = _make_satellite_config('not-a-real-model')
     interior_o = _make_interior_for_c_planet(density=5500.0)
     interior_o.dt = 1.0
+    dirs = {'output': str(tmp_path)}
 
     with pytest.raises(ValueError, match='not-a-real-model'):
         evolve_orbit_satellite(
-            hf_row, config, dirs={}, tides_o=Tides_t(), interior_o=interior_o
+            hf_row, config, dirs=dirs, tides_o=Tides_t(), interior_o=interior_o
         )
+
+    status_path = tmp_path / 'status'
+    assert status_path.exists()
+    assert status_path.read_text().splitlines()[0] == '26'
 
     # Discrimination: the raise happens before any substep runs, so the
     # state is exactly the pre-call snapshot, not partially evolved.
@@ -1056,11 +1076,15 @@ def test_evolve_orbit_satellite_rejects_substep_exceeding_max_rel_da_and_shrinks
 
 
 def test_evolve_orbit_satellite_persists_controller_state_across_calls(_fast_hansen_table):
-    """``_orbit_dt_yr`` and ``_orbit_resonance_state`` are written back
-    to ``hf_row`` at the end of the call (private, dt_yr not reset to
-    ``dt0_yr`` on the next call) -- the persistence the function's own
-    docstring says is load-bearing for not wasting substeps re-growing
-    a step size a previous call had already found safe.
+    """``tides_o.dt_yr`` and ``tides_o.resonance_state`` are the
+    controller's own state, live on ``tides_o`` for the whole run (dt_yr
+    not reset to ``dt0_yr`` on the next call) -- the persistence the
+    function's own docstring says is load-bearing for not wasting
+    substeps re-growing a step size a previous call had already found
+    safe. Model here is ``ps1d`` (not ``ps1d_evec``), so
+    ``resonance_state`` itself is never mutated by ``_in_evection_band``
+    -- only its presence/type on ``tides_o`` is pinned here; its real
+    hysteresis mutation is covered by the ps1d_evec-specific tests.
     """
     hf_row = _make_ps1d_evolve_hf_row()
     config = _make_satellite_config('ps1d')
@@ -1068,17 +1092,20 @@ def test_evolve_orbit_satellite_persists_controller_state_across_calls(_fast_han
     interior_o.dt = 10.0
     tides_o = _make_ps1d_tides(-0.01 - 0.02j)
 
+    assert tides_o.dt_yr is None
+    assert tides_o.resonance_state == {}
     assert '_orbit_dt_yr' not in hf_row
     evolve_orbit_satellite(hf_row, config, dirs={}, tides_o=tides_o, interior_o=interior_o)
-    assert '_orbit_dt_yr' in hf_row
-    assert '_orbit_resonance_state' in hf_row
+    assert '_orbit_dt_yr' not in hf_row
+    assert '_orbit_resonance_state' not in hf_row
+    assert isinstance(tides_o.resonance_state, dict)
     # Discrimination: the persisted value is a real float step size,
     # not e.g. a leftover None or the untouched dt0_yr default when
     # growth should have moved it (dt0_yr=1e-4 by default; a step that
     # ran to completion on a 10 yr call and grew at all would leave a
     # noticeably larger value, given growth=1.15 compounds quickly).
-    assert isinstance(hf_row['_orbit_dt_yr'], float)
-    assert hf_row['_orbit_dt_yr'] > 0.0
+    assert isinstance(tides_o.dt_yr, float)
+    assert tides_o.dt_yr > 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -1343,7 +1370,7 @@ def test_evolve_orbit_satellite_skips_domega_p_when_axial_period_hits_zero(monke
     # ZeroDivisionError inside rel_change_fn would be caught by the
     # substep's own try/except and masquerade as an ordinary rejection,
     # never completing the call and never persisting controller state.
-    assert '_orbit_dt_yr' in hf_row
+    assert tides_o.dt_yr is not None
 
 
 def test_evolve_orbit_satellite_skips_domega_s_when_axial_period_sat_hits_zero(monkeypatch):
@@ -1369,7 +1396,7 @@ def test_evolve_orbit_satellite_skips_domega_s_when_axial_period_sat_hits_zero(m
     )
 
     assert hf_row['axial_period_sat'] == 0.0
-    assert '_orbit_dt_yr' in hf_row
+    assert tides_o.dt_yr is not None
 
 
 def test_evolve_orbit_satellite_threads_in_band_result_as_filter_value(monkeypatch):
@@ -1418,13 +1445,15 @@ def test_evolve_orbit_satellite_threads_in_band_result_as_filter_value(monkeypat
         assert all(fv == expected_filter for fv in captured_filter_values)
 
 
-def test_evolve_orbit_satellite_sets_near_band_ahead_of_in_band(monkeypatch):
-    """``near_evection_band`` must be derived from the wider
-    ``resonance_margin_approach`` margin, independently of (and firing
-    before) the tighter/hysteretic ``in_evection_band`` flag -- a state
+def test_evolve_orbit_satellite_activates_evection_zone_from_near_band_ahead_of_in_band(
+    monkeypatch,
+):
+    """``tides_o.evection_zone_active`` must go True from the wider
+    ``resonance_margin_approach`` margin alone, independently of (and
+    firing before) the tighter/hysteretic in-band detector -- a state
     whose raw, undebounced distance sits inside the approach margin but
-    outside the entry margin must read near=True, in_band=False, and
-    moving far outside even the approach margin must clear near as well.
+    outside the entry margin must still activate the zone, and moving far
+    outside even the approach margin must clear it again.
     """
     from proteus.orbit import satellite as sat_mod
 
@@ -1445,7 +1474,8 @@ def test_evolve_orbit_satellite_sets_near_band_ahead_of_in_band(monkeypatch):
     tides_o = _make_ps1d_evec_tides(-0.002 - 0.004j)
 
     # Inside the 0.30 approach margin but outside a (typical, tighter)
-    # entry margin: near must activate even though in_band never does.
+    # entry margin: the zone must activate even though the tight/hysteretic
+    # detector never does.
     monkeypatch.setattr(sat_mod, '_in_evection_band', _fake_in_band(0.20))
     hf_row_near = _make_ps1d_evec_hf_row(ecc=0.05)
     sat_mod.evolve_orbit_satellite(
@@ -1455,18 +1485,45 @@ def test_evolve_orbit_satellite_sets_near_band_ahead_of_in_band(monkeypatch):
         tides_o=tides_o,
         interior_o=interior_o,
     )
-    assert hf_row_near['in_evection_band'] == pytest.approx(0.0)
-    assert hf_row_near['near_evection_band'] == pytest.approx(1.0)
+    assert tides_o.evection_zone_active is True
 
     # Discrimination: pushing the raw distance outside even the wider
-    # approach margin must clear near_evection_band too, not just leave
-    # it stuck on from the previous call.
+    # approach margin must clear the zone too, not just leave it stuck on
+    # from the previous call.
     monkeypatch.setattr(sat_mod, '_in_evection_band', _fake_in_band(0.50))
     hf_row_far = _make_ps1d_evec_hf_row(ecc=0.05)
     sat_mod.evolve_orbit_satellite(
         hf_row_far, config, dirs={'output/data': '/tmp'}, tides_o=tides_o, interior_o=interior_o
     )
-    assert hf_row_far['near_evection_band'] == pytest.approx(0.0)
+    assert tides_o.evection_zone_active is False
+
+
+def test_evolve_orbit_satellite_exports_a_single_evection_dt_cap_yr_column(monkeypatch):
+    """``hf_row`` must carry ``evection_dt_cap_yr`` and nothing else from
+    the evection mechanism -- ``in_evection_band``/``near_evection_band``
+    are gone from the helpfile entirely; the zone state they used to carry
+    now lives only on ``tides_o.evection_zone_active`` (internal, not
+    exported), and the timestep controller reads this one precomputed
+    column instead of recomputing anything from flags.
+    """
+    from proteus.orbit import satellite as sat_mod
+
+    monkeypatch.setattr(sat_mod, 'ps1d_evec', lambda *a, **kw: None)
+
+    config = _make_satellite_config('ps1d_evec')
+    interior_o = _make_interior_for_c_planet(density=5500.0)
+    interior_o.dt = 1.0
+    tides_o = _make_ps1d_evec_tides(-0.002 - 0.004j)
+    hf_row = _make_ps1d_evec_hf_row(ecc=0.05)
+
+    sat_mod.evolve_orbit_satellite(
+        hf_row, config, dirs={'output/data': '/tmp'}, tides_o=tides_o, interior_o=interior_o
+    )
+
+    assert 'in_evection_band' not in hf_row
+    assert 'near_evection_band' not in hf_row
+    assert 'evection_dt_cap_yr' in hf_row
+    assert isinstance(hf_row['evection_dt_cap_yr'], float)
 
 
 def test_evolve_orbit_satellite_ps1d_evec_stores_dense_samples_in_band(

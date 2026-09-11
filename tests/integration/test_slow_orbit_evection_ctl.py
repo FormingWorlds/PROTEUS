@@ -86,7 +86,8 @@ import pytest
 
 import proteus.orbit.hansen as hansen_mod
 from proteus.config._orbit import OrbitSolver
-from proteus.orbit.common import Tides_t, get_C_planet
+from proteus.interior_energetics.common import get_C_planet
+from proteus.orbit.common import Tides_t
 from proteus.orbit.satellite import evolve_orbit_satellite
 
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
@@ -196,6 +197,10 @@ def _run_ctl_reference(
             solver=OrbitSolver(dt0_yr=0.2, dt_max_yr=2.0),
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
+        # evection_maximum=0.0 disables _estimate_evection_dt_cap_yr's cap
+        # (read directly, no getattr fallback, by evolve_orbit_satellite on
+        # every call) -- this test isn't exercising the dt-cap feature.
+        params=SimpleNamespace(dt=SimpleNamespace(evection_maximum=0.0)),
     )
     n_shells = 50
     rho_uniform = _M_EARTH / (4.0 / 3.0 * np.pi * _R_EARTH**3)

@@ -805,8 +805,11 @@ def GetHelpfileKeys():
         'C_sat',            # principal moment of inertia of satellite [kg m2]
 
         'evection_angle',   # evection angle [rad]
-        'in_evection_band', # whether inside the evection resonance band [bool, 0/1]
-        'near_evection_band', # wider pre-emptive dt-throttle diagnostic, no physics effect [bool, 0/1]
+        'evection_dt_cap_yr', # next macro-step dt cap from evection secular rate AND
+                             # growth limiter, folded together [yr]; CSV-exported "no
+                             # cap" value is 0.0 (the blanket fillna below), NOT the
+                             # in-memory np.inf sentinel -- see
+                             # proteus.orbit.satellite._estimate_evection_dt_cap_yr
 
         # Planet structure
         'R_int',            # interior radius [m]
@@ -1767,7 +1770,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     from proteus.plot.cpl_interior import plot_interior
     from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
     from proteus.plot.cpl_orbit import (
-        plot_Lovenumber,
+        plot_lovenumber,
         plot_orbit,
     )
     from proteus.plot.cpl_population import (
@@ -1887,7 +1890,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
         tide_data = read_tides_data(output_dir, 'obliqua', plot_times_obliqua)
 
-        plot_Lovenumber(
+        plot_lovenumber(
             output_dir=output_dir,
             times=plot_times_obliqua,
             data=tide_data,

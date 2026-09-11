@@ -405,15 +405,15 @@ def plot_evection(
     plt.ioff()
 
 
-def plot_Lovenumber(
+def plot_lovenumber(
     output_dir: str, times: list | np.ndarray, data: list, plot_format: str = 'pdf'
 ):
     if times is None or len(times) == 0:
-        log.debug('No times provided for plot_Lovenumber')
+        log.debug('No times provided for plot_lovenumber')
         return
 
     if np.amax(times) < 2:
-        log.debug('Insufficient data to make plot_interior')
+        log.debug('Insufficient data to make plot_lovenumber')
         return
 
     log.info('Plot Lovenumber')
@@ -436,7 +436,14 @@ def plot_Lovenumber(
         for j in range(len(n_arr)):
             mode_key = (int(n_arr[j]), int(m_arr[j]), int(k_arr[j]))
             if mode_key not in modes:
-                modes[mode_key] = {'time': [], 'sigma': [], 'real_log': [], 'imag_log': []}
+                modes[mode_key] = {
+                    'time': [],
+                    'sigma': [],
+                    'real_log': [],
+                    'imag_log': [],
+                    'real_raw': [],
+                    'imag_raw': [],
+                }
 
             real_val = (
                 np.log10(np.abs(knms_total[j].real)) if knms_total[j].real != 0 else -np.inf
@@ -449,6 +456,8 @@ def plot_Lovenumber(
             modes[mode_key]['sigma'].append(np.abs(sigma_arr[j]))
             modes[mode_key]['real_log'].append(real_val)
             modes[mode_key]['imag_log'].append(imag_val)
+            modes[mode_key]['real_raw'].append(knms_total[j].real)
+            modes[mode_key]['imag_raw'].append(knms_total[j].imag)
 
     # Determine global colorbar bounds across all mode points
     all_real_log = [
@@ -465,12 +474,16 @@ def plot_Lovenumber(
     vmin_real, vmax_real = np.min(all_real_log), np.max(all_real_log)
     vmin_imag, vmax_imag = np.min(all_imag_log), np.max(all_imag_log)
 
+    # Thresholds beyond which a Love number is likely unphysical/unbound
+    real_unbound_thresh = 1.5
+    imag_unbound_thresh = 1.0
+
     # Setup Figure
     scale = 1.0
     fig, axs = plt.subplots(1, 2, figsize=(14 * scale, 6 * scale), sharey=True)
 
-    cmap_real = plt.get_cmap('plasma')
-    cmap_imag = plt.get_cmap('viridis')
+    cmap_real = cm.batlow
+    cmap_imag = cm.imola
 
     # Plot connecting lines and mode markers
     for mode_key, mode_data in modes.items():
@@ -482,6 +495,11 @@ def plot_Lovenumber(
 
         real_vals = np.array(mode_data['real_log'])[sort_idx]
         imag_vals = np.array(mode_data['imag_log'])[sort_idx]
+        real_raw = np.array(mode_data['real_raw'])[sort_idx]
+        imag_raw = np.array(mode_data['imag_raw'])[sort_idx]
+
+        # Points where the Love number is potentially unbound/unphysical
+        unbound = (real_raw > real_unbound_thresh) | (imag_raw > imag_unbound_thresh)
 
         # Draw connecting trajectory lines across time
         axs[0].plot(
@@ -518,6 +536,20 @@ def plot_Lovenumber(
             zorder=2,
         )
 
+        # Ring out points beyond the unbound thresholds, on both panels
+        if np.any(unbound):
+            for ax in axs:
+                ax.scatter(
+                    x_vals[unbound],
+                    y_vals[unbound],
+                    facecolors='none',
+                    edgecolors='red',
+                    marker='o',
+                    s=70,
+                    linewidths=1.2,
+                    zorder=3,
+                )
+
     # Formatting & Colorbars
     for ax in axs:
         ax.set_yscale('log')
@@ -527,6 +559,25 @@ def plot_Lovenumber(
     axs[0].set_ylabel(r'Forcing Frequency $|\sigma|$ (Log Scale)')
     axs[0].set_title(r'Real Part: $\log_{10}(|\text{Re}(k_{nm})|)$')
     axs[1].set_title(r'Imaginary Part: $\log_{10}(|\text{Im}(k_{nm})|)$')
+
+    unbound_proxy = mpl.lines.Line2D(
+        [],
+        [],
+        marker='o',
+        markerfacecolor='none',
+        markeredgecolor='red',
+        linestyle='none',
+        markersize=8,
+        label=rf'Potentially unbound ($\text{{Re}}>{real_unbound_thresh:g}$ or '
+        rf'$\text{{Im}}>{imag_unbound_thresh:g}$)',
+    )
+    fig.legend(
+        handles=[unbound_proxy],
+        loc='upper center',
+        bbox_to_anchor=(0.5, 1.02),
+        ncol=1,
+        frameon=False,
+    )
 
     fig.colorbar(
         sc_real,
@@ -547,7 +598,7 @@ def plot_Lovenumber(
 
     # Save figure
     os.makedirs(os.path.join(output_dir, 'plots'), exist_ok=True)
-    fpath = os.path.join(output_dir, 'plots', f'plot_Lovenumber.{plot_format}')
+    fpath = os.path.join(output_dir, 'plots', f'plot_lovenumber.{plot_format}')
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
     plt.close(fig)
@@ -605,7 +656,7 @@ def plot_orbit_entry(handler: Proteus):
 
         data = read_tides_data(handler.directories['output'], 'obliqua', plot_times)
 
-        plot_Lovenumber(
+        plot_lovenumber(
             output_dir=handler.directories['output'],
             times=plot_times,
             data=data,

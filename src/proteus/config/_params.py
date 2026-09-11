@@ -166,13 +166,12 @@ class TimeStepParams:
         leave disabled, since it would also throttle ordinary bulk
         evolution for the rest of the run).
     evection_cooldown_iters: int
-        Number of PROTEUS iterations, after ``in_evection_band``/
-        ``near_evection_band`` both go False, during which
-        ``evection_growth_factor`` remains active. Refreshed to this
-        value on every iteration the zone is active, so a long stay in
-        the band does not exhaust it before exit. Default 0 (no
-        cooldown tail; growth limiting turns off the instant the zone
-        flags clear).
+        Number of PROTEUS iterations, after the system is no longer judged
+        in/near the evection band, during which ``evection_growth_factor``
+        remains active. Refreshed to this value on every iteration the
+        zone is active, so a long stay in the band does not exhaust it
+        before exit. Default 0 (no cooldown tail; growth limiting turns
+        off the instant the zone is left).
     hysteresis_iters: int
         Number of PROTEUS iterations after an adaptive "slow down"
         decision during which the speed-up factor is suppressed.

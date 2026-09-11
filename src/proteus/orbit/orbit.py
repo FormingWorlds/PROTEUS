@@ -11,6 +11,7 @@ from proteus.interior_energetics.common import Interior_t
 from proteus.orbit.common import Tides_t, run_adaptive_orbit_substeps
 from proteus.orbit.hansen import get_all_m_hansen
 from proteus.utils.constants import const_G, secs_per_year
+from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -27,7 +28,8 @@ def _state_is_valid_star(hf_row):
     [0, 0.999), and that the planet's spin period (only tracked by
     sp1d, not sp0d) is finite when present. Used by
     ``evolve_orbit_star``'s accept/reject controller; a False return
-    triggers a state rollback and a smaller retry ``dt_yr``.
+    discards the tentative substep (`hf_row` is never touched) and
+    triggers a smaller retry ``dt_yr``.
     """
     a = hf_row.get('semimajorax', np.nan)
     e = hf_row.get('eccentricity', 0.0)
@@ -41,7 +43,7 @@ def _state_is_valid_star(hf_row):
     return True
 
 
-def evolve_orbit_star(hf_row: dict, config: Config, tides_o: Tides_t, interior_o: Interior_t):
+def evolve_orbit_star(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interior_o: Interior_t):
     """Evolve the planet's orbital parameters by interior_o.dt of physical time.
 
     Dispatches to the requested star-planet model (sp0d, sp1d).
@@ -80,22 +82,23 @@ def evolve_orbit_star(hf_row: dict, config: Config, tides_o: Tides_t, interior_o
         needs_c_planet = True
 
     else:
+        UpdateStatusfile(dirs, 26)
         raise ValueError(f'unrecognised star_planet_model: {model!r}')
 
-    def rel_change_fn(hf_row, snapshot):
+    def rel_change_fn(attempt, hf_row):
         # A relative-change ratio is only meaningful against a genuine
         # (finite, nonzero) prior value; a degenerate prior (missing,
         # zero, or otherwise non-finite none of which occur in practice.
         with np.errstate(divide='ignore', invalid='ignore'):
-            a_prev = snapshot.get('semimajorax', np.nan)
-            da = np.divide(abs(hf_row['semimajorax'] - a_prev), a_prev)
+            a_prev = hf_row.get('semimajorax', np.nan)
+            da = np.divide(abs(attempt['semimajorax'] - a_prev), a_prev)
 
-            e_prev = snapshot.get('eccentricity', 0.0)
-            e_new = hf_row.get('eccentricity', 0.0)
+            e_prev = hf_row.get('eccentricity', 0.0)
+            e_new = attempt.get('eccentricity', 0.0)
             de = abs(e_new - e_prev) / max(e_prev, solver.de_floor)
 
-            axp_prev = snapshot.get('axial_period', np.nan)
-            axp_new = hf_row.get('axial_period', np.nan)
+            axp_prev = hf_row.get('axial_period', np.nan)
+            axp_new = attempt.get('axial_period', np.nan)
             dOmega_p = np.divide(
                 abs(np.divide(1.0, axp_new) - np.divide(1.0, axp_prev)),
                 np.divide(1.0, axp_prev),
@@ -116,6 +119,8 @@ def evolve_orbit_star(hf_row: dict, config: Config, tides_o: Tides_t, interior_o
     run_adaptive_orbit_substeps(
         hf_row,
         config,
+        dirs,
+        tides_o,
         interior_o,
         model,
         step_fn,

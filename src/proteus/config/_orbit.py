@@ -110,8 +110,8 @@ class ObliquaMushy:
         Scale width of the top heating decay profile [dimensionless].
     """
 
-    b_width: float = field(default=5e-1)
-    t_width: float = field(default=3e-2)
+    b_width: float = field(default=5e-1, validator=gt(0))
+    t_width: float = field(default=3e-2, validator=gt(0))
 
 
 @define
@@ -158,12 +158,8 @@ class Obliqua:
         Whether to insert an infinitesimal solid shell around the core.
     min_frac : float
         Minimal segment radius fraction before smoothing.
-    visc_l : float
-        Pure liquid viscosity [Pa s].
     visc_lus : float
         Liquidus viscosity [Pa s].
-    visc_s : float
-        Pure solid viscosity [Pa s].
     visc_sus : float
         Solidus viscosity [Pa s].
     n : int
@@ -207,9 +203,7 @@ class Obliqua:
 
     min_frac: float = field(default=0.02, validator=gt(0))
 
-    visc_l: float = field(default=1e2, validator=gt(0))
     visc_lus: float = field(default=5e5, validator=gt(0))
-    visc_s: float = field(default=1e22, validator=gt(0))
     visc_sus: float = field(default=5e5, validator=gt(0))
 
     n: list = field(default=[2])

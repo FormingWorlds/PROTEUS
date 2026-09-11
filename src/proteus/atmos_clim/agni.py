@@ -20,7 +20,7 @@ from proteus.utils.helper import (
     multiple,
     safe_rm,
 )
-from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
+from proteus.utils.julia_common import make_log_syncer
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -219,37 +219,11 @@ def _summarise_diagnostics(atmos) -> tuple[float, float]:
     return Ra_max, ratio
 
 
-def sync_log_files(outdir: str) -> list[str]:
-    """Move AGNI logfile content into the PROTEUS logfile and clear it.
-
-    Returns the list of lines that were copied, so that callers can scan
-    them for failure-mode markers (see `_extract_agni_failure_reason`).
-    Returns an empty list if the AGNI logfile cannot be read.
-    """
-    # Logfile paths
-    agni_logpath = os.path.join(outdir, AGNI_LOGFILE_NAME)
-    logpath = GetLogfilePath(outdir, GetCurrentLogfileIndex(outdir))
-
-    # Copy logfile content
-    try:
-        with open(agni_logpath, 'r') as infile:
-            inlines = infile.readlines()
-    except OSError:
-        return []
-
-    with open(logpath, 'a') as outfile:
-        for i, line in enumerate(inlines):
-            # First line of agni logfile has NULL chars at the start, for some reason
-            if i == 0 and '[' in line:
-                line = '[' + line.split('[', 1)[1]
-            # copy the line
-            outfile.write(line)
-
-    # Remove logfile content
-    with open(agni_logpath, 'w') as hdl:
-        hdl.write('')
-
-    return inlines
+# Bound to AGNI's own recent-run logfile name -- see make_log_syncer's
+# docstring; obliqua.py binds the same factory to its own Obliqua_LOGFILE_NAME.
+# Callers can scan the returned lines for failure-mode markers (see
+# `_extract_agni_failure_reason`).
+sync_log_files = make_log_syncer(AGNI_LOGFILE_NAME)
 
 
 # AGNI failure-mode markers emitted by AGNI/src/solver.jl lines 967-993.

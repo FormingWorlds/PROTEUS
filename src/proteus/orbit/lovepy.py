@@ -11,27 +11,20 @@ from juliacall import Main as jl
 from proteus.interior_energetics.common import Interior_t
 from proteus.orbit.common import Tides_t
 from proteus.utils.helper import UpdateStatusfile
+from proteus.utils.julia_common import make_julia_converters
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
 
+# LovePy-precision-bound converters
+_jlarr, _, _jlsca = make_julia_converters('LovePy')
+
 
 def import_lovepy():
     log.debug('Import lovepy...')
     jl.seval('using LovePy')
-
-
-def _jlarr(arr: np.array):
-    # Make copy of array, reverse order, and convert to Julia type
-    cop = np.array(arr, copy=True, dtype=float).flatten()
-    return juliacall.convert(jl.Array[jl.LovePy.prec, 1], cop)
-
-
-def _jlsca(sca: float):
-    # Make a copy of a scalar, and convert to Julia type
-    return juliacall.convert(jl.LovePy.prec, sca)
 
 
 def store_lovepy_tides(omega: float, imk2: float, tides_o: Tides_t):
@@ -56,9 +49,7 @@ def store_lovepy_tides(omega: float, imk2: float, tides_o: Tides_t):
 
     # Collect tidal mode information
     # Note that these modes are hardcoded into Lovepy.
-    nmk = np.array(
-        ([2, 0, 1], [2, 2, 1], [2, 2, 3]), dtype=int
-    )
+    nmk = np.array(([2, 0, 1], [2, 2, 1], [2, 2, 3]), dtype=int)
     # Note we only have acces to the imaginary part of k2, so we set the real part to 0.0.
     LNk = np.full(3, 1j * imk2, dtype=complex)
     # Note we consistently drop the minus sign on the East/West ward component of the

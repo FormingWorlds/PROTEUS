@@ -1,71 +1,35 @@
-"""Hansen coefficients X_k^{n,m}(e), computed via FFT on the mean anomaly
-and cached so that the (expensive) FFTs only ever run once per PROTEUS
-process, not once per right-hand-side evaluation of an orbital-evolution
-ODE.
+"""Hansen Coefficients via Interpolated Tables
 
-Caching strategy, and why: Hansen coefficients depend only on eccentricity
-(for a fixed degree n), which changes slowly relative to how many times an
-implicit orbital-evolution solver evaluates its right-hand side (Newton
-iterations, stage evaluations, and rejected trial steps all re-ask for the
-same or very similar e). A per-call memoization cache keyed on rounded e
-was tried and rejected: even at a 99% hit rate, the solver's own internal
-evaluations explored enough distinct e values that a 200 yr test still
-needed ~2500 fresh FFTs (~0.5s each -- five per e, one per m branch) --
-extrapolated to a full evolutionary run, that is many hours to days.
+Computes Hansen coefficients using pre-computed, linearly interpolated lookup
+tables instead of per-call FFTs.
 
-Instead, `get_all_m_hansen` below is backed by a table, built once over a
-grid of eccentricities and linearly interpolated at query time -- zero
-FFTs during the actual integration, and smooth by construction (Hansen
-coefficients have no sharp features in e, so linear interpolation is a
-good approximation and, unlike a memoized/rounded cache, never turns the
-right-hand side an implicit solver sees into a discontinuous step
-function of e).
+#### Motivation
 
-The k-range (which modes carry non-negligible weight) grows sharply with
-e: at e~0.7, the k=2 mode that dominates at e~0 has effectively vanished,
-while modes out past k~55 still carry >=1% weight. `kmin_kmax_for_e`
-tabulates, once, the eccentricity-appropriate [kmin, kmax] window so
-callers only sum over the modes that actually matter at the current e
-(order 10 near e=0, growing to several hundred at e>0.8), instead of a
-fixed window that both wastes effort at low e and silently drops most of
-the tidal coupling at high e.
+Implicit ODE solvers frequently evaluate right-hand sides at micro-varying
+eccentricities (e). Running FFTs on-the-fly takes days over long integrations.
+Nearest-neighbor caching creates step-function discontinuities that break
+implicit solvers. Linear interpolation over a fixed grid provides smooth
+derivatives with O(1) query times and zero FFTs during integration.
 
-How the pieces fit together
-----------------------------
-Two independent, lazily-built module-global caches:
+#### Hansen Mode Windowing
 
-- `_k_range_table` (a `_KRangeTable`): eccentricity -> [kmin, kmax], the
-  window of Hansen modes that carry non-negligible weight at that e.
-  Built by `init_k_range_table`, which calls `_select_k_range(e)` for
-  every e on the grid; `_select_k_range` in turn calls `hansen_fft`
-  directly (bypassing both tables) over a wide search window to find
-  where |X_k| decays below a threshold. Queried via `kmin_kmax_for_e`.
-- `_hansen_table` (a `_HansenTable`): eccentricity -> Hansen-coefficient
-  VALUES over a single fixed [kmin, kmax] window, one row per m. Built by
-  `init_hansen_table`, which -- unless kmin/kmax are given explicitly --
-  first ensures `_k_range_table` exists (building it via
-  `init_k_range_table` if not) and takes its overall realized
-  [kmin, kmax] as the table's own window, then calls `hansen_fft` once
-  per (e, m) grid point to fill it in. Queried via `get_all_m_hansen`.
+The required mode range [k_{min}, k_{max}] expands dramatically with eccentricity
+(e.g., ~10 modes near e=0, several hundred at e > 0.8). Using dynamic windows
+prevents wasting compute at low e and avoids silently truncating energy at high e.
 
-So the k-range table is a dependency of the Hansen-value table (never the
-reverse), and both tables' construction ultimately bottoms out in
-`hansen_fft`, which itself calls two leaf numerical helpers with no
-awareness of either cache: `kepler_newton` (solves Kepler's equation for
-the eccentric anomaly, on the mean-anomaly grid `hansen_fft` builds) and
-`nextpow2_int` (only used when `hansen_fft` is given an explicit FFT size
-`N`, to round it to a power of two).
+1. `_k_range_table` (`_KRangeTable`): Pre-tabulates [k_{min}, k_{max}] by calling
+   `hansen_fft` over a wide search window to find where X_k drops below tolerance.
+   Queried via `kmin_kmax_for_e(e)`.
+2. `_hansen_table`  (`_HansenTable`): Stores pre-computed coefficients across the
+   global [k_{min}, k_{max}] envelope derived from `_k_range_table`.
+   Queried via `get_all_m_hansen(e)`.
 
-Call pattern in production: `orbit/wrapper.py`'s init block calls
-`init_k_range_table`/`init_hansen_table` explicitly once, up front, so
-the one-time FFT sweep (order a minute of wall time at the default grid)
-happens before any timing-sensitive substep loop runs. `get_all_m_hansen`
--- the hot-path entry point, called once per ODE right-hand-side
-evaluation inside `orbit.py`'s `sp1d` and `satellite.py`'s
-`ps1d`/`ps1d_evec` -- ALSO lazily builds `_hansen_table` on first use if
-that explicit setup step was skipped (e.g. in a direct or test call), so
-nothing strictly depends on the init call having happened; it is purely a
-warm-up that keeps the one-time cost out of the timed substep loop.
+#### Production Flow
+
+* Warm-up:  `orbit/wrapper.py` calls both `init_*` functions up front to offload the
+  single ~1 minute FFT generation phase before timing-critical ODE substeps run.
+* Fallback: Hot-path calls to `get_all_m_hansen` will lazily construct missing tables
+  if the explicit initialization was skipped.
 """
 
 from __future__ import annotations
@@ -100,6 +64,7 @@ def nextpow2_int(x):
 def kepler_newton(M, e):
     """
     Solve Kepler's equation E - e*sin(E) = M using Newton iteration.
+    Valid up to e ~ 0.9, fails to converge for e > 0.9.
 
     Attributes
     ----------
@@ -113,6 +78,12 @@ def kepler_newton(M, e):
     E : ndarray
         Eccentric anomaly in radians, same shape as M.
     """
+    if e >= 0.90:
+        log.warning(
+            f"Eccentricity e={e:.4f} >= 0.90 exceeds stable convergence bound. "
+            "Results near pericenter may lose precision."
+        )
+
     M = np.array(M, dtype=float)
     E = np.copy(M)
 
@@ -226,8 +197,8 @@ _k_range_table: Optional[_KRangeTable] = None
 _DEFAULT_E_GRID = np.concatenate(
     [
         np.arange(0.0, 0.05, 0.005),
-        np.arange(0.05, 0.90, 0.01),
-        np.arange(0.90, 0.951, 0.005),
+        np.arange(0.05, 0.85, 0.01),
+        np.arange(0.85, 0.90, 0.005),
     ]
 )
 
@@ -375,12 +346,12 @@ def get_all_m_hansen(e: float, n_deg: int, kmin: int, kmax: int):
     table = _hansen_table
 
     if kmin < table.kmin or kmax > table.kmax:
-        raise ValueError(
-            f'get_all_m_hansen: requested k-range [{kmin},{kmax}] at e={e:.4f} exceeds '
-            f"the Hansen table's window [{table.kmin},{table.kmax}] -- rebuild with "
-            f'init_hansen_table(kmin=..., kmax=..., force=True), or widen kmin/kmax '
-            f'there to cover whatever kmin_kmax_for_e() can return.'
+        log.warning(
+            f"Requested k-range [{kmin}, {kmax}] exceeds pre-tabulated "
+            f"[{table.kmin}, {table.kmax}]; results will be truncated."
         )
+        kmin = max(kmin, table.kmin)
+        kmax = min(kmax, table.kmax)
 
     e = min(max(e, 0.0), table.e_grid[-1])
     idx = np.searchsorted(table.e_grid, e, side='right') - 1

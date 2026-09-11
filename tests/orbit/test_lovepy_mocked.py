@@ -115,6 +115,11 @@ def test_jlarr_converts_to_julia_array_with_documented_element_type(monkeypatch)
     ``jl.Array[jl.LovePy.prec, 1]`` Julia type. Pin the call
     signature so a regression that broadened the dim from 1 to 2 or
     swapped the element type surfaces.
+
+    ``_jlarr`` is bound (via ``make_julia_converters('LovePy')``) from
+    ``proteus.utils.julia_common``, so ``jl``/``juliacall`` are patched
+    there, not on ``lovepy_mod`` -- the converter closures resolve
+    those names in the module they were defined in, not the caller's.
     """
     from proteus.orbit import lovepy as lovepy_mod
 
@@ -125,8 +130,8 @@ def test_jlarr_converts_to_julia_array_with_documented_element_type(monkeypatch)
     fake_jl.LovePy = MagicMock()
     fake_jl.LovePy.prec = 'prec_sentinel'
     fake_jl.Array.__getitem__ = MagicMock(return_value='destination_type')
-    monkeypatch.setattr(lovepy_mod, 'juliacall', fake_juliacall)
-    monkeypatch.setattr(lovepy_mod, 'jl', fake_jl)
+    monkeypatch.setattr('proteus.utils.julia_common.juliacall', fake_juliacall)
+    monkeypatch.setattr('proteus.utils.julia_common.jl', fake_jl)
 
     arr = np.array([1.0, 2.0, 3.0])
     out = lovepy_mod._jlarr(arr)
@@ -142,6 +147,10 @@ def test_jlsca_converts_to_julia_prec_scalar(monkeypatch):
     """``_jlsca`` converts a python float to the LovePy precision
     type via ``juliacall.convert(jl.LovePy.prec, sca)``. Pin the
     destination-type argument.
+
+    See ``test_jlarr_converts_to_julia_array_with_documented_element_type``
+    for why ``jl``/``juliacall`` are patched on
+    ``proteus.utils.julia_common``.
     """
     from proteus.orbit import lovepy as lovepy_mod
 
@@ -150,8 +159,8 @@ def test_jlsca_converts_to_julia_prec_scalar(monkeypatch):
     fake_jl = MagicMock(name='jl')
     fake_jl.LovePy = MagicMock()
     fake_jl.LovePy.prec = 'prec_sentinel'
-    monkeypatch.setattr(lovepy_mod, 'juliacall', fake_juliacall)
-    monkeypatch.setattr(lovepy_mod, 'jl', fake_jl)
+    monkeypatch.setattr('proteus.utils.julia_common.juliacall', fake_juliacall)
+    monkeypatch.setattr('proteus.utils.julia_common.jl', fake_jl)
 
     out = lovepy_mod._jlsca(0.5)
     fake_juliacall.convert.assert_called_once_with('prec_sentinel', 0.5)

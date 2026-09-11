@@ -18,6 +18,7 @@ from proteus.utils.constants import (
     secs_per_day,
     secs_per_hour,
 )
+from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -43,9 +44,12 @@ def init_orbit(handler: Proteus):
 
         import_lovepy()
     elif module == 'obliqua':
-        from proteus.orbit.obliqua import import_obliqua
+        from proteus.orbit.obliqua import import_obliqua, setup_logging
 
         import_obliqua()
+        # setup logging for Obliqua
+        setup_logging(handler.directories, handler.config.orbit.obliqua.verbosity)
+
 
 
 def update_separation(hf_row: dict):
@@ -317,7 +321,9 @@ def run_orbit(
                 config.orbit.satellite.c_factor_sat * hf_row['M_sat'] * hf_row['R_sat'] ** 2
             )
 
-            hf_row['semimajorax_sat'] = config.orbit.satellite.semimajoraxis_sat * R_earth # [m]
+            hf_row['semimajorax_sat'] = (
+                config.orbit.satellite.semimajoraxis_sat * R_earth
+            )  # [m]
             hf_row['eccentricity_sat'] = config.orbit.satellite.eccentricity_sat
 
             hf_row['evection_angle'] = np.deg2rad(config.orbit.satellite.evection_angle)
@@ -355,7 +361,14 @@ def run_orbit(
             # set by orbital evolution, based on tidal love number
             from proteus.orbit.orbit import evolve_orbit_star
 
-            evolve_orbit_star(hf_row, config, tides_o, interior_o)
+            try:
+                evolve_orbit_star(hf_row, config, dirs, tides_o, interior_o)
+            except Exception as err:
+                UpdateStatusfile(dirs, 26)
+                raise RuntimeError(
+                    f'Star-Planet orbital evolution failed for Time={float(hf_row["Time"]):.6e} yr '
+                    f'(model={config.orbit.star_planet_model})'
+                ) from err
 
         else:
             # set semi-major axis to obtain a particular bolometric instellation flux
@@ -375,7 +388,14 @@ def run_orbit(
             # set by orbital evolution, based on tidal love number
             from proteus.orbit.satellite import evolve_orbit_satellite
 
-            evolve_orbit_satellite(hf_row, config, dirs, tides_o, interior_o)
+            try:
+                evolve_orbit_satellite(hf_row, config, dirs, tides_o, interior_o)
+            except Exception as err:
+                UpdateStatusfile(dirs, 26)
+                raise RuntimeError(
+                    f'Planet-Satellite orbital evolution failed for Time={float(hf_row["Time"]):.6e} yr '
+                    f'(model={config.orbit.planet_satellite_model})'
+                ) from err
 
         # Update orbital period, from independent variables above
         update_period(hf_row)
@@ -469,10 +489,7 @@ def run_orbit(
         hf_row['Imk2'] = run_lovepy(hf_row, dirs, interior_o, tides_o, config)
 
     elif config.orbit.module == 'obliqua':
-        from proteus.orbit.obliqua import run_obliqua, setup_logging
-
-        # setup logging for Obliqua
-        setup_logging(dirs, config.orbit.obliqua.verbosity)
+        from proteus.orbit.obliqua import run_obliqua
 
         Imk = run_obliqua(hf_row, dirs, interior_o, tides_o, config)
 
@@ -518,4 +535,7 @@ def read_tides_data(output_dir: str, model: str, times: list):
         return read_ncdfs(output_dir, times)
 
     else:
+        log.warning(
+            f"Cannot read tides data for model '{model}', returning empty list of tides data."
+        )
         return []

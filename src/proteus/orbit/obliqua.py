@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import juliacall
 import netCDF4 as nc
 import numpy as np
+from attrs import asdict
 from juliacall import Main as jl
 from scipy.interpolate import interp1d
 
@@ -16,7 +17,10 @@ from proteus.interior_energetics.common import Interior_t
 from proteus.orbit.common import Tides_t
 from proteus.orbit.hansen import padded_k_range_for_evection
 from proteus.utils.helper import UpdateStatusfile
-from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
+from proteus.utils.julia_common import make_julia_converters, make_log_syncer, to_julia_dict
+
+# Obliqua-precision-bound converters
+_jlarr, _jlsca_float, _jlsca_prec = make_julia_converters('Obliqua')
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -31,36 +35,9 @@ def import_obliqua():
     jl.seval('using Obliqua')
 
 
-def to_julia_dict(obj):
-    """Recursively convert Python dict/list to native Julia Dict/Vector."""
-    if isinstance(obj, dict):
-        jd = jl.Dict()
-        for k, v in obj.items():
-            jd[k] = to_julia_dict(v)
-        return jd
-    elif isinstance(obj, list):
-        return [to_julia_dict(v) for v in obj]
-    else:
-        return obj
-
-
-def _jlarr(arr: np.ndarray):
-    # Make copy of array, and convert to Julia type
-    cop = np.array(arr, copy=True, dtype=float).flatten()
-    return juliacall.convert(jl.Array[jl.Obliqua.prec, 1], cop)
-
-
-def _jlsca_float(sca: float):
-    # Make a copy of a scalar, and convert to Julia type
-    return juliacall.convert(jl.Obliqua.Float64, sca)
-
-
-def _jlsca_prec(sca: float):
-    # Make a copy of a scalar, and convert to Julia type
-    return juliacall.convert(jl.Obliqua.prec, sca)
-
-
-def _padded_obliqua_k_range(hf_row: dict, interior_o: Interior_t, config: Config) -> tuple:
+def _padded_obliqua_k_range(
+    hf_row: dict, interior_o: Interior_t, tides_o: Tides_t, config: Config
+) -> tuple:
     """(s_min, s_max) to pass to Obliqua's 'adaptive' spectrum for the
     satellite-perturber (evection) case.
 
@@ -71,11 +48,10 @@ def _padded_obliqua_k_range(hf_row: dict, interior_o: Interior_t, config: Config
     k_min_cfg = config.orbit.obliqua.k_min
     k_max_cfg = config.orbit.obliqua.k_max
 
-    # Check if in/near evection band
-    zone_active = bool(hf_row.get('in_evection_band', 0.0)) or bool(
-        hf_row.get('near_evection_band', 0.0)
-    )
-    if not zone_active:
+    # In/near evection band, as judged by evolve_orbit_satellite at the end
+    # of its own last call -- internal-only orbit state (see Tides_t's own
+    # docstring), not exported to hf_row.
+    if not tides_o.evection_zone_active:
         return k_min_cfg, k_max_cfg
 
     # Padding factor for the look-ahead window
@@ -113,6 +89,51 @@ def _padded_obliqua_k_range(hf_row: dict, interior_o: Interior_t, config: Config
     return int(k_min_pad), int(k_max_pad)
 
 
+# Config fields that must NOT pass straight through into Obliqua's cfg dict:
+# k_min/k_max are PROTEUS-side inputs to the adaptive s_min/s_max window
+# computed per call (see run_obliqua/lookup_from_interior, each of which sets
+# its own s_min/s_max or k_min/k_max explicitly); evection_padding_factor and
+# verbosity are PROTEUS-side bookkeeping Obliqua itself never reads.
+_OBLIQUA_CFG_EXCLUDE = ('k_min', 'k_max', 'evection_padding_factor', 'verbosity')
+
+
+def _obliqua_module_cfg(config: Config) -> dict:
+    """Build the ``cfg['orbit']['obliqua']`` sub-dict from
+    ``config.orbit.obliqua`` dynamically (via ``attrs.asdict``) rather than
+    listing every field by hand, so a new field on ``Obliqua``/
+    ``ObliquaSolid``/``ObliquaMushy``/``ObliquaFluid`` flows through without
+    this function needing an update.
+
+    A handful of fields are NOT a plain 1:1 copy of the config field of the
+    same name, so they are patched onto the ``asdict`` result explicitly:
+
+    - ``visc_l``/``visc_s`` are not read from ``config.orbit.obliqua`` at all
+      (which has no such fields) but derived from the interior module's own
+      log10-viscosity, so Obliqua sees the same viscosity as the interior.
+    - ``fluid.sigma_R_inf`` is derived from ``fluid.sigma_R_factor *
+      fluid.sigma_R`` -- Obliqua's own name for this quantity differs from
+      PROTEUS's config field name.
+    - ``k_min``/``k_max``, ``evection_padding_factor``, and ``verbosity`` are
+      excluded -- see ``_OBLIQUA_CFG_EXCLUDE``.
+
+    Callers still need to set their own ``s_min``/``s_max`` (or ``k_min``/
+    ``k_max``, depending on ``spectrum``) and anything else specific to
+    their call (e.g. ``spectrum``, ``store_3D``, the lookup-table-only
+    ``N_sigma``/``p_min``/``p_max`` keys).
+    """
+    obliqua_cfg = asdict(config.orbit.obliqua)
+    for key in _OBLIQUA_CFG_EXCLUDE:
+        obliqua_cfg.pop(key, None)
+
+    obliqua_cfg['visc_l'] = 10**config.interior_energetics.melt_log10visc
+    obliqua_cfg['visc_s'] = 10**config.interior_energetics.solid_log10visc
+
+    fluid = obliqua_cfg['fluid']
+    fluid['sigma_R_inf'] = fluid.pop('sigma_R_factor') * fluid['sigma_R']
+
+    return obliqua_cfg
+
+
 def run_obliqua(
     hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides_t, config: Config
 ) -> float:
@@ -123,8 +144,8 @@ def run_obliqua(
 
     For the satellite perturber, the adaptive k-range window handed to
     Obliqua is padded ahead of where eccentricity is headed over the next
-    macro-step while ``hf_row['in_evection_band']``/``['near_evection_band']``
-    is set -- see ``_padded_obliqua_k_range``.
+    macro-step while ``tides_o.evection_zone_active`` is set -- see
+    ``_padded_obliqua_k_range``.
 
     Parameters
     ----------
@@ -174,9 +195,10 @@ def run_obliqua(
         M_pert = _jlsca_float(hf_row['M_sat'])
 
         # Compute the padded k-range for the next macro-step if in/near evection band
-        s_min_eff, s_max_eff = _padded_obliqua_k_range(hf_row, interior_o, config)
+        s_min_eff, s_max_eff = _padded_obliqua_k_range(hf_row, interior_o, tides_o, config)
 
     else:
+        UpdateStatusfile(dirs, 26)
         raise ValueError(
             f"run_obliqua requires config.orbit.perturber to be 'star' or 'satellite', "
             f'got {config.orbit.perturber!r}'
@@ -228,56 +250,17 @@ def run_obliqua(
         },
         'orbit': {
             'obliqua': {
-                'store_3D': config.orbit.obliqua.store_3D,
-                'enforce_ec': config.orbit.obliqua.enforce_ec,
-                'optimize_scales': config.orbit.obliqua.optimize_scales,
-                'solid_shell': config.orbit.obliqua.solid_shell,
-                'min_frac': config.orbit.obliqua.min_frac,
-                'visc_l': config.orbit.obliqua.visc_l,
-                'visc_lus': config.orbit.obliqua.visc_lus,
-                'visc_s': config.orbit.obliqua.visc_s,
-                'visc_sus': config.orbit.obliqua.visc_sus,
-                'n': config.orbit.obliqua.n,
-                'm': config.orbit.obliqua.m,
-                'spectrum': 'adaptive',  # Note that this is fixed, since spectrum = full is not useful for the current implementation of Obliqua in PROTEUS.
+                **_obliqua_module_cfg(config),
+                'spectrum': 'adaptive',
                 's_min': s_min_eff,
                 's_max': s_max_eff,
-                'material_mu': config.orbit.obliqua.material_mu,
-                'material_k': config.orbit.obliqua.material_k,
-                'alpha': config.orbit.obliqua.alpha,
-                'module_solid': config.orbit.obliqua.module_solid,
-                'module_mushy': config.orbit.obliqua.module_mushy,
-                'module_fluid': config.orbit.obliqua.module_fluid,
-                'solid': {
-                    'ncalc': config.orbit.obliqua.solid.ncalc,
-                    'dr_min': config.orbit.obliqua.solid.dr_min,
-                    'dr_max': config.orbit.obliqua.solid.dr_max,
-                    'core': config.orbit.obliqua.solid.core,
-                    'core_props': config.orbit.obliqua.solid.core_props,
-                    'inertial_terms': config.orbit.obliqua.solid.inertial_terms,
-                    'bulk_l': config.orbit.obliqua.solid.bulk_l,
-                    'porosity_thresh': config.orbit.obliqua.solid.porosity_thresh,
-                    'dbulk_power': config.orbit.obliqua.solid.dbulk_power,
-                },
-                'mushy': {
-                    'b_width': config.orbit.obliqua.mushy.b_width,
-                    't_width': config.orbit.obliqua.mushy.t_width,
-                },
-                'fluid': {
-                    'sigma_R': config.orbit.obliqua.fluid.sigma_R,
-                    'sigma_R_inf': config.orbit.obliqua.fluid.sigma_R_inf
-                    * config.orbit.obliqua.fluid.sigma_R,
-                    'sigma_R_prf': config.orbit.obliqua.fluid.sigma_R_prf,
-                    'H_R': config.orbit.obliqua.fluid.H_R,
-                    'efficiency': config.orbit.obliqua.fluid.efficiency,
-                },
-            }
+            },
         },
         'interior_energetics': {
             'grain_size': config.interior_energetics.grain_size,
         },
         'struct': {
-            'core_density': config.interior_energetics.boundary.core_density,
+            'core_density': hf_row.get('core_density', config.interior_struct.core_density),
             'core_shear': config.interior_energetics.boundary.core_shear,
             'core_bulk': config.interior_energetics.boundary.core_bulk,
         },
@@ -368,6 +351,7 @@ def lookup_from_interior(dirs: dict, config: Config):
     file_path = config.orbit.satellite.love_number_sat
 
     if not file_path:
+        UpdateStatusfile(dirs, 26)
         raise ValueError(
             'Satellite tidal data file path (`config.orbit.satellite.love_number_sat`) is not specified.'
         )
@@ -405,58 +389,23 @@ def lookup_from_interior(dirs: dict, config: Config):
         },
         'orbit': {
             'obliqua': {
+                **_obliqua_module_cfg(config),
                 'store_3D': False,
                 'enforce_ec': False,
                 'optimize_scales': False,
                 'solid_shell': False,
-                'min_frac': config.orbit.obliqua.min_frac,
-                'visc_l': config.orbit.obliqua.visc_l,
-                'visc_lus': config.orbit.obliqua.visc_lus,
-                'visc_s': config.orbit.obliqua.visc_s,
-                'visc_sus': config.orbit.obliqua.visc_sus,
-                'n': config.orbit.obliqua.n,
-                'm': config.orbit.obliqua.m,
                 'spectrum': 'full',  # full for lookup table generation
                 'N_sigma': 100,  # number of frequency points for the lookup table
                 'p_min': -8,  # Minimum period for orbital and axial frequencies [log(kyr)]
                 'p_max': 4,  # Maximum period for orbital and axial frequencies [log(kyr)]
                 'k_min': 'none',  # not used for lookup table generation, k = 1 for all samples
                 'k_max': 'none',  # not used for lookup table generation, k = 1 for all samples
-                'material_mu': config.orbit.obliqua.material_mu,
-                'material_k': config.orbit.obliqua.material_k,
-                'alpha': config.orbit.obliqua.alpha,
                 # use 0-D modules for lookup table generation, since we are only interested in
                 # the love number spectrum for an unresolved interior structure.
                 'module_solid': 'solid0d',
                 'module_mushy': 'none',
                 'module_fluid': 'fluid0d',
-                # Not used:
-                'solid': {
-                    'ncalc': config.orbit.obliqua.solid.ncalc,
-                    'dr_min': config.orbit.obliqua.solid.dr_min,
-                    'dr_max': config.orbit.obliqua.solid.dr_max,
-                    'core': config.orbit.obliqua.solid.core,
-                    'core_props': config.orbit.obliqua.solid.core_props,
-                    'inertial_terms': config.orbit.obliqua.solid.inertial_terms,
-                    'bulk_l': config.orbit.obliqua.solid.bulk_l,
-                    'porosity_thresh': config.orbit.obliqua.solid.porosity_thresh,
-                    'dbulk_power': config.orbit.obliqua.solid.dbulk_power,
-                },
-                # Not used:
-                'mushy': {
-                    'b_width': config.orbit.obliqua.mushy.b_width,
-                    't_width': config.orbit.obliqua.mushy.t_width,
-                },
-                # Used: fix Rayleigh drag to the same value as in the main PROTEUS run.
-                'fluid': {
-                    'sigma_R': config.orbit.obliqua.fluid.sigma_R,  # used
-                    'sigma_R_inf': config.orbit.obliqua.fluid.sigma_R_inf
-                    * config.orbit.obliqua.fluid.sigma_R,  # used
-                    'sigma_R_prf': config.orbit.obliqua.fluid.sigma_R_prf,  # not used
-                    'H_R': config.orbit.obliqua.fluid.H_R,  # not used
-                    'efficiency': config.orbit.obliqua.fluid.efficiency,  # used
-                },
-            }
+            },
         },
         # Not used:
         'interior_energetics': {
@@ -503,7 +452,7 @@ def lookup_from_interior(dirs: dict, config: Config):
         raise RuntimeError('Encountered problem when running Obliqua module')
 
     # Store lookup table in netcdf file
-    nc_path = os.path.join(dirs['output/data'], 'moon_tides.nc')
+    nc_path = os.path.join(dirs['output/data'], 'sat_tides.nc')
     with nc.Dataset(nc_path, 'w', format='NETCDF4') as ds:
         N = len(nmk)
 
@@ -568,6 +517,7 @@ def LN_from_lookup(hf_row: dict, dirs: dict, tides_o: Tides_t, config: Config):
 
         # Check if the file path is specified
         if not file_path:
+            UpdateStatusfile(dirs, 26)
             raise ValueError(
                 'Satellite tidal data file path (`config.orbit.satellite.love_number_sat`) is not specified.'
             )
@@ -577,10 +527,10 @@ def LN_from_lookup(hf_row: dict, dirs: dict, tides_o: Tides_t, config: Config):
             # Read the netcdf file
             pass
         elif file_path.endswith('.json'):
-            # Generate the lookup data
+            # Generate the lookup data (sat_tides.nc) from the interior json file
             lookup_from_interior(dirs, config)
-            # Update the file path to point to the generated netcdf file
-            file_path = os.path.join(dirs['output/data'], 'moon_tides.nc')
+            # Update the file path to point to the newly generated netcdf file
+            file_path = os.path.join(dirs['output/data'], 'sat_tides.nc')
 
         tides_o.add_from_file(primary='satellite_dict', perturber='planet', file_path=file_path)
 
@@ -599,6 +549,7 @@ def LN_from_lookup(hf_row: dict, dirs: dict, tides_o: Tides_t, config: Config):
         lookup_mask = nmk_lookup[:, 0] == n
 
         if not np.any(lookup_mask):
+            UpdateStatusfile(dirs, 26)
             raise ValueError(f'Lookup table does not contain degree n = {int(n)}.')
 
         sigma_n = sigma_lookup[lookup_mask]
@@ -672,34 +623,6 @@ def setup_logging(dirs: dict, verbosity: int):
     log.debug("Obliqua will log to '%s'" % logpath)
 
 
-def sync_log_files(outdir: str) -> list[str]:
-    """Move Obliqua logfile content into the PROTEUS logfile and clear it.
-
-    Returns the list of lines that were copied, so that callers can scan
-    them for failure-mode markers.
-    Returns an empty list if the Obliqua logfile cannot be read.
-    """
-    # Logfile paths
-    obliqua_logpath = os.path.join(outdir, Obliqua_LOGFILE_NAME)
-    logpath = GetLogfilePath(outdir, GetCurrentLogfileIndex(outdir))
-
-    # Copy logfile content
-    try:
-        with open(obliqua_logpath, 'r') as infile:
-            inlines = infile.readlines()
-    except OSError:
-        return []
-
-    with open(logpath, 'a') as outfile:
-        for i, line in enumerate(inlines):
-            # First line of obliqua logfile has NULL chars at the start, for some reason
-            if i == 0 and '[' in line:
-                line = '[' + line.split('[', 1)[1]
-            # copy the line
-            outfile.write(line)
-
-    # Remove logfile content
-    with open(obliqua_logpath, 'w') as hdl:
-        hdl.write('')
-
-    return inlines
+# Bound to Obliqua's own recent-run logfile name -- see make_log_syncer's
+# docstring; agni.py binds the same factory to its own AGNI_LOGFILE_NAME.
+sync_log_files = make_log_syncer(Obliqua_LOGFILE_NAME)

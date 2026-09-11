@@ -501,7 +501,7 @@ def test_plot_evection_filter_toggle_t_draws_vlines_on_all_time_panels(monkeypat
 
 
 # ---------------------------------------------------------------------------
-# plot_Lovenumber
+# plot_lovenumber
 # ---------------------------------------------------------------------------
 
 
@@ -522,8 +522,8 @@ def test_plot_lovenumber_returns_early_for_no_times(monkeypatch):
     """Empty or ``None`` times must short-circuit without touching
     matplotlib."""
     mock_plt = _install_mock_plt(monkeypatch)
-    assert orbit_mod.plot_Lovenumber('/tmp/out', [], []) is None
-    assert orbit_mod.plot_Lovenumber('/tmp/out', None, []) is None
+    assert orbit_mod.plot_lovenumber('/tmp/out', [], []) is None
+    assert orbit_mod.plot_lovenumber('/tmp/out', None, []) is None
     assert not mock_plt.subplots.called
 
 
@@ -532,7 +532,7 @@ def test_plot_lovenumber_returns_early_when_max_time_below_threshold(monkeypatch
     short-circuit without touching matplotlib."""
     mock_plt = _install_mock_plt(monkeypatch)
     data = [_make_lovenumber_ds(1e-2, 2e-3)]
-    result = orbit_mod.plot_Lovenumber('/tmp/out', [1.0], data)
+    result = orbit_mod.plot_lovenumber('/tmp/out', [1.0], data)
     assert result is None
     assert not mock_plt.subplots.called
 
@@ -546,7 +546,7 @@ def test_plot_lovenumber_returns_early_when_no_nonzero_love_numbers(monkeypatch,
     mock_plt = _install_mock_plt(monkeypatch)
     data = [_make_lovenumber_ds(0.0, 0.0), _make_lovenumber_ds(0.0, 0.0)]
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.plot.cpl_orbit'):
-        result = orbit_mod.plot_Lovenumber('/tmp/out', [1000, 2000], data)
+        result = orbit_mod.plot_lovenumber('/tmp/out', [1000, 2000], data)
     assert result is None
     assert not mock_plt.subplots.called
     assert any('No valid non-zero Love numbers' in rec.message for rec in caplog.records)
@@ -565,13 +565,68 @@ def test_plot_lovenumber_draws_and_saves_with_valid_data(monkeypatch):
     mock_plt.get_cmap.return_value = MagicMock()
 
     data = [_make_lovenumber_ds(1e-2, 2e-3), _make_lovenumber_ds(1.5e-2, 3e-3)]
-    orbit_mod.plot_Lovenumber('/tmp/out', [1000, 2000], data, plot_format='png')
+    orbit_mod.plot_lovenumber('/tmp/out', [1000, 2000], data, plot_format='png')
 
     assert axs[0].scatter.call_count == 1
     assert axs[1].scatter.call_count == 1
     assert mock_fig.savefig.call_count == 1
     saved_path = mock_fig.savefig.call_args[0][0]
-    assert saved_path.endswith('plot_Lovenumber.png')
+    assert saved_path.endswith('plot_lovenumber.png')
+
+
+def test_plot_lovenumber_flags_potentially_unbound_points(monkeypatch):
+    """A Love number with Re(k) > 1.5 or Im(k) > 1 signals a numerically
+    unbound resonance response rather than a physically plausible value;
+    the plot must ring that point on both panels in addition to the
+    ordinary colour-coded scatter, and add exactly one legend entry
+    explaining the marker."""
+    mock_fig = MagicMock()
+    axs = np.empty(2, dtype=object)
+    axs[0] = MagicMock()
+    axs[1] = MagicMock()
+    mock_plt = _install_mock_plt(monkeypatch)
+    mock_plt.subplots.return_value = (mock_fig, axs)
+
+    # Same mode across two snapshots: the first stays within both
+    # thresholds, the second breaches only the real-part threshold
+    # (2.0 > 1.5) while its imaginary part (1e-3) stays well inside its
+    # own threshold -- so the two conditions must be OR-ed, not AND-ed.
+    data = [
+        _make_lovenumber_ds(1e-2, 2e-3, n=2, m=0, k=1),
+        _make_lovenumber_ds(2.0, 1e-3, n=2, m=0, k=1),
+    ]
+    orbit_mod.plot_lovenumber('/tmp/out', [1000, 2000], data, plot_format='png')
+
+    # One colour-coded scatter plus one ring-marker scatter per panel.
+    assert axs[0].scatter.call_count == 2
+    assert axs[1].scatter.call_count == 2
+    ring_call = axs[0].scatter.call_args_list[-1]
+    assert ring_call.kwargs['edgecolors'] == 'red'
+    assert ring_call.kwargs['facecolors'] == 'none'
+    # Only the breaching sample (index 1) should be ringed, not both.
+    assert len(ring_call.args[0]) == 1
+    mock_fig.legend.assert_called_once()
+
+
+def test_plot_lovenumber_does_not_flag_values_within_bounds(monkeypatch):
+    """Values that stay strictly inside both unbound thresholds must not
+    trigger the extra ring-marker scatter call, so the indicator does not
+    fire on ordinary, well-behaved Love numbers near the boundary."""
+    mock_fig = MagicMock()
+    axs = np.empty(2, dtype=object)
+    axs[0] = MagicMock()
+    axs[1] = MagicMock()
+    mock_plt = _install_mock_plt(monkeypatch)
+    mock_plt.subplots.return_value = (mock_fig, axs)
+
+    # Just under each threshold (1.4 < 1.5, 0.9 < 1) -- a discriminating
+    # near-boundary case, not a value trivially far from either cutoff.
+    data = [_make_lovenumber_ds(1.0, 0.5), _make_lovenumber_ds(1.4, 0.9)]
+    orbit_mod.plot_lovenumber('/tmp/out', [1000, 2000], data, plot_format='png')
+
+    assert axs[0].scatter.call_count == 1
+    assert axs[1].scatter.call_count == 1
+    mock_fig.legend.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -717,7 +772,7 @@ def test_plot_orbit_entry_warns_and_continues_when_fine_evection_data_is_malform
 def test_plot_orbit_entry_dispatches_to_plot_lovenumber_for_obliqua(monkeypatch, tmp_path):
     """When ``config.orbit.module == 'obliqua'``, the entry wrapper must
     sample the available snapshot times, load their tidal data via
-    ``read_tides_data``, and dispatch to ``plot_Lovenumber`` with that
+    ``read_tides_data``, and dispatch to ``plot_lovenumber`` with that
     data threaded through."""
     fake_hf = _make_hf_all(n=4, t_start=1e3, t_end=1e6)
     captured = {}
@@ -731,7 +786,7 @@ def test_plot_orbit_entry_dispatches_to_plot_lovenumber_for_obliqua(monkeypatch,
     )
     monkeypatch.setattr(
         orbit_mod,
-        'plot_Lovenumber',
+        'plot_lovenumber',
         lambda *a, **kw: captured.update(kw),
     )
 

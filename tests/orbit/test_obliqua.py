@@ -51,9 +51,9 @@ Exercises:
   filesystem order.
 - ``_padded_obliqua_k_range``: the look-ahead k-range padding applied to
   the satellite-perturber adaptive spectrum while
-  ``hf_row['in_evection_band']``/``['near_evection_band']`` is set --
-  a pure-Python helper with no Julia boundary, tested directly (no
-  ``jl`` mocking needed for these cases).
+  ``tides_o.evection_zone_active`` is set -- a pure-Python helper with no
+  Julia boundary, tested directly (no ``jl`` mocking needed for these
+  cases).
 - ``setup_logging``: ``jl.Obliqua.setup_logging`` call-argument
   contract (log path, verbosity passthrough).
 - ``sync_log_files``: copy-and-clear contract, the missing-file
@@ -298,11 +298,15 @@ def test_to_julia_dict_recursively_converts_nested_dict_and_list(monkeypatch):
     that stopped recursing into list elements, or that converted a
     list itself into a Julia object instead of mapping over it, would
     change the returned structure.
+
+    ``to_julia_dict`` lives in ``proteus.utils.julia_common`` (shared
+    with lovepy.py); ``jl`` is patched there, not on ``obliqua_mod``,
+    for the same reason as the ``_jlarr``/``_jlsca_*`` tests below.
     """
     from proteus.orbit import obliqua as obliqua_mod
 
     fake_jl = types.SimpleNamespace(Dict=dict)
-    monkeypatch.setattr(obliqua_mod, 'jl', fake_jl)
+    monkeypatch.setattr('proteus.utils.julia_common.jl', fake_jl)
 
     nested = {
         'a': 1.0,
@@ -332,6 +336,11 @@ def test_jlarr_flattens_and_converts_without_reordering(monkeypatch):
     order. An asymmetric input (strictly increasing, not a palindrome)
     is used so this test would fail if reversal were silently added
     or removed.
+
+    ``_jlarr`` is bound (via ``make_julia_converters('Obliqua')``) from
+    ``proteus.utils.julia_common``, so ``jl``/``juliacall`` are patched
+    there, not on ``obliqua_mod`` -- the converter closures resolve
+    those names in the module they were defined in, not the caller's.
     """
     from proteus.orbit import obliqua as obliqua_mod
 
@@ -342,8 +351,8 @@ def test_jlarr_flattens_and_converts_without_reordering(monkeypatch):
     fake_jl.Obliqua = MagicMock()
     fake_jl.Obliqua.prec = 'prec_sentinel'
     fake_jl.Array.__getitem__ = MagicMock(return_value='destination_type')
-    monkeypatch.setattr(obliqua_mod, 'juliacall', fake_juliacall)
-    monkeypatch.setattr(obliqua_mod, 'jl', fake_jl)
+    monkeypatch.setattr('proteus.utils.julia_common.juliacall', fake_juliacall)
+    monkeypatch.setattr('proteus.utils.julia_common.jl', fake_jl)
 
     arr = np.array([1.0, 2.0, 3.0])  # asymmetric: catches accidental reversal
     out = obliqua_mod._jlarr(arr)
@@ -361,6 +370,9 @@ def test_jlsca_float_converts_to_julia_float64_type(monkeypatch):
     ``juliacall.convert(jl.Obliqua.Float64, sca)``. Pins the
     destination-type argument so a regression that swapped in the
     ``prec`` type (used by ``_jlsca_prec`` instead) would surface.
+
+    See ``test_jlarr_flattens_and_converts_without_reordering`` for why
+    ``jl``/``juliacall`` are patched on ``proteus.utils.julia_common``.
     """
     from proteus.orbit import obliqua as obliqua_mod
 
@@ -369,8 +381,8 @@ def test_jlsca_float_converts_to_julia_float64_type(monkeypatch):
     fake_jl = MagicMock(name='jl')
     fake_jl.Obliqua = MagicMock()
     fake_jl.Obliqua.Float64 = 'float64_sentinel'
-    monkeypatch.setattr(obliqua_mod, 'juliacall', fake_juliacall)
-    monkeypatch.setattr(obliqua_mod, 'jl', fake_jl)
+    monkeypatch.setattr('proteus.utils.julia_common.juliacall', fake_juliacall)
+    monkeypatch.setattr('proteus.utils.julia_common.jl', fake_jl)
 
     out = obliqua_mod._jlsca_float(0.5)
     fake_juliacall.convert.assert_called_once_with('float64_sentinel', 0.5)
@@ -383,6 +395,9 @@ def test_jlsca_prec_converts_to_julia_prec_type(monkeypatch):
     destination type from ``_jlsca_float``. Pinning both destination
     sentinels separately discriminates a regression that merged or
     swapped the two conversion helpers.
+
+    See ``test_jlarr_flattens_and_converts_without_reordering`` for why
+    ``jl``/``juliacall`` are patched on ``proteus.utils.julia_common``.
     """
     from proteus.orbit import obliqua as obliqua_mod
 
@@ -391,8 +406,8 @@ def test_jlsca_prec_converts_to_julia_prec_type(monkeypatch):
     fake_jl = MagicMock(name='jl')
     fake_jl.Obliqua = MagicMock()
     fake_jl.Obliqua.prec = 'prec_sentinel'
-    monkeypatch.setattr(obliqua_mod, 'juliacall', fake_juliacall)
-    monkeypatch.setattr(obliqua_mod, 'jl', fake_jl)
+    monkeypatch.setattr('proteus.utils.julia_common.juliacall', fake_juliacall)
+    monkeypatch.setattr('proteus.utils.julia_common.jl', fake_jl)
 
     out = obliqua_mod._jlsca_prec(0.5)
     fake_juliacall.convert.assert_called_once_with('prec_sentinel', 0.5)
@@ -532,21 +547,18 @@ def _fast_k_range_table(monkeypatch):
 
 
 def test_padded_obliqua_k_range_passes_through_unpadded_outside_the_zone(_fast_k_range_table):
-    """Outside the evection zone (both flags false/absent), the function
-    must return ``config.orbit.obliqua.k_min``/``k_max`` VERBATIM --
-    typically ``'none'`` -- at zero cost, not silently apply padding.
+    """Outside the evection zone (``tides_o.evection_zone_active`` False),
+    the function must return ``config.orbit.obliqua.k_min``/``k_max``
+    VERBATIM -- typically ``'none'`` -- at zero cost, not silently apply
+    padding.
     """
     from proteus.orbit.obliqua import _padded_obliqua_k_range
 
     config = _make_config(module='aragog', perturber='satellite')
     interior_o = types.SimpleNamespace(dt=100.0)
-    hf_row = {
-        'Time': 500.0,
-        'eccentricity_sat': 0.30,
-        'in_evection_band': 0.0,
-        'near_evection_band': 0.0,
-    }
-    assert _padded_obliqua_k_range(hf_row, interior_o, config) == ('none', 'none')
+    tides_o = Tides_t(evection_zone_active=False)
+    hf_row = {'Time': 500.0, 'eccentricity_sat': 0.30}
+    assert _padded_obliqua_k_range(hf_row, interior_o, tides_o, config) == ('none', 'none')
     # No cursor should be written when the padding path never runs.
     assert '_obliqua_prev_ecc' not in hf_row
 
@@ -563,17 +575,17 @@ def test_padded_obliqua_k_range_widens_when_zone_active_and_rate_observed(_fast_
 
     config = _make_config(module='aragog', perturber='satellite')
     interior_o = types.SimpleNamespace(dt=20.0)
+    tides_o = Tides_t(evection_zone_active=True)
     hf_row = {
         'Time': 520.0,
         'eccentricity_sat': 0.20,
-        'in_evection_band': 1.0,
         '_obliqua_prev_ecc': 0.10,
         '_obliqua_prev_time': 500.0,
     }
     # de/dt = (0.20 - 0.10) / (520 - 500) = 5.0e-3 /yr
 
     unpadded = kmin_kmax_for_e(0.20)
-    k_min, k_max = _padded_obliqua_k_range(hf_row, interior_o, config)
+    k_min, k_max = _padded_obliqua_k_range(hf_row, interior_o, tides_o, config)
 
     assert k_max >= unpadded[1]
     assert k_min <= unpadded[0]
@@ -600,15 +612,15 @@ def test_padded_obliqua_k_range_never_narrows_past_an_explicit_user_override(
     config.orbit.obliqua.k_min = -500
     config.orbit.obliqua.k_max = 500
     interior_o = types.SimpleNamespace(dt=20.0)
+    tides_o = Tides_t(evection_zone_active=True)
     hf_row = {
         'Time': 520.0,
         'eccentricity_sat': 0.20,
-        'in_evection_band': 1.0,
         '_obliqua_prev_ecc': 0.10,
         '_obliqua_prev_time': 500.0,
     }
 
-    k_min, k_max = _padded_obliqua_k_range(hf_row, interior_o, config)
+    k_min, k_max = _padded_obliqua_k_range(hf_row, interior_o, tides_o, config)
     assert k_min == -500
     assert k_max == 500
 
@@ -623,15 +635,15 @@ def test_padded_obliqua_k_range_disabled_by_zero_padding_factor(_fast_k_range_ta
     config = _make_config(module='aragog', perturber='satellite')
     config.orbit.obliqua.evection_padding_factor = 0.0
     interior_o = types.SimpleNamespace(dt=20.0)
+    tides_o = Tides_t(evection_zone_active=True)
     hf_row = {
         'Time': 520.0,
         'eccentricity_sat': 0.20,
-        'in_evection_band': 1.0,
         '_obliqua_prev_ecc': 0.10,
         '_obliqua_prev_time': 500.0,
     }
 
-    assert _padded_obliqua_k_range(hf_row, interior_o, config) == ('none', 'none')
+    assert _padded_obliqua_k_range(hf_row, interior_o, tides_o, config) == ('none', 'none')
 
     # Discrimination: the identical zone-active state with a positive
     # padding factor DOES widen (config.orbit.obliqua.k_min/k_max is
@@ -639,7 +651,7 @@ def test_padded_obliqua_k_range_disabled_by_zero_padding_factor(_fast_k_range_ta
     # padding_factor=0, not from this hf_row/config combination never
     # triggering padding at all.
     config.orbit.obliqua.evection_padding_factor = 2.0
-    padded = _padded_obliqua_k_range(dict(hf_row), interior_o, config)
+    padded = _padded_obliqua_k_range(dict(hf_row), interior_o, tides_o, config)
     assert padded != ('none', 'none')
 
 
@@ -992,17 +1004,22 @@ def test_lookup_from_interior_raises_when_love_number_path_unset(tmp_path):
     """``lookup_from_interior`` raises ``ValueError`` immediately when
     ``config.orbit.satellite.love_number_sat`` is unset, before
     touching any file or the Julia boundary. Edge case: empty string
-    is treated the same as ``None`` (both are falsy).
+    is treated the same as ``None`` (both are falsy). Also pins that
+    the status file is updated (Tides/orbit-model error code) before
+    the raise, matching the JuliaError failure contract.
     """
     from proteus.orbit import obliqua as obliqua_mod
 
+    dirs = {'output/data': str(tmp_path), 'output': str(tmp_path)}
+
     cfg = _make_satellite_config(love_number_sat=None)
     with pytest.raises(ValueError, match=r'love_number_sat'):
-        obliqua_mod.lookup_from_interior(dirs={'output/data': str(tmp_path)}, config=cfg)
+        obliqua_mod.lookup_from_interior(dirs=dirs, config=cfg)
+    assert (tmp_path / 'status').read_text().splitlines()[0] == '26'
 
     cfg_empty = _make_satellite_config(love_number_sat='')
     with pytest.raises(ValueError, match=r'love_number_sat'):
-        obliqua_mod.lookup_from_interior(dirs={'output/data': str(tmp_path)}, config=cfg_empty)
+        obliqua_mod.lookup_from_interior(dirs=dirs, config=cfg_empty)
 
 
 def test_lookup_from_interior_splits_core_density_from_mantle_profile(monkeypatch, tmp_path):
@@ -1213,11 +1230,12 @@ def test_ln_from_lookup_enforces_love_number_reality_symmetry():
     assert storage.LNk[0].imag > 0.0
 
 
-def test_ln_from_lookup_raises_for_degree_missing_from_lookup_table():
+def test_ln_from_lookup_raises_for_degree_missing_from_lookup_table(tmp_path):
     """A planet-side mode at a tidal degree absent from the lookup
     table raises ``ValueError`` naming the missing degree, rather
     than silently returning zero or extrapolating across degrees
-    (Love numbers are not comparable across different ``n``).
+    (Love numbers are not comparable across different ``n``). Also
+    pins that the status file is updated before the raise.
     """
     from proteus.orbit import obliqua as obliqua_mod
 
@@ -1230,7 +1248,10 @@ def test_ln_from_lookup_raises_for_degree_missing_from_lookup_table():
     cfg = _make_satellite_config(love_number_sat='unused.nc')
 
     with pytest.raises(ValueError, match=r'degree n = 3'):
-        obliqua_mod.LN_from_lookup(hf_row, dirs={}, tides_o=tides_o, config=cfg)
+        obliqua_mod.LN_from_lookup(
+            hf_row, dirs={'output': str(tmp_path)}, tides_o=tides_o, config=cfg
+        )
+    assert (tmp_path / 'status').read_text().splitlines()[0] == '26'
 
 
 def test_ln_from_lookup_zeroes_only_the_negative_m_and_k_modes():
@@ -1403,10 +1424,11 @@ def test_ln_from_lookup_loads_an_unrecognized_extension_path_unchanged(monkeypat
     assert storage.LNk[0] == pytest.approx(0.02 - 0.03j, rel=1e-9)
 
 
-def test_ln_from_lookup_raises_when_path_unset_and_no_cache():
+def test_ln_from_lookup_raises_when_path_unset_and_no_cache(tmp_path):
     """With no cached lookup table and no ``love_number_sat`` path,
     ``LN_from_lookup`` raises ``ValueError`` rather than silently
-    returning an empty or default Love-number spectrum.
+    returning an empty or default Love-number spectrum. Also pins
+    that the status file is updated before the raise.
     """
     from proteus.orbit import obliqua as obliqua_mod
 
@@ -1416,7 +1438,10 @@ def test_ln_from_lookup_raises_when_path_unset_and_no_cache():
     hf_row = {'axial_period_sat': 2 * np.pi / 1e-6, 'orbital_period_sat': 86400.0 * 27.3}
 
     with pytest.raises(ValueError, match=r'love_number_sat'):
-        obliqua_mod.LN_from_lookup(hf_row, dirs={}, tides_o=tides_o, config=cfg)
+        obliqua_mod.LN_from_lookup(
+            hf_row, dirs={'output': str(tmp_path)}, tides_o=tides_o, config=cfg
+        )
+    assert (tmp_path / 'status').read_text().splitlines()[0] == '26'
 
 
 # ---------------------------------------------------------------------------

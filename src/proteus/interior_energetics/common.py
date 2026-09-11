@@ -570,15 +570,6 @@ class Interior_t:
         # escaped from.
         self.dt_hysteresis_remaining = 0
 
-        # Evection-scoped growth-limiter cooldown counter. Refreshed to
-        # config.params.dt.evection_cooldown_iters on every next_step()
-        # call where the system is judged in/near theevection resonance band,
-        # and counted down by one on every call where it is not; while > 0,
-        # config.params.dt.evection_growth_factor bounds how fast dt may grow,
-        # so exiting the band does not snap dt straight back to whatever the
-        # ordinary controller wants.
-        self.evection_cooldown_remaining = 0
-
         # True when the most recent call to next_step() had its step size
         # clamped. For example, by `_estimate_bolscale()`.
         self.timestep_clamped = False
@@ -792,3 +783,59 @@ class Interior_t:
             self.bulk[i] = eval_rheoparam(p, 'bulk')
             if visc:
                 self.visc[i] = eval_rheoparam(p, 'visc')
+
+
+def get_C_planet(hf_row: dict, config: Config, interior_o: Interior_t):
+    """Compute the planet's principal moment of inertia (C_int) based on the interior structure.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        config : Config
+            Model configuration.
+        interior_o : Interior_t
+            Interior object containing interior arrays
+    """
+    # Calculate the planet's principal moment of inertia (C_planet)
+    # Assuming a spherically symmetric mass distribution, we can use the formula:
+    # C = (8/3) * pi * integral_0^R (rho(r) * r^4 dr)
+    # where rho(r) is the density profile and R is the radius of the planet.
+
+    # Get the radial grid and density profile from the interior object
+    arr_keys = ('density', 'radius')
+    lov = {k: np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}
+    core_density = hf_row.get('core_density', None)
+    if core_density is None:
+        core_density = config.interior_struct.core_density
+        # Warn user
+        log.warning(
+            'core_density not found in hf_row; using config value: %.3e kg/m^3',
+            core_density,
+        )
+
+    # Reverse arrays if using SPIDER
+    #  Such that i=0 is at the CMB
+    if config.interior_energetics.module == 'spider':
+        for k in arr_keys:
+            lov[k] = lov[k][::-1]
+
+    # Include the core density as the innermost layer
+    r_edges = np.concatenate(([0.0], lov['radius']))
+    rho = np.concatenate(([core_density], lov['density']))
+
+    r0 = r_edges[:-1]
+    r1 = r_edges[1:]
+
+    integral = np.sum(rho * (r1**5 - r0**5) / 5.0)
+
+    C_planet = (8 * np.pi / 3.0) * integral
+
+    # Store C_planet in the helpfile row for later use
+    hf_row['C_int'] = C_planet
+
+    # Check if C_planet is physically reasonable
+    C_factor_planet = C_planet / (hf_row['M_int'] * hf_row['R_int'] ** 2)
+    log.info(
+        f'Computed C_planet: {C_planet:.3e} kg.m^2, C_factor_planet: {C_factor_planet:.3f}'
+    )

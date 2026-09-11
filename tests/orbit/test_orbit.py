@@ -518,15 +518,16 @@ def test_evolve_orbit_star_skips_domega_p_when_axial_period_hits_zero(monkeypatc
     config = _make_star_planet_config('sp1d')
     config.interior_energetics = SimpleNamespace(module='aragog')
     config.orbit.solver.dt0_yr = 0.5  # completes in exactly one substep
+    tides_o = Tides_t()
 
-    orbit_mod.evolve_orbit_star(hf_row, config, tides_o=object(), interior_o=interior_o)
+    orbit_mod.evolve_orbit_star(hf_row, config, tides_o=tides_o, interior_o=interior_o)
 
     assert hf_row['axial_period'] == 0.0
     # Discrimination: the substep was actually ACCEPTED, not stuck
     # retrying/rejecting forever -- a broken guard that raised
     # ZeroDivisionError inside rel_change_fn would be caught by the
     # substep's own try/except and masquerade as an ordinary rejection.
-    assert '_orbit_dt_yr' in hf_row
+    assert tides_o.dt_yr is not None
 
 
 # ---------------------------------------------------------------------------
