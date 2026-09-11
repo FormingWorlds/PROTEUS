@@ -1,37 +1,3 @@
-"""Hansen Coefficients via Interpolated Tables
-
-Computes Hansen coefficients using pre-computed, linearly interpolated lookup
-tables instead of per-call FFTs.
-
-#### Motivation
-
-Implicit ODE solvers frequently evaluate right-hand sides at micro-varying
-eccentricities (e). Running FFTs on-the-fly takes days over long integrations.
-Nearest-neighbor caching creates step-function discontinuities that break
-implicit solvers. Linear interpolation over a fixed grid provides smooth
-derivatives with O(1) query times and zero FFTs during integration.
-
-#### Hansen Mode Windowing
-
-The required mode range [k_{min}, k_{max}] expands dramatically with eccentricity
-(e.g., ~10 modes near e=0, several hundred at e > 0.8). Using dynamic windows
-prevents wasting compute at low e and avoids silently truncating energy at high e.
-
-1. `_k_range_table` (`_KRangeTable`): Pre-tabulates [k_{min}, k_{max}] by calling
-   `hansen_fft` over a wide search window to find where X_k drops below tolerance.
-   Queried via `kmin_kmax_for_e(e)`.
-2. `_hansen_table`  (`_HansenTable`): Stores pre-computed coefficients across the
-   global [k_{min}, k_{max}] envelope derived from `_k_range_table`.
-   Queried via `get_all_m_hansen(e)`.
-
-#### Production Flow
-
-* Warm-up:  `orbit/wrapper.py` calls both `init_*` functions up front to offload the
-  single ~1 minute FFT generation phase before timing-critical ODE substeps run.
-* Fallback: Hot-path calls to `get_all_m_hansen` will lazily construct missing tables
-  if the explicit initialization was skipped.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -80,8 +46,7 @@ def kepler_newton(M, e):
     """
     if e >= 0.90:
         log.warning(
-            f"Eccentricity e={e:.4f} >= 0.90 exceeds stable convergence bound. "
-            "Results near pericenter may lose precision."
+            f'Eccentricity e={e:.4f} >= 0.90 exceeds stable convergence bound. '
         )
 
     M = np.array(M, dtype=float)
@@ -347,8 +312,8 @@ def get_all_m_hansen(e: float, n_deg: int, kmin: int, kmax: int):
 
     if kmin < table.kmin or kmax > table.kmax:
         log.warning(
-            f"Requested k-range [{kmin}, {kmax}] exceeds pre-tabulated "
-            f"[{table.kmin}, {table.kmax}]; results will be truncated."
+            f'Requested k-range [{kmin}, {kmax}] exceeds pre-tabulated '
+            f'[{table.kmin}, {table.kmax}]; results will be truncated.'
         )
         kmin = max(kmin, table.kmin)
         kmax = min(kmax, table.kmax)

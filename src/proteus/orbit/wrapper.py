@@ -51,7 +51,6 @@ def init_orbit(handler: Proteus):
         setup_logging(handler.directories, handler.config.orbit.obliqua.verbosity)
 
 
-
 def update_separation(hf_row: dict):
     """
     Calculate time-averaged orbital separation on an elliptical path.
@@ -496,12 +495,10 @@ def run_orbit(
         if config.orbit.obliqua.n == [2]:
             hf_row['Imk2'] = Imk
         else:
+            # Imk2 is only meaningful for degree n=2; for other degrees the
+            # full spectrum is still available on tides_o (see
+            # docs/Explanations/orbit.md, "Tidal response modules").
             hf_row['Imk2'] = 0.0
-        # Since Obliqua returns the frequency dependent Love number for arbitrary
-        # degree (n), we set Imk2 to either the mean value (if n=2) or 0.0 to
-        # avoid confusion with other degrees (Imk3, Imk4, etc.). Note, the user
-        # can access the Love number(s) from the tides_o object along with the
-        # corresponding forcing frequencies and modes.
 
     else:
         hf_row['Imk2'] = 0.0

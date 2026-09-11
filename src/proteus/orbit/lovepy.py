@@ -28,14 +28,11 @@ def import_lovepy():
 
 
 def store_lovepy_tides(omega: float, imk2: float, tides_o: Tides_t):
-    """Store tidal mode information in tides_o object.
-
-    This function merely applies to lovepy, as it hardcodes the tidal
-    modes and their associated forcing frequencies and imaginary k2
-    love numbers. The storage makes the legacy LovePy module compatible
-    with the `sp1d` star planet orbit module. Note, however, that the
-    assumptions backed into LovePy assume e<<1 and spinorbit synchronization,
-    while the `sp1d` module does not make these assumptions.
+    """Store LovePy's hardcoded tidal modes (n,m,k), forcing frequency, and
+    Im(k2) in tides_o, so the legacy LovePy module is compatible with
+    `sp1d`, `ps1d`, and `ps1d_evec`. LovePy itself assumes e<<1 and spin-orbit
+    synchronisation, which the 1d orbit models do not require (see "Tidal
+    response modules" in docs/Explanations/orbit.md).
 
     Parameters
     ----------

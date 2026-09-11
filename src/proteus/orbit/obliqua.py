@@ -99,27 +99,13 @@ _OBLIQUA_CFG_EXCLUDE = ('k_min', 'k_max', 'evection_padding_factor', 'verbosity'
 
 def _obliqua_module_cfg(config: Config) -> dict:
     """Build the ``cfg['orbit']['obliqua']`` sub-dict from
-    ``config.orbit.obliqua`` dynamically (via ``attrs.asdict``) rather than
-    listing every field by hand, so a new field on ``Obliqua``/
-    ``ObliquaSolid``/``ObliquaMushy``/``ObliquaFluid`` flows through without
-    this function needing an update.
-
-    A handful of fields are NOT a plain 1:1 copy of the config field of the
-    same name, so they are patched onto the ``asdict`` result explicitly:
-
-    - ``visc_l``/``visc_s`` are not read from ``config.orbit.obliqua`` at all
-      (which has no such fields) but derived from the interior module's own
-      log10-viscosity, so Obliqua sees the same viscosity as the interior.
-    - ``fluid.sigma_R_inf`` is derived from ``fluid.sigma_R_factor *
-      fluid.sigma_R`` -- Obliqua's own name for this quantity differs from
-      PROTEUS's config field name.
-    - ``k_min``/``k_max``, ``evection_padding_factor``, and ``verbosity`` are
-      excluded -- see ``_OBLIQUA_CFG_EXCLUDE``.
-
-    Callers still need to set their own ``s_min``/``s_max`` (or ``k_min``/
-    ``k_max``, depending on ``spectrum``) and anything else specific to
-    their call (e.g. ``spectrum``, ``store_3D``, the lookup-table-only
-    ``N_sigma``/``p_min``/``p_max`` keys).
+    ``config.orbit.obliqua`` dynamically (via ``attrs.asdict``), so a new
+    config field flows through without this function needing an update.
+    Excludes PROTEUS-only bookkeeping (``_OBLIQUA_CFG_EXCLUDE``) and patches
+    in ``visc_l``/``visc_s`` (from the interior's own log10-viscosity) and
+    ``fluid.sigma_R_inf`` (Obliqua's name for ``sigma_R_factor * sigma_R``).
+    Callers still set their own ``s_min``/``s_max`` (or ``k_min``/``k_max``)
+    and any call-specific keys (``spectrum``, ``store_3D``, ...).
     """
     obliqua_cfg = asdict(config.orbit.obliqua)
     for key in _OBLIQUA_CFG_EXCLUDE:

@@ -20,16 +20,10 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def _state_is_valid_star(hf_row):
-    """Reject a substep whose resulting state is unphysical or non-finite.
-
-    Mirrors ``satellite._state_is_valid``: checks the planet hasn't
-    spiralled into the star's surface (a <= 1.05 R_star), that
-    eccentricity is in the physically sane, sub-parabolic range
-    [0, 0.999), and that the planet's spin period (only tracked by
-    sp1d, not sp0d) is finite when present. Used by
-    ``evolve_orbit_star``'s accept/reject controller; a False return
-    discards the tentative substep (`hf_row` is never touched) and
-    triggers a smaller retry ``dt_yr``.
+    """Reject a substep whose resulting state is unphysical or non-finite:
+    the planet spiralling into the star (a <= 1.05 R_star), eccentricity
+    outside [0, 0.999), or a non-finite spin period. Mirrors
+    ``satellite._state_is_valid``; used by the adaptive substep controller.
     """
     a = hf_row.get('semimajorax', np.nan)
     e = hf_row.get('eccentricity', 0.0)
@@ -43,16 +37,13 @@ def _state_is_valid_star(hf_row):
     return True
 
 
-def evolve_orbit_star(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interior_o: Interior_t):
-    """Evolve the planet's orbital parameters by interior_o.dt of physical time.
-
-    Dispatches to the requested star-planet model (sp0d, sp1d).
-    ``sp1d`` goes through the shared adaptive-substep controller in
-    ``proteus.orbit.common.run_adaptive_orbit_substeps`` -- the same
-    controller used by the planet-satellite models in
-    ``proteus.orbit.satellite`` -- getting accept/reject substepping,
-    growth/shrink behaviour, and the angular-momentum-conserving
-    C_planet rescale.
+def evolve_orbit_star(
+    hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interior_o: Interior_t
+):
+    """Evolve the planet's orbital parameters by interior_o.dt of physical
+    time. Dispatches to the requested star-planet model (sp0d, sp1d); sp1d
+    goes through the shared adaptive-substep controller (see
+    docs/Explanations/orbit.md).
 
     Parameters
     ----------
@@ -86,9 +77,7 @@ def evolve_orbit_star(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t
         raise ValueError(f'unrecognised star_planet_model: {model!r}')
 
     def rel_change_fn(attempt, hf_row):
-        # A relative-change ratio is only meaningful against a genuine
-        # (finite, nonzero) prior value; a degenerate prior (missing,
-        # zero, or otherwise non-finite none of which occur in practice.
+        # A relative-change ratio needs a finite, nonzero prior value.
         with np.errstate(divide='ignore', invalid='ignore'):
             a_prev = hf_row.get('semimajorax', np.nan)
             da = np.divide(abs(attempt['semimajorax'] - a_prev), a_prev)
@@ -133,30 +122,12 @@ def evolve_orbit_star(hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t
 
 
 def sp0d(hf_row: dict, dt: float, config: Config):
-    """Evolve the planet's orbital parameters module.
-
-    Updates the semi-major axis and eccentricity.
-
-    Angular momentum is deliberately NOT tracked or logged by this
-    model: Driscoll and Barnes (2015), Astrobiology 15, 739, Eq. 14-16
-    (the equations implemented below) evolve only (a, e), assuming no
-    dissipation in the star and no rotation dynamics for the planet
-    (the paper lists "variable rotation rates" as a future extension,
-    not part of this model; "angular momentum" is not mentioned
-    anywhere in the paper). There is consequently no citable
-    conserved angular-momentum quantity for this model: orbital
-    angular momentum alone (~sqrt(a(1-e^2))) is not conserved by the
-    da/dt = 2*a*e*de/dt relation below (it decreases monotonically
-    under the sign convention documented in de_dt's docstring), and
-    constructing a "total" angular momentum under an assumed
-    synchronous-rotation closure (orbital + I_planet*n(a)) does not
-    fix this either: since a planet's spin angular momentum is orders
-    of magnitude smaller than its orbital angular momentum, that total
-    still drifts at essentially the same rate as the orbital term
-    alone. Reaching a genuine angular-momentum-conserving model
-    requires an explicit spin state and torque balance, which this
-    model does not have (contrast sp1d, which does track planetary
-    spin).
+    """Evolve the planet's semi-major axis and eccentricity via
+    Driscoll & Barnes (2015), Eq. 15-16. Angular momentum is deliberately
+    not tracked: the model has no spin/rotation state (contrast sp1d), so
+    there is no conserved AM quantity to check. See "Star-planet models"
+    in docs/Explanations/orbit.md for the model's scope and its sign-
+    convention mismatch with PROTEUS's tidal modules.
 
     Parameters
     ----------
@@ -171,20 +142,11 @@ def sp0d(hf_row: dict, dt: float, config: Config):
     """
 
     def de_dt(a, e, params):
-        """
-        ODE describing evolution of orbital eccentricity based on Eq. 16 of
-        Driscoll and Barnes (2015), Astrobiology 15, 739 (DOI 10.1089/ast.2015.1325).
-
-        Sign convention note: in the paper, Im(k2) is negative for tidal
-        dissipation (Eq. 4 expresses -Im(k2) as the positive dissipation
-        efficiency). The current PROTEUS callers (dummy and lovepy backends)
-        feed a positive Imk2, which under the formula below produces a
-        positive de/dt and so EXPANDS the orbit rather than circularizing it.
-        The paper convention would require Imk2 < 0 to obtain the physical
-        circularization direction. Treat the sign as a known science item;
-        do not invert it without first checking every Imk2 producer
-        (proteus.orbit.dummy, proteus.orbit.lovepy, and any Imk2-dependent
-        test) so the change propagates consistently.
+        """ODE for orbital eccentricity, Driscoll & Barnes (2015) Eq. 16.
+        Sign convention: PROTEUS's tidal modules feed a positive Imk2,
+        which expands the orbit rather than circularising it (see
+        docs/Explanations/orbit.md); do not invert without checking every
+        Imk2 producer.
         """
         Imk2, Mst, G, Rpl, Mpl = params
         return (21 / 2) * Imk2 * Mst**1.5 * G**0.5 * Rpl**5 / (Mpl * a**6.5) * e
@@ -237,15 +199,11 @@ def sp0d(hf_row: dict, dt: float, config: Config):
 
 
 def sp1d(hf_row, tides_o, dt, config: Config):
-    """Evolve the Planets's orbital parameters module.
-
-    Updates the semi-major axis and primary rotation
-    frequency based on angular momentum conservation.
-
-    This model is identical to ps1d, however here we
-    assume no stellar tides, hence the governing
-    equations are simplified to only include the
-    planetary tides.
+    """Evolve the planet's semi-major axis, eccentricity, and spin under
+    planetary tides raised by the star, via Correia & Valente (2022);
+    angular-momentum-conserving by construction. Structurally identical to
+    ps1d, but omits stellar tides (the star is assumed non-dissipative).
+    See "Star-planet models" in docs/Explanations/orbit.md.
 
     Parameters
     ----------

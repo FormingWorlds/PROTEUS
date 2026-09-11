@@ -58,9 +58,9 @@ def satellite_evolve(instance, attribute, value):
 
 
 def tides_enabled_orbit(instance, attribute, value):
-    """Interior tidal heating requires an orbit module to be enabled."""
+    """Interior tidal heating requires an tides module to be enabled."""
     if (instance.interior_energetics.heat_tidal) and (instance.orbit.module is None):
-        raise ValueError('Interior tidal heating requires an tides module to be enabled')
+        raise ValueError('Interior tidal heating requires a tides module to be enabled')
 
 
 def obliqua_requires_perturber(instance, attribute, value):
@@ -90,6 +90,20 @@ def sp0d_obliqua_degree_mismatch(instance, attribute, value):
             'uses directly. This is an approximation, least accurate at high or '
             "rapidly-changing eccentricity. Prefer orbit.star_planet_model = 'sp1d'"
             " when using Obliqua."
+        )
+
+
+def orbit_requires_tides(instance, attribute, value):
+    """sp1d, ps1d, and ps1d_evec require atleast Lovepy, but ideally the Obliqua
+    tidal-response module."""
+    if (
+        instance.orbit.star_planet_model in ('sp1d', 'ps1d', 'ps1d_evec')
+        and instance.orbit.module != 'obliqua'
+        and instance.orbit.module != 'lovepy'
+    ):
+        raise ValueError(
+            "orbit.star_planet_model = 'sp1d' or 'ps1d' or 'ps1d_evec' requires"
+            "orbit.module = 'obliqua' or 'lovepy'"
         )
 
 
@@ -358,6 +372,7 @@ class Config:
             satellite_evolve,
             obliqua_requires_perturber,
             sp0d_obliqua_degree_mismatch,
+            orbit_requires_tides,
         ),
     )
     planet: Planet = field(

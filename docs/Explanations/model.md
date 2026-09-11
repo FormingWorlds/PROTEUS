@@ -200,7 +200,7 @@ Some notable consequences of step 3:
 
 **[Orbital evolution](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/orbit)** (Python) computes the time evolution of the independent orbital parameters (semi-major axis, eccentricity, spin, apsidal precession) under the influence of tidal dissipation in both the primary and the perturbing body. The model combines spin-orbit dynamics with eccentricity evolution, based on a vectorial approach expressed in Hansen coefficients. The model allows for angular momentum draining through the evection resonance, but conserves it in all other cases.
 
-Config section: `[orbit]`. Reference: [Star and orbit configuration](../Reference/config/star_orbit.md).
+Config section: `[orbit]`. Reference: [Star and orbit configuration](../Reference/config/star_orbit.md). For the full set of star-planet and planet-satellite models (sp0d/sp1d/ps0d/ps1d/ps1d_evec), the evection resonance, and the satellite Love-number lookup workflow, see [Orbital dynamics and tides](orbit.md).
 
 ## Synthetic observations: petitRADTRANS
 

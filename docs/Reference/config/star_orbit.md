@@ -238,6 +238,7 @@ Cross-field constraints enforced when the config file loads:
 - Orbital evolution cannot be combined with instellation method 'inst'.
 - The Obliqua tidal-response module requires an explicit perturber.
 - Star-planet orbital evolution and the planet-satellite model are mutually exclusive.
+- sp0d's closed-form is by definition the n=2 Love number. Obliqua can compute arbitrary tidal degree(s), block the mismatch.
 - A bolometric scaling other than 1 requires bol_scale_start and a positive duration.
 - Validate MORS settings: positive age, spectrum-source requirements, and rotation set by exactly one of percentile or period.
 - Dummy star requires a consistent radius specification and a valid Teff.
@@ -245,7 +246,7 @@ Cross-field constraints enforced when the config file loads:
 
 ---
 
-**See also:** [Stellar module](../../Explanations/model.md#stellar-evolution-mors) | [Tidal evolution](../../Explanations/model.md#tidal-evolution-obliqua-lovepy) | [Orbital evolution](../../Explanations/model.md#orbital-evolution-proteus-internal)
+**See also:** [Stellar module](../../Explanations/model.md#stellar-evolution-mors) | [Tidal evolution](../../Explanations/model.md#tidal-evolution-obliqua-lovepy) | [Orbital evolution](../../Explanations/model.md#orbital-evolution-proteus-internal) | [Orbital dynamics and tides (full model overview)](../../Explanations/orbit.md)
 
  [^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).
 

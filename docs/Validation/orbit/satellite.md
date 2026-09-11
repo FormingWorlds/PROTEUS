@@ -39,6 +39,29 @@ reference-pinned test brackets the total in `[1e34, 1e35]` kg m^2 / s; a
 regression that swaps `M_sat` for `M_planet` in the orbital prefactor
 would land at ~2.4e36 kg m^2 / s, well outside the bracket.
 
+## Eq. 58-59: rotation and semi-major-axis rate equations
+
+Korenaga (2023) Eq. 58 gives the planet's spin-down rate,
+
+```
+dOmega/dt = -E_tide_dot / (I*Omega + G*M_pl*M_sat*I / (a*(L - I*Omega)))
+```
+
+where `E_tide_dot` is the tidal power dissipated in the planet (positive,
+W) and `L` is the conserved total angular momentum from Eq. 60. The minus
+sign ensures the spin slows whenever tidal energy is dissipated, matching
+the expectation that dissipation transfers angular momentum from the
+planet's spin to the satellite's orbit. Eq. 59 for the semi-major axis,
+
+```
+da/dt = -2*I*a / (L - I*Omega) * dOmega/dt
+```
+
+follows directly from differentiating the Eq. 60 closure at constant `L`
+and solving for `da/dt`: whenever the planet's spin slows, the orbit
+expands, provided `L > I*Omega` (the prograde-satellite regime PROTEUS
+targets).
+
 ## Correctness of the orbital prefactor
 
 The orbital prefactor in Eq. 60 is the satellite mass `M_M`, not the

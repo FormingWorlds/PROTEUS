@@ -35,37 +35,12 @@ class TidalInteraction:
 
 @dataclass
 class Tides_t:
-    """Tides_t is a container for tidal interactions between a primary and a perturber.
-    It stores a list of TidalInteraction objects, each representing a specific
-    interaction between a primary and a perturber. The Tides_t class provides methods
-    to add and retrieve tidal interactions, as well as to load tidal mode information
-    from a NetCDF file.
-
-    Also carries controller-only bookkeeping that has no physical meaning
-    and so does not belong in hf_row: dt_yr (the adaptive-substep step size,
-    read/written by run_adaptive_orbit_substeps),
-    fine_csv_last_t_yr/fine_csv_next_target_yr (ps1d_evec's fine-grained CSV
-    writer cursors, read/written by satellite._flush_fine_evection_csv), and
-    resonance_state (ps1d_evec's evection-band hysteresis state -- active
-    flag and 2-step distance history -- mutated in place by
-    satellite._in_evection_band across every substep attempt, accepted or
-    rejected, since it must accumulate regardless of the accept/reject
-    outcome), evection_ecc_history (a rolling (Time, eccentricity_sat)
-    window, one sample appended per evolve_orbit_satellite call, that
-    satellite._estimate_evection_dt_cap_yr fits a secular de/dt slope over
-    to bound the next macro-step -- kept here, not read back from the main
-    loop's hf_all, specifically so that dt-cap computation has no
-    dependency on the run's full history DataFrame), evection_zone_active
-    (whether the system is in/near the evection band as of the end of the
-    last evolve_orbit_satellite call -- internal-only, NOT exported to
-    hf_row; the single externally-visible signal is the combined
-    hf_row['evection_dt_cap_yr'] itself. Read by obliqua._padded_obliqua_k_range
-    for its own, unrelated k-range padding decision), and
-    evection_cooldown_remaining (the evection growth-limiter's cooldown
-    counter -- see _estimate_evection_dt_cap_yr's own docstring; this used
-    to live on Interior_t before the growth limiter moved into orbit
-    alongside the rate cap). All are empty/None/False/0 until first
-    written.
+    """Registry of tidal interactions (mode, forcing frequency, Love number)
+    keyed by (primary, perturber), plus controller-only bookkeeping with no
+    physical meaning of its own (adaptive step size, evection-band
+    hysteresis state, fine-CSV write cursors). See "Adaptive substep
+    controller" and "The three clocks" in docs/Explanations/orbit.md for what
+    each of these fields feeds into.
     """
 
     interactions: List[TidalInteraction] = field(default_factory=list)
@@ -131,149 +106,54 @@ def run_adaptive_orbit_substeps(
     log_label: str = 'run_adaptive_orbit_substeps',
 ):
     """Advance an orbital-evolution model by `interior_o.dt` yr using an
-    adaptive accept/reject substep controller.
-
-    Shared between the star-planet models (sp0d, sp1d) and the
-    planet-satellite models (ps0d, ps1d, ps1d_evec): each call site
-    supplies the model-specific pieces (the ODE step itself, state
-    validity, and which quantities to track for the accept/reject
-    gradient check) as callables, and this function owns the substep
-    loop, the angular-momentum-conserving C_planet rescale, and the
-    persistence of the controller's own step-size state across calls.
+    adaptive accept/reject substep controller, shared by sp1d/ps1d/ps1d_evec
+    (ps0d bypasses this and applies its structural update as a single jump).
+    Each call site supplies the model-specific ODE step, state-validity
+    check, and relative-change metrics as callables; this function owns the
+    substep loop, the angular-momentum-conserving `C_int` ramp, and the
+    persistence of the step-size state across calls. See "Adaptive substep
+    controller" in docs/Explanations/orbit.md for the physical and
+    numerical rationale (why C_int is ramped rather than jumped, and why
+    attempts are staged in a `ChainMap` overlay rather than mutating
+    `hf_row` directly).
 
     Parameters
     ----------
     hf_row : dict
-        Dictionary of current runtime variables (every module's state,
-        not just orbit's). Only mutated once a substep is confirmed
-        ACCEPTED, and then only via `dict.update` with the keys that
-        substep actually wrote -- see "Attempt staging" below. Never
-        cleared or replaced wholesale.
+        Runtime state; mutated only once a substep is accepted.
     config : Config
-        Model configuration; reads `config.orbit.solver` for every
-        tolerance and controller knob below.
+        Reads `config.orbit.solver` for every tolerance/controller knob.
     dirs : dict
-        Dictionary of directory paths, used only for logging and error
-        messages.
+        Directory paths, used only for logging and error messages.
     tides_o : Tides_t
-        Tides object; `tides_o.dt_yr` carries this controller's own
-        step-size state across calls (one call per PROTEUS main-loop
-        iteration), read at entry and written back at exit -- see
-        `Tides_t`'s own docstring for why it lives there rather than
-        on `hf_row`.
+        `tides_o.dt_yr` carries the controller's step-size state across
+        calls (one call per PROTEUS main-loop iteration).
     interior_o : Interior_t
-        Interior object; `interior_o.dt` is the total elapsed time this
-        call must advance the system by, in years.
+        `interior_o.dt` is the total elapsed time to advance by, in years.
     model : str
         Name of the active model, used only for log messages.
     step_fn : callable(attempt, dt_yr, t_elapsed_yr) -> Any
-        Advances `attempt` in place by `dt_yr` (already converted inside
-        the callee as needed) -- see "Attempt staging" below for what
-        `attempt` actually is; callees read and write it exactly like
-        `hf_row`. `t_elapsed_yr` is how much of this call's
-        `interior_o.dt` has already been accepted, for callees that need
-        an absolute-time label (e.g. ps1d_evec's fine-grained storage).
-        May return arbitrary "extra" data; that return value is forwarded
-        to `on_accept_fn` only if the substep is subsequently accepted,
-        and discarded otherwise.
+        Advances `attempt` in place by `dt_yr`. May return arbitrary
+        "extra" data, forwarded to `on_accept_fn` only if the substep is
+        accepted.
     state_is_valid_fn : callable(attempt) -> bool
-        Returns whether the state `step_fn` produced is physical. A
-        False return (or an exception from `step_fn`) rejects the
-        substep: the tentative `attempt` is simply discarded (`hf_row`
-        was never touched) and `dt_yr` is shrunk before retrying.
+        Whether the state `step_fn` produced is physical; False (or an
+        exception from `step_fn`) rejects and shrinks the substep.
     rel_change_fn : callable(attempt, hf_row) -> dict[str, float]
-        Returns named relative-change metrics between the post-substep
-        `attempt` and the still-untouched pre-substep `hf_row` (e.g.
-        `{'da': ..., 'de': ...}`). Keys must match `rel_change_limits`.
+        Named relative-change metrics; keys must match `rel_change_limits`.
     rel_change_limits : dict[str, float]
-        Maximum tolerated value for each key `rel_change_fn` returns.
-        Exceeding any of them rejects the substep, same as a failed
-        `state_is_valid_fn` check. The substep size is only grown once
-        every value is comfortably inside its limit (below 30% of it).
+        Maximum tolerated value per key; exceeding any rejects the substep.
+        Growth only occurs once every value is below 30% of its limit.
     needs_c_planet : bool
-        Whether this model reads `hf_row['C_int']`. If True, this
-        function refreshes it from the live interior state once before
-        the substep loop starts, then SMOOTHLY ramps `hf_row['C_int']`
-        from its call-start value to that freshly-computed target across
-        the substep loop (linear in elapsed time), rescaling the planet's
-        spin (`axial_period`) at every accepted substep to conserve
-        `C_planet * Omega_p` across that substep's own small slice of the
-        move (the "figure skater" effect of a mass-conserving structural
-        change) -- see `proteus.interior_energetics.common.get_C_planet`'s
-        own docstring for the physical justification, and "Smoothing the structural
-        C_planet update" below for why this is spread out rather than
-        applied as one jump.
+        Whether this model reads `hf_row['C_int']`; if True, `C_int` is
+        ramped from its call-start value to a freshly computed target
+        across the substep loop, with `axial_period` rescaled at each
+        accepted substep to conserve `C_int * Omega_p`.
     on_accept_fn : callable(hf_row, extra) -> None, optional
-        Called once a substep is confirmed accepted, with the `extra`
-        value `step_fn` returned for that substep. Used for side effects
-        that must not run on a subsequently-rejected trial, such as
-        ps1d_evec's fine-grained solver-clock CSV storage.
+        Called once a substep is confirmed accepted, for side effects that
+        must not run on a rejected trial (e.g. ps1d_evec's fine-CSV write).
     log_label : str, optional
-        Prefix used in log messages, so ENTER/EXIT/reject lines from the
-        two call sites (star-planet vs planet-satellite) are
-        distinguishable in a shared log stream.
-
-    Smoothing the structural C_planet update
-    ------------------------------------------
-    A naive implementation would apply the whole C_planet jump (and the
-    resulting Omega_p rescale) once, before the substep loop starts. That
-    is fine as far as angular-momentum bookkeeping goes, but it means
-    every OTHER quantity that depends on Omega_p -- e.g. ps1d_evec's
-    planetary-oblateness (J2) term in the apsidal-precession rate, and
-    hence the evection-resonance location a_res itself (see
-    `satellite.compute_a_res_prime`) -- sees a discontinuous jump at
-    t_elapsed=0 of this call, even though the rest of the orbital state
-    (a, e, ...) evolves smoothly through the same call. That is a
-    numerical artifact of how PROTEUS happens to chunk interior-orbit
-    coupling into calls, not a real physical discontinuity.
-
-    Instead, `C_planet` is ramped linearly in elapsed time from its
-    call-start value to the freshly-computed target across the accepted
-    substeps of this call: at each substep, `hf_row['C_int']` is moved
-    to the linearly-interpolated value for `t_elapsed + dt_yr`, and
-    `axial_period` is rescaled to conserve `C_planet * Omega_p` across
-    just that slice (not the whole jump). Composing many small exact
-    rescales this way is itself exactly angular-momentum-conserving
-    end to end (the per-substep ratios telescope to the same overall
-    ratio a single jump would have applied), so nothing about system AM
-    bookkeeping is loosened -- the total structural correction is
-    unchanged, only spread out in time so no other quantity sees a step
-    function. If a call cannot complete within `solver.max_substeps` /
-    the step-size floor, the ramp is simply left partway through
-    (`hf_row['C_int']` still short of the target); the next call
-    recomputes a fresh target from the (by-then-updated) interior state
-    and continues the ramp toward that, so no correction is lost or
-    double-applied, only delayed -- the same partial-completion behaviour
-    the rest of this controller already has (see the "only advanced ..."
-    warning below).
-
-    This structural ramp is entirely orthogonal to whatever a model's own
-    ODE (`step_fn`) does to Omega_p/spin angular momentum within the same
-    substep -- in particular, the evection-resonance torque inside
-    ps1d_evec, which is expected to (and is allowed to) change the
-    planet-satellite subsystem's own total angular momentum via a real
-    three-body exchange with the star (see ps1d_evec's own docstring/
-    tests). The two effects compose without either overriding the other:
-    this ramp only ever conserves `C_planet * Omega_p` across the
-    non-tidal, non-resonance structural change, exactly as the
-    unsmoothed single-jump version did; it does not touch, and does not
-    constrain, whatever AM change `step_fn` itself produces afterward.
-
-    Attempt staging
-    ---------------
-    `hf_row` holds every module's runtime state, not just orbit's, and
-    most substeps attempted here are rejected (that is how the
-    controller finds a safe `dt_yr` at all). Rather than copy the whole
-    row before each attempt and restore it on rejection, each substep
-    instead runs against `attempt = ChainMap({}, hf_row)`: reads that
-    `step_fn`/`state_is_valid_fn` perform fall through to the real,
-    untouched `hf_row` for any key the attempt hasn't written yet, and
-    writes land only in the empty top dict (`attempt.maps[0]`), never in
-    `hf_row` itself. A rejected attempt is discarded for free -- `hf_row`
-    was never mutated, so there is nothing to restore. Only once a
-    substep is confirmed ACCEPTED are the keys it actually wrote merged
-    into `hf_row` via `hf_row.update(attempt.maps[0])`, which is also
-    what `on_accept_fn` and the next loop iteration then see.
+        Prefix for log messages, to distinguish the two call sites.
     """
     solver = config.orbit.solver
 
@@ -308,13 +188,9 @@ def run_adaptive_orbit_substeps(
     ramp_c_planet = False
 
     def _rescale_c_planet_to(row, target_c_p):
-        """Move row['C_int'] to target_c_p, rescaling axial_period
-        to conserve C_int*Omega_p across the move (a no-op on the
-        rescale, besides writing target_c_p, if there is no valid prior
-        C_int/axial_period to conserve against). `row` is `hf_row`
-        itself for the one-off bootstrap jump below, or the current
-        substep's `attempt` overlay for the per-substep ramp inside the
-        loop -- see "Attempt staging" above."""
+        """Move row['C_int'] to target_c_p, rescaling axial_period to
+        conserve C_int*Omega_p (a no-op on the rescale if there is no
+        valid prior C_int/axial_period to conserve against)."""
         c_p_before = row.get('C_int')
         if (
             c_p_before is not None
@@ -385,7 +261,8 @@ def run_adaptive_orbit_substeps(
         dt_yr = min(dt_yr, t_total_yr - t_elapsed)
 
         # Stage this substep's tentative changes in an overlay rather than
-        # mutating hf_row directly -- see "Attempt staging" above.
+        # mutating hf_row directly, so a rejected attempt costs nothing to
+        # discard (docs/Explanations/orbit.md, "Adaptive substep controller").
         attempt = ChainMap({}, hf_row)
 
         try:
