@@ -108,13 +108,23 @@ def test_compute_a_res_prime_matches_closed_form_at_earth_like_spin():
     ``Lambda**(4/7)``.
     """
     omega_earth = np.sqrt(const_G * M_earth / R_earth**3)
-    hf_row = {'eccentricity_sat': 0.0, 'axial_period': 2 * np.pi / omega_earth}
+    hf_row = {
+        'eccentricity_sat': 0.0,
+        'axial_period': 2 * np.pi / omega_earth,
+        'M_int': M_earth,
+        'R_int': R_earth,
+    }
     lam = np.sqrt(1.5 * 0.315 * omega_earth / (2 * np.pi / secs_per_year))
     expected = lam ** (4.0 / 7.0)
     assert compute_a_res_prime(hf_row) == pytest.approx(expected, rel=1e-10)
     # Discrimination: a doubled spin rate must NOT double a_res (the
     # exponent is 4/7 on s', not 1); pin the ratio explicitly.
-    hf_row_fast = {'eccentricity_sat': 0.0, 'axial_period': 2 * np.pi / (2 * omega_earth)}
+    hf_row_fast = {
+        'eccentricity_sat': 0.0,
+        'axial_period': 2 * np.pi / (2 * omega_earth),
+        'M_int': M_earth,
+        'R_int': R_earth,
+    }
     ratio = compute_a_res_prime(hf_row_fast) / compute_a_res_prime(hf_row)
     assert ratio == pytest.approx(2.0 ** (4.0 / 7.0), rel=1e-10)
     assert abs(ratio - 2.0) > 0.3  # rejects a linear-in-s' regression
@@ -126,17 +136,20 @@ def test_compute_a_res_prime_increases_with_eccentricity():
     monotonicity invariant, not just a point pin)."""
     omega_earth = np.sqrt(const_G * M_earth / R_earth**3)
     axial_period = 2 * np.pi / omega_earth
+    planet = {'M_int': M_earth, 'R_int': R_earth}
     a_res_circular = compute_a_res_prime(
-        {'eccentricity_sat': 0.0, 'axial_period': axial_period}
+        {'eccentricity_sat': 0.0, 'axial_period': axial_period, **planet}
     )
     a_res_eccentric = compute_a_res_prime(
-        {'eccentricity_sat': 0.5, 'axial_period': axial_period}
+        {'eccentricity_sat': 0.5, 'axial_period': axial_period, **planet}
     )
     assert a_res_eccentric > a_res_circular
     # Edge case: near-parabolic e must not raise (only warn/produce a
     # large-but-finite value); errstate(invalid='ignore') is only for
     # e >= 1 exactly, so use a merely-large e here.
-    a_res_extreme = compute_a_res_prime({'eccentricity_sat': 0.9, 'axial_period': axial_period})
+    a_res_extreme = compute_a_res_prime(
+        {'eccentricity_sat': 0.9, 'axial_period': axial_period, **planet}
+    )
     assert np.isfinite(a_res_extreme)
     assert a_res_extreme > a_res_eccentric
 
@@ -222,6 +235,7 @@ def test_state_is_valid_rejects_satellite_inside_planet():
         'eccentricity_sat': 0.05,
         'axial_period': 86400.0,
         'axial_period_sat': 2.36e6,
+        'R_planet': R_earth,
     }
     assert _state_is_valid(hf_row) is False
     # Discrimination: just above the floor must be accepted -- pins
@@ -316,6 +330,8 @@ def test_in_evection_band_handles_non_finite_a_res_gracefully():
         'semimajorax_sat': 60.0 * R_earth,
         'eccentricity_sat': 1.0,
         'axial_period': 86400.0,
+        'M_int': M_earth,
+        'R_int': R_earth,
     }
     with np.errstate(divide='ignore'):
         result = _in_evection_band(hf_row, state, margin_enter=0.10, margin_exit=0.35)
@@ -1318,7 +1334,7 @@ def test_evolve_orbit_satellite_logs_evection_band_transitions(monkeypatch, capl
     config = _make_satellite_config('ps1d_evec')
     tides_o = _make_ps1d_evec_tides(-0.002 - 0.004j)
 
-    with caplog.at_level(logging.INFO, logger='fwl.proteus.orbit.satellite'):
+    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.orbit.satellite'):
         sat_mod.evolve_orbit_satellite(
             hf_row, config, dirs={'output/data': '/tmp'}, tides_o=tides_o, interior_o=interior_o
         )

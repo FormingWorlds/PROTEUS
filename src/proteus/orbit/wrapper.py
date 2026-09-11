@@ -458,13 +458,13 @@ def run_orbit(
 
         update_breakup_period_sat(hf_row)
         if hf_row['axial_period_sat'] <= hf_row['breakup_period_sat'] + float(
-            config.params.stop.disint.offset_spin
+            config.params.stop.disint_sat.offset_spin
         ):
             log.warning('Satellite is spinning faster than the Breakup rate')
 
         update_rochelimit_sat(hf_row)
         if hf_row['perigee'] <= hf_row['roche_limit_sat'] + float(
-            config.params.stop.disint.offset_roche
+            config.params.stop.disint_sat.offset_roche
         ):
             log.warning('Satellite is orbiting within the Roche limit of its planet')
 

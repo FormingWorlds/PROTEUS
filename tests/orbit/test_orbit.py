@@ -88,6 +88,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -464,7 +465,7 @@ def test_evolve_orbit_star_sp0d_model_evolves_hf_row():
     config = _make_star_planet_config('sp0d')
     interior_o = SimpleNamespace(dt=1e7)
 
-    evolve_orbit_star(hf_row, config, tides_o=object(), interior_o=interior_o)
+    evolve_orbit_star(hf_row, config, dirs={}, tides_o=object(), interior_o=interior_o)
 
     # Discrimination: the orbit actually evolved (not a silent no-op).
     # An absolute (not relative-tolerance) gap avoids a false negative
@@ -474,21 +475,30 @@ def test_evolve_orbit_star_sp0d_model_evolves_hf_row():
     assert abs(hf_row['semimajorax'] - sma_before) > 1e-3
 
 
-def test_evolve_orbit_star_unrecognized_model_raises_immediately():
+def test_evolve_orbit_star_unrecognized_model_raises_immediately(monkeypatch):
     """An unrecognized (or ``None``) ``star_planet_model`` is rejected
     up-front by the dispatch, before the shared adaptive-substep
-    controller ever starts.
+    controller ever starts. Also records status code 26 (via
+    ``UpdateStatusfile``) before raising, so a crashed run is recorded
+    as such rather than left unexplained.
     """
+    import proteus.orbit.orbit as orbit_mod
+
     hf_row = _make_hf_row(ecc=0.2, Imk2=1e-2)
     hf_row_before = dict(hf_row)
     config = _make_star_planet_config(None)
     interior_o = SimpleNamespace(dt=1e4)
+    dirs = {'output': '/tmp/unused'}
+
+    mock_update_status = MagicMock()
+    monkeypatch.setattr(orbit_mod, 'UpdateStatusfile', mock_update_status)
 
     with pytest.raises(ValueError, match='None'):
-        evolve_orbit_star(hf_row, config, tides_o=object(), interior_o=interior_o)
+        evolve_orbit_star(hf_row, config, dirs=dirs, tides_o=object(), interior_o=interior_o)
 
     # No side effect: the raise happens before any substep runs.
     assert hf_row == hf_row_before
+    mock_update_status.assert_called_once_with(dirs, 26)
 
 
 def test_evolve_orbit_star_skips_domega_p_when_axial_period_hits_zero(monkeypatch):
@@ -520,7 +530,7 @@ def test_evolve_orbit_star_skips_domega_p_when_axial_period_hits_zero(monkeypatc
     config.orbit.solver.dt0_yr = 0.5  # completes in exactly one substep
     tides_o = Tides_t()
 
-    orbit_mod.evolve_orbit_star(hf_row, config, tides_o=tides_o, interior_o=interior_o)
+    orbit_mod.evolve_orbit_star(hf_row, config, dirs={}, tides_o=tides_o, interior_o=interior_o)
 
     assert hf_row['axial_period'] == 0.0
     # Discrimination: the substep was actually ACCEPTED, not stuck
@@ -809,7 +819,7 @@ def test_evolve_orbit_star_sp1d_model_calls_get_c_planet_and_evolves_hf_row(
         ),
     )
 
-    evolve_orbit_star(hf_row, config, tides_o=tides_o, interior_o=interior_o)
+    evolve_orbit_star(hf_row, config, dirs={}, tides_o=tides_o, interior_o=interior_o)
 
     assert 'C_int' in hf_row
     assert hf_row['C_int'] > 0.0

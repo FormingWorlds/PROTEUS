@@ -805,11 +805,7 @@ def GetHelpfileKeys():
         'C_sat',            # principal moment of inertia of satellite [kg m2]
 
         'evection_angle',   # evection angle [rad]
-        'evection_dt_cap_yr', # next macro-step dt cap from evection secular rate AND
-                             # growth limiter, folded together [yr]; CSV-exported "no
-                             # cap" value is 0.0 (the blanket fillna below), NOT the
-                             # in-memory np.inf sentinel -- see
-                             # proteus.orbit.satellite._estimate_evection_dt_cap_yr
+        'evection_dt_cap_yr', # next macro-step dt cap, rate + growth limiter folded in [yr]
 
         # Planet structure
         'R_int',            # interior radius [m]

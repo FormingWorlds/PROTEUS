@@ -36,6 +36,8 @@ See also:
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pytest
 from scipy import integrate
@@ -391,20 +393,35 @@ def test_get_all_m_hansen_lazily_builds_table_when_absent(monkeypatch):
     np.testing.assert_array_equal(k_range, np.arange(-3, 4))
 
 
-def test_get_all_m_hansen_raises_when_requested_k_range_exceeds_table_window(monkeypatch):
+def test_get_all_m_hansen_truncates_and_warns_when_requested_k_range_exceeds_table_window(
+    monkeypatch, caplog
+):
     """Requesting a wider [kmin, kmax] than the table was built with must
-    fail loudly (a silent truncation would corrupt any caller summing
-    over modes near the requested edge), not clip or return zeros.
+    not crash the caller (a padded, forward-looking request -- see
+    orbit/hansen.py's padded_k_range_for_evection -- can legitimately ask
+    for more than a table built for a narrower eccentricity range
+    covers): it is clipped to the table's actual [kmin, kmax] and a
+    warning is logged, rather than silently returning zeros or raising.
     """
     monkeypatch.setattr(hansen_mod, '_hansen_table', None)
     init_hansen_table(e_grid=np.array([0.0, 0.1]), kmin=-4, kmax=4, n_deg=2, force=True)
-    with pytest.raises(ValueError, match='exceeds'):
-        get_all_m_hansen(e=0.05, n_deg=2, kmin=-10, kmax=10)
-    # Discrimination: a request WITHIN the table's window must NOT raise --
-    # confirms this is specifically an out-of-window guard, not a blanket
-    # failure that would make the whole function unusable.
-    k_range, _ = get_all_m_hansen(e=0.05, n_deg=2, kmin=-4, kmax=4)
-    assert len(k_range) == 9
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.orbit.hansen'):
+        k_range, results = get_all_m_hansen(e=0.05, n_deg=2, kmin=-10, kmax=10)
+
+    # Clipped to the table's own [-4, 4] window, not the requested [-10, 10].
+    np.testing.assert_array_equal(k_range, np.arange(-4, 5))
+    assert set(results.keys()) == {-2, -1, 0, 1, 2}
+    assert any('exceeds' in rec.message for rec in caplog.records)
+
+    # Discrimination: a request WITHIN the table's window must produce the
+    # identical result without any truncation warning -- confirms this is
+    # specifically an out-of-window clip, not something that always fires.
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.orbit.hansen'):
+        k_range_in, _ = get_all_m_hansen(e=0.05, n_deg=2, kmin=-4, kmax=4)
+    assert len(k_range_in) == 9
+    assert not any('exceeds' in rec.message for rec in caplog.records)
 
 
 def test_get_all_m_hansen_all_m_are_delta_functions_at_zero_eccentricity(monkeypatch):

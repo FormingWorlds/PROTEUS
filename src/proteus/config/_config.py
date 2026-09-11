@@ -89,7 +89,7 @@ def sp0d_obliqua_degree_mismatch(instance, attribute, value):
             'scalar, which discards the eccentricity-dependent mode weighting sp1d '
             'uses directly. This is an approximation, least accurate at high or '
             "rapidly-changing eccentricity. Prefer orbit.star_planet_model = 'sp1d'"
-            " when using Obliqua."
+            ' when using Obliqua.'
         )
 
 
@@ -102,7 +102,7 @@ def orbit_requires_tides(instance, attribute, value):
         and instance.orbit.module != 'lovepy'
     ):
         raise ValueError(
-            "orbit.star_planet_model = 'sp1d' or 'ps1d' or 'ps1d_evec' requires"
+            "orbit.star_planet_model = 'sp1d' or 'ps1d' or 'ps1d_evec' requires "
             "orbit.module = 'obliqua' or 'lovepy'"
         )
 

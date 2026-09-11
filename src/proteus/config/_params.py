@@ -465,7 +465,7 @@ class StopParams:
     radeqm: StopRadeqm = field(factory=StopRadeqm)
     escape: StopEscape = field(factory=StopEscape)
     disint: StopDisint = field(factory=StopDisint)
-    disintsat: StopDisintSat = field(factory=StopDisintSat)
+    disint_sat: StopDisintSat = field(factory=StopDisintSat)
     satellite: StopSatellite = field(factory=StopSatellite)
     clock: StopClock = field(factory=StopClock)
     stall: StopStall = field(factory=StopStall)

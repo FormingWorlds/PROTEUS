@@ -162,22 +162,6 @@
       "consumers": []
     },
     {
-      "name": "Imk2",
-      "unit": "1",
-      "description": "Imaginary part of k2 Love Number",
-      "group": "Orbital and spin parameters of planet",
-      "origin": "literal",
-      "producers": [
-        {
-          "file": "src/proteus/orbit/wrapper.py",
-          "condition": "always"
-        }
-      ],
-      "consumers": [
-        "orbit"
-      ]
-    },
-    {
       "name": "plan_star_am",
       "unit": "kg m2 s-1",
       "description": "angular momentum of star+planet",
@@ -201,10 +185,6 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/orbit/common.py",
-          "condition": "always"
-        },
-        {
           "file": "src/proteus/orbit/orbit.py",
           "condition": "orbit.evolve = true"
         },
@@ -225,9 +205,9 @@
       ]
     },
     {
-      "name": "n_star",
-      "unit": "s-1",
-      "description": "mean motion of star",
+      "name": "Imk2",
+      "unit": "1",
+      "description": "Imaginary part of k2 Love Number",
       "group": "Orbital and spin parameters of planet",
       "origin": "literal",
       "producers": [
@@ -236,7 +216,9 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [
+        "orbit"
+      ]
     },
     {
       "name": "longitude",
@@ -279,20 +261,6 @@
       ]
     },
     {
-      "name": "perigee",
-      "unit": "m",
-      "description": "lowest point in orbit",
-      "group": "Satellite system",
-      "origin": "literal",
-      "producers": [
-        {
-          "file": "src/proteus/orbit/wrapper.py",
-          "condition": "always"
-        }
-      ],
-      "consumers": []
-    },
-    {
       "name": "semimajorax_sat",
       "unit": "m",
       "description": "semi-major axis",
@@ -327,6 +295,37 @@
         }
       ],
       "consumers": []
+    },
+    {
+      "name": "separation_sat",
+      "unit": "m",
+      "description": "time-averaged separation",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "perigee",
+      "unit": "m",
+      "description": "lowest point in orbit",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "utils"
+      ]
     },
     {
       "name": "orbital_period_sat",
@@ -381,54 +380,6 @@
       "consumers": []
     },
     {
-      "name": "M_sat",
-      "unit": "kg",
-      "description": "mass of satellite",
-      "group": "Satellite system",
-      "origin": "literal",
-      "producers": [
-        {
-          "file": "src/proteus/orbit/wrapper.py",
-          "condition": "always"
-        }
-      ],
-      "consumers": [
-        "orbit"
-      ]
-    },
-    {
-      "name": "R_sat",
-      "unit": "m",
-      "description": "radius of satellite",
-      "group": "Satellite system",
-      "origin": "literal",
-      "producers": [
-        {
-          "file": "src/proteus/orbit/wrapper.py",
-          "condition": "always"
-        }
-      ],
-      "consumers": [
-        "orbit"
-      ]
-    },
-    {
-      "name": "C_sat",
-      "unit": "kg m2",
-      "description": "principal moment of inertia of satellite",
-      "group": "Satellite system",
-      "origin": "literal",
-      "producers": [
-        {
-          "file": "src/proteus/orbit/wrapper.py",
-          "condition": "always"
-        }
-      ],
-      "consumers": [
-        "orbit"
-      ]
-    },
-    {
       "name": "plan_sat_am",
       "unit": "kg m2 s-1",
       "description": "angular momentum of satellite+planet",
@@ -463,7 +414,56 @@
       ],
       "consumers": [
         "orbit",
-        "plot"
+        "plot",
+        "utils"
+      ]
+    },
+    {
+      "name": "R_sat",
+      "unit": "m",
+      "description": "radius of satellite",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
+      ]
+    },
+    {
+      "name": "M_sat",
+      "unit": "kg",
+      "description": "mass of satellite",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
+      ]
+    },
+    {
+      "name": "C_sat",
+      "unit": "kg m2",
+      "description": "principal moment of inertia of satellite",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
       ]
     },
     {
@@ -488,10 +488,10 @@
       ]
     },
     {
-      "name": "in_evection_band",
-      "unit": "bool, 0/1",
-      "description": "whether inside the evection resonance band",
-      "group": "Satellite system",
+      "name": "evection_dt_cap_yr",
+      "unit": "yr",
+      "description": "next macro-step dt cap, rate + growth limiter folded in",
+      "group": "CSV-exported \"no cap\" value is 0",
       "origin": "literal",
       "producers": [
         {
@@ -640,12 +640,16 @@
       ]
     },
     {
-      "name": "C_planet",
+      "name": "C_int",
       "unit": "kg m2",
       "description": "principal moment of inertia of planet",
       "group": "Planet structure",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/interior_energetics/common.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/orbit/common.py",
           "condition": "always"
@@ -761,7 +765,8 @@
         }
       ],
       "consumers": [
-        "interior_energetics"
+        "interior_energetics",
+        "orbit"
       ]
     },
     {
@@ -20221,6 +20226,40 @@
       "consumers": [
         "atmos_clim",
         "orbit"
+      ]
+    },
+    {
+      "name": "roche_limit_sat",
+      "unit": "m",
+      "description": "Roche limit, orbital distance for the satellite",
+      "group": "Diagnostic variables",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "utils"
+      ]
+    },
+    {
+      "name": "breakup_period_sat",
+      "unit": "s",
+      "description": "Critical day length for satellite",
+      "group": "Diagnostic variables",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "utils"
       ]
     },
     {

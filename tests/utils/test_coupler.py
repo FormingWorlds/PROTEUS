@@ -3055,7 +3055,7 @@ def _install_updateplots_fakes(monkeypatch, calls):
         'proteus.plot.cpl_global': 'plot_global',
         'proteus.plot.cpl_interior': 'plot_interior',
         'proteus.plot.cpl_interior_cmesh': 'plot_interior_cmesh',
-        'proteus.plot.cpl_orbit': ('plot_orbit', 'plot_Lovenumber'),
+        'proteus.plot.cpl_orbit': ('plot_orbit', 'plot_lovenumber'),
         'proteus.plot.cpl_sflux': 'plot_sflux',
         'proteus.plot.cpl_sflux_cross': 'plot_sflux_cross',
         'proteus.plot.cpl_spectra': 'plot_spectra',
@@ -3127,7 +3127,7 @@ def test_update_plots_covers_runtime_and_end_branches(monkeypatch, tmp_path):
 def test_update_plots_obliqua_module_calls_lovenumber_plot(monkeypatch, tmp_path):
     """When the tidal-response module is Obliqua, UpdatePlots must glob the
     per-time ``*_obliqua.nc`` snapshots, load their tidal data, and dispatch
-    to ``plot_Lovenumber`` -- the branch this PR's Obliqua integration added,
+    to ``plot_lovenumber`` -- the branch this PR's Obliqua integration added,
     previously untested (dummy_atm/orbit.module='dummy' in the other
     UpdatePlots tests never reaches it).
     """
@@ -3165,12 +3165,12 @@ def test_update_plots_obliqua_module_calls_lovenumber_plot(monkeypatch, tmp_path
     UpdatePlots(hf_all, dirs, cfg, end=True, num_snapshots=1)
 
     called_names = [c[0] for c in calls]
-    assert 'plot_Lovenumber' in called_names
+    assert 'plot_lovenumber' in called_names
     # Discrimination: a regression that skipped the glob/parse step (e.g.
     # passed the raw '*_obliqua.nc' pattern through unparsed) would still
-    # call plot_Lovenumber, but with zero times -- pin that real nc_times
+    # call plot_lovenumber, but with zero times -- pin that real nc_times
     # were parsed and threaded through.
-    lovenumber_call = next(c for c in calls if c[0] == 'plot_Lovenumber')
+    lovenumber_call = next(c for c in calls if c[0] == 'plot_lovenumber')
     assert lovenumber_call[2] == ('data', 'output_dir', 'plot_format', 'times')
 
 

@@ -227,6 +227,27 @@ def test_evection_rate_cap_yr_falls_back_to_ceiling_at_zero_rate():
 
 
 @pytest.mark.physics_invariant
+def test_evection_rate_cap_yr_falls_back_to_ceiling_at_zero_time_span():
+    """Two (or more) history samples recorded at the same timestamp give a
+    zero-width window, so the secular slope ``de/dt`` is undefined (a
+    ``0/0`` division, not merely small). The cap must fall back to the
+    ceiling here too, the same as the zero-history and zero-rate cases,
+    rather than raise a ``ZeroDivisionError`` or propagate a NaN/inf cap.
+    """
+    config = _dt_cap_config(evection_maximum=9.0)
+    same_instant = _tides_with_ecc_history([5.0, 5.0], [0.30, 0.34])
+
+    assert _evection_rate_cap_yr(same_instant, True, config) == pytest.approx(9.0)
+
+    # Discrimination: the same eccentricity change over a nonzero span is
+    # constrained well below the ceiling, so the fallback above follows
+    # from the degenerate time span, not from this de being too small to
+    # ever constrain anything.
+    spread_out = _tides_with_ecc_history([0.0, 10.0], [0.30, 0.34])
+    assert _evection_rate_cap_yr(spread_out, True, config) < 9.0
+
+
+@pytest.mark.physics_invariant
 def test_evection_rate_cap_yr_default_window_aliases_onto_pure_oscillation():
     """With the default ``evection_rate_window=2`` (a plain two-point
     diff), a PURE oscillation in eccentricity with zero net secular trend

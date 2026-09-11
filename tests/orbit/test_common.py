@@ -152,6 +152,7 @@ def test_run_adaptive_orbit_substeps_skips_c_planet_refresh_when_not_needed():
         run_adaptive_orbit_substeps(
             hf_row,
             config,
+            {},  # dirs (unused by this test)
             Tides_t(),
             interior_o,
             'testmodel',
@@ -184,6 +185,7 @@ def test_run_adaptive_orbit_substeps_logs_error_on_degenerate_c_planet_result(ca
         run_adaptive_orbit_substeps(
             hf_row,
             config,
+            {},  # dirs (unused by this test)
             Tides_t(),
             interior_o,
             'testmodel',
@@ -203,20 +205,28 @@ def test_run_adaptive_orbit_substeps_logs_error_on_degenerate_c_planet_result(ca
 
 def test_run_adaptive_orbit_substeps_reraises_when_c_planet_refresh_raises(caplog):
     """An exception from ``get_C_planet`` itself must be logged and
-    RE-raised, not swallowed -- a genuinely broken interior state should
-    stop the run, not silently continue with a stale C_planet."""
+    re-raised (wrapped in a RuntimeError naming the model/time context,
+    chained via ``from err`` so the original cause is preserved), not
+    swallowed -- a genuinely broken interior state should stop the run,
+    not silently continue with a stale C_planet. Also confirms the
+    status file is updated (code 26) before the re-raise, so a crashed
+    run is recorded as such rather than left unexplained."""
     config = _make_solver_config(dt0_yr=1.0, dt_max_yr=10.0)
     interior_o = _make_interior_o(dt=5.0)
     hf_row: dict = {'Time': 0.0, 'C_int': 1.0e37, 'axial_period': 86400.0}
+    dirs = {'output': '/tmp/unused'}
+    original_err = RuntimeError('boom')
 
     with (
-        patch('proteus.orbit.common.get_C_planet', side_effect=RuntimeError('boom')),
+        patch('proteus.orbit.common.get_C_planet', side_effect=original_err),
+        patch('proteus.orbit.common.UpdateStatusfile') as mock_update_status,
         caplog.at_level(logging.ERROR, logger='fwl.proteus.orbit.common'),
-        pytest.raises(RuntimeError, match='boom'),
+        pytest.raises(RuntimeError, match='C_planet update failed') as excinfo,
     ):
         run_adaptive_orbit_substeps(
             hf_row,
             config,
+            dirs,
             Tides_t(),
             interior_o,
             'testmodel',
@@ -227,6 +237,11 @@ def test_run_adaptive_orbit_substeps_reraises_when_c_planet_refresh_raises(caplo
             needs_c_planet=True,
         )
     assert any('C_planet update RAISED' in rec.message for rec in caplog.records)
+    mock_update_status.assert_called_once_with(dirs, 26)
+    # Discrimination: the original exception must still be reachable via
+    # exception chaining, not discarded when wrapped into the clearer
+    # top-level RuntimeError.
+    assert excinfo.value.__cause__ is original_err
 
 
 def test_run_adaptive_orbit_substeps_logs_nonfinite_fields_on_rejected_substep(caplog):
@@ -246,6 +261,7 @@ def test_run_adaptive_orbit_substeps_logs_nonfinite_fields_on_rejected_substep(c
         run_adaptive_orbit_substeps(
             hf_row,
             config,
+            {},  # dirs (unused by this test)
             Tides_t(),
             interior_o,
             'testmodel',
@@ -295,6 +311,7 @@ def test_run_adaptive_orbit_substeps_logs_progress_every_5000_accepted_steps(cap
         run_adaptive_orbit_substeps(
             hf_row,
             config,
+            {},  # dirs (unused by this test)
             Tides_t(),
             interior_o,
             'testmodel',

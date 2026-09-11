@@ -608,7 +608,7 @@
           "value": 0
         }
       ],
-      "description": "Number of PROTEUS iterations, after ``in_evection_band``/ ``near_evection_band`` both go False, during which ``evection_growth_factor`` remains active. Refreshed to this value on every iteration the zone is active, so a long stay in the band does not exhaust it before exit. Default 0 (no cooldown tail; growth limiting turns off the instant the zone flags clear).",
+      "description": "Number of PROTEUS iterations, after the system is no longer judged in/near the evection band, during which ``evection_growth_factor`` remains active. Refreshed to this value on every iteration the zone is active, so a long stay in the band does not exhaust it before exit. Default 0 (no cooldown tail; growth limiting turns off the instant the zone is left).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -2581,27 +2581,6 @@
       "group_qualifier": null
     },
     {
-      "path": "orbit.obliqua.visc_l",
-      "toml_section": "orbit.obliqua",
-      "class": "Obliqua",
-      "type": "float",
-      "accepts_none": false,
-      "default": "100.0",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Pure liquid viscosity [Pa s].",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
       "path": "orbit.obliqua.visc_lus",
       "toml_section": "orbit.obliqua",
       "class": "Obliqua",
@@ -2616,27 +2595,6 @@
         }
       ],
       "description": "Liquidus viscosity [Pa s].",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
-      "path": "orbit.obliqua.visc_s",
-      "toml_section": "orbit.obliqua",
-      "class": "Obliqua",
-      "type": "float",
-      "accepts_none": false,
-      "default": "1e+22",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Pure solid viscosity [Pa s].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -3083,7 +3041,12 @@
       "accepts_none": false,
       "default": "0.5",
       "choices": null,
-      "bounds": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
       "description": "Scale width of the bottom heating decay profile [dimensionless].",
       "doc_source": "attributes",
       "group_order": 0,
@@ -3099,7 +3062,12 @@
       "accepts_none": false,
       "default": "0.03",
       "choices": null,
-      "bounds": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
       "description": "Scale width of the top heating decay profile [dimensionless].",
       "doc_source": "attributes",
       "group_order": 0,
@@ -10208,6 +10176,18 @@
       "doc": "Synthetic observations require a spatially resolved atmosphere (not dummy)."
     },
     {
+      "validator": "orbit_requires_tides",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.module",
+        "orbit.star_planet_model"
+      ],
+      "doc": "sp1d, ps1d, and ps1d_evec require atleast Lovepy, but ideally the Obliqua tidal-response module."
+    },
+    {
       "validator": "planet_fO2_source_compat",
       "module": "_config.py",
       "attached_to": [
@@ -10245,6 +10225,19 @@
       "doc": "Star-planet orbital evolution and the planet-satellite model are mutually exclusive."
     },
     {
+      "validator": "sp0d_obliqua_degree_mismatch",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.module",
+        "orbit.obliqua.n",
+        "orbit.star_planet_model"
+      ],
+      "doc": "sp0d's closed-form is by definition the n=2 Love number. Obliqua can compute arbitrary tidal degree(s), block the mismatch."
+    },
+    {
       "validator": "spada_zephyrus",
       "module": "_config.py",
       "attached_to": [
@@ -10267,7 +10260,7 @@
         "interior_energetics.heat_tidal",
         "orbit.module"
       ],
-      "doc": "Interior tidal heating requires an orbit module to be enabled."
+      "doc": "Interior tidal heating requires an tides module to be enabled."
     },
     {
       "validator": "valid_escapedummy",

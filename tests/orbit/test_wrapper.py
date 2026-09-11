@@ -580,6 +580,10 @@ def test_run_orbit_no_module_sets_imk2_to_zero():
 def test_init_orbit_invokes_obliqua_import_when_module_is_obliqua():
     """A non-None module that names obliqua must call ``import_obliqua``
     exactly once -- the counterpart to the existing lovepy dispatch test.
+    Also sets up Obliqua's own logging once here (not on every run_orbit
+    call, which no longer touches it at all -- see
+    test_run_orbit_obliqua_module_uses_degree_2_love_number_when_n_is_only_2),
+    passing through the configured verbosity.
     """
     from unittest.mock import MagicMock
 
@@ -588,14 +592,17 @@ def test_init_orbit_invokes_obliqua_import_when_module_is_obliqua():
     handler = MagicMock()
     handler.config.orbit.module = 'obliqua'
     handler.config.interior_energetics.heat_tidal = True
+    handler.config.orbit.obliqua.verbosity = 2
     with (
         patch('proteus.orbit.obliqua.import_obliqua') as mock_import,
+        patch('proteus.orbit.obliqua.setup_logging') as mock_setup_logging,
         # Discrimination: dispatch must not ALSO import lovepy for this module.
         patch('proteus.orbit.lovepy.import_lovepy') as mock_lovepy_import,
     ):
         init_orbit(handler)
     assert mock_import.call_count == 1
     assert mock_lovepy_import.call_count == 0
+    mock_setup_logging.assert_called_once_with(handler.directories, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -700,6 +707,66 @@ def test_run_orbit_warns_when_planet_inside_roche_limit():
     # geometry must support the warning's truth.
     assert hf_row['separation'] < hf_row['roche_limit']
     assert mock_warn.call_count >= 1
+
+
+def test_run_orbit_warns_when_satellite_orbit_exceeds_hill_radius():
+    """When a satellite is modelled (include_satellite=True) and its
+    semi-major axis exceeds the planet's Hill radius, run_orbit must warn:
+    an orbit that wide is not gravitationally bound to the planet against
+    the star's perturbation. Also pins that the satellite-specific
+    breakup/Roche offsets (params.stop.disint_sat.*) are read here, not
+    the planet's own params.stop.disint.* -- a copy-paste of the wrong
+    offset would still execute (both are floats) but silently ignore
+    whatever the user set for the satellite.
+    """
+    import logging
+    from unittest.mock import MagicMock
+
+    from proteus.orbit.wrapper import run_orbit
+
+    config = MagicMock()
+    config.orbit.module = None
+    config.orbit.evolve = False
+    config.orbit.eccentricity = 0.0
+    config.orbit.semimajoraxis = 1.0  # AU, wide star-planet separation
+    config.orbit.satellite = _make_satellite_config_stub()
+    config.orbit.satellite.include_satellite = True
+    # The init branch (Time<=1) sets hf_row['semimajorax_sat'] FROM this
+    # config field (in R_earth units), overwriting any hf_row value passed
+    # in below -- 1e4 R_earth is far beyond any physically bound Hill
+    # radius around a Sun-like star at 1 AU (~1.5e9 m, ~0.01 AU).
+    config.orbit.satellite.semimajoraxis_sat = 1.0e4
+    config.orbit.satellite.axial_period_sat = 24.0  # hours
+    config.orbit.axial_period = None
+    config.orbit.instellation_method = 'sep'
+    config.star.module = 'mors'
+    config.params.stop.disint.offset_spin = 0.0
+    config.params.stop.disint.offset_roche = 0.0
+    config.params.stop.disint_sat.offset_spin = 0.0
+    config.params.stop.disint_sat.offset_roche = 0.0
+    hf_row = {
+        'M_star': M_sun,
+        'M_planet': M_earth,
+        'M_int': M_earth,
+        'R_int': R_earth,
+        'R_obs': R_earth,
+        'R_xuv': R_earth,
+        'Time': 0.0,  # init branch
+        'plan_sat_am': 0.0,
+        'plan_star_am': 0.0,
+    }
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(3)
+
+    target_logger = 'fwl.proteus.orbit.wrapper'
+    with patch('logging.Logger.warning') as mock_warn:
+        logging.getLogger(target_logger).setLevel(logging.WARNING)
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    assert hf_row['semimajorax_sat'] > hf_row['hill_radius']
+    warned_messages = [call.args[0] for call in mock_warn.call_args_list]
+    assert any('beyond the Hill radius of its planet' in msg for msg in warned_messages)
 
 
 # ---------------------------------------------------------------------------
@@ -882,6 +949,114 @@ def test_run_orbit_evolved_branch_dispatches_to_star_and_satellite_models():
     mock_sat.assert_called_once()
 
 
+def test_run_orbit_reraises_when_evolve_orbit_star_raises():
+    """Time>1, star_planet_model set: a failure inside evolve_orbit_star
+    (e.g. Obliqua/lovepy erroring on a degenerate orbit) must not surface
+    as a bare, unattributed exception. run_orbit wraps it in a RuntimeError
+    naming the model and Time, and flags the run's status file, mirroring
+    the same contract as run_adaptive_orbit_substeps's C_planet-refresh
+    re-raise (tests/orbit/test_common.py)."""
+    from unittest.mock import MagicMock
+
+    from proteus.orbit.wrapper import run_orbit
+
+    config = MagicMock()
+    config.orbit.module = None
+    config.orbit.evolve = False
+    config.orbit.instellation_method = 'sep'
+    config.orbit.star_planet_model = 'sp1d'
+    config.orbit.planet_satellite_model = None
+    config.orbit.satellite.include_satellite = False
+    config.star.module = 'mors'
+    config.params.stop.disint.offset_spin = 0.0
+    config.params.stop.disint.offset_roche = 0.0
+
+    hf_row = {
+        'M_star': M_sun,
+        'M_planet': M_earth,
+        'M_int': M_earth,
+        'R_int': R_earth,
+        'R_obs': R_earth,
+        'R_xuv': R_earth,
+        'semimajorax': AU,
+        'eccentricity': 0.05,
+        'axial_period': 86400.0,
+        'Time': 100.0,  # > 1: evolved branch
+        'plan_sat_am': 0.0,
+        'plan_star_am': 0.0,
+    }
+    interior_o = MagicMock()
+    interior_o.dt = 1e6
+    interior_o.phi = np.zeros(3)
+    dirs = {'output': '/tmp/unused'}
+    original_err = RuntimeError('obliqua degree mismatch')
+
+    with (
+        patch('proteus.orbit.orbit.evolve_orbit_star', side_effect=original_err),
+        patch('proteus.orbit.wrapper.UpdateStatusfile') as mock_update_status,
+        pytest.raises(RuntimeError, match='Star-Planet orbital evolution failed') as excinfo,
+    ):
+        run_orbit(hf_row, config, dirs=dirs, tides_o=MagicMock(), interior_o=interior_o)
+
+    assert excinfo.value.__cause__ is original_err
+    mock_update_status.assert_called_once_with(dirs, 26)
+
+
+def test_run_orbit_reraises_when_evolve_orbit_satellite_raises():
+    """Time>1, planet_satellite_model set: the same wrap-and-flag contract
+    as the star-planet path above, but for evolve_orbit_satellite. A
+    distinct message ("Planet-Satellite orbital evolution failed") proves
+    the two except-blocks are not aliasing one another's error text."""
+    from unittest.mock import MagicMock
+
+    from proteus.orbit.wrapper import run_orbit
+
+    config = MagicMock()
+    config.orbit.module = None
+    config.orbit.evolve = False
+    config.orbit.instellation_method = 'sep'
+    config.orbit.star_planet_model = None
+    config.orbit.planet_satellite_model = 'ps0d'
+    config.orbit.satellite.include_satellite = False
+    config.star.module = 'mors'
+    config.params.stop.disint.offset_spin = 0.0
+    config.params.stop.disint.offset_roche = 0.0
+
+    hf_row = {
+        'M_star': M_sun,
+        'M_planet': M_earth,
+        'M_int': M_earth,
+        'R_int': R_earth,
+        'R_obs': R_earth,
+        'R_xuv': R_earth,
+        'semimajorax': AU,
+        'eccentricity': 0.05,
+        'axial_period': 86400.0,
+        'semimajorax_sat': 3.8e8,
+        'M_sat': 7.342e22,
+        'Time': 100.0,  # > 1: evolved branch
+        'plan_sat_am': 0.0,
+        'plan_star_am': 0.0,
+    }
+    interior_o = MagicMock()
+    interior_o.dt = 1e6
+    interior_o.phi = np.zeros(3)
+    dirs = {'output': '/tmp/unused'}
+    original_err = ValueError('non-finite eccentricity_sat')
+
+    with (
+        patch('proteus.orbit.satellite.evolve_orbit_satellite', side_effect=original_err),
+        patch('proteus.orbit.wrapper.UpdateStatusfile') as mock_update_status,
+        pytest.raises(
+            RuntimeError, match='Planet-Satellite orbital evolution failed'
+        ) as excinfo,
+    ):
+        run_orbit(hf_row, config, dirs=dirs, tides_o=MagicMock(), interior_o=interior_o)
+
+    assert excinfo.value.__cause__ is original_err
+    mock_update_status.assert_called_once_with(dirs, 26)
+
+
 def test_run_orbit_evolved_branch_inst_method_sets_sma_from_dummy_star_luminosity():
     """Time>1, no star_planet_model configured: falls back to setting
     ``semimajorax`` from the instellation-flux target using the dummy
@@ -976,7 +1151,10 @@ def _make_obliqua_hf_row():
 
 def test_run_orbit_obliqua_module_uses_degree_2_love_number_when_n_is_only_2():
     """model='obliqua' with n=[2] (degree-2 only) must populate Imk2
-    from run_obliqua's returned value directly."""
+    from run_obliqua's returned value directly. Obliqua's logging setup
+    is a one-time call from init_orbit now (see
+    test_init_orbit_invokes_obliqua_import_when_module_is_obliqua), not
+    something run_orbit itself repeats every iteration."""
     from unittest.mock import MagicMock
 
     from proteus.orbit.wrapper import run_orbit
@@ -988,13 +1166,9 @@ def test_run_orbit_obliqua_module_uses_degree_2_love_number_when_n_is_only_2():
     interior_o.phi = np.zeros(3)
     interior_o.tides = np.zeros(3)
 
-    with (
-        patch('proteus.orbit.obliqua.setup_logging') as mock_setup_logging,
-        patch('proteus.orbit.obliqua.run_obliqua', return_value=0.0071) as mock_run_obliqua,
-    ):
+    with patch('proteus.orbit.obliqua.run_obliqua', return_value=0.0071) as mock_run_obliqua:
         run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
 
-    mock_setup_logging.assert_called_once()
     mock_run_obliqua.assert_called_once()
     assert hf_row['Imk2'] == pytest.approx(0.0071, rel=1e-12)
 

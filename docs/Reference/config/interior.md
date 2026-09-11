@@ -362,7 +362,7 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 Cross-field constraints enforced when the config file loads:
 
 - Boundary backend assumes a fixed surface state coupling.
-- Interior tidal heating requires an orbit module to be enabled.
+- Interior tidal heating requires an tides module to be enabled.
 - Aragog requires at least one energy transport term to be enabled.
 - Validate Boundary backend's solidus/liquidus ordering.
 - Dummy interior requires the liquidus to sit above the solidus.

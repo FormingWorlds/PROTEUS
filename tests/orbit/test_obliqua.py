@@ -97,6 +97,7 @@ import pytest
 
 pytest.importorskip('juliacall')
 
+from proteus.config._orbit import Obliqua, ObliquaFluid
 from proteus.orbit.common import Tides_t
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -122,65 +123,61 @@ def _make_interior_t(nlev_s: int):
 
 def _make_config(module: str, perturber: str):
     """Fake Config namespace exposing exactly the attribute paths that
-    ``run_obliqua`` reads, mirroring the ``[tool.proteus...]``
-    ``Obliqua``/``ObliquaSolid``/``ObliquaMushy``/``ObliquaFluid``
-    field names in ``src/proteus/config/_orbit.py``.
+    ``run_obliqua`` reads. ``orbit.obliqua`` must be a REAL attrs-decorated
+    ``Obliqua`` instance (not a duck-typed stand-in): ``_obliqua_module_cfg``
+    builds Obliqua's cfg dict via ``attrs.asdict(config.orbit.obliqua)``,
+    which requires an actual attrs class.
     """
     cfg = types.SimpleNamespace()
     cfg.orbit = types.SimpleNamespace()
     cfg.orbit.perturber = perturber
 
-    ob = types.SimpleNamespace()
-    ob.store_3D = False
-    ob.enforce_ec = True
-    ob.optimize_scales = False
-    ob.solid_shell = True
-    ob.min_frac = 0.02
-    ob.visc_l = 1e2
-    ob.visc_lus = 5e5
-    ob.visc_s = 1e22
-    ob.visc_sus = 5e5
-    ob.n = [2]
-    ob.m = [0, 2]
-    ob.k_min = 'none'
-    ob.k_max = 'none'
-    ob.evection_padding_factor = 2.0
-    ob.material_mu = 'andrade'
-    ob.material_k = 'andrade'
-    ob.alpha = 0.3
-    ob.module_solid = 'solid0d'
-    ob.module_mushy = 'none'
-    ob.module_fluid = 'fluid0d'
-
-    ob.solid = types.SimpleNamespace(
-        ncalc=1000,
-        dr_min=300,
-        dr_max=3000,
-        core='liquid',
-        core_props='core',
-        inertial_terms=True,
-        bulk_l=1e9,
-        porosity_thresh=3e-2,
-        dbulk_power=0.5,
+    # visc_l/visc_s are no longer part of Obliqua's own config (they are
+    # patched in by _obliqua_module_cfg from
+    # config.interior_energetics.melt_log10visc/solid_log10visc instead --
+    # see below), so only the fields the real Obliqua/ObliquaFluid classes
+    # still declare are overridden here.
+    cfg.orbit.obliqua = Obliqua(
+        store_3D=False,
+        enforce_ec=True,
+        optimize_scales=False,
+        solid_shell=True,
+        min_frac=0.02,
+        visc_lus=5e5,
+        visc_sus=5e5,
+        n=[2],
+        m=[0, 2],
+        k_min='none',
+        k_max='none',
+        evection_padding_factor=2.0,
+        material_mu='andrade',
+        material_k='andrade',
+        alpha=0.3,
+        module_solid='solid0d',
+        module_mushy='none',
+        module_fluid='fluid0d',
+        fluid=ObliquaFluid(
+            sigma_R=1e-3,
+            sigma_R_factor=0.5,
+            sigma_R_prf='exp',
+            H_R=1e4,
+            efficiency=0.3,
+        ),
     )
-    ob.mushy = types.SimpleNamespace(b_width=0.5, t_width=0.03)
-    ob.fluid = types.SimpleNamespace(
-        sigma_R=1e-3,
-        sigma_R_inf=0.5,
-        sigma_R_prf='exp',
-        H_R=1e4,
-        efficiency=0.3,
-    )
-    cfg.orbit.obliqua = ob
 
     cfg.interior_energetics = types.SimpleNamespace()
     cfg.interior_energetics.module = module
     cfg.interior_energetics.grain_size = 1e-3
+    # 10**2.0 == 1e2 Pa s, 10**22.0 == 1e22 Pa s: reproduces the old
+    # visc_l=1e2/visc_s=1e22 test values through the new log10 fields.
+    cfg.interior_energetics.melt_log10visc = 2.0
+    cfg.interior_energetics.solid_log10visc = 22.0
     cfg.interior_energetics.boundary = types.SimpleNamespace(
         core_density=1e4,
         core_shear=8e10,
         core_bulk=1.4e11,
     )
+    cfg.interior_struct = types.SimpleNamespace(core_density=1e4)
     return cfg
 
 
@@ -1067,7 +1064,7 @@ def test_lookup_from_interior_splits_core_density_from_mantle_profile(monkeypatc
 
 
 def test_lookup_from_interior_writes_netcdf_matching_run_tides_output(monkeypatch, tmp_path):
-    """The written ``moon_tides.nc`` lookup file exactly reproduces
+    """The written ``sat_tides.nc`` lookup file exactly reproduces
     the ``(nmk, sigma, LNk)`` triple returned by ``run_tides`` --
     a round trip through real netCDF I/O (not mocked), pinned against
     an asymmetric two-mode result so a column swap (e.g. writing ``m``
@@ -1099,7 +1096,7 @@ def test_lookup_from_interior_writes_netcdf_matching_run_tides_output(monkeypatc
 
     obliqua_mod.lookup_from_interior(dirs={'output/data': str(tmp_path)}, config=cfg)
 
-    out = obliqua_mod.read_ncdf(str(tmp_path / 'moon_tides.nc'))
+    out = obliqua_mod.read_ncdf(str(tmp_path / 'sat_tides.nc'))
     np.testing.assert_array_equal(out['n'], [2, 2])
     np.testing.assert_array_equal(out['m'], [0, 2])
     np.testing.assert_array_equal(out['k'], [1, 3])
@@ -1320,7 +1317,7 @@ def test_ln_from_lookup_generates_lookup_once_from_json_path_and_caches_it(
 ):
     """When ``love_number_sat`` points at a ``.json`` IC file and no
     lookup is cached yet, ``LN_from_lookup`` calls
-    ``lookup_from_interior`` once to generate ``moon_tides.nc``, then
+    ``lookup_from_interior`` once to generate ``sat_tides.nc``, then
     caches the loaded table under ``('satellite_dict', 'planet')``. A
     second call on the same ``tides_o`` must reuse the cache rather
     than regenerating it.
@@ -1328,7 +1325,7 @@ def test_ln_from_lookup_generates_lookup_once_from_json_path_and_caches_it(
     from proteus.orbit import obliqua as obliqua_mod
 
     nmk_lookup, sigma_lookup, lnk_lookup = _default_lookup_table()
-    nc_path = tmp_path / 'moon_tides.nc'
+    nc_path = tmp_path / 'sat_tides.nc'
 
     calls: list[tuple] = []
 

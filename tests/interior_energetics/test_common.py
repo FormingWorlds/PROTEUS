@@ -1325,3 +1325,45 @@ def test_get_c_planet_without_reversal_flag_flips_sign_on_surface_first_input():
 
     assert hf_row['C_int'] == pytest.approx(-expected_C, rel=1e-12)
     assert hf_row['C_int'] < 0.0
+
+
+@pytest.mark.physics_invariant
+def test_get_c_planet_falls_back_to_config_core_density_when_hf_row_lacks_it(caplog):
+    """When hf_row carries no ``'core_density'`` key at all (e.g. no
+    interior_struct backend has written one yet), ``get_C_planet`` falls
+    back to ``config.interior_struct.core_density`` and logs a warning
+    naming the substitution, rather than raising a ``KeyError`` or silently
+    treating the core as massless.
+
+    Here the injected core segment has real width (``interior.radius``
+    starts above 0), so the fallback density actually enters the integral
+    and is not the inert edge case the other ``get_C_planet`` tests pin to.
+    """
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.common import get_C_planet
+
+    R_core, R = 3.0e6, 6.371e6
+    rho_core, rho_mantle = 9000.0, 4500.0
+    interior = Interior_t(nlev_b=2)
+    interior.radius = np.array([R_core, R])
+    interior.density = np.array([rho_mantle])
+
+    M_core = (4.0 / 3.0) * np.pi * R_core**3 * rho_core
+    M_mantle = (4.0 / 3.0) * np.pi * (R**3 - R_core**3) * rho_mantle
+    hf_row: dict = {'M_int': M_core + M_mantle, 'R_int': R}  # no 'core_density' key
+    cfg = SimpleNamespace(
+        interior_energetics=SimpleNamespace(module='aragog'),
+        interior_struct=SimpleNamespace(core_density=rho_core),
+    )
+
+    with caplog.at_level('WARNING'):
+        get_C_planet(hf_row, cfg, interior)
+
+    expected = (8.0 * np.pi / 15.0) * (rho_core * R_core**5 + rho_mantle * (R**5 - R_core**5))
+    assert hf_row['C_int'] == pytest.approx(expected, rel=1e-12)
+    assert any('core_density not found' in rec.message for rec in caplog.records)
+    # Discrimination: treating the core as massless (rho_core = 0) instead
+    # of using the config fallback moves C_int well outside tolerance.
+    massless_core = (8.0 * np.pi / 15.0) * (0.0 + rho_mantle * (R**5 - R_core**5))
+    assert abs(hf_row['C_int'] - massless_core) > 1e-6 * expected

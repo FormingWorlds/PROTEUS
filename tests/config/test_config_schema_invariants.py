@@ -43,6 +43,7 @@ from proteus.config._config import (
     boundary_requires_fixed_surface_state,
     check_module_dependencies,
     instmethod_evolve,
+    orbit_requires_tides,
     planet_fO2_source_compat,
     planet_mass_valid,
     planet_oxygen_mode_explicit,
@@ -818,6 +819,64 @@ def test_satellite_evolve_passes_without_satellite():
 
 
 # ---------------------------------------------------------------------------
+# orbit_requires_tides: sp1d/ps1d/ps1d_evec consume a per-mode Love-number
+# spectrum, which only lovepy or Obliqua can supply.
+# ---------------------------------------------------------------------------
+@pytest.mark.unit
+@pytest.mark.parametrize('model', ['sp1d', 'ps1d', 'ps1d_evec'])
+@pytest.mark.parametrize('module', ['dummy', 'none'])
+def test_orbit_requires_tides_rejects_non_tidal_module(model, module):
+    """sp1d/ps1d/ps1d_evec need a real tidal-response spectrum, so pairing
+    any of them with a non-tides module (dummy tides or tides disabled
+    entirely) must raise rather than silently running with no Love numbers."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': module,
+            'orbit.star_planet_model': model,
+        }
+    )
+    with pytest.raises(ValueError, match=model) as excinfo:
+        orbit_requires_tides(instance, None, None)
+    msg = str(excinfo.value)
+    # Discrimination: the message must name both accepted modules, not just
+    # reject blindly, so the user knows what to switch to.
+    assert 'obliqua' in msg
+    assert 'lovepy' in msg
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('model', ['sp1d', 'ps1d', 'ps1d_evec'])
+@pytest.mark.parametrize('module', ['obliqua', 'lovepy'])
+def test_orbit_requires_tides_passes_for_either_tidal_module(model, module):
+    """Either Obliqua or lovepy supplies a real per-mode spectrum, so both
+    are accepted for every model that requires one."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': module,
+            'orbit.star_planet_model': model,
+        }
+    )
+    result = orbit_requires_tides(instance, None, None)
+    assert result is None
+    assert instance.orbit.module == module  # unmodified by the validator
+
+
+@pytest.mark.unit
+def test_orbit_requires_tides_passes_for_sp0d_regardless_of_module():
+    """sp0d uses its own closed-form Love number and never reads a per-mode
+    spectrum, so the restriction is specific to sp1d/ps1d/ps1d_evec and must
+    not fire for sp0d even on a non-tides module."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'dummy',
+            'orbit.star_planet_model': 'sp0d',
+        }
+    )
+    result = orbit_requires_tides(instance, None, None)
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
 # sp0d_obliqua_degree_mismatch: sp0d's scalar Imk2 is only ever meaningful
 # for Obliqua's degree-2 output; run_orbit zeroes it for any other degree.
 # ---------------------------------------------------------------------------
@@ -836,10 +895,11 @@ def test_sp0d_obliqua_degree_mismatch_rejects_higher_degree():
     instance.orbit.obliqua = SimpleNamespace(n=[2, 3])
     with pytest.raises(ValueError, match=r'sp0d') as excinfo:
         sp0d_obliqua_degree_mismatch(instance, None, None)
-    # Discrimination: the message must name Imk2/degree-2 as the reason, not
-    # just "sp0d is bad", so the user knows what to change (n, or the model).
+    # Discrimination: the message must name obliqua.n == [2] as the reason,
+    # not just "sp0d is bad", so the user knows what to change (n, or the
+    # model), and must name sp1d as the alternative to switch to.
     msg = str(excinfo.value).lower()
-    assert 'imk2' in msg
+    assert 'n == [2]' in msg
     assert 'sp1d' in msg  # names the model to switch to
 
 
