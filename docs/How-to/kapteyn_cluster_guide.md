@@ -61,13 +61,16 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     source "$HOME/.bashrc"
     ```
 
-5. You can now follow the usual installation steps [here](installation.md), but, since your home folder is capped
-   at 9GB, you need to install Julia and miniconda or conda-forge in "/dataserver/users/formingworlds/<username>".
+5. Install conda and create the PROTEUS environment, by following the
+   [installation steps](installation.md) up to and including
+   `conda activate proteus`. Since your home folder is capped at 9GB, install
+   Julia and miniconda or conda-forge in "/dataserver/users/formingworlds/<username>"
+   rather than in the default location. See [Julia considerations](#julia-considerations)
+   and [Miniconda and conda-forge considerations](#miniconda-and-conda-forge-considerations)
+   below.
 
-    The Kapteyn module system does not provide NetCDF-Fortran, which SOCRATES
-    needs both to build and to run, so take it from conda-forge instead. Run
-    these commands once the conda environment exists, and before you build
-    SOCRATES:
+6. Install NetCDF-Fortran into that environment. The Kapteyn module system
+   does not provide it, and SOCRATES needs it both to build and to run:
     ```console
     conda install -c conda-forge netcdf-fortran
     conda env config vars set LD_LIBRARY_PATH="$CONDA_PREFIX/lib"
@@ -79,6 +82,9 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     of its own. Without the variable SOCRATES still compiles, and the binaries
     it produces then fail with `libnetcdff.so.7: cannot open shared object
     file`.
+
+7. You can now run the installer and complete the remaining
+   [installation steps](installation.md).
 
 ### Julia considerations
 If you have already installed Julia in your home folder, you could remove that through `rm -rf ~/.julia`.
