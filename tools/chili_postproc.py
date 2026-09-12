@@ -24,6 +24,7 @@ from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.config import read_config_object
 from proteus.interior_energetics.aragog import read_ncdf
 from proteus.utils.constants import R_earth, vol_list
+from proteus.utils.helper import format_subyear_time
 from proteus.utils.plot import get_colour, latexify
 
 # Target times for sampling profile [log years]
@@ -123,8 +124,8 @@ def postproc_once(simdir: str, plot: bool = True):
 
     visc_arr = []
     for idx_t, t in enumerate(out['t(yr)']):
-        # Aragog names snapshots with %d (truncation), not rounding.
-        ncfile = os.path.join(simdir, 'data', f'{int(t)}_int.nc')
+        # Snapshot filenames use format_subyear_time (p decimal separator).
+        ncfile = os.path.join(simdir, 'data', format_subyear_time(t) + '_int.nc')
         if not os.path.isfile(ncfile):
             visc_arr.append(np.nan)
             continue
@@ -157,7 +158,7 @@ def postproc_once(simdir: str, plot: bool = True):
         else:
             print(f'      tau{tau} -> {tclose:.2e} yr')
 
-        ncfile = os.path.join(simdir, 'data', f'{tclose:.0f}_atm.nc')
+        ncfile = os.path.join(simdir, 'data', format_subyear_time(tclose) + '_atm.nc')
         atm = read_ncdf_profile(ncfile, extra_keys=['x_gas'], combine_edges=False)
 
         # climate profile

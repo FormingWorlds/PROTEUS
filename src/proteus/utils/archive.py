@@ -23,7 +23,7 @@ def _snapshot_time(name: str) -> float | None:
 
     A timestamped snapshot is a file ending in ``.nc`` or ``.json`` whose
     leading token is the simulated time in years, e.g. ``1000p000_int.nc``,
-    ``1000.000_atm.nc``, ``0p200_int.nc``, or ``5000.json``. Whole-year
+    ``1000p000_atm.nc``, ``0p200_int.nc``, or ``5000.json``. Whole-year
     names without a fractional part (``1000_int.nc``) parse to the same
     value.
 

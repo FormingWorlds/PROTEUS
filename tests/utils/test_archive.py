@@ -360,6 +360,9 @@ def test_snapshot_time_recognizes_only_integer_prefixed_nc_json():
     assert st('5000.json') == 5000
     assert st('884p700_int.nc') == pytest.approx(884.7)
     assert st('884p700_atm.nc') == pytest.approx(884.7)
+    # Dot-form filenames (legacy) parse to the same value
+    assert st('884.700_int.nc') == pytest.approx(884.7)
+    assert st('884.700_atm.nc') == pytest.approx(884.7)
     # Boundary: age 0 must be 0, not None (distinct from "not a snapshot")
     assert st('0_int.nc') == 0
     # Fixed-name runtime files and runtime dirs -> None
