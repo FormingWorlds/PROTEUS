@@ -74,11 +74,14 @@ def _make_interior_t(module: str, nlev_s: int = 5):
     return interior_o
 
 
-def _make_config(module: str, visc_thresh: float = 1e9, ncalc: int = 1000):
+def _make_config(
+    module: str, visc_thresh: float = 1e9, ncalc: int = 1000, perturber: str = 'star'
+):
     cfg = types.SimpleNamespace()
     cfg.interior_energetics = types.SimpleNamespace()
     cfg.interior_energetics.module = module
     cfg.orbit = types.SimpleNamespace()
+    cfg.orbit.perturber = perturber
     cfg.orbit.lovepy = types.SimpleNamespace()
     cfg.orbit.lovepy.visc_thresh = visc_thresh
     cfg.orbit.lovepy.ncalc = ncalc
@@ -410,6 +413,42 @@ def test_run_lovepy_spider_heated_branch_reverses_order(monkeypatch):
     storage = tides_o.get(primary='planet', perturber='star')
     assert storage.LNk.shape == (3,)
     np.testing.assert_allclose(storage.LNk, np.full(3, 0.0 - 0.030j), rtol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# run_lovepy: satellite perturber reads the satellite-side orbital state.
+# ---------------------------------------------------------------------------
+
+
+def test_run_lovepy_satellite_perturber_reads_satellite_orbital_state(monkeypatch):
+    """``config.orbit.perturber == 'satellite'`` reads
+    ``orbital_period_sat``/``eccentricity_sat`` instead of the star-planet
+    fields, and tags the ``tides_o`` entry ``perturber='satellite'``."""
+    from proteus.orbit import lovepy as lovepy_mod
+
+    fake_jl = MagicMock(name='jl')
+    fake_jl.calc_lovepy_tides = MagicMock(return_value=(np.array([0.0, 1.5e-6]), 0.05, -0.0125))
+    monkeypatch.setattr(lovepy_mod, 'jl', fake_jl)
+    monkeypatch.setattr(lovepy_mod, '_jlarr', lambda a: a)
+    monkeypatch.setattr(lovepy_mod, '_jlsca', lambda s: s)
+
+    interior_o = _make_interior_t(module='dummy', nlev_s=3)
+    cfg = _make_config(module='dummy', visc_thresh=1e9, perturber='satellite')
+    hf_row = {
+        'orbital_period': 1e9,
+        'eccentricity': 0.9,
+        'orbital_period_sat': 2.36e6,
+        'eccentricity_sat': 0.02,
+    }
+    tides_o = Tides_t()
+
+    out = lovepy_mod.run_lovepy(
+        hf_row, dirs={}, interior_o=interior_o, tides_o=tides_o, config=cfg
+    )
+    assert out == pytest.approx(-0.0125, rel=1e-12)
+    storage = tides_o.get(primary='planet', perturber='satellite')
+    expected_omega = 2 * np.pi / hf_row['orbital_period_sat']
+    np.testing.assert_allclose(storage.sigma, np.full(3, expected_omega), rtol=1e-12)
 
 
 # ---------------------------------------------------------------------------

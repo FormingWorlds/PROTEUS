@@ -10183,9 +10183,10 @@
       ],
       "touches": [
         "orbit.module",
+        "orbit.planet_satellite_model",
         "orbit.star_planet_model"
       ],
-      "doc": "sp1d, ps1d, and ps1d_evec require atleast Lovepy, but ideally the Obliqua tidal-response module."
+      "doc": "sp1d, ps1d, and ps1d_evec require at least Lovepy, but ideally the Obliqua tidal-response module: all three read the full per-mode spectrum in ``tides_o``, which ``dummy`` never populates. ``sp0d``/``ps0d`` read the scalar ``Imk2`` instead (which ``dummy`` does provide), so they are unrestricted here; see \"Compatibility between orbit models and tidal modules\" in docs/Explanations/orbit.md."
     },
     {
       "validator": "planet_fO2_source_compat",

@@ -237,7 +237,7 @@ Cross-field constraints enforced when the config file loads:
 - Instellation method 'inst' is only available with the dummy star module.
 - Orbital evolution cannot be combined with instellation method 'inst'.
 - The Obliqua tidal-response module requires an explicit perturber.
-- sp1d, ps1d, and ps1d_evec require atleast Lovepy, but ideally the Obliqua tidal-response module.
+- sp1d, ps1d, and ps1d_evec require at least Lovepy, but ideally the Obliqua tidal-response module: all three read the full per-mode spectrum in ``tides_o``, which ``dummy`` never populates. ``sp0d``/``ps0d`` read the scalar ``Imk2`` instead (which ``dummy`` does provide), so they are unrestricted here; see "Compatibility between orbit models and tidal modules" in docs/Explanations/orbit.md.
 - Star-planet orbital evolution and the planet-satellite model are mutually exclusive.
 - sp0d's closed-form is by definition the n=2 Love number. Obliqua can compute arbitrary tidal degree(s), block the mismatch.
 - A bolometric scaling other than 1 requires bol_scale_start and a positive duration.

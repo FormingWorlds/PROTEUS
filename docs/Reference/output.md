@@ -110,11 +110,6 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `M_sat` | `kg` | mass of satellite | `orbit/wrapper.py` | always | orbit |
 | `C_sat` | `kg m2` | principal moment of inertia of satellite | `orbit/wrapper.py` | always | orbit |
 | `evection_angle` | `rad` | evection angle | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | orbit, plot |
-
-### CSV-exported "no cap" value is 0
-
-| Column | Unit | Description | Producer | Written when | Read by |
-|---|---|---|---|---|---|
 | `evection_dt_cap_yr` | `yr` | next macro-step dt cap, rate + growth limiter folded in | `orbit/satellite.py` | orbit.satellite = true | interior_energetics |
 
 ### Planet structure

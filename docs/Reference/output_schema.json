@@ -491,7 +491,7 @@
       "name": "evection_dt_cap_yr",
       "unit": "yr",
       "description": "next macro-step dt cap, rate + growth limiter folded in",
-      "group": "CSV-exported \"no cap\" value is 0",
+      "group": "Satellite system",
       "origin": "literal",
       "producers": [
         {

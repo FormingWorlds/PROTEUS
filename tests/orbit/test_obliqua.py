@@ -121,7 +121,7 @@ def _make_interior_t(nlev_s: int):
     return interior_o
 
 
-def _make_config(module: str, perturber: str):
+def _make_config(module: str, perturber: str, star_planet_model: str | None = None):
     """Fake Config namespace exposing exactly the attribute paths that
     ``run_obliqua`` reads. ``orbit.obliqua`` must be a REAL attrs-decorated
     ``Obliqua`` instance (not a duck-typed stand-in): ``_obliqua_module_cfg``
@@ -131,6 +131,7 @@ def _make_config(module: str, perturber: str):
     cfg = types.SimpleNamespace()
     cfg.orbit = types.SimpleNamespace()
     cfg.orbit.perturber = perturber
+    cfg.orbit.star_planet_model = star_planet_model
 
     # visc_l/visc_s are no longer part of Obliqua's own config (they are
     # patched in by _obliqua_module_cfg from
@@ -260,6 +261,57 @@ def _patch_identity_conversions(monkeypatch, obliqua_mod):
     monkeypatch.setattr(obliqua_mod, '_jlsca_prec', lambda s: s)
     monkeypatch.setattr(obliqua_mod, 'to_julia_dict', lambda cfg: cfg)
     monkeypatch.setattr(obliqua_mod, 'sync_log_files', lambda outdir: [])
+
+
+# ---------------------------------------------------------------------------
+# run_obliqua: spectrum selection (sp0d -> legacy, else adaptive).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    'star_planet_model,expected_spectrum',
+    [('sp0d', 'legacy'), ('sp1d', 'adaptive'), (None, 'adaptive')],
+)
+def test_run_obliqua_spectrum_is_legacy_only_for_sp0d(
+    monkeypatch, tmp_path, star_planet_model, expected_spectrum
+):
+    """``run_obliqua`` sets ``spectrum='legacy'`` (mimicking lovepy's
+    spin-orbit-synchronised, small-eccentricity assumption) only when
+    ``orbit.star_planet_model == 'sp0d'``; every other model, including
+    no star-planet model at all, gets the full ``'adaptive'`` spectrum."""
+    from proteus.orbit import obliqua as obliqua_mod
+
+    _patch_identity_conversions(monkeypatch, obliqua_mod)
+
+    interior_o = _make_interior_t(3)
+    cfg = _make_config(module='dummy', perturber='star', star_planet_model=star_planet_model)
+    hf_row = {
+        'Time': 10.0,
+        'axial_period': 86400.0,
+        'orbital_period': 86400.0 * 365.0,
+        'eccentricity': 0.1,
+        'semimajorax': 1.5e11,
+        'M_star': 2.0e30,
+    }
+    fake_jl = _make_fake_jl(
+        power_prf=np.array([0.0, 5e-7]),
+        power_blk=1.0,
+        nmk=[(2, 0, 1)],
+        sigma=[1e-6],
+        lnk=[0.01 - 0.02j],
+    )
+    monkeypatch.setattr(obliqua_mod, 'jl', fake_jl)
+
+    obliqua_mod.run_obliqua(
+        hf_row,
+        dirs={'output/data': str(tmp_path), 'output': str(tmp_path)},
+        interior_o=interior_o,
+        tides_o=Tides_t(),
+        config=cfg,
+    )
+
+    cfg_arg = fake_jl.Obliqua.run_tides.call_args[0][-1]
+    assert cfg_arg['orbit']['obliqua']['spectrum'] == expected_spectrum
 
 
 # ---------------------------------------------------------------------------
