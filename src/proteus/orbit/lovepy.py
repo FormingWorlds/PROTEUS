@@ -27,7 +27,7 @@ def import_lovepy():
     jl.seval('using LovePy')
 
 
-def store_lovepy_tides(omega: float, imk2: float, tides_o: Tides_t):
+def store_lovepy_tides(omega: float, imk2: float, config: Config, tides_o: Tides_t):
     """Store LovePy's hardcoded tidal modes (n,m,k), forcing frequency, and
     Im(k2) in tides_o, so the legacy LovePy module is compatible with
     `sp1d`, `ps1d`, and `ps1d_evec`. LovePy itself assumes e<<1 and spin-orbit
@@ -54,7 +54,7 @@ def store_lovepy_tides(omega: float, imk2: float, tides_o: Tides_t):
     sigma = np.full(3, omega, dtype=float)
 
     # Store tidal mode information in tides_o object
-    storage = tides_o.add(primary='planet', perturber='star')
+    storage = tides_o.add(primary='planet', perturber=config.orbit.perturber)
     storage.nmk = nmk
     storage.sigma = sigma
     storage.LNk = LNk
@@ -84,9 +84,23 @@ def run_lovepy(
         Imk2_love: float
     """
 
-    # Calculate angular frequency of rotation
-    omega = _jlsca(2 * np.pi / hf_row['orbital_period'])
-    ecc = _jlsca(hf_row['eccentricity'])
+    if config.orbit.perturber == 'star':
+        log.debug('Running Lovepy for star-planet tides...')
+
+        # Calculate orbital frequency of rotation
+        omega = _jlsca(2 * np.pi / hf_row['orbital_period'])
+
+        # Convert planet-star orbital eccentricity
+        ecc = _jlsca(hf_row['eccentricity'])
+
+    elif config.orbit.perturber == 'satellite':
+        log.debug('Running Lovepy for satellite-planet tides...')
+
+        # Calculate orbital frequency of rotation
+        omega = _jlsca(2 * np.pi / hf_row['orbital_period_sat'])
+
+        # Convert planet-satellite orbital eccentricity
+        ecc = _jlsca(hf_row['eccentricity_sat'])
 
     # Copy arrays
     arr_keys = ('density', 'visc', 'shear', 'bulk', 'mass', 'radius')
@@ -103,7 +117,7 @@ def run_lovepy(
     if config.interior_energetics.module in ('dummy', 'boundary'):
         if lov['visc'][0] < config.orbit.lovepy.visc_thresh:
             # Store empty tidal mode information
-            store_lovepy_tides(omega, 0.0, tides_o)
+            store_lovepy_tides(omega, 0.0, config, tides_o)
             return 0.0
 
         # Construct arrays for lovepy (we need two cells, three edges here)
@@ -125,7 +139,7 @@ def run_lovepy(
         # fully liquid
         if i_top <= 1:
             # Store empty tidal mode information
-            store_lovepy_tides(omega, 0.0, tides_o)
+            store_lovepy_tides(omega, 0.0, config, tides_o)
             return 0.0
 
         # Construct arrays for lovepy
@@ -174,7 +188,7 @@ def run_lovepy(
         log.debug('    power from bulk calc: %.3e W kg-1' % power_blk)
 
     # Store tidal mode information
-    store_lovepy_tides(omega, float(Imk2), tides_o)
+    store_lovepy_tides(omega, float(Imk2), config, tides_o)
 
     # Return imaginary part of k2 love number
     return float(Imk2)

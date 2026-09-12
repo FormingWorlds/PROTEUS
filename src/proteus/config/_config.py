@@ -94,16 +94,20 @@ def sp0d_obliqua_degree_mismatch(instance, attribute, value):
 
 
 def orbit_requires_tides(instance, attribute, value):
-    """sp1d, ps1d, and ps1d_evec require atleast Lovepy, but ideally the Obliqua
-    tidal-response module."""
-    if (
-        instance.orbit.star_planet_model in ('sp1d', 'ps1d', 'ps1d_evec')
-        and instance.orbit.module != 'obliqua'
-        and instance.orbit.module != 'lovepy'
-    ):
+    """sp1d, ps1d, and ps1d_evec require at least Lovepy, but ideally the Obliqua
+    tidal-response module: all three read the full per-mode spectrum in
+    ``tides_o``, which ``dummy`` never populates. ``sp0d``/``ps0d`` read the
+    scalar ``Imk2`` instead (which ``dummy`` does provide), so they are
+    unrestricted here; see "Compatibility between orbit models and tidal
+    modules" in docs/Explanations/orbit.md.
+    """
+    needs_full_spectrum = instance.orbit.star_planet_model == 'sp1d' or (
+        instance.orbit.planet_satellite_model in ('ps1d', 'ps1d_evec')
+    )
+    if needs_full_spectrum and instance.orbit.module not in ('obliqua', 'lovepy'):
         raise ValueError(
-            "orbit.star_planet_model = 'sp1d' or 'ps1d' or 'ps1d_evec' requires "
-            "orbit.module = 'obliqua' or 'lovepy'"
+            "orbit.star_planet_model = 'sp1d' or orbit.planet_satellite_model = "
+            "'ps1d'/'ps1d_evec' requires orbit.module = 'obliqua' or 'lovepy'"
         )
 
 

@@ -225,6 +225,10 @@ def run_obliqua(
                 i = n_lev
             lov[k] = _jlarr(lov[k][:i])
 
+    # Determine the spectrum type to use for this call, `legacy` mimics `lovepy` and
+    # assumes spin-orbit synchronization with eccentricity << 1.
+    spectrum = 'legacy' if config.orbit.star_planet_model == 'sp0d' else 'adaptive'
+
     # Create configuration dictionary for Obliqua
     cfg = {
         'title': 'PROTEUS_run_' + str(round(hf_row['Time'])),
@@ -237,7 +241,7 @@ def run_obliqua(
         'orbit': {
             'obliqua': {
                 **_obliqua_module_cfg(config),
-                'spectrum': 'adaptive',
+                'spectrum': spectrum,
                 's_min': s_min_eff,
                 's_max': s_max_eff,
             },
@@ -315,7 +319,9 @@ def run_obliqua(
     # Logging
     sync_log_files(dirs['output'])
 
-    return np.mean(np.imag(LNk))
+    # Return the mean of the absolute value of the imaginary part of the k love numbers,
+    # with a sign consistent with omega. This is purely for `sp0d` and reflects `lovepy`.
+    return - np.sign(omega) * np.mean(np.abs(np.imag(LNk)))
 
 
 def lookup_from_interior(dirs: dict, config: Config):

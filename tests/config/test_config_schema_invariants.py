@@ -822,17 +822,33 @@ def test_satellite_evolve_passes_without_satellite():
 # orbit_requires_tides: sp1d/ps1d/ps1d_evec consume a per-mode Love-number
 # spectrum, which only lovepy or Obliqua can supply.
 # ---------------------------------------------------------------------------
+# model -> the orbit.* field it is actually assigned to: sp1d lives on
+# star_planet_model, while ps1d/ps1d_evec live on planet_satellite_model --
+# the two are never set at the same time (see satellite_evolve above).
+_TIDES_REQUIRED_MODELS = [
+    ('sp1d', 'star_planet_model'),
+    ('ps1d', 'planet_satellite_model'),
+    ('ps1d_evec', 'planet_satellite_model'),
+]
+
+
 @pytest.mark.unit
-@pytest.mark.parametrize('model', ['sp1d', 'ps1d', 'ps1d_evec'])
+@pytest.mark.parametrize('model,model_field', _TIDES_REQUIRED_MODELS)
 @pytest.mark.parametrize('module', ['dummy', 'none'])
-def test_orbit_requires_tides_rejects_non_tidal_module(model, module):
+def test_orbit_requires_tides_rejects_non_tidal_module(model, model_field, module):
     """sp1d/ps1d/ps1d_evec need a real tidal-response spectrum, so pairing
     any of them with a non-tides module (dummy tides or tides disabled
-    entirely) must raise rather than silently running with no Love numbers."""
+    entirely) must raise rather than silently running with no Love numbers.
+
+    Regression guard: ps1d/ps1d_evec are ``orbit.planet_satellite_model``
+    values, not ``orbit.star_planet_model`` values -- a validator that only
+    ever inspected ``star_planet_model`` (as this one once did) would never
+    fire for either, silently letting ``dummy`` + ps1d/ps1d_evec through.
+    """
     instance = _make_config_instance(
         **{
             'orbit.module': module,
-            'orbit.star_planet_model': model,
+            f'orbit.{model_field}': model,
         }
     )
     with pytest.raises(ValueError, match=model) as excinfo:
@@ -845,15 +861,15 @@ def test_orbit_requires_tides_rejects_non_tidal_module(model, module):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('model', ['sp1d', 'ps1d', 'ps1d_evec'])
+@pytest.mark.parametrize('model,model_field', _TIDES_REQUIRED_MODELS)
 @pytest.mark.parametrize('module', ['obliqua', 'lovepy'])
-def test_orbit_requires_tides_passes_for_either_tidal_module(model, module):
+def test_orbit_requires_tides_passes_for_either_tidal_module(model, model_field, module):
     """Either Obliqua or lovepy supplies a real per-mode spectrum, so both
     are accepted for every model that requires one."""
     instance = _make_config_instance(
         **{
             'orbit.module': module,
-            'orbit.star_planet_model': model,
+            f'orbit.{model_field}': model,
         }
     )
     result = orbit_requires_tides(instance, None, None)
@@ -862,14 +878,17 @@ def test_orbit_requires_tides_passes_for_either_tidal_module(model, module):
 
 
 @pytest.mark.unit
-def test_orbit_requires_tides_passes_for_sp0d_regardless_of_module():
-    """sp0d uses its own closed-form Love number and never reads a per-mode
-    spectrum, so the restriction is specific to sp1d/ps1d/ps1d_evec and must
-    not fire for sp0d even on a non-tides module."""
+@pytest.mark.parametrize(
+    'model,model_field', [('sp0d', 'star_planet_model'), ('ps0d', 'planet_satellite_model')]
+)
+def test_orbit_requires_tides_passes_for_0d_models_regardless_of_module(model, model_field):
+    """sp0d/ps0d read the scalar Imk2 rather than the per-mode tides_o
+    spectrum (dummy provides Imk2 too), so the restriction is specific to
+    the *1d models and must not fire for either 0d model even on dummy."""
     instance = _make_config_instance(
         **{
             'orbit.module': 'dummy',
-            'orbit.star_planet_model': 'sp0d',
+            f'orbit.{model_field}': model,
         }
     )
     result = orbit_requires_tides(instance, None, None)
