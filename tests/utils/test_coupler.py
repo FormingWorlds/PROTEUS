@@ -3569,13 +3569,21 @@ def test_interior_snapshot_names_track_each_writer_convention():
     """Each interior module's probe uses that writer's own filename format.
 
     Aragog names its snapshot with the sub-year form ``'884p700_int.nc'`` and
-    also answers to the whole-year form ``'%.0f_int.nc'``, so a directory
-    carrying either resumes. SPIDER writes ``'%.0f.json'``. The dummy and
-    boundary interiors write no snapshot at all.
+    also answers to the dot-decimal and whole-year forms, so a directory
+    carrying any of them resumes. SPIDER writes ``'%.0f.json'``. The dummy
+    and boundary interiors write no snapshot at all.
     """
-    # Aragog: sub-year name first, whole-year name as a fallback for old runs.
-    assert _interior_snapshot_names(30.7, 'aragog') == ['30p700_int.nc', '31_int.nc']
-    assert _interior_snapshot_names(30.0, 'aragog') == ['30p000_int.nc', '30_int.nc']
+    # Aragog: p-form first, dot-form second, whole-year last.
+    assert _interior_snapshot_names(30.7, 'aragog') == [
+        '30p700_int.nc',
+        '30.700_int.nc',
+        '31_int.nc',
+    ]
+    assert _interior_snapshot_names(30.0, 'aragog') == [
+        '30p000_int.nc',
+        '30.000_int.nc',
+        '30_int.nc',
+    ]
 
     # SPIDER keeps the whole-year JSON name (the SPIDER binary owns the file).
     assert _interior_snapshot_names(30.7, 'spider') == ['31.json']
@@ -3585,20 +3593,36 @@ def test_interior_snapshot_names_track_each_writer_convention():
     assert _interior_snapshot_names(30.7, 'boundary') == []
 
     # Unknown module falls back to the Aragog default rather than crashing.
-    assert _interior_snapshot_names(30.7, 'other') == ['30p700_int.nc', '31_int.nc']
+    assert _interior_snapshot_names(30.7, 'other') == [
+        '30p700_int.nc',
+        '30.700_int.nc',
+        '31_int.nc',
+    ]
 
 
 @pytest.mark.unit
 def test_atm_snapshot_names_floating_convention():
-    """The atmosphere probe names the sub-year form and answers the whole-year one."""
-    # Sub-year name first, whole-year name as a fallback for old runs.
-    assert _atm_snapshot_names(30.7) == ['30p700_atm.nc', '31_atm.nc']
-    assert _atm_snapshot_names(30.0) == ['30p000_atm.nc', '30_atm.nc']
+    """The atmosphere probe names the p-form, dot-form, and whole-year form."""
+    # p-form first, dot-form second, whole-year last.
+    assert _atm_snapshot_names(30.7) == [
+        '30p700_atm.nc',
+        '30.700_atm.nc',
+        '31_atm.nc',
+    ]
+    assert _atm_snapshot_names(30.0) == [
+        '30p000_atm.nc',
+        '30.000_atm.nc',
+        '30_atm.nc',
+    ]
 
-    # Zero Time: should be fine
-    assert _atm_snapshot_names(0.0) == ['0p000_atm.nc', '0_atm.nc']
+    # Zero time
+    assert _atm_snapshot_names(0.0) == [
+        '0p000_atm.nc',
+        '0.000_atm.nc',
+        '0_atm.nc',
+    ]
 
-    # Negative Time: should raise ValueError
+    # Negative time: raises ValueError
     with pytest.raises(ValueError, match='Negative time'):
         _atm_snapshot_names(-1.0)
 

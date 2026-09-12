@@ -1601,12 +1601,12 @@ def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
     """Interior snapshot filename candidates for a simulation time, per writer.
 
     Aragog names its snapshot with the sub-year form ``format_subyear_time(time) + '_int.nc'``
-    (e.g. ``'884p700_int.nc'``) and also answers to the whole-year form ``'%.0f_int.nc'``,
-    so a directory that carries either form resumes. SPIDER names its JSON with the
-    whole-year form ``'%.0f.json'``; the SPIDER binary writes that name, so PROTEUS
-    matches it rather than choosing it. The dummy and boundary interiors write no
-    snapshot, so resume imposes no interior constraint (empty list). Unknown module
-    falls-back to Aragog.
+    (e.g. ``'884p700_int.nc'``). The dot-decimal form (``'884.700_int.nc'``) and the
+    whole-year form (``'884_int.nc'``) are accepted as fallbacks. SPIDER names its
+    JSON with the whole-year form ``'%.0f.json'``; the SPIDER binary writes that
+    name, so PROTEUS matches it rather than choosing it. The dummy and boundary
+    interiors write no snapshot, so resume imposes no interior constraint (empty
+    list). Unknown module falls back to Aragog.
     """
 
     if time < 0.0:
@@ -1618,20 +1618,28 @@ def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
         case 'spider':
             return ['%.0f.json' % time]
         case _:
-            return [format_subyear_time(time) + '_int.nc', '%.0f_int.nc' % time]
+            return [
+                format_subyear_time(time) + '_int.nc',
+                '%.3f_int.nc' % time,
+                '%.0f_int.nc' % time,
+            ]
 
 
 def _atm_snapshot_names(time: float) -> list[str]:
     """Atmosphere snapshot filename candidates for a simulation time.
 
     The atmosphere writers name the snapshot with the sub-year form
-    ``format_subyear_time(time) + '_atm.nc'`` (e.g. ``'884p700_atm.nc'``) and also
-    answer to the whole-year form ``'%.0f_atm.nc'``, so a directory that carries
-    either form resumes.
+    ``format_subyear_time(time) + '_atm.nc'`` (e.g. ``'884p700_atm.nc'``).
+    The dot-decimal form (``'884.700_atm.nc'``) and the whole-year form
+    (``'884_atm.nc'``) are accepted as fallbacks.
     """
     if time < 0.0:
         raise ValueError(f'Negative time {time} cannot be formatted as filename')
-    return [format_subyear_time(time) + '_atm.nc', '%.0f_atm.nc' % time]
+    return [
+        format_subyear_time(time) + '_atm.nc',
+        '%.3f_atm.nc' % time,
+        '%.0f_atm.nc' % time,
+    ]
 
 
 def select_resumable_snapshot(

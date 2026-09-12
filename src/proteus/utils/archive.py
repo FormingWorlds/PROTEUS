@@ -289,7 +289,7 @@ def remove_old(dir: str, before: float) -> None:
 
     Only timestamped snapshot files are removed: names ending in ``.nc``
     or ``.json`` whose leading token parses as a simulated time (e.g.
-    ``1000.000_int.nc``), and only when that time is below `before`.
+    ``1000p000_int.nc``), and only when that time is below `before`.
     Every other entry is kept, notably the tar
     archive itself and the fixed-name runtime files that the interior
     modules re-read between structure re-solves (``zalmoxis_output.dat``

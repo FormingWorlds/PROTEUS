@@ -61,10 +61,11 @@ def get_proteus_dir():
 def snapshot_path_for_time(data_dir: str, time: float, suffix: str) -> str:
     """Return the snapshot path for a time, preferring the sub-year name.
 
-    A snapshot filename can take two forms: the sub-year form
-    ``format_subyear_time(time) + suffix`` (e.g. ``'884p700_int.nc'``, distinct for rows less than a year apart) or the
-    whole-year form ``'%.0f' + suffix``. Probe the sub-year name first, then
-    the whole-year name, so a directory that carries either form resolves.
+    A snapshot filename can take three forms: the ``p`` sub-year form
+    ``format_subyear_time(time) + suffix`` (e.g. ``'884p700_int.nc'``),
+    the dot-decimal sub-year form ``'%.3f' + suffix`` (e.g.
+    ``'884.700_int.nc'``), or the whole-year form ``'%.0f' + suffix``
+    (e.g. ``'884_int.nc'``). Probes in that order.
 
     Parameters
     ----------
@@ -79,12 +80,15 @@ def snapshot_path_for_time(data_dir: str, time: float, suffix: str) -> str:
     Returns
     -------
     str
-        Path to the existing snapshot. When neither form exists, the
+        Path to the existing snapshot. When no form exists, the ``p``
         sub-year path is returned so the caller reports a consistent name.
     """
     subyear = os.path.join(data_dir, format_subyear_time(time) + suffix)
     if os.path.exists(subyear):
         return subyear
+    dotform = os.path.join(data_dir, '%.3f%s' % (time, suffix))
+    if os.path.exists(dotform):
+        return dotform
     wholeyear = os.path.join(data_dir, '%.0f%s' % (time, suffix))
     if os.path.exists(wholeyear):
         return wholeyear
@@ -101,7 +105,7 @@ def format_subyear_time(time: float) -> str:
     Parameters
     ----------
     time : float
-        Simulation time [yr].  Must be non-negative.
+        Simulation time [yr].
 
     Returns
     -------
