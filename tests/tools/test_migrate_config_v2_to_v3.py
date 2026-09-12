@@ -216,9 +216,6 @@ _REVIEWED_NEUTRAL = frozenset(
         'orbit.obliqua.m',
         'orbit.obliqua.k_min',
         'orbit.obliqua.k_max',
-        # Padding grows the Hansen k-range around the base estimate so an
-        # eccentricity jump between couplings doesn't outrun the mode range;
-        # its 3.0 default applies unchanged to a migrated config.
         'orbit.obliqua.evection_padding_factor',
         'orbit.obliqua.material_mu',
         'orbit.obliqua.material_k',
@@ -266,8 +263,6 @@ _REVIEWED_NEUTRAL = frozenset(
         # default (disabled) for a migrated config.
         'params.stop.satellite.enabled',
         'params.stop.satellite.sma_max',
-        # params.stop.disint_sat has no 2.0 analogue; disabled by default,
-        # so a migrated config needs no explicit value for any sub-field.
         'params.stop.disint_sat.enabled',
         'params.stop.disint_sat.roche_enabled',
         'params.stop.disint_sat.offset_roche',
@@ -310,9 +305,6 @@ _REVIEWED_NEUTRAL = frozenset(
         'params.dt.mushy_maximum',
         'params.dt.mushy_upper',
         'params.dt.evection_maximum',
-        # The evection-band dt-cap controller's growth factor and cooldown
-        # both default to 0 (disabled), so a migrated config needs no
-        # explicit value for any of these new fields.
         'params.dt.evection_target_rel_de',
         'params.dt.evection_de_floor',
         'params.dt.evection_rate_window',
