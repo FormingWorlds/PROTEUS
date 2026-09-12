@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import netCDF4 as nc
 import numpy as np
 
+from proteus.utils.helper import parse_subyear_time
 from proteus.utils.plot import get_colour
 
 if TYPE_CHECKING:
@@ -24,7 +25,7 @@ def plot_fluxes_atmosphere(output_dir: str, plot_format='pdf'):
     if len(files) == 0:
         log.warning('No atmosphere NetCDF files found in output folder')
         return
-    nc_fpath = max(files, key=lambda f: float(os.path.basename(f).split('_')[0]))
+    nc_fpath = max(files, key=lambda f: parse_subyear_time(os.path.basename(f).split('_')[0]))
 
     # Read netCDF
     with nc.Dataset(nc_fpath) as ds:

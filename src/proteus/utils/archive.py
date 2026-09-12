@@ -8,7 +8,7 @@ import logging
 import os
 import tarfile
 
-from proteus.utils.helper import safe_rm
+from proteus.utils.helper import parse_subyear_time, safe_rm
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -22,8 +22,8 @@ def _snapshot_time(name: str) -> float | None:
     """Parse the simulated time from a timestamped snapshot filename.
 
     A timestamped snapshot is a file ending in ``.nc`` or ``.json`` whose
-    leading token is the simulated time in years, e.g. ``1000.000_int.nc``,
-    ``1000.000_atm.nc``, ``0.200_int.nc``, or ``5000.json``. Whole-year
+    leading token is the simulated time in years, e.g. ``1000p000_int.nc``,
+    ``1000.000_atm.nc``, ``0p200_int.nc``, or ``5000.json``. Whole-year
     names without a fractional part (``1000_int.nc``) parse to the same
     value.
 
@@ -49,7 +49,7 @@ def _snapshot_time(name: str) -> float | None:
     if not (name.endswith('.nc') or name.endswith('.json')):
         return None
     try:
-        return float(name.rsplit('.', 1)[0].split('_')[0])
+        return parse_subyear_time(name.rsplit('.', 1)[0].split('_')[0])
     except ValueError:
         return None
 

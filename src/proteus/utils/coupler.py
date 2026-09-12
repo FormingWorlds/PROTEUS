@@ -28,7 +28,14 @@ from proteus.utils.constants import (
     vol_gas_list,
     vol_list,
 )
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
+from proteus.utils.helper import (
+    UpdateStatusfile,
+    create_tmp_folder,
+    format_subyear_time,
+    get_proteus_dir,
+    parse_subyear_time,
+    safe_rm,
+)
 from proteus.utils.plot import sample_times
 
 if TYPE_CHECKING:
@@ -1593,12 +1600,12 @@ def _snapshot_belongs_to(path: str, time: float) -> bool:
 def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
     """Interior snapshot filename candidates for a simulation time, per writer.
 
-    Aragog names its snapshot with the sub-year form ``'%.3f_int.nc'`` and also
-    answers to the whole-year form ``'%.0f_int.nc'``, so a directory that
-    carries either form resumes. SPIDER names its JSON with the whole-year form
-    ``'%.0f.json'``; the SPIDER binary writes that name, so PROTEUS matches it
-    rather than choosing it. The dummy and boundary interiors write no snapshot, so
-    resume imposes no interior constraint (empty list). Unknown module
+    Aragog names its snapshot with the sub-year form ``format_subyear_time(time) + '_int.nc'``
+    (e.g. ``'884p700_int.nc'``) and also answers to the whole-year form ``'%.0f_int.nc'``,
+    so a directory that carries either form resumes. SPIDER names its JSON with the
+    whole-year form ``'%.0f.json'``; the SPIDER binary writes that name, so PROTEUS
+    matches it rather than choosing it. The dummy and boundary interiors write no
+    snapshot, so resume imposes no interior constraint (empty list). Unknown module
     falls-back to Aragog.
     """
 
@@ -1611,19 +1618,20 @@ def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
         case 'spider':
             return ['%.0f.json' % time]
         case _:
-            return ['%.3f_int.nc' % time, '%.0f_int.nc' % time]
+            return [format_subyear_time(time) + '_int.nc', '%.0f_int.nc' % time]
 
 
 def _atm_snapshot_names(time: float) -> list[str]:
     """Atmosphere snapshot filename candidates for a simulation time.
 
     The atmosphere writers name the snapshot with the sub-year form
-    ``'%.3f_atm.nc'`` and also answer to the whole-year form ``'%.0f_atm.nc'``,
-    so a directory that carries either form resumes.
+    ``format_subyear_time(time) + '_atm.nc'`` (e.g. ``'884p700_atm.nc'``) and also
+    answer to the whole-year form ``'%.0f_atm.nc'``, so a directory that carries
+    either form resumes.
     """
     if time < 0.0:
         raise ValueError(f'Negative time {time} cannot be formatted as filename')
-    return ['%.3f_atm.nc' % time, '%.0f_atm.nc' % time]
+    return [format_subyear_time(time) + '_atm.nc', '%.0f_atm.nc' % time]
 
 
 def select_resumable_snapshot(
@@ -1649,11 +1657,11 @@ def select_resumable_snapshot(
     data archive.
 
     Each half is probed with the candidate names for its writer. The interior
-    name depends on the module: Aragog uses the sub-year form ``'%.3f_int.nc'``
+    name depends on the module: Aragog uses the sub-year form ``'884p700_int.nc'``
     and answers to the whole-year form ``'%.0f_int.nc'``, SPIDER uses the
     whole-year form ``'%.0f.json'``, and the dummy and boundary interiors write
     no snapshot at all (no interior constraint). The atmosphere half uses the
-    sub-year form ``'%.3f_atm.nc'`` and answers to the whole-year form
+    sub-year form ``'884p700_atm.nc'`` and answers to the whole-year form
     ``'%.0f_atm.nc'``. See ``_interior_snapshot_names`` /
     ``_atm_snapshot_names``.
 
@@ -1909,7 +1917,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     # Which times do we have atmosphere data for?
     if not dummy_atm:
         ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
-        nc_times = [float(f.split('/')[-1].split('_atm')[0]) for f in ncs]
+        nc_times = [parse_subyear_time(f.split('/')[-1].split('_atm')[0]) for f in ncs]
         output_times = select_profile_plot_times(output_times, nc_times, no_int_snapshots)
 
     # Samples for plotting profiles

@@ -436,8 +436,8 @@ def test_init_agni_atmos_loads_the_row_matched_profile(monkeypatch, tmp_path):
     data_dir.mkdir(parents=True)
     (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
     # The row we resume from, and a stray higher-time file from a colliding run.
-    (data_dir / '30.200_atm.nc').write_text('row', encoding='utf-8')
-    (data_dir / '40.000_atm.nc').write_text('stray', encoding='utf-8')
+    (data_dir / '30p200_atm.nc').write_text('row', encoding='utf-8')
+    (data_dir / '40p000_atm.nc').write_text('stray', encoding='utf-8')
 
     dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
     config = _build_greygas_config()
@@ -462,7 +462,7 @@ def test_init_agni_atmos_loads_the_row_matched_profile(monkeypatch, tmp_path):
     init_agni_atmos(dirs, config, hf_row)
 
     assert len(loaded_paths) == 1
-    assert loaded_paths[0].endswith('30.200_atm.nc')
+    assert loaded_paths[0].endswith('30p200_atm.nc')
 
 
 @pytest.mark.unit
@@ -473,7 +473,7 @@ def test_init_agni_atmos_falls_back_to_latest_profile_mid_run(monkeypatch, tmp_p
     the row-matched path does not exist. The loader must fall back to the highest
     simulation-time file on disk, chosen by parsing the time from each name.
 
-    Discrimination: the two files are '9.000_atm.nc' and '40.000_atm.nc'. String
+    Discrimination: the two files are '9p000_atm.nc' and '40p000_atm.nc'. String
     order puts '9.000' last, float order puts '40.000' last, so a regression to
     name-based selection would load the earlier profile and fail this test.
     """
@@ -487,8 +487,8 @@ def test_init_agni_atmos_falls_back_to_latest_profile_mid_run(monkeypatch, tmp_p
     data_dir.mkdir(parents=True)
     (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
     # No file matches hf_row['Time']; the latest by time is 40.000.
-    (data_dir / '9.000_atm.nc').write_text('early', encoding='utf-8')
-    (data_dir / '40.000_atm.nc').write_text('latest', encoding='utf-8')
+    (data_dir / '9p000_atm.nc').write_text('early', encoding='utf-8')
+    (data_dir / '40p000_atm.nc').write_text('latest', encoding='utf-8')
 
     dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
     config = _build_greygas_config()
@@ -513,7 +513,7 @@ def test_init_agni_atmos_falls_back_to_latest_profile_mid_run(monkeypatch, tmp_p
     init_agni_atmos(dirs, config, hf_row)
 
     assert len(loaded_paths) == 1
-    assert loaded_paths[0].endswith('40.000_atm.nc')
+    assert loaded_paths[0].endswith('40p000_atm.nc')
 
 
 @pytest.mark.unit
@@ -1921,10 +1921,10 @@ def test_determine_condensates_single_gas_returns_empty():
 
 
 def test_write_atmos_ncdf_uses_subyear_time_and_data_dir(monkeypatch):
-    """The AGNI writer serialises the struct to ``<output>/data/<%.3f>_atm.nc``
+    """The AGNI writer serialises the struct to ``<output>/data/<format_subyear_time(time)>_atm.nc``
     via ``jl.AGNI.save.write_ncdf``.
 
-    Discrimination: time=1000.6 writes ``1000.600_atm.nc``, keeping the
+    Discrimination: time=1000.6 writes ``1000p600_atm.nc``, keeping the
     sub-year fraction so two snapshots less than a year apart land in
     distinct files. A regression to whole-year ``%.0f`` naming would round
     this to ``1001_atm.nc`` and collide with a neighbouring snapshot. The
@@ -1943,7 +1943,7 @@ def test_write_atmos_ncdf_uses_subyear_time_and_data_dir(monkeypatch):
     fake_write.assert_called_once()
     called_atmos, called_path = fake_write.call_args.args
     assert called_atmos is atmos_sentinel
-    assert called_path == '/tmp/run/data/1000.600_atm.nc'
+    assert called_path == '/tmp/run/data/1000p600_atm.nc'
 
     # A regression to whole-year rounding would have produced 1001_atm.nc.
     assert '1001_atm.nc' not in called_path

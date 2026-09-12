@@ -62,7 +62,7 @@ def snapshot_path_for_time(data_dir: str, time: float, suffix: str) -> str:
     """Return the snapshot path for a time, preferring the sub-year name.
 
     A snapshot filename can take two forms: the sub-year form
-    ``'%.3f' + suffix`` (distinct for rows less than a year apart) or the
+    ``format_subyear_time(time) + suffix`` (e.g. ``'884p700_int.nc'``, distinct for rows less than a year apart) or the
     whole-year form ``'%.0f' + suffix``. Probe the sub-year name first, then
     the whole-year name, so a directory that carries either form resolves.
 
@@ -82,13 +82,52 @@ def snapshot_path_for_time(data_dir: str, time: float, suffix: str) -> str:
         Path to the existing snapshot. When neither form exists, the
         sub-year path is returned so the caller reports a consistent name.
     """
-    subyear = os.path.join(data_dir, '%.3f%s' % (time, suffix))
+    subyear = os.path.join(data_dir, format_subyear_time(time) + suffix)
     if os.path.exists(subyear):
         return subyear
     wholeyear = os.path.join(data_dir, '%.0f%s' % (time, suffix))
     if os.path.exists(wholeyear):
         return wholeyear
     return subyear
+
+
+def format_subyear_time(time: float) -> str:
+    """Format a simulation time with sub-year precision for snapshot filenames.
+
+    Uses ``p`` as the decimal separator so the resulting token has no dot,
+    avoiding ambiguity with file extensions.  E.g. ``884.7`` becomes
+    ``'884p700'`` and ``0.0`` becomes ``'0p000'``.
+
+    Parameters
+    ----------
+    time : float
+        Simulation time [yr].  Must be non-negative.
+
+    Returns
+    -------
+    str
+        Formatted time token, e.g. ``'884p700'``.
+    """
+    return ('%.3f' % time).replace('.', 'p')
+
+
+def parse_subyear_time(token: str) -> float:
+    """Parse a sub-year time token back to a float.
+
+    Accepts both the ``p`` convention (``'884p700'``) and the plain-dot
+    convention (``'884.700'``).
+
+    Parameters
+    ----------
+    token : str
+        The numeric portion of a snapshot filename.
+
+    Returns
+    -------
+    float
+        The simulation time [yr].
+    """
+    return float(token.replace('p', '.'))
 
 
 def PrintSeparator():

@@ -11,7 +11,7 @@ import numpy as np
 
 from proteus.utils.archive import archive_exists
 from proteus.utils.constants import vap_list
-from proteus.utils.helper import mol_to_ele
+from proteus.utils.helper import mol_to_ele, parse_subyear_time
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -346,7 +346,7 @@ def sample_output(
         return [], []
 
     # get times
-    times = [float(f.split('/')[-1].split(extension)[0]) for f in files]
+    times = [parse_subyear_time(f.split('/')[-1].split(extension)[0]) for f in files]
 
     out_t, out_i = sample_times(times, nsamp, tmin=tmin)
     out_f = [files[i] for i in out_i]
