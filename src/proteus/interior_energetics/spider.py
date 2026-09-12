@@ -870,7 +870,7 @@ def _try_spider(
     # then FWL_DATA, then SPIDER local as final fallback.
     if dirs.get('spider_eos_dir') and os.path.isdir(dirs['spider_eos_dir']):
         eos_dir = dirs['spider_eos_dir']
-        log.info('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
+        log.debug('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
     else:
         if config.interior_struct.eos_dir is None:
             raise FileNotFoundError(

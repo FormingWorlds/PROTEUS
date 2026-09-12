@@ -1149,6 +1149,50 @@ def test_try_spider_rho_core_from_zalmoxis(tmp_path):
 
 
 @pytest.mark.unit
+def test_try_spider_zalmoxis_eos_dir_logs_at_debug(tmp_path, caplog):
+    """_try_spider logs the Zalmoxis-generated EOS table path at debug level.
+
+    This line fires on every timestep when Zalmoxis provides a per-run EOS
+    directory, so it must stay off the default INFO output (#839).
+    """
+    from proteus.interior_energetics.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, mc_base, mesh_path = _setup_spider_env(
+        tmp_path, with_mesh=True
+    )
+    dirs['spider_eos_dir'] = os.path.join(eos_base, 'WolfBower2018_MgSiO3', 'P-S')
+
+    with (
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
+        caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.spider'),
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+            dT_max=1000.0,
+            mesh_file=mesh_path,
+        )
+
+    zalmoxis_records = [
+        r for r in caplog.records if 'Zalmoxis-generated SPIDER EOS tables' in r.message
+    ]
+    assert len(zalmoxis_records) == 1
+    assert zalmoxis_records[0].levelname == 'DEBUG'
+
+
+@pytest.mark.unit
 def test_try_spider_init_aw(tmp_path):
     """_try_spider with IC_INTERIOR=1, no mesh file (Adams-Williamson mode).
 
