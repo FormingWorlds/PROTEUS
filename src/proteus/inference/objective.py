@@ -29,6 +29,13 @@ log = logging.getLogger('fwl.' + __name__)
 DEFAULT_CHILD_TIMEOUT_S = 6 * 3600.0
 _CHILD_TIMEOUT_ENV = 'PROTEUS_INFERENCE_CHILD_TIMEOUT_S'
 
+# Config entries every worker overwrites in the reference config, regardless of
+# which parameters are being swept. Shared with the startup validation so the
+# configuration that is checked is the configuration that is run.
+WORKER_CONFIG_OVERRIDES = {
+    'params.out.plot_mod': 'none',
+    'params.out.logging': 'WARNING',
+}
 
 def set_child_timeout(seconds: float | None = None) -> None:
     """Record the per-child PROTEUS timeout for inference worker processes.
@@ -57,6 +64,33 @@ def child_timeout_s() -> float | None:
         return DEFAULT_CHILD_TIMEOUT_S
     return val if val > 0 else None
 
+def apply_nested_updates(config: dict, updates: dict) -> dict:
+    """Set dot-separated keys in a nested config dict, in place.
+
+    Parameters
+    ----------
+    - config (dict): Nested configuration dictionary, modified in place.
+    - updates (dict): Mapping of dot-separated key paths to new values.
+
+    Returns
+    ----------
+    - dict: The same dictionary that was passed in.
+
+    Raises:
+        ValueError: If a key path descends through an entry that holds a value
+            rather than a table.
+    """
+    for key, value in updates.items():
+        parts = key.split('.')
+        d = config
+        for i, part in enumerate(parts[:-1]):
+            d = d.setdefault(part, {})
+            if not isinstance(d, dict):
+                prefix = '.'.join(parts[: i + 1])
+                raise ValueError(f"Cannot set '{key}': '{prefix}' holds a value, not a section")
+        d[parts[-1]] = value
+    return config
+
 
 def update_toml(config_file: str, updates: dict, output_file: str) -> None:
     """Update values in a TOML configuration file.
@@ -83,12 +117,7 @@ def update_toml(config_file: str, updates: dict, output_file: str) -> None:
         config = toml.load(f)
 
     # Apply nested updates
-    for key, value in updates.items():
-        parts = key.split('.')
-        d = config
-        for part in parts[:-1]:
-            d = d.setdefault(part, {})
-        d[parts[-1]] = value
+    apply_nested_updates(config, updates)
 
     # Ensure destination directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -139,8 +168,7 @@ def run_proteus(
     parameters['params.out.path'] = str(out_dir)
 
     # Don't allow workers to make plots or logs
-    parameters['params.out.plot_mod'] = 'none'
-    parameters['params.out.logging'] = 'WARNING'
+    parameters.update(WORKER_CONFIG_OVERRIDES)
 
     # Generate config
     update_toml(ref_config, parameters, str(out_cfg))
