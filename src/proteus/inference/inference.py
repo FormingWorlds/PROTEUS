@@ -35,9 +35,10 @@ from proteus.inference.objective import (
     WORKER_CONFIG_OVERRIDES,
     apply_nested_updates,
     prot_builder,
+    set_abort_on_failure,
     set_child_timeout,
 )
-from proteus.inference.utils import print_results, str_time
+from proteus.inference.utils import print_results, str_time, summarise_failures
 from proteus.utils.coupler import get_proteus_directories
 from proteus.utils.helper import safe_rm
 from proteus.utils.logs import setup_logger
@@ -219,6 +220,11 @@ def run_inference(config):
     # plumbed to worker processes through the environment.
     set_child_timeout(config.get('child_timeout_s'))
 
+    # Whether a failed simulation stops the study or is scored as a poor
+    # sample. Defaults to scoring, because a sweep over a wide parameter box
+    # is expected to reach combinations the simulator cannot integrate.
+    set_abort_on_failure(bool(config.get('abort_on_failure', False)))
+
     # Default for configs that pre-date this field
     config.setdefault('failure_codes', [])
 
@@ -267,6 +273,12 @@ def run_inference(config):
     t_1 = time.perf_counter()
     log.info(f'This took: {t_1 - t_0:.2f} seconds')
     log.info('-----------------------------------')
+
+    # Account for the simulations that did not produce a usable result. Runs
+    # before the best-fit summary, so the reader sees how much of the study was
+    # real before reading what it concluded, and so the breakdown is still
+    # reported when every evaluation failed and the summary refuses to print.
+    summarise_failures(dirs['output'], len(D_final['X']))
 
     # Print summary of true vs. simulated observables and inferred parameters
     best_config = print_results(D_final, logs, config, dirs['output'], n_init)
