@@ -789,3 +789,16 @@ def test_format_parse_subyear_roundtrip():
 
     for t in [0.0, 0.5, 1.0, 30.2, 884.7, 1e6]:
         assert parse_subyear_time(format_subyear_time(t)) == pytest.approx(t)
+
+
+@pytest.mark.unit
+def test_parse_subyear_time_rejects_multiple_p():
+    """A token with more than one ``p`` raises ValueError."""
+    from proteus.utils.helper import parse_subyear_time
+
+    with pytest.raises(ValueError, match="multiple 'p' characters"):
+        parse_subyear_time('884p700p')
+    with pytest.raises(ValueError, match="multiple 'p' characters"):
+        parse_subyear_time('1p2p3')
+    with pytest.raises(ValueError, match="multiple 'p' characters"):
+        parse_subyear_time('884pp700')

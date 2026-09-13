@@ -130,7 +130,14 @@ def parse_subyear_time(token: str) -> float:
     -------
     float
         The simulation time [yr].
+
+    Raises
+    ------
+    ValueError
+        If the token contains more than one ``p``.
     """
+    if token.count('p') > 1:
+        raise ValueError(f"Snapshot time token '{token}' contains multiple 'p' characters")
     return float(token.replace('p', '.'))
 
 
