@@ -16,6 +16,7 @@ Functions:
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime
 from functools import partial
@@ -32,7 +33,13 @@ from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.kernels import MaternKernel, RBFKernel
 from gpytorch.priors.torch_priors import LogNormalPrior
 
-from proteus.inference.objective import EPS_CLIP, eval_obj
+from proteus.inference.objective import (
+    BAD_OBJ_VALUE,
+    EPS_CLIP,
+    FAILURE_FRACTION_WARN,
+    eval_obj,
+    read_failure_records,
+)
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import gas_list
 
@@ -148,6 +155,86 @@ def load_dataset_csv(fpath: str) -> dict[str, torch.Tensor]:
     return {'X': X, 'Y': Y}
 
 
+def summarise_failures(output: str, n_attempted: int) -> int:
+    """Collect the study's failure records into a table and report on them.
+
+    A sweep over a wide parameter box is expected to reach combinations the
+    simulator cannot integrate, and those evaluations carry the failure score
+    rather than a fit quality. Without a count, a study in which most
+    evaluations failed is indistinguishable from one that converged, so the
+    tally, the breakdown by cause, and the per-run paths are reported together
+    at the end of the study.
+
+    Parameters
+    ----------
+    - output (str): Absolute path to the study output folder.
+    - n_attempted (int): Total evaluations attempted, initial samples included.
+
+    Returns
+    ----------
+    - int: Number of failed evaluations.
+    """
+    records = read_failure_records(output)
+    n_failed = len(records)
+
+    log.info('-----------------------------------')
+    if not n_failed:
+        log.info(f'Simulation failures: none, all {n_attempted} evaluations were usable')
+        log.info('-----------------------------------')
+        return 0
+
+    # Fixed diagnostic columns first, then one column per swept parameter, so
+    # the table can be sorted on a parameter to see which region fails.
+    rows = []
+    for rec in records:
+        row = {
+            key: rec.get(key)
+            for key in (
+                'worker',
+                'iter',
+                'status',
+                'status_desc',
+                'exit_code',
+                'reason',
+                'out_dir',
+                'log_path',
+            )
+        }
+        row.update(rec.get('parameters') or {})
+        rows.append(row)
+    csv_path = Path(output) / 'failures.csv'
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+
+    frac = n_failed / max(n_attempted, 1)
+    log.info(
+        f'Simulation failures: {n_failed} of {n_attempted} evaluations '
+        f'({100 * frac:.1f}%) did not produce a usable result'
+    )
+    log.info(f'{"Cause":52s} | Count')
+    for desc, count in Counter(
+        r.get('status_desc') or 'unknown' for r in records
+    ).most_common():
+        log.info(f'{str(desc):52s}   {count}')
+    log.info(f'Full list: {csv_path}')
+
+    # A few concrete places to look. The simulator writes its own traceback to
+    # these logfiles, so they carry the cause that the status code only names.
+    for rec in records[:3]:
+        if rec.get('log_path'):
+            log.info(f'    {rec["log_path"]}')
+
+    if frac > FAILURE_FRACTION_WARN:
+        log.warning(
+            f'More than {100 * FAILURE_FRACTION_WARN:.0f}% of evaluations failed, so the '
+            f'result below rests on {n_attempted - n_failed} real evaluations. Narrow the '
+            'parameter ranges to a region the simulator can integrate, or check the '
+            'reference config against the causes listed above.'
+        )
+    log.info('-----------------------------------')
+
+    return n_failed
+
+
 def print_results(D, logs, config, output, n_init):
     """Identify the best evaluation and log its observables and inferred parameters.
 
@@ -172,8 +259,31 @@ def print_results(D, logs, config, output, n_init):
     X = D['X']
     Y = D['Y']
 
+    # Count the evaluations that failed, so a study built mostly on failures
+    # is not read as a converged result. A failed run scores BAD_OBJ_VALUE.
+    optim_Y = Y[n_init:]
+    n_optim = len(optim_Y)
+    n_failed = int((optim_Y <= BAD_OBJ_VALUE).sum().item())
+    if n_failed:
+        log.warning(
+            f'{n_failed} of {n_optim} optimisation evaluations failed. '
+            'Their objective values are the failure score, not a fit quality; '
+            'the per-run reports above name the cause of each.'
+        )
+
+    # Every evaluation failed, so the best of them is still a failed run and
+    # has no output to report. Say so rather than failing later on its
+    # missing helpfile.
+    if n_optim and n_failed == n_optim:
+        raise RuntimeError(
+            f'All {n_optim} optimisation evaluations failed, so there is no best '
+            'fit to report. The per-run reports above name the cause of each; '
+            'the most common causes are a reference config the simulator '
+            'refuses and a parameter range that leaves the model unphysical.'
+        )
+
     # Find best index, ignoring the initial points
-    i_opt: int = Y[n_init:].argmax() + n_init
+    i_opt: int = optim_Y.argmax() + n_init
     log_opt = logs[i_opt]
     J_opt: float = Y[i_opt].item()
 
