@@ -63,12 +63,58 @@ spectrum in `tides_o`).
 | `lovepy` | Solid-only viscoelastic (Maxwell) Love number from the topmost region above a viscosity threshold. | Degree-2 only, small eccentricity, spin-orbit synchronisation. |
 | `obliqua` | Multi-phase (solid/mushy/fluid) Love-number spectrum from the full interior profile, for arbitrary tidal degree/mode (`orbit.obliqua.n`/`m`) and eccentricity. | The only module that can compute a satellite-side response (see [Satellite Love-number lookup](#satellite-love-number-lookup-obliqua-only) below); requires `orbit.perturber` set explicitly. |
 
+??? note "dummy in a nutshell - van Dijk et al. (2026)[^cite-vandijk2026]"
+    Grew out of a study of the Hadean Earth-Moon system, asking how long
+    tidal heating could keep a magma ocean from fully solidifying without
+    modelling the rheology in detail: heating is simply switched on below
+    a melt-fraction threshold and scaled linearly with the remaining
+    solid fraction. Sweeping that heating rate reveals quasi-steady
+    "global radiative equilibrium" epochs, where interior heating and
+    atmospheric cooling balance.
+
+??? note "lovepy in a nutshell - Nicholls et al. (2025)[^cite-nicholls2025lovepy]"
+    Solves for the planet's actual viscoelastic (Maxwell) response by
+    propagating the tidal deformation through radial layers, rather than
+    prescribing a heating rate. Applied to the L 98-59 system, it revealed
+    a self-limiting "radiation-tide-rheology" feedback: as tidal heating
+    softens the mantle, dissipation efficiency drops too, capping heating
+    at levels up to two orders of magnitude below earlier estimates -
+    while still being enough to sustain magma oceans for billions of
+    years.
+
+??? note "obliqua in a nutshell"
+    Obliqua generalises the same viscoelastic idea beyond `lovepy`'s
+    single solid layer and low-eccentricity limit: it resolves solid,
+    mushy, and fluid regions together, at arbitrary tidal degree, mode,
+    and eccentricity. The dummy-module study above hinted at how much
+    tidal heating can matter for early evolution, but only for one
+    fixed, simplified regime; Obliqua exists to track the tidal response
+    self-consistently across the much wider range of thermal and
+    orbital states real exoplanets occupy.
+
 ## Star-planet models (`orbit.star_planet_model`)
 
 | Model | Evolves | Reference | Notes |
 |---|---|---|---|
 | `sp0d` | `semimajorax`, `eccentricity` | Driscoll & Barnes (2015)[^cite-driscoll2015], Eq. 15-16 | Closed-form two-ODE system in `(a, e)` only; no spin dynamics, so it is **not** angular-momentum-conserving by construction. |
 | `sp1d` | `axial_period`, `semimajorax`, `eccentricity`, `plan_star_am` | Correia & Valente (2022)[^cite-correia2022] | Vectorial, Hansen-coefficient formulation restricted to planetary tides (star assumed non-dissipative). Genuinely angular-momentum-conserving; verified by dedicated tests. |
+
+??? note "sp0d in a nutshell - Driscoll & Barnes (2015)"
+    Written for rocky planets around M dwarfs, where the habitable zone
+    sits close enough in that tides matter. Treats the planet as a
+    passive, non-rotating "equilibrium tide" bulge dragged slightly
+    behind (or ahead of) the star: that lag drains eccentricity and
+    trades orbital energy for heat inside the planet. No spin, no
+    resonances -- just a slow circularisation clock coupled to whatever
+    the interior does with the heat.
+
+??? note "sp1d in a nutshell - Correia & Valente (2022)"
+    Instead of one lumped tidal bulge, the tidal potential is decomposed
+    into its individual Fourier harmonics (Hansen coefficients), each
+    oscillating at its own forcing frequency and dissipating
+    independently. This removes the low-eccentricity assumption baked
+    into classical tidal theory, and it means spin and orbit are evolved
+    together as one system, exchanging angular momentum internally.
 
 Both integrate with `scipy.solve_ivp` (`orbit.solver.*` controls method 
 and tolerances). 
@@ -80,6 +126,32 @@ and tolerances).
 | `ps0d` | `semimajorax_sat`, `axial_period` | Korenaga (2023)[^cite-korenaga2023], Eq. 58-60 | No eccentricity evolution, no satellite-side tide. Uses the `M_sat << M_planet` limit of the orbital angular-momentum term (~1.2% error for Earth-Moon). |
 | `ps1d` | `axial_period`, `axial_period_sat`, `semimajorax_sat`, `eccentricity_sat`, `plan_sat_am` | Correia & Valente (2022)[^cite-correia2022] | Same vectorial approach as `sp1d`, extended to track both planet-raised and satellite-raised tidal contributions separately. Requires satellite-side Love-numbers (see below). |
 | `ps1d_evec` | Everything `ps1d` evolves, plus `evection_angle` | `ps1d` physics plus Rufu & Canup (2020)[^cite-rufu2020] evection-resonance terms | Adds a J2-driven apsidal-precession term and a resonant forcing term. See [Evection resonance](#evection-resonance-ps1d_evec) below. |
+
+??? note "ps0d in a nutshell - Korenaga (2023)"
+    Built to explain why the Moon's magma ocean stayed molten for so
+    long: rather than solving the tidal potential in detail, it tracks
+    one number, the system's total (spin + orbital) angular momentum,
+    and lets the planet's tidal dissipation rate spend it. As the
+    planet's spin winds down, the satellite's orbit must expand to keep
+    the ledger balanced - a bookkeeping model, not a torque model, so
+    it is cheap and exactly momentum-conserving, at the cost of no
+    eccentricity evolution.
+
+??? note "ps1d in a nutshell - Correia & Valente (2022)"
+    The same Hansen-coefficient decomposition as `sp1d`, but with two
+    dissipating bodies instead of one: both the planet's and the
+    satellite's tidal responses pull on the shared orbit, so each of
+    their spins, the semi-major axis, and the eccentricity all evolve
+    together, coupled through one exchange of angular momentum.
+
+??? note "ps1d_evec in a nutshell - Rufu & Canup (2020)"
+    As a tidally-receding moon's orbit expands, its slow apsidal
+    precession can fall into step with the star's apparent yearly
+    motion - a secular resonance. Falling into that resonance is like
+    pushing a swing at just the right moment: it pumps up the moon's
+    eccentricity long after ordinary tides alone would have damped it
+    flat, which is the paper's proposed route to the Moon's present-day
+    orbital tilt.
 
 !!! warning "Satellite Love-number lookup"
     Both `ps1d` and `ps1d_evec` need the satellite's own Love-number spectrum as a
@@ -301,6 +373,10 @@ Orbital and rotational state feed three physical stopping conditions
 ---
 
 **See also:** [Model description](model.md) | [Star and orbit configuration](../Reference/config/star_orbit.md) | [Execution and output configuration](../Reference/config/params.md) | [Validation: orbit](../Validation/orbit/orbit.md)
+
+ [^cite-vandijk2026]: van Dijk, M.R., Nicholls, H. & Lichtenberg, T., *[Onset of Habitable Conditions on the Hadean Earth Set by Feedback between Tides and Greenhouse Forcing](https://doi.org/10.3847/PSJ/ae5928)*, The Planetary Science Journal, 7, 94, 2026.
+
+ [^cite-nicholls2025lovepy]: Nicholls, H., Guimond, C.M., Hay, H.C.F.C., Chatterjee, R.D., Lichtenberg, T. & Pierrehumbert, R.T., *[Self-limited tidal heating and prolonged magma oceans in the L 98-59 system](https://doi.org/10.1093/mnras/staf1167)*, Monthly Notices of the Royal Astronomical Society, 541, 2566-2584, 2025.
 
  [^cite-driscoll2015]: Driscoll, P. & Barnes, R., *[Tidal Heating of Earth-like Exoplanets around M Stars: Thermal, Magnetic, and Orbital Evolutions](https://doi.org/10.1089/ast.2015.1325)*, Astrobiology, 15, 739, 2015.
 
