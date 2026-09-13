@@ -544,25 +544,26 @@ def test_init_stellar_spectrum_calls_janus_utilities_in_order(
 # ---------------------------------------------------------------------------
 
 
-def test_write_atmos_ncdf_uses_rounded_time_convention():
-    """The JANUS writer builds ``<output>/data/<%.0f>_atm.nc`` and calls
-    ``atm.write_ncdf`` exactly once.
+def test_write_atmos_ncdf_uses_subyear_time_convention():
+    """The JANUS writer builds ``<output>/data/<format_subyear_time(time)>_atm.nc`` and calls
+    ``atm.write_ncdf()`` with it.
 
-    The filename uses ``%.0f`` rounding, matching the AGNI writer and the read
-    side in ``read_atmosphere_data`` so a snapshot written by either backend is
-    found by the same name. Discrimination: time=1000.7 rounds to 1001 (not
-    1000 as an ``int()`` truncation would give), pinning the convention.
+    The filename uses ``format_subyear_time(time)`` sub-year precision, matching the AGNI writer and
+    the read side so a snapshot written by either module is found by the same
+    name. Discrimination: time=1000.7 writes ``1000p700_atm.nc``, keeping the
+    fraction so two snapshots less than a year apart do not collide. A
+    regression to whole-year ``%.0f`` naming would round this to 1001.
     """
     atm = MagicMock()
     dirs = {'output': '/tmp/run'}
 
     write_atmos_ncdf(atm, dirs, 1000.7)
 
-    atm.write_ncdf.assert_called_once_with('/tmp/run/data/1001_atm.nc')
-    # A regression to int() truncation would have produced 1000_atm.nc.
-    assert '1000_atm.nc' not in str(atm.write_ncdf.call_args)
+    atm.write_ncdf.assert_called_once_with('/tmp/run/data/1000p700_atm.nc')
+    # A regression to whole-year rounding would have produced 1001_atm.nc.
+    assert '1001_atm.nc' not in str(atm.write_ncdf.call_args)
     # Discrimination on the directory: the file lands under data/, not output/.
-    assert atm.write_ncdf.call_args.args[0].endswith('/data/1001_atm.nc')
+    assert atm.write_ncdf.call_args.args[0].endswith('/data/1000p700_atm.nc')
 
 
 @pytest.mark.unit
