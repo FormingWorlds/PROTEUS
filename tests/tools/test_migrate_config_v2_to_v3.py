@@ -209,6 +209,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'orbit.obliqua.enforce_ec',
         'orbit.obliqua.optimize_scales',
         'orbit.obliqua.solid_shell',
+        'orbit.obliqua.cap_LN',
         'orbit.obliqua.min_frac',
         'orbit.obliqua.visc_lus',
         'orbit.obliqua.visc_sus',

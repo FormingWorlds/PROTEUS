@@ -72,6 +72,37 @@ Reduce the interior grid resolution:
 
 ---
 
+## Tidal Love-number resonances (Obliqua)
+
+If Obliqua's Love-number spectrum (`plot_lovenumber.png`) shows a point
+ringed red ("potentially unbound", `Re(k2) > 1.5` or `Im(k2) > 1.0`), or
+the orbit/spin state jumps abruptly over one or a few iterations, the
+tidal forcing frequency likely crossed one of the interior's own dynamic
+normal-mode resonances. These resonances occur at the same time the 
+mantle is partially molten, hence to properly resolve them reduce the 
+mushy-regime timestep limit: 
+
+```toml
+[params.dt]
+    mushy_maximum = 1.0e4   # or lower; these resonances only occur while
+                            # part of the mantle is molten/mushy, so a
+                            # tighter mushy-regime cap gives PROTEUS more
+                            # chances to re-sample Obliqua during a crossing
+    mushy_upper   = 0.99
+```
+
+Alternatively, PROTEUS is able to cap the Love number Obliqua
+returns as a safety net. This suppresses divergences that arise at large
+timesteps, by limiting the overall tidal response:
+
+```toml
+[orbit.obliqua]
+    cap_LN = true   # clamp each mode's Re(k2)/Im(k2) to 3x/2x the fluid Love-number limit for its degree n
+```
+
+
+---
+
 ## General tips
 
 **Use the `--deterministic` flag**

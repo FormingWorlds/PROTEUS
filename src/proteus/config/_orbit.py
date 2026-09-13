@@ -156,6 +156,9 @@ class Obliqua:
         Whether to optimize the non-dimensional scaling parameters for solid tides.
     solid_shell : bool
         Whether to insert an infinitesimal solid shell around the core.
+    cap_LN : bool
+        Whether to clamp each mode's Love number to a fixed multiple of the
+        classical fluid limit for its degree.
     min_frac : float
         Minimal segment radius fraction before smoothing.
     visc_lus : float
@@ -200,6 +203,7 @@ class Obliqua:
     enforce_ec: bool = field(default=True)
     optimize_scales: bool = field(default=False)
     solid_shell: bool = field(default=True)
+    cap_LN: bool = field(default=False)
 
     min_frac: float = field(default=0.02, validator=gt(0))
 

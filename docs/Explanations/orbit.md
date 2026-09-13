@@ -92,6 +92,19 @@ spectrum in `tides_o`).
     self-consistently across the much wider range of thermal and
     orbital states real exoplanets occupy.
 
+!!! warning "Dynamic-tide resonances (Obliqua)"
+    Setting `orbit.obliqua.solid.inertial_terms` to `true` solves the full 
+    finite-frequency problem instead of the quasi-static ($\omega \to 0$) approximation. 
+    When tidal forcing matches a normal-mode frequency of the body, it produces a 
+    physically real, bounded peak in the Love number—not a numerical grid artifact.
+
+    * **When they occur:** Only when parts of the mantle are molten or mushy.
+    * **Control knob:** Use `params.dt.mushy_maximum` to tighten timesteps during solidification.
+    This forces PROTEUS to re-sample Obliqua frequently enough to resolve resonance crossings.
+    * **Safety cap:** `orbit.obliqua.cap_LN` clamps each mode's Love number to a fixed multiple 
+    of the classical fluid limit for its degree n. This prevents extreme heating spikes while 
+    macro-steps are too large to fully resolve the resonance timescale.
+
 ## Star-planet models (`orbit.star_planet_model`)
 
 | Model | Evolves | Reference | Notes |

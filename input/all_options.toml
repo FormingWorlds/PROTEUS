@@ -301,6 +301,7 @@ config_version = "3.0"
         enforce_ec            = true         # Enforce energy conservation in tidal response calculations, improves stability in fluid-mush cases at low forcing frequencies (< 1e-7 Hz). This does not affect the Lovenumbers.
         optimize_scales       = false        # Optimize non-dimensionalization scales for the relaxation method. This can improve convergence and stability, especially for low forcing frequencies (< 1e-7 Hz). However, do not use with Bigfloat precision.
         solid_shell           = true         # Insert an infinitesimal solid shell around the core. This patches an issue where y2 and y4 become decoupled and cause the solution to diverge in fluid layers. Only use with solid1d_relax or solid1d_mush_relax.
+        cap_LN                = false        # Clamp each mode's Re(k2)/Im(k2) to 3x/2x the fluid Love-number limit for its degree n, heating is rescaled to match via enforce_ec.
 
         min_frac              = 0.02         # minimum segment radius fraction before smoothing [dimensionless]
         visc_lus              = 5e5          # liquid-mush handoff viscosity [Pa s]

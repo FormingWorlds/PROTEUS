@@ -103,9 +103,10 @@ def _obliqua_module_cfg(config: Config) -> dict:
     config field flows through without this function needing an update.
     Excludes PROTEUS-only bookkeeping (``_OBLIQUA_CFG_EXCLUDE``) and patches
     in ``visc_l``/``visc_s`` (from the interior's own log10-viscosity) and
-    ``fluid.sigma_R_inf`` (Obliqua's name for ``sigma_R_factor * sigma_R``).
-    Callers still set their own ``s_min``/``s_max`` (or ``k_min``/``k_max``)
-    and any call-specific keys (``spectrum``, ``store_3D``, ...).
+    ``fluid.sigma_R_inf`` (Obliqua's name for ``sigma_R_factor *
+    sigma_R``). Callers still set their own ``s_min``/``s_max`` (or
+    ``k_min``/``k_max``) and any call-specific keys (``spectrum``,
+    ``store_3D``, ...).
     """
     obliqua_cfg = asdict(config.orbit.obliqua)
     for key in _OBLIQUA_CFG_EXCLUDE:

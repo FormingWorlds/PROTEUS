@@ -171,6 +171,7 @@ for arbitrary eccentricity and tidal mode.
 | `enforce_ec` | bool | `true` | Whether to enforce energy conservation between Lovenumbers and heating profile. |
 | `optimize_scales` | bool | `false` | Whether to optimize the non-dimensional scaling parameters for solid tides. |
 | `solid_shell` | bool | `true` | Whether to insert an infinitesimal solid shell around the core. |
+| `cap_LN` | bool | `false` | Whether to clamp each mode's Love number to a fixed multiple of the classical fluid limit for its degree. |
 | `min_frac` | float | `0.02` | Minimal segment radius fraction before smoothing. Must be > 0. |
 | `visc_lus` | float | `500000.0` | Liquidus viscosity \[Pa s\]. Must be > 0. |
 | `visc_sus` | float | `500000.0` | Solidus viscosity \[Pa s\]. Must be > 0. |
