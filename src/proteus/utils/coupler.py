@@ -28,7 +28,14 @@ from proteus.utils.constants import (
     vol_gas_list,
     vol_list,
 )
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
+from proteus.utils.helper import (
+    UpdateStatusfile,
+    create_tmp_folder,
+    format_subyear_time,
+    get_proteus_dir,
+    parse_subyear_time,
+    safe_rm,
+)
 from proteus.utils.plot import sample_times
 
 if TYPE_CHECKING:
@@ -1506,13 +1513,100 @@ def _snapshot_readable(path: str) -> bool:
     return _netcdf_readable(path)
 
 
+def _snapshot_time(path: str) -> float | None:
+    """Simulation time a snapshot file records for itself [yr], if it does.
+
+    A snapshot name can be ambiguous: SPIDER's JSON files are named on the time
+    rounded to a whole year, so two steps inside one year share a name, and a
+    directory from an older run can hold whole-year names for any writer. The
+    interior writers also record the time they wrote: Aragog's netCDF carries a
+    ``time`` variable and SPIDER's JSON a ``time_years`` entry. Reading it back
+    lets a resume tell whether a file is the row's own state or one a later
+    step left under the same name.
+
+    Parameters
+    ----------
+    path : str
+        Snapshot file to read.
+
+    Returns
+    -------
+    float or None
+        The recorded time, or None when the file records none, which is what
+        a directory written before the field existed looks like.
+    """
+    # Imported outside the try for the same reason as the readability probe:
+    # a missing netCDF4 must raise rather than read as "no file records a
+    # time", which would quietly restore the name-only behaviour everywhere.
+    from netCDF4 import Dataset
+
+    try:
+        if path.endswith('.json'):
+            with open(path) as fh:
+                recorded = json.load(fh).get('time_years')
+            return None if recorded is None else float(recorded)
+        with Dataset(path) as ds:
+            if 'time' not in ds.variables:
+                return None
+            return float(ds['time'][0])
+    except Exception:
+        # Unreadable is not this function's call to make: the readability
+        # probe reports that, and reporting it here as well would turn a
+        # corrupt file into a silently skipped one.
+        return None
+
+
+def _snapshot_belongs_to(path: str, time: float) -> bool:
+    """Whether a snapshot is the one written for a simulation time.
+
+    True when the file records that time, and also when it records none: a
+    file without the field cannot be told apart from its neighbours, so it is
+    accepted on its name, which is the behaviour every directory written
+    before the field existed relies on. True as well once the simulation time
+    is large enough that the helpfile's own precision cannot separate two rows
+    inside one filename, which is a few Gyr in.
+
+    Parameters
+    ----------
+    path : str
+        Snapshot file to check.
+    time : float
+        Simulation time of the helpfile row [yr].
+
+    Returns
+    -------
+    bool
+        Whether the file can be this row's half.
+    """
+    recorded = _snapshot_time(path)
+    if recorded is None:
+        return True
+
+    # The row's time has been through the helpfile, which serialises at
+    # '%.10e' and so holds eleven significant digits: a round trip moves it by
+    # up to 4.94e-11 of its own magnitude. The margin has to clear that, and a
+    # factor of four does, while staying as tight as the stored data allows.
+    resolution = 5.0e-11 * max(1.0, abs(time))
+    tolerance = 4.0 * resolution
+
+    # Past a few Gyr the helpfile precision itself exceeds the one-year name
+    # bucket, so no margin separates two rows in it: accept on name instead.
+    if tolerance >= 0.5:
+        return True
+
+    return abs(recorded - time) <= tolerance
+
+
 def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
     """Interior snapshot filename candidates for a simulation time, per writer.
 
-    Each interior module names its snapshot with the same str-format convention,
-    so the resume probes match. They differ by suffix.
-    The dummy and boundary interiors write no snapshot, so resume imposes
-    no interior constraint (empty list). Unknown module falls-back to Aragog.
+    Aragog names its snapshot with the sub-year form ``format_subyear_time(time) + '_int.nc'``
+    (e.g. ``'884p700_int.nc'``). The dot-decimal form (``'884.700_int.nc'``) and the
+    whole-year form (``'884_int.nc'``) are accepted as fallbacks. SPIDER names its
+    JSON with the whole-year form ``'%.0f.json'``; the SPIDER binary writes that
+    name, so PROTEUS matches it rather than choosing it. The dummy and boundary
+    interiors write no snapshot, so resume imposes no interior constraint (empty
+    list). Unknown module falls back to Aragog.
     """
 
     if time < 0.0:
@@ -1524,18 +1618,28 @@ def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
         case 'spider':
             return ['%.0f.json' % time]
         case _:
-            return ['%.0f_int.nc' % time]
+            return [
+                format_subyear_time(time) + '_int.nc',
+                '%.3f_int.nc' % time,
+                '%.0f_int.nc' % time,
+            ]
 
 
 def _atm_snapshot_names(time: float) -> list[str]:
-    """Atmosphere snapshot filename candidate for a simulation time, per writer.
+    """Atmosphere snapshot filename candidates for a simulation time.
 
-    All writers round the time with a string-floating point formatter
-    (rounds to nearest number with no decimals).
+    The atmosphere writers name the snapshot with the sub-year form
+    ``format_subyear_time(time) + '_atm.nc'`` (e.g. ``'884p700_atm.nc'``).
+    The dot-decimal form (``'884.700_atm.nc'``) and the whole-year form
+    (``'884_atm.nc'``) are accepted as fallbacks.
     """
     if time < 0.0:
         raise ValueError(f'Negative time {time} cannot be formatted as filename')
-    return ['%.0f_atm.nc' % time]
+    return [
+        format_subyear_time(time) + '_atm.nc',
+        '%.3f_atm.nc' % time,
+        '%.0f_atm.nc' % time,
+    ]
 
 
 def select_resumable_snapshot(
@@ -1559,6 +1663,25 @@ def select_resumable_snapshot(
     files are deleted: the helpfile is truncated below their rows, so they
     can never back a resume and would otherwise be swept into the final
     data archive.
+
+    Each half is probed with the candidate names for its writer. The interior
+    name depends on the module: Aragog uses the sub-year form ``'884p700_int.nc'``
+    and answers to the whole-year form ``'%.0f_int.nc'``, SPIDER uses the
+    whole-year form ``'%.0f.json'``, and the dummy and boundary interiors write
+    no snapshot at all (no interior constraint). The atmosphere half uses the
+    sub-year form ``'884p700_atm.nc'`` and answers to the whole-year form
+    ``'%.0f_atm.nc'``. See ``_interior_snapshot_names`` /
+    ``_atm_snapshot_names``.
+
+    The whole-year form keys the name on a whole year, so two rows less than a
+    year apart that both use it derive the same filename and one overwrites the
+    other; the sub-year form gives each such row a distinct file. Where the
+    name alone cannot say which row a file belongs to, the recorded time inside
+    the file decides. The interior writers store the time they wrote (a
+    ``time`` variable in the netCDF, ``time_years`` in SPIDER's JSON), so where
+    that is present it is what the row is matched against: a file left by a
+    different step is not accepted as this row's half, and the walk continues
+    past it. A file that carries no recorded time is accepted on its name.
 
     Parameters
     ----------
@@ -1594,6 +1717,7 @@ def select_resumable_snapshot(
     dropped: list[int] = []
     quarantined: list[tuple[str, str]] = []  # (moved_to, original) for rollback
     keep_idx = None
+
     for i in range(len(times) - 1, -1, -1):
         t = times[i]
         int_paths = [
@@ -1604,15 +1728,23 @@ def select_resumable_snapshot(
         )
         # An empty interior candidate list means the interior module writes no
         # snapshot (dummy/boundary): that half imposes no resume constraint.
-        int_ok = (not int_paths) or any(_snapshot_readable(p) for p in int_paths)
-        atm_ok = (not require_atm) or any(_snapshot_readable(p) for p in atm_paths)
+        # A file that records a different time is another step's, so it does
+        # not count as this row's half however well its name fits.
+        int_ok = (not int_paths) or any(
+            _snapshot_readable(p) and _snapshot_belongs_to(p, t) for p in int_paths
+        )
+        atm_ok = (not require_atm) or any(
+            _snapshot_readable(p) and _snapshot_belongs_to(p, t) for p in atm_paths
+        )
         if int_ok and atm_ok:
             keep_idx = i
             break
         # Incomplete pair: move whichever candidate halves exist aside so the
-        # interior / atmosphere latest-file globs cannot pick them up.
+        # interior / atmosphere latest-file globs cannot pick them up. A file
+        # that records a different time is left where it is: it belongs to
+        # another step, and dropping this row must not take it down as well.
         for p in int_paths + atm_paths:
-            if os.path.exists(p):
+            if os.path.exists(p) and _snapshot_belongs_to(p, t):
                 dst = p + '.incomplete'
                 os.replace(p, dst)
                 quarantined.append((dst, p))
@@ -1793,7 +1925,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     # Which times do we have atmosphere data for?
     if not dummy_atm:
         ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
-        nc_times = [int(f.split('/')[-1].split('_atm')[0]) for f in ncs]
+        nc_times = [parse_subyear_time(f.split('/')[-1].split('_atm')[0]) for f in ncs]
         output_times = select_profile_plot_times(output_times, nc_times, no_int_snapshots)
 
     # Samples for plotting profiles

@@ -257,7 +257,7 @@ def _extract_profiles(output_dir, hf):
     if data_dir.is_dir():
         for c in data_dir.glob('*_int.nc'):
             try:
-                nc_index[int(c.stem.split('_')[0])] = c
+                nc_index[int(float(c.stem.split('_')[0].replace('p', '.')))] = c
             except ValueError:
                 continue
 

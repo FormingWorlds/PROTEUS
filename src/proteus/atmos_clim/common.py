@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.helper import find_nearest
+from proteus.utils.helper import find_nearest, parse_subyear_time, snapshot_path_for_time
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -279,7 +279,8 @@ def read_atmosphere_data(output_dir: str, times: list, extra_keys=[]):
     """
     profiles = [
         read_ncdf_profile(
-            os.path.join(output_dir, 'data', '%.0f_atm.nc' % t), extra_keys=extra_keys
+            snapshot_path_for_time(os.path.join(output_dir, 'data'), t, '_atm.nc'),
+            extra_keys=extra_keys,
         )
         for t in times
     ]
@@ -311,7 +312,7 @@ def find_latest_atmosphere_time(output_dir: str) -> float | None:
     times = []
     for f in ncs:
         try:
-            times.append(float(os.path.basename(f).split('_atm')[0]))
+            times.append(parse_subyear_time(os.path.basename(f).split('_atm')[0]))
         except ValueError:
             log.warning(f"Could not parse time from NetCDF file '{f}'")
 
