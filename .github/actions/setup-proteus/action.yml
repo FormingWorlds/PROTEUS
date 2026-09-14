@@ -180,9 +180,48 @@ runs:
       run: |
         set -euo pipefail
         source "${{ github.action_path }}/retry-with-timeout.sh"
+        # This gcc revision's Darwin driver exports SOCRATES's dlsym-visible
+        # shim symbols; a newer gcc drops them, so gcc stays pinned here.
+        # Formulae must live in a tap, so the formula is fetched into a
+        # throwaway tap; pinned before netcdf-fortran so its gcc dependency
+        # resolves to it. Commit 4509561fedf07807c6b806f82551e5f8dac5e678
+        # provides gcc 16.1.0.
+        gcc_formula_url="https://raw.githubusercontent.com/Homebrew/homebrew-core/4509561fedf07807c6b806f82551e5f8dac5e678/Formula/g/gcc.rb"
+        brew tap-new local/pinned-toolchain --no-git >/dev/null
+        pinned_tap_formula_dir="$(brew --repository)/Library/Taps/local/homebrew-pinned-toolchain/Formula"
+        retry_with_timeout "fetch pinned gcc formula" 60 10 "" \
+          curl -fsSL -o "$pinned_tap_formula_dir/gcc.rb" "$gcc_formula_url"
+        # Unlink any gcc the runner image already ships (a different tap, same
+        # formula name) so linking the pinned keg below cannot hit a conflict.
+        if brew list --formula gcc >/dev/null 2>&1; then
+          brew unlink gcc >/dev/null 2>&1 || true
+        fi
         brew_rc=0
+        retry_with_timeout "brew install gcc (pinned)" 240 10 "" \
+          brew install --quiet local/pinned-toolchain/gcc || brew_rc=$?
+        # A prefix match on `brew list --versions gcc` false-fails once a
+        # second gcc keg coexists (unlink above does not remove the runner
+        # image's pre-existing keg), since the versions then print on one
+        # line in Cellar order, e.g. "gcc 15.2.0 16.1.0". Check the pinned
+        # version is present as its own token, and that it is the one
+        # actually linked.
+        gcc_versions="$(brew list --versions gcc 2>/dev/null || true)"
+        gcc_linked_keg="$(readlink "$(brew --prefix)/opt/gcc" 2>/dev/null || true)"
+        version_present=0
+        if tr ' ' '\n' <<<"$gcc_versions" | grep -qx '16\.1\..*'; then
+          version_present=1
+        fi
+        version_linked=0
+        case "$gcc_linked_keg" in
+          */gcc/16.1.*) version_linked=1 ;;
+        esac
+        if [ "$version_present" -ne 1 ] || [ "$version_linked" -ne 1 ]; then
+          echo "ERROR: brew install rc=$brew_rc, expected pinned gcc 16.1.x installed and linked, got versions: '$gcc_versions', linked keg: '$gcc_linked_keg'" >&2
+          exit 1
+        fi
+        brew pin local/pinned-toolchain/gcc
         retry_with_timeout "brew install" 240 10 "" \
-          brew install --quiet gcc netcdf netcdf-fortran openssl@3 || brew_rc=$?
+          brew install --quiet netcdf netcdf-fortran openssl@3 || brew_rc=$?
         missing=()
         for pkg in gcc netcdf netcdf-fortran openssl@3; do
           brew list "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
@@ -564,6 +603,34 @@ runs:
         fi
         julia --project=. -e 'using Pkg; Pkg.instantiate()'
         julia --project=. deps/build.jl nodata
+
+    # ------------------------------------------------------------------
+    # 7b. Verify the SOCRATES shim's symbol export (macOS only)
+    # ------------------------------------------------------------------
+    # deps/build.jl above recompiles socrates/julia/lib/libSOCRATES_C.so on
+    # every run, regardless of the SOCRATES-build or Julia-depot cache
+    # state, so this check always sees the shim this job just built and
+    # cannot pass on a stale cached artifact. Guards against Homebrew's gcc
+    # Darwin driver dropping this symbol from the shim's external symbol
+    # table, which breaks Julia's dlsym lookup in AGNI; the gcc pin earlier
+    # in this action keeps it exported.
+    - name: Verify SOCRATES shim exports PS_real_kind_bytes (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        shim="$GITHUB_WORKSPACE/socrates/julia/lib/libSOCRATES_C.so"
+        if ! symbols="$(nm -gU "$shim" 2>&1)"; then
+          echo "nm failed on $shim:" >&2
+          echo "$symbols" >&2
+          exit 1
+        fi
+        if ! grep -q PS_real_kind_bytes <<<"$symbols"; then
+          echo "PS_real_kind_bytes is not an external symbol in $shim" >&2
+          grep -i real_kind <<<"$symbols" >&2 || echo "(no real_kind symbol found at all)" >&2
+          exit 1
+        fi
+        echo "PS_real_kind_bytes confirmed exported in $shim"
 
     # ------------------------------------------------------------------
     # 8. PROTEUS pip install (resolves PyPI + git deps in pyproject.toml)

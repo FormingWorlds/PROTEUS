@@ -2252,6 +2252,44 @@ def test_run_interior_non_boundary_module_shares_dT_delta_between_caps():
     assert hf_row['T_surf'] == pytest.approx(2820.0)
 
 
+@pytest.mark.unit
+def test_run_interior_evolve_message_is_debug_not_info(caplog):
+    """The per-step 'Evolve interior...' announcement stays off the default
+    INFO output: it fires on every timestep, so it belongs at debug (#839)."""
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='dummy')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    hf_row['RF_depth'] = 0.5
+    out = {
+        'T_magma': 3005.0,
+        'T_surf': 2805.0,
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 2
+    atmos_o = MagicMock()
+
+    with (
+        patch(
+            'proteus.interior_energetics.dummy.run_dummy_int',
+            return_value=(110.0, out),
+        ),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+        caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, atmos_o, verbose=True)
+
+    evolve_records = [r for r in caplog.records if 'Evolve interior' in r.getMessage()]
+    assert len(evolve_records) == 1
+    assert evolve_records[0].levelname == 'DEBUG'
+
+
 # ============================================================================
 # determine_interior_radius: tolerance_struct + maxiter + initial bracket
 # ============================================================================
@@ -2566,6 +2604,7 @@ def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
     config = SimpleNamespace(
         interior_struct=SimpleNamespace(
             core_density=rho_core,
+            core_heatcap=700.0,
             core_frac=core_frac,
             core_frac_mode='radius',
         )
@@ -2586,6 +2625,44 @@ def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
     # core_density must be overwritten with the resolved value, not left at
     # its stale zero default.
     assert hf_row['core_density'] == pytest.approx(rho_core, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_calculate_core_mass_writes_radius_density_and_heatcap():
+    """calculate_core_mass also writes R_core, core_density, and core_heatcap
+    to hf_row, not just M_core.
+
+    These three feed the helpfile columns directly; a regression that
+    reverted to computing M_core without storing the intermediates would
+    leave them missing from hf_row entirely, caught here by a direct key
+    check rather than only checking M_core's value.
+    """
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.wrapper import calculate_core_mass
+
+    rho_core = 10738.0
+    heatcap = 700.0
+    R_int = 6.371e6
+    core_frac = 0.3
+    config = SimpleNamespace(
+        interior_struct=SimpleNamespace(
+            core_density=rho_core,
+            core_heatcap=heatcap,
+            core_frac=core_frac,
+            core_frac_mode='radius',
+        )
+    )
+    hf_row = {'R_int': R_int}
+    calculate_core_mass(hf_row, config)
+
+    assert hf_row['R_core'] == pytest.approx(R_int * core_frac, rel=1e-12)
+    assert hf_row['core_density'] == pytest.approx(rho_core, rel=1e-12)
+    assert hf_row['core_heatcap'] == pytest.approx(heatcap, rel=1e-12)
+    # Discrimination: R_core must not equal R_int itself (a regression that
+    # wrote the uncombined radius instead of the core radius).
+    assert hf_row['R_core'] != pytest.approx(R_int, rel=1e-3)
 
 
 @pytest.mark.unit
