@@ -56,7 +56,7 @@ def plot_orbit(
     # ----------------- COLUMN 0: PLANET -----------------
     # Panel 0,0: Planet Semi-major Axis
     y_a_pl = hf_all['semimajorax'] / AU
-    axs[0, 0].plot(time, y_a_pl, lw=lw, color='black')
+    axs[0, 0].plot(time, y_a_pl, lw=lw, color=mpl.rcParams['text.color'])
     axs[0, 0].set_ylabel('Semi-major Axis [AU]')
     axs[0, 0].set_ylim(np.amin(y_a_pl) / yext, np.amax(y_a_pl) * yext)
     axs[0, 0].set_title('Planet Orbiting Star')
@@ -81,6 +81,8 @@ def plot_orbit(
     ax_left.set_ylabel('Orbital Period [days]', color='tab:orange')
     ax_left.tick_params(axis='y', labelcolor='tab:orange')
     ax_left.set_yscale('log')
+    # Add a small buffer to the y-limits to avoid clipping the data points
+    ax_left.set_ylim(np.amin(p_orb_pl) / yext, np.amax(p_orb_pl) * yext)
     ax_left.grid(alpha=0.2, which='both')
 
     # Right Y-axis: Spin Period
@@ -100,7 +102,7 @@ def plot_orbit(
         # Panel 0,1: Satellite Semi-major Axis
         # Using AU to keep consistent scale, or feel free to use e.g. 1e6 meters or Earth-Radii
         y_a_sat = hf_all['semimajorax_sat'] / R_earth
-        axs[0, 1].plot(time, y_a_sat, lw=lw, color='black')
+        axs[0, 1].plot(time, y_a_sat, lw=lw, color=mpl.rcParams['text.color'])
         axs[0, 1].set_ylabel('Semi-major Axis [R_earth]')
         axs[0, 1].set_ylim(np.amin(y_a_sat) / yext, np.amax(y_a_sat) * yext)
         axs[0, 1].set_title('Satellite Orbiting Planet')
@@ -475,9 +477,10 @@ def plot_lovenumber(
     vmin_real, vmax_real = np.min(all_real_log), np.max(all_real_log)
     vmin_imag, vmax_imag = np.min(all_imag_log), np.max(all_imag_log)
 
-    # Thresholds beyond which a Love number is likely unphysical/unbound
-    real_unbound_thresh = 1.5
-    imag_unbound_thresh = 1.0
+    # Thresholds beyond which a Love number is likely dominated by a
+    # normal-mode (seismic) resonance in the body's rheological structure
+    real_resonance_thresh = 1.5
+    imag_resonance_thresh = 1.0
 
     # Setup Figure
     scale = 1.0
@@ -508,8 +511,8 @@ def plot_lovenumber(
         real_raw = real_raw[keep]
         imag_raw = imag_raw[keep]
 
-        # Points where the Love number is potentially unbound/unphysical
-        unbound = (real_raw > real_unbound_thresh) | (imag_raw > imag_unbound_thresh)
+        # Points where the Love number is likely near a normal-mode resonance
+        near_resonance = (real_raw > real_resonance_thresh) | (imag_raw > imag_resonance_thresh)
 
         # Draw connecting trajectory lines across time
         axs[0].plot(
@@ -546,12 +549,12 @@ def plot_lovenumber(
             zorder=2,
         )
 
-        # Ring out points beyond the unbound thresholds, on both panels
-        if np.any(unbound):
+        # Ring out points beyond the resonance thresholds, on both panels
+        if np.any(near_resonance):
             for ax in axs:
                 ax.scatter(
-                    x_vals[unbound],
-                    y_vals[unbound],
+                    x_vals[near_resonance],
+                    y_vals[near_resonance],
                     facecolors='none',
                     edgecolors='red',
                     marker='o',
@@ -570,7 +573,7 @@ def plot_lovenumber(
     axs[0].set_title(r'Real Part: $\log_{10}(|\text{Re}(k_{nm})|)$')
     axs[1].set_title(r'Imaginary Part: $\log_{10}(|\text{Im}(k_{nm})|)$')
 
-    unbound_proxy = mpl.lines.Line2D(
+    resonance_proxy = mpl.lines.Line2D(
         [],
         [],
         marker='o',
@@ -578,11 +581,11 @@ def plot_lovenumber(
         markeredgecolor='red',
         linestyle='none',
         markersize=8,
-        label=rf'Potentially unbound ($\text{{Re}}>{real_unbound_thresh:g}$ or '
-        rf'$\text{{Im}}>{imag_unbound_thresh:g}$)',
+        label=rf'Seismic resonance ($\text{{Re}}>{real_resonance_thresh:g}$ or '
+        rf'$\text{{Im}}>{imag_resonance_thresh:g}$)',
     )
     fig.legend(
-        handles=[unbound_proxy],
+        handles=[resonance_proxy],
         loc='upper center',
         bbox_to_anchor=(0.5, 1.02),
         ncol=1,

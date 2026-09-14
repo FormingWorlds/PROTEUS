@@ -112,8 +112,59 @@ After the run completes, generate plots:
 proteus plot -c input/tutorials/tutorial_earth_moon.toml all
 ```
 
+The reference run below reaches solidification at t $\approx$ 2.41 Myr.
 
+<figure markdown="span">
+  ![Orbital evolution](../assets/orbit/orbit_tides_orbit.avif#only-light){ width="100%" }
+  ![Orbital evolution](../assets/orbit/orbit_tides_orbit_dark.avif#only-dark){ width="100%" }
+  <figcaption><b>Planet-star and satellite-planet orbital evolution.</b>
+  The planet's heliocentric semi-major axis and eccentricity stay pinned at
+  1.00 AU and 0 (Obliqua evolves the planet-satellite pair; the star-planet
+  orbit is not perturbed by it here), so the planet's orbital period holds at
+  365.2563 days while its axial (spin) period lengthens from 4.00 h to
+  6.53 h as the satellite despins it. The satellite's semi-major axis climbs
+  from ~3.5 to ~16.3 Earth radii over the run, with its orbital and axial spin
+  periods rising together from ~9.1 h to ~91.8 h (i.e. it stays
+  tidally locked), and its eccentricity varying between 0 and 0.05.</figcaption>
+</figure>
 
+<figure markdown="span">
+  ![Global flux budget](../assets/orbit/orbit_tides_fluxes_global.avif#only-light){ width="100%" }
+  ![Global flux budget](../assets/orbit/orbit_tides_fluxes_global_dark.avif#only-dark){ width="100%" }
+  <figcaption><b>Global flux budget.</b>
+  Tidal heating (gold) starts at ~7.7 &times; 10<sup>5</sup> W m<sup>-2</sup>,
+  comparable to the net interior/atmosphere flux (orange/grey) at that time,
+  then decreases as the satellite moves away from the planet and the mantle 
+  solidifies. It reaches an absolute minimum after ~4 &times; 10<sup>4</sup> yr, 
+  reflecting the weakening tidal potential and dissipative properties of the 
+  Earth's interior during the mush phase. The dissipation then rapidly builds 
+  up again, producing a peak( ~2 &times; 10<sup>3</sup> W m<sup>-2</sup>) near 
+  10<sup>5</sup> yr, attributed to crossing of a forests of interior resonances. 
+  Finally, solid tides takeover, and dissipation smoothly decays to ~3.5 W m<sup>-2</sup> 
+  by the end of the run.</figcaption>
+</figure>
+
+<figure markdown="span">
+  ![Love number spectrum evolution](../assets/orbit/orbit_tides_lovenumber.avif#only-light){ width="100%" }
+  ![Love number spectrum evolution](../assets/orbit/orbit_tides_lovenumber_dark.avif#only-dark){ width="100%" }
+  <figcaption><b>Degree-2 Love number spectrum evolution (Obliqua).</b>
+  The dominant, almost always populated mode is the semidiurnal (n=2, m=2, k=2) tide; 
+  its forcing frequency |&sigma;| decreases from
+  ~6.7 &times; 10<sup>-4</sup> to ~4.9 &times; 10<sup>-4</sup> rad
+  s<sup>-1</sup> as the satellite recedes and despins the planet.
+  Re(k<sub>22</sub>) rises from ~0.09 initially to a peak of ~1.54 at
+  t &approx; 5.3 &times; 10<sup>4</sup> yr, consistent with the forcing
+  frequency sweeping past a forest of normal-modes (seismic) resonance as 
+  the mantle's rheological structure evolves; between
+  ~3.7 &times; 10<sup>4</sup> and ~8.2 &times; 10<sup>4</sup> yr it exceeds
+  the seismic-resonance threshold (Re &gt; 1.5, ringed in red) before
+  relaxing to ~0.48 by the end of the run. Im(k<sub>22</sub>) stays negative
+  throughout, its magnitude ranging from ~0.34 down to
+  ~6.7 &times; 10<sup>-6</sup> and ending at ~0.0014 as the interior
+  solidifies and dissipation drops. A single snapshot of a neighbouring
+  (n=2, m=2, k=1) harmonic, at t &approx; 1.1 &times; 10<sup>5</sup> yr,
+  also crosses into the seismic-resonance region (Im &lt; -1).</figcaption>
+</figure>
 
 ---
 

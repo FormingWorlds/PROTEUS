@@ -75,7 +75,7 @@ Reduce the interior grid resolution:
 ## Tidal Love-number resonances (Obliqua)
 
 If Obliqua's Love-number spectrum (`plot_lovenumber.png`) shows a point
-ringed red ("potentially unbound", `Re(k2) > 1.5` or `Im(k2) > 1.0`), or
+ringed red ("seismic resonance", `Re(k2) > 1.5` or `Im(k2) > 1.0`), or
 the orbit/spin state jumps abruptly over one or a few iterations, the
 tidal forcing frequency likely crossed one of the interior's own dynamic
 normal-mode resonances. These resonances occur at the same time the 

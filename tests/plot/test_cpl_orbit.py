@@ -571,9 +571,9 @@ def test_plot_lovenumber_draws_and_saves_with_valid_data(monkeypatch):
     assert saved_path.endswith('plot_lovenumber.png')
 
 
-def test_plot_lovenumber_flags_potentially_unbound_points(monkeypatch):
-    """A Love number with Re(k) > 1.5 or Im(k) > 1 signals a numerically
-    unbound resonance response rather than a physically plausible value;
+def test_plot_lovenumber_flags_seismic_resonance_points(monkeypatch):
+    """A Love number with Re(k) > 1.5 or Im(k) > 1 signals a normal-mode
+    (seismic) resonance response rather than a physically plausible value;
     the plot must ring that point on both panels in addition to the
     ordinary colour-coded scatter, and add exactly one legend entry
     explaining the marker."""
@@ -606,7 +606,7 @@ def test_plot_lovenumber_flags_potentially_unbound_points(monkeypatch):
 
 
 def test_plot_lovenumber_does_not_flag_values_within_bounds(monkeypatch):
-    """Values that stay strictly inside both unbound thresholds must not
+    """Values that stay strictly inside both seismic-resonance thresholds must not
     trigger the extra ring-marker scatter call, so the indicator does not
     fire on ordinary, well-behaved Love numbers near the boundary."""
     mock_fig = MagicMock()
