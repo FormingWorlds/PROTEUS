@@ -122,7 +122,7 @@ The system generates several outputs in:
 - `logs.csv`: Detailed logs of each BO step
 - `Ts.csv`: Timestamps for performance analysis
 - `init.csv`: Data used as an initial guess for starting the optimisation
-- `failures.csv`: One row per simulation that did not produce a usable result, written only when at least one did fail (see [Failed simulations](#failed-simulations))
+- `failures.csv`: One row per simulation that carries the failure score instead of a fit quality, written only when there is at least one (see [Failed and excluded simulations](#failed-and-excluded-simulations))
 
 ### Plots
 The BO scheme will generate many plots upon completion.
@@ -150,27 +150,31 @@ The system prints the final results including:
 - Corresponding simulated observables
 - Comparison with target observables
 
-### Failed simulations
+### Failed and excluded simulations
 
-A sweep over a wide parameter box is expected to reach combinations PROTEUS
-cannot integrate. Such an evaluation is scored with a fixed bad objective value
-and the study carries on, so that one unphysical corner does not end a run that
-has been going for hours.
+Two kinds of evaluation carry the fixed bad objective value instead of a fit
+quality, and the study carries on in both cases so that one awkward corner does
+not end a run that has been going for hours.
 
-Each failed evaluation is reported as it happens, naming the status code PROTEUS
-recorded, the run's output folder, the logfile holding its traceback, and the
-parameter values that produced it. At the end of the study the failures are
-collected into `failures.csv` and summarised: how many of the evaluations failed,
-a breakdown by cause, and the first few logfiles to open. If more than half the
-evaluations failed, the summary says so as a warning, because the result then
-rests on far fewer real evaluations than the step count suggests. If every
-optimisation evaluation failed there is no best fit to report, and the study
-stops with an error rather than presenting the least-bad failure as a result.
+**Failures.** A sweep over a wide parameter box is expected to reach
+combinations PROTEUS cannot integrate. A run that crashes, is killed, or stops
+on an error status (20 to 28) produced nothing usable. Each one is reported as a
+warning when it happens, naming the status code PROTEUS recorded, the run's
+output folder, the logfile holding its traceback, and the parameter values that
+produced it.
+
+**Exclusions.** The `failure_codes` field lists completion statuses the study
+does not want to fit against, such as `11` (maximum clock runtime) or `15`
+(volatiles escaped). These are reported at info level.
+
+At the end of the study both kinds are collected into `failures.csv`, which
+carries a `category` column of `failure` or `excluded`, and summarised. If more than half the evaluations went unscored, the summary says so as a warning, because the result then rests on far fewer real evaluations than the step count suggests. If no optimisation evaluation produced a fit quality there is no best fit to report, and the study stops with an error rather than presenting the least-bad run as a result.
 
 Set `abort_on_failure = true` in the inference config to stop at the first failed
 simulation instead. This is useful while setting a study up, when the first
 failure is more likely to be a mistake in the reference config than a genuinely
-unrunnable corner of the parameter space.
+unrunnable corner of the parameter space. It applies to failures only; an
+excluded outcome never stops the study.
 
 ## Customization
 
