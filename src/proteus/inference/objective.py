@@ -54,6 +54,15 @@ CHILD_CONSOLE_SUFFIX = '_console.log'
 # silently reported as a generic error.
 STATUS_MISSING = -1
 
+# How an evaluation that carries no fit quality is classified. A run that
+# crashed, or stopped in an error state, did not produce a result at all. A run
+# that completed normally but ended on a status listed in the study's
+# `failure_codes` did produce a result; the study simply does not fit against
+# that outcome. Both score BAD_OBJ_VALUE, but only the first is a fault, so the
+# two are named and counted apart rather than both being called failures.
+CATEGORY_FAILURE = 'failure'
+CATEGORY_EXCLUDED = 'excluded'
+
 # Folder inside the study output holding one record per failed evaluation.
 # Written by the workers as they fail and read back once at the end, so that
 # the summary covers initial sampling and optimisation alike without the two
@@ -107,10 +116,14 @@ class ProteusRunFailure(RuntimeError):
     Carries everything needed to diagnose the run without opening the study
     by hand: which evaluation it was, where its output landed, how it died,
     what PROTEUS recorded in its status file, and the parameter values that
-    produced it. Raised for faults that are specific to one evaluation; faults
-    that would affect every evaluation (no `proteus` on PATH, an observable
-    that no helpfile column provides) stay as ordinary exceptions so they
-    abort the study instead of being scored as a bad sample.
+    produced it. `category` separates a genuine fault from a run that completed
+    normally on a status the study excludes; both score the failure value, but
+    only the first is reported as something having gone wrong.
+
+    Raised for faults that are specific to one evaluation; faults that would
+    affect every evaluation (no `proteus` on PATH, an observable that no
+    helpfile column provides) stay as ordinary exceptions so they abort the
+    study instead of being scored as a bad sample.
     """
 
     reason: str
@@ -122,6 +135,7 @@ class ProteusRunFailure(RuntimeError):
     log_path: str | None = None
     stderr_tail: str = ''
     parameters: dict = field(default_factory=dict)
+    category: str = CATEGORY_FAILURE
 
     @property
     def status_desc(self) -> str:
@@ -132,8 +146,9 @@ class ProteusRunFailure(RuntimeError):
 
     def report(self) -> str:
         """Multi-line description naming the cause and where to look next."""
+        verb = 'excluded' if self.category == CATEGORY_EXCLUDED else 'failed'
         lines = [
-            f'PROTEUS run failed for worker={self.worker} iter={self.iter}: {self.reason}',
+            f'PROTEUS run {verb} for worker={self.worker} iter={self.iter}: {self.reason}',
             f'    status    = {self.status} ({self.status_desc})',
         ]
         if self.exit_code is not None:
@@ -169,6 +184,7 @@ class ProteusRunFailure(RuntimeError):
                 self.log_path,
                 self.stderr_tail,
                 self.parameters,
+                self.category,
             ),
         )
 
@@ -650,7 +666,8 @@ def J(
     - iter (int): Iteration number.
     - output (str): Path to output folder relative to PROTEUS output folder.
     - ref_config (str): Reference TOML config path.
-    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
+    - failure_codes (list[int]): PROTEUS status codes that complete normally but
+      that this study excludes from the fit.
 
     Returns
     ----------
@@ -681,28 +698,36 @@ def J(
         log.warning(failure.report())
         return BAD_OBJ_VALUE * torch.ones((1, 1), dtype=dtype)
 
-    # If status indicates failure, return very bad objective value.
-    # Reached by runs that exit cleanly but stop in an error state, such as a
-    # run halted through its keepalive file (status 25). An unreadable status
-    # is counted as a failure too: the run's own account of itself is missing,
-    # so its output cannot be trusted.
-    if (
-        (20 <= sim_status <= 28)
-        or (sim_status in (0, 1, STATUS_MISSING))
-        or (sim_status in failure_codes)
-    ):
+    # Runs that exit cleanly but stop in an error state, such as a run halted
+    # through its keepalive file (status 25), or that never reach the main loop
+    # (status 0 and 1). An unreadable status counts here too: the run's own
+    # account of itself is missing, so its output cannot be trusted.
+    failed = (20 <= sim_status <= 28) or (sim_status in (0, 1, STATUS_MISSING))
+
+    # Runs that completed normally on an outcome this study does not fit
+    # against, named by the `failure_codes` field of the inference config: a
+    # run stopped by its clock limit (status 11) or one whose volatiles all
+    # escaped (status 15), for instance. Nothing went wrong in such a run, so
+    # it is scored as a poor sample but is not reported as a fault.
+    excluded = (not failed) and (sim_status in failure_codes)
+
+    # Either way the evaluation carries the failure score instead of a fit
+    # quality, and is recorded so that the end-of-study tally covers it.
+    if failed or excluded:
         desc = (
             'no status file written'
             if sim_status == STATUS_MISSING
             else CommentFromStatus(sim_status)
         )
-        # Recorded alongside the runs that crashed, so the end-of-study summary
-        # counts both kinds of failure rather than only the noisy kind.
         _, out_abs = run_output_dir(output, worker, iter)
         record_failure(
             get_proteus_directories(output)['output'],
             ProteusRunFailure(
-                reason='exited cleanly but stopped in a failure state',
+                reason=(
+                    'exited cleanly but stopped in a failure state'
+                    if failed
+                    else 'completed on a status this study excludes'
+                ),
                 worker=worker,
                 iter=iter,
                 out_dir=str(out_abs),
@@ -710,12 +735,20 @@ def J(
                 status=sim_status,
                 log_path=find_run_logfile(out_abs),
                 parameters=raw,
+                category=CATEGORY_FAILURE if failed else CATEGORY_EXCLUDED,
             ),
         )
-        log.warning(
-            f'PROTEUS run for worker={worker} iter={iter} finished in a failure state: '
-            f'status {sim_status} ({desc})'
-        )
+        if failed:
+            log.warning(
+                f'PROTEUS run for worker={worker} iter={iter} did not produce a usable '
+                f'result: status {sim_status} ({desc})'
+            )
+        else:
+            log.info(
+                f'PROTEUS run for worker={worker} iter={iter} completed on status '
+                f'{sim_status} ({desc}), which this study excludes; scored as a poor '
+                'sample'
+            )
         return BAD_OBJ_VALUE * torch.ones((1, 1), dtype=dtype)
 
     # Compute value of objective function given these results
@@ -743,7 +776,8 @@ def prot_builder(
     - iter (int): Iteration number (seed) for reproducibility.
     - output (str): Path to output folder relative to PROTEUS output folder.
     - ref_config (str): Reference TOML config path.
-    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
+    - failure_codes (list[int]): PROTEUS status codes that complete normally but
+      that this study excludes from the fit.
 
     Returns
     ----------

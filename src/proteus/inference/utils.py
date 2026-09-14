@@ -35,6 +35,8 @@ from gpytorch.priors.torch_priors import LogNormalPrior
 
 from proteus.inference.objective import (
     BAD_OBJ_VALUE,
+    CATEGORY_EXCLUDED,
+    CATEGORY_FAILURE,
     EPS_CLIP,
     FAILURE_FRACTION_WARN,
     eval_obj,
@@ -156,14 +158,16 @@ def load_dataset_csv(fpath: str) -> dict[str, torch.Tensor]:
 
 
 def summarise_failures(output: str, n_attempted: int) -> int:
-    """Collect the study's failure records into a table and report on them.
+    """Collect the study's unscored evaluations into a table and report on them.
 
     A sweep over a wide parameter box is expected to reach combinations the
-    simulator cannot integrate, and those evaluations carry the failure score
-    rather than a fit quality. Without a count, a study in which most
-    evaluations failed is indistinguishable from one that converged, so the
-    tally, the breakdown by cause, and the per-run paths are reported together
-    at the end of the study.
+    simulator cannot integrate, and to reach outcomes the study itself excludes
+    through `failure_codes`. Both carry the failure score rather than a fit
+    quality. Without a count, a study in which most evaluations were never
+    scored is indistinguishable from one that converged, so the tally, the
+    breakdown by cause, and the per-run paths are reported together at the end
+    of the study. Runs that failed and runs that were excluded are counted
+    apart, because only the first kind means something went wrong.
 
     Parameters
     ----------
@@ -172,16 +176,22 @@ def summarise_failures(output: str, n_attempted: int) -> int:
 
     Returns
     ----------
-    - int: Number of failed evaluations.
+    - int: Number of evaluations that carry the failure score.
     """
     records = read_failure_records(output)
-    n_failed = len(records)
+    n_unscored = len(records)
 
     log.info('-----------------------------------')
-    if not n_failed:
-        log.info(f'Simulation failures: none, all {n_attempted} evaluations were usable')
+    if not n_unscored:
+        log.info(f'Unscored evaluations: none, all {n_attempted} evaluations were usable')
         log.info('-----------------------------------')
         return 0
+
+    # A record with no category describes a genuine fault: it came either from
+    # the crash path, which never excludes, or from a study run before the two
+    # were separated.
+    n_excluded = sum(1 for r in records if r.get('category') == CATEGORY_EXCLUDED)
+    n_failed = n_unscored - n_excluded
 
     # Fixed diagnostic columns first, then one column per swept parameter, so
     # the table can be sorted on a parameter to see which region fails.
@@ -192,6 +202,7 @@ def summarise_failures(output: str, n_attempted: int) -> int:
             for key in (
                 'worker',
                 'iter',
+                'category',
                 'status',
                 'status_desc',
                 'exit_code',
@@ -200,21 +211,29 @@ def summarise_failures(output: str, n_attempted: int) -> int:
                 'log_path',
             )
         }
+        row['category'] = row['category'] or CATEGORY_FAILURE
         row.update(rec.get('parameters') or {})
         rows.append(row)
     csv_path = Path(output) / 'failures.csv'
     pd.DataFrame(rows).to_csv(csv_path, index=False)
 
-    frac = n_failed / max(n_attempted, 1)
+    frac = n_unscored / max(n_attempted, 1)
     log.info(
-        f'Simulation failures: {n_failed} of {n_attempted} evaluations '
-        f'({100 * frac:.1f}%) did not produce a usable result'
+        f'Unscored evaluations: {n_unscored} of {n_attempted} evaluations '
+        f'({100 * frac:.1f}%) carry the failure score rather than a fit quality'
     )
+    log.info(f'    {n_failed} did not produce a usable result')
+    log.info(f'    {n_excluded} completed on a status this study excludes')
+
+    # Grouped by cause, and labelled so that an excluded outcome is not read as
+    # something having gone wrong in the run that reached it.
     log.info(f'{"Cause":52s} | Count')
-    for desc, count in Counter(
-        r.get('status_desc') or 'unknown' for r in records
+    for (category, desc), count in Counter(
+        (r.get('category') or CATEGORY_FAILURE, r.get('status_desc') or 'unknown')
+        for r in records
     ).most_common():
-        log.info(f'{str(desc):52s}   {count}')
+        label = f'{desc} [excluded]' if category == CATEGORY_EXCLUDED else str(desc)
+        log.info(f'{label:52s}   {count}')
     log.info(f'Full list: {csv_path}')
 
     # A few concrete places to look. The simulator writes its own traceback to
@@ -225,14 +244,15 @@ def summarise_failures(output: str, n_attempted: int) -> int:
 
     if frac > FAILURE_FRACTION_WARN:
         log.warning(
-            f'More than {100 * FAILURE_FRACTION_WARN:.0f}% of evaluations failed, so the '
-            f'result below rests on {n_attempted - n_failed} real evaluations. Narrow the '
-            'parameter ranges to a region the simulator can integrate, or check the '
-            'reference config against the causes listed above.'
+            f'More than {100 * FAILURE_FRACTION_WARN:.0f}% of evaluations were not scored '
+            f'on fit quality, so the result below rests on {n_attempted - n_unscored} real '
+            'evaluations. Narrow the parameter ranges to a region the simulator can '
+            'integrate and the study accepts, or check the reference config against the '
+            'causes listed above.'
         )
     log.info('-----------------------------------')
 
-    return n_failed
+    return n_unscored
 
 
 def print_results(D, logs, config, output, n_init):
@@ -259,27 +279,30 @@ def print_results(D, logs, config, output, n_init):
     X = D['X']
     Y = D['Y']
 
-    # Count the evaluations that failed, so a study built mostly on failures
-    # is not read as a converged result. A failed run scores BAD_OBJ_VALUE.
+    # Count the evaluations that were never scored on fit quality, so a study
+    # built mostly on those is not read as a converged result. Such a run
+    # scores BAD_OBJ_VALUE, whether it failed outright or completed on a
+    # status the study excludes; the objective value alone cannot tell the two
+    # apart, so the wording here covers both and the tally above splits them.
     optim_Y = Y[n_init:]
     n_optim = len(optim_Y)
-    n_failed = int((optim_Y <= BAD_OBJ_VALUE).sum().item())
-    if n_failed:
+    n_unscored = int((optim_Y <= BAD_OBJ_VALUE).sum().item())
+    if n_unscored:
         log.warning(
-            f'{n_failed} of {n_optim} optimisation evaluations failed. '
-            'Their objective values are the failure score, not a fit quality; '
-            'the per-run reports above name the cause of each.'
+            f'{n_unscored} of {n_optim} optimisation evaluations carry the failure '
+            'score rather than a fit quality, because they failed or completed on an '
+            'excluded status; the per-run reports above name each one.'
         )
 
-    # Every evaluation failed, so the best of them is still a failed run and
-    # has no output to report. Say so rather than failing later on its
-    # missing helpfile.
-    if n_optim and n_failed == n_optim:
+    # No evaluation was scored, so the best of them is still a run with no fit
+    # to report. Say so rather than failing later on its missing helpfile.
+    if n_optim and n_unscored == n_optim:
         raise RuntimeError(
-            f'All {n_optim} optimisation evaluations failed, so there is no best '
-            'fit to report. The per-run reports above name the cause of each; '
-            'the most common causes are a reference config the simulator '
-            'refuses and a parameter range that leaves the model unphysical.'
+            f'None of the {n_optim} optimisation evaluations produced a fit quality, '
+            'so there is no best fit to report. The per-run reports above name the '
+            'cause of each; the most common causes are a reference config the '
+            'simulator refuses, a parameter range that leaves the model unphysical, '
+            'and a `failure_codes` list that excludes the outcome most runs reach.'
         )
 
     # Find best index, ignoring the initial points

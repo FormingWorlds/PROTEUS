@@ -268,7 +268,8 @@ def parallel_process(
     - ref_config (str): Path to reference config to pass to objective_builder.
     - observables (dict): Target observables (keys) and values.
     - parameters (dict):  Parameters (keys) with bounds (values) for inference.
-    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
+    - failure_codes (list[int]): PROTEUS status codes that complete normally but
+      that this study excludes from the fit.
 
     Returns
     ----------
