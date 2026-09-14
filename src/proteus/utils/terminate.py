@@ -159,7 +159,6 @@ def _check_satellite(handler: Proteus) -> bool:
     return False
 
 
-
 def _check_satellite_separation(handler: Proteus) -> bool:
     log.debug('Check satellite separation')
 
