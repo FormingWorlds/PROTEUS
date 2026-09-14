@@ -77,11 +77,12 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
         with lock:
             X = D['X']
             Y = D['Y']
-            busys = list(B.values())
+            # Select by key, not by position: a worker that has finished or
+            # stopped is absent from B, so the position of an entry in the
+            # values list does not identify the worker that owns it.
+            busys = [v for wid, v in B.items() if wid != worker_id]
 
         t_1_lock = time.perf_counter()
-
-        busys = torch.cat(busys, dim=0)
 
         d = X.shape[-1]
 
@@ -122,10 +123,14 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
 
         t_1_ac = time.perf_counter()
 
-        mask = torch.ones(busys.size(0), dtype=torch.bool)
-        mask[worker_id] = False
-        b = busys[mask]
-        dist = torch.min(torch.cdist(b, x)).item()
+        # Distance to the nearest point another worker is currently evaluating.
+        # Undefined when no other worker is busy
+        if busys:
+            b = torch.cat(busys, dim=0)
+            dist = torch.min(torch.cdist(b, x)).item()
+        else:
+            b = torch.zeros((0, d), dtype=dtype)
+            dist = None
 
         if d == 1:
             plot_iter(
