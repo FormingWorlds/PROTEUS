@@ -89,7 +89,7 @@ from __future__ import annotations
 import json
 import os
 import types
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import netCDF4 as nc
 import numpy as np
@@ -314,24 +314,168 @@ def test_run_obliqua_spectrum_is_legacy_only_for_sp0d(
     assert cfg_arg['orbit']['obliqua']['spectrum'] == expected_spectrum
 
 
+def test_run_obliqua_stores_lnk_and_sigma_as_real_numpy_arrays(monkeypatch, tmp_path):
+    """``jl.Obliqua.run_tides`` returns raw PythonCall-wrapped Julia
+    values for ``sigma``/``LNk`` in production; simulated here with
+    plain Python lists, which -- like a real PythonCall ``JlArray`` --
+    do not support boolean-mask fancy indexing. ``run_obliqua`` must
+    convert both to genuine numpy arrays before storing them on
+    ``tides_o``, matching ``Tides_t``'s own declared field types
+    (``NDArray[floating]``, ``NDArray[complexfloating]``).
+    """
+    from proteus.orbit import obliqua as obliqua_mod
+
+    _patch_identity_conversions(monkeypatch, obliqua_mod)
+
+    interior_o = _make_interior_t(3)
+    cfg = _make_config(module='dummy', perturber='star', star_planet_model='sp1d')
+    hf_row = {
+        'Time': 10.0,
+        'axial_period': 86400.0,
+        'orbital_period': 86400.0 * 365.0,
+        'eccentricity': 0.1,
+        'semimajorax': 1.5e11,
+        'M_star': 2.0e30,
+    }
+    fake_jl = _make_fake_jl(
+        power_prf=np.array([0.0, 5e-7]),
+        power_blk=1.0,
+        nmk=[(2, 0, 1), (2, 2, 3)],
+        sigma=[1e-6, 2e-6],  # plain list, NOT an ndarray, mimics a raw JlArray
+        lnk=[0.01 - 0.02j, 0.03 - 0.04j],  # plain list, NOT an ndarray
+    )
+    monkeypatch.setattr(obliqua_mod, 'jl', fake_jl)
+
+    tides_o = Tides_t()
+    obliqua_mod.run_obliqua(
+        hf_row,
+        dirs={'output/data': str(tmp_path), 'output': str(tmp_path)},
+        interior_o=interior_o,
+        tides_o=tides_o,
+        config=cfg,
+    )
+
+    stored = tides_o.get(primary='planet', perturber='star')
+    assert isinstance(stored.LNk, np.ndarray)
+    assert isinstance(stored.sigma, np.ndarray)
+    assert np.issubdtype(stored.sigma.dtype, np.floating)
+    assert np.issubdtype(stored.LNk.dtype, np.complexfloating)
+
+    # Discrimination: the exact operation that crashed in production,
+    # boolean-mask indexing, must now work without raising.
+    mask = np.array([True, False])
+    picked = stored.LNk[mask]
+    assert picked.shape == (1,)
+    assert picked[0] == pytest.approx(0.01 - 0.02j)
+
+
+class _FakeJuliaPrecisionScalar:
+    """Mimics a PythonCall-boxed Julia high-precision scalar (e.g.
+    ``DoubleFloats.Double64``, a 2-``Float64`` hi/lo struct): ``np.sign()``
+    on a real instance can pick up numpy's array/buffer-protocol
+    duck-typing over that memory layout instead of treating it as a
+    scalar, silently returning a non-0-d array. ``float()`` still
+    extracts the correct scalar via the wrapped value's own real-number
+    conversion, which is the actual production fix.
+    """
+
+    def __init__(self, value):
+        self._value = value
+
+    def __array__(self, dtype=None):
+        return np.array([self._value, 0.0], dtype=dtype)
+
+    def __float__(self):
+        return float(self._value)
+
+
+def test_run_obliqua_returns_a_genuine_scalar_when_omega_is_julia_boxed(monkeypatch):
+    """Regression test for a production crash: ``run_orbit`` logs the
+    returned ``Imk`` via ``'%.1e' % Imk``, which raises "only
+    0-dimensional arrays can be converted to Python scalars" if
+    ``run_obliqua``'s return expression ends up array-shaped.
+    ``omega`` is passed through ``_jlsca_prec`` (a real Julia
+    high-precision scalar in production, identity in the other tests
+    here via ``_patch_identity_conversions`` -- which does NOT exercise
+    this bug). Using ``_FakeJuliaPrecisionScalar`` in place of the
+    identity patch reproduces the exact failure mode: a regression that
+    reintroduced ``np.sign(omega)`` (the boxed value) instead of
+    ``np.sign(float(omega))`` would make this return a shape-(2,) array.
+    """
+    from proteus.orbit import obliqua as obliqua_mod
+
+    monkeypatch.setattr(obliqua_mod, '_jlarr', np.asarray)
+    monkeypatch.setattr(obliqua_mod, '_jlsca_float', lambda s: s)
+    monkeypatch.setattr(obliqua_mod, '_jlsca_prec', _FakeJuliaPrecisionScalar)
+    monkeypatch.setattr(obliqua_mod, 'to_julia_dict', lambda cfg: cfg)
+    monkeypatch.setattr(obliqua_mod, 'sync_log_files', lambda outdir: [])
+
+    interior_o = _make_interior_t(3)
+    cfg = _make_config(module='dummy', perturber='star', star_planet_model='sp1d')
+    hf_row = {
+        'Time': 10.0,
+        'axial_period': 86400.0,
+        'orbital_period': 86400.0 * 365.0,
+        'eccentricity': 0.1,
+        'semimajorax': 1.5e11,
+        'M_star': 2.0e30,
+    }
+    fake_jl = _make_fake_jl(
+        power_prf=np.array([0.0, 5e-7]),
+        power_blk=1.0,
+        nmk=[(2, 0, 1), (2, 2, 3)],
+        sigma=[1e-6, 2e-6],
+        lnk=[0.01 - 0.02j, 0.03 - 0.04j],
+    )
+    monkeypatch.setattr(obliqua_mod, 'jl', fake_jl)
+
+    result = obliqua_mod.run_obliqua(
+        hf_row,
+        dirs={'output/data': '/unused', 'output': '/unused'},
+        interior_o=interior_o,
+        tides_o=Tides_t(),
+        config=cfg,
+    )
+
+    # Discrimination: a shape-(2,) array would pass a bare truthiness/
+    # non-None check but fail exactly like the production crash here.
+    assert np.ndim(result) == 0
+    assert '%.1e' % result  # must not raise TypeError, as it did in production
+
+    # Value check: orbital_period > 0 => omega > 0 => sign is -1.
+    expected = -1.0 * np.mean(np.abs(np.imag([0.01 - 0.02j, 0.03 - 0.04j])))
+    assert float(result) == pytest.approx(expected)
+
+
 # ---------------------------------------------------------------------------
 # import_obliqua.
 # ---------------------------------------------------------------------------
 
 
-def test_import_obliqua_calls_jl_seval_with_using_obliqua(monkeypatch):
-    """``import_obliqua`` issues a single ``jl.seval('using Obliqua')``
-    call. A regression that dropped or misspelled the import string
-    would silently leave the ``Obliqua`` Julia symbols unbound.
+def test_import_obliqua_activates_its_own_project_before_importing(monkeypatch):
+    """``import_obliqua`` must activate Obliqua's own cloned-and-instantiated
+    Julia project (``dirs['obliqua']``) before ``using Obliqua`` -- mirroring
+    ``atmos_clim.agni.activate_julia``'s ``Pkg.activate(dirs['agni'])``
+    pattern, rather than relying on a separately juliapkg-managed
+    registration. A regression that dropped the activate call, used the
+    wrong dict key, or activated the wrong path would leave ``Obliqua``
+    unresolvable (or resolve a stale/different clone) even though
+    ``get_obliqua.sh`` instantiated the right one.
     """
     from proteus.orbit import obliqua as obliqua_mod
 
     fake_jl = MagicMock(name='jl')
     monkeypatch.setattr(obliqua_mod, 'jl', fake_jl)
-    obliqua_mod.import_obliqua()
-    fake_jl.seval.assert_called_once_with('using Obliqua')
-    # Discrimination: exactly one import call, not zero or repeated.
-    assert fake_jl.seval.call_count == 1
+    dirs = {'obliqua': '/some/path/Obliqua', 'output': '/some/path/output'}
+    obliqua_mod.import_obliqua(dirs)
+
+    fake_jl.Pkg.activate.assert_called_once_with('/some/path/Obliqua')
+    fake_jl.seval.assert_any_call('using Obliqua')
+    # Discrimination: activate must happen BEFORE `using Obliqua`, not
+    # after -- an ordering bug would still pass the two assertions above.
+    activate_index = fake_jl.mock_calls.index(call.Pkg.activate('/some/path/Obliqua'))
+    using_obliqua_index = fake_jl.mock_calls.index(call.seval('using Obliqua'))
+    assert activate_index < using_obliqua_index
 
 
 # ---------------------------------------------------------------------------

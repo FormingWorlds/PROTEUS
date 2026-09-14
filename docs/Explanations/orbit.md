@@ -314,15 +314,14 @@ call lazily builds them if warm-up was skipped.
 
 ## Adaptive substep controller
 
-`sp1d`, `ps1d`, and `ps1d_evec` all integrate through the same
+`sp1d`, `ps0d`, `ps1d`, and `ps1d_evec` all integrate through the same
 accept/reject controller,
 [`orbit.common.run_adaptive_orbit_substeps`](../../src/proteus/orbit/common.py).
 For each attempted internal step it stages the tentative result, checks it 
 for unphysical values (negative semi-major axis, eccentricity outside `[0, 1)`, 
 non-finite spin) and for excessive relative change in tracked quantities 
 (`orbit.solver.max_rel_*`), then either merges it in and grows the step, 
-or discards it and shrinks the step (`orbit.solver.growth`/`shrink`). `ps0d` 
-bypasses this controller entirely, since it has no tidal stiffness to resolve.
+or discards it and shrinks the step (`orbit.solver.growth`/`shrink`).
 
 The same call also keeps the planet's moment of inertia (`C_int`, from
 [`interior_energetics.common.get_C_planet`](../../src/proteus/interior_energetics/common.py))
@@ -332,6 +331,10 @@ any quantity that depends on the planet's spin rate, such as `ps1d_evec`'s
 oblateness-driven precession), the controller ramps `C_int` linearly
 across the call's accepted substeps, rescaling `axial_period` at each one
 to conserve `C_int * Omega_p` (angular momentum).
+
+`ps0d` additionally gets a **cumulative drift cap**: `ps0d` has no
+eccentricity or spin feedback of its own, so many small, individually-legal
+substeps can compound into a large silent migration within a single call.
 
 ## Termination criteria
 

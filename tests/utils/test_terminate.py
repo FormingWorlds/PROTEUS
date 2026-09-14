@@ -234,12 +234,13 @@ def test_check_satellite_not_triggered_below_escape_sma(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_satellite_separation_triggers_roche_limit(patch_statusfile):
-    """Satellite disintegration: periapsis around the PLANET (perigee)
-    below the satellite's own Roche limit exits with status 18.
+    """Satellite disintegration: the satellite's own time-averaged
+    separation from the planet, below the satellite's own Roche limit,
+    exits with status 18.
     """
     cfg = _cfg()
     h = _handler(cfg)
-    h.hf_row['perigee'] = 0.9
+    h.hf_row['separation_sat'] = 0.9
     h.hf_row['roche_limit_sat'] = 1.0
     assert terminate._check_satellite_separation(h) is True
     assert patch_statusfile[-1][1] == 18
@@ -247,11 +248,11 @@ def test_check_satellite_separation_triggers_roche_limit(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_satellite_separation_not_triggered_outside_roche_limit(patch_statusfile):
-    """Edge case for the boundary above: perigee comfortably outside the
-    satellite's Roche limit keeps the simulation running."""
+    """Edge case for the boundary above: satellite separation comfortably
+    outside the satellite's Roche limit keeps the simulation running."""
     cfg = _cfg()
     h = _handler(cfg)
-    h.hf_row['perigee'] = 5.0
+    h.hf_row['separation_sat'] = 5.0
     h.hf_row['roche_limit_sat'] = 1.0
     h.hf_row['separation'] = 1.5e11  # ~1 AU; must not leak into this check
     assert terminate._check_satellite_separation(h) is False
@@ -295,7 +296,7 @@ def test_check_termination_dispatches_satellite_disintegration_checks(
     h = _handler(cfg)
     # Roche check runs first (roche_enabled defaults True); keep it safely
     # unmet so the spin-rate trigger below is what's actually observed.
-    h.hf_row['perigee'] = 5.0
+    h.hf_row['separation_sat'] = 5.0
     h.hf_row['roche_limit_sat'] = 1.0
     h.hf_row['axial_period_sat'] = 4.0
     h.hf_row['breakup_period_sat'] = 5.0

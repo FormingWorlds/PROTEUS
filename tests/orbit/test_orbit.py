@@ -96,7 +96,12 @@ import pytest
 import proteus.orbit.hansen as hansen_mod
 from proteus.config._orbit import OrbitSolver
 from proteus.orbit.common import Tides_t
-from proteus.orbit.orbit import _state_is_valid_star, evolve_orbit_star, sp0d, sp1d
+from proteus.orbit.orbit import (
+    _state_is_valid_star,
+    evolve_orbit_star,
+    sp0d,
+    sp1d,
+)
 from proteus.utils.constants import const_G, secs_per_year
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -482,7 +487,7 @@ def test_evolve_orbit_star_unrecognized_model_raises_immediately(monkeypatch):
     ``UpdateStatusfile``) before raising, so a crashed run is recorded
     as such rather than left unexplained.
     """
-    import proteus.orbit.orbit as orbit_mod
+    from proteus.orbit import orbit as orbit_mod
 
     hf_row = _make_hf_row(ecc=0.2, Imk2=1e-2)
     hf_row_before = dict(hf_row)

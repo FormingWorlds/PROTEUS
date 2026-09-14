@@ -30,8 +30,14 @@ log = logging.getLogger('fwl.' + __name__)
 Obliqua_LOGFILE_NAME = 'obliqua_recent.log'
 
 
-def import_obliqua():
+def import_obliqua(dirs: dict):
+    """Activate Obliqua's own cloned-and-instantiated Julia project
+    (``dirs['obliqua']``, populated by ``tools/get_obliqua.sh``) and import
+    it into the shared juliacall session.
+    """
     log.debug('Import Obliqua...')
+    jl.seval('using Pkg')
+    jl.Pkg.activate(dirs['obliqua'])
     jl.seval('using Obliqua')
 
 
@@ -314,15 +320,15 @@ def run_obliqua(
     # Store results in tides_o structure
     storage = tides_o.add(primary='planet', perturber=config.orbit.perturber)
     storage.nmk = np.vstack(nmk).astype(int)
-    storage.sigma = sigma
-    storage.LNk = LNk
+    storage.sigma = np.asarray(sigma, dtype=float)
+    storage.LNk = np.asarray(LNk, dtype=complex)
 
     # Logging
     sync_log_files(dirs['output'])
 
     # Return the mean of the absolute value of the imaginary part of the k love numbers,
     # with a sign consistent with omega. This is purely for `sp0d` and reflects `lovepy`.
-    return - np.sign(omega) * np.mean(np.abs(np.imag(LNk)))
+    return -np.sign(float(omega)) * np.mean(np.abs(np.imag(storage.LNk)))
 
 
 def lookup_from_interior(dirs: dict, config: Config):

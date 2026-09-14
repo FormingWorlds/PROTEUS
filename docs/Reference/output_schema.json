@@ -308,7 +308,9 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [
+        "utils"
+      ]
     },
     {
       "name": "perigee",
@@ -323,8 +325,7 @@
         }
       ],
       "consumers": [
-        "orbit",
-        "utils"
+        "orbit"
       ]
     },
     {
@@ -754,6 +755,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/interior_struct/dummy.py",

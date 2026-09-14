@@ -8,7 +8,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 from proteus.interior_energetics.common import Interior_t
-from proteus.orbit.common import Tides_t, run_adaptive_orbit_substeps
+from proteus.orbit.common import Tides_t, kmin_kmax_for_m0_mirror, run_adaptive_orbit_substeps
 from proteus.orbit.hansen import get_all_m_hansen
 from proteus.utils.constants import const_G, secs_per_year
 from proteus.utils.helper import UpdateStatusfile
@@ -243,10 +243,10 @@ def sp1d(hf_row, tides_o, dt, config: Config):
     }
 
     # Retrieve tidal mode information from tides_o object
-    nmk_p = tides_o.get(primary='planet', perturber='star').nmk
-    LNk_p = tides_o.get(primary='planet', perturber='star').LNk
+    nmk_p = np.asarray(tides_o.get(primary='planet', perturber='star').nmk)
+    LNk_p = np.asarray(tides_o.get(primary='planet', perturber='star').LNk)
 
-    kmin, kmax = int(np.min(nmk_p[:, 2])), int(np.max(nmk_p[:, 2]))
+    kmin, kmax = kmin_kmax_for_m0_mirror(nmk_p)
     n_k = kmax - kmin + 1
 
     def _dense_love(nmk, LNk, m_target):
@@ -361,7 +361,7 @@ def sp1d(hf_row, tides_o, dt, config: Config):
     )
 
     # Compute total angular momentum at the end of the integration
-    L_final = params['C_p'] * sol.y[0][-1] + (params['M_s'] * params['M_s']) / (
+    L_final = params['C_p'] * sol.y[0][-1] + (params['M_p'] * params['M_s']) / (
         params['M_p'] + params['M_s']
     ) * np.sqrt(
         const_G * (params['M_p'] + params['M_s']) * sol.y[1][-1] * (1 - sol.y[2][-1] ** 2)

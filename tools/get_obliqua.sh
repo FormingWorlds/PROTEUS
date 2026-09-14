@@ -33,9 +33,20 @@ elif [ -n "${1:-}" ]; then
     dest="$1"
 fi
 
+# A stale Manifest.toml left over from a previous (possibly broken or
+# differently-pinned) attempt is a common source of Pkg.instantiate
+# failures; drop it before touching git so instantiate always resolves
+# fresh against the checked-out Project.toml.
+if [ -d "$dest" ]; then
+    rm -f "$dest/Manifest.toml"
+fi
+
 if [ ! -d "$dest/.git" ]; then
     echo "Cloning Obliqua ($ob_url @ $ob_ref) into $dest..."
     git clone "$ob_url" "$dest"
+else
+    echo "ERROR: $dest already exists as a git checkout. Remove it (or pass a fresh destination) before re-running this script." >&2
+    exit 1
 fi
 
 git -C "$dest" fetch --quiet origin
@@ -44,7 +55,7 @@ git -C "$dest" checkout --quiet "$ob_ref"
 echo "Obliqua at $(git -C "$dest" rev-parse --short HEAD)"
 
 cd "$dest"
-LD_LIBRARY_PATH="" julia --project=. -e 'using Pkg; Pkg.instantiate()'
+LD_LIBRARY_PATH="" julia --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
 
 if [ "$skip_tests" != "0" ]; then
     echo "Running Obliqua's own test suite..."

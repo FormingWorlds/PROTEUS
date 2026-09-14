@@ -600,9 +600,40 @@ def test_init_orbit_invokes_obliqua_import_when_module_is_obliqua():
         patch('proteus.orbit.lovepy.import_lovepy') as mock_lovepy_import,
     ):
         init_orbit(handler)
-    assert mock_import.call_count == 1
+    mock_import.assert_called_once_with(handler.directories)
     assert mock_lovepy_import.call_count == 0
     mock_setup_logging.assert_called_once_with(handler.directories, 2)
+
+
+def test_init_orbit_also_imports_obliqua_for_lovepy_ps1d():
+    """orbit.module='lovepy' with planet_satellite_model in ('ps1d',
+    'ps1d_evec') is a valid, supported combination (``orbit_requires_tides``
+    in config/_config.py accepts either 'lovepy' or 'obliqua' for those
+    models). ps1d/ps1d_evec read the satellite's tidal response from
+    Obliqua's lookup table regardless of which module handles the
+    planet's own tides, so init_orbit must import BOTH lovepy (for the
+    planet) and Obliqua (for the satellite) in this combination, not
+    lovepy alone.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.orbit.wrapper import init_orbit
+
+    handler = MagicMock()
+    handler.config.orbit.module = 'lovepy'
+    handler.config.orbit.planet_satellite_model = 'ps1d'
+    handler.config.interior_energetics.heat_tidal = True
+    with (
+        patch('proteus.orbit.lovepy.import_lovepy') as mock_lovepy_import,
+        patch('proteus.orbit.obliqua.import_obliqua') as mock_obliqua_import,
+        patch('proteus.orbit.obliqua.setup_logging') as mock_obliqua_setup_logging,
+    ):
+        init_orbit(handler)
+    assert mock_lovepy_import.call_count == 1
+    mock_obliqua_import.assert_called_once_with(handler.directories)
+    mock_obliqua_setup_logging.assert_called_once_with(
+        handler.directories, handler.config.orbit.obliqua.verbosity
+    )
 
 
 # ---------------------------------------------------------------------------

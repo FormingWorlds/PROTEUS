@@ -1817,7 +1817,12 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
         config.orbit.star_planet_model is not None
         or config.orbit.planet_satellite_model is not None
     ):
-        plot_orbit(hf_all, output_dir, config.params.out.plot_fmt)
+        plot_orbit(
+            hf_all,
+            output_dir,
+            config.orbit.satellite.include_satellite,
+            plot_format=config.params.out.plot_fmt,
+        )
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:

@@ -90,6 +90,18 @@ class Tides_t:
         return interaction
 
 
+def kmin_kmax_for_m0_mirror(nmk: NDArray[np.int_]) -> tuple[int, int]:
+    """(kmin, kmax) spanning the raw supplied k range PLUS the negative-k
+    mirror the m=0 branch needs.
+    """
+    kmin = int(np.min(nmk[:, 2]))
+    kmax = int(np.max(nmk[:, 2]))
+    m0_k = nmk[nmk[:, 1] == 0, 2]
+    if len(m0_k) > 0:
+        kmin = min(kmin, -int(np.max(m0_k)))
+    return kmin, kmax
+
+
 def run_adaptive_orbit_substeps(
     hf_row: dict,
     config: Config,
@@ -106,9 +118,8 @@ def run_adaptive_orbit_substeps(
     log_label: str = 'run_adaptive_orbit_substeps',
 ):
     """Advance an orbital-evolution model by `interior_o.dt` yr using an
-    adaptive accept/reject substep controller, shared by sp1d/ps1d/ps1d_evec
-    (ps0d bypasses this and applies its structural update as a single jump).
-    Each call site supplies the model-specific ODE step, state-validity
+    adaptive accept/reject substep controller, shared by sp1d/ps0d/ps1d/
+    ps1d_evec. Each call site supplies the model-specific ODE step, state-validity
     check, and relative-change metrics as callables; this function owns the
     substep loop, the angular-momentum-conserving `C_int` ramp, and the
     persistence of the step-size state across calls. See "Adaptive substep
@@ -169,6 +180,10 @@ def run_adaptive_orbit_substeps(
     t_elapsed = 0.0
     n_steps = 0
     n_rejected = 0
+
+    # Cumulative drift cap: only ps0d needs it.
+    enable_cumulative_cap = model == 'ps0d'
+    call_start_snapshot = dict(hf_row) if enable_cumulative_cap else None
 
     log.debug(
         '%s: ENTER model=%s Time=%.6e yr t_total_yr=%.6e dt_yr_start=%.3e',
@@ -255,6 +270,9 @@ def run_adaptive_orbit_substeps(
                 f'(model={model}, C_p_old={C_p_call_start!r})'
             ) from err
 
+    # Initialize exit_reason to None.
+    exit_reason = None
+
     # Loop until the requested total time has been advanced, or until the
     # maximum number of substeps has been reached.
     while t_elapsed < t_total_yr and n_steps < solver.max_substeps:
@@ -338,6 +356,7 @@ def run_adaptive_orbit_substeps(
             n_rejected += 1
 
             if dt_yr < 1e-10:
+                exit_reason = 'internal step size collapsed to zero'
                 log.warning(
                     '%s: internal step size collapsed to zero at t=%.3e yr of a '
                     '%.3e yr requested call; stopping early (n_steps=%d, '
@@ -375,6 +394,28 @@ def run_adaptive_orbit_substeps(
                 dt_yr,
             )
 
+        # Cumulative drift cap.
+        if enable_cumulative_cap:
+            cumulative_changes = rel_change_fn(hf_row, call_start_snapshot)
+            cumulative_tripped = [
+                f'{key}={value:.4g}>{rel_change_limits[key]:.4g}'
+                for key, value in cumulative_changes.items()
+                if value > rel_change_limits[key]
+            ]
+            if cumulative_tripped:
+                exit_reason = 'cumulative drift cap reached'
+                log.debug(
+                    '%s: cumulative drift cap reached at t_elapsed=%.6e/%.6e yr '
+                    '(n_steps=%d) -- tripped: %s. Stopping so the tidal forcing '
+                    'can be refreshed before advancing further.',
+                    log_label,
+                    t_elapsed,
+                    t_total_yr,
+                    n_steps,
+                    ', '.join(cumulative_tripped),
+                )
+                break
+
         # Adaptively grow the timestep once every tracked quantity is
         # comfortably inside its limit.
         if all(value < 0.3 * rel_change_limits[key] for key, value in rel_changes.items()):
@@ -386,13 +427,13 @@ def run_adaptive_orbit_substeps(
     if t_elapsed < t_total_yr - 1e-9:
         log.warning(
             '%s: only advanced %.3e of the requested %.3e yr (%d accepted / '
-            '%d rejected internal steps) before hitting max_substeps=%d',
+            '%d rejected internal steps); reason: %s',
             log_label,
             t_elapsed,
             t_total_yr,
             n_steps,
             n_rejected,
-            solver.max_substeps,
+            exit_reason or f'hit max_substeps={solver.max_substeps}',
         )
 
     # Log the exit status of this call, including the final elapsed time, number of steps, and whether

@@ -2568,7 +2568,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Whether to clamp each mode's Love number to a fixed multiple of the classical fluid (zero-rigidity) limit for its degree (``3/(2(n-1))``; for n=2, ``|Re(k2)| <= 4.5``, ``|Im(k2)| <= 3.0``), with heating rescaled to match via ``enforce_ec``. A stop-gap against dynamic-tide (``solid.inertial_terms=true``) normal-mode resonances that a macro-step-constant Love number cannot resolve; see \"Dynamic-tide resonances\" in docs/Explanations/orbit.md.",
+      "description": "Whether to clamp each mode's Love number to a fixed multiple of the classical fluid limit for its degree.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

@@ -272,9 +272,10 @@ def test_run_lovepy_dummy_heated_branch_writes_tides_and_returns_imk2(monkeypatc
     Discrimination: per-cell tides slot is populated; return value
     matches the Imk2 mock; calc_lovepy_tides called once. Also
     covers the ``tides_o`` storage block reached on this path: the
-    hardcoded mode table, ``sigma = omega`` for every mode, and
-    ``LNk = Imk2`` (imaginary part only) get written under
-    ``primary='planet', perturber='star'``.
+    hardcoded mode table, and the per-mode reality-condition mirror
+    for ``sigma``/``LNk`` -- (2,0,1) and (2,2,3) share the same sign
+    (forcing frequency -omega), (2,2,1) gets the opposite sign
+    (+omega) -- get written under ``primary='planet', perturber='star'``.
     """
     from proteus.orbit import lovepy as lovepy_mod
 
@@ -308,8 +309,15 @@ def test_run_lovepy_dummy_heated_branch_writes_tides_and_returns_imk2(monkeypatc
     # mode.
     assert storage.sigma.shape == (3,)
     assert storage.LNk.shape == (3,)
-    np.testing.assert_allclose(storage.sigma, np.full(3, expected_omega), rtol=1e-12)
-    np.testing.assert_allclose(storage.LNk, np.full(3, 0.0 - 0.0125j), rtol=1e-12)
+    # (2,0,1) and (2,2,3) sit at forcing frequency -omega; (2,2,1) at
+    # +omega -- the reality condition Im(k2(-omega)) = -Im(k2(omega))
+    # then flips the sign of LNk between them (see store_lovepy_tides).
+    np.testing.assert_allclose(
+        storage.sigma, [-expected_omega, expected_omega, -expected_omega], rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        storage.LNk, [0.0 + 0.0125j, 0.0 - 0.0125j, 0.0 + 0.0125j], rtol=1e-12
+    )
     # Discrimination: the real part must stay exactly zero (only
     # Imk2 is known; a regression that leaked omega or Imk2 into the
     # real part would fail this).
@@ -366,8 +374,12 @@ def test_run_lovepy_aragog_heated_branch_writes_per_cell_tides(monkeypatch):
     expected_omega = 2 * np.pi / hf_row['orbital_period']
     assert storage.sigma.shape == (3,)
     assert storage.LNk.shape == (3,)
-    np.testing.assert_allclose(storage.sigma, np.full(3, expected_omega), rtol=1e-12)
-    np.testing.assert_allclose(storage.LNk, np.full(3, 0.0 - 0.025j), rtol=1e-12)
+    np.testing.assert_allclose(
+        storage.sigma, [-expected_omega, expected_omega, -expected_omega], rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        storage.LNk, [0.0 + 0.025j, 0.0 - 0.025j, 0.0 + 0.025j], rtol=1e-12
+    )
 
 
 def test_run_lovepy_spider_heated_branch_reverses_order(monkeypatch):
@@ -412,7 +424,9 @@ def test_run_lovepy_spider_heated_branch_reverses_order(monkeypatch):
 
     storage = tides_o.get(primary='planet', perturber='star')
     assert storage.LNk.shape == (3,)
-    np.testing.assert_allclose(storage.LNk, np.full(3, 0.0 - 0.030j), rtol=1e-12)
+    np.testing.assert_allclose(
+        storage.LNk, [0.0 + 0.030j, 0.0 - 0.030j, 0.0 + 0.030j], rtol=1e-12
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -448,7 +462,9 @@ def test_run_lovepy_satellite_perturber_reads_satellite_orbital_state(monkeypatc
     assert out == pytest.approx(-0.0125, rel=1e-12)
     storage = tides_o.get(primary='planet', perturber='satellite')
     expected_omega = 2 * np.pi / hf_row['orbital_period_sat']
-    np.testing.assert_allclose(storage.sigma, np.full(3, expected_omega), rtol=1e-12)
+    np.testing.assert_allclose(
+        storage.sigma, [-expected_omega, expected_omega, -expected_omega], rtol=1e-12
+    )
 
 
 # ---------------------------------------------------------------------------

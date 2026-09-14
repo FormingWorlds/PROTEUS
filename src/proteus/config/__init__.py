@@ -14,7 +14,9 @@ from .orphans import UnknownConfigKeyError, find_key_problems, format_orphan_mes
 log = logging.getLogger('fwl.' + __name__)
 
 
-def structure_k_val(val, cls):
+def structure_k_val(val, _cls):
+    if isinstance(val, bool) or not isinstance(val, (int, str)):
+            raise ValueError(f'Expected int or "none", got {val!r}')
     if val == 'none':
         return 'none'
     return int(val)

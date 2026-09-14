@@ -31,7 +31,7 @@ import numpy as np
 import pytest
 
 from proteus.config._orbit import OrbitSolver
-from proteus.orbit.common import Tides_t, run_adaptive_orbit_substeps
+from proteus.orbit.common import Tides_t, kmin_kmax_for_m0_mirror, run_adaptive_orbit_substeps
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -105,13 +105,79 @@ def test_tides_t_add_is_idempotent_for_the_same_pair():
 
 
 # ---------------------------------------------------------------------------
+# kmin_kmax_for_m0_mirror
+#
+# _dense_love (in orbit.py's sp1d and satellite.py's ps1d/ps1d_evec)
+# reconstructs the m=0 branch's negative-k content via conjugation, using
+# index `-s_pos - kmin`. Real Obliqua output only ever supplies k>=0 for
+# every m branch, so kmin computed straight from that raw data is always
+# 0 (or positive), and the reconstruction index is always negative --
+# discarded by _dense_love's own validity check, silently dropping the
+# m=0 branch's negative-k content. kmin_kmax_for_m0_mirror exists
+# specifically to widen kmin so that mirror has somewhere to land.
+# ---------------------------------------------------------------------------
+
+
+def test_kmin_kmax_for_m0_mirror_widens_kmin_for_real_obliqua_shaped_data():
+    """Obliqua's real output convention: k>=0 for both the m=0 and m=2
+    branches (verified directly against a real run's netCDF output).
+    Naively taking kmin from this raw data gives kmin=0, which then
+    defeats _dense_love's own m=0 negative-k mirror reconstruction
+    (`-s_pos - kmin` is always negative when kmin=0). kmin must be
+    widened to `-max(k where m==0)` so that mirror has valid array
+    slots to write into.
+    """
+    # m=0: k=0..8: m=2: k=1..13 (mirrors the real 17890_obliqua.nc shape
+    # inspected directly against a real tutorial_earth_star run).
+    nmk = np.array(
+        [(2, 0, k) for k in range(0, 9)] + [(2, 2, k) for k in range(1, 14)], dtype=int
+    )
+    kmin, kmax = kmin_kmax_for_m0_mirror(nmk)
+
+    assert kmin == -8
+    assert kmax == 13
+    # Discrimination: the naive (buggy) computation straight from the raw
+    # data gives kmin=0, not -8 -- confirms this isn't a coincidental
+    # match to the raw range's own minimum.
+    naive_kmin = int(np.min(nmk[:, 2]))
+    assert naive_kmin == 0
+    assert kmin != naive_kmin
+
+
+def test_kmin_kmax_for_m0_mirror_is_a_no_op_when_raw_data_already_spans_negative_k():
+    """Synthetic/test fixtures that already supply explicit negative-k
+    rows for m=0 (unlike real Obliqua output) must not be needlessly
+    widened further -- kmin should stay exactly at the raw minimum in
+    that case, not get pushed more negative than necessary.
+    """
+    nmk = np.array(
+        [(2, 0, k) for k in range(-6, 7)] + [(2, 2, k) for k in range(-6, 7)], dtype=int
+    )
+    kmin, kmax = kmin_kmax_for_m0_mirror(nmk)
+
+    assert kmin == -6
+    assert kmax == 6
+
+
+def test_kmin_kmax_for_m0_mirror_handles_no_m0_modes_present():
+    """A tidal-mode table with only the m=2 branch (no m=0 modes at all)
+    must not raise (the m0_k selection is empty) and must fall back to
+    the raw min/max unchanged.
+    """
+    nmk = np.array([(2, 2, k) for k in range(1, 14)], dtype=int)
+    kmin, kmax = kmin_kmax_for_m0_mirror(nmk)
+
+    assert kmin == 1
+    assert kmax == 13
+
+
+# ---------------------------------------------------------------------------
 # run_adaptive_orbit_substeps
 #
-# Every production caller (sp1d, ps1d, ps1d_evec) currently passes
-# needs_c_planet=True (sp0d/ps0d bypass this controller entirely -- see
-# orbit.py/satellite.py's dispatch), so several of this function's own
-# branches (needs_c_planet=False, a degenerate/raising C_planet refresh,
-# a rejected substep's diagnostic log, the every-5000-steps progress log)
+# Every production caller (sp1d, ps0d, ps1d, ps1d_evec) currently passes
+# needs_c_planet=True, so several of this function's own branches
+# (needs_c_planet=False, a degenerate/raising C_planet refresh, a
+# rejected substep's diagnostic log, the every-5000-steps progress log)
 # are not reachable through any current indirect caller. Exercised here
 # directly against the function's own documented contract instead.
 # ---------------------------------------------------------------------------
@@ -327,3 +393,51 @@ def test_run_adaptive_orbit_substeps_logs_progress_every_5000_accepted_steps(cap
     ]
     assert len(progress_records) > 0
     assert any('n_steps=5000' in msg for msg in progress_records)
+
+
+def test_run_adaptive_orbit_substeps_cumulative_cap_gated_to_ps0d():
+    """The cumulative drift cap must fire for ``model='ps0d'`` but be a
+    complete no-op for every other model (sp1d/ps1d/ps1d_evec), which
+    integrate eccentricity/spin directly and rely on the per-substep
+    check alone (see "Adaptive substep controller" in
+    docs/Explanations/orbit.md). Regression guard for a change that
+    accidentally re-widens the cap to non-ps0d models, which would
+    silently truncate their per-call progress and desync the main loop's
+    ``Time`` advance from what the orbit module actually achieved.
+    """
+    config = _make_solver_config(dt0_yr=1.0, dt_max_yr=1.0, max_rel_da=5.0)
+    interior_o = _make_interior_o(dt=20.0)
+
+    def step_fn(hf_row, dt_yr, t_elapsed_yr):
+        hf_row['x'] += dt_yr
+        return None
+
+    def rel_change_fn(a, b):
+        return {'da': abs(a['x'] - b['x'])}
+
+    def run(model):
+        hf_row: dict = {'Time': 0.0, 'x': 0.0}
+        run_adaptive_orbit_substeps(
+            hf_row,
+            config,
+            {},  # dirs (unused by this test)
+            Tides_t(),
+            interior_o,
+            model,
+            step_fn,
+            lambda hf_row: True,
+            rel_change_fn,
+            {'da': 5.0},
+            needs_c_planet=False,
+        )
+        return hf_row['x']
+
+    # ps0d: the cumulative cap trips once accumulated |dx| exceeds 5.0,
+    # i.e. after 6 accepted 1.0-yr substeps (5.0 itself is not > 5.0).
+    assert run('ps0d') == pytest.approx(6.0, rel=1e-9)
+
+    # Every other model: no cumulative cap, so the full requested 20 yr
+    # is advanced despite the identical (and identically "tripping" once
+    # accumulated) rel_change_fn.
+    for other_model in ('sp1d', 'ps1d', 'ps1d_evec'):
+        assert run(other_model) == pytest.approx(20.0, rel=1e-9)

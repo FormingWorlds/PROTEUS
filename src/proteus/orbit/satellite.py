@@ -8,8 +8,8 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.optimize import brentq
 
-from proteus.interior_energetics.common import Interior_t, get_C_planet
-from proteus.orbit.common import Tides_t, run_adaptive_orbit_substeps
+from proteus.interior_energetics.common import Interior_t
+from proteus.orbit.common import Tides_t, kmin_kmax_for_m0_mirror, run_adaptive_orbit_substeps
 from proteus.orbit.hansen import get_all_m_hansen
 from proteus.orbit.timestep import _estimate_evection_dt_cap_yr
 from proteus.utils.constants import R_earth, const_G, secs_per_year
@@ -208,8 +208,8 @@ def evolve_orbit_satellite(
     interior_o: Interior_t,
 ):
     """Advance the satellite's orbital parameters over `interior_o.dt`
-    years. Dispatches to the requested model (`ps0d`, `ps1d`, `ps1d_evec`);
-    `ps1d`/`ps1d_evec` use the shared adaptive substep controller (see
+    years. Dispatches to the requested model (`ps0d`, `ps1d`, `ps1d_evec`),
+    all three via the shared adaptive substep controller (see
     docs/Explanations/orbit.md).
 
     TODO: Assumes constant planetary mass, if atmospheric mass loss occurs
@@ -232,25 +232,6 @@ def evolve_orbit_satellite(
     model = config.orbit.planet_satellite_model
     solver = config.orbit.solver
 
-    if model == 'ps0d':
-        # Bypasses run_adaptive_orbit_substeps entirely: ps0d has no
-        # spin-orbit-tidal stiffness. Preserves the AM-conserving
-        # structural rescale, applied as a single unsmoothed jump.
-        C_p_old = hf_row.get('C_int')
-        get_C_planet(hf_row, config, interior_o)
-        C_p_new = hf_row['C_int']
-        if (
-            C_p_old is not None
-            and np.isfinite(C_p_old)
-            and C_p_old > 0
-            and np.isfinite(C_p_new)
-            and C_p_new != 0
-        ):
-            Omega_p_old = 2 * np.pi / float(hf_row['axial_period'])
-            hf_row['axial_period'] = 2 * np.pi / (Omega_p_old * C_p_old / C_p_new)
-        ps0d(hf_row, interior_o.dt, config)
-        return
-
     # Get the evection resonance state from tides_o
     resonance_state = tides_o.resonance_state
 
@@ -263,7 +244,16 @@ def evolve_orbit_satellite(
 
     last_in_band = [None]  # mutable box: tracks band transitions for logging only
 
-    if model == 'ps1d':
+    if model == 'ps0d':
+        # Define the integrator: ps0d.
+        def step_fn(hf_row, dt_yr, t_elapsed_yr):
+            ps0d(hf_row, dt_yr, config)
+            return None
+
+        # No extra action on accept for ps0d
+        on_accept_fn = None
+
+    elif model == 'ps1d':
         # Define the integrator: ps1d
         def step_fn(hf_row, dt_yr, t_elapsed_yr):
             ps1d(hf_row, tides_o, dt_yr, config)
@@ -408,8 +398,8 @@ def evolve_orbit_satellite(
     t_call_start_yr = float(hf_row['Time'])
 
     # Run the adaptive substep controller, which will call the appropriate
-    # step function (ps1d or ps1d_evec) and manage substep acceptance/rejection
-    # based on the relative changes in orbital parameters.
+    # step function (ps0d, ps1d, or ps1d_evec) and manage substep acceptance/
+    # rejection based on the relative changes in orbital parameters.
     run_adaptive_orbit_substeps(
         hf_row,
         config,
@@ -453,7 +443,7 @@ def compute_a_res_prime(hf_row):
     Following Rufu & Canup (2020), below Eq 11.
     """
 
-    Omega_planet = np.sqrt(const_G * hf_row['M_int'] / hf_row['R_int']**3)
+    Omega_planet = np.sqrt(const_G * hf_row['M_int'] / hf_row['R_int'] ** 3)
     Omega_sun = 2 * np.pi / secs_per_year
     Lambda = np.sqrt(1.5 * 0.315 * Omega_planet / Omega_sun)
 
@@ -680,7 +670,8 @@ def ps1d(hf_row, tides_o, dt, config):
     nmk_s = np.asarray(tides_o.get(primary='satellite', perturber='planet').nmk)
     LNk_s = np.asarray(tides_o.get(primary='satellite', perturber='planet').LNk)
 
-    kmin, kmax = int(np.min(nmk_p[:, 2])), int(np.max(nmk_p[:, 2]))
+    # Combine both sides so kmin/kmax cover whichever needs a wider m=0 mirror
+    kmin, kmax = kmin_kmax_for_m0_mirror(np.vstack([nmk_p, nmk_s]))
     n_k = kmax - kmin + 1
 
     def _dense_love(nmk, LNk, m_target):
@@ -949,7 +940,8 @@ def ps1d_evec(
     nmk_s = np.asarray(tides_o.get(primary='satellite', perturber='planet').nmk)
     LNk_s = np.asarray(tides_o.get(primary='satellite', perturber='planet').LNk)
 
-    kmin, kmax = int(np.min(nmk_p[:, 2])), int(np.max(nmk_p[:, 2]))
+    # Combine both sides so kmin/kmax cover whichever needs a wider m=0 mirror
+    kmin, kmax = kmin_kmax_for_m0_mirror(np.vstack([nmk_p, nmk_s]))
     n_k = kmax - kmin + 1
 
     def _dense_love(nmk, LNk, m_target):

@@ -46,7 +46,18 @@ def init_orbit(handler: Proteus):
     elif module == 'obliqua':
         from proteus.orbit.obliqua import import_obliqua, setup_logging
 
-        import_obliqua()
+        import_obliqua(handler.directories)
+        # setup logging for Obliqua
+        setup_logging(handler.directories, handler.config.orbit.obliqua.verbosity)
+
+    if handler.config.orbit.planet_satellite_model in ['ps1d', 'ps1d_evec']:
+        # ps1d/ps1d_evec read the satellite's tidal response from Obliqua's
+        # lookup table (LN_from_lookup) regardless of which module handles
+        # the planet's own tides, so Obliqua must be active even when
+        # module == 'lovepy'.
+        from proteus.orbit.obliqua import import_obliqua, setup_logging
+
+        import_obliqua(handler.directories)
         # setup logging for Obliqua
         setup_logging(handler.directories, handler.config.orbit.obliqua.verbosity)
 
@@ -212,7 +223,7 @@ def update_rochelimit_sat(hf_row: dict):
 
     Rsa = hf_row['R_sat']
     Msa = hf_row['M_sat']
-    Mpl = hf_row['M_star']
+    Mpl = hf_row['M_int']
 
     hf_row['roche_limit_sat'] = Rsa * (2 * Mpl / Msa) ** (1.0 / 3)
 

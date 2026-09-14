@@ -44,14 +44,20 @@ def store_lovepy_tides(omega: float, imk2: float, config: Config, tides_o: Tides
             Struct containing tidal arrays at current time.
     """
 
+    omega = float(omega)
+    imk2 = float(imk2)
+
+    sign = np.sign(omega)
+    LN = -sign * 1j * np.abs(imk2)
+
     # Collect tidal mode information
     # Note that these modes are hardcoded into Lovepy.
     nmk = np.array(([2, 0, 1], [2, 2, 1], [2, 2, 3]), dtype=int)
     # Note we only have acces to the imaginary part of k2, so we set the real part to 0.0.
-    LNk = np.full(3, 1j * imk2, dtype=complex)
+    LNk = np.array((-LN, LN, -LN), dtype=complex)
     # Note we consistently drop the minus sign on the East/West ward component of the
     # forcing frequency and the imaginary part of the k2 love number.
-    sigma = np.full(3, omega, dtype=float)
+    sigma = np.array((-omega, omega, -omega), dtype=float)
 
     # Store tidal mode information in tides_o object
     storage = tides_o.add(primary='planet', perturber=config.orbit.perturber)

@@ -44,9 +44,9 @@ def kepler_newton(M, e):
     E : ndarray
         Eccentric anomaly in radians, same shape as M.
     """
-    if e >= 0.90:
+    if e > 0.90:
         log.warning(
-            f'Eccentricity e={e:.4f} >= 0.90 exceeds stable convergence bound. '
+            f'Eccentricity e={e:.4f} > 0.90 exceeds stable convergence bound. '
         )
 
     M = np.array(M, dtype=float)

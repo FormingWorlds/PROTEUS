@@ -196,6 +196,7 @@ def calculate_core_mass(hf_row: dict, config: Config):
             % config.interior_struct.core_frac_mode
         )
     rho_core = get_core_density(config, hf_row)
+    hf_row['core_density'] = rho_core
     hf_row['M_core'] = (
         rho_core
         * 4.0

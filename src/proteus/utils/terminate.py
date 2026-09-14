@@ -159,19 +159,16 @@ def _check_satellite(handler: Proteus) -> bool:
     return False
 
 
+
 def _check_satellite_separation(handler: Proteus) -> bool:
     log.debug('Check satellite separation')
 
-    # Satellite's own periapsis distance from the planet (NOT hf_row['separation'],
-    # which is the PLANET's time-averaged separation from the star -- comparing that
-    # to the satellite's own Roche limit would compare unrelated distances and this
-    # check would then never fire).
-    perigee = handler.hf_row['perigee']
+    separation_sat = handler.hf_row['separation_sat']
     roche_limit_sat = handler.hf_row['roche_limit_sat']
     offset = handler.config.params.stop.disint_sat.offset_roche
-    log.debug('    per, roc = %.3e, %.3e  m' % (perigee, roche_limit_sat - offset))
+    log.debug('    sep, roc = %.3e, %.3e  m' % (separation_sat, roche_limit_sat - offset))
 
-    if perigee <= roche_limit_sat + offset:
+    if separation_sat <= roche_limit_sat + offset:
         UpdateStatusfile(handler.directories, 18)
         _msg_termination('Satellite has disintegrated')
         return True

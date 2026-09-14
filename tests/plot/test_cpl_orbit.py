@@ -120,7 +120,7 @@ def test_plot_orbit_returns_early_when_time_below_t0(tmp_path, monkeypatch):
         }
     )
 
-    result = orbit_mod.plot_orbit(hf_all, str(tmp_path), plot_format='png', t0=100.0)
+    result = orbit_mod.plot_orbit(hf_all, str(tmp_path), True, plot_format='png', t0=100.0)
 
     assert result is None
     # Discriminating check: the early-return path must not touch matplotlib.
@@ -140,7 +140,7 @@ def test_plot_orbit_draws_and_saves_with_sufficient_time(tmp_path, monkeypatch):
     mock_plt.subplots.return_value = (mock_fig, axs)
 
     hf_all = _make_hf_all(n=6, t_start=1e2, t_end=1e8)
-    orbit_mod.plot_orbit(hf_all, str(tmp_path), plot_format='png', t0=100.0)
+    orbit_mod.plot_orbit(hf_all, str(tmp_path), True, plot_format='png', t0=100.0)
 
     # The figure was saved once with the expected target path.
     assert mock_fig.savefig.call_count == 1
@@ -166,7 +166,7 @@ def test_plot_orbit_passes_correct_units_to_axes(tmp_path, monkeypatch):
     mock_plt.subplots.return_value = (mock_fig, axs)
 
     hf_all = _make_hf_all(n=4, t_start=1e3, t_end=1e7)
-    orbit_mod.plot_orbit(hf_all, str(tmp_path), plot_format='pdf', t0=100.0)
+    orbit_mod.plot_orbit(hf_all, str(tmp_path), True, plot_format='pdf', t0=100.0)
 
     # Panel [0, 0] (planet semi-major axis) is called with (time,
     # semimajorax/AU); extract the second positional argument and verify
@@ -204,7 +204,7 @@ def test_plot_orbit_yaxis_lower_bound_above_zero_when_min_eccentricity_positive(
     # Force a strictly positive minimum eccentricity.
     hf_all['eccentricity'] = np.linspace(0.10, 0.20, 5)
 
-    orbit_mod.plot_orbit(hf_all, str(tmp_path), plot_format='png', t0=100.0)
+    orbit_mod.plot_orbit(hf_all, str(tmp_path), True, plot_format='png', t0=100.0)
 
     ymin_called, _ymax_called = axs[1, 0].set_ylim.call_args[0]
     # ymin = 0.10 / 1.05 ~ 0.0952 with positive sign.
@@ -226,16 +226,10 @@ def test_plot_orbit_notates_blank_satellite_panels_when_no_satellite_data(
     mock_plt = _install_mock_plt(monkeypatch)
     mock_plt.subplots.return_value = (mock_fig, axs)
 
-    hf_all = pd.DataFrame(
-        {
-            'Time': np.logspace(2, 8, 5),
-            'semimajorax': np.linspace(1.5e11, 1.6e11, 5),
-            'eccentricity': np.linspace(0.01, 0.05, 5),
-            'orbital_period': np.linspace(3e7, 3.2e7, 5),
-            'axial_period': np.linspace(24 * 3600, 30 * 3600, 5),
-        }
-    )
-    orbit_mod.plot_orbit(hf_all, str(tmp_path), plot_format='png', t0=100.0)
+    # Satellite columns ARE present (mirroring the real helpfile schema),
+    # but has_sat=False must still win.
+    hf_all = _make_hf_all(n=5, t_start=1e2, t_end=1e8)
+    orbit_mod.plot_orbit(hf_all, str(tmp_path), False, plot_format='png', t0=100.0)
 
     for row in range(3):
         axs[row, 1].text.assert_called_once()
@@ -244,6 +238,9 @@ def test_plot_orbit_notates_blank_satellite_panels_when_no_satellite_data(
     # Discrimination: the left (planet) column must still be drawn
     # normally, not also skipped.
     assert axs[0, 0].plot.call_count == 1
+    # Discrimination: the satellite columns present in hf_all must never
+    # have been touched.
+    assert axs[0, 1].plot.call_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -637,17 +634,20 @@ def test_plot_lovenumber_does_not_flag_values_within_bounds(monkeypatch):
 def test_plot_orbit_entry_reads_helpfile_and_calls_both_plots(monkeypatch, tmp_path):
     """The entry wrapper reads ``runtime_helpfile.csv`` from the run output
     directory and dispatches to both ``plot_orbit`` and
-    ``plot_orbit_system`` with the configured plot format.
+    ``plot_orbit_system`` with the configured plot format. ``plot_orbit``
+    must also receive ``has_sat`` as the explicit
+    ``config.orbit.satellite.include_satellite`` flag, not the whole
+    config object.
     """
     fake_hf = _make_hf_all(n=4, t_start=1e3, t_end=1e6)
 
     captured_calls = []
 
-    def fake_plot_orbit(hf_all, output_dir, plot_format='pdf', t0=100.0):
-        captured_calls.append(('plot_orbit', hf_all, output_dir, plot_format))
+    def fake_plot_orbit(hf_all, output_dir, has_sat, plot_format='pdf', t0=100.0):
+        captured_calls.append(('plot_orbit', hf_all, output_dir, has_sat, plot_format))
 
     def fake_plot_orbit_system(hf_all, output_dir, plot_format='pdf', t0=1e3):
-        captured_calls.append(('plot_orbit_system', hf_all, output_dir, plot_format))
+        captured_calls.append(('plot_orbit_system', hf_all, output_dir, None, plot_format))
 
     monkeypatch.setattr(orbit_mod.pd, 'read_csv', lambda *a, **kw: fake_hf)
     monkeypatch.setattr(orbit_mod, 'plot_orbit', fake_plot_orbit)
@@ -656,6 +656,7 @@ def test_plot_orbit_entry_reads_helpfile_and_calls_both_plots(monkeypatch, tmp_p
     handler = MagicMock()
     handler.directories = {'output': str(tmp_path)}
     handler.config.params.out.plot_fmt = 'png'
+    handler.config.orbit.satellite.include_satellite = True
 
     orbit_mod.plot_orbit_entry(handler)
 
@@ -664,7 +665,10 @@ def test_plot_orbit_entry_reads_helpfile_and_calls_both_plots(monkeypatch, tmp_p
     assert names == ['plot_orbit', 'plot_orbit_system']
     # Both received the configured format. A regression hardcoding 'pdf'
     # would fail this check.
-    assert all(c[3] == 'png' for c in captured_calls)
+    assert all(c[4] == 'png' for c in captured_calls)
+    # plot_orbit received the explicit boolean flag (not the config object).
+    plot_orbit_call = next(c for c in captured_calls if c[0] == 'plot_orbit')
+    assert plot_orbit_call[3] is True
 
 
 def test_plot_orbit_entry_dispatches_to_plot_evection_for_ps1d_evec(monkeypatch, tmp_path):

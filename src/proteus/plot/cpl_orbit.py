@@ -31,7 +31,11 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def plot_orbit(
-    hf_all: pd.DataFrame, output_dir: str, plot_format: str = 'pdf', t0: float = 100.0
+    hf_all: pd.DataFrame,
+    output_dir: str,
+    has_sat: bool,
+    plot_format: str = 'pdf',
+    t0: float = 100.0,
 ):
     time = np.array(hf_all['Time'])
     if np.amax(time) <= t0:
@@ -92,9 +96,6 @@ def plot_orbit(
     ax_left.legend(lines, labels, loc='best')
 
     # ----------------- COLUMN 1: SATELLITE -----------------
-    # Check if satellite columns exist to avoid KeyErrors
-    has_sat = 'semimajorax_sat' in hf_all.columns
-
     if has_sat:
         # Panel 0,1: Satellite Semi-major Axis
         # Using AU to keep consistent scale, or feel free to use e.g. 1e6 meters or Earth-Radii
@@ -490,13 +491,22 @@ def plot_lovenumber(
         # Sort trajectories chronologically by time
         sort_idx = np.argsort(mode_data['time'])
         t_sorted = np.array(mode_data['time'])[sort_idx]
-        x_vals = np.log10(t_sorted)
         y_vals = np.array(mode_data['sigma'])[sort_idx]
-
         real_vals = np.array(mode_data['real_log'])[sort_idx]
         imag_vals = np.array(mode_data['imag_log'])[sort_idx]
         real_raw = np.array(mode_data['real_raw'])[sort_idx]
         imag_raw = np.array(mode_data['imag_raw'])[sort_idx]
+
+        # Drop t=0: log10(0) is -inf, and a single instant at the very
+        # start of the run adds nothing to this log-time plot.
+        keep = t_sorted > 0
+        t_sorted = t_sorted[keep]
+        x_vals = np.log10(t_sorted)
+        y_vals = y_vals[keep]
+        real_vals = real_vals[keep]
+        imag_vals = imag_vals[keep]
+        real_raw = real_raw[keep]
+        imag_raw = imag_raw[keep]
 
         # Points where the Love number is potentially unbound/unphysical
         unbound = (real_raw > real_unbound_thresh) | (imag_raw > imag_unbound_thresh)
@@ -616,6 +626,7 @@ def plot_orbit_entry(handler: Proteus):
     plot_orbit(
         hf_all,
         handler.directories['output'],
+        handler.config.orbit.satellite.include_satellite,
         plot_format=handler.config.params.out.plot_fmt,
     )
     plot_orbit_system(

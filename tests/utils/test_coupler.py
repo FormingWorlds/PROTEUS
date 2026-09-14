@@ -3097,7 +3097,10 @@ def test_update_plots_covers_runtime_and_end_branches(monkeypatch, tmp_path):
         interior_energetics=types.SimpleNamespace(module='aragog'),
         observe=types.SimpleNamespace(module='petitRADTRANS'),
         orbit=types.SimpleNamespace(
-            module='dummy', star_planet_model='sp0d', planet_satellite_model=None
+            module='dummy',
+            star_planet_model='sp0d',
+            planet_satellite_model=None,
+            satellite=types.SimpleNamespace(include_satellite=False),
         ),
         star=types.SimpleNamespace(module='mors', mors=types.SimpleNamespace(age_now=4.5)),
         atmos_chem=types.SimpleNamespace(module='vulcan'),

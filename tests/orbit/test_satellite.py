@@ -1045,11 +1045,117 @@ def test_evolve_orbit_satellite_ps0d_dispatch_evolves_hf_row():
     assert abs(hf_row['semimajorax_sat'] - sma_before) > 1.0
 
 
+def test_evolve_orbit_satellite_ps0d_engages_substep_controller_near_its_pole():
+    """Regression for a real tutorial failure: with intense early tidal
+    heating (large ``F_tidal``), ``ps0d``'s own equations (Korenaga
+    2023, Eq. 58-60) migrate the satellite on a timescale far shorter
+    than a typical interior-driven outer ``dt`` -- here the state below
+    (mirroring an actual tutorial run's post-migration configuration)
+    has a semimajor-axis doubling time of ~130 yr against a 1e4 yr outer
+    window, the same order as PROTEUS's own ``params.dt.minimum`` floor.
+    ``ps0d`` must resolve this through the same accept/reject substep
+    controller ``ps1d``/``ps1d_evec`` already use
+    (``run_adaptive_orbit_substeps``), not by silently applying the
+    entire outer window as a single ``solve_ivp`` call.
+    """
+    state = dict(
+        R_int=6.533829e6,
+        M_int=5.971455e24,
+        M_sat=7.1664e22,
+        semimajorax_sat=2.972962e7,
+        axial_period=14899.0,
+        plan_sat_am=3.874459e34,
+        F_tidal=9.581937e5,
+        core_density=5500.0,
+        C_int=7.326364e37,
+    )
+
+    # Discrimination baseline: the raw, unguarded ps0d entry point (what
+    # the pre-fix dispatch called directly) over the same outer dt.
+    raw_hf_row = dict(state, Time=100.0)
+    sma_before = raw_hf_row['semimajorax_sat']
+    ps0d(raw_hf_row, dt=1e4, config=_SOLVER_CONFIG)
+    raw_rel_change = abs(raw_hf_row['semimajorax_sat'] - sma_before) / sma_before
+    assert raw_rel_change > 1.0  # the actual bug: >100% change in one uncontrolled step
+
+    # The fixed, controller-routed call: same initial state, same outer dt.
+    hf_row = dict(state, Time=100.0, eccentricity_sat=0.05, axial_period_sat=32661.0)
+    config = _make_satellite_config('ps0d')
+    interior_o = SimpleNamespace(
+        radius=np.array([0.0, 3.0e6, 6.533829e6]), density=np.array([6000.0, 5500.0]), dt=1e4
+    )
+    tides_o = Tides_t()
+
+    evolve_orbit_satellite(hf_row, config, dirs={}, tides_o=tides_o, interior_o=interior_o)
+
+    assert np.isfinite(hf_row['semimajorax_sat'])
+    assert hf_row['semimajorax_sat'] > 0.0
+    # The controller must have actually engaged: tides_o.dt_yr is its
+    # persisted internal step size, left untouched (None) by the old
+    # single-jump dispatch that bypassed run_adaptive_orbit_substeps.
+    assert tides_o.dt_yr is not None
+    # Discrimination: approaching this model's own singularity forces the
+    # controller to shrink its internal step far below the outer window,
+    # orders of magnitude smaller than the 1e4 yr requested, unlike the
+    # single full-window leap the raw call above took.
+    assert tides_o.dt_yr < 1.0
+
+
+def test_evolve_orbit_satellite_ps0d_caps_cumulative_drift_per_call():
+    """Regression for a SECOND, deeper failure behind the same tutorial
+    bug: even with the per-substep accept/reject controller engaged (see
+    the test above), thousands of individually-compliant substeps could
+    still compound into an enormous TOTAL semimajor-axis change within
+    one call, because ``ps0d``'s tidal forcing (``F_tidal``) is a single
+    snapshot taken once at call-entry and never refreshed mid-call, while
+    the true tidal power depends steeply on the (rapidly changing)
+    orbital state. Reproduced with the exact state from the tutorial run
+    this guards against: a single call previously reached ~7.25e8 m
+    (~114 R_earth, a ~24x jump) from this state before this fix.
+    """
+    state = dict(
+        R_int=6.533829e6,
+        M_int=5.971455e24,
+        M_sat=7.1664e22,
+        semimajorax_sat=2.972962e7,
+        axial_period=14899.0,
+        plan_sat_am=3.874459e34,
+        F_tidal=9.581937e5,
+        core_density=5500.0,
+        C_int=7.326364e37,
+    )
+    hf_row = dict(state, Time=21.0, eccentricity_sat=0.05, axial_period_sat=32661.0)
+    config = _make_satellite_config('ps0d')
+    interior_o = SimpleNamespace(
+        radius=np.array([0.0, 3.0e6, 6.533829e6]), density=np.array([6000.0, 5500.0]), dt=3000.0
+    )
+    tides_o = Tides_t()
+    sma_before = hf_row['semimajorax_sat']
+
+    evolve_orbit_satellite(hf_row, config, dirs={}, tides_o=tides_o, interior_o=interior_o)
+
+    rel_change = abs(hf_row['semimajorax_sat'] - sma_before) / sma_before
+    # Primary pin: cumulative drift since call-entry must be capped near
+    # solver.max_rel_da (0.01 by default), generous slack (5x) for the
+    # single substep that pushed it just over the line before the check
+    # fired, but nowhere near the ~24x (2400%) the unguarded model reaches
+    # from this exact state.
+    assert rel_change < 5.0 * config.orbit.solver.max_rel_da
+    # Discrimination: this is not merely "nothing happened"; real,
+    # bounded migration occurred.
+    assert rel_change > 0.0
+    # The controller stopped well short of the true singularity (unlike
+    # the pre-cumulative-cap fix, where it collapsed dt_yr toward zero
+    # fighting the pole): the persisted step size stays a normal,
+    # order-few-tenths-of-a-year value, not the ~1e-10 floor.
+    assert tides_o.dt_yr > 1e-5
+
+
 def _make_ps1d_evolve_hf_row():
-    # ps0d bypasses the shared adaptive-substep controller entirely (see
-    # evolve_orbit_satellite's dispatch), so controller-mechanics tests
-    # exercise ps1d instead -- the simplest model that still goes through
-    # run_adaptive_orbit_substeps.
+    # Generic controller-mechanics tests (accept/reject, step growth/shrink)
+    # exercise ps1d here rather than ps0d or ps1d_evec: it is the simplest
+    # model on the shared run_adaptive_orbit_substeps controller, needing no
+    # eccentricity-clamping or evection-band bookkeeping to reason about.
     hf_row = _make_evolve_hf_row()
     hf_row['axial_period_sat'] = 2.36e6
     hf_row['C_sat'] = _PS1D_CSA

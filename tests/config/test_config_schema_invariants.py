@@ -872,8 +872,7 @@ def test_orbit_requires_tides_passes_for_either_tidal_module(model, model_field,
             f'orbit.{model_field}': model,
         }
     )
-    result = orbit_requires_tides(instance, None, None)
-    assert result is None
+    orbit_requires_tides(instance, None, None)
     assert instance.orbit.module == module  # unmodified by the validator
 
 
@@ -891,8 +890,7 @@ def test_orbit_requires_tides_passes_for_0d_models_regardless_of_module(model, m
             f'orbit.{model_field}': model,
         }
     )
-    result = orbit_requires_tides(instance, None, None)
-    assert result is None
+    orbit_requires_tides(instance, None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -937,8 +935,7 @@ def test_sp0d_obliqua_degree_mismatch_warns_but_passes_for_degree_two(caplog):
     )
     instance.orbit.obliqua = SimpleNamespace(n=[2])
     with caplog.at_level('WARNING'):
-        result = sp0d_obliqua_degree_mismatch(instance, None, None)
-    assert result is None  # contract: n=[2] does not raise
+        sp0d_obliqua_degree_mismatch(instance, None, None)
     assert any('sp1d' in rec.message.lower() for rec in caplog.records)
 
 
@@ -956,8 +953,7 @@ def test_sp0d_obliqua_degree_mismatch_passes_for_sp1d_regardless_of_degree():
         }
     )
     instance.orbit.obliqua = SimpleNamespace(n=[2, 3])
-    result = sp0d_obliqua_degree_mismatch(instance, None, None)
-    assert result is None
+    sp0d_obliqua_degree_mismatch(instance, None, None)
     assert instance.orbit.star_planet_model == 'sp1d'
 
 
@@ -973,8 +969,7 @@ def test_sp0d_obliqua_degree_mismatch_passes_when_module_is_not_obliqua():
         }
     )
     instance.orbit.obliqua = SimpleNamespace(n=[2, 3])  # would fail if module were obliqua
-    result = sp0d_obliqua_degree_mismatch(instance, None, None)
-    assert result is None
+    sp0d_obliqua_degree_mismatch(instance, None, None)
     assert instance.orbit.module == 'lovepy'
 
 

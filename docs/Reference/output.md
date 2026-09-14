@@ -99,8 +99,8 @@ Each iteration carries the previous row forward and overwrites only the columns 
 |---|---|---|---|---|---|
 | `semimajorax_sat` | `m` | semi-major axis | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | orbit, plot, utils |
 | `sma_dot_sat` | `m s-1` | semi-major axis derivative | `orbit/satellite.py` | orbit.satellite = true |   |
-| `separation_sat` | `m` | time-averaged separation | `orbit/wrapper.py` | always |   |
-| `perigee` | `m` | lowest point in orbit | `orbit/wrapper.py` | always | orbit, utils |
+| `separation_sat` | `m` | time-averaged separation | `orbit/wrapper.py` | always | utils |
+| `perigee` | `m` | lowest point in orbit | `orbit/wrapper.py` | always | orbit |
 | `orbital_period_sat` | `s` | orbital duration | `orbit/wrapper.py` | always | orbit, plot |
 | `eccentricity_sat` | `1` | orbital eccentricity of satellite | `orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.satellite = true | orbit, plot |
 | `ecc_dot_sat` | `1 s-1` | eccentricity derivative | `orbit/satellite.py` | orbit.satellite = true |   |
@@ -127,7 +127,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `T_solvus` | `K` | solvus temperature for global_miscibility mode | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct, main loop |
 | `P_center` | `Pa` | central pressure from Zalmoxis structure | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct |
 | `P_cmb` | `Pa` | core-mantle boundary pressure from Zalmoxis structure | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics, interior_struct |
-| `core_density` | `kg m-3` | core density from structure solver | `interior_energetics/aragog.py`<br>`interior_struct/dummy.py`<br>`interior_struct/zalmoxis.py` | interior_energetics.module = "aragog"; interior_struct.module = "dummy"; interior_struct.module = "zalmoxis" | interior_energetics, orbit |
+| `core_density` | `kg m-3` | core density from structure solver | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py`<br>`interior_struct/dummy.py`<br>`interior_struct/zalmoxis.py` | always; interior_energetics.module = "aragog"; interior_struct.module = "dummy"; interior_struct.module = "zalmoxis" | interior_energetics, orbit |
 | `core_heatcap` | `J kg-1 K-1` | core heat capacity | `interior_struct/dummy.py`<br>`interior_struct/zalmoxis.py` | interior_struct.module = "dummy"; interior_struct.module = "zalmoxis" | interior_energetics |
 | `X_H2_int` | `1` | H2 mass fraction in interior (sub-Neptune mode) | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct |
 | `struct_mass_desync_frac` | `1` | \|trapezoid - ODE accumulator\| / accumulator structure mass self-consistency | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct |
