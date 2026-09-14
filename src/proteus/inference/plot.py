@@ -562,8 +562,10 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
     par_keys = list(pars.keys())
     obs_keys = list(obs.keys())
 
-    # Get directories for all cases of interest
-    cases = sorted((Path(directory) / 'workers').glob('w_*/i_*'))
+    # Get directories for all cases of interest. Filtered to directories only:
+    # a worker's `_console.log` capture file (or any other stray sibling) also
+    # matches the `i_*` glob but is not a case directory.
+    cases = sorted(p for p in (Path(directory) / 'workers').glob('w_*/i_*') if p.is_dir())
 
     # Extract parameters and observables
     X, Y = [], []
