@@ -223,10 +223,20 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
         def __init__(self, target, args):
             self.target = target
             self.args = args
+            self.exitcode = 0
             created_processes.append(self)
 
         def start(self):
-            return None
+            # A worker that runs contributes at least one evaluation. Standing
+            # in for that keeps the dataset past the initial samples, which is
+            # what distinguishes a study that ran from one that did not.
+            shared = self.args[2]
+            shared['X'] = torch.cat(
+                (shared['X'], torch.tensor([[0.5]], dtype=torch.double)), dim=0
+            )
+            shared['Y'] = torch.cat(
+                (shared['Y'], torch.tensor([[0.7]], dtype=torch.double)), dim=0
+            )
 
         def join(self):
             return None
@@ -269,7 +279,347 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
     )
 
     assert len(created_processes) == 2
-    assert D_final['X'].shape == (1, 1)
-    assert D_final['Y'].shape == (1, 1)
+    # One initial sample plus one evaluation from each of the two workers.
+    assert D_final['X'].shape == (3, 1)
+    assert D_final['Y'].shape == (3, 1)
     assert logs == [None]
     assert elapsed == []
+
+
+# ============================================================================
+# Reporting workers that stop before the evaluation budget is reached
+# ============================================================================
+
+
+def _mocked_parallel_process_env(monkeypatch, tmp_path, fake_process_cls, n_init_rows=1):
+    """Wire ``parallel_process`` to in-process fakes for the shared state.
+
+    Returns nothing; the caller supplies the Process stand-in whose exit codes
+    and side effects define the scenario under test.
+    """
+
+    class FakeManager:
+        def dict(self, data=None):
+            return {} if data is None else dict(data)
+
+        def list(self, data=None):
+            return [] if data is None else list(data)
+
+        def Lock(self):
+            return _DummyLock()
+
+    (tmp_path / 'init.csv').write_text('x_0,y\n0.1,0.2\n', encoding='utf-8')
+    monkeypatch.setattr(
+        async_mod, 'get_proteus_directories', lambda _output: {'output': str(tmp_path)}
+    )
+    monkeypatch.setattr(async_mod, 'Manager', FakeManager)
+    monkeypatch.setattr(async_mod, 'Process', fake_process_cls)
+    monkeypatch.setattr(
+        async_mod,
+        'load_dataset_csv',
+        lambda _path: {
+            'X': torch.tensor([[0.1]] * n_init_rows, dtype=torch.double),
+            'Y': torch.tensor([[0.2]] * n_init_rows, dtype=torch.double),
+        },
+    )
+    monkeypatch.setattr(
+        async_mod,
+        'init_locs',
+        lambda n_workers, _D_shared, acqf='LogEI': torch.tensor(
+            [[0.2], [0.8]], dtype=torch.double
+        )[:n_workers],
+    )
+    monkeypatch.setattr(async_mod, 'get_kernel', lambda *args, **kwargs: object())
+
+
+@pytest.mark.unit
+def test_parallel_process_reports_a_worker_that_stopped_early(monkeypatch, tmp_path, caplog):
+    """A worker that dies mid-study leaves the run looking complete: the others
+    carry on and the results are saved. The shortfall is reported by worker id
+    and evaluation count so the summary that follows is not read as a full
+    sweep of the requested budget.
+    """
+
+    class FakeProcess:
+        _next = [0]
+
+        def __init__(self, target, args):
+            self.args = args
+            self.worker_id = FakeProcess._next[0]
+            FakeProcess._next[0] += 1
+            # Worker 1 is killed by a signal, as an out-of-memory kill does,
+            # which reports a negative code rather than a positive one.
+            # Worker 0 contributes one evaluation.
+            self.exitcode = -9 if self.worker_id == 1 else 0
+
+        def start(self):
+            if self.exitcode == 0:
+                shared = self.args[2]
+                shared['X'] = torch.cat(
+                    (shared['X'], torch.tensor([[0.5]], dtype=torch.double)), dim=0
+                )
+                shared['Y'] = torch.cat(
+                    (shared['Y'], torch.tensor([[0.7]], dtype=torch.double)), dim=0
+                )
+
+        def join(self):
+            return None
+
+    _mocked_parallel_process_env(monkeypatch, tmp_path, FakeProcess)
+
+    with caplog.at_level('ERROR'):
+        D_final, _logs, _elapsed = async_mod.parallel_process(
+            objective_builder=lambda **kwargs: lambda x: x,
+            kernel='MAT3/2',
+            acqf='LogEI',
+            n_workers=2,
+            max_len=6,
+            output='dummy',
+            seed=1,
+            ref_config='ref.toml',
+            observables={'obs': 1.0},
+            parameters={'a': [0.0, 1.0]},
+            failure_codes=[],
+        )
+
+    # The partial study is still returned, so the evaluations that did complete
+    # are not thrown away.
+    assert D_final['X'].shape == (2, 1)
+    reported = '\n'.join(record.getMessage() for record in caplog.records)
+    # Identity guard: the dead worker is named, not merely counted. A
+    # regression that reported "1 worker failed" without the id would leave
+    # the user with nowhere to look.
+    assert 'workers 1' in reported
+    assert '1 of 2 workers' in reported
+    # The signal code is reported as it stands. A guard written as
+    # "exitcode > 0" would miss a killed worker entirely.
+    assert '-9' in reported
+    # Budget guard: the count actually achieved is contrasted with the count
+    # requested, which is what makes the shortfall visible.
+    assert '2 evaluations' in reported and '6 requested' in reported
+
+
+@pytest.mark.unit
+def test_parallel_process_stays_silent_when_every_worker_completes(
+    monkeypatch, tmp_path, caplog
+):
+    """A study in which no worker died reports no shortfall. Without this, the
+    failure message above would be indistinguishable from routine noise.
+    """
+
+    class FakeProcess:
+        def __init__(self, target, args):
+            self.args = args
+            self.exitcode = 0
+
+        def start(self):
+            shared = self.args[2]
+            shared['X'] = torch.cat(
+                (shared['X'], torch.tensor([[0.5]], dtype=torch.double)), dim=0
+            )
+            shared['Y'] = torch.cat(
+                (shared['Y'], torch.tensor([[0.7]], dtype=torch.double)), dim=0
+            )
+
+        def join(self):
+            return None
+
+    _mocked_parallel_process_env(monkeypatch, tmp_path, FakeProcess)
+
+    with caplog.at_level('ERROR'):
+        D_final, _logs, _elapsed = async_mod.parallel_process(
+            objective_builder=lambda **kwargs: lambda x: x,
+            kernel='MAT3/2',
+            acqf='LogEI',
+            n_workers=2,
+            max_len=6,
+            output='dummy',
+            seed=1,
+            ref_config='ref.toml',
+            observables={'obs': 1.0},
+            parameters={'a': [0.0, 1.0]},
+            failure_codes=[],
+        )
+
+    assert D_final['X'].shape == (3, 1)
+    assert [r for r in caplog.records if r.levelname == 'ERROR'] == []
+
+
+@pytest.mark.unit
+def test_parallel_process_refuses_a_study_with_no_completed_steps(monkeypatch, tmp_path):
+    """When the dataset never grows past the initial samples there is no
+    optimisation to report, and the best-fit summary downstream would describe
+    the initial design while presenting it as an inference result. The study
+    stops instead, naming the reason.
+    """
+
+    class FakeProcess:
+        def __init__(self, target, args):
+            self.args = args
+            self.exitcode = 1
+
+        def start(self):
+            return None
+
+        def join(self):
+            return None
+
+    _mocked_parallel_process_env(monkeypatch, tmp_path, FakeProcess)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        async_mod.parallel_process(
+            objective_builder=lambda **kwargs: lambda x: x,
+            kernel='MAT3/2',
+            acqf='LogEI',
+            n_workers=2,
+            max_len=6,
+            output='dummy',
+            seed=1,
+            ref_config='ref.toml',
+            observables={'obs': 1.0},
+            parameters={'a': [0.0, 1.0]},
+            failure_codes=[],
+        )
+    message = str(excinfo.value)
+    assert 'No optimisation steps completed' in message
+    # The cause is attributed to the workers, not to the evaluation budget,
+    # because they reported non-zero exit codes.
+    assert '2 of 2 workers stopped early' in message
+
+
+@pytest.mark.unit
+def test_worker_releases_its_busy_point_and_records_why_it_stopped(tmp_path, caplog):
+    """A worker that fails records the cause in the study log before it dies,
+    and releases the point it had claimed. Neither happens on its own:
+    multiprocessing prints a dead worker's traceback straight to the parent's
+    stderr without consulting the logging configuration, and a claimed point
+    left in place steers the surviving workers away from a region nothing is
+    exploring.
+    """
+    D_shared = {
+        'X': torch.tensor([[0.1]], dtype=torch.double),
+        'Y': torch.tensor([[0.2]], dtype=torch.double),
+    }
+    B = {0: torch.tensor([[0.3]], dtype=torch.double)}
+
+    def exploding_process_fun(**_kwargs):
+        raise RuntimeError('objective evaluation failed')
+
+    with caplog.at_level('ERROR'):
+        with pytest.raises(RuntimeError, match='objective evaluation failed'):
+            async_mod.worker(
+                process_fun=exploding_process_fun,
+                build_obj=lambda **kwargs: lambda x: x,
+                D_shared=D_shared,
+                B=B,
+                T=[],
+                T0=0.0,
+                x_init=torch.tensor([[0.3]], dtype=torch.double),
+                n_init=1,
+                lock=_DummyLock(),
+                max_len=4,
+                worker_id=0,
+                log_list=[],
+                output_dir=str(tmp_path),
+            )
+
+    # The claimed point is released.
+    assert 0 not in B
+    # The cause reached the study log, with a traceback attached.
+    records = [r for r in caplog.records if r.levelname == 'ERROR']
+    assert any('Worker 0 stopped early' in r.getMessage() for r in records)
+    assert any(r.exc_info is not None for r in records)
+    # Nothing was appended to the shared dataset, so a failed evaluation
+    # cannot masquerade as a completed one.
+    assert D_shared['X'].shape == (1, 1)
+
+
+@pytest.mark.unit
+def test_worker_releases_its_busy_point_after_a_normal_finish(tmp_path):
+    """A worker that reaches the evaluation budget also releases its claimed
+    point. Left behind, it would bias the acquisition for every worker still
+    running through the tail of the study.
+    """
+    D_shared = {
+        'X': torch.tensor([[0.1], [0.2]], dtype=torch.double),
+        'Y': torch.tensor([[0.3], [0.4]], dtype=torch.double),
+    }
+    B = {
+        0: torch.tensor([[0.5]], dtype=torch.double),
+        1: torch.tensor([[0.6]], dtype=torch.double),
+    }
+
+    # max_len is already reached, so the loop exits without an evaluation.
+    async_mod.worker(
+        process_fun=lambda **_kwargs: pytest.fail('no evaluation should run'),
+        build_obj=lambda **kwargs: lambda x: x,
+        D_shared=D_shared,
+        B=B,
+        T=[],
+        T0=0.0,
+        x_init=torch.tensor([[0.5]], dtype=torch.double),
+        n_init=2,
+        lock=_DummyLock(),
+        max_len=2,
+        worker_id=0,
+        log_list=[],
+        output_dir=str(tmp_path),
+    )
+
+    assert 0 not in B
+    # Only this worker's claim is released; the other worker is still running.
+    assert 1 in B
+
+
+@pytest.mark.unit
+def test_parallel_process_names_the_real_step_budget_when_no_worker_failed(
+    monkeypatch, tmp_path
+):
+    """A study configured with fewer optimisation steps than workers finishes
+    without any worker failing and without any step being taken. The refusal
+    must quote the row count the workers actually stop at, which is the
+    requested budget less one per worker beyond the first, or the advice reads
+    as false against the numbers the user set.
+    """
+
+    class FakeProcess:
+        def __init__(self, target, args):
+            self.args = args
+            self.exitcode = 0
+
+        def start(self):
+            # Every worker sees the budget already met and exits at once,
+            # contributing nothing to the dataset.
+            return None
+
+        def join(self):
+            return None
+
+    # Six initial samples against a budget of six with two workers: the worker
+    # threshold is 6 - (2 - 1) = 5, which the initial samples already exceed.
+    _mocked_parallel_process_env(monkeypatch, tmp_path, FakeProcess, n_init_rows=6)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        async_mod.parallel_process(
+            objective_builder=lambda **kwargs: lambda x: x,
+            kernel='MAT3/2',
+            acqf='LogEI',
+            n_workers=2,
+            max_len=6,
+            output='dummy',
+            seed=1,
+            ref_config='ref.toml',
+            observables={'obs': 1.0},
+            parameters={'a': [0.0, 1.0]},
+            failure_codes=[],
+        )
+    message = str(excinfo.value)
+    assert 'No worker failed' in message
+    # The threshold the workers actually apply.
+    assert 'reaches 5 rows' in message
+    # Discrimination: quoting the requested budget here instead would state
+    # that six initial samples satisfy a six-row threshold, which is false.
+    assert 'reaches 6 rows' not in message
+    # The requested budget is still named, so the two numbers can be related.
+    assert '6 requested' in message
+    assert 'Raise n_steps to at least n_workers (2)' in message
