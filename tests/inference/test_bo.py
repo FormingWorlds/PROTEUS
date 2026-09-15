@@ -423,3 +423,113 @@ def test_quadratic_objective_returns_zero_at_target():
     y_near = objective(torch.tensor([[0.45, 0.55]], dtype=torch.double))
     # ratio of (far-target)^2 to (near-target)^2 = ((0.3,0.3))^2 / ((0.15,0.15))^2 = 4
     assert y_near.item() / y_far.item() == pytest.approx(0.25, rel=1e-9)
+
+
+# ============================================================================
+# Busy-point bookkeeping when workers come and go
+# ============================================================================
+
+
+def _patched_bo_step_deps(monkeypatch, candidate=0.8):
+    """Replace the GP fit and acquisition optimisation with fixed stand-ins.
+
+    Leaves the busy-point handling under test as the only live logic.
+    """
+    monkeypatch.setattr(bo_mod, 'SingleTaskGP', lambda **kwargs: _DummyGP())
+    monkeypatch.setattr(bo_mod, 'ExactMarginalLogLikelihood', lambda _lik, _gp: object())
+    monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *args, **kwargs: None)
+    monkeypatch.setattr(bo_mod, 'get_acqf', lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        bo_mod,
+        'optimize_acqf',
+        lambda **kwargs: (torch.tensor([[candidate]], dtype=torch.double), None),
+    )
+    monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kwargs: None)
+
+
+@pytest.mark.unit
+def test_bo_step_identifies_busy_points_by_worker_id_not_position(monkeypatch):
+    """Busy points are matched to their owner by worker id. Once a worker has
+    stopped and released its claim, the remaining entries no longer sit at the
+    position their worker id implies, so a positional lookup reads another
+    worker's point as its own.
+    """
+    _patched_bo_step_deps(monkeypatch, candidate=0.8)
+
+    D = {
+        'X': torch.tensor([[0.1]], dtype=torch.double),
+        'Y': torch.tensor([[1.0]], dtype=torch.double),
+    }
+    # Worker 1 has stopped and released its point. Worker 2 is still running,
+    # and is the caller here: its own claim must be excluded, the others kept.
+    # Two other workers are present so the nearest is not also the furthest,
+    # which a single other point would make indistinguishable.
+    B = {
+        0: torch.tensor([[0.1]], dtype=torch.double),
+        2: torch.tensor([[0.75]], dtype=torch.double),
+        3: torch.tensor([[0.79]], dtype=torch.double),
+    }
+
+    _x, y, *_rest, dist = bo_mod.BO_step(
+        D=D,
+        B=B,
+        f=lambda _x: torch.tensor([[0.9]], dtype=torch.double),
+        k=object(),
+        acqf='UCB',
+        lock=_DummyLock(),
+        worker_id=2,
+    )
+
+    assert y[0, 0].item() == pytest.approx(0.9)
+    # Nearest other claim is worker 3 at 0.79, from the candidate at 0.8.
+    assert dist == pytest.approx(0.01)
+    # Nearest, not furthest: worker 0 sits at 0.1, giving 0.7. A regression to
+    # torch.max would report that instead.
+    assert abs(dist - 0.7) > 0.5
+    # The caller's own claim at 0.75 is excluded. Including it would give
+    # 0.05, which is neither of the two values above.
+    assert abs(dist - 0.05) > 0.02
+
+
+@pytest.mark.unit
+def test_bo_step_reports_no_distance_when_no_other_worker_is_busy(monkeypatch):
+    """With no other worker running, there is no nearest busy point and the
+    distance is undefined rather than zero. This is the steady state of a
+    single-worker study and the tail of every multi-worker one.
+    """
+    _patched_bo_step_deps(monkeypatch, candidate=0.4)
+
+    D = {
+        'X': torch.tensor([[0.1]], dtype=torch.double),
+        'Y': torch.tensor([[1.0]], dtype=torch.double),
+    }
+    B = {0: torch.tensor([[0.2]], dtype=torch.double)}
+
+    x, y, *_rest, dist = bo_mod.BO_step(
+        D=D,
+        B=B,
+        f=lambda _x: torch.tensor([[0.6]], dtype=torch.double),
+        k=object(),
+        acqf='UCB',
+        lock=_DummyLock(),
+        worker_id=0,
+    )
+
+    # The step still completes and proposes its candidate.
+    assert x[0, 0].item() == pytest.approx(0.4)
+    assert y[0, 0].item() == pytest.approx(0.6)
+    # Undefined, not zero: a zero would read as another worker sitting exactly
+    # on this candidate and would suppress the diversity term.
+    assert dist is None
+
+    # Edge case: an entirely empty busy map behaves the same way.
+    _x2, _y2, *_rest2, dist2 = bo_mod.BO_step(
+        D=D,
+        B={},
+        f=lambda _x: torch.tensor([[0.6]], dtype=torch.double),
+        k=object(),
+        acqf='UCB',
+        lock=_DummyLock(),
+        worker_id=0,
+    )
+    assert dist2 is None

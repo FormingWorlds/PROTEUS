@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 
 import numpy as np
+import pandas as pd
 import pytest
 
 # The Bayesian-optimisation stack ships as the optional `inference` extra,
@@ -294,3 +295,208 @@ def test_get_kernel_raises_for_unknown_kernel_name():
     # Edge: case-sensitive — 'rbf' is not 'RBF'.
     with pytest.raises(ValueError, match='Unknown kernel'):
         get_kernel('rbf', d=2)
+
+
+# ---------------------------------------------------------------------------
+# Accounting for the evaluations that failed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_print_results_counts_unscored_runs_and_refuses_a_study_with_no_fit(tmp_path, caplog):
+    """Evaluations that failed, and those that completed on an excluded status,
+    both carry the failure score rather than a fit quality, so the summary says
+    how many of them there were. The objective value alone cannot tell the two
+    apart, so the wording covers both. When no optimisation evaluation produced
+    a fit quality there is no best fit at all, and the summary stops rather than
+    reporting the least-bad run as an inference result.
+    """
+    from proteus.inference.objective import BAD_OBJ_VALUE
+    from proteus.inference.utils import print_results
+
+    _make_worker_dir(tmp_path, worker=0, iteration=0, obs_value=0.1, param_value=0.5)
+    _make_worker_dir(tmp_path, worker=0, iteration=1, obs_value=0.9, param_value=1.0)
+    best_dir = _make_worker_dir(tmp_path, worker=0, iteration=2, obs_value=0.5, param_value=1.5)
+
+    logs = [
+        {'worker': 0, 'task_id': 0},
+        {'worker': 0, 'task_id': 1},
+        {'worker': 0, 'task_id': 2},
+    ]
+    config = {
+        'observables': {'H2O_vmr': 0.9},
+        'parameters': {'planet.mass_tot': [0.5, 1.5]},
+    }
+
+    # One of the two optimisation evaluations failed; the other is still the
+    # best fit and must be reported normally.
+    D = {
+        'X': torch.tensor([[0.0], [1.0], [0.5]]),
+        'Y': torch.tensor([[-1.0], [BAD_OBJ_VALUE], [2.0]]),
+    }
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.inference.utils'):
+        result = print_results(D, logs, config, str(tmp_path), n_init=1)
+    assert str(best_dir / 'init_coupler.toml') == str(result)
+    assert any(
+        '1 of 2 optimisation evaluations carry the failure score' in r.message
+        for r in caplog.records
+    )
+
+    # Discrimination: the same study with no failure score present reports no
+    # count, so the message above tracks the data and is not emitted always.
+    caplog.clear()
+    D_clean = {
+        'X': torch.tensor([[0.0], [1.0], [0.5]]),
+        'Y': torch.tensor([[-1.0], [1.0], [2.0]]),
+    }
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.inference.utils'):
+        print_results(D_clean, logs, config, str(tmp_path), n_init=1)
+    assert not [r for r in caplog.records if 'carry the failure score' in r.message]
+
+    # No optimisation evaluation produced a fit quality: nothing to report.
+    D_dead = {
+        'X': torch.tensor([[0.0], [1.0], [0.5]]),
+        'Y': torch.tensor([[-1.0], [BAD_OBJ_VALUE], [BAD_OBJ_VALUE]]),
+    }
+    with pytest.raises(
+        RuntimeError, match='None of the 2 optimisation evaluations produced a fit quality'
+    ):
+        print_results(D_dead, logs, config, str(tmp_path), n_init=1)
+
+
+@pytest.mark.unit
+def test_summarise_failures_tabulates_causes_and_flags_a_mostly_failed_study(tmp_path, caplog):
+    """The end-of-study tally turns the per-run records into one table and one
+    breakdown by cause, and escalates to a warning once most of the study
+    failed. Without the escalation, a posterior built on a handful of real
+    evaluations reads the same as one built on all of them.
+    """
+    from proteus.inference.objective import ProteusRunFailure, record_failure
+    from proteus.inference.utils import summarise_failures
+
+    # Two runs that died the same way and one that died differently, so the
+    # breakdown has something to group.
+    for worker, status in ((0, 21), (1, 21), (2, 24)):
+        record_failure(
+            tmp_path,
+            ProteusRunFailure(
+                reason='the simulator exited with an error',
+                worker=worker,
+                iter=0,
+                out_dir=f'/study/workers/w_{worker}/i_0',
+                exit_code=1,
+                status=status,
+                parameters={'planet.mass_tot': 1.0 + worker},
+            ),
+        )
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.utils'):
+        n_failed = summarise_failures(str(tmp_path), n_attempted=20)
+
+    assert n_failed == 3
+    messages = '\n'.join(r.message for r in caplog.records)
+    assert '3 of 20 evaluations' in messages
+    # Grouped by cause, so two runs that died the same way count as one line.
+    assert 'Interior model' in messages
+    # Below the escalation threshold (3/20 = 15%), the tally is reported but
+    # not warned about.
+    assert not [r for r in caplog.records if r.levelname == 'WARNING']
+
+    # The table carries the swept parameter alongside the diagnosis, so the
+    # failing region can be located without opening each run folder.
+    table = pd.read_csv(tmp_path / 'failures.csv')
+    assert len(table) == 3
+    assert list(table['worker']) == [0, 1, 2]
+    assert sorted(table['status']) == [21, 21, 24]
+    assert table['planet.mass_tot'].max() == pytest.approx(3.0)
+
+    # Discrimination: the same three failures against a smaller study cross the
+    # threshold and are warned about. A tally without the escalation would log
+    # identically in both cases.
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.utils'):
+        summarise_failures(str(tmp_path), n_attempted=4)
+    warnings = [r for r in caplog.records if r.levelname == 'WARNING']
+    assert len(warnings) == 1
+    # The count of evaluations that are real is what the reader needs.
+    assert '1 real evaluations' in warnings[0].message
+
+
+@pytest.mark.unit
+def test_summarise_failures_counts_excluded_outcomes_apart_from_failures(tmp_path, caplog):
+    """A run that completed on a status the study excludes is tallied, but not
+    as a fault. Folding the two together would tell the user that a study whose
+    runs all reached their clock limit, exactly as configured, is a study full
+    of broken simulations.
+    """
+    from proteus.inference.objective import (
+        CATEGORY_EXCLUDED,
+        ProteusRunFailure,
+        record_failure,
+    )
+    from proteus.inference.utils import summarise_failures
+
+    record_failure(
+        tmp_path,
+        ProteusRunFailure(
+            reason='the simulator exited with an error',
+            worker=0,
+            iter=0,
+            out_dir='/study/workers/w_0/i_0',
+            exit_code=1,
+            status=21,
+            parameters={'planet.mass_tot': 1.0},
+        ),
+    )
+    for worker in (1, 2):
+        record_failure(
+            tmp_path,
+            ProteusRunFailure(
+                reason='completed on a status this study excludes',
+                worker=worker,
+                iter=0,
+                out_dir=f'/study/workers/w_{worker}/i_0',
+                exit_code=0,
+                status=11,
+                parameters={'planet.mass_tot': 1.0 + worker},
+                category=CATEGORY_EXCLUDED,
+            ),
+        )
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.utils'):
+        n_unscored = summarise_failures(str(tmp_path), n_attempted=20)
+
+    # Both kinds are unscored, so both count toward how much of the study was
+    # real, but the breakdown names them apart.
+    assert n_unscored == 3
+    messages = '\n'.join(r.message for r in caplog.records)
+    assert '1 did not produce a usable result' in messages
+    assert '2 completed on a status this study excludes' in messages
+    # The clock-limit outcome is labelled in the cause table rather than being
+    # listed beside the interior-model error as if it were one.
+    assert 'Completed (maximum clock runtime) [excluded]' in messages
+    assert 'Error (Interior model) [excluded]' not in messages
+
+    # Carried into the table too, so the excluded rows can be filtered out when
+    # looking for the region that actually breaks the simulator.
+    table = pd.read_csv(tmp_path / 'failures.csv')
+    assert sorted(table['category']) == ['excluded', 'excluded', 'failure']
+    assert sorted(table.loc[table['category'] == 'excluded', 'status']) == [11, 11]
+
+
+@pytest.mark.unit
+def test_summarise_failures_reports_a_clean_study_without_writing_a_table(tmp_path, caplog):
+    """A study in which nothing failed says so and writes no table. An empty
+    failures.csv would suggest the accounting had run and found nothing to
+    say about a study that in fact had nothing to report.
+    """
+    from proteus.inference.utils import summarise_failures
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.utils'):
+        n_failed = summarise_failures(str(tmp_path), n_attempted=12)
+
+    assert n_failed == 0
+    assert not (tmp_path / 'failures.csv').exists()
+    messages = '\n'.join(r.message for r in caplog.records)
+    assert 'none' in messages and '12 evaluations' in messages
+    assert not [r for r in caplog.records if r.levelname in ('WARNING', 'ERROR')]

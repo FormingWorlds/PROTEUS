@@ -8,6 +8,8 @@ References:
 
 from __future__ import annotations
 
+import logging
+import pickle
 import subprocess
 
 import pandas as pd
@@ -80,6 +82,32 @@ def test_update_toml_updates_nested_keys(tmp_path):
 
 
 @pytest.mark.unit
+def test_apply_nested_updates_mutates_in_place_and_rejects_value_paths():
+    """``apply_nested_updates`` writes dotted keys into the dict it was given,
+    creating the sections a new key needs, and refuses a path that descends
+    through an entry holding a value. The refusal matters because a swept
+    parameter name is user-supplied: ``planet.mass_tot.value`` would otherwise
+    fail with an attribute error naming nothing the user wrote.
+    """
+    config = {'section': {'value': 1}}
+    returned = objective_mod.apply_nested_updates(
+        config, {'section.value': 2, 'new.branch.leaf': 3}
+    )
+    assert config['section']['value'] == 2
+    assert config['new']['branch']['leaf'] == 3
+    # In-place: the same object is handed back, so a caller holding the
+    # original reference sees the updates.
+    assert returned is config
+
+    with pytest.raises(ValueError, match="'section.value' holds a value"):
+        objective_mod.apply_nested_updates(config, {'section.value.deeper': 4})
+    # The refused key is not written. Updates are applied as they are walked,
+    # so an earlier key in the same call would already have been applied; this
+    # pins only that the rejected one was not.
+    assert config['section']['value'] == 2
+
+
+@pytest.mark.unit
 def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     """``run_proteus`` handles the escaped-atmosphere case (P_surf=0):
     the observable dictionary is populated with zeros instead of NaN,
@@ -118,7 +146,11 @@ def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     assert obs['P_surf'] == pytest.approx(0.0)
     assert obs['atm_kg_per_mol'] == pytest.approx(0.0)
     assert len(updates) == 2
-    assert status == 20
+    # No status file was written, which is reported as such rather than as a
+    # generic error: a run that dies during start-up and a run that reaches
+    # the main loop and fails there call for different investigations.
+    assert status == objective_mod.STATUS_MISSING
+    assert status != 20
 
 
 @pytest.mark.unit
@@ -164,40 +196,69 @@ def test_run_proteus_raises_when_command_missing(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_run_proteus_raises_when_command_fails(monkeypatch, tmp_path):
-    """A non-zero exit from the proteus binary is wrapped as
-    ``RuntimeError`` with an 'exit code N' message; the exit code is
-    surfaced so the caller can diagnose the failure mode.
+    """A non-zero exit from the proteus binary is reported as a
+    ``ProteusRunFailure`` naming the run, its exit code, and the status the
+    simulator recorded for itself, so the failure mode can be diagnosed
+    without opening the study by hand.
     """
     out_abs = tmp_path / 'sim'
     out_abs.mkdir(parents=True)
+    # The simulator recorded an atmosphere-model error before exiting. The
+    # report must carry this, not a code inferred from the exit status.
+    (out_abs / 'status').write_text('22\nError (Atmosphere model)\n', encoding='utf-8')
     monkeypatch.setattr(
         objective_mod, 'get_proteus_directories', lambda _path: {'output': str(out_abs)}
     )
     monkeypatch.setattr(objective_mod, 'update_toml', lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        objective_mod.subprocess,
-        'run',
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            subprocess.CalledProcessError(returncode=3, cmd=['proteus'])
-        ),
-    )
 
-    with pytest.raises(RuntimeError, match='exit code 3') as excinfo:
+    def _fake_run(*_args, **kwargs):
+        # The real simulator writes to the stream it is handed before it dies.
+        kwargs['stdout'].write('boom\n')
+        kwargs['stdout'].flush()
+        raise subprocess.CalledProcessError(returncode=3, cmd=['proteus'])
+
+    monkeypatch.setattr(objective_mod.subprocess, 'run', _fake_run)
+
+    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
         objective_mod.run_proteus(
-            parameters={},
+            parameters={'planet.mass_tot': 1.25},
             worker=0,
             iter=0,
             observables=['P_surf'],
             ref_config='reference.toml',
             output='dummy_output',
         )
+    failure = excinfo.value
     # Cause-preservation guard: the original CalledProcessError must be
     # chained via __cause__ so the operator sees the failing command.
-    assert isinstance(excinfo.value.__cause__, subprocess.CalledProcessError)
+    assert isinstance(failure.__cause__, subprocess.CalledProcessError)
     # Exit-code-fidelity guard: a regression that always reported
     # 'exit code 0' or hardcoded a different code would still pass a
     # plain regex match if loose, so pin the integer through the cause.
-    assert excinfo.value.__cause__.returncode == 3
+    assert failure.__cause__.returncode == 3
+    assert failure.exit_code == 3
+    # Status fidelity: the status file is read on the failure path. A
+    # regression that raised before reading it would report the missing
+    # sentinel, and one that kept the old hard-coded fallback would report 20.
+    assert failure.status == 22
+    assert 'Atmosphere' in failure.status_desc
+    # The swept parameter is named; the fixed per-run overrides are not,
+    # because they carry no information about which sample failed.
+    assert failure.parameters == {'planet.mass_tot': pytest.approx(1.25)}
+    assert 'params.out.path' not in failure.parameters
+    # Captured child output is retained for runs that die before their own
+    # logger exists, which is the only record such a run leaves behind.
+    assert 'boom' in failure.stderr_tail
+    # The capture is kept beside the run folder, not inside it: the simulator
+    # empties its own output directory once it starts, which would unlink a
+    # file held open there.
+    console = out_abs.parent / f'{out_abs.name}{objective_mod.CHILD_CONSOLE_SUFFIX}'
+    assert console.is_file()
+    assert 'boom' in console.read_text(encoding='utf-8')
+    assert not (out_abs / console.name).exists()
+    rendered = failure.report()
+    assert 'worker=0 iter=0' in rendered
+    assert 'planet.mass_tot=1.25' in rendered
 
 
 @pytest.mark.unit
@@ -245,7 +306,7 @@ def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
         output='dummy_output',
     )
     assert obs['P_surf'] == pytest.approx(1.0)
-    assert status == 20
+    assert status == objective_mod.STATUS_MISSING
 
 
 @pytest.mark.unit
@@ -368,3 +429,612 @@ def test_prot_builder_unnormalizes_log_scaled_parameter(monkeypatch):
 
     assert captured['x'][0, 0].item() == pytest.approx(1.0)
     assert captured['x'][0, 1].item() == pytest.approx(1.5)
+
+
+# ============================================================================
+# Failure reporting for a single simulator run
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_run_proteus_failure_distinguishes_a_missing_status_from_a_generic_error(
+    monkeypatch, tmp_path
+):
+    """A run that dies before writing a status file is reported as having
+    written none, rather than as a generic configuration error. The two call
+    for different investigations: the first points at the simulator's start-up
+    (environment, reference data), the second at the model configuration.
+    """
+    out_abs = tmp_path / 'sim'
+    out_abs.mkdir(parents=True)
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(out_abs)}
+    )
+    monkeypatch.setattr(objective_mod, 'update_toml', lambda *_args, **_kwargs: None)
+
+    def _fake_run(*_args, **kwargs):
+        kwargs['stdout'].write('Error: no\n')
+        kwargs['stdout'].flush()
+        raise subprocess.CalledProcessError(returncode=1, cmd=['proteus'])
+
+    monkeypatch.setattr(objective_mod.subprocess, 'run', _fake_run)
+
+    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
+        objective_mod.run_proteus(
+            parameters={},
+            worker=3,
+            iter=4,
+            observables=['P_surf'],
+            ref_config='reference.toml',
+            output='dummy_output',
+        )
+    failure = excinfo.value
+    assert failure.status == objective_mod.STATUS_MISSING
+    assert 'no readable status file' in failure.status_desc
+    # Discrimination: the previous behaviour reported code 20 for this case,
+    # which reads as a configuration fault the user does not have.
+    assert failure.status != 20
+    assert 'Generic' not in failure.status_desc
+    # No logfile exists either, so the report must not invent one.
+    assert failure.log_path is None
+    assert 'logfile' not in failure.report()
+
+    # Edge case: the same run with a status file present reports that status,
+    # which proves the sentinel above came from the absent file and not from a
+    # reader that always fails.
+    (out_abs / 'status').write_text('21\nError (Interior model)\n', encoding='utf-8')
+    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
+        objective_mod.run_proteus(
+            parameters={},
+            worker=3,
+            iter=4,
+            observables=['P_surf'],
+            ref_config='reference.toml',
+            output='dummy_output',
+        )
+    assert excinfo.value.status == 21
+
+
+@pytest.mark.unit
+def test_run_proteus_failure_points_at_the_simulator_logfile(monkeypatch, tmp_path):
+    """When the failed run left a logfile, the report names it. That file holds
+    the traceback the simulator captured for itself, and is the only place the
+    cause of a mid-run crash is recorded.
+    """
+    out_abs = tmp_path / 'sim'
+    out_abs.mkdir(parents=True)
+    (out_abs / 'proteus_00.log').write_text('early\n', encoding='utf-8')
+    (out_abs / 'proteus_01.log').write_text('CRITICAL Uncaught exception\n', encoding='utf-8')
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(out_abs)}
+    )
+    monkeypatch.setattr(objective_mod, 'update_toml', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        objective_mod.subprocess,
+        'run',
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            subprocess.CalledProcessError(returncode=1, cmd=['proteus'])
+        ),
+    )
+
+    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
+        objective_mod.run_proteus(
+            parameters={},
+            worker=0,
+            iter=0,
+            observables=['P_surf'],
+            ref_config='reference.toml',
+            output='dummy_output',
+        )
+    # The newest logfile is the one the failed run wrote; an earlier one
+    # belongs to a previous attempt in the same folder.
+    assert excinfo.value.log_path.endswith('proteus_01.log')
+    assert 'proteus_01.log' in excinfo.value.report()
+
+
+@pytest.mark.unit
+def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, tmp_path):
+    """A run that exits zero but writes no readable helpfile is reported as a
+    failed sample rather than crashing the study with a bare parser error. The
+    exit code is recorded as zero so the report does not suggest a crash.
+    """
+    out_abs = tmp_path / 'sim'
+    out_abs.mkdir(parents=True)
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(out_abs)}
+    )
+    monkeypatch.setattr(objective_mod, 'update_toml', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(objective_mod.subprocess, 'run', lambda *args, **kwargs: None)
+
+    # No helpfile at all.
+    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
+        objective_mod.run_proteus(
+            parameters={},
+            worker=0,
+            iter=0,
+            observables=['P_surf'],
+            ref_config='reference.toml',
+            output='dummy_output',
+        )
+    assert excinfo.value.exit_code == 0
+    assert 'no readable output' in excinfo.value.reason
+
+    # Edge case: a helpfile that exists but holds no rows.
+    (out_abs / 'runtime_helpfile.csv').write_text('', encoding='utf-8')
+    with pytest.raises(objective_mod.ProteusRunFailure):
+        objective_mod.run_proteus(
+            parameters={},
+            worker=0,
+            iter=0,
+            observables=['P_surf'],
+            ref_config='reference.toml',
+            output='dummy_output',
+        )
+
+    # Discrimination: a helpfile with a usable row completes normally, so the
+    # two failures above come from the output and not from an unconditional
+    # raise on this code path.
+    pd.DataFrame([{'P_surf': 2.5}]).to_csv(
+        out_abs / 'runtime_helpfile.csv', sep=' ', index=False
+    )
+    obs, _status = objective_mod.run_proteus(
+        parameters={},
+        worker=0,
+        iter=0,
+        observables=['P_surf'],
+        ref_config='reference.toml',
+        output='dummy_output',
+    )
+    assert obs['P_surf'] == pytest.approx(2.5)
+
+
+@pytest.mark.unit
+def test_proteus_run_failure_survives_the_trip_back_from_a_pool_worker():
+    """A failure raised inside a pool worker is pickled and re-raised in the
+    parent process. Every reported field must survive that round trip, or the
+    parent sees a reconstruction error in place of the diagnosis.
+    """
+    original = objective_mod.ProteusRunFailure(
+        reason='the simulator exited with an error',
+        worker=2,
+        iter=7,
+        out_dir='/study/workers/w_2/i_7',
+        exit_code=1,
+        status=27,
+        log_path='/study/workers/w_2/i_7/proteus_00.log',
+        stderr_tail='Error: outgassing failed',
+        parameters={'planet.mass_tot': 2.0},
+    )
+    restored = pickle.loads(pickle.dumps(original))
+
+    assert isinstance(restored, objective_mod.ProteusRunFailure)
+    assert restored.report() == original.report()
+    # Field-level guard: an equal report could still hide a dropped field that
+    # the renderer omits when empty, so pin the values that steer diagnosis.
+    assert restored.status == 27
+    assert restored.worker == 2 and restored.iter == 7
+    assert restored.parameters == {'planet.mass_tot': pytest.approx(2.0)}
+    assert restored.log_path == original.log_path
+    assert restored.category == objective_mod.CATEGORY_FAILURE
+
+    # The category rides along in the same tuple, and it decides whether the
+    # parent calls the run a fault. A field dropped from the reconstruction
+    # would fall back to the 'failure' default and go unnoticed on a failure,
+    # so the round trip is checked on the other value too.
+    excluded = objective_mod.ProteusRunFailure(
+        reason='completed on a status this study excludes',
+        worker=2,
+        iter=7,
+        out_dir='/study/workers/w_2/i_7',
+        exit_code=0,
+        status=11,
+        category=objective_mod.CATEGORY_EXCLUDED,
+    )
+    restored_excluded = pickle.loads(pickle.dumps(excluded))
+    assert restored_excluded.category == objective_mod.CATEGORY_EXCLUDED
+    assert 'excluded for worker=2' in restored_excluded.report()
+    assert 'failed for worker=2' not in restored_excluded.report()
+
+
+@pytest.mark.unit
+def test_J_scores_a_failed_run_badly_and_keeps_the_study_running(monkeypatch, tmp_path, caplog):
+    """A parameter combination the simulator cannot integrate is scored as a
+    poor sample so the sweep continues, and the failure is reported once in
+    full and recorded for the end-of-study tally. Aborting instead would end a
+    study on the first unphysical corner of the parameter box.
+    """
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
+    )
+    failure = objective_mod.ProteusRunFailure(
+        reason='the simulator exited with an error',
+        worker=1,
+        iter=2,
+        out_dir='/study/workers/w_1/i_2',
+        exit_code=1,
+        status=21,
+        parameters={'planet.mass_tot': 3.0},
+    )
+
+    def _fail(**_kwargs):
+        raise failure
+
+    monkeypatch.setattr(objective_mod, 'run_proteus', _fail)
+    monkeypatch.setenv(objective_mod._ABORT_ON_FAILURE_ENV, '0')
+
+    with caplog.at_level('WARNING'):
+        value = objective_mod.J(
+            x=torch.tensor([[0.5]], dtype=torch.double),
+            parameters=['planet.mass_tot'],
+            true_observables={'P_surf': 1.0},
+            worker=1,
+            iter=2,
+            output='dummy_output',
+            ref_config='reference.toml',
+        )
+
+    assert value.shape == (1, 1)
+    assert value.item() == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    # The score must be far below any value a successful run can produce, or
+    # the optimiser would be drawn toward the region that fails.
+    assert value.item() < -10.0
+    # Reported once, in full: the status description and the output folder are
+    # what let the user find the run.
+    reported = '\n'.join(record.getMessage() for record in caplog.records)
+    assert 'Interior model' in reported
+    assert '/study/workers/w_1/i_2' in reported
+
+    # The same failure is left on disk for the end-of-study tally, because a
+    # log line scrolls past and a study that failed mostly needs a count.
+    recorded = objective_mod.read_failure_records(tmp_path)
+    assert [(r['worker'], r['iter'], r['status']) for r in recorded] == [(1, 2, 21)]
+    assert recorded[0]['parameters']['planet.mass_tot'] == pytest.approx(3.0)
+
+    # Opting in turns the same failure into a hard stop. `set_abort_on_failure`
+    # is the writer under test; monkeypatch restores the variable afterwards.
+    objective_mod.set_abort_on_failure(True)
+    with pytest.raises(objective_mod.ProteusRunFailure):
+        objective_mod.J(
+            x=torch.tensor([[0.5]], dtype=torch.double),
+            parameters=['planet.mass_tot'],
+            true_observables={'P_surf': 1.0},
+            worker=1,
+            iter=2,
+            output='dummy_output',
+            ref_config='reference.toml',
+        )
+
+
+@pytest.mark.unit
+def test_J_scores_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp_path, caplog):
+    """A run that exits cleanly but records an error status is scored badly and
+    named in the log. Status 25 is the only error code reachable this way: it
+    is written when a run is stopped through its keepalive file, and the
+    simulator then terminates normally.
+
+    'R_obs' is used as the observable because it is compared linearly, which
+    gives the exact-match objective a closed form to pin against.
+    """
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
+    )
+    monkeypatch.setattr(
+        objective_mod,
+        'run_proteus',
+        lambda **_kwargs: ({'R_obs': 9.25e6}, 25),
+    )
+    monkeypatch.setenv(objective_mod._ABORT_ON_FAILURE_ENV, '0')
+
+    with caplog.at_level('WARNING'):
+        value = objective_mod.J(
+            x=torch.tensor([[0.5]], dtype=torch.double),
+            parameters=['planet.mass_tot'],
+            true_observables={'R_obs': 9.25e6},
+            worker=0,
+            iter=0,
+            output='dummy_output',
+            ref_config='reference.toml',
+        )
+    assert value.item() == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    assert 'status 25' in '\n'.join(r.getMessage() for r in caplog.records)
+    # Counted in the end-of-study tally alongside the runs that crashed. A
+    # tally that covered only crashes would understate a study stopped by hand.
+    recorded = objective_mod.read_failure_records(tmp_path)
+    assert [r['status'] for r in recorded] == [25]
+    assert recorded[0]['exit_code'] == 0
+
+    # Discrimination: the same observables under a completed status (13,
+    # "target time reached") are scored normally, which rules out a regression
+    # that returns the failure score for every run.
+    monkeypatch.setattr(
+        objective_mod,
+        'run_proteus',
+        lambda **_kwargs: ({'R_obs': 9.25e6}, 13),
+    )
+    good = objective_mod.J(
+        x=torch.tensor([[0.5]], dtype=torch.double),
+        parameters=['planet.mass_tot'],
+        true_observables={'R_obs': 9.25e6},
+        worker=0,
+        iter=0,
+        output='dummy_output',
+        ref_config='reference.toml',
+        failure_codes=[],
+    )
+    # Closed form for an exact match on a linear observable: the normalised
+    # difference is zero, so sq_dist is zero and the score is
+    # -log10(0 + EPS_CLIP) = -log10(1e-10) = 10.
+    assert good.item() == pytest.approx(10.0, rel=1e-9)
+    # Sign guard: a flipped objective would land at -10, which is still above
+    # BAD_OBJ_VALUE and would pass a bare "better than failure" assertion.
+    assert good.item() > 0
+    # Scale guard: the failure score is -20, so the two are far apart.
+    assert good.item() - objective_mod.BAD_OBJ_VALUE > 25.0
+
+
+@pytest.mark.unit
+def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
+    """The failure range covers the error statuses the simulator can record.
+    Code 28 is the highest error the status table defines; 29 is a completion
+    ('planet evaporated') and no current code path writes it, so it must not
+    be scored as a failure by an off-by-one in the range bound.
+    """
+    monkeypatch.setenv(objective_mod._ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
+    )
+
+    def _score(status):
+        monkeypatch.setattr(
+            objective_mod,
+            'run_proteus',
+            lambda **_kwargs: ({'R_obs': 9.25e6}, status),
+        )
+        return objective_mod.J(
+            x=torch.tensor([[0.5]], dtype=torch.double),
+            parameters=['planet.mass_tot'],
+            true_observables={'R_obs': 9.25e6},
+            worker=0,
+            iter=0,
+            output='dummy_output',
+            ref_config='reference.toml',
+        ).item()
+
+    # Highest defined error code, and the escape-model error below it.
+    assert _score(28) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    assert _score(21) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    # Completion codes are scored on their observables.
+    assert _score(29) == pytest.approx(10.0, rel=1e-9)
+    assert _score(13) == pytest.approx(10.0, rel=1e-9)
+    # A run that never updated its status past 'Running' died mid-flight.
+    assert _score(1) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    # An unreadable status file is treated as a failure, because the run's own
+    # account of itself is missing and its output cannot be trusted.
+    assert _score(objective_mod.STATUS_MISSING) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+
+
+@pytest.mark.unit
+def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path, caplog):
+    """A status named in `failure_codes` marks an outcome the study does not fit
+    against, not a fault. A run stopped by its clock limit (status 11) completed
+    normally, so it is scored as a poor sample and reported at info level, while
+    an error status (21, interior model) is reported as a run that produced
+    nothing usable. Reporting the first as the second sends the user looking for
+    a bug in a run that did exactly what it was configured to do.
+    """
+    monkeypatch.setenv(objective_mod._ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
+    )
+
+    def _score(status, worker):
+        monkeypatch.setattr(
+            objective_mod,
+            'run_proteus',
+            lambda **_kwargs: ({'R_obs': 9.25e6}, status),
+        )
+        return objective_mod.J(
+            x=torch.tensor([[0.5]], dtype=torch.double),
+            parameters=['planet.mass_tot'],
+            true_observables={'R_obs': 9.25e6},
+            worker=worker,
+            iter=0,
+            output='dummy_output',
+            ref_config='reference.toml',
+            failure_codes=[11],
+        ).item()
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.objective'):
+        excluded = _score(11, worker=0)
+
+    # The optimiser must still be steered away from the excluded region, so the
+    # score is the same one a failure carries.
+    assert excluded == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    assert not [r for r in caplog.records if r.levelname in ('WARNING', 'ERROR')]
+    reported = '\n'.join(r.getMessage() for r in caplog.records)
+    assert 'excludes' in reported
+    assert 'maximum clock runtime' in reported
+    assert 'failure state' not in reported
+    assert 'did not produce a usable result' not in reported
+
+    # The record is kept for the end-of-study tally, labelled so the tally can
+    # count it apart from the runs that genuinely failed.
+    recorded = objective_mod.read_failure_records(tmp_path)
+    assert [(r['status'], r['category']) for r in recorded] == [
+        (11, objective_mod.CATEGORY_EXCLUDED)
+    ]
+
+    # Discrimination: an error status under the same call is still a failure,
+    # warned about and recorded under the other category. Without this the test
+    # would pass against a regression that labelled every run 'excluded'.
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.objective'):
+        failed = _score(21, worker=1)
+    assert failed == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    warnings = [r for r in caplog.records if r.levelname == 'WARNING']
+    assert len(warnings) == 1
+    assert 'did not produce a usable result' in warnings[0].getMessage()
+    recorded = objective_mod.read_failure_records(tmp_path)
+    assert [(r['status'], r['category']) for r in recorded] == [
+        (11, objective_mod.CATEGORY_EXCLUDED),
+        (21, objective_mod.CATEGORY_FAILURE),
+    ]
+
+    # Discrimination: a completion status that the study does not exclude is
+    # scored on its observables and leaves no record at all. The exact match on
+    # a linear observable has the closed form -log10(0 + 1e-10) = 10.
+    assert _score(13, worker=2) == pytest.approx(10.0, rel=1e-9)
+    assert len(objective_mod.read_failure_records(tmp_path)) == 2
+
+
+@pytest.mark.unit
+def test_run_proteus_treats_a_missing_helpfile_column_as_a_setup_fault(monkeypatch, tmp_path):
+    """A helpfile with no 'P_surf' column raises rather than producing a scored
+    failure. The column set is a property of the simulator's output schema, so
+    it is the same for every run: scoring it as a bad sample would let the
+    study spend its whole budget returning the failure value and then report
+    success at the end.
+    """
+    out_abs = tmp_path / 'sim'
+    out_abs.mkdir(parents=True)
+    pd.DataFrame([{'T_obs': 300.0}]).to_csv(
+        out_abs / 'runtime_helpfile.csv', sep=' ', index=False
+    )
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(out_abs)}
+    )
+    monkeypatch.setattr(objective_mod, 'update_toml', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(objective_mod.subprocess, 'run', lambda *args, **kwargs: None)
+
+    with pytest.raises(KeyError) as excinfo:
+        objective_mod.run_proteus(
+            parameters={},
+            worker=0,
+            iter=0,
+            observables=['T_obs'],
+            ref_config='reference.toml',
+            output='dummy_output',
+        )
+    # Not a per-run failure: scoring this one badly and continuing is exactly
+    # the behaviour the raise exists to prevent.
+    assert not isinstance(excinfo.value, objective_mod.ProteusRunFailure)
+    assert 'P_surf' in str(excinfo.value)
+    assert 'every run' in str(excinfo.value)
+
+    # Discrimination: the same helpfile with the column present completes, so
+    # the raise comes from the missing column and not from this code path
+    # rejecting every input.
+    pd.DataFrame([{'T_obs': 300.0, 'P_surf': 5.0}]).to_csv(
+        out_abs / 'runtime_helpfile.csv', sep=' ', index=False
+    )
+    obs, _status = objective_mod.run_proteus(
+        parameters={},
+        worker=0,
+        iter=0,
+        observables=['T_obs'],
+        ref_config='reference.toml',
+        output='dummy_output',
+    )
+    assert obs['T_obs'] == pytest.approx(300.0)
+
+
+# ============================================================================
+# Failure records: written per evaluation, read back for the study summary
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_run_output_dir_names_the_folder_the_simulator_is_given(monkeypatch, tmp_path):
+    """The per-evaluation folder is derived in one place, so the path a failure
+    report names is the path the simulator was told to write to. Initial
+    samples use worker -1, which must survive the same construction.
+    """
+    monkeypatch.setattr(
+        objective_mod,
+        'get_proteus_directories',
+        lambda path: {'output': str(tmp_path / path)},
+    )
+
+    rel, absolute = objective_mod.run_output_dir('study', 2, 7)
+    assert rel.as_posix() == 'study/workers/w_2/i_7'
+    assert absolute == tmp_path / 'study' / 'workers' / 'w_2' / 'i_7'
+
+    # Initial sampling identifies itself with worker -1 rather than a worker
+    # index, and must land in its own folder rather than colliding with w_1.
+    rel_init, _ = objective_mod.run_output_dir('study', -1, 7)
+    assert rel_init.as_posix() == 'study/workers/w_-1/i_7'
+    assert rel_init != rel
+
+
+@pytest.mark.unit
+def test_failure_records_round_trip_without_colliding_between_workers(tmp_path):
+    """Records are written one file per evaluation so that concurrent workers
+    never contend for the same file, and are read back ordered by worker then
+    iteration. The status description is stored rather than recomputed, so the
+    summary does not have to re-derive it from the code.
+    """
+    first = objective_mod.ProteusRunFailure(
+        reason='the simulator exited with an error',
+        worker=0,
+        iter=5,
+        out_dir='/study/workers/w_0/i_5',
+        exit_code=1,
+        status=21,
+        parameters={'planet.mass_tot': 3.0},
+    )
+    # Same iteration, different worker: the pair is what makes the name unique.
+    second = objective_mod.ProteusRunFailure(
+        reason='exceeded the 3600.0 s timeout',
+        worker=1,
+        iter=5,
+        out_dir='/study/workers/w_1/i_5',
+        status=objective_mod.STATUS_MISSING,
+        parameters={'planet.mass_tot': 4.0},
+    )
+
+    assert objective_mod.record_failure(tmp_path, second) is not None
+    assert objective_mod.record_failure(tmp_path, first) is not None
+    written = sorted(p.name for p in (tmp_path / objective_mod.FAILURE_RECORD_DIR).iterdir())
+    assert written == ['w0_i5.json', 'w1_i5.json']
+
+    records = objective_mod.read_failure_records(tmp_path)
+    # Ordering guard: written second-then-first, read back in worker order.
+    assert [r['worker'] for r in records] == [0, 1]
+    assert records[0]['status'] == 21
+    assert records[0]['status_desc'] == first.status_desc
+    assert records[0]['parameters']['planet.mass_tot'] == pytest.approx(3.0)
+    # A run that never wrote a status file is stored as such, not as a generic
+    # error, so the summary can separate start-up deaths from model faults.
+    assert records[1]['status'] == objective_mod.STATUS_MISSING
+    assert 'no readable status file' in records[1]['status_desc']
+
+    # Edge case: a corrupt record is skipped rather than aborting the summary,
+    # which would hide the records that did parse.
+    (tmp_path / objective_mod.FAILURE_RECORD_DIR / 'w2_i0.json').write_text('{not json')
+    assert len(objective_mod.read_failure_records(tmp_path)) == 2
+
+
+@pytest.mark.unit
+def test_recording_a_failure_never_masks_the_failure_it_records(tmp_path):
+    """Bookkeeping must not bring down a study. When the record cannot be
+    written the writer reports that it could not, and the caller still has the
+    failure in hand to log and to score.
+    """
+    blocked = tmp_path / 'not_a_directory'
+    blocked.write_text('this is a file, so no folder can be made beneath it')
+    failure = objective_mod.ProteusRunFailure(
+        reason='the simulator exited with an error',
+        worker=0,
+        iter=0,
+        out_dir=str(tmp_path),
+        exit_code=1,
+        status=21,
+    )
+
+    assert objective_mod.record_failure(blocked, failure) is None
+    # Discrimination: the same failure records fine against a usable folder, so
+    # the None above came from the blocked path and not from a writer that
+    # always fails.
+    assert objective_mod.record_failure(tmp_path / 'study', failure) is not None
+    # Reading a study that never created the folder is empty, not an error.
+    assert objective_mod.read_failure_records(tmp_path / 'never_ran') == []

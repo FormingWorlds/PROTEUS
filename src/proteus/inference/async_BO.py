@@ -108,6 +108,68 @@ def worker(
     ----------
     - None
     """
+    try:
+        _worker_loop(
+            process_fun,
+            build_obj,
+            D_shared,
+            B,
+            T,
+            T0,
+            x_init,
+            n_init,
+            lock,
+            max_len,
+            worker_id,
+            log_list,
+            output_dir,
+        )
+    except BaseException:
+        # A worker that dies takes its traceback with it: multiprocessing
+        # prints it to the parent's stderr without consulting the logging
+        # configuration, so nothing reaches the study logfile. Record it here
+        # while the worker still can, then let it propagate so the exit code
+        # still marks the process as failed.
+        log.exception(f'Worker {worker_id} stopped early and will run no further evaluations')
+        raise
+    finally:
+        # Release this worker's busy point. Left in place, it steers the
+        # surviving workers away from a region nothing is actually exploring.
+        try:
+            with lock:
+                B.pop(worker_id, None)
+        except Exception:
+            log.warning(f'Worker {worker_id} could not release its busy point')
+
+
+def _worker_loop(
+    process_fun,
+    build_obj,
+    D_shared,
+    B,
+    T,
+    T0: float,
+    x_init: torch.Tensor,
+    n_init: int,
+    lock,
+    max_len: int,
+    worker_id: int,
+    log_list,
+    output_dir: str,
+) -> None:
+    """Run BO iterations until the evaluation budget is reached.
+
+    The body of `worker`, separated so that failure reporting and busy-point
+    release wrap every exit path.
+
+    Parameters
+    ----------
+    - See `worker`; arguments are forwarded unchanged.
+
+    Returns
+    ----------
+    - None
+    """
     task_id = 0
 
     while True:
@@ -206,7 +268,8 @@ def parallel_process(
     - ref_config (str): Path to reference config to pass to objective_builder.
     - observables (dict): Target observables (keys) and values.
     - parameters (dict):  Parameters (keys) with bounds (values) for inference.
-    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
+    - failure_codes (list[int]): PROTEUS status codes that complete normally but
+      that this study excludes from the fit.
 
     Returns
     ----------
@@ -299,5 +362,43 @@ def parallel_process(
     D_final = dict(D_shared)
     logs = list(log_list)
     T_elapsed = [t - T0 for t in list(T)]
+
+    # A worker that dies mid-study leaves the run looking complete: the
+    # remaining workers carry on, the results are saved, and the best-fit
+    # summary is printed from whatever was collected. Report the shortfall.
+    # A worker killed by a signal reports a negative code (-9 for an
+    # out-of-memory kill), so the test is "not zero" rather than "positive".
+    died = [wid for wid, p in enumerate(procs) if p.exitcode != 0]
+    if died:
+        names = ', '.join(str(wid) for wid in died)
+        log.error(
+            f'{len(died)} of {n_workers} workers stopped before the evaluation budget '
+            f'was reached (workers {names}). Their exit codes were '
+            f'{[procs[wid].exitcode for wid in died]}; see the messages above for the '
+            f'cause. Results below are based on {len(D_final["X"])} evaluations '
+            f'rather than the {max_len} requested.'
+        )
+    # Nothing was added to the initial sample, so there is no optimisation to
+    # report and the best-fit summary would describe the initial design alone.
+    if len(D_final['X']) <= n_init:
+        if died:
+            cause = (
+                f'{len(died)} of {n_workers} workers stopped early; see the messages '
+                'above for the cause.'
+            )
+        else:
+            # Every worker exited on its first budget check. `max_steps` is
+            # reduced by one per additional worker, so this is what a study
+            # with fewer optimisation steps than workers looks like.
+            cause = (
+                'No worker failed. Each worker stops once the dataset reaches '
+                f'{max_steps} rows ({max_len} requested, less one per worker beyond '
+                f'the first), which the {n_init} initial samples already satisfy. '
+                f'Raise n_steps to at least n_workers ({n_workers}).'
+            )
+        raise RuntimeError(
+            'No optimisation steps completed: the dataset still holds only the '
+            f'{n_init} initial samples. ' + cause
+        )
 
     return D_final, logs, T_elapsed

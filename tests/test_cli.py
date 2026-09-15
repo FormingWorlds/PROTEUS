@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import builtins
 import importlib.util
+import logging
 from pathlib import Path
 
 import pytest
@@ -561,14 +562,27 @@ def test_get_interiordata_calls_clean_downloads(monkeypatch, tmp_path):
     assert not any(c[0] == 'zalmoxis_eos' for c in calls)
 
 
+def assert_refusal_logged_as_error(caplog, key: str) -> None:
+    """Check that a config refusal named `key` was logged at ERROR, not below.
+
+    The refusal reaches the terminal through the 'fwl' logger rather than
+    click's own stream, so the captured records are what pins it. The level is
+    asserted as well as the text: a refusal emitted at INFO or WARNING carries
+    the same words and would otherwise pass.
+    """
+    named = [rec for rec in caplog.records if key in rec.getMessage()]
+    assert named, f'no log record named {key}'
+    assert [rec.levelno for rec in named] == [logging.ERROR] * len(named)
+
+
 @pytest.mark.unit
-def test_get_interiordata_reports_an_unknown_config_key_cleanly(monkeypatch, tmp_path):
+def test_get_interiordata_reports_an_unknown_config_key_cleanly(monkeypatch, tmp_path, caplog):
     """A misspelled key stops the download and is reported as a CLI error.
 
     The download commands act on the configuration, so acting on one whose keys
     were silently discarded would fetch data for a setup the user did not ask
-    for. The failure has to arrive in the CLI's own error style with the key
-    named, not as a traceback.
+    for. The failure has to arrive at error level with the key named, not as a
+    traceback.
     """
     import tomllib
 
@@ -593,10 +607,11 @@ def test_get_interiordata_reports_an_unknown_config_key_cleanly(monkeypatch, tmp
     with open(cfg, 'w') as f:
         tomlkit.dump(raw, f)
 
-    res = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(cfg)])
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        res = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(cfg)])
     assert res.exit_code != 0
-    assert 'planet.mass_total' in res.output
-    # A ClickException prints "Error: ..." and does not surface a traceback.
+    assert_refusal_logged_as_error(caplog, 'planet.mass_total')
+    # A ClickException does not surface a traceback.
     assert 'Traceback' not in res.output
     # The config-dependent download is not reached; the config-independent one
     # ahead of it may already have run, which is why only the former is pinned.
@@ -1195,11 +1210,12 @@ def test_grid_calls_grid_from_config(monkeypatch, tmp_path):
     assert received[0][1] is False
 
 
-def test_start_reports_an_unknown_config_key_cleanly(tmp_path):
-    """``proteus start`` refuses a misspelled key in the CLI's own error style.
+def test_start_reports_an_unknown_config_key_cleanly(tmp_path, caplog):
+    """``proteus start`` refuses a misspelled key at error level.
 
     This is the command most runs go through, so a refusal that arrives as a
-    bare traceback leaves the name of the offending key buried in it.
+    bare traceback leaves the name of the offending key buried in it, and one
+    emitted below error level reads as ordinary progress output.
     """
     import tomllib
 
@@ -1214,9 +1230,10 @@ def test_start_reports_an_unknown_config_key_cleanly(tmp_path):
     with open(cfg, 'w') as f:
         tomlkit.dump(raw, f)
 
-    res = runner.invoke(cli.cli, ['start', '-c', str(cfg), '--offline'])
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        res = runner.invoke(cli.cli, ['start', '-c', str(cfg), '--offline'])
     assert res.exit_code != 0
-    assert 'planet.mass_total' in res.output
+    assert_refusal_logged_as_error(caplog, 'planet.mass_total')
     assert 'Traceback' not in res.output
 
 
@@ -1242,13 +1259,13 @@ def test_cli_does_not_convert_unrelated_value_errors(tmp_path, monkeypatch):
     assert 'something else went wrong entirely' in str(res.exception)
 
 
-def test_grid_reports_an_unknown_key_in_the_base_config_cleanly(tmp_path, monkeypatch):
-    """``proteus grid`` refuses a base config with a misspelled key, in CLI style.
+def test_grid_reports_an_unknown_key_in_the_base_config_cleanly(tmp_path, monkeypatch, caplog):
+    """``proteus grid`` refuses a base config with a misspelled key, at error level.
 
     Case config files are written out from the parsed base config, so an
     unrecognised key in the base never reaches them and the grid would
     otherwise run every case on a default nobody chose. The refusal has to name
-    the key and arrive as a CLI error, since the whole ensemble depends on it.
+    the key and arrive as an error, since the whole ensemble depends on it.
     """
     import tomllib
 
@@ -1282,10 +1299,11 @@ def test_grid_reports_an_unknown_key_in_the_base_config_cleanly(tmp_path, monkey
         '    values = [0.7]\n'
     )
 
-    res = runner.invoke(cli.cli, ['grid', '-c', str(grid_toml), '--dry-run'])
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        res = runner.invoke(cli.cli, ['grid', '-c', str(grid_toml), '--dry-run'])
     assert res.exit_code != 0
-    assert 'params.dt.maxium' in res.output
-    # A ClickException prints "Error: ..."; an unwrapped raise prints a traceback.
+    assert_refusal_logged_as_error(caplog, 'params.dt.maxium')
+    # An unwrapped raise would print a traceback instead.
     assert 'Traceback' not in res.output
 
 

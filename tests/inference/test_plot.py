@@ -585,6 +585,48 @@ def test_plot_result_correlation_multi_par_multi_obs(monkeypatch, tmp_path, capl
     assert 'Missing helpfile for' in caplog.text
 
 
+@pytest.mark.unit
+def test_plot_result_correlation_ignores_stray_console_log_file(monkeypatch, tmp_path):
+    """A worker's console-log capture file must not be treated as a case dir.
+
+    Regression for a crash where a stray file such as ``i_0_console.log``,
+    sitting beside the real ``i_0`` case directory in a worker folder, matched
+    the ``i_*`` glob used to find cases. ``toml.load`` then received a file
+    path, not a directory, and raised ``NotADirectoryError`` when the code
+    appended ``init_coupler.toml`` to it.
+    """
+    workers = tmp_path / 'workers'
+    case_ok = workers / 'w_-1' / 'i_0'
+    case_ok.mkdir(parents=True)
+    (case_ok / 'init_coupler.toml').write_text(
+        toml.dumps({'planet': {'mass_tot': 1.5}}),
+        encoding='utf-8',
+    )
+    pd.DataFrame([{'P_surf': 1.0}]).to_csv(
+        case_ok / 'runtime_helpfile.csv', sep=' ', index=False
+    )
+
+    # Sibling capture file that matches the `i_*` glob but is not a case dir.
+    (workers / 'w_-1' / 'i_0_console.log').write_text('log output\n', encoding='utf-8')
+
+    axis = MagicMock()
+    axis.__getitem__.return_value = axis
+    fig = MagicMock()
+    mock_plt = MagicMock()
+    mock_plt.subplots.return_value = (fig, axis)
+    monkeypatch.setattr(plot_mod, 'plt', mock_plt)
+    monkeypatch.setattr(plot_mod, 'variable_is_logarithmic', lambda _k: False)
+
+    # Must not raise NotADirectoryError from treating the log file as a case.
+    plot_mod.plot_result_correlation(
+        pars={'planet.mass_tot': [0.7, 3.0]},
+        obs={'P_surf': 1.0},
+        directory=str(tmp_path),
+    )
+
+    fig.savefig.assert_called_once()
+
+
 def test_plot_result_correlation_two_par_two_obs_uses_2d_axes(monkeypatch, tmp_path):
     """n_par > 1 and n_obs > 1 takes the ``axs[j, i]`` 2D indexing branch.
 
