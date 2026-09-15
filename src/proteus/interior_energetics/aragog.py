@@ -38,6 +38,7 @@ from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
+from proteus.utils.helper import format_subyear_time, parse_subyear_time, snapshot_path_for_time
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -2497,7 +2498,7 @@ class AragogRunner:
             correction). Stored alongside Aragog's adiabatic temp_s so
             resume can initialize AGNI at the correct T_surf.
         """
-        fpath = os.path.join(output_dir, 'data', '%.0f_int.nc' % time)
+        fpath = os.path.join(output_dir, 'data', format_subyear_time(time) + '_int.nc')
         ds = nc.Dataset(fpath, mode='w')
         ds.description = 'Aragog entropy solver output'
 
@@ -2553,7 +2554,7 @@ class AragogRunner:
 
 def read_last_Sfield(output_dir: str, time: float):
     """Read the entropy field from the previous Aragog NetCDF output."""
-    fpath = os.path.join(output_dir, 'data', '%.0f_int.nc' % time)
+    fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), time, '_int.nc')
     ds = nc.Dataset(fpath)
     try:
         S_stag = np.array(ds['entropy_s'][:])
@@ -2567,7 +2568,7 @@ def read_last_Sfield(output_dir: str, time: float):
 
 def get_all_output_times(output_dir: str):
     files = glob.glob(output_dir + '/data/*_int.nc')
-    years = [int(f.split('/')[-1].split('_int')[0]) for f in files]
+    years = [parse_subyear_time(f.split('/')[-1].split('_int')[0]) for f in files]
     mask = np.argsort(years)
 
     return [years[i] for i in mask]
@@ -2585,4 +2586,7 @@ def read_ncdf(fpath: str):
 
 
 def read_ncdfs(output_dir: str, times: list):
-    return [read_ncdf(os.path.join(output_dir, 'data', '%.0f_int.nc' % t)) for t in times]
+    return [
+        read_ncdf(snapshot_path_for_time(os.path.join(output_dir, 'data'), t, '_int.nc'))
+        for t in times
+    ]

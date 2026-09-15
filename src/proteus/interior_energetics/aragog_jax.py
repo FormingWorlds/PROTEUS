@@ -21,6 +21,7 @@ import numpy as np
 
 from proteus.interior_energetics.aragog_phase import build_jax_phase_params
 from proteus.interior_energetics.common import Interior_t
+from proteus.utils.helper import format_subyear_time
 
 jax.config.update('jax_enable_x64', True)
 
@@ -335,7 +336,7 @@ class AragogJAXRunner:
         phi = np.asarray(eos.melt_fraction(P, S))
         rho = np.asarray(eos.density(P, S))
 
-        fpath = os.path.join(output_dir, 'data', '%.0f_int.nc' % time)
+        fpath = os.path.join(output_dir, 'data', format_subyear_time(time) + '_int.nc')
         ds = nc.Dataset(fpath, mode='w')
         ds.description = 'Aragog JAX entropy solver output'
 

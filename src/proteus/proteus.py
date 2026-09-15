@@ -424,6 +424,7 @@ class Proteus:
             CreateHelpfileFromDict,
             CreateLockFile,
             ExtendHelpfile,
+            GetHelpfileKeys,
             PrintCurrentState,
             ReadHelpfileFromCSV,
             UpdatePlots,
@@ -690,6 +691,16 @@ class Proteus:
                 UpdateStatusfile(self.directories, 20)
                 raise
 
+            # Drop any column the stored helpfile carries that the current
+            # schema no longer defines. Without this, a row from a retired
+            # column rides along in self.hf_all and every row appended after
+            # resume gets NaN there instead, since ExtendHelpfile only ever
+            # builds new rows from GetHelpfileKeys().
+            retired = set(self.hf_all.columns) - set(GetHelpfileKeys())
+            if retired:
+                log.info('Resume: dropping retired helpfile column(s) %s', sorted(retired))
+                self.hf_all = self.hf_all.drop(columns=sorted(retired))
+
             # Check length
             if len(self.hf_all) <= self.loops['init_loops'] + 1:
                 UpdateStatusfile(self.directories, 20)
@@ -700,11 +711,11 @@ class Proteus:
             log.debug('Extracting archived data files')
             self.extract_archives()
 
-            # Resume from the latest fully written snapshot pair. A crash
-            # mid-write can truncate the most recent _int.nc or _atm.nc
-            # independently of the (atomic) helpfile; drop any such
-            # incomplete trailing rows so the interior and atmosphere both
-            # load a complete state instead of aborting on the corrupt file.
+            # Resume from the latest snapshot pair that is complete and belongs
+            # to its helpfile row. This drops rows whose _int.nc or _atm.nc a
+            # crash left truncated, and rejects a stale file a colliding run
+            # wrote at the same rounded time, so the interior and atmosphere
+            # both load the matched state instead of the wrong or corrupt one.
             require_atm = self.config.atmos_clim.module != 'dummy'
             self.hf_all, dropped_snapshots = select_resumable_snapshot(
                 self.directories['output'],

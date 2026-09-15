@@ -870,7 +870,7 @@ def _try_spider(
     # then FWL_DATA, then SPIDER local as final fallback.
     if dirs.get('spider_eos_dir') and os.path.isdir(dirs['spider_eos_dir']):
         eos_dir = dirs['spider_eos_dir']
-        log.info('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
+        log.debug('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
     else:
         if config.interior_struct.eos_dir is None:
             raise FileNotFoundError(
@@ -1344,6 +1344,10 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
 
     # Core (CMB) temperature: last staggered node (SPIDER ordering is surface-to-CMB)
     output['T_cmb'] = float(interior_o.temp[-1])
+
+    # Core (CMB) pressure and heat flux: last basic node (SPIDER ordering is surface-to-CMB)
+    output['P_cmb'] = float(json_file.get_dict_values(['data', 'pressure_b'])[-1])
+    output['F_cmb'] = float(json_file.get_dict_values(['data', 'Jtot_b'])[-1])
 
     # Total thermal energy E_th = sum(mass_i * Cp_i * T_i).
     #

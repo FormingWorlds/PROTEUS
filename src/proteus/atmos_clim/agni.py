@@ -16,9 +16,12 @@ from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
     create_tmp_folder,
+    format_subyear_time,
     mol_to_ele,
     multiple,
+    parse_subyear_time,
     safe_rm,
+    snapshot_path_for_time,
 )
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
@@ -693,8 +696,15 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     if len(nc_files) > 0:
         log.debug('Load NetCDF profile')
 
-        nc_times = [int(s.split('/')[-1].split('_')[0]) for s in nc_files]
-        nc_path = os.path.join(dirs['output'], 'data', f'{sorted(nc_times)[-1]:.0f}_atm.nc')
+        # Prefer the atmosphere written for this row over the highest-time file
+        # on disk, so a resume seeds AGNI from the matched state. Fall back to
+        # the most recent file for the mid-run warm-start, where this row has
+        # no file yet.
+        data_dir = os.path.join(dirs['output'], 'data')
+        nc_path = snapshot_path_for_time(data_dir, hf_row['Time'], '_atm.nc')
+        if not os.path.exists(nc_path):
+            nc_times = [parse_subyear_time(s.split('/')[-1].split('_')[0]) for s in nc_files]
+            nc_path = snapshot_path_for_time(data_dir, sorted(nc_times)[-1], '_atm.nc')
         jl.AGNI.setpt.fromncdf_b(atmos, nc_path)
 
     # Otherwise, set profile initial guess
@@ -1288,7 +1298,7 @@ def write_atmos_ncdf(atmos, dirs: dict, time: float) -> None:
         return
 
     # Write the file
-    ncdf_path = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % time)
+    ncdf_path = os.path.join(dirs['output'], 'data', format_subyear_time(time) + '_atm.nc')
     log.debug(f'Write AGNI atmosphere to {ncdf_path}')
     jl.AGNI.save.write_ncdf(atmos, ncdf_path)
 
