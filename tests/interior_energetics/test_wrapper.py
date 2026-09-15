@@ -2588,7 +2588,8 @@ def test_update_gravity_matches_newton_inverse_square():
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
-    """calculate_core_mass writes hf_row['M_core'] = rho_core * (4/3) * pi * (R_int * core_frac)^3.
+    """calculate_core_mass writes hf_row['M_core'] = rho_core * (4/3) * pi * (R_int * core_frac)^3,
+    and persists the resolved core density to hf_row['core_density'].
 
     Physics invariant: mass is strictly positive given positive density
     and radius, and the closed-form pin is matched to 12 digits.
@@ -2608,7 +2609,10 @@ def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
             core_frac_mode='radius',
         )
     )
-    hf_row = {'R_int': R_int}
+    # hf_row starts with core_density absent from an implicit stale
+    # ZeroHelpfileRow() default of 0.0, matching a live run before this
+    # function has ever been called for it.
+    hf_row = {'R_int': R_int, 'core_density': 0.0}
     calculate_core_mass(hf_row, config)
     expected = rho_core * (4.0 / 3.0) * np.pi * (R_int * core_frac) ** 3
     assert hf_row['M_core'] == pytest.approx(expected, rel=1e-12)
@@ -2618,6 +2622,9 @@ def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
     # instead of R**3 would give a number ~6 orders of magnitude smaller.
     wrong_square = rho_core * (4.0 / 3.0) * np.pi * (R_int * core_frac) ** 2
     assert abs(hf_row['M_core'] - wrong_square) > 1e15
+    # core_density must be overwritten with the resolved value, not left at
+    # its stale zero default.
+    assert hf_row['core_density'] == pytest.approx(rho_core, rel=1e-12)
 
 
 @pytest.mark.unit

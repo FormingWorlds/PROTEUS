@@ -74,6 +74,39 @@ def test_dt_params_defaults():
     assert dt.atol == pytest.approx(0.02, rel=1e-12)
     assert dt.rtol == pytest.approx(0.10, rel=1e-12)
 
+    # Evection dt-cap trio: opt-in, disabled by default via None rather
+    # than a numeric 0 (which would be behaviourally indistinguishable
+    # from disabled but pass the >0 validator's exclusion silently).
+    assert dt.evection_maximum is None
+    assert dt.evection_growth_factor is None
+    assert dt.evection_cooldown_iters is None
+
+
+@pytest.mark.unit
+def test_dt_params_evection_trio_accepts_none_string_and_rejects_non_positive():
+    """The evection dt-cap trio (evection_maximum/evection_growth_factor/
+    evection_cooldown_iters) must accept the TOML string sentinel
+    ``'none'`` (structured to Python ``None`` by the ``none_if_none``
+    converter, the same mechanism ``rot_period``/``phoenix_radius`` use)
+    and a strictly positive value, but reject both a zero and a negative
+    value -- 0 is deliberately NOT a valid opt-out spelling any more (it
+    was, before this test), only ``None``/``'none'`` disables the
+    mechanism.
+    """
+    for field_name in ('evection_maximum', 'evection_growth_factor', 'evection_cooldown_iters'):
+        # 'none' string (TOML spelling) structures to Python None.
+        assert getattr(TimeStepParams(**{field_name: 'none'}), field_name) is None
+        # A genuine positive value is accepted and passed through untouched.
+        assert getattr(TimeStepParams(**{field_name: 5}), field_name) == 5
+
+        # Discrimination: 0 (the OLD opt-out spelling) and a negative
+        # value must both now be rejected, not silently accepted as
+        # another way to disable the mechanism.
+        with pytest.raises(ValueError):
+            TimeStepParams(**{field_name: 0})
+        with pytest.raises(ValueError):
+            TimeStepParams(**{field_name: -1})
+
 
 @pytest.mark.unit
 def test_stop_params_defaults():

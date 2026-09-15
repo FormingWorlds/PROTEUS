@@ -338,6 +338,8 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 | `nusselt_exponent` | float | `0.33` | Nusselt-Rayleigh scaling exponent \[-\]. Must be > 0. |
 | `silicate_heat_capacity` | float | `1200.0` | Silicate heat capacity \[J/kg/K\]. Must be > 0. |
 | `core_density` | float | `10738.0` | Core density \[kg/m^3\]. Must be > 0. |
+| `core_shear` | float | `0.1` | Core shear modulus \[Pa\]. Must be > 0. |
+| `core_bulk` | float | `500000000000.0` | Core bulk modulus \[Pa\]. Must be > 0. |
 | `atm_heat_capacity_const` | bool | `true` | Always use fallback atmosphere heat capacity?. |
 | `atm_heat_capacity` | float | `17000.0` | Used as fallback for atmosphere heat capacity when layer-specific value is not available \[J/kg/K\]. Must be > 0. |
 | `silicate_density` | float | `4103.0` | Silicate density \[kg/m^3\]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F). Must be > 0. |
@@ -360,7 +362,7 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 Cross-field constraints enforced when the config file loads:
 
 - Boundary backend assumes a fixed surface state coupling.
-- Interior tidal heating requires an orbit module to be enabled.
+- Interior tidal heating requires an tides module to be enabled.
 - Aragog requires at least one energy transport term to be enabled.
 - Validate Boundary backend's solidus/liquidus ordering.
 - Dummy interior requires the liquidus to sit above the solidus.

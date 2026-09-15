@@ -353,6 +353,24 @@ class TestCommentFromStatus:
         assert 'volatiles' in CommentFromStatus(15)
 
     @pytest.mark.unit
+    def test_status_satellite_escaped(self):
+        """Status 17: Completed (satellite escaped)."""
+        assert CommentFromStatus(17) == 'Completed (satellite escaped)'
+        # Discrimination: differentiate from 18 (satellite disintegrated)
+        # by pinning the escaped-specific qualifier substring.
+        assert 'escaped' in CommentFromStatus(17)
+        assert 'disintegrated' not in CommentFromStatus(17)
+
+    @pytest.mark.unit
+    def test_status_satellite_disintegrated(self):
+        """Status 18: Completed (satellite disintegrated)."""
+        assert CommentFromStatus(18) == 'Completed (satellite disintegrated)'
+        # Discrimination: differentiate from 16 (planet disintegrated) by
+        # pinning that the qualifier names the satellite, not the planet.
+        assert 'satellite disintegrated' in CommentFromStatus(18)
+        assert CommentFromStatus(18) != CommentFromStatus(16)
+
+    @pytest.mark.unit
     def test_status_generic_error(self):
         """Status 20: Generic error."""
         result = CommentFromStatus(20)

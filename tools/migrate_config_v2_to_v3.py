@@ -286,6 +286,25 @@ _IC_FIELDS = {
     'interior.dummy.ini_tmagma',
 }
 
+# Orbit-evolution fields consumed by the orbit-dispatch handler: 2.0's bool
+# flags do not reduce to a single rename, since 3.0 replaced each with a
+# string-valued model choice (and split the satellite block out under
+# [orbit.satellite]).
+_ORBIT_FIELDS = {
+    'orbit.evolve',
+    'orbit.satellite',
+    'orbit.mass_sat',
+    'orbit.semimajoraxis_sat',
+}
+
+# Earth mass [kg] / astronomical unit [m]. 2.0 orbit.mass_sat and
+# orbit.semimajoraxis_sat are in kg/m; 3.0's orbit.satellite.mass_sat and
+# .semimajoraxis_sat are in M_earth/AU. Hard-coded to keep the value
+# transform independent of an importable proteus at call time; verified
+# against proteus.utils.constants.M_earth / AU.
+_M_EARTH_KG = 5.972e24
+_AU_M = 1.495978707e11
+
 # Volatiles partial-pressure block: delivery.volatiles.X -> planet.gas_prs.X.
 _VOLATILE_SPECIES = ('H2O', 'CO2', 'N2', 'S2', 'SO2', 'H2S', 'NH3', 'H2', 'CH4', 'CO')
 
@@ -618,6 +637,41 @@ def _handle_temperature_mode(eff_v2, explicit, v3, active, report):
             )
 
 
+def _handle_orbit_dispatch(eff_v2, explicit, v3, report):
+    """Map 2.0's boolean orbit.evolve/orbit.satellite flags to 3.0's
+    string-valued star_planet_model/planet_satellite_model dispatch.
+
+    2.0 had exactly one orbital-evolution model and one satellite model;
+    3.0 offers several per family (sp0d/sp1d; ps0d/ps1d/ps1d_evec). The
+    simplest 3.0 model in each family (sp0d, ps0d) is the closest analogue
+    to what 2.0 actually ran, so a set 2.0 flag maps to that rather than a
+    guess at which richer 3.0 model the user would have wanted.
+    """
+    if eff_v2.get('orbit.evolve'):
+        v3['orbit.star_planet_model'] = 'sp0d'
+        if 'orbit.evolve' in explicit:
+            report.warnings.append(
+                'orbit.evolve mapped to orbit.star_planet_model="sp0d" (the '
+                'simplest 3.0 orbital-evolution model); review whether sp1d '
+                'better matches the intended run.'
+            )
+    if eff_v2.get('orbit.satellite'):
+        v3['orbit.planet_satellite_model'] = 'ps0d'
+        v3['orbit.satellite.include_satellite'] = True
+        mass_sat = eff_v2.get('orbit.mass_sat')
+        if mass_sat not in (None, 'none'):
+            v3['orbit.satellite.mass_sat'] = float(mass_sat) / _M_EARTH_KG
+        sma_sat = eff_v2.get('orbit.semimajoraxis_sat')
+        if sma_sat not in (None, 'none'):
+            v3['orbit.satellite.semimajoraxis_sat'] = float(sma_sat) / _AU_M
+        if 'orbit.satellite' in explicit:
+            report.warnings.append(
+                'orbit.satellite mapped to orbit.planet_satellite_model="ps0d" '
+                '(the simplest 3.0 satellite model); review whether ps1d or '
+                'ps1d_evec better matches the intended run.'
+            )
+
+
 def translate(v2_toml: dict):
     """Translate a parsed 2.0 config dict into a validated 3.0 config dict.
 
@@ -672,7 +726,12 @@ def translate(v2_toml: dict):
     atmos_hoist_src = {f'atmos_clim.{active["atmos_clim"]}.{field}' for field in _ATMOS_SHARED}
     for v2_path, val in eff_v2.items():
         # consumed by special handlers
-        if v2_path in _ELEMENT_FIELDS or v2_path in _IC_FIELDS or v2_path in atmos_hoist_src:
+        if (
+            v2_path in _ELEMENT_FIELDS
+            or v2_path in _IC_FIELDS
+            or v2_path in atmos_hoist_src
+            or v2_path in _ORBIT_FIELDS
+        ):
             continue
         if v2_path.startswith('delivery.volatiles.'):
             sp = v2_path.split('.')[-1]
@@ -727,6 +786,7 @@ def translate(v2_toml: dict):
     _handle_elements(eff_v2, explicit, v3, report)
     _handle_atmos_hoist(eff_v2, explicit, v3, active, report)
     _handle_temperature_mode(eff_v2, explicit, v3, active, report)
+    _handle_orbit_dispatch(eff_v2, explicit, v3, report)
 
     # derived fields with no 2.0 source
     if v3.get('interior_struct.module') == 'spider':
