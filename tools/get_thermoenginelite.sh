@@ -14,12 +14,7 @@ if ! [ -x "$(command -v pip)" ]; then
 fi
 
 # Shared helpers: see tools/_get_common.sh.
-_get_common="$(dirname "${BASH_SOURCE[0]}")/_get_common.sh"
-if [ ! -f "$_get_common" ]; then
-    echo "ERROR: $_get_common is missing; use a complete PROTEUS checkout." >&2
-    exit 1
-fi
-source "$_get_common"
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 
 # Path to PROTEUS folder
 root="$proteus_root"
