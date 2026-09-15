@@ -5,18 +5,16 @@
 # This file is sourced, never executed. Source it near the top of a get_*
 # script, before the first helper call:
 #
-#     _get_common="$(dirname "${BASH_SOURCE[0]}")/_get_common.sh"
-#     [ -f "$_get_common" ] || {
-#         echo "ERROR: $_get_common is missing." >&2
-#         exit 1
-#     }
-#     source "$_get_common"
+#     source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 #
 # Every caller runs a get_* script by path (docs, install.sh, the CI setup
 # action, and proteus install-all through src/proteus/utils/data.py), so
 # ${BASH_SOURCE[0]} locates this file without needing a resolved path
-# first, which is what makes the bootstrap above safe to run before
-# portable_realpath exists.
+# first, which is what makes that line safe to run before portable_realpath
+# exists. bash reports a missing file itself, but half the get_* scripts
+# set no -e and would carry on with every helper undefined and
+# proteus_root empty, which puts the work path at the filesystem root:
+# `rm -rf "/aragog/"`. Hence `|| exit 1`.
 #
 # The helpers target bash 3.2, the version macOS ships, and behave the same
 # whether or not the sourcing script enables `set -euo pipefail`. Two of

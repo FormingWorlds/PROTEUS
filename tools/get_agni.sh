@@ -18,12 +18,7 @@ if ! command -v julia >/dev/null 2>&1; then
 fi
 
 # Shared helpers: see tools/_get_common.sh.
-_get_common="$(dirname "${BASH_SOURCE[0]}")/_get_common.sh"
-if [ ! -f "$_get_common" ]; then
-    echo "ERROR: $_get_common is missing; use a complete PROTEUS checkout." >&2
-    exit 1
-fi
-source "$_get_common"
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 
 ag_url="${AGNI_GIT_URL:-$(python "$proteus_tools_dir/_module_pins.py" agni url)}"
 ag_ref="${AGNI_GIT_REF:-$(python "$proteus_tools_dir/_module_pins.py" agni ref)}"

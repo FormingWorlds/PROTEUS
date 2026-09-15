@@ -340,7 +340,7 @@ def test_every_helper_user_sources_the_library_before_calling_it():
         if not uses:
             continue
         users.append(script.name)
-        sourced = [i for i, code in lines if 'source "$_get_common"' in code]
+        sourced = [i for i, code in lines if re.match(r'^source\s+.*_get_common\.sh', code)]
         if not sourced:
             unsourced.append(script.name)
         elif min(uses) < sourced[0]:
@@ -356,9 +356,11 @@ def test_every_helper_user_sources_the_library_before_calling_it():
 def test_a_missing_helper_library_stops_the_script(tmp_path):
     """A script whose library is absent stops before touching a checkout.
 
-    Continuing would leave every helper call undefined and reach git with
-    an empty destination, so the bootstrap names the missing file, exits
-    non-zero, and runs no git command.
+    bash names the missing file on its own, but half the scripts set no
+    ``-e``, so without the ``|| exit 1`` the run carries on with every
+    helper undefined and ``proteus_root`` empty: the work path becomes
+    ``/aragog/``, which the script then deletes and clones into. Nothing
+    may reach git.
     """
     lone_tools = tmp_path / 'tools'
     lone_tools.mkdir()

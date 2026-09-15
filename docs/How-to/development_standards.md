@@ -74,13 +74,12 @@ GitHub SSH probe (`github_use_ssh`), the https-to-SSH URL rewrite
 A new install script starts with the same bootstrap the existing ones use:
 
 ```bash
-_get_common="$(dirname "${BASH_SOURCE[0]}")/_get_common.sh"
-if [ ! -f "$_get_common" ]; then
-    echo "ERROR: $_get_common is missing; use a complete PROTEUS checkout." >&2
-    exit 1
-fi
-source "$_get_common"
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 ```
+
+The `|| exit 1` is load-bearing: half the scripts set no `-e`, and one that
+carried on past a failed `source` would run with `proteus_root` empty, putting
+its work path at the filesystem root.
 
 Add a helper to the library rather than copying one into a script, and give it
 a parameter for the variation a caller needs: `get_socrates.sh` passes a git
