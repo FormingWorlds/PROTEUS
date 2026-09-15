@@ -122,8 +122,9 @@ If the two-phase tables are not available, the property surfaces are built from 
 The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005 below 2.55 GPa, Fei et al. 2021 above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8), the constant solidus-to-liquidus ratio of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization.
 The melt fraction then follows from the lever rule between this solidus and liquidus.
 
-With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the solid and liquid tables define the phase boundaries directly.
-`mushy_zone_factor` is treated as 1.0 so the solidus coincides with the liquidus, and the latent-heat gap is supplied by the entropy difference between the solid and liquid tables rather than by a fixed temperature depression.
+With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the structure solve uses the separate solid and liquid tables, which supply the latent-heat entropy gap across the melting curve directly rather than through a single interpolated unified table.
+The phase boundaries follow the same construction as the unified case: the liquidus is the analytic PALEOS curve, and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor`.
+The mushy-zone width is therefore set by `mushy_zone_factor` for both `mantle_eos` forms.
 
 !!! note "Two-phase table versions"
     Two versions of the PALEOS two-phase MgSiO$_3$ tables are in circulation: the set shipped in the Zalmoxis data directory, and the finer-grid set on Zenodo that the reference-data manifest fetches.

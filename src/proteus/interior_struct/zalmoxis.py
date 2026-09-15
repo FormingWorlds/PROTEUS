@@ -975,13 +975,16 @@ def load_zalmoxis_configuration(
     # materials a layer uses; absent materials get 1.0 so validation passes.
     mzf = config.interior_struct.zalmoxis.mushy_zone_factor
     _unified_paleos_materials = (
-        'PALEOS:iron', 'PALEOS:MgSiO3', 'PALEOS:H2O',
-        'PALEOS-API:iron', 'PALEOS-API:MgSiO3', 'PALEOS-API:H2O',
+        'PALEOS:iron',
+        'PALEOS:MgSiO3',
+        'PALEOS:H2O',
+        'PALEOS-API:iron',
+        'PALEOS-API:MgSiO3',
+        'PALEOS-API:H2O',
     )
     _configured_eos = ' '.join(v for v in layer_eos_config.values() if v)
     mushy_zone_factors = {
-        name: (mzf if name in _configured_eos else 1.0)
-        for name in _unified_paleos_materials
+        name: (mzf if name in _configured_eos else 1.0) for name in _unified_paleos_materials
     }
 
     zc = config.interior_struct.zalmoxis
@@ -2033,23 +2036,20 @@ def generate_spider_tables(config: Config, outdir: str):
         return None
 
     # Phase boundaries: PALEOS-liquidus is the analytic Belonoshko+2005 /
-    # Fei+2021 Simon-Glatzel curve. For PALEOS-2phase the solidus equals the
-    # liquidus temperature; the latent-heat gap is the entropy difference
-    # between solid_table.s(P, T_liq) and liquid_table.s(P, T_liq).
+    # Fei+2021 Simon-Glatzel curve. The derived solidus is
+    # T_solidus = T_liquidus * mushy_zone_factor for both layouts. A two-phase
+    # table adds the latent-heat gap from solid_table.s(P, T_liq) minus
+    # liquid_table.s(P, T_liq).
     _, liquidus_func = get_solidus_liquidus_functions(
         solidus_id='Stixrude14-solidus',  # unused, but API requires it
         liquidus_id='PALEOS-liquidus',
     )
     mzf = config.interior_struct.zalmoxis.mushy_zone_factor
-    # The mushy_zone_factor widens the mushy band only for a unified table.
-    # Two-phase tables already include the solid/liquid split, so a factor < 1
-    # would lower the solidus temperature and inflate the latent-heat gap.
-    mzf_effective = 1.0 if is_twophase else mzf
-    solidus_func = _make_derived_solidus(liquidus_func, mzf_effective)
+    solidus_func = _make_derived_solidus(liquidus_func, mzf)
     if is_twophase:
         log.info(
-            'PALEOS-2phase phase boundaries: solidus T = liquidus T '
-            '(latent heat from 2-phase tables; configured mushy_zone_factor=%.2f not applied)',
+            'PALEOS-2phase phase boundaries: solidus = liquidus * %.2f '
+            '(mushy_zone_factor); latent heat from 2-phase tables',
             mzf,
         )
     else:
@@ -2079,7 +2079,7 @@ def generate_spider_tables(config: Config, outdir: str):
         P_max=P_max,
         nP=nP,
         nS=nS,
-        mzf=mzf_effective,
+        mzf=mzf,
         layout=layout,
         mantle_eos=mantle_eos,
         eos_file=eos_file,
