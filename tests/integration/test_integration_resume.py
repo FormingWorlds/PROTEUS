@@ -825,22 +825,31 @@ CRYST_LEG2_STOP_TIME = 1.2e4
 # enough that its per-step mass loss is negligible against the atmosphere.
 CRYST_ESCAPE_RATE = 1.0e6
 
-# Largest fractional growth of the atmospheric hydrogen inventory the frozen
-# run may show after resume. A frozen mantle does not degas, so escape only
-# removes from the atmosphere and it does not grow; a misread-as-molten run
-# degasses the melt and grows it several-fold, so this bound separates them.
-CRYST_ATM_GROWTH_TOL = 0.5
+# Float-noise band for the across-seam non-increase check on the atmospheric
+# hydrogen inventory. A frozen mantle does not degas, so the inventory only
+# falls by escape; on a correct restore the largest across-seam step is a fall
+# of about 9e-9 relative, so this rejects any degassing rise while absorbing
+# round-off.
+CRYST_ATM_NOISE_RTOL = 1.0e-6
+
+# Largest fraction of the resume-seam atmosphere the frozen run may lose.
+# Escape removes only a negligible fraction here (about 8e-6 of the baseline),
+# so a loss past this bound means the atmosphere collapsed rather than that
+# escape ran. This is the lower-bound guard; a cleared flag instead grows the
+# inventory and trips the non-increase check above.
+CRYST_ATM_LOSS_BOUND = 1.0e-2
 
 
 def _make_freeze_runner(output_dir, stop_time):
     """Build a runner that freezes volatiles once the mantle is solid.
 
-    Extends :func:`_make_runner` with the three settings the
-    crystallization-on-resume path needs: volatile freezing enabled, the
-    escape reservoir moved off its ``'outgas'`` default to ``'bulk'``, and a
-    nonzero dummy escape rate so the escape branch actually runs. The bug the
-    resume restore guards against only bites when volatile freezing is on and
-    the reservoir is off its default, so both are set here.
+    Extends :func:`_make_runner` with the two settings the
+    crystallization-on-resume scenario needs: volatile freezing enabled, so a
+    mantle that once crystallized stays frozen for the rest of the run, and a
+    nonzero dummy escape rate, so the escape branch runs and the frozen escape
+    path is exercised. The escape reservoir stays at its ``'outgas'`` default;
+    a frozen mantle forces atmosphere-only escape whatever the reservoir
+    setting is, so no override is needed to reach that path.
 
     Parameters
     ----------
@@ -856,12 +865,12 @@ def _make_freeze_runner(output_dir, stop_time):
     """
     runner = _make_runner(output_dir, stop_time)
     runner.config.params.stop.solid.freeze_volatiles = True
-    runner.config.escape.reservoir = 'bulk'
     runner.config.escape.dummy.rate = CRYST_ESCAPE_RATE
     return runner
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 def test_resume_restores_crystallization_across_remelting(tmp_path):
     """A resume restores the crystallization flag from the whole history.
 
@@ -882,12 +891,13 @@ def test_resume_restores_crystallization_across_remelting(tmp_path):
       the crystallization fraction while the resume row is above it.
     - The crystallization flag comes back set after the resume.
     - The downstream consequence holds: the atmospheric hydrogen inventory
-      does not grow across the resume seam, because the frozen mantle no
-      longer degasses. A resume that cleared the flag would run outgassing
-      and grow it several-fold, which this bound rejects.
+      changes by escape only across the resume seam, so it does not grow and
+      loses at most a negligible fraction. A resume that cleared the flag
+      would run outgassing and grow it several-fold, which the non-increase
+      check rejects; the loss bound rejects a collapse to near zero.
     - Escape is active over the resumed leg, so the frozen escape path
-      (atmosphere-only, reservoir forced off ``'bulk'``) is exercised rather
-      than skipped.
+      (atmosphere-only escape, forced by the frozen mantle) is exercised
+      rather than skipped.
 
     Scope and boundary. The dummy interior splits melt and solid by an
     algebraic rule and writes no interior snapshot, so this test covers the
@@ -951,12 +961,25 @@ def test_resume_restores_crystallization_across_remelting(tmp_path):
         'escape never ran over the resumed leg, so the frozen escape path was not exercised'
     )
 
-    # The frozen mantle no longer degasses, so the atmospheric hydrogen
-    # inventory holds at its resume-seam value. Measure growth from the last
-    # pre-resume row so a first-step degas is caught, not divided away.
+    # The frozen mantle no longer degasses, so run_crystallized changes the
+    # atmospheric hydrogen inventory by escape only: across the resume seam it
+    # falls and never rises, and it loses only a negligible fraction.
     atm_baseline = float(leg2.hf_all['H_kg_atm'].iloc[n_leg1 - 1])
-    atm_growth = float(appended['H_kg_atm'].max()) / atm_baseline - 1.0
-    assert atm_growth <= CRYST_ATM_GROWTH_TOL, (
-        f'atmospheric hydrogen grew by {atm_growth:.2f} after resume; the frozen '
-        'mantle should not degas, so the crystallization flag was not restored'
+    assert atm_baseline > 0.0, (
+        'resume-seam atmosphere holds no hydrogen, so the inventory check has '
+        'no baseline to measure against'
+    )
+    # Include the last pre-resume row so the first post-resume step is measured
+    # against the seam value, not divided away.
+    seam_atm = leg2.hf_all['H_kg_atm'].iloc[n_leg1 - 1:].to_numpy()
+    atm_steps = np.diff(seam_atm)
+    assert (atm_steps <= atm_baseline * CRYST_ATM_NOISE_RTOL).all(), (
+        f'atmospheric hydrogen rose by up to {float(atm_steps.max()):.3e} kg across '
+        'the resume seam; the frozen mantle degassed, so the crystallization flag '
+        'was not restored'
+    )
+    assert float(seam_atm.min()) >= atm_baseline * (1.0 - CRYST_ATM_LOSS_BOUND), (
+        f'atmospheric hydrogen fell to {float(seam_atm.min()):.3e} kg after resume, '
+        f'below {1.0 - CRYST_ATM_LOSS_BOUND:g} of the {atm_baseline:.3e} kg baseline; '
+        'escape-only removal from a frozen mantle cannot lose this much'
     )
