@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import builtins
 import importlib.util
+import logging
+import os
 from pathlib import Path
 
 import pytest
@@ -2679,3 +2681,111 @@ def test_start_defaults_to_no_resume_no_offline(monkeypatch, tmp_path):
     inst = _FakeProteusStart.instances[0]
     assert inst.resume is False
     assert inst.offline is False
+
+
+# ---------------------------
+# Extended tests: `proteus get` logfile location
+# ---------------------------
+
+LEGACY_GET_LOG = 'proteus_get.log'
+
+
+def _stub_reference_downloaders(monkeypatch, calls=None):
+    """Replace the two downloaders behind ``get reference`` with recording no-ops."""
+    if calls is None:
+        calls = []
+
+    monkeypatch.setattr(
+        'proteus.utils.data.download_exoplanet_data', lambda: calls.append('exo')
+    )
+    monkeypatch.setattr(
+        'proteus.utils.data.download_massradius_data', lambda: calls.append('mr')
+    )
+    return calls
+
+
+@pytest.mark.unit
+def test_get_logfile_is_scoped_to_the_calling_user(monkeypatch, tmp_path):
+    """Two users running ``proteus get`` on one machine target two different logfiles.
+
+    A shared temporary directory is normally sticky, so a fixed logfile name
+    puts every user of the machine on one path that only its owner can
+    recreate. The path must therefore vary with the caller, and must no longer
+    be the shared name that collided.
+    """
+    runner = CliRunner()
+    _stub_reference_downloaders(monkeypatch)
+    monkeypatch.setattr('proteus.cli.tempfile.gettempdir', lambda: str(tmp_path))
+
+    seen = []
+    monkeypatch.setattr(cli, 'setup_logger', lambda logpath, **kw: seen.append(Path(logpath)))
+
+    for uid in (1001, 2002):
+        monkeypatch.setattr('proteus.cli.os.getuid', lambda uid=uid: uid)
+        res = runner.invoke(cli.cli, ['get', 'reference'])
+        assert res.exit_code == 0, res.output
+
+    assert seen[0] != seen[1]
+    assert {path.parent for path in seen} == {tmp_path}
+    assert LEGACY_GET_LOG not in {path.name for path in seen}
+
+
+@pytest.mark.unit
+def test_get_leaves_an_unremovable_foreign_logfile_alone(monkeypatch, tmp_path):
+    """``proteus get`` runs although another user's logfile sits in the temp directory.
+
+    Reproduces the shared-cluster failure: a logfile written by a different
+    user in a sticky temporary directory, where the kernel refuses removal by
+    a non-owner. Removal of that path is made to raise the same
+    ``PermissionError``, so a command that still targeted it would abort.
+    """
+    runner = CliRunner()
+    calls = _stub_reference_downloaders(monkeypatch)
+    monkeypatch.setattr('proteus.cli.tempfile.gettempdir', lambda: str(tmp_path))
+    monkeypatch.setattr('proteus.cli.os.getuid', lambda: 4242)
+
+    foreign = tmp_path / LEGACY_GET_LOG
+    foreign.write_text('owned by another user\n')
+
+    real_remove = os.remove
+
+    def guarded_remove(path, *args, **kwargs):
+        if Path(path) == foreign:
+            raise PermissionError(1, 'Operation not permitted', str(path))
+        return real_remove(path, *args, **kwargs)
+
+    monkeypatch.setattr('proteus.utils.logs.os.remove', guarded_remove)
+
+    res = runner.invoke(cli.cli, ['get', 'reference'])
+    assert res.exit_code == 0, res.output
+    assert calls == ['exo', 'mr']
+    # The other user's file is untouched, and this user gets a logfile of their own.
+    assert foreign.read_text() == 'owned by another user\n'
+    assert (tmp_path / 'proteus_get_4242.log').exists()
+
+
+@pytest.mark.unit
+def test_get_continues_when_the_logfile_cannot_be_opened(monkeypatch, tmp_path):
+    """A logfile that cannot be opened at all warns but does not stop the download.
+
+    Covers what a per-user name cannot: a read-only or full temporary
+    directory. The download proceeds on terminal-only logging.
+    """
+    runner = CliRunner()
+    calls = _stub_reference_downloaders(monkeypatch)
+    monkeypatch.setattr('proteus.cli.tempfile.gettempdir', lambda: str(tmp_path))
+
+    def refuse(*args, **kwargs):
+        raise PermissionError(1, 'Operation not permitted')
+
+    monkeypatch.setattr(cli, 'setup_logger', refuse)
+
+    try:
+        res = runner.invoke(cli.cli, ['get', 'reference'])
+        assert res.exit_code == 0, res.output
+        assert calls == ['exo', 'mr']
+        assert 'Cannot write' in res.output
+        # Exactly one terminal handler remains; no half-configured logger survives.
+        assert len(logging.getLogger('fwl').handlers) == 1
+    finally:
+        logging.getLogger('fwl').handlers.clear()
