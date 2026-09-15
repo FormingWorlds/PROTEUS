@@ -22,9 +22,10 @@ def _evection_rate_cap_yr(tides_o: Tides_t, zone_active: bool, config: Config) -
     Returns ``np.inf`` when the cap does not apply.
     """
     # Check configured maximum step size for evection resonance
-    evection_max = float(config.params.dt.evection_maximum)
-    if evection_max <= 0.0 or not zone_active:
+    evection_max_cfg = config.params.dt.evection_maximum
+    if evection_max_cfg is None or not zone_active:
         return np.inf
+    evection_max = float(evection_max_cfg)
 
     # Check the history of eccentricity samples
     history = tides_o.evection_ecc_history
@@ -88,19 +89,24 @@ def _estimate_evection_dt_cap_yr(
     rate_cap = _evection_rate_cap_yr(tides_o, zone_active, config)
 
     # Compute the growth limiter
-    evection_growth = float(getattr(dt_cfg, 'evection_growth_factor', 0.0))
+    evection_growth_cfg = getattr(dt_cfg, 'evection_growth_factor', None)
     cooldown_remaining = int(tides_o.evection_cooldown_remaining)
     growth_cap = np.inf
-    # The growth limiter is only active while the zone is active, or for a
-    # short cooldown period after it was last active.
-    if evection_growth > 0.0 and (zone_active or cooldown_remaining > 0):
+    # The growth limiter is only active (evection_growth_factor is not
+    # None) while the zone is active, or for a short cooldown period after
+    # it was last active.
+    if evection_growth_cfg is not None and (zone_active or cooldown_remaining > 0):
         if dt_prev_actual_yr is not None and dt_prev_actual_yr > 0.0:
-            growth_cap = dt_prev_actual_yr * evection_growth
+            growth_cap = dt_prev_actual_yr * float(evection_growth_cfg)
 
     # Refresh/decrement the cooldown counter for the NEXT call, using the
-    # zone state observed THIS call.
+    # zone state observed THIS call. evection_cooldown_iters=None means no
+    # cooldown tail, same as 0.
+    evection_cooldown_iters_cfg = getattr(dt_cfg, 'evection_cooldown_iters', None)
     if zone_active:
-        tides_o.evection_cooldown_remaining = int(getattr(dt_cfg, 'evection_cooldown_iters', 0))
+        tides_o.evection_cooldown_remaining = (
+            int(evection_cooldown_iters_cfg) if evection_cooldown_iters_cfg is not None else 0
+        )
     elif cooldown_remaining > 0:
         tides_o.evection_cooldown_remaining = cooldown_remaining - 1
 

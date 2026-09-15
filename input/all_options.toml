@@ -61,12 +61,12 @@ config_version = "3.0"
         max_growth_factor     = 0.0          # cap on dt growth ratio between consecutive steps; 0 = disabled
         mushy_maximum         = 1.0e6        # max dt [yr] while stop.solid.phi_crit < Phi < mushy_upper (0 = disabled); caps steps through the mushy band so the integrator resolves the solidification front rather than overstepping it
         mushy_upper           = 0.99         # mushy regime upper bound (melt fraction)
-        evection_maximum      = 0.0          # ceiling dt [yr] while hf_row['in_evection_band']/['near_evection_band'] (0 = disabled); used directly until rate history exists, then only as an upper bound on the rate-based cap below
+        evection_maximum      = 'none'       # ceiling dt [yr] while hf_row['in_evection_band']/['near_evection_band'] ('none' = disabled, must be >0 otherwise); used directly until rate history exists, then only as an upper bound on the rate-based cap below
         evection_target_rel_de = 0.05        # target max fractional change in eccentricity_sat per step while in/near the evection band
         evection_de_floor     = 0.02         # floor on eccentricity_sat in the evection_target_rel_de ratio's denominator
         evection_rate_window  = 2            # trailing macro-steps used to fit the secular |de/dt| (least-squares for >2, two-point diff at the default of 2); widen (e.g. 10-20) if eccentricity_sat's own evection-angle-driven oscillation aliases into a stuck-small dt
-        evection_growth_factor = 0.0         # cap on dt growth ratio while in/near the evection band or within evection_cooldown_iters of leaving it; 0 = disabled
-        evection_cooldown_iters = 0          # iterations after leaving the evection band during which evection_growth_factor stays active; 0 = disabled
+        evection_growth_factor = 'none'      # cap on dt growth ratio while in/near the evection band or within evection_cooldown_iters of leaving it; 'none' = disabled, must be >0 otherwise
+        evection_cooldown_iters = 'none'     # iterations after leaving the evection band during which evection_growth_factor stays active; 'none' = disabled, must be >0 otherwise
         hysteresis_iters      = 0            # suppress speed-up for N iters after a slow-down; 0 = disabled
         hysteresis_sfinc      = 1.1          # gentler speed-up factor while hysteresis active
 

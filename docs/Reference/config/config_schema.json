@@ -493,17 +493,17 @@
       "path": "params.dt.evection_maximum",
       "toml_section": "params.dt",
       "class": "TimeStepParams",
-      "type": "float",
-      "accepts_none": false,
-      "default": "100.0",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
       "choices": null,
       "bounds": [
         {
-          "op": ">=",
+          "op": ">",
           "value": 0
         }
       ],
-      "description": "Ceiling on the time-step size [yr] while the planet-satellite system is inside, or approaching, the evection resonance band. Set to 0 to disable the whole mechanism.",
+      "description": "Ceiling on the time-step size [yr] while the planet-satellite system is inside, or approaching, the evection resonance band. Must be > 0 when set. Default ``'none'`` (disables the whole mechanism).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -577,17 +577,17 @@
       "path": "params.dt.evection_growth_factor",
       "toml_section": "params.dt",
       "class": "TimeStepParams",
-      "type": "float",
-      "accepts_none": false,
-      "default": "0.0",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
       "choices": null,
       "bounds": [
         {
-          "op": ">=",
+          "op": ">",
           "value": 0
         }
       ],
-      "description": "Cap on the dt growth ratio between consecutive steps while the system is inside/approaching the evection band, or within ``evection_cooldown_iters`` steps of having left it. Separate from the global ``max_growth_factor`` (which most evection runs leave disabled, since it would also throttle ordinary bulk evolution for the rest of the run).",
+      "description": "Cap on the dt growth ratio between consecutive steps while the system is inside/approaching the evection band, or within ``evection_cooldown_iters`` steps of having left it. Separate from the global ``max_growth_factor`` (which most evection runs leave disabled, since it would also throttle ordinary bulk evolution for the rest of the run). Must be > 0 when set. Default ``'none'`` (disabled).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -598,17 +598,17 @@
       "path": "params.dt.evection_cooldown_iters",
       "toml_section": "params.dt",
       "class": "TimeStepParams",
-      "type": "int",
-      "accepts_none": false,
-      "default": "0",
+      "type": "int or none",
+      "accepts_none": true,
+      "default": "none",
       "choices": null,
       "bounds": [
         {
-          "op": ">=",
+          "op": ">",
           "value": 0
         }
       ],
-      "description": "Number of PROTEUS iterations, after the system is no longer judged in/near the evection band, during which ``evection_growth_factor`` remains active. Refreshed to this value on every iteration the zone is active, so a long stay in the band does not exhaust it before exit. Default 0 (no cooldown tail; growth limiting turns off the instant the zone is left).",
+      "description": "Number of PROTEUS iterations, after the system is no longer judged in/near the evection band, during which ``evection_growth_factor`` remains active. Refreshed to this value on every iteration the zone is active, so a long stay in the band does not exhaust it before exit. Must be > 0 when set. Default ``'none'`` (no cooldown tail; growth limiting turns off the instant the zone is left).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

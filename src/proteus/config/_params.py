@@ -4,7 +4,7 @@ It also defines stopping criteria."""
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, lt
+from attrs.validators import ge, gt, in_, lt, optional
 
 from ._converters import none_if_none
 
@@ -136,10 +136,11 @@ class TimeStepParams:
         ``Phi_global > stop.solid.phi_crit``, ``mushy_maximum``
         takes over from ``maximum``. Default 0.99 so the cap kicks
         in as soon as the first cell crystallises.
-    evection_maximum: float
+    evection_maximum: float | str
         Ceiling on the time-step size [yr] while the planet-satellite
         system is inside, or approaching, the evection resonance band.
-        Set to 0 to disable the whole mechanism.
+        Must be > 0 when set. Default ``'none'`` (disables the whole
+        mechanism).
     evection_target_rel_de: float
         Target maximum fractional change in ``eccentricity_sat`` per
         macro-step while inside/approaching the evection band. Obliqua's
@@ -158,20 +159,21 @@ class TimeStepParams:
         SECULAR ``|de/dt|`` this cap bounds against (a least-squares
         linear fit for windows > 2, the plain two-point difference at
         the default of 2). Default 2, preserves the two-point behaviour.
-    evection_growth_factor: float
+    evection_growth_factor: float | str
         Cap on the dt growth ratio between consecutive steps while the
         system is inside/approaching the evection band, or within
         ``evection_cooldown_iters`` steps of having left it. Separate
         from the global ``max_growth_factor`` (which most evection runs
         leave disabled, since it would also throttle ordinary bulk
-        evolution for the rest of the run).
-    evection_cooldown_iters: int
+        evolution for the rest of the run). Must be > 0 when set. Default
+        ``'none'`` (disabled).
+    evection_cooldown_iters: int | str
         Number of PROTEUS iterations, after the system is no longer judged
         in/near the evection band, during which ``evection_growth_factor``
         remains active. Refreshed to this value on every iteration the
         zone is active, so a long stay in the band does not exhaust it
-        before exit. Default 0 (no cooldown tail; growth limiting turns
-        off the instant the zone is left).
+        before exit. Must be > 0 when set. Default ``'none'`` (no cooldown
+        tail; growth limiting turns off the instant the zone is left).
     hysteresis_iters: int
         Number of PROTEUS iterations after an adaptive "slow down"
         decision during which the speed-up factor is suppressed.
@@ -206,15 +208,26 @@ class TimeStepParams:
 
     # Stiffness-aware adaptive time-stepping extensions.
     # Defaults OFF (mushy_maximum=0, hysteresis_iters=0); enable via
-    # positive config values.
+    # positive config values. The evection_* trio below use 'none' rather
+    # than 0 as their opt-out sentinel (see each field's own docstring
+    # above): 0 is not a meaningful value for any of the three (a zero
+    # ceiling/growth-factor/cooldown is behaviourally identical to
+    # disabled, so collapsing that ambiguity into an explicit 'none'
+    # avoids a silently-degenerate positive-looking config value).
     mushy_maximum: float = field(default=0.0, validator=ge(0))
     mushy_upper: float = field(default=0.99, validator=(gt(0), lt(1)))
-    evection_maximum: float = field(default=1e2, validator=ge(0))
+    evection_maximum: float | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
     evection_target_rel_de: float = field(default=0.05, validator=gt(0))
     evection_de_floor: float = field(default=0.02, validator=gt(0))
     evection_rate_window: int = field(default=2, validator=ge(2))
-    evection_growth_factor: float = field(default=0.0, validator=ge(0))
-    evection_cooldown_iters: int = field(default=0, validator=ge(0))
+    evection_growth_factor: float | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
+    evection_cooldown_iters: int | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
     hysteresis_iters: int = field(default=0, validator=ge(0))
     hysteresis_sfinc: float = field(default=1.1, validator=ge(1.0))
 

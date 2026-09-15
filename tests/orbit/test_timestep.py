@@ -71,8 +71,8 @@ def _dt_cap_config(
     evection_target_rel_de=0.05,
     evection_de_floor=0.02,
     evection_rate_window=2,
-    evection_growth_factor=0.0,
-    evection_cooldown_iters=0,
+    evection_growth_factor=None,
+    evection_cooldown_iters=None,
 ) -> Any:
     return cast(
         Any,
@@ -112,14 +112,14 @@ def _oscillating_ecc_history(
 
 
 @pytest.mark.physics_invariant
-def test_evection_rate_cap_yr_disabled_when_ceiling_is_zero():
-    """``evection_maximum=0`` disables the whole mechanism regardless of
-    zone-active or the eccentricity history -- the source's opt-out
-    sentinel.
+def test_evection_rate_cap_yr_disabled_when_ceiling_is_none():
+    """``evection_maximum=None`` (the schema default, 'none' in TOML)
+    disables the whole mechanism regardless of zone-active or the
+    eccentricity history -- the source's opt-out sentinel.
     """
     tides_o = _tides_with_ecc_history([0.0, 10.0], [0.10, 0.15])
 
-    disabled = _dt_cap_config(evection_maximum=0.0)
+    disabled = _dt_cap_config(evection_maximum=None)
     assert _evection_rate_cap_yr(tides_o, True, disabled) == np.inf
 
     # Discrimination: the same history/zone_active with a positive ceiling
@@ -397,13 +397,13 @@ def test_estimate_evection_dt_cap_yr_cooldown_rearms_while_zone_is_active():
 
 @pytest.mark.physics_invariant
 def test_estimate_evection_dt_cap_yr_growth_limiter_disabled_by_default():
-    """``evection_growth_factor=0`` (the schema default) must leave the
+    """``evection_growth_factor=None`` (the schema default) must leave the
     growth-limiter half unconstrained even with an active zone and a small
     previous step -- opt-in only, matching the global
     ``max_growth_factor``'s own disabled-by-default convention.
     """
     config = _dt_cap_config(
-        evection_maximum=0.0, evection_growth_factor=0.0, evection_cooldown_iters=0
+        evection_maximum=None, evection_growth_factor=None, evection_cooldown_iters=None
     )
     cap = _estimate_evection_dt_cap_yr(Tides_t(), True, 0.5, config)
     assert cap == np.inf
@@ -413,7 +413,7 @@ def test_estimate_evection_dt_cap_yr_growth_limiter_disabled_by_default():
     # unconstrained value above follows from the disable switch, not from
     # this scenario never triggering the limiter at all.
     config_on = _dt_cap_config(
-        evection_maximum=0.0, evection_growth_factor=1.3, evection_cooldown_iters=0
+        evection_maximum=None, evection_growth_factor=1.3, evection_cooldown_iters=None
     )
     cap_on = _estimate_evection_dt_cap_yr(Tides_t(), True, 0.5, config_on)
     assert cap_on == pytest.approx(0.5 * 1.3, rel=1e-9)
