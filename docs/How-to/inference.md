@@ -153,8 +153,7 @@ The system prints the final results including:
 ### Failed and excluded simulations
 
 Two kinds of evaluation carry the fixed bad objective value instead of a fit
-quality, and the study carries on in both cases so that one awkward corner does
-not end a run that has been going for hours.
+quality, and the study carries on in both cases. 
 
 **Failures.** A sweep over a wide parameter box is expected to reach
 combinations PROTEUS cannot integrate. A run that crashes, is killed, or stops
@@ -168,13 +167,10 @@ does not want to fit against, such as `11` (maximum clock runtime) or `15`
 (volatiles escaped). These are reported at info level.
 
 At the end of the study both kinds are collected into `failures.csv`, which
-carries a `category` column of `failure` or `excluded`, and summarised. If more than half the evaluations went unscored, the summary says so as a warning, because the result then rests on far fewer real evaluations than the step count suggests. If no optimisation evaluation produced a fit quality there is no best fit to report, and the study stops with an error rather than presenting the least-bad run as a result.
+carries a `category` column of `failure` or `excluded`, and summarised. If more than half the evaluations went unscored, the summary says so as a warning, because the result then rests on far fewer real evaluations than the step count suggests. If no optimisation evaluation produced a fit quality there is no best fit to report, and the study stops with an error.
 
 Set `abort_on_failure = true` in the inference config to stop at the first failed
-simulation instead. This is useful while setting a study up, when the first
-failure is more likely to be a mistake in the reference config than a genuinely
-unrunnable corner of the parameter space. It applies to failures only; an
-excluded outcome never stops the study.
+simulation instead. This is useful while setting a study up, when the first failure is more likely to be a mistake in the reference config than an unrunnable corner of the parameter space. It applies to failures only; an excluded outcome never stops the study.
 
 ## Customization
 
