@@ -128,14 +128,16 @@ jobs:
 
   # ============================================================
   # Integration tier: schema-tier cross-module pair tests, no
-  # real solver boots. Runs after unit tier so the env cache is
-  # warm.
+  # real solver boots. Runs after unit tier so the build caches
+  # (SOCRATES, AGNI, Julia depot) are warm; FWL_DATA is cached
+  # separately per full-data flavor and is not shared here.
   # ============================================================
   integration-tier:
     name: Integration tier (${{ matrix.os }})
     needs: unit-tier
-    # Ordered after the unit tier for a warm cache; it does not require the
-    # unit tier to pass. Cancelling the workflow still stops it.
+    # Ordered after the unit tier so the flavor-independent build caches
+    # are warm; it does not require the unit tier to pass. Cancelling the
+    # workflow still stops it.
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
