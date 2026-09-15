@@ -1,9 +1,12 @@
 #!/bin/bash
-# Clone Obliqua and run its Julia Pkg.instantiate.
+# Clone Obliqua, instantiate its own environment, and register it into the
+# default Julia environment.
 #
-# Wraps Obliqua's own test/instantiate steps so the clone target and ref
-# come from pyproject.toml's [tool.proteus.modules.obliqua] table. Use
-# OBLIQUA_GIT_URL / OBLIQUA_GIT_REF env vars to override for local dev.
+# Mirrors Obliqua's own documented install steps (README.md "Installation":
+# clone, then `pkg> add .`) so the clone target and ref come from
+# pyproject.toml's [tool.proteus.modules.obliqua] table instead of being
+# typed by hand. Use OBLIQUA_GIT_URL / OBLIQUA_GIT_REF env vars to override
+# for local dev.
 #
 # Usage:
 #   tools/get_obliqua.sh           # clone into ./Obliqua/ at the pinned ref
@@ -23,8 +26,9 @@ ob_url="${OBLIQUA_GIT_URL:-$(python "$script_root/tools/_module_pins.py" obliqua
 ob_ref="${OBLIQUA_GIT_REF:-$(python "$script_root/tools/_module_pins.py" obliqua ref)}"
 
 # First positional arg can be either "0" (skip Obliqua test step) or a path.
-# Preserve Obliqua's upstream get_obliqua.sh interface: passing "0" tells it
-# to skip Pkg.test. Anything else is treated as a destination path.
+# Passing "0" skips Pkg.test (Obliqua has no upstream install script of its
+# own to preserve an interface for). Anything else is treated as a
+# destination path.
 skip_tests=""
 dest="$script_root/Obliqua"
 if [ "${1:-}" = "0" ]; then
@@ -56,6 +60,10 @@ echo "Obliqua at $(git -C "$dest" rev-parse --short HEAD)"
 
 cd "$dest"
 LD_LIBRARY_PATH="" julia --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
+
+# Register Obliqua into the DEFAULT Julia environment.
+echo "Registering Obliqua into the default Julia environment..."
+LD_LIBRARY_PATH="" julia -e 'using Pkg; Pkg.add(path=".")'
 
 if [ "$skip_tests" != "0" ]; then
     echo "Running Obliqua's own test suite..."

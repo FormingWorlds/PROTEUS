@@ -45,6 +45,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 LOCKFILE_NAME = 'keepalive'
 AGNI_MIN_VERSION = '1.8.0'
+OBLIQUA_MIN_VERSION = '0.1.0'
 
 
 def _get_current_time():
@@ -136,6 +137,17 @@ def _get_agni_version(dirs: dict):
     with open(os.path.join(dirs['agni'], 'Project.toml'), 'rb') as hdl:
         agni_meta = tomlload(hdl)
     return agni_meta['version']
+
+
+def _get_obliqua_version(dirs: dict):
+    """
+    Get the installed Obliqua version
+    """
+    from tomllib import load as tomlload
+
+    with open(os.path.join(dirs['obliqua'], 'Project.toml'), 'rb') as hdl:
+        obliqua_meta = tomlload(hdl)
+    return obliqua_meta['version']
 
 
 def _get_julia_version():
@@ -294,6 +306,10 @@ def validate_module_versions(dirs: dict, config: Config):
 
         valid &= _valid_ver(mors_version, _get_expver('fwl-mors'), 'MORS')
 
+    # Orbit module
+    if config.orbit.module == 'obliqua':
+        valid &= _valid_ver(_get_obliqua_version(dirs), OBLIQUA_MIN_VERSION, 'Obliqua')
+
     # Exit
     if not valid:
         UpdateStatusfile(dirs, 20)
@@ -408,8 +424,11 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info(write)
 
     # Orbit module
-    log.info('Orbit module      %s' % config.orbit.module)
-    if config.orbit.module == 'lovepy':
+    write = 'Orbit module      %s' % config.orbit.module
+    if config.orbit.module == 'obliqua':
+        write += ' version ' + _get_obliqua_version(dirs)
+    log.info(write)
+    if config.orbit.module in ['lovepy', 'obliqua']:
         log.info('  - Julia         version ' + _get_julia_version())
 
     # Accretion module

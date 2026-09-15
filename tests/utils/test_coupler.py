@@ -1361,6 +1361,32 @@ def test_get_agni_version_with_mock():
 
 
 @pytest.mark.unit
+def test_get_obliqua_version_with_mock():
+    """Test that _get_obliqua_version reads TOML file (mirrors
+    _get_agni_version: Obliqua is Julia-backed and cloned/instantiated by
+    tools/get_obliqua.sh, so its version is read from the checkout's own
+    Project.toml, not from Python package metadata).
+    """
+    from proteus.utils.coupler import _get_obliqua_version
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        toml_content = b'name = "Obliqua"\nversion = "0.1.0"\n'
+        toml_path = os.path.join(tmpdir, 'Project.toml')
+        with open(toml_path, 'wb') as f:
+            f.write(toml_content)
+
+        dirs = {'obliqua': tmpdir}
+        version = _get_obliqua_version(dirs)
+
+        assert version == '0.1.0'
+        # Discrimination: a regression that returned the 'name' field
+        # ('Obliqua') instead of the version key would still be a
+        # non-empty string. Pin the dotted-version shape explicitly.
+        assert version.count('.') == 2
+        assert version != 'Obliqua'
+
+
+@pytest.mark.unit
 def test_get_lavatmos_version_with_mock():
     """Test that _get_lavatmos_version reports the LAVA_DIR checkout's git hash."""
     from proteus.utils.coupler import _get_lavatmos_version
@@ -3269,6 +3295,7 @@ def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypa
         outgas=types.SimpleNamespace(module='calliope'),
         escape=types.SimpleNamespace(module='zephyrus'),
         star=types.SimpleNamespace(module='mors'),
+        orbit=types.SimpleNamespace(module='dummy'),
     )
     requires = [
         'numpy',
@@ -3314,6 +3341,7 @@ def test_validate_module_versions_raises_for_old_janus_in_spider_stack(monkeypat
         outgas=types.SimpleNamespace(module='dummy'),
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
+        orbit=types.SimpleNamespace(module='dummy'),
     )
     monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='0.1.0'))
 
@@ -3324,6 +3352,105 @@ def test_validate_module_versions_raises_for_old_janus_in_spider_stack(monkeypat
         with pytest.raises(EnvironmentError, match='Out-of-date modules'):
             validate_module_versions({'rad': str(tmp_path)}, config)
     mock_update.assert_called_once()
+
+
+@pytest.mark.unit
+def test_validate_module_versions_raises_for_old_obliqua(tmp_path):
+    """Obliqua is Julia-backed (no pip package metadata), so its check
+    mirrors AGNI's: version read from the checkout's own Project.toml via
+    ``_get_obliqua_version``, compared against the hardcoded
+    ``OBLIQUA_MIN_VERSION`` rather than a ``requires()`` pin.
+    """
+    from proteus.utils.coupler import validate_module_versions
+
+    config = types.SimpleNamespace(
+        interior_energetics=types.SimpleNamespace(module='dummy'),
+        interior_struct=types.SimpleNamespace(module='dummy'),
+        atmos_clim=types.SimpleNamespace(module='dummy'),
+        outgas=types.SimpleNamespace(module='dummy'),
+        escape=types.SimpleNamespace(module='dummy'),
+        star=types.SimpleNamespace(module='dummy'),
+        orbit=types.SimpleNamespace(module='obliqua'),
+    )
+    obliqua_dir = tmp_path / 'Obliqua'
+    obliqua_dir.mkdir()
+    (obliqua_dir / 'Project.toml').write_text('name = "Obliqua"\nversion = "0.0.1"\n')
+
+    with (
+        patch('importlib.metadata.requires', return_value=[]),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        with pytest.raises(EnvironmentError, match='Out-of-date modules'):
+            validate_module_versions(
+                {'rad': str(tmp_path), 'obliqua': str(obliqua_dir)}, config
+            )
+    mock_update.assert_called_once()
+
+
+@pytest.mark.unit
+def test_validate_module_versions_accepts_current_obliqua(tmp_path):
+    """The boundary case: an installed Obliqua exactly at
+    ``OBLIQUA_MIN_VERSION`` passes (the comparison is inclusive), and no
+    other module's check must be disturbed by the addition of the orbit
+    branch.
+    """
+    from proteus.utils.coupler import OBLIQUA_MIN_VERSION, validate_module_versions
+
+    config = types.SimpleNamespace(
+        interior_energetics=types.SimpleNamespace(module='dummy'),
+        interior_struct=types.SimpleNamespace(module='dummy'),
+        atmos_clim=types.SimpleNamespace(module='dummy'),
+        outgas=types.SimpleNamespace(module='dummy'),
+        escape=types.SimpleNamespace(module='dummy'),
+        star=types.SimpleNamespace(module='dummy'),
+        orbit=types.SimpleNamespace(module='obliqua'),
+    )
+    obliqua_dir = tmp_path / 'Obliqua'
+    obliqua_dir.mkdir()
+    (obliqua_dir / 'Project.toml').write_text(
+        f'name = "Obliqua"\nversion = "{OBLIQUA_MIN_VERSION}"\n'
+    )
+
+    with (
+        patch('importlib.metadata.requires', return_value=[]),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        result = validate_module_versions(
+            {'rad': str(tmp_path), 'obliqua': str(obliqua_dir)}, config
+        )
+    assert result is None
+    assert mock_update.call_count == 0
+
+
+@pytest.mark.unit
+def test_print_module_configuration_logs_obliqua_version_and_julia(monkeypatch):
+    """orbit.module == 'obliqua' must print Obliqua's own version (read
+    via _get_obliqua_version) on the 'Orbit module' line, plus the Julia
+    sub-line -- the same treatment 'lovepy' already gets, since Obliqua is
+    equally Julia-backed.
+    """
+    config = types.SimpleNamespace(
+        interior_energetics=types.SimpleNamespace(module='dummy'),
+        atmos_clim=types.SimpleNamespace(module='dummy'),
+        outgas=types.SimpleNamespace(module='dummy', vapourise=False),
+        escape=types.SimpleNamespace(module='dummy'),
+        star=types.SimpleNamespace(module='dummy'),
+        orbit=types.SimpleNamespace(module='obliqua'),
+        accretion=types.SimpleNamespace(module='dummy'),
+        atmos_chem=types.SimpleNamespace(module='dummy'),
+        observe=types.SimpleNamespace(module='dummy'),
+    )
+    dirs = {'proteus': '/tmp/proteus', 'output': '/tmp/out', 'rad': '/tmp/rad'}
+
+    monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'abc123')
+    monkeypatch.setattr(coupler_mod, '_get_obliqua_version', lambda _d: '0.1.0')
+    monkeypatch.setattr(coupler_mod, '_get_julia_version', lambda: '1.10.3')
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        print_module_configuration(dirs, config, '/tmp/cfg.toml')
+        messages = [str(call) for call in mock_log.info.call_args_list]
+        assert any('Orbit module      obliqua version 0.1.0' in m for m in messages)
+        assert any('Julia' in m and '1.10.3' in m for m in messages)
 
 
 @pytest.mark.unit
