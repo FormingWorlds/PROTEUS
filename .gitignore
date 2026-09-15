@@ -335,3 +335,6 @@ src/proteus/_version.py
 # Local scratch directories (not part of the project)
 /.playwright-mcp/
 /platon/
+
+# Resolved at install time from the current package set
+pixi.lock
