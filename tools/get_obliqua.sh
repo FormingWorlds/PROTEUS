@@ -64,6 +64,7 @@ LD_LIBRARY_PATH="" julia --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantia
 # Register Obliqua into the DEFAULT Julia environment.
 echo "Registering Obliqua into the default Julia environment..."
 LD_LIBRARY_PATH="" julia -e 'using Pkg; Pkg.add(path=".")'
+LD_LIBRARY_PATH="" julia -e 'using Obliqua; println("Installed to: "*pathof(Obliqua))'
 
 if [ "$skip_tests" != "0" ]; then
     echo "Running Obliqua's own test suite..."
