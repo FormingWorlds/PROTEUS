@@ -392,7 +392,9 @@ runs:
       uses: actions/cache@v5
       with:
         path: socrates/
-        key: socrates-${{ runner.os }}-${{ runner.arch }}-portable-${{ steps.runner-image.outputs.version }}-${{ steps.pins.outputs.socrates_ref }}-${{ hashFiles('tools/get_socrates.sh') }}
+        # Both files: get_socrates.sh sources the shared helpers in
+        # tools/_get_common.sh, so a change there also changes what is built.
+        key: socrates-${{ runner.os }}-${{ runner.arch }}-portable-${{ steps.runner-image.outputs.version }}-${{ steps.pins.outputs.socrates_ref }}-${{ hashFiles('tools/get_socrates.sh', 'tools/_get_common.sh') }}
 
     - name: Build SOCRATES (cache miss)
       if: steps.cache-socrates.outputs.cache-hit != 'true'

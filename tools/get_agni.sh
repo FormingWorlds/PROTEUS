@@ -17,16 +17,17 @@ if ! command -v julia >/dev/null 2>&1; then
     exit 1
 fi
 
-script_root="$(cd "$(dirname "$0")/.." && pwd)"
+# Shared helpers: see tools/_get_common.sh.
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 
-ag_url="${AGNI_GIT_URL:-$(python "$script_root/tools/_module_pins.py" agni url)}"
-ag_ref="${AGNI_GIT_REF:-$(python "$script_root/tools/_module_pins.py" agni ref)}"
+ag_url="${AGNI_GIT_URL:-$(python "$proteus_tools_dir/_module_pins.py" agni url)}"
+ag_ref="${AGNI_GIT_REF:-$(python "$proteus_tools_dir/_module_pins.py" agni ref)}"
 
 # First positional arg can be either "0" (skip AGNI test step) or a path.
 # Preserve AGNI's upstream get_agni.sh interface: passing "0" tells it
 # to skip Pkg.test. Anything else is treated as a destination path.
 skip_tests=""
-dest="$script_root/AGNI"
+dest="$proteus_root/AGNI"
 if [ "${1:-}" = "0" ]; then
     skip_tests="0"
 elif [ -n "${1:-}" ]; then

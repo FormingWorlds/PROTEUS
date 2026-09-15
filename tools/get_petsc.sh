@@ -30,17 +30,9 @@
 set -e
 
 # -----------------------------------------------------------------------------
-# Portable realpath: macOS <13 (Catalina through Monterey) does not ship
-# GNU coreutils realpath. Fall back to python3, which is always available
-# in PROTEUS's conda environment.
+# Shared helpers, portable_realpath among them: see tools/_get_common.sh.
 # -----------------------------------------------------------------------------
-portable_realpath() {
-    if command -v realpath >/dev/null 2>&1; then
-        realpath "$1"
-    else
-        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
-    fi
-}
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 
 # -----------------------------------------------------------------------------
 # Error handling: report which step failed on any non-zero exit
