@@ -717,15 +717,18 @@ runs:
     # a Zenodo re-pin busts the cache and forces a fresh save. Without it, files
     # pinned after the cache was first frozen re-download on every run: the key
     # stays constant, actions/cache exact-hits and never re-saves, so the stale
-    # tree can never pick them up. The restore-keys prefix still lets a fresh
-    # save build on the previous tree instead of re-downloading everything.
+    # tree can never pick them up. The key also carries a full-data flavor
+    # segment. Before this, a smoke-tier job could freeze the one shared key
+    # at smoke-only content; actions/cache skips the save step on a hit, so
+    # the full-tier job's completed download was discarded every time and
+    # never converged to a saved cache.
     - name: Cache FWL_DATA
       uses: actions/cache@v5
       with:
         path: ~/fwl_data
-        key: fwl-data-${{ runner.os }}-${{ hashFiles('.github/data-manifest.yaml', 'src/proteus/data/proteus_manifest.toml') }}
+        key: fwl-data-${{ runner.os }}-${{ inputs.full-data }}-${{ hashFiles('.github/data-manifest.yaml', 'src/proteus/data/proteus_manifest.toml') }}
         restore-keys: |
-          fwl-data-${{ runner.os }}-
+          fwl-data-${{ runner.os }}-${{ inputs.full-data }}-
 
     - name: Download smoke data
       shell: bash -el {0}
