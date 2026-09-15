@@ -63,7 +63,7 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-proteus
         with:
-          full-data: 'true'
+          full-data: 'false'
       - name: Run unit + smoke tier
         run: |
           # Unit tier produces COVERAGE_FILE; smoke uses --cov-append on
