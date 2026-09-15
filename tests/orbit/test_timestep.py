@@ -420,6 +420,31 @@ def test_estimate_evection_dt_cap_yr_growth_limiter_disabled_by_default():
 
 
 @pytest.mark.physics_invariant
+def test_estimate_evection_dt_cap_yr_growth_limiter_needs_a_positive_prior_step():
+    """The growth limiter is keyed to ``dt_prev_actual_yr * growth_factor``,
+    so it must stay unconstrained (np.inf) when there is no usable prior
+    step size to scale from -- ``None`` (first-ever call, nothing accepted
+    yet) or a non-positive value -- even though the growth factor is
+    enabled and the zone is active. A regression that dropped this inner
+    guard would raise (``None * float``) or produce a nonsensical
+    zero/negative cap instead of simply not constraining anything yet.
+    """
+    config = _dt_cap_config(
+        evection_maximum=None, evection_growth_factor=1.3, evection_cooldown_iters=None
+    )
+    assert _estimate_evection_dt_cap_yr(Tides_t(), True, None, config) == np.inf
+    assert _estimate_evection_dt_cap_yr(Tides_t(), True, 0.0, config) == np.inf
+
+    # Discrimination: the identical config/zone state WITH a genuine
+    # positive prior step DOES constrain the cap, so the np.inf results
+    # above follow from the missing/non-positive dt_prev_actual_yr, not
+    # from this scenario never engaging the growth limiter at all.
+    assert _estimate_evection_dt_cap_yr(Tides_t(), True, 0.5, config) == pytest.approx(
+        0.5 * 1.3, rel=1e-9
+    )
+
+
+@pytest.mark.physics_invariant
 def test_estimate_evection_dt_cap_yr_folds_rate_and_growth_caps_via_min():
     """When BOTH the rate cap and the growth-limiter cap would bind, the
     combined function returns the smaller of the two -- confirms the

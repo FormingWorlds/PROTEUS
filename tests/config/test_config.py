@@ -470,6 +470,22 @@ def test_structure_k_val_converts_a_numeric_override_to_int(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('bad_val', [True, False, 1.5, [1, 2], None])
+def test_structure_k_val_rejects_non_int_non_str(bad_val):
+    """``structure_k_val`` accepts only ``int`` or ``str`` (the 'none'
+    sentinel) -- a ``bool`` (a ``int`` subclass that would otherwise slip
+    past the ``isinstance(val, (int, str))`` check unnoticed), a ``float``,
+    or any other type must raise a clear ``ValueError`` up front, not
+    silently coerce (e.g. ``int(1.5)`` truncating to ``1``) or structure to
+    a nonsensical k_min/k_max.
+    """
+    from proteus.config import structure_k_val
+
+    with pytest.raises(ValueError, match='Expected int or "none"'):
+        structure_k_val(bad_val, None)
+
+
+@pytest.mark.unit
 def test_read_config_object_omitted_step_cap_resolves_to_schema_default():
     """An absent step-cap key resolves to the schema default, same as an explicit 0.0 rejects.
 

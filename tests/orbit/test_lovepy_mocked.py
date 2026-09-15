@@ -467,6 +467,34 @@ def test_run_lovepy_satellite_perturber_reads_satellite_orbital_state(monkeypatc
     )
 
 
+def test_run_lovepy_rejects_an_unrecognized_perturber(monkeypatch):
+    """Neither 'star' nor 'satellite': must raise a clear ``ValueError``
+    up front, not silently fall through and fail later with an
+    ``UnboundLocalError`` on ``omega``/``ecc`` (only ever assigned inside
+    the 'star'/'satellite' branches). Mirrors
+    ``test_run_obliqua_rejects_an_unrecognized_perturber``.
+    """
+    from proteus.orbit import lovepy as lovepy_mod
+
+    updates: list[tuple] = []
+    monkeypatch.setattr(
+        lovepy_mod, 'UpdateStatusfile', lambda dirs, code: updates.append((dirs, code))
+    )
+
+    interior_o = _make_interior_t(module='dummy', nlev_s=3)
+    cfg = _make_config(module='dummy', perturber=None)
+    hf_row = {'orbital_period': 1e7, 'eccentricity': 0.1}
+    tides_o = Tides_t()
+
+    with pytest.raises(ValueError, match='perturber'):
+        lovepy_mod.run_lovepy(
+            hf_row, dirs={'output': '/tmp'}, interior_o=interior_o, tides_o=tides_o, config=cfg
+        )
+    assert updates == [({'output': '/tmp'}, 26)]
+    # The error path exits before the tides_o storage block.
+    assert tides_o.interactions == []
+
+
 # ---------------------------------------------------------------------------
 # run_lovepy: JuliaError wrapped into RuntimeError.
 # ---------------------------------------------------------------------------

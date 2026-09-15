@@ -108,6 +108,13 @@ def run_lovepy(
         # Convert planet-satellite orbital eccentricity
         ecc = _jlsca(hf_row['eccentricity_sat'])
 
+    else:
+        UpdateStatusfile(dirs, 26)
+        raise ValueError(
+            f"run_lovepy requires config.orbit.perturber to be 'star' or 'satellite', "
+            f'got {config.orbit.perturber!r}'
+        )
+
     # Copy arrays
     arr_keys = ('density', 'visc', 'shear', 'bulk', 'mass', 'radius')
     lov = {k: np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}

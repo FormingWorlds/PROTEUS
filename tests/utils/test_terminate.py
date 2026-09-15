@@ -308,6 +308,58 @@ def test_check_termination_dispatches_satellite_disintegration_checks(
 
 
 @pytest.mark.unit
+def test_check_termination_skips_satellite_roche_check_when_disabled(
+    monkeypatch, patch_statusfile
+):
+    """``disint_sat.roche_enabled=False`` must skip the satellite Roche
+    check entirely -- a satellite well within its Roche limit (which
+    would otherwise terminate the run) must NOT trigger termination while
+    the gate is off.
+    """
+    cfg = _cfg()
+    cfg.params.stop.disint_sat.enabled = True
+    cfg.params.stop.disint_sat.roche_enabled = False
+    h = _handler(cfg)
+    # Deep within the Roche limit -- would trigger if the check ran.
+    h.hf_row['separation_sat'] = 0.5
+    h.hf_row['roche_limit_sat'] = 1.0
+    # Spin safely unmet, so it is not what keeps this from terminating.
+    h.hf_row['axial_period_sat'] = 10.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    h.loops['total'] = 5
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_termination_skips_satellite_spinrate_check_when_disabled(
+    monkeypatch, patch_statusfile
+):
+    """``disint_sat.spin_enabled=False`` must skip the satellite spin-rate
+    check entirely -- a satellite spinning faster than its breakup rate
+    (which would otherwise terminate the run) must NOT trigger termination
+    while the gate is off.
+    """
+    cfg = _cfg()
+    cfg.params.stop.disint_sat.enabled = True
+    cfg.params.stop.disint_sat.spin_enabled = False
+    h = _handler(cfg)
+    # Roche safely unmet, so it is not what keeps this from terminating.
+    h.hf_row['separation_sat'] = 5.0
+    h.hf_row['roche_limit_sat'] = 1.0
+    # Spinning faster than breakup -- would trigger if the check ran.
+    h.hf_row['axial_period_sat'] = 4.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    h.loops['total'] = 5
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
 def test_check_termination_wires_up_satellite_escape_check(monkeypatch, patch_statusfile):
     """The satellite-escape criterion must actually be reachable through
     the top-level ``check_termination`` orchestrator when enabled, not

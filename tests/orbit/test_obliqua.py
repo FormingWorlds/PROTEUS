@@ -791,6 +791,34 @@ def test_padded_obliqua_k_range_widens_when_zone_active_and_rate_observed(_fast_
     assert hf_row['_obliqua_prev_time'] == pytest.approx(520.0)
 
 
+def test_padded_obliqua_k_range_treats_a_missing_cursor_as_zero_rate(_fast_k_range_table):
+    """The FIRST call while the zone is active has no prior
+    ``_obliqua_prev_ecc``/``_obliqua_prev_time`` cursor yet (``hf_row.get``
+    returns ``None``), which must fall back to ``de_dt_yr=0.0`` -- the
+    unpadded window for the current eccentricity, not raise (a bare
+    subtraction against ``None`` would ``TypeError``) or silently widen as
+    if a real rate had been observed. The cursor must still be seeded
+    afterward so the SECOND call has something to difference against.
+    """
+    from proteus.orbit.hansen import kmin_kmax_for_e
+    from proteus.orbit.obliqua import _padded_obliqua_k_range
+
+    config = _make_config(module='aragog', perturber='satellite')
+    interior_o = types.SimpleNamespace(dt=20.0)
+    tides_o = Tides_t(evection_zone_active=True)
+    hf_row = {'Time': 500.0, 'eccentricity_sat': 0.20}  # no _obliqua_prev_* keys
+
+    unpadded = kmin_kmax_for_e(0.20)
+    result = _padded_obliqua_k_range(hf_row, interior_o, tides_o, config)
+
+    # Discrimination: de_dt_yr=0 gives exactly the unpadded window.
+    assert result == unpadded
+
+    # Cursor now seeded from this call, for the next one to difference against.
+    assert hf_row['_obliqua_prev_ecc'] == pytest.approx(0.20)
+    assert hf_row['_obliqua_prev_time'] == pytest.approx(500.0)
+
+
 def test_padded_obliqua_k_range_never_narrows_past_an_explicit_user_override(
     _fast_k_range_table,
 ):
