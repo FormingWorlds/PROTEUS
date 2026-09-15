@@ -971,7 +971,7 @@ def test_resume_restores_crystallization_across_remelting(tmp_path):
     )
     # Include the last pre-resume row so the first post-resume step is measured
     # against the seam value, not divided away.
-    seam_atm = leg2.hf_all['H_kg_atm'].iloc[n_leg1 - 1:].to_numpy()
+    seam_atm = leg2.hf_all['H_kg_atm'].iloc[n_leg1 - 1 :].to_numpy()
     atm_steps = np.diff(seam_atm)
     assert (atm_steps <= atm_baseline * CRYST_ATM_NOISE_RTOL).all(), (
         f'atmospheric hydrogen rose by up to {float(atm_steps.max()):.3e} kg across '
