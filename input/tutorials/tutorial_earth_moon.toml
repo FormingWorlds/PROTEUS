@@ -1,0 +1,229 @@
+# PROTEUS Tutorial: Earth and Moon
+#
+# Run: proteus start -c input/tutorials/tutorial_earth_moon.toml
+# The first run downloads all required reference data (spectral files,
+# stellar tracks and spectra, interior EOS tables). Add --offline on
+# later runs to skip the reference-data check.
+
+config_version = "3.0"
+
+[params.out]
+    path    = "tutorial_earth_moon"
+    logging = "INFO"
+
+[params.dt]
+    method        = "adaptive"
+    initial       = 10.0
+    minimum       = 1e3
+    maximum       = 1e7
+    starspec      = 1e9
+    atol          = 0.04
+    rtol          = 0.11
+    mushy_maximum = 1e5
+    mushy_upper   = 0.99
+
+    [params.stop.time]
+        maximum = 5e9
+    [params.stop.solid]
+        phi_crit = 0.05
+
+[star]
+    module  = "mors"
+    mass    = 1.0
+    age_ini = 0.05
+    [star.mors]
+        tracks          = "spada"
+        age_now         = 4.567
+        rot_pcntle      = 50.0
+        star_name       = "sun"
+        spectrum_source = "solar"
+
+# Planetary orbit & tides
+[orbit]
+    # Orbit instellation
+    instellation_method       = "distance"   # "distance" (semi-major axis) | "inst" (flux)
+    instellationflux          = 1.0          # instellation [S_Earth] (if method = "inst")
+
+    # Orbit geometry
+    semimajoraxis             = 1.0          # semi-major axis [AU] (if method = "distance")
+    eccentricity              = 0.0          # orbital eccentricity
+    zenith_angle              = 48.19        # characteristic zenith angle [degrees]
+    s0_factor                 = 0.375        # instellation geometric scale factor
+    axial_period              = 4.0         # day length [hours]; none = tidally locked
+
+    # Tidal evolution and rotation
+    star_planet_model         = "none"       # evolve star-planet orbital parameters (semi-major axis and eccentricity); options = "none" | "sp0d" | "sp1d"
+    planet_satellite_model    = "ps1d"       # evolve planet-satellite orbital parameters (semi-major axis and eccentricity); options = "none" | "ps1d" | "ps1d_evec"
+
+    perturber                 = "satellite"  # perturbing object ("star", "satellite") to induce tides on the primairy (planet)
+
+    # Tidal heating module
+    module                    = "obliqua"    # tidal heating module: none | dummy | lovepy | obliqua
+
+    # Satellite
+    [orbit.satellite]
+        include_satellite     = true         # include satellite
+        mass_sat              = 0.012        # satellite mass [M_earth]
+        radius_sat            = 0.273        # satellite radius [R_earth]
+        axial_period_sat      = "none"       # day length [hours]; none = tidally locked
+        semimajoraxis_sat     = 3.5          # satellite orbit semi-major axis [R_earth]
+        eccentricity_sat      = 0.05         # satellite initial orbital eccentricity [dimensionless]
+        evection_angle        = 0.0          # initial evection angle [degrees]
+        c_factor_sat          = 0.4          # satellite normalized moment of inertia factor [dimensionless]
+        love_number_sat       = "examples/satellite/0d_test_moon.json"
+                                             # satellite love number spectrum or interior structure, provide absolute path to file.
+
+    # Shared ODE-solver and adaptive-substep-controller settings, used by
+    # both the star-planet models (sp0d, sp1d) and the planet-satellite
+    # models (ps0d, ps1d, ps1d_evec)
+    [orbit.solver]
+        method                 = "Radau"     # scipy.integrate.solve_ivp integration method
+        rtol                   = 1e-6        # relative tolerance passed to solve_ivp
+        atol                   = 1e-9        # absolute tolerance passed to solve_ivp
+
+        dt0_yr                 = 1e-4        # initial adaptive-substep size [yr]
+        dt_max_yr              = 2000.0      # maximum adaptive-substep size [yr]
+        growth                 = 1.15        # substep growth factor applied after an accepted step
+        shrink                 = 0.35        # substep shrink factor applied after a rejected step
+
+        max_rel_da             = 0.01        # max tolerated relative change in semi-major axis per substep
+        max_rel_de             = 0.01        # max tolerated relative change in eccentricity per substep
+        max_rel_dOmega         = 0.02        # max tolerated relative change in a spin rate per substep
+        de_floor               = 0.05        # floor on the eccentricity-change-ratio denominator
+        max_substeps           = 10_000_000  # maximum number of substeps attempted per call
+
+    [orbit.lovepy]
+        visc_thresh           = 1e9          # minimum viscosity for tidal heating [Pa s]
+        ncalc                 = 1000         # grid points for tidal calculation
+
+
+    [orbit.obliqua]
+        store_3D              = false        # Store 3D tidal response for each layer. Note: this will generate large output files. If false, radial profiles of tidal responses will be stored instead.
+        enforce_ec            = true         # Enforce energy conservation in tidal response calculations, improves stability in fluid-mush cases at low forcing frequencies (< 1e-7 Hz). This does not affect the Lovenumbers.
+        optimize_scales       = false        # Optimize non-dimensionalization scales for the relaxation method. This can improve convergence and stability, especially for low forcing frequencies (< 1e-7 Hz). However, do not use with Bigfloat precision.
+        solid_shell           = true         # Insert an infinitesimal solid shell around the core. This patches an issue where y2 and y4 become decoupled and cause the solution to diverge in fluid layers. Only use with solid1d_relax or solid1d_mush_relax.
+        cap_LN                = true         # Clamp each mode's Re(k2)/Im(k2) to 3x/2x the fluid Love-number limit for its degree n, heating is rescaled to match via enforce_ec.
+
+        min_frac              = 0.02         # minimum segment radius fraction before smoothing [dimensionless]
+        visc_lus              = 5e5          # liquid-mush handoff viscosity [Pa s]
+        visc_sus              = 5e5          # solid-mush handoff viscosity [Pa s]
+        n                     = [2]          # power of the radial factor (goes with (r/a)^{n}, since r<<a only n=2 contributes significantly)
+        m                     = [0, 2]       # harmonic of the true anomaly. m=2 corresponds to the semidiurnal tide, m=1 diurnal tide
+        k_min                 = "none"       # minimum tidal mode range (k is the Fourier index in mean anomaly), set "none" to obtain tidal mode range from eccentricity relation
+        k_max                 = "none"       # maximum tidal mode range (k is the Fourier index in mean anomaly), set "none" to obtain tidal mode range from eccentricity relation
+
+        material_mu           = "andrade"    # material type for complex shear modulus ("andrade", "maxwell", "elastic")
+        material_k            = "andrade"    # material type for complex bulk modulus ("andrade", "maxwell", "elastic")
+        alpha                 = 0.3          # power-law exponent, only for Andrade rheology (free parameter)
+
+        verbosity             = 1            # obliqua log level: 0 (silent) | 1 (info) | 2 (debug)
+
+        # tidal models, see Obliqua documentation for details.
+        module_solid = "solid1d-relax"       # solid-phase tidal model, options: "none" | "solid0d" | "solid1d" | "solid1d-mush" | "solid1d-relax" | "solid1d-mush-relax" | "solid1d-equil-relax"
+        module_mushy = "none"                # mushy-phase tidal model, options: "none" | "interp"
+        module_fluid = "fluid1d"             # fluid-phase tidal model, options: "none" | "fluid0d" | "fluid1d"
+
+        [orbit.obliqua.solid]
+            dr_min            = 30           # minimum spacing between grid points (for relaxation method) [m]
+            dr_max            = 300          # maximum spacing between grid points (for relaxation method) [m]
+            core              = "liquid"     # core solution to use as CMB boundary condition, options: "liquid", "solid", "inertial-liquid", "inertial"
+            core_props        = "core"       # Core properties to use for CMB boundary condition, options: "core", "mantle"
+            inertial_terms    = true         # Include inertial terms in the solid tidal response equations
+
+        [orbit.obliqua.fluid]
+            sigma_R           = 1e-2         # rayleigh drag coefficient at interface [dimensionless]
+            sigma_R_factor    = 0.5          # rayleigh drag coefficient in pure fluid as fraction of the interface [dimensionless]
+            sigma_R_prf       = "dynamic_interp" # heating profile distribution ("uniform", "exp", "linear", "quadratic", "dynamic", "dynamic_interp")
+            H_R               = 1e5          # heating profile scale height [m]
+            efficiency        = 1e0          # rayleigh drag efficiency at core interface [dimensionless]
+
+
+[planet]
+    mass_tot         = 1.0
+    prevent_warming  = false
+    temperature_mode = "liquidus_super"
+    delta_T_super    = 200.0
+    volatile_mode    = "elements"
+    [planet.elements]
+        O_mode                = "ic_chemistry"  # ic_chemistry | ppmw | kg | FeO_mantle_wt_pct
+        O_budget              = 0.0          # ignored for ic_chemistry mode
+        H_mode                = "oceans"     # oceans | ppmw | kg
+        H_budget              = 1.0          # unit defined by H_mode
+        C_mode                = "C/H"        # C/H mass ratio | ppmw | kg
+        C_budget              = 1.0          # unit defined by C_mode
+        N_mode                = "N/H"        # N/H mass ratio | ppmw | kg
+        N_budget              = 0.5          # unit defined by N_mode
+        S_mode                = "S/H"        # S/H mass ratio | ppmw | kg
+        S_budget              = 1.0          # unit defined by S_mode
+
+[interior_struct]
+    module              = "spider"   # zalmoxis | dummy | spider
+    core_frac           = 0.325
+    core_frac_mode      = "radius"
+    core_density        = 12000
+    core_heatcap        = 800
+    melting_dir         = "Monteux-600"
+    eos_dir             = "1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa/"
+
+[interior_energetics]
+    module           = "spider"
+    num_levels       = 80
+    rtol             = 1e-8
+    flux_guess       = 1000.0
+    trans_conduction = true
+    trans_convection = true
+    trans_grav_sep   = true
+    trans_mixing     = true
+    heat_tidal       = true        # tidal heating (requires orbit.module != "none")
+    heat_radiogenic  = true
+    radio_tref       = 4.55
+    radio_K          = 310.0
+    radio_U          = 0.031
+    radio_Th         = 0.124
+    grain_size       = 1e-3
+    mixing_length    = "constant"
+
+    [interior_energetics.spider]
+        solver_type           = "bdf"        # SUNDIALS method: adams | bdf
+        matprop_smooth_width  = 1.0e-2       # melt-fraction smoothing window across solidus/liquidus
+        tolerance_rel         = -1           # deprecated alias for interior_energetics.rtol; leave at -1 (unset)
+        tolerance_struct      = 100          # absolute mass tolerance [kg] for the radius secant solver
+        log_output            = true         # write SPIDER solver log output
+
+[outgas]
+    module       = "calliope"
+    fO2_shift_IW = 2.0
+    [outgas.calliope]
+        include_H2O = true
+        include_CO2 = true
+        include_N2  = true
+        include_S2  = true
+        include_H2  = true
+        include_CH4 = true
+        include_CO  = true
+        solubility  = true
+
+[atmos_clim]
+    module         = "agni"
+    surf_state     = "fixed"
+    surface_d      = 0.01
+    surface_k      = 2.0
+    rayleigh       = false
+    albedo_pl      = 0.1
+    spectral_group = "Dayspring"
+    spectral_bands = "48"
+    num_levels     = 45
+    p_top          = 1e-4
+
+    [atmos_clim.agni]
+        chemistry    = "none"
+        solve_energy = false
+        real_gas     = true
+        dx_max       = 80.0
+        max_steps    = 70
+        perturb_all  = true
+
+[escape]
+    module = "zephyrus"
+    [escape.zephyrus]
+        efficiency = 0.2
