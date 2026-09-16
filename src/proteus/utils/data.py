@@ -521,12 +521,12 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     # pts/decade tables for both phases.
     'EOS_PALEOS_MgSiO3': {'zenodo_id': '19680050'},
     # Zalmoxis EOS: PALEOS unified tables (iron, MgSiO3, H2O share Zenodo
-    # 20084812, the v1.2.1 release of concept record 19000315). Each folder
+    # 22776069, the v1.3.0 release of concept record 19000315). Each folder
     # fetches only its own table file via the single-file download mode, so
     # the high-res variants in the record are never pulled.
-    'EOS_PALEOS_iron': {'zenodo_id': '20084812'},
-    'EOS_PALEOS_MgSiO3_unified': {'zenodo_id': '20084812'},
-    'EOS_PALEOS_H2O': {'zenodo_id': '20084812'},
+    'EOS_PALEOS_iron': {'zenodo_id': '22776069'},
+    'EOS_PALEOS_MgSiO3_unified': {'zenodo_id': '22776069'},
+    'EOS_PALEOS_H2O': {'zenodo_id': '22776069'},
     # Zalmoxis EOS: Chabrier+2019/2021 H/He
     'EOS_Chabrier2021_HHe': {'zenodo_id': '19135021'},
     # Aerosol scattering data (no OSF project)
