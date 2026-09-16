@@ -500,3 +500,79 @@ def test_summarise_failures_reports_a_clean_study_without_writing_a_table(tmp_pa
     messages = '\n'.join(r.message for r in caplog.records)
     assert 'none' in messages and '12 evaluations' in messages
     assert not [r for r in caplog.records if r.levelname in ('WARNING', 'ERROR')]
+
+
+@pytest.mark.unit
+def test_summarise_failures_labels_the_logfile_sample_and_counts_the_whole_study(
+    tmp_path, caplog
+):
+    """The tally covers every evaluation attempted, initial samples included,
+    while the warning raised alongside the best fit covers the optimisation
+    steps alone. The logfile lines are a sample of at most three, so they are
+    labelled with how many of the total they show and printed above the pointer
+    to the full table; unlabelled, three paths below a "Full list" line read as
+    the complete set.
+    """
+    from proteus.inference.objective import ProteusRunFailure, record_failure
+    from proteus.inference.utils import summarise_failures
+
+    # Four records, the first of which has no logfile: the run died before the
+    # child wrote one. The sample must skip it and still offer three paths.
+    for worker in range(4):
+        record_failure(
+            tmp_path,
+            ProteusRunFailure(
+                reason='the simulator exited with an error',
+                worker=worker,
+                iter=0,
+                out_dir=f'/study/workers/w_{worker}/i_0',
+                exit_code=1,
+                status=21,
+                log_path=None if worker == 0 else f'/study/w_{worker}/proteus_00.log',
+                parameters={'planet.mass_tot': 1.0 + worker},
+            ),
+        )
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.utils'):
+        summarise_failures(str(tmp_path), n_attempted=20)
+
+    lines = [r.message for r in caplog.records]
+    messages = '\n'.join(lines)
+    # The denominator of the tally is the whole study, stated in the line
+    # itself so it cannot be confused with the optimisation-only warning.
+    assert '4 of 20 evaluations' in messages
+    assert 'initial samples included' in messages
+    # Three shown out of four unscored, not four out of four.
+    assert 'Logfiles (3 of 4 shown):' in messages
+    shown = [line.strip() for line in lines if line.strip().endswith('proteus_00.log')]
+    assert len(shown) == 3
+    # The record without a logfile is skipped rather than truncating the
+    # sample to the two paths that follow it in the first three records.
+    assert '/study/w_1/proteus_00.log' in shown
+    assert '/study/w_3/proteus_00.log' in shown
+
+    # The pointer to the complete table comes after the sample, so the sample
+    # cannot be read as a continuation of it.
+    i_sample = next(i for i, line in enumerate(lines) if line.startswith('Logfiles ('))
+    i_full = next(i for i, line in enumerate(lines) if line.startswith('Full list:'))
+    assert i_sample < i_full
+
+    # Discrimination: with no logfile recorded anywhere, no sample block is
+    # emitted at all, so the label tracks the data rather than always printing.
+    caplog.clear()
+    (tmp_path / 'failures').rename(tmp_path / 'failures_old')
+    record_failure(
+        tmp_path,
+        ProteusRunFailure(
+            reason='the simulator exited with an error',
+            worker=0,
+            iter=1,
+            out_dir='/study/workers/w_0/i_1',
+            exit_code=1,
+            status=21,
+            parameters={'planet.mass_tot': 1.0},
+        ),
+    )
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.utils'):
+        summarise_failures(str(tmp_path), n_attempted=20)
+    assert not [r for r in caplog.records if r.message.startswith('Logfiles (')]

@@ -773,6 +773,85 @@ def test_J_scores_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp_pa
 
 
 @pytest.mark.unit
+def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp_path):
+    """`abort_on_failure` stops the study on a run that exited cleanly but
+    recorded an error status, the same way it stops on a run that crashed.
+    Both are faults; only the route by which the simulator reported them
+    differs, so honouring the setting on one and not the other would let a
+    study set up with `abort_on_failure = true` run to completion on a
+    reference config that fails every evaluation.
+
+    The asymmetry the setting must keep: an excluded status completed
+    normally, so it is scored as a poor sample and the study carries on even
+    with aborting enabled.
+    """
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
+    )
+
+    def _run(status, worker, iter, codes=()):
+        monkeypatch.setattr(
+            objective_mod,
+            'run_proteus',
+            lambda **_kwargs: ({'R_obs': 9.25e6}, status),
+        )
+        return objective_mod.J(
+            x=torch.tensor([[0.5]], dtype=torch.double),
+            parameters=['planet.mass_tot'],
+            true_observables={'R_obs': 9.25e6},
+            worker=worker,
+            iter=iter,
+            output='dummy_output',
+            ref_config='reference.toml',
+            failure_codes=list(codes),
+        )
+
+    monkeypatch.setenv(objective_mod._ABORT_ON_FAILURE_ENV, '1')
+
+    # Status 25: written when a run is stopped through its keepalive file, so
+    # the simulator exits 0 and the fault is visible only in the status file.
+    with pytest.raises(objective_mod.ProteusRunFailure) as caught:
+        _run(25, worker=0, iter=0)
+    assert caught.value.status == 25
+    assert caught.value.category == objective_mod.CATEGORY_FAILURE
+    # Exit code 0 is the whole point of this path: the abort must not depend
+    # on the child having exited non-zero.
+    assert caught.value.exit_code == 0
+
+    # Boundary of the failure set: STATUS_MISSING is the lowest code treated
+    # as a fault, and the run's own account of itself is absent, so it cannot
+    # be scored. A range check written as `20 <= status <= 28` alone would
+    # miss it.
+    with pytest.raises(objective_mod.ProteusRunFailure) as missing:
+        _run(objective_mod.STATUS_MISSING, worker=0, iter=1)
+    assert missing.value.status == objective_mod.STATUS_MISSING
+
+    # The record is written before the abort, so an aborted study still says
+    # on disk what stopped it rather than leaving only the traceback.
+    recorded = objective_mod.read_failure_records(tmp_path)
+    # Ordered by (worker, iter), so the status-25 run at iter 0 comes first.
+    assert [r['status'] for r in recorded] == [25, objective_mod.STATUS_MISSING]
+
+    # Discrimination against a fix that aborts on `failed or excluded`: an
+    # excluded status is scored as a poor sample and returns normally.
+    excluded = _run(11, worker=1, iter=0, codes=(11,))
+    assert excluded.item() == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    # Boundedness: the failure score sits far below anything a completed run
+    # can reach, so the optimiser is not drawn toward the excluded region.
+    assert excluded.item() < -10.0
+    assert objective_mod.read_failure_records(tmp_path)[-1]['category'] == (
+        objective_mod.CATEGORY_EXCLUDED
+    )
+
+    # Discrimination against a regression that raises unconditionally: with
+    # the setting off, the same error status is scored and the study goes on.
+    monkeypatch.setenv(objective_mod._ABORT_ON_FAILURE_ENV, '0')
+    scored = _run(25, worker=2, iter=0)
+    assert scored.item() == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    assert scored.item() < -10.0
+
+
+@pytest.mark.unit
 def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
     """The failure range covers the error statuses the simulator can record.
     Code 28 is the highest error the status table defines; 29 is a completion
