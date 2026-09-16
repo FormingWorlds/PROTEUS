@@ -28,6 +28,7 @@ import torch
 from proteus.inference.BO import BO_step, init_locs
 from proteus.inference.utils import get_kernel, load_dataset_csv, save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
+from proteus.utils.logs import attach_worker_logfile
 
 # Tensor dtype for all computations
 dtype = torch.double
@@ -65,6 +66,19 @@ def checkpoint(D: dict, logs: list, Ts: list, output_dir: str) -> None:
     )
 
 
+def _parent_logfile() -> str | None:
+    """Path of the logfile the study's logger is writing, if it has one.
+
+    Read in the parent, because a spawned worker has no logging configuration
+    of its own to read it from. Returning the handler's own path rather than
+    rebuilding it keeps the logfile named in one place only.
+    """
+    for handler in logging.getLogger('fwl').handlers:
+        if isinstance(handler, logging.FileHandler):
+            return handler.baseFilename
+    return None
+
+
 def worker(
     process_fun,
     build_obj,
@@ -79,6 +93,8 @@ def worker(
     worker_id: int,
     log_list,
     output_dir: str,
+    logpath: str | None = None,
+    log_level: int = logging.INFO,
 ) -> None:
     """Worker subprocess that performs asynchronous BO steps.
 
@@ -103,11 +119,21 @@ def worker(
     - worker_id (int): Unique identifier of this worker.
     - log_list (Manager.list): Shared list to store per-eval log dicts.
     - output_dir (str): Output directory for the whole inference call (abspath).
+    - logpath (str | None): Study logfile to reopen when this process has no
+      logging configuration of its own. None leaves logging untouched.
+    - log_level (int): Numeric level to log at, read from the parent.
 
     Returns
     ----------
     - None
     """
+    # A spawned worker inherits no logging configuration on MacOS,
+    # so everything below would go to stderr and miss the study logfile.
+    # Reattach before any work starts, so that a failure in
+    # the very first iteration is still recorded where the study reads it.
+    if logpath:
+        attach_worker_logfile(logpath, log_level)
+
     try:
         _worker_loop(
             process_fun,
@@ -327,6 +353,10 @@ def parallel_process(
     # Set up step constraint
     max_steps = max_len - (n_workers - 1)
 
+    # Read in the parent: a spawned worker has none of this to read from.
+    worker_logpath = _parent_logfile()
+    worker_log_level = logging.getLogger('fwl').level
+
     # Spawn worker processes
     procs = []
     for wid in range(n_workers):
@@ -349,6 +379,8 @@ def parallel_process(
                 wid,
                 log_list,
                 output_abspath,
+                worker_logpath,
+                worker_log_level,
             ),
         )
         p.start()
