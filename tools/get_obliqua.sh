@@ -48,9 +48,6 @@ fi
 if [ ! -d "$dest/.git" ]; then
     echo "Cloning Obliqua ($ob_url @ $ob_ref) into $dest..."
     git clone "$ob_url" "$dest"
-else
-    echo "ERROR: $dest already exists as a git checkout. Remove it (or pass a fresh destination) before re-running this script." >&2
-    exit 1
 fi
 
 git -C "$dest" fetch --quiet origin

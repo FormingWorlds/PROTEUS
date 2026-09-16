@@ -885,6 +885,27 @@ class TestCheckGitModuleInstallState:
         # the on-pin path must not.
         assert 'differs' not in r.message
 
+    def test_obliqua_on_pin_reports_resolved_version(self, tmp_path):
+        """An on-pin Obliqua checkout reports its real version, not a placeholder.
+
+        check_git_module dispatches to a per-module version getter; Obliqua's
+        getter (_get_obliqua_version) must actually be wired into that dispatch,
+        not silently fall through to the generic '?' placeholder used for
+        modules with no getter at all.
+        """
+        pins = {'obliqua': {'ref': 'a' * 40}}
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._git_head', return_value='a' * 40),
+            patch('proteus.doctor._get_obliqua_version', return_value='0.1.0'),
+        ):
+            r = check_git_module('Obliqua', {'obliqua': str(tmp_path)}, required=False)
+        assert r.status == PASS
+        assert '0.1.0' in r.message
+        # Discrimination: the placeholder used when a module has no version
+        # getter wired up must not appear once the getter is actually called.
+        assert r.message != '?'
+
     def test_socrates_version_unreadable_still_classifies(self, tmp_path, monkeypatch):
         """An unreadable SOCRATES version degrades to '?' instead of crashing.
 

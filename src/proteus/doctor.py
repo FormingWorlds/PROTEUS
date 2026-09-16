@@ -33,6 +33,7 @@ from packaging.version import Version
 
 from proteus.utils.coupler import (
     _get_agni_version,
+    _get_obliqua_version,
     _get_socrates_version,
     get_proteus_directories,
 )
@@ -531,6 +532,8 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
             ver = _get_agni_version(dirs)
         elif name == 'SOCRATES':
             ver = _get_socrates_version()
+        elif name == 'Obliqua':
+            ver = _get_obliqua_version(dirs)
         else:
             ver = '?'
     except Exception:
