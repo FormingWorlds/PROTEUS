@@ -982,7 +982,12 @@ def load_zalmoxis_configuration(
         'PALEOS-API:MgSiO3',
         'PALEOS-API:H2O',
     )
-    _configured_eos = ' '.join(v for v in layer_eos_config.values() if v)
+    _configured_eos = {
+        _strip_fraction_tokens(token)
+        for v in layer_eos_config.values()
+        if v
+        for token in str(v).split('+')
+    }
     mushy_zone_factors = {
         name: (mzf if name in _configured_eos else 1.0) for name in _unified_paleos_materials
     }
@@ -1919,11 +1924,11 @@ def generate_spider_tables(config: Config, outdir: str):
        liquidus`` (default 0.8, the Stixrude 2014 solidus/liquidus ratio); the
        liquidus is the analytic PALEOS Belonoshko+2005 / Fei+2021 curve.
     2. ``PALEOS-2phase:<solid>`` (e.g. ``PALEOS-2phase:MgSiO3``): separate
-       solid + liquid PALEOS tables. Phase boundaries are sampled at the
-       PALEOS-liquidus temperature from each phase table directly. The
-       ``mushy_zone_factor`` config value is ignored (no analytic mushy
-       zone exists for 2-phase; the gap between solid-table-top and
-       liquid-table-bottom defines the latent heat).
+       solid + liquid PALEOS tables. The solidus is derived exactly as in the
+       unified layout, ``mushy_zone_factor * liquidus`` (default 0.8); the
+       two-phase tables additionally supply the latent-heat entropy gap
+       between the liquid-table entropy at the liquidus and the solid-table
+       entropy at the derived solidus.
 
     For non-PALEOS EOS types (WolfBower2018, RTPress100TPa), returns None
     and the caller is expected to fall back on pre-existing SPIDER tables.
@@ -2038,8 +2043,8 @@ def generate_spider_tables(config: Config, outdir: str):
     # Phase boundaries: PALEOS-liquidus is the analytic Belonoshko+2005 /
     # Fei+2021 Simon-Glatzel curve. The derived solidus is
     # T_solidus = T_liquidus * mushy_zone_factor for both layouts. A two-phase
-    # table adds the latent-heat gap from solid_table.s(P, T_liq) minus
-    # liquid_table.s(P, T_liq).
+    # table adds the latent-heat gap between liquid_table.s(P, T_liq) and
+    # solid_table.s(P, T_sol) with T_sol = mushy_zone_factor * T_liq.
     _, liquidus_func = get_solidus_liquidus_functions(
         solidus_id='Stixrude14-solidus',  # unused, but API requires it
         liquidus_id='PALEOS-liquidus',
