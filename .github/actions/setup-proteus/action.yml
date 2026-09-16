@@ -718,10 +718,10 @@ runs:
     # pinned after the cache was first frozen re-download on every run: the key
     # stays constant, actions/cache exact-hits and never re-saves, so the stale
     # tree can never pick them up. The key also carries a full-data flavor
-    # segment. Before this, a smoke-tier job could freeze the one shared key
-    # at smoke-only content; actions/cache skips the save step on a hit, so
-    # the full-tier job's completed download was discarded every time and
-    # never converged to a saved cache.
+    # segment, so full-data: 'true' and 'false' jobs keep separate cache
+    # lineages: a smoke-only save can never satisfy a full-data restore, or
+    # the reverse, which would otherwise freeze a job on incomplete content
+    # under actions/cache's skip-save-on-hit behavior.
     - name: Cache FWL_DATA
       uses: actions/cache@v5
       with:

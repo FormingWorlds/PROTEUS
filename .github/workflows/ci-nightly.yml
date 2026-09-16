@@ -63,9 +63,11 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-proteus
         with:
-          # Smoke-tier tests here run dummy/mock modules only; none read the
-          # full-data-only datasets (ARAGOG EOS tables, melting curves) that
-          # 'true' would add.
+          # No unit or smoke test here needs full-data-only datasets. The real-module
+          # smoke tests (CALLIOPE outgassing, atmodeller noble gas) keep
+          # interior_energetics.module = 'dummy' and never read FWL_DATA; only the
+          # ARAGOG/SPIDER interior EOS and melting-curve lookups, which run under
+          # full-data: 'true', would.
           full-data: 'false'
       - name: Run unit + smoke tier
         run: |
