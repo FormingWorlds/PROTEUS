@@ -63,6 +63,9 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-proteus
         with:
+          # Smoke-tier tests here run dummy/mock modules only; none read the
+          # full-data-only datasets (ARAGOG EOS tables, melting curves) that
+          # 'true' would add.
           full-data: 'false'
       - name: Run unit + smoke tier
         run: |
