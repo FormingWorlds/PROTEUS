@@ -289,7 +289,7 @@ def print_results(D, logs, config, output, n_init):
     # apart, so the wording here covers both and the tally above splits them.
     optim_Y = Y[n_init:]
     n_optim = len(optim_Y)
-    n_unscored = int((optim_Y <= BAD_OBJ_VALUE).sum().item())
+    n_unscored = int((optim_Y == BAD_OBJ_VALUE).sum().item())
     if n_unscored:
         log.warning(
             f'{n_unscored} of {n_optim} optimisation evaluations carry the failure '
