@@ -220,7 +220,8 @@ def summarise_failures(output: str, n_attempted: int) -> int:
     frac = n_unscored / max(n_attempted, 1)
     log.info(
         f'Unscored evaluations: {n_unscored} of {n_attempted} evaluations '
-        f'({100 * frac:.1f}%) carry the failure score rather than a fit quality'
+        f'({100 * frac:.1f}%, initial samples included) carry the failure score '
+        'rather than a fit quality'
     )
     log.info(f'    {n_failed} did not produce a usable result')
     log.info(f'    {n_excluded} completed on a status this study excludes')
@@ -234,13 +235,15 @@ def summarise_failures(output: str, n_attempted: int) -> int:
     ).most_common():
         label = f'{desc} [excluded]' if category == CATEGORY_EXCLUDED else str(desc)
         log.info(f'{label:52s}   {count}')
+    # A few concrete places to look, labelled and counted so the sample is not
+    # read as the whole list. The simulator writes its own traceback to these
+    # logfiles, so they carry the cause that the status code only names.
+    sample = [rec['log_path'] for rec in records if rec.get('log_path')][:3]
+    if sample:
+        log.info(f'Logfiles ({len(sample)} of {n_unscored} shown):')
+        for log_path in sample:
+            log.info(f'    {log_path}')
     log.info(f'Full list: {csv_path}')
-
-    # A few concrete places to look. The simulator writes its own traceback to
-    # these logfiles, so they carry the cause that the status code only names.
-    for rec in records[:3]:
-        if rec.get('log_path'):
-            log.info(f'    {rec["log_path"]}')
 
     if frac > FAILURE_FRACTION_WARN:
         log.warning(
@@ -300,8 +303,7 @@ def print_results(D, logs, config, output, n_init):
         raise RuntimeError(
             f'None of the {n_optim} optimisation evaluations produced a fit quality, '
             'so there is no best fit to report. The per-run reports above name the '
-            'cause of each; the most common causes are a reference config the '
-            'simulator refuses, a parameter range that leaves the model unphysical, '
+            'cause of each; the most common causes are a parameter range that leaves the model unphysical, '
             'and a `failure_codes` list that excludes the outcome most runs reach.'
         )
 
