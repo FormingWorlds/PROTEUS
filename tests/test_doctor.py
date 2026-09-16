@@ -906,6 +906,34 @@ class TestCheckGitModuleInstallState:
         # getter wired up must not appear once the getter is actually called.
         assert r.message != '?'
 
+    def test_unrecognized_module_name_falls_back_to_placeholder_version(self, tmp_path):
+        """A module name with no dedicated version getter degrades to '?'.
+
+        The name dispatch (AGNI/SOCRATES/Obliqua) is exhaustive over today's
+        git-pinned modules, but the trailing ``else`` exists so a future
+        module added to GIT_MODULES/OPTIONAL_GIT_MODULES without a matching
+        version-getter branch fails soft with a placeholder instead of
+        raising or reporting a fabricated version.
+        """
+        pins = {'futuremodule': {'ref': 'a' * 40}}
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._git_head', return_value='a' * 40),
+        ):
+            r = check_git_module('FutureModule', {'futuremodule': str(tmp_path)})
+        assert r.status == PASS
+        assert r.message == '? (aaaaaaaa)'
+        # Discrimination: Obliqua's dedicated getter must still resolve a
+        # real-looking version rather than also degrading to the fallback,
+        # proving the placeholder is specific to unrecognized names.
+        with (
+            patch('proteus.doctor._module_pins', return_value={'obliqua': {'ref': 'a' * 40}}),
+            patch('proteus.doctor._git_head', return_value='a' * 40),
+            patch('proteus.doctor._get_obliqua_version', return_value='0.1.0'),
+        ):
+            obliqua_r = check_git_module('Obliqua', {'obliqua': str(tmp_path)}, required=False)
+        assert obliqua_r.message != '?'
+
     def test_socrates_version_unreadable_still_classifies(self, tmp_path, monkeypatch):
         """An unreadable SOCRATES version degrades to '?' instead of crashing.
 
