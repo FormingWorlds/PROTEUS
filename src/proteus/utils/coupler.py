@@ -1918,6 +1918,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     from proteus.plot.cpl_orbit import (
         plot_lovenumber,
         plot_orbit,
+        plot_orbit_system,
     )
     from proteus.plot.cpl_population import (
         plot_population_mass_radius,
@@ -1971,6 +1972,12 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
             hf_all,
             output_dir,
             config.orbit.satellite.include_satellite,
+            plot_format=config.params.out.plot_fmt,
+        )
+        plot_orbit_system(
+            hf_all,
+            output_dir,
+            config.orbit.planet_satellite_model is not None,
             plot_format=config.params.out.plot_fmt,
         )
 
@@ -2035,9 +2042,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     if obliqua:
         # Which times do we have tides data for?
         ncs = glob.glob(os.path.join(output_dir, 'data', '*_obliqua.nc'))
-        nc_times = [int(f.split('/')[-1].split('_obliqua')[0]) for f in ncs]
-
-        plot_times_obliqua = nc_times
+        plot_times_obliqua = [int(f.split('/')[-1].split('_obliqua')[0]) for f in ncs]
 
         tide_data = read_tides_data(output_dir, 'obliqua', plot_times_obliqua)
 

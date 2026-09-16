@@ -158,21 +158,60 @@ def plot_orbit(
     plt.ioff()
 
 
-def plot_orbit_system(hf_all: pd.DataFrame, output_dir: str, plot_format: str = 'pdf', t0=1e3):
+def plot_orbit_system(
+    hf_all: pd.DataFrame,
+    output_dir: str,
+    is_satellite_system: bool,
+    plot_format: str = 'pdf',
+    t0=1e3,
+):
+    """Plot the orbit(s) actually being evolved, as seen from the body they
+    orbit -- either the planet around the star (``star_planet_model``
+    active) or the satellite around the planet (``planet_satellite_model``
+    active). ``orbit.star_planet_model`` and ``orbit.planet_satellite_model``
+    are mutually exclusive (enforced at config load), so exactly one of
+    these two views is ever meaningful for a given run: plotting both in one
+    AU-scaled panel previously buried the satellite's orbit (~400x smaller
+    than a 1 AU planet-star separation) as an invisible speck. ``is_satellite_system``
+    picks the one that actually evolves, each drawn in its own natural
+    length unit (AU around the star, R_earth around the planet).
+    """
     if np.amax(hf_all['Time']) <= t0 + 1:
         log.debug('Insufficient data to make plot_system')
         return
 
     log.info('Plot orbit_system')
 
+    if is_satellite_system:
+        center_label = 'Planet'
+        center_marker = 'o'
+        center_color = 'tab:blue'
+        sma_col = 'semimajorax_sat'
+        ecc_col = 'eccentricity_sat'
+        roche_col = 'roche_limit_sat'
+        length_unit = R_earth
+        length_unit_label = 'R_earth'
+        orbit_label = 'Satellite orbit'
+    else:
+        center_label = 'Star'
+        center_marker = '*'
+        center_color = 'orange'
+        sma_col = 'semimajorax'
+        ecc_col = 'eccentricity'
+        roche_col = 'roche_limit'
+        length_unit = AU
+        length_unit_label = 'AU'
+        orbit_label = 'Planet orbit'
+
     # Plotting parameters
-    lw_pla = 1.2
-    lw_sat = 0.8
+    lw_orb = 1.2
     figscale = 1.4
     fig, ax = plt.subplots(1, 1, figsize=(4 * figscale, 4 * figscale))
 
-    # plot star
-    ax.scatter(0, 0, color='orange', s=60, zorder=4, label='Star', marker='*')
+    # plot central body
+    ax.scatter(
+        0, 0, color=center_color, s=60, zorder=4, label=center_label, marker=center_marker
+    )
 
     # Colors
     times = np.array(hf_all['Time'][:])
@@ -180,42 +219,35 @@ def plot_orbit_system(hf_all: pd.DataFrame, output_dir: str, plot_format: str = 
     sm = plt.cm.ScalarMappable(cmap=cm.batlow, norm=norm)
     sm.set_array([])
 
-    # plot planet at time
+    # plot orbit at time
     t = np.linspace(0, np.pi * 2, 80)
 
-    def _plot_planet(i):
+    def _plot_orbit_snapshot(i):
         hf_row = hf_all.iloc[i]
         col = sm.to_rgba(hf_row['Time'])
 
-        # planet orbit parameters
-        a = hf_row['semimajorax'] / AU
-        e = hf_row['eccentricity']
+        # orbit parameters
+        a = hf_row[sma_col] / length_unit
+        e = hf_row[ecc_col]
         b = a * np.sqrt(1 - e * e)
 
         # location of focus
         f = a * e
 
-        # plot ellipse of planet orbit
+        # plot orbit ellipse
         x = a * np.cos(t) - f
         y = b * np.sin(t)
-        ax.plot(x, y, color=col, alpha=0.8, zorder=5, lw=lw_pla)
-
-        # plot satellite orbit around planet
-        asat = hf_row['semimajorax_sat'] / AU
-        x0 = np.amin(x)
-        xx = asat * np.cos(t) + x0
-        yy = asat * np.sin(t)
-        ax.plot(xx, yy, lw=lw_sat, color=col, alpha=0.4, zorder=5)
+        ax.plot(x, y, color=col, alpha=0.8, zorder=5, lw=lw_orb)
 
         return max(rmax, np.amax(np.abs(x)))
 
     # make orbits
     rmax = 0.01
     for i in range(len(hf_all)):
-        rmax = max(_plot_planet(i), rmax)
+        rmax = max(_plot_orbit_snapshot(i), rmax)
 
-    # roche radius of star
-    roche = hf_all.iloc[-1]['roche_limit'] / AU
+    # roche radius of the central body
+    roche = hf_all.iloc[-1][roche_col] / length_unit
     ax.plot(roche * np.cos(t), roche * np.sin(t), ls='dashed', c='tab:red', label='Roche limit')
 
     # Plot colourbar
@@ -224,9 +256,8 @@ def plot_orbit_system(hf_all: pd.DataFrame, output_dir: str, plot_format: str = 
     cbar = fig.colorbar(sm, cax=cax, orientation='horizontal')
     cbar.set_label('Time [yr]')
 
-    # dummy labels
-    ax.plot([], [], label='Planet orbit', c='purple', lw=lw_pla)
-    ax.plot([], [], label='Moon orbit', c='purple', lw=lw_sat)
+    # dummy label
+    ax.plot([], [], label=orbit_label, c='purple', lw=lw_orb)
 
     # decorate
     rmax *= 1.2
@@ -234,7 +265,7 @@ def plot_orbit_system(hf_all: pd.DataFrame, output_dir: str, plot_format: str = 
     ax.set_xlim(lims)
     ax.set_ylim(lims)
     ax.set_xticklabels([])
-    ax.set_ylabel('Distance [AU]')
+    ax.set_ylabel(f'Distance [{length_unit_label}]')
     ax.grid(zorder=0, alpha=0.3)
     ax.legend(loc='upper right')
 
@@ -635,6 +666,7 @@ def plot_orbit_entry(handler: Proteus):
     plot_orbit_system(
         hf_all,
         handler.directories['output'],
+        handler.config.orbit.planet_satellite_model is not None,
         plot_format=handler.config.params.out.plot_fmt,
     )
 

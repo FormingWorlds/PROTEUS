@@ -18,7 +18,7 @@ import pandas as pd
 import pytest
 
 import proteus.plot.cpl_orbit as orbit_mod
-from proteus.utils.constants import AU, secs_per_hour
+from proteus.utils.constants import AU, R_earth, secs_per_hour
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -42,6 +42,7 @@ def _make_hf_all(n: int = 5, t_start: float = 1e2, t_end: float = 1e8) -> pd.Dat
             'orbital_period_sat': np.linspace(2.3e6, 2.4e6, n),
             'axial_period_sat': np.linspace(2.3e6, 2.4e6, n),
             'roche_limit': np.full(n, 1.0e10),
+            'roche_limit_sat': np.full(n, 1.0e7),
         }
     )
 
@@ -264,18 +265,19 @@ def test_plot_orbit_system_returns_early_when_below_t0(tmp_path, monkeypatch):
         }
     )
 
-    result = orbit_mod.plot_orbit_system(hf_all, str(tmp_path), plot_format='png', t0=1e3)
+    result = orbit_mod.plot_orbit_system(hf_all, str(tmp_path), True, plot_format='png', t0=1e3)
 
     assert result is None
     # Same discrimination as the plot_orbit early-return: t0 guard must hold.
     assert not mock_plt.subplots.called
 
 
-def test_plot_orbit_system_draws_planet_satellite_and_roche(tmp_path, monkeypatch):
-    """With times that span well past ``t0`` and a small set of orbital
-    snapshots, the system plot loops over every row and calls ax.plot for
-    each (planet orbit + satellite orbit), plus the Roche-limit dashed
-    line and two dummy legend entries.
+def test_plot_orbit_system_draws_star_planet_view(tmp_path, monkeypatch):
+    """``is_satellite_system=False`` draws the planet orbiting the star:
+    one ellipse per row plus the Roche-limit dashed ring plus a single
+    "Planet orbit" dummy legend entry -- no satellite trace at all, since
+    ``star_planet_model``/``planet_satellite_model`` are mutually
+    exclusive and this view is for the former.
     """
     mock_fig = MagicMock()
     mock_ax = MagicMock()
@@ -289,25 +291,76 @@ def test_plot_orbit_system_draws_planet_satellite_and_roche(tmp_path, monkeypatc
 
     n = 4
     hf_all = _make_hf_all(n=n, t_start=1e3, t_end=1e6)
-    orbit_mod.plot_orbit_system(hf_all, str(tmp_path), plot_format='png', t0=1e3)
+    orbit_mod.plot_orbit_system(hf_all, str(tmp_path), False, plot_format='png', t0=1e3)
 
-    # Per-row: planet ellipse plot + satellite plot = 2 ax.plot calls.
-    # Plus one Roche-limit dashed line and two dummy-label plot([], []) calls.
-    expected_plot_calls = 2 * n + 1 + 2
+    # Per-row: one orbit-ellipse ax.plot call, plus one Roche-limit dashed
+    # line, plus one dummy-label plot([], []) call.
+    expected_plot_calls = n + 1 + 1
     assert mock_ax.plot.call_count == expected_plot_calls
-    # Distinguishing guard: a regression that skipped the satellite ring would
-    # land at n+3 calls (~7), not 2n+3 (~11).
-    assert mock_ax.plot.call_count > n + 3
+
+    labels = [c.kwargs.get('label') for c in mock_ax.plot.call_args_list]
+    assert 'Planet orbit' in labels
+    assert 'Satellite orbit' not in labels
+    assert mock_ax.set_ylabel.call_args[0][0] == 'Distance [AU]'
+    mock_ax.scatter.assert_called_once_with(
+        0, 0, color='orange', s=60, zorder=4, label='Star', marker='*'
+    )
 
     mock_fig.savefig.assert_called_once()
     fpath = mock_fig.savefig.call_args[0][0]
     assert fpath.endswith('plot_orbit_system.png')
 
 
-def test_plot_orbit_system_roche_radius_scaled_to_AU(tmp_path, monkeypatch):
-    """The Roche-limit dashed ring is plotted at ``roche_limit / AU``. The
-    x-component magnitude must therefore land at metres / AU, not at raw
-    metres.
+def test_plot_orbit_system_draws_planet_satellite_view(tmp_path, monkeypatch):
+    """``is_satellite_system=True`` draws the satellite orbiting the
+    planet, in R_earth (not AU) -- the fix for the satellite's orbit
+    (hundreds of times smaller than a 1 AU star-planet separation)
+    rendering as an invisible speck when both were drawn to the same
+    AU-scaled panel.
+    """
+    mock_fig = MagicMock()
+    mock_ax = MagicMock()
+    mock_plt = _install_mock_plt(monkeypatch)
+    mock_plt.subplots.return_value = (mock_fig, mock_ax)
+    mock_plt.cm.ScalarMappable.return_value = MagicMock()
+    monkeypatch.setattr(orbit_mod, 'make_axes_locatable', lambda _ax: MagicMock())
+
+    n = 4
+    hf_all = _make_hf_all(n=n, t_start=1e3, t_end=1e6)
+    orbit_mod.plot_orbit_system(hf_all, str(tmp_path), True, plot_format='png', t0=1e3)
+
+    expected_plot_calls = n + 1 + 1
+    assert mock_ax.plot.call_count == expected_plot_calls
+
+    labels = [c.kwargs.get('label') for c in mock_ax.plot.call_args_list]
+    assert 'Satellite orbit' in labels
+    assert 'Planet orbit' not in labels
+    assert mock_ax.set_ylabel.call_args[0][0] == 'Distance [R_earth]'
+    mock_ax.scatter.assert_called_once_with(
+        0, 0, color='tab:blue', s=60, zorder=4, label='Planet', marker='o'
+    )
+
+    # Discrimination: the orbit ellipse must be scaled by semimajorax_sat /
+    # R_earth, not by semimajorax / AU -- a regression that left the
+    # star-view columns/unit in place would plot a wildly different
+    # (AU-scaled, semimajorax-derived) ellipse size instead.
+    ellipse_calls = [
+        c for c in mock_ax.plot.call_args_list if c.kwargs.get('ls') != 'dashed' and c.args
+    ]
+    x_vals = ellipse_calls[0][0][0]
+    t_arr = np.linspace(0, np.pi * 2, 80)
+    a = hf_all['semimajorax_sat'].iloc[0] / R_earth
+    e = hf_all['eccentricity_sat'].iloc[0]
+    expected_x = a * np.cos(t_arr) - a * e
+    assert np.amax(np.abs(x_vals)) == pytest.approx(np.amax(np.abs(expected_x)), rel=1e-9)
+
+    mock_fig.savefig.assert_called_once()
+
+
+def test_plot_orbit_system_roche_radius_scaled_to_AU_for_star_view(tmp_path, monkeypatch):
+    """The Roche-limit dashed ring in the star-planet view is plotted at
+    ``roche_limit / AU``. The x-component magnitude must therefore land
+    at metres / AU, not at raw metres.
     """
     mock_fig = MagicMock()
     mock_ax = MagicMock()
@@ -320,11 +373,8 @@ def test_plot_orbit_system_roche_radius_scaled_to_AU(tmp_path, monkeypatch):
     # Roche limit large enough to be the visible feature; AU-converted value ~6.68e-2 AU.
     hf_all['roche_limit'] = np.full(3, 1.0e10)
 
-    orbit_mod.plot_orbit_system(hf_all, str(tmp_path), plot_format='png', t0=1e3)
+    orbit_mod.plot_orbit_system(hf_all, str(tmp_path), False, plot_format='png', t0=1e3)
 
-    # The Roche-limit plot call is the (2 * nrows + 1)-th plot call when counted
-    # over the planet (n) + sat (n) loop. Easier: scan all plot calls for the
-    # one with the 'dashed' linestyle.
     dashed_calls = [c for c in mock_ax.plot.call_args_list if c.kwargs.get('ls') == 'dashed']
     assert len(dashed_calls) == 1
     x_vals = dashed_calls[0][0][0]
@@ -333,6 +383,33 @@ def test_plot_orbit_system_roche_radius_scaled_to_AU(tmp_path, monkeypatch):
     # Scale guard: AU-scaled magnitude is ~6.7e-2; a forgotten /AU would
     # land at ~1e10.
     assert 1e-4 < np.amax(x_vals) < 1.0
+
+
+def test_plot_orbit_system_roche_radius_scaled_to_R_earth_for_satellite_view(
+    tmp_path, monkeypatch
+):
+    """The Roche-limit dashed ring in the planet-satellite view is
+    plotted at ``roche_limit_sat / R_earth``, not ``roche_limit / AU`` --
+    the satellite view must read the satellite's own Roche limit and
+    natural length unit, not the star-planet ones.
+    """
+    mock_fig = MagicMock()
+    mock_ax = MagicMock()
+    mock_plt = _install_mock_plt(monkeypatch)
+    mock_plt.subplots.return_value = (mock_fig, mock_ax)
+    mock_plt.cm.ScalarMappable.return_value = MagicMock()
+    monkeypatch.setattr(orbit_mod, 'make_axes_locatable', lambda _ax: MagicMock())
+
+    hf_all = _make_hf_all(n=3, t_start=1e3, t_end=1e6)
+    hf_all['roche_limit_sat'] = np.full(3, 1.0e7)
+
+    orbit_mod.plot_orbit_system(hf_all, str(tmp_path), True, plot_format='png', t0=1e3)
+
+    dashed_calls = [c for c in mock_ax.plot.call_args_list if c.kwargs.get('ls') == 'dashed']
+    assert len(dashed_calls) == 1
+    x_vals = dashed_calls[0][0][0]
+    expected = 1.0e7 / R_earth
+    assert np.amax(x_vals) == pytest.approx(expected, rel=1e-9)
 
 
 # ---------------------------------------------------------------------------
@@ -635,9 +712,11 @@ def test_plot_orbit_entry_reads_helpfile_and_calls_both_plots(monkeypatch, tmp_p
     """The entry wrapper reads ``runtime_helpfile.csv`` from the run output
     directory and dispatches to both ``plot_orbit`` and
     ``plot_orbit_system`` with the configured plot format. ``plot_orbit``
-    must also receive ``has_sat`` as the explicit
-    ``config.orbit.satellite.include_satellite`` flag, not the whole
-    config object.
+    receives ``config.orbit.satellite.include_satellite`` (whether
+    satellite DATA exists to plot as a column); ``plot_orbit_system``
+    receives ``config.orbit.planet_satellite_model is not None`` (which
+    single system view -- star-planet or planet-satellite -- is the one
+    actually evolving). These are deliberately different flags.
     """
     fake_hf = _make_hf_all(n=4, t_start=1e3, t_end=1e6)
 
@@ -646,8 +725,12 @@ def test_plot_orbit_entry_reads_helpfile_and_calls_both_plots(monkeypatch, tmp_p
     def fake_plot_orbit(hf_all, output_dir, has_sat, plot_format='pdf', t0=100.0):
         captured_calls.append(('plot_orbit', hf_all, output_dir, has_sat, plot_format))
 
-    def fake_plot_orbit_system(hf_all, output_dir, plot_format='pdf', t0=1e3):
-        captured_calls.append(('plot_orbit_system', hf_all, output_dir, None, plot_format))
+    def fake_plot_orbit_system(
+        hf_all, output_dir, is_satellite_system, plot_format='pdf', t0=1e3
+    ):
+        captured_calls.append(
+            ('plot_orbit_system', hf_all, output_dir, is_satellite_system, plot_format)
+        )
 
     monkeypatch.setattr(orbit_mod.pd, 'read_csv', lambda *a, **kw: fake_hf)
     monkeypatch.setattr(orbit_mod, 'plot_orbit', fake_plot_orbit)
@@ -657,6 +740,7 @@ def test_plot_orbit_entry_reads_helpfile_and_calls_both_plots(monkeypatch, tmp_p
     handler.directories = {'output': str(tmp_path)}
     handler.config.params.out.plot_fmt = 'png'
     handler.config.orbit.satellite.include_satellite = True
+    handler.config.orbit.planet_satellite_model = 'ps1d'
 
     orbit_mod.plot_orbit_entry(handler)
 
@@ -666,9 +750,8 @@ def test_plot_orbit_entry_reads_helpfile_and_calls_both_plots(monkeypatch, tmp_p
     # Both received the configured format. A regression hardcoding 'pdf'
     # would fail this check.
     assert all(c[4] == 'png' for c in captured_calls)
-    # plot_orbit received the explicit boolean flag (not the config object).
-    plot_orbit_call = next(c for c in captured_calls if c[0] == 'plot_orbit')
-    assert plot_orbit_call[3] is True
+    # Both flags happen to be True here, but via their own distinct source.
+    assert all(c[3] is True for c in captured_calls)
 
 
 def test_plot_orbit_entry_dispatches_to_plot_evection_for_ps1d_evec(monkeypatch, tmp_path):

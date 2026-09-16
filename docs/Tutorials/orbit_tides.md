@@ -22,9 +22,9 @@ required for offline use.
 ## Physical setup
 
 The physical setup for the orbit and tides tutorial involves defining the 
-properties of the planet and its satellite. Create a new file called 
-`0d_test_moon.json` in the `examples/satellite/` directory relative to the
-PROTEUS root directory. The data file should be a JSON file with the following 
+properties of the planet and its satellite. For the satellite a data file called 
+`tutorial_earth_moon.json` is included in the `input/tutorials/` directory relative 
+to the PROTEUS root directory. The data file must be a JSON file with the following 
 structure:
 
 ```json
@@ -63,8 +63,8 @@ structure:
 }
 ```
 
-The values provided here reflect a partially molten Moon, with a fluid iron core, a 
-solid mantle, and a partially molten crust. Although we do not require the orbital 
+The specific values provided here reflect a partially molten Moon, with a fluid iron core, 
+a solid mantle, and a partially molten crust. Although we do not require the orbital 
 parameters for this test case, we still need to provide them in the data file. The 
 values provided here are arbitrary and do not affect the tidal response calculations.
 
@@ -73,8 +73,7 @@ values provided here are arbitrary and do not affect the tidal response calculat
 ```bash
 conda activate proteus
 mkdir -p output/tutorial_earth_moon
-nohup proteus start -c input/tutorials/tutorial_earth_moon.toml \
-    > /tmp/proteus_earth_moon_launch.log 2>&1 & disown
+proteus start -c input/tutorials/tutorial_earth_moon.toml
 ```
 
 Add `--offline` to skip the reference-data check on later runs; the first
@@ -84,8 +83,17 @@ see the prerequisites above).
 Monitor progress with `tail -f output/tutorial_earth_moon/proteus_00.log`
 (the log appears once PROTEUS has initialized).
 
-!!! warning "Runtime"
-    This run takes several hours to overnight depending on hardware.
+!!! info "Runtime"
+    This run takes roughly 1 hour depending on hardware. A fine excuse to go
+    read up on the physics while SPIDER, AGNI, and Obliqua sort out the
+    Earth-Moon system on your behalf: the [orbital dynamics](../Explanations/orbit.md)
+    page covers PROTEUS's own orbital models, or head over to the
+    [Obliqua documentation](https://proteus-framework.org/Obliqua) for the
+    multi-phase tidal-response theory driving this tutorial, whose
+    [usage guide](https://proteus-framework.org/Obliqua/dev/how-to-guides/usage/)
+    includes a tidal response evolution animation for an Earth-like planet. Not in
+    the mood to wait at all? The [Results](#results) section below already
+    has the pregenerated plots from a reference run. 
 
 ## Configuration
 

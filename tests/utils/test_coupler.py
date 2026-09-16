@@ -3083,7 +3083,7 @@ def _install_updateplots_fakes(monkeypatch, calls):
         'proteus.plot.cpl_global': 'plot_global',
         'proteus.plot.cpl_interior': 'plot_interior',
         'proteus.plot.cpl_interior_cmesh': 'plot_interior_cmesh',
-        'proteus.plot.cpl_orbit': ('plot_orbit', 'plot_lovenumber'),
+        'proteus.plot.cpl_orbit': ('plot_orbit', 'plot_orbit_system', 'plot_lovenumber'),
         'proteus.plot.cpl_sflux': 'plot_sflux',
         'proteus.plot.cpl_sflux_cross': 'plot_sflux_cross',
         'proteus.plot.cpl_spectra': 'plot_spectra',
@@ -3145,6 +3145,7 @@ def test_update_plots_covers_runtime_and_end_branches(monkeypatch, tmp_path):
     assert 'plot_global' in called_names
     assert 'plot_escape' in called_names
     assert 'plot_orbit' in called_names
+    assert 'plot_orbit_system' in called_names
     assert 'plot_interior' in called_names
     assert 'plot_atmosphere' in called_names
     assert 'plot_structure' in called_names
@@ -3506,6 +3507,7 @@ def test_update_plots_spider_dummy_atm_covers_skip_branches(monkeypatch, tmp_pat
     assert 'plot_escape' in called_names
     assert 'plot_interior' in called_names
     assert 'plot_orbit' not in called_names
+    assert 'plot_orbit_system' not in called_names
     assert 'plot_atmosphere' not in called_names
     assert 'plot_spectra' not in called_names
 

@@ -317,7 +317,7 @@ ref = "main"
 # the AGNI pattern. Pinned to a commit on md/phys_tests (pre-main-merge);
 # bump once the branch lands on main.
 url = "https://github.com/FormingWorlds/Obliqua.git"
-ref = "89be36ee70a4a7c776c4d9b0d461ba1259b6b0c0"
+ref = "71950f274060fe404c246a02a9b005d81bda5a6c"
 
 [tool.proteus.modules.thermoenginelite]
 # Multi-phase thermodynamics engine (c++ and Python)
