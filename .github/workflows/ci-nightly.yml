@@ -149,7 +149,12 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    # The budget must cover a cold FWL_DATA download (~30 min) plus the
+    # integration suite (~20 min), roughly 1.5x margin, consistent with the
+    # runner-to-runner variance budgeted for the slow-tier shards below. The
+    # full-data cache can miss on eviction, a manifest re-pin, or a slow
+    # network fetch even when the unit tier's smaller cache stays warm.
+    timeout-minutes: 80
     env:
       COVERAGE_FILE: .coverage.integration.${{ matrix.os }}
     steps:
