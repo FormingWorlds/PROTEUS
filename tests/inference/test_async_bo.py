@@ -8,6 +8,8 @@ References:
 
 from __future__ import annotations
 
+import logging
+
 import pandas as pd
 import pytest
 
@@ -623,3 +625,115 @@ def test_parallel_process_names_the_real_step_budget_when_no_worker_failed(
     # The requested budget is still named, so the two numbers can be related.
     assert '6 requested' in message
     assert 'Raise n_steps to at least n_workers (2)' in message
+
+
+@pytest.mark.unit
+def test_worker_writes_its_traceback_to_the_study_logfile(tmp_path):
+    """A worker started with the 'spawn' method inherits no logging
+    configuration, so the report of its death would go to stderr and never
+    reach the study logfile. Given the logfile path, the worker reopens it
+    and the traceback lands where the study is read from.
+
+    The 'fwl' logger is emptied here to stand in for a spawned process, which
+    is what the parent's handlers are absent in; pytest's own capture would
+    otherwise hide the gap this covers.
+    """
+    logger = logging.getLogger('fwl')
+    saved_handlers, saved_level = list(logger.handlers), logger.level
+    logger.handlers.clear()
+
+    logpath = tmp_path / 'infer.log'
+    logpath.write_text('[ INFO  ] study started\n', encoding='utf-8')
+
+    D_shared = {
+        'X': torch.tensor([[0.1]], dtype=torch.double),
+        'Y': torch.tensor([[0.2]], dtype=torch.double),
+    }
+    # Keyed by this worker's own id, so the release below is a real check.
+    B = {3: torch.tensor([[0.3]], dtype=torch.double)}
+
+    def exploding_process_fun(**_kwargs):
+        raise RuntimeError('objective evaluation failed')
+
+    try:
+        with pytest.raises(RuntimeError, match='objective evaluation failed'):
+            async_mod.worker(
+                process_fun=exploding_process_fun,
+                build_obj=lambda **kwargs: lambda x: x,
+                D_shared=D_shared,
+                B=B,
+                T=[],
+                T0=0.0,
+                x_init=torch.tensor([[0.3]], dtype=torch.double),
+                n_init=1,
+                lock=_DummyLock(),
+                max_len=4,
+                worker_id=3,
+                log_list=[],
+                output_dir=str(tmp_path),
+                logpath=str(logpath),
+                log_level=logging.INFO,
+            )
+        for handler in logging.getLogger('fwl').handlers:
+            handler.flush()
+        text = logpath.read_text(encoding='utf-8')
+    finally:
+        logger.handlers.clear()
+        logger.handlers.extend(saved_handlers)
+        logger.setLevel(saved_level)
+
+    assert 'Worker 3 stopped early' in text
+    # The cause, not just the headline: a report without the traceback body
+    # would leave the study with no more than the fact that something failed.
+    assert 'RuntimeError: objective evaluation failed' in text
+    # Appended, never recreated: the lines written before the worker started
+    # are what place the failure in the run.
+    assert 'study started' in text
+    # The busy point is still released on the way out, so the logfile change
+    # has not displaced the behaviour the failure path already had.
+    assert B == {}
+
+
+@pytest.mark.unit
+def test_worker_without_a_logfile_path_leaves_logging_untouched(tmp_path, caplog):
+    """Under 'fork' the parent's handlers are inherited, so `parallel_process`
+    passes no path and the worker must not attach one of its own; a second
+    handler on the same file would double every line. The failure is still
+    reported through whatever configuration the process already has.
+    """
+    logger = logging.getLogger('fwl')
+    before = list(logger.handlers)
+
+    D_shared = {
+        'X': torch.tensor([[0.1]], dtype=torch.double),
+        'Y': torch.tensor([[0.2]], dtype=torch.double),
+    }
+    B = {0: torch.tensor([[0.3]], dtype=torch.double)}
+
+    def exploding_process_fun(**_kwargs):
+        raise RuntimeError('objective evaluation failed')
+
+    with caplog.at_level('ERROR'):
+        with pytest.raises(RuntimeError, match='objective evaluation failed'):
+            async_mod.worker(
+                process_fun=exploding_process_fun,
+                build_obj=lambda **kwargs: lambda x: x,
+                D_shared=D_shared,
+                B=B,
+                T=[],
+                T0=0.0,
+                x_init=torch.tensor([[0.3]], dtype=torch.double),
+                n_init=1,
+                lock=_DummyLock(),
+                max_len=4,
+                worker_id=0,
+                log_list=[],
+                output_dir=str(tmp_path),
+            )
+
+    # No handler added, and none taken away.
+    assert list(logger.handlers) == before
+    # No stray logfile created beside the run output.
+    assert not (tmp_path / 'infer.log').exists()
+    reported = '\n'.join(record.getMessage() for record in caplog.records)
+    assert 'Worker 0 stopped early' in reported
