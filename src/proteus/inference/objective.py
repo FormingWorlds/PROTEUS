@@ -720,25 +720,32 @@ def J(
             else CommentFromStatus(sim_status)
         )
         _, out_abs = run_output_dir(output, worker, iter)
-        record_failure(
-            get_proteus_directories(output)['output'],
-            ProteusRunFailure(
-                reason=(
-                    'exited cleanly but stopped in a failure state'
-                    if failed
-                    else 'completed on a status this study excludes'
-                ),
-                worker=worker,
-                iter=iter,
-                out_dir=str(out_abs),
-                exit_code=0,
-                status=sim_status,
-                log_path=find_run_logfile(out_abs),
-                parameters=raw,
-                category=CATEGORY_FAILURE if failed else CATEGORY_EXCLUDED,
+        # Built once, so the entry left on disk and the exception raised under
+        # `abort_on_failure` describe the same run.
+        failure = ProteusRunFailure(
+            reason=(
+                'exited cleanly but stopped in a failure state'
+                if failed
+                else 'completed on a status this study excludes'
             ),
+            worker=worker,
+            iter=iter,
+            out_dir=str(out_abs),
+            exit_code=0,
+            status=sim_status,
+            log_path=find_run_logfile(out_abs),
+            parameters=raw,
+            category=CATEGORY_FAILURE if failed else CATEGORY_EXCLUDED,
         )
+        # Recorded before the abort check, so an aborted study still leaves
+        # the record of what stopped it.
+        record_failure(get_proteus_directories(output)['output'], failure)
         if failed:
+            # A clean exit on an error status is as much a fault as a crash,
+            # so it honours `abort_on_failure` the same way. An excluded
+            # outcome never does: nothing went wrong in such a run.
+            if abort_on_failure():
+                raise failure
             log.warning(
                 f'PROTEUS run for worker={worker} iter={iter} did not produce a usable '
                 f'result: status {sim_status} ({desc})'
