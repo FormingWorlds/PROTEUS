@@ -145,8 +145,7 @@ class ProteusRunFailure(RuntimeError):
         return CommentFromStatus(self.status)
 
     def summary(self) -> str:
-        """Single-line description naming the outcome and where to look next.
-        """
+        """Single-line description naming the outcome and where to look next."""
         verb = 'excluded' if self.category == CATEGORY_EXCLUDED else 'failed'
         parts = [
             f'PROTEUS run {verb} for worker={self.worker} iter={self.iter}: {self.reason}',
