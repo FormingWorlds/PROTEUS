@@ -144,6 +144,21 @@ class ProteusRunFailure(RuntimeError):
             return 'no readable status file (died during start-up)'
         return CommentFromStatus(self.status)
 
+    def summary(self) -> str:
+        """Single-line description naming the outcome and where to look next.
+        """
+        verb = 'excluded' if self.category == CATEGORY_EXCLUDED else 'failed'
+        parts = [
+            f'PROTEUS run {verb} for worker={self.worker} iter={self.iter}: {self.reason}',
+            f'status {self.status} ({self.status_desc})',
+        ]
+        # A zero exit code is the norm for every path except a crash, where it
+        # is the one number that says which signal or error ended the run.
+        if self.exit_code:
+            parts.append(f'exit code {self.exit_code}')
+        parts.append(f'output {self.out_dir}')
+        return '; '.join(parts)
+
     def report(self) -> str:
         """Multi-line description naming the cause and where to look next."""
         verb = 'excluded' if self.category == CATEGORY_EXCLUDED else 'failed'
@@ -688,14 +703,15 @@ def J(
     except ProteusRunFailure as failure:
         # A parameter combination the simulator cannot integrate is an
         # expected outcome of sweeping a wide box, so it is scored as a poor
-        # sample and the study continues. Every such run is reported in full,
-        # once, because the alternative is a silently under-sampled study.
+        # sample and the study continues. Every such run is reported once,
+        # and the full report goes to the failure record.
         # Recorded before the abort check, so an aborted study still leaves
         # the record of what stopped it.
         record_failure(get_proteus_directories(output)['output'], failure)
         if abort_on_failure():
             raise
-        log.warning(failure.report())
+        log.warning(failure.summary())
+        log.debug(failure.report())
         return BAD_OBJ_VALUE * torch.ones((1, 1), dtype=dtype)
 
     # Runs that exit cleanly but stop in an error state, such as a run halted
@@ -714,11 +730,6 @@ def J(
     # Either way the evaluation carries the failure score instead of a fit
     # quality, and is recorded so that the end-of-study tally covers it.
     if failed or excluded:
-        desc = (
-            'no status file written'
-            if sim_status == STATUS_MISSING
-            else CommentFromStatus(sim_status)
-        )
         _, out_abs = run_output_dir(output, worker, iter)
         # Built once, so the entry left on disk and the exception raised under
         # `abort_on_failure` describe the same run.
@@ -746,16 +757,13 @@ def J(
             # outcome never does: nothing went wrong in such a run.
             if abort_on_failure():
                 raise failure
-            log.warning(
-                f'PROTEUS run for worker={worker} iter={iter} did not produce a usable '
-                f'result: status {sim_status} ({desc})'
-            )
+            log.warning(failure.summary())
         else:
-            log.info(
-                f'PROTEUS run for worker={worker} iter={iter} completed on status '
-                f'{sim_status} ({desc}), which this study excludes; scored as a poor '
-                'sample'
-            )
+            # Nothing went wrong in such a run, so it is reported at info
+            # level and, like a fault, on one line.
+            log.info(failure.summary())
+        # The rest of the report is kept out of the study log
+        log.debug(failure.report())
         return BAD_OBJ_VALUE * torch.ones((1, 1), dtype=dtype)
 
     # Compute value of objective function given these results
