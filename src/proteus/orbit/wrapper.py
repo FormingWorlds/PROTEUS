@@ -219,6 +219,10 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, interior_o: Interior_t):
             # set by user with float, use that
             hf_row['axial_period'] = float(config.orbit.axial_period) * secs_per_hour
 
+        # Set longitude and latitude of the column to zero, for now
+        hf_row['longitude'] = 0.0
+        hf_row['latitude'] = 0.0
+
     # Update Breakup period
     update_breakup_period(hf_row)
     if hf_row['axial_period'] <= hf_row['breakup_period'] + float(

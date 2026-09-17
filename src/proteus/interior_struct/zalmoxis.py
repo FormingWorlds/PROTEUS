@@ -2955,7 +2955,6 @@ def zalmoxis_solver(
             cp_iron_func=cp_iron_func,
             cp_silicate_func=cp_silicate_func,
         )
-        hf_row['T_cmb_initial'] = thermal['T_cmb']
         hf_row['T_surf_accr'] = thermal['T_surf_accr']
         # Key consumed by Aragog setup_solver and _set_entropy_ic
         hf_row['T_surface_initial'] = thermal['T_surf_accr']

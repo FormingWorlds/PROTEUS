@@ -190,6 +190,18 @@ class Agni:
         Grey longwave opacity [m2 kg-1], used when `spectral_file='greygas'`.
     grey_opacity_sw: float
         Grey shortwave opacity [m2 kg-1], used when `spectral_file='greygas'`.
+    hydrograv_steps: int
+        Number of steps to use when calculating heights and gravity.
+    hydrograv_maxdr: float
+        Maximum step size to use when calculating heights [m]
+    hydrograv_mindr: float
+        Minimum step size to use when calculating heights [m]
+    hydrograv_ming: float
+        Minimum allowed gravity in the atmosphere [m/s^2]
+    hydrograv_constg: bool
+        Constant gravity with height?
+    hydrograv_selfg: bool
+        Include self-gravity of the atmosphere?
     """
 
     verbosity: int = field(
@@ -258,6 +270,12 @@ class Agni:
     spectral_file: str | None = field(default=None, converter=none_if_none)
     grey_opacity_lw: float = field(default=1e1, validator=gt(0))
     grey_opacity_sw: float = field(default=1e-4, validator=gt(0))
+    hydrograv_steps: int = field(default=2000, validator=gt(0))
+    hydrograv_maxdr: float = field(default=1e8, validator=gt(0))
+    hydrograv_mindr: float = field(default=1e-5, validator=gt(0))
+    hydrograv_ming: float = field(default=1e-4, validator=gt(0))
+    hydrograv_constg: bool = field(default=False)
+    hydrograv_selfg: bool = field(default=True)
 
 
 def valid_janus(instance, attribute, value):
@@ -509,6 +527,18 @@ DOC_GROUPS = {
                 'fastchem_maxiter_solv',
                 'fastchem_xtol_chem',
                 'fastchem_xtol_elem',
+            ),
+        ),
+        (
+            'Hydrostatic integration',
+            None,
+            (
+                'hydrograv_steps',
+                'hydrograv_maxdr',
+                'hydrograv_mindr',
+                'hydrograv_ming',
+                'hydrograv_constg',
+                'hydrograv_selfg',
             ),
         ),
     ),
