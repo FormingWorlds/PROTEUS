@@ -6318,6 +6318,27 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.tmagma_tides_step",
+      "toml_section": "interior_energetics",
+      "class": "Interior",
+      "type": "float",
+      "accepts_none": false,
+      "default": "10.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Maximum change in T_magma allowed when tides are active [K].",
+      "doc_source": "attributes",
+      "group_order": 4,
+      "group_position": 2,
+      "group": "Coupling limits",
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.kappah_floor",
       "toml_section": "interior_energetics",
       "class": "Interior",

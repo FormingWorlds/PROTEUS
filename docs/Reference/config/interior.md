@@ -212,6 +212,7 @@ controlled parity tests.
 |---|---|---|---|
 | `tmagma_atol` | float | `20.0` | Maximum absolute change in T_magma per PROTEUS step \[K\]. Must be >= 0. |
 | `tmagma_rtol` | float | `0.02` | Maximum relative change in T_magma per PROTEUS step. Must be >= 0. |
+| `tmagma_tides_step` | float | `10.0` | Maximum change in T_magma allowed when tides are active \[K\]. Must be >= 0. |
 
 **Ultra-thin boundary layer**
 

@@ -862,6 +862,7 @@ DOC_GROUPS = {
             (
                 'tmagma_atol',
                 'tmagma_rtol',
+                'tmagma_tides_step',
             ),
         ),
         (
