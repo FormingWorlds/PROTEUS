@@ -173,9 +173,7 @@
           "condition": "orbit.evolve = true"
         }
       ],
-      "consumers": [
-        "orbit"
-      ]
+      "consumers": []
     },
     {
       "name": "axial_period",
