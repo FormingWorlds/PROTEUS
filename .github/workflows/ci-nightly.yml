@@ -63,7 +63,12 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-proteus
         with:
-          full-data: 'true'
+          # No unit or smoke test here needs full-data-only datasets. The real-module
+          # smoke tests (CALLIOPE outgassing, atmodeller noble gas) keep
+          # interior_energetics.module = 'dummy' and never read FWL_DATA; only the
+          # ARAGOG/SPIDER interior EOS and melting-curve lookups, which run under
+          # full-data: 'true', would.
+          full-data: 'false'
       - name: Run unit + smoke tier
         run: |
           # Unit tier produces COVERAGE_FILE; smoke uses --cov-append on
@@ -128,21 +133,28 @@ jobs:
 
   # ============================================================
   # Integration tier: schema-tier cross-module pair tests, no
-  # real solver boots. Runs after unit tier so the env cache is
-  # warm.
+  # real solver boots. Runs after unit tier so the build caches
+  # (SOCRATES, AGNI, Julia depot) are warm; FWL_DATA is cached
+  # separately per full-data flavor and is not shared here.
   # ============================================================
   integration-tier:
     name: Integration tier (${{ matrix.os }})
     needs: unit-tier
-    # Ordered after the unit tier for a warm cache; it does not require the
-    # unit tier to pass. Cancelling the workflow still stops it.
+    # Ordered after the unit tier so the flavor-independent build caches
+    # are warm; it does not require the unit tier to pass. Cancelling the
+    # workflow still stops it.
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    # The budget must cover a cold FWL_DATA download (~30 min) plus the
+    # integration suite (~20 min), roughly 1.5x margin, consistent with the
+    # runner-to-runner variance budgeted for the slow-tier shards below. The
+    # full-data cache can miss on eviction, a manifest re-pin, or a slow
+    # network fetch even when the unit tier's smaller cache stays warm.
+    timeout-minutes: 80
     env:
       COVERAGE_FILE: .coverage.integration.${{ matrix.os }}
     steps:
