@@ -467,6 +467,7 @@ config_version = "3.0"
     # Coupling limits (max T_magma change per PROTEUS step)
     tmagma_atol               = 20.0         # absolute limit [K]
     tmagma_rtol               = 0.02         # relative limit
+    tmagma_tides_step         = 10.0         # Maximum change in T_magma allowed when tides are active [K].
 
     # Ultra-thin boundary layer parameterization
     param_utbl                = false        # enable UTBL
