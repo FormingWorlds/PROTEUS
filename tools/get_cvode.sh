@@ -30,8 +30,12 @@ conda_bin="${CONDA_EXE:-conda}"
 # change the ABI the wrapper builds against, so bound the ranges to the known
 # working combination (SUNDIALS 7.x, scikits-odes-sundials 3.x) while allowing
 # minor/patch updates.
-# An environment manifest may already supply SUNDIALS, leaving nothing to install.
+# Skip SUNDIALS install if pixi or conda installed it already.
 if ls "$CONDA_PREFIX"/lib/libsundials_cvode.* >/dev/null 2>&1; then
+    if ! grep -q '#define SUNDIALS_VERSION_MAJOR 7' "$CONDA_PREFIX/include/sundials/sundials_config.h" 2>/dev/null; then
+        echo "ERROR: pre-installed SUNDIALS found, but it is not version 7.x, please make sure (in your conda or pixi environment) that the correct version is installed." >&2
+        exit 1
+    fi
     echo "SUNDIALS already present in ${CONDA_PREFIX}."
 else
     echo "Installing the SUNDIALS C library (conda-forge) into ${CONDA_PREFIX}..."
