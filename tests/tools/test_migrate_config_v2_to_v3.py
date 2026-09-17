@@ -436,9 +436,10 @@ def test_new_field_classified():
         f'new (unclassified): {sorted((pm - overridden) - _REVIEWED_NEUTRAL)}; '
         f'stale allowlist entries: {sorted(_REVIEWED_NEUTRAL - (pm - overridden))}'
     )
-    # The two known behaviour-changing new fields are pinned, not neutral.
+    # The known behaviour-changing new fields are pinned, not neutral.
     assert 'interior_energetics.kappah_floor' in overridden
     assert 'params.dt.maximum_rel' in overridden
+    assert 'interior_energetics.tmagma_tides_step' in overridden
 
 
 def test_kappah_floor_and_maximum_rel_overrides():
@@ -481,6 +482,25 @@ def test_bol_scale_window_override_reproduces_unwindowed_2_0_scaling():
     # scaling entirely, so letting the field default (rather than pinning
     # it) would silently change a migrated run's stellar flux.
     assert v3_defaults['star.bol_scale_start'] is None
+
+
+def test_tmagma_tides_step_override_reproduces_hardcoded_2_0_cap():
+    """2.0 hardcoded a 4.0 K poststep-change cap whenever tidal heating was
+    active (not user-configurable). The live 3.0 default of 10.0 K would
+    relax that cap for a migrated tidal-heating run, so the override must
+    pin the field to the stricter 2.0 value rather than let it default.
+    """
+    assert mig.OVERRIDES['interior_energetics.tmagma_tides_step'] == pytest.approx(4.0)
+    # Discrimination: the pin must be strictly tighter than the live 3.0
+    # default; a regression that pinned the 3.0 default value itself (a
+    # no-op override) would still satisfy an unconstrained equality check
+    # but relax the tidal-heating dT cap for migrated 2.0 runs.
+    v3_defaults, _ = _v3()
+    assert v3_defaults['interior_energetics.tmagma_tides_step'] == pytest.approx(10.0)
+    assert (
+        mig.OVERRIDES['interior_energetics.tmagma_tides_step']
+        < v3_defaults['interior_energetics.tmagma_tides_step']
+    )
 
 
 def _translate(v2_dict):

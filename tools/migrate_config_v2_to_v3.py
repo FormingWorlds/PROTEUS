@@ -260,6 +260,10 @@ OVERRIDES = {
     # 2.0 sized escape from the unmodified XUV radius; the 3.0 default clips
     # it to the Hill radius. Pin off so migrated runs reproduce 2.0 rates.
     'escape.hill_clamp': False,
+    # 2.0 hardcoded a 4.0 K poststep-change cap when tidal heating was active
+    # (not configurable); the 3.0 default of 10.0 K would relax that cap for
+    # migrated tidal-heating runs. Pin 4.0 to reproduce 2.0 behaviour.
+    'interior_energetics.tmagma_tides_step': 4.0,
 }
 
 # Element-budget fields consumed by the element handler (not mapped directly).
