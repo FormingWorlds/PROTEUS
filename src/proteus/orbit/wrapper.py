@@ -414,26 +414,20 @@ def run_orbit(
         update_period_sat(hf_row)
 
     # Inform user
-    log.info('    Orb SMaxis = %.5f AU    (Planet)' % (hf_row['semimajorax'] / AU))
-    log.info('    Orb eccent = %.5f       (Planet)' % (hf_row['eccentricity']))
-    log.info('    Orb period = %.5f days  (Planet)' % (hf_row['orbital_period'] / secs_per_day))
-    log.info('    Orb spin   = %.5f days  (Planet)' % (hf_row['axial_period'] / secs_per_day))
-
-    log.info('    Orb AM     = %.3e kg.m^2/s' % (hf_row['plan_star_am']))
+    log.info('    Planet SMaxis     = %.5f AU  ' % (hf_row['semimajorax'] / AU))
+    log.info('    Planet eccent     = %.5f     ' % (hf_row['eccentricity']))
+    log.info('    Planet period     = %.5f days' % (hf_row['orbital_period'] / secs_per_day))
+    log.info('    Planet day        = %.5f days' % (hf_row['axial_period'] / secs_per_day))
 
     if config.orbit.satellite.include_satellite:
-        log.info('    Orb SMaxis = %.5f AU    (Satellite)' % (hf_row['semimajorax_sat'] / AU))
-        log.info('    Orb eccent = %.5f       (Satellite)' % (hf_row['eccentricity_sat']))
+        log.info('    Satellite SMaxis  = %.5f AU' % (hf_row['semimajorax_sat'] / AU))
+        log.info('    Satellite eccent  = %.5f   ' % (hf_row['eccentricity_sat']))
         log.info(
-            '    Orb period = %.5f days  (Satellite)'
-            % (hf_row['orbital_period_sat'] / secs_per_day)
+            '    Satellite period  = %.5f days' % (hf_row['orbital_period_sat'] / secs_per_day)
         )
-        log.info(
-            '    Orb spin   = %.5f days  (Satellite)'
-            % (hf_row['axial_period_sat'] / secs_per_day)
-        )
+        log.info('    Satellite day = %.5f days' % (hf_row['axial_period_sat'] / secs_per_day))
 
-        log.info('    Orb AM     = %.3e kg.m^2/s' % (hf_row['plan_sat_am']))
+    log.info('    Planet + Sat. AM  = %.3e kg.m^2/s' % (hf_row['plan_sat_am']))
 
     # Update dependent orbital parameters, from independent variables above
     # Update separation
@@ -516,12 +510,12 @@ def run_orbit(
 
     # Print info
     if config.orbit.module == 'obliqua':
-        log.info('    Pla H_tide = %.1e W kg-1 (mean) ' % np.mean(interior_o.tides))
-        log.info('    Pla Im(k)  = %.1e ' % Imk)
+        log.info('    Planet H_tide = %.1e W kg-1 (mean) ' % np.mean(interior_o.tides))
+        log.info('    Planet Im(k)  = %.1e ' % Imk)
 
     elif config.orbit.module is not None:
-        log.info('    Pla H_tide = %.1e W kg-1 (mean) ' % np.mean(interior_o.tides))
-        log.info('    Pla Im(k2) = %.1e ' % hf_row['Imk2'])
+        log.info('    Planet H_tide = %.1e W kg-1 (mean) ' % np.mean(interior_o.tides))
+        log.info('    Planet Im(k2) = %.1e ' % hf_row['Imk2'])
 
     # If satellite orbital evolution is enabled, then extract the satellite love number from
     # the provided lookup file

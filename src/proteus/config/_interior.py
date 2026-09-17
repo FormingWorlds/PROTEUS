@@ -483,6 +483,8 @@ class Interior:
         Maximum absolute change in T_magma per PROTEUS step [K].
     tmagma_rtol: float
         Maximum relative change in T_magma per PROTEUS step.
+    tmagma_tides_step: float
+        Maximum change in T_magma allowed when tides are active [K].
     param_utbl: bool
         Enable the ultra-thin boundary layer parameterisation.
     param_utbl_const: float
@@ -572,6 +574,7 @@ class Interior:
 
     rfront_loc: float = field(default=0.5, validator=(gt(0), lt(1)))
     rfront_wid: float = field(default=0.2, validator=(gt(0), lt(1)))
+    tmagma_tides_step: float = field(default=10.0, validator=ge(0))
 
     # Phase-dependent eddy diffusivity floor [m^2/s]. Default 0 = standard MLT.
     # When > 0, applies max(kh_MLT, floor * f(phi)) where f transitions from

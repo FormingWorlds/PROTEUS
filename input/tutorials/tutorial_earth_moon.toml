@@ -70,7 +70,7 @@ config_version = "3.0"
         eccentricity_sat      = 0.05         # satellite initial orbital eccentricity [dimensionless]
         evection_angle        = 0.0          # initial evection angle [degrees]
         c_factor_sat          = 0.4          # satellite normalized moment of inertia factor [dimensionless]
-        love_number_sat       = "examples/satellite/0d_test_moon.json"
+        love_number_sat       = "input/tutorials/tutorial_earth_moon.json"
                                              # satellite love number spectrum or interior structure, provide absolute path to file.
 
     # Shared ODE-solver and adaptive-substep-controller settings, used by
@@ -141,14 +141,15 @@ config_version = "3.0"
 [planet]
     mass_tot         = 1.0
     prevent_warming  = false
-    temperature_mode = "liquidus_super"
-    delta_T_super    = 200.0
+    temperature_mode = "isentropic"
+    ini_entropy               = 3500.0       # initial specific entropy [J/kg/K] (isentropic only)
+    ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (isentropic only)
     volatile_mode    = "elements"
     [planet.elements]
         O_mode                = "ic_chemistry"  # ic_chemistry | ppmw | kg | FeO_mantle_wt_pct
         O_budget              = 0.0          # ignored for ic_chemistry mode
         H_mode                = "oceans"     # oceans | ppmw | kg
-        H_budget              = 1.0          # unit defined by H_mode
+        H_budget              = 4.0          # unit defined by H_mode
         C_mode                = "C/H"        # C/H mass ratio | ppmw | kg
         C_budget              = 1.0          # unit defined by C_mode
         N_mode                = "N/H"        # N/H mass ratio | ppmw | kg
@@ -158,7 +159,7 @@ config_version = "3.0"
 
 [interior_struct]
     module              = "spider"   # zalmoxis | dummy | spider
-    core_frac           = 0.325
+    core_frac           = 0.55
     core_frac_mode      = "radius"
     core_density        = 12000
     core_heatcap        = 800
