@@ -15,11 +15,11 @@ config_version = "3.0"
     method        = "adaptive"
     initial       = 10.0
     minimum       = 1e3
-    maximum       = 1e7
+    maximum       = 1e6
     starspec      = 1e9
     atol          = 0.04
     rtol          = 0.11
-    mushy_maximum = 1e5
+    mushy_maximum = 1e4
     mushy_upper   = 0.99
 
     [params.stop.time]
