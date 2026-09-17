@@ -589,6 +589,63 @@ def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, t
 
 
 @pytest.mark.unit
+def test_failure_summary_is_one_line_and_names_where_the_detail_is_kept():
+    """The line a study logs for each unscored run identifies the run, names
+    the status code and points at the output folder, and stays on one line
+    however much the child wrote before it died. The child console tail and the
+    swept parameters belong to the on-disk record, not to the console.
+    """
+    tail = '\n'.join(f'flux warning {i}' for i in range(200))
+    failure = objective_mod.ProteusRunFailure(
+        reason='the simulator exited with an error',
+        worker=2,
+        iter=16,
+        out_dir='/study/workers/w_2/i_16',
+        exit_code=1,
+        status=22,
+        log_path='/study/workers/w_2/i_16/proteus_00.log',
+        stderr_tail=tail,
+        parameters={'planet.mass_tot': 1.25},
+    )
+    line = failure.summary()
+
+    # Edge case: a 200-line tail is the situation the one-liner exists for.
+    assert '\n' not in line
+    assert 'flux warning 199' not in line
+    assert 'planet.mass_tot' not in line
+    # What has to survive the trim: who failed, what the status was, and the
+    # folder holding the logfile and the console capture.
+    assert 'worker=2 iter=16' in line
+    assert 'status 22' in line
+    assert 'Atmosphere' in line
+    assert 'exit code 1' in line
+    assert '/study/workers/w_2/i_16' in line
+    # Discrimination: the detail is not lost, only moved. A regression that
+    # trimmed `report` instead of adding a second renderer would fail here.
+    assert 'flux warning 199' in failure.report()
+    assert 'planet.mass_tot=1.25' in failure.report()
+
+    # Limit input: an excluded run has nothing to report as a fault, so it is
+    # named as excluded and its exit code, always zero on that path, is left
+    # out rather than read as a crash code.
+    excluded = objective_mod.ProteusRunFailure(
+        reason='completed on a status this study excludes',
+        worker=0,
+        iter=10,
+        out_dir='/study/workers/w_0/i_10',
+        exit_code=0,
+        status=11,
+        category=objective_mod.CATEGORY_EXCLUDED,
+    )
+    excluded_line = excluded.summary()
+    assert '\n' not in excluded_line
+    assert 'excluded for worker=0 iter=10' in excluded_line
+    assert 'failed for worker=0' not in excluded_line
+    assert 'exit code' not in excluded_line
+    assert 'status 11' in excluded_line
+
+
+@pytest.mark.unit
 def test_proteus_run_failure_survives_the_trip_back_from_a_pool_worker():
     """A failure raised inside a pool worker is pickled and re-raised in the
     parent process. Every reported field must survive that round trip, or the
@@ -934,7 +991,7 @@ def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path
     assert 'excludes' in reported
     assert 'maximum clock runtime' in reported
     assert 'failure state' not in reported
-    assert 'did not produce a usable result' not in reported
+    assert 'failed for worker=0' not in reported
 
     # The record is kept for the end-of-study tally, labelled so the tally can
     # count it apart from the runs that genuinely failed.
@@ -952,7 +1009,9 @@ def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path
     assert failed == pytest.approx(objective_mod.BAD_OBJ_VALUE)
     warnings = [r for r in caplog.records if r.levelname == 'WARNING']
     assert len(warnings) == 1
-    assert 'did not produce a usable result' in warnings[0].getMessage()
+    assert 'failed for worker=1' in warnings[0].getMessage()
+    assert 'stopped in a failure state' in warnings[0].getMessage()
+    assert 'status 21' in warnings[0].getMessage()
     recorded = objective_mod.read_failure_records(tmp_path)
     assert [(r['status'], r['category']) for r in recorded] == [
         (11, objective_mod.CATEGORY_EXCLUDED),
