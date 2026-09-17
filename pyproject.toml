@@ -276,7 +276,7 @@ directory = "htmlcov"
 # Tracks nichollsh/AGNI main. Bump after every AGNI release that
 # PROTEUS depends on.
 url = "https://github.com/nichollsh/AGNI.git"
-ref = "8a494d7c74db78163eba7354d78d1389e6f63072"
+ref = "1c4baad046c52ec2205508062fbcb962bce15375"
 
 [tool.proteus.modules.socrates]
 # Spectral radiative transfer library (Fortran). Compiled in-place
@@ -317,7 +317,7 @@ ref = "main"
 # the AGNI pattern. Pinned to a commit on md/phys_tests (pre-main-merge);
 # bump once the branch lands on main.
 url = "https://github.com/FormingWorlds/Obliqua.git"
-ref = "71950f274060fe404c246a02a9b005d81bda5a6c"
+ref = "ee1ef40deaac47e1ba9e6d344a8541f500bb9e94"
 
 [tool.proteus.modules.thermoenginelite]
 # Multi-phase thermodynamics engine (c++ and Python)
