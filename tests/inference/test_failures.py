@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import pickle
+import re
 
 import pandas as pd
 import pytest
@@ -21,6 +22,17 @@ import pytest
 import proteus.inference.failures as failures_mod
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+def _counts(line: str) -> list[str]:
+    """Every number in a log line, in order.
+
+    The tally lines are prose around a handful of counts. Asserting on the
+    numbers keeps a test pinned to what the reader has to get right, and lets
+    the wording be changed without a test failing for no reason. Order is kept,
+    so a line that swapped the failed and excluded counts still fails.
+    """
+    return re.findall(r'\d+(?:\.\d+)?', line)
 
 
 @pytest.mark.unit
@@ -237,11 +249,12 @@ def test_recording_a_failure_never_masks_the_failure_it_records(tmp_path):
 
 
 @pytest.mark.unit
-def test_summarise_failures_tabulates_causes_and_flags_a_mostly_failed_study(tmp_path, caplog):
-    """The end-of-study tally turns the per-run records into one table and one
-    breakdown by cause, and escalates to a warning once most of the study
-    failed. Without the escalation, a posterior built on a handful of real
-    evaluations reads the same as one built on all of them.
+def test_summarise_failures_tabulates_causes_and_warns_on_every_real_failure(tmp_path, caplog):
+    """The end-of-study tally turns the per-run rows into one table and one
+    breakdown by cause, and warns whenever a run produced nothing usable. The
+    warning does not wait for a fraction of the study to fail: a sweep can lose
+    a tenth of its evaluations and still fit well, so the count is put in front
+    of the reader to weigh rather than compared against a threshold.
     """
 
     # Two runs that died the same way and one that died differently, so the
@@ -265,12 +278,18 @@ def test_summarise_failures_tabulates_causes_and_flags_a_mostly_failed_study(tmp
 
     assert n_failed == 3
     messages = '\n'.join(r.message for r in caplog.records)
-    assert '3 of 20 evaluations' in messages
+    assert '3 of 20' in messages
     # Grouped by cause, so two runs that died the same way count as one line.
     assert 'Interior model' in messages
-    # Below the escalation threshold (3/20 = 15%), the tally is reported but
-    # not warned about.
-    assert not [r for r in caplog.records if r.levelname == 'WARNING']
+
+    # 3 of 20 is 15%, well under the half-the-study line the old threshold drew,
+    # and it is raised to a warning anyway: the count is what the reader weighs.
+    # One record carries it, so the level changes rather than a second line
+    # repeating the counts the report already gave.
+    warnings = [r for r in caplog.records if r.levelname == 'WARNING']
+    assert len(warnings) == 1
+    # unscored, attempted, percent, failed, excluded.
+    assert _counts(warnings[0].message) == ['3', '20', '15.0', '3', '0']
 
     # The table carries the swept parameter alongside the diagnosis, so the
     # failing region can be located without opening each run folder.
@@ -280,16 +299,14 @@ def test_summarise_failures_tabulates_causes_and_flags_a_mostly_failed_study(tmp
     assert sorted(table['status']) == [21, 21, 24]
     assert table['planet.mass_tot'].max() == pytest.approx(3.0)
 
-    # Discrimination: the same three failures against a smaller study cross the
-    # threshold and are warned about. A tally without the escalation would log
-    # identically in both cases.
+    # The percentage tracks the study size rather than being a fixed string:
+    # the same three failures against a smaller study report a larger share.
     caplog.clear()
     with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.failures'):
         failures_mod.summarise_failures(str(tmp_path), n_attempted=4)
     warnings = [r for r in caplog.records if r.levelname == 'WARNING']
     assert len(warnings) == 1
-    # The count of evaluations that are real is what the reader needs.
-    assert '1 real evaluations' in warnings[0].message
+    assert _counts(warnings[0].message) == ['3', '4', '75.0', '3', '0']
 
 
 @pytest.mark.unit
@@ -334,8 +351,10 @@ def test_summarise_failures_counts_excluded_outcomes_apart_from_failures(tmp_pat
     # real, but the breakdown names them apart.
     assert n_unscored == 3
     messages = '\n'.join(r.message for r in caplog.records)
-    assert '1 did not produce a usable result' in messages
-    assert '2 completed on a status this study excludes' in messages
+    tally = next(r for r in caplog.records if 'Unscored evaluations' in r.message)
+    # unscored, attempted, percent, failed, excluded: the one fault is counted
+    # apart from the two runs that completed on an excluded status.
+    assert _counts(tally.message) == ['3', '20', '15.0', '1', '2']
     # The clock-limit outcome is labelled in the cause table rather than being
     # listed beside the interior-model error as if it were one.
     assert 'Completed (maximum clock runtime) [excluded]' in messages
@@ -346,6 +365,37 @@ def test_summarise_failures_counts_excluded_outcomes_apart_from_failures(tmp_pat
     table = pd.read_csv(tmp_path / 'failures.csv')
     assert sorted(table['category']) == ['excluded', 'excluded', 'failure']
     assert sorted(table.loc[table['category'] == 'excluded', 'status']) == [11, 11]
+
+    # Raised to a warning by the one genuine fault. The counts were pinned
+    # above; what matters here is that the line carrying them is the warning.
+    assert [r.levelname for r in caplog.records if r.levelname == 'WARNING'] == ['WARNING']
+    assert 'Unscored evaluations' in tally.message and tally.levelname == 'WARNING'
+
+    # Limit input: a study whose runs were *all* excluded did exactly what it
+    # was configured to do, so it is tallied without any warning at all. Keying
+    # the warning on the unscored total would have flagged it as broken.
+    caplog.clear()
+    (tmp_path / 'failures.csv').unlink()
+    for worker in (0, 1):
+        failures_mod.record_failure(
+            tmp_path,
+            failures_mod.ProteusRunFailure(
+                reason='completed on a status this study excludes',
+                worker=worker,
+                iter=0,
+                out_dir=f'/study/workers/w_{worker}/i_0',
+                exit_code=0,
+                status=11,
+                parameters={'planet.mass_tot': 1.0 + worker},
+                category=failures_mod.CATEGORY_EXCLUDED,
+            ),
+        )
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.failures'):
+        assert failures_mod.summarise_failures(str(tmp_path), n_attempted=4) == 2
+    assert not [r for r in caplog.records if r.levelname == 'WARNING']
+    # Discrimination: 2 of 4 is half the study, which the old fraction rule
+    # would have reported as a study mostly not worth trusting.
+    assert '2 of 4' in '\n'.join(r.message for r in caplog.records)
 
 
 @pytest.mark.unit
@@ -361,7 +411,7 @@ def test_summarise_failures_reports_a_clean_study_without_writing_a_table(tmp_pa
     assert n_failed == 0
     assert not (tmp_path / 'failures.csv').exists()
     messages = '\n'.join(r.message for r in caplog.records)
-    assert 'none' in messages and '12 evaluations' in messages
+    assert 'none' in messages and '12' in _counts(messages)
     assert not [r for r in caplog.records if r.levelname in ('WARNING', 'ERROR')]
 
 
@@ -401,10 +451,9 @@ def test_summarise_failures_labels_the_logfile_sample_and_counts_the_whole_study
     messages = '\n'.join(lines)
     # The denominator of the tally is the whole study, stated in the line
     # itself so it cannot be confused with the optimisation-only warning.
-    assert '4 of 20 evaluations' in messages
-    assert 'initial samples included' in messages
+    assert '4 of 20' in messages
     # Three shown out of four unscored, not four out of four.
-    assert 'Logfiles (3 of 4 shown):' in messages
+    assert '3 of 4 shown' in messages
     shown = [line.strip() for line in lines if line.strip().endswith('proteus_00.log')]
     assert len(shown) == 3
     # The record without a logfile is skipped rather than truncating the
