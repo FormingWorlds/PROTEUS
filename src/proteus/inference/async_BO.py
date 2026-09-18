@@ -67,7 +67,7 @@ def checkpoint(D: dict, logs: list, Ts: list, output_dir: str) -> None:
 
 
 def _parent_logfile() -> str | None:
-    """Path of the logfile the study's logger is writing, if it has one.
+    """Path of the logfile the inference run's logger is writing, if it has one.
 
     Read in the parent, because a spawned worker has no logging configuration
     of its own to read it from. Returning the handler's own path rather than
@@ -119,18 +119,17 @@ def worker(
     - worker_id (int): Unique identifier of this worker.
     - log_list (Manager.list): Shared list to store per-eval log dicts.
     - output_dir (str): Output directory for the whole inference call (abspath).
-    - logpath (str | None): Study logfile to reopen when this process has no
-      logging configuration of its own. None leaves logging untouched.
+    - logpath (str | None): Inference run logfile to reopen when this process has no
+      logging configuration of its own.
     - log_level (int): Numeric level to log at, read from the parent.
 
     Returns
     ----------
     - None
     """
-    # A spawned worker inherits no logging configuration on MacOS,
-    # so everything below would go to stderr and miss the study logfile.
+    # A spawned worker inherits no logging configuration on MacOS.
     # Reattach before any work starts, so that a failure in
-    # the very first iteration is still recorded where the study reads it.
+    # the very first iteration is still recorded in the logfile.
     if logpath:
         attach_worker_logfile(logpath, log_level)
 
@@ -153,14 +152,11 @@ def worker(
     except BaseException:
         # A worker that dies takes its traceback with it: multiprocessing
         # prints it to the parent's stderr without consulting the logging
-        # configuration, so nothing reaches the study logfile. Record it here
-        # while the worker still can, then let it propagate so the exit code
-        # still marks the process as failed.
+        # configuration, so nothing reaches the logfile. Record it here.
         log.exception(f'Worker {worker_id} stopped early and will run no further evaluations')
         raise
     finally:
-        # Release this worker's busy point. Left in place, it steers the
-        # surviving workers away from a region nothing is actually exploring.
+        # Release this worker's busy point.
         try:
             with lock:
                 B.pop(worker_id, None)
@@ -295,7 +291,7 @@ def parallel_process(
     - observables (dict): Target observables (keys) and values.
     - parameters (dict):  Parameters (keys) with bounds (values) for inference.
     - failure_codes (list[int]): PROTEUS status codes that complete normally but
-      that this study excludes from the fit.
+      that this run excludes from the fit.
 
     Returns
     ----------
@@ -395,19 +391,15 @@ def parallel_process(
     logs = list(log_list)
     T_elapsed = [t - T0 for t in list(T)]
 
-    # A worker that dies mid-study leaves the run looking complete: the
-    # remaining workers carry on, the results are saved, and the best-fit
-    # summary is printed from whatever was collected. Report the shortfall.
-    # A worker killed by a signal reports a negative code (-9 for an
-    # out-of-memory kill), so the test is "not zero" rather than "positive".
+    # A worker that dies mid-run leaves the run looking complete. Report.
     died = [wid for wid, p in enumerate(procs) if p.exitcode != 0]
     if died:
         names = ', '.join(str(wid) for wid in died)
         log.error(
             f'{len(died)} of {n_workers} workers stopped before the evaluation budget '
             f'was reached (workers {names}). Their exit codes were '
-            f'{[procs[wid].exitcode for wid in died]}; see the messages above for the '
-            f'cause. Results below are based on {len(D_final["X"])} evaluations '
+            f'{[procs[wid].exitcode for wid in died]}.'
+            f' Results are based on {len(D_final["X"])} evaluations '
             f'rather than the {max_len} requested.'
         )
     # Nothing was added to the initial sample, so there is no optimisation to
@@ -419,18 +411,13 @@ def parallel_process(
                 'above for the cause.'
             )
         else:
-            # Every worker exited on its first budget check. `max_steps` is
-            # reduced by one per additional worker, so this is what a study
-            # with fewer optimisation steps than workers looks like.
+            # Every worker exited on its first budget check.
+            n_steps = max_len - n_init
             cause = (
-                'No worker failed. Each worker stops once the dataset reaches '
-                f'{max_steps} rows ({max_len} requested, less one per worker beyond '
-                f'the first), which the {n_init} initial samples already satisfy. '
+                f'No worker failed: the config asks for {n_steps} optimisation '
+                f'step{"" if n_steps == 1 else "s"} across {n_workers} workers. '
                 f'Raise n_steps to at least n_workers ({n_workers}).'
             )
-        raise RuntimeError(
-            'No optimisation steps completed: the dataset still holds only the '
-            f'{n_init} initial samples. ' + cause
-        )
+        raise RuntimeError('No optimisation steps completed. ' + cause)
 
     return D_final, logs, T_elapsed

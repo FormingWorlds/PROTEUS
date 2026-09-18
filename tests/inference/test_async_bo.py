@@ -405,7 +405,7 @@ def test_parallel_process_reports_a_worker_that_stopped_early(monkeypatch, tmp_p
 def test_parallel_process_stays_silent_when_every_worker_completes(
     monkeypatch, tmp_path, caplog
 ):
-    """A study in which no worker died reports no shortfall. Without this, the
+    """An inference run in which no worker died reports no shortfall. Without this, the
     failure message above would be indistinguishable from routine noise.
     """
 
@@ -491,7 +491,7 @@ def test_parallel_process_refuses_a_study_with_no_completed_steps(monkeypatch, t
 
 @pytest.mark.unit
 def test_worker_releases_its_busy_point_and_records_why_it_stopped(tmp_path, caplog):
-    """A worker that fails records the cause in the study log before it dies,
+    """A worker that fails records the cause in the log before it dies,
     and releases the point it had claimed. Neither happens on its own:
     multiprocessing prints a dead worker's traceback straight to the parent's
     stderr without consulting the logging configuration, and a claimed point
@@ -539,8 +539,7 @@ def test_worker_releases_its_busy_point_and_records_why_it_stopped(tmp_path, cap
 @pytest.mark.unit
 def test_worker_releases_its_busy_point_after_a_normal_finish(tmp_path):
     """A worker that reaches the evaluation budget also releases its claimed
-    point. Left behind, it would bias the acquisition for every worker still
-    running through the tail of the study.
+    point.
     """
     D_shared = {
         'X': torch.tensor([[0.1], [0.2]], dtype=torch.double),
@@ -577,11 +576,11 @@ def test_worker_releases_its_busy_point_after_a_normal_finish(tmp_path):
 def test_parallel_process_names_the_real_step_budget_when_no_worker_failed(
     monkeypatch, tmp_path
 ):
-    """A study configured with fewer optimisation steps than workers finishes
+    """An inference run configured with fewer optimisation steps than workers finishes
     without any worker failing and without any step being taken. The refusal
-    must quote the row count the workers actually stop at, which is the
-    requested budget less one per worker beyond the first, or the advice reads
-    as false against the numbers the user set.
+    must name the condition in the quantities the user set, n_steps against
+    n_workers, since the internal row threshold the workers apply is not a
+    number that appears anywhere in the study config.
     """
 
     class FakeProcess:
@@ -597,8 +596,9 @@ def test_parallel_process_names_the_real_step_budget_when_no_worker_failed(
         def join(self):
             return None
 
-    # Six initial samples against a budget of six with two workers: the worker
-    # threshold is 6 - (2 - 1) = 5, which the initial samples already exceed.
+    # One optimisation step across two workers, the smallest configuration that
+    # reaches this branch: the worker threshold is 7 - (2 - 1) = 6, which the
+    # six initial samples already meet.
     _mocked_parallel_process_env(monkeypatch, tmp_path, FakeProcess, n_init_rows=6)
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -607,7 +607,7 @@ def test_parallel_process_names_the_real_step_budget_when_no_worker_failed(
             kernel='MAT3/2',
             acqf='LogEI',
             n_workers=2,
-            max_len=6,
+            max_len=7,
             output='dummy',
             seed=1,
             ref_config='ref.toml',
@@ -617,13 +617,8 @@ def test_parallel_process_names_the_real_step_budget_when_no_worker_failed(
         )
     message = str(excinfo.value)
     assert 'No worker failed' in message
-    # The threshold the workers actually apply.
-    assert 'reaches 5 rows' in message
-    # Discrimination: quoting the requested budget here instead would state
-    # that six initial samples satisfy a six-row threshold, which is false.
-    assert 'reaches 6 rows' not in message
-    # The requested budget is still named, so the two numbers can be related.
-    assert '6 requested' in message
+    # Named in the config's own terms: one step requested, two workers to run it.
+    assert '1 optimisation step across 2 workers' in message
     assert 'Raise n_steps to at least n_workers (2)' in message
 
 
@@ -631,7 +626,7 @@ def test_parallel_process_names_the_real_step_budget_when_no_worker_failed(
 def test_worker_writes_its_traceback_to_the_study_logfile(tmp_path):
     """A worker started with the 'spawn' method inherits no logging
     configuration, so the report of its death would go to stderr and never
-    reach the study logfile. Given the logfile path, the worker reopens it
+    reach the logfile. Given the logfile path, the worker reopens it
     and the traceback lands where the study is read from.
 
     The 'fwl' logger is emptied here to stand in for a spawned process, which
