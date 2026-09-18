@@ -145,23 +145,16 @@ class ProteusRunFailure(RuntimeError):
             ),
         )
 
+# Paired reader and writer for the abort switch.
 
 def set_abort_on_failure(abort: bool = False) -> None:
-    """Record whether a failed child run should abort the whole study.
-
-    Stored in the environment so it is visible to the main process and to any
-    spawned pool workers, matching how the child timeout is plumbed.
-    """
+    """Record whether a failed child run should abort the whole study."""
     os.environ[_ABORT_ON_FAILURE_ENV] = '1' if abort else '0'
 
 
 def abort_on_failure() -> bool:
-    """Return whether a failed child run should abort the whole study.
-
-    Defaults to False: an inference sweep is expected to visit parameter
-    combinations the simulator cannot integrate, and treating those as fatal
-    would make most studies unrunnable. Set the inference config field
-    `abort_on_failure` to stop at the first failure instead.
+    """Whether a failed child run should abort the study.
+    Defaults to False.
     """
     return os.environ.get(_ABORT_ON_FAILURE_ENV, '0') == '1'
 
