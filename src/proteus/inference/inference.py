@@ -30,7 +30,7 @@ from proteus.config import (
 
 # bayesopt source files
 from proteus.inference.async_BO import checkpoint, parallel_process
-from proteus.inference.failures import set_abort_on_failure, summarise_failures
+from proteus.inference.failures import ABORT_ON_FAILURE_ENV, summarise_failures
 from proteus.inference.gen_D_init import create_init
 from proteus.inference.objective import (
     WORKER_CONFIG_OVERRIDES,
@@ -223,7 +223,7 @@ def run_inference(config):
     # Whether a failed simulation stops the study or is scored as a poor
     # sample. Defaults to scoring, because a sweep over a wide parameter box
     # is expected to reach combinations the simulator cannot integrate.
-    set_abort_on_failure(bool(config.get('abort_on_failure', False)))
+    os.environ[ABORT_ON_FAILURE_ENV] = '1' if config.get('abort_on_failure', False) else '0'
 
     # Default for configs that pre-date this field
     config.setdefault('failure_codes', [])

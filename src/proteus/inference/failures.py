@@ -5,7 +5,6 @@ excluded through `failure_codes`.
 from __future__ import annotations
 
 import logging
-import os
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,8 +15,9 @@ from proteus.utils.helper import STATUS_MISSING, CommentFromStatus
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Whether a failed child run aborts the study or scores a bad objective value.
-_ABORT_ON_FAILURE_ENV = 'PROTEUS_INFERENCE_ABORT_ON_FAILURE'
+# Whether a failed child run aborts the study, or is scored as a bad sample.
+# Defaults to scoring.
+ABORT_ON_FAILURE_ENV = 'PROTEUS_INFERENCE_ABORT_ON_FAILURE'
 
 # Suffix for the file holding whatever a child wrote to its console.
 CHILD_CONSOLE_SUFFIX = '_console.log'
@@ -144,19 +144,6 @@ class ProteusRunFailure(RuntimeError):
                 self.category,
             ),
         )
-
-# Paired reader and writer for the abort switch.
-
-def set_abort_on_failure(abort: bool = False) -> None:
-    """Record whether a failed child run should abort the whole study."""
-    os.environ[_ABORT_ON_FAILURE_ENV] = '1' if abort else '0'
-
-
-def abort_on_failure() -> bool:
-    """Whether a failed child run should abort the study.
-    Defaults to False.
-    """
-    return os.environ.get(_ABORT_ON_FAILURE_ENV, '0') == '1'
 
 
 def find_run_logfile(out_abs: Path | str) -> str | None:

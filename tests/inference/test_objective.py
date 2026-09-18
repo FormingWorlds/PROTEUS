@@ -614,7 +614,7 @@ def test_J_scores_a_failed_run_badly_and_keeps_the_study_running(monkeypatch, tm
         raise failure
 
     monkeypatch.setattr(objective_mod, 'run_proteus', _fail)
-    monkeypatch.setenv(failures_mod._ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
 
     with caplog.at_level('WARNING'):
         value = objective_mod.J(
@@ -644,9 +644,9 @@ def test_J_scores_a_failed_run_badly_and_keeps_the_study_running(monkeypatch, tm
     assert [(r['worker'], r['iter'], r['status']) for r in recorded] == [(1, 2, 21)]
     assert recorded[0]['planet.mass_tot'] == pytest.approx(3.0)
 
-    # Opting in turns the same failure into a hard stop. `set_abort_on_failure`
-    # is the writer under test; monkeypatch restores the variable afterwards.
-    failures_mod.set_abort_on_failure(True)
+    # Opting in turns the same failure into a hard stop; monkeypatch restores
+    # the variable afterwards.
+    monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '1')
     with pytest.raises(objective_mod.ProteusRunFailure):
         objective_mod.J(
             x=torch.tensor([[0.5]], dtype=torch.double),
@@ -677,7 +677,7 @@ def test_J_scores_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp_pa
         'run_proteus',
         lambda **_kwargs: ({'R_obs': 9.25e6}, 25),
     )
-    monkeypatch.setenv(failures_mod._ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
 
     with caplog.at_level('WARNING'):
         value = objective_mod.J(
@@ -760,7 +760,7 @@ def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp
             failure_codes=list(codes),
         )
 
-    monkeypatch.setenv(failures_mod._ABORT_ON_FAILURE_ENV, '1')
+    monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '1')
 
     # Status 25: written when a run is stopped through its keepalive file, so
     # the simulator exits 0 and the fault is visible only in the status file.
@@ -799,7 +799,7 @@ def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp
 
     # Discrimination against a regression that raises unconditionally: with
     # the setting off, the same error status is scored and the study goes on.
-    monkeypatch.setenv(failures_mod._ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
     scored = _run(25, worker=2, iter=0)
     assert scored.item() == pytest.approx(objective_mod.BAD_OBJ_VALUE)
     assert scored.item() < -10.0
@@ -812,7 +812,7 @@ def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
     ('planet evaporated') and no current code path writes it, so it must not
     be scored as a failure by an off-by-one in the range bound.
     """
-    monkeypatch.setenv(failures_mod._ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
     monkeypatch.setattr(
         objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
     )
@@ -855,7 +855,7 @@ def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path
     nothing usable. Reporting the first as the second sends the user looking for
     a bug in a run that did exactly what it was configured to do.
     """
-    monkeypatch.setenv(failures_mod._ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
     monkeypatch.setattr(
         objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
     )

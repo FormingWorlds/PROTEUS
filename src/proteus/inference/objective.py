@@ -12,12 +12,12 @@ import torch
 from numpy import log10
 
 from proteus.inference.failures import (
+    ABORT_ON_FAILURE_ENV,
     CATEGORY_EXCLUDED,
     CATEGORY_FAILURE,
     CHILD_CONSOLE_SUFFIX,
     STATUS_MISSING,
     ProteusRunFailure,
-    abort_on_failure,
     find_run_logfile,
     record_failure,
 )
@@ -426,7 +426,7 @@ def J(
         # Recorded before the abort check, so an aborted study still leaves
         # the record of what stopped it.
         record_failure(get_proteus_directories(output)['output'], failure)
-        if abort_on_failure():
+        if os.environ.get(ABORT_ON_FAILURE_ENV, '0') == '1':
             raise
         log.warning(failure.summary())
         log.debug(failure.report())
@@ -473,7 +473,7 @@ def J(
             # A clean exit on an error status is as much a fault as a crash,
             # so it honours `abort_on_failure` the same way. An excluded
             # outcome never does: nothing went wrong in such a run.
-            if abort_on_failure():
+            if os.environ.get(ABORT_ON_FAILURE_ENV, '0') == '1':
                 raise failure
             log.warning(failure.summary())
         else:
