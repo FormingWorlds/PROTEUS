@@ -10,7 +10,7 @@
 #
 # This installs the SUNDIALS C library from conda-forge and builds the
 # scikits-odes-sundials wrapper against it. It is idempotent: it exits early
-# when CVODE already imports. Requires an active conda environment.
+# when CVODE already imports. Requires an active conda or pixi environment.
 set -euo pipefail
 
 if python -c "import scikits_odes_sundials.cvode" >/dev/null 2>&1; then
@@ -30,8 +30,17 @@ conda_bin="${CONDA_EXE:-conda}"
 # change the ABI the wrapper builds against, so bound the ranges to the known
 # working combination (SUNDIALS 7.x, scikits-odes-sundials 3.x) while allowing
 # minor/patch updates.
-echo "Installing the SUNDIALS C library (conda-forge) into ${CONDA_PREFIX}..."
-"$conda_bin" install -y --prefix "$CONDA_PREFIX" -c conda-forge 'sundials>=7,<8'
+# Skip SUNDIALS install if pixi or conda installed it already.
+if ls "$CONDA_PREFIX"/lib/libsundials_cvode.* >/dev/null 2>&1; then
+    if ! grep -q '#define SUNDIALS_VERSION_MAJOR 7' "$CONDA_PREFIX/include/sundials/sundials_config.h" 2>/dev/null; then
+        echo "ERROR: pre-installed SUNDIALS found, but it is not version 7.x, please make sure (in your conda or pixi environment) that the correct version is installed." >&2
+        exit 1
+    fi
+    echo "SUNDIALS already present in ${CONDA_PREFIX}."
+else
+    echo "Installing the SUNDIALS C library (conda-forge) into ${CONDA_PREFIX}..."
+    "$conda_bin" install -y --prefix "$CONDA_PREFIX" -c conda-forge 'sundials>=7,<8'
+fi
 
 echo "Building scikits-odes-sundials against SUNDIALS..."
 # The build (scikit-build-core / CMake) locates SUNDIALS through the conda
