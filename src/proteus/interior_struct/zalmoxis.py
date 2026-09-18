@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import platformdirs
 from scipy.interpolate import interp1d
+from zalmoxis.mixing import _PALEOS_UNIFIED_NAMES
 from zalmoxis.solver import main
 
 from proteus.config import Config
@@ -970,27 +971,11 @@ def load_zalmoxis_configuration(
     if config.interior_struct.zalmoxis.ice_layer_eos is not None:
         layer_eos_config['ice_layer'] = config.interior_struct.zalmoxis.ice_layer_eos
 
-    # Mushy zone factor for the unified PALEOS tables (bare PALEOS and
-    # PALEOS-API): T_solidus = T_liquidus * mushy_zone_factor. Set mzf only for
-    # materials a layer uses; absent materials get 1.0 so validation passes.
+    # This dict only sees the dry layer_eos_config here; zalmoxis_solver
+    # rebuilds it after extend_mantle_eos_with_volatiles adds a
+    # dissolved-volatile component, so that component gets the real mzf too.
     mzf = config.interior_struct.zalmoxis.mushy_zone_factor
-    _unified_paleos_materials = (
-        'PALEOS:iron',
-        'PALEOS:MgSiO3',
-        'PALEOS:H2O',
-        'PALEOS-API:iron',
-        'PALEOS-API:MgSiO3',
-        'PALEOS-API:H2O',
-    )
-    _configured_eos = {
-        _strip_fraction_tokens(token)
-        for v in layer_eos_config.values()
-        if v
-        for token in str(v).split('+')
-    }
-    mushy_zone_factors = {
-        name: (mzf if name in _configured_eos else 1.0) for name in _unified_paleos_materials
-    }
+    mushy_zone_factors = _build_mushy_zone_factors(layer_eos_config, mzf)
 
     zc = config.interior_struct.zalmoxis
     log.debug(
@@ -1447,6 +1432,40 @@ def _strip_fraction_tokens(component: str) -> str:
             break
         tokens.pop()
     return ':'.join(tokens)
+
+
+#: EOS names whose density blend applies a configured mushy_zone_factor.
+#: Imported from Zalmoxis so both sides read the same list.
+_UNIFIED_PALEOS_MATERIALS = _PALEOS_UNIFIED_NAMES
+
+
+def _build_mushy_zone_factors(layer_eos_config: dict, mzf: float) -> dict:
+    """Build the per-material mushy zone factor dict for the unified PALEOS tables.
+
+    Parameters
+    ----------
+    layer_eos_config : dict
+        Per-layer EOS identifier strings, keyed by layer name. A value may
+        join several components with ``'+'`` and carry mass-fraction tokens
+        appended by :func:`extend_mantle_eos_with_volatiles`.
+    mzf : float
+        The configured ``mushy_zone_factor``.
+
+    Returns
+    -------
+    dict
+        Maps each name in :data:`_UNIFIED_PALEOS_MATERIALS` to ``mzf`` if a
+        layer actually uses it, else to 1.0.
+    """
+    configured_eos = {
+        _strip_fraction_tokens(token)
+        for v in layer_eos_config.values()
+        if v
+        for token in str(v).split('+')
+    }
+    return {
+        name: (mzf if name in configured_eos else 1.0) for name in _UNIFIED_PALEOS_MATERIALS
+    }
 
 
 class ZalmoxisMissingEOSFilesError(RuntimeError):
@@ -2052,6 +2071,9 @@ def generate_spider_tables(config: Config, outdir: str):
     mzf = config.interior_struct.zalmoxis.mushy_zone_factor
     solidus_func = _make_derived_solidus(liquidus_func, mzf)
     if is_twophase:
+        # This solidus_func also reaches Zalmoxis's own 2-phase structure
+        # solve via load_zalmoxis_solidus_liquidus_functions, so mzf moves
+        # nabla_ad there too, separately from the density blend below.
         log.info(
             'PALEOS-2phase phase boundaries: solidus = liquidus * %.2f '
             '(mushy_zone_factor); latent heat from 2-phase tables',
@@ -2353,9 +2375,16 @@ def zalmoxis_solver(
 
     # Extend mantle EOS string with volatile components so the LayerMixture
     # includes them (VolatileProfile overrides fractions at each radius).
+    # Rebuild mushy_zone_factors afterward so a dissolved component (e.g.
+    # PALEOS:H2O, Chabrier:H) gets the real mzf instead of the 1.0 default
+    # from the dry EOS string load_zalmoxis_configuration saw.
     if volatile_profile is not None:
         config_params['layer_eos_config']['mantle'] = extend_mantle_eos_with_volatiles(
             config_params['layer_eos_config']['mantle'], volatile_profile
+        )
+        config_params['mushy_zone_factors'] = _build_mushy_zone_factors(
+            config_params['layer_eos_config'],
+            config.interior_struct.zalmoxis.mushy_zone_factor,
         )
 
     # Get the output location for Zalmoxis output and create the file if it does not exist

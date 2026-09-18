@@ -2552,3 +2552,66 @@ def test_build_volatile_profile_uses_structural_mantle_mass():
     prof = build_volatile_profile(hf_mixed, 'PALEOS:MgSiO3')
     assert prof.w_liquid['PALEOS:H2O'] == pytest.approx(3.32e23 / 2.0e24, rel=1e-12)
     assert prof.w_solid['PALEOS:H2O'] == pytest.approx(1.0e22 / 2.0e24, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_build_mushy_zone_factors_covers_unified_and_paleos_api():
+    """Every configured unified material gets the real mzf, others get 1.0.
+
+    Covers the bare PALEOS and PALEOS-API unified names in one layer config,
+    including a material absent from any layer (must stay at 1.0).
+    """
+    from proteus.interior_struct.zalmoxis import _build_mushy_zone_factors
+
+    layer_eos_config = {
+        'core': 'PALEOS-API:iron',
+        'mantle': 'PALEOS:MgSiO3',
+    }
+    result = _build_mushy_zone_factors(layer_eos_config, mzf=0.8)
+    assert result['PALEOS-API:iron'] == 0.8
+    assert result['PALEOS:MgSiO3'] == 0.8
+    assert result['PALEOS:iron'] == 1.0
+    assert result['PALEOS-API:MgSiO3'] == 1.0
+    assert result['Chabrier:H'] == 1.0
+
+
+@pytest.mark.unit
+def test_build_mushy_zone_factors_wet_mantle_after_volatile_extension():
+    """A dissolved-volatile component in an extended mantle string gets the
+    real mzf, not the 1.0 default (regression: mushy_zone_factors was built
+    from the dry mantle_eos string before the volatile tokens were appended,
+    silently disabling mzf for PALEOS:H2O and Chabrier:H in wet runs).
+    """
+    from zalmoxis.mixing import VolatileProfile
+
+    from proteus.interior_struct.zalmoxis import (
+        _build_mushy_zone_factors,
+        extend_mantle_eos_with_volatiles,
+    )
+
+    profile = VolatileProfile(
+        w_liquid={'PALEOS:H2O': 0.02, 'Chabrier:H': 0.01},
+        w_solid={'PALEOS:H2O': 0.0, 'Chabrier:H': 0.0},
+        primary_component='PALEOS:MgSiO3',
+    )
+    extended_mantle = extend_mantle_eos_with_volatiles('PALEOS:MgSiO3', profile)
+    layer_eos_config = {'core': 'PALEOS:iron', 'mantle': extended_mantle}
+
+    result = _build_mushy_zone_factors(layer_eos_config, mzf=0.8)
+    assert result['PALEOS:MgSiO3'] == 0.8
+    assert result['PALEOS:H2O'] == 0.8
+    assert result['Chabrier:H'] == 0.8
+    assert result['PALEOS:iron'] == 0.8
+
+
+@pytest.mark.unit
+def test_make_derived_solidus_scales_liquidus_by_mzf():
+    """The derived solidus is the liquidus scaled pointwise by mushy_zone_factor."""
+    from proteus.interior_struct.zalmoxis import _make_derived_solidus
+
+    def liquidus(pressure):
+        return 3000.0 + 10.0 * pressure
+
+    solidus = _make_derived_solidus(liquidus, mushy_zone_factor=0.8)
+    for pressure in (0.0, 20e9, 80e9):
+        assert solidus(pressure) == pytest.approx(0.8 * liquidus(pressure))
