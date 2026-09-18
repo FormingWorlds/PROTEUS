@@ -2568,11 +2568,11 @@ def test_build_mushy_zone_factors_covers_unified_and_paleos_api():
         'mantle': 'PALEOS:MgSiO3',
     }
     result = _build_mushy_zone_factors(layer_eos_config, mzf=0.8)
-    assert result['PALEOS-API:iron'] == 0.8
-    assert result['PALEOS:MgSiO3'] == 0.8
-    assert result['PALEOS:iron'] == 1.0
-    assert result['PALEOS-API:MgSiO3'] == 1.0
-    assert result['Chabrier:H'] == 1.0
+    assert result['PALEOS-API:iron'] == pytest.approx(0.8)
+    assert result['PALEOS:MgSiO3'] == pytest.approx(0.8)
+    assert result['PALEOS:iron'] == pytest.approx(1.0)
+    assert result['PALEOS-API:MgSiO3'] == pytest.approx(1.0)
+    assert result['Chabrier:H'] == pytest.approx(1.0)
 
 
 @pytest.mark.unit
@@ -2598,15 +2598,63 @@ def test_build_mushy_zone_factors_wet_mantle_after_volatile_extension():
     layer_eos_config = {'core': 'PALEOS:iron', 'mantle': extended_mantle}
 
     result = _build_mushy_zone_factors(layer_eos_config, mzf=0.8)
-    assert result['PALEOS:MgSiO3'] == 0.8
-    assert result['PALEOS:H2O'] == 0.8
-    assert result['Chabrier:H'] == 0.8
-    assert result['PALEOS:iron'] == 0.8
+    assert result['PALEOS:MgSiO3'] == pytest.approx(0.8)
+    assert result['PALEOS:H2O'] == pytest.approx(0.8)
+    assert result['Chabrier:H'] == pytest.approx(0.8)
+    assert result['PALEOS:iron'] == pytest.approx(0.8)
+
+
+@pytest.mark.unit
+def test_zalmoxis_solver_rebuilds_mushy_zone_factors_for_wet_mantle(tmp_path, monkeypatch):
+    """A wet solve carries the real mzf for the dissolved species into the solve call.
+
+    Exercises the fix at its actual call site inside ``zalmoxis_solver``
+    (the rebuild after ``extend_mantle_eos_with_volatiles``), not just the
+    ``_build_mushy_zone_factors`` helper in isolation. Reverting that
+    rebuild would leave ``PALEOS:H2O`` at the 1.0 default instead of the
+    configured mzf, and this test discriminates between the two.
+    """
+    model_for_arrays = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
+
+    def tf(r, P):
+        if r <= r_arr[0]:
+            return float(t_arr[0])
+        return float(np.interp(r, r_arr, t_arr))
+
+    hf_extra = {
+        'M_mantle_liquid': 4.0e24,
+        'M_mantle_solid': 1.0e24,
+        'H2O_kg_liquid': 8.0e22,
+    }
+    main_mock, _, _, _, _, _, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        tf,
+        dry_mantle=False,
+        hf_extra=hf_extra,
+    )
+
+    solver_params = main_mock.call_args.args[0]
+    mzf = solver_params['mushy_zone_factors']
+    assert mzf['PALEOS:MgSiO3'] == pytest.approx(0.8)
+    assert mzf['PALEOS:H2O'] == pytest.approx(0.8)
+    # Discrimination: a build from the pre-extension dry mantle string
+    # would leave the dissolved species at the 1.0 default instead.
+    assert mzf['PALEOS:H2O'] != pytest.approx(1.0)
 
 
 @pytest.mark.unit
 def test_make_derived_solidus_scales_liquidus_by_mzf():
-    """The derived solidus is the liquidus scaled pointwise by mushy_zone_factor."""
+    """The derived solidus is the liquidus scaled pointwise by mushy_zone_factor.
+
+    Discrimination: mzf < 1 must strictly lower the solidus below the
+    liquidus (rules out an implementation that ignores mzf), and a
+    different mzf must give a different solidus (rules out a hardcoded
+    or memoized return value).
+    """
     from proteus.interior_struct.zalmoxis import _make_derived_solidus
 
     def liquidus(pressure):
@@ -2615,3 +2663,7 @@ def test_make_derived_solidus_scales_liquidus_by_mzf():
     solidus = _make_derived_solidus(liquidus, mushy_zone_factor=0.8)
     for pressure in (0.0, 20e9, 80e9):
         assert solidus(pressure) == pytest.approx(0.8 * liquidus(pressure))
+        assert solidus(pressure) < liquidus(pressure)
+
+    other_solidus = _make_derived_solidus(liquidus, mushy_zone_factor=0.95)
+    assert other_solidus(20e9) != pytest.approx(solidus(20e9))
