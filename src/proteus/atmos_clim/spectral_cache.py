@@ -140,7 +140,7 @@ def store_in_cache(cache_dir: Path | str, key: str, out_dir: Path | str) -> bool
             try:
                 shutil.copyfile(source, tmp)
                 os.replace(tmp, entry)
-            except BaseException:
+            except Exception:
                 try:
                     tmp.unlink(missing_ok=True)
                 except OSError:
