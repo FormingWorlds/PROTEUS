@@ -9,7 +9,6 @@ References:
 from __future__ import annotations
 
 import logging
-import pickle
 import subprocess
 
 import pandas as pd
@@ -23,6 +22,7 @@ torch = pytest.importorskip('torch')
 pytest.importorskip('botorch')
 pytest.importorskip('gpytorch')
 
+import proteus.inference.failures as failures_mod  # noqa: E402
 import proteus.inference.objective as objective_mod  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -246,9 +246,6 @@ def test_run_proteus_raises_when_command_fails(monkeypatch, tmp_path):
     # because they carry no information about which sample failed.
     assert failure.parameters == {'planet.mass_tot': pytest.approx(1.25)}
     assert 'params.out.path' not in failure.parameters
-    # Captured child output is retained for runs that die before their own
-    # logger exists, which is the only record such a run leaves behind.
-    assert 'boom' in failure.stderr_tail
     # The capture is kept beside the run folder, not inside it: the simulator
     # empties its own output directory once it starts, which would unlink a
     # file held open there.
@@ -256,9 +253,14 @@ def test_run_proteus_raises_when_command_fails(monkeypatch, tmp_path):
     assert console.is_file()
     assert 'boom' in console.read_text(encoding='utf-8')
     assert not (out_abs / console.name).exists()
+    # The failure names that capture rather than copying its contents. A run
+    # that dies before its own logger exists leaves nothing else to read, so a
+    # report that named no path would leave the cause unreachable.
+    assert failure.console_path == str(console)
     rendered = failure.report()
     assert 'worker=0 iter=0' in rendered
     assert 'planet.mass_tot=1.25' in rendered
+    assert str(console) in rendered
 
 
 @pytest.mark.unit
@@ -589,111 +591,6 @@ def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, t
 
 
 @pytest.mark.unit
-def test_failure_summary_is_one_line_and_names_where_the_detail_is_kept():
-    """The line a study logs for each unscored run identifies the run, names
-    the status code and points at the output folder, and stays on one line
-    however much the child wrote before it died. The child console tail and the
-    swept parameters belong to the on-disk record, not to the console.
-    """
-    tail = '\n'.join(f'flux warning {i}' for i in range(200))
-    failure = objective_mod.ProteusRunFailure(
-        reason='the simulator exited with an error',
-        worker=2,
-        iter=16,
-        out_dir='/study/workers/w_2/i_16',
-        exit_code=1,
-        status=22,
-        log_path='/study/workers/w_2/i_16/proteus_00.log',
-        stderr_tail=tail,
-        parameters={'planet.mass_tot': 1.25},
-    )
-    line = failure.summary()
-
-    # Edge case: a 200-line tail is the situation the one-liner exists for.
-    assert '\n' not in line
-    assert 'flux warning 199' not in line
-    assert 'planet.mass_tot' not in line
-    # What has to survive the trim: who failed, what the status was, and the
-    # folder holding the logfile and the console capture.
-    assert 'worker=2 iter=16' in line
-    assert 'status 22' in line
-    assert 'Atmosphere' in line
-    assert 'exit code 1' in line
-    assert '/study/workers/w_2/i_16' in line
-    # Discrimination: the detail is not lost, only moved. A regression that
-    # trimmed `report` instead of adding a second renderer would fail here.
-    assert 'flux warning 199' in failure.report()
-    assert 'planet.mass_tot=1.25' in failure.report()
-
-    # Limit input: an excluded run has nothing to report as a fault, so it is
-    # named as excluded and its exit code, always zero on that path, is left
-    # out rather than read as a crash code.
-    excluded = objective_mod.ProteusRunFailure(
-        reason='completed on a status this study excludes',
-        worker=0,
-        iter=10,
-        out_dir='/study/workers/w_0/i_10',
-        exit_code=0,
-        status=11,
-        category=objective_mod.CATEGORY_EXCLUDED,
-    )
-    excluded_line = excluded.summary()
-    assert '\n' not in excluded_line
-    assert 'excluded for worker=0 iter=10' in excluded_line
-    assert 'failed for worker=0' not in excluded_line
-    assert 'exit code' not in excluded_line
-    assert 'status 11' in excluded_line
-
-
-@pytest.mark.unit
-def test_proteus_run_failure_survives_the_trip_back_from_a_pool_worker():
-    """A failure raised inside a pool worker is pickled and re-raised in the
-    parent process. Every reported field must survive that round trip, or the
-    parent sees a reconstruction error in place of the diagnosis.
-    """
-    original = objective_mod.ProteusRunFailure(
-        reason='the simulator exited with an error',
-        worker=2,
-        iter=7,
-        out_dir='/study/workers/w_2/i_7',
-        exit_code=1,
-        status=27,
-        log_path='/study/workers/w_2/i_7/proteus_00.log',
-        stderr_tail='Error: outgassing failed',
-        parameters={'planet.mass_tot': 2.0},
-    )
-    restored = pickle.loads(pickle.dumps(original))
-
-    assert isinstance(restored, objective_mod.ProteusRunFailure)
-    assert restored.report() == original.report()
-    # Field-level guard: an equal report could still hide a dropped field that
-    # the renderer omits when empty, so pin the values that steer diagnosis.
-    assert restored.status == 27
-    assert restored.worker == 2 and restored.iter == 7
-    assert restored.parameters == {'planet.mass_tot': pytest.approx(2.0)}
-    assert restored.log_path == original.log_path
-    assert restored.category == objective_mod.CATEGORY_FAILURE
-
-    # The category rides along in the same tuple, and it decides whether the
-    # parent calls the run a fault. A field dropped from the reconstruction
-    # would fall back to the 'failure' default and go unnoticed on a failure,
-    # so the round trip is checked on the other value too.
-    excluded = objective_mod.ProteusRunFailure(
-        reason='completed on a status this study excludes',
-        worker=2,
-        iter=7,
-        out_dir='/study/workers/w_2/i_7',
-        exit_code=0,
-        status=11,
-        category=objective_mod.CATEGORY_EXCLUDED,
-    )
-    restored_excluded = pickle.loads(pickle.dumps(excluded))
-    assert restored_excluded.category == objective_mod.CATEGORY_EXCLUDED
-    assert 'excluded for worker=2' in restored_excluded.report()
-    assert 'failed for worker=2' not in restored_excluded.report()
-
-
-@pytest.mark.unit
 def test_J_scores_a_failed_run_badly_and_keeps_the_study_running(monkeypatch, tmp_path, caplog):
     """A parameter combination the simulator cannot integrate is scored as a
     poor sample so the sweep continues, and the failure is reported once in
@@ -717,7 +614,7 @@ def test_J_scores_a_failed_run_badly_and_keeps_the_study_running(monkeypatch, tm
         raise failure
 
     monkeypatch.setattr(objective_mod, 'run_proteus', _fail)
-    monkeypatch.setenv(objective_mod._ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setenv(failures_mod._ABORT_ON_FAILURE_ENV, '0')
 
     with caplog.at_level('WARNING'):
         value = objective_mod.J(
@@ -743,13 +640,13 @@ def test_J_scores_a_failed_run_badly_and_keeps_the_study_running(monkeypatch, tm
 
     # The same failure is left on disk for the end-of-study tally, because a
     # log line scrolls past and a study that failed mostly needs a count.
-    recorded = objective_mod.read_failure_records(tmp_path)
+    recorded = failures_mod.read_failure_records(tmp_path)
     assert [(r['worker'], r['iter'], r['status']) for r in recorded] == [(1, 2, 21)]
-    assert recorded[0]['parameters']['planet.mass_tot'] == pytest.approx(3.0)
+    assert recorded[0]['planet.mass_tot'] == pytest.approx(3.0)
 
     # Opting in turns the same failure into a hard stop. `set_abort_on_failure`
     # is the writer under test; monkeypatch restores the variable afterwards.
-    objective_mod.set_abort_on_failure(True)
+    failures_mod.set_abort_on_failure(True)
     with pytest.raises(objective_mod.ProteusRunFailure):
         objective_mod.J(
             x=torch.tensor([[0.5]], dtype=torch.double),
@@ -780,7 +677,7 @@ def test_J_scores_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp_pa
         'run_proteus',
         lambda **_kwargs: ({'R_obs': 9.25e6}, 25),
     )
-    monkeypatch.setenv(objective_mod._ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setenv(failures_mod._ABORT_ON_FAILURE_ENV, '0')
 
     with caplog.at_level('WARNING'):
         value = objective_mod.J(
@@ -796,7 +693,7 @@ def test_J_scores_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp_pa
     assert 'status 25' in '\n'.join(r.getMessage() for r in caplog.records)
     # Counted in the end-of-study tally alongside the runs that crashed. A
     # tally that covered only crashes would understate a study stopped by hand.
-    recorded = objective_mod.read_failure_records(tmp_path)
+    recorded = failures_mod.read_failure_records(tmp_path)
     assert [r['status'] for r in recorded] == [25]
     assert recorded[0]['exit_code'] == 0
 
@@ -863,7 +760,7 @@ def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp
             failure_codes=list(codes),
         )
 
-    monkeypatch.setenv(objective_mod._ABORT_ON_FAILURE_ENV, '1')
+    monkeypatch.setenv(failures_mod._ABORT_ON_FAILURE_ENV, '1')
 
     # Status 25: written when a run is stopped through its keepalive file, so
     # the simulator exits 0 and the fault is visible only in the status file.
@@ -885,7 +782,7 @@ def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp
 
     # The record is written before the abort, so an aborted study still says
     # on disk what stopped it rather than leaving only the traceback.
-    recorded = objective_mod.read_failure_records(tmp_path)
+    recorded = failures_mod.read_failure_records(tmp_path)
     # Ordered by (worker, iter), so the status-25 run at iter 0 comes first.
     assert [r['status'] for r in recorded] == [25, objective_mod.STATUS_MISSING]
 
@@ -896,13 +793,13 @@ def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp
     # Boundedness: the failure score sits far below anything a completed run
     # can reach, so the optimiser is not drawn toward the excluded region.
     assert excluded.item() < -10.0
-    assert objective_mod.read_failure_records(tmp_path)[-1]['category'] == (
+    assert failures_mod.read_failure_records(tmp_path)[-1]['category'] == (
         objective_mod.CATEGORY_EXCLUDED
     )
 
     # Discrimination against a regression that raises unconditionally: with
     # the setting off, the same error status is scored and the study goes on.
-    monkeypatch.setenv(objective_mod._ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setenv(failures_mod._ABORT_ON_FAILURE_ENV, '0')
     scored = _run(25, worker=2, iter=0)
     assert scored.item() == pytest.approx(objective_mod.BAD_OBJ_VALUE)
     assert scored.item() < -10.0
@@ -915,7 +812,7 @@ def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
     ('planet evaporated') and no current code path writes it, so it must not
     be scored as a failure by an off-by-one in the range bound.
     """
-    monkeypatch.setenv(objective_mod._ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setenv(failures_mod._ABORT_ON_FAILURE_ENV, '0')
     monkeypatch.setattr(
         objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
     )
@@ -958,7 +855,7 @@ def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path
     nothing usable. Reporting the first as the second sends the user looking for
     a bug in a run that did exactly what it was configured to do.
     """
-    monkeypatch.setenv(objective_mod._ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setenv(failures_mod._ABORT_ON_FAILURE_ENV, '0')
     monkeypatch.setattr(
         objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
     )
@@ -995,7 +892,7 @@ def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path
 
     # The record is kept for the end-of-study tally, labelled so the tally can
     # count it apart from the runs that genuinely failed.
-    recorded = objective_mod.read_failure_records(tmp_path)
+    recorded = failures_mod.read_failure_records(tmp_path)
     assert [(r['status'], r['category']) for r in recorded] == [
         (11, objective_mod.CATEGORY_EXCLUDED)
     ]
@@ -1012,7 +909,7 @@ def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path
     assert 'failed for worker=1' in warnings[0].getMessage()
     assert 'stopped in a failure state' in warnings[0].getMessage()
     assert 'status 21' in warnings[0].getMessage()
-    recorded = objective_mod.read_failure_records(tmp_path)
+    recorded = failures_mod.read_failure_records(tmp_path)
     assert [(r['status'], r['category']) for r in recorded] == [
         (11, objective_mod.CATEGORY_EXCLUDED),
         (21, objective_mod.CATEGORY_FAILURE),
@@ -1022,7 +919,7 @@ def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path
     # scored on its observables and leaves no record at all. The exact match on
     # a linear observable has the closed form -log10(0 + 1e-10) = 10.
     assert _score(13, worker=2) == pytest.approx(10.0, rel=1e-9)
-    assert len(objective_mod.read_failure_records(tmp_path)) == 2
+    assert len(failures_mod.read_failure_records(tmp_path)) == 2
 
 
 # ============================================================================
@@ -1051,77 +948,3 @@ def test_run_output_dir_names_the_folder_the_simulator_is_given(monkeypatch, tmp
     rel_init, _ = objective_mod.run_output_dir('study', -1, 7)
     assert rel_init.as_posix() == 'study/workers/w_-1/i_7'
     assert rel_init != rel
-
-
-@pytest.mark.unit
-def test_failure_records_round_trip_without_colliding_between_workers(tmp_path):
-    """Records are written one file per evaluation so that concurrent workers
-    never contend for the same file, and are read back ordered by worker then
-    iteration. The status description is stored rather than recomputed, so the
-    summary does not have to re-derive it from the code.
-    """
-    first = objective_mod.ProteusRunFailure(
-        reason='the simulator exited with an error',
-        worker=0,
-        iter=5,
-        out_dir='/study/workers/w_0/i_5',
-        exit_code=1,
-        status=21,
-        parameters={'planet.mass_tot': 3.0},
-    )
-    # Same iteration, different worker: the pair is what makes the name unique.
-    second = objective_mod.ProteusRunFailure(
-        reason='exceeded the 3600.0 s timeout',
-        worker=1,
-        iter=5,
-        out_dir='/study/workers/w_1/i_5',
-        status=objective_mod.STATUS_MISSING,
-        parameters={'planet.mass_tot': 4.0},
-    )
-
-    assert objective_mod.record_failure(tmp_path, second) is not None
-    assert objective_mod.record_failure(tmp_path, first) is not None
-    written = sorted(p.name for p in (tmp_path / objective_mod.FAILURE_RECORD_DIR).iterdir())
-    assert written == ['w0_i5.json', 'w1_i5.json']
-
-    records = objective_mod.read_failure_records(tmp_path)
-    # Ordering guard: written second-then-first, read back in worker order.
-    assert [r['worker'] for r in records] == [0, 1]
-    assert records[0]['status'] == 21
-    assert records[0]['status_desc'] == first.status_desc
-    assert records[0]['parameters']['planet.mass_tot'] == pytest.approx(3.0)
-    # A run that never wrote a status file is stored as such, not as a generic
-    # error, so the summary can separate start-up deaths from model faults.
-    assert records[1]['status'] == objective_mod.STATUS_MISSING
-    assert 'no readable status file' in records[1]['status_desc']
-
-    # Edge case: a corrupt record is skipped rather than aborting the summary,
-    # which would hide the records that did parse.
-    (tmp_path / objective_mod.FAILURE_RECORD_DIR / 'w2_i0.json').write_text('{not json')
-    assert len(objective_mod.read_failure_records(tmp_path)) == 2
-
-
-@pytest.mark.unit
-def test_recording_a_failure_never_masks_the_failure_it_records(tmp_path):
-    """Bookkeeping must not bring down a study. When the record cannot be
-    written the writer reports that it could not, and the caller still has the
-    failure in hand to log and to score.
-    """
-    blocked = tmp_path / 'not_a_directory'
-    blocked.write_text('this is a file, so no folder can be made beneath it')
-    failure = objective_mod.ProteusRunFailure(
-        reason='the simulator exited with an error',
-        worker=0,
-        iter=0,
-        out_dir=str(tmp_path),
-        exit_code=1,
-        status=21,
-    )
-
-    assert objective_mod.record_failure(blocked, failure) is None
-    # Discrimination: the same failure records fine against a usable folder, so
-    # the None above came from the blocked path and not from a writer that
-    # always fails.
-    assert objective_mod.record_failure(tmp_path / 'study', failure) is not None
-    # Reading a study that never created the folder is empty, not an error.
-    assert objective_mod.read_failure_records(tmp_path / 'never_ran') == []
