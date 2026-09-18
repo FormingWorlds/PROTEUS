@@ -162,7 +162,6 @@ config_version = "3.0"
     s0_factor                 = 0.375        # instellation geometric scale factor
 
     # Tidal evolution and rotation
-    evolve                    = false        # evolve semi-major axis and eccentricity
     axial_period              = "none"       # day length [hours]; none = tidally locked
 
 # ----------------------------------------------------

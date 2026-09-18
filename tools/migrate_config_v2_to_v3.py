@@ -307,7 +307,6 @@ _ORBIT_FIELDS = {
 # transform independent of an importable proteus at call time; verified
 # against proteus.utils.constants.M_earth / AU.
 _M_EARTH_KG = 5.972e24
-_AU_M = 1.495978707e11
 
 # Volatiles partial-pressure block: delivery.volatiles.X -> planet.gas_prs.X.
 _VOLATILE_SPECIES = ('H2O', 'CO2', 'N2', 'S2', 'SO2', 'H2S', 'NH3', 'H2', 'CH4', 'CO')
@@ -667,7 +666,7 @@ def _handle_orbit_dispatch(eff_v2, explicit, v3, report):
             v3['orbit.satellite.mass_sat'] = float(mass_sat) / _M_EARTH_KG
         sma_sat = eff_v2.get('orbit.semimajoraxis_sat')
         if sma_sat not in (None, 'none'):
-            v3['orbit.satellite.semimajoraxis_sat'] = float(sma_sat) / _AU_M
+            v3['orbit.satellite.semimajoraxis_sat'] = float(sma_sat) / _R_EARTH_M
         if 'orbit.satellite' in explicit:
             report.warnings.append(
                 'orbit.satellite mapped to orbit.planet_satellite_model="ps0d" '

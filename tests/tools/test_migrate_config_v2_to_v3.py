@@ -774,6 +774,34 @@ def test_radius_int_converts_earth_radii_to_metres():
     assert any('radius-specified' in w for w in report.warnings)
 
 
+def test_orbit_satellite_sma_converts_metres_to_earth_radii():
+    """A 2.0 orbit.semimajoraxis_sat (metres) converts to 3.0's R_earth-valued
+    orbit.satellite.semimajoraxis_sat, not AU.
+
+    2.0 consumes semimajoraxis_sat as a metre quantity; 3.0's
+    orbit.satellite.semimajoraxis_sat is in R_earth (see the Satellite class
+    docstring in src/proteus/config/_orbit.py and its use as
+    ``semimajoraxis_sat * R_earth`` in src/proteus/orbit/wrapper.py). Dividing
+    by AU instead of R_earth would be off by a factor of AU/R_earth (~23600x).
+    """
+    v2 = _minimal_spider_v2()
+    v2['orbit']['satellite'] = True
+    v2['orbit']['mass_sat'] = 7.347e22  # kg
+    v2['orbit']['semimajoraxis_sat'] = 3.0e8  # m
+    flat, report = _translate(v2)
+
+    assert flat['orbit.satellite.semimajoraxis_sat'] == pytest.approx(47.35268, rel=1e-5)
+    # Discrimination guard: the stale AU-divisor result (3e8 / 1.495978707e11)
+    # differs from the correct R_earth-divisor result by more than four orders
+    # of magnitude, so a regression to the old divisor cannot pass silently.
+    au_divisor_result = 3.0e8 / 1.495978707e11
+    assert abs(flat['orbit.satellite.semimajoraxis_sat'] - au_divisor_result) > 1.0
+
+    # mass_sat's M_earth conversion is unaffected by this fix and stays pinned.
+    assert flat['orbit.satellite.mass_sat'] == pytest.approx(0.01230241, rel=1e-5)
+    assert flat['orbit.satellite.include_satellite'] is True
+
+
 def test_albedo_lookup_table_is_dropped_with_a_warning():
     """A 2.0 config whose ``albedo_pl`` names a CSV lookup table migrates to a
     valid 3.0 config, leaving the field at its default and saying so.
