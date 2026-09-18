@@ -152,25 +152,7 @@ The system prints the final results including:
 
 ### Failed and excluded simulations
 
-Two kinds of evaluation carry the fixed bad objective value instead of a fit
-quality, and the study carries on in both cases. 
-
-**Failures.** A sweep over a wide parameter box is expected to reach
-combinations PROTEUS cannot integrate. A run that crashes, is killed, or stops
-on an error status (20 to 28) produced nothing usable. Each one is reported as a
-warning when it happens, naming the status code PROTEUS recorded, the run's
-output folder, the logfile holding its traceback, and the parameter values that
-produced it.
-
-**Exclusions.** The `failure_codes` field lists completion statuses the study
-does not want to fit against, such as `11` (maximum clock runtime) or `15`
-(volatiles escaped). These are reported at info level.
-
-At the end of the study both kinds are collected into `failures.csv`, which
-carries a `category` column of `failure` or `excluded`, and summarised. If more than half the evaluations went unscored, the summary says so as a warning, because the result then rests on far fewer real evaluations than the step count suggests. If no optimisation evaluation produced a fit quality there is no best fit to report, and the study stops with an error.
-
-Set `abort_on_failure = true` in the inference config to stop at the first failed
-simulation instead. This is useful while setting a study up, when the first failure is more likely to be a mistake in the reference config than an unrunnable corner of the parameter space. It applies to failures only; an excluded outcome never stops the study.
+During the inference run, some PROTEUS simulations might crash or fail, or stop on a status that is excluded in the inference configuration (e.g. maximum runtime reached). The run carries on when there are failures unless `abort_on_failure` is set to `true` in the inference config. At the end of the study all failures are written to `failures.csv` in the output folder, and summarised. 
 
 ## Customization
 
