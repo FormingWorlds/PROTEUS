@@ -53,11 +53,6 @@ _FAILURE_COLUMNS = (
     'console_path',
 )
 
-# Fraction of evaluations that may fail before the summary escalates from a
-# report to a warning. Above this, the sampled region is mostly unrunnable and
-# the posterior is built on too few real evaluations to mean much.
-FAILURE_FRACTION_WARN = 0.5
-
 
 @dataclass(eq=False)
 class ProteusRunFailure(RuntimeError):
@@ -268,14 +263,16 @@ def summarise_failures(output: str, n_attempted: int) -> int:
     n_excluded = sum(1 for r in records if r.get('category') == CATEGORY_EXCLUDED)
     n_failed = n_unscored - n_excluded
 
+    # One statement of the counts, raised to a warning when a run genuinely
+    # produced nothing
     frac = n_unscored / max(n_attempted, 1)
-    log.info(
-        f'Unscored evaluations: {n_unscored} of {n_attempted} evaluations '
-        f'({100 * frac:.1f}%, initial samples included) carry the failure score '
-        'rather than a fit quality'
+    log.log(
+        logging.WARNING if n_failed else logging.INFO,
+        f'Unscored evaluations: {n_unscored} of {n_attempted} '
+        f'({100 * frac:.1f}%, initial samples included) carry the failure score: '
+        f'{n_failed} produced no usable result, {n_excluded} completed on an '
+        'excluded status.',
     )
-    log.info(f'    {n_failed} did not produce a usable result')
-    log.info(f'    {n_excluded} completed on a status this study excludes')
 
     # Grouped by cause, and labelled so that an excluded outcome is not read as
     # something having gone wrong in the run that reached it.
@@ -296,12 +293,6 @@ def summarise_failures(output: str, n_attempted: int) -> int:
             log.info(f'    {log_path}')
     log.info(f'Full list: {Path(output) / FAILURE_CSV}')
 
-    if frac > FAILURE_FRACTION_WARN:
-        log.warning(
-            f'More than {100 * FAILURE_FRACTION_WARN:.0f}% of evaluations failed or were'
-            f'excluded, so the result rests on {n_attempted - n_unscored} real '
-            'evaluations.'
-        )
     log.info('-----------------------------------')
 
     return n_unscored
