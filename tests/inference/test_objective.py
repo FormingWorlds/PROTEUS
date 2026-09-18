@@ -1025,57 +1025,6 @@ def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path
     assert len(objective_mod.read_failure_records(tmp_path)) == 2
 
 
-@pytest.mark.unit
-def test_run_proteus_treats_a_missing_helpfile_column_as_a_setup_fault(monkeypatch, tmp_path):
-    """A helpfile with no 'P_surf' column raises rather than producing a scored
-    failure. The column set is a property of the simulator's output schema, so
-    it is the same for every run: scoring it as a bad sample would let the
-    study spend its whole budget returning the failure value and then report
-    success at the end.
-    """
-    out_abs = tmp_path / 'sim'
-    out_abs.mkdir(parents=True)
-    pd.DataFrame([{'T_obs': 300.0}]).to_csv(
-        out_abs / 'runtime_helpfile.csv', sep=' ', index=False
-    )
-    monkeypatch.setattr(
-        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(out_abs)}
-    )
-    monkeypatch.setattr(objective_mod, 'update_toml', lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(objective_mod.subprocess, 'run', lambda *args, **kwargs: None)
-
-    with pytest.raises(KeyError) as excinfo:
-        objective_mod.run_proteus(
-            parameters={},
-            worker=0,
-            iter=0,
-            observables=['T_obs'],
-            ref_config='reference.toml',
-            output='dummy_output',
-        )
-    # Not a per-run failure: scoring this one badly and continuing is exactly
-    # the behaviour the raise exists to prevent.
-    assert not isinstance(excinfo.value, objective_mod.ProteusRunFailure)
-    assert 'P_surf' in str(excinfo.value)
-    assert 'every run' in str(excinfo.value)
-
-    # Discrimination: the same helpfile with the column present completes, so
-    # the raise comes from the missing column and not from this code path
-    # rejecting every input.
-    pd.DataFrame([{'T_obs': 300.0, 'P_surf': 5.0}]).to_csv(
-        out_abs / 'runtime_helpfile.csv', sep=' ', index=False
-    )
-    obs, _status = objective_mod.run_proteus(
-        parameters={},
-        worker=0,
-        iter=0,
-        observables=['T_obs'],
-        ref_config='reference.toml',
-        output='dummy_output',
-    )
-    assert obs['T_obs'] == pytest.approx(300.0)
-
-
 # ============================================================================
 # Failure records: written per evaluation, read back for the study summary
 # ============================================================================

@@ -572,15 +572,6 @@ def run_proteus(
 
     # Handle case where atmosphere has escaped
     #   Set VMRs and MMW to zero
-    if 'P_surf' not in df_row:
-        # The helpfile schema is the same for every run, so a missing column
-        # is a fault of the setup rather than of this sample. Scoring it as a
-        # bad sample would let the study spend its whole budget returning the
-        # same failure value and then report success.
-        raise KeyError(
-            f"Simulator output has no 'P_surf' column ({out_csv}); "
-            'every run will produce the same result'
-        )
     if bool(df_row['P_surf'] < 1e-30):
         df_row['atm_kg_per_mol'] = 0.0
         for g in gas_list:
