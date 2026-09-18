@@ -30,15 +30,15 @@ from proteus.config import (
 
 # bayesopt source files
 from proteus.inference.async_BO import checkpoint, parallel_process
+from proteus.inference.failures import set_abort_on_failure, summarise_failures
 from proteus.inference.gen_D_init import create_init
 from proteus.inference.objective import (
     WORKER_CONFIG_OVERRIDES,
     apply_nested_updates,
     prot_builder,
-    set_abort_on_failure,
     set_child_timeout,
 )
-from proteus.inference.utils import print_results, str_time, summarise_failures
+from proteus.inference.utils import print_results, str_time
 from proteus.utils.coupler import get_proteus_directories
 from proteus.utils.helper import safe_rm
 from proteus.utils.logs import setup_logger

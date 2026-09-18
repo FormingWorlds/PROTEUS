@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import subprocess
-from dataclasses import asdict, dataclass, field
 from functools import partial
 from pathlib import Path
 
@@ -13,10 +11,20 @@ import toml
 import torch
 from numpy import log10
 
+from proteus.inference.failures import (
+    CATEGORY_EXCLUDED,
+    CATEGORY_FAILURE,
+    CHILD_CONSOLE_SUFFIX,
+    STATUS_MISSING,
+    ProteusRunFailure,
+    abort_on_failure,
+    find_run_logfile,
+    read_status,
+    record_failure,
+)
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import element_list, gas_list
 from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
-from proteus.utils.helper import CommentFromStatus
 
 dtype = torch.double
 EPS_CLIP = 1e-10
@@ -32,48 +40,6 @@ log = logging.getLogger('fwl.' + __name__)
 DEFAULT_CHILD_TIMEOUT_S = 6 * 3600.0
 _CHILD_TIMEOUT_ENV = 'PROTEUS_INFERENCE_CHILD_TIMEOUT_S'
 
-# Whether a failed child run aborts the study or scores a bad objective value.
-# Plumbed through the environment for the same reason as the timeout above.
-_ABORT_ON_FAILURE_ENV = 'PROTEUS_INFERENCE_ABORT_ON_FAILURE'
-
-# Lines of child stderr retained in a failure report. PROTEUS writes its own
-# diagnostics to the run's logfile, but a run that dies before the logger is
-# set up (a rejected config, a missing environment variable) leaves nothing
-# behind except this stream, so it is kept rather than discarded.
-STDERR_TAIL_LINES = 40
-
-# Suffix for the file holding whatever a child wrote to its console. It is
-# kept beside the run folder rather than inside it: PROTEUS empties its own
-# output folder once it starts, which would unlink a file held open there and
-# lose exactly the record this capture exists to keep.
-CHILD_CONSOLE_SUFFIX = '_console.log'
-
-# Status written by PROTEUS before its output folder is cleaned, and never
-# rewritten until the main loop starts. A child that dies in between leaves no
-# status file at all, so a missing file is reported as such rather than being
-# silently reported as a generic error.
-STATUS_MISSING = -1
-
-# How an evaluation that carries no fit quality is classified. A run that
-# crashed, or stopped in an error state, did not produce a result at all. A run
-# that completed normally but ended on a status listed in the study's
-# `failure_codes` did produce a result; the study simply does not fit against
-# that outcome. Both score BAD_OBJ_VALUE, but only the first is a fault, so the
-# two are named and counted apart rather than both being called failures.
-CATEGORY_FAILURE = 'failure'
-CATEGORY_EXCLUDED = 'excluded'
-
-# Folder inside the study output holding one record per failed evaluation.
-# Written by the workers as they fail and read back once at the end, so that
-# the summary covers initial sampling and optimisation alike without the two
-# paths having to share any state while they run.
-FAILURE_RECORD_DIR = 'failures'
-
-# Fraction of evaluations that may fail before the summary escalates from a
-# report to a warning. Above this, the sampled region is mostly unrunnable and
-# the posterior is built on too few real evaluations to mean much.
-FAILURE_FRACTION_WARN = 0.5
-
 # Config entries every worker overwrites in the reference config, regardless of
 # which parameters are being swept. Shared with the startup validation so the
 # configuration that is checked is the configuration that is run.
@@ -85,174 +51,6 @@ WORKER_CONFIG_OVERRIDES = {
 # Config entries every run sets to the same thing, or to a value derived from
 # the run index. Excluded from failure reports, which name the swept values.
 _FIXED_PARAMETER_KEYS = set(WORKER_CONFIG_OVERRIDES) | {'params.out.path'}
-
-
-def _tail(text: str | bytes | None, lines: int = STDERR_TAIL_LINES) -> str:
-    """Return the last `lines` lines of captured child output."""
-    if not text:
-        return ''
-    if isinstance(text, bytes):
-        text = text.decode('utf-8', errors='replace')
-    return '\n'.join(text.splitlines()[-lines:])
-
-
-def _tail_file(path: Path, lines: int = STDERR_TAIL_LINES) -> str:
-    """Return the last `lines` lines of a child's console file.
-
-    Returns an empty string when the file is missing or unreadable, so a
-    failure report is still produced when the capture itself went wrong.
-    """
-    try:
-        with open(path, 'r', errors='replace') as f:
-            return _tail(f.read(), lines)
-    except OSError:
-        return ''
-
-
-@dataclass(eq=False)
-class ProteusRunFailure(RuntimeError):
-    """A single child PROTEUS run that did not produce a usable result.
-
-    Carries everything needed to diagnose the run without opening the study
-    by hand: which evaluation it was, where its output landed, how it died,
-    what PROTEUS recorded in its status file, and the parameter values that
-    produced it. `category` separates a genuine fault from a run that completed
-    normally on a status the study excludes; both score the failure value, but
-    only the first is reported as something having gone wrong.
-
-    Raised for faults that are specific to one evaluation; faults that would
-    affect every evaluation (no `proteus` on PATH, an observable that no
-    helpfile column provides) stay as ordinary exceptions so they abort the
-    study instead of being scored as a bad sample.
-    """
-
-    reason: str
-    worker: int
-    iter: int
-    out_dir: str
-    exit_code: int | None = None
-    status: int = STATUS_MISSING
-    log_path: str | None = None
-    stderr_tail: str = ''
-    parameters: dict = field(default_factory=dict)
-    category: str = CATEGORY_FAILURE
-
-    @property
-    def status_desc(self) -> str:
-        """Human-readable form of the PROTEUS status code."""
-        if self.status == STATUS_MISSING:
-            return 'no readable status file (died during start-up)'
-        return CommentFromStatus(self.status)
-
-    def summary(self) -> str:
-        """Single-line description naming the outcome and where to look next."""
-        verb = 'excluded' if self.category == CATEGORY_EXCLUDED else 'failed'
-        parts = [
-            f'PROTEUS run {verb} for worker={self.worker} iter={self.iter}: {self.reason}',
-            f'status {self.status} ({self.status_desc})',
-        ]
-        # A zero exit code is the norm for every path except a crash, where it
-        # is the one number that says which signal or error ended the run.
-        if self.exit_code:
-            parts.append(f'exit code {self.exit_code}')
-        parts.append(f'output {self.out_dir}')
-        return '; '.join(parts)
-
-    def report(self) -> str:
-        """Multi-line description naming the cause and where to look next."""
-        verb = 'excluded' if self.category == CATEGORY_EXCLUDED else 'failed'
-        lines = [
-            f'PROTEUS run {verb} for worker={self.worker} iter={self.iter}: {self.reason}',
-            f'    status    = {self.status} ({self.status_desc})',
-        ]
-        if self.exit_code is not None:
-            lines.append(f'    exit code = {self.exit_code}')
-        lines.append(f'    output    = {self.out_dir}')
-        if self.log_path:
-            lines.append(f'    logfile   = {self.log_path}')
-        if self.parameters:
-            pretty = ', '.join(f'{k}={v:g}' for k, v in sorted(self.parameters.items()))
-            lines.append(f'    parameters = {pretty}')
-        if self.stderr_tail:
-            lines.append('    last output from the child process:')
-            lines.extend(f'      {line}' for line in self.stderr_tail.splitlines())
-        return '\n'.join(lines)
-
-    def __str__(self) -> str:
-        return self.report()
-
-    def __reduce__(self):
-        # A failure raised inside a pool worker is pickled to be re-raised in
-        # the parent. BaseException.__reduce__ rebuilds from `self.args`,
-        # which a dataclass __init__ leaves empty, so the default would fail
-        # to reconstruct this class. Rebuild from the fields instead.
-        return (
-            self.__class__,
-            (
-                self.reason,
-                self.worker,
-                self.iter,
-                self.out_dir,
-                self.exit_code,
-                self.status,
-                self.log_path,
-                self.stderr_tail,
-                self.parameters,
-                self.category,
-            ),
-        )
-
-
-def set_abort_on_failure(abort: bool = False) -> None:
-    """Record whether a failed child run should abort the whole study.
-
-    Stored in the environment so it is visible to the main process and to any
-    spawned pool workers, matching how the child timeout is plumbed.
-    """
-    os.environ[_ABORT_ON_FAILURE_ENV] = '1' if abort else '0'
-
-
-def abort_on_failure() -> bool:
-    """Return whether a failed child run should abort the whole study.
-
-    Defaults to False: an inference sweep is expected to visit parameter
-    combinations the simulator cannot integrate, and treating those as fatal
-    would make most studies unrunnable. Set the inference config field
-    `abort_on_failure` to stop at the first failure instead.
-    """
-    return os.environ.get(_ABORT_ON_FAILURE_ENV, '0') == '1'
-
-
-def read_status(out_abs: Path | str) -> int:
-    """Read the PROTEUS status code from a finished run's output folder.
-
-    Parameters
-    ----------
-    - out_abs (Path | str): Absolute path to the run's output folder.
-
-    Returns
-    ----------
-    - int: The status code, or `STATUS_MISSING` when no readable status file
-      exists. A missing file is itself diagnostic: PROTEUS deletes the status
-      it writes at start-up when it cleans the output folder, and does not
-      write another until the main loop begins.
-    """
-    try:
-        with open(Path(out_abs) / 'status', 'r') as f:
-            return int(f.readlines()[0].strip())
-    except Exception:
-        return STATUS_MISSING
-
-
-def find_run_logfile(out_abs: Path | str) -> str | None:
-    """Return the newest PROTEUS logfile in a run's output folder, if any.
-
-    PROTEUS captures uncaught exceptions into this file, so it usually holds
-    the traceback for a crashed run. It does not exist for a run that failed
-    before the logger was configured.
-    """
-    logs = sorted(Path(out_abs).glob('proteus_*.log'))
-    return str(logs[-1]) if logs else None
 
 
 def run_output_dir(output: str, worker: int, iter: int) -> tuple[Path, Path]:
@@ -271,63 +69,6 @@ def run_output_dir(output: str, worker: int, iter: int) -> tuple[Path, Path]:
     """
     out_dir = Path(output) / 'workers' / f'w_{worker}' / f'i_{iter}'
     return out_dir, Path(get_proteus_directories(str(out_dir))['output'])
-
-
-def record_failure(study_abs: Path | str, failure: ProteusRunFailure) -> str | None:
-    """Write a failure record into the study's `failures` folder.
-
-    One file per failed evaluation, named for the worker and iteration that
-    produced it, so that concurrent workers never write to the same file and
-    no lock is needed. The end-of-study summary reads them back.
-
-    Parameters
-    ----------
-    - study_abs (Path | str): Absolute path to the study output folder.
-    - failure (ProteusRunFailure): The failure to record.
-
-    Returns
-    ----------
-    - str | None: Path written, or None if the record could not be written.
-      Recording is best-effort: a study must not be brought down by a fault in
-      its own bookkeeping, so the failure being reported still reaches the log.
-    """
-    record = asdict(failure)
-    record['status_desc'] = failure.status_desc
-    target = Path(study_abs) / FAILURE_RECORD_DIR / f'w{failure.worker}_i{failure.iter}.json'
-    try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with open(target, 'w') as f:
-            json.dump(record, f, indent=2, sort_keys=True)
-    except (OSError, TypeError, ValueError) as err:
-        log.warning(
-            f'Could not record the failure of worker={failure.worker} '
-            f'iter={failure.iter}: {err}'
-        )
-        return None
-    return str(target)
-
-
-def read_failure_records(study_abs: Path | str) -> list[dict]:
-    """Read back every failure record written during a study.
-
-    Parameters
-    ----------
-    - study_abs (Path | str): Absolute path to the study output folder.
-
-    Returns
-    ----------
-    - list[dict]: One entry per failed evaluation, ordered by worker then
-      iteration. Unreadable records are skipped with a warning rather than
-      aborting the summary, which would hide the failures that did parse.
-    """
-    records = []
-    for path in sorted((Path(study_abs) / FAILURE_RECORD_DIR).glob('w*_i*.json')):
-        try:
-            with open(path, 'r') as f:
-                records.append(json.load(f))
-        except (OSError, json.JSONDecodeError) as err:
-            log.warning(f'Skipping unreadable failure record {path}: {err}')
-    return sorted(records, key=lambda r: (r.get('worker', 0), r.get('iter', 0)))
 
 
 def set_child_timeout(seconds: float | None = None) -> None:
@@ -481,9 +222,11 @@ def run_proteus(
     # the worker overrides are fixed for every run and add no diagnostic value.
     swept = {k: v for k, v in parameters.items() if k not in _FIXED_PARAMETER_KEYS}
 
-    def _failure(
-        reason: str, exit_code: int | None, stderr_tail: str = ''
-    ) -> ProteusRunFailure:
+    # A run that dies before its logger is configured leaves no logfile behind, so
+    # this stream records it.
+    console = out_abs.parent / f'{out_abs.name}{CHILD_CONSOLE_SUFFIX}'
+
+    def _failure(reason: str, exit_code: int | None) -> ProteusRunFailure:
         """Assemble a failure report for this run.
 
         The status file is read here rather than at the point of the raise so
@@ -498,18 +241,11 @@ def run_proteus(
             exit_code=exit_code,
             status=read_status(out_abs),
             log_path=find_run_logfile(out_abs),
-            stderr_tail=stderr_tail,
+            console_path=str(console),
             parameters=swept,
         )
 
-    # Run PROTEUS. Output is kept rather than discarded: a run that dies
-    # before its logger is configured leaves no logfile behind, so this stream
-    # is the only record of why it refused to start. It goes to a file rather
-    # than a pipe because a long run of a chatty module would otherwise buffer
-    # hours of output in memory, in every worker at once, to retain a few
-    # lines of it.
     command = ['proteus', 'start', '-c', str(out_cfg), '--offline']
-    console = out_abs.parent / f'{out_abs.name}{CHILD_CONSOLE_SUFFIX}'
     console.parent.mkdir(parents=True, exist_ok=True)
     # Opened outside the try so that a failure to create it is not mistaken
     # for the simulator being absent.
@@ -531,17 +267,9 @@ def run_proteus(
         raise RuntimeError("Failed to run PROTEUS: 'proteus' command not found") from err
     except subprocess.TimeoutExpired as err:
         timeout = child_timeout_s()
-        raise _failure(
-            f'exceeded the {timeout} s timeout',
-            exit_code=None,
-            stderr_tail=_tail_file(console),
-        ) from err
+        raise _failure(f'exceeded the {timeout} s timeout', exit_code=None) from err
     except subprocess.CalledProcessError as err:
-        raise _failure(
-            'the simulator exited with an error',
-            exit_code=err.returncode,
-            stderr_tail=_tail_file(console),
-        ) from err
+        raise _failure('the simulator exited with an error', exit_code=err.returncode) from err
     finally:
         stream.close()
 

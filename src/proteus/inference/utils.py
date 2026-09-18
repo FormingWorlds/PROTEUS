@@ -16,7 +16,6 @@ Functions:
 from __future__ import annotations
 
 import logging
-from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime
 from functools import partial
@@ -33,15 +32,7 @@ from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.kernels import MaternKernel, RBFKernel
 from gpytorch.priors.torch_priors import LogNormalPrior
 
-from proteus.inference.objective import (
-    BAD_OBJ_VALUE,
-    CATEGORY_EXCLUDED,
-    CATEGORY_FAILURE,
-    EPS_CLIP,
-    FAILURE_FRACTION_WARN,
-    eval_obj,
-    read_failure_records,
-)
+from proteus.inference.objective import BAD_OBJ_VALUE, EPS_CLIP, eval_obj
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import gas_list
 
@@ -155,107 +146,6 @@ def load_dataset_csv(fpath: str) -> dict[str, torch.Tensor]:
     X = torch.tensor(df[x_cols].to_numpy(), dtype=dtype)
     Y = torch.tensor(df[['y']].to_numpy(), dtype=dtype)
     return {'X': X, 'Y': Y}
-
-
-def summarise_failures(output: str, n_attempted: int) -> int:
-    """Collect the study's unscored evaluations into a table and report on them.
-
-    A sweep over a wide parameter box is expected to reach combinations the
-    simulator cannot integrate, and to reach outcomes the study itself excludes
-    through `failure_codes`. Both carry the failure score rather than a fit
-    quality. Without a count, a study in which most evaluations were never
-    scored is indistinguishable from one that converged, so the tally, the
-    breakdown by cause, and the per-run paths are reported together at the end
-    of the study. Runs that failed and runs that were excluded are counted
-    apart, because only the first kind means something went wrong.
-
-    Parameters
-    ----------
-    - output (str): Absolute path to the study output folder.
-    - n_attempted (int): Total evaluations attempted, initial samples included.
-
-    Returns
-    ----------
-    - int: Number of evaluations that carry the failure score.
-    """
-    records = read_failure_records(output)
-    n_unscored = len(records)
-
-    log.info('-----------------------------------')
-    if not n_unscored:
-        log.info(f'Unscored evaluations: none, all {n_attempted} evaluations were usable')
-        log.info('-----------------------------------')
-        return 0
-
-    # A record with no category describes a genuine fault: it came either from
-    # the crash path, which never excludes, or from a study run before the two
-    # were separated.
-    n_excluded = sum(1 for r in records if r.get('category') == CATEGORY_EXCLUDED)
-    n_failed = n_unscored - n_excluded
-
-    # Fixed diagnostic columns first, then one column per swept parameter, so
-    # the table can be sorted on a parameter to see which region fails.
-    rows = []
-    for rec in records:
-        row = {
-            key: rec.get(key)
-            for key in (
-                'worker',
-                'iter',
-                'category',
-                'status',
-                'status_desc',
-                'exit_code',
-                'reason',
-                'out_dir',
-                'log_path',
-            )
-        }
-        row['category'] = row['category'] or CATEGORY_FAILURE
-        row.update(rec.get('parameters') or {})
-        rows.append(row)
-    csv_path = Path(output) / 'failures.csv'
-    pd.DataFrame(rows).to_csv(csv_path, index=False)
-
-    frac = n_unscored / max(n_attempted, 1)
-    log.info(
-        f'Unscored evaluations: {n_unscored} of {n_attempted} evaluations '
-        f'({100 * frac:.1f}%, initial samples included) carry the failure score '
-        'rather than a fit quality'
-    )
-    log.info(f'    {n_failed} did not produce a usable result')
-    log.info(f'    {n_excluded} completed on a status this study excludes')
-
-    # Grouped by cause, and labelled so that an excluded outcome is not read as
-    # something having gone wrong in the run that reached it.
-    log.info(f'{"Cause":52s} | Count')
-    for (category, desc), count in Counter(
-        (r.get('category') or CATEGORY_FAILURE, r.get('status_desc') or 'unknown')
-        for r in records
-    ).most_common():
-        label = f'{desc} [excluded]' if category == CATEGORY_EXCLUDED else str(desc)
-        log.info(f'{label:52s}   {count}')
-    # A few concrete places to look, labelled and counted so the sample is not
-    # read as the whole list. The simulator writes its own traceback to these
-    # logfiles, so they carry the cause that the status code only names.
-    sample = [rec['log_path'] for rec in records if rec.get('log_path')][:3]
-    if sample:
-        log.info(f'Logfiles ({len(sample)} of {n_unscored} shown):')
-        for log_path in sample:
-            log.info(f'    {log_path}')
-    log.info(f'Full list: {csv_path}')
-
-    if frac > FAILURE_FRACTION_WARN:
-        log.warning(
-            f'More than {100 * FAILURE_FRACTION_WARN:.0f}% of evaluations were not scored '
-            f'on fit quality, so the result below rests on {n_attempted - n_unscored} real '
-            'evaluations. Narrow the parameter ranges to a region the simulator can '
-            'integrate and the study accepts, or check the reference config against the '
-            'causes listed above.'
-        )
-    log.info('-----------------------------------')
-
-    return n_unscored
 
 
 def print_results(D, logs, config, output, n_init):
