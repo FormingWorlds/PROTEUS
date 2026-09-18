@@ -46,6 +46,7 @@ _CHILD_TIMEOUT_ENV = 'PROTEUS_INFERENCE_CHILD_TIMEOUT_S'
 WORKER_CONFIG_OVERRIDES = {
     'params.out.plot_mod': 'none',
     'params.out.logging': 'WARNING',
+    'params.out.archive_mod': 0,
 }
 
 # Config entries every run sets to the same thing, or to a value derived from
