@@ -16,7 +16,7 @@ inputs:
   julia-version:
     description: Julia version
     required: false
-    default: '1.12.6'
+    default: '1.13.0'
   install-editable-submodules:
     description: >
       Whether to clone MORS / aragog / JANUS / CALLIOPE / ZEPHYRUS / Zalmoxis

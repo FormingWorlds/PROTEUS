@@ -620,7 +620,6 @@ def _try_spider(
     hf_row: dict,
     step_sf: float,
     atol_sf: float,
-    dT_max: float,
     timeout: float = 60 * 30,
     mesh_file: str | None = None,
     interior_o=None,
@@ -771,7 +770,15 @@ def _try_spider(
         )
     else:
         dT_poststep = float(config.interior_energetics.tmagma_atol)
-    call_sequence.extend(['-tsurf_poststep_change', str(min(dT_max, dT_poststep))])
+    # When tides active...
+    if (
+        config.interior_energetics.heat_tidal
+        and interior_o is not None
+        and (np.amax(interior_o.tides) > 1e-10)
+    ):
+        dT_poststep = min(dT_poststep, config.interior_energetics.tmagma_tides_step)
+        log.info('Tidal heating active; limiting dT_magma to %.2f K' % dT_poststep)
+    call_sequence.extend(['-tsurf_poststep_change', str(dT_poststep)])
 
     # set surface and core entropy (-1 is a flag to ignore)
     call_sequence.extend(['-ic_surface_entropy', '-1'])
@@ -1188,12 +1195,6 @@ def RunSPIDER(
     spider_success = False  # success?
     attempts = 0  # number of attempts so far
 
-    # Maximum dT
-    dT_max = 1e99
-    if config.interior_energetics.heat_tidal and (np.amax(interior_o.tides) > 1e-10):
-        dT_max = 4.0
-        log.info('Tidal heating active; limiting dT_magma to %.2f K' % dT_max)
-
     # make attempts
     while not spider_success:
         attempts += 1
@@ -1208,7 +1209,6 @@ def RunSPIDER(
             hf_row,
             step_sf,
             atol_sf,
-            dT_max,
             mesh_file=mesh_file,
             interior_o=interior_o,
         )

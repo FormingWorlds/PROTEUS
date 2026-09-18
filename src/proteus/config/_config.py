@@ -38,24 +38,77 @@ def instmethod_dummy(instance, attribute, value):
 
 def instmethod_evolve(instance, attribute, value):
     """Orbital evolution cannot be combined with instellation method 'inst'."""
-    if (instance.orbit.instellation_method == 'inst') and instance.orbit.evolve:
+    if (instance.orbit.instellation_method == 'inst') and (
+        instance.orbit.star_planet_model is not None
+    ):
         raise ValueError(
             "Planet orbital evolution not supported for `instellation_method='inst'`"
         )
 
 
 def satellite_evolve(instance, attribute, value):
-    """Planetary orbital evolution and the satellite model are mutually exclusive."""
-    if instance.orbit.satellite and instance.orbit.evolve:
+    """Star-planet orbital evolution and the planet-satellite model are mutually exclusive."""
+    if (
+        instance.orbit.star_planet_model is not None
+        and instance.orbit.planet_satellite_model is not None
+    ):
         raise ValueError(
             'Planet orbital evolution cannot be used simultaneously with a satellite'
         )
 
 
 def tides_enabled_orbit(instance, attribute, value):
-    """Interior tidal heating requires an orbit module to be enabled."""
+    """Interior tidal heating requires an tides module to be enabled."""
     if (instance.interior_energetics.heat_tidal) and (instance.orbit.module is None):
-        raise ValueError('Interior tidal heating requires an orbit module to be enabled')
+        raise ValueError('Interior tidal heating requires a tides module to be enabled')
+
+
+def obliqua_requires_perturber(instance, attribute, value):
+    """The Obliqua tidal-response module requires an explicit perturber."""
+    if instance.orbit.module == 'obliqua' and instance.orbit.perturber is None:
+        raise ValueError(
+            "orbit.module = 'obliqua' requires orbit.perturber to be explicitly set to "
+            "'star' or 'satellite' (it has no default tidal-forcing body to fall back on)"
+        )
+
+
+def sp0d_obliqua_degree_mismatch(instance, attribute, value):
+    """sp0d's closed-form is by definition the n=2 Love number. Obliqua can compute
+    arbitrary tidal degree(s), block the mismatch.
+    """
+    if instance.orbit.module == 'obliqua' and instance.orbit.star_planet_model == 'sp0d':
+        if instance.orbit.obliqua.n != [2]:
+            raise ValueError(
+                "orbit.star_planet_model = 'sp0d' requires orbit.obliqua.n == [2]: "
+                'set orbit.obliqua.n = [2] to use sp0d with Obliqua, or use'
+                "orbit.star_planet_model = 'sp1d' instead."
+            )
+        log.warning(
+            "orbit.star_planet_model = 'sp0d' with orbit.module = 'obliqua': Imk2 is "
+            "the mean of Obliqua's per-mode Im(k2) spectrum collapsed to a single "
+            'scalar, which discards the eccentricity-dependent mode weighting sp1d '
+            'uses directly. This is an approximation, least accurate at high or '
+            "rapidly-changing eccentricity. Prefer orbit.star_planet_model = 'sp1d'"
+            ' when using Obliqua.'
+        )
+
+
+def orbit_requires_tides(instance, attribute, value):
+    """sp1d, ps1d, and ps1d_evec require at least Lovepy, but ideally the Obliqua
+    tidal-response module: all three read the full per-mode spectrum in
+    ``tides_o``, which ``dummy`` never populates. ``sp0d``/``ps0d`` read the
+    scalar ``Imk2`` instead (which ``dummy`` does provide), so they are
+    unrestricted here; see "Compatibility between orbit models and tidal
+    modules" in docs/Explanations/orbit.md.
+    """
+    needs_full_spectrum = instance.orbit.star_planet_model == 'sp1d' or (
+        instance.orbit.planet_satellite_model in ('ps1d', 'ps1d_evec')
+    )
+    if needs_full_spectrum and instance.orbit.module not in ('obliqua', 'lovepy'):
+        raise ValueError(
+            "orbit.star_planet_model = 'sp1d' or orbit.planet_satellite_model = "
+            "'ps1d'/'ps1d_evec' requires orbit.module = 'obliqua' or 'lovepy'"
+        )
 
 
 CURRENT_CONFIG_VERSION = '3.0'
@@ -329,7 +382,15 @@ class Config:
     params: Params = field(factory=Params)
     star: Star = field(factory=Star)
     orbit: Orbit = field(
-        factory=Orbit, validator=(instmethod_dummy, instmethod_evolve, satellite_evolve)
+        factory=Orbit,
+        validator=(
+            instmethod_dummy,
+            instmethod_evolve,
+            satellite_evolve,
+            obliqua_requires_perturber,
+            sp0d_obliqua_degree_mismatch,
+            orbit_requires_tides,
+        ),
     )
     planet: Planet = field(
         factory=Planet,
