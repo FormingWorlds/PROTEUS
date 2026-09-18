@@ -143,13 +143,18 @@
       "options": [
         {
           "option": "dummy",
-          "entry": "src/proteus/orbit/dummy.py:run_dummy_orbit",
+          "entry": "src/proteus/orbit/dummy.py:run_dummy_tides",
           "role": "Fixed Im(k2) tides"
         },
         {
           "option": "lovepy",
           "entry": "src/proteus/orbit/lovepy.py:run_lovepy",
-          "role": "Multi-phase tidal heating (Julia)"
+          "role": "Solid-phase tidal heating (Julia)"
+        },
+        {
+          "option": "obliqua",
+          "entry": "src/proteus/orbit/obliqua.py:run_obliqua",
+          "role": "Multi-phase tidal response (Julia)"
         },
         {
           "option": null,
@@ -159,14 +164,14 @@
       ],
       "sub_dispatches": [
         {
-          "switch": "`orbit.evolve = true`",
-          "entry": "src/proteus/orbit/orbit.py:evolve_orbital",
-          "doc": "evolves semi-major axis and eccentricity each iteration"
+          "switch": "`orbit.star_planet_model != none`",
+          "entry": "src/proteus/orbit/orbit.py:evolve_orbit_star",
+          "doc": "evolves the star-planet orbit (sp0d/sp1d) each iteration"
         },
         {
-          "switch": "`orbit.satellite = true`",
-          "entry": "src/proteus/orbit/satellite.py:update_satellite",
-          "doc": "evolves the satellite orbit instead of the planetary one"
+          "switch": "`orbit.planet_satellite_model != none`",
+          "entry": "src/proteus/orbit/satellite.py:evolve_orbit_satellite",
+          "doc": "evolves the planet-satellite orbit (ps0d/ps1d/ps1d_evec) each iteration"
         }
       ]
     },

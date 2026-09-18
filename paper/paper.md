@@ -121,7 +121,7 @@ Modules are grouped into five main categories: (i) interior, (ii) atmosphere, (i
 Interior modules (i) compute the interior structure as well as the thermal and chemical evolution of the planetary mantle and core, such as energy transport, melting, and crystallization (red boxes in \autoref{fig:schematic}). These include:
 
   - Aragog and SPIDER [@bower18; @sastre25], which describe the interior heat transport of partially molten planets using a temperature and an entropy formalism, respectively.
-  - LovePy [@hay19; @nicholls25c], which simulates mixed-phase tidal heating in the planetary mantle.
+  - LovePy [@hay19; @nicholls25c], which simulates solid-phase tidal heating in the planetary mantle.
   - Zalmoxis [@pascal26], which calculates the interior (core and mantle) structure and gravity profile.
 
 Atmosphere modules (ii) compute the energy balance and composition of the planetary atmosphere, including radiative transfer, and atmospheric chemistry (blue boxes in \autoref{fig:schematic}). These include:

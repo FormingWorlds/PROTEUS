@@ -225,13 +225,13 @@ config_version = "3.0"
     s0_factor                 = 0.25        # instellation geometric scale factor
 
     # Tidal evolution and rotation
-    evolve                    = false        # evolve semi-major axis and eccentricity
     axial_period              = "none"       # day length [hours]; none = tidally locked
 
     # Satellite (moon)
-    satellite                 = false        # include satellite
-    mass_sat                  = 7.347e+22    # satellite mass [kg]
-    semimajoraxis_sat         = 3e8          # satellite orbit semi-major axis [m]
+    [orbit.satellite]
+        include_satellite     = false        # include satellite
+        mass_sat              = 0.0123024    # satellite mass [M_earth]
+        semimajoraxis_sat     = 47.3527      # satellite orbit semi-major axis [R_earth]
 
     [orbit.dummy]
         H_tide                = 1e-7         # fixed tidal power density [W kg-1]
