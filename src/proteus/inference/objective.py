@@ -19,12 +19,12 @@ from proteus.inference.failures import (
     ProteusRunFailure,
     abort_on_failure,
     find_run_logfile,
-    read_status,
     record_failure,
 )
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import element_list, gas_list
 from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
+from proteus.utils.helper import ReadStatus
 
 dtype = torch.double
 EPS_CLIP = 1e-10
@@ -239,7 +239,7 @@ def run_proteus(
             iter=iter,
             out_dir=str(out_abs),
             exit_code=exit_code,
-            status=read_status(out_abs),
+            status=ReadStatus(out_abs),
             log_path=find_run_logfile(out_abs),
             console_path=str(console),
             parameters=swept,
@@ -277,7 +277,7 @@ def run_proteus(
     update_toml(ref_config, parameters, str(out_cfg))
 
     # Read status file
-    status = read_status(out_abs)
+    status = ReadStatus(out_abs)
 
     # Read simulator output. A run that exits cleanly but writes no usable
     # helpfile (killed mid-write, or stopped before the first row) is a failed

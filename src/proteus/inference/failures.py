@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from proteus.utils.helper import CommentFromStatus
+from proteus.utils.helper import STATUS_MISSING, CommentFromStatus
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -21,9 +21,6 @@ _ABORT_ON_FAILURE_ENV = 'PROTEUS_INFERENCE_ABORT_ON_FAILURE'
 
 # Suffix for the file holding whatever a child wrote to its console.
 CHILD_CONSOLE_SUFFIX = '_console.log'
-
-# Status written by PROTEUS before its output folder is cleaned.
-STATUS_MISSING = -1
 
 # How an evaluation that failed is classified. A run that
 # crashed, or stopped in an error state, did not produce a result at all. A run
@@ -167,27 +164,6 @@ def abort_on_failure() -> bool:
     `abort_on_failure` to stop at the first failure instead.
     """
     return os.environ.get(_ABORT_ON_FAILURE_ENV, '0') == '1'
-
-
-def read_status(out_abs: Path | str) -> int:
-    """Read the PROTEUS status code from a finished run's output folder.
-
-    Parameters
-    ----------
-    - out_abs (Path | str): Absolute path to the run's output folder.
-
-    Returns
-    ----------
-    - int: The status code, or `STATUS_MISSING` when no readable status file
-      exists. A missing file is itself diagnostic: PROTEUS deletes the status
-      it writes at start-up when it cleans the output folder, and does not
-      write another until the main loop begins.
-    """
-    try:
-        with open(Path(out_abs) / 'status', 'r') as f:
-            return int(f.readlines()[0].strip())
-    except Exception:
-        return STATUS_MISSING
 
 
 def find_run_logfile(out_abs: Path | str) -> str | None:
