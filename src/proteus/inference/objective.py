@@ -49,9 +49,15 @@ WORKER_CONFIG_OVERRIDES = {
     'params.out.archive_mod': 0,
 }
 
+# Folder inside the study output where workers reuse prepared spectral files.
+SPECTRAL_CACHE_DIR = 'spectral_cache'
+
 # Config entries every run sets to the same thing, or to a value derived from
 # the run index. Excluded from failure reports, which name the swept values.
-_FIXED_PARAMETER_KEYS = set(WORKER_CONFIG_OVERRIDES) | {'params.out.path'}
+_FIXED_PARAMETER_KEYS = set(WORKER_CONFIG_OVERRIDES) | {
+    'params.out.path',
+    'atmos_clim.spectral_cache',
+}
 
 
 def run_output_dir(output: str, worker: int, iter: int) -> tuple[Path, Path]:
@@ -208,6 +214,13 @@ def run_proteus(
 
     # Inject output path into simulation parameters
     parameters['params.out.path'] = str(out_dir)
+
+    # Every evaluation of an inference run that holds the star fixed builds the same
+    # prepared spectral file. Point them all at one folder so only the first
+    # pays for it.
+    parameters['atmos_clim.spectral_cache'] = str(
+        Path(get_proteus_directories(output)['output']) / SPECTRAL_CACHE_DIR
+    )
 
     # Don't allow workers to make plots or logs
     parameters.update(WORKER_CONFIG_OVERRIDES)
