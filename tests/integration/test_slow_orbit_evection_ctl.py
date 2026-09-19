@@ -4,52 +4,32 @@ the evection-resonance-capture case from Rufu & Canup (2020) Figure 3.
 
 Match against the reference case
 ---------------------------------
-A standalone run of the driver logic below (see
-``output_files/evection_reference/run_ctl_reference.py``, gitignored)
-covers t=0-5.9e4 yr of physical time (~55 min wall-clock). Compared
-against the reference figure's t=0-1e5 yr run (capture ~2.4e4 yr; peak
-e~0.72 at a'~11.89 R_earth at t~5.2e4 yr; then contraction to a'~10.2
-R_earth, e~0.67 by t=1e5 yr):
+Rufu & Canup (2020) Figure 3 shows capture at t~2.4e4 yr, a peak
+e~0.72 at a'~11.89 R_earth at t~5.2e4 yr, then contraction to a'~10.2
+R_earth, e~0.67 by t=1e5 yr. One run of this test's driver (t=0 to
+5.2e4 yr, 628 s wall-clock, single run on one machine) gave:
 
-- Pre-resonance phase matches: e stays below 0.01 while a' rises from
-  3.5 to ~7.6 R_earth over the first ~2e4 yr, same as the reference.
-- Resonance capture timing matches closely: e crosses 0.02 at t=2.5e4 yr,
-  a'=7.86 R_earth (reference: ~2.4e4 yr, a'~7.7-8).
-- Peak eccentricity and its location match closely: e_peak=0.755 at
-  t=5.12e4 yr, a'=11.88 R_earth (reference: e~0.72-0.724 at a'~11.89
-  R_earth, t~5.2e4 yr) -- the peak a' in particular matches to <0.1%.
-- The post-peak CONTRACTION phase was NOT reproduced: by t=5.92e4 yr
-  (~8000 yr past the peak, where the observed run's wall-clock budget
-  was exhausted), a' was still climbing (13.5 R_earth and rising)
-  instead of turning over. This is NOT a truncation artifact -- the
-  internal `filter` flag (real per-substep data from
-  fine_evection_data.csv) never switched off, but the diagnostic
-  (a'-a'_res)/a'_res was tracked directly and shows the satellite
-  escaping evection proper onto the a' > a'_res side of the turnaround,
-  rather than the a' < a'_res side. Rufu & Canup (2020) Section 3.1
-  describe exactly this bifurcation for their own A=10 reference case
-  (the same tidal-strength ratio used here): escape to the high-e side
-  of the separatrix enters the quasi-resonance (QR) regime they
-  describe, with the orbit interior to a'_res and genuine tidally-driven
-  contraction; escape to the low-e side leaves the orbit EXTERIOR to
-  a'_res with no further resonant regulation and elevated AM -- and they
-  report this split occurred in 2 of 10 of their own simulations that
-  varied only the initial resonance angle phi(0), everything else held
-  fixed. Which branch is realized is therefore expected to be sensitive
-  to phi(0) (0.3 rad here, an arbitrary choice inherited from the
-  reference notebook), not a discrepancy in the physics being tested.
-  This test makes NO assertion about the contraction phase for that
-  reason.
+- Pre-resonance: e stays below 0.004 while a' < 7.5 R_earth (a' rises
+  from 3.5 R_earth).
+- Capture timing: e crosses 0.02 at t=2.5e4 yr (a'=7.86 R_earth) and 0.1
+  at t=2.58e4 yr (a'=7.90 R_earth).
+- Peak: e=0.744 at t=5.18e4 yr, a'=12.33 R_earth. The peak e is within
+  ~3% of the reference; the peak a' is ~4% above it.
+- ``plan_sat_am`` drifts by -4.2% at most relative to its initial value.
 
-Because of the ~1 hour runtime of the full case, this test targets only
-the resonance-entry and peak-eccentricity portion (through t=5.2e4 yr).
-Reaching that target took ~1364 s in the calibration run; a 2200 s
-internal cutoff leaves a ~1.6x margin over that measurement, plus
-further headroom under the 3600 s pytest-timeout ceiling for slower CI
-hardware. If the internal cutoff is hit well short of the target, the
-driver raises RuntimeError rather than returning a truncated trajectory
-silently, so that failure mode is distinguishable from an actual
-physics regression.
+The post-peak contraction phase is not simulated: the run ends at
+t=5.2e4 yr, and this test makes no assertion about contraction. Which
+side of the evection separatrix the orbit escapes to depends on the
+initial resonance angle phi(0) (0.3 rad here); see Rufu & Canup (2020)
+Section 3.1.
+
+The test targets only the resonance-entry and peak-eccentricity portion
+(through t=5.2e4 yr). A 2200 s internal cutoff is ~3.5x the measured
+628 s, with further headroom under the 3600 s pytest-timeout ceiling.
+That ratio is from one run and was not measured on slower hardware. If
+the internal cutoff is hit well short of the target, the driver raises
+RuntimeError rather than returning a truncated trajectory silently, so
+that failure mode is distinguishable from an actual physics regression.
 
 Invariants asserted:
 
@@ -59,16 +39,16 @@ Invariants asserted:
 - Resonance capture occurs within a physically reasonable window
   (e crosses 0.1 between t=2e4 and t=4e4 yr), not immediately and not
   never.
-- Peak eccentricity reaches at least 0.6 (comfortably below the observed
-  0.755, allowing for run-to-run solver variance) at a semimajor axis
-  within [10, 13] R_earth, matching the reference's peak location.
+- Peak eccentricity reaches at least 0.6 (below the measured 0.744,
+  allowing for run-to-run solver variance) at a semimajor axis
+  within [10, 13] R_earth, bracketing the reference's peak location.
 - The 2-body (planet spin + satellite spin + orbital) angular momentum
   diagnostic ``hf_row['plan_sat_am']`` stays finite, positive, and within
   +/-10% of its initial value throughout -- a boundedness check, not an
   exact-conservation one: ps1d_evec's in-band evection coupling
   physically exchanges angular momentum with the star, so this quantity
-  is expected to drift (observed drift in the reference run was <1%
-  over the run), not be exactly conserved.
+  is expected to drift (-4.2% at most in the run above), not be exactly
+  conserved.
 
 See also:
 - docs/How-to/test_infrastructure.md
@@ -87,7 +67,7 @@ import pytest
 import proteus.orbit.hansen as hansen_mod
 from proteus.config._orbit import OrbitSolver
 from proteus.interior_energetics.common import get_C_planet
-from proteus.orbit.common import Tides_t
+from proteus.orbit.common import Tides_t, kmin_kmax_for_m0_mirror
 from proteus.orbit.satellite import evolve_orbit_satellite
 
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
@@ -103,18 +83,19 @@ _M_EARTH, _R_EARTH = 5.972e24, 6.371e6
 _M_MOON, _R_MOON = 7.342e22, 1.737e6
 _M_SUN, _AU = 1.989e30, 1.496e11
 
+# Uniform-density planet: get_C_planet then yields C_int = 0.4 M R^2.
+_RHO_UNIFORM = _M_EARTH / (4.0 / 3.0 * np.pi * _R_EARTH**3)
+
 # Mignard CTL parameters, Rufu & Canup (2020) Figure-3-calibrated (see the
 # reference notebook's make_initial_hf_row docstring for the derivation).
 _K2_P, _DT_P = 0.3, 5.98
 _K2_S, _DT_S = 1.5, 1.20
 _KMIN, _KMAX = -50, 200
 
-# Target: through the peak (observed at t=5.12e4 yr), not the full 1e5 yr
-# case, to keep the test inside the slow-tier timeout budget. Reaching
-# this target took ~1364 s in the calibration run; 2200 s leaves a ~1.6x
-# margin against that measurement plus roughly 1400 s of additional
-# headroom under the 3600 s pytest-timeout ceiling (which also covers
-# Hansen-table construction, ~10 s) for slower CI hardware.
+# Target: through the peak (measured at t=5.18e4 yr), not the full 1e5 yr
+# case, to keep the test inside the slow-tier timeout budget. The run
+# took 628 s; 2200 s is ~3.5x that, and the 3600 s pytest-timeout ceiling
+# (which also covers Hansen-table construction, ~5 s) leaves more.
 _T_TARGET_YR = 52000.0
 _DT_OUTER_YR = 200.0
 _MAX_WALL_SECONDS = 2200.0
@@ -138,6 +119,9 @@ def _make_initial_hf_row() -> dict:
         'semimajorax': 1.0 * _AU,
         'C_sat': 0.4 * _M_MOON * _R_MOON**2,
         'C_planet': 0.4 * _M_EARTH * _R_EARTH**2,
+        # Key must exist so get_C_planet skips the config fallback; the value is inert
+        # here because interior_o.radius starts at 0 (zero-width core shell).
+        'core_density': _RHO_UNIFORM,
     }
 
 
@@ -203,10 +187,9 @@ def _run_ctl_reference(
         params=SimpleNamespace(dt=SimpleNamespace(evection_maximum=0.0)),
     )
     n_shells = 50
-    rho_uniform = _M_EARTH / (4.0 / 3.0 * np.pi * _R_EARTH**3)
     interior_o = SimpleNamespace(
         radius=np.linspace(0.0, _R_EARTH, n_shells),
-        density=np.full(n_shells - 1, rho_uniform),
+        density=np.full(n_shells - 1, _RHO_UNIFORM),
         dt=_DT_OUTER_YR,
     )
     dirs: dict = {'output/data': data_dir}
@@ -251,16 +234,23 @@ def _run_ctl_reference(
 @pytest.fixture(scope='module')
 def _ctl_reference_trajectory(tmp_path_factory):
     """Builds the real, wide Hansen-coefficient table once (needed for
-    eccentricities up to ~0.8; the [-50, 200] k-window is the notebook's
-    own choice, verified there to suffice up to e~0.755) and runs the
-    driver once, shared by every assertion in this file so the ~25+
-    minute cost is paid a single time per test session.
+    eccentricities up to ~0.8) and runs the driver once, shared by every
+    assertion in this file so the ~10 minute cost is paid a single time
+    per test session.
     """
     e_grid = np.concatenate([np.arange(0.0, 0.1, 0.005), np.arange(0.1, 0.86, 0.01)])
     data_dir = str(tmp_path_factory.mktemp('evection_ctl'))
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(hansen_mod, '_hansen_table', None)
-        hansen_mod.init_hansen_table(e_grid=e_grid, kmin=_KMIN, kmax=_KMAX, n_deg=2, force=True)
+        # The m=0 mirror requests k down to -_KMAX, so the table must span it.
+        hansen_mod.init_hansen_table(
+            e_grid=e_grid, kmin=-_KMAX, kmax=_KMAX, n_deg=2, force=True
+        )
+        # Guard: a wider _KMIN than -_KMAX would make the Hansen slices mismatch in shape.
+        nmk = _refresh_ctl_tides(_make_initial_hf_row()).get('planet', 'satellite').nmk
+        k_lo, k_hi = kmin_kmax_for_m0_mirror(nmk)
+        table = hansen_mod._hansen_table
+        assert table.kmin <= k_lo and k_hi <= table.kmax
         yield _run_ctl_reference(_T_TARGET_YR, _MAX_WALL_SECONDS, data_dir)
 
 
@@ -297,8 +287,8 @@ def test_resonance_capture_occurs_within_expected_time_window(_ctl_reference_tra
 def test_peak_eccentricity_matches_reference_location(_ctl_reference_trajectory):
     """Pins the peak-eccentricity magnitude and location against the
     reference (e_peak~0.72-0.724 at a'~11.89 R_earth, t~5.2e4 yr).
-    Tolerance is loose (e >= 0.6, a' in [10, 13]) relative to the actual
-    observed match (e_peak=0.755 at a'=11.88 R_earth) to absorb run-to-
+    Tolerance is loose (e >= 0.6, a' in [10, 13]) relative to the
+    measured value (e_peak=0.744 at a'=12.33 R_earth) to absorb run-to-
     run Radau solver variance without becoming a trivial pass -- 0.6 is
     still far above the ~0.02-0.06 eccentricity anywhere outside the
     resonance, so this discriminates a genuine capture-and-pump event
