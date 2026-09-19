@@ -122,9 +122,13 @@ If the two-phase tables are not available, the property surfaces are built from 
 The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005 below 2.55 GPa, Fei et al. 2021 above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8), the constant solidus-to-liquidus ratio of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization.
 The melt fraction then follows from the lever rule between this solidus and liquidus.
 
-With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the structure solve uses the separate solid and liquid tables, which supply the latent-heat entropy gap across the melting curve directly rather than through a single interpolated unified table.
-The phase boundaries follow the same construction as the unified case: the liquidus is the analytic PALEOS curve, and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor`.
-The mushy-zone width is therefore set by `mushy_zone_factor` for both `mantle_eos` forms.
+With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the SPIDER/Aragog entropy tables use the separate solid and liquid PALEOS tables, which supply the latent-heat entropy gap across the melting curve directly rather than through a single interpolated unified table.
+Their phase boundaries follow the same construction as the unified case: the liquidus is the analytic PALEOS curve, and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor`.
+
+!!! note "`mushy_zone_factor` and the two-phase structure solve"
+    In a PROTEUS-coupled run, `load_zalmoxis_solidus_liquidus_functions` builds the `mushy_zone_factor * liquidus` solidus described above and passes it into the Zalmoxis structure solve. The same curve pair sets the SPIDER/Aragog table boundaries, the adiabatic gradient in the mushy zone, and the two-phase density (`PALEOS-2phase`, `PALEOS-API-2phase`), so `mushy_zone_factor` acts consistently in the tables and in the structure.
+    A standalone Zalmoxis run uses its own `rock_solidus` and `rock_liquidus` keys (Stixrude 2014 by default). With those defaults a two-phase mantle does not depend on `mushy_zone_factor`, and a value below 1.0 is rejected at validation. Setting `rock_liquidus = "PALEOS-liquidus"` selects the PALEOS liquidus and derives the solidus as `mushy_zone_factor * liquidus`, as in the coupled case.
+    For a 1 $M_\oplus$ planet with a `Seager2007:iron` core and a `PALEOS-2phase:MgSiO3` mantle in a standalone Zalmoxis run with a linear temperature profile, the radius is 6757.88 km with the default Stixrude (2014) curves, and 6541.80 km (`mushy_zone_factor = 0.8`) or 6482.22 km (1.0) with the PALEOS liquidus.
 
 !!! note "Two-phase table versions"
     Two versions of the PALEOS two-phase MgSiO$_3$ tables are in circulation: the set shipped in the Zalmoxis data directory, and the finer-grid set on Zenodo that the reference-data manifest fetches.
