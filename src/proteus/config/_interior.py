@@ -340,6 +340,10 @@ class InteriorBoundary:
         Silicate density [kg/m^3]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F).
     core_density: float
         Core density [kg/m^3].
+    core_shear: float
+        Core shear modulus [Pa].
+    core_bulk: float
+        Core bulk modulus [Pa].
     thermal_conductivity: float
         Thermal conductivity [W/m/K].
     thermal_diffusivity: float
@@ -369,6 +373,8 @@ class InteriorBoundary:
     nusselt_exponent: float = field(default=0.33, validator=gt(0))  # -
     silicate_heat_capacity: float = field(default=1.2e3, validator=gt(0))  # J/kg/K
     core_density: float = field(default=10738.0, validator=gt(0))  # kg/m^3
+    core_shear: float = field(default=1.0e-1, validator=gt(0))  # Pa
+    core_bulk: float = field(default=5e11, validator=gt(0))  # Pa
     atm_heat_capacity_const: bool = field(default=True)
     atm_heat_capacity: float = field(default=1.7e4, validator=gt(0))  # J/kg/K
     silicate_density: float = field(default=4103.0, validator=gt(0))  # kg/m^3
@@ -477,6 +483,8 @@ class Interior:
         Maximum absolute change in T_magma per PROTEUS step [K].
     tmagma_rtol: float
         Maximum relative change in T_magma per PROTEUS step.
+    tmagma_tides_step: float
+        Maximum change in T_magma allowed when tides are active [K].
     param_utbl: bool
         Enable the ultra-thin boundary layer parameterisation.
     param_utbl_const: float
@@ -566,6 +574,7 @@ class Interior:
 
     rfront_loc: float = field(default=0.5, validator=(gt(0), lt(1)))
     rfront_wid: float = field(default=0.2, validator=(gt(0), lt(1)))
+    tmagma_tides_step: float = field(default=10.0, validator=ge(0))
 
     # Phase-dependent eddy diffusivity floor [m^2/s]. Default 0 = standard MLT.
     # When > 0, applies max(kh_MLT, floor * f(phi)) where f transitions from
@@ -853,6 +862,7 @@ DOC_GROUPS = {
             (
                 'tmagma_atol',
                 'tmagma_rtol',
+                'tmagma_tides_step',
             ),
         ),
         (
