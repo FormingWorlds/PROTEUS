@@ -105,10 +105,7 @@ changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 # `pip install fwl-proteus`; a standard run uses CALLIOPE (outgassing)
 # and needs neither. Install on demand, e.g. `pip install
 # "fwl-proteus[atmodeller]"`. Both are licensed GPL-3.0; review their
-# terms before installing. (PROTEUS's own code is Apache-2.0, but the
-# default install already includes other GPL dependencies such as
-# fwl-aragog, so opting out of these two does not yield a GPL-free
-# environment.)
+# terms before installing.
 #
 # atmodeller: alternative outgassing backend (Bower+2025, ApJ 995:59),
 # selected via outgas.module = "atmodeller". Pulls JAX + equinox.
