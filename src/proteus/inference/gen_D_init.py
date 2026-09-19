@@ -226,7 +226,8 @@ def sample_from_bounds(
     - nsamp (int): Number of initial samples to evaluate.
     - seed (int): RNG seed for Halton sequence generation.
     - n_workers (int): Number of parallel workers to use for evaluation.
-    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
+    - failure_codes (list[int]): PROTEUS status codes that complete normally but
+      that this study excludes from the fit.
 
     Returns
     ----------

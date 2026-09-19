@@ -363,6 +363,9 @@ class AtmosClim:
         Spectral file group defining gas opacities. See https://proteus-framework.org/SOCRATES/Reference/proteus_spectral_file_reference.html
     spectral_bands: str
         Number of wavenumber bands in k-table.
+    spectral_cache: str | None
+        Folder in which to reuse prepared spectral files across runs that share
+        a stellar spectrum. None disables the cache and every run builds its own.
     num_levels: int
         Number of vertical atmosphere levels.
     p_top: float
@@ -408,6 +411,7 @@ class AtmosClim:
     # Grid and spectral setup (shared by agni + janus)
     spectral_group: str = field(default='Honeyside')
     spectral_bands: str = field(default='48')
+    spectral_cache: str | None = field(default=None, converter=none_if_none)
     num_levels: int = field(default=50, validator=ge(15))
     p_top: float = field(default=1e-6, validator=gt(0))
     p_obs: float = field(default=20e-3, validator=gt(0))

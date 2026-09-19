@@ -11,9 +11,20 @@ import toml
 import torch
 from numpy import log10
 
+from proteus.inference.failures import (
+    ABORT_ON_FAILURE_ENV,
+    CATEGORY_EXCLUDED,
+    CATEGORY_FAILURE,
+    CHILD_CONSOLE_SUFFIX,
+    STATUS_MISSING,
+    ProteusRunFailure,
+    find_run_logfile,
+    record_failure,
+)
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import element_list, gas_list
 from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
+from proteus.utils.helper import ReadStatus
 
 dtype = torch.double
 EPS_CLIP = 1e-10
@@ -28,6 +39,43 @@ log = logging.getLogger('fwl.' + __name__)
 # state) through the environment. A value of 0 or below disables the timeout.
 DEFAULT_CHILD_TIMEOUT_S = 6 * 3600.0
 _CHILD_TIMEOUT_ENV = 'PROTEUS_INFERENCE_CHILD_TIMEOUT_S'
+
+# Config entries every worker overwrites in the reference config, regardless of
+# which parameters are being swept. Shared with the startup validation so the
+# configuration that is checked is the configuration that is run.
+WORKER_CONFIG_OVERRIDES = {
+    'params.out.plot_mod': 'none',
+    'params.out.logging': 'WARNING',
+    'params.out.archive_mod': 0,
+}
+
+# Folder inside the study output where workers reuse prepared spectral files.
+SPECTRAL_CACHE_DIR = 'spectral_cache'
+
+# Config entries every run sets to the same thing, or to a value derived from
+# the run index. Excluded from failure reports, which name the swept values.
+_FIXED_PARAMETER_KEYS = set(WORKER_CONFIG_OVERRIDES) | {
+    'params.out.path',
+    'atmos_clim.spectral_cache',
+}
+
+
+def run_output_dir(output: str, worker: int, iter: int) -> tuple[Path, Path]:
+    """Return the output folder of a single evaluation, relative and absolute.
+
+    Parameters
+    ----------
+    - output (str): Study output folder, relative to the PROTEUS output root.
+    - worker (int): Worker identifier. Initial samples use -1.
+    - iter (int): Iteration identifier within that worker.
+
+    Returns
+    ----------
+    - tuple[Path, Path]: The path as the simulator config records it, and the
+      absolute path on disk.
+    """
+    out_dir = Path(output) / 'workers' / f'w_{worker}' / f'i_{iter}'
+    return out_dir, Path(get_proteus_directories(str(out_dir))['output'])
 
 
 def set_child_timeout(seconds: float | None = None) -> None:
@@ -58,6 +106,34 @@ def child_timeout_s() -> float | None:
     return val if val > 0 else None
 
 
+def apply_nested_updates(config: dict, updates: dict) -> dict:
+    """Set dot-separated keys in a nested config dict, in place.
+
+    Parameters
+    ----------
+    - config (dict): Nested configuration dictionary, modified in place.
+    - updates (dict): Mapping of dot-separated key paths to new values.
+
+    Returns
+    ----------
+    - dict: The same dictionary that was passed in.
+
+    Raises:
+        ValueError: If a key path descends through an entry that holds a value
+            rather than a table.
+    """
+    for key, value in updates.items():
+        parts = key.split('.')
+        d = config
+        for i, part in enumerate(parts[:-1]):
+            d = d.setdefault(part, {})
+            if not isinstance(d, dict):
+                prefix = '.'.join(parts[: i + 1])
+                raise ValueError(f"Cannot set '{key}': '{prefix}' holds a value, not a section")
+        d[parts[-1]] = value
+    return config
+
+
 def update_toml(config_file: str, updates: dict, output_file: str) -> None:
     """Update values in a TOML configuration file.
 
@@ -83,12 +159,7 @@ def update_toml(config_file: str, updates: dict, output_file: str) -> None:
         config = toml.load(f)
 
     # Apply nested updates
-    for key, value in updates.items():
-        parts = key.split('.')
-        d = config
-        for part in parts[:-1]:
-            d = d.setdefault(part, {})
-        d[parts[-1]] = value
+    apply_nested_updates(config, updates)
 
     # Ensure destination directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,13 +193,19 @@ def run_proteus(
     ----------
     - observables_dict (dict): Mapping of observable names to their simulated values.
     - status (int): Status code indicating the outcome of the simulation.
+
+    Raises:
+        ProteusRunFailure: If this particular run did not produce a usable
+            result. Carries the status code, the path to the run's logfile and
+            the parameters that produced it.
+        RuntimeError: If the `proteus` command itself cannot be executed, which
+            would affect every run rather than this one.
+        KeyError: If a requested observable is absent from the output, which
+            likewise applies to every run.
     """
 
     # Construct run-specific paths
-    run_id = Path('workers') / f'w_{worker}' / f'i_{iter}'
-    out_dir = Path(output) / run_id
-
-    out_abs = Path(get_proteus_directories(str(out_dir))['output'])
+    out_dir, out_abs = run_output_dir(output, worker, iter)
     out_cfg = out_abs / 'input.toml'
     out_csv = out_abs / 'runtime_helpfile.csv'
 
@@ -138,9 +215,15 @@ def run_proteus(
     # Inject output path into simulation parameters
     parameters['params.out.path'] = str(out_dir)
 
+    # Every evaluation of an inference run that holds the star fixed builds the same
+    # prepared spectral file. Point them all at one folder so only the first
+    # pays for it.
+    parameters['atmos_clim.spectral_cache'] = str(
+        Path(get_proteus_directories(output)['output']) / SPECTRAL_CACHE_DIR
+    )
+
     # Don't allow workers to make plots or logs
-    parameters['params.out.plot_mod'] = 'none'
-    parameters['params.out.logging'] = 'WARNING'
+    parameters.update(WORKER_CONFIG_OVERRIDES)
 
     # Generate config
     update_toml(ref_config, parameters, str(out_cfg))
@@ -149,48 +232,85 @@ def run_proteus(
     env = dict(**os.environ)
     env['OMP_NUM_THREADS'] = '1'
 
-    # Run PROTEUS
+    # Swept parameter values only, for the failure report. The output path and
+    # the worker overrides are fixed for every run and add no diagnostic value.
+    swept = {k: v for k, v in parameters.items() if k not in _FIXED_PARAMETER_KEYS}
+
+    # A run that dies before its logger is configured leaves no logfile behind, so
+    # this stream records it.
+    console = out_abs.parent / f'{out_abs.name}{CHILD_CONSOLE_SUFFIX}'
+
+    def _failure(reason: str, exit_code: int | None) -> ProteusRunFailure:
+        """Assemble a failure report for this run.
+
+        The status file is read here rather than at the point of the raise so
+        that a crashed run is described by what PROTEUS recorded about itself,
+        not only by its exit code.
+        """
+        return ProteusRunFailure(
+            reason=reason,
+            worker=worker,
+            iter=iter,
+            out_dir=str(out_abs),
+            exit_code=exit_code,
+            status=ReadStatus(out_abs),
+            log_path=find_run_logfile(out_abs),
+            console_path=str(console),
+            parameters=swept,
+        )
+
     command = ['proteus', 'start', '-c', str(out_cfg), '--offline']
+    console.parent.mkdir(parents=True, exist_ok=True)
+    # Opened outside the try so that a failure to create it is not mistaken
+    # for the simulator being absent.
+    stream = open(console, 'w')
     try:
         subprocess.run(
             command,
             check=True,
             text=True,
             env=env,
-            stdout=subprocess.DEVNULL,
+            stdout=stream,
             stderr=subprocess.STDOUT,
             timeout=child_timeout_s(),
         )
     except FileNotFoundError as err:
+        # Applies to every run, not just this one, so it is not a sample that
+        # can be scored badly and skipped.
         log.error(f"Cannot execute '{command[0]}': command not found")
         raise RuntimeError("Failed to run PROTEUS: 'proteus' command not found") from err
     except subprocess.TimeoutExpired as err:
-        log.error(
-            f'PROTEUS run exceeded the {child_timeout_s()} s timeout for '
-            f'worker={worker} iter={iter} outdir={str(out_dir)}'
-        )
-        raise RuntimeError(
-            f'PROTEUS run timed out after {child_timeout_s()} s for worker={worker} iter={iter}'
-        ) from err
+        timeout = child_timeout_s()
+        raise _failure(f'exceeded the {timeout} s timeout', exit_code=None) from err
     except subprocess.CalledProcessError as err:
-        log.error(f'PROTEUS run failed for worker={worker} iter={iter} outdir={str(out_dir)}')
-        raise RuntimeError(
-            f'Failed to run PROTEUS for worker={worker} iter={iter}; exit code {err.returncode}'
-        ) from err
+        raise _failure('the simulator exited with an error', exit_code=err.returncode) from err
+    finally:
+        stream.close()
 
     # Re-write config in case simulator mutates or removes it
     update_toml(ref_config, parameters, str(out_cfg))
 
     # Read status file
-    status = 20  # default to Generic Error
-    try:
-        with open(out_abs / 'status', 'r') as f:
-            status = int(f.readlines()[0].strip())
-    except Exception as e:
-        log.warning(f'Failed to read status file for worker={worker} iter={iter}: {e}')
+    status = ReadStatus(out_abs)
 
-    # Read simulator output
-    df_row = dict(pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1])
+    # Read simulator output. A run that exits cleanly but writes no usable
+    # helpfile (killed mid-write, or stopped before the first row) is a failed
+    # sample, not a crash of the study.
+    try:
+        df_row = dict(pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1])
+    except (
+        FileNotFoundError,
+        OSError,
+        pd.errors.EmptyDataError,
+        pd.errors.ParserError,
+        IndexError,
+    ) as err:
+        # A truncated whitespace-delimited file usually presents as a ragged
+        # row (ParserError) rather than an empty one, so both are caught.
+        raise _failure(
+            f'exited cleanly but produced no readable output ({out_csv.name})',
+            exit_code=0,
+        ) from err
 
     # Handle case where atmosphere has escaped
     #   Set VMRs and MMW to zero
@@ -293,7 +413,8 @@ def J(
     - iter (int): Iteration number.
     - output (str): Path to output folder relative to PROTEUS output folder.
     - ref_config (str): Reference TOML config path.
-    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
+    - failure_codes (list[int]): PROTEUS status codes that complete normally but
+      that this study excludes from the fit.
 
     Returns
     ----------
@@ -302,17 +423,79 @@ def J(
 
     # Map normalized x to raw parameter dict and run PROTEUS
     raw = {parameters[i]: x[0, i].item() for i in range(len(parameters))}
-    sim_vals, sim_status = run_proteus(
-        parameters=raw,
-        worker=worker,
-        iter=iter,
-        observables=list(true_observables.keys()),
-        ref_config=ref_config,
-        output=output,
-    )
+    try:
+        sim_vals, sim_status = run_proteus(
+            parameters=raw,
+            worker=worker,
+            iter=iter,
+            observables=list(true_observables.keys()),
+            ref_config=ref_config,
+            output=output,
+        )
+    except ProteusRunFailure as failure:
+        # A parameter combination the simulator cannot integrate is an
+        # expected outcome of sweeping a wide box, so it is scored as a poor
+        # sample and the study continues. Every such run is reported once,
+        # and the full report goes to the failure record.
+        # Recorded before the abort check, so an aborted study still leaves
+        # the record of what stopped it.
+        record_failure(get_proteus_directories(output)['output'], failure)
+        if os.environ.get(ABORT_ON_FAILURE_ENV, '0') == '1':
+            raise
+        log.warning(failure.summary())
+        log.debug(failure.report())
+        return BAD_OBJ_VALUE * torch.ones((1, 1), dtype=dtype)
 
-    # If status indicates failure, return very bad objective value
-    if (20 <= sim_status <= 29) or (sim_status in [0, 1]) or (sim_status in failure_codes):
+    # Runs that exit cleanly but stop in an error state, such as a run halted
+    # through its keepalive file (status 25), or that never reach the main loop
+    # (status 0 and 1). An unreadable status counts here too: the run's own
+    # account of itself is missing, so its output cannot be trusted.
+    failed = (20 <= sim_status <= 28) or (sim_status in (0, 1, STATUS_MISSING))
+
+    # Runs that completed normally on an outcome this study does not fit
+    # against, named by the `failure_codes` field of the inference config: a
+    # run stopped by its clock limit (status 11) or one whose volatiles all
+    # escaped (status 15), for instance. Nothing went wrong in such a run, so
+    # it is scored as a poor sample but is not reported as a fault.
+    excluded = (not failed) and (sim_status in failure_codes)
+
+    # Either way the evaluation carries the failure score instead of a fit
+    # quality, and is recorded so that the end-of-study tally covers it.
+    if failed or excluded:
+        _, out_abs = run_output_dir(output, worker, iter)
+        # Built once, so the entry left on disk and the exception raised under
+        # `abort_on_failure` describe the same run.
+        failure = ProteusRunFailure(
+            reason=(
+                'exited cleanly but stopped in a failure state'
+                if failed
+                else 'completed on a status this study excludes'
+            ),
+            worker=worker,
+            iter=iter,
+            out_dir=str(out_abs),
+            exit_code=0,
+            status=sim_status,
+            log_path=find_run_logfile(out_abs),
+            parameters=raw,
+            category=CATEGORY_FAILURE if failed else CATEGORY_EXCLUDED,
+        )
+        # Recorded before the abort check, so an aborted study still leaves
+        # the record of what stopped it.
+        record_failure(get_proteus_directories(output)['output'], failure)
+        if failed:
+            # A clean exit on an error status is as much a fault as a crash,
+            # so it honours `abort_on_failure` the same way. An excluded
+            # outcome never does: nothing went wrong in such a run.
+            if os.environ.get(ABORT_ON_FAILURE_ENV, '0') == '1':
+                raise failure
+            log.warning(failure.summary())
+        else:
+            # Nothing went wrong in such a run, so it is reported at info
+            # level and, like a fault, on one line.
+            log.info(failure.summary())
+        # The rest of the report is kept out of the study log
+        log.debug(failure.report())
         return BAD_OBJ_VALUE * torch.ones((1, 1), dtype=dtype)
 
     # Compute value of objective function given these results
@@ -340,7 +523,8 @@ def prot_builder(
     - iter (int): Iteration number (seed) for reproducibility.
     - output (str): Path to output folder relative to PROTEUS output folder.
     - ref_config (str): Reference TOML config path.
-    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
+    - failure_codes (list[int]): PROTEUS status codes that complete normally but
+      that this study excludes from the fit.
 
     Returns
     ----------
