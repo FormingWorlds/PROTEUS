@@ -103,6 +103,9 @@ _M_EARTH, _R_EARTH = 5.972e24, 6.371e6
 _M_MOON, _R_MOON = 7.342e22, 1.737e6
 _M_SUN, _AU = 1.989e30, 1.496e11
 
+# Uniform-density planet: C = 0.4 M R^2, matching hf_row['C_planet'] below.
+_RHO_UNIFORM = _M_EARTH / (4.0 / 3.0 * np.pi * _R_EARTH**3)
+
 # Mignard CTL parameters, Rufu & Canup (2020) Figure-3-calibrated (see the
 # reference notebook's make_initial_hf_row docstring for the derivation).
 _K2_P, _DT_P = 0.3, 5.98
@@ -138,6 +141,9 @@ def _make_initial_hf_row() -> dict:
         'semimajorax': 1.0 * _AU,
         'C_sat': 0.4 * _M_MOON * _R_MOON**2,
         'C_planet': 0.4 * _M_EARTH * _R_EARTH**2,
+        # Key must exist so get_C_planet skips the config fallback; the value is inert
+        # here because interior_o.radius starts at 0 (zero-width core shell).
+        'core_density': _RHO_UNIFORM,
     }
 
 
@@ -203,10 +209,9 @@ def _run_ctl_reference(
         params=SimpleNamespace(dt=SimpleNamespace(evection_maximum=0.0)),
     )
     n_shells = 50
-    rho_uniform = _M_EARTH / (4.0 / 3.0 * np.pi * _R_EARTH**3)
     interior_o = SimpleNamespace(
         radius=np.linspace(0.0, _R_EARTH, n_shells),
-        density=np.full(n_shells - 1, rho_uniform),
+        density=np.full(n_shells - 1, _RHO_UNIFORM),
         dt=_DT_OUTER_YR,
     )
     dirs: dict = {'output/data': data_dir}
@@ -251,16 +256,18 @@ def _run_ctl_reference(
 @pytest.fixture(scope='module')
 def _ctl_reference_trajectory(tmp_path_factory):
     """Builds the real, wide Hansen-coefficient table once (needed for
-    eccentricities up to ~0.8; the [-50, 200] k-window is the notebook's
-    own choice, verified there to suffice up to e~0.755) and runs the
-    driver once, shared by every assertion in this file so the ~25+
-    minute cost is paid a single time per test session.
+    eccentricities up to ~0.8) and runs the driver once, shared by every
+    assertion in this file so the ~25+ minute cost is paid a single time
+    per test session.
     """
     e_grid = np.concatenate([np.arange(0.0, 0.1, 0.005), np.arange(0.1, 0.86, 0.01)])
     data_dir = str(tmp_path_factory.mktemp('evection_ctl'))
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(hansen_mod, '_hansen_table', None)
-        hansen_mod.init_hansen_table(e_grid=e_grid, kmin=_KMIN, kmax=_KMAX, n_deg=2, force=True)
+        # The m=0 mirror requests k down to -_KMAX, so the table must span it.
+        hansen_mod.init_hansen_table(
+            e_grid=e_grid, kmin=-_KMAX, kmax=_KMAX, n_deg=2, force=True
+        )
         yield _run_ctl_reference(_T_TARGET_YR, _MAX_WALL_SECONDS, data_dir)
 
 
