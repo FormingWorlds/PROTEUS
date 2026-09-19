@@ -375,6 +375,52 @@ def test_solidus_liquidus_rtpress():
     mock_mc.assert_called_once()
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'eos_name',
+    [
+        'PALEOS:MgSiO3',
+        'PALEOS-2phase:MgSiO3',
+        'PALEOS-API:MgSiO3',
+        'PALEOS-API-2phase:MgSiO3',
+    ],
+)
+def test_solidus_liquidus_paleos_family_derives_solidus_from_mzf(eos_name):
+    """Every PALEOS-family mantle gets a solidus equal to mzf times the liquidus."""
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_solidus_liquidus_functions
+
+    config = MagicMock()
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.8
+    result = load_zalmoxis_solidus_liquidus_functions(eos_name, config)
+
+    assert result is not None
+    solidus_func, liquidus_func = result
+    pressure = 50e9
+    t_liq = float(liquidus_func(pressure))
+    assert np.isfinite(t_liq)
+    assert float(solidus_func(pressure)) == pytest.approx(0.8 * t_liq)
+    # Discrimination: a different factor moves the solidus with the liquidus fixed.
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.9
+    solidus_func_90, liquidus_func_90 = load_zalmoxis_solidus_liquidus_functions(
+        eos_name, config
+    )
+    assert float(solidus_func_90(pressure)) == pytest.approx(
+        0.9 * float(liquidus_func_90(pressure))
+    )
+
+
+@pytest.mark.unit
+def test_build_mushy_zone_factors_ignores_spaces_around_plus():
+    """Zalmoxis strips each '+' segment, so a spaced string must map the same way."""
+    from proteus.interior_struct.zalmoxis import _build_mushy_zone_factors
+
+    result = _build_mushy_zone_factors(
+        {'core': 'PALEOS:iron', 'mantle': 'PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1'}, mzf=0.8
+    )
+    assert result['PALEOS:H2O'] == pytest.approx(0.8)
+    assert result['PALEOS:MgSiO3'] == pytest.approx(0.8)
+
+
 # ============================================================================
 # zalmoxis_output.dat schema check at file handover boundary
 # ============================================================================

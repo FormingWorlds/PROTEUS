@@ -54,14 +54,17 @@ def valid_zalmoxis(instance, attribute, value):
     _log = _logging.getLogger('fwl.' + __name__)
     # mushy_zone_factor scales the derived solidus only for the PALEOS EOS family
     mzf = getattr(instance.zalmoxis, 'mushy_zone_factor', 0.8)
-    if mzf < 1.0 and not mantle_eos.startswith(PALEOS_EOS_PREFIXES):
+    layer_eos = [core_eos, mantle_eos, ice_layer_eos]
+    if mzf < 1.0 and not any(e and e.startswith(PALEOS_EOS_PREFIXES) for e in layer_eos):
         _log.warning(
-            'mushy_zone_factor=%.2f has no effect with mantle EOS %s. '
-            'The mushy zone factor applies only to the PALEOS EOS family. '
-            'For WolfBower2018/RTPress100TPa, the mushy zone is defined by '
-            'the solidus/liquidus melting curve files.',
+            'mushy_zone_factor=%.2f has no effect with core EOS %s, mantle EOS %s '
+            'and ice layer EOS %s. The mushy zone factor applies only to the PALEOS '
+            'EOS family. For WolfBower2018/RTPress100TPa, the mushy zone is defined '
+            'by the solidus/liquidus melting curve files.',
             mzf,
+            core_eos,
             mantle_eos,
+            ice_layer_eos,
         )
 
     # 2-layer model (no ice layer, non-T-dep mantle): mantle_mass_fraction must be 0

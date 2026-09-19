@@ -1459,7 +1459,7 @@ def _build_mushy_zone_factors(layer_eos_config: dict, mzf: float) -> dict:
         layer actually uses it, else to 1.0.
     """
     configured_eos = {
-        _strip_fraction_tokens(token)
+        _strip_fraction_tokens(token.strip())
         for v in layer_eos_config.values()
         if v
         for token in str(v).split('+')
