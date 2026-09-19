@@ -5,6 +5,8 @@ from typing import Optional
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le, lt, optional
 
+from proteus.utils.constants import PALEOS_EOS_PREFIXES
+
 from ._converters import none_if_none
 
 
@@ -51,9 +53,8 @@ def valid_zalmoxis(instance, attribute, value):
 
     _log = _logging.getLogger('fwl.' + __name__)
     # mushy_zone_factor scales the derived solidus only for the PALEOS EOS family
-    _MZF_EOS_PREFIXES = ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
     mzf = getattr(instance.zalmoxis, 'mushy_zone_factor', 0.8)
-    if mzf < 1.0 and not mantle_eos.startswith(_MZF_EOS_PREFIXES):
+    if mzf < 1.0 and not mantle_eos.startswith(PALEOS_EOS_PREFIXES):
         _log.warning(
             'mushy_zone_factor=%.2f has no effect with mantle EOS %s. '
             'The mushy zone factor applies only to the PALEOS EOS family. '

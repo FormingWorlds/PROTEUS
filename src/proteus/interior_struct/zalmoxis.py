@@ -19,6 +19,7 @@ from zalmoxis.solver import main
 from proteus.config import Config
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
+    PALEOS_EOS_PREFIXES,
     M_earth,
     R_earth,
     element_list,
@@ -1634,9 +1635,7 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     # the unified PALEOS density interpolation. Without these curves, the
     # 2-phase nabla_ad call fails and Zalmoxis structure solve diverges; the
     # unified path falls back to phi=0.5 everywhere in VolatileProfile.
-    if mantle_eos.startswith(
-        ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
-    ):
+    if mantle_eos.startswith(PALEOS_EOS_PREFIXES):
         try:
             from zalmoxis.melting_curves import get_solidus_liquidus_functions
 

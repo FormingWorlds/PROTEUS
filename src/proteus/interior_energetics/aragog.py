@@ -34,7 +34,7 @@ from proteus.interior_energetics.aragog_phase import (
     build_mixed_phase_params,
 )
 from proteus.interior_energetics.common import Interior_t
-from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
+from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, PALEOS_EOS_PREFIXES
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
@@ -811,9 +811,7 @@ class AragogRunner:
         # curve discontinuity.
         elif (
             config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith(
-                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
-            )
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
         ):
             from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
 
@@ -975,9 +973,7 @@ class AragogRunner:
         # making melt fractions incomparable.
         if (
             config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith(
-                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
-            )
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
         ):
             paleos_melt_dir = Path(outdir) / 'data' / 'paleos_melting'
             paleos_melt_dir.mkdir(parents=True, exist_ok=True)
@@ -1432,9 +1428,7 @@ class AragogRunner:
         """
         if not (
             config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith(
-                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
-            )
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
         ):
             log.debug(
                 'Entropy IC cross-check skipped: not zalmoxis+PALEOS '
