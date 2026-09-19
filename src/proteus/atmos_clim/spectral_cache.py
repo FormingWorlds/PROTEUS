@@ -104,8 +104,8 @@ def seed_from_cache(cache_dir: Path | str, key: str, out_dir: Path | str) -> boo
         for target in targets:
             try:
                 target.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as cleanup_err:
+                log.debug(f'Could not remove partial spectral file {target}: {cleanup_err}')
         return False
 
     log.debug(f'Seeded spectral file from cache entry {key}')
