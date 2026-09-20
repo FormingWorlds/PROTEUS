@@ -2693,6 +2693,7 @@ def test_zalmoxis_solver_rebuilds_mushy_zone_factors_for_wet_mantle(tmp_path, mo
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_make_derived_solidus_scales_liquidus_by_mzf():
     """The derived solidus is the liquidus scaled pointwise by mushy_zone_factor.
 
@@ -2713,3 +2714,79 @@ def test_make_derived_solidus_scales_liquidus_by_mzf():
 
     other_solidus = _make_derived_solidus(liquidus, mushy_zone_factor=0.95)
     assert other_solidus(20e9) != pytest.approx(solidus(20e9))
+
+
+@pytest.mark.unit
+def test_generate_spider_tables_twophase_solidus_tracks_mzf(tmp_path, monkeypatch):
+    """generate_spider_tables hands the writers a solidus = mushy_zone_factor * liquidus.
+
+    Drives the real ``generate_spider_tables`` down the PALEOS-2phase branch
+    with synthetic solid + liquid tables, stubbing only the heavy Zalmoxis
+    table writers and the analytic liquidus. Captures the ``solidus_func``
+    passed to the phase-boundary writer and checks that it equals the
+    liquidus scaled by ``mushy_zone_factor``, and that a different factor
+    (0.8 vs 0.95) moves the written solidus. Dropping the mzf scaling, or
+    hardcoding a factor, breaks one of the two assertions.
+    """
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+
+    mantle_eos = 'PALEOS-2phase:MgSiO3'
+
+    # Synthetic 2-phase tables. Content is irrelevant: the writers are stubbed;
+    # only os.path.isfile must succeed on the resolved paths.
+    solid_file = tmp_path / 'solid.dat'
+    liquid_file = tmp_path / 'liquid.dat'
+    solid_file.write_text('# synthetic solid table\n')
+    liquid_file.write_text('# synthetic liquid table\n')
+
+    eos_entry = {
+        'solid_mantle': {'eos_file': str(solid_file)},
+        'melted_mantle': {'eos_file': str(liquid_file)},
+    }
+
+    def liquidus(pressure):
+        return 3000.0 + 1.0e-8 * pressure
+
+    def run_with_mzf(mzf):
+        config = MagicMock()
+        config.interior_struct.zalmoxis.mantle_eos = mantle_eos
+        config.interior_struct.zalmoxis.mushy_zone_factor = mzf
+        config.interior_struct.zalmoxis.lookup_nP = 8
+        config.interior_struct.zalmoxis.lookup_nS = 8
+        config.planet.mass_tot = 1.0
+
+        outdir = tmp_path / f'out_{mzf}'
+        outdir.mkdir()
+
+        monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+        monkeypatch.setattr(
+            zalmoxis_wrapper,
+            'load_zalmoxis_material_dictionaries',
+            lambda: {mantle_eos: eos_entry},
+        )
+        monkeypatch.setattr('zalmoxis.eos.dispatch._is_paleos_api', lambda entry: False)
+        monkeypatch.setattr(
+            'zalmoxis.melting_curves.get_solidus_liquidus_functions',
+            lambda solidus_id, liquidus_id: (None, liquidus),
+        )
+        phase_writer = MagicMock()
+        monkeypatch.setattr(
+            'zalmoxis.eos_export.generate_spider_phase_boundaries', phase_writer
+        )
+        monkeypatch.setattr(
+            'zalmoxis.eos_export.generate_spider_eos_tables', MagicMock()
+        )
+
+        result = zalmoxis_wrapper.generate_spider_tables(config, str(outdir))
+        assert result is not None
+        return phase_writer.call_args.kwargs['solidus_func']
+
+    solidus_08 = run_with_mzf(0.8)
+    solidus_095 = run_with_mzf(0.95)
+
+    for pressure in (1e9, 3e10, 1.2e11):
+        assert solidus_08(pressure) == pytest.approx(0.8 * liquidus(pressure))
+        assert solidus_08(pressure) < liquidus(pressure)
+        # Discrimination: a different mushy_zone_factor moves the written solidus.
+        assert solidus_095(pressure) == pytest.approx(0.95 * liquidus(pressure))
+        assert solidus_095(pressure) != pytest.approx(solidus_08(pressure))
