@@ -32,6 +32,7 @@ The system performs Bayesian optimization to infer planetary formation parameter
     | `async_BO.py`      | Parallel BO implementation                |
     | `BO.py`            | Single BO step implementation             |
     | `objective.py`     | PROTEUS interface and objective function  |
+    | `failures.py`      | Functions for handling failing simulations |
     | `plot.py`          | Visualization utilities                   |
     | `utils.py`         | Helper functions for inference scheme     |
     | `gen_D_init.py`    | Generate initial data                     |
