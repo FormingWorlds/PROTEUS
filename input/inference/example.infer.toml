@@ -16,18 +16,16 @@ ref_config = "input/inference/example.toml"
 init_samps = 3        # Number of random samples if starting from scratch.
 init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
 
-# Completion codes to exclude from the fit, on top of the error codes that are
-# always excluded. A run ending on one of these completed normally; the study
-# simply does not score that outcome.
+# Completion codes to exclude from the fit.
 failure_codes = [11, ] # solidified (10), escaped (15), max_runtime (11)
 
-# Stop the whole study at the first simulation that fails, instead of scoring
+# Stop the whole inference run at the first simulation that fails, instead of scoring
 # it as a poor sample and carrying on. Off by default.
 abort_on_failure = false
 
 # Parameters for Bayesian optimisation
 n_workers  = 5        # Number of parallel workers
-kernel     = "MAT3/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
+kernel     = "MAT1/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
 acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI" | "LogPI"
 n_steps    = 100       # Total number of evaluations (i.e. BO steps)
 
