@@ -1457,6 +1457,14 @@ def _build_mushy_zone_factors(layer_eos_config: dict, mzf: float) -> dict:
     dict
         Maps each name in :data:`_UNIFIED_PALEOS_MATERIALS` to ``mzf`` if a
         layer actually uses it, else to 1.0.
+
+    Notes
+    -----
+    On the PALEOS-API coupled path at ``mzf = 1.0`` the first Time=0 rows
+    carry a small atmosphere spin-up transient, up to several percent in
+    ``F_atm`` at the first row and settling below 0.02 percent by the fourth
+    row. The interior and the settled state are unchanged, so the transient
+    is immaterial to results.
     """
     configured_eos = {
         _strip_fraction_tokens(token.strip())
