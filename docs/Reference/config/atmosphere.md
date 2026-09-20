@@ -25,6 +25,7 @@ parameter selects the surface energy balance scheme (`mixed_layer`,
 | `module` | str | `"agni"` | Which atmosphere module to use. Choices: `"dummy"`, `"agni"`, `"janus"`. |
 | `spectral_group` | str | `"Honeyside"` | Spectral file group defining gas opacities. See https://proteus-framework.org/SOCRATES/Reference/proteus_spectral_file_reference.html. |
 | `spectral_bands` | str | `"48"` | Number of wavenumber bands in k-table. |
+| `spectral_cache` | str or none | `none` | Folder in which to reuse prepared spectral files across runs that share a stellar spectrum. None disables the cache and every run builds its own. |
 | `num_levels` | int | `50` | Number of vertical atmosphere levels. Must be >= 15. |
 | `p_top` | float | `1e-06` | Top-of-atmosphere pressure \[bar\]. Must be > 0. |
 | `p_obs` | float | `0.02` | Observation pressure level \[bar\] (transit radius). Must be > 0. |

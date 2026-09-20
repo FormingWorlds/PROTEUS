@@ -459,6 +459,7 @@ DOC_GROUPS = {
                 'module',
                 'spectral_group',
                 'spectral_bands',
+                'spectral_cache',
                 'num_levels',
                 'p_top',
                 'p_obs',
