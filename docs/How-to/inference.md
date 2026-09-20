@@ -123,7 +123,7 @@ The system generates several outputs in:
 - `logs.csv`: Detailed logs of each BO step
 - `Ts.csv`: Timestamps for performance analysis
 - `init.csv`: Data used as an initial guess for starting the optimisation
-- `failures.csv`: One row per simulation that carries the failure score instead of a fit quality, written only when there is at least one (see [Failed and excluded simulations](#failed-and-excluded-simulations))
+- `failures.csv`: One row per simulation that failed or was excluded, written only when there is at least one (see [Failed and excluded simulations](#failed-and-excluded-simulations))
 
 ### Plots
 The BO scheme will generate many plots upon completion.
