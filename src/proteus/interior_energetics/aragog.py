@@ -1058,6 +1058,16 @@ class AragogRunner:
             thermal_conductivity=float(config.interior_energetics.solid_cond),
             thermal_expansivity=LOOK_UP_DIR / 'thermal_exp_solid.dat',
             entropy=entropy_solid_arg,
+            activation_energy=float(config.interior_energetics.aragog.activation_energy),
+            activation_volume=float(config.interior_energetics.aragog.activation_volume),
+            yield_stress_c=float(config.interior_energetics.aragog.yield_stress_c),
+            yield_stress_mu=float(config.interior_energetics.aragog.yield_stress_mu),
+            stress_closure_mode=str(config.interior_energetics.aragog.stress_closure_mode),
+            arrhenius_t_ref=float(config.interior_energetics.aragog.arrhenius_t_ref),
+            yield_stress_max=float(config.interior_energetics.aragog.yield_stress_max),
+            lid_base_mode=str(config.interior_energetics.aragog.lid_base_mode),
+            lid_base_temperature=float(config.interior_energetics.aragog.lid_base_temperature),
+            lid_contrast_coeff=float(config.interior_energetics.aragog.lid_contrast_coeff),
         )
 
         phase_mixed = build_mixed_phase_params(config, solidus_path, liquidus_path)

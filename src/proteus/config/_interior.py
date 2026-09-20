@@ -250,6 +250,17 @@ class Aragog:
     rejected at load, since it cannot be told apart from the unset default;
     any other negative, NaN, or infinity is rejected too."""
 
+    arrhenius_t_ref: float = field(default=1600.0, validator=gt(0))
+    yield_stress_max: float = field(default=500.0e6, validator=gt(0))
+    lid_base_mode: str = field(default='fixed', validator=in_(('fixed', 'rheological')))
+    lid_base_temperature: float = field(default=1400.0, validator=gt(0))
+    lid_contrast_coeff: float = field(default=2.2, validator=gt(0))
+    activation_energy: float = field(default=300e3, validator=gt(0))
+    activation_volume: float = field(default=5e-6, validator=ge(0))
+    yield_stress_c: float = field(default=50e6, validator=ge(0))
+    yield_stress_mu: float = field(default=0.6, validator=ge(0))
+    stress_closure_mode: str = field(default='global', validator=in_(('local', 'global')))
+
     temperature_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell temperature step cap [K]. Shares the same root
     function as phi_step_cap and fires on the maximum single-cell |ΔT| since
