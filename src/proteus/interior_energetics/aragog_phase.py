@@ -103,6 +103,11 @@ class _PhaseParamsInputs:
     grain_size: float
     matprop_smooth_width: float
     separation_viscosity: str
+    activation_energy: float
+    activation_volume: float
+    yield_stress_c: float
+    yield_stress_mu: float
+    stress_closure_mode: str
 
     # Numpy mixed-phase parameters only.
     latent_heat_of_fusion: float
@@ -257,6 +262,11 @@ def build_jax_phase_params(config: Config) -> PhaseParams:
         phi_rheo=inputs.rheological_transition_melt_fraction,
         phi_width=inputs.rheological_transition_width,
         viscosity_solid=inputs.viscosity_solid,
+        activation_energy=inputs.activation_energy,
+        activation_volume=inputs.activation_volume,
+        yield_stress_c=inputs.yield_stress_c,
+        yield_stress_mu=inputs.yield_stress_mu,
+        stress_closure_mode=inputs.stress_closure_mode,
         viscosity_liquid=inputs.viscosity_liquid,
         grain_size=inputs.grain_size,
         k_solid=inputs.k_solid,
