@@ -13,11 +13,13 @@ from pathlib import Path
 import numpy as np
 import platformdirs
 from scipy.interpolate import interp1d
+from zalmoxis.mixing import _PALEOS_UNIFIED_NAMES
 from zalmoxis.solver import main
 
 from proteus.config import Config
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
+    PALEOS_EOS_PREFIXES,
     M_earth,
     R_earth,
     element_list,
@@ -143,36 +145,6 @@ _VOLATILE_EOS_MAP = {
     'H2O': 'PALEOS:H2O',
     'H2': 'Chabrier:H',
 }
-
-
-def _make_derived_solidus(liquidus_func, mushy_zone_factor: float):
-    """Create a solidus function as T_sol(P) = T_liq(P) * mushy_zone_factor.
-
-    The PALEOS unified path has no tabulated solidus, so the solidus is
-    derived as a constant fraction of the liquidus. The default factor of
-    0.8 is the solidus-to-liquidus ratio of the Stixrude (2014) MgSiO3
-    melting parametrisation (doi:10.1098/rsta.2013.0076), so the derived
-    solidus tracks that experimental melting relation rather than being an
-    arbitrary depression.
-
-    Parameters
-    ----------
-    liquidus_func : callable
-        P [Pa] -> T_liquidus [K].
-    mushy_zone_factor : float
-        Cryoscopic depression factor in [0.7, 1.0]. Default 0.8 follows
-        Stixrude (2014).
-
-    Returns
-    -------
-    callable
-        P [Pa] -> T_solidus [K].
-    """
-
-    def solidus_func(P):
-        return liquidus_func(P) * mushy_zone_factor
-
-    return solidus_func
 
 
 def get_zalmoxis_output_filepath(outdir: str):
@@ -970,14 +942,11 @@ def load_zalmoxis_configuration(
     if config.interior_struct.zalmoxis.ice_layer_eos is not None:
         layer_eos_config['ice_layer'] = config.interior_struct.zalmoxis.ice_layer_eos
 
-    # Mushy zone factor: controls width of partially molten region in PALEOS
-    # unified EOS. Applied as T_solidus = T_liquidus * mushy_zone_factor.
+    # This dict only sees the dry layer_eos_config here; zalmoxis_solver
+    # rebuilds it after extend_mantle_eos_with_volatiles adds a
+    # dissolved-volatile component, so that component gets the real mzf too.
     mzf = config.interior_struct.zalmoxis.mushy_zone_factor
-    mushy_zone_factors = {
-        'PALEOS:iron': mzf,
-        'PALEOS:MgSiO3': mzf,
-        'PALEOS:H2O': mzf,
-    }
+    mushy_zone_factors = _build_mushy_zone_factors(layer_eos_config, mzf)
 
     zc = config.interior_struct.zalmoxis
     log.debug(
@@ -1436,6 +1405,48 @@ def _strip_fraction_tokens(component: str) -> str:
     return ':'.join(tokens)
 
 
+#: EOS names whose density blend applies a configured mushy_zone_factor.
+#: Imported from Zalmoxis so both sides read the same list.
+_UNIFIED_PALEOS_MATERIALS = _PALEOS_UNIFIED_NAMES
+
+
+def _build_mushy_zone_factors(layer_eos_config: dict, mzf: float) -> dict:
+    """Build the per-material mushy zone factor dict for the unified PALEOS tables.
+
+    Parameters
+    ----------
+    layer_eos_config : dict
+        Per-layer EOS identifier strings, keyed by layer name. A value may
+        join several components with ``'+'`` and carry mass-fraction tokens
+        appended by :func:`extend_mantle_eos_with_volatiles`.
+    mzf : float
+        The configured ``mushy_zone_factor``.
+
+    Returns
+    -------
+    dict
+        Maps each name in :data:`_UNIFIED_PALEOS_MATERIALS` to ``mzf`` if a
+        layer actually uses it, else to 1.0.
+
+    Notes
+    -----
+    On the PALEOS-API coupled path at ``mzf = 1.0``, ``F_atm`` in the three
+    Time=0 rows differs by up to a few percent between otherwise identical
+    runs, with the largest difference at the second row. The difference
+    falls to run-to-run noise by t = 12 yr. These figures come from a single
+    pair of runs and are an order-of-magnitude statement, not a bound.
+    """
+    configured_eos = {
+        _strip_fraction_tokens(token.strip())
+        for v in layer_eos_config.values()
+        if v
+        for token in str(v).split('+')
+    }
+    return {
+        name: (mzf if name in configured_eos else 1.0) for name in _UNIFIED_PALEOS_MATERIALS
+    }
+
+
 class ZalmoxisMissingEOSFilesError(RuntimeError):
     """A layer's configured EOS identifier names a table file absent on disk."""
 
@@ -1502,6 +1513,28 @@ def check_zalmoxis_eos_files(layer_eos_config: dict, mat_dicts: dict) -> None:
         )
 
 
+def twophase_registry_key(mantle_eos: str) -> str:
+    """Return the 2-phase MgSiO3 registry key matching a mantle EOS name.
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Configured mantle EOS name.
+
+    Returns
+    -------
+    str
+        ``'PALEOS-API-2phase:MgSiO3'`` for the PALEOS-API family,
+        ``'PALEOS-2phase:MgSiO3-highres'`` for the high-resolution shipped
+        tables, and ``'PALEOS-2phase:MgSiO3'`` otherwise.
+    """
+    if mantle_eos.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')):
+        return 'PALEOS-API-2phase:MgSiO3'
+    if mantle_eos == 'PALEOS-2phase:MgSiO3-highres':
+        return 'PALEOS-2phase:MgSiO3-highres'
+    return 'PALEOS-2phase:MgSiO3'
+
+
 def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict):
     """Return (solid_eos_path, liquid_eos_path) for the 2-phase MgSiO3 tables.
 
@@ -1524,13 +1557,8 @@ def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict):
         ``None``. Caller is responsible for treating each ``None``
         individually as "this table is not available".
     """
-    use_api = mantle_eos.startswith(('PALEOS-API:', 'PALEOS-API-2phase:'))
-    if use_api:
-        twophase_key = 'PALEOS-API-2phase:MgSiO3'
-    elif mantle_eos == 'PALEOS-2phase:MgSiO3-highres':
-        twophase_key = 'PALEOS-2phase:MgSiO3-highres'
-    else:
-        twophase_key = 'PALEOS-2phase:MgSiO3'
+    twophase_key = twophase_registry_key(mantle_eos)
+    use_api = twophase_key.startswith('PALEOS-API')
     twophase = mat_dicts.get(twophase_key, {})
     if not twophase:
         log.warning(
@@ -1602,18 +1630,19 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     # the unified PALEOS density interpolation. Without these curves, the
     # 2-phase nabla_ad call fails and Zalmoxis structure solve diverges; the
     # unified path falls back to phi=0.5 everywhere in VolatileProfile.
-    if mantle_eos.startswith(
-        ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
-    ):
+    if mantle_eos.startswith(PALEOS_EOS_PREFIXES):
         try:
-            from zalmoxis.melting_curves import get_solidus_liquidus_functions
+            from zalmoxis.melting_curves import (
+                derive_solidus_from_liquidus,
+                get_solidus_liquidus_functions,
+            )
 
             _, liquidus_func = get_solidus_liquidus_functions(
-                solidus_id='Stixrude14-solidus',  # required by API but unused; solidus is built below as mushy_zone_factor * liquidus (default 0.8 = the Stixrude 2014 solidus/liquidus ratio)
+                solidus_id='Stixrude14-solidus',  # required by API but unused; solidus is built below as mushy_zone_factor * liquidus (constant depression of the PALEOS liquidus)
                 liquidus_id='PALEOS-liquidus',
             )
             mzf = config.interior_struct.zalmoxis.mushy_zone_factor
-            solidus_func = _make_derived_solidus(liquidus_func, mzf)
+            solidus_func = derive_solidus_from_liquidus(liquidus_func, mzf)
             log.info(
                 'PALEOS melting curves (%s): liquidus from PALEOS, '
                 'solidus = liquidus * %.2f (mushy_zone_factor)',
@@ -1908,14 +1937,15 @@ def generate_spider_tables(config: Config, outdir: str):
        solid + liquid tables when those are present (see the unified branch
        below), so the densities stay resolved across the melting-curve
        discontinuity. The solidus is derived from ``mushy_zone_factor *
-       liquidus`` (default 0.8, the Stixrude 2014 solidus/liquidus ratio); the
-       liquidus is the analytic PALEOS Belonoshko+2005 / Fei+2021 curve.
+       liquidus`` (default 0.8, the constant Stixrude 2014 solidus/liquidus
+       ratio applied to the PALEOS liquidus); the liquidus is the analytic
+       PALEOS Belonoshko+2005 / Fei+2021 curve.
     2. ``PALEOS-2phase:<solid>`` (e.g. ``PALEOS-2phase:MgSiO3``): separate
-       solid + liquid PALEOS tables. Phase boundaries are sampled at the
-       PALEOS-liquidus temperature from each phase table directly. The
-       ``mushy_zone_factor`` config value is ignored (no analytic mushy
-       zone exists for 2-phase; the gap between solid-table-top and
-       liquid-table-bottom defines the latent heat).
+       solid + liquid PALEOS tables. The solidus is derived exactly as in the
+       unified layout, ``mushy_zone_factor * liquidus`` (default 0.8); the
+       two-phase tables additionally supply the latent-heat entropy gap
+       between the liquid-table entropy at the liquidus and the solid-table
+       entropy at the derived solidus.
 
     For non-PALEOS EOS types (WolfBower2018, RTPress100TPa), returns None
     and the caller is expected to fall back on pre-existing SPIDER tables.
@@ -1934,7 +1964,10 @@ def generate_spider_tables(config: Config, outdir: str):
         absolute paths. Returns None if the mantle EOS is not PALEOS.
     """
     from zalmoxis.eos_export import generate_spider_eos_tables, generate_spider_phase_boundaries
-    from zalmoxis.melting_curves import get_solidus_liquidus_functions
+    from zalmoxis.melting_curves import (
+        derive_solidus_from_liquidus,
+        get_solidus_liquidus_functions,
+    )
 
     mantle_eos = config.interior_struct.zalmoxis.mantle_eos
 
@@ -2028,20 +2061,23 @@ def generate_spider_tables(config: Config, outdir: str):
         return None
 
     # Phase boundaries: PALEOS-liquidus is the analytic Belonoshko+2005 /
-    # Fei+2021 Simon-Glatzel curve. For PALEOS-2phase, mushy_zone_factor=1.0
-    # collapses solidus = liquidus and the latent-heat gap is supplied by
-    # the entropy difference between solid_table.s(P, T_liq) and
-    # liquid_table.s(P, T_liq).
+    # Fei+2021 Simon-Glatzel curve. The derived solidus is
+    # T_solidus = T_liquidus * mushy_zone_factor for both layouts. A two-phase
+    # table adds the latent-heat gap between liquid_table.s(P, T_liq) and
+    # solid_table.s(P, T_sol) with T_sol = mushy_zone_factor * T_liq.
     _, liquidus_func = get_solidus_liquidus_functions(
         solidus_id='Stixrude14-solidus',  # unused, but API requires it
         liquidus_id='PALEOS-liquidus',
     )
     mzf = config.interior_struct.zalmoxis.mushy_zone_factor
-    solidus_func = _make_derived_solidus(liquidus_func, mzf)
+    solidus_func = derive_solidus_from_liquidus(liquidus_func, mzf)
     if is_twophase:
+        # This solidus_func also reaches Zalmoxis's own 2-phase structure
+        # solve via load_zalmoxis_solidus_liquidus_functions, so mzf moves
+        # nabla_ad there too, separately from the density blend below.
         log.info(
-            'PALEOS-2phase phase boundaries: solidus T = liquidus T '
-            '(mushy_zone_factor=%.2f, latent heat from 2-phase tables)',
+            'PALEOS-2phase phase boundaries: solidus = liquidus * %.2f '
+            '(mushy_zone_factor); latent heat from 2-phase tables',
             mzf,
         )
     else:
@@ -2340,9 +2376,16 @@ def zalmoxis_solver(
 
     # Extend mantle EOS string with volatile components so the LayerMixture
     # includes them (VolatileProfile overrides fractions at each radius).
+    # Rebuild mushy_zone_factors afterward so a dissolved component (e.g.
+    # PALEOS:H2O, Chabrier:H) gets the real mzf instead of the 1.0 default
+    # from the dry EOS string load_zalmoxis_configuration saw.
     if volatile_profile is not None:
         config_params['layer_eos_config']['mantle'] = extend_mantle_eos_with_volatiles(
             config_params['layer_eos_config']['mantle'], volatile_profile
+        )
+        config_params['mushy_zone_factors'] = _build_mushy_zone_factors(
+            config_params['layer_eos_config'],
+            config.interior_struct.zalmoxis.mushy_zone_factor,
         )
 
     # Get the output location for Zalmoxis output and create the file if it does not exist

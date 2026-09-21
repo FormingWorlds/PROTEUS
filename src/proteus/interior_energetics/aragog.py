@@ -34,7 +34,7 @@ from proteus.interior_energetics.aragog_phase import (
     build_mixed_phase_params,
 )
 from proteus.interior_energetics.common import Interior_t
-from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
+from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, PALEOS_EOS_PREFIXES
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
@@ -62,6 +62,56 @@ _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN = 200.0
 
 _entropy_eos_cache: dict = {}
 _entropy_eos_jax_cache: dict = {}
+
+
+def _write_paleos_melting_curves(outdir, config):
+    """Write the PALEOS-derived solidus and liquidus tables for Aragog.
+
+    The tables are rewritten on every call, so a resumed run in an existing
+    output directory never reuses curves built with a different
+    ``mushy_zone_factor``.
+
+    Parameters
+    ----------
+    outdir : str or Path
+        Run output directory; tables go to ``<outdir>/data/paleos_melting``.
+    config : Config
+        PROTEUS configuration; ``interior_struct.zalmoxis`` supplies the
+        mantle EOS and ``mushy_zone_factor``.
+
+    Returns
+    -------
+    tuple of Path
+        Paths of the solidus and liquidus ``P-T`` tables.
+    """
+    paleos_melt_dir = Path(outdir) / 'data' / 'paleos_melting'
+    paleos_melt_dir.mkdir(parents=True, exist_ok=True)
+    sol_file = paleos_melt_dir / 'solidus_P-T.dat'
+    liq_file = paleos_melt_dir / 'liquidus_P-T.dat'
+
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_solidus_liquidus_functions
+
+    melt_fns = load_zalmoxis_solidus_liquidus_functions(
+        config.interior_struct.zalmoxis.mantle_eos, config
+    )
+    if melt_fns is not None:
+        s_fn, l_fn = melt_fns
+    else:
+        from zalmoxis.melting_curves import derive_solidus_from_liquidus
+        from zalmoxis.melting_curves import get_solidus_liquidus_functions as _gslf
+
+        _, l_fn = _gslf('Stixrude14-solidus', 'PALEOS-liquidus')
+        s_fn = derive_solidus_from_liquidus(
+            l_fn, config.interior_struct.zalmoxis.mushy_zone_factor
+        )
+
+    P_arr = np.logspace(8, 12, 500)
+    sol_data = np.column_stack([P_arr, [s_fn(P) for P in P_arr]])
+    liq_data = np.column_stack([P_arr, [l_fn(P) for P in P_arr]])
+    np.savetxt(str(sol_file), sol_data, header='pressure temperature', comments='#')
+    np.savetxt(str(liq_file), liq_data, header='pressure temperature', comments='#')
+    log.info('Generated PALEOS melting curves for Aragog: %s', paleos_melt_dir)
+    return sol_file, liq_file
 
 
 def _eos_content_key(eos_dir_str: str) -> str:
@@ -811,9 +861,7 @@ class AragogRunner:
         # curve discontinuity.
         elif (
             config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith(
-                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
-            )
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
         ):
             from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
 
@@ -845,13 +893,9 @@ class AragogRunner:
             # shipped-Zenodo ones that live under the PALEOS-2phase key).
             # The -highres variant (Zenodo 19680050, 600 pts/decade) is
             # opt-in; default is the 150-pts/decade tables.
-            _mantle_eos_sel = config.interior_struct.zalmoxis.mantle_eos
-            if _mantle_eos_sel.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')):
-                _twophase_key = 'PALEOS-API-2phase:MgSiO3'
-            elif _mantle_eos_sel == 'PALEOS-2phase:MgSiO3-highres':
-                _twophase_key = 'PALEOS-2phase:MgSiO3-highres'
-            else:
-                _twophase_key = 'PALEOS-2phase:MgSiO3'
+            from proteus.interior_struct.zalmoxis import twophase_registry_key
+
+            _twophase_key = twophase_registry_key(config.interior_struct.zalmoxis.mantle_eos)
             twophase_entry = mat_dicts.get(_twophase_key, {})
             # PALEOS-API entries carry grid metadata, not file paths. Materialise
             # cached .dat paths now so the `eos_file` lookups below find concrete
@@ -975,42 +1019,9 @@ class AragogRunner:
         # making melt fractions incomparable.
         if (
             config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith(
-                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
-            )
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
         ):
-            paleos_melt_dir = Path(outdir) / 'data' / 'paleos_melting'
-            paleos_melt_dir.mkdir(parents=True, exist_ok=True)
-            sol_file = paleos_melt_dir / 'solidus_P-T.dat'
-            liq_file = paleos_melt_dir / 'liquidus_P-T.dat'
-            if not sol_file.is_file():
-                from proteus.interior_struct.zalmoxis import (
-                    _make_derived_solidus,
-                    load_zalmoxis_solidus_liquidus_functions,
-                )
-
-                melt_fns = load_zalmoxis_solidus_liquidus_functions(
-                    config.interior_struct.zalmoxis.mantle_eos, config
-                )
-                if melt_fns is not None:
-                    s_fn, l_fn = melt_fns
-                else:
-                    from zalmoxis.melting_curves import (
-                        get_solidus_liquidus_functions as _gslf,
-                    )
-
-                    _, l_fn = _gslf('Stixrude14-solidus', 'PALEOS-liquidus')
-                    s_fn = _make_derived_solidus(
-                        l_fn, config.interior_struct.zalmoxis.mushy_zone_factor
-                    )
-
-                P_arr = np.logspace(8, 12, 500)
-                sol_data = np.column_stack([P_arr, [s_fn(P) for P in P_arr]])
-                liq_data = np.column_stack([P_arr, [l_fn(P) for P in P_arr]])
-                np.savetxt(str(sol_file), sol_data, header='pressure temperature', comments='#')
-                np.savetxt(str(liq_file), liq_data, header='pressure temperature', comments='#')
-                log.info('Generated PALEOS melting curves for Aragog: %s', paleos_melt_dir)
-
+            sol_file, liq_file = _write_paleos_melting_curves(outdir, config)
             solidus_path = sol_file
             liquidus_path = liq_file
         else:
@@ -1432,9 +1443,7 @@ class AragogRunner:
         """
         if not (
             config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith(
-                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
-            )
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
         ):
             log.debug(
                 'Entropy IC cross-check skipped: not zalmoxis+PALEOS '

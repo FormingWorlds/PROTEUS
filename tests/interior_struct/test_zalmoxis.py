@@ -375,6 +375,63 @@ def test_solidus_liquidus_rtpress():
     mock_mc.assert_called_once()
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'eos_name',
+    [
+        'PALEOS:MgSiO3',
+        'PALEOS-2phase:MgSiO3',
+        'PALEOS-API:MgSiO3',
+        'PALEOS-API-2phase:MgSiO3',
+    ],
+)
+def test_solidus_liquidus_paleos_family_derives_solidus_from_mzf(eos_name):
+    """Every PALEOS-family mantle gets a solidus equal to mzf times the liquidus."""
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_solidus_liquidus_functions
+
+    config = MagicMock()
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.8
+    result = load_zalmoxis_solidus_liquidus_functions(eos_name, config)
+
+    assert result is not None
+    solidus_func, liquidus_func = result
+    pressure = 50e9
+    t_liq = float(liquidus_func(pressure))
+    assert np.isfinite(t_liq)
+    assert float(solidus_func(pressure)) == pytest.approx(0.8 * t_liq)
+    # Discrimination: a different factor moves the solidus with the liquidus fixed.
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.9
+    solidus_func_90, liquidus_func_90 = load_zalmoxis_solidus_liquidus_functions(
+        eos_name, config
+    )
+    assert float(solidus_func_90(pressure)) == pytest.approx(
+        0.9 * float(liquidus_func_90(pressure))
+    )
+    # Range boundaries: 1.0 gives T_sol == T_liq exactly, 0.7 the widest band.
+    config.interior_struct.zalmoxis.mushy_zone_factor = 1.0
+    solidus_func_1, liquidus_func_1 = load_zalmoxis_solidus_liquidus_functions(eos_name, config)
+    assert float(solidus_func_1(pressure)) == float(liquidus_func_1(pressure))
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.7
+    solidus_func_70, liquidus_func_70 = load_zalmoxis_solidus_liquidus_functions(
+        eos_name, config
+    )
+    assert float(solidus_func_70(pressure)) == pytest.approx(
+        0.7 * float(liquidus_func_70(pressure))
+    )
+
+
+@pytest.mark.unit
+def test_build_mushy_zone_factors_ignores_spaces_around_plus():
+    """Zalmoxis strips each '+' segment, so a spaced string must map the same way."""
+    from proteus.interior_struct.zalmoxis import _build_mushy_zone_factors
+
+    result = _build_mushy_zone_factors(
+        {'core': 'PALEOS:iron', 'mantle': 'PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1'}, mzf=0.8
+    )
+    assert result['PALEOS:H2O'] == pytest.approx(0.8)
+    assert result['PALEOS:MgSiO3'] == pytest.approx(0.8)
+
+
 # ============================================================================
 # zalmoxis_output.dat schema check at file handover boundary
 # ============================================================================
@@ -1386,6 +1443,8 @@ def _run_gate_solver(
     dry_mantle=True,
     hf_extra=None,
     mixed_side_effect=None,
+    real_melting_curves=False,
+    mzf=None,
 ):
     """Invoke zalmoxis_solver with the heavy solve mocked out.
 
@@ -1416,6 +1475,13 @@ def _run_gate_solver(
         Replacement side effect for the blended evaluator, e.g. to make
         selected nodes return non-finite densities. Defaults to the
         offset fake.
+    real_melting_curves : bool, optional
+        With True, the real ``load_zalmoxis_solidus_liquidus_functions``
+        runs (analytic, cheap) instead of the constant-pair stub, so the
+        curves handed to the solve are the ones PROTEUS builds.
+    mzf : float, optional
+        Value for ``config.interior_struct.zalmoxis.mushy_zone_factor``;
+        the default keeps the config helper's 0.8.
     """
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
@@ -1434,6 +1500,13 @@ def _run_gate_solver(
         hf_row.update(hf_extra)
     config = _gate_config(mantle_eos)
     config.interior_struct.zalmoxis.dry_mantle = dry_mantle
+    if mzf is not None:
+        config.interior_struct.zalmoxis.mushy_zone_factor = mzf
+    melting_patch_kwargs = (
+        {'side_effect': zalmoxis_wrapper.load_zalmoxis_solidus_liquidus_functions}
+        if real_melting_curves
+        else {'return_value': (lambda P: 4000.0, lambda P: 5000.0)}
+    )
 
     monkeypatch.setattr(
         zalmoxis_wrapper,
@@ -1459,7 +1532,7 @@ def _run_gate_solver(
         patch.object(
             zalmoxis_wrapper,
             'load_zalmoxis_solidus_liquidus_functions',
-            return_value=(lambda P: 4000.0, lambda P: 5000.0),
+            **melting_patch_kwargs,
         ),
         patch.object(zalmoxis_wrapper, 'main', **main_patch_kwargs) as main_mock,
         patch('zalmoxis.eos.dispatch.calculate_density', side_effect=_fake_density) as rho_mock,
@@ -2552,3 +2625,262 @@ def test_build_volatile_profile_uses_structural_mantle_mass():
     prof = build_volatile_profile(hf_mixed, 'PALEOS:MgSiO3')
     assert prof.w_liquid['PALEOS:H2O'] == pytest.approx(3.32e23 / 2.0e24, rel=1e-12)
     assert prof.w_solid['PALEOS:H2O'] == pytest.approx(1.0e22 / 2.0e24, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_build_mushy_zone_factors_covers_unified_and_paleos_api():
+    """Every configured unified material gets the real mzf, others get 1.0.
+
+    Covers the bare PALEOS and PALEOS-API unified names in one layer config,
+    including a material absent from any layer (must stay at 1.0).
+    """
+    from proteus.interior_struct.zalmoxis import _build_mushy_zone_factors
+
+    layer_eos_config = {
+        'core': 'PALEOS-API:iron',
+        'mantle': 'PALEOS:MgSiO3',
+    }
+    result = _build_mushy_zone_factors(layer_eos_config, mzf=0.8)
+    assert result['PALEOS-API:iron'] == pytest.approx(0.8)
+    assert result['PALEOS:MgSiO3'] == pytest.approx(0.8)
+    assert result['PALEOS:iron'] == pytest.approx(1.0)
+    assert result['PALEOS-API:MgSiO3'] == pytest.approx(1.0)
+    assert result['Chabrier:H'] == pytest.approx(1.0)
+
+
+@pytest.mark.unit
+def test_build_mushy_zone_factors_wet_mantle_after_volatile_extension():
+    """A dissolved-volatile component in an extended mantle string gets the
+    real mzf, not the 1.0 default (regression: mushy_zone_factors was built
+    from the dry mantle_eos string before the volatile tokens were appended,
+    silently disabling mzf for PALEOS:H2O and Chabrier:H in wet runs).
+    """
+    from zalmoxis.mixing import VolatileProfile
+
+    from proteus.interior_struct.zalmoxis import (
+        _build_mushy_zone_factors,
+        extend_mantle_eos_with_volatiles,
+    )
+
+    profile = VolatileProfile(
+        w_liquid={'PALEOS:H2O': 0.02, 'Chabrier:H': 0.01},
+        w_solid={'PALEOS:H2O': 0.0, 'Chabrier:H': 0.0},
+        primary_component='PALEOS:MgSiO3',
+    )
+    extended_mantle = extend_mantle_eos_with_volatiles('PALEOS:MgSiO3', profile)
+    layer_eos_config = {'core': 'PALEOS:iron', 'mantle': extended_mantle}
+
+    result = _build_mushy_zone_factors(layer_eos_config, mzf=0.8)
+    assert result['PALEOS:MgSiO3'] == pytest.approx(0.8)
+    assert result['PALEOS:H2O'] == pytest.approx(0.8)
+    assert result['Chabrier:H'] == pytest.approx(0.8)
+    assert result['PALEOS:iron'] == pytest.approx(0.8)
+
+
+@pytest.mark.unit
+def test_zalmoxis_solver_rebuilds_mushy_zone_factors_for_wet_mantle(tmp_path, monkeypatch):
+    """A wet solve carries the real mzf for the dissolved species into the solve call.
+
+    Exercises the fix at its actual call site inside ``zalmoxis_solver``
+    (the rebuild after ``extend_mantle_eos_with_volatiles``), not just the
+    ``_build_mushy_zone_factors`` helper in isolation. Reverting that
+    rebuild would leave ``PALEOS:H2O`` at the 1.0 default instead of the
+    configured mzf, and this test discriminates between the two.
+    """
+    model_for_arrays = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
+
+    def tf(r, P):
+        if r <= r_arr[0]:
+            return float(t_arr[0])
+        return float(np.interp(r, r_arr, t_arr))
+
+    hf_extra = {
+        'M_mantle_liquid': 4.0e24,
+        'M_mantle_solid': 1.0e24,
+        'H2O_kg_liquid': 8.0e22,
+    }
+    main_mock, _, _, _, _, _, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        tf,
+        dry_mantle=False,
+        hf_extra=hf_extra,
+    )
+
+    solver_params = main_mock.call_args.args[0]
+    mzf = solver_params['mushy_zone_factors']
+    assert mzf['PALEOS:MgSiO3'] == pytest.approx(0.8)
+    assert mzf['PALEOS:H2O'] == pytest.approx(0.8)
+    # Discrimination: a build from the pre-extension dry mantle string
+    # would leave the dissolved species at the 1.0 default instead.
+    assert mzf['PALEOS:H2O'] != pytest.approx(1.0)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('mzf', [0.7, 0.8, 1.0])
+def test_zalmoxis_solver_passes_mzf_derived_solidus_to_solve(tmp_path, monkeypatch, mzf):
+    """The solve receives the mzf-derived solidus built from the PALEOS liquidus.
+
+    Runs the real ``load_zalmoxis_solidus_liquidus_functions`` (the
+    other solver tests stub it with a constant pair) and checks the
+    ``melting_curves_functions`` handed to the structure solve:
+    ``solidus(P) == mzf * liquidus(P)`` at several pressures, and exact
+    equality at ``mzf = 1.0``. Passing ``None`` or a stale curve pair to
+    the solve fails these assertions.
+    """
+    model_for_arrays = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
+
+    def tf(r, P):
+        if r <= r_arr[0]:
+            return float(t_arr[0])
+        return float(np.interp(r, r_arr, t_arr))
+
+    main_mock, _, _, _, _, _, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        tf,
+        real_melting_curves=True,
+        mzf=mzf,
+    )
+
+    melt_funcs = main_mock.call_args.kwargs['melting_curves_functions']
+    assert melt_funcs is not None
+    solidus_func, liquidus_func = melt_funcs
+    for pressure in (5e9, 50e9, 200e9):
+        t_liq = float(liquidus_func(pressure))
+        assert np.isfinite(t_liq)
+        if mzf == 1.0:
+            assert float(solidus_func(pressure)) == t_liq
+        else:
+            assert float(solidus_func(pressure)) == pytest.approx(mzf * t_liq)
+            assert float(solidus_func(pressure)) < t_liq
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_derive_solidus_from_liquidus_scales_liquidus_by_mzf():
+    """The derived solidus is the liquidus scaled pointwise by mushy_zone_factor.
+
+    Discrimination: mzf < 1 must strictly lower the solidus below the
+    liquidus (rules out an implementation that ignores mzf), and a
+    different mzf must give a different solidus (rules out a hardcoded
+    or memoized return value).
+    """
+    from zalmoxis.melting_curves import derive_solidus_from_liquidus
+
+    def liquidus(pressure):
+        return 3000.0 + 10.0 * pressure
+
+    solidus = derive_solidus_from_liquidus(liquidus, mushy_zone_factor=0.8)
+    for pressure in (0.0, 20e9, 80e9):
+        assert solidus(pressure) == pytest.approx(0.8 * liquidus(pressure))
+        assert solidus(pressure) < liquidus(pressure)
+
+    other_solidus = derive_solidus_from_liquidus(liquidus, mushy_zone_factor=0.95)
+    assert other_solidus(20e9) != pytest.approx(solidus(20e9))
+
+    # Boundaries of the allowed range: 1.0 collapses the mushy zone exactly
+    # (no clamp below 1), 0.7 is the widest band.
+    sharp = derive_solidus_from_liquidus(liquidus, mushy_zone_factor=1.0)
+    widest = derive_solidus_from_liquidus(liquidus, mushy_zone_factor=0.7)
+    for pressure in (0.0, 20e9, 80e9):
+        assert sharp(pressure) == liquidus(pressure)
+        assert widest(pressure) == pytest.approx(0.7 * liquidus(pressure))
+
+
+@pytest.mark.unit
+def test_generate_spider_tables_twophase_solidus_tracks_mzf(tmp_path, monkeypatch):
+    """generate_spider_tables hands the writers a solidus = mushy_zone_factor * liquidus.
+
+    Drives the real ``generate_spider_tables`` down the PALEOS-2phase branch
+    with synthetic solid + liquid tables, stubbing only the heavy Zalmoxis
+    table writers and the analytic liquidus. Captures the ``solidus_func``
+    passed to the phase-boundary writer and checks that it equals the
+    liquidus scaled by ``mushy_zone_factor``, and that a different factor
+    (0.8 vs 0.95) moves the written solidus. Dropping the mzf scaling, or
+    hardcoding a factor, breaks one of the two assertions.
+    """
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+
+    mantle_eos = 'PALEOS-2phase:MgSiO3'
+
+    # Synthetic 2-phase tables. Content is irrelevant: the writers are stubbed;
+    # only os.path.isfile must succeed on the resolved paths.
+    solid_file = tmp_path / 'solid.dat'
+    liquid_file = tmp_path / 'liquid.dat'
+    solid_file.write_text('# synthetic solid table\n')
+    liquid_file.write_text('# synthetic liquid table\n')
+
+    eos_entry = {
+        'solid_mantle': {'eos_file': str(solid_file)},
+        'melted_mantle': {'eos_file': str(liquid_file)},
+    }
+
+    def liquidus(pressure):
+        return 3000.0 + 1.0e-8 * pressure
+
+    def run_with_mzf(mzf):
+        config = MagicMock()
+        config.interior_struct.zalmoxis.mantle_eos = mantle_eos
+        config.interior_struct.zalmoxis.mushy_zone_factor = mzf
+        config.interior_struct.zalmoxis.lookup_nP = 8
+        config.interior_struct.zalmoxis.lookup_nS = 8
+        config.planet.mass_tot = 1.0
+
+        outdir = tmp_path / f'out_{mzf}'
+        outdir.mkdir()
+
+        monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+        monkeypatch.setattr(
+            zalmoxis_wrapper,
+            'load_zalmoxis_material_dictionaries',
+            lambda: {mantle_eos: eos_entry},
+        )
+        monkeypatch.setattr('zalmoxis.eos.dispatch._is_paleos_api', lambda entry: False)
+        monkeypatch.setattr(
+            'zalmoxis.melting_curves.get_solidus_liquidus_functions',
+            lambda solidus_id, liquidus_id: (None, liquidus),
+        )
+        phase_writer = MagicMock()
+        monkeypatch.setattr(
+            'zalmoxis.eos_export.generate_spider_phase_boundaries', phase_writer
+        )
+        monkeypatch.setattr('zalmoxis.eos_export.generate_spider_eos_tables', MagicMock())
+
+        result = zalmoxis_wrapper.generate_spider_tables(config, str(outdir))
+        assert result is not None
+        return phase_writer.call_args.kwargs['solidus_func']
+
+    solidus_08 = run_with_mzf(0.8)
+    solidus_095 = run_with_mzf(0.95)
+
+    for pressure in (1e9, 3e10, 1.2e11):
+        assert solidus_08(pressure) == pytest.approx(0.8 * liquidus(pressure))
+        assert solidus_08(pressure) < liquidus(pressure)
+        # Discrimination: a different mushy_zone_factor moves the written solidus.
+        assert solidus_095(pressure) == pytest.approx(0.95 * liquidus(pressure))
+        assert solidus_095(pressure) != pytest.approx(solidus_08(pressure))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('mantle_eos', 'expected'),
+    [
+        ('PALEOS-API:MgSiO3', 'PALEOS-API-2phase:MgSiO3'),
+        ('PALEOS-API-2phase:MgSiO3', 'PALEOS-API-2phase:MgSiO3'),
+        ('PALEOS-2phase:MgSiO3-highres', 'PALEOS-2phase:MgSiO3-highres'),
+        ('PALEOS-2phase:MgSiO3', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:MgSiO3', 'PALEOS-2phase:MgSiO3'),
+    ],
+)
+def test_twophase_registry_key_selects_table_family(mantle_eos, expected):
+    """The 2-phase registry key follows the EOS family of the mantle."""
+    from proteus.interior_struct.zalmoxis import twophase_registry_key
+
+    assert twophase_registry_key(mantle_eos) == expected

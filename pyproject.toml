@@ -53,7 +53,7 @@ dependencies = [
     # lookups, which the super-liquidus interior initial condition
     # requires (Zalmoxis #79), on top of the JAX structure path for
     # unified PALEOS and wet mantles (Zalmoxis #78).
-    "fwl-zalmoxis>=26.07.17",
+    "fwl-zalmoxis>=26.09.21",
     # The default Aragog interior solver runs on JAX: its eos/phase/solver
     # modules are equinox Modules, so jax, jaxlib, and equinox are needed by
     # a standard run, not only by the optional atmodeller backend. The three
