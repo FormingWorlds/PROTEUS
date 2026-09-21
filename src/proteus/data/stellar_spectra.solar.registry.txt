@@ -1,0 +1,10 @@
+Sun0.6Ga.txt md5:4d436397be6385b00f6b5e223f133123
+Sun1.8Ga.txt md5:f694106a6b6e0f2ac4f7a20ddf307392
+Sun2.4Ga.txt md5:817f7b2649ae73ef5cf8f213c9234cf5
+Sun2.7Ga.txt md5:0ec923765beeadb410735b2318488f62
+Sun3.8Ga.txt md5:475be7cab37e4c9e314dcb9deed98e06
+Sun4.4Ga.txt md5:410507a37b2375ece9e2e2235cabb093
+Sun5.6Gyr.txt md5:c680e847629e6e140c85c5bbc8a7cae2
+SunModern.txt md5:e2209fd85970361b8ee007c88f21b058
+_readme.md md5:96d33bdba86c949afd8df080aed156be
+sun.txt md5:6e4b6540d952cf3c01a3bd0511aa6c10

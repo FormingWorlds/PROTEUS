@@ -28,14 +28,15 @@ used with lower rate limits.
 
 | Dataset | Provisioned by | Downloaded by |
 |---|---|---|
-| Stellar spectra (solar, MUSCLES) | PROTEUS downloader | `proteus get solar`, `proteus get muscles` |
+| Stellar spectra (solar, named stars, MUSCLES) | fwl-io | `proteus get solar`, `proteus get muscles` |
 | PHOENIX synthetic spectra | PROTEUS downloader | `proteus get phoenix` |
 | Stellar evolution tracks | PROTEUS downloader | `proteus get stellar` |
-| Spectral k-tables | PROTEUS downloader | `proteus get spectral` |
-| Surface albedos | PROTEUS downloader | `proteus get surfaces` |
+| Spectral k-tables | fwl-io | `proteus get spectral` |
+| Surface albedos | fwl-io | `proteus get surfaces` |
 | Scattering properties | PROTEUS downloader | `proteus get scattering` |
 | Exoplanet populations, mass-radius curves | fwl-io | `proteus get reference` |
-| Interior EOS tables, melting curves | PROTEUS downloader | `proteus get interiordata` |
+| Seager (2007) EOS tables | fwl-io | fetched when a run needs them |
+| Other interior EOS tables, melting curves | PROTEUS downloader | `proteus get interiordata` |
 
 To configure a Zenodo API token, see the
 [Troubleshooting guide](../How-to/troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
@@ -51,7 +52,8 @@ for full usage instructions.
 
 ### Solar spectra
 
-Observed solar spectra are stored under `$FWL_DATA/stellar_spectra/solar/`.
+Observed solar spectra are stored under `$FWL_DATA/stellar_spectra/solar/r<record>/`,
+where `<record>` is the Zenodo record that the manifest pins.
 The modern spectrum is from [Gueymard (2003)](https://www.sciencedirect.com/science/article/pii/S0038092X03003967)
 via [NREL](https://www.nrel.gov/grid/solar-resource/spectra.html).
 Historical and future spectra are from
@@ -76,7 +78,7 @@ Historical and future spectra are from
 Observed UV–optical–IR spectra from the
 [MUSCLES](https://archive.stsci.edu/prepds/muscles/) and
 [Mega-MUSCLES](https://archive.stsci.edu/prepds/mega-muscles/) surveys,
-stored under `$FWL_DATA/stellar_spectra/MUSCLES/` as `<star_name>.txt`.
+stored under `$FWL_DATA/stellar_spectra/muscles/r<record>/` as `<star_name>.txt`.
 `star_name` matching is case-insensitive.
 
 ??? info "Full star catalog"

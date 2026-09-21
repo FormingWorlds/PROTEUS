@@ -27,6 +27,9 @@ from proteus.data import (
     EXOPLANET_REFERENCE,
     FWL_IO_FLOOR,
     MASS_RADIUS_ZENG_2019,
+    STELLAR_SPECTRA_MUSCLES,
+    STELLAR_SPECTRA_NAMED,
+    STELLAR_SPECTRA_SOLAR,
     SURFACE_ALBEDOS_HAMMOND_2024,
     _dataset,
     _fwl_io_derives_the_location,
@@ -44,6 +47,9 @@ EXOPLANET_RECORD = '15727878'
 ZENG_2019_RECORD = '15727899'
 HAMMOND_2024_RECORD = '15880455'
 SEAGER_2007_RECORD = '15727998'
+SOLAR_RECORD = '17981836'
+NAMED_RECORD = '15721440'
+MUSCLES_RECORD = '17802209'
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -69,6 +75,9 @@ _OWNED_KEYS = {
     MASS_RADIUS_ZENG_2019,
     SURFACE_ALBEDOS_HAMMOND_2024,
     EOS_SEAGER_2007,
+    STELLAR_SPECTRA_SOLAR,
+    STELLAR_SPECTRA_NAMED,
+    STELLAR_SPECTRA_MUSCLES,
 } | {spectral_file_key(group, bands) for group, bands in SPECTRAL_RECORDS}
 
 
@@ -98,6 +107,12 @@ def test_manifest_declares_the_datasets():
     )
     assert datasets[EOS_SEAGER_2007].subdir == 'interior_struct/eos/seager_2007'
     assert datasets[EOS_SEAGER_2007].zenodo == f'10.5281/zenodo.{SEAGER_2007_RECORD}'
+    assert datasets[STELLAR_SPECTRA_SOLAR].subdir == 'stellar_spectra/solar'
+    assert datasets[STELLAR_SPECTRA_NAMED].subdir == 'stellar_spectra/named'
+    assert datasets[STELLAR_SPECTRA_MUSCLES].subdir == 'stellar_spectra/muscles'
+    assert datasets[STELLAR_SPECTRA_SOLAR].zenodo == f'10.5281/zenodo.{SOLAR_RECORD}'
+    assert datasets[STELLAR_SPECTRA_NAMED].zenodo == f'10.5281/zenodo.{NAMED_RECORD}'
+    assert datasets[STELLAR_SPECTRA_MUSCLES].zenodo == f'10.5281/zenodo.{MUSCLES_RECORD}'
     assert datasets[SURFACE_ALBEDOS_HAMMOND_2024].zenodo == (
         f'10.5281/zenodo.{HAMMOND_2024_RECORD}'
     )
@@ -120,6 +135,9 @@ def test_registries_pin_committed_checksums():
     zeng = _dataset(MASS_RADIUS_ZENG_2019).registry()
     hammond = _dataset(SURFACE_ALBEDOS_HAMMOND_2024).registry()
     seager = _dataset(EOS_SEAGER_2007).registry()
+    solar = _dataset(STELLAR_SPECTRA_SOLAR).registry()
+    named = _dataset(STELLAR_SPECTRA_NAMED).registry()
+    muscles = _dataset(STELLAR_SPECTRA_MUSCLES).registry()
 
     assert len(exo) == 1, 'the catalogue ships exactly one file'
     assert len(zeng) == 57, 'the Zeng-2019 grid ships 57 curve files'
@@ -129,12 +147,18 @@ def test_registries_pin_committed_checksums():
         'eos_seager07_silicate.txt',
         'eos_seager07_water.txt',
     }
+    assert len(solar) == 10, 'the solar record ships 10 spectra'
+    assert len(named) == 11, 'the named-star record ships 11 spectra'
+    assert len(muscles) == 38, 'the MUSCLES record ships 36 spectra, a readme and a table'
+    assert solar['sun.txt'] == 'md5:6e4b6540d952cf3c01a3bd0511aa6c10'
+    assert named['sun.txt'] == 'md5:0c5225b847ca250673edc9690f02e055'
+    assert muscles['gj876.txt'] == 'md5:4b4e7299bad9545ee8fef82cb4c8d4d8'
     assert seager['eos_seager07_iron.txt'] == 'md5:7bf215a2bb4da6d27ceeac2ade0ce706'
     assert hammond['lunarmarebasalt.dat'] == 'md5:a157ea1d436072264c3bea833997a382'
     assert exo['DACE_PlanetS.csv'] == 'md5:367a90914eba4a209f896a1c72dd3d2b'
     # Every entry must carry an algorithm prefix, or pooch cannot know what to
     # verify against; a bare digest would silently be read as the default.
-    for registry in (exo, zeng, hammond, seager):
+    for registry in (exo, zeng, hammond, seager, solar, named, muscles):
         assert all(':' in digest for digest in registry.values())
     assert 'massradiusEarthlikeRocky.txt' in zeng
 
@@ -176,6 +200,15 @@ def test_dataset_dir_is_versioned(tmp_path):
     )
     assert dataset_dir(EOS_SEAGER_2007, data_root=tmp_path) == (
         tmp_path / 'interior_struct' / 'eos' / 'seager_2007' / f'r{SEAGER_2007_RECORD}'
+    )
+    assert dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=tmp_path) == (
+        tmp_path / 'stellar_spectra' / 'solar' / f'r{SOLAR_RECORD}'
+    )
+    assert dataset_dir(STELLAR_SPECTRA_NAMED, data_root=tmp_path) == (
+        tmp_path / 'stellar_spectra' / 'named' / f'r{NAMED_RECORD}'
+    )
+    assert dataset_dir(STELLAR_SPECTRA_MUSCLES, data_root=tmp_path) == (
+        tmp_path / 'stellar_spectra' / 'muscles' / f'r{MUSCLES_RECORD}'
     )
 
 
@@ -352,7 +385,11 @@ def test_spectral_file_datasets_pin_their_records_and_locations(tmp_path):
         assert dataset.zenodo == f'10.5281/zenodo.{record}'
         assert dataset.subdir == f'atmos_clim/spectral_files/{group.lower()}_{bands}'
         assert dataset_dir(key, data_root=tmp_path) == (
-            tmp_path / 'atmos_clim' / 'spectral_files' / f'{group.lower()}_{bands}' / f'r{record}'
+            tmp_path
+            / 'atmos_clim'
+            / 'spectral_files'
+            / f'{group.lower()}_{bands}'
+            / f'r{record}'
         )
         assert _dataset(key).registry(), f'empty registry for {key}'
 
@@ -365,7 +402,9 @@ def test_every_spectral_folder_has_a_dataset_and_no_legacy_entry():
     """
     from proteus.utils.data import DATA_SOURCE_MAP, SPECTRAL_FILE_FOLDERS
 
-    assert {tuple(folder.split('/')) for folder in SPECTRAL_FILE_FOLDERS} == set(SPECTRAL_RECORDS)
+    assert {tuple(folder.split('/')) for folder in SPECTRAL_FILE_FOLDERS} == set(
+        SPECTRAL_RECORDS
+    )
     for folder in SPECTRAL_FILE_FOLDERS:
         group, bands = folder.split('/')
         assert spectral_file_key(group, bands) in _OWNED_KEYS
@@ -409,12 +448,18 @@ def test_migrated_datasets_are_not_also_pinned_in_the_legacy_map():
     assert 'Population' not in DATA_SOURCE_MAP
     # Discrimination: the map is still populated for the datasets that have not
     # migrated, so an emptied map cannot make this pass.
-    assert 'Named' in DATA_SOURCE_MAP
+    assert 'Named' not in DATA_SOURCE_MAP
+    assert 'solar' not in DATA_SOURCE_MAP
+    assert 'MUSCLES' not in DATA_SOURCE_MAP
+    assert 'PHOENIX' in DATA_SOURCE_MAP
     pinned_records = {entry['zenodo_id'] for entry in DATA_SOURCE_MAP.values()}
     assert EXOPLANET_RECORD not in pinned_records
     assert HAMMOND_2024_RECORD not in pinned_records
     assert SEAGER_2007_RECORD not in pinned_records
     assert ZENG_2019_RECORD not in pinned_records
+    assert SOLAR_RECORD not in pinned_records
+    assert NAMED_RECORD not in pinned_records
+    assert MUSCLES_RECORD not in pinned_records
 
 
 def test_fetch_dataset_delegates_to_the_pinned_fetcher(monkeypatch, tmp_path):

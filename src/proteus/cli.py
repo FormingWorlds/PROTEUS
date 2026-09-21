@@ -470,10 +470,11 @@ def phoenix(FeH: float, alpha: float, teff: float | None):
 @click.command()
 def solar():
     """Download the available solar spectra."""
+    from .data import STELLAR_SPECTRA_SOLAR, dataset_dir
     from .utils.data import GetFWLData, download_stellar_spectra
 
     # Where the data should end up
-    solar_dir = GetFWLData() / 'stellar_spectra' / 'solar'
+    solar_dir = dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=GetFWLData())
 
     try:
         download_stellar_spectra(folders=('solar',))

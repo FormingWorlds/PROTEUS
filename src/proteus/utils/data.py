@@ -480,16 +480,11 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
         'osf_id': 'phsxf',
         'osf_project': 'phsxf',
     },
-    # Stellar spectra (OSF project: 8r2sw)
-    'Named': {'zenodo_id': '15721440', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
     # Stellar spectra - PHOENIX (OSF project: 8r2sw)
     'PHOENIX': {'zenodo_id': '17674612', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
-    # Stellar spectra - MUSCLES (OSF project: 8r2sw)
-    'MUSCLES': {'zenodo_id': '17802209', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
-    # Stellar spectra - solar (OSF project: 8r2sw)
-    'solar': {'zenodo_id': '17981836', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
-    # The surface albedos, the Seager EOS tables, the exoplanet catalogue and the
-    # mass-radius relations are declared in src/proteus/data/proteus_manifest.toml and fetched through
+    # The surface albedos, the Seager EOS tables, the exoplanet catalogue, the
+    # mass-radius relations and the solar, Named and MUSCLES stellar spectra are
+    # declared in src/proteus/data/proteus_manifest.toml and fetched through
     # fwl-io, so their record pins live there and are absent here.
     # Zalmoxis EOS: Wolf & Bower 2018 T-dependent MgSiO3 (1 TPa)
     'EOS_WolfBower2018_1TPa': {'zenodo_id': '17417017'},
@@ -1218,63 +1213,53 @@ def download_phoenix(*, alpha: float = 0.0, FeH: float = 0.0, force: bool = Fals
 
 def download_muscles(stars: str | list[str] | None = None, *, force: bool = False) -> bool:
     """
-    Specifically download MUSCLES stellar spectrum(s). Uses the unified `download()` mechanism.
-    Currently not called in the main codebase, but available for users who want to download specific MUSCLES spectra manually through the CLI.
+    Download MUSCLES stellar spectrum(s) through fwl-io.
+
+    Available to users who want to download specific MUSCLES spectra manually through the CLI.
 
     Parameters
     ----------
     stars:
-        - None: download the whole MUSCLES catalogue (previous behaviour)
+        - None: download the whole MUSCLES catalogue
         - str: download one star (e.g. "trappist-1")
         - list[str]: download multiple stars
     force:
-        Force re-download even if present.
+        Remove the requested files first so they are fetched again.
 
     Returns
     -------
     bool
         True if requested downloads succeeded (all of them, when list provided).
     """
-    folder = 'MUSCLES'
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        raise ValueError(f'No data source mapping found for folder: {folder}')
+    from proteus.data import (
+        STELLAR_SPECTRA_MUSCLES,
+        dataset_dir,
+        fetch_dataset,
+        fetch_dataset_file,
+    )
 
-    # Old behavior: download everything
-    if stars is None:
-        return download(
-            folder=folder,
-            target='stellar_spectra',
-            osf_id=source_info['osf_project'],
-            zenodo_id=source_info['zenodo_id'],
-            desc='MUSCLES stellar spectra catalogue',
-            force=force,
-        )
+    try:
+        if stars is None:
+            if force:
+                safe_rm(dataset_dir(STELLAR_SPECTRA_MUSCLES))
+            fetch_dataset(STELLAR_SPECTRA_MUSCLES)
+            return True
 
-    # Normalize to list
-    if isinstance(stars, str):
-        stars_list = [stars]
-    else:
-        stars_list = list(stars)
-
-    def muscles_filename(star: str) -> str:
-        return f'{star}.txt'
-
-    ok_all = True
-    for star in stars_list:
-        f = muscles_filename(star)
-        ok = download(
-            folder=folder,
-            target='stellar_spectra',
-            osf_id=source_info['osf_project'],
-            zenodo_id=source_info['zenodo_id'],
-            desc=f'MUSCLES stellar spectrum ({star})',
-            force=force,
-            file=f,  # uses single-file mode
-        )
-        ok_all = ok_all and ok
-
-    return ok_all
+        stars_list = [stars] if isinstance(stars, str) else list(stars)
+        ok_all = True
+        for star in stars_list:
+            fname = f'{star}.txt'
+            if force:
+                safe_rm(dataset_dir(STELLAR_SPECTRA_MUSCLES) / fname)
+            try:
+                fetch_dataset_file(STELLAR_SPECTRA_MUSCLES, fname)
+            except KeyError:
+                log.error('No MUSCLES spectrum named %s in the dataset registry', star)
+                ok_all = False
+        return ok_all
+    except Exception as exc:  # noqa: BLE001 -- the caller reports a failed download
+        log.error('Failed to download MUSCLES stellar spectra: %s', exc)
+        return False
 
 
 def download_interior_lookuptables(clean=False):
@@ -1375,33 +1360,50 @@ def download_melting_curves(config: Config, clean: bool = False):
 
 def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
     """
-    Download stellar spectra folders into ``FWL_DATA/stellar_spectra``.
+    Download stellar spectra collections into ``FWL_DATA/stellar_spectra``.
 
     Notes
     -----
-    PROTEUS expects different stellar spectra collections in subfolders like:
-    - ``stellar_spectra/solar/``
-    - ``stellar_spectra/MUSCLES/``
-    - ``stellar_spectra/Named/``
+    Each collection is a manifest dataset and lands in its own version
+    directory: ``stellar_spectra/solar/``, ``stellar_spectra/named/`` and
+    ``stellar_spectra/muscles/``, each below an ``r<record-id>`` directory.
 
     Parameters
     ----------
     folders:
-        Specific folders to download. If None, downloads a minimal set that covers
-        common configurations.
+        Specific collections to download (``'Named'``, ``'solar'``,
+        ``'MUSCLES'``, or a collection that is still in ``DATA_SOURCE_MAP``).
+        If None, downloads a minimal set that covers common configurations.
+
+    Raises
+    ------
+    ValueError
+        A requested collection is not known.
     """
+    from proteus.data import (
+        STELLAR_SPECTRA_MUSCLES,
+        STELLAR_SPECTRA_NAMED,
+        STELLAR_SPECTRA_SOLAR,
+        fetch_dataset,
+    )
+
+    keys = {
+        'Named': STELLAR_SPECTRA_NAMED,
+        'solar': STELLAR_SPECTRA_SOLAR,
+        'MUSCLES': STELLAR_SPECTRA_MUSCLES,
+    }
     if folders is None:
-        # Minimal set for most configurations:
-        # - Named: general named spectra
-        # - solar: solar spectra (e.g., sun.txt, Sun0.6Ga.txt, ...)
-        # - MUSCLES: observed stellar spectra catalogue
-        folders = ('Named', 'solar', 'MUSCLES')
+        folders = tuple(keys)
 
     for folder in folders:
-        source_info = get_data_source_info(folder)
-        if not source_info:
+        if folder not in keys and not get_data_source_info(folder):
             raise ValueError(f'No data source mapping found for folder: {folder}')
 
+    for folder in folders:
+        if folder in keys:
+            fetch_dataset(keys[folder])
+            continue
+        source_info = get_data_source_info(folder)
         download(
             folder=folder,
             target='stellar_spectra',

@@ -94,3 +94,18 @@ required_by = ["proteus"]
 name = "SOCRATES spectral file Oak, 318 bands"
 zenodo = "10.5281/zenodo.15743843"
 required_by = ["proteus"]
+
+[stellar_spectra.solar]
+name = "Solar spectra at present and past epochs"
+zenodo = "10.5281/zenodo.17981836"
+required_by = ["proteus"]
+
+[stellar_spectra.named]
+name = "Named stellar spectra"
+zenodo = "10.5281/zenodo.15721440"
+required_by = ["proteus"]
+
+[stellar_spectra.muscles]
+name = "MUSCLES observed stellar spectra"
+zenodo = "10.5281/zenodo.17802209"
+required_by = ["proteus"]

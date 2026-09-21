@@ -82,16 +82,22 @@ def init_star(handler: Proteus):
                 'sunmodern': 'SunModern.txt',
             }
 
+            from proteus.data import (
+                STELLAR_SPECTRA_MUSCLES,
+                STELLAR_SPECTRA_SOLAR,
+                dataset_dir,
+            )
+
             # Paths to MUSCLES spectra
-            muscles_path = os.path.join(fwl_dir, 'stellar_spectra/MUSCLES', star_file)
+            muscles_dir = dataset_dir(STELLAR_SPECTRA_MUSCLES, data_root=fwl_dir)
+            solar_dir = dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=fwl_dir)
+            muscles_path = os.path.join(muscles_dir, star_file)
 
             # Pick the intended solar_path:
             if solar_key in solar_map:
-                solar_path = os.path.join(
-                    fwl_dir, 'stellar_spectra/solar', solar_map[solar_key]
-                )
+                solar_path = os.path.join(solar_dir, solar_map[solar_key])
             else:
-                solar_path = os.path.join(fwl_dir, 'stellar_spectra/solar', star_file)
+                solar_path = os.path.join(solar_dir, star_file)
 
             src = mors_cfg.spectrum_source
 

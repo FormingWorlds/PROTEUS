@@ -18,6 +18,13 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 runner = CliRunner()
 
 
+def _solar_dir(root):
+    """Version directory of the solar spectra dataset below ``root``."""
+    from proteus.data import STELLAR_SPECTRA_SOLAR, dataset_dir
+
+    return dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=root)
+
+
 @pytest.mark.unit
 def test_doctor():
     """``proteus doctor`` renders its report and returns a health-coded exit.
@@ -59,7 +66,7 @@ def test_get(monkeypatch, tmp_path):
     The downloaders touch the network; each is replaced with a no-op so
     the test stays a pure CLI dispatch check rather than a network smoke.
     Some subcommands also assert post-conditions (e.g. `solar` requires
-    that files exist under FWL_DATA/stellar_spectra/solar after the
+    that files exist under the solar dataset directory after the
     downloader returns), so the no-op for download_stellar_spectra writes
     a stub file at the expected path. FWL_DATA itself is monkeypatched to
     a tmp_path so the test never touches the user's real data tree.
@@ -68,7 +75,7 @@ def test_get(monkeypatch, tmp_path):
     the specific exit code; a regression in any one of them surfaces the
     name of the failing subcommand in the assertion output. The previous
     failure (test_get fails on `solar` in CI but not locally because the
-    user's FWL_DATA happened to have stellar_spectra/solar/ already
+    user's FWL_DATA happened to have the solar dataset already
     populated) is now eliminated by controlling FWL_DATA explicitly.
     """
     # Monkeypatch FWL_DATA to a writable tmp_path so post-condition file
@@ -82,12 +89,12 @@ def test_get(monkeypatch, tmp_path):
 
     def stub_download_stellar_spectra(folders=('solar',), **kwargs):
         # The CLI `solar` subcommand checks for files under
-        # GetFWLData()/stellar_spectra/solar after the downloader returns,
+        # the solar dataset directory after the downloader returns,
         # raising ClickException if none are present. The no-op honours
         # that contract by writing a stub file so the post-condition
         # passes without touching the network.
         for folder in folders:
-            target = tmp_path / 'stellar_spectra' / folder
+            target = _solar_dir(tmp_path)
             target.mkdir(parents=True, exist_ok=True)
             (target / '_stub.txt').write_text('stub')
         return True
@@ -444,14 +451,14 @@ def test_get_phoenix_download_failure_raises(monkeypatch):
 
 @pytest.mark.unit
 def test_get_solar_success_when_files_present(monkeypatch, tmp_path):
-    """``proteus get solar`` succeeds when files materialise under FWL_DATA/stellar_spectra/solar."""
+    """``proteus get solar`` succeeds when files materialise in the solar dataset directory."""
     runner = CliRunner()
 
     def fake_GetFWLData():
         return tmp_path
 
     def fake_download_stellar_spectra(folders=('solar',)):
-        solar_dir = tmp_path / 'stellar_spectra' / 'solar'
+        solar_dir = _solar_dir(tmp_path)
         solar_dir.mkdir(parents=True, exist_ok=True)
         (solar_dir / 'dummy.txt').write_text('ok')
 
@@ -463,7 +470,7 @@ def test_get_solar_success_when_files_present(monkeypatch, tmp_path):
     res = runner.invoke(cli.cli, ['get', 'solar'])
     assert res.exit_code == 0
     assert 'Solar spectra downloaded successfully.' in res.output
-    assert str(tmp_path / 'stellar_spectra' / 'solar') in res.output
+    assert str(_solar_dir(tmp_path)) in res.output
 
 
 @pytest.mark.unit
@@ -478,7 +485,7 @@ def test_get_solar_raises_if_no_files_found(monkeypatch, tmp_path):
 
     def fake_download_stellar_spectra(folders=('solar',)):
         # create directory but no files
-        (tmp_path / 'stellar_spectra' / 'solar').mkdir(parents=True, exist_ok=True)
+        _solar_dir(tmp_path).mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr('proteus.utils.data.GetFWLData', fake_GetFWLData)
     monkeypatch.setattr(

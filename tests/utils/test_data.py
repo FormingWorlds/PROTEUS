@@ -1044,9 +1044,9 @@ def test_download_folder_mode_fails_if_no_sources_available(mock_check, mock_get
 def test_get_data_source_info():
     """Test unified data source mapping lookup."""
     # Test known mapping
-    info = get_data_source_info('Named')
+    info = get_data_source_info('PHOENIX')
     assert info is not None
-    assert info['zenodo_id'] == '15721440'
+    assert info['zenodo_id'] == '17674612'
     assert info['osf_project'] == '8r2sw'
 
     # Test unknown mapping
@@ -1057,7 +1057,7 @@ def test_get_data_source_info():
 @pytest.mark.unit
 def test_get_osf_project():
     """Test OSF project ID lookup."""
-    assert get_osf_project('Named') == '8r2sw'
+    assert get_osf_project('PHOENIX') == '8r2sw'
     assert get_osf_project('UnknownFolder') is None
 
 
@@ -1078,7 +1078,7 @@ def test_get_zenodo_from_osf():
 @pytest.mark.unit
 def test_get_osf_from_zenodo():
     """Test reverse lookup: Zenodo ID -> OSF project."""
-    assert get_osf_from_zenodo('15721440') == '8r2sw'  # Named
+    assert get_osf_from_zenodo('17674612') == '8r2sw'  # PHOENIX
     assert get_osf_from_zenodo('99999999') is None  # Unknown
 
 
@@ -1267,7 +1267,7 @@ def test_download_automatic_mapping(
     mock_download_zenodo.return_value = True
     mock_validate.return_value = True
 
-    folder_dir = tmp_path / 'target' / 'Named'
+    folder_dir = tmp_path / 'target' / 'PHOENIX'
     folder_dir.mkdir(parents=True, exist_ok=True)
     (folder_dir / 'test_file.txt').write_text('test')
 
@@ -1278,7 +1278,7 @@ def test_download_automatic_mapping(
 
         # Call download without explicit IDs - should use mapping
         result = download(
-            folder='Named',
+            folder='PHOENIX',
             target='target',
             desc='test data',
             # No osf_id or zenodo_id provided - should use mapping
@@ -1288,7 +1288,7 @@ def test_download_automatic_mapping(
     mock_download_zenodo.assert_called_once()
     # Should have used mapped Zenodo ID (check kwargs since it's called with keyword args)
     call_kwargs = mock_download_zenodo.call_args.kwargs
-    assert call_kwargs['zenodo_id'] == '15721440'  # Zenodo ID from mapping
+    assert call_kwargs['zenodo_id'] == '17674612'  # Zenodo ID from mapping
     assert result is True
 
 
@@ -1592,121 +1592,81 @@ def test_download_phoenix_returns_false_if_download_fails(mock_download, tmp_pat
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.get_data_source_info')
-def test_download_muscles_default_download_all(mock_get_info, mock_download):
-    """If stars is None, download_muscles should download the whole MUSCLES catalogue (folder mode)."""
+@patch('proteus.data.fetch_dataset')
+def test_download_muscles_default_download_all(mock_fetch):
+    """If stars is None, download_muscles fetches the whole MUSCLES dataset."""
+    from proteus.data import STELLAR_SPECTRA_MUSCLES
     from proteus.utils.data import download_muscles
-
-    mock_get_info.return_value = {
-        'zenodo_id': 'ZEN',
-        'osf_project': 'OSFPROJ',
-        'osf_id': 'OSFPROJ',
-    }
-    mock_download.return_value = True
 
     ok = download_muscles(stars=None, force=False)
 
     assert ok is True
-    mock_get_info.assert_called_once_with('MUSCLES')
-    mock_download.assert_called_once_with(
-        folder='MUSCLES',
-        target='stellar_spectra',
-        osf_id='OSFPROJ',
-        zenodo_id='ZEN',
-        desc='MUSCLES stellar spectra catalogue',
-        force=False,
-    )
+    mock_fetch.assert_called_once_with(STELLAR_SPECTRA_MUSCLES)
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.get_data_source_info')
-def test_download_muscles_single_star(mock_get_info, mock_download):
-    """If stars is a string, download_muscles should call download() once in single-file mode."""
+@patch('proteus.data.fetch_dataset_file')
+def test_download_muscles_single_star(mock_fetch_file):
+    """If stars is a string, download_muscles fetches that one registry file."""
+    from proteus.data import STELLAR_SPECTRA_MUSCLES
     from proteus.utils.data import download_muscles
 
-    mock_get_info.return_value = {
-        'zenodo_id': 'ZEN',
-        'osf_project': 'OSFPROJ',
-        'osf_id': 'OSFPROJ',
-    }
-    mock_download.return_value = True
-
-    ok = download_muscles(stars='trappist-1', force=True)
+    ok = download_muscles(stars='trappist-1', force=False)
 
     assert ok is True
-    mock_get_info.assert_called_once_with('MUSCLES')
-    mock_download.assert_called_once_with(
-        folder='MUSCLES',
-        target='stellar_spectra',
-        osf_id='OSFPROJ',
-        zenodo_id='ZEN',
-        desc='MUSCLES stellar spectrum (trappist-1)',
-        force=True,
-        file='trappist-1.txt',
-    )
+    mock_fetch_file.assert_called_once_with(STELLAR_SPECTRA_MUSCLES, 'trappist-1.txt')
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.get_data_source_info')
-def test_download_muscles_multiple_stars(mock_get_info, mock_download):
-    """If stars is a list, download_muscles should call download() once per star and return AND of results."""
+@patch('proteus.data.fetch_dataset_file')
+def test_download_muscles_multiple_stars(mock_fetch_file):
+    """A star absent from the registry fails the call but not the other stars."""
+    from proteus.data import STELLAR_SPECTRA_MUSCLES
     from proteus.utils.data import download_muscles
 
-    mock_get_info.return_value = {
-        'zenodo_id': 'ZEN',
-        'osf_project': 'OSFPROJ',
-        'osf_id': 'OSFPROJ',
-    }
-
-    # First star succeeds, second fails -> overall False
-    mock_download.side_effect = [True, False]
+    mock_fetch_file.side_effect = [Path('a'), KeyError('starB.txt')]
 
     ok = download_muscles(stars=['starA', 'starB'], force=False)
 
     assert ok is False
-    mock_get_info.assert_called_once_with('MUSCLES')
-    assert mock_download.call_count == 2
-
-    # Check both calls precisely (order matters)
-    expected_calls = [
-        call(
-            folder='MUSCLES',
-            target='stellar_spectra',
-            osf_id='OSFPROJ',
-            zenodo_id='ZEN',
-            desc='MUSCLES stellar spectrum (starA)',
-            force=False,
-            file='starA.txt',
-        ),
-        call(
-            folder='MUSCLES',
-            target='stellar_spectra',
-            osf_id='OSFPROJ',
-            zenodo_id='ZEN',
-            desc='MUSCLES stellar spectrum (starB)',
-            force=False,
-            file='starB.txt',
-        ),
+    assert mock_fetch_file.call_args_list == [
+        call(STELLAR_SPECTRA_MUSCLES, 'starA.txt'),
+        call(STELLAR_SPECTRA_MUSCLES, 'starB.txt'),
     ]
-    assert mock_download.call_args_list == expected_calls
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.get_data_source_info')
-def test_download_muscles_no_mapping_raises(mock_get_info):
-    """download_muscles should raise if MUSCLES is not in the mapping."""
+@patch('proteus.data.fetch_dataset')
+def test_download_muscles_reports_fetch_failure(mock_fetch):
+    """A fetch error is reported as a failed download, not raised."""
     from proteus.utils.data import download_muscles
 
-    mock_get_info.return_value = None
+    mock_fetch.side_effect = RuntimeError('mirror down')
 
-    with pytest.raises(ValueError):
-        download_muscles(stars=None)
-    # Discrimination: confirm the MUSCLES registry lookup actually ran;
-    # otherwise the ValueError could come from an unrelated earlier guard.
-    mock_get_info.assert_called()
+    assert download_muscles(stars=None) is False
+
+
+@pytest.mark.unit
+def test_download_muscles_force_removes_the_requested_file_first(tmp_path, monkeypatch):
+    """``force`` deletes the file before the fetch, so a present file is fetched again."""
+    from proteus.data import STELLAR_SPECTRA_MUSCLES, dataset_dir
+    from proteus.utils.data import download_muscles
+
+    monkeypatch.setenv('FWL_DATA', str(tmp_path))
+    star_file = dataset_dir(STELLAR_SPECTRA_MUSCLES, data_root=tmp_path) / 'gj876.txt'
+    star_file.parent.mkdir(parents=True, exist_ok=True)
+    star_file.write_text('stale')
+    seen = {}
+
+    def fake_fetch(key, name, data_root=None):
+        seen['present'] = star_file.exists()
+        return star_file
+
+    monkeypatch.setattr('proteus.data.fetch_dataset_file', fake_fetch)
+    monkeypatch.setattr('proteus.data._data_root', lambda: tmp_path)
+
+    assert download_muscles(stars='gj876', force=True) is True
+    assert seen == {'present': False}
 
 
 @pytest.mark.unit
@@ -1778,32 +1738,38 @@ def test_download_melting_curves(mock_rm, mock_getfwl, mock_download, tmp_path):
 
 @pytest.mark.unit
 @patch('proteus.utils.data.download')
-def test_download_stellar_spectra_default(mock_download):
-    """Test stellar spectra download with default folders."""
+@patch('proteus.data.fetch_dataset')
+def test_download_stellar_spectra_default(mock_fetch, mock_download):
+    """Default stellar spectra download fetches Named, solar and MUSCLES through fwl-io."""
+    from proteus.data import (
+        STELLAR_SPECTRA_MUSCLES,
+        STELLAR_SPECTRA_NAMED,
+        STELLAR_SPECTRA_SOLAR,
+    )
     from proteus.utils.data import download_stellar_spectra
 
     download_stellar_spectra()
 
-    # Should download Named, solar, and MUSCLES
-    assert mock_download.call_count == 3
-    folders = [call.kwargs['folder'] for call in mock_download.call_args_list]
-    assert 'Named' in folders
-    assert 'solar' in folders
-    assert 'MUSCLES' in folders
+    fetched = [c.args[0] for c in mock_fetch.call_args_list]
+    assert sorted(fetched) == sorted(
+        [STELLAR_SPECTRA_NAMED, STELLAR_SPECTRA_SOLAR, STELLAR_SPECTRA_MUSCLES]
+    )
+    mock_download.assert_not_called()
 
 
 @pytest.mark.unit
 @patch('proteus.utils.data.download')
-def test_download_stellar_spectra_custom(mock_download):
-    """Test stellar spectra download with custom folders."""
+@patch('proteus.data.fetch_dataset')
+def test_download_stellar_spectra_custom(mock_fetch, mock_download):
+    """A collection still in DATA_SOURCE_MAP keeps its legacy download path."""
+    from proteus.data import STELLAR_SPECTRA_NAMED
     from proteus.utils.data import download_stellar_spectra
 
     download_stellar_spectra(folders=('Named', 'PHOENIX'))
 
-    assert mock_download.call_count == 2
-    folders = [call.kwargs['folder'] for call in mock_download.call_args_list]
-    assert 'Named' in folders
-    assert 'PHOENIX' in folders
+    mock_fetch.assert_called_once_with(STELLAR_SPECTRA_NAMED)
+    mock_download.assert_called_once()
+    assert mock_download.call_args.kwargs['folder'] == 'PHOENIX'
 
 
 @pytest.mark.unit

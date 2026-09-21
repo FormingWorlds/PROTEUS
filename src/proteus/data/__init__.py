@@ -25,6 +25,9 @@ EXOPLANET_REFERENCE = 'observe.exoplanet_reference'
 MASS_RADIUS_ZENG_2019 = 'observe.mass_radius.zeng_2019'
 SURFACE_ALBEDOS_HAMMOND_2024 = 'atmos_clim.surface_albedos.hammond_2024'
 EOS_SEAGER_2007 = 'interior_struct.eos.seager_2007'
+STELLAR_SPECTRA_SOLAR = 'stellar_spectra.solar'
+STELLAR_SPECTRA_NAMED = 'stellar_spectra.named'
+STELLAR_SPECTRA_MUSCLES = 'stellar_spectra.muscles'
 
 
 def spectral_file_key(group: str, bands: str | int) -> str:
@@ -227,3 +230,34 @@ def fetch_dataset(key: str, data_root: str | Path | None = None) -> list[Path]:
         The verified files of the dataset.
     """
     return _fetcher(key, data_root=data_root).fetch_all()
+
+
+def fetch_dataset_file(key: str, name: str, data_root: str | Path | None = None) -> Path:
+    """Fetch one file of a declared dataset, verifying it against the registry.
+
+    Datasets that hold many independent files (one observed spectrum per star)
+    can be fetched file by file so a reader downloads only what it needs. The
+    fetch is idempotent: a file already present with a matching checksum is left
+    alone.
+
+    Parameters
+    ----------
+    key : str
+        Dotted manifest key of the dataset.
+    name : str
+        File name as listed in the dataset registry.
+    data_root : str or Path, optional
+        Reference-data tree to fetch into. Defaults to the tree PROTEUS resolves
+        from the environment.
+
+    Returns
+    -------
+    Path
+        The verified file.
+
+    Raises
+    ------
+    KeyError
+        ``name`` is not in the dataset registry.
+    """
+    return _fetcher(key, data_root=data_root).fetch(name)

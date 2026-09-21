@@ -309,6 +309,20 @@ def test_get_phoenix_modern_spectrum_downloads_when_online(tmp_path, monkeypatch
 # init_star() spectrum selection tests
 
 
+def _solar_dir(root):
+    """Version directory of the solar spectra dataset below ``root``."""
+    from proteus.data import STELLAR_SPECTRA_SOLAR, dataset_dir
+
+    return dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=root)
+
+
+def _muscles_dir(root):
+    """Version directory of the MUSCLES spectra dataset below ``root``."""
+    from proteus.data import STELLAR_SPECTRA_MUSCLES, dataset_dir
+
+    return dataset_dir(STELLAR_SPECTRA_MUSCLES, data_root=root)
+
+
 @pytest.mark.unit
 def test_init_star_source_none_prefers_muscles_when_available(tmp_path, monkeypatch):
     """With ``spectrum_source=None``, ``init_star`` prefers MUSCLES over
@@ -321,8 +335,8 @@ def test_init_star_source_none_prefers_muscles_when_available(tmp_path, monkeypa
     handler = _make_handler_for_init_star(tmp_path, spectrum_source=None)
 
     star_file = 'gj876.txt'
-    solar = tmp_path / 'stellar_spectra' / 'solar' / star_file
-    muscles = tmp_path / 'stellar_spectra' / 'MUSCLES' / star_file
+    solar = _solar_dir(tmp_path) / star_file
+    muscles = _muscles_dir(tmp_path) / star_file
 
     _write_spectrum_file(solar, fl=(10.0, 20.0))
     _write_spectrum_file(muscles, fl=(30.0, 40.0))
@@ -350,7 +364,7 @@ def test_init_star_source_none_uses_muscles_when_solar_missing(tmp_path, monkeyp
     handler = _make_handler_for_init_star(tmp_path, spectrum_source=None)
 
     starname_proper = 'gj876.txt'
-    muscles = tmp_path / 'stellar_spectra' / 'MUSCLES' / starname_proper
+    muscles = _muscles_dir(tmp_path) / starname_proper
     _write_spectrum_file(muscles, fl=(30.0, 40.0))
 
     init_star(handler)
@@ -380,7 +394,7 @@ def test_init_star_source_solar_falls_back_to_muscles_with_warning(
     handler = _make_handler_for_init_star(tmp_path, spectrum_source='solar')
 
     starname_proper = 'gj876.txt'
-    muscles = tmp_path / 'stellar_spectra' / 'MUSCLES' / starname_proper
+    muscles = _muscles_dir(tmp_path) / starname_proper
     _write_spectrum_file(muscles, fl=(30.0, 40.0))
 
     init_star(handler)
@@ -406,7 +420,7 @@ def test_init_star_source_muscles_falls_back_to_solar_with_warning(
     handler = _make_handler_for_init_star(tmp_path, spectrum_source='muscles')
 
     starname_proper = 'gj876.txt'
-    solar = tmp_path / 'stellar_spectra' / 'solar' / starname_proper
+    solar = _solar_dir(tmp_path) / starname_proper
     _write_spectrum_file(solar, fl=(10.0, 20.0))
 
     init_star(handler)
