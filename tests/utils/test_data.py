@@ -1063,10 +1063,10 @@ def test_download_folder_mode_fails_if_no_sources_available(mock_check, mock_get
 def test_get_data_source_info():
     """Test unified data source mapping lookup."""
     # Test known mapping
-    info = get_data_source_info('Hammond24')
+    info = get_data_source_info('Named')
     assert info is not None
-    assert info['zenodo_id'] == '15880455'
-    assert info['osf_project'] == '2gcd9'
+    assert info['zenodo_id'] == '15721440'
+    assert info['osf_project'] == '8r2sw'
 
     # Test unknown mapping
     info = get_data_source_info('UnknownFolder')
@@ -1076,7 +1076,6 @@ def test_get_data_source_info():
 @pytest.mark.unit
 def test_get_osf_project():
     """Test OSF project ID lookup."""
-    assert get_osf_project('Hammond24') == '2gcd9'
     assert get_osf_project('Named') == '8r2sw'
     assert get_osf_project('UnknownFolder') is None
 
@@ -1098,7 +1097,6 @@ def test_get_zenodo_from_osf():
 @pytest.mark.unit
 def test_get_osf_from_zenodo():
     """Test reverse lookup: Zenodo ID -> OSF project."""
-    assert get_osf_from_zenodo('15880455') == '2gcd9'  # Hammond24
     assert get_osf_from_zenodo('15721440') == '8r2sw'  # Named
     assert get_osf_from_zenodo('99999999') is None  # Unknown
 
@@ -1288,7 +1286,7 @@ def test_download_automatic_mapping(
     mock_download_zenodo.return_value = True
     mock_validate.return_value = True
 
-    folder_dir = tmp_path / 'target' / 'Hammond24'
+    folder_dir = tmp_path / 'target' / 'Named'
     folder_dir.mkdir(parents=True, exist_ok=True)
     (folder_dir / 'test_file.txt').write_text('test')
 
@@ -1299,7 +1297,7 @@ def test_download_automatic_mapping(
 
         # Call download without explicit IDs - should use mapping
         result = download(
-            folder='Hammond24',
+            folder='Named',
             target='target',
             desc='test data',
             # No osf_id or zenodo_id provided - should use mapping
@@ -1309,7 +1307,7 @@ def test_download_automatic_mapping(
     mock_download_zenodo.assert_called_once()
     # Should have used mapped Zenodo ID (check kwargs since it's called with keyword args)
     call_kwargs = mock_download_zenodo.call_args.kwargs
-    assert call_kwargs['zenodo_id'] == '15880455'  # Zenodo ID from mapping
+    assert call_kwargs['zenodo_id'] == '15721440'  # Zenodo ID from mapping
     assert result is True
 
 
@@ -1960,17 +1958,28 @@ def test_download_massradius_data(mock_fetch, mock_download):
 
 @pytest.mark.unit
 @patch('proteus.utils.data.download')
-def test_download_surface_albedos(mock_download):
-    """Test surface albedos download."""
+@patch('proteus.data.fetch_dataset')
+def test_download_surface_albedos(mock_fetch, mock_download):
+    """The surface albedos are fetched through fwl-io, not the legacy path."""
+    from proteus.data import SURFACE_ALBEDOS_HAMMOND_2024
     from proteus.utils.data import download_surface_albedos
 
     download_surface_albedos()
 
-    mock_download.assert_called_once()
-    call_kwargs = mock_download.call_args.kwargs
-    assert call_kwargs['folder'] == 'Hammond24'
-    assert call_kwargs['target'] == 'surface_albedos'
-    assert call_kwargs['desc'] == 'surface reflectance data'
+    mock_fetch.assert_called_once_with(SURFACE_ALBEDOS_HAMMOND_2024)
+    assert mock_fetch.call_args.args[0] == 'atmos_clim.surface_albedos.hammond_2024'
+    mock_download.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset', side_effect=OSError('mirror unreachable'))
+def test_download_surface_albedos_propagates_fetch_failure(mock_fetch):
+    """AGNI needs the albedo files, so a failed fetch raises instead of being logged."""
+    from proteus.utils.data import download_surface_albedos
+
+    with pytest.raises(OSError, match='mirror unreachable'):
+        download_surface_albedos()
+    mock_fetch.assert_called_once()
 
 
 @pytest.mark.unit
@@ -2335,22 +2344,6 @@ def test_download_melting_curves_canonical_skip_existing(
     # regression that re-copied from solidus.dat to solidus_P-T.dat
     # without the skip-guard would have rewritten the canonical file).
     assert (mc_dir / 'solidus.dat').read_text() == 'old solidus'
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.get_data_source_info')
-def test_download_surface_albedos_no_mapping(mock_get_info):
-    """Test surface albedos download raises error when no mapping found."""
-    from proteus.utils.data import download_surface_albedos
-
-    mock_get_info.return_value = None
-
-    with pytest.raises(ValueError, match='No data source mapping found'):
-        download_surface_albedos()
-    # Discrimination: confirm the mapping lookup actually ran (otherwise
-    # the ValueError could come from an unrelated guard before the
-    # registry is consulted).
-    mock_get_info.assert_called_once()
 
 
 @pytest.mark.unit

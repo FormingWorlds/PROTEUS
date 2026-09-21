@@ -19,3 +19,8 @@ required_by = ["proteus"]
 name = "Zeng et al. (2019) mass-radius relations"
 zenodo = "10.5281/zenodo.15727899"
 required_by = ["proteus"]
+
+[atmos_clim.surface_albedos.hammond_2024]
+name = "Surface material reflectance spectra (Hammond et al. 2024)"
+zenodo = "10.5281/zenodo.15880455"
+required_by = ["proteus"]

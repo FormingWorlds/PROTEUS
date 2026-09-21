@@ -74,7 +74,7 @@ config_version = "3.0"
     overlap_method  = "ee"          # gas overlap method
     [atmos_clim.agni]
         chemistry       = "none"        # "none" | "eq"
-        surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
+        surf_material   = "lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = false         # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-3          # solver absolute tolerance
         solution_rtol   = 2e-2          # solver relative tolerance

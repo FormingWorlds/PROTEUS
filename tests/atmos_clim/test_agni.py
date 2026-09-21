@@ -18,6 +18,7 @@ See also:
 from __future__ import annotations
 
 import logging
+import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -29,6 +30,7 @@ import proteus.atmos_clim.agni as agni_mod
 from proteus.atmos_clim.agni import (
     _determine_aerosols,
     _determine_condensates,
+    _resolve_surface_material,
     _validate_stored_profile,
     init_agni_atmos,
     write_atmos_ncdf,
@@ -2675,3 +2677,62 @@ def test_a_lost_atmosphere_goes_to_transparent_mode_not_the_pressure_grid(monkey
     assert 'generate_pgrid' in fake_agni.calls
     assert 'make_transparent' not in fake_agni.calls
     status.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _resolve_surface_material: the configured surface file names
+# ---------------------------------------------------------------------------
+
+
+def _hammond_file(root, name='lunarmarebasalt.dat'):
+    """Create a stand-in Hammond file in its version directory and return it."""
+    from proteus.data import SURFACE_ALBEDOS_HAMMOND_2024, dataset_dir
+
+    folder = dataset_dir(SURFACE_ALBEDOS_HAMMOND_2024, data_root=root)
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    path.write_text('0.5 0.1\n')
+    return path
+
+
+def test_resolve_surface_material_bare_file_name(tmp_path):
+    """A bare file name selects a file of the versioned Hammond dataset."""
+    expected = _hammond_file(tmp_path)
+
+    resolved = _resolve_surface_material('lunarmarebasalt.dat', str(tmp_path))
+
+    assert resolved == str(expected)
+    assert 'r15880455' in resolved
+    assert os.path.isfile(resolved)
+
+
+def test_resolve_surface_material_legacy_prefixed_path(tmp_path):
+    """The pre-manifest value resolves to the same file as the bare name."""
+    expected = _hammond_file(tmp_path)
+
+    legacy = _resolve_surface_material(
+        'surface_albedos/Hammond24/lunarmarebasalt.dat', str(tmp_path)
+    )
+    bare = _resolve_surface_material('lunarmarebasalt.dat', str(tmp_path))
+
+    assert legacy == bare == str(expected)
+    # The legacy directory must not be joined literally: that path holds no
+    # file in the versioned layout.
+    assert legacy != str(tmp_path / 'surface_albedos' / 'Hammond24' / 'lunarmarebasalt.dat')
+
+
+def test_resolve_surface_material_other_paths_stay_relative_to_the_data_root(tmp_path):
+    """A value that is neither a bare name nor the legacy prefix keeps its old meaning."""
+    resolved = _resolve_surface_material('my_albedos/custom.dat', str(tmp_path))
+
+    assert resolved == str(tmp_path / 'my_albedos' / 'custom.dat')
+    # A deeper path under the legacy directory is not a Hammond file name.
+    nested = _resolve_surface_material('surface_albedos/Hammond24/sub/x.dat', str(tmp_path))
+    assert nested == str(tmp_path / 'surface_albedos' / 'Hammond24' / 'sub' / 'x.dat')
+
+
+def test_resolve_surface_material_absolute_path_is_unchanged(tmp_path):
+    """An absolute path is returned as given."""
+    target = tmp_path / 'elsewhere.dat'
+
+    assert _resolve_surface_material(str(target), str(tmp_path / 'root')) == str(target)

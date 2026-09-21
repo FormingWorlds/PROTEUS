@@ -4,6 +4,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -453,6 +454,36 @@ def _determine_aerosols(dirs: dict) -> list:
     return aerosols
 
 
+def _resolve_surface_material(name: str, fwl_dir: str) -> str:
+    """Return the path of the surface reflectance file named in the config.
+
+    A bare file name, or the path ``surface_albedos/Hammond24/<file>``, selects
+    a file of the Hammond et al. (2024) dataset; the ``r<record-id>`` version
+    segment is never part of the configured value. Any other value is a path
+    relative to the reference-data root.
+
+    Parameters
+    ----------
+    name : str
+        Value of ``atmos_clim.agni.surf_material``.
+    fwl_dir : str
+        Root of the reference-data tree.
+
+    Returns
+    -------
+    str
+        Path to the reflectance file, which may not exist.
+    """
+    from proteus.data import SURFACE_ALBEDOS_HAMMOND_2024, dataset_dir
+
+    parts = Path(name).parts
+    if parts[:2] == ('surface_albedos', 'Hammond24') and len(parts) == 3:
+        name = parts[2]
+    if len(Path(name).parts) == 1:
+        return os.path.join(dataset_dir(SURFACE_ALBEDOS_HAMMOND_2024, data_root=fwl_dir), name)
+    return os.path.join(fwl_dir, name)
+
+
 def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     """Initialise atmosphere struct for use by AGNI.
 
@@ -555,7 +586,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     else:
         # Empirical values
         log.debug(f"Using '{surface_material}' single-scattering surface properties")
-        surface_material = os.path.join(dirs['fwl'], surface_material)
+        surface_material = _resolve_surface_material(surface_material, dirs['fwl'])
         if not os.path.isfile(surface_material):
             UpdateStatusfile(dirs, 20)
             raise FileNotFoundError(surface_material)

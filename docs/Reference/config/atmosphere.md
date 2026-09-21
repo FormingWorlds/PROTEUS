@@ -87,7 +87,7 @@ interior heat flux. The `fastchem_*` parameters apply when
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `surf_material` | str | `"greybody"` | Surface scattering material file. Set to 'greybody' to use surf_greyalbedo. |
+| `surf_material` | str | `"greybody"` | Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo. |
 | `surf_roughness` | float | `0.001` | Characteristic surface roughness scale \[metres\]. Must be > 0. |
 | `surf_windspeed` | float | `2.0` | Characteristic surface wind speed \[m/s\]. Must be > 0. |
 

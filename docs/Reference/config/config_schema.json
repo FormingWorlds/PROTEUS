@@ -7720,7 +7720,7 @@
       "default": "\"greybody\"",
       "choices": null,
       "bounds": null,
-      "description": "Surface scattering material file. Set to 'greybody' to use surf_greyalbedo.",
+      "description": "Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo.",
       "doc_source": "attributes",
       "group_order": 1,
       "group_position": 0,

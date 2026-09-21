@@ -182,13 +182,18 @@ increase spectral resolution and runtime cost.
 
 ## Surfaces
 
-Single-scattering albedo data from Hammond et al. (2024):
-[Zenodo record 13691960](https://zenodo.org/records/13691960).
+Surface reflectance spectra from Hammond et al. (2024):
+[Zenodo record 15880455](https://zenodo.org/records/15880455).
+`proteus get surfaces` downloads them into the versioned dataset directory `$FWL_DATA/atmos_clim/surface_albedos/hammond_2024/r15880455`.
+
+Set `atmos_clim.agni.surf_material` to the file name of a spectrum, for example `"lunarmarebasalt.dat"`.
+The path form `"surface_albedos/Hammond24/lunarmarebasalt.dat"` is also accepted and selects the same file.
 
 Available surface types can be listed with:
 
 ```console
-ls $FWL_DATA/surface_albedos/Hammond24
+proteus get surfaces
+ls $FWL_DATA/atmos_clim/surface_albedos/hammond_2024/r15880455
 ```
 
 ---

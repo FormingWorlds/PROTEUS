@@ -494,8 +494,6 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
         'osf_id': 'phsxf',
         'osf_project': 'phsxf',
     },
-    # Surface albedos (OSF project: 2gcd9)
-    'Hammond24': {'zenodo_id': '15880455', 'osf_id': '2gcd9', 'osf_project': '2gcd9'},
     # Stellar spectra (OSF project: 8r2sw)
     'Named': {'zenodo_id': '15721440', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
     # Stellar spectra - PHOENIX (OSF project: 8r2sw)
@@ -504,9 +502,9 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     'MUSCLES': {'zenodo_id': '17802209', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
     # Stellar spectra - solar (OSF project: 8r2sw)
     'solar': {'zenodo_id': '17981836', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
-    # The exoplanet catalogue and the mass-radius relations are declared in
-    # src/proteus/data/proteus_manifest.toml and fetched through fwl-io, so
-    # their record pins live there and are absent here.
+    # The surface albedos, the exoplanet catalogue and the mass-radius relations
+    # are declared in src/proteus/data/proteus_manifest.toml and fetched through
+    # fwl-io, so their record pins live there and are absent here.
     # Population data (OSF project: dpkjb)
     # NOTE: Population and EOS_Seager2007 currently share Zenodo ID '15727998'.
     'Population': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
@@ -1069,20 +1067,15 @@ def download(
 
 def download_surface_albedos():
     """
-    Download reflectance data for various surface materials
-    """
-    folder = 'Hammond24'
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        raise ValueError(f'No data source mapping found for folder: {folder}')
+    Download the surface reflectance data through fwl-io.
 
-    download(
-        folder=folder,
-        target='surface_albedos',
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc='surface reflectance data',
-    )
+    The record pin and the file checksums come from the manifest PROTEUS ships,
+    so the tables land in their version directory and are verified against the
+    committed registry. AGNI needs these files, so a failed fetch raises.
+    """
+    from proteus.data import SURFACE_ALBEDOS_HAMMOND_2024, fetch_dataset
+
+    fetch_dataset(SURFACE_ALBEDOS_HAMMOND_2024)
 
 
 def download_scattering():
