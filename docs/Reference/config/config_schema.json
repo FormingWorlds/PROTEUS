@@ -10240,6 +10240,18 @@
       "doc": "Validate planet.fO2_source against O_mode, volatile_mode, and against availability."
     },
     {
+      "validator": "planet_liquidus_super_needs_tables",
+      "module": "_config.py",
+      "attached_to": [
+        "planet"
+      ],
+      "touches": [
+        "interior_energetics.module",
+        "interior_struct.module"
+      ],
+      "doc": "Require a P-S table route for ``temperature_mode = \"liquidus_super\"``."
+    },
+    {
       "validator": "planet_mass_valid",
       "module": "_config.py",
       "attached_to": [

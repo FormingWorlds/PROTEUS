@@ -90,11 +90,16 @@ The default `delta_T_super = 500` K gives a comfortably molten start across the
 Earth-mass to ten-Earth-mass range. Setting `delta_T_super = 0` makes the mantle
 marginally molten, just touching the liquidus at the binding depth.
 
-!!! note "Requires the silicate liquidus"
-    `liquidus_super` evaluates the Fei et al. (2021) liquidus through the
-    interior structure module (Zalmoxis), which is part of the standard
-    installation. For a run built only from placeholder modules, use
-    `adiabatic_from_cmb` instead, which needs no melting-curve lookup.
+!!! note "Requires a silicate liquidus"
+    With `interior_struct.module = "zalmoxis"`, `liquidus_super` evaluates the
+    Fei et al. (2021) liquidus through the structure module. With
+    `interior_struct.module = "spider"` or `"dummy"`, the adiabat is solved on
+    the interior P-S tables and the liquidus selected by
+    `interior_struct.melting_dir`; no Zalmoxis data are read. If the requested
+    superheat exceeds what the tables reach, the entropy is clamped to the
+    table maximum and a warning reports the achieved superheat. For a run built
+    only from placeholder modules, use `adiabatic_from_cmb` instead, which
+    needs no melting-curve lookup.
 
 !!! note "Very deep mantles"
     A sufficiently deep mantle cannot be made molten with an arbitrarily large

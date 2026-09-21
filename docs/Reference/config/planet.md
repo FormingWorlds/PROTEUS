@@ -137,6 +137,7 @@ by surface partial pressure for each gas species, in bar.
 Cross-field constraints enforced when the config file loads:
 
 - Validate planet.fO2_source against O_mode, volatile_mode, and against availability.
+- Require a P-S table route for ``temperature_mode = "liquidus_super"``.
 - Validate that mass_tot is within range.
 <!-- END GENERATED: config-constraints planet -->
 
